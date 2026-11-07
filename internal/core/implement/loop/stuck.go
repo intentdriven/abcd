@@ -114,9 +114,10 @@ func resolveStuckBounds(roots layered.Roots) (stuckBounds, error) {
 
 // waitByDesign reports whether r is a wait the loop makes on purpose rather
 // than a refusal: the landing's wait for its preflight receipt, an outage's,
-// and a land fence's that could not read origin.
+// a land fence's that could not read origin, and a merge gate's that could not
+// read what it asks at the arming.
 func waitByDesign(r *Refusal) bool {
-	return !r.checkWait.IsZero() || r.Outage != nil || r.outage != nil || r.Stage == StageOutage || r.originUnread || r.releaseHeld
+	return !r.checkWait.IsZero() || r.Outage != nil || r.outage != nil || r.Stage == StageOutage || r.originUnread || r.releaseHeld || r.gateUnread
 }
 
 // noteRefusal logs err on the lane it names, in an issue run (stuck.go's

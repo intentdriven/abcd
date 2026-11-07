@@ -47,3 +47,12 @@ func Kill(cmd *exec.Cmd) error {
 	}
 	return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 }
+
+// KillLeft sends SIGKILL to what is left of the group a command that has exited
+// led (Lead). A group's id stays its own while any member lives, so this reaches
+// what the command left behind, and an empty group is no one's to reach.
+func KillLeft(cmd *exec.Cmd) {
+	if cmd.Process != nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+}

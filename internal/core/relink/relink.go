@@ -193,6 +193,38 @@ func Repoint(repoRoot string, moves []Move) ([]Rewrite, error) {
 	return out, nil
 }
 
+// Rewritten returns what Repoint writes over a file at rel holding content, given moves
+// that have happened, for a file that did not itself move: content as it is where the
+// walk does not reach rel or no link names a moved record. It reads nothing, so what a
+// repoint wrote can be told from any other edit by replaying it over the file as it was.
+func Rewritten(rel, content string, moves []Move) string {
+	if !walkReaches(rel) || len(content) > maxFileBytes {
+		return content
+	}
+	movedTo := map[string]string{}
+	for _, m := range moves {
+		if from, to := filepath.ToSlash(m.From), filepath.ToSlash(m.To); from != to {
+			movedTo[from] = to
+		}
+	}
+	// The root is read only for a linking file that moved, which this one did not.
+	out, _ := rewriteFile(nil, rel, rel, content, movedTo)
+	return out
+}
+
+// walkReaches reports whether markdownFiles lists a file at rel, as far as its path says.
+func walkReaches(rel string) bool {
+	if !strings.EqualFold(path.Ext(rel), ".md") || appendOnly[rel] {
+		return false
+	}
+	for dir := path.Dir(rel); dir != "."; dir = path.Dir(dir) {
+		if skippedDir(dir, path.Base(dir)) {
+			return false
+		}
+	}
+	return true
+}
+
 // activeMoves validates the moves and keeps the ones the tree shows happened:
 // the destination is present and the source is gone. It returns the forward map
 // (old path → new) and the inverse (new path → old) for the moves made in this
@@ -258,11 +290,16 @@ func markdownFiles(root *os.Root) ([]string, error) {
 // skipDir reports whether the walk stays out of a directory: git's own, the
 // local tier, an append-only log, a dependency tree, or a nested checkout.
 func skipDir(root *os.Root, p, name string) bool {
-	if name == ".git" || name == "node_modules" || p == ".abcd/.work.local" || appendOnly[p] {
+	if skippedDir(p, name) {
 		return true
 	}
 	_, err := root.Lstat(p + "/.git")
 	return err == nil
+}
+
+// skippedDir is skipDir as far as the directory's path says.
+func skippedDir(p, name string) bool {
+	return name == ".git" || name == "node_modules" || p == ".abcd/.work.local" || appendOnly[p]
 }
 
 func containsAny(data []byte, needles []string) bool {

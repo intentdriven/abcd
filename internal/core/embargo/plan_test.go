@@ -32,11 +32,7 @@ const examplePackage = "example.com/example"
 
 func newPlanFixture(t *testing.T) planFixture {
 	t.Helper()
-	f := newFixture(t)
-	s, _, err := openStore(f.home, f.repo.Root())
-	if err != nil {
-		t.Fatal(err)
-	}
+	f, s := openedFixture(t)
 	return planFixture{f: f, s: s, g: newGHFake(t)}
 }
 

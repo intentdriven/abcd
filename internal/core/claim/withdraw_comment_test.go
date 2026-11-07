@@ -68,9 +68,9 @@ func TestEachEventPostsItsOneFixedSentence(t *testing.T) {
 	// The withdrawer is named as the hold names them: by their holder id.
 	id := p.holderID()
 	want := []string{
-		"#11 abcd release hold: the merge of #11 is withdrawn by " + id + " while release v0.16.0 is cut, and is re-armed after it.",
-		"#12 abcd release hold: the merge of #12 is withdrawn by " + id + " while release v0.16.0 is cut, and is re-armed after it.",
-		"#13 abcd release hold: the merge of #13 is withdrawn by " + id + " while release v0.16.0 is cut, and is re-armed after it.",
+		"#11 abcd release hold: the merge of #11 is withdrawn by " + id + " while release v0.16.0 is cut, and is re-armed after it where the merge gate arms its head.",
+		"#12 abcd release hold: the merge of #12 is withdrawn by " + id + " while release v0.16.0 is cut, and is re-armed after it where the merge gate arms its head.",
+		"#13 abcd release hold: the merge of #13 is withdrawn by " + id + " while release v0.16.0 is cut, and is re-armed after it where the merge gate arms its head.",
 		"#13 abcd release hold: the merge of #13 is admitted into release v0.16.0 by " + id + ".",
 		"#11 abcd release hold: the merge of #11 is re-armed; the hold for release v0.16.0 has ended.",
 		"#12 abcd release hold: the merge of #12 is not re-armed; the hold for release v0.16.0 has ended. Its head changed while it was held, so its owner needs to re-arm it.",
@@ -98,7 +98,7 @@ func TestEachCommentSentenceIsTheOneApproved(t *testing.T) {
 	const pre = "abcd release hold: the merge of #11 is "
 	const ended = "; the hold for release v0.16.0 has ended."
 	want := map[string]string{
-		WithdrawnPending:    pre + "withdrawn by octo while release v0.16.0 is cut, and is re-armed after it.",
+		WithdrawnPending:    pre + "withdrawn by octo while release v0.16.0 is cut, and is re-armed after it where the merge gate arms its head.",
 		WithdrawnAdmitted:   pre + "admitted into release v0.16.0 by bob.",
 		WithdrawnRearmed:    pre + "re-armed" + ended,
 		WithdrawnFoundArmed: pre + "armed" + ended,
@@ -107,6 +107,7 @@ func TestEachCommentSentenceIsTheOneApproved(t *testing.T) {
 		WithdrawnRefused:    pre + "not re-armed" + ended + " GitHub refused to re-arm it five times, so its owner needs to re-arm it.",
 		WithdrawnClosed:     pre + "not re-armed" + ended + " It was closed.",
 		WithdrawnMerged:     pre + "not re-armed" + ended + " It was merged.",
+		WithdrawnStanding:   "abcd release hold: the merge of #11 stays armed at " + headA[:12] + ", which the merge gate in this checkout does not arm; the hold for release v0.16.0 has ended. To withdraw it: gh pr merge 11 --disable-auto, and take it out of the merge queue on its page if it is queued.",
 		WithdrawnMismatch:   "",
 		WithdrawnKept:       "",
 	}
@@ -118,7 +119,7 @@ func TestEachCommentSentenceIsTheOneApproved(t *testing.T) {
 		if state == WithdrawnAdmitted {
 			by = "bob" // the admitter is passed, never read from the withdrawal
 		}
-		if got := commentBody("rel-v0.16.0", Withdrawal{Number: 11, By: "octo", State: state}, by, false); got != want[state] {
+		if got := commentBody("rel-v0.16.0", Withdrawal{Number: 11, By: "octo", State: state, ArmedAt: headA}, by, false); got != want[state] {
 			t.Errorf("the comment for %s is\n%q\nwant\n%q", state, got, want[state])
 		}
 	}
@@ -402,7 +403,7 @@ func TestAReArmWhoseTombstoneDidNotLandIsCommentedOnByTheActThatRecordsIt(t *tes
 		t.Fatal(err)
 	}
 	want := []string{
-		"#11 abcd release hold: the merge of #11 is withdrawn by " + p.holderID() + " while release v0.16.0 is cut, and is re-armed after it.",
+		"#11 abcd release hold: the merge of #11 is withdrawn by " + p.holderID() + " while release v0.16.0 is cut, and is re-armed after it where the merge gate arms its head.",
 		"#11 abcd release hold: the merge of #11 is armed; the hold for release v0.16.0 has ended.",
 	}
 	if got := f.posted(); !slices.Equal(got, want) {

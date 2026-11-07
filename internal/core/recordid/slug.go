@@ -5,14 +5,16 @@ import (
 	"strings"
 )
 
-// MaxSlugLen is the one cap on a minted record slug, shared by every verb that
-// mints a record filename: capture, intent, spec and decide alike. A record's
-// path is `<store>/<family>-<id>-<slug>.md`, and a checkout on Windows refuses a
+// DefaultMaxSlugLen is the cap on a record slug in a repository that sets none:
+// layered.RecordSlugCap reads records.slug_cap from .abcd/config.json over it, and
+// that one value is what every verb that mints a record filename cuts at (capture,
+// intent, spec and decide alike) and what record-lint holds a committed name to. A
+// record's path is `<store>/<family>-<id>-<slug>.md`, and a checkout on Windows refuses a
 // path past 260 characters unless core.longpaths is set; the checkout's own
 // location and a worktree store's prefix come on top of the path inside the
 // repository, so the slug is the part held short. Ruled by the product thinker
 // on 2026-10-10 (iss-2610100626320367), down from the 60 the stores used.
-const MaxSlugLen = 40
+const DefaultMaxSlugLen = 40
 
 // slugWordSepRe matches every run that separates words in a slug: anything
 // but a lowercase letter, a digit or a hyphen. A hyphen inside a word (ac-10,

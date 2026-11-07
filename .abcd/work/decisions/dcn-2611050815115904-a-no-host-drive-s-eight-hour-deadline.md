@@ -1,0 +1,6 @@
+---
+id: dcn-2611050815115904
+slug: a-no-host-drive-s-eight-hour-deadline
+date: 2026-11-05
+---
+2026-11-05 — A no-host drive's eight-hour deadline gives way to a bound the person sets. abcd drain --drive --until <date> ends the run at that time with the lane saved, and until then no limit, outage or stuck queue ends it: each is waited through at a capped interval, the wait on screen, the claims renewed. With no flag each wait keeps its eight-hour limit, so an attended short run behaves as before. A limit is met at the hard limit only: no usage window is read ahead of it, no other route is opened. Under the bound, and only there, a limit is asked about with one short launch that asks for no tools rather than with the lane's own work: on a capped backoff when it names no reset, and at a low rate when it names one, since a reset read from a stream can be wrong. An agent that goes silent cannot yet be told from a hung one, so it is treated as a hang: killed at its stage's deadline, its work left in the lane's worktree, the role retried. The first limit a run meets, and the first failure that may be one, leave an evidence file in the local tier, which is how the behaviour of a headless limit gets observed.

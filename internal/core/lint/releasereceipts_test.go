@@ -6,11 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/lint"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -73,8 +73,10 @@ func TestReadReleaseGateReadsTheWorkflowsRequireGateList(t *testing.T) {
 // workflow this repository actually releases with, so a change to how the
 // template spells the gate cannot silently disarm the local check.
 func TestReadReleaseGateReadsAbcdsOwnReleaseWorkflow(t *testing.T) {
-	_, file, _, _ := runtime.Caller(0)
-	root := filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", ".."))
+	root, err := fsutil.ModuleRoot(".")
+	if err != nil {
+		t.Fatal(err)
+	}
 	g, err := lint.ReadReleaseGate(root)
 	if err != nil {
 		t.Fatal(err)

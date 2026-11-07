@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -791,10 +792,10 @@ func outageFieldText(v any) string {
 
 // IsNetworkFailure reports whether a git or gh command's stderr says the
 // network failed it: a name that did not resolve, a connection refused, timed
-// out, reset or cut off. A refusal by the other end — an authentication
+// out, reset or cut off, or a forge or remote answering 5xx. A refusal by the other end — an authentication
 // failure, a hook's refusal, a rejected push — or a merge conflict is not one,
 // even when its text also quotes a network-sounding line, because waiting does
-// not fix it.
+// not fix it. Nor is what a line the remote printed says: that end was reached.
 func IsNetworkFailure(stderr string) bool {
 	s := strings.ToLower(stderr)
 	for _, m := range notNetworkMarkers {
@@ -802,12 +803,13 @@ func IsNetworkFailure(stderr string) bool {
 			return false
 		}
 	}
+	own := remoteLine.ReplaceAllString(s, "")
 	for _, m := range networkMarkers {
-		if strings.Contains(s, m) {
+		if strings.Contains(own, m) {
 			return true
 		}
 	}
-	return false
+	return networkStatus.MatchString(own)
 }
 
 // networkMarkers are the lower-cased phrases git, curl, ssh and gh print when
@@ -839,6 +841,38 @@ var networkMarkers = []string{
 	"early eof",
 	"broken pipe",
 }
+
+// lineOpens is where a command's own line can start in the text this file reads: at a
+// line's start, where a runner's error opens the stderr it wraps, as
+// `git push: exit status 128 (...)`, or inside the %q'd form of that stderr, as
+// `exit status 128 (stderr: "...\n...")`, where a line break is written as a backslash and
+// an n. Anywhere else those two characters are only text.
+const lineOpens = `(?:^|exit status [0-9]+ \((?:stderr: "(?:(?:[^"\\\n]|\\.)*?\\n)?)?)`
+
+// ghStatusPrefixes are the words gh puts before a status on the calls abcd makes: pr create's
+// two failures and its look for a pull request already open, and pr close's.
+const ghStatusPrefixes = `(?:pull request (?:create|update) failed: |error checking for existing pull request: |api call failed: )?`
+
+// networkStatus is a forge or remote answering that it failed, each where such a line opens
+// (lineOpens), in the forms these print:
+//   - gh's client: HTTP 502: Bad Gateway (url), or HTTP 502 (url) with no message;
+//   - gh api, on its stderr: gh: HTTP 502, or gh: Bad Gateway (HTTP 502);
+//   - a GraphQL client: non-200 OK status code: 502;
+//   - git: fatal: unable to access '...': The requested URL returned error: 503, that
+//     sentence after error: RPC failed; or on its own after fatal: or error:, and
+//     error: RPC failed; HTTP 502.
+//
+// The same words anywhere else in a line, or a bare status with nothing of these forms round
+// it, may be a hook's own, so they are not one.
+var networkStatus = regexp.MustCompile(`(?m)` + lineOpens + `(?:` +
+	ghStatusPrefixes + `(?:http 5[0-9][0-9](?::| \()|non-200 ok status code: 5[0-9][0-9])|` +
+	`gh: (?:http 5[0-9][0-9]\b|[^\n]*\(http 5[0-9][0-9]\))|` +
+	`error: rpc failed; http 5[0-9][0-9]\b|` +
+	`(?:fatal: unable to access '[^'\n]*': |error: rpc failed; [^\n]*?|fatal: |error: )the requested url returned error: 5[0-9][0-9])`)
+
+// remoteLine is a line git relayed from the remote, which is the other end's text: on a
+// line of its own or straight after a runner's `exit status N (` opening.
+var remoteLine = regexp.MustCompile(`(?m)^(?:[^\n]*exit status [0-9]+ \()?remote:[^\n]*$`)
 
 // notNetworkMarkers are the other end's refusals and the local conflicts.
 var notNetworkMarkers = []string{

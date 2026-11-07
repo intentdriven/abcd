@@ -896,7 +896,7 @@ func getVia(dl *urlguard.Download, rawURL string, limit int64, headers map[strin
 	}
 	resp, err := dl.Client.Do(req)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, &NoVerdictError{Err: err}
 	}
 	if resp.StatusCode == http.StatusNotFound {
 		resp.Body.Close()
@@ -904,7 +904,7 @@ func getVia(dl *urlguard.Download, rawURL string, limit int64, headers map[strin
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, 0, fmt.Errorf("GET %s: %s", rawURL, resp.Status)
+		return nil, 0, &NoVerdictError{Err: fmt.Errorf("GET %s: %s", rawURL, resp.Status)}
 	}
 	if resp.ContentLength > limit {
 		resp.Body.Close()
@@ -913,7 +913,7 @@ func getVia(dl *urlguard.Download, rawURL string, limit int64, headers map[strin
 	return struct {
 		io.Reader
 		io.Closer
-	}{io.LimitReader(resp.Body, limit), resp.Body}, resp.ContentLength, nil
+	}{faultReader{io.LimitReader(resp.Body, limit)}, resp.Body}, resp.ContentLength, nil
 }
 
 // parseChecksums reads a sha256sum-format manifest ("<64 hex>  <name>", one

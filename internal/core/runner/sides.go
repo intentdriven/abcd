@@ -15,6 +15,7 @@ package runner
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -73,6 +74,19 @@ type Sides struct {
 	// record lists the local fields (iss-2610171545099084). A harness's
 	// output cannot say so; the configuration does.
 	Local bool `json:"local,omitempty"`
+}
+
+// StoppedShort reports whether the harness says the run's last turn ended before its
+// writer finished it: a limit on what it may write or read, a provider's filter or
+// refusal, or an error. A reason it does not list, and no reason, say nothing of the
+// kind; the harnesses and providers each spell these in their own way.
+func (s Sides) StoppedShort() bool {
+	switch strings.ToLower(strings.ReplaceAll(s.FinishReason, "-", "_")) {
+	case "length", "max_tokens", "max_output_tokens", "model_context_window_exceeded",
+		"content_filter", "refusal", "error":
+		return true
+	}
+	return false
 }
 
 // RecordOf is the route record of a role ran ran, routed to asked, whose

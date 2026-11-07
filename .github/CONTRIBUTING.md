@@ -22,10 +22,11 @@ inbound = outbound statement is the whole of it.
 - **Branch + PR** for substantive changes; CI gates the merge. Its `check` job
   builds, vets and tests (plain and race-enabled) on Linux, with the
   `make fmt-check` format gate, the record-lint, issue-drift and docs-lint
-  steps, and the site-render gate. The suite runs on macOS in the merge queue,
-  race-enabled and split across parallel jobs that `check (macos-latest)`
-  reports for: on a pull request that context reports without running, and
-  the queue entry tests the merged tree on macOS; separate jobs run the
+  steps, and the site-render gate. The suite runs on macOS nightly, on demand
+  and on each release cut before anything is tagged, race-enabled and split
+  across parallel jobs that `check (macos-latest)` reports for outside a
+  release: on a pull request and on a queue entry that context reports without
+  running, and says so; separate jobs run the
   reviews-charter and issue-resolution checks (RS001–RS006), `gitleaks`,
   `zizmor`, dependency review, `govulncheck`, the smoke harness and the
   cold-reading evals (`make evals-cold-reading`, which runs on every event).
@@ -36,9 +37,10 @@ inbound = outbound statement is the whole of it.
   by two checkouts), and auto-merge only enqueues a pull request whose checks
   count. So when `main` moves under an armed pull request it sits `BEHIND`
   outside the queue until its branch is updated. `scripts/pr-keep-current.sh`
-  performs that update for every armed pull request (`--watch` repeats until
-  none is armed); run it after arming auto-merge, and after every merge that
-  moves `main`. A pull request confined to `docs/`, `.abcd/development/`,
+  performs that update for every armed pull request, withdrawing its arming
+  first. An update the forge refuses, as the script reads it, puts the arming back
+  at the same head; one that moves the head leaves it for `abcd land` to arm once a
+  review receipt names the new head (`--watch` repeats until none is armed). Run it after arming auto-merge, and after every merge that moves `main`. A pull request confined to `docs/`, `.abcd/development/`,
   `.abcd/work/`, the root prose files, and this guide and the security policy
   beside it in `.github/` stands the race lane and the `zizmor`, `govulncheck`
   and smoke lanes down while it is in review; the queue run is not
@@ -63,7 +65,11 @@ inbound = outbound statement is the whole of it.
   which is the one CI runs, and the format gate runs that toolchain's gofmt
   (`make fmt` applies it); when the declared toolchain cannot be fetched,
   preflight refuses and names the skew rather than falling back to the `go` on
-  PATH. The repository
+  PATH. Its test and race stages replay what Go's test cache holds for unchanged
+  inputs, rerun what is declared or found reading past it, and report how many, and
+  every test step CI runs passes `-count=1`. A test that reads what Go's test cache
+  cannot see belongs on `.abcd/work/always-rerun-tests.txt`. The
+  repository
   ships its hooks in [`.githooks/`](../.githooks/); they are per-machine opt-in,
   and how to arm them turns on the hooks directory git already runs in the
   clone, which `scripts/abcd.sh ahoy --json` reports as `banlist.hooks_path`:

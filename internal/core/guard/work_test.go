@@ -40,10 +40,11 @@ const linearWorkBar = 6.0
 // another agent harness with its permission checks off took theirs. A line of
 // substitutions at the walk's bound followed by plain words measured 40.0
 // once the five branch- and worktree-deletion entries of iss-2610241239492159
-// took theirs. The bar sits at 48, which keeps those shapes under it with room
-// for a few more entries and stays far below the hundred a dropped bound
-// costs.
-const workPerByteBar = 48.0
+// took theirs, about 62 once the twenty history-rewrite entries took theirs, and
+// about 64 once the two entries of the stop took theirs. The bar sits at 72,
+// which keeps those shapes under it with room for a few more entries and stays
+// below the hundred a dropped bound costs.
+const workPerByteBar = 72.0
 
 // checkWork runs one check over line against the bundled registry and returns
 // the work the guard counted doing it (tally in work.go): bytes tokenized, bytes

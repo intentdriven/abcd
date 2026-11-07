@@ -11,7 +11,10 @@ name: release
 # binaries + checksums.txt attached (plus their SLSA build-provenance
 # attestations once the repo is public — attestation is not offered on a
 # user-owned private repo, so it is skipped there and re-enables automatically
-# on the public flip): detect -> verify -> tag -> build -> publish.
+# on the public flip): detect -> verify and the macOS suite -> tag -> build ->
+# publish. The macOS suite runs beside verify, on the same commit, and every job
+# that tags or publishes needs its macos-gate job, so a macOS failure, or a shard
+# that never got a runner, stops the release with nothing tagged.
 # Nothing is pushed to any branch. Every job checks out a resolved commit SHA,
 # fixed for the whole run — never the tag NAME (which could be re-pointed
 # between jobs to swap unverified code into the build) and never a moved-on
@@ -114,9 +117,11 @@ jobs:
     if: github.event_name != 'push' || github.ref_type != 'tag'
     # Each go test step's own -timeout must fire before this does, or a hang
     # reads as a cancelled job with no goroutine dump. The smoke step fits too:
-    # 20m for Test, 40m for the race step (sized in ci.yml), its own 8m, and
-    # three minutes for the untimed steps (evallanebudget_test.go).
-    timeout-minutes: 75
+    # 40m for Test, 70m for the race step (sized in ci.yml), its own 8m, and
+    # three minutes for the untimed steps, 121 in all (evallanebudget_test.go). A
+    # limit here only frees a stuck runner and does not judge speed, so a slow runner
+    # does not fail a cut with no failing test (dcn-2611062222587959).
+    timeout-minutes: 125
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -166,13 +171,22 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      # Past go test's 10-minute default, a package fails with no test failing,
-      # after the merge queue passed it.
+      # Past this limit a package fails with no test failing, after the merge queue
+      # passed it, so it holds about twice the slowest package here, with room for
+      # its growth (dcn-2611062222587959). Both test steps carry the check job's
+      # switches, so a cut tests the longest packages the way the merge gate does
+      # (TestCIRacePassesShardLikePreflight).
       - name: Test
-        run: go test -timeout 20m ./...
+        env:
+          ABCD_TEST_SKIP_FLUSH: "1"
+          ABCD_TEST_SHARDS: "3"
+        run: go test -count=1 -timeout 40m ./...
 
       - name: Test (race, internal)
-        run: go test -race -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
+        env:
+          ABCD_TEST_SKIP_FLUSH: "1"
+          ABCD_TEST_SHARDS: "3"
+        run: go test -race -count=1 -timeout 70m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 
       - name: Record-lint (design-record drift gate)
         run: go run ./cmd/record-lint
@@ -268,6 +282,121 @@ jobs:
             --require-gate iss35-brief-surface-crosscheck
           echo "content_sha=$content" >> "$GITHUB_OUTPUT"
 
+  # Each release cut runs its own macOS suite on the commit it is about to tag,
+  # whatever the nightly run said (dcn-2611042202509334): the merge queue tests on
+  # Linux, so nothing else tests this commit on macOS before it ships. It runs beside
+  # verify, on what macos-suite.yml defines and cmd/ci-shard assigns, under the same
+  # per-shard ceiling as the nightly suite, and with no write scope and no secret.
+  # One job per shard rather than a matrix, because a matrix's result is one word for
+  # all its legs: this way macos-gate can say which shard stopped the release without
+  # asking the forge for the run's jobs, so it holds no scope at all. It also leaves
+  # a shard that fails no way to cancel the others, so a re-run repeats only what
+  # failed. A shard's ceiling starts when a runner takes it, so the wait for one has
+  # no ceiling of its own; the auto-release run holds its concurrency group meanwhile,
+  # and a later push queues behind it.
+  # TestReleaseMacOSShardsRunTheReleasedCommit holds these jobs.
+  macos-suite-1:
+    # Runs wherever verify does, and on no pushed tag.
+    if: github.event_name != 'push' || github.ref_type != 'tag'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/macos-suite.yml
+    with:
+      shard: 1
+      shards: 4
+      # The commit verify gates and the tag job tags, resolved the same way.
+      ref: ${{ inputs.ref || github.sha }}
+      # No cache in a run that publishes, as in verify.
+      cache: false
+
+  macos-suite-2:
+    # Runs wherever verify does, and on no pushed tag.
+    if: github.event_name != 'push' || github.ref_type != 'tag'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/macos-suite.yml
+    with:
+      shard: 2
+      shards: 4
+      # The commit verify gates and the tag job tags, resolved the same way.
+      ref: ${{ inputs.ref || github.sha }}
+      # No cache in a run that publishes, as in verify.
+      cache: false
+
+  macos-suite-3:
+    # Runs wherever verify does, and on no pushed tag.
+    if: github.event_name != 'push' || github.ref_type != 'tag'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/macos-suite.yml
+    with:
+      shard: 3
+      shards: 4
+      # The commit verify gates and the tag job tags, resolved the same way.
+      ref: ${{ inputs.ref || github.sha }}
+      # No cache in a run that publishes, as in verify.
+      cache: false
+
+  macos-suite-4:
+    # Runs wherever verify does, and on no pushed tag.
+    if: github.event_name != 'push' || github.ref_type != 'tag'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/macos-suite.yml
+    with:
+      shard: 4
+      shards: 4
+      # The commit verify gates and the tag job tags, resolved the same way.
+      ref: ${{ inputs.ref || github.sha }}
+      # No cache in a run that publishes, as in verify.
+      cache: false
+
+  # What the jobs that tag and publish need: tag, release and site each name it, and
+  # each one's condition is evaluated against every result it can read
+  # (TestEveryPublishingJobNeedsTheMacOSGate). It runs however the shards ended, so a
+  # shard that failed, was cancelled or never got a runner stops the release with a
+  # message naming it; `always()` is on the step as well as the job, because a job
+  # whose steps are all skipped concludes success. This run has tagged nothing at
+  # this point, so re-running its failed jobs is the remedy, and on a fresh cut the
+  # version stays free meanwhile. A pushed tag's run skips it: pushed-tag has refused
+  # that run.
+  # TestMacOSGateStopsTheReleaseAndSaysWhich runs this script over every result.
+  macos-gate:
+    needs: [macos-suite-1, macos-suite-2, macos-suite-3, macos-suite-4]
+    if: ${{ always() && (github.event_name != 'push' || github.ref_type != 'tag') }}
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require every macOS shard's success
+        if: always()
+        env:
+          SHARD_1_RESULT: ${{ needs.macos-suite-1.result }}
+          SHARD_2_RESULT: ${{ needs.macos-suite-2.result }}
+          SHARD_3_RESULT: ${{ needs.macos-suite-3.result }}
+          SHARD_4_RESULT: ${{ needs.macos-suite-4.result }}
+        run: |
+          stopped=""
+          for shard in 1 2 3 4; do
+            var="SHARD_${shard}_RESULT"
+            result="${!var:-}"
+            echo "macOS shard ${shard} concluded '${result}'"
+            case "$result" in
+              success) continue ;;
+              failure) why="its tests or its build failed" ;;
+              cancelled) why="it was cancelled" ;;
+              abandoned) why="it never got a runner (its job's annotation reads \"not acquired by Runner\")" ;;
+              *) why="it did not run" ;;
+            esac
+            stopped="${stopped}shard ${shard} of 4 concluded '${result}': ${why}. "
+          done
+          if [ -n "$stopped" ]; then
+            msg="${stopped}This run has made no tag and published nothing. The remedy is to re-run the failed jobs of this run: gh run rerun ${GITHUB_RUN_ID} --failed. If a test fails again, land its fix: the push that lands it starts the release again."
+            echo "::error title=The macOS suite stopped this release::${msg}"
+            printf '### The macOS suite stopped this release\n\n%s\n' "$msg" >>"$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
   # Create and push the annotated tag with the GITHUB_TOKEN — AFTER verify, so a
   # refused gate leaves no tag and the version stays free (iss-2608231226347380;
   # adr-52 moved the gate into verify, this moves the tag behind it). Runs only
@@ -276,7 +405,7 @@ jobs:
   # chain makes, and it targets a NEW tag ref only — never a branch. A
   # GITHUB_TOKEN-pushed tag raises no tag-push event, so nothing re-triggers.
   tag:
-    needs: verify
+    needs: [verify, macos-gate]
     if: inputs.create_tag
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -311,7 +440,7 @@ jobs:
   # the same pushed commit (github.sha) that verify just gated, so the shipped
   # artefacts match the code that passed — even if the tag were re-pointed since.
   release:
-    needs: [verify, tag]
+    needs: [verify, macos-gate, tag]
     # The publish path never runs on a manual rehearsal (workflow_dispatch): that
     # event runs the `rehearsal` job, which publishes nothing. Otherwise it runs
     # once verify is green and the tag is in place — the tag job made it
@@ -320,7 +449,9 @@ jobs:
     # need skips a job whose if uses no status function; it never fires on a
     # cancelled run, so a manual cancel cannot publish a half-finished state. A
     # FAILED tag job blocks the release, so a half-made tag never publishes.
-    if: github.event_name != 'workflow_dispatch' && !cancelled() && needs.verify.result == 'success' && (needs.tag.result == 'success' || needs.tag.result == 'skipped')
+    # The macOS gate is read here as well as needed: !cancelled() turns the implicit
+    # success() off, so a need alone would not stop this job.
+    if: github.event_name != 'workflow_dispatch' && !cancelled() && needs.verify.result == 'success' && needs.macos-gate.result == 'success' && (needs.tag.result == 'success' || needs.tag.result == 'skipped')
     timeout-minutes: 20
     runs-on: ubuntu-latest
     # The job runs in the `release` environment. When the environment carries
@@ -772,9 +903,12 @@ jobs:
   # stay the last job, because the AC6 property test slices it from its key to EOF
   # to prove it holds no publish verb. abcd-cli only — a managed repo scaffolded
   # from this template has no website and receives no site.yml.
+  #
+  # It needs the macOS gate directly as well as through release: every job that
+  # publishes names that gate, so a job moved or rewritten later cannot lose it.
   site:
-    needs: release
-    if: ${{ !cancelled() && needs.release.result == 'success' }}
+    needs: [release, macos-gate]
+    if: ${{ !cancelled() && needs.release.result == 'success' && needs.macos-gate.result == 'success' }}
     permissions:
       contents: write       # site.yml: attach site.tar.gz to the draft Release and publish it (no branch push)
       id-token: write       # site.yml: OIDC for the site.tar.gz build-provenance attestation

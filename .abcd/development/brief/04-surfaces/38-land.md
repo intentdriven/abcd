@@ -28,6 +28,8 @@ The verb takes at most one operand, the branch, and lands the checkout's
 current branch without one. A named branch is landed from the worktree that
 has it checked out, because the preflight runs in the branch's own checkout.
 Every step is idempotent, so running the verb again resumes where it stopped.
+A person's stop is read before anything runs, again after the preflight and again at the
+arming, and holds the landing at any of the three (see Exits).
 The preflight is the branch's own `make preflight`, run with the person's
 environment and credentials, so the verb is for branches whose content the
 person trusts. With `land.push` and `land.enqueue` both off nothing runs. With
@@ -95,7 +97,15 @@ bound: the refusal says so and gives the push to run by hand.
    gate checked, never the branch's ref and never its configured upstream, so a
    branch that moves after the gate cannot change what is pushed. The push of a branch other
    than the default is not a merge, so it does not wait on the facilitator.
-4. **Enqueue** (`land.enqueue`). The branch's one open pull request from this
+4. **Withdraw** (before the push). Where the push will move the head of an armed
+   or queued pull request from this repository (`landing.ArmingsQuery`), the verb
+   withdraws the arming, reads it back and says so, and the enqueue step arms the
+   new head where the merge gate allows. Where the gate refuses the local head, the
+   verb withdraws this account's arming at it, and refuses over another account's.
+   Where it cannot make a withdrawal, it refuses, nothing pushed, and the refusal
+   says what to do. The committed pre-push hook refuses a fast-forward it reads as
+   moving an armed pull request's head, naming this verb.
+5. **Enqueue** (`land.enqueue`). The branch's one open pull request from this
    repository is armed where the merge gate (below) allows, pinned to the head
    (`--match-head-commit`), and, where a queue gates the default branch,
    confirmed in the merge queue at that head, through the forge's GraphQL API (the forge client's pull-request
@@ -178,16 +188,64 @@ Its inputs:
   own pull request, and the facilitator authors most of the pull requests
   abcd opens. It is the person's act, and the shell guard refuses it to an
   agent ([`17-guard.md`](17-guard.md)).
-- **A review receipt** naming the head, recorded through the verb, the proof
-  that the review pair passed it. The review act, which takes the review switch
+- **A review receipt** naming the head, recorded through the verb: the record
+  that the review pair's returns passed the stop rule for it. The review act, which takes the review switch
   once per reviewer's return, lands nothing. It needs at least two returns, no two
-  the same text, each naming the head's first nine characters and stating
-  under its one `### Verdict` heading a verdict that passes the stop rule
-  (SHIP or APPROVE: no critical or major finding). It then writes
-  `.abcd/.work.local/review-receipts/<sha>`, holding the commit, when it was
+  the same text, each with a first line reading `Reviewed head: <name>`, naming
+  the head by at least its first nine characters, and stating
+  under its one `### Verdict` heading, with no other line opening a verdict, whatever
+  qualifies it, a verdict that passes the stop rule
+  (SHIP or APPROVE: no critical or major finding) and names the head it judges by its
+  full object name, on the verdict's line or on a `Head: <full name>` line directly
+  under the heading. A head's name is a hash over the text a review reads, so that text cannot hold it. It
+  then writes
+  `.abcd/.work.local/review-receipts/<sha>`, holding the commit, the reading of a
+  verdict it was recorded under, when it was
   recorded and each return's name, verdict and SHA-256; the gate finds it in
   any worktree of the repository. A return that falls short is refused,
-  exit 2, naming it, and nothing is written.
+  exit 2, naming it, and nothing is written. A receipt recorded before a verdict named
+  its head does not count, at the gate or as a delta's base, whichever build wrote it:
+  it keeps digests and not text, so it cannot be read again, and the head records its
+  pair again.
+  Where the mode is `auto` the build loop records this itself, in its own process
+  and never through a stage, and only from a pair that read the head it pushes. The
+  landing's records commit moves that head, so the commit takes a review round of its
+  own before anything is pushed, scoped to that commit, and the round's returns are
+  the receipt. The lane parks before any round, naming which, when the commit moves an
+  issue's record the lane's full round was not told of or holds more than plain
+  markdown of mode 100644, since that full round is told each resolution and judges it.
+  A round that does not pass takes no fix round: the lane goes on to its pull request
+  and is left open, naming the finding, for a person, and a drive passes it over. In
+  `human` no such round runs and the loop records nothing.
+- **A delta review**, a receipt for a later head that rests on an earlier full
+  pair: a delta pair reviews a wording fix after a full pair, so a corrected
+  sentence costs a pair over that fix and not a pair over the branch. The review act names the base
+  head, and each of the two returns' first line reads exactly
+  `Reviewed delta: <base>..<head>` in place of the head's, with no `Reviewed head:`
+  line and its verdict still naming the head in full; a return carrying that line, in this or any near form, is refused for a full
+  pair. A delta applies only when the base has a full pair's receipt (a
+  delta's is not one, so a later change rests on the same pair and its reviewers
+  read from that base again), the head descends from the base, and the branch's
+  own commits since it stay within the bound of 30 lines and 3 files, with no
+  more than 64 KiB of patch, and change only plain text markdown files of mode
+  `100644` under a closed list in the build of abcd that runs land:
+  `docs/explanation/`, `docs/how-to/`, `docs/tutorials/`,
+  `.abcd/development/plans/`, `.abcd/development/roadmap/`,
+  `.abcd/work/issues/resolved/` and `.abcd/work/issues/wontfix/`. Every changed line
+  is wording alone: letters, digits and a sentence's punctuation, naming no record and
+  no file, holding no code, no tool's line marker and no invisible character, and
+  outside any code fence or ledger record's grounds section on its side of the change.
+  No part of such a path below the listed directory starts with a dot or begins as
+  the name of a host's instruction file does, every file keeps its frontmatter byte
+  for byte, and no file is added, removed or moved. Anything
+  else needs a full pair: code and tests, `commands/`, `agents/`, `.claude*` and
+  `.abcd/*.json`, the release record and gate, the rest of `docs/`, open issues and
+  decisions, whose bodies later steps read, and the intents, the specs, this brief, the principles, the research and the ADRs. A merge of a default-branch commit counts for nothing, so merging the
+  default branch up needs no full pair, when it is exactly the merge git makes of
+  its two parents with no conflict; any other merge is refused. The gate judges
+  all of this again at landing, reads the receipts for the head in every worktree,
+  and counts a receipt with no delta only when it
+  holds a passing pair for the head it names.
 
 The decision, in order:
 
@@ -202,8 +260,9 @@ The decision, in order:
    the technical facilitator's approval. The product thinker never approves a merge: their
    part is to try the outcome and judge it.
 4. `auto`: the pull request of an author with write access is armed with no
-   one asked, but only when a review receipt names its head; otherwise the
-   note names the commit with no recorded review pair. Automated merging is never unreviewed
+   one asked, but only when a review receipt names its head, a delta's only
+   while its delta stands; otherwise the note names the commit with no recorded
+   review pair, or says why the delta does not stand. Automated merging is never unreviewed
    merging: the reviews are automated, not skipped.
 
 `human` holds against an agent merging by mistake, not against one set on
@@ -217,7 +276,7 @@ person's.
 
 abcd's own repository commits `"facilitator": {"mode": "auto"}`: its pull
 requests are opened by people with write access, so each is armed once a
-review receipt names its head, and a contributor's still waits for an approval
+review receipt names its head, the build loop's own from a pair that read it, and a contributor's still waits for an approval
 by someone with write access. A machine that sets `human` in `~/.abcd.noindex/config.json` holds every one
 of them for the technical facilitator's approval.
 
@@ -303,8 +362,17 @@ with `name`, `status` (`done`, `skipped`, `off`, `stopped`, `left` or
 `announce`, `push` and `enqueue`, or `land` alone), `note` and an optional
 `command`; and `notices` when there are
 lines to show beside the steps (a release dated ahead that the hold did not
-count). The review act's document carries `commit` and `receipt`, the
+count, a stop file the read refused, a stop another account left). The review act's document carries `commit` and `receipt`, the
 receipt's path.
+
+A landing a person's stop holds exits 3, contention: while a person's stop
+holds, or the read cannot tell whether one does, nothing more is pushed, armed or queued, and
+the refusal names who set it and when, or why the read could not tell, with the steps done before
+it. Only the person's own lift ends a stop, and putting the setting back ends a read that cannot
+tell. A file the read refused and a stop another account left
+are no stop, and each is named among the notices. Recording an approval or a review lands nothing
+and is not held, and a landing with both acts off does nothing for a stop to hold. A pull request
+armed before the stop can still merge under it.
 
 A landing a release cut holds exits 3, contention, as every verb that backs
 off does (itd-2609151838312703 C7, spc-2610150728396006 step 4). After the
@@ -366,5 +434,6 @@ Sub-verbs: none.
 | `--no-enqueue` | bool |
 | `--no-push` | bool |
 | `--record-review` | stringArray |
+| `--rests-on` | string |
 
 <!-- surface-appendix:end -->

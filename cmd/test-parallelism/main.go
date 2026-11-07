@@ -36,13 +36,19 @@ import (
 	"os"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 )
 
 func main() {
-	home, _ := os.UserHomeDir()
-	os.Exit(runArgs(os.Args[1:], os.Stdout, os.Stderr, os.Getenv, machineload.Read, home))
+	os.Exit(runArgs(os.Args[1:], os.Stdout, os.Stderr, os.Getenv, machineload.Read, slotsHome()))
+}
+
+// slotsHome is the home the slot count is read from.
+func slotsHome() string {
+	home, _ := abcdhome.MachineHome()
+	return home
 }
 
 // runArgs prints the -p with no argument and the scaled package budget with

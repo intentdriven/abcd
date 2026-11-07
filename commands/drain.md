@@ -26,6 +26,289 @@ Then run the drain, one move at a time:
 "${CLAUDE_PLUGIN_ROOT}/abcd" drain --max 3 --json    # at most three lanes
 ```
 
+## From a plain terminal
+
+This page always calls the drain one move at a time, and an agent never drives
+it any other way. `abcd drain --drive` is the person's own form of the verb, typed
+in a plain terminal with no host session; it refuses inside an agent's own session.
+
+It runs on a subscription alone, on one separate login: a directory under
+`~/.abcd.noindex/profiles/` that the person makes and logs the harness into once, in
+their own shell. abcd never reads, stores or forwards that login. The directory's
+`settings.json` is abcd's, rewritten at each start, and holds abcd's hooks and the
+harness's own attribution, off, and nothing else. A harness update during the run
+carries on only where the new file is signed by the team the start verified, and passes one
+more short launch before the next stage: then one line says what was checked and names the
+old version and the new. Anywhere else the run stops, saying why, with no stage run on the new
+file, and new contents at the file's own path stop it too, but for a start tried again, which
+holds them to that team and proves them. That launch shows what a launch
+holds, not who wrote the file. A file gone for a moment is waited for. A new file has three
+tries, minutes apart, across its signature and that launch, before the run ends at that
+check, exit 2, naming it; another team's file, or a start that read no team, stops it at
+once, except that outside a start tried again, while the file the run proved still stands, a
+link moved to such a file only holds a waiting release back, with one line saying so, and the
+run carries on. A credential variable the harness would bill through, set in the environment,
+refuses the start, naming `itd-2611011230226453`.
+
+**Two subscriptions, two directories.** With one directory there the drive runs on it.
+With several it refuses, naming them, until `--profile <name>` names the one to run on:
+
+```bash
+mkdir -p ~/.abcd.noindex/profiles/first ~/.abcd.noindex/profiles/second
+CLAUDE_CONFIG_DIR=~/.abcd.noindex/profiles/first claude    # then the harness's own login step
+CLAUDE_CONFIG_DIR=~/.abcd.noindex/profiles/second claude   # then the harness's own login step
+```
+
+Then the person types `abcd drain --drive --profile second`. The name is letters and digits, with `.`, `_` or `-` after the first, and the directory
+meets every check the one directory does, as does each folder above it: a link, or a
+folder another account can change, refuses. Anything else refuses before anything is
+reserved. The question names
+the profile. A limit on that profile pauses that drive until that profile's limit ends:
+nothing moves a drive to the other. A run keeps the profile it started on, so a drive on
+the other refuses before it takes that run's lane up, since that is another subscription,
+and names the three ways on: give `--profile` the name it started on, run the other in
+another checkout, whose runs are its own, or take the run over from a session of your own
+(`abcd implement resume --take <run-id>`). A run that names no profile goes on, says so,
+and takes the profile that drove it. One drive holds a checkout at a time, so two at once
+take two checkouts; each reserves on origin as any drive does, so they never hold the same
+issue, and their preflights queue at the one load gate. One that moves to a new release
+ends the other, as the drive's release section says.
+
+A session started by hand with `CLAUDE_CONFIG_DIR` set to either directory reads as on a
+profile. No abcd command starts one, and a drive that starts later on that directory
+rewrites its `settings.json` and stops at anything a session left there that a launch
+would load.
+
+Before its first move it shows the cap (eight unless `--max` says otherwise), an
+estimate of the agent runs, the runner and the route, and asks once; `--yes` is
+the scripted answer, and with no terminal nothing else answers. One short live
+launch then checks the tools, the guard and the shell, naming any wall that does not
+hold. A profile is a separate login and settings on this one account, not a boundary: a
+stage's shell reads what this account can. Each stage's agent holds only the file and
+shell tools its launch names, starts from an allow-list of variables, reads settings
+from that directory alone, and starts only while those settings and abcd's binary
+are as they were at the start. Its shell's home is emptied at each launch. A file tool
+writes only in the stage's working tree and run directories. A file tool, and a shell
+line the guard can read, does not reach the profile's directory, and such a line starts
+no program it makes itself. The driver's commit, merge and
+reset hooks, and any filter run inside those commands, get the stage's variables, while its
+network commands, its other filters and its forge calls keep the person's environment. A lane that changes the Makefile, `scripts/` or the active
+hooks is handed back at its landing, and an issue that names one is passed over: that change
+needs a person's own session, and the drive's last lines name each one. Where
+`facilitator.mode` is `auto`, a lane's records commit takes a short review round of its own
+and a lane whose reviewers passed it arms its own merge, as `abcd build`'s and any drain's
+lane does. One that moves an issue's record its full round was not told of, or holds more
+than plain markdown, parks before any round; one the gate leaves open says why, keeps its
+reservation and is passed over for the next. A drive that stops because a run's state
+changed, or could not be read, after an agent's call does not carry on from it: a later drive, step or
+hand-in refuses that run until you discard its lanes (`abcd implement step --run <run-id>
+--discard <lane>`) or restore its state and remove the stop the message names.
+
+It prints one line per step and logs them under `.abcd/.work.local/logs/`. It ends
+at the cap, when nothing is eligible, at the bound below, or on a stop.
+
+**A new release during the run.** The yes covers one more thing, and the question says so
+on a line of its own: about once an hour, at a lane boundary and never during a stage, the
+drive asks the release origin for its latest release. A lane still in progress after a refused
+step, and a judgement still in hand, put the check off until they have ended, for an hour at
+most: a wait line says so once, and past that the check runs beside them, renewing what the run
+holds. What the run held back is still named at its end after a move. A newer stable one
+is fetched into a staging file beside the installed binary, through the checks
+`abcd update` makes. Then the staged binary has to accept the arguments the drive would
+restart it with and answer a read-only `abcd drain --dry-run --json` with a plan, within
+two minutes, and serve as the approver and the hooks of the live launch that proved the
+drive. Only then does it replace the installed binary, the previous one kept beside it as
+`.<name>.previous`. The drive re-executes itself and goes on from the drain's own state,
+with the same cap, bound, skips and profile, asking nothing and printing
+`abcd updated from <old> to <new>`. What the state holds is not given again, so a change
+made to the pace or the skips since the start stands. A release that fails the checks or the live launch is
+said once and is not taken again in that run, and the drive goes on with the version it has.
+A read-only run that fails is said once per reason and tried again at later checks. A fault that
+says nothing of the release is no verdict on it: a network fault, a server error, a rate
+limit or a timeout while fetching it, and a limit or an outage met during the live launch.
+The next check tries it again, about an hour on, with one line each time. A dead network
+costs one short check an interval and fetches nothing. A harness that moves to a new file around the
+live launch leaves the release for the next check in the same way, since the release goes on with
+no launch of its own: the run proves a new file its team admits before its next stage, and then
+takes it. New contents at the harness's own path, a changed program or a changed machine
+declaration swap nothing, and the check before the next stage ends the run on them.
+
+A resuming start that fails is tried again, three more times over about three minutes, with
+one line each time, since a passing failure says nothing of the release; a stop during those
+attempts or their waits ends the run with nothing restored and nothing launched. An attempt that will be
+tried again says that, and only the last one says how the run ended, in one refusal document
+under `--json`. A rate limit at a resuming start's proof is waited out as one in the loop is,
+for up to eight hours with no bound given, and a wait that ends there exits 3. Each of those attempts proves itself in one live
+launch, and a binary that changed during a wait ends the run, as a check that no longer holds
+does at any point, naming the way back on a release just moved onto. A release that is swapped in and keeps failing
+before its first move, a panic in its start or its first refused move included, verifies the
+kept copy as the release it replaced, restores it and starts it, and the kept copy proves
+itself in one live launch. One line names both versions, and the kept copy carries on and
+does not try that release again. A copy found not to be that release is not restored, nor one
+whose verification still has no answer after about two minutes of asking, one line each try, and if the restore or that start fails the run ends with exit 2 naming the way
+back. A run that has made a move on the new binary and then ends on a failure names it
+too. Going back is then the person's act: the line names the move when the kept copy
+verifies, and otherwise `abcd update <tag>`, then `abcd drain --drive` again. The read-only run comes
+first and catches a release that cannot run at all. Past the re-execution no check reaches a
+binary that fails to load, that panics before its own start code or on another goroutine, or
+that hangs at its start, since nothing outlives the re-execution to see it.
+
+`--no-self-update` turns all of this off and the drive asks the origin nothing; no
+configuration key, variable or repository file turns it on or off. A source build, a plugin
+root's binary, a package manager's and the track-latest shim never self-update, and the
+question says why. The plugin root and its pages are never touched. A failed read-only run keeps that
+release out and never brings one in. The binary and the settings are still compared with
+the start before every stage, so a swap ends any other drive on this account at its next
+comparison, whatever flags that other drive has, and a next start runs the new release. One
+drive to an account is the supported shape while a drive may take a release
+(dcn-2611070019463013), and a start that may take one says so in a line. A second drive on another checkout is not
+refused. `--after-update` and
+`--update-refused` are the drive's own, passed when it re-executes itself; they appear in no
+help text. They are refused outside a drive, with no drain in progress, in an agent's own
+session and on a build that never self-updates. `--after-update` is honoured only for the
+release the running build claims. An attempt after a failed one proves itself, and the kept
+copy is verified before it is restored and proves itself in one live launch.
+
+**The bound.** With no flag each wait has an eight-hour limit: eight hours of runner
+failures, eight hours with nothing moving, a rate limit that outlasts eight hours, or
+origin unreadable through its schedule each end the run. `--until <date>` replaces
+those with one bound of the person's own, either a date, read as the end of that day
+on this machine's clock, or an RFC 3339 instant: the yes names it, and at that time
+the run ends with the lane on its branch and its reservation released, and exits 0,
+since that is what was asked. An agent in a call finishes that call first, and
+`abcd drain --drive`, on the same profile, takes the lane up later. A
+long unattended run needs `--until`, and `--max` too, since the cap stays eight
+lanes unless it says otherwise.
+
+The bound is a time, not a limit on what the run spends: the yes's estimate is what
+the work costs if nothing fails, and retries and probes add to it. Under a bound
+nothing but the bound, the cap, an empty ledger or a stop ends the run:
+
+- **A limit or an outage at the live check.** A limit met by the check before the
+  first move is no failed check, nor is a launch that came to no verdict on any check.
+  Each waits, on the schedule a limit or an outage does, with the settings checked
+  before each probe, and the check runs again, so a restart during either picks the
+  run up. Only a verdict, or no harness to run, is refused then. With no `--until` the
+  drive refuses either way, naming which, a limit with exit 3.
+- **A limit with a reset.** No agent starts, the judge included, until the time the
+  harness named, however far off. A wait counts both the time slept and the wall
+  clock, so a machine that sleeps through part of it wakes at the right time and a
+  clock set back does not stretch it. Every four hours a short probe asks whether the
+  limit still holds, and half an hour in for a reset more than eight days off: a
+  rejected probe changes nothing, and the first probe answered ends the wait, which is
+  read as the reset having been wrong. A reset more than 35 days off reads as a misread field
+  and is treated as no reset.
+- **A limit with no reset.** One short launch on the profile, asking for no tools and
+  naming no brief, on the model of the launch that met the limit, asks whether the
+  limit has lifted, one, five and ten minutes on and then every thirty. When it has,
+  the lane's own agent starts. Only the word it asked for counts as an answer. A probe
+  that gets none says nothing about the limit: after three in a row the lane's own
+  agent starts and finds out, and meets the limit again if it still holds.
+- **A limit that lasts.** A reset an hour or more off, or a limit that has already held
+  for an hour, lets the issue go for the wait, so no peer is kept off work no one is
+  doing. The lane's uncommitted work is saved aside as a stop saves it, the reservation
+  is released, and the lane stays on its branch. An hour is where a renewal first falls
+  due and the outage schedule turns hourly: short of it a hold costs less than the two
+  commits of releasing and reserving again. With no reset named this takes a probe, so
+  with no `--until` that limit keeps its hold for the launch that asks. A lane with an
+  open pull request, an agent still in a call, or work a save could not take keeps what
+  it holds, and asks again at the wait's next turn. When the limit lifts, the same run
+  reserves the issue again, with the footprint it held, and goes on from its branch,
+  which the landing's sync brings up to the default branch. If the issue has finished on
+  the default branch, its record there changed since the release, a hand-back stands on
+  it, or a peer holds it or a path of its footprint, the lane goes back holding nothing,
+  saying which, with no hand-back published over the issue by this run, so a later drain
+  can still take it once what stopped this one has passed. A record gone from the default
+  branch counts as changed. When the comparison cannot be made, the drain waits. A drain's
+  stop lets the issue go too, and the same comparison waits for whatever reserves it again.
+  A person who resumes or takes over such a run, with or without a stop on it, reserves it
+  again and goes ahead, told if the record changed, is gone or could not be compared, since
+  the lane's brief reads it as it stood at the lane's base. A reservation made by hand
+  during the wait stays when the lane goes back, and the lane says so. Its worktree, its branch and what it saved stay, named in the summary,
+  until `abcd implement step --run <run-id> --discard <lane>`, and the run takes the next
+  issue. A stop during the wait holds as any stop does, and nothing marks a lane let go
+  this way as a person's: a later drive on the same profile takes it up.
+- **An agent that goes silent.** Silence cannot be told from a hang yet, so it is
+  treated as one: the role's own deadline kills it, what it left stays in the lane's
+  worktree, and the role is retried on the outage schedule. A stream that reported
+  a limit before its silence, and has not reported it lifted, reads as that limit when
+  the deadline falls. A launch killed with nothing spent counts against its lane only
+  if a probe answers, which shows the account is alive.
+- **An outage or a stuck queue.** Runner failures keep the outage schedule, at most an
+  hour apart. Work held by someone else, the reservation cap, a contended lock and a
+  push or fetch origin refused while reserving are looked at again at most fifteen
+  minutes apart. A forge or remote answering 5xx, in gh's `HTTP 502:` form or git's
+  `The requested URL returned error: 503`, waits as a lost network does, here and in a
+  drain with no drive. Origin keeps its schedule and is never given up on. An outage another
+  session gave up on holds the run until its probes answer, `abcd implement outage clear`
+  or the bound. A
+  launch that was retrying the model service when it ended, or ran out of retries with
+  nothing spent, reads as an outage and says so, and with nothing spent it counts against
+  nothing. Under a bound the run joins the shared run for its outages alone, so an open
+  record is probed when due and its own probes never give up on it, a short probe standing
+  in for the model service's canary. A record another session gave up on is looked at
+  hourly and cleared when the probes of every service down answer. One act that keeps
+  reading as a lost network for two hours, from the first reading with origin answering,
+  is no lost network, and the lane goes back as stuck; another act, or a step that worked,
+  restarts the clock. Version
+  2.1.318 of the harness was seen to do this with the service unreachable: ten retries
+  over about three minutes, then a failed result, with the init event before any of it.
+- **Work that keeps failing.** Three failures of one role in a row that are the work's
+  hand the lane back as stuck, and the run goes on to other issues. An answer the
+  contract refused is the work's. With nothing spent, a result naming an API status of
+  401, 403, 429 or 5xx, or a launch that ran out of retries, says nothing of the work.
+  Any other failure, one that spent included, since the service may have gone after
+  the spending, is put to a short probe: an answer shows the account is alive, which
+  makes it the work's, and a rejection or no answer counts nothing. A judge is judged
+  the same way against its issue, so one at its deadline having spent is held back while
+  the account answers, and an account-wide failure does not empty the drain. Six launches
+  in a row that spend and fail with no probe answered hand the lane back too, or hold the
+  issue back for a judge. A launch started with the service unreachable was seen to spend
+  nothing on 2.1.318, so an outage of that kind does not get there; one that spends and then
+  loses the service does count.
+- **A lane that cannot move.** Six steps of one lane in a row that start no agent and
+  move no stage hand it back as stuck, its worktree and branch left in place, so it
+  does not hold every other issue until the bound. A step that started an agent ends the
+  count, and a wait on a shared outage holding an agent the lane wants, or on a claim that
+  has yet to lapse from a killed run, is not counted.
+
+Each wait says what it waits on when it begins, when its reason changes, and at least
+hourly while it lasts, and an agent's call or a preflight says when it starts and every
+half hour while it runs, on the screen and in the log. Through every wait the run renews
+what it still holds, a lane parked at its open pull request included, read from the forge first
+and only when its renewal is due. A claim that lapsed anyway, a machine asleep past its
+lease, is reserved again on waking; a peer who took the issue meanwhile keeps it, and the
+lane goes back as stuck, as it does when its reservation was released during the wait.
+A judge's hold is the one thing left to lapse in a wait that long: the next move drops the
+request and asks again, after the drain's other eligible work.
+
+With no `--until` no probe runs: the lane's own launch finds out, as the yes said.
+
+The first limit a run meets leaves `drive-limit-<time>.jsonl` under
+`.abcd/.work.local/logs/`, and the first of each other kind of failure that may be one
+leaves `drive-suspect-<kind>-<time>.jsonl`: a kill, an outage, a failed exit, an API
+status. A failure that names an API status says it on screen too. Each holds the exit, the end of the event
+stream with every identifier dropped and free text reduced to its length, the first
+stderr line through the scanner's redactor, the reset read, what the loop decided,
+each probe's answer and when the run resumed. A file stops taking the stream's detail at
+64 KiB and goes on taking the answers, and the newest twenty of a kind are kept.
+
+The first interrupt, hang-up or termination is a stop: the agent in a call finishes
+that call, the lane's uncommitted work is saved aside, its reservation is released, the
+lane stays on its branch, and the last lines name the run, the lane and
+`abcd drain --drive`, which takes the run over and resumes it, because that terminal's
+person is the one who stopped it.
+A second signal kills the running agent's process group and exits at once, naming
+when the reservation lapses.
+
+The person's own `abcd implement stop` ends a drive too, at its next move, and any wait
+within about a minute, a wait on a limit or an outage included. The drive then says what
+holds it. A preflight queued at the load gate or running ends at the next look too, and a probe does not
+start. A run that stop halted waits for `abcd implement resume --take <run-id>`, also
+after the stop lifts: a new drive names it, passes over it and goes on to other work. A lane parked on its pull request that a signal halted waits the same way: the drive's end names that take-over and no resume command, and a new drive names it and passes over it. A stop and a drive's stop on a run whose state changed are two things: while both
+stand the run is not settled, its work is not saved aside and its reservation lapses with
+its lease. Lifting the stop leaves the other, and removing the other leaves the stop.
+
 ## The rule
 
 Which issues a drain may take alone is **this repository's own decision**: an
@@ -348,7 +631,9 @@ what it did in `next`:
   read as holding every issue, and the drain would pass each over and end.
   The lane's run then renews the reservation, fences its landing on it, before
   its push and again before arming, and tombstones it once it lands
-  (`commands/implement.md`). Every drain move that neither waits on origin nor stops at a given-up outage also renews the lane in
+  (`commands/implement.md`). Each fence also reserves any path the lane's branch
+  changes that the reservation does not cover, judged for overlap; another's hold
+  on one stops the lane there, naming that hold. Every drain move that neither waits on origin nor stops at a given-up outage also renews the lane in
   progress at half its lease, waiting on the pace or a judgement or not, though no step of the lane ran,
   so a lane the host paused past its lease is not taken over (a lane handed
   back is renewed by no move). Once the lane's validators have passed and it
@@ -451,7 +736,16 @@ what it did in `next`:
   only while such a lane is parked. A lane the landing will not finish (its branch moved past what
   landed, a worktree with changes, its branch checked out in another
   checkout, which the drain names, or a pushed head git cannot read) is named
-  in `next` and the move goes on.
+  in `next` and the move goes on. A run a stop's mark stands on is not finished, synced
+  or queued, whatever its pull request says: it is named in `next` and in `parked` as
+  `stop-holds`, with what takes it up. While the read refuses a stop file, a
+  run with work a save could not take has its reservation renewed. A read that holds the run
+  refuses the move first, so only a drive still in an agent's call or a preflight renews it then. Under a stop in force only a drive
+  still in an agent's call or a preflight renews it, and once none is: a run that settles releases its reservation, and
+  one with work a save could not take leaves it to lapse at its lease, so a peer can then
+  take the issue, with what the lane committed on its branch and the rest in its worktree alone. A halted run waits for
+  `abcd implement resume --take <run-id>`; a mark from a person's stop that has not settled
+  goes on as any other if the stop has lifted, and one from a signal to a drive waits for that same take-over.
 - **It reads parked lanes from their pull requests.** A move that finds a
   lane parked at land lists your latest 100 pull requests once
   (`gh pr list --state all --author @me`), and reads each parked lane whose
@@ -543,6 +837,18 @@ hand-back and moves on to the next issue unattended. No verb ends a drain
 early, so a person who interrupts a drain and carries on by
 hand sees the prompts again two hours after it last moved.
 
+A drive's moves print no such line: it starts from a plain terminal. Otherwise:
+
+**A session whose setting reads as off a profile is warned while the away mode
+holds.** While `abcd mode autonomous` holds, or its record cannot be read, every
+move of a drain, not only the first, prints, after the move, one line on stderr
+opening `WARNING:` when the setting `/abcd:mode` describes reads as off a profile,
+and says why when the record was the doubt: a later move may be another session's.
+Pass the line on to the person, as it asks. Nothing is refused and the exit code
+does not change. In the managed mode and on `--dry-run` it prints nothing.
+This reads one setting and proves no wall, and the setting's value changes nothing
+the session holds.
+
 ### Holding an issue back for now
 
 To keep the drain off one issue, or off every issue whose `found_at` lies in
@@ -604,7 +910,9 @@ question as its reason. Once the decision record is written, take the
 drain; `rule`, `loosened` and `order` are the plan's; `max` is the cap (`0`:
 all); `pace` is the drain's pace; `lanes` lists every lane the drain opened
 (`issue`, `run_id`, `opened_at`, `outcome`: `in-progress`, `pull-request`,
-`handed-back` or `done`, and `pr`); `lane` is the one in progress; `start` is
+`handed-back`, `done`, `halted`, a lane a person's stop halted that waits for its
+take-over, or `taken-over`, the same lane once that happened and its run is the
+person's to drive, and `pr`); `lane` is the one in progress; `start` is
 the run this move started; `routed` are the hand-backs this move routed and
 `hand_backs` every one the drain has (`issue`, `from`: `lane`, `judgement`,
 `reservation` or `field`, `kind`, `route`, `draft`, `question`, `rule`, `home`, `reason`,
@@ -629,7 +937,7 @@ the landing's last step for (`issue`, `run_id`, `pr`, `done`, and a `note`:
 the landing's line, or why it did not finish the lane when `done` is `false`);
 `parked` reads every other lane parked at land from its pull request
 (`issue`, `run_id`, `pr`, `state`: `waiting`, `conflicting`, `syncing`,
-`dropped`, `closed`, `merged` or `unread`, and a `note`);
+`dropped`, `closed`, `merged`, `unread` or `stop-holds`, and a `note`);
 `waiting_until` and `waiting` (`cap` or `held`) say when a waiting drain looks
 again and on what; `next_eligible_at`, `stopped` (`cap`, `empty`,
 `outage` or `origin`) and `complete` say whether it paused or ended; `counts` totals the

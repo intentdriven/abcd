@@ -41,7 +41,7 @@ func repoRootForTest(t *testing.T) string {
 // repository carrying abcd's own release workflow and a record-lint config.
 func receiptsRepo(t *testing.T) (*gittest.Repo, string) {
 	t.Helper()
-	r := gittest.NewRepo(t)
+	r := newRepo(t)
 	r.Write(lint.ReleaseWorkflowPath, committedReleaseWorkflow(t))
 	r.Write(".abcd/record-lint.json",
 		`{"rules":{"receipt_gate":{"enabled":false,"severity":"blocker","receipts_dir":".abcd/work/reviews","required_gates":[]}}}`+"\n")

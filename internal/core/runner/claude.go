@@ -36,6 +36,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -43,6 +44,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
@@ -65,10 +67,17 @@ type ClaudeCLI struct {
 	// approver is the absolute path of the abcd binary a shell launch starts
 	// as its permission prompt answerer.
 	approver string
+	// profile is the walled login a drive's launch runs on (profile.go), nil
+	// for the bare launch.
+	profile *Profile
 }
 
-// ApproverTool is the permission prompt tool a shell launch names.
-const ApproverTool = "mcp__abcd__approve"
+// approverServer is the name of the one server a shell launch starts, and
+// ApproverTool the permission prompt tool it names on that server.
+const (
+	approverServer = "abcd"
+	ApproverTool   = "mcp__" + approverServer + "__approve"
+)
 
 // newClaude returns the claude CLI runner asking for model, a
 // <provider>/<model> route the configuration admitted, or "" for the harness's
@@ -80,13 +89,7 @@ func newClaude(model string) *ClaudeCLI {
 // selfBinary is the absolute path of the running abcd, "" when the system
 // cannot name it. The approver is the binary already running, so starting it
 // trusts nothing new.
-func selfBinary() string {
-	p, err := os.Executable()
-	if err != nil || !filepath.IsAbs(p) {
-		return ""
-	}
-	return filepath.Clean(p)
-}
+var selfBinary = selfNamer(os.Executable)
 
 // grantsShell reports whether a contract grants the whole shell, the one
 // grant the guard answers prompts for. A scoped grant (Bash(git log:*)) is
@@ -98,7 +101,7 @@ func grantsShell(tools []string) bool { return slices.Contains(tools, "Bash") }
 // the working tree the role runs in, as it stood at base, the commit the run
 // started on, with runDirs, the run's own directories, named so a removal
 // may reach them.
-func (c *ClaudeCLI) approverConfig(dir, base string, runDirs []string) string {
+func (c *ClaudeCLI) approverConfig(dir, base string, runDirs, declared []string) string {
 	type server struct {
 		Type    string   `json:"type"`
 		Command string   `json:"command"`
@@ -108,7 +111,16 @@ func (c *ClaudeCLI) approverConfig(dir, base string, runDirs []string) string {
 	for _, d := range runDirs {
 		args = append(args, "--run-dir="+d)
 	}
-	raw, _ := json.Marshal(map[string]map[string]server{"mcpServers": {"abcd": {
+	if c.profile != nil {
+		args = append(args, "--stage-home="+c.profile.ShellHome, "--protect="+c.profile.Dir)
+		if harness := provedHarness(*c.profile); harness != "" {
+			args = append(args, "--harness="+harness)
+		}
+		for _, d := range declared {
+			args = append(args, "--declared="+d)
+		}
+	}
+	raw, _ := json.Marshal(map[string]map[string]server{"mcpServers": {approverServer: {
 		Type: "stdio", Command: c.approver, Args: args,
 	}}})
 	return string(raw)
@@ -127,6 +139,9 @@ func (c *ClaudeCLI) askedModel(req Request) string {
 
 // args is the launch's argv after the binary.
 func (c *ClaudeCLI) args(req Request) []string {
+	if c.profile != nil {
+		return append(c.walledFlags(req), "--", prompt(req))
+	}
 	shell := grantsShell(req.Tools)
 	mode := "dontAsk"
 	if shell {
@@ -154,7 +169,7 @@ func (c *ClaudeCLI) args(req Request) []string {
 		// The guard answers for the shell, so the harness asks it rather
 		// than running every command unasked.
 		tools = slices.DeleteFunc(slices.Clone(tools), func(t string) bool { return t == "Bash" })
-		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base, dirs), "--strict-mcp-config",
+		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base, dirs, req.Declared), "--strict-mcp-config",
 			"--permission-prompt-tool="+ApproverTool)
 	}
 	if len(tools) > 0 {
@@ -169,10 +184,91 @@ func (c *ClaudeCLI) args(req Request) []string {
 	return append(a, "--", prompt(req))
 }
 
-// Run runs the role through the claude CLI.
+// walledDirRule is the harness's rule for everything below dir, in the rule's own form for
+// an absolute path.
+func walledDirRule(dir string) string { return "Read(/" + dir + "/**)" }
+
+// walledFlags is the walled launch's flags (spc-2610230813348813): hooks on,
+// so no --bare; the tools the stage holds and no others; the shell answered by
+// the approver, the only server the launch may start; and the profile's own
+// arguments.
+func (c *ClaudeCLI) walledFlags(req Request) []string {
+	shell := grantsShell(req.Tools)
+	mode := "dontAsk"
+	if shell {
+		mode = "default"
+	}
+	a := []string{"--print", "--output-format", "stream-json", "--verbose", "--permission-mode", mode}
+	a = append(a, c.profile.Args...)
+	// The stage's file tools answer to no approver, so the walled directory is a deny rule.
+	a = append(a, "--disallowedTools="+strings.Join(append(slices.Clone(req.Denied), walledDirRule(c.profile.Dir)), ","))
+	dirs := []string{filepath.Dir(req.Brief)}
+	if d := filepath.Dir(req.Receipt); d != dirs[0] {
+		dirs = append(dirs, d)
+	}
+	a = append(a, "--tools="+strings.Join(heldTools(req.Tools), ","))
+	tools := req.Tools
+	if shell {
+		tools = slices.DeleteFunc(slices.Clone(tools), func(t string) bool { return t == "Bash" })
+		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base, dirs, req.Declared), "--permission-prompt-tool="+ApproverTool)
+	} else {
+		a = append(a, `--mcp-config={"mcpServers":{}}`)
+	}
+	if len(tools) > 0 {
+		a = append(a, "--allowedTools="+strings.Join(tools, ","))
+	}
+	for _, d := range dirs {
+		a = append(a, "--add-dir="+d)
+	}
+	if m := c.askedModel(req); m != "" {
+		a = append(a, "--model="+m)
+	}
+	return a
+}
+
+// stageWriteDirs are where a walled launch's file tools write: its working tree
+// and the directories of its brief and receipt.
+func stageWriteDirs(req Request) []string {
+	dirs := []string{req.Dir}
+	for _, d := range []string{filepath.Dir(req.Brief), filepath.Dir(req.Receipt)} {
+		if !slices.Contains(dirs, d) {
+			dirs = append(dirs, d)
+		}
+	}
+	return dirs
+}
+
+// heldTools are the tools a launch holds for the grants it names: each grant's
+// tool, its path left to the allow-list. The harness judges a new file's write
+// against the Edit rules, so an edit grant holds Write as well.
+func heldTools(grants []string) []string {
+	var held []string
+	add := func(t string) {
+		if !slices.Contains(held, t) {
+			held = append(held, t)
+		}
+	}
+	for _, g := range grants {
+		name, _, _ := strings.Cut(g, "(")
+		add(name)
+		if name == "Edit" {
+			add("Write")
+		}
+	}
+	return held
+}
+
+// Run runs the role through the claude CLI. A launch reaches the ledger through
+// the dispatcher that called it (RecordLaunch).
 func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error) {
 	if err := req.check(); err != nil {
 		return Answer{}, nil, err
+	}
+	if c.profile != nil {
+		// A stage starts only on the settings abcd wrote.
+		if err := CheckWallSettings(*c.profile, c.approver); err != nil {
+			return Answer{}, nil, fail(Claude, ReasonRefused, "%s", err.Error())
+		}
 	}
 	if c.pinned {
 		return Answer{}, nil, fail(Claude, ReasonFailed,
@@ -192,28 +288,53 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 		return Answer{}, nil, fail(Claude, ReasonFailed,
 			"the run names no base commit for its permission prompts to be judged against, so the shell launch was not started")
 	}
-	bin, err := c.launch.admit(Claude, "claude", req.Dir, req.Checkout)
+	admits := c.launch
+	if c.profile != nil {
+		admits = admits.pinnedTo(*c.profile)
+	}
+	bin, err := admits.admit(Claude, "claude", req.Dir, req.Checkout)
 	if err != nil {
 		return Answer{}, nil, err
 	}
-	res, err := c.launch.run(ctx, Claude, bin, c.args(req), nil, req.Dir, req.timeout())
+	var seal []string
+	launch := c.launch
+	if c.profile != nil {
+		if err := ResetStageHome(*c.profile); err != nil {
+			return Answer{}, nil, fail(Claude, ReasonRefused, "%s", err.Error())
+		}
+		list := string(os.PathListSeparator)
+		seal = append(slices.Clone(c.profile.Env), StageWritesEnv+"="+strings.Join(stageWriteDirs(req), list),
+			StageDeclaredEnv+"="+strings.Join(req.Declared, list), StageBaseEnv+"="+req.Base, StageHarnessEnv+"="+bin)
+		launch.carry = stageEnv
+	}
+	res, err := launch.run(ctx, Claude, bin, c.args(req), seal, req.Dir, req.timeout())
 	transcript := res.transcript()
 	if err != nil {
-		// A harness that stopped on a rate limit exits non-zero: what its
-		// events say is the reason, not the exit.
+		// A harness that stopped on a rate limit exits non-zero, and one that
+		// reported a limit and then waited until it was killed is that limit
+		// too: what its events say is the reason, not the exit.
 		if what := claudeRateLimit(res.stdout); what != "" {
-			return Answer{}, transcript, rateLimited(what)
+			fl := limitFailure(what, res.stdout)
+			fl.Seen, fl.Model = claudeSeen(res), req.modelOr(c.model)
+			return Answer{}, transcript, fl
 		}
 		var fl *Failure
-		if errors.Is(err, ErrKilled) && errors.As(err, &fl) {
-			// Killed, it wrote no result event: what it spent is read
-			// from the stream it did write (iss-2611021751406429).
-			fl.Spent = spendOf(claudeSpent(res.stdout))
+		if errors.As(err, &fl) {
+			keepSeen(fl, res, req.modelOr(c.model))
+			if errors.Is(err, ErrKilled) {
+				// Killed, it wrote no result event: what it spent is read
+				// from the stream it did write (iss-2611021751406429).
+				fl.Spent = spendOf(claudeSpent(res.stdout))
+			}
 		}
 		return Answer{}, transcript, err
 	}
 	ans, err := parseClaude(res.stdout)
 	if err != nil {
+		var fl *Failure
+		if errors.As(err, &fl) {
+			keepSeen(fl, res, req.modelOr(c.model))
+		}
 		return ans, transcript, err
 	}
 	ans.ModelAsked, ans.PromptSHA256 = c.askedModel(req), promptSHA256(req)
@@ -228,38 +349,119 @@ func rateLimited(what string) *Failure {
 	return fail(Claude, ReasonRateLimited, "its event stream reports %s and the run did not finish", what)
 }
 
-// claudeRateLimit names the rate-limit response the event stream carries, ""
-// when it carries none. The claude CLI (2.1) reports one in two shapes: a
-// rate_limit_event whose rate_limit_info.status is rejected (allowed and
-// allowed_warning are a run going on), and an assistant message whose error is
-// rate_limit. Each line is read leniently and on its own, so a field this
-// reader does not know never turns a limit into an unparsable run.
+// limitFailure is the rate-limit failure for what the event stream out reports,
+// with the reset it names.
+func limitFailure(what string, out []byte) *Failure {
+	fl := rateLimited(what)
+	fl.ResetsAt = claudeRateLimitReset(out)
+	return fl
+}
+
+// claudeRateLimitReset is when the limit the event stream ends on resets, the zero
+// time when it names none.
+func claudeRateLimitReset(out []byte) time.Time {
+	_, at := claudeLimitState(out)
+	return at
+}
+
+// claudeRateLimit names the rate-limit response the event stream ends on, "" when
+// it ends on none.
 func claudeRateLimit(out []byte) string {
+	what, _ := claudeLimitState(out)
+	return what
+}
+
+// claudeLimitState reads the stream's latest state of its limits: what it reports,
+// "" for none, and the reset it names, the zero time for none. Three shapes are
+// read: a rate_limit_event whose rate_limit_info.status is rejected (allowed and
+// allowed_warning are a run going on), an assistant message whose error is
+// rate_limit, and a failed result that names the API's limit status. Which of them
+// a limit produces in a headless run has not been observed here, so each stands on
+// its own, and the evidence file a drive leaves says which one came. A later event
+// takes back an earlier one: the same window's status, an assistant message with no
+// error, or a result that is no error. Windows are told apart, so one window's
+// status lifts no other's, and of several still rejected the latest reset stands.
+// Each line is read leniently and on its own, so a field this reader does not know
+// never turns a limit into an unparsable run.
+func claudeLimitState(out []byte) (string, time.Time) {
+	rejected := map[string]time.Time{}
+	var assistant, result bool
+	clearAll := func() {
+		clear(rejected)
+		assistant, result = false, false
+	}
 	for _, line := range bytes.Split(out, []byte("\n")) {
+		line = bytes.TrimSpace(line)
 		var ev struct {
 			Type  string          `json:"type"`
 			Error json.RawMessage `json:"error"`
 			Info  json.RawMessage `json:"rate_limit_info"`
 		}
-		if json.Unmarshal(bytes.TrimSpace(line), &ev) != nil {
+		if json.Unmarshal(line, &ev) != nil {
 			continue
 		}
 		switch ev.Type {
 		case "rate_limit_event":
 			var info struct {
-				Status string `json:"status"`
+				Status   string  `json:"status"`
+				ResetsAt float64 `json:"resetsAt"`
+				Window   string  `json:"rateLimitType"`
 			}
-			if json.Unmarshal(ev.Info, &info) == nil && info.Status == "rejected" {
-				return "a rejected rate_limit_event"
+			if json.Unmarshal(ev.Info, &info) != nil {
+				continue
+			}
+			switch {
+			case info.Status == "rejected":
+				var at time.Time
+				if info.ResetsAt > 0 {
+					at = time.Unix(int64(info.ResetsAt), 0).UTC()
+				}
+				rejected[info.Window] = at
+			case info.Window == "":
+				clear(rejected)
+			default:
+				delete(rejected, info.Window)
 			}
 		case "assistant":
 			var e string
-			if json.Unmarshal(ev.Error, &e) == nil && e == "rate_limit" {
-				return "an assistant message whose error is rate_limit"
+			switch {
+			case len(ev.Error) == 0:
+				clearAll()
+			case json.Unmarshal(ev.Error, &e) == nil && e == "rate_limit":
+				assistant = true
+			}
+		case "result":
+			var r struct {
+				IsError bool   `json:"is_error"`
+				Status  any    `json:"api_error_status"`
+				API     string `json:"api_error"`
+			}
+			if json.Unmarshal(line, &r) != nil {
+				continue
+			}
+			switch {
+			case !r.IsError:
+				clearAll()
+			case fmt.Sprint(r.Status) == "429" || r.API == "usage_limit_reached":
+				result = true
 			}
 		}
 	}
-	return ""
+	var reset time.Time
+	for _, at := range rejected {
+		if at.After(reset) {
+			reset = at
+		}
+	}
+	switch {
+	case len(rejected) > 0:
+		return "a rejected rate_limit_event", reset
+	case assistant:
+		return "an assistant message whose error is rate_limit", reset
+	case result:
+		return "a failed result naming the API's limit", reset
+	}
+	return "", reset
 }
 
 // claudeEvent is the part of a stream-json event the runner reads.
@@ -356,6 +558,51 @@ func meterClaude(ans *Answer, line []byte) {
 		}
 		ans.ServedModels = append(ans.ServedModels, cleanHarness(k))
 	}
+}
+
+// claudeFacts is what the ledger reads from a claude launch's stream beyond
+// what the run's record keeps.
+type claudeFacts struct {
+	// window is true when the stream carries a rate-limit event.
+	window bool
+	// apiMillis is the result event's duration_api_ms, nil when it has none.
+	apiMillis *int64
+	// model is the init event's model, "" when it names none readably.
+	model string
+}
+
+// claudeLaunchFacts reads a stream line by line, leniently, and stops at the
+// harness's stderr, which is not its event stream.
+func claudeLaunchFacts(transcript []byte) claudeFacts {
+	var f claudeFacts
+	for _, line := range bytes.Split(transcript, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		if string(line) == stderrMarker {
+			break
+		}
+		var ev struct {
+			Type    string `json:"type"`
+			Subtype string `json:"subtype"`
+			Model   string `json:"model"`
+			APIMs   *int64 `json:"duration_api_ms"`
+		}
+		if len(line) == 0 || json.Unmarshal(line, &ev) != nil {
+			continue
+		}
+		switch ev.Type {
+		case "rate_limit_event":
+			f.window = true
+		case "result":
+			if ev.APIMs != nil && *ev.APIMs >= 0 {
+				f.apiMillis = ev.APIMs
+			}
+		case "system":
+			if ev.Subtype == "init" && modelRe.MatchString(ev.Model) {
+				f.model = ev.Model
+			}
+		}
+	}
+	return f
 }
 
 // claudeSpent reads what a killed claude run spent from the stream it wrote
@@ -475,7 +722,7 @@ func parseClaude(out []byte) (Answer, error) {
 		// A run that did not finish on a rate limit is that limit, whatever
 		// its result says.
 		if what := claudeRateLimit(out); what != "" {
-			return Answer{}, rateLimited(what)
+			return Answer{}, limitFailure(what, out)
 		}
 	}
 	if result == nil {

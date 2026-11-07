@@ -3,8 +3,9 @@ package docfidelity
 // store.go — what the judgement reads from a repository, the saved review it
 // finds there, and the one writer of that review (ruling DR3): the delegated
 // docs review saves a verdict receipt labelled with the commit it reviewed;
-// `spec close` and `launch ship` find it automatically, and a matching receipt
-// proceeds while a missing or stale one refuses with "run the docs review
+// `spec close` and `launch ship` find it automatically, and a receipt for HEAD,
+// or for a commit with HEAD's tree object, proceeds while a missing or stale one
+// refuses with "run the docs review
 // first" — the way the pre-push hook finds a preflight receipt for the commit
 // it pushes. The receipt is the release gate's VSA receipt, judged by the
 // release gate's own reader (lint.CheckGateReceipt), never a second one.
@@ -117,15 +118,28 @@ type SavedReview struct{ Root, Commit string }
 
 // Review reads the saved review. Every way of not having a usable verdict is a
 // status that refuses; none is a pass.
+//
+// The review the commit's own label finds is the one read. Only where there is
+// none does a review saved for another commit stand, and only for a commit with
+// the same tree object (see sameTreeReview). The receipt keeps its one shape
+// either way: nothing about it is written differently, so a binary that matches
+// on the commit alone still reads every receipt, refusing the same-tree head as
+// it always has.
 func (s SavedReview) Review() Review {
 	r := Review{Commit: s.Commit}
-	rel := filepath.Join(ReceiptsDir, s.Commit, GateName+".json")
+	reviewed := s.Commit
+	rel := filepath.Join(ReceiptsDir, reviewed, GateName+".json")
 	if _, err := os.Lstat(filepath.Join(s.Root, rel)); errors.Is(err, os.ErrNotExist) {
-		r.Status = ReviewNone
-		if named := newestOtherReview(s.Root, s.Commit); named != "" {
-			r.Status, r.Named = ReviewStale, named
+		same := sameTreeReview(s.Root, s.Commit)
+		if same == "" {
+			r.Status = ReviewNone
+			if named := newestOtherReview(s.Root, s.Commit); named != "" {
+				r.Status, r.Named = ReviewStale, named
+			}
+			return r
 		}
-		return r
+		reviewed, r.SameTreeAs = same, same
+		rel = filepath.Join(ReceiptsDir, reviewed, GateName+".json")
 	}
 	// A review a commit carries was saved by whoever made the commit, not by
 	// this checkout's reviewer, so it is refused before it is judged.
@@ -133,7 +147,7 @@ func (s SavedReview) Review() Review {
 		r.Status, r.Problems = ReviewInvalid, []string{err.Error()}
 		return r
 	}
-	got, err := lint.CheckGateReceipt(s.Root, ReceiptsDir, s.Commit, GateName)
+	got, err := lint.CheckGateReceipt(s.Root, ReceiptsDir, reviewed, GateName)
 	if err != nil {
 		r.Status, r.Problems = ReviewInvalid, []string{err.Error()}
 		return r
@@ -175,15 +189,18 @@ func docOf(d string) string {
 	return DocBrief
 }
 
-// newestOtherReview names the most recently saved review for a commit other
-// than head, "" when there is none.
-func newestOtherReview(root, head string) string {
+// otherReviews lists the commits with a saved review other than head, the most
+// recently saved first.
+func otherReviews(root, head string) []string {
 	entries, err := os.ReadDir(filepath.Join(root, ReceiptsDir))
 	if err != nil {
-		return ""
+		return nil
 	}
-	var best string
-	var bestAt time.Time
+	type saved struct {
+		commit string
+		at     time.Time
+	}
+	var found []saved
 	for _, e := range entries {
 		if !e.IsDir() || e.Name() == head || !gitutil.IsFullSHA(e.Name()) {
 			continue
@@ -192,11 +209,47 @@ func newestOtherReview(root, head string) string {
 		if err != nil || !fi.Mode().IsRegular() {
 			continue
 		}
-		if best == "" || fi.ModTime().After(bestAt) {
-			best, bestAt = e.Name(), fi.ModTime()
+		found = append(found, saved{e.Name(), fi.ModTime()})
+	}
+	sort.SliceStable(found, func(i, j int) bool { return found[i].at.After(found[j].at) })
+	out := make([]string, len(found))
+	for i, f := range found {
+		out[i] = f.commit
+	}
+	return out
+}
+
+// newestOtherReview names the most recently saved review for a commit other
+// than head, "" when there is none.
+func newestOtherReview(root, head string) string {
+	if others := otherReviews(root, head); len(others) > 0 {
+		return others[0]
+	}
+	return ""
+}
+
+// sameTreeReview names the commit with the most recently saved review whose
+// tree object is head's, "" when there is none. A review reads a tree's bytes,
+// and a commit message, parent or date is no part of what it judged, so a head
+// that only re-commits or reverts back to those bytes needs no second review
+// (iss-2611060603332537). A name git can no longer resolve to a commit has no
+// tree to compare, and is passed over.
+func sameTreeReview(root, head string) string {
+	want, err := treeOf(root, head)
+	if err != nil {
+		return ""
+	}
+	for _, other := range otherReviews(root, head) {
+		if got, err := treeOf(root, other); err == nil && got == want {
+			return other
 		}
 	}
-	return best
+	return ""
+}
+
+// treeOf is the tree object the commit points at.
+func treeOf(root, commit string) (string, error) {
+	return gitutil.Run(root, "rev-parse", "--verify", "--quiet", commit+"^{commit}^{tree}")
 }
 
 // Gate is both layers: what the per-task report calls, and what Enforce runs

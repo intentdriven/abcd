@@ -99,6 +99,10 @@ func (c *ptyConnect) exit(t *testing.T) syscall.WaitStatus {
 	case <-done:
 	case <-time.After(ptyWait):
 		_ = c.cmd.Process.Kill()
+		// The Wait above returns once the kill lands. Reading it here keeps
+		// the cleanup, which waits on a child it finds unwaited, from calling
+		// Wait on the same command at once.
+		<-done
 		t.Fatalf("the child did not exit; the terminal shows:\n%q", c.pty.Output())
 	}
 	return c.cmd.ProcessState.Sys().(syscall.WaitStatus)

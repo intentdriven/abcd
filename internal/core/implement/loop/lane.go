@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -118,6 +119,14 @@ func laneWorktree(repoRoot, runID, laneID string) (LaneWorktree, error) {
 		Branch:   BranchPrefix + name,
 		lane:     l,
 	}, nil
+}
+
+// isLaneWorktree reports whether path is named as the worktree of a lane is
+// (laneName).
+func isLaneWorktree(path string) bool {
+	name := filepath.Base(path)
+	i := strings.LastIndex(name, "-lane-")
+	return i > 0 && ValidRunID(name[:i]) && ValidLaneID(name[i+1:])
 }
 
 // HeldWorktrees is what the build loop holds in the worktree store, for the

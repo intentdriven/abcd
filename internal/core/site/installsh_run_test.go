@@ -27,6 +27,7 @@ import (
 //   - iss-2610120601505029: a verified install records the newest-release mark
 //     the bootstrap and abcd update keep, with the same atomic owner-only
 //     write, and only ever raises it.
+//   - a fetched binary whose --version names another release installs nothing.
 
 const (
 	installedTag = "v0.14.2"
@@ -58,6 +59,12 @@ const (
 	// lacks one of the other two policy flags.
 	ghNoCertIdentity
 	ghNoDenySelfHosted
+	// ghAbsentTagUnresolved: no gh, and GitHub does not answer which tag the
+	// latest release names. The next two pair that silence with a gh too old to
+	// verify, and with a current gh that is not signed in.
+	ghAbsentTagUnresolved
+	ghNoSourceDigestTagUnresolved
+	ghSignedOutTagUnresolved
 )
 
 // installerRun is one run of the template under a sandbox.
@@ -93,6 +100,27 @@ func runInstaller(t *testing.T, gh ghBehaviour, prepare func(home string)) insta
 // released OS name, so each form runs on either OS.
 func runInstallForm(t *testing.T, argv []string, gh ghBehaviour, prepare func(home string)) installerRun {
 	t.Helper()
+	return runInstallOf(t, argv, gh, releaseBinary("abcd "+installedTag), prepare)
+}
+
+// releaseBinary is a stub of the released binary whose --version reports the
+// given first line. It knows only --version, as abcd does: anything else is an
+// unknown command, exit 2, so a form that ran `abcd version` would fail here as
+// it fails for a reader (iss-2610120704269048).
+func releaseBinary(firstLine string) []byte {
+	return []byte("#!/bin/sh\nif [ \"$1\" = --version ]; then echo '" + firstLine + "'; echo '  install:   pinned'; exit 0; fi\n" +
+		"echo \"Error: unknown command \\\"$1\\\" for \\\"abcd\\\"\" >&2\nexit 2\n")
+}
+
+// runInstallerOf runs the rendered installer with the stub release serving binary.
+func runInstallerOf(t *testing.T, gh ghBehaviour, binary []byte) installerRun {
+	t.Helper()
+	return runInstallOf(t, []string{"sh", renderedInstaller(t)}, gh, binary, nil)
+}
+
+// runInstallOf is runInstallForm with the stub release serving binary.
+func runInstallOf(t *testing.T, argv []string, gh ghBehaviour, binary []byte, prepare func(home string)) installerRun {
+	t.Helper()
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		t.Skip("the installer runs on macOS and Linux only")
 	}
@@ -105,11 +133,7 @@ func runInstallForm(t *testing.T, argv []string, gh ghBehaviour, prepare func(ho
 		prepare(r.home)
 	}
 
-	// The stub knows only --version, as abcd does: anything else is an unknown
-	// command, exit 2, so a form that ran `abcd version` would fail here as it
-	// fails for a reader (iss-2610120704269048).
-	r.release = []byte("#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'abcd " + installedTag + "'; echo '  install:   pinned'; exit 0; fi\n" +
-		"echo \"Error: unknown command \\\"$1\\\" for \\\"abcd\\\"\" >&2\nexit 2\n")
+	r.release = binary
 	release := t.TempDir()
 	sum := sha256.Sum256(r.release)
 	manifest := ""
@@ -143,9 +167,13 @@ func runInstallForm(t *testing.T, argv []string, gh ghBehaviour, prepare func(ho
 	if gh == ghVerifiesCommitUnresolved {
 		commitAnswer = "exit 22"
 	}
+	tagAnswer := "printf '%s' 'https://github.com/intentdriven/abcd/releases/tag/" + installedTag + "'"
+	if gh == ghAbsentTagUnresolved || gh == ghNoSourceDigestTagUnresolved || gh == ghSignedOutTagUnresolved {
+		tagAnswer = "exit 22"
+	}
 	curl := "#!/bin/sh\nfor a in \"$@\"; do url=\"$a\"; done\n" +
 		"case \"$url\" in\n" +
-		"https://github.com/intentdriven/abcd/releases/latest) printf '%s' 'https://github.com/intentdriven/abcd/releases/tag/" + installedTag + "'; exit 0 ;;\n" +
+		"https://github.com/intentdriven/abcd/releases/latest) " + tagAnswer + "; exit 0 ;;\n" +
 		"https://api.github.com/repos/intentdriven/abcd/commits/" + installedTag + ") " + commitAnswer + "; exit 0 ;;\n" +
 		"https://api.github.com/*) exit 22 ;;\n" +
 		"*/" + installScriptName + ") cat '" + release + "'/" + installScriptName + "; exit 0 ;;\n" +
@@ -155,17 +183,17 @@ func runInstallForm(t *testing.T, argv []string, gh ghBehaviour, prepare func(ho
 		t.Fatal(err)
 	}
 	r.ghLog = filepath.Join(t.TempDir(), "gh.log")
-	if gh != ghAbsent {
+	if gh != ghAbsent && gh != ghAbsentTagUnresolved {
 		verdict := "exit 0"
 		switch gh {
 		case ghRefuses:
 			verdict = "echo 'Error: verifying with issuer \"sigstore.dev\": no matching attestation' >&2; exit 1"
-		case ghSignedOut:
+		case ghSignedOut, ghSignedOutTagUnresolved:
 			verdict = "echo 'To get started with GitHub CLI, please run:  gh auth login' >&2; exit 4"
 		}
 		help := "printf '%s\\n' '      --cert-identity string' '      --deny-self-hosted-runners' '      --signer-workflow string' '      --source-digest string' '      --source-ref string'"
 		switch gh {
-		case ghNoSourceDigest:
+		case ghNoSourceDigest, ghNoSourceDigestTagUnresolved:
 			help = "printf '%s\\n' '      --signer-workflow string'"
 		case ghNoSourceRef:
 			help = "printf '%s\\n' '      --signer-workflow string' '      --source-digest string'"
@@ -460,6 +488,298 @@ func TestInstallerEndsWithTheInstalledVersion(t *testing.T) {
 	}
 	if strings.Contains(r.out, "unknown command") {
 		t.Errorf("the install ran a command abcd does not have:\n%s", r.out)
+	}
+}
+
+// --- the binary held to the release it came from ---
+
+// assertInstalledNothing holds a refused install to leaving no trace: no binary,
+// no record of it and no release mark.
+func assertInstalledNothing(t *testing.T, r installerRun) {
+	t.Helper()
+	if _, err := os.Lstat(filepath.Join(r.binDir, "abcd")); !os.IsNotExist(err) {
+		t.Errorf("a refused install must install nothing: %v", err)
+	}
+	if _, err := os.Lstat(abcdhome.Path(r.home, "path-entry")); !os.IsNotExist(err) {
+		t.Errorf("a refused install records no path-entry: %v", err)
+	}
+	if _, ok := r.mark(t); ok {
+		t.Error("a refused install records no release mark")
+	}
+}
+
+// TestInstallerRefusesABinaryReportingAnotherRelease: the fetched binary's own
+// --version must name the tag the latest release names, whether or not gh could
+// check its provenance.
+func TestInstallerRefusesABinaryReportingAnotherRelease(t *testing.T) {
+	const older = "v0.13.4"
+	for name, gh := range map[string]ghBehaviour{"gh verifies": ghVerifies, "gh signed out": ghSignedOut, "no gh": ghAbsent} {
+		t.Run(name, func(t *testing.T) {
+			r := runInstallerOf(t, gh, releaseBinary("abcd "+older))
+			if r.err == nil {
+				t.Fatalf("a binary reporting %s under %s must refuse:\n%s", older, installedTag, r.out)
+			}
+			assertInstalledNothing(t, r)
+			for _, want := range []string{older, installedTag, "Nothing is installed"} {
+				if !strings.Contains(r.out, want) {
+					t.Errorf("the refusal must say %q:\n%s", want, r.out)
+				}
+			}
+		})
+	}
+}
+
+// TestInstallerRefusesABinaryReportingNoRelease: a build that names no release
+// (an unstamped one, or one whose first line is not abcd's) is not the latest
+// release's, and whatever else it printed is not repeated to the reader.
+func TestInstallerRefusesABinaryReportingNoRelease(t *testing.T) {
+	for _, line := range []string{"abcd (dev build)", "abcd v0.14.2-with \\033 escape", "something else"} {
+		t.Run(line, func(t *testing.T) {
+			r := runInstallerOf(t, ghVerifies, releaseBinary(line))
+			if r.err == nil {
+				t.Fatalf("a binary reporting %q must refuse:\n%s", line, r.out)
+			}
+			assertInstalledNothing(t, r)
+			if !strings.Contains(r.out, "Nothing is installed") {
+				t.Errorf("the refusal must say so:\n%s", r.out)
+			}
+			if strings.Contains(r.out, line) {
+				t.Errorf("the refusal repeats what the binary printed:\n%s", r.out)
+			}
+		})
+	}
+}
+
+// TestInstallerRefusesABinaryThatFailsToReport: a binary that exits with an
+// error at --version reports no release.
+func TestInstallerRefusesABinaryThatFailsToReport(t *testing.T) {
+	r := runInstallerOf(t, ghAbsent, []byte("#!/bin/sh\nexit 3\n"))
+	if r.err == nil {
+		t.Fatalf("a binary that cannot report its version must refuse:\n%s", r.out)
+	}
+	assertInstalledNothing(t, r)
+}
+
+// homeStoppedBinary is a stub of the released binary as abcd behaves while its old
+// home stands: --version says the stop on stderr, prints nothing on stdout and
+// exits 1, for any command, before the command runs.
+func homeStoppedBinary(tag string) []byte {
+	return []byte("#!/bin/sh\nif [ -e \"$HOME/.abcd\" ]; then echo 'abcd: the old folder still stands' >&2; exit 1; fi\n" +
+		"echo 'abcd " + tag + "'\n")
+}
+
+// oldHomeShapes are the two homes abcd stops in: the old folder alone, and the
+// old folder beside the current one.
+var oldHomeShapes = map[string]func(t *testing.T, home string){
+	"the old folder": func(t *testing.T, home string) {
+		t.Helper()
+		if err := os.Mkdir(filepath.Join(home, ".abcd"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	},
+	"both folders": func(t *testing.T, home string) {
+		t.Helper()
+		for _, d := range []string{filepath.Join(home, ".abcd"), abcdhome.Path(home)} {
+			if err := os.Mkdir(d, 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}
+	},
+}
+
+// TestInstallerComparesTheReleaseWhateverTheHomeHolds: abcd's stop for an old home
+// comes before --version, and says nothing about which release the binary is. The
+// comparison reads the binary under a home holding neither folder, so the latest
+// release still installs, and the install's closing report shows the stop.
+func TestInstallerComparesTheReleaseWhateverTheHomeHolds(t *testing.T) {
+	for name, shape := range oldHomeShapes {
+		t.Run(name, func(t *testing.T) {
+			r := runInstallOf(t, []string{"sh", renderedInstaller(t)}, ghVerifies, homeStoppedBinary(installedTag), func(home string) { shape(t, home) })
+			if !r.installed(t) {
+				t.Fatalf("the latest release must install whatever the home holds:\n%s", r.out)
+			}
+			if strings.Contains(r.out, "Nothing is installed") {
+				t.Errorf("the comparison read the stop as a verdict on the release:\n%s", r.out)
+			}
+			if !strings.Contains(r.out, "the old folder still stands") {
+				t.Errorf("the install's closing report must show the stop:\n%s", r.out)
+			}
+		})
+	}
+}
+
+// TestInstallerRefusesAnotherReleaseWhateverTheHomeHolds: reading the binary under
+// another home keeps the comparison in force where abcd's stop stands.
+func TestInstallerRefusesAnotherReleaseWhateverTheHomeHolds(t *testing.T) {
+	for name, shape := range oldHomeShapes {
+		t.Run(name, func(t *testing.T) {
+			r := runInstallOf(t, []string{"sh", renderedInstaller(t)}, ghVerifies, homeStoppedBinary("v0.13.4"), func(home string) { shape(t, home) })
+			if r.err == nil {
+				t.Fatalf("a binary reporting another release must refuse:\n%s", r.out)
+			}
+			if _, err := os.Lstat(filepath.Join(r.binDir, "abcd")); !os.IsNotExist(err) {
+				t.Errorf("a refused install must install nothing: %v", err)
+			}
+			if !strings.Contains(r.out, "v0.13.4") {
+				t.Errorf("the refusal must name what the binary reported:\n%s", r.out)
+			}
+		})
+	}
+}
+
+// TestInstallerLeavesTheHomeUntouchedByTheComparison: the binary being compared
+// is not installed yet, so its run sees the temporary directory as its home.
+func TestInstallerLeavesTheHomeUntouchedByTheComparison(t *testing.T) {
+	seen := filepath.Join(t.TempDir(), "homes")
+	binary := []byte("#!/bin/sh\ncase \"$0\" in ./*) printf '%s\\n' \"$HOME\" > '" + seen + "' ;; esac\necho 'abcd " + installedTag + "'\n")
+	r := runInstallerOf(t, ghVerifies, binary)
+	if r.err != nil {
+		t.Fatalf("install failed: %v\n%s", r.err, r.out)
+	}
+	raw, err := os.ReadFile(seen)
+	if err != nil {
+		t.Fatalf("the comparison did not run the binary: %v\n%s", err, r.out)
+	}
+	if got := strings.TrimSpace(string(raw)); got == r.home || !filepath.IsAbs(got) {
+		t.Errorf("the comparison ran under home %q, want an absolute path other than the person's %q", got, r.home)
+	}
+}
+
+// TestInstallerLeavesTheNewHomeUncreatedWhileTheOldStandsAlone: abcd's rename takes
+// the old folder to the new name, so the install creates nothing there. It installs
+// the binary, says nothing was recorded and what to do, and closes on the stop.
+func TestInstallerLeavesTheNewHomeUncreatedWhileTheOldStandsAlone(t *testing.T) {
+	r := runInstallOf(t, []string{"sh", renderedInstaller(t)}, ghVerifies, homeStoppedBinary(installedTag), func(home string) { oldHomeShapes["the old folder"](t, home) })
+	if !r.installed(t) {
+		t.Fatalf("the latest release must install:\n%s", r.out)
+	}
+	if _, err := os.Lstat(abcdhome.Path(r.home)); !os.IsNotExist(err) {
+		t.Errorf("the install created the new home beside the old one: %v\n%s", err, r.out)
+	}
+	if strings.Contains(r.out, "did not report a release version") {
+		t.Errorf("the install blamed the binary for the stop:\n%s", r.out)
+	}
+	for _, want := range []string{"not recorded", "run this installer again", "the old folder still stands"} {
+		if !strings.Contains(r.out, want) {
+			t.Errorf("the install must say %q:\n%s", want, r.out)
+		}
+	}
+}
+
+// TestInstallerRecordsTheInstallBesideBothFolders: where the new home already
+// stands, the records go there as ever, and the mark reads the release under the
+// comparison's home rather than the stop.
+func TestInstallerRecordsTheInstallBesideBothFolders(t *testing.T) {
+	r := runInstallOf(t, []string{"sh", renderedInstaller(t)}, ghVerifies, homeStoppedBinary(installedTag), func(home string) { oldHomeShapes["both folders"](t, home) })
+	if !r.installed(t) {
+		t.Fatalf("the latest release must install:\n%s", r.out)
+	}
+	if _, err := os.Stat(abcdhome.Path(r.home, "path-entry")); err != nil {
+		t.Errorf("the install must record its path-entry: %v\n%s", err, r.out)
+	}
+	if got, ok := r.mark(t); !ok || got != "release_tag="+installedTag+"\n" {
+		t.Errorf("the install must record the release mark, got %q (%v):\n%s", got, ok, r.out)
+	}
+	if strings.Contains(r.out, "did not report a release version") {
+		t.Errorf("the install blamed the binary for the stop:\n%s", r.out)
+	}
+}
+
+// TestInstallerRunsNoBinaryItsProvenanceRefused: the version comes from running
+// the fetched binary, so that waits until its provenance has passed.
+func TestInstallerRunsNoBinaryItsProvenanceRefused(t *testing.T) {
+	ran := filepath.Join(t.TempDir(), "ran")
+	r := runInstallerOf(t, ghRefuses, []byte("#!/bin/sh\n: > '"+ran+"'\necho 'abcd "+installedTag+"'\n"))
+	if r.err == nil {
+		t.Fatalf("a failed verification must refuse:\n%s", r.out)
+	}
+	if _, err := os.Lstat(ran); !os.IsNotExist(err) {
+		t.Errorf("the binary ran before its provenance passed: %v\n%s", err, r.out)
+	}
+}
+
+// TestInstallerSaysWhenItHasNoTagToCompare: with no gh 2.68 or later and no answer
+// on the tag, the checksum stands alone as it did, and a warning says the release
+// was not compared. A gh 2.68 or later refuses on the same silence, signed in or
+// not, because the commit lookup comes first.
+func TestInstallerSaysWhenItHasNoTagToCompare(t *testing.T) {
+	for name, gh := range map[string]ghBehaviour{"no gh": ghAbsentTagUnresolved, "an older gh": ghNoSourceDigestTagUnresolved} {
+		t.Run(name, func(t *testing.T) {
+			r := runInstallerOf(t, gh, releaseBinary("abcd "+installedTag))
+			if r.err != nil {
+				t.Fatalf("no answer on the tag must not stop a checksum-only install: %v\n%s", r.err, r.out)
+			}
+			if !r.installed(t) {
+				t.Fatalf("the checksum-verified binary must be installed:\n%s", r.out)
+			}
+			for _, want := range []string{"WARNING", "not compared with the latest release"} {
+				if !strings.Contains(r.out, want) {
+					t.Errorf("the warning must say %q:\n%s", want, r.out)
+				}
+			}
+		})
+	}
+	t.Run("a signed-out gh refuses", func(t *testing.T) {
+		r := runInstallerOf(t, ghSignedOutTagUnresolved, releaseBinary("abcd "+installedTag))
+		if r.err == nil {
+			t.Fatalf("no answer on the tag must refuse where gh 2.68 or later is present:\n%s", r.out)
+		}
+		assertInstalledNothing(t, r)
+	})
+}
+
+// TestInstallerSaysWhenTheKernelRefusesToRunTheBinary: a binary the kernel will not
+// run is about the temporary directory and says nothing of the release, in every
+// shell the installer meets and as the documented command pipes it. The chmod stub
+// leaves the fetched file without execute permission, so the refusal is the
+// kernel's own, and it passes every other chmod through.
+func TestInstallerSaysWhenTheKernelRefusesToRunTheBinary(t *testing.T) {
+	stubs := t.TempDir()
+	stub := "#!/bin/sh\nif [ \"$1\" = 0700 ]; then exit 0; fi\nexec /bin/chmod \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(stubs, "chmod"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := renderedInstaller(t)
+	const asScript = `PATH="$0:$PATH"; export PATH; exec "$1" "$2"`
+	const piped = `PATH="$0:$PATH"; export PATH; cat "$2" | "$1"`
+	for _, shell := range []string{"/bin/sh", "/bin/bash", "/bin/dash"} {
+		if _, err := os.Stat(shell); err != nil {
+			continue
+		}
+		for form, wrapper := range map[string]string{"as a script": asScript, "piped": piped} {
+			t.Run(shell+" "+form, func(t *testing.T) {
+				r := runInstallOf(t, []string{"/bin/sh", "-c", wrapper, stubs, shell, script}, ghAbsent, releaseBinary("abcd "+installedTag), nil)
+				if r.err != nil {
+					t.Fatalf("a binary the temporary directory cannot run must not stop the install: %v\n%s", r.err, r.out)
+				}
+				if !r.installed(t) {
+					t.Fatalf("the binary must be installed:\n%s", r.out)
+				}
+				if !strings.Contains(r.out, "cannot run programs") {
+					t.Errorf("the warning must say why the release was not compared:\n%s", r.out)
+				}
+			})
+		}
+	}
+}
+
+// TestInstallerSaysWhenTheBinaryCannotRunBeforeInstall: a temporary directory
+// mounted noexec gives exit 126, which is about the mount and says nothing of the
+// binary, so the install goes on and says what it did not compare. The stub gives
+// that exit only when run from the temporary directory, as such a mount would.
+func TestInstallerSaysWhenTheBinaryCannotRunBeforeInstall(t *testing.T) {
+	binary := []byte("#!/bin/sh\ncase \"$0\" in ./*) exit 126 ;; esac\necho 'abcd " + installedTag + "'\n")
+	r := runInstallerOf(t, ghVerifies, binary)
+	if r.err != nil {
+		t.Fatalf("a temporary directory that cannot run binaries must not stop the install: %v\n%s", r.err, r.out)
+	}
+	if !r.installed(t) {
+		t.Fatalf("the binary must be installed:\n%s", r.out)
+	}
+	for _, want := range []string{"WARNING", "not compared with the latest release"} {
+		if !strings.Contains(r.out, want) {
+			t.Errorf("the warning must say %q:\n%s", want, r.out)
+		}
 	}
 }
 

@@ -1,6 +1,8 @@
 package vintage
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"net"
 	"net/http"
@@ -57,6 +59,16 @@ type githubReleaseFetcher struct {
 // urlguard SSRF policy and a bounded timeout.
 func NewGitHubReleaseFetcher() ReleaseFetcher {
 	return newGitHubReleaseFetcher(latestReleaseURL, urlguard.BlockedIP, releaseCheckTimeout)
+}
+
+// NewGitHubReleaseFetcherWithRoots is NewGitHubReleaseFetcher trusting only roots,
+// for a caller that holds the CA overrides out of what it verifies against.
+func NewGitHubReleaseFetcherWithRoots(roots *x509.CertPool) ReleaseFetcher {
+	f := newGitHubReleaseFetcher(latestReleaseURL, urlguard.BlockedIP, releaseCheckTimeout)
+	if t, ok := f.client.Transport.(*http.Transport); ok {
+		t.TLSClientConfig = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}
+	}
+	return f
 }
 
 // newGitHubReleaseFetcher builds a fetcher with an explicit URL, address policy,

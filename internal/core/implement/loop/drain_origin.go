@@ -405,7 +405,8 @@ func openHere(repoRoot string) []string {
 // alone and wait, the words of the wait, having recorded the probe in st (a
 // move before the next probe is due fetches nothing). probed reports whether
 // st changed. A move that reads origin clears the wait, and recovered says so.
-func movePlan(repoRoot string, st *DrainState, rule drainrule.Rule, now time.Time) (plan capture.DrainPlan, origin *DrainOrigin, wait, recovered string, probed bool, err error) {
+// keepWaiting never gives up on origin: the caller has a bound of its own.
+func movePlan(repoRoot string, st *DrainState, rule drainrule.Rule, now time.Time, keepWaiting bool) (plan capture.DrainPlan, origin *DrainOrigin, wait, recovered string, probed bool, err error) {
 	has, err := claim.HasOrigin(repoRoot)
 	if err != nil {
 		return plan, nil, "", "", false, err
@@ -448,7 +449,7 @@ func movePlan(repoRoot string, st *DrainState, rule drainrule.Rule, now time.Tim
 			w.HourlySince = &hourly
 		}
 		st.OriginWait = w
-		if w.HourlySince != nil && s.GivesUp(*w.HourlySince, now) {
+		if !keepWaiting && w.HourlySince != nil && s.GivesUp(*w.HourlySince, now) {
 			st.Stopped, st.EndedAt = DrainStoppedOrigin, &now
 			return capture.RuleOnlyPlan(rule), nil, fmt.Sprintf("%s, so the move plans nothing, and the drain gives up on %s as the outage gate gives up: %s has not been read since %s, %d probe(s) failed, hourly for %d hours since %s; the drain stops here with %d lane(s) opened; the next `abcd drain` begins a new drain, waiting again if %s still cannot be read",
 				why, claim.Remote, claim.Remote, w.Since.UTC().Format(time.RFC3339), w.Probes, int(s.HourlyFor/time.Hour), w.HourlySince.UTC().Format(time.RFC3339), len(st.Lanes), claim.Remote), "", true, nil

@@ -8,7 +8,6 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/question"
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestAhoyInstallRendersCoreHelpAboveEachValueQuestion is iss-163 at the front
@@ -19,7 +18,7 @@ import (
 // envelope on stdout stays clean.
 func TestAhoyInstallRendersCoreHelpAboveEachValueQuestion(t *testing.T) {
 	hermeticEnv(t)
-	repo := gittest.NewRepo(t).Root()
+	repo := newRepo(t).Root()
 	t.Chdir(repo)
 	// --yes approves the categories, so the only questions left are the value
 	// questions no flag answered: visibility and the docs target. The oracle is
@@ -118,10 +117,10 @@ func TestStdinPrompterSaysWhereAFlaglessAnswerIsChangedLater(t *testing.T) {
 // words are core's (ahoy.HelpIn); the door only renders them.
 func TestAhoyInstallShowsTheTrackedCaveatOnlyWhereItApplies(t *testing.T) {
 	hermeticEnv(t)
-	tracked := gittest.NewRepo(t)
+	tracked := newRepo(t)
 	tracked.Write(".abcd/work/decisions/README.md", "# Decisions\n")
 	tracked.Commit("record tier")
-	untracked := gittest.NewRepo(t)
+	untracked := newRepo(t)
 
 	withCaveat, _ := ahoy.HelpIn(tracked.Root(), "visibility")
 	without, _ := ahoy.HelpIn("", "visibility")
@@ -163,7 +162,7 @@ func TestAhoyInstallShowsTheTrackedCaveatOnlyWhereItApplies(t *testing.T) {
 // changed for them first and the implementer's detail after.
 func TestAhoyInstallTextLeadsWithThePlainSummary(t *testing.T) {
 	hermeticEnv(t)
-	repo := gittest.NewRepo(t).Root()
+	repo := newRepo(t).Root()
 	t.Chdir(repo)
 	args := []string{"ahoy", "install", "--details", "--yes", "--adopt", "--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false"}
@@ -181,7 +180,7 @@ func TestAhoyInstallTextLeadsWithThePlainSummary(t *testing.T) {
 
 	// A second repository, rendered as text, so the first run's writes do not
 	// turn this one into an up-to-date no-op.
-	repo2 := gittest.NewRepo(t).Root()
+	repo2 := newRepo(t).Root()
 	t.Chdir(repo2)
 	text, errOut, err := runCLIPipedStdinSplit(t, "", args...)
 	if err != nil {
@@ -222,7 +221,7 @@ func TestAhoyInstallTextLeadsWithThePlainSummary(t *testing.T) {
 // the run's output, so a question there would read as a receipt line.
 func TestAhoyInstallYesKeepsValuePromptsOffStdout(t *testing.T) {
 	hermeticEnv(t)
-	repo := gittest.NewRepo(t).Root()
+	repo := newRepo(t).Root()
 	t.Chdir(repo)
 	out, errOut, err := runCLIPipedStdinSplit(t, "", "ahoy", "install", "--details", "--yes", "--adopt")
 	if err != nil {
@@ -243,7 +242,7 @@ func TestAhoyInstallYesKeepsValuePromptsOffStdout(t *testing.T) {
 // The words are core's; a run whose flags answered every value says nothing.
 func TestAhoyInstallYesSaysUpFrontThatValuesAreStillAsked(t *testing.T) {
 	hermeticEnv(t)
-	repo := gittest.NewRepo(t).Root()
+	repo := newRepo(t).Root()
 	t.Chdir(repo)
 	_, errOut, err := runCLIPipedStdinSplit(t, "private\n\n", "ahoy", "install", "--details", "--yes", "--adopt", "--json")
 	if err != nil {
@@ -281,7 +280,7 @@ func TestAhoyInstallYesSaysUpFrontThatValuesAreStillAsked(t *testing.T) {
 		prev = q
 	}
 
-	repo2 := gittest.NewRepo(t).Root()
+	repo2 := newRepo(t).Root()
 	t.Chdir(repo2)
 	_, errOut, err = runCLIPipedStdinSplit(t, "", "ahoy", "install", "--details", "--yes", "--adopt", "--json",
 		"--visibility", "private", "--docs-target", "skip", "--oracle-backend", "host-delegated", "--scan-deep", "false")

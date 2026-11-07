@@ -43,6 +43,35 @@ and staleness it reports are unchanged.
       --view string     the board's view: product (the default) or facilitator
 ```
 
+### `abcd agents`
+
+List the agents abcd started for this session and add them up: Writes nothing; refuses when launches are on record and no session or scope says whose.
+
+**Usage:** `abcd agents [flags]`
+
+List the agents abcd started and add them up, from the launch ledger on this
+computer (`~/.abcd.noindex/agents/`): one line per launch naming the session or run that
+asked for it, the work, the billing route, the model, the tokens, the cost, the API
+time and how it ended.
+
+Bare, it lists this session's launches; --run <id> lists one run's, --session <id>
+one session's and --all every one. Money is counted for launches billed to a named
+key alone: a subscription's or an unplaced launch's cost is shown as an estimate,
+which is no money spent. Every cost is the harness's own estimate, and the
+provider's invoice is the final figure. An entry whose process is gone with no end
+written reads as lost. An entry it cannot read is named, never dropped.
+
+With nothing on record it says so, session or no session. It reads only. Exit 2 on a
+refusal: launches on record and no session or scope to say whose, or two scopes at once.
+
+**Flags:**
+
+```
+      --all              list every launch the ledger holds
+      --run string       list the launches of this run
+      --session string   list the launches this session asked for
+```
+
 ### `abcd ahoy`
 
 Detect abcd's install state and list its gaps, or report one mode a flag names: Writes nothing; refuses any argument or two modes at once.
@@ -155,6 +184,49 @@ Apply every GitHub setting the remote audit finds differing: Writes those settin
       --yes   confirm the remote change without being asked (never the install of a missing gh); without it an unanswered run declines and changes nothing
 ```
 
+#### `abcd ahoy shared-folder`
+
+Say what the shared folder is for, or choose it so a stop can cross accounts: Writes the choice given a folder; refuses no terminal or an unsafe folder.
+
+**Usage:** `abcd ahoy shared-folder [<folder>] [--person <account>] [flags]`
+
+Say what the shared folder is for and which one this account chose; with <folder>,
+choose it. Run it in each account that takes part, naming the same folder, and
+--person naming the account you stop from (this account when omitted). A run honours
+a stop only from that account.
+
+The shared folder is one option of setup, for a person who runs abcd unattended on a
+second account of this computer. It holds what the two accounts pass between them: the
+stop you set from your own account, which the runs of each account that chose it read before
+their next move, and each
+day's digest page. Every account on this machine can read what is in it, so it is meant
+for a machine no other person shares. Declining leaves every other part of abcd working,
+and a stop then reaches only runs in your own account. To decline, do nothing.
+
+The folder must be a real directory, and one other accounts can write must carry
+the sticky bit, and it must be owned by root or by you, each parent above it held
+to the same rule, which keeps what you wrote there from other accounts' removal or moving.
+/Users/Shared on macOS and /var/tmp on Linux both qualify. In
+your own account this also makes the directory the stop lives in, named by your account's
+number. On Linux an age cleaner may remove what has stood in a temporary tree for weeks, a
+stop included; a folder an administrator makes elsewhere avoids that. The choice is written to ~/.abcd.noindex/shared-folder.json.
+
+Choosing is the person's own act: the guard's rule refuses it to an agent, and it refuses
+a caller with no terminal, under a host session, or where it cannot tell whether one is above it.
+Exit 2 on a refusal, with nothing written. No network request.
+
+**Flags:**
+
+```
+      --person string   the account you stop from; this account when omitted
+```
+
+**Example:**
+
+```
+abcd ahoy shared-folder /Users/Shared
+```
+
 #### `abcd ahoy uninstall`
 
 Remove abcd from this repository, leaving .abcd/ in place: Writes the removal of the marker block, PATH copy, and provenance record; refuses any argument.
@@ -205,14 +277,14 @@ List this repository's worktrees and its lane, or every lane with --all: Writes 
 
 ##### `abcd ahoy worktree prune`
 
-Reclaim this lane's merged, clean worktrees, archiving their notes first: Writes the notes archive and removes the worktrees; refuses a store it cannot trust.
+Reclaim this lane's merged, clean worktrees and stale Go cache entries: Writes the notes archive and removes both; refuses a store it cannot trust.
 
 **Usage:** `abcd ahoy worktree prune [flags]`
 
 **Flags:**
 
 ```
-      --dry-run           archive and remove nothing; report what a real run would
+      --dry-run           archive, remove and trim nothing; report what a real run would
       --yes stringArray   reclaim this quiet candidate too (repeatable); a name not in the lane refuses the run
 ```
 
@@ -423,6 +495,15 @@ An unknown class or a malformed set is refused at the review stage and writes no
 The result's review and the run record name each class with its model and each layer.
 
 The run then moves one step per `abcd implement step`, driven by the host session.
+
+While the away mode holds (`abcd mode autonomous`), or its record cannot be read, starting or resuming a
+run from a session whose setting reads as off a profile prints one line on stderr opening WARNING:,
+after the move, naming what abcd cannot check and addressed to the person; it never refuses and the exit
+code does not change. In the managed mode nothing prints. abcd reads one setting in the session's environment, and every doubt reads as off a profile, a host
+reporting no such setting included. This reads one setting and proves no wall, and the setting's value
+changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
+separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 The runner configuration is read before the run is created: roles.<role>.runner (host,
 the default, or a runner) and the runners this machine enables under runner.<name> in
@@ -1362,7 +1443,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
+**Usage:** `abcd drain [--drive [--yes] [--until <date>] [--profile <name>] [--no-self-update]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1412,6 +1493,68 @@ last fetched, and says how old that view is, how many commits the checkout is
 behind it, and which issues open in the checkout it has already finished. The host
 judgement over each eligible remedy does not run; it can only ever hand an issue
 back.
+
+--drive makes the moves itself, from a plain terminal with no host session: it refuses
+before anything is reserved when the claude runner is not enabled or admitted, when
+it has no profile directory under ~/.abcd.noindex/profiles/ to run on, logged in, when a
+wall does not hold or no git identity resolves, when a credential variable the harness would bill through is set
+(a drive runs on a subscription alone, for now), when the judge is routed
+to opencode, when a role is pinned to the host, and when it is started from inside an
+agent's own session. It shows the cap (eight unless --max says otherwise), an estimate
+of the agent runs, the runner and the route, and asks once; --yes is the scripted
+answer, and with no terminal nothing else answers. A profile is a separate login and
+settings on this one account, not a boundary: a stage's shell reads what this account
+can. With one directory there it runs on that one. With several it refuses, naming them,
+until --profile <name> names the one to run on: letters and digits, with '.', '_' or '-'
+after the first, naming a directory that meets every check the one directory does, and
+the question names it. A run keeps the profile it
+started on: a drive on another refuses before it takes that run's lane up, since that is
+another subscription, and a limit waits for that profile's reset. Nothing moves a drive
+from one profile to another. It then judges each eligible issue,
+drives each lane to its landing, every role on that separate login, and runs each
+landing's preflight behind the load gate, printing one line per step and logging them
+under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/ or the active
+hooks is handed back at its landing, and an issue that names one is passed over: that
+change needs a person's own session. The driver's commit, merge and reset hooks, and any
+filter run inside those commands, get the stage's variables, while its network commands,
+its other filters and its forge calls keep the person's environment. It ends at the cap,
+when nothing is eligible, or on a stop. With no --until, eight hours of runner failures
+or of nothing moving, a rate limit that outlasts eight hours, and origin unreadable
+through its schedule end it too. --until <date>, a date (the end of that day here) or an
+RFC 3339 instant, replaces those with one bound the yes names: the run waits through
+limits, outages and stuck queues at a capped interval, says what it waits on, keeps
+renewing what it holds, and at that time ends with the lane on its branch, an agent in a
+call finishing that call first. The bound is a time, not a limit on what the run spends.
+The first limit a run meets leaves its evidence under the same logs. One drive
+holds a checkout at a time, whatever its profile; a second exits 3. A drive that is stopped, stops short or
+holds an issue back exits 3, and one a failed check stopped exits 2. The first interrupt, hang-up or termination is a
+stop: the agent in a call finishes that call, the lane's reservation is released, the
+lane stays on its branch, and the last lines name the run, the lane and the command
+that resumes it. A second kills the running agent's process group and exits at once
+(exit 130), naming when the reservation lapses. Without --drive a drain is one move,
+as below.
+
+A drive on a release binary takes each newer stable release of abcd itself, on the yes
+that names this: at a lane boundary, at most about once an hour, it asks the release
+origin for its latest release, the one request a drive makes on its own
+(adr-2611062149324491, proposed), and a newer one goes through what `abcd update`
+holds a swap to, into a staging file beside the binary, then a read-only `drain
+--dry-run`, then the live launch a drive proves itself with, before the binary is
+touched. Then it swaps the binary, keeps the previous one beside it as .abcd.previous,
+and starts itself again, asking nothing and going on from the drain's own state with
+the cap, pace and skips it holds, in one line naming both versions. A release that fails the checks or
+the live launch is said once and is not taken again in this run, and the drive goes on
+with the one it has; a read-only run that fails is said once per reason and tried again
+at later checks; and a network fault, a rate limit or a timeout while fetching it, and a limit or an
+outage met during the live launch, are no verdict on it, and the next check tries it
+again, with one line each time. A release that starts and cannot go on is tried again for
+about three minutes, and if it still cannot, before its first move, it goes back
+to the kept copy, which carries on and does not try that release again. --no-self-update
+turns all of this off. A source build, a plugin root's binary, a package manager's and
+the track-latest shim never self-update, and the question says so. A drive still
+compares the binary and the settings with what it started on before every stage, so a
+swap ends any other drive on this account, whatever flags that other drive has, and a
+start that may take a release says so in a line.
 
 --take-over moves your own live reservation of an issue from another copy to this one
 as the move reaches it, as `abcd build --take-over` does: a hosted session that
@@ -1496,6 +1639,8 @@ it closed; a conflicting one is not renewed and is named; an open one is
 renewed and named as waiting, or, once the merge-queue watch finds it will not merge
 on its own (it left the queue disarmed, or its head moved), as dropped, naming why
 (parked in --json); the watch queues one it finds armed and CLEAN outside the queue.
+A run a stop's mark stands on is named as stop-holds and nothing else is done for it,
+its renewal apart, whatever the forge says of its pull request.
 Before its records and push a
 lane's sync fetches origin's default branch and merges it whenever it has moved, a
 fresh round judging the merge: a conflict confined to files origin declares
@@ -1544,6 +1689,15 @@ passes it over before anything is pushed or asked, named in passed with check "s
 given more than once, all with the one --reason; --unskip takes an entry off. The
 list clears when the drain ends.
 
+While the away mode holds (`abcd mode autonomous`), or its record cannot be read, every move from a
+session whose setting reads as off a profile prints one line on stderr opening WARNING:, after the move,
+naming what abcd cannot check and addressed to the person; it never refuses and the exit code does not
+change. In the managed mode and on --dry-run nothing prints. abcd reads one setting in the session's environment, and every doubt reads as off a profile, a host
+reporting no such setting included. This reads one setting and proves no wall, and the setting's value
+changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
+separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
+
 Without the repository's record, the dry run and the run both refuse (exit 2),
 naming how to add it; `abcd ahoy install` offers it. A run that opens nothing or
 merges nothing exits 0 and says why. Exit 2 on a refusal, exit 3 when another
@@ -1552,22 +1706,29 @@ drain or run holds the state lock.
 **Flags:**
 
 ```
+      --drive                make every move from this terminal, starting each agent on a separate login, until the cap, an empty ledger or a stop
       --dry-run              show every open issue's disposition and the order a drain takes them; writes nothing
       --fix-rounds string    the fix rounds a lane may take before it is handed back; wins over every configured layer
       --judgement string     the host's answer to the judgement the drain awaits, at the path its request names
       --max int              cap the lanes this drain opens; the default is all
+      --no-self-update       with --drive: take no new release of abcd during the run, and ask the release origin nothing
       --pace string          the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
+      --profile string       with --drive: the profile directory to run on, by name; needed when there are several
       --reason string        why --skip holds its issues back, shown in each pass-over
       --skip stringArray     hold an issue (iss-N), or every issue whose found_at lies in a path, back for now; needs --reason; cleared when the drain ends
       --sub-agents string    the ceiling on lanes and validators alive at once; wins over every configured layer
       --take-over            move your own live reservation of each issue this move reaches from another copy to this one; never another person's
       --unskip stringArray   take an issue or path off the drain's skip list
+      --until string         with --drive: end the run at this time, a date or an RFC 3339 instant, and wait through limits, outages and stuck queues until then; the default is eight hours on each wait
+      --yes                  with --drive: the scripted yes to its one question
 ```
 
 **Example:**
 
 ```
-abcd drain --dry-run
+abcd drain --drive
+  abcd drain --drive --yes --max 3
+  abcd drain --dry-run
   abcd drain --dry-run --json
   abcd drain --max 3
   abcd drain --json
@@ -1964,8 +2125,8 @@ nobody is there to approve it.
 
 The file tools the role is granted (--allowedTools on the launch) write
 without asking the approver, and the abcd binary that answers is not among
-the paths it protects; the OS sandbox for launched agents
-(spc-2610161751056096) is what bounds those writes.
+the paths it protects. The OS sandbox for launched agents
+(spc-2610161751056096) that would bound those writes is planned, not in force.
 
 The guard is a mistake filter, not a security boundary (see `abcd guard
 check --help` for what an allow does not see), and this adds no sandbox.
@@ -1975,9 +2136,13 @@ start it. It exits 0 when its input ends.
 **Flags:**
 
 ```
-      --base string           the commit the run started on, by its full object name
-      --dir string            the working tree the agent runs in, as an absolute path
-      --run-dir stringArray   a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable
+      --base string            the commit the run started on, by its full object name
+      --declared stringArray   on a drive's stage, a path its work declares it changes, relative to --dir; repeatable
+      --dir string             the working tree the agent runs in, as an absolute path
+      --harness string         on a drive's stage, the harness file its run proved, as an absolute path
+      --protect stringArray    on a drive's stage, a directory it may not write, as an absolute path; repeatable
+      --run-dir stringArray    a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable
+      --stage-home string      on a drive's stage, the home its shell runs under, as an absolute path
 ```
 
 **Example:**
@@ -2140,9 +2305,11 @@ The hook judges only what the host hands it, and the plugin's hook
 manifest hands it the shell tool, the question tool and the host's
 file-writing tools (Write, Edit, MultiEdit, NotebookEdit) and nothing else.
 A file one of those tools writes is not held to the registry: it is denied
-with the host's deny when it lands in a main checkout two or more live
-sessions started in, with the refusal the record verbs give, naming the
-worktree store. The file's working tree is found by walking up to its .git,
+with the host's deny when it is the stop file or the setting naming where a
+stop is read (the person's own, by `abcd implement stop`), and when it lands
+in a main checkout two or more live sessions started in, with the refusal
+the record verbs give, naming the worktree store. The file's working tree
+is found by walking up to its .git,
 so a linked worktree, a checkout one session or none works in, a path in no
 checkout, and a file in a checkout's own local tier (.abcd/.work.local/,
 which git ignores) are written silently. A file call naming no path, a
@@ -2570,6 +2737,15 @@ agents the session's own agent_start and agent_end lines declare alive, refuses 
 agent_start past the ceiling, and reports the count with every `check`. An agent the
 session never logs is invisible to it. A resume keeps the ceiling.
 
+A first session's join is how a session says it coordinates a run, so joining as first from a session
+whose setting reads as off a profile prints one line on stderr opening WARNING:, after the join, in any
+mode and on a resume, naming what abcd cannot check and addressed to the person; it never refuses and
+the exit code does not change. abcd reads one setting in the session's environment, and every doubt reads as off a profile, a host
+reporting no such setting included. This reads one setting and proves no wall, and the setting's value
+changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
+separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
+
 **Flags:**
 
 ```
@@ -2613,7 +2789,7 @@ abcd implement leave --session s-example
 
 Check the load before abcd's tests start, or wait for capacity: Writes a run-log event or the wait's hold; refuses an unknown --site, never a loaded machine.
 
-**Usage:** `abcd implement load --site preflight|eval-harness | --wait [--timeout <duration>] [-- <command>...] | --race-gate [--timeout <duration>] [flags]`
+**Usage:** `abcd implement load --site preflight|eval-harness | --wait [--narrow] [--timeout <duration>] [-- <command>...] | --race-gate [--timeout <duration>] [flags]`
 
 Read the machine's load averages and process table once and warn when a program
 outside the running work has used nearly all the CPU it could get for longer than
@@ -2690,7 +2866,7 @@ command line, and the waiter's own process and ancestors are never one: a
 hand-written `pgrep -f "go test -race"` matched its own shell and never opened.
 It reads the machine every 15s, prints one line when it starts waiting and
 one when it first finds the machine free, and nothing more until it opens, and
-gives up after --timeout (30m0s by default), exiting 1 and naming what it
+gives up after --timeout (6h0m0s by default), exiting 1 and naming what it
 was still waiting on. --json reports what it waited on and for how long.
 
 With --race-gate in place of --wait it waits at the race gate, which `make
@@ -2849,12 +3025,42 @@ since a waiter lingering on a slow push reads as queued and holds every other ga
 Since it runs through git and gh, no waiter counts another's git or gh
 child as its command: gate make or go, never git or gh itself.
 
+A narrow run waits at a gate of its own. It is `--wait --narrow -- go test`: the mark asks for
+the gate, and every waiter reads it and the command from the waiter's own words, so
+without it the same command is a whole run. The command is go by that exact name, with no
+shell between, `test` after `-C <dir>` at most, at most 3 packages named outright
+(no `...` and no bare word such as `all`), and no flag but -v, -short, -failfast, -json,
+-run, -skip, -timeout and -count=1. Anything else is a whole run, -race, a `make` and a
+shell included, so race runs stay apart as above. The effective GOFLAGS must be empty, as
+`go env GOFLAGS` reads it when the wait starts and again as it opens; otherwise the waiter
+says why on stderr and carries on as a whole run, with the same pid and start, without
+the mark. The command runs with GOFLAGS=-p=1 and GOMAXPROCS=2, or a lower GOMAXPROCS of
+your own. A narrow run takes no whole-run slot and no place in the whole-run queue, and a
+whole run counts it through the load figure alone. It is shut by the load limit, memory,
+your account's last narrow run for 30s (`~/.abcd.noindex/load-wait-narrow.json`), your account's
+last whole run or race stage for 2m0s, and its own room. That room is
+`load.narrow_runs` in `~/.abcd.noindex/config.json`, a whole number from 1 to 32, by default half
+the online cores divided by 2. It follows your home as load.preflights does, is
+never read from a repository file and has no environment variable of its own; once the load is within 2 of the online cores it is only what the whole runs in
+their slots leave of the cores, at each slot's share, and one at the least. Narrow runs
+running and those queued ahead count against it; another account's never take your last
+place. Its jitter is 1s to 5s, and it takes no open look, so across accounts two
+opening at once can pass the limit by one. So that it cannot starve a whole run, while a
+whole-run waiter that started earlier has been queued 5m0s or more and a whole slot is free, it
+stands aside, spending at most 5m0s of a wait so. Waiters queued ahead that alone keep it shut stop
+counting after 2m0s.
+
+A wait that gives up exits 1 and ends with a line starting `LOAD GATE TIMED OUT`,
+naming how long it waited and that nothing ran, so a pipe that loses the exit
+code still shows it; with --json that line is the last on stderr.
+
 **Flags:**
 
 ```
+      --narrow             with --wait and a go test naming at most three packages, wait at the narrow gate instead of behind whole runs
       --race-gate          wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor or memory pressure is at or above its floor, and above that shut by another go test -race run, a race waiter ahead, the load, memory pressure and the race gate's hold
       --site string        where the check runs: preflight | eval-harness
-      --timeout duration   with --wait or --race-gate, give up after this long and exit 1 (default 30m0s)
+      --timeout duration   with --wait or --race-gate, give up after this long and exit 1 (default 6h0m0s)
       --wait               wait until the load is below the wait limit and no other go test -race run is live
 ```
 
@@ -3056,7 +3262,8 @@ Hand back the receipt an agent stage of a loop run awaits: Writes the run's stat
 Hand back the receipt a lane of the run named when its stage handed work to an agent.
 The path is looked up among every outstanding await of the run, and the lane it belongs
 to advances; a path no await names is refused, naming the awaits there are, and frees
-nothing. The stage's verifier checks it; a verified receipt frees its slot, and a
+nothing. A path a step already collected is answered while the file is what the step
+took, and refused once it has changed. The stage's verifier checks it; a verified receipt frees its slot, and a
 receipt that verifies completes the stage and the lane moves to its next stage, and one
 that does not is refused naming what is missing, with the lane left where it was. A
 stage whose verifier this abcd does not carry is refused naming the spec piece that
@@ -3072,8 +3279,10 @@ note, the impact and the grounds; the landing resolves each.
 
 At the validate stage the receipt is the validator's return: a reviewer's is refused
 unless it has one Verdict section stating one verdict of its role (SHIP or FIX FIRST;
-APPROVE, BLOCK or NEEDS-INPUT), and the intent-auditor's unless it is the fidelity verdict
-the request asked for, echoing its receipt and both provenance hashes. The loop records
+APPROVE, BLOCK or NEEDS-INPUT) and naming the head it judges by its full object name, and
+the intent-auditor's unless it is the fidelity verdict the request asked for, echoing its
+receipt and both provenance hashes. Either is refused, whatever it says, when its launch
+reports a stop for length, a provider's filter or refusal, or an error. The loop records
 the verdict and the lane stays at validate for the next validator. A fresh implementer's
 receipt after a round is verified as an implementer's is.
 
@@ -3175,6 +3384,44 @@ By default the run's whole log is read, every day of it; --date reads one day, a
       --log string    read this log file instead of the run's own
 ```
 
+#### `abcd implement resume`
+
+List every unfinished run on the machine, or take one over: Writes nothing bare; refuses a take-over while a stop holds or another driver is alive.
+
+**Usage:** `abcd implement resume [--run <run-id>] [--take <run-id>] [flags]`
+
+List every unfinished run this account can read on the machine, in this repository's
+worktrees and in each checkout a driver worked in: its driver alive or gone, what a
+stop left, and each lane's stage, each agent alive, lost or unknown, each receipt
+that arrived uncollected, its pull request, how far origin's default branch as last
+fetched has moved past its base, and the files it holds uncommitted. The listing is
+all a session that lost its context needs. It writes nothing and uses no network.
+
+--take takes a run over from this session, in the checkout that holds it: it claims
+the driver, collects every receipt that has arrived before anything else, reserves
+again what a stop released, saves aside and names the uncommitted work a gone agent
+left, and re-tells its await. It starts no agent: `abcd implement step` does that
+next. An agent that may still be in its call is left alone and named. A run a drive
+started names the profile it started on, in the listing and here, since what this
+session starts runs on this session's own login, whichever that is.
+
+Exit 2 on a refusal. Exit 3 while a stop holds, while another driver's process is
+alive or a recorded driver cannot be judged, or when a peer has taken the work a
+stop released: back off.
+
+**Flags:**
+
+```
+      --run string    list this run alone (run-<16 digits>)
+      --take string   take this run over (run-<16 digits>)
+```
+
+**Example:**
+
+```
+abcd implement resume --take run-2609010000000001
+```
+
 #### `abcd implement status`
 
 Render the implement loop's runs in this checkout, lane by lane: Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.
@@ -3208,8 +3455,11 @@ Perform the next stage of an implement loop run's lane and exit: Writes the run'
 
 Perform the run's next move, write the state, and exit. At a stage that hands work to
 an agent, the result names the agent to start, the brief it is handed and the path its
-receipt goes to; that work advances only on `abcd implement receipt`. A lane lands one
-step of the spec; its stages are how it gets there. A complete run says so.
+receipt goes to; that work advances on `abcd implement receipt`. One thing is taken
+without it: a routed implementer the run started a runner for, whose receipt stands at
+the path it awaits and verifies, is collected by the step, so a refusal before its
+hand-in loses nothing. A lane lands one step of the spec; its stages are how it gets
+there. A complete run says so.
 
 A run works in parallel up to its ceiling (--sub-agents, pace.sub_agents): each agent
 handed work and not yet verified is a slot, implementers and validators alike. Each call
@@ -3281,7 +3531,9 @@ the hand-back and each held lane. --release <lane-id> lands a held lane as it is
 --discard <lane-id> removes its worktree and branch, then closes its pull request, and
 leaves its step unlanded. Either is refused, changing nothing,
 for a lane that is not held or while any lane still has work. --discard also takes
-an issue run's lane a drain handed back as stuck or closed, and ends that run.
+a lane handed back as stuck or closed, which ends an issue's run while an intent's run
+stays, and any lane of a run a drive stopped on because its state changed or could not
+be read.
 --restart <lane-id> restarts a lane whose implementer died, or yielded on a network
 failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's
 last commit: everything left uncommitted is saved aside under the lane's directory
@@ -3301,7 +3553,8 @@ alone. It is refused, changing nothing, while the run has an outage (open or giv
 for a blank --yielded, for a lane with neither an implementer out nor an await a rate
 limit kept, or for a worktree that is not the one the loop derives.
 land follows a passing round, one step per call: it checks the lane's worktree is clean
-at the judged head; on an intent lane it marks the lane's step landed on the open spec with a `- landed:`
+at the judged head, an uncommitted edit to the lane's own spec record aside, which its commit carries;
+on an intent lane it marks the lane's step landed on the open spec with a `- landed:`
 line naming the judged head (unless the spec lists no steps or already marks it); on
 the lane that closes the spec it runs `spec close` in the lane's
 worktree and ingests the audit that lane took, and for every capture the lane's receipts
@@ -3453,6 +3706,50 @@ refusal, exit 3 on a pause or a locked run state.
       --route stringArray      route one role this step hands to an agent to a runner, for this invocation alone: <role>=runner:<name>[@<provider>/<model>], the runner one this machine enables and the model one its provider lists (else the runner's own model); one per role (implementer, ruthless-reviewer, security-reviewer, intent-auditor); wins over every configured route for this step alone, and the role's receipt records it verbatim
       --run string             the run to step (run-<16 digits>); the one run in progress when omitted
       --yielded string         with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying
+```
+
+#### `abcd implement stop`
+
+Stop the unattended runs of each account that chose this folder, or lift it: Writes the stop file; refuses no terminal, and a file no run would honour.
+
+**Usage:** `abcd implement stop [--lift] [flags]`
+
+Stop the unattended runs of each account that chose this shared folder, or with --lift
+lift the stop. Every run reads the stop before its next move: it opens no lane,
+hands out no stage and starts no agent. An agent in a call finishes that call and
+its receipt is collected. Then each lane's uncommitted work is saved aside, the
+run's reservation is released so a peer may take the work, and the day's page is
+written to this account's directory in the shared folder. A stop that stands is left
+as it is, and says since when.
+
+It takes hold across accounts where the shared folder was chosen in each account
+(`abcd ahoy shared-folder`). Without one the stop lives in ~/.abcd.noindex/stop.json
+and reaches only this account's runs.
+
+This command lifts a stop, and each lift is recorded in ~/.abcd.noindex/stop-log.jsonl.
+A run reads the folder it started under whatever the setting says, and the platform's
+shared folder for the account it expects; a setting that has gone or changed during a run
+holds that run until it is put back. A stop this lift cannot reach is named.
+A run that let its claims go stays halted after the lift until a session runs
+`abcd implement resume --take <run-id>`, which reserves the work again first.
+
+It is the person's own act: the guard's rule refuses it to an agent, and it refuses a
+caller with no terminal or under a host session. Exit 2 on a refusal, with nothing changed: no terminal, a
+file at the stop's path no run would honour, or a folder the stop cannot rest on.
+Where it cannot tell whether a host session is above it, a stop is still set, and a
+lift is refused and asks to be run again.
+No network request.
+
+**Flags:**
+
+```
+      --lift   lift the stop; a halted run then waits for a take-over (abcd implement resume --take)
+```
+
+**Example:**
+
+```
+abcd implement stop
 ```
 
 #### `abcd implement widen`
@@ -4032,7 +4329,7 @@ Push a branch whose preflight passed and queue its pull request: Writes a push t
 **Usage:** `abcd land [<branch>] [flags]`
 
 abcd land [<branch>] [--no-push] [--no-enqueue]
-abcd land [<branch>] --record-review <return> --record-review <return> [...]
+abcd land [<branch>] --record-review <return> --record-review <return> [...] [--rests-on <base>]
 abcd land [<branch>] --approve
 
 Land a branch whose work is committed: the checkout's current branch, or the one
@@ -4071,7 +4368,15 @@ credentials, so run it only on a branch whose content you trust.
      gate allows it, pinned to the head: into the merge queue by its method where
      one gates the default branch (then confirmed in the queue), otherwise as the
      forge's auto-merge (a merge commit; a forge that refuses it is said). An
-     arming someone else made is left as it is. With no pull request it composes
+     arming someone else made at a head the gate arms is left as it is. Where a merge
+     queue gates the
+     default branch, a branch that shares a commit not on it with another pull
+     request queued or armed into it (a branch cut from that one's) is not armed:
+     the step stops naming it, since the queue would remove this one; run abcd land
+     again after that one merges, or rebase onto the default branch without its
+     commits. One whose head is not in the checkout is fetched from origin by
+     refs/pull/<n>/head to compare, and a listing or head land cannot read arms
+     nothing. With no pull request it composes
      the body from the branch's commits (each subject, their Refs:, Resolves: and
      Delivers: lines, abcd's own Assisted-by label and the models their
      Assisted-by: lines name) into the checkout's .abcd/.work.local/ where it has
@@ -4115,20 +4420,60 @@ this clock holds from when this checkout first saw it; one this checkout cannot
 keep that sighting for (no .abcd/.work.local/) is not counted, and a notice
 line on stderr names it.
 
+A person's stop (abcd implement stop) holds a landing: it is read before anything
+runs, again after the gate and again at the arming, and while one holds, or a read
+cannot tell whether one does, nothing more is pushed, armed or queued. --approve and
+--record-review land nothing and are not held, and a landing with both acts off does
+nothing for a stop to hold.
+
+Before a push that will move the head of the branch's armed or queued pull request,
+land withdraws the arming, reads it back and says so. Where the merge gate refuses
+the local head, land withdraws this account's arming at it and refuses over another
+account's. Where it cannot make a withdrawal, it refuses, nothing pushed.
+
 Exit 0 when every step did its act or said why it stopped. Exit 2 on a refusal,
 which names what was done before it; reservations that cannot be fetched are
 one, and so is an announcement that cannot be published, each made before
 anything is pushed. Exit 3 when a release being cut holds the
-landing: it names the release, its holder and until when.
+landing: it names the release, its holder and until when; and when a stop holds it,
+naming who set it and when, or a read cannot tell whether one does, saying why.
 
 --record-review records the review pair's verdicts for the branch's head and
 lands nothing: given once per reviewer's return (at least two, no two the
-same), each naming the head's first nine characters under one ### Verdict
-heading, it writes the head's review receipt in
+same), each with a first line reading Reviewed head: <name>, naming the head by at
+least its first nine characters, and one ### Verdict heading and no other line opening a verdict, qualified or not, fenced or not,
+where the first line under the heading opens with the verdict (SHIP, APPROVE, FIX
+FIRST, BLOCK or NEEDS-INPUT) and names the head by
+its full object name (**SHIP** <full name>, or a Head: <full name> line directly
+under the heading), it writes the head's review receipt in
 .abcd/.work.local/review-receipts/ when every verdict passes the stop rule
 (SHIP or APPROVE: no critical or major finding). A return that does not pass is
 refused naming it, exit 2, and nothing is written. It takes no --no-push or
---no-enqueue.
+--no-enqueue. A receipt recorded before a verdict named its head does not count at
+the merge gate or as a delta's base: its returns are not kept, so it cannot be read
+again, and the head records its pair again.
+
+--rests-on <base> makes that a delta review, of a wording fix after a full pair: the
+head's receipt rests on the full pair recorded for <base>, a
+full object name, and each return's first line reads exactly Reviewed delta:
+<base>..<head> in place of the head's, with no Reviewed head: line, its verdict still
+naming the head in full. It is refused, and the head needs a full pair, unless the base
+has a full pair (a delta's receipt is not one), the head descends from it, and the
+branch's own commits since it change only plain text markdown files of mode 100644
+under docs/explanation/, docs/how-to/, docs/tutorials/, .abcd/development/plans/,
+.abcd/development/roadmap/, .abcd/work/issues/resolved/ or .abcd/work/issues/wontfix/,
+at most 30
+lines, 3 files and 64 KiB of patch. Every changed line is wording alone: letters,
+digits and a sentence's punctuation, naming no record and no file, holding no code
+or tool's marker and no invisible character, outside any code fence and any ledger
+record's grounds. No part of such a path may start with a dot or begin as an instruction file's
+name does, every file keeps its frontmatter byte for byte, and no file is added,
+removed or moved. Any other path needs a full pair, as code, open issues, decisions,
+intents, specs, the brief and the ADRs always do, and so does a corrected id. A merge
+of a default-branch commit counts for nothing when it is exactly
+the merge git makes of its parents with no conflict; any other merge is
+refused. The merge gate asks all of this again at landing. Without --rests-on, a
+return carrying a Reviewed delta line is refused.
 
 --approve records the technical facilitator's approval of the branch's head and
 lands nothing: it writes .abcd/.work.local/approvals/<head>, which the merge
@@ -4143,6 +4488,7 @@ author's approval of their own): the shell guard refuses it to an agent.
       --no-enqueue                  do not arm or queue the pull request this run
       --no-push                     do not push the branch this run; print the push command instead
       --record-review stringArray   record the review pair's verdicts for the branch's head from this reviewer's return (give it once per return, at least two); lands nothing
+      --rests-on string             make --record-review a delta review resting on the full pair recorded for this commit, given by its full object name; each return also states Reviewed delta: <base>..<head>
 ```
 
 ### `abcd launch`
@@ -4738,6 +5084,14 @@ The away mode grants no rights: the person's own standing instruction decides
 what is committed, pushed, and opened or merged as a pull request. It ends at its
 time or with `abcd mode back`; a prompt never ends it. Setting it again keeps
 whatever is queued or recorded and not yet read.
+
+Setting it from a session whose setting reads as off a profile prints one line on stderr opening
+WARNING:, after the set, naming what abcd cannot check and addressed to the person. The mode is set and
+the exit code is the same either way: it warns and never refuses. abcd reads one setting in the session's environment, and every doubt reads as off a profile, a host
+reporting no such setting included. This reads one setting and proves no wall, and the setting's value
+changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
+separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 The record lives in ~/.abcd.noindex/away/<root-sha>/record.json, keyed on the repository's
 root commit, and is changed under its lock, which only `abcd mode back` goes
@@ -5763,6 +6117,8 @@ Moves the spec to closed/ and, when no open spec still names its intent, moves t
 
 The close that ships an intent also makes its fidelity review owed: it mints an OWED receipt (rcp-…), parks an `<!-- abcd-review: OWED receipt=rcp-… -->` marker in the intent's Audit Notes, and writes the review request to `.abcd/.work.local/reviews/<rcp>.request.md`, the input `abcd intent audit ingest` answers. A failed emit is a warning on stderr; the intent ships regardless.
 
+A close that ships an intent first runs issue-drift's check over it: an issue its `related_issues` names that is not in resolved/ refuses the close, naming each one and the ways out, and nothing moves.
+
 In the repository whose brief describes the binary, a close that ships an intent first runs the doc-fidelity gate (`abcd docs fidelity`): a surface no brief chapter names, a missing or stale docs review, or a confirmed false sentence refuses the close, and nothing moves. A close that ships no intent, a --remainder close included, still refuses a surface no brief chapter names, and needs no docs review.
 
 **Flags:**
@@ -5809,6 +6165,27 @@ verified when the forge names the branch's owner, doubtful when it names
 someone else, and claimed when the forge cannot say or an app pushed it. A
 branch named by a holder id names no account the forge's record could
 match, so it is not asked about and its senders stay claimed.
+
+A repository that names a workflow a schedule runs on its default branch
+(status.scheduled_workflow in the .abcd/config.json at that branch's tip, the
+file's name, such as nightly.yml) has that workflow's latest scheduled verdict
+read too: after a fetch that succeeded it asks the forge (gh api) within five
+seconds for the latest completed scheduled runs and keeps what they say in the
+machine's store for the repository, which every checkout of it reads; the
+prompt hook does the same in the background when that answer is an hour old. A
+run that concluded failure, timed_out or startup_failure is named in one line
+with its URL and age, here and once to each session at a prompt, until a run
+that succeeds replaces it. A latest run that concluded cancelled, skipped or
+neutral, which is how a job past its time limit arrives, is not called a failure:
+it has a line of its own naming it and the last verdict, until a verdict
+replaces it. A green is silent while it is recent for the workflow's own cycle,
+and past that one line says no verdict has been reached. An answer that is
+missing or more than two days old, or due after a refresh that failed or, some
+hours on, kept nothing, says the state is unknown, naming the last successful
+ask; an answer that only aged through an idle night says nothing, and the next
+prompt carries what the refresh found. None of this changes an exit. With no
+such key nothing is asked, kept or shown; a key that could not name a workflow's
+file, and a config that could not be read here, each say so.
 
 An announcement stands for its life from when this checkout first fetched it,
 not by the sender's clock. One whose sender is not its branch's owner, one
@@ -5897,8 +6274,9 @@ trusted root, pinned to intentdriven/abcd's release.yml on main and to
 the commit the release tag names), and swaps the
 PATH-installed copy atomically. A binary whose provenance cannot be
 verified, offline included, is refused with the way to install it by hand;
-nothing is swapped unverified. The verb is the only ask: abcd
-never checks for or applies updates on its own (adr-38). A plugin-root
+nothing is swapped unverified. The verb is the only ask, but for a drive whose
+yes named the check (abcd drain --drive): abcd otherwise never checks for or
+applies updates on its own (adr-38). A plugin-root
 binary, the dev shim, and package-manager installs are refused with the
 command that owns them. The file being replaced must be provably abcd's:
 the binary running the command, an install ~/.abcd.noindex/path-entry records, or

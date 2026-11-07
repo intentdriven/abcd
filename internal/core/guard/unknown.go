@@ -1746,11 +1746,14 @@ func sitesNamed(s segment, name string) []arrival {
 // operand.
 type operandWant struct {
 	sub, sub2 string
-	min       int
-	prefixes  []string
-	paths     []PathArg
-	values    []string
-	shapes    []string
+	// subNamed reads a word that is nothing but substitutions as no subcommand
+	// (Pattern.SubcommandNamed).
+	subNamed bool
+	min      int
+	prefixes []string
+	paths    []PathArg
+	values   []string
+	shapes   []string
 	// prefixLiteral reads each prefix from the operand's text before its
 	// first substitution (knownLead) instead of its known text
 	// (Pattern.ArgPrefixesLiteral).
@@ -1809,15 +1812,16 @@ func operandAcceptance(tokens []string, spelled map[int][]string, varLead map[in
 				hits |= 1 << (len(want.prefixes) + len(want.paths))
 			}
 			for j, shape := range want.shapes {
-				if shape == ShapeUnguardedVariablePath && varLead[i] {
+				if (shape == ShapeUnguardedVariablePath && varLead[i]) || (shape == ShapeForgeRefPath && forgeRefPathCouldBe(a)) {
 					hits |= 1 << (len(want.prefixes) + len(want.paths) + nv + j)
 				}
 			}
 		}
 		for k := 0; k <= need; k++ {
+			named := !want.subNamed || !vanishable(a)
 			operand := r.operand &&
-				!(k == 0 && want.sub != "" && !operandIs(a, want.sub, glob(i))) &&
-				!(k == 1 && want.sub2 != "" && !operandIs(a, want.sub2, glob(i)))
+				!(k == 0 && want.sub != "" && !(named && operandIs(a, want.sub, glob(i)))) &&
+				!(k == 1 && want.sub2 != "" && !(named && operandIs(a, want.sub2, glob(i))))
 			k2 := k + 1
 			if k2 > need {
 				k2 = need

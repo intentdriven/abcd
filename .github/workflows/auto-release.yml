@@ -15,6 +15,7 @@ name: auto-release
 # rebuild the same refused commit on every later push (iss-2608231226347380,
 # the residual of adr-52). A refused gate now leaves no tag, the version stays
 # free, and the next push to the default branch retries.
+# release.yml also runs its macOS suite beside verify, and the tag waits on both.
 #
 # Only the NEWEST dated version is ever tagged: older CHANGELOG versions are left
 # alone, because tagging them at the current HEAD would mis-point an immutable

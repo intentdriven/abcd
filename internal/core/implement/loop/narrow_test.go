@@ -77,7 +77,14 @@ func newNarrowFixture(t *testing.T) *narrowFixture {
 // found_at, and the footprint its reservation names, given.
 func newNarrowFixtureAt(t *testing.T, foundAt, reserved string) *narrowFixture {
 	t.Helper()
-	first, w := builtOnce(t, worldKey("newNarrowFixtureAt", foundAt, reserved), func(w *fixtureWorld) DrainResult {
+	return newNarrowFixtureLinking(t, foundAt, reserved, "")
+}
+
+// newNarrowFixtureLinking is newNarrowFixtureAt with a file at link, when set, whose
+// link to the documentation issue's record the landing's move repoints.
+func newNarrowFixtureLinking(t *testing.T, foundAt, reserved, link string) *narrowFixture {
+	t.Helper()
+	first, w := builtOnce(t, worldKey("newNarrowFixtureAt", foundAt, reserved, link), func(w *fixtureWorld) DrainResult {
 		repo := briefRepo(t, agentsMarked)
 		repo.Write("docs/guide.md", "the guide\n")
 		repo.Write("docs/page.md", "the page\n")
@@ -85,6 +92,9 @@ func newNarrowFixtureAt(t *testing.T, foundAt, reserved string) *narrowFixture {
 		issueRepoRule(t, repo)
 		fileIssueAt(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, "AGENTS.md")
 		fileIssueAt(t, repo, secondIssue, capture.SeverityMinor, capture.Category("documentation"), "Name the flag in the page.", foundAt)
+		if link != "" {
+			repo.Write(link, "See [the issue](.abcd/work/issues/open/"+secondIssue+"-renderer.md).\n")
+		}
 		repo.Commit("the ledger")
 		asPat(t, repo)
 		asPatInEnv(t)
@@ -230,7 +240,7 @@ func (f *narrowFixture) toLand(t *testing.T) {
 		}
 		if a := l.awaiting(); a != nil && pass[a.Role] != "" {
 			path := filepath.Join(f.repo.Root(), filepath.FromSlash(a.Receipt))
-			if err := os.WriteFile(path, []byte(pass[a.Role]), 0o600); err != nil {
+			if err := os.WriteFile(path, []byte(statingHeadAt(t, f.repo.Root(), f.runID, a.Receipt, pass[a.Role])), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := Receipt(f.repo.Root(), f.runID, path, f.stages, Options{}); err != nil {

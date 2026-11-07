@@ -218,3 +218,103 @@ func TestPlanRefusesASlugFieldThatDisagrees(t *testing.T) {
 		t.Fatalf("a refused run changed the tree:\n%s", s)
 	}
 }
+
+// TestPlanReachesADecisionOverTheCap: record_slug_cap judges a decision, so the
+// tool that puts a repository right takes a decision too, and a reference to one
+// follows it.
+func TestPlanReachesADecisionOverTheCap(t *testing.T) {
+	root := t.TempDir()
+	const (
+		long  = "a-decision-whose-slug-runs-well-past-the-cap-it-is-held-to"
+		short = "a-decision-whose-slug-runs-well-past-the"
+		old   = ".abcd/work/decisions/dcn-2610100000000002-" + long + ".md"
+		moved = ".abcd/work/decisions/dcn-2610100000000002-" + short + ".md"
+	)
+	for rel, body := range map[string]string{
+		old:         "---\nid: dcn-2610100000000002\nslug: " + long + "\ndate: 2026-10-10\n---\nDecided.\n",
+		"AGENTS.md": "See .abcd/work/decisions/dcn-2610100000000002-" + long + ".md for it.\n",
+	} {
+		abs := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git(t, root, "init", "-q")
+	git(t, root, "add", "-A")
+	git(t, root, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "fixture")
+
+	rep, err := run(root, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Plan) != 1 || rep.Plan[0].OldRel != old || rep.Plan[0].NewRel != moved || rep.Renamed["dcn"] != 1 {
+		t.Fatalf("the run renames the decision: %+v", rep)
+	}
+	if got := read(t, root, moved); !strings.Contains(got, "slug: "+short+"\n") {
+		t.Fatalf("the slug field follows the name:\n%s", got)
+	}
+	if got := read(t, root, "AGENTS.md"); !strings.Contains(got, moved) {
+		t.Fatalf("a reference follows the name:\n%s", got)
+	}
+	for applied, word := range map[bool]string{true: "renamed 1 record(s)", false: "1 record(s) would be renamed"} {
+		var out bytes.Buffer
+		printReport(&out, rep, applied)
+		if !strings.Contains(out.String(), word) || !strings.Contains(out.String(), "dcn 1") {
+			t.Errorf("the report's line counts the decision: %s", out.String())
+		}
+	}
+}
+
+// TestARefusedCapIsMaskedOnAWholeRun: the cap's refusal quotes the repository's
+// config, so a control byte there reaches the terminal unless the error line masks
+// it. The attack rune is written as a JSON escape, so this file carries none.
+func TestARefusedCapIsMaskedOnAWholeRun(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "record-slug-rename")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("building the tool: %v\n%s", err, out)
+	}
+	root := fixture(t)
+	if err := os.WriteFile(filepath.Join(root, ".abcd", "config.json"), []byte(`{"records": {"x\u001b[31my": 1}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(t, root, "add", "-A")
+	git(t, root, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "a config")
+
+	run := exec.Command(bin, "-root", root)
+	run.Env = gittest.Env(t)
+	var stderr bytes.Buffer
+	run.Stderr = &stderr
+	if err := run.Run(); err == nil {
+		t.Fatalf("a refused cap ran: %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "record-slug-rename:") || !strings.Contains(stderr.String(), "records.x") {
+		t.Fatalf("the refusal is not the cap's: %q", stderr.String())
+	}
+	if strings.ContainsRune(stderr.String(), 0x1b) {
+		t.Errorf("the error line carries a raw escape: %q", stderr.String())
+	}
+}
+
+// The report's paths and slugs come from the repository's file names and contents,
+// so a control byte there is masked. The attack rune is built numerically, so this
+// file carries none.
+func TestTheReportMasksWhatItPrints(t *testing.T) {
+	esc := string(rune(0x1b))
+	rep := Report{
+		Plan:      []rename{{OldRel: "old" + esc + ".md", NewRel: "new" + esc + ".md"}},
+		Leftovers: []Leftover{{File: "left" + esc + ".md", Line: 1, Slug: "slug" + esc, Why: "a reason"}},
+	}
+	for _, applied := range []bool{true, false} {
+		var out bytes.Buffer
+		printReport(&out, rep, applied)
+		if strings.Contains(out.String(), esc) {
+			t.Errorf("the report carries a raw escape (applied %v): %q", applied, out.String())
+		}
+		if !strings.Contains(out.String(), ".md") {
+			t.Errorf("the report lost its paths: %q", out.String())
+		}
+	}
+}

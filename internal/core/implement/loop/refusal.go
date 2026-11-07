@@ -30,6 +30,8 @@ type Refusal struct {
 	// invocation, a pause: back off and take other work. The CLI maps it to
 	// exit 3, as `abcd implement` does.
 	Contention bool `json:"contention,omitempty"`
+	// Wrote says what the call did before it refused, "" for nothing.
+	Wrote string `json:"wrote,omitempty"`
 	// Checks is every pre-start check's row, when Stage is "check", so a caller
 	// sees the whole picture rather than the first failure.
 	Checks []CheckRow `json:"checks,omitempty"`
@@ -40,16 +42,30 @@ type Refusal struct {
 	// probe a lane waits on, or, at the stage "outage", the give-up with what
 	// the run had done and what is left (iss-2610080620372731).
 	Outage *OutageInfo `json:"outage,omitempty"`
+	// cutShort marks a validator's return refused because its launch reports it
+	// stopped short (runner.Sides.StoppedShort). The verifier reads only the bytes,
+	// and a later hand-in brings no report, so the return is set aside as the role
+	// pauses.
+	cutShort bool
 	// unjudged is each peer a start's peers check could not read, copied from
 	// its row: the drain stops its move on them rather than passing the issue
 	// over as contended.
 	unjudged []peers.Peer
+	// handBack marks a step's refusal of a standing receipt that hands its lane
+	// back (handIn): the step says so in its own words (collectStanding).
+	handBack bool
 	// checkWait is when a landing began waiting for its full check (ruling
 	// DR6d-2): the call that finds the wait writes it on the lane once.
 	checkWait time.Time
 	// outage is the lost connection a stage met, which the call records in
 	// the shared run once the tier lock is released.
 	outage *outageReport
+	// modeUnread marks a merge gate whose facilitator.mode could not be read: for
+	// an armed lane's watch that is a wait, the arming left as it is.
+	modeUnread bool
+	// gateUnread marks a merge gate that could not read what it asks at the
+	// arming: a wait by design, asked again on a later turn (stuck.go).
+	gateUnread bool
 	// originUnread marks a land fence that could not read the reservation
 	// from origin: a wait by design, never logged on a drain's lane
 	// (stuck.go).
@@ -63,6 +79,10 @@ type Refusal struct {
 	// reservation now another person's. A drain hands a lane refused so back
 	// at once (stuck.go).
 	final string
+	// recordMoved marks a drain's resume refused because the issue's record changed since
+	// the run let it go: the caller drops the lane (dropMovedRun), since asking again
+	// meets the same record.
+	recordMoved bool
 	// capped is the holder's live reservations when the refusal is the cap's
 	// (claim.CapError): the drain waits on it rather than refusing its move
 	// (drain_wait.go).

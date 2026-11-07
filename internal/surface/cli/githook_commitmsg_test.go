@@ -220,6 +220,216 @@ func TestCommitMsgHookRefusesAnUndeclaredIssueMention(t *testing.T) {
 	}
 }
 
+// withRecordLint gives an own-repository case the real record_slug_cap judgement:
+// the source the hook builds is a stub, so its cmd/record-lint hands every call to
+// a record-lint built from this checkout.
+func (c *commitMsgHookCase) withRecordLint() {
+	c.t.Helper()
+	built := filepath.Join(c.t.TempDir(), "record-lint")
+	build := exec.Command("go", "build", "-buildvcs=false", "-o", built, "./cmd/record-lint")
+	build.Dir, build.Env = c.root, c.env
+	if out, err := build.CombinedOutput(); err != nil {
+		c.t.Fatalf("building record-lint: %v\n%s", err, out)
+	}
+	shim := fmt.Sprintf(`package main
+
+import (
+	"os"
+	"os/exec"
+)
+
+func main() {
+	c := exec.Command(%q, os.Args[1:]...)
+	c.Stdout, c.Stderr = os.Stdout, os.Stderr
+	if err := c.Run(); err != nil {
+		if e, ok := err.(*exec.ExitError); ok {
+			os.Exit(e.ExitCode())
+		}
+		os.Exit(2)
+	}
+}
+`, built)
+	p := filepath.Join(c.dir, "cmd", "record-lint", "main.go")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		c.t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(shim), 0o644); err != nil {
+		c.t.Fatal(err)
+	}
+}
+
+const (
+	hookLongSlug  = "a-slug-of-forty-one-characters-it-is-long"
+	hookDecisions = ".abcd/work/decisions/"
+	hookLongRel   = hookDecisions + "dcn-2611050000000001-" + hookLongSlug + ".md"
+)
+
+func (c *commitMsgHookCase) makeDecisionsDir() {
+	c.t.Helper()
+	if err := os.MkdirAll(filepath.Join(c.dir, hookDecisions), 0o755); err != nil {
+		c.t.Fatal(err)
+	}
+}
+
+// The hand rename is iss-2611052241331003: a record's slug over the cap reached
+// the commit and was caught by a test minutes later. The hook refuses it before
+// the commit exists, under the repository's own cap.
+func TestCommitMsgHookRefusesARecordSlugOverTheCap(t *testing.T) {
+	c := newOwnRepoHookCase(t)
+	c.withRecordLint()
+	c.makeDecisionsDir()
+	refused, out := c.commitWith(hookLongRel, "docs: a decision\n\nAssisted-by: None\n")
+	if !refused {
+		t.Fatalf("a record slug over the cap was committed\n%s", out)
+	}
+	if !strings.Contains(out, "commit-msg: BLOCKED") || !strings.Contains(out, hookLongSlug) || !strings.Contains(out, "records.slug_cap") {
+		t.Errorf("the refusal does not name the record and the key\n%s", out)
+	}
+	if _, err := c.tryGit("rev-parse", "--verify", "HEAD"); err == nil {
+		t.Errorf("a commit exists after the refusal")
+	}
+
+	// The repository's own figure decides.
+	if err := os.WriteFile(filepath.Join(c.dir, ".abcd", "config.json"), []byte(`{"records": {"slug_cap": 60}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if refused, out := c.commitWith(hookLongRel, "docs: a decision\n\nAssisted-by: None\n"); refused {
+		t.Fatalf("a slug within the repository's cap of 60 was refused\n%s", out)
+	}
+}
+
+// The cap is a rule of the hook's own repository. Run by a global dispatcher for
+// another repository, the hook neither judges that repository's older names nor
+// stops at a config it cannot read there: a plain commit in it is not abcd's to
+// refuse.
+func TestCommitMsgHookLeavesAnotherRepositorysRecordSlugsAlone(t *testing.T) {
+	c := newCommitMsgHookCase(t)
+	c.makeDecisionsDir()
+	if refused, out := c.commitWith(hookLongRel, "docs: a decision\n\nAssisted-by: None\n"); refused {
+		t.Fatalf("a long slug in another repository was refused under this repository's cap\n%s", out)
+	}
+	if err := os.WriteFile(filepath.Join(c.dir, ".abcd", "config.json"), []byte(`{"records": {"slug_cap": 3}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if refused, out := c.commitWith(hookDecisions+"dcn-2611050000000002-short.md", "docs: another\n\nAssisted-by: None\n"); refused {
+		t.Fatalf("a config the other repository holds blocked its commit\n%s", out)
+	}
+}
+
+// A merge is left to the range check for RS004 alone, whose merge message names a
+// branch. What a merge brings in is still added by it, so the cap judges it.
+func TestCommitMsgHookJudgesASlugAMergeBringsIn(t *testing.T) {
+	c := newOwnRepoHookCase(t)
+	c.withRecordLint()
+	c.makeDecisionsDir()
+	if refused, out := c.commitWith("a.txt", "chore: seed\n\nAssisted-by: None\n"); refused {
+		t.Fatalf("seed refused\n%s", out)
+	}
+	c.git("checkout", "-q", "-b", "side")
+	if refused, out := c.commitWith(hookLongRel, "docs: a decision\n\nAssisted-by: None\n", "--no-verify"); refused {
+		t.Fatalf("premise: the side commit failed with the hooks skipped\n%s", out)
+	}
+	c.git("checkout", "-q", "main")
+	out, err := c.tryGit("merge", "--no-ff", "--no-edit", "side")
+	if err == nil || !strings.Contains(out, "commit-msg: BLOCKED") || !strings.Contains(out, hookLongSlug) {
+		t.Fatalf("a merge bringing in a slug over the cap: %v\n%s", err, out)
+	}
+}
+
+// A partial commit (`git commit <path>`) is judged through git's temporary index,
+// so what the main index holds and the temporary one does not is not this commit's,
+// and what the temporary one holds and the main index does not is.
+func TestCommitMsgHookReadsTheCommitsOwnIndex(t *testing.T) {
+	c := newOwnRepoHookCase(t)
+	c.withRecordLint()
+	c.makeDecisionsDir()
+	if refused, out := c.commitWith("a.txt", "chore: seed\n\nAssisted-by: None\n"); refused {
+		t.Fatalf("seed refused\n%s", out)
+	}
+	msg := filepath.Join(t.TempDir(), "msg")
+	if err := os.WriteFile(msg, []byte("docs: a change\n\nAssisted-by: None\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Staged in the main index, and not in this commit.
+	if err := os.WriteFile(filepath.Join(c.dir, hookLongRel), []byte("a decision\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c.git("add", hookLongRel)
+	if err := os.WriteFile(filepath.Join(c.dir, "a.txt"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := c.tryGit("commit", "-q", "-F", msg, "a.txt"); err != nil {
+		t.Fatalf("a partial commit was judged on a record it does not carry: %v\n%s", err, out)
+	}
+
+	// In this commit, and only marked in the main index, whose --cached diff is
+	// empty for it.
+	c.git("rm", "-q", "--cached", hookLongRel)
+	c.git("add", "-N", hookLongRel)
+	if staged := c.git("diff", "--cached", "--name-only"); strings.TrimSpace(staged) != "" {
+		t.Fatalf("premise: the main index stages something: %s", staged)
+	}
+	out, err := c.tryGit("commit", "-q", "-F", msg, hookLongRel)
+	if err == nil || !strings.Contains(out, "commit-msg: BLOCKED") {
+		t.Fatalf("a partial commit carrying a slug over the cap: %v\n%s", err, out)
+	}
+}
+
+// A rename onto a long name is judged as the added path it is.
+func TestCommitMsgHookJudgesARenameOntoALongSlug(t *testing.T) {
+	c := newOwnRepoHookCase(t)
+	c.withRecordLint()
+	c.makeDecisionsDir()
+	short := hookDecisions + "dcn-2611050000000001-short.md"
+	if refused, out := c.commitWith(short, "docs: a decision\n\nAssisted-by: None\n"); refused {
+		t.Fatalf("a short slug was refused\n%s", out)
+	}
+	c.git("mv", short, hookLongRel)
+	msg := filepath.Join(t.TempDir(), "msg")
+	if err := os.WriteFile(msg, []byte("docs: rename a decision\n\nAssisted-by: None\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := c.tryGit("commit", "-q", "-F", msg); err == nil || !strings.Contains(out, "commit-msg: BLOCKED") {
+		t.Fatalf("a rename over the cap: %v\n%s", err, out)
+	}
+}
+
+// A copy is a new record too, and copy detection, which a person's git config can
+// turn on, reports it under a status of its own.
+func TestCommitMsgHookJudgesACopyOntoALongSlug(t *testing.T) {
+	c := newOwnRepoHookCase(t)
+	c.withRecordLint()
+	c.makeDecisionsDir()
+	c.git("config", "diff.renames", "copies")
+	short := hookDecisions + "dcn-2611050000000001-short.md"
+	body := strings.Repeat("a decision worth keeping word for word\n", 8)
+	if err := os.WriteFile(filepath.Join(c.dir, short), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c.git("add", short)
+	msg := filepath.Join(t.TempDir(), "msg")
+	if err := os.WriteFile(msg, []byte("docs: a decision\n\nAssisted-by: None\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := c.tryGit("commit", "-q", "-F", msg); err != nil {
+		t.Fatalf("a short slug was refused: %v\n%s", err, out)
+	}
+	if err := os.WriteFile(filepath.Join(c.dir, hookLongRel), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(c.dir, short), []byte(body+"and a line more\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c.git("add", short, hookLongRel)
+	if status := c.git("diff", "--cached", "--name-status"); !strings.Contains(status, "C") {
+		t.Fatalf("premise: git reports no copy:\n%s", status)
+	}
+	if out, err := c.tryGit("commit", "-q", "-F", msg); err == nil || !strings.Contains(out, "commit-msg: BLOCKED") {
+		t.Fatalf("a copy over the cap: %v\n%s", err, out)
+	}
+}
+
 func TestCommitMsgHookPassesADeclaredIssueMention(t *testing.T) {
 	c := newOwnRepoHookCase(t)
 	if refused, out := c.commitWith("a.txt", "fix: the walk behind iss-12\n\nRefs: iss-12\nAssisted-by: None\n"); refused {

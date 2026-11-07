@@ -156,6 +156,14 @@ type Files struct {
 	// (its brief and its receipt), outside the working tree: the approver
 	// lets a removal reach them.
 	runDirs []string
+	// stageHome is the home a walled stage's shell runs under, "" for any other
+	// session; stageProtect and stageDeclared are what it may not write and the
+	// paths its work declares it changes (WithStage).
+	stageHome     string
+	stageProtect  []string
+	stageDeclared []string
+	// stageHarness is the file the run proved, "" when it names none (WithStageHarness).
+	stageHarness string
 }
 
 // WithRunDirs returns f with dirs as the run's own directories, each a clean
@@ -211,6 +219,36 @@ func NewFiles(dir string) *Files {
 		dir = ""
 	}
 	return &Files{dir: filepath.Clean(dir), home: home, path: os.Getenv("PATH"), cdpath: os.Getenv("CDPATH"), cache: map[string]fileRead{}, stats: map[string]statResult{}}
+}
+
+// WithStage returns f reading a line as a walled stage's shell runs it: a word
+// that opens with the home names home, protect are protected wherever they are
+// spelled, and a file that decides how a lane is judged is written only where
+// declared, the paths its work declares it changes, names it. An empty home
+// leaves f as it was.
+func (f *Files) WithStage(home string, protect, declared []string) *Files {
+	if !filepath.IsAbs(home) {
+		return f
+	}
+	f.stageHome, f.stageProtect, f.stageDeclared = filepath.Clean(home), protect, declared
+	return f
+}
+
+// WithStageHarness returns f knowing the harness file its run proved, an absolute path;
+// any other is left out.
+func (f *Files) WithStageHarness(path string) *Files {
+	if filepath.IsAbs(path) {
+		f.stageHarness = filepath.Clean(path)
+	}
+	return f
+}
+
+// shellHome is the directory the shell `~` and an unset line's $HOME name.
+func (f *Files) shellHome() string {
+	if f.stageHome != "" {
+		return f.stageHome
+	}
+	return f.home
 }
 
 // ReadingFrom returns r reading the files a command names from f.
@@ -507,7 +545,8 @@ func (st *shellState) home(rc *readCtx) (string, bool) {
 	if v, ok := st.vars["HOME"]; ok {
 		return v.text, v.ok
 	}
-	return rc.files.home, rc.files.home != ""
+	home := rc.files.shellHome()
+	return home, home != ""
 }
 
 // resolve makes word an absolute, clean path the way the shell opens it, or
@@ -657,7 +696,8 @@ func (st *shellState) valueBefore(rc *readCtx, key string) varVal {
 	case "FPATH":
 		return varVal{text: accountDirs, ok: true}
 	case "HOME":
-		return varVal{text: rc.files.home, ok: rc.files.home != ""}
+		home := rc.files.shellHome()
+		return varVal{text: home, ok: home != ""}
 	case "CDPATH":
 		return varVal{text: rc.files.cdpath, ok: true}
 	}
