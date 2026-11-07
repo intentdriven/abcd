@@ -669,8 +669,15 @@ over each of the run's lanes' own diff.
    and ingests the verdict of the audit that lane took, and for each capture the
    lane's receipts declared fixed it runs `capture resolve` with that commit. It
    commits them on the lane's branch with `Delivers:` (when the close ships the
-   intent) and `Resolves:` trailers, and an `Assisted-by:` naming the model the
-   lane's receipts reported, since the records carry that model's prose. A
+   intent) and `Resolves:` trailers, an `Admitted-by:` naming the rule the run
+   was admitted under (`build <spc-N>`, `build <iss-N>`, or `drain <adr-N>` for
+   a drain's lane, from the `admitted` its state records at the start), and an
+   `Assisted-by:` naming the model the lane's receipts reported, since the
+   records carry that model's prose. A lane with nothing to record still makes
+   this commit, changing no file, under `Assisted-by: abcd:<version>`, so the
+   admission reaches the default branch with the merge; a run whose state names
+   no admission (one started before runs recorded it) is refused here, and is
+   started again. A
    receipt that verified without a model the trailer can name (none, as one
    written before it was required, or one in another form) takes the model the
    runner that ran it reported, or else its file's model, read again, so a corrected receipt file lands without anyone editing the
@@ -694,7 +701,8 @@ over each of the run's lanes' own diff.
 4. It opens the pull request through `gh`, with a body written from the run's
    records and passed through the outbound scrub, then re-reads the body the
    forge holds and strips a session URL or tool footer the harness appended.
-   The body ends with `Assisted-by: abcd:<version>` (abcd wrote its text) and
+   Its trailers carry the records commit's `Admitted-by:` line, and it ends
+   with `Assisted-by: abcd:<version>` (abcd wrote its text) and
    then one `Assisted-by:` per model the lane's receipts reported (the change
    carries their work); a lane whose receipt reports no model is refused before
    the pull request is opened.
