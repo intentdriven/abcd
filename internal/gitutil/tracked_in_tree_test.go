@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -164,7 +165,7 @@ func TestATreeListingAnswersAsTheTwoQuestionsDid(t *testing.T) {
 		}, files: []string{"a.md"}},
 		{name: "a bare repository", top: func(t *testing.T) string {
 			dir := t.TempDir()
-			git(t, dir, "init", "-q", "--bare")
+			gittest.InitBare(t, dir)
 			return dir
 		}},
 		{name: "a repository with no commits", top: func(t *testing.T) string {
