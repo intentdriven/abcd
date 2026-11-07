@@ -14,10 +14,13 @@ tag), verifies the platform binary against the same release's
 signed for it, and swaps the PATH copy atomically, printing a receipt that
 opens with `abcd updated from <old> to <new>` and names the path, origin,
 digest and the provenance signer. abcd never checks for or
-applies updates on its own — this verb reaches the release origin only when
-invoked, as does the one other flag that reaches it, `--fetch-baseline` on
-`launch` and `launch ship`, which downloads a released plugin archive to
-compare against. Its one sub-verb, `news`, fetches and swaps nothing: it says
+applies updates on its own, with one exception the person says yes to: a drive
+(`abcd drain --drive`), whose question names the check, asks the origin about
+once an hour and takes a newer stable release after these same checks and a
+live proof (`commands/drain.md`). Otherwise this verb reaches the release origin
+only when invoked, as does the one other flag that reaches it,
+`--fetch-baseline` on `launch` and `launch ship`, which downloads a released
+plugin archive to compare against. Its one sub-verb, `news`, fetches and swaps nothing: it says
 what an update changed and offers the setup that waits
 ([below](#news--what-an-update-changed-and-the-setup-that-waits)).
 

@@ -35,13 +35,13 @@ type drainOutput struct {
 // `--dry-run` classifies every open issue by the eligibility rule and writes
 // nothing; the bare verb performs one move of the drain run (loop.Drain).
 func newDrainCommand(asJSON *bool) *cobra.Command {
-	var dryRun, takeOver, drive, yes bool
+	var dryRun, takeOver, drive, yes, noSelfUpdate bool
 	var profile string
 	var maxLanes int
-	var pace, subAgents, fixRounds, judgement, skipReason, until string
-	var skip, unskip []string
+	var pace, subAgents, fixRounds, judgement, skipReason, until, afterUpdate string
+	var skip, unskip, updateRefused []string
 	cmd := &cobra.Command{
-		Use: "drain [--drive [--yes] [--until <date>] [--profile <name>]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>]",
+		Use: "drain [--drive [--yes] [--until <date>] [--profile <name>] [--no-self-update]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>]",
 		Long: "Work the open issue ledger unattended: fix the issues that need no decision, and\n" +
 			"hand the rest back by kind. Which issues need no decision is this repository's own\n" +
 			"recorded decision: an accepted decision record whose frontmatter carries the four\n" +
@@ -127,6 +127,27 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"that resumes it. A second kills the running agent's process group and exits at once\n" +
 			"(exit 130), naming when the reservation lapses. Without --drive a drain is one move,\n" +
 			"as below.\n\n" +
+			"A drive on a release binary takes each newer stable release of abcd itself, on the yes\n" +
+			"that names this: at a lane boundary, at most about once an hour, it asks the release\n" +
+			"origin for its latest release, the one request a drive makes on its own\n" +
+			"(adr-2611062149324491, proposed), and a newer one goes through what `abcd update`\n" +
+			"holds a swap to, into a staging file beside the binary, then a read-only `drain\n" +
+			"--dry-run`, then the live launch a drive proves itself with, before the binary is\n" +
+			"touched. Then it swaps the binary, keeps the previous one beside it as .abcd.previous,\n" +
+			"and starts itself again, asking nothing and going on from the drain's own state with\n" +
+			"the cap, pace and skips it holds, in one line naming both versions. A release that fails the checks or\n" +
+			"the live launch is said once and is not taken again in this run, and the drive goes on\n" +
+			"with the one it has; a read-only run that fails is said once per reason and tried again\n" +
+			"at later checks; and a network fault, a rate limit or a timeout while fetching it, and a limit or an\n" +
+			"outage met during the live launch, are no verdict on it, and the next check tries it\n" +
+			"again, with one line each time. A release that starts and cannot go on is tried again for\n" +
+			"about three minutes, and if it still cannot, before its first move, it goes back\n" +
+			"to the kept copy, which carries on and does not try that release again. --no-self-update\n" +
+			"turns all of this off. A source build, a plugin root's binary, a package manager's and\n" +
+			"the track-latest shim never self-update, and the question says so. A drive still\n" +
+			"compares the binary and the settings with what it started on before every stage, so a\n" +
+			"swap ends any other drive on this account, whatever flags that other drive has, and a\n" +
+			"start that may take a release says so in a line.\n\n" +
 			"--take-over moves your own live reservation of an issue from another copy to this one\n" +
 			"as the move reaches it, as `abcd build --take-over` does: a hosted session that\n" +
 			"restarted lost its local tier, so its new copy reads its own reservations as another\n" +
@@ -276,6 +297,14 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd drain: --yes answers --drive's one question, and this is no drive; add --drive or leave it out (nothing written)"}
 			case cmd.Flags().Changed("until") && !drive:
 				return &exitError{Code: 2, Msg: "abcd drain: --until bounds a run that waits, and only --drive waits; add --drive or leave it out (nothing written)"}
+			case cmd.Flags().Changed("no-self-update") && !drive:
+				return &exitError{Code: 2, Msg: "abcd drain: --no-self-update turns off what only --drive does; add --drive or leave it out (nothing written)"}
+			case cmd.Flags().Changed("after-update") && afterUpdate == "":
+				return &exitError{Code: 2, Msg: "abcd drain: --after-update is a drive's own, and is empty, which names no release (nothing started, nothing reserved)"}
+			case cmd.Flags().Changed("after-update") && !drive:
+				return &exitError{Code: 2, Msg: "abcd drain: --after-update is a drive's own, and this is no drive (nothing written)"}
+			case cmd.Flags().Changed("update-refused") && !drive:
+				return &exitError{Code: 2, Msg: "abcd drain: --update-refused is a drive's own, and this is no drive (nothing written)"}
 			case cmd.Flags().Changed("profile") && !drive:
 				return &exitError{Code: 2, Msg: "abcd drain: --profile names what a drive runs on, and this is no drive; add --drive or leave it out (nothing written)"}
 			case cmd.Flags().Changed("profile") && profile == "":
@@ -285,12 +314,21 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			case drive && (dryRun || cmd.Flags().Changed("judgement")):
 				return &exitError{Code: 2, Msg: "abcd drain: --drive makes every move and judges through the runner itself, so it takes no --dry-run and no --judgement (nothing written)"}
 			case drive:
-				bound, err := parseDriveUntil(until, time.Now())
-				if err != nil {
+				f := driveFlags{yes: yes, maxLanes: maxLanes, takeOver: takeOver, profile: profile, noSelfUpdate: noSelfUpdate,
+					afterUpdate: afterUpdate, refused: updateRefused, self: driveSelfUpdateSteps.target(),
+					skips: drainSkips{skip: skip, reason: skipReason, unskip: unskip}}
+				if err := driveResumeRefused(repoRoot, f); err != nil {
 					return err
 				}
-				f := driveFlags{yes: yes, maxLanes: maxLanes, takeOver: takeOver, profile: profile, until: bound,
-					skips: drainSkips{skip: skip, reason: skipReason, unskip: unskip}}
+				// A bound that passed while the run moved onto this binary is the loop's to
+				// end the run on, not a refusal of a start the run has already made.
+				now := time.Now()
+				if f.resuming() {
+					now = time.Time{}
+				}
+				if f.until, err = parseDriveUntil(until, now); err != nil {
+					return err
+				}
 				if cmd.Flags().Changed("pace") {
 					f.pace = &pace
 				}
@@ -334,6 +372,14 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().BoolVar(&yes, "yes", false, "with --drive: the scripted yes to its one question")
 	cmd.Flags().StringVar(&profile, "profile", "", "with --drive: the profile directory to run on, by name; needed when there are several")
 	cmd.Flags().StringVar(&until, "until", "", "with --drive: end the run at this time, a date or an RFC 3339 instant, and wait through limits, outages and stuck queues until then; the default is eight hours on each wait")
+	cmd.Flags().BoolVar(&noSelfUpdate, "no-self-update", false, "with --drive: take no new release of abcd during the run, and ask the release origin nothing")
+	cmd.Flags().StringVar(&afterUpdate, "after-update", "", "a drive's own, passed when it re-executes itself onto a release: <from>=<to>")
+	cmd.Flags().StringArrayVar(&updateRefused, "update-refused", nil, "a drive's own, passed when it goes back from a release that could not start")
+	for _, hidden := range []string{"after-update", "update-refused"} {
+		if err := cmd.Flags().MarkHidden(hidden); err != nil {
+			panic(err)
+		}
+	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show every open issue's disposition and the order a drain takes them; writes nothing")
 	cmd.Flags().IntVar(&maxLanes, "max", 0, "cap the lanes this drain opens; the default is all")
 	cmd.Flags().StringVar(&pace, "pace", "", "the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer")

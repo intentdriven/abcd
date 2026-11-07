@@ -39,12 +39,15 @@ their own shell. abcd never reads, stores or forwards that login. The directory'
 harness's own attribution, off, and nothing else. A harness update during the run
 carries on only where the new file is signed by the team the start verified, and passes one
 more short launch before the next stage: then one line says what was checked and names the
-old version and the new. Anywhere else the run stops, saying why, with nothing run on the new
-file, and new contents at the file's own path stop it too. That launch shows what a launch
+old version and the new. Anywhere else the run stops, saying why, with no stage run on the new
+file, and new contents at the file's own path stop it too, but for a start tried again, which
+holds them to that team and proves them. That launch shows what a launch
 holds, not who wrote the file. A file gone for a moment is waited for. A new file has three
 tries, minutes apart, across its signature and that launch, before the run ends at that
 check, exit 2, naming it; another team's file, or a start that read no team, stops it at
-once. A credential variable the harness would bill through, set in the environment,
+once, except that outside a start tried again, while the file the run proved still stands, a
+link moved to such a file only holds a waiting release back, with one line saying so, and the
+run carries on. A credential variable the harness would bill through, set in the environment,
 refuses the start, naming `itd-2611011230226453`.
 
 **Two subscriptions, two directories.** With one directory there the drive runs on it.
@@ -68,7 +71,8 @@ another checkout, whose runs are its own, or take the run over from a session of
 (`abcd implement resume --take <run-id>`). A run that names no profile goes on, says so,
 and takes the profile that drove it. One drive holds a checkout at a time, so two at once
 take two checkouts; each reserves on origin as any drive does, so they never hold the same
-issue, and their preflights queue at the one load gate.
+issue, and their preflights queue at the one load gate. One that moves to a new release
+ends the other, as the drive's release section says.
 
 A session started by hand with `CLAUDE_CONFIG_DIR` set to either directory reads as on a
 profile. No abcd command starts one, and a drive that starts later on that directory
@@ -102,6 +106,68 @@ hand-in refuses that run until you discard its lanes (`abcd implement step --run
 
 It prints one line per step and logs them under `.abcd/.work.local/logs/`. It ends
 at the cap, when nothing is eligible, at the bound below, or on a stop.
+
+**A new release during the run.** The yes covers one more thing, and the question says so
+on a line of its own: about once an hour, at a lane boundary and never during a stage, the
+drive asks the release origin for its latest release. A lane still in progress after a refused
+step, and a judgement still in hand, put the check off until they have ended, for an hour at
+most: a wait line says so once, and past that the check runs beside them, renewing what the run
+holds. What the run held back is still named at its end after a move. A newer stable one
+is fetched into a staging file beside the installed binary, through the checks
+`abcd update` makes. Then the staged binary has to accept the arguments the drive would
+restart it with and answer a read-only `abcd drain --dry-run --json` with a plan, within
+two minutes, and serve as the approver and the hooks of the live launch that proved the
+drive. Only then does it replace the installed binary, the previous one kept beside it as
+`.<name>.previous`. The drive re-executes itself and goes on from the drain's own state,
+with the same cap, bound, skips and profile, asking nothing and printing
+`abcd updated from <old> to <new>`. What the state holds is not given again, so a change
+made to the pace or the skips since the start stands. A release that fails the checks or the live launch is
+said once and is not taken again in that run, and the drive goes on with the version it has.
+A read-only run that fails is said once per reason and tried again at later checks. A fault that
+says nothing of the release is no verdict on it: a network fault, a server error, a rate
+limit or a timeout while fetching it, and a limit or an outage met during the live launch.
+The next check tries it again, about an hour on, with one line each time. A dead network
+costs one short check an interval and fetches nothing. A harness that moves to a new file around the
+live launch leaves the release for the next check in the same way, since the release goes on with
+no launch of its own: the run proves a new file its team admits before its next stage, and then
+takes it. New contents at the harness's own path, a changed program or a changed machine
+declaration swap nothing, and the check before the next stage ends the run on them.
+
+A resuming start that fails is tried again, three more times over about three minutes, with
+one line each time, since a passing failure says nothing of the release; a stop during those
+attempts or their waits ends the run with nothing restored and nothing launched. An attempt that will be
+tried again says that, and only the last one says how the run ended, in one refusal document
+under `--json`. A rate limit at a resuming start's proof is waited out as one in the loop is,
+for up to eight hours with no bound given, and a wait that ends there exits 3. Each of those attempts proves itself in one live
+launch, and a binary that changed during a wait ends the run, as a check that no longer holds
+does at any point, naming the way back on a release just moved onto. A release that is swapped in and keeps failing
+before its first move, a panic in its start or its first refused move included, verifies the
+kept copy as the release it replaced, restores it and starts it, and the kept copy proves
+itself in one live launch. One line names both versions, and the kept copy carries on and
+does not try that release again. A copy found not to be that release is not restored, nor one
+whose verification still has no answer after about two minutes of asking, one line each try, and if the restore or that start fails the run ends with exit 2 naming the way
+back. A run that has made a move on the new binary and then ends on a failure names it
+too. Going back is then the person's act: the line names the move when the kept copy
+verifies, and otherwise `abcd update <tag>`, then `abcd drain --drive` again. The read-only run comes
+first and catches a release that cannot run at all. Past the re-execution no check reaches a
+binary that fails to load, that panics before its own start code or on another goroutine, or
+that hangs at its start, since nothing outlives the re-execution to see it.
+
+`--no-self-update` turns all of this off and the drive asks the origin nothing; no
+configuration key, variable or repository file turns it on or off. A source build, a plugin
+root's binary, a package manager's and the track-latest shim never self-update, and the
+question says why. The plugin root and its pages are never touched. A failed read-only run keeps that
+release out and never brings one in. The binary and the settings are still compared with
+the start before every stage, so a swap ends any other drive on this account at its next
+comparison, whatever flags that other drive has, and a next start runs the new release. One
+drive to an account is the supported shape while a drive may take a release
+(dcn-2611070019463013), and a start that may take one says so in a line. A second drive on another checkout is not
+refused. `--after-update` and
+`--update-refused` are the drive's own, passed when it re-executes itself; they appear in no
+help text. They are refused outside a drive, with no drain in progress, in an agent's own
+session and on a build that never self-updates. `--after-update` is honoured only for the
+release the running build claims. An attempt after a failed one proves itself, and the kept
+copy is verified before it is restored and proves itself in one live launch.
 
 **The bound.** With no flag each wait has an eight-hour limit: eight hours of runner
 failures, eight hours with nothing moving, a rate limit that outlasts eight hours, or

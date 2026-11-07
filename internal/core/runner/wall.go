@@ -151,6 +151,14 @@ func (e *WallError) Error() string {
 	return fmt.Sprintf("the check %q does not hold: %s", e.Wall, e.Detail)
 }
 
+// HarnessTeamError is a start tried again finding a harness the signing team its run pinned
+// does not admit. Trying once more cannot change that, so it ends the run, as the same
+// finding between stages does.
+type HarnessTeamError struct{ *WallError }
+
+// Unwrap is the wall it stops on.
+func (e *HarnessTeamError) Unwrap() error { return e.WallError }
+
 // The bounds of the walls' two launches.
 const (
 	wallLoginTimeout = 30 * time.Second
@@ -350,7 +358,28 @@ func writeStageFiles(p Profile, bin string) error {
 	harness, _ := starts.admit(Claude, "claude", p.harnessGuards()...)
 	harnessPath, _ := starts.lookPath("claude")
 	var team string
-	if harness != "" {
+	v, again := stagesWritten.Load(p.ShellHome)
+	switch {
+	case again && v.(*stageWritten).harness != "":
+		// A start tried again in this process: reading the team afresh would write whatever
+		// now stands at the name in as the baseline.
+		pin := v.(*stageWritten)
+		team = pin.team
+		if harness != "" && (harness != pin.harness || fileSum(harness) != pin.binaries[harness]) {
+			if err := holdRetriedToTeam(p, harness, team); err != nil {
+				return err
+			}
+		}
+	case p.Began != nil:
+		// A resuming process with no pin of its own yet, a first attempt that pinned no
+		// harness included: what it read as it began stands in for one.
+		team = p.Began.team
+		if harness != "" && (harness != p.Began.harness || fileSum(harness) != p.Began.harnessSum) {
+			if err := holdRetriedToTeam(p, harness, team); err != nil {
+				return err
+			}
+		}
+	case harness != "":
 		team = verifiedTeam(harness)
 	}
 	written := &stageWritten{env: stageEnvFile(p, exports), gitConfig: gitConfig, declared: declaredNow(p), exports: exports, goNote: goNote,
@@ -363,6 +392,17 @@ func writeStageFiles(p Profile, bin string) error {
 	}
 	stagesWritten.Store(p.ShellHome, written)
 	return ResetStageHome(p)
+}
+
+// holdRetriedToTeam is holdToTeam for a start tried again, whose stop ends the run.
+func holdRetriedToTeam(p Profile, harness, team string) error {
+	err := holdToTeam(p, harness, team)
+	var none *NoVerdictError
+	var we *WallError
+	if !errors.As(err, &none) && errors.As(err, &we) {
+		return &HarnessTeamError{WallError: we}
+	}
+	return err
 }
 
 // stageScope opens the folder that holds a stage's files, made if it is absent, through
@@ -690,6 +730,19 @@ func checkWallSettings(p Profile, bin string, harnessToo bool) error {
 // cannot name it: the binary a drive's hooks name.
 func SelfBinary() string { return selfBinary() }
 
+// selfNamer reads the name once, at a drive's start before any swap: on Linux what a process
+// reports for itself follows its file to the kept copy, which a refused re-execution would
+// read as a changed binary in the comparison that goes on after it.
+func selfNamer(read func() (string, error)) func() string {
+	return sync.OnceValue(func() string {
+		p, err := read()
+		if err != nil || !filepath.IsAbs(p) {
+			return ""
+		}
+		return filepath.Clean(p)
+	})
+}
+
 // pinnedTo is l resolving the harness to the file p's start resolved it to, so a walled
 // launch runs the harness the start read and the proof ran, wherever a link has moved
 // since; admit's checks still judge that file before each launch. A start that resolved
@@ -722,6 +775,107 @@ func (w *stageWritten) owesProof() bool {
 func (w *stageWritten) harnessGone() bool {
 	_, err := os.Lstat(w.harness)
 	return errors.Is(err, fs.ErrNotExist)
+}
+
+// PinnedBinary is the digest p's run holds for the binary at path, read at its start, and
+// whether it holds one.
+func PinnedBinary(p Profile, path string) ([sha256.Size]byte, bool) {
+	v, ok := stagesWritten.Load(p.ShellHome)
+	if !ok {
+		return [sha256.Size]byte{}, false
+	}
+	sum, ok := v.(*stageWritten).binaries[path]
+	return sum, ok
+}
+
+// StartPins are what a process began on before any start of it pinned anything: the person's
+// machine declarations and the programs beside the harness, which stands aside here because
+// an update of it is proved, not refused.
+type StartPins struct {
+	home     string
+	declared map[string][sha256.Size]byte
+	binaries map[string][sha256.Size]byte
+	// harness is the file claude resolved to, "" when it resolved to none, harnessSum its
+	// content and team the signing team verified on it: what a start tried again holds a
+	// changed file to when it has no earlier pin of its own.
+	harness    string
+	harnessSum [sha256.Size]byte
+	team       string
+}
+
+// PinStart reads them. It is taken after PinPrograms, which fixes what the names resolve to.
+func PinStart(home string) StartPins {
+	pins := StartPins{home: home, declared: declaredNow(Profile{PersonHome: home}), binaries: binariesNow(SelfBinary(), "")}
+	if harness, err := defaultLauncher().admit(Claude, "claude"); err == nil {
+		pins.harness, pins.harnessSum, pins.team = harness, fileSum(harness), verifiedTeam(harness)
+	}
+	return pins
+}
+
+// Check holds what stands now to them, by resolved path as well as by content: a name that
+// came to resolve to another file is a change.
+func (s StartPins) Check() error {
+	for name, sum := range declaredNow(Profile{PersonHome: s.home}) {
+		if sum != s.declared[name] {
+			return &WallError{WallSettingsFile, abcdhome.Display(name) + " changed while the start waited to try again"}
+		}
+	}
+	now := binariesNow(SelfBinary(), "")
+	for _, path := range slices.Sorted(maps.Keys(now)) {
+		if was, held := s.binaries[path]; !held || was != now[path] {
+			return &WallError{WallSettingsFile, filepath.Base(path) + "'s binary changed while the start waited to try again"}
+		}
+	}
+	for _, path := range slices.Sorted(maps.Keys(s.binaries)) {
+		if _, held := now[path]; !held {
+			return &WallError{WallSettingsFile, filepath.Base(path) + "'s binary changed while the start waited to try again"}
+		}
+	}
+	return nil
+}
+
+// CheckPinnedBinaries holds the binaries to what p's run pinned in this process, before a
+// start tried again pins anything new. The harness stands aside: an update of it is proved,
+// not refused. With no pin there is nothing to hold them to.
+func CheckPinnedBinaries(p Profile) error {
+	v, ok := stagesWritten.Load(p.ShellHome)
+	if !ok {
+		return nil
+	}
+	written := v.(*stageWritten)
+	for path, sum := range written.binaries {
+		if path != written.harness && fileSum(path) != sum {
+			return &WallError{WallSettingsFile, filepath.Base(path) + "'s binary changed while the drive ran"}
+		}
+	}
+	return nil
+}
+
+// HarnessMoved resolves the harness as a start would and reports whether that is anything
+// but the file p's run pinned. Its ordinary update moves a link to a new versioned file and
+// leaves the old one, which nothing else here notices. A different file the run's signing
+// team admits is marked as owing a proof, so the next check before a stage proves and pins
+// it through ReproveHarness. One it does not admit, or with no team to hold it to, marks
+// nothing: a re-proof could only stop a run whose file still stands, and if that file goes
+// the wall rules then. Nor does a name that resolves to nothing mark anything.
+func HarnessMoved(p Profile) bool {
+	v, ok := stagesWritten.Load(p.ShellHome)
+	if !ok {
+		return false
+	}
+	harness, err := defaultLauncher().admit(Claude, "claude", p.harnessGuards()...)
+	if err != nil {
+		return true
+	}
+	written := v.(*stageWritten)
+	if harness == written.harness {
+		return false
+	}
+	if written.team == "" || Signing.Verify(harness, written.team) != nil {
+		return true
+	}
+	markUnproved(p)
+	return true
 }
 
 // HarnessOwed reports whether p's run must prove the harness before a stage starts.
@@ -838,11 +992,12 @@ func tryAgainOrStop(p Profile, harness string, err error) error {
 // spendTry counts one failed try against harness: stop once its tries are spent, until then
 // a wait of the tries' own saying detail.
 func spendTry(p Profile, harness string, stop error, detail string) error {
-	v, ok := stagesWritten.Load(p.ShellHome)
-	if !ok {
-		return stop
+	// A start with nothing pinned yet still has the file's tries, on a record of their own
+	// until a start writes its pin, which begins them afresh.
+	next := stageWritten{}
+	if v, ok := stagesWritten.Load(p.ShellHome); ok {
+		next = *v.(*stageWritten)
 	}
-	next := *v.(*stageWritten)
 	if next.triedFile != harness {
 		next.triedFile, next.failedTries = harness, 0
 	}
@@ -859,14 +1014,18 @@ func spendTry(p Profile, harness string, stop error, detail string) error {
 // team's, stops the run now, since waiting cannot change either. A file with no identity to
 // read, or one that fails verification, may still be being written, and has the file's tries.
 func holdToTeam(p Profile, harness, team string) error {
+	lead := "the harness's name now leads to another file"
+	if v, ok := stagesWritten.Load(p.ShellHome); ok && v.(*stageWritten).harness != "" && v.(*stageWritten).harnessGone() {
+		lead = "the harness the run proved is gone"
+	}
 	if team == "" {
-		return &WallError{WallSettingsFile, "the harness the run proved is gone, and the run holds no signing team to check a new file against, so nothing ran the new file; start the drive again, which proves what is installed now"}
+		return &WallError{WallSettingsFile, lead + ", and the run holds no signing team to check a new file against, so nothing ran the new file; start the drive again, which proves what is installed now"}
 	}
 	if Signing.Verify(harness, team) == nil {
 		return nil
 	}
 	name := safeWord(filepath.Base(harness))
-	stop := &WallError{WallSettingsFile, "the harness the run proved is gone, and " + name + " is not verified as signed by the signing team the run started on, so nothing ran it; look at that install, then start the drive again"}
+	stop := &WallError{WallSettingsFile, lead + ", and " + name + " is not verified as signed by the signing team the run started on, so nothing ran it; look at that install, then start the drive again"}
 	switch read := Signing.Team(harness); read {
 	case "":
 		return spendTry(p, harness, stop, name+" has no signing identity the system can read yet, and nothing has run it")
@@ -1057,6 +1216,29 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 		stagesWritten.Store(p.ShellHome, &next)
 	}
 	return nil
+}
+
+// proveCandidateWall is ProveWall as ProveCandidate reaches it, a seam the tests read
+// the launch's settings through.
+var proveCandidateWall = ProveWall
+
+// ProveCandidate proves a release's binary before anything depends on it: the settings
+// name candidate for the one live launch, it serves as the approver and the hooks, and
+// the settings are put back naming the running binary on every way out, byte for byte
+// what the check before each stage compares against. Only the settings file is written:
+// the running drive's baseline stands. The caller checks the settings before it, as
+// before any stage. A proof that fails leaves the drive as it was.
+func ProveCandidate(ctx context.Context, p Profile, candidate string) (err error) {
+	path := filepath.Join(p.Dir, wallSettingsName)
+	if werr := fsutil.WriteFileAtomic(path, wallSettings(candidate), 0o600); werr != nil {
+		return &WallError{WallSettingsFile, "the file could not be written for the proof"}
+	}
+	defer func() {
+		if werr := fsutil.WriteFileAtomic(path, wallSettings(SelfBinary()), 0o600); werr != nil && err == nil {
+			err = &WallError{WallSettingsFile, "the file could not be put back after the proof"}
+		}
+	}()
+	return proveCandidateWall(ctx, p, candidate)
 }
 
 // onHarnessFile names the file a launch ran and the version it showed, for a wait line.

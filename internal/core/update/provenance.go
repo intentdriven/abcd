@@ -192,7 +192,7 @@ func (g *githubAttestations) verify(tag string, digest []byte) (string, error) {
 	}
 	tm, err := g.trusted()
 	if err != nil {
-		return "", fmt.Errorf("could not load the Sigstore trusted root to verify against: %w", err)
+		return "", &NoVerdictError{Err: fmt.Errorf("could not load the Sigstore trusted root to verify against: %w", err)}
 	}
 	var failures []string
 	for _, b := range bundles {

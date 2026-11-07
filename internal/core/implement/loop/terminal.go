@@ -98,6 +98,25 @@ type TerminalOptions struct {
 	// BeforeStage is called before each move and each step, so before any
 	// stage starts; an error ends the run, TerminalWall. Nil checks nothing.
 	BeforeStage func() error
+	// Resumed says this process goes on with a drive another began, so what that one
+	// held back is this one's to report at its end.
+	Resumed bool
+	// BoundaryCeiling is the longest AtBoundary waits for what the run has in hand; past it
+	// the call runs regardless. Zero sets none.
+	BoundaryCeiling time.Duration
+	// Moved is called after each move the drain makes, before anything else the run
+	// does with it. Nil does nothing.
+	Moved func()
+	// AtBoundary is called once a move has been made and before the next, between stages
+	// and with the checks above just passed: a lane has ended, or a wait has ended before
+	// the next opens. A refused step comes back to the run with its lane still in progress
+	// and reserved, and a judgement holds its issue, so the call stays due until the next
+	// move has settled each, for BoundaryCeiling at most; past that it runs beside them,
+	// and what the run holds is renewed while it does. It always waits for the next move to
+	// take a skip the run gave. It is never called during a stage. It reports whether it
+	// took time, so that the run goes round the stop, the bound and the checks again before
+	// anything starts. Nil does nothing.
+	AtBoundary func(ctx context.Context) bool
 	// Say prints one line, already plain; nil says nothing.
 	Say func(string)
 	// Sleep waits; nil sleeps until the time passes or the stop or the
@@ -179,7 +198,10 @@ type TerminalResult struct {
 type terminal struct {
 	repoRoot string
 	o        TerminalOptions
-	outage   terminalOutageClock
+	// boundaryDue is a move made since the last boundary: the first move of a run
+	// has none before it, since its start has just proved what it runs.
+	boundaryDue bool
+	outage      terminalOutageClock
 	// limit is the outage's schedule run for a rate limit.
 	limit terminalOutageClock
 	last  DrainResult
@@ -234,6 +256,13 @@ type terminal struct {
 	// answer; heldBack names each issue the run held back for that.
 	unanswered map[string]int
 	heldBack   []string
+	// inHand says the last move left the run holding something the boundary must not
+	// outwait: a lane still in progress, or a judgement.
+	inHand bool
+	// heldSince is when a due boundary began to wait for that, and holdToSay that the next
+	// wait's line has yet to say so.
+	heldSince time.Time
+	holdToSay bool
 	// passedOver are the issues said to need a person, each once.
 	passedOver []Excluded
 	// why is what stopped the run, when a check did, and wallEnded the reason a wait
@@ -531,11 +560,16 @@ func (t *terminal) sleep(ctx context.Context, d time.Duration, why string) {
 // stands, so a wait of days shows it is alive and a thirty-second poll is no flood.
 func (t *terminal) sayWait(d time.Duration, why string) {
 	now := t.now()
-	if why == t.lastWhy && now.Sub(t.lastSaid) < terminalSayEvery {
+	if !t.holdToSay && why == t.lastWhy && now.Sub(t.lastSaid) < terminalSayEvery {
 		return
 	}
 	t.lastWhy, t.lastSaid = why, now
-	t.say("waiting %s: %s", d.Round(time.Second), why)
+	held := ""
+	if t.holdToSay {
+		t.holdToSay = false
+		held = fmt.Sprintf("; a new release, if there is one, waits for this, %s at most", t.o.BoundaryCeiling.Round(time.Second))
+	}
+	t.say("waiting %s: %s%s", d.Round(time.Second), why, held)
 }
 
 // renewHeld renews each due reservation of a run in progress, but one a drive
@@ -594,6 +628,9 @@ func (t *terminal) failed(ctx context.Context, judge bool, what string) bool {
 func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 	t.ctx = ctx
 	t.joinSharedRun()
+	if t.o.Resumed {
+		t.reportHeldBack()
+	}
 	for {
 		if ctx.Err() != nil {
 			return t.ended(TerminalKilled), nil
@@ -609,6 +646,19 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		}
 		if !t.wallHeld() {
 			return t.ended(TerminalWall), nil
+		}
+		if t.boundaryDue && t.o.AtBoundary != nil && !t.boundaryHeld() {
+			t.boundaryDue = false
+			t.heldSince = time.Time{}
+			took := false
+			if t.inHand {
+				t.renewing(func() { took = t.o.AtBoundary(ctx) })
+			} else {
+				took = t.o.AtBoundary(ctx)
+			}
+			if took {
+				continue
+			}
 		}
 		t.settleOutage(ctx)
 		t.judge = JudgeOutcome{}
@@ -637,6 +687,11 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 			return t.ended(TerminalRefused), err
 		}
 		t.last = res
+		if t.o.Moved != nil {
+			t.o.Moved()
+		}
+		t.boundaryDue = true
+		t.inHand = res.Judging != nil
 		// What was given once is taken once: the pace, the skips.
 		t.o.Options.Pace, t.o.Options.SubAgents, t.o.Options.FixRounds = nil, nil, nil
 		t.o.Drain.Skip, t.o.Drain.SkipReason, t.o.Drain.Unskip = nil, "", nil
@@ -704,8 +759,58 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		if ended != "" {
 			return t.ended(ended), nil
 		}
+		t.inHand = t.laneInProgress(res.Lane.RunID)
 	}
 }
+
+// boundaryHeld reports whether a due boundary waits: for a skip the run gave and the next
+// move has yet to take, which a process that moved first would drop; and for what the run
+// has in hand, up to the ceiling.
+func (t *terminal) boundaryHeld() bool {
+	if len(t.o.Drain.Skip) > 0 {
+		return true
+	}
+	if !t.inHand {
+		t.heldSince = time.Time{}
+		return false
+	}
+	if t.o.BoundaryCeiling <= 0 {
+		return true
+	}
+	now := t.now()
+	if t.heldSince.IsZero() {
+		t.heldSince, t.holdToSay = now, true
+	}
+	return now.Sub(t.heldSince) < t.o.BoundaryCeiling
+}
+
+// laneInProgress reports whether the lane a step came back from is still going. A state
+// that cannot be read counts as going: the next move says what is wrong with it.
+func (t *terminal) laneInProgress(runID string) bool {
+	run, err := ReadState(t.repoRoot, runID)
+	if err != nil {
+		return true
+	}
+	outcome, _, _ := laneOutcome(run)
+	return outcome == DrainLaneInProgress
+}
+
+// reportHeldBack takes on what the drive this process goes on from held back, which the
+// drain's skip list still holds.
+func (t *terminal) reportHeldBack() {
+	st, _, err := readDrain(t.repoRoot)
+	if err != nil {
+		return
+	}
+	for _, s := range st.Skips {
+		if s.Reason == heldBackReason {
+			t.heldBack = append(t.heldBack, s.Target)
+		}
+	}
+}
+
+// heldBackReason is the reason a run holds an issue back under.
+const heldBackReason = "its judge did not answer"
 
 // holdBack counts one judgement of issue a runner ran that gave no answer, and at
 // the limit has the next move hold it back so the run goes on to other work,
@@ -721,7 +826,7 @@ func (t *terminal) holdBack(issue string) bool {
 	}
 	delete(t.unanswered, issue)
 	t.say("holding %s back: its judge did not answer %d times", issue, terminalJudgeAsks)
-	t.o.Drain.Skip, t.o.Drain.SkipReason = []string{issue}, "its judge did not answer"
+	t.o.Drain.Skip, t.o.Drain.SkipReason = []string{issue}, heldBackReason
 	t.heldBack = append(t.heldBack, issue)
 	t.keepHeldBack(issue)
 	return true
@@ -745,7 +850,7 @@ func heldBackFile(repoRoot string) string {
 
 // keepHeldBack appends the fact to a file of its own.
 func (t *terminal) keepHeldBack(issue string) {
-	line := t.now().UTC().Format(time.RFC3339) + " " + issue + " its judge did not answer\n"
+	line := t.now().UTC().Format(time.RFC3339) + " " + issue + " " + heldBackReason + "\n"
 	if err := fsutil.EnsureRealDirAll(heldBackRoot(t.repoRoot), filepath.ToSlash(filepath.Dir(HeldBackRel)), 0o700); err == nil {
 		f, err := os.OpenFile(heldBackFile(t.repoRoot), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 		if err == nil {

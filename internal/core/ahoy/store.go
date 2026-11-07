@@ -543,6 +543,9 @@ func isDevShimFile(path string) bool {
 	return bytes.HasPrefix(data, devShimPrefix)
 }
 
+// IsDevShim reports whether path is the track-latest dev shim.
+func IsDevShim(path string) bool { return isDevShimFile(path) }
+
 // binTargetKind classifies what currently occupies the PATH target.
 type binTargetKind int
 
