@@ -129,16 +129,25 @@ func TestEverywhereNoteIsRecalledInAnyRepository(t *testing.T) {
 	}
 }
 
-// TestMemoryTakesOnlyWhatTheRulesLeaveOfTheBudget: the recall's budget is
-// what the rules render left of the loader's one per-turn budget; an item
-// that does not fit is not recorded, so it is retried on the next turn.
+// TestMemoryTakesOnlyWhatTheRulesLeaveOfTheBudget: the recall's budget is what
+// the rules render left of the loader's one per-turn budget. An item whose body
+// does not fit comes back as one line and is recorded; with no room even for
+// the line it is not recorded, so it is retried on the next turn.
 func TestMemoryTakesOnlyWhatTheRulesLeaveOfTheBudget(t *testing.T) {
 	big := strings.Repeat("a lesson ", 200) // about 1.8 KiB
 	items := noteItems([]memnote.Note{note("mem-2610111200000001", "Big", strings.TrimSpace(big), "", "test")}, nil)
-	rulesText := strings.Repeat("r", rules.InjectionBudgetBytes-1024)
-	res := Recall(Request{Items: items, Prompt: "the tests", Budget: rules.InjectionBudgetBytes - len(rulesText), Bracket: rules.BracketFresh})
+
+	short := Recall(Request{Items: items, Prompt: "the tests", Budget: 1024, Bracket: rules.BracketFresh})
+	if short.Form("mem-2610111200000001") != FormLine || short.Ledger["mem-2610111200000001"] == "" {
+		t.Fatalf("an item past the remaining budget did not come back as a recorded line: %+v", short)
+	}
+	if strings.Contains(short.Text, "a lesson") {
+		t.Fatalf("the body came back past the budget:\n%s", short.Text)
+	}
+
+	res := Recall(Request{Items: items, Prompt: "the tests", Budget: 10, Bracket: rules.BracketFresh})
 	if res.Text != "" || len(res.Recalled) != 0 || len(res.Ledger) != 0 {
-		t.Fatalf("an item past the remaining budget came back or was recorded: %+v", res)
+		t.Fatalf("an item past even a line came back or was recorded: %+v", res)
 	}
 	if !slices.Equal(res.Omitted, []string{"mem-2610111200000001"}) {
 		t.Fatalf("omitted = %v", res.Omitted)

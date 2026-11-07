@@ -231,7 +231,9 @@ func deleteRefusal(failed, settle []string) payloadSignal {
 func (r Registry) DeleteLesson() string {
 	lead := "Refused by the guard"
 	if r.Disabled {
-		lead = guardOffLead
+		return guardOffLead + " (" + deleteEntryID + "): `git push --delete`, a `:<branch>` refspec, `git branch -D` " +
+			"(or `-d --force`) and `git worktree remove` take with them whatever only that branch or worktree held. " +
+			"Instead: Merge the branch, close its pull request, fetch, or clean and release the worktree first."
 	}
 	sig := deleteRefusal([]string{"its target is not proven safe"}, []string{
 		"Merge the branch, close its pull request, fetch, or clean and release the worktree first.",

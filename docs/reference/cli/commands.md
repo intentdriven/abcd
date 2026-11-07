@@ -5691,7 +5691,7 @@ renders bare and carries "source": "bundled".
 
 A list an override sets replaces the one it would inherit, so an override can
 hold back an entry abcd ships or, in SHELL, one the repository's
-.abcd/guard.json teaches. For the guardrail domains (COMMITTING, LOAD, PII,
+.abcd/guard.json only warns about. For the guardrail domains (COMMITTING, LOAD, PII,
 SHELL), every such recall keyword, alias or rule that an override's list leaves
 out is named on stderr, with the file that set the list, here and on every hook
 prompt. To keep an entry, restate it in the list, or leave the field out to
@@ -5699,12 +5699,18 @@ inherit the list.
 
 SHELL is generated from the shell-hazard registry that "abcd guard" enforces
 in this repository, the bundled entries and the repository's own
-.abcd/guard.json entries alike: one rule per registry entry, naming the
-command, why it is dangerous and what to run instead, recalled by the commands
-the registry names. A rule in the repository's words is marked "(repo)" after
-its entry id. A guard.json the guard refuses is named on stderr and not taught;
-SHELL then teaches the registry the guard enforces in its place. It teaches
-before shell work what the guard refuses at the moment a command runs.
+.abcd/guard.json entries alike, recalled by the commands the registry names.
+Only part of it is sent as shell work starts: a line saying a guard judges each
+command, and the rules of the entries that only warn, since a warned command
+still runs. What it refuses, a delete it cannot prove safe included, is
+explained at the refusal, and this command lists those rules after the rest; --json carries them as
+"checked", with each list's size in "rules_bytes" and "checked_bytes". With the
+guard switched off, every rule is steering, more than one turn holds, so a line
+saying the guard is off is sent and this command lists the rest. A rule in the
+repository's words is marked "(repo)" after its entry id. A guard.json the guard
+refuses is named on stderr and left out; SHELL then lists the registry the guard
+enforces in its place. A new rule a machine can catch in a shell command goes in
+.abcd/guard.json, and any other in .abcd/rules.json.
 
 GRILL is generated from the asking rules every abcd interview follows, every
 limit they state (the header chip's width, the options per question, the words
@@ -5719,10 +5725,12 @@ session: each rule domain it matches, with the recall words that hit, and
 each memory note it recalls from ~/.abcd.noindex/memory.json and .abcd/memory.json,
 and each memory page from .abcd/memory/ and ~/.abcd.noindex/memory/, with its
 layer and the recall words that hit. Each comes back in the form the
-context bracket gives it — a domain in full or as its heading and first
-rule, a note or page in full or as one line — or as not fitting the
-per-turn budget, or as larger than the whole budget, which no turn can
-carry in full. Notes and pages share one ranked order, a BM25F relevance
+context bracket and the per-turn budget give it — a domain in full, as its
+heading and first rule, or as its heading and the command that renders it,
+a note or page in full or as one line — or as not fitting the per-turn
+budget, or as too long for any turn even as one line. The budget sits just under
+what the host keeps of one hook's output, so a domain that does not fit is sent
+short and never cut. Notes and pages share one ranked order, a BM25F relevance
 score that decides which of them fit the budget: each shows its rank and
 score and, under it, every matched term with the fields it was found in
 (recall words, title, body) and what it added to the score. It reads
@@ -5734,7 +5742,8 @@ fill is unknown and it renders the unknown-fill form. The brackets, read as
 the share of the window still free, are the loader's one table:
 
 - fresh (70% or more of the window free): Rules in full; notes and pages in
-  full, in ranked order, within the per-turn budget.
+  full, in ranked order, within the per-turn budget, and one line each
+  within 2 KiB for those that do not fit.
 - moderate (40% to 70% of the window free): Each rule domain as its heading
   and first rule, with a line naming the command that renders the rest; the
   top-ranked notes and pages in full within 8 KiB, the rest as one line

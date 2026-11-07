@@ -19,7 +19,9 @@ recall-matches the prompt against keyword triggers declared in the plugin-bundle
 default domains, the machine's `~/.abcd.noindex/rules.json` and `<repo>/.abcd/rules.json`,
 and injects only the matched domain rules into context — instead of
 force-loading the full ruleset every turn.
-A prompt that matches no domain injects nothing (zero added tokens).
+A prompt that matches no domain injects no rules. Output stays under the host's
+10,000-character cap: a domain that does not fit shrinks to its first rule or the
+command alone, or waits a turn.
 
 - Inspect rules: `abcd rules` renders the active set; `abcd rules <DOMAIN>`
   (case-insensitive) scopes to one domain.
@@ -88,13 +90,11 @@ packages on its own limit behind no whole run, race stages kept apart among
 checkouts with the race gate (one at a time within an account, and across accounts
 all but the window the domain names), and no test stage started under memory
 pressure at or above the person's own floor.
-`SHELL` is the teaching half of the shell-hazard guard: it is generated from the
-same hazard registry `abcd guard` enforces in the repository, one rule per entry
-(the command, why it is dangerous, and what to run instead; a rule from the
-repository's own `.abcd/guard.json` is marked `(repo)`), and recalls on the
-commands the registry names (`rm`, `git push`, `pkill`, …) and on shell work in
-general, so an agent is taught the safe form before a host with hooks would
-refuse the command and a host without hooks still teaches it.
+`SHELL` is generated from the hazard registry `abcd guard` enforces, and recalls on
+the commands it names (`rm`, `git push`, `pkill`, …) and on shell work. Ahead of time
+it sends a line about the guard and the rules that only warn; what the guard refuses,
+an unprovable delete included, reaches the agent at the refusal, and `abcd rules
+SHELL` lists every rule. With the guard off, it sends what fits.
 `GRILL` carries the asking rules every abcd interview follows (one thing at a
 time, the thing being decided quoted in full before the question, options that
 widen rather than recommend); it is generated from the same limits the question
@@ -117,8 +117,8 @@ job.
 
 `SessionStart` and `PreCompact` clear the per-session dedup ledger, so a matched
 domain re-injects on the next prompt (the event-driven refresh that recovers
-after compaction). Within a session a domain that stays in force is never
-re-injected unchanged; one that leaves the active set (deleted, renamed, made
+after compaction). Within a session a domain that stays in force is not
+re-injected unchanged, short of the backstop; one that leaves the active set (deleted, renamed, made
 dormant, or a `*<DOMAIN>` activation the next prompt does not repeat) is
 injected again when it returns.
 

@@ -112,8 +112,9 @@ func ReadMachineRecallPages(home string) ([]RecallPage, []RecallRefusal) {
 // and no more pages, or bytes, than the bounds below. The bounds keep the
 // hook's worst case within its budget; real stores sit far below them.
 const (
-	// maxRecallPageBytes is twice the injection budget (64 KiB): a page past
-	// it can never come back, so its body is never read for ranking.
+	// maxRecallPageBytes bounds what is read for ranking: a page past it can
+	// never come back in full, the turn's budget (rules.InjectionBudgetBytes)
+	// being far smaller, so its body is never read.
 	maxRecallPageBytes = 128 << 10
 	// maxRecallPagesPerScope and maxRecallBytesPerScope bound one scope's
 	// pages per prompt, read in name order.
