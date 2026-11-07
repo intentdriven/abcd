@@ -174,8 +174,9 @@ func UnknownFillNotice(st *SessionState, f Fill) string {
 // when the bracket changes, nor the other way round, until a reset clears
 // the ledger.
 //
-// budget is the bytes the rules may take. A domain that does not fit in full goes
-// in its short form and is recorded as sent, the same form and the same record as
+// budget is the bytes the rules may take. A domain that does not fit in full but
+// has room for its first rule goes in its short form and is recorded as sent, the
+// same form and the same record as
 // in a bracket that shrinks, since the form names the command that renders the
 // rest. One with room only for its heading and the command carries no rule, so it
 // is not recorded, and the next turn tries it again.
@@ -316,7 +317,7 @@ const noticeReserve = 512
 // first rule. Whole blocks only, which keeps the "## NAME" contract: never half a
 // rule. A domain with no room even for a pointer is left out, and a notice says so
 // where the notice itself fits. It returns the text and the domains sent with their
-// forms, so the caller records exactly those. rulesFrom maps a domain to the file
+// forms, so the caller records those that carried a rule. rulesFrom maps a domain to the file
 // its rules came from (RuleSet.rulesFrom), which the notice names.
 func renderWithinBudget(fresh []ResolvedDomain, rulesFrom map[string]string, shrinks bool, budget int) (string, []sentDomain) {
 	if len(fresh) == 0 {

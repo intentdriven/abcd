@@ -110,7 +110,8 @@ type rootLookup struct {
 // reuses the lookup the live drain already made for this prompt, so the
 // router spawns that full-history rev-list once; only when the drain made
 // none does it ask git itself, about root, and then only when a tied note
-// matched. The drain asked about cwd and the recall needs root, the
+// matched or, in `rules --prompt`, a managed checkout's away record is read.
+// The drain asked about cwd and the recall needs root, the
 // repository the loader resolved from that same cwd: the two are one
 // repository, so they share one root commit — and where git cannot answer
 // for cwd (a refused foreign-uid root, which leaves cwd as root), it cannot
@@ -276,12 +277,18 @@ type rulesPromptView struct {
 // the rules, read as the hook reads it. The status block the hook also reads
 // first is left out: reading it takes in the status branches, which writes the
 // local tier, and this diagnostic writes nothing. An unmanaged checkout holds no
-// away record, so the root commit is not looked up for it.
+// away record, so the root commit is not looked up for it. A lookup git did not
+// answer reads as not away, as in the hook, and is named on stderr with that
+// consequence, as the hook names each of its own.
 func promptReserved(stderr io.Writer, root string, here recall.RootFunc) int {
 	if root == "" || !autonomy.Managed(root) {
 		return 0
 	}
 	sha, err := here()
+	if err != nil {
+		diagnosticLine(stderr, "abcd mode: this repository's root commit: %s; read as not away this turn",
+			fsutil.RedactHome(err.Error()))
+	}
 	return len(readPromptAway(stderr, rootLookup{sha: sha, err: err, asked: true}, root).Block)
 }
 

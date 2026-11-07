@@ -112,7 +112,7 @@ job.
 `SessionStart` and `PreCompact` clear the per-session dedup ledger, so a matched
 domain re-injects on the next prompt (the event-driven refresh that recovers
 after compaction). Within a session a domain that stays in force is not
-re-injected unchanged, short of the backstop; one that leaves the active set (deleted, renamed, made
+re-injected unchanged once one of its rules was sent, short of the backstop; one that leaves the active set (deleted, renamed, made
 dormant, or a `*<DOMAIN>` activation the next prompt does not repeat) is
 injected again when it returns.
 
