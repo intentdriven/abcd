@@ -48,21 +48,21 @@ own exit code. A drain calls it once per move, and a failure records a new wait 
 beside `cap` and `held` (`drain_wait.go`), with the same look-again.
 
 **Running a command.** Before a command abcd starts, one helper makes a uniquely named
-directory under the person's abcd home, links each registered program, checks each
+directory under the person's abcd home, links each program this repository lists and this computer has registered, checks each
 fingerprint, prepends the directory and removes it when the command ends. The landing
 preflight (`internal/core/landing/land.go`) and a runner's launch (`internal/core/runner/proc.go`)
-call it. Links are made only for registered, unwaived programs. A mismatch stops the command
+call it. Links are made only for listed, registered, unwaived programs, so a copy only another repository lists stays out. A mismatch stops the command
 and, in a lane, leaves the item in the tool wait.
 
 **An agent needing a tool.** `abcd needs ask <tool> --why` is the one sub-verb an agent may
-run. It records the request on the item, and the lane stops with its work kept. A hand-back
+run. Its reason passes the same allowlist as the list's. It records the request on the item, and the lane stops with its work kept. A hand-back
 (`internal/core/claim/handback.go`) is not used, because it discards work and holds the item
 until its text changes. A lane's brief names the command. The next build or drain re-tests
 and resumes from the kept work once the tool is listed and registered. Landing refuses a
 lane's change that touches the list; a diff-range check beside the issue-resolution gate
 refuses a list change mixed with anything else; and `mergeGate`
 (`internal/core/landing/facilitator.go`) gains a case that a list-touching head needs
-`approvedBy` under any mode, so a review receipt does not arm it.
+`approvedBy` under any mode, so a review receipt does not arm it. A forge approval counts here as it does elsewhere, a limit rule 11 of adr-2611041815445203 states.
 
 **Go.** A strict reader of `go.mod` and `go.work` takes the `go` and `toolchain` lines and
 refuses a suffixed toolchain. Version text never reaches a path. The probe runs `go env
@@ -96,7 +96,7 @@ enforces it yet; its wording changes to present tense in the change that closes 
 
 1. The list, its grammar and the judge extracted from the runner's admit rule
    - packages: internal/core/needs, internal/core/runner
-   - tests: list grammar, reserved names, closed version-file sets, reason limit; the judge over links, targets, ancestors and owners; the runner's admit tests unchanged
+   - tests: list grammar, reserved names with `go` and `make` accepted, closed version-file sets, a reason's limit and allowlist refusing a path; the judge over links, targets, ancestors and owners; the runner's admit tests unchanged
    - needs: none
 2. Registering, fingerprints, waivers and the person's acts, with the verb's surfaces
    - packages: internal/core/needs, internal/surface/cli, internal/core/guard

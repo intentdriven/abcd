@@ -30,7 +30,7 @@ the time when nothing does.
 The product thinker settled the shape in an interview on 2026-11-04. The check
 sits on the person's own computer, is off until they turn it on, and only tells
 them. Finishing the work is a separate intent (itd-2611041656024409), filed apart so that
-this one can ship before the plain-terminal run that one needs.
+this one can ship on its own, while that one waits on the intent of the plain-terminal run.
 
 ## Mechanism
 

@@ -38,7 +38,7 @@ no new permission beyond the one this intent's decision records.
 
 ## Scope Conditions
 
-- Holds only once the plain-terminal run of itd-2610222215485265 has shipped, since abcd cannot start agents with no host session before that.
+- Holds only once the plain-terminal run of itd-2610222215485265 has shipped; its terminal drive is already in the binary, and that intent is still planned.
 - Holds only for a run a person started from a typed command, inside that run's own limit.
 - Holds only where the check of itd-2611041656012738 is on; with no check, nothing picks a run up.
 - Holds under every other condition of adr-2610222222326104: the walls proved live before any agent starts, the same bounds, and hand-back of what cannot be finished.
@@ -51,7 +51,7 @@ no new permission beyond the one this intent's decision records.
 - **Given** a repository's configuration switches this off, **when** a run there dies, **then** the run waits and the person is told.
 - **Given** a person's own setting on their computer says no, **when** a repository's configuration says yes, **then** the run waits and the person is told.
 - **Given** a person stopped a run on purpose, or it ended at its limit or an empty queue, **when** the check looks, **then** nothing is picked up.
-- **Given** a stop stands when the check looks, **when** a run has died, **then** nothing is picked up, and the run waits for a person's take-over even after the stop is lifted.
+- **Given** a stop stood when a run died, or has stood at any time since, **when** the check looks, **then** nothing is picked up, and the run waits for a person's take-over even after the stop is lifted.
 - **Given** a person presses Ctrl-C a second time, which kills a terminal run at once, **when** the check looks, **then** that reads as the person's stop and nothing is picked up.
 - **Given** a run is picked up, **when** it steps, **then** it goes through the restart path of itd-2611041549461012: it collects what arrived before it starts an agent, saves uncommitted work aside, reserves again first, and starts nothing twice.
 - **Given** a wall fails its live check at pick-up, **when** the check would start agents, **then** none starts and the person is told which wall failed.

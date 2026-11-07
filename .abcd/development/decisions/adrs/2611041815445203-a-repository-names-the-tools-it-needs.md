@@ -51,7 +51,7 @@ and take where a copy lives from a person alone.
 2. **A name and a version, never a binary or a path.** The committed list holds a tool's
    name, why it is needed and which file declares its version, and no path, checksum or
    version of its own. A name follows a strict grammar. Reserved names are refused: a
-   shell, `git`, `abcd` and whatever abcd or a runner's harness itself executes. A reason has a length limit and is shown as data. A version
+   shell, `git`, `abcd`, `node` and the command each runner starts. `go` and `make` are not reserved, though abcd runs them, because a repository may need them. A reason has a length limit and a character allowlist with no path separator, `~`, `$`, backtick, quote or control character, so it cannot hand a person a location to type, and it is shown as data. A version
    file comes from a closed set for that tool. One naming a binary or a remote (`path:`,
    `ref:`, a rustup path, a `packageManager` URL, a suffixed Go toolchain name) is refused,
    not followed. A version is held to a strict allowlist, anything else is reported as
@@ -100,7 +100,7 @@ and take where a copy lives from a person alone.
     gets no link and no check. No repository configuration can set it, and no flag replaces it.
 11. **This is a filter, and abcd says so.** Under adr-42 none of this is a boundary on the
     person's own account: an agent there can edit PATH or the home file, a pseudo-terminal
-    passes for a terminal, and the guard's person acts need a host with hooks. The planned fence of itd-2610161621364075 would
+    passes for a terminal, the guard's person acts need a host with hooks, and a forge approval by any login with write access counts as a person's, so an agent holding a second such login could approve a list change, though rule 3 still needs a person. The planned fence of itd-2610161621364075 would
     deny those writes for agents abcd launches, and not for agents a host session starts.
 
 ## Alternatives Considered
@@ -118,7 +118,7 @@ and take where a copy lives from a person alone.
 ## Consequences
 
 - Runs can refuse before spending, on a host session as well as a plain terminal.
-- A merged list entry stops a drain on every computer that has not registered the tool, and that drain waits, spending nothing, until a person registers or waives it. An unattended run makes no progress on that repository in the meantime, which the product thinker accepted in choosing this rule.
+- A merged list entry stops a drain on every computer that has not registered the tool, and that drain waits, spending nothing, until a person registers or waives it. An unattended run makes no progress on that repository in the meantime, which the product thinker accepted in choosing this rule. A drive keeps the deadline condition 3 of adr-2610222222326104 sets on every wait, so a drive that reaches it ends, and a later one tests again.
 - Every upgrade of a registered tool needs registering again, and a registered path a package manager cleans up stops existing, so registering again can become a habit.
 - A host session's agents stay outside rule 7, since abcd cannot set their environment. itd-2611041815429986 says what a start does about that.
 - The fingerprint pins bad bytes as faithfully as good ones, and covers only the named file, not what it loads. It is checked before a command starts, and abcd has no daemon, so a swap at any point during that command is not caught, however long it runs. `go` puts its own directory first for its children, and a detached child outlives the PATH directory and falls through to the inherited PATH.
