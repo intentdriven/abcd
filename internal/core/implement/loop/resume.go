@@ -7,18 +7,24 @@ package loop
 // it safe: an arrived receipt is collected before anything else, an agent gone
 // has its uncommitted work saved aside and named before its await is re-told, and
 // a reservation a stop released is taken again before any of that lets a stage
-// start. TakeRun itself starts no agent; that stays with the next step.
+// start. TakeRun itself starts no agent; that stays with the next step. Both
+// judge an agent a step started through a runner by its own process, as its
+// launch's entry in the launch ledger names it, before the run's record of the
+// step that started it (spc-2611050505250705 step 2).
 
 import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -43,6 +49,13 @@ type ListedAgent struct {
 	ReceiptArrived bool   `json:"receipt_arrived"`
 	// Route names the runner a recorded launch started it on; "" for the host's.
 	Route string `json:"route,omitempty"`
+	// Launch is the launch ledger's entry for the agent's launch, and Process the
+	// agent's own process as that entry names it, which State is judged by (alive
+	// while it runs, lost once it has gone); "" and 0 when the ledger names
+	// neither, and State is then the run's own record's word. An entry that names
+	// only its launcher has a Launch and no Process (spc-2611050505250705 step 2).
+	Launch  string `json:"launch,omitempty"`
+	Process int    `json:"process,omitempty"`
 }
 
 // ListedLane is one lane with anything left.
@@ -140,6 +153,7 @@ func ListRuns(repoRoot, only string, o Options) (Listing, error) {
 	}
 	now := o.now()
 	found := false
+	procs := ledgerOf(o, runner.LedgerQuery{All: true})
 	for _, checkout := range machineCheckouts(repoRoot, home) {
 		root, err := os.OpenRoot(checkout)
 		if err != nil {
@@ -170,7 +184,7 @@ func ListRuns(repoRoot, only string, o Options) (Listing, error) {
 			if out.Stop == nil {
 				out.Stop = pinned.Stop
 			}
-			out.Runs = append(out.Runs, listRun(checkout, o, root, st, seen, r.Stop != nil || pinned.Stop != nil, now))
+			out.Runs = append(out.Runs, listRun(checkout, o, root, st, seen, procs, r.Stop != nil || pinned.Stop != nil, now))
 		}
 		root.Close()
 		if only == "" {
@@ -196,7 +210,7 @@ func listDrain(checkout string, d DrainState) ListedDrain {
 }
 
 // listRun is one run's whole account.
-func listRun(checkout string, o Options, root *os.Root, st State, tab *sessionname.Table, stopHolds bool, now time.Time) ListedRun {
+func listRun(checkout string, o Options, root *os.Root, st State, tab *sessionname.Table, procs *agentProcs, stopHolds bool, now time.Time) ListedRun {
 	out := ListedRun{Checkout: termsafe.Sanitize(fsutil.RedactHome(checkout)), RunID: termsafe.Sanitize(st.RunID), Key: termsafe.Sanitize(st.Key), Profile: termsafe.Sanitize(st.Profile), Reserved: st.ReservedAt != nil && !letGoByDrive(st), ReleaseFailed: letGoByDrive(st) && failedReleaseTip(st) != "", Lanes: []ListedLane{}}
 	c, err := readControl(root, st.RunID)
 	if err != nil {
@@ -220,7 +234,7 @@ func listRun(checkout string, o Options, root *os.Root, st State, tab *sessionna
 		if stopFinished(lane) {
 			continue
 		}
-		out.Lanes = append(out.Lanes, listLane(checkout, root, st.RunID, lane, c, tab, view, now))
+		out.Lanes = append(out.Lanes, listLane(checkout, root, st.RunID, lane, c, tab, procs, view, now))
 	}
 	marked := driveStopped(st.RunID)
 	switch {
@@ -260,10 +274,19 @@ func safeStop(s *RunStop) *RunStop {
 	return &out
 }
 
-func listLane(checkout string, root *os.Root, runID string, lane Lane, c control, tab *sessionname.Table, view originView, now time.Time) ListedLane {
+func listLane(checkout string, root *os.Root, runID string, lane Lane, c control, tab *sessionname.Table, procs *agentProcs, view originView, now time.Time) ListedLane {
 	out := ListedLane{ID: termsafe.Sanitize(lane.ID), Stage: Stage(termsafe.Sanitize(string(lane.Stage))), Branch: termsafe.Sanitize(lane.Branch), PR: lane.PR, Agents: []ListedAgent{}}
 	for _, a := range lane.Awaits {
 		la := ListedAgent{Role: termsafe.Sanitize(a.Role), State: agentState(a, c, tab, now), Receipt: termsafe.Sanitize(a.Receipt), ReceiptArrived: receiptArrived(checkout, runID, lane.ID, root, a)}
+		if s, e, ok := procs.judge(checkout, runID, lane.ID, a, c, tab); e != nil {
+			la.Launch = termsafe.Sanitize(e.ID)
+			if ok {
+				la.State = s
+			}
+			if ledgerRunning(*e) && e.PIDStartUnix != 0 {
+				la.Process = e.PID
+			}
+		}
 		if r := a.Running; r != nil {
 			la.Route = termsafe.Sanitize(r.Runner)
 		}
@@ -473,7 +496,10 @@ func takeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 		return TakeResult{}, err
 	}
 	res := TakeResult{RunID: runID, Profile: was.Profile}
-	res.Collected = collectArrived(repoRoot, runID, DefaultStages(), seen, o)
+	// Each runner's agent is judged by its own process, as its launch's ledger
+	// entry names it, for the collecting and the restarting alike.
+	procs := ledgerOf(o, runner.LedgerQuery{Run: runID})
+	res.Collected = collectArrived(repoRoot, runID, DefaultStages(), seen, procs, o)
 
 	// A stop's halt or a drive's letting go left the run holding nothing that a step would
 	// take up, so the take-over reserves it again.
@@ -542,7 +568,7 @@ func takeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 			any := false
 			lane.Awaits = slices.Clone(lane.Awaits)
 			for k, a := range lane.Awaits {
-				switch agentState(a, prev, seen, now) {
+				switch judgeAgent(procs, repoRoot, runID, lane.ID, a, prev, seen, now) {
 				case AgentLost:
 					any = true
 					if a.Role != RoleImplementer && a.Kept == "" {
@@ -585,4 +611,128 @@ func takeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 		res.Run = &listed.Runs[0]
 	}
 	return res, nil
+}
+
+// agentProcs is the launch ledger's word on the agents a step started through a
+// runner (itd-2611031342011261; spc-2611050505250705 step 2): each await's
+// entries, oldest first, keyed on run, lane and await. The ledger is read the
+// first time an await asks, so a listing with no runner's agent reads nothing of
+// it; a nil one, or a ledger that cannot be read, leaves every judgement to the
+// run's own record.
+type agentProcs struct {
+	home string
+	q    runner.LedgerQuery
+	read bool
+	by   map[[3]string][]runner.LedgerEntry
+}
+
+// launchLedgerHome is the home the runners write the launch ledger under, as
+// LoadRunners' roots resolve it; TestMain empties it, so no test reads the
+// machine's own.
+var launchLedgerHome = func() string {
+	r, _ := layered.HomeRoots()
+	return r.Home
+}
+
+// ledgerOf is q's launches in the ledger this call reads: a test's fixture home,
+// else the runners' own.
+func ledgerOf(o Options, q runner.LedgerQuery) *agentProcs {
+	home := o.stopHome
+	if home == "" {
+		home = launchLedgerHome()
+	}
+	if home == "" {
+		return nil
+	}
+	return &agentProcs{home: home, q: q}
+}
+
+func (p *agentProcs) entries(runID, laneID, await string) []runner.LedgerEntry {
+	if p == nil {
+		return nil
+	}
+	if !p.read {
+		p.read = true
+		if l, err := runner.ReadLedger(p.home, p.q); err == nil {
+			p.by = map[[3]string][]runner.LedgerEntry{}
+			for _, e := range l.Entries {
+				if e.Run == "" || e.Await == "" || e.Route == runner.RouteHost {
+					continue
+				}
+				k := [3]string{e.Run, e.Lane, e.Await}
+				p.by[k] = append(p.by[k], e)
+			}
+		}
+	}
+	return p.by[[3]string{runID, laneID, await}]
+}
+
+// entryFor is the ledger's entry for the launch a's runner claim stands on, and
+// the launch the run recorded for that claim: the latest entry for the await
+// that started no earlier than the claim did, in this checkout. An entry an
+// earlier attempt left speaks for that attempt, never this one.
+func (p *agentProcs) entryFor(checkout, runID, laneID string, a Await, c control) (runner.LedgerEntry, Launch, bool) {
+	r := a.Running
+	if p == nil || r == nil || a.Kept != "" || a.Paused != nil {
+		return runner.LedgerEntry{}, Launch{}, false
+	}
+	i := slices.IndexFunc(c.Launches, func(l Launch) bool { return l.Lane == laneID && l.Session == r.Session })
+	if i < 0 {
+		return runner.LedgerEntry{}, Launch{}, false
+	}
+	l := c.Launches[i]
+	es := p.entries(runID, laneID, a.Receipt)
+	for k := len(es) - 1; k >= 0; k-- {
+		e := es[k]
+		if e.StartedAt.Before(l.At) {
+			break
+		}
+		if e.Repo == "" || filepath.Clean(e.Repo) == filepath.Clean(checkout) {
+			return e, l, true
+		}
+	}
+	return runner.LedgerEntry{}, Launch{}, false
+}
+
+// ledgerRunning reports whether an entry was written running: a reader that
+// finds its process gone lists it as lost, which no writer writes.
+func ledgerRunning(e runner.LedgerEntry) bool {
+	return e.Outcome == runner.OutcomeRunning || e.Outcome == runner.OutcomeLost
+}
+
+// judgeAgent is agentState with the ledger's word first. An entry that names the
+// harness's own process says the agent is alive while that process runs; once it
+// has gone, or the entry says the launch ended, the agent is lost, unless the
+// step that started it still runs, which is then taking its answer in. An entry
+// that names the launcher's own id, before the harness started or after it ended,
+// and no entry at all, leave the judgement to the run's own record.
+func judgeAgent(p *agentProcs, checkout, runID, laneID string, a Await, c control, tab *sessionname.Table, now time.Time) AgentState {
+	if s, _, ok := p.judge(checkout, runID, laneID, a, c, tab); ok {
+		return s
+	}
+	return agentState(a, c, tab, now)
+}
+
+// judge is the ledger's word on a, and the entry it rests on; ok is false where
+// the ledger has none to give.
+func (p *agentProcs) judge(checkout, runID, laneID string, a Await, c control, tab *sessionname.Table) (AgentState, *runner.LedgerEntry, bool) {
+	if tab == nil {
+		return "", nil, false
+	}
+	e, l, ok := p.entryFor(checkout, runID, laneID, a, c)
+	if !ok {
+		return "", nil, false
+	}
+	if ledgerRunning(e) {
+		if e.PIDStartUnix == 0 {
+			return "", &e, false
+		}
+		if tab.Alive(sessionname.Host{PID: e.PID, StartUnix: e.PIDStartUnix}) {
+			return AgentAlive, &e, true
+		}
+	}
+	if l.PID > 0 && tab.Alive(l.host()) {
+		return AgentAlive, &e, true
+	}
+	return AgentLost, &e, true
 }
