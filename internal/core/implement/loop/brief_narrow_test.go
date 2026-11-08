@@ -60,6 +60,67 @@ func TestEveryBriefSpellsTheNarrowTestForm(t *testing.T) {
 	}
 }
 
+// briefsForTest renders the intent brief and the issue brief for a fixture lane.
+func briefsForTest() map[string]string {
+	st := State{RunID: "run-1", Key: "itd-1", Intent: "itd-1", Spec: "spc-1"}
+	lane := Lane{ID: "lane-1", Branch: "build/x", BaseSHA: strings.Repeat("a", 40), Worktree: "wt", SpecStep: 1}
+	return map[string]string{
+		"intent": string(renderBrief(st, lane, "lane-dir", briefSources{
+			intentPath: "intent.md", specPath: "spec.md", conventionsFrom: "the whole file",
+		})),
+		"issue": string(renderIssueBrief(State{RunID: "run-1", Key: "iss-2609300000000101"}, lane, "repo-root", "lane-dir", issueBriefSources{
+			issuePath: "issue.md", conventionsFrom: "the whole file",
+		})),
+	}
+}
+
+// TestEveryBriefKeepsARaceRunWhereThePreflightHasNone: a brief tells its
+// implementer to leave -race out of the narrow form, so where the repository's
+// pre-push gate runs no race detector it spells a gated race run instead of
+// letting the race tests drop: a plain gated wait, never marked narrow, since
+// the gate reads any race run as a whole run.
+func TestEveryBriefKeepsARaceRunWhereThePreflightHasNone(t *testing.T) {
+	for name, brief := range briefsForTest() {
+		var race bool
+		for _, m := range narrowCommandLine.FindAllStringSubmatch(brief, -1) {
+			words := strings.Fields(m[1])
+			sep := slices.Index(words, "--")
+			if sep < 0 || !slices.Contains(words[sep+1:], "-race") {
+				continue
+			}
+			race = true
+			if slices.Contains(words[:sep], machineload.NarrowMark) || !slices.Contains(words[:sep], "--wait") {
+				t.Errorf("the %s brief's race run is not a plain gated wait: %s", name, m[1])
+			}
+		}
+		if !race {
+			t.Errorf("the %s brief spells no race run for a repository whose pre-push gate has no race stage:\n%s", name, brief)
+		}
+		if flat := strings.Join(strings.Fields(brief), " "); !strings.Contains(flat, "runs none and the conventions ask for race tests") {
+			t.Errorf("the %s brief does not say when the race run applies", name)
+		}
+	}
+}
+
+// TestTheNarrowFlagsABriefNamesReadAsNarrow: every flag a brief lists as
+// narrow keeps a run narrow to the gate, and the brief names each one.
+func TestTheNarrowFlagsABriefNamesReadAsNarrow(t *testing.T) {
+	brief := briefsForTest()["intent"]
+	for _, f := range narrowTestFlags {
+		cmd := []string{"go", "test", f}
+		if f == "-run" || f == "-skip" || f == "-timeout" {
+			cmd = append(cmd, "1m")
+		}
+		cmd = append(cmd, "./internal/core/x")
+		if !machineload.IsNarrowCommand(cmd) {
+			t.Errorf("the brief names %s as narrow, but the gate reads %v as a whole run", f, cmd)
+		}
+		if !strings.Contains(brief, "`"+f+"`") {
+			t.Errorf("the brief does not name %s", f)
+		}
+	}
+}
+
 // conventionsNarrowSpan finds a code span that spells a narrow gated run.
 var conventionsNarrowSpan = regexp.MustCompile("`([^`]*implement load[^`]*" + regexp.QuoteMeta(machineload.NarrowMark) + "[^`]*)`")
 
