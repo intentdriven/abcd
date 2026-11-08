@@ -17,7 +17,17 @@
 //     carrying the runners' role receipts and the routes' receipts unchanged
 //     (itd-166's asked and served sides), never a parallel shape;
 //   - the export (export.go): the trial record mapped field by field onto a
-//     Harbor trial result and an Inspect eval sample, and back.
+//     Harbor trial result and an Inspect eval sample, and back;
+//   - the copies (clone.go, cell.go, localserver.go; step 3): each copy made
+//     in its own clone of the frozen commit in the machine-scoped store,
+//     outside every working tree, with no local tier and no other copy's
+//     refs; dispatched in the runners' cell mode, so a runner's failure is
+//     the cell's and nothing falls back; an outage before the copy began
+//     retried on the same pin and never scored; a clone bound for a provider
+//     passed through the launch bundle's scan first; and one local inference
+//     server at a time, as an owned process group. The build loop's trial
+//     mode (loop.Options.Trial) runs a copy's stages taking no reservation
+//     and landing nothing.
 //
 // A run is a lab procedure (decision 4): its records live under the lab's
 // state/matrix/ and reach it only through lab.Procedure, so a run obeys the
