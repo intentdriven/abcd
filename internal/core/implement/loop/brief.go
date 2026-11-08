@@ -23,6 +23,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/decide"
 	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/core/recordid"
@@ -581,6 +582,14 @@ const lostConnectionRule = "## A lost connection\n\n" +
 // apart because v0.16.2's gate reads it as a whole run.
 var narrowTestFlags = []string{"-run", "-skip", "-v", "-short", "-failfast", "-json", "-timeout", "-count=1"}
 
+// narrowGiveWay is how long one narrow wait gives way, in all, to an overdue
+// earlier whole run (implement.WaitNarrowYieldCap), in words. The brief says
+// "gives way", never "stands aside": it never names the aside a restart saves
+// a lane's edits to (restart.go).
+func narrowGiveWay() string {
+	return fmt.Sprintf("%g minutes", implement.WaitNarrowYieldCap.Minutes())
+}
+
 // narrowTestText is how a brief tells its implementer to run a Go package's
 // tests: through abcd's load gate in its narrow form, spelt out, since a gated
 // test the gate reads as a whole run (-race, a wildcard, more than
@@ -599,15 +608,15 @@ func narrowTestText(indent string) string {
 	}
 	lines := []string{
 		"Run a Go package's tests through abcd's load gate in its narrow form, which waits behind other",
-		"narrow runs only, never behind a whole preflight (where the conventions below spell the narrow",
-		"form for this repository, use theirs, still without `-race`):",
+		"narrow runs and gives way to a whole preflight for " + narrowGiveWay() + " at most (where the",
+		"conventions below spell the narrow form for this repository, use theirs, still without `-race`):",
 		"",
 		"`abcd implement load --wait " + machineload.NarrowMark + " --timeout 6h -- go test -count=1 -timeout 40m ./<package>`",
 		"",
 		fmt.Sprintf("One run names at most %d packages outright, so run it once for each %d you changed. The gate", n, n),
 		"reads " + strings.Join(flags[:len(flags)-1], ", ") + " and " + flags[len(flags)-1] + " as narrow (a gate newer than",
-		"v0.16.2 `-trimpath` too); any other flag, a wildcard such as `./...` or more packages makes it a",
-		"whole run, which waits behind every preflight on the machine.",
+		"v0.16.2 reads `-trimpath` as narrow too); any other flag, a wildcard such as `./...` or more",
+		"packages makes it a whole run, which waits behind every preflight on the machine.",
 		"",
 		"Leave out `-race`: the gate reads a race run as a whole run whatever its size. Where the",
 		"repository's pre-push gate, which the landing waits for, runs the race detector, it runs there.",

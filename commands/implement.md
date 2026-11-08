@@ -1316,8 +1316,9 @@ Only a `load.preflights` that is there and unusable (out of range, or not a
 whole number) refuses the wait, as an unusable `ABCD_LOAD_PREFLIGHTS` does;
 the environment is read first, and with it set the file is not read.
 
-A narrow run waits at a gate of its own, so a change's own check never queues
-behind whole preflights. It is `implement load --wait --narrow -- go test
+A narrow run waits at a gate of its own, so a change's own check does not queue
+behind whole preflights; it stands aside for an overdue one for five minutes
+at most (below). It is `implement load --wait --narrow -- go test
 -count=1 ./internal/foo`. The mark asks for the gate, and it is all any waiter goes
 by: every waiter reads the mark and the command from the waiter's own arguments,
 itself included, so the same command without the mark is a whole run, as it always

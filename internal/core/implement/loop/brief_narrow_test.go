@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 )
 
@@ -117,6 +119,54 @@ func TestTheNarrowFlagsABriefNamesReadAsNarrow(t *testing.T) {
 		}
 		if !strings.Contains(brief, "`"+f+"`") {
 			t.Errorf("the brief does not name %s", f)
+		}
+	}
+}
+
+// v0162NarrowFlags are the flags v0.16.2's gate reads as narrow, without their
+// dashes, copied from its machineload narrowBoolFlags and narrowValueFlags (the
+// value flag count only as count=1). They are copied, not read, because the
+// released binary is what a lane on another repository runs.
+var v0162NarrowFlags = []string{"v", "short", "failfast", "json", "run", "skip", "timeout", "count=1"}
+
+// TestTheNarrowFlagsABriefNamesReadAsNarrowToV0162: the brief tells a lane in
+// any repository which flags keep a run narrow, and that lane runs whichever
+// abcd its machine has installed, v0.16.2 among them. So every flag the brief
+// lists as narrow must be one v0.16.2's gate reads as narrow too: a flag only a
+// newer gate reads, -trimpath, is named apart, and one added to the list would
+// make a run on v0.16.2 wait behind every preflight on the machine.
+func TestTheNarrowFlagsABriefNamesReadAsNarrowToV0162(t *testing.T) {
+	for _, f := range narrowTestFlags {
+		if !slices.Contains(v0162NarrowFlags, strings.TrimLeft(f, "-")) {
+			t.Errorf("the brief names %s as narrow, but v0.16.2's gate reads it as a whole run", f)
+		}
+	}
+}
+
+// TestEveryBriefStatesTheNarrowGiveWay: a narrow run gives way to an earlier
+// whole run that is overdue, for implement.WaitNarrowYieldCap at most, so a
+// brief that told its implementer the narrow form never waits behind a whole
+// preflight would mislead it about a wait it will see. Each brief gives the cap
+// the gate holds to, and says which gate reads -trimpath as narrow. It says so
+// without the word "aside", which a brief never holds: a restart saves a lane's
+// edits aside, and the brief never names that (restart.go).
+func TestEveryBriefStatesTheNarrowGiveWay(t *testing.T) {
+	giveWay := fmt.Sprintf("gives way to a whole preflight for %g minutes at most", implement.WaitNarrowYieldCap.Minutes())
+	for name, brief := range briefsForTest() {
+		flat := strings.Join(strings.Fields(brief), " ")
+		if strings.Contains(flat, "never behind a whole preflight") {
+			t.Errorf("the %s brief says a narrow run never waits behind a whole preflight", name)
+		}
+		if strings.Contains(brief, "aside") {
+			t.Errorf("the %s brief names an aside", name)
+		}
+		for _, want := range []string{
+			giveWay,
+			"a gate newer than v0.16.2 reads `-trimpath` as narrow too",
+		} {
+			if !strings.Contains(flat, want) {
+				t.Errorf("the %s brief does not say %q:\n%s", name, want, brief)
+			}
 		}
 	}
 }
