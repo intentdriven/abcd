@@ -10,7 +10,6 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop"
 remedy: "Report commits behind before a preflight runs, and offer to sync the lane with main; a test runs the preflight step behind main and reads the report."
-related_intents: [itd-2611041549461012]
 ---
 
 A lane's base can move a long way while it waits, and nothing warns before a preflight judges the old base: on 2026-11-04 a lane resumed on a base seven hours old, so its pull request was behind main by more than twenty commits and its preflight judged the old base.
