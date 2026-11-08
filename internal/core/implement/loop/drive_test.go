@@ -67,6 +67,9 @@ func TestMain(m *testing.M) {
 	defaultStopHome = func() string { return "" }
 	accountStopHome = func() string { return "" }
 	stopReadingOff = true
+	// Nor does a test read the machine's own launch ledger: a test of it names
+	// its own fixture home (resume_test.go).
+	launchLedgerHome = func() string { return "" }
 	runstop.WellKnownFolder = func() string { return "" }
 	// The package is too long for one test process under the preflight's
 	// package budget (iss-2610251004378066).

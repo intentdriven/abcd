@@ -412,7 +412,7 @@ func haltRun(repoRoot, runID string, s runstop.Stop, steps Stages, o Options) (*
 	// run holds that too, and settleStop says so.
 	collected := map[string]string{}
 	if configTripwire(repoRoot, runID) == nil {
-		collected = collectArrived(repoRoot, runID, steps, seen, o)
+		collected = collectArrived(repoRoot, runID, steps, seen, nil, o)
 	}
 	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		c, err := readControl(root, runID)
@@ -474,11 +474,12 @@ func logStopEvent(repoRoot string, driver *LiveDriver, setBy string, setAt time.
 type AgentState string
 
 const (
-	// AgentAlive is an agent a recorded launch's process, or its runner claim's
-	// term, says is running.
+	// AgentAlive is an agent its own process, as its launch's ledger entry names
+	// it, a recorded launch's process, or its runner claim's term, says is running.
 	AgentAlive AgentState = "alive"
-	// AgentLost is one whose claim's term has ended or whose driver is gone, or a
-	// host's agent with no recorded driver older than one reservation lease.
+	// AgentLost is one whose own process the ledger names has gone, whose claim's
+	// term has ended or whose driver is gone, or a host's agent with no recorded
+	// driver older than one reservation lease.
 	AgentLost AgentState = "lost"
 	// AgentUnknown is one no process of its own is recorded for and nothing yet
 	// says is gone, so it is taken to be in its call: it is never restarted, and a
@@ -548,8 +549,9 @@ func receiptArrived(repoRoot, runID, laneID string, root *os.Root, a Await) bool
 // agent no step still holds a running claim on: an agent's finished work is
 // collected before anything else is done about its lane, never started again
 // (iss-2611031337115764). Each is verified as any receipt is, so one that does
-// not verify is named and left. It returns a note per lane.
-func collectArrived(repoRoot, runID string, steps Stages, tab *sessionname.Table, o Options) map[string]string {
+// not verify is named and left. It returns a note per lane. procs is the launch
+// ledger an agent is judged by first (judgeAgent); nil judges by the run's record.
+func collectArrived(repoRoot, runID string, steps Stages, tab *sessionname.Table, procs *agentProcs, o Options) map[string]string {
 	notes := map[string]string{}
 	st, err := ReadState(repoRoot, runID)
 	if err != nil {
@@ -568,7 +570,7 @@ func collectArrived(repoRoot, runID string, steps Stages, tab *sessionname.Table
 	for _, lane := range st.Lanes {
 		var said []string
 		for _, a := range lane.Awaits {
-			if !receiptArrived(repoRoot, runID, lane.ID, root, a) || agentState(a, c, tab, now) == AgentAlive {
+			if !receiptArrived(repoRoot, runID, lane.ID, root, a) || judgeAgent(procs, repoRoot, runID, lane.ID, a, c, tab, now) == AgentAlive {
 				continue
 			}
 			// An implementer's receipt is taken as a step takes one where it stood, so
