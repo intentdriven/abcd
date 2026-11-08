@@ -575,7 +575,12 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		return on, refuse(StageRunner, "", laneID, err.Error(),
 			"the lane still awaits its receipt: correct what the reason names and step again")
 	}
-	if trial && out.Failure != nil && !out.Handoff {
+	// stopped is a trial's launch ended by the run's own stop: the run's
+	// context ended while it ran (Ctrl-C, SIGTERM), so the runner killed it.
+	// That says nothing of the cell, so it is never scored as the cell's
+	// failure: the role is paused, or its standing work kept, as a build's is.
+	stopped := trial && out.Failure != nil && !out.Handoff && ctx.Err() != nil
+	if trial && out.Failure != nil && !out.Handoff && !stopped {
 		stderr := ""
 		if tap != nil {
 			stderr = redactStderr(repoRoot, tap.first)
@@ -583,10 +588,17 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		r, p, err := cellFailed(repoRoot, runID, laneID, aw, session, route.Runner, *out.Failure, stderr, refusedHandIn, o)
 		return retry(r, p), err
 	}
-	if out.Handoff {
+	if out.Handoff || stopped {
 		fb := runner.FallbackReceipt{Role: aw.Role, Asked: route.Runner, Reason: runner.ReasonFailed, Detail: "the runner did not run it"}
-		if fell != nil {
+		switch {
+		case fell != nil:
 			fb = *fell
+		case stopped:
+			// A cell's dispatch records no receipt: the pause names the
+			// launch's own failure, and pauseAwait writes no fallback for a
+			// trial.
+			fl := out.Failure
+			fb = runner.FallbackReceipt{Role: aw.Role, Asked: route.Runner, Reason: fl.Reason, Detail: fl.Detail, Spent: fl.Spent}
 		}
 		if out.Failure != nil && errors.Is(out.Failure, runner.ErrKilled) && aw.Role == RoleImplementer {
 			// With its receipt written too there is nothing to keep the lane

@@ -2,10 +2,12 @@ package loop
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -173,6 +175,53 @@ func TestATrialsProviderOutageIsRetriedOnItsRoute(t *testing.T) {
 	}
 	if recordSays(t, root, id, StageUnpaused) {
 		t.Fatal("the record releases no trial role to the host")
+	}
+}
+
+// TestATrialStoppedMidLaunchIsNotTheCellsFailure: a launch the runner kills
+// because the run's own context ended (Ctrl-C, SIGTERM) says nothing of the
+// cell. The lane is not handed back as the cell's failure: the role is paused
+// for its own runner, as a build's is, with no fallback receipt.
+func TestATrialStoppedMidLaunchIsNotTheCellsFailure(t *testing.T) {
+	root, id, steps, o := startToImplement(t)
+	asTrial(t, root, id)
+	env := newDriveEnv(t, "hang", "claude")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		// The person stops the run once the cell's runner is up.
+		for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+			if _, err := os.Stat(filepath.Join(env.log, "claude.pid")); err == nil {
+				cancel()
+				return
+			}
+		}
+	}()
+	res, err := Drive(ctx, root, id, steps, o, Runners{Config: runnerConfig(t, claudeImplementer, ""), Transcripts: &memTranscripts{}})
+	if err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if ctx.Err() == nil {
+		t.Fatal("the run was never stopped: the runner did not start")
+	}
+	if res.HandBack != nil {
+		t.Fatalf("a run's own stop is never the cell's failure: %+v", res.HandBack)
+	}
+	st, rerr := ReadState(root, id)
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	if hb := st.Lanes[0].HandBack; hb != nil {
+		t.Fatalf("the lane is not handed back: %+v", hb)
+	}
+	if recordSays(t, root, id, string(StageHandedBack), "cell") {
+		t.Fatal("the record names no cell failure")
+	}
+	if len(st.Fallbacks) != 0 {
+		t.Fatalf("nothing fell back, so no fallback receipt is written: %+v", st.Fallbacks)
+	}
+	if a := st.Lanes[0].Awaits; len(a) == 0 || a[0].Paused == nil {
+		t.Fatalf("the role is paused for its own runner, as a build's is: %+v", a)
 	}
 }
 

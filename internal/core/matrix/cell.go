@@ -51,12 +51,17 @@ type makeCopy func(ctx context.Context, pin CellPin) (runner.Outcome, error)
 // same value on every try, since a fallback to another provider would change
 // the cell (decision 6). A dispatch error is the run's, never the copy's
 // score: a rate limit, or a route the configuration refuses. So is the end of
-// a wait, which is how a stopped run ends a copy waiting out an outage.
+// a wait, which is how a stopped run ends a copy waiting out an outage, and so
+// is a stop that comes while a try runs: the runner kills a launch whose run
+// ended, and that failure is the run's, never the copy's score.
 func runCopy(ctx context.Context, pin CellPin, tries int, wait func(ctx context.Context, n int) error, make makeCopy) (copyResult, error) {
 	var res copyResult
 	for n := 1; ; n++ {
 		out, err := make(ctx, pin)
 		if err != nil {
+			return copyResult{}, err
+		}
+		if err := ctx.Err(); err != nil {
 			return copyResult{}, err
 		}
 		res.Outcome = out

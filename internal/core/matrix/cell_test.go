@@ -239,6 +239,38 @@ func TestAnOutageWaitIsBoundByTheRun(t *testing.T) {
 	}
 }
 
+// TestACopyStoppedMidLaunchIsTheRunsNotTheCopys: a run stopped while its copy's
+// runner is up ends the copy with the run's error, unscored: the runner kills
+// the launch because the run ended, which says nothing of the model.
+func TestACopyStoppedMidLaunchIsTheRunsNotTheCopys(t *testing.T) {
+	c := newRealCell(t, "", 0)
+	// The fake opencode stays up until it is killed, as a copy at work does.
+	script := fmt.Sprintf("#!/bin/sh\necho launched >> '%s'\nexec /bin/sleep 30\n", c.launches)
+	if err := os.WriteFile(filepath.Join(os.Getenv("PATH"), "opencode"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+			if c.count(t) > 0 {
+				cancel()
+				return
+			}
+		}
+	}()
+	res, err := runCopy(ctx, openRouterPin, 3, noWait, c.make)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("the stop ends the copy as the run's error: %v, %+v", err, res)
+	}
+	if res.Status != "" || res.NotStarted != 0 {
+		t.Fatalf("a stopped copy carries no score: %+v", res)
+	}
+	if n := c.count(t); n != 1 {
+		t.Fatalf("a stopped copy is not tried again: %d launches", n)
+	}
+}
+
 // TestADispatchErrorIsTheRunsNotTheCopys: an error from the dispatch itself (a
 // rate limit, a route the configuration refuses) is not scored.
 func TestADispatchErrorIsTheRunsNotTheCopys(t *testing.T) {
