@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -27,6 +29,7 @@ const prListLimit = 200
 var prListFields = []string{
 	"number", "headRefName", "headRefOid", "baseRefName", "author", "body",
 	"mergeStateStatus", "reviewDecision", "statusCheckRollup", "isCrossRepository",
+	"isDraft", "autoMergeRequest",
 }
 
 // Forge runs the forge client (`gh`) with args from dir, bound to ctx, and
@@ -47,6 +50,19 @@ type pullRequest struct {
 		Login string `json:"login"`
 	} `json:"author"`
 	StatusCheckRollup []checkEntry `json:"statusCheckRollup"`
+	IsDraft           bool         `json:"isDraft"`
+	// AutoMergeRequest is null until auto-merge is armed, and cleared again
+	// as the pull request enters the merge queue.
+	AutoMergeRequest json.RawMessage `json:"autoMergeRequest"`
+}
+
+// armed reports whether the listing shows auto-merge armed on p.
+func (p pullRequest) armed() bool { return rawSet(p.AutoMergeRequest) }
+
+// rawSet reports whether a JSON value is present and not null.
+func rawSet(v json.RawMessage) bool {
+	t := strings.TrimSpace(string(v))
+	return t != "" && t != "null"
 }
 
 // checkEntry is one entry of a check rollup: a check run (status and
@@ -95,8 +111,8 @@ func (p pullRequest) checks() checksState {
 	return checksPassing
 }
 
-// listing is the one forge read of a check: the open pull requests, or why
-// they were not read.
+// listing is a check's one listing of the open pull requests, or why they
+// were not read.
 type listing struct {
 	read   bool
 	unread string
@@ -122,13 +138,8 @@ func listOpen(ctx context.Context, forge Forge, dir, person string, deadline tim
 		args = append(args, "--author", "@me")
 	}
 	out, err := forge(ctx, dir, args...)
-	switch {
-	case err != nil && (ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded)):
-		return listing{unread: fmt.Sprintf("the forge did not answer within %s", deadline)}
-	case errors.Is(err, landing.ErrNoForgeClient):
-		return listing{unread: "the forge client `gh` is not installed"}
-	case err != nil:
-		return listing{unread: termsafe.CleanProseLine(gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())), 200)}
+	if why := forgeFailure(ctx, err, deadline); why != "" {
+		return listing{unread: why}
 	}
 	var prs []pullRequest
 	if err := json.Unmarshal([]byte(out), &prs); err != nil {
@@ -160,4 +171,126 @@ func (l listing) byHead(branch, person string) (pullRequest, bool) {
 // authoredBy reports whether p is the person's.
 func (l listing) authoredBy(p pullRequest, person string) bool {
 	return l.mine || strings.EqualFold(p.Author.Login, person)
+}
+
+// RulesetDeadline bounds each forge read that decides whether a merge queue
+// keeps a behind pull request current (iss-2610311339274372): the default
+// branch's live rules, and its armed or queued pull requests. Both run inside
+// the stop check's own budget, after the listing.
+const RulesetDeadline = 3 * time.Second
+
+// maxRulesListed is the page of effective rules the rules read asks for, the
+// forge's maximum: a full page with no merge queue on it cannot say there is
+// none past it.
+const maxRulesListed = 100
+
+// rulesBranchRe is a default branch name that can stand in a forge API path
+// as it is.
+var rulesBranchRe = regexp.MustCompile(`^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$`)
+
+// queueRule is what the forge's live rules for the default branch say of a
+// merge queue: queue when they declare one, and unread naming why they were
+// not read whole ("" when they were read and declare none).
+type queueRule struct {
+	queue  bool
+	unread string
+}
+
+// readQueueRule reads the default branch's effective rules from the forge
+// under deadline (`GET /repos/{owner}/{repo}/rules/branches/{branch}`, the
+// rules of every active ruleset that targets it; the forge client fills the
+// owner and name from the repository it lists the pull requests of) and
+// reports whether one is a merge queue. Never the in-tree mirror under
+// .abcd/work/rulesets/, which can lag the forge: the live rules are what the
+// queue runs by. Anything short of a whole answer reads as no queue, with why.
+func readQueueRule(ctx context.Context, forge Forge, dir, branch string, deadline time.Duration) queueRule {
+	if !rulesBranchRe.MatchString(branch) || strings.Contains(branch, "..") {
+		return queueRule{unread: "the default branch's name cannot stand in a forge request"}
+	}
+	ctx, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+	out, err := forge(ctx, dir, "api", "repos/{owner}/{repo}/rules/branches/"+branch+"?per_page="+strconv.Itoa(maxRulesListed))
+	if why := forgeFailure(ctx, err, deadline); why != "" {
+		return queueRule{unread: why}
+	}
+	var rules []struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal([]byte(out), &rules); err != nil {
+		return queueRule{unread: "the forge's answer does not parse as a list of rules"}
+	}
+	for _, r := range rules {
+		if r.Type == "merge_queue" {
+			return queueRule{queue: true}
+		}
+	}
+	if len(rules) >= maxRulesListed {
+		return queueRule{unread: fmt.Sprintf("the forge listed %d rules, its page, and no merge queue among them", len(rules))}
+	}
+	return queueRule{}
+}
+
+// armedSet is the open pull requests into the default branch that are armed
+// or queued, by number, as the forge's GraphQL listing reads them; complete
+// when the listing showed them all, and why it was not read otherwise.
+type armedSet struct {
+	armed    map[int]bool
+	complete bool
+	unread   string
+}
+
+// readArmedInto lists, under deadline, one page of the open pull requests
+// into base with whether each is armed or queued: the release hold's own
+// query (claim.ArmedPullRequestsQuery), its owner and name filled by the
+// forge client as the listing's are. The listing's autoMergeRequest is
+// cleared as a pull request enters the queue, so it alone cannot tell a
+// queued one from one nobody armed.
+func readArmedInto(ctx context.Context, forge Forge, dir, base string, deadline time.Duration) armedSet {
+	ctx, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+	out, err := forge(ctx, dir, "api", "graphql", "-f", "query="+claim.ArmedPullRequestsQuery,
+		"-F", "o={owner}", "-F", "r={repo}", "-f", "b="+base)
+	if why := forgeFailure(ctx, err, deadline); why != "" {
+		return armedSet{unread: why}
+	}
+	var page struct {
+		Data struct {
+			Repository *struct {
+				PullRequests struct {
+					PageInfo struct {
+						HasNextPage bool `json:"hasNextPage"`
+					} `json:"pageInfo"`
+					Nodes []struct {
+						Number           int             `json:"number"`
+						IsInMergeQueue   bool            `json:"isInMergeQueue"`
+						AutoMergeRequest json.RawMessage `json:"autoMergeRequest"`
+					} `json:"nodes"`
+				} `json:"pullRequests"`
+			} `json:"repository"`
+		} `json:"data"`
+		Errors []json.RawMessage `json:"errors"`
+	}
+	if json.Unmarshal([]byte(out), &page) != nil || len(page.Errors) > 0 || page.Data.Repository == nil {
+		return armedSet{unread: "the forge's answer does not read as the pull requests into " + base}
+	}
+	s := armedSet{armed: map[int]bool{}, complete: !page.Data.Repository.PullRequests.PageInfo.HasNextPage}
+	for _, n := range page.Data.Repository.PullRequests.Nodes {
+		if n.IsInMergeQueue || rawSet(n.AutoMergeRequest) {
+			s.armed[n.Number] = true
+		}
+	}
+	return s
+}
+
+// forgeFailure is why a forge read under deadline failed, "" when it did not.
+func forgeFailure(ctx context.Context, err error, deadline time.Duration) string {
+	switch {
+	case err == nil:
+		return ""
+	case ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded):
+		return fmt.Sprintf("the forge did not answer within %s", deadline)
+	case errors.Is(err, landing.ErrNoForgeClient):
+		return "the forge client `gh` is not installed"
+	}
+	return termsafe.CleanProseLine(gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())), 200)
 }

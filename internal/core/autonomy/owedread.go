@@ -49,6 +49,11 @@ type ReadOptions struct {
 	Forge Forge
 	// ForgeDeadline bounds the listing; zero means ForgeDeadline.
 	ForgeDeadline time.Duration
+	// RulesetDeadline bounds each read that decides whether a merge queue
+	// keeps a behind pull request current (forge.go): the default branch's
+	// live rules, and its armed or queued pull requests; zero means
+	// RulesetDeadline.
+	RulesetDeadline time.Duration
 	// Reservations reads the reservations as last fetched, with no network;
 	// nil means claim.View.
 	Reservations func(root string, now time.Time) (claim.Snapshot, error)
@@ -88,8 +93,11 @@ func (o ReadOptions) now() time.Time {
 // away it adds one listing of the open pull requests under ForgeDeadline,
 // for failing, behind, stacked and uncarried work; a listing that fails or
 // is late is named in Owed.Notes and the check judges from disk alone
-// (adr-2610181003541997). With --hold-pushes, an unpushed own branch a queued
-// step names, whose head contains its base's last-fetched tip and has a
+// (adr-2610181003541997). A behind pull request into the default branch is
+// judged by its merge queue, read from the forge's live rules under
+// RulesetDeadline (queueKeepsCurrent). With --hold-pushes, an unpushed own
+// branch a queued step names, whose head contains its base's last-fetched tip
+// and has a
 // preflight receipt, is handed back: moved out of Owed.Items into
 // Owed.HandedBack, for the verdict to accept and the stop hook to record.
 // Owed.NextRenewal is the earliest renewal due among the live reservations
@@ -148,6 +156,10 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 		if deadline <= 0 {
 			deadline = ForgeDeadline
 		}
+		r.forge, r.rulesDeadline = forge, o.RulesetDeadline
+		if r.rulesDeadline <= 0 {
+			r.rulesDeadline = RulesetDeadline
+		}
 		r.list = listOpen(ctx, forge, root, r.person, deadline)
 		if !r.list.read {
 			r.note("the pull requests were not read (%s), so the check judged from disk alone", r.list.unread)
@@ -203,6 +215,17 @@ type owedReader struct {
 	mine     []claim.Reservation
 	list     listing
 	lanes    map[string]laneState
+
+	// forge and rulesDeadline make the reads that decide whether a merge
+	// queue keeps a behind pull request current, each at most once a check
+	// and only while away: the default branch's live rules (queue), and
+	// its armed or queued pull requests (armedInto).
+	forge         Forge
+	rulesDeadline time.Duration
+	queueRead     bool
+	queue         queueRule
+	armedRead     bool
+	armedInto     armedSet
 
 	// me is the stopping session (ReadOptions.SessionID), and the rest of
 	// this block what holders.go reads to tell its work from another live
@@ -905,8 +928,14 @@ func (r *owedReader) forgeItems(name string, b *localBranch, head string, p pull
 		}
 		switch strings.ToUpper(p.MergeStateStatus) {
 		case "BEHIND":
-			r.add(OwedItem{Kind: OwedBehind, Capped: true, Branch: name, PR: p.Number, Head: head,
-				Reason: fmt.Sprintf("pull request #%d (%s) is behind its base: merge it in", p.Number, name)})
+			reason := fmt.Sprintf("pull request #%d (%s) is behind its base: merge it in", p.Number, name)
+			switch r.queueKeepsCurrent(p) {
+			case queueArmed:
+				return
+			case queueUnarmed:
+				reason = fmt.Sprintf("pull request #%d (%s) is behind its base, which a merge queue guards, and auto-merge is not armed: arm it", p.Number, name)
+			}
+			r.add(OwedItem{Kind: OwedBehind, Capped: true, Branch: name, PR: p.Number, Head: head, Reason: reason})
 		case "DIRTY":
 			r.add(OwedItem{Kind: OwedBehind, Capped: true, Branch: name, PR: p.Number, Head: head,
 				Reason: fmt.Sprintf("pull request #%d (%s) conflicts with its base: merge it in and resolve the conflicts", p.Number, name)})
@@ -922,6 +951,63 @@ func (r *owedReader) forgeItems(name string, b *localBranch, head string, p pull
 			Reason: fmt.Sprintf("%s is behind %s as last fetched (fetched %s), compared on disk because the pull requests were not read: merge it in",
 				name, gitutil.ShortRef(r.def), r.fetchedAt())})
 	}
+}
+
+// queueStanding is what a merge queue makes of a behind pull request.
+type queueStanding int
+
+const (
+	// queueNone: no queue is known to keep it current, so it is owed a merge.
+	queueNone queueStanding = iota
+	// queueArmed: the queue tests it against the latest base itself.
+	queueArmed
+	// queueUnarmed: a queue guards its base, but nobody has armed it.
+	queueUnarmed
+)
+
+// queueKeepsCurrent decides a behind pull request in a repository whose
+// default branch a merge queue guards (iss-2610311339274372,
+// dcn-2611081501502395). A queue tests every entry against the latest base, so
+// merging the base in only moves the head and voids its receipts: a pull
+// request into the default branch, not a draft, that is armed or already
+// queued is not owed a merge (queueArmed), and one nobody armed is owed its
+// arming instead (queueUnarmed). A draft, any other base, and a queue the
+// forge's live rules do not prove read as before (queueNone), each read that
+// fails, is late or cannot be read named in a note; a queued listing that
+// fails leaves the pull request unarmed, so it stays owed. A stacked base never
+// reaches here: stacked judges it, and a conflict and failing checks are owed
+// apart from it.
+func (r *owedReader) queueKeepsCurrent(p pullRequest) queueStanding {
+	if p.IsDraft || r.defName == "" || p.BaseRefName != r.defName || r.forge == nil {
+		return queueNone
+	}
+	if !r.queueRead {
+		r.queueRead = true
+		r.queue = readQueueRule(r.ctx, r.forge, r.root, r.defName, r.rulesDeadline)
+		if r.queue.unread != "" {
+			r.note("whether a merge queue guards %s was not read from the forge (%s), so a pull request behind it is owed a merge as before", r.defName, r.queue.unread)
+		}
+	}
+	if !r.queue.queue {
+		return queueNone
+	}
+	if p.armed() {
+		return queueArmed
+	}
+	if !r.armedRead {
+		r.armedRead = true
+		r.armedInto = readArmedInto(r.ctx, r.forge, r.root, r.defName, r.rulesDeadline)
+		switch {
+		case r.armedInto.unread != "":
+			r.note("which pull requests into %s are already in its merge queue was not read from the forge (%s), so each behind one not armed is owed its arming", r.defName, r.armedInto.unread)
+		case !r.armedInto.complete:
+			r.note("the forge listed a page of the pull requests into %s and more follow, so a behind one not on it and not armed is owed its arming", r.defName)
+		}
+	}
+	if r.armedInto.armed[p.Number] {
+		return queueArmed
+	}
+	return queueUnarmed
 }
 
 // stacked applies the clearing rule (dcn-2610180936571036,
