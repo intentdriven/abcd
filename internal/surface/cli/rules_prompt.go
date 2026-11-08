@@ -266,9 +266,10 @@ type rulesPromptPage struct {
 // rulesPromptView is `rules --prompt`'s --json envelope.
 type rulesPromptView struct {
 	Disabled bool `json:"disabled"`
-	// staged is a drive's stage, where nothing is recalled: the plain form says
-	// so rather than "none matched".
-	staged     bool
+	// Stage is a drive's stage, where no notes or pages are recalled: the plain
+	// form says so rather than "none matched", and the JSON form says it here,
+	// so its empty notes and pages read apart from a prompt that matched none.
+	Stage      bool                `json:"stage"`
 	Bracket    rulesPromptBracket  `json:"bracket"`
 	Domains    []rulesPromptDomain `json:"domains"`
 	Notes      []rulesPromptNote   `json:"notes"`
@@ -307,7 +308,7 @@ func promptReserved(stderr io.Writer, root string, here recall.RootFunc) int {
 // hook names it, and once more for the away record in a managed checkout. On a
 // drive's stage, where the hook reads neither, neither is looked up.
 func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *float64) rulesPromptView {
-	v := rulesPromptView{Disabled: rs.Disabled, Bracket: promptBracket(used), Domains: []rulesPromptDomain{}, Notes: []rulesPromptNote{},
+	v := rulesPromptView{Disabled: rs.Disabled, Stage: stageActive(), Bracket: promptBracket(used), Domains: []rulesPromptDomain{}, Notes: []rulesPromptNote{},
 		Pages: []rulesPromptPage{}, Unreadable: []recall.Refusal{}}
 	if rs.Disabled {
 		return v
@@ -319,8 +320,7 @@ func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *
 	// nothing is read for them here either: the view shows only what that agent
 	// gets, and no root-commit lookup is made for a tied note.
 	var items []recall.Item
-	v.staged = stageActive()
-	if !v.staged {
+	if !v.Stage {
 		var refused []recall.Refusal
 		items, refused = recall.ReadItems(rules.UserHome(), root)
 		v.Unreadable = append(v.Unreadable, refused...)
@@ -414,7 +414,7 @@ func renderRulesPrompt(w io.Writer, rs rules.RuleSet, v rulesPromptView) {
 			fmt.Fprintf(w, "  %s — hit by %s — %s\n", d.Label, termsafe.Sanitize(strings.Join(d.Hits, ", ")), promptFormWords(d.Form))
 		}
 	}
-	if v.staged {
+	if v.Stage {
 		fmt.Fprintln(w, "Notes: not recalled on a drive's stage")
 	} else if len(v.Notes) == 0 {
 		fmt.Fprintln(w, "Notes: none matched")
@@ -426,7 +426,7 @@ func renderRulesPrompt(w io.Writer, rs rules.RuleSet, v rulesPromptView) {
 			renderTermScores(w, n.Terms)
 		}
 	}
-	if v.staged {
+	if v.Stage {
 		fmt.Fprintln(w, "Pages: not recalled on a drive's stage")
 	} else if len(v.Pages) == 0 {
 		fmt.Fprintln(w, "Pages: none matched")
