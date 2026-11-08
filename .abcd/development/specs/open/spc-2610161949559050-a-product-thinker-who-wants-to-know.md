@@ -99,6 +99,7 @@ step 6; gate receipts untouched — step 7; Harbor/Inspect mapping — step 1.
    - tests: trial mode takes no reservation and lands nothing; a runner failure in a cell is the cell's failure with no host fallback; an OpenRouter outage is retried on the same pin and not scored; each copy is a clone outside every working tree with no local tier; a provider-bound clone passes the secret scan or is refused; one local server at a time as an owned process group
    - needs: 1, 2
    - waits on: iss-2610161801358637, iss-2610161734413178, iss-2610161734428291, iss-2610161709506207
+   - landed: 291c03b5ff22
 4. Code tasks: hidden tests and compliance
    - packages: internal/core/matrix
    - tests: hidden tests sit outside the clone; the compliance check excludes a copy that edited tests or read another copy, and marks an unexaminable copy unexamined; host-harness isolation is reported as asserted
