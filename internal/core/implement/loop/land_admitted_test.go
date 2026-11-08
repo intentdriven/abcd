@@ -295,3 +295,42 @@ func TestAFoundEmptyCommitWithOtherProseIsNotTheRecords(t *testing.T) {
 		t.Fatalf("an empty found commit whose prose abcd did not compose is refused, naming its message: %+v", r)
 	}
 }
+
+// TestAFoundMarkTheLandingDoesNotWriteIsNotAbcds (itd-2610301850454860): a
+// landing that marks no step writes no mark, so a found commit adding a
+// `landed:` line for the judged head is not abcd's text, even under the exact
+// message abcd composes for a landing that records only the admission; it is
+// refused rather than taken as the records under abcd's label.
+func TestAFoundMarkTheLandingDoesNotWriteIsNotAbcds(t *testing.T) {
+	const second = "2. The loop\n   - packages: internal/core/implement\n"
+	f := newLandFixtureWith(t, map[string]string{
+		".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
+		specRel: specWithSteps("1. The parser\n   - packages: internal/core/spec\n" + second),
+	})
+	l := f.twoStepLandWithNoResolutions(t)
+	judged := f.commitAtTheJudgedHead(t, l, func() {
+		marked := specWithSteps("1. The parser\n   - packages: internal/core/spec\n   - landed: #1\n" + second)
+		if err := os.WriteFile(filepath.Join(l.Worktree, specRel), []byte(marked), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	f.step(t) // prepare
+	l = f.wantsRecordsCommit(t)
+	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
+	extra := specWithSteps("1. The parser\n   - packages: internal/core/spec\n   - landed: #1\n" + second + "   - landed: " + shortSHA(judged) + "\n")
+	if err := os.WriteFile(filepath.Join(l.Worktree, specRel), []byte(extra), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.repo.Git("-C", l.Worktree, "add", "-A")
+	f.repo.Git("-C", l.Worktree, "commit", "-q", "--amend", "-m", msg)
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		cur := &st.Lanes[st.current()]
+		cur.HeadSHA, cur.Landing.Records, cur.Landing.RecordsDone = judged, "", false
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if r := f.wantsRefusedStep(t); !strings.Contains(r.Reason, "lacks") {
+		t.Fatalf("a found mark the landing does not write is refused: %+v", r)
+	}
+}

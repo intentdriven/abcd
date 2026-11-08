@@ -675,7 +675,8 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		if err != nil {
 			return Outcome{}, fmt.Errorf("reading the landing's staged records: %w", err)
 		}
-		if !only {
+		// A mark is abcd's only when this landing writes it.
+		if !only || ld.MarkStep == 0 {
 			var gap string
 			if assisted, gap = assistedByTrailers(lane.Receipts); gap != "" {
 				return Outcome{}, modelGap(*lane, "the landing's records commit carries text abcd did not compose", gap)
@@ -1606,7 +1607,8 @@ func foundTrailersLack(c Context, lane Lane, tip, raw string, delivers bool) (st
 		if err != nil {
 			return "", err
 		}
-		composed = only
+		// As landRecords judges it: a mark is abcd's only when the landing writes it.
+		composed = only && ld.MarkStep > 0
 	}
 	if composed {
 		want = append(want, composedAssistedBy())
