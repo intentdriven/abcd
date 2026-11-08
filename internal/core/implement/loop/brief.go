@@ -576,16 +576,27 @@ const lostConnectionRule = "## A lost connection\n\n" +
 	"The run waits the outage out and restarts the lane from its last commit; your uncommitted edits are\n" +
 	"kept for review, never built on. A usage or rate limit is not a lost connection.\n\n"
 
+// narrowTestFlags are the go test flags a brief names as narrow: every one a
+// released gate reads as narrow (machineload's narrow flags), -trimpath named
+// apart because v0.16.2's gate reads it as a whole run.
+var narrowTestFlags = []string{"-run", "-skip", "-v", "-short", "-failfast", "-json", "-timeout", "-count=1"}
+
 // narrowTestText is how a brief tells its implementer to run a Go package's
 // tests: through abcd's load gate in its narrow form, spelt out, since a gated
 // test the gate reads as a whole run (-race, a wildcard, more than
-// machineload.MaxNarrowPackages packages, or no mark) waits behind every whole
-// preflight on the machine, an hour or more on a busy evening. The form carries
-// no flag a released gate does not read as narrow; a repository whose
-// conventions spell their own form (abcd's adds -trimpath) keeps it. Each line
-// is indented by indent, blank lines left empty.
+// machineload.MaxNarrowPackages packages, a flag outside narrowTestFlags, or no
+// mark) waits behind every whole preflight on the machine, an hour or more on a
+// busy evening. The form carries no flag a released gate does not read as
+// narrow; a repository whose conventions spell their own form (abcd's adds
+// -trimpath) keeps it, and one whose pre-push gate runs no race detector runs
+// its race tests as a gated run of their own rather than dropping them. Each
+// line is indented by indent, blank lines left empty.
 func narrowTestText(indent string) string {
 	n := machineload.MaxNarrowPackages
+	flags := make([]string, len(narrowTestFlags))
+	for i, f := range narrowTestFlags {
+		flags[i] = "`" + f + "`"
+	}
 	lines := []string{
 		"Run a Go package's tests through abcd's load gate in its narrow form, which waits behind other",
 		"narrow runs only, never behind a whole preflight (where the conventions below spell the narrow",
@@ -593,11 +604,16 @@ func narrowTestText(indent string) string {
 		"",
 		"`abcd implement load --wait " + machineload.NarrowMark + " --timeout 6h -- go test -count=1 -timeout 40m ./<package>`",
 		"",
-		fmt.Sprintf("One run names at most %d packages outright, so run it once for each %d you changed. Leave out", n, n),
-		"`-race`: the gate reads a race run as a whole run whatever its size, and the race detector",
-		"belongs to the repository's full pre-push gate, which the landing waits for. The gate also reads",
-		"any other flag, a wildcard such as `./...` and more packages as a whole run, which waits behind",
-		"every preflight on the machine.",
+		fmt.Sprintf("One run names at most %d packages outright, so run it once for each %d you changed. The gate", n, n),
+		"reads " + strings.Join(flags[:len(flags)-1], ", ") + " and " + flags[len(flags)-1] + " as narrow (a gate newer than",
+		"v0.16.2 `-trimpath` too); any other flag, a wildcard such as `./...` or more packages makes it a",
+		"whole run, which waits behind every preflight on the machine.",
+		"",
+		"Leave out `-race`: the gate reads a race run as a whole run whatever its size. Where the",
+		"repository's pre-push gate, which the landing waits for, runs the race detector, it runs there.",
+		"Where it runs none and the conventions ask for race tests, run them as a whole run of their own:",
+		"",
+		"`abcd implement load --wait --timeout 6h -- go test -race -count=1 -timeout 40m ./<package>`",
 	}
 	var b strings.Builder
 	for _, l := range lines {

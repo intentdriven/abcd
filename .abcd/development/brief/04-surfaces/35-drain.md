@@ -982,7 +982,7 @@ itd-2609201916151817). Its checks are the budget check every start runs, the rul
 peers check; the key is an issue id by shape before any path is built from it.
 Its brief is the issue's record, read at the lane's base, with its remedy as the
 work and the repository's definition of done: a detector watched to fail before
-the fix and pass after. Its validators run without the fidelity audit, since an
+the fix and pass after, its tests gated as an intent lane's brief spells. Its validators run without the fidelity audit, since an
 issue has no criteria. Its implementer's receipt must name the issue in
 `resolves`, and the landing resolves the issue with the commit named there in
 the lane's own change, opens one pull request and pushes nothing while it is armed, its sync withdrawing an armed merge first.
