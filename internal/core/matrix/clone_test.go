@@ -187,6 +187,24 @@ func TestACloneRefusesABadKeyOrCommit(t *testing.T) {
 	}
 }
 
+// TestACloneTakesItsSourceByAbsolutePath: the source repository is handed to
+// git fetch by path, so one that is not absolute is refused before any git
+// call, and an option-shaped one can never reach git as an option.
+func TestACloneTakesItsSourceByAbsolutePath(t *testing.T) {
+	_, frozen := cloneSource(t)
+	store := filepath.Join(t.TempDir(), "matrix-store")
+	key := TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}
+	for _, source := range []string{"src", "./src", "--upload-pack=x", ""} {
+		_, err := makeClone(source, store, cloneRun, frozen, key)
+		if err == nil || !strings.Contains(err.Error(), "source") || !strings.Contains(err.Error(), "absolute") {
+			t.Fatalf("a source of %q is refused as not absolute: %v", source, err)
+		}
+	}
+	if _, err := os.Stat(store); !os.IsNotExist(err) {
+		t.Fatalf("nothing is made before the source is refused: %v", err)
+	}
+}
+
 // TestAFrozenCommitTrackingALocalTierFileIsRefused: a frozen commit that
 // tracks a file under the local tier would hand every copy that file, so the
 // clone is refused and removed.

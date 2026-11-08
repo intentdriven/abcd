@@ -35,7 +35,7 @@ func cloneDir(store, run string, key TrialKey) string {
 const localTier = ".abcd/.work.local"
 
 // makeClone makes copy key's clone of frozen, fetched from the repository at
-// repoRoot, at cloneDir(store, run, key), and returns its path. The clone is a
+// repoRoot, an absolute path, at cloneDir(store, run, key), and returns its path. The clone is a
 // fresh repository holding the frozen commit alone, fetched one commit deep,
 // so no commit before it, nor anything only such a commit holds, is in the
 // clone: what a copy can read there is the frozen tree, which is what the
@@ -56,6 +56,11 @@ func makeClone(repoRoot, store, run, frozen string, key TrialKey) (string, error
 	}
 	if !gitutil.IsFullSHA(frozen) {
 		return "", fmt.Errorf("%q is not a full commit id, so it is no frozen commit", clip(frozen))
+	}
+	if !filepath.IsAbs(repoRoot) {
+		// The source is handed to git fetch by path: an absolute one can never
+		// be read as an option.
+		return "", fmt.Errorf("the clone's source %q is not an absolute path", clip(repoRoot))
 	}
 	if !filepath.IsAbs(store) {
 		return "", fmt.Errorf("the clone store %q is not an absolute path", clip(store))
