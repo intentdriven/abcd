@@ -145,8 +145,11 @@ func outsideWorkingTrees(dir string) error {
 		return nil
 	}
 	if strings.Contains(out, "true") {
-		top, _ := git("-C", real, "rev-parse", "--show-toplevel")
-		if top == "" {
+		// The checkout is named only for the refusal: its toplevel is asked
+		// through the one shape-checked question, and an unshaped answer
+		// names the directory itself.
+		top, terr := gitutil.Toplevel(real)
+		if terr != nil || top == "" {
 			top = real
 		}
 		return fmt.Errorf("a copy's clone is never made inside a working tree or a repository, and %s is inside %s; "+
