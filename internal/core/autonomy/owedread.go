@@ -17,6 +17,8 @@ import (
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/occupancy"
+	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/localtier"
@@ -58,6 +60,17 @@ type ReadOptions struct {
 	// Email is this checkout's author email, which tells its commits from
 	// another author's; "" means the email git would author a commit with.
 	Email string
+	// SessionID is the stopping session's id, as the Stop payload carries it.
+	// With one ValidSessionID accepts, an item another live session holds is
+	// left out of the owed work and named in a note (holders.go); "" leaves
+	// every item owed as this copy's, as does any item whose holder the
+	// evidence cannot tell.
+	SessionID string
+	// LiveSessions reads the sessions running on the machine, each with the
+	// checkout it started in; nil means occupancy.Live under Home with the
+	// machine's process table. It is read at most once a check, and only
+	// when an item may be another session's.
+	LiveSessions func() ([]occupancy.Session, error)
 }
 
 func (o ReadOptions) now() time.Time {
@@ -99,12 +112,20 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 		}
 	}
 	r := &owedReader{
-		ctx:   ctx,
-		root:  root,
-		home:  home,
-		now:   o.now(),
-		email: o.Email,
-		rec:   o.Record,
+		ctx:      ctx,
+		root:     root,
+		home:     home,
+		now:      o.now(),
+		email:    o.Email,
+		rec:      o.Record,
+		me:       o.SessionID,
+		liveRead: o.LiveSessions,
+		heldRes:  map[string]string{},
+	}
+	if r.liveRead == nil {
+		r.liveRead = func() ([]occupancy.Session, error) {
+			return occupancy.Live(home, sessionname.Live().ReadTable)
+		}
 	}
 	r.away = o.Record.Holds(r.now)
 	if r.email == "" {
@@ -143,6 +164,7 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 	r.receiptsMinted = receiptsMinted(root)
 	r.readLanes()
 	r.findOwn()
+	r.scope()
 	r.branchItems()
 	r.reservationItems()
 	r.handBack()
@@ -181,6 +203,20 @@ type owedReader struct {
 	list     listing
 	lanes    map[string]laneState
 
+	// me is the stopping session (ReadOptions.SessionID), and the rest of
+	// this block what holders.go reads to tell its work from another live
+	// session's.
+	me         string
+	liveRead   func() ([]occupancy.Session, error)
+	live       map[string]string // a live session's id -> the checkout it started in
+	liveTried  bool
+	liveOK     bool
+	recordedBy map[string]string   // a recorded branch -> the session that created it, "" when none was kept
+	runDrivers map[string][]string // a live run's key -> each unfinished run's driving session, "" when none
+	elsewhere  map[string]string   // a branch -> the other worktree it is checked out in
+	heldRes    map[string]string   // a reservation -> the live session whose run it is for
+	held       map[string]*holding // by session: what another live session holds
+
 	receiptsMinted bool
 	own            map[string]bool
 	stacks         *stackIndex       // read once, for diskStackBase
@@ -204,6 +240,9 @@ type localBranch struct {
 type laneState struct {
 	key     string
 	reviews []laneReview
+	// driver is the session its run's control record names as the run's
+	// driver, "" when it names none.
+	driver string
 }
 
 type laneReview struct {
@@ -367,6 +406,7 @@ const runRelDir = ".abcd/.work.local/run"
 // tier whose reservation is live under this copy's key.
 func (r *owedReader) readLanes() {
 	r.lanes = map[string]laneState{}
+	r.runDrivers = map[string][]string{}
 	rt, err := os.OpenRoot(r.root)
 	if err != nil {
 		return
@@ -413,11 +453,13 @@ func (r *owedReader) readLanes() {
 		if finished {
 			continue
 		}
+		driver := runDriver(rt, runRelDir+"/"+e.Name())
+		r.runDrivers[run.Key] = append(r.runDrivers[run.Key], driver)
 		for _, l := range run.Lanes {
 			if l.Branch == "" || l.Stage == "done" || l.Stage == "discarded" || l.Stage == "handed-back" {
 				continue
 			}
-			ls := laneState{key: run.Key}
+			ls := laneState{key: run.Key, driver: driver}
 			for _, v := range l.Validation {
 				pass := len(v.Validators) > 0
 				for _, val := range v.Validators {
@@ -428,6 +470,30 @@ func (r *owedReader) readLanes() {
 			r.lanes[l.Branch] = ls
 		}
 	}
+}
+
+// maxControlBytes bounds the read of a run's control record (the loop's own
+// bound on it).
+const maxControlBytes = 1 << 20
+
+// runDriver is the session a run's control record names as its live driver
+// (the loop's ClaimDriver writes it as each step starts), read leniently: ""
+// when the record is absent, unreadable, or names no session abcd keys on,
+// which says nothing of whose the run is.
+func runDriver(rt *os.Root, runDir string) string {
+	raw, err := fsutil.ReadGuardedInRoot(rt, runDir+"/control.json", maxControlBytes)
+	if err != nil {
+		return ""
+	}
+	var c struct {
+		Driver *struct {
+			Session string `json:"session"`
+		} `json:"driver"`
+	}
+	if json.Unmarshal(raw, &c) != nil || c.Driver == nil || !ValidSessionID(c.Driver.Session) {
+		return ""
+	}
+	return c.Driver.Session
 }
 
 // reflogBranches are the branches this working copy's HEAD reflog has
@@ -456,8 +522,10 @@ func (r *owedReader) reflogBranches() []string {
 }
 
 // recordedBranches are the branches this copy's sessions created, as the
-// guard's pre-tool hook recorded them.
+// guard's pre-tool hook recorded them; r.recordedBy keeps the session that
+// created each, where the record kept one.
 func (r *owedReader) recordedBranches() []string {
+	r.recordedBy = map[string]string{}
 	key := claim.OwnCopyKey(r.root)
 	if key == "" || r.home == "" {
 		return nil
@@ -474,6 +542,9 @@ func (r *owedReader) recordedBranches() []string {
 	var out []string
 	for _, b := range list {
 		out = append(out, b.Name)
+		if ValidSessionID(b.Session) {
+			r.recordedBy[b.Name] = b.Session
+		}
 	}
 	return out
 }
@@ -559,7 +630,8 @@ func (r *owedReader) findOwn() {
 	for _, n := range recorded {
 		isRecorded[n] = true
 	}
-	elsewhere := r.checkedOutElsewhere()
+	r.elsewhere = r.checkedOutElsewhere()
+	elsewhere := r.elsewhere
 	candidates := append(reflog, recorded...)
 	for i, name := range candidates {
 		b, ok := r.branches[name]
@@ -571,7 +643,7 @@ func (r *owedReader) findOwn() {
 		// machine share the author email, so the email cannot tell. One
 		// this copy's sessions recorded creating, or a worktree they made
 		// for it, is still this copy's.
-		if elsewhere[name] && !isRecorded[name] && !linked[name] {
+		if elsewhere[name] != "" && !isRecorded[name] && !linked[name] {
 			continue
 		}
 		if r.expired() {
@@ -601,9 +673,9 @@ func (r *owedReader) findOwn() {
 }
 
 // checkedOutElsewhere are the branches a worktree other than this copy has
-// checked out.
-func (r *owedReader) checkedOutElsewhere() map[string]bool {
-	out := map[string]bool{}
+// checked out, each with that worktree's path.
+func (r *owedReader) checkedOutElsewhere() map[string]string {
+	out := map[string]string{}
 	wts, err := gitutil.ListWorktrees(r.root, gitutil.MaxWorktreeListing)
 	if err != nil {
 		return out
@@ -617,7 +689,7 @@ func (r *owedReader) checkedOutElsewhere() map[string]bool {
 		if fi, err := os.Stat(wt.Path); err == nil && here != nil && os.SameFile(fi, here) {
 			continue
 		}
-		out[name] = true
+		out[name] = wt.Path
 	}
 	return out
 }
@@ -1016,6 +1088,11 @@ func (r *owedReader) defLabel() string {
 // subject, which no pull request carries, aside).
 func (r *owedReader) reservationItems() {
 	for _, res := range r.mine {
+		// A reservation only another live session's runs are for is that
+		// session's to renew and to carry (holders.go).
+		if r.heldRes[res.Record] != "" {
+			continue
+		}
 		half := res.ClaimedAt.Add(res.EffectiveExpiry.Sub(res.ClaimedAt) / 2)
 		if r.nextRenewal.IsZero() || half.Before(r.nextRenewal) {
 			r.nextRenewal = half

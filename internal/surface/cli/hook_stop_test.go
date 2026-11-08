@@ -141,8 +141,8 @@ func TestHookStopOutput(t *testing.T) {
 	if out.Decision != "block" || !strings.Contains(out.Reason, "feat/behind") || out.SystemMessage != "" {
 		t.Errorf("away with work owed, first stop: %s", so)
 	}
-	if q := (*asked)[len(*asked)-1]; q.Root != root || !q.Record.Holds(stopTestNow) || q.Home == "" || !q.Now().Equal(stopTestNow) {
-		t.Errorf("away: the reader was asked %+v", q)
+	if q := (*asked)[len(*asked)-1]; q.Root != root || !q.Record.Holds(stopTestNow) || q.Home == "" || !q.Now().Equal(stopTestNow) || q.SessionID != "s1" {
+		t.Errorf("away: the reader was asked %+v, want this copy, the record, the home, the clock and the stopping session", q)
 	}
 	// Away, nothing owed, a qualifying wake: allowed, silent.
 	owed = autonomy.Owed{}

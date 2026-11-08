@@ -30,6 +30,10 @@ func createdFile(copyKey string) string { return "branches-" + copyKey + ".json"
 type CreatedBranch struct {
 	Name string    `json:"name"`
 	At   time.Time `json:"at"`
+	// Session is the host session that created it, as the guard's payload
+	// named it; "" in a record written before sessions were kept, or by a
+	// hook with no session id, which says nothing of whose it is.
+	Session string `json:"session,omitempty"`
 }
 
 type createdList struct {
@@ -58,6 +62,9 @@ type BranchChange struct {
 	Kind BranchChangeKind
 	Name string
 	From string
+	// Session is the host session making the change, kept on a name the
+	// change adds; "" keeps none. A rename carries the record's own.
+	Session string
 }
 
 // CreatedBranches is the created-branch list of the working copy whose key is
@@ -115,7 +122,7 @@ func applyBranchChanges(list []CreatedBranch, changes []BranchChange, now time.T
 		switch c.Kind {
 		case BranchCreated, BranchCheckedOut:
 			if c.Name != "" && index(c.Name) < 0 {
-				list = append(list, CreatedBranch{Name: c.Name, At: now})
+				list = append(list, CreatedBranch{Name: c.Name, At: now, Session: c.Session})
 			}
 		case BranchMoved:
 			i := index(c.From)
@@ -141,9 +148,11 @@ func applyBranchChanges(list []CreatedBranch, changes []BranchChange, now time.T
 // no branch of that name exists yet; a checked-out one when it is a branch no
 // worktree has checked out, or names nothing git can resolve) and records
 // what passes under the copy's key (claim.CopyKey, minted as a reservation
-// verb mints it) in the away store. copyRoot is the session's working copy;
-// runDir is where the command runs, whose current branch a rename with no old
-// name renames. A checkout abcd does not manage (Managed), or with no root
+// verb mints it) in the away store, each added name with the session o names
+// (Options.SessionID) as its creator, so the stop check can tell one
+// session's branches from another's in a copy two share. copyRoot is the
+// session's working copy; runDir is where the command runs, whose current
+// branch a rename with no old name renames. A checkout abcd does not manage (Managed), or with no root
 // commit, records nothing and is no error. The error is a store the recorder
 // could not write; it never refuses the command.
 func RecordCreated(copyRoot, runDir string, changes []BranchChange, o Options) error {
@@ -198,6 +207,11 @@ func RecordCreated(copyRoot, runDir string, changes []BranchChange, o Options) e
 	}
 	if len(keep) == 0 {
 		return nil
+	}
+	if ValidSessionID(o.SessionID) {
+		for i := range keep {
+			keep[i].Session = o.SessionID
+		}
 	}
 	key, err := claim.CopyKey(copyRoot)
 	if err != nil {

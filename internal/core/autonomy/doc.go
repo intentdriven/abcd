@@ -105,7 +105,8 @@
 // host's cap) and the session's SessionState. A wake qualifies
 // (qualifyingWake) when a session cron's latest fire time (latestFire: its
 // next match, by abcd's own five-field cron parser, parseCron, plus the
-// host's lateness) is no later than wakeDeadline. The session's state lives in
+// host's lateness) is no later than wakeDeadline, which is never sooner than
+// now plus MinWakeLead. The session's state lives in
 // the copy's local tier (SessionsDir, LoadSession, SaveSession), keyed by a
 // session id ValidSessionID accepts. The session-start hook notes each
 // session's start copy in the store (Store.NoteSessionCopy); ResolveCopy
@@ -119,7 +120,9 @@
 // only when no branch of that name exists yet, a BranchCheckedOut one (`git
 // worktree add <path> [<branch>]`) when it is a branch no worktree has
 // checked out (git refuses that command, which runs after the recorder) or
-// names nothing git resolves, and a BranchMoved rename carrying a record by whole name. The list
+// names nothing git resolves, and a BranchMoved rename carrying a record by
+// whole name, its creator with it. Each name added keeps the session that
+// created it (Options.SessionID), when the hook had one. The list
 // is createdFile(copyKey) in the away store, keyed on the working copy's
 // reservation copy key (claim.CopyKey), written under the store's lock
 // (Store.RecordBranches) and capped at MaxCreatedBranches, the oldest
@@ -156,6 +159,22 @@
 // request carries a reservation's work when the record id is in its head
 // branch's name or on a Resolves: or Delivers: line of its body, on word
 // boundaries; a Refs: line carries it only for a head already own.
+//
+// Several sessions can work from one copy, or from the worktrees beside it.
+// With o.SessionID set, what another live session holds is left out of the
+// owed work and named once in a note, holder by holder (holders.go): the
+// lanes of a run whose control record names that session as its driver, a
+// branch the guard recorded it creating (CreatedBranch.Session, which
+// RecordCreated keeps from Options.SessionID), a branch checked out in the
+// worktree it started in (its occupancy marker), and a reservation only its
+// runs are for. The session's own evidence wins over another's: a branch it
+// recorded creating, or a lane of a run it drives, stays its own. An item
+// whose holder cannot be told stays owed: a record with no session kept, a
+// run no session drives, a reservation made by hand, a holder that has ended
+// (its work returns to the sessions left), and every item when the session
+// has no id or the live sessions (ReadOptions.LiveSessions, occupancy.Live by
+// default) cannot be read. A copy another live session started in is named as
+// a breach of one session per checkout.
 //
 // A stacked branch (its pull request's base is not the default branch, or,
 // with none, its nearest own ancestor branch is not in the default branch) is
