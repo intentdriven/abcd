@@ -224,20 +224,30 @@ func derivedLaneWorktree(repoRoot, runID string, lane Lane, stage string) (LaneW
 // before making anything: a worktree git already lists at the lane's path on
 // the lane's branch is the lane's, and is adopted; one on another branch, or
 // anything else occupying the path, is refused and left where it is. Otherwise
-// the lane's branch is cut from the default branch into the store.
+// the lane's branch is cut from the default branch into the store, or, in a
+// trial, from the trial's frozen commit (trialBase).
 func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 	lw, err := laneWorktree(c.RepoRoot, c.State.RunID, lane.ID)
 	if err != nil {
 		return Outcome{}, err
 	}
-	defRef := gitutil.DefaultRef(c.RepoRoot)
-	if defRef == "" {
-		return Outcome{}, refuse(string(StageWorktree), "", lane.ID, "the repository has no default branch to cut the lane from (no origin/HEAD, and no main, master, trunk or develop)",
-			"fetch the remote, or create the default branch, then run `abcd implement step` again")
-	}
-	base, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", defRef+"^{commit}", "--")
-	if err != nil || !gitutil.IsFullSHA(base) {
-		return Outcome{}, fmt.Errorf("resolving the default branch %s: %v", defRef, err)
+	var defRef, base, from string
+	if c.State.Trial {
+		if base, err = trialBase(c, lane.ID); err != nil {
+			return Outcome{}, err
+		}
+		from = "the trial's frozen commit"
+	} else {
+		defRef = gitutil.DefaultRef(c.RepoRoot)
+		if defRef == "" {
+			return Outcome{}, refuse(string(StageWorktree), "", lane.ID, "the repository has no default branch to cut the lane from (no origin/HEAD, and no main, master, trunk or develop)",
+				"fetch the remote, or create the default branch, then run `abcd implement step` again")
+		}
+		base, err = gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", defRef+"^{commit}", "--")
+		if err != nil || !gitutil.IsFullSHA(base) {
+			return Outcome{}, fmt.Errorf("resolving the default branch %s: %v", defRef, err)
+		}
+		from = gitutil.ShortRef(defRef)
 	}
 
 	if err := lw.lane.Ensure(); err != nil {
@@ -255,7 +265,7 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		// Made last time; the base is where the branch left the default branch.
 		mb, err := gitutil.Run(c.RepoRoot, "merge-base", base, branchRef)
 		if err != nil || !gitutil.IsFullSHA(mb) {
-			return Outcome{}, fmt.Errorf("finding where %s left %s: %v", lw.Branch, defRef, err)
+			return Outcome{}, fmt.Errorf("finding where %s left %s: %v", lw.Branch, from, err)
 		}
 		base = mb
 	default:
@@ -331,5 +341,5 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		verb = "found"
 	}
 	return Outcome{Note: fmt.Sprintf("%s the worktree ~/%s/%s on %s, cut from %s at %s%s",
-		verb, lw.StoreRel, filepath.Base(lw.Path), lw.Branch, gitutil.ShortRef(defRef), base[:12], picked)}, nil
+		verb, lw.StoreRel, filepath.Base(lw.Path), lw.Branch, from, base[:12], picked)}, nil
 }

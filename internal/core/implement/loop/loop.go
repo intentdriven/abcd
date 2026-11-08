@@ -108,6 +108,15 @@ type Options struct {
 	// (drive_profile.go); "" for anything but a drive.
 	Profile string
 
+	// Trial starts the run in the loop's trial mode (trial.go): a model-matrix
+	// copy, which takes no reservation and no shared-run claim and lands
+	// nothing. A trial resumes only a trial, and a build never resumes one.
+	Trial bool
+	// Frozen is a trial's frozen commit, the one every lane of the run is cut
+	// from: the full id of the checkout's head, its copy's clone. Only a trial
+	// names one.
+	Frozen string
+
 	// TakeOver is `abcd build --take-over`: the start's reservation moves
 	// this person's own live reservation from another copy to this one. It
 	// never moves another person's.
@@ -532,7 +541,10 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 	if err != nil {
 		return StartResult{}, err
 	}
-	if res, ok, err := resumeLive(repoRoot, key, o.drain); err != nil || ok {
+	if err := trialFrozen(repoRoot, o); err != nil {
+		return StartResult{}, err
+	}
+	if res, ok, err := resumeLive(repoRoot, key, o.drain, o.Trial); err != nil || ok {
 		if err == nil && pick != nil {
 			err = pickedLive(res)
 		}
@@ -565,7 +577,7 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		return StartResult{}, err
 	}
 	var shared *implement.Run
-	if o.Session != "" {
+	if o.Session != "" && !o.Trial {
 		run, err := sharedRunFor(repoRoot, o.Session)
 		if err != nil {
 			return StartResult{}, err
@@ -593,6 +605,9 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 	}
 	if !chk.OK {
 		return StartResult{}, chk.refusal()
+	}
+	if o.Trial && len(chk.steps) > 1 {
+		return StartResult{}, trialSteps(chk)
 	}
 	if chk.autoPlan != nil && o.reserve == nil {
 		o.reserve = autoPlanFootprint(*chk.autoPlan)
@@ -631,7 +646,7 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		}
 		// A start that raced this one past the lookup above created the run
 		// while the checks ran: it is resumed, not duplicated.
-		if st, ok := liveRun(runs, chk.Key, o.drain); ok {
+		if st, ok := liveRun(runs, chk.Key, o.drain, o.Trial); ok {
 			res = startResult(st, nil, true)
 			keep = true
 			if pick != nil {
@@ -677,6 +692,8 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 			Pace:            &pace,
 			Review:          &review,
 			ReservedAt:      rsv.at,
+			Trial:           o.Trial,
+			Frozen:          o.Frozen,
 		}
 		if chk.autoPlan != nil {
 			if err := openAutoPlanLane(&st, *chk.autoPlan); err != nil {
@@ -688,6 +705,9 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		}
 		st.Record = append(st.Record, Entry{At: now, Lane: st.Lanes[0].ID, Stage: "start",
 			Note: "checks passed; " + st.Lanes[0].ID + " opened for " + laneWork(st, st.Lanes[0])})
+		if o.Trial {
+			st.Record = append(st.Record, Entry{At: now, Stage: StageTrial, Note: trialNote})
+		}
 		if o.AutoPlan && chk.autoPlan == nil {
 			st.Record = append(st.Record, Entry{At: now, Stage: "start",
 				Note: "--auto-plan: " + st.Intent + " is already planned, so there is nothing to plan; the run builds it"})
@@ -853,7 +873,7 @@ func claimRefusal(session, record string, err error) error {
 // has one. A checkout with no run directory has none, and the lookup creates
 // nothing; a run directory that is not a real directory is left to the create
 // path, which refuses it.
-func resumeLive(repoRoot, key string, drain bool) (StartResult, bool, error) {
+func resumeLive(repoRoot, key string, drain, trial bool) (StartResult, bool, error) {
 	if !fsutil.IsRealDir(filepath.Join(repoRoot, filepath.FromSlash(RunRelDir))) {
 		return StartResult{}, false, nil
 	}
@@ -864,7 +884,7 @@ func resumeLive(repoRoot, key string, drain bool) (StartResult, bool, error) {
 		if err != nil {
 			return err
 		}
-		if st, ok := liveRun(runs, key, drain); ok {
+		if st, ok := liveRun(runs, key, drain, trial); ok {
 			res, found = startResult(st, nil, true), true
 		}
 		return nil
@@ -911,9 +931,9 @@ func resumeWithFlags(res StartResult, f paceFlags) error {
 // liveRun returns the run for key that is not complete. For a drain's lane
 // (drain), an issue run whose lane was handed back is over too; for any
 // caller, one a newer run of the issue has followed is (superseded).
-func liveRun(runs []State, key string, drain bool) (State, bool) {
+func liveRun(runs []State, key string, drain, trial bool) (State, bool) {
 	for i, st := range runs {
-		if recordid.SameID(st.Key, key) && !st.Complete() && !(drain && st.issueHandedBack()) && !superseded(runs, i) {
+		if recordid.SameID(st.Key, key) && st.Trial == trial && !st.Complete() && !(drain && st.issueHandedBack()) && !superseded(runs, i) {
 			return st, true
 		}
 	}

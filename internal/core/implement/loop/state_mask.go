@@ -39,7 +39,7 @@ import (
 func (st State) masked() State {
 	st.RunID, st.Key, st.Intent, st.Spec = line(st.RunID), line(st.Key), line(st.Intent), line(st.Spec)
 	st.Driver = Driver(line(string(st.Driver)))
-	st.Profile = line(st.Profile)
+	st.Profile, st.Frozen = line(st.Profile), line(st.Frozen)
 	st.Pace = maskPtr(st.Pace, Pace.masked)
 	st.Review = maskPtr(st.Review, ReviewSet.masked)
 	st.Pick = maskPtr(st.Pick, RunPick.masked)

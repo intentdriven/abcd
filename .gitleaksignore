@@ -33,3 +33,11 @@ fb6305133391e3d9df22017372fdcbc84adf26f8:internal/core/runner/ledger_attack_test
 # and generic-api-key read the quotation as it read the list: no credential, only
 # the names again. The comment no longer quotes them.
 dc0ed2c62fad1ed5fef836e4472c677ab3ac23d2:.gitleaksignore:generic-api-key:27
+
+# Commit 0233e528a added the matrix clone admission test (itd-2610161733316518),
+# whose fixture wrote a made-up GitHub-token-shaped value into a temporary
+# file to prove the scan refuses the clone; github-pat and generic-api-key both
+# read it. It was never a credential, and the branch tip builds the value at
+# runtime with testsecret.Synthetic instead.
+0233e528a788db58909e68dcf61b9fdd76b4872e:internal/core/matrix/cell_test.go:github-pat:151
+0233e528a788db58909e68dcf61b9fdd76b4872e:internal/core/matrix/cell_test.go:generic-api-key:151

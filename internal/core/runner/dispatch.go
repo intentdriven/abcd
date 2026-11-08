@@ -37,6 +37,19 @@ type Dispatcher struct {
 	// none as the route that ran, rather than leaving the role nowhere to land.
 	// A role on the host still needs a host session or a configured host.
 	Attended bool
+	// Cell is true inside a model-matrix cell (itd-2610161733316518 decision
+	// 4): the route is the one under test, so nothing stands in for it. A
+	// runner that fails, refuses, answers unparsably or fails the validator
+	// returns its failure in the outcome as the cell's, with no fallback
+	// receipt, since nothing fell back, and neither the host session nor the
+	// configured host runs the role: an answer from either would measure the
+	// wrong model. A role on the host runs only in a host session. A rate
+	// limit still reaches the caller as an error, since it is the window's and
+	// not the model's; a runner that names its provider's throttling only as
+	// an API status (opencode's 429 error event) returns a failure whose
+	// ProviderDown holds when nothing was spent, which the caller retries as
+	// not started rather than scoring.
+	Cell bool
 	// Validate is the contract's validator: the same check the host sub-agent's
 	// answer passes. It is handed the runner that ran the role, so a caller
 	// whose validator also records the answer (the loop's receipt verifier)
@@ -100,7 +113,11 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 	}
 	route := d.Config.RouteFor(req.Role)
 	landing := Host
-	if !d.HostSession {
+	if d.Cell && route.Runner == Host && !d.HostSession {
+		return Outcome{}, fmt.Errorf("runner: %s is a cell on the host and no host session drives it; inside a "+
+			"model-matrix cell nothing else stands in for the host", req.Role)
+	}
+	if !d.HostSession && !d.Cell {
 		landing = d.Config.FallbackHost()
 		if landing == "" && !(d.Attended && route.Runner != Host) {
 			return Outcome{}, fmt.Errorf("runner: there is no host session and no %s.%s is configured, so a role "+
@@ -110,7 +127,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 	}
 	if req.Model != "" {
 		target := route.Runner
-		if target == Host && !d.HostSession {
+		if target == Host && !d.HostSession && !d.Cell {
 			target = landing
 		}
 		if err := d.Config.holdRequestModel(route, target, req); err != nil {
@@ -150,6 +167,12 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 		// window (itd-2609201925079472 criterion 8). No receipt is written,
 		// since nothing fell back.
 		return Outcome{}, err
+	}
+	if d.Cell {
+		// The cell's failure: scored as such by the caller, and run nowhere else.
+		out.Failure = fl
+		out.Receipt.Route.Ran = none
+		return out, nil
 	}
 	// A killed launch's spend rides on its receipt (iss-2611021751406429).
 	fb := FallbackReceipt{At: d.now(), Role: req.Role, Asked: route.Runner, Reason: fl.Reason, Detail: fl.Detail, Ran: landing,

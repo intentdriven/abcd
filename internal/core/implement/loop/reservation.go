@@ -693,7 +693,7 @@ func reserveKey(repoRoot, key string, req claim.Request, now time.Time) (reserve
 func reserveForJudgement(repoRoot, id string, footprint []string, takeOver bool, now time.Time) (*DrainHold, error) {
 	stage := ""
 	if runs, err := Runs(repoRoot); err == nil && !takeOver {
-		if run, ok := liveRun(runs, id, true); ok {
+		if run, ok := liveRun(runs, id, true, false); ok {
 			stage = renewalStage(run)
 		}
 	}
@@ -757,7 +757,7 @@ func reservedNote(res claim.Result, err error, now time.Time) (reserved, error) 
 // (runFootprint), and --take-over passes through. A checkout with no remote
 // named origin has nowhere to reserve, and reserves nothing (nil, "").
 func reserveStart(repoRoot string, chk CheckResult, o Options) (reserved, error) {
-	if o.noReserve {
+	if o.noReserve || o.Trial {
 		return reserved{}, nil
 	}
 	if o.held != nil {
@@ -812,7 +812,7 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 // reserveTaken is reserveResumed; a take-over passes retell false, since it restarts what
 // the marks say has no agent, and a role told again would read as one that may have.
 func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) error {
-	if o.noReserve {
+	if o.noReserve || o.Trial {
 		return nil
 	}
 	ok, err := claim.HasOrigin(repoRoot)

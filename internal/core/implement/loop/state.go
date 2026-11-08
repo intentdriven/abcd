@@ -504,6 +504,12 @@ type State struct {
 	// (itd-2609091034175565): the reservation `implement step` renews, fences
 	// and tombstones. Nil for a run that holds none.
 	ReservedAt *time.Time `json:"reserved_at,omitempty"`
+	// Trial is set on a run started in the loop's trial mode (trial.go): a
+	// model-matrix copy, which holds no reservation and lands nothing.
+	Trial bool `json:"trial,omitempty"`
+	// Frozen is a trial's frozen commit (Options.Frozen), which its lanes are
+	// cut from; "" on every other run.
+	Frozen string `json:"frozen,omitempty"`
 }
 
 // Transcript is one transcript the run record captured into the history store.

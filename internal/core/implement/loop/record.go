@@ -106,10 +106,13 @@ func recordPick(st State) *RecordPick {
 
 // pickFalsifiedBy finds the lane whose outcome meets the pick's falsifier:
 // one handed back by the fix-round bound (a hand-back with no kind; one a
-// lane's own receipt made names a decision, not an unachievable lane).
+// lane's own receipt made names a decision, not an unachievable lane). A
+// trial lane handed back as the cell's failure (VerdictCellFailed) met no
+// bound and says nothing of the pick, as handBackLane writes no pick line
+// for one.
 func pickFalsifiedBy(st State) (string, HandBack, bool) {
 	for _, l := range st.Lanes {
-		if l.HandBack != nil && l.HandBack.Kind == "" {
+		if l.HandBack != nil && l.HandBack.Kind == "" && l.HandBack.Verdict != VerdictCellFailed {
 			return l.ID, *l.HandBack, true
 		}
 	}
