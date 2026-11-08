@@ -802,10 +802,9 @@ func TestASilentAgentIsAHangWithRecovery(t *testing.T) {
 			}
 		}
 	}
-	o := w.bounded(t, 30*24*time.Hour)
-	o.Runners.Timeout = 5 * time.Second
+	limits := &launchLimits{}
 	var worktree string
-	o.BeforeStage = func() error {
+	seeWorktree := func() error {
 		if st, _, err := readDrain(w.repo.Root()); err == nil && len(st.Lanes) > 0 {
 			if run, err := ReadState(w.repo.Root(), st.Lanes[0].RunID); err == nil && run.Lanes[0].Worktree != "" {
 				worktree = run.Lanes[0].Worktree
@@ -813,7 +812,36 @@ func TestASilentAgentIsAHangWithRecovery(t *testing.T) {
 		}
 		return nil
 	}
+	// The short limit bears on the hanging launch alone (iss-2611060835372141): the
+	// first run, under it, ends at its bound once the hang has taken its line of the
+	// script, and the run that takes the lane up again launches under the ordinary
+	// limit, which a loaded machine cannot reach. The script's own count says the hang
+	// took its line: a hang killed before it did is launched again under the short
+	// limit, and never reaches the second run.
+	turns := func() string {
+		raw, _ := os.ReadFile(filepath.Join(w.env.log, "script.n"))
+		return strings.TrimSpace(string(raw))
+	}
+	o := w.bounded(t, time.Hour)
+	o.Runners.Timeout, o.Drain.JudgeTimeout = hangLimit, ordinaryLaunchLimit
+	o.Runners.Transcripts, o.Drain.Transcripts, o.BeforeStage = limits, limits, seeWorktree
+	w.onSleep = func(time.Duration) {
+		if turns() == "2" {
+			w.clock.t = o.Until
+		}
+	}
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalUntil || turns() != "2" {
+		t.Fatalf("the first run ends at its bound after the hang: %+v, %s turns taken\n%s", res, turns(), w.said())
+	}
+	w.onSleep = nil
+	o = w.bounded(t, 30*24*time.Hour)
+	o.Runners.Timeout, o.Drain.JudgeTimeout = ordinaryLaunchLimit, ordinaryLaunchLimit
+	o.Runners.Transcripts, o.Drain.Transcripts, o.BeforeStage = limits, limits, seeWorktree
+	res, err = RunTerminal(context.Background(), w.repo.Root(), o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -834,6 +862,20 @@ func TestASilentAgentIsAHangWithRecovery(t *testing.T) {
 	if first["exit_code"] != float64(-1) || first["silent_for_seconds"] == nil {
 		t.Fatalf("the suspect says what was seen: %+v", first)
 	}
+	// The hang, killed, leaves no transcript; every launch that finished ran under
+	// the ordinary limit.
+	if len(limits.got) == 0 || slices.ContainsFunc(limits.got, func(d time.Duration) bool { return d != ordinaryLaunchLimit }) {
+		t.Fatalf("the short limit bears on the hanging launch alone: the launches that finished ran under %v", limits.got)
+	}
+}
+
+// launchLimits is a transcript store that keeps the limit each launch it is handed,
+// one that finished, ran under.
+type launchLimits struct{ got []time.Duration }
+
+func (l *launchLimits) Store(_ string, req runner.Request, _ runner.Answer, _ []byte) error {
+	l.got = append(l.got, req.Timeout)
+	return nil
 }
 
 // TestEvidenceHoldsNoSecretOrPath: what the harness wrote goes through the
