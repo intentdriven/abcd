@@ -205,3 +205,52 @@ func TestAKilledRecordOnlyCommitIsFound(t *testing.T) {
 		t.Fatalf("the commit the killed call made is found: head %s, made %s", l.HeadSHA, made)
 	}
 }
+
+// TestAFoundCommitWhoseAdmissionIsInItsProseIsNotTheRecords (itd-2610301850454860):
+// a commit found on the judged head after a killed call is the landing's records
+// only when its trailer block carries the admission, read back through the one
+// grammar; the same line moved up into the message's prose is no admission, so
+// the commit is refused rather than taken as the records.
+func TestAFoundCommitWhoseAdmissionIsInItsProseIsNotTheRecords(t *testing.T) {
+	const second = "2. The loop\n   - packages: internal/core/implement\n"
+	f := newLandFixtureWith(t, map[string]string{
+		".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
+		specRel: specWithSteps("1. The parser\n   - packages: internal/core/spec\n" + second),
+	})
+	l := f.twoStepLandWithNoResolutions(t)
+	judged := f.commitAtTheJudgedHead(t, l, func() {
+		marked := specWithSteps("1. The parser\n   - packages: internal/core/spec\n   - landed: #1\n" + second)
+		if err := os.WriteFile(filepath.Join(l.Worktree, specRel), []byte(marked), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	f.step(t) // prepare
+	l = f.wantsRecordsCommit(t)
+	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
+	paras := strings.Split(strings.TrimRight(msg, "\n"), "\n\n")
+	var kept []string
+	var line string
+	for _, tr := range strings.Split(paras[len(paras)-1], "\n") {
+		if strings.HasPrefix(tr, landings.TrailerKey+":") {
+			line = tr
+			continue
+		}
+		kept = append(kept, tr)
+	}
+	if line == "" {
+		t.Fatalf("the records commit carries an admission to move: %q", msg)
+	}
+	moved := strings.Join(paras[:len(paras)-1], "\n\n") + "\n\n" + line + "\n\n" + strings.Join(kept, "\n") + "\n"
+	f.repo.Git("-C", l.Worktree, "commit", "-q", "--amend", "--allow-empty", "-m", moved)
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		cur := &st.Lanes[st.current()]
+		cur.HeadSHA, cur.Landing.Records, cur.Landing.RecordsDone = judged, "", false
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r := f.wantsRefusedStep(t)
+	if !strings.Contains(r.Reason, "lacks") || !strings.Contains(r.Reason, "Admitted-by: build spc-1") {
+		t.Fatalf("a found commit whose admission stands in its prose is refused, naming the admission: %+v", r)
+	}
+}

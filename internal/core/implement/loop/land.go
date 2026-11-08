@@ -1600,6 +1600,13 @@ func foundTrailersLack(c Context, lane Lane, tip, raw string, delivers bool) (st
 	if !slices.Equal(landingTrailers(msg), want) {
 		return "the landing's trailers (" + termsafe.Sanitize(strings.Join(want, ", ")) + ")", nil
 	}
+	// landingTrailers reads a line wherever it stands; the admission counts only
+	// in the trailer block, read through the grammar that wrote it.
+	if a := st.Admitted; a != nil {
+		if got, ok := landings.ParseAdmitted(msg); !ok || got.Kind != a.Kind || got.Record != a.Record {
+			return "its admission (" + termsafe.Sanitize(a.Trailer()) + ") in its trailer block", nil
+		}
+	}
 	return "", nil
 }
 
