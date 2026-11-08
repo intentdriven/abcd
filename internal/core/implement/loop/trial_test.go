@@ -144,6 +144,45 @@ func TestATrialsRunnerFailureIsTheCellsFailure(t *testing.T) {
 	}
 }
 
+// TestACellFailedTrialLaneLeavesThePickUnfalsified: a lane handed back as the
+// cell's failure says nothing of whether the pick was achievable, so a run
+// with a pick whose trial lane is handed back as cell-failed neither records
+// the pick as falsified nor reports it so: the pick's falsifier is the
+// fix-round bound, which a cell's failure never met.
+func TestACellFailedTrialLaneLeavesThePickUnfalsified(t *testing.T) {
+	root, id, steps, o := startToImplement(t)
+	if err := mutate(root, id, func(_ *os.Root, st *State) (bool, error) {
+		st.Trial = true
+		st.Pick = &RunPick{Lane: "lane-1", Entry: "picked by run " + id}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	newDriveEnv(t, "notloggedin", "claude")
+	res, err := Drive(context.Background(), root, id, steps, o, Runners{Config: runnerConfig(t, claudeImplementer, ""), Transcripts: &memTranscripts{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.HandBack == nil || res.HandBack.Verdict != VerdictCellFailed {
+		t.Fatalf("the lane ends as the cell's failure: %+v", res.HandBack)
+	}
+	st, err := ReadState(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lane, hb, ok := pickFalsifiedBy(st); ok {
+		t.Fatalf("a cell-failed lane falsified the pick: %s handed back as %s", lane, hb.Verdict)
+	}
+	if p := recordPick(st); p == nil || p.Falsified || p.FalsifiedBy != "" {
+		t.Fatalf("the run record keeps the pick unfalsified: %+v", p)
+	}
+	for _, e := range st.Record {
+		if e.Stage == "pick" {
+			t.Fatalf("the run record names no pick line for a cell's failure: %+v", e)
+		}
+	}
+}
+
 // TestATrialsProviderOutageIsRetriedOnItsRoute: a provider down before the
 // copy began pauses the trial's role for its own runner with no fallback
 // receipt, and a role so paused is never released to the host, even once the
