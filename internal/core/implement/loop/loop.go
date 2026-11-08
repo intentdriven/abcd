@@ -112,6 +112,10 @@ type Options struct {
 	// copy, which takes no reservation and no shared-run claim and lands
 	// nothing. A trial resumes only a trial, and a build never resumes one.
 	Trial bool
+	// Frozen is a trial's frozen commit, the one every lane of the run is cut
+	// from: the full id of the checkout's head, its copy's clone. Only a trial
+	// names one.
+	Frozen string
 
 	// TakeOver is `abcd build --take-over`: the start's reservation moves
 	// this person's own live reservation from another copy to this one. It
@@ -537,6 +541,9 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 	if err != nil {
 		return StartResult{}, err
 	}
+	if err := trialFrozen(repoRoot, o); err != nil {
+		return StartResult{}, err
+	}
 	if res, ok, err := resumeLive(repoRoot, key, o.drain, o.Trial); err != nil || ok {
 		if err == nil && pick != nil {
 			err = pickedLive(res)
@@ -598,6 +605,9 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 	}
 	if !chk.OK {
 		return StartResult{}, chk.refusal()
+	}
+	if o.Trial && len(chk.steps) > 1 {
+		return StartResult{}, trialSteps(chk)
 	}
 	if chk.autoPlan != nil && o.reserve == nil {
 		o.reserve = autoPlanFootprint(*chk.autoPlan)
@@ -683,6 +693,7 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 			Review:          &review,
 			ReservedAt:      rsv.at,
 			Trial:           o.Trial,
+			Frozen:          o.Frozen,
 		}
 		if chk.autoPlan != nil {
 			if err := openAutoPlanLane(&st, *chk.autoPlan); err != nil {

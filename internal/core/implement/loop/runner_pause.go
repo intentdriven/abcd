@@ -229,7 +229,9 @@ func releaseToHost(repoRoot, runID string, o Options, rs Runners, res StepResult
 	var out StepResult
 	released := false
 	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
-		if st.autoPlanning() {
+		// A trial's role is the cell's route under test (trial.go): the host
+		// never takes it, whatever the person's route says now.
+		if st.autoPlanning() || st.Trial {
 			return false, nil
 		}
 		now := o.now()
@@ -407,6 +409,9 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	}
 	session := fmt.Sprintf("%s-%s-%s-%d", runID, laneID, aw.Role, o.now().Unix())
 	var worktree, base string
+	// trial is the run's trial mode, read under the lock: its dispatch runs in
+	// the runners' cell mode, so nothing stands in for the cell's route.
+	var trial bool
 	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		// A stop may have come since the check: under the lock it starts nothing.
 		if c, err := readControl(root, runID); err != nil {
@@ -433,7 +438,7 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		lane.Awaits = slices.Clone(lane.Awaits)
 		lane.Awaits[k] = a
 		st.Lanes[i] = lane
-		worktree, base = lane.Worktree, lane.BaseSHA
+		worktree, base, trial = lane.Worktree, lane.BaseSHA, st.Trial
 		recordLaunch(root, st, Launch{Lane: laneID, Role: aw.Role, Runner: route.Runner, Route: route.Override(), Session: session, At: now})
 		if why != "" {
 			st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: StageRetry,
@@ -516,6 +521,9 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	d := &runner.Dispatcher{
 		Config:      rs.Config,
 		HostSession: true,
+		// A trial's route is the cell under test (trial.go): a runner's
+		// failure is the cell's, with no fallback receipt and no handoff.
+		Cell:        trial,
 		Transcripts: transcripts,
 		Validate: func(ran string, _ runner.Request, ans runner.Answer) error {
 			if err := changed(); err != nil {
@@ -566,6 +574,14 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		}
 		return on, refuse(StageRunner, "", laneID, err.Error(),
 			"the lane still awaits its receipt: correct what the reason names and step again")
+	}
+	if trial && out.Failure != nil && !out.Handoff {
+		stderr := ""
+		if tap != nil {
+			stderr = redactStderr(repoRoot, tap.first)
+		}
+		r, p, err := cellFailed(repoRoot, runID, laneID, aw, session, route.Runner, *out.Failure, stderr, refusedHandIn, o)
+		return retry(r, p), err
 	}
 	if out.Handoff {
 		fb := runner.FallbackReceipt{Role: aw.Role, Asked: route.Runner, Reason: runner.ReasonFailed, Detail: "the runner did not run it"}
@@ -622,7 +638,11 @@ func pauseAwait(repoRoot, runID, laneID string, aw Await, session string, fb run
 			}
 		}
 		fb.At, fb.Ran = now, ranNone
-		st.Fallbacks = append(st.Fallbacks, fb)
+		if !st.Trial {
+			// A trial's pause is an outage its own runner retries
+			// (cellFailed): nothing fell back, so no receipt says one did.
+			st.Fallbacks = append(st.Fallbacks, fb)
+		}
 		p := RunnerPause{Runner: fb.Asked, Reason: fb.Reason, Detail: fsutil.RedactHome(fb.Detail), Stderr: stderr, Since: now, At: now, Tries: 1}
 		lane := st.Lanes[i]
 		a := lane.Awaits[k]
