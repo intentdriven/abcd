@@ -33,11 +33,17 @@ import (
 //   - a reservation only runs another session drives are for.
 //
 // Whatever the evidence cannot tell stays owed: a branch recorded before
-// sessions were kept, a run with no session as its driver (a plain terminal's)
-// or none at all, a reservation made by hand, an item whose holder has ended,
-// and every item when the stopping session has no id abcd keys on or the live
-// sessions cannot be read. A peer's work returns to the sessions left once
-// the peer ends.
+// sessions were kept, a lane of a run with no session as its driver (a plain
+// terminal's) or none at all unless a live session started in the worktree
+// the lane is checked out in (that session's, as above), a reservation made
+// by hand, an item whose holder has ended, and every item when the stopping
+// session has no id abcd keys on or the live sessions cannot be read. A
+// peer's work returns to the sessions left once the peer ends. A branch a
+// peer holds still serves as the base of this session's branch cut from it
+// (stackIdx indexes the own set as findOwn found it). The live sessions are
+// read once a check, whenever an owed item remains, so a copy another live
+// session started in is named as a breach of one session per checkout once
+// (breachNote).
 
 // holding is what one other live session holds, in plain words, for its note.
 type holding struct {
@@ -155,9 +161,7 @@ func (r *owedReader) hold(session, item string) {
 // within the line the stop's reason gives each note.
 const maxHeldNamed = 3
 
-// holdNotes names each holder once, with what it holds, and, when another
-// live session started in this very copy, the breach of one session per
-// checkout that made their work meet here.
+// holdNotes names each holder once, with what it holds.
 func (r *owedReader) holdNotes() {
 	sessions := make([]string, 0, len(r.held))
 	for s := range r.held {
@@ -173,7 +177,23 @@ func (r *owedReader) holdNotes() {
 		}
 		r.note("live session %s holds %s%s: that session's work, not owed here", s, strings.Join(named, ", "), more)
 	}
-	if !r.liveOK {
+}
+
+// breachNote names, once a check, the breach of one session per checkout
+// when another live session started in this very copy. It runs once the
+// items are judged, and reads the live sessions whenever an owed item
+// remains, not only when some item named another session: a peer's branch
+// can reach this copy through the HEAD reflog the two share alone (a
+// checkout of an existing branch records no creator), which stays owed here,
+// and the shared copy is then the reason this session is held for it.
+func (r *owedReader) breachNote() {
+	if !ValidSessionID(r.me) {
+		return
+	}
+	if !r.liveTried && (len(r.items) == 0 || r.expired()) {
+		return
+	}
+	if _, ok := r.liveSessions(); !ok {
 		return
 	}
 	var sharing []string

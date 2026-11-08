@@ -168,6 +168,7 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 	r.branchItems()
 	r.reservationItems()
 	r.handBack()
+	r.breachNote()
 	if r.cut {
 		r.ranOut("the rest of this copy's work")
 	}
@@ -219,6 +220,7 @@ type owedReader struct {
 
 	receiptsMinted bool
 	own            map[string]bool
+	baseNames      []string          // the own branches as findOwn found them, before scope: what stackIdx indexes
 	stacks         *stackIndex       // read once, for diskStackBase
 	incomplete     bool              // the time budget ran out before everything was read
 	cut            bool              // a git read failed once the budget had run out
@@ -670,6 +672,7 @@ func (r *owedReader) findOwn() {
 			}
 		}
 	}
+	r.baseNames = r.ownNames()
 }
 
 // checkedOutElsewhere are the branches a worktree other than this copy has
@@ -725,7 +728,10 @@ const stackWalk = 1000
 // stackIndex is what diskStackBase reads once a check, so finding every own
 // branch's base takes a fixed number of git calls a branch rather than one a
 // pair: the own branches by their current head, and by each tip their reflog
-// set other than by creating the branch.
+// set other than by creating the branch. It indexes the own branches as
+// findOwn found them, before scope left out what another live session holds:
+// a branch a peer holds is not owed here, but this session's branch cut from
+// it is still stacked on it, and judged by the clearing rule.
 type stackIndex struct {
 	heads map[string][]string // a commit -> the own branches whose head it is
 	tips  map[string][]string // a commit -> the own branches it was a set tip of
@@ -736,7 +742,7 @@ func (r *owedReader) stackIdx() *stackIndex {
 		return r.stacks
 	}
 	idx := &stackIndex{heads: map[string][]string{}, tips: map[string][]string{}}
-	for _, name := range r.ownNames() {
+	for _, name := range r.baseNames {
 		c, ok := r.branches[name]
 		if !ok {
 			continue

@@ -170,11 +170,15 @@
 // runs are for. The session's own evidence wins over another's: a branch it
 // recorded creating, or a lane of a run it drives, stays its own. An item
 // whose holder cannot be told stays owed: a record with no session kept, a
-// run no session drives, a reservation made by hand, a holder that has ended
-// (its work returns to the sessions left), and every item when the session
-// has no id or the live sessions (ReadOptions.LiveSessions, occupancy.Live by
-// default) cannot be read. A copy another live session started in is named as
-// a breach of one session per checkout.
+// lane of a run no session drives (unless a live session started in the
+// worktree it is checked out in), a reservation made by hand, a holder that
+// has ended (its work returns to the sessions left), and every item when the
+// session has no id or the live sessions (ReadOptions.LiveSessions,
+// occupancy.Live by default) cannot be read. A branch created again under a
+// name the guard recorded is its new creator's. A branch a peer holds still
+// serves as the base of the session's own branch stacked on it. Whenever owed
+// work remains, a copy another live session started in is named, once, as a
+// breach of one session per checkout.
 //
 // A stacked branch (its pull request's base is not the default branch, or,
 // with none, its nearest own ancestor branch is not in the default branch) is

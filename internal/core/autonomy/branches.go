@@ -50,7 +50,8 @@ const (
 	BranchCreated BranchChangeKind = "created"
 	// BranchCheckedOut is a branch `git worktree add` checks out in a new
 	// worktree; RecordCreated keeps it when it exists as a branch, or when the
-	// name resolves to nothing at all, so git creates it.
+	// name resolves to nothing at all, so git creates it, which it records
+	// as BranchCreated.
 	BranchCheckedOut BranchChangeKind = "checked-out"
 	// BranchMoved is a rename: a record of From (the current branch of the
 	// command's worktree when "") is carried to Name.
@@ -87,9 +88,12 @@ func (s Store) CreatedBranches(copyKey string) ([]CreatedBranch, error) {
 
 // RecordBranches applies changes, already judged, to the created-branch list
 // of the working copy whose key is copyKey, under the store's lock and with
-// the list re-read inside it: a created or checked-out name is added once, a
-// rename carries the record whose name is From, whole name to whole name, and
-// the list keeps the newest MaxCreatedBranches.
+// the list re-read inside it: a created name is recorded anew, with this
+// change's session and time, even when the list already holds it (a branch
+// deleted and made again is a new branch, and its first creator's record
+// would hand it to that session); a checked-out name is added once; a rename
+// carries the record whose name is From, whole name to whole name; and the
+// list keeps the newest MaxCreatedBranches.
 func (s Store) RecordBranches(copyKey string, changes []BranchChange, now time.Time) error {
 	if len(changes) == 0 {
 		return nil
@@ -121,9 +125,20 @@ func applyBranchChanges(list []CreatedBranch, changes []BranchChange, now time.T
 	for _, c := range changes {
 		switch c.Kind {
 		case BranchCreated, BranchCheckedOut:
-			if c.Name != "" && index(c.Name) < 0 {
-				list = append(list, CreatedBranch{Name: c.Name, At: now, Session: c.Session})
+			if c.Name == "" {
+				continue
 			}
+			i := index(c.Name)
+			if i >= 0 && c.Kind == BranchCheckedOut {
+				continue
+			}
+			// A name created again is a new branch (RecordCreated has
+			// proved its first is gone): its record is this creation's,
+			// session and time, and the newest, never the first creator's.
+			if i >= 0 {
+				list = append(list[:i], list[i+1:]...)
+			}
+			list = append(list, CreatedBranch{Name: c.Name, At: now, Session: c.Session})
 		case BranchMoved:
 			i := index(c.From)
 			if i < 0 || c.Name == "" {
@@ -191,7 +206,12 @@ func RecordCreated(copyRoot, runDir string, changes []BranchChange, o Options) e
 			if checkedOut[c.Name] {
 				continue
 			}
-			if branchExists(copyRoot, c.Name) || !resolves(copyRoot, c.Name) {
+			switch {
+			case branchExists(copyRoot, c.Name):
+				keep = append(keep, c)
+			case !resolves(copyRoot, c.Name):
+				// git makes the branch it checks out: a creation.
+				c.Kind = BranchCreated
 				keep = append(keep, c)
 			}
 		case BranchMoved:

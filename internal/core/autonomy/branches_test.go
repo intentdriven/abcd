@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // testCopyKey is a copy key's shape, built at runtime so no key-shaped
@@ -153,5 +154,57 @@ func TestRecordCreatedKeepsTheSession(t *testing.T) {
 	}
 	if got, err := st.CreatedBranches(testCopyKey); err != nil || len(got) != 1 || got[0].Session != "" {
 		t.Fatalf("a list from before sessions were kept: %v, %v", got, err)
+	}
+}
+
+// TestRecreatedNameTakesTheNewCreator: a branch created again under a name the
+// list already holds (its first branch deleted since, which RecordCreated has
+// proved) is recorded anew, with the session and time of this creation and as
+// the newest record; a worktree that makes the branch it checks out does too,
+// and one that takes up an existing branch keeps its first creator.
+func TestRecreatedNameTakesTheNewCreator(t *testing.T) {
+	root, home := managedCopy(t)
+	t0 := time.Now().Add(-time.Hour).Truncate(time.Second)
+	t1 := t0.Add(30 * time.Minute)
+	rec := func(session string, at time.Time, c BranchChange) {
+		t.Helper()
+		o := Options{Home: home, SessionID: session, Now: func() time.Time { return at }}
+		if err := RecordCreated(root, root, []BranchChange{c}, o); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec("sess-a", t0, BranchChange{Kind: BranchCreated, Name: "fix/x"})
+	rec("sess-a", t0, BranchChange{Kind: BranchCheckedOut, Name: "fix/y"})
+	rec("sess-a", t0, BranchChange{Kind: BranchCreated, Name: "fix/z"})
+	rec("sess-a", t0, BranchChange{Kind: BranchCreated, Name: "fix/w"})
+	if _, err := gitutil.Run(root, "branch", "fix/w"); err != nil {
+		t.Fatal(err)
+	}
+	rec("sess-b", t1, BranchChange{Kind: BranchCreated, Name: "fix/x"})
+	rec("sess-b", t1, BranchChange{Kind: BranchCheckedOut, Name: "fix/y"})
+	rec("sess-b", t1, BranchChange{Kind: BranchCheckedOut, Name: "fix/w"})
+	st, err := openStore(home, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := claim.CopyKey(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.CreatedBranches(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "fix/z fix/w fix/x fix/y"; strings.Join(names(got), " ") != want {
+		t.Fatalf("a recreated name is one record, the newest: %v, want %s", names(got), want)
+	}
+	for _, b := range got {
+		wantS, wantAt := "sess-a", t0
+		if b.Name == "fix/x" || b.Name == "fix/y" {
+			wantS, wantAt = "sess-b", t1
+		}
+		if b.Session != wantS || !b.At.Equal(wantAt) {
+			t.Errorf("%s recorded as %q at %v; want %q at %v", b.Name, b.Session, b.At, wantS, wantAt)
+		}
 	}
 }

@@ -201,8 +201,8 @@ func TestPeerSessionWorkNamedNotOwed(t *testing.T) {
 	if n := strings.Count(notes, "session "+sessPeer+" "); n != 1 {
 		t.Errorf("the peer is named %d times; once, with every item it holds:\n%s", n, notes)
 	}
-	if !strings.Contains(notes, "one session per checkout") {
-		t.Errorf("the copy two live sessions share is not named as a breach:\n%s", notes)
+	if n := strings.Count(notes, "one session per checkout"); n != 1 {
+		t.Errorf("the copy two live sessions share is named as a breach %d times; once:\n%s", n, notes)
 	}
 	v := Judge(f.awayRecord(false), mine, StopInput{SessionID: sessMe}, SessionState{}, f.now)
 	if v.Row == 2 || v.Row == 4 || v.Row == 5 {
@@ -284,5 +284,110 @@ func TestNoSessionIDScopesNothing(t *testing.T) {
 		if reads != 0 {
 			t.Errorf("session id %q: the live sessions were read with no session to tell apart", id)
 		}
+	}
+}
+
+// recordAs runs the guard's created-branch recorder for one change, as
+// session would.
+func (f *fx) recordAs(session string, c BranchChange) {
+	f.t.Helper()
+	if err := RecordCreated(f.root, f.root, []BranchChange{c}, Options{Home: f.home, SessionID: session}); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
+// bothLive is a live-session reader with this session and the peer both
+// started in this copy.
+func (f *fx) bothLive(reads *int) func() ([]occupancy.Session, error) {
+	return liveAs(reads,
+		occupancy.Session{ID: sessMe, Checkout: f.root},
+		occupancy.Session{ID: sessPeer, Checkout: f.root})
+}
+
+// TestRecreatedBranchIsItsNewCreators: a name the peer created and deleted,
+// which this session then creates again, is this session's: its commits not
+// pushed block this session's stop, and the peer is not named as holding it.
+func TestRecreatedBranchIsItsNewCreators(t *testing.T) {
+	f := newFx(t)
+	f.recordAs(sessPeer, BranchChange{Kind: BranchCreated, Name: "fix/x"})
+	f.git("branch", "fix/x")
+	f.commitOn("fix/x", "the peer's work", "")
+	f.git("branch", "-D", "fix/x")
+	f.recordAs(sessMe, BranchChange{Kind: BranchCreated, Name: "fix/x"})
+	f.git("branch", "fix/x")
+	f.commitOn("fix/x", "this session's work", "")
+
+	reads := 0
+	o := f.opts()
+	o.Record = f.awayRecord(false)
+	o.SessionID = sessMe
+	o.LiveSessions = f.bothLive(&reads)
+	owed := f.readWith(o)
+	if !has(owed, OwedUnpushed, "fix/x") {
+		t.Fatalf("this session's recreated branch must stay owed to it: %s", describe(owed))
+	}
+	if strings.Contains(strings.Join(owed.Notes, "\n"), "fix/x (it created)") {
+		t.Errorf("the peer that made the name first is named as its creator: %s", describe(owed))
+	}
+}
+
+// TestStackedOnPeerBranchStaysStacked: this session's branch cut from a
+// branch a live peer holds is still judged stacked on it: the peer's branch
+// is not owed here, but it serves as the base, so the clearing rule owes the
+// preflight a receipt-minting repository needs for this session's head.
+func TestStackedOnPeerBranchStaysStacked(t *testing.T) {
+	f := newFx(t)
+	f.git("branch", "feat/peer-base")
+	f.commitOn("feat/peer-base", "the peer's base", "")
+	f.push("feat/peer-base")
+	f.recordCreated("feat/peer-base", sessPeer)
+	f.git("branch", "feat/my-top", "feat/peer-base")
+	f.commitOn("feat/my-top", "this session's top", "")
+	f.push("feat/my-top")
+	f.recordCreated("feat/my-top", sessMe)
+	f.mintReceipts()
+
+	reads := 0
+	o := f.opts()
+	o.Record = f.awayRecord(false)
+	o.SessionID = sessMe
+	o.LiveSessions = f.bothLive(&reads)
+	owed := f.readWith(o)
+	it, ok := find(owed, OwedStacked, "feat/my-top")
+	if !ok || !strings.Contains(it.Reason, "feat/peer-base") || !strings.Contains(it.Reason, "preflight") {
+		t.Fatalf("this session's branch stacked on the peer's is owed by the clearing rule: %s", describe(owed))
+	}
+	for _, i := range owed.Items {
+		if i.Branch == "feat/peer-base" {
+			t.Errorf("the peer's base is owed to this session: %s", describe(owed))
+		}
+	}
+}
+
+// TestSharedCopyBreachNamedWithNoClaim (iss-2610311406481214): in a copy two
+// live sessions share, a branch reached only through the shared HEAD reflog,
+// which no session's record names, stays owed, and the shared copy is still
+// named as a breach of one session per checkout, once.
+func TestSharedCopyBreachNamedWithNoClaim(t *testing.T) {
+	f := newFx(t)
+	f.git("branch", "feat/pr-123")
+	f.commitOn("feat/pr-123", "work on an existing branch", "")
+	f.own("feat/pr-123")
+
+	reads := 0
+	o := f.opts()
+	o.Record = f.awayRecord(false)
+	o.SessionID = sessMe
+	o.LiveSessions = f.bothLive(&reads)
+	owed := f.readWith(o)
+	if !has(owed, OwedUnpushed, "feat/pr-123") {
+		t.Fatalf("a branch no session's record names stays owed: %s", describe(owed))
+	}
+	notes := strings.Join(owed.Notes, "\n")
+	if n := strings.Count(notes, "one session per checkout"); n != 1 {
+		t.Errorf("the shared copy is named as a breach %d times; once:\n%s", n, notes)
+	}
+	if reads != 1 {
+		t.Errorf("the live sessions were read %d times; once a check", reads)
 	}
 }
