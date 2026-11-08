@@ -165,6 +165,13 @@ func TestAProviderBoundCloneWithASecretIsRefused(t *testing.T) {
 			t.Fatalf("%s: a clone that is not sent is not scanned: %v", src, err)
 		}
 	}
+	// Only a source known to keep the clone on this machine skips the scan: an
+	// empty or unknown one is scanned as a provider's would be.
+	for _, src := range []Source{"", "elsewhere"} {
+		if err := admitClone(scanRoot, clone, CellPin{Cell: "odd", Source: src}); err == nil || !strings.Contains(err.Error(), "scan") {
+			t.Fatalf("source %q: a clone whose source is not known to stay here is scanned and refused: %v", src, err)
+		}
+	}
 	clean := t.TempDir()
 	if err := os.WriteFile(filepath.Join(clean, "main.go"), []byte("package main\n"), 0o600); err != nil {
 		t.Fatal(err)

@@ -88,14 +88,15 @@ func runCopy(ctx context.Context, pin CellPin, tries int, wait func(ctx context.
 	}
 }
 
-// admitClone passes a copy's clone through the launch bundle's scan when the
-// cell sends it to a provider (an OpenRouter or other provider cell), and
-// refuses the cell on anything that scan refuses, naming the cell and the
-// scan's reasons, never a value. A local or host cell's clone is not sent
-// anywhere, so it is not scanned. scanRoot is the checkout whose scanner
-// configuration applies: the run's own.
+// admitClone passes a copy's clone through the launch bundle's scan unless
+// the cell is known to keep it on this machine, and refuses the cell on
+// anything that scan refuses, naming the cell and the scan's reasons, never a
+// value. Only a local or host cell's clone is sent nowhere new, so only those
+// skip the scan; an OpenRouter or other provider cell is scanned, and so is a
+// pin whose source is empty or unknown. scanRoot is the checkout whose
+// scanner configuration applies: the run's own.
 func admitClone(scanRoot, clone string, pin CellPin) error {
-	if !pin.Source.Metered() {
+	if pin.Source == SourceLocal || pin.Source == SourceHost {
 		return nil
 	}
 	refusals, err := launch.ScanTree(scanRoot, clone)
