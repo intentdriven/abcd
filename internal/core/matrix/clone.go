@@ -36,9 +36,12 @@ const localTier = ".abcd/.work.local"
 
 // makeClone makes copy key's clone of frozen, fetched from the repository at
 // repoRoot, at cloneDir(store, run, key), and returns its path. The clone is a
-// fresh repository holding the frozen commit's history alone, checked out at
-// it on a detached HEAD: no branch, no remote, no tag, no other copy's refs,
-// no hooks and no objects borrowed from the source. A store inside any working
+// fresh repository holding the frozen commit alone, fetched one commit deep,
+// so no commit before it, nor anything only such a commit holds, is in the
+// clone: what a copy can read there is the frozen tree, which is what the
+// launch bundle's scan reads (admitClone). It is checked out at the frozen
+// commit on a detached HEAD: no branch, no remote, no tag, no other copy's
+// refs, no hooks and no objects borrowed from the source. A store inside any working
 // tree (the source's, one of its worktrees, any other repository's) is refused
 // before anything is made, as is a key whose clone already exists, so a copy
 // never starts from another attempt's leftovers. A frozen commit that tracks a
@@ -84,7 +87,9 @@ func fillClone(repoRoot, dir, frozen string) error {
 	steps := [][]string{
 		// An empty template: no hooks, and nothing of the person's.
 		{"init", "-q", "--template=", dir},
-		{"-C", dir, "fetch", "-q", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", repoRoot, frozen},
+		// One commit deep: the frozen commit and its tree, and none of its
+		// ancestors.
+		{"-C", dir, "fetch", "-q", "--depth=1", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", repoRoot, frozen},
 		{"-C", dir, "-c", "advice.detachedHead=false", "checkout", "-q", "--detach", frozen},
 	}
 	for _, args := range steps {

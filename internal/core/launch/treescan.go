@@ -17,6 +17,9 @@ import (
 // step 3), so what the release gate keeps off the public never leaves the
 // machine in a clone either. The scanner's configuration is read at repoRoot,
 // the checkout the run belongs to, whose local tier the clone does not hold.
+// Git's own directory is not read, so a caller whose tree must be covered
+// whole hands it a tree whose repository holds nothing past its checked-out
+// files: a model-matrix clone holds its frozen commit alone.
 //
 // An entry is never followed: a symbolic link or any other non-regular entry
 // is handed to the scanner as itself, which leaves it unscanned and so

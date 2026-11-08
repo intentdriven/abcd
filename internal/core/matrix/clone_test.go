@@ -89,6 +89,41 @@ func TestACopyIsAnIsolatedCloneOfTheFrozenCommit(t *testing.T) {
 	}
 }
 
+// TestACloneHoldsTheFrozenCommitAlone: the clone holds the frozen commit and
+// its tree, and nothing of the commits before it, so what a copy can read in
+// its clone is what the launch bundle's scan reads in its working tree.
+func TestACloneHoldsTheFrozenCommitAlone(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write("earlier.txt", "content only an earlier commit holds\n")
+	r.Commit("earlier")
+	parent := r.Git("rev-parse", "HEAD")
+	blob := r.Git("rev-parse", "HEAD:earlier.txt")
+	r.Git("rm", "-q", "earlier.txt")
+	r.Write("README.md", "frozen\n")
+	r.Commit("frozen")
+	frozen := r.Git("rev-parse", "HEAD")
+	store := filepath.Join(t.TempDir(), "matrix-store")
+
+	dir, err := makeClone(r.Root(), store, cloneRun, frozen, TrialKey{Task: "widget", Cell: "cheap", Repeat: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := r.Env()
+	for name, obj := range map[string]string{"the frozen commit's parent": parent, "a file only an earlier commit holds": blob} {
+		probe := exec.Command("git", "-C", dir, "cat-file", "-e", obj)
+		probe.Env = env
+		if probe.Run() == nil {
+			t.Fatalf("the clone holds %s (%s)", name, obj)
+		}
+	}
+	if head := gitOut(t, env, dir, "rev-parse", "HEAD"); head != frozen {
+		t.Fatalf("the clone is at the frozen commit: %s, want %s", head, frozen)
+	}
+	if data, err := os.ReadFile(filepath.Join(dir, "README.md")); err != nil || string(data) != "frozen\n" {
+		t.Fatalf("the clone checks out the frozen tree: %q %v", data, err)
+	}
+}
+
 // TestACopyIsNeverMadeInsideAWorkingTree: a store inside the source's working
 // tree, inside one of its linked worktrees, or inside any other repository's
 // working tree is refused, and nothing is made there.

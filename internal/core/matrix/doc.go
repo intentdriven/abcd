@@ -19,7 +19,7 @@
 //   - the export (export.go): the trial record mapped field by field onto a
 //     Harbor trial result and an Inspect eval sample, and back;
 //   - the copies (clone.go, cell.go, localserver.go; step 3): each copy made
-//     in its own clone of the frozen commit in the machine-scoped store,
+//     in its own clone of the frozen commit alone in the machine-scoped store,
 //     outside every working tree, with no local tier and no other copy's
 //     refs; dispatched in the runners' cell mode, so a runner's failure is
 //     the cell's and nothing falls back; an outage before the copy began
