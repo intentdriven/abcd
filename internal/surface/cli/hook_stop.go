@@ -30,8 +30,9 @@ import (
 // 4): autonomy.ReadOwed, asked with the session's working copy (its start
 // copy, from the session-start note), the away record (not holding, the
 // reader reads disk only and never calls the forge), the home the away store
-// lives under, and the clock. While away its forge listing runs under its own
-// ten-second deadline. A test replaces it with constructed sets.
+// lives under, the clock, and the session's id, by which the reader leaves
+// out what another live session holds. While away its forge listing runs
+// under its own ten-second deadline. A test replaces it with constructed sets.
 var stopOwedReader = autonomy.ReadOwed
 
 // stopClock is the seam onto the hook's clock and the zone it reads the
@@ -113,10 +114,13 @@ host's cap of consecutive continuations (eight, or
 CLAUDE_CODE_STOP_HOOK_BLOCK_CAP) is recorded in the away record as a stop
 possibly forced by the cap. While the person is present the check reads disk
 only and, with work owed, allows the stop with a systemMessage naming it.
-The owed work is read within 14 seconds of the hook's start, so the hook
-ends well inside the host's 30-second timeout; a reading cut short allows
-the stop with a systemMessage naming what was not read, recorded in the away
-record while the person is away.
+Work another live session holds (the lanes of a run it drives, a branch it
+created, a branch checked out in the worktree it started in) is not owed to
+this one: it is named once, as that session's. The owed work is read within
+14 seconds of the hook's start, so the hook ends well inside the host's
+30-second timeout; a reading cut short allows the stop with a systemMessage
+naming what was not read, recorded in the away record while the person is
+away.
 
 The session's state is kept per session id in its start copy's local tier,
 .abcd/.work.local/autonomy/sessions/<session-id>.json. A malformed payload,
@@ -160,7 +164,7 @@ nothing.`,
 				return stopAllow(cmd, "the session id %q is not [A-Za-z0-9_-]{1,128}", termsafe.CleanProseLine(p.SessionID, 64))
 			}
 			home, _ := os.UserHomeDir()
-			owed, err := stopOwedReader(ctx, autonomy.ReadOptions{Root: copyRoot, Record: rec, Home: home, Now: func() time.Time { return now }})
+			owed, err := stopOwedReader(ctx, autonomy.ReadOptions{Root: copyRoot, Record: rec, Home: home, Now: func() time.Time { return now }, SessionID: p.SessionID})
 			if err != nil {
 				return stopAllow(cmd, "owed work could not be read (%s)", fsutil.RedactHome(err.Error()))
 			}

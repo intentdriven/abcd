@@ -449,3 +449,44 @@ func TestReadingASessionTellsNoneFromUnreadable(t *testing.T) {
 		t.Fatalf("SessionOn over it: %q", s)
 	}
 }
+
+// TestLiveNamesRunningSessionsAndWritesNothing: Live names each session whose
+// host still runs, with the checkout it started in, sorted by id; a session
+// whose host has ended is left out but keeps its marker (pruning is Note's);
+// with no marker at all the table is never read, and no folder is none.
+func TestLiveNamesRunningSessionsAndWritesNothing(t *testing.T) {
+	home := t.TempDir()
+	never := func() (sessionname.Table, error) {
+		t.Fatal("the process table was read with no marker to judge")
+		return sessionname.Table{}, nil
+	}
+	if got, err := Live(home, never); got != nil || err != nil {
+		t.Fatalf("no folder: %v, %v", got, err)
+	}
+	now := time.Now()
+	tab := table(now, 301, 302, 303)
+	main := filepath.Join(home, "src", "repo")
+	wt := filepath.Join(home, "wt", "lane")
+	for _, n := range []struct {
+		id, where string
+		pid       int
+	}{{"zed", main, 301}, {"amy", wt, 302}, {"gone", main, 303}} {
+		if err := Note(home, n.id, n.where, hostOf(tab, n.pid), tab); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := Live(home, read(table(now, 301, 302)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Session{{ID: "amy", Checkout: wt}, {ID: "zed", Checkout: main}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("Live = %v, want %v", got, want)
+	}
+	if _, err := os.Stat(abcdhome.Path(home, dirLeaf, "gone.json")); err != nil {
+		t.Fatalf("Live writes nothing, so an ended session's marker stays for Note to prune: %v", err)
+	}
+	if _, err := Live(home, func() (sessionname.Table, error) { return sessionname.Table{}, errors.New("no ps") }); err == nil {
+		t.Fatal("a table that cannot be read must be an error, never read as no live session")
+	}
+}

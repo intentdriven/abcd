@@ -35,6 +35,9 @@ type Options struct {
 	// Who names the person acting in the checkout at root; nil means
 	// resolveWho.
 	Who func(root string) string
+	// SessionID is the host session acting, which RecordCreated keeps on
+	// each branch it records; "" (or an id ValidSessionID refuses) keeps none.
+	SessionID string
 }
 
 func (o Options) now() time.Time {
