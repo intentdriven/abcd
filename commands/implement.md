@@ -1373,6 +1373,12 @@ wait limit, costs a narrow run minutes and not its wait. It never stands aside f
 a whole run with no slot free, which no narrow run is holding up. Waiters queued
 ahead that alone keep a narrow run shut stop counting after two minutes, since one
 may be shut by its own account's stricter settings, which no other account can see.
+The time both caps have spent carries across retries of the same narrow wait in the
+same lane, until one of the first try's timeouts has passed since the last try gave
+up, so a lane that waits in short tries, each run again when the last gives up,
+still reaches them. A retry is the same command in the same worktree, and on a
+drive's stage the same stage; the carried time is your account's own, in
+`load-wait-narrow-carry.json`, and a try that opens clears it.
 
 Accounts can run different abcd versions. An abcd built before narrow runs queues
 behind a marked waiter that started earlier and counts one running against its
