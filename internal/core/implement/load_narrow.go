@@ -54,6 +54,10 @@ import (
 // full and no whole run passes its limit. A narrow waiter queued ahead can be shut
 // by its own account's stricter settings, which no other account can see, so waiters
 // ahead that alone keep a narrow run shut are passed after WaitNarrowQueueCap.
+//
+// Both caps' spent time carries across retries of the same narrow wait in the same
+// lane, until one of the first try's timeouts has passed since the last gave up
+// (load_narrow_carry.go), so a lane that waits in short tries still reaches them.
 
 // NarrowRunsKey is the machine configuration key of the narrow runs' limit. It has
 // no environment variable of its own, and no repository file sets it; like

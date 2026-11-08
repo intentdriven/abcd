@@ -19,6 +19,7 @@ import (
 	"github.com/intentdriven/abcd/internal/cienv"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/machineload"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -355,6 +356,9 @@ type WaitRequest struct {
 	// Narrow says the command form's command is a narrow run
 	// (machineload.IsNarrowCommand), which waits at its own gate (load_narrow.go).
 	Narrow bool
+	// Words are the command form's command, as it runs: a narrow wait keys the
+	// budget it carries to its next try on them (load_narrow_carry.go).
+	Words []string
 	// OnWait is called once, at the first look that finds the gate shut.
 	OnWait func(WaitResult)
 	// OnSettle is called once, at the first look that finds the machine free,
@@ -725,6 +729,38 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		}
 		crossedN = c.n
 	}
+	// A narrow wait starts from what the tries before it spent, and records what
+	// it has spent when it gives up (load_narrow_carry.go).
+	carryKey := ""
+	if req.Narrow && req.Timeout > 0 {
+		carryKey = narrowCarryKey(req.Dir, getenv(runner.StageWritesEnv), req.Words)
+	}
+	carried, carrying := narrowCarry{}, false
+	if carryKey != "" {
+		carried, carrying = loadCarry(root, carryKey, start)
+	}
+	if carrying {
+		watch.asideSpent = carried.Aside
+		if carried.Queue > 0 && len(carried.QueueSeen) > 0 {
+			crossedSince, crossedSeen = start.Add(-carried.Queue), slices.Clone(carried.QueueSeen)
+		}
+	} else {
+		carried = narrowCarry{Key: carryKey, First: start, Timeout: req.Timeout}
+	}
+	saveCarry := func(opened bool) {
+		if carryKey == "" {
+			return
+		}
+		e := carried
+		e.Last, e.Aside, e.Queue, e.QueueSeen = now(), 0, 0, nil
+		if !opened {
+			e.Aside = watch.asideSpent
+			if !crossedSince.IsZero() {
+				e.Queue, e.QueueSeen = e.Last.Sub(crossedSince), crossedSeen
+			}
+		}
+		storeCarry(root, e, e.Last)
+	}
 	for {
 		open, held, err := readSlots(false)
 		if err != nil || open {
@@ -808,6 +844,9 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 			// What held an earlier look shut is history (WaitedOn), not the
 			// state of a gate that has now opened.
 			res.Still = nil
+			if res.Status == WaitOpen {
+				saveCarry(true)
+			}
 			return res, nil
 		}
 		res.Still = shut
@@ -844,6 +883,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		left := deadline.Sub(now())
 		if left <= 0 {
 			res.Status = WaitTimedOut
+			saveCarry(false)
 			return res, nil
 		}
 		sleep(min(pollEvery, left))

@@ -3082,7 +3082,10 @@ place. Its jitter is 1s to 5s, and it takes no open look, so across accounts two
 opening at once can pass the limit by one. So that it cannot starve a whole run, while a
 whole-run waiter that started earlier has been queued 5m0s or more and a whole slot is free, it
 stands aside, spending at most 5m0s of a wait so. Waiters queued ahead that alone keep it shut stop
-counting after 2m0s.
+counting after 2m0s. The time both caps have spent carries across retries of the same
+narrow wait in the same lane (the same command, worktree and drive stage), until one of the
+first try's timeouts has passed since the last gave up, in your account's own
+`~/.abcd.noindex/load-wait-narrow-carry.json`; a try that opens clears it.
 
 A wait that gives up exits 1 and ends with a line starting `LOAD GATE TIMED OUT`,
 naming how long it waited and that nothing ran, so a pipe that loses the exit
