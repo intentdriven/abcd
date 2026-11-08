@@ -157,6 +157,10 @@ func landSubject(st State, lane Lane) string {
 
 // landStage is the land stage's body: it performs the landing's next step.
 func landStage(c Context, lane *Lane) (Outcome, error) {
+	if c.State.Trial {
+		// A trial lands nothing (trial.go), whatever its lane holds.
+		return Outcome{Note: trialLandNote}, nil
+	}
 	if !gitutil.IsFullSHA(lane.BaseSHA) || !gitutil.IsFullSHA(lane.HeadSHA) || lane.Worktree == "" || lane.Branch == "" {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the lane records no branch, worktree, base and head to land",
 			"the earlier stages record them; restore the run's state file")
