@@ -1820,7 +1820,9 @@ the form the rules, notes and pages come back in:
 
 A domain, note or page comes back once a session in whatever form its
 bracket gave it, and not again in a larger or smaller form when the bracket
-changes, until a reset. An unknown fill is said on stderr once a session.
+changes, until a reset. A domain sent as its heading and command alone,
+for want of room, carried none of its rules, so it is tried again the next
+time it matches. An unknown fill is said on stderr once a session.
 error is present only when the prompt could not be evaluated, and then
 active, fill and bracket are absent: the set is unknown. A memory.json,
 page store or page that cannot be read is named on stderr and recalls
