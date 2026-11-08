@@ -334,3 +334,33 @@ func TestAFoundMarkTheLandingDoesNotWriteIsNotAbcds(t *testing.T) {
 		t.Fatalf("a found mark the landing does not write is refused: %+v", r)
 	}
 }
+
+// TestAMarkLeftInTheWorktreeIsNotAbcdsWhenTheLandingMarksNoStep
+// (itd-2610301850454860): the records step's half of the rule above. A landing
+// that marks no step, finding a `landed:` line for the judged head left in the
+// lane's worktree, commits it under the lane's model, saying it carried what
+// was left there, never under abcd's own label.
+func TestAMarkLeftInTheWorktreeIsNotAbcdsWhenTheLandingMarksNoStep(t *testing.T) {
+	const second = "2. The loop\n   - packages: internal/core/implement\n"
+	f := newLandFixtureWith(t, map[string]string{
+		".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
+		specRel: specWithSteps("1. The parser\n   - packages: internal/core/spec\n" + second),
+	})
+	l := f.twoStepLandWithNoResolutions(t)
+	judged := f.commitAtTheJudgedHead(t, l, func() {
+		marked := specWithSteps("1. The parser\n   - packages: internal/core/spec\n   - landed: #1\n" + second)
+		if err := os.WriteFile(filepath.Join(l.Worktree, specRel), []byte(marked), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	f.step(t) // prepare
+	extra := specWithSteps("1. The parser\n   - packages: internal/core/spec\n   - landed: #1\n" + second + "   - landed: " + shortSHA(judged) + "\n")
+	if err := os.WriteFile(filepath.Join(l.Worktree, specRel), []byte(extra), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	l = f.wantsRecordsCommit(t)
+	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
+	if strings.Contains(msg, composedAssistedBy()) || !strings.Contains(msg, "Assisted-by: Claude:claude-test-5") || !strings.Contains(msg, "carried what else was left in the lane's worktree") {
+		t.Fatalf("a mark the landing does not write is carried under the lane's model: %q", msg)
+	}
+}
