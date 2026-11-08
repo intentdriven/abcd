@@ -45,7 +45,10 @@ type Dispatcher struct {
 	// configured host runs the role: an answer from either would measure the
 	// wrong model. A role on the host runs only in a host session. A rate
 	// limit still reaches the caller as an error, since it is the window's and
-	// not the model's.
+	// not the model's; a runner that names its provider's throttling only as
+	// an API status (opencode's 429 error event) returns a failure whose
+	// ProviderDown holds when nothing was spent, which the caller retries as
+	// not started rather than scoring.
 	Cell bool
 	// Validate is the contract's validator: the same check the host sub-agent's
 	// answer passes. It is handed the runner that ran the role, so a caller

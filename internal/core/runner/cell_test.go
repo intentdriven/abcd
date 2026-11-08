@@ -85,9 +85,10 @@ func TestACellRunnerThatAnswersRunsAsRouted(t *testing.T) {
 }
 
 // TestProviderDownIsAnOutageWithNothingSpent: a launch that was retrying the
-// model service, or whose result named a 5xx status, with nothing spent, is
-// the provider down before the copy began; one that spent, one refused by the
-// account, and one with nothing seen are not.
+// model service, or whose result named a 5xx status or the provider's
+// throttling answer (429), with nothing spent, is the provider down before the
+// copy began; one that spent, one refused by the account, and one with nothing
+// seen are not.
 func TestProviderDownIsAnOutageWithNothingSpent(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -99,6 +100,8 @@ func TestProviderDownIsAnOutageWithNothingSpent(t *testing.T) {
 		{"a 503", &HarnessSeen{APIStatus: "503"}, true},
 		{"a 503 after spending", &HarnessSeen{APIStatus: "503", Spent: true}, false},
 		{"retrying after spending", &HarnessSeen{Retrying: true, Spent: true}, false},
+		{"a 429", &HarnessSeen{APIStatus: "429"}, true},
+		{"a 429 after spending", &HarnessSeen{APIStatus: "429", Spent: true}, false},
 		{"a 401", &HarnessSeen{APIStatus: "401"}, false},
 		{"nothing seen", nil, false},
 	} {
@@ -112,9 +115,9 @@ func TestProviderDownIsAnOutageWithNothingSpent(t *testing.T) {
 // TestAnOpenCodeProviderOutageInACellIsTheProviderDown: an OpenRouter cell
 // runs through opencode, so its outage is what opencode's run mode shows of
 // one: an error event whose APIError names the HTTP status, then (or not) a
-// non-zero exit. Dispatched in cell mode, a 5xx with nothing spent is the
-// provider down before the copy began; one after a costed step had begun, an
-// account's 401 and an error naming no status are not.
+// non-zero exit. Dispatched in cell mode, a 5xx or a 429 with nothing spent
+// is the provider down before the copy began; one after a costed step had
+// begun, an account's 401 and an error naming no status are not.
 func TestAnOpenCodeProviderOutageInACellIsTheProviderDown(t *testing.T) {
 	for _, tc := range []struct {
 		mode, status string
@@ -123,6 +126,8 @@ func TestAnOpenCodeProviderOutageInACellIsTheProviderDown(t *testing.T) {
 		{"oc-503", "503", false, true},
 		{"oc-503-zero", "503", false, true},
 		{"oc-503-spent", "503", true, false},
+		{"oc-429", "429", false, true},
+		{"oc-429-spent", "429", true, false},
 		{"oc-401", "401", false, false},
 		{"oc-nostatus", "", false, false},
 	} {

@@ -153,6 +153,33 @@ func TestAnOpenRouterOutageThroughOpenCodeIsNotStarted(t *testing.T) {
 	}
 }
 
+// openCodeThrottled is the same run mode meeting a provider that throttles
+// the call (OpenRouter answering 429) before any step finished: the error
+// event naming the status, and a non-zero exit.
+const openCodeThrottled = `{"type":"step_start","timestamp":1,"sessionID":"ses_slow","part":{"type":"step-start"}}
+{"type":"error","timestamp":2,"sessionID":"ses_slow","error":{"name":"APIError","data":{"message":"Rate limit exceeded","statusCode":429,"isRetryable":true}}}`
+
+// TestAnOpenRouterThrottleThroughOpenCodeIsNotStarted: a copy whose provider
+// throttles every try, with nothing spent, is retried on its pin within the
+// try bound and left not started, never scored as the model's failure: the
+// throttling is the window's, not the model's.
+func TestAnOpenRouterThrottleThroughOpenCodeIsNotStarted(t *testing.T) {
+	c := newRealCell(t, openCodeThrottled, 1)
+	res, err := runCopy(context.Background(), openRouterPin, 3, noWait, c.make)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != StatusNotStarted || res.NotStarted != 3 || c.count(t) != 3 {
+		t.Fatalf("the throttling is retried on the pin and the copy not started: %+v, %d launches", res, c.count(t))
+	}
+	if f := res.Outcome.Failure; f == nil || f.Seen == nil || f.Seen.APIStatus != "429" || !f.ProviderDown() {
+		t.Fatalf("the adapter's own 429 reads as the provider down: %+v", res.Outcome.Failure)
+	}
+	if rec := (TrialRecord{Status: res.Status}); rec.Attempted() || rec.Failed() || rec.Passed() {
+		t.Fatal("a copy that never started is never scored")
+	}
+}
+
 func answered() runner.Outcome {
 	return runner.Outcome{Answer: &runner.Answer{}, Receipt: runner.RoleReceipt{Role: "implementer"}}
 }

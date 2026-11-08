@@ -146,20 +146,23 @@ func fakeHarness(mode string) int {
 	case "garbage":
 		fmt.Fprintln(os.Stdout, "this is not a structured event stream")
 		return 0
-	case "oc-503", "oc-503-zero", "oc-503-spent", "oc-401", "oc-nostatus":
+	case "oc-503", "oc-503-zero", "oc-503-spent", "oc-401", "oc-429", "oc-429-spent", "oc-nostatus":
 		// opencode 1.18.31's run mode meeting its provider's error, as its
 		// source writes one (cli/cmd/run.ts: a session.error event emitted as
 		// {"type":"error",...,"error":<NamedError.toObject()>}, an APIError's
 		// data carrying the HTTP status as statusCode), after its own retries
 		// of a 5xx (session/retry.ts), then a non-zero exit; the -zero shape
-		// exits 0, the -spent one finished a costed step first.
+		// exits 0, the -spent ones finished a costed step first. The -429
+		// shapes are the provider throttling the call (OpenRouter's 429).
 		fmt.Println(`{"type":"step_start","timestamp":1,"sessionID":"ses_fake1","part":{"type":"step-start"}}`)
-		if mode == "oc-503-spent" {
+		if mode == "oc-503-spent" || mode == "oc-429-spent" {
 			fmt.Println(`{"type":"step_finish","timestamp":2,"sessionID":"ses_fake1","part":{"reason":"tool-calls","cost":0.01,"tokens":{"input":100,"output":20,"reasoning":0,"cache":{"read":0,"write":0}}}}`)
 		}
 		switch mode {
 		case "oc-401":
 			fmt.Println(`{"type":"error","timestamp":3,"sessionID":"ses_fake1","error":{"name":"APIError","data":{"message":"User not found.","statusCode":401,"isRetryable":false}}}`)
+		case "oc-429", "oc-429-spent":
+			fmt.Println(`{"type":"error","timestamp":3,"sessionID":"ses_fake1","error":{"name":"APIError","data":{"message":"Rate limit exceeded","statusCode":429,"isRetryable":true}}}`)
 		case "oc-nostatus":
 			fmt.Println(`{"type":"error","timestamp":3,"sessionID":"ses_fake1","error":{"name":"UnknownError","data":{"message":"something broke"}}}`)
 		default:

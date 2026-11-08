@@ -45,10 +45,11 @@ const trialLandNote = "a model-matrix trial lands nothing: no push, no merge, an
 const VerdictCellFailed = "cell-failed"
 
 // cellFailed is a trial's answer to its routed runner's failure fl, the
-// dispatch having run in the runners' cell mode. A provider down before the
-// copy began is an outage, not the model's failure: the role is paused for
-// its own runner, which the next step retries on the same route, with no
-// fallback receipt (pauseAwait). Any other failure is the cell's: the lane is
+// dispatch having run in the runners' cell mode. A provider down, or
+// throttling it (a 429), before the copy began is an outage, not the model's
+// failure (runner.Failure.ProviderDown): the role is paused for its own
+// runner, which the next step retries on the same route, with no fallback
+// receipt (pauseAwait). Any other failure is the cell's: the lane is
 // handed back as VerdictCellFailed, naming the runner's reason and its first
 // stderr line, and nothing retries it or hands it to the host. An await that
 // is gone by now is named as ended, as pauseAwait names one.

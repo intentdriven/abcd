@@ -18,7 +18,7 @@ import (
 )
 
 // outageTries is how many times a copy is tried on its pin while the provider
-// is down before it is left not started.
+// is down, or throttling it, before it is left not started.
 const outageTries = 3
 
 // copyResult is how one copy's making came out. A copy that was made (Made)
@@ -47,13 +47,15 @@ func (r copyResult) Made() bool { return r.Status == "" }
 type makeCopy func(ctx context.Context, pin CellPin) (runner.Outcome, error)
 
 // runCopy makes one copy on pin, trying at most tries times while the
-// provider is down and waiting wait(ctx, n) before try n+1. The pin is the
-// same value on every try, since a fallback to another provider would change
-// the cell (decision 6). A dispatch error is the run's, never the copy's
-// score: a rate limit, or a route the configuration refuses. So is the end of
-// a wait, which is how a stopped run ends a copy waiting out an outage, and so
-// is a stop that comes while a try runs: the runner kills a launch whose run
-// ended, and that failure is the run's, never the copy's score.
+// provider is down, or throttles the call, with nothing spent
+// (runner.Failure.ProviderDown), and waiting wait(ctx, n) before try n+1.
+// The pin is the same value on every try, since a fallback to another
+// provider would change the cell (decision 6). A dispatch error is the run's,
+// never the copy's score: a rate limit the runner names as one, or a route
+// the configuration refuses. So is the end of a wait, which is how a stopped
+// run ends a copy waiting out an outage, and so is a stop that comes while a
+// try runs: the runner kills a launch whose run ended, and that failure is
+// the run's, never the copy's score.
 func runCopy(ctx context.Context, pin CellPin, tries int, wait func(ctx context.Context, n int) error, make makeCopy) (copyResult, error) {
 	var res copyResult
 	for n := 1; ; n++ {
@@ -77,7 +79,7 @@ func runCopy(ctx context.Context, pin CellPin, tries int, wait func(ctx context.
 			res.NotStarted++
 			if n >= tries {
 				res.Status = StatusNotStarted
-				res.Reason = fmt.Sprintf("the provider was down before the copy began, on all %d tries on the cell's pin", n)
+				res.Reason = fmt.Sprintf("the provider was down or throttling before the copy began, on all %d tries on the cell's pin", n)
 				return res, nil
 			}
 			if err := wait(ctx, n); err != nil {

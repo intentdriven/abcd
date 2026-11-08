@@ -323,8 +323,9 @@ func openCodeMeasuredSpend(ans Answer) bool {
 }
 
 // keepOpenCodeSeen puts what a failed opencode launch's error event showed on
-// its failure, naming the status in abcd's words, so a provider down before
-// the run began reads as one (Failure.ProviderDown). A failure whose stream
+// its failure, naming the status in abcd's words, so a provider down or
+// throttling (5xx, 429) before the run began reads as one
+// (Failure.ProviderDown). A failure whose stream
 // carries no error event is left as it was.
 func keepOpenCodeSeen(fl *Failure, res procResult) {
 	s := openCodeSeen(res)
