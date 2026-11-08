@@ -343,6 +343,20 @@ func (f *Failure) Outage() bool {
 	return s != nil && (s.Retrying || (s.Retries > 0 && !s.Spent))
 }
 
+// ProviderDown reports whether the launch met the model service down before it
+// spent anything: it was retrying the service, ran out of retries, or its
+// result named a 5xx status, with nothing spent. A model-matrix copy that
+// ends so never started (decision 6 of itd-2610161733316518): it is retried on
+// the same pin and never scored as the model's failure. One that spent had
+// begun, and an account's refusal (401, 403) is no outage.
+func (f *Failure) ProviderDown() bool {
+	s := f.Seen
+	if s == nil || s.Spent {
+		return false
+	}
+	return f.Outage() || (len(s.APIStatus) == 3 && s.APIStatus[0] == '5')
+}
+
 // serviceStatus reports whether an API status is the account's or the service's,
 // never the work's: 401, 403, 429 and any 5xx.
 func serviceStatus(status string) bool {

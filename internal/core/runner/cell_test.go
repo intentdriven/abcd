@@ -82,3 +82,28 @@ func TestACellRunnerThatAnswersRunsAsRouted(t *testing.T) {
 		t.Fatalf("the routed runner ran the cell: %+v", out)
 	}
 }
+
+// TestProviderDownIsAnOutageWithNothingSpent: a launch that was retrying the
+// model service, or whose result named a 5xx status, with nothing spent, is
+// the provider down before the copy began; one that spent, one refused by the
+// account, and one with nothing seen are not.
+func TestProviderDownIsAnOutageWithNothingSpent(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		seen *HarnessSeen
+		want bool
+	}{
+		{"retrying", &HarnessSeen{Retrying: true, Retries: 3}, true},
+		{"out of retries", &HarnessSeen{Retries: 5}, true},
+		{"a 503", &HarnessSeen{APIStatus: "503"}, true},
+		{"a 503 after spending", &HarnessSeen{APIStatus: "503", Spent: true}, false},
+		{"retrying after spending", &HarnessSeen{Retrying: true, Spent: true}, false},
+		{"a 401", &HarnessSeen{APIStatus: "401"}, false},
+		{"nothing seen", nil, false},
+	} {
+		fl := &Failure{Runner: OpenCode, Reason: ReasonFailed, Seen: tc.seen}
+		if got := fl.ProviderDown(); got != tc.want {
+			t.Errorf("%s: ProviderDown = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
