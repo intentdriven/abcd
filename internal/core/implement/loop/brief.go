@@ -24,6 +24,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -575,6 +576,40 @@ const lostConnectionRule = "## A lost connection\n\n" +
 	"The run waits the outage out and restarts the lane from its last commit; your uncommitted edits are\n" +
 	"kept for review, never built on. A usage or rate limit is not a lost connection.\n\n"
 
+// narrowTestText is how a brief tells its implementer to run a Go package's
+// tests: through abcd's load gate in its narrow form, spelt out, since a gated
+// test the gate reads as a whole run (-race, a wildcard, more than
+// machineload.MaxNarrowPackages packages, or no mark) waits behind every whole
+// preflight on the machine, an hour or more on a busy evening. The form carries
+// no flag a released gate does not read as narrow; a repository whose
+// conventions spell their own form (abcd's adds -trimpath) keeps it. Each line
+// is indented by indent, blank lines left empty.
+func narrowTestText(indent string) string {
+	n := machineload.MaxNarrowPackages
+	lines := []string{
+		"Run a Go package's tests through abcd's load gate in its narrow form, which waits behind other",
+		"narrow runs only, never behind a whole preflight (where the conventions below spell the narrow",
+		"form for this repository, use theirs, still without `-race`):",
+		"",
+		"`abcd implement load --wait " + machineload.NarrowMark + " --timeout 6h -- go test -count=1 -timeout 40m ./<package>`",
+		"",
+		fmt.Sprintf("One run names at most %d packages outright, so run it once for each %d you changed. Leave out", n, n),
+		"`-race`: the gate reads a race run as a whole run whatever its size, and the race detector",
+		"belongs to the repository's full pre-push gate, which the landing waits for. The gate also reads",
+		"any other flag, a wildcard such as `./...` and more packages as a whole run, which waits behind",
+		"every preflight on the machine.",
+	}
+	var b strings.Builder
+	for _, l := range lines {
+		if l != "" {
+			b.WriteString(indent)
+			b.WriteString(l)
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
 // renderBrief writes the brief. laneDir is the lane's directory as the
 // implementer, working in another checkout, must address it: absolute.
 func renderBrief(st State, lane Lane, laneDir string, src briefSources) []byte {
@@ -611,10 +646,11 @@ func renderBrief(st State, lane Lane, laneDir string, src briefSources) []byte {
 	p("   It carries no verdict: only the loop records a verdict, from the validators it runs after you.\n")
 	p("2. The definition of done's output, `%s`: run the definition of done the conventions below\n", at(DoDFileName))
 	p("   state, in your worktree, scoped to what you changed: its format and static checks, and the tests\n")
-	p("   of the packages you changed, each behind the repository's load gate where it has one. Do not run\n")
+	p("   of the packages you changed. Do not run\n")
 	p("   the repository's whole pre-push gate (its full preflight): the landing waits for that gate's\n")
 	p("   own receipt before it pushes, so it runs once, there. Write the scoped run's whole output there,\n")
-	p("   and name what you ran as the receipt's definition_of_done command.\n")
+	p("   and name what you ran as the receipt's definition_of_done command.\n\n")
+	p("%s", narrowTestText("   "))
 	p("3. Your receipt, `%s`, in exactly this shape (strict JSON: any other field refuses it):\n\n", at(ReceiptFileName))
 	p("```json\n")
 	p("{\n")
