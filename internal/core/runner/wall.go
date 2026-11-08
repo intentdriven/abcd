@@ -321,6 +321,53 @@ var personDeclarations = []string{"config.json", "rules.json", "oracle-routing.j
 // settings. Each must stay absent or empty.
 var wallLoaded = []string{"settings.local.json", "CLAUDE.md", "agents", "skills", "commands", "rules", "output-styles", "hooks"}
 
+// harnessSyncedSkills is the folder under the walled directory's skills that the
+// harness syncs the account's skills into at its login.
+const harnessSyncedSkills = "synced"
+
+// SetAsideSyncedSkills moves the copy of the account's skills that the harness
+// syncs into the walled directory at its login out to abcd's home, whole, and
+// leaves the skills directory empty and closed to writes: a launch loads none of
+// them and the harness cannot sync them back. It returns where the copy went, ""
+// when there was none to move. Only the synced folder standing alone is moved: a
+// skill a person placed there, or anything beside the copy, stays where it is for
+// the check to refuse.
+func SetAsideSyncedSkills(p Profile) (string, error) {
+	skills := filepath.Join(p.Dir, "skills")
+	if fi, err := os.Lstat(skills); err != nil || !fi.IsDir() {
+		return "", nil
+	}
+	entries, err := os.ReadDir(skills)
+	if err != nil || len(entries) != 1 || entries[0].Name() != harnessSyncedSkills || !entries[0].IsDir() {
+		return "", nil
+	}
+	failed := &WallError{WallSettingsFile, "the harness's synced copy of the account's skills could not be moved out of the profile directory; move it out"}
+	parent := abcdhome.Path(p.PersonHome, "profile-moved")
+	if err := os.MkdirAll(parent, abcdhome.DirMode); err != nil {
+		return "", failed
+	}
+	if fi, err := os.Lstat(parent); err != nil || !fi.IsDir() {
+		return "", failed
+	}
+	dest, err := os.MkdirTemp(parent, filepath.Base(p.Dir)+"-skills-")
+	if err != nil {
+		return "", failed
+	}
+	moved := filepath.Join(dest, harnessSyncedSkills)
+	if err := os.Chmod(skills, 0o700); err != nil {
+		_ = os.Remove(dest)
+		return "", failed
+	}
+	if err := os.Rename(filepath.Join(skills, harnessSyncedSkills), moved); err != nil {
+		_ = os.Remove(dest)
+		return "", failed
+	}
+	if err := os.Chmod(skills, 0o500); err != nil {
+		return moved, failed
+	}
+	return moved, nil
+}
+
 // declaredNow reads the person's machine declarations, by hash; an absent one is
 // the zero hash.
 func declaredNow(p Profile) map[string][sha256.Size]byte {
