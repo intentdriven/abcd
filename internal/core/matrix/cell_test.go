@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/testsecret"
 )
 
 // Making one copy inside its cell (spc-2610161949559050 step 3): the cell is
@@ -316,7 +317,10 @@ func TestADispatchErrorIsTheRunsNotTheCopys(t *testing.T) {
 // not scanned.
 func TestAProviderBoundCloneWithASecretIsRefused(t *testing.T) {
 	scanRoot, clone := t.TempDir(), t.TempDir()
-	if err := os.WriteFile(filepath.Join(clone, "config.txt"), []byte("token = ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab\n"), 0o600); err != nil {
+	// A GitHub-token-shaped value, built at runtime so no literal reaches
+	// the source (principles/secret-shaped-fixtures-at-runtime.md).
+	secret := "gh" + "p_" + testsecret.Synthetic(311, 36)
+	if err := os.WriteFile(filepath.Join(clone, "config.txt"), []byte("token = "+secret+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, src := range []Source{SourceOpenRouter, SourceProvider} {
@@ -324,7 +328,7 @@ func TestAProviderBoundCloneWithASecretIsRefused(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "cheap") || !strings.Contains(err.Error(), "scan") {
 			t.Fatalf("%s: a clone with a secret-shaped file refuses its cell: %v", src, err)
 		}
-		if strings.Contains(err.Error(), "ghp_") {
+		if strings.Contains(err.Error(), secret) || strings.Contains(err.Error(), "gh"+"p_") {
 			t.Fatalf("%s: the refusal never carries the value: %v", src, err)
 		}
 	}
