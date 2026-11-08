@@ -423,6 +423,44 @@ func TestATakeOverRefusedAtTheEndSaysWhatItDid(t *testing.T) {
 	}
 }
 
+// TestTheListingSaysHowFarALanesBaseHasMoved: the listing counts the commits
+// origin's default branch, as this checkout last fetched it, holds past a lane's
+// base (iss-2611040337228910), so a successor sees the drift before it steps; a
+// default branch still at the base has moved none.
+func TestTheListingSaysHowFarALanesBaseHasMoved(t *testing.T) {
+	repo, runID, l, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	procsOf(t, hostOne, hostOne)
+	if len(l.BaseSHA) != 40 {
+		t.Fatalf("the lane names no base: %+v", l)
+	}
+	moved := func() *int {
+		t.Helper()
+		got, err := ListRuns(repo.Root(), runID, Options{stopHome: home})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := theRun(t, got, runID)
+		if len(r.Lanes) != 1 {
+			t.Fatalf("the lanes: %+v", r.Lanes)
+		}
+		return r.Lanes[0].BaseMoved
+	}
+
+	repo.Git("update-ref", "refs/remotes/origin/main", l.BaseSHA)
+	if n := moved(); n == nil || *n != 0 {
+		t.Fatalf("a default branch at the lane's base moved %v commit(s)", n)
+	}
+	tip, tree := l.BaseSHA, strings.TrimSpace(repo.Git("rev-parse", l.BaseSHA+"^{tree}"))
+	for i := range 3 {
+		tip = strings.TrimSpace(repo.Git("commit-tree", tree, "-p", tip, "-m", "landed "+strconv.Itoa(i)))
+	}
+	repo.Git("update-ref", "refs/remotes/origin/main", tip)
+	if n := moved(); n == nil || *n != 3 {
+		t.Fatalf("three commits past the base read as %v", n)
+	}
+}
+
 // TestTheListingNamesAJudgement: a drain awaiting a judgement is named with the
 // move that gives it, so the entry a stopped session left is never a dead end.
 func TestTheListingNamesAJudgement(t *testing.T) {
