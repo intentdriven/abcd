@@ -1795,7 +1795,9 @@ with no room for its first rule, `pointer`. The away block the hook reads
 first takes its share of that budget here too; the status block it also
 reads first is not counted, since reading it would write this checkout's
 status state. On a drive's stage it reads the rules as the lane's base commit
-holds them and recalls no notes or pages, as the hook does there. Without
+holds them and recalls no notes or pages, as the hook does there, and `stage`
+is `true`: there an empty `notes` and `pages` mean nothing was recalled, not
+that nothing matched; elsewhere `stage` is `false`. Without
 `--fill` the diagnostic has no session, so its `bracket` is `unknown` (its
 `source` too) and it renders that form; `--fill <percent-used>` (0 to 100)
 renders the bracket that fill falls in, with `source` `flag`. `describe` is

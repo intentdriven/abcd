@@ -2731,7 +2731,8 @@ score and, under it, every matched term with the fields it was found in
 (recall words, title, body) and what it added to the score. It reads
 against an empty ledger and writes nothing. On a drive's stage it reads the
 rules as the lane's base commit holds them and recalls no notes or pages, as
-the hook does there.
+the hook does there, and says so: the JSON form's stage is true there, so its
+empty notes and pages read apart from a prompt that matched none.
 
 --fill <percent-used>, with --prompt, sets how full the context window is,
 and so the bracket shown; without it the diagnostic has no session, so the

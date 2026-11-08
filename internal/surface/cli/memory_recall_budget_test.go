@@ -342,39 +342,53 @@ func TestRulesPromptNamesAnAwayReadGitDidNotAnswer(t *testing.T) {
 }
 
 // TestRulesPromptRecallsNothingOnADrivesStage: the hook recalls no notes or
-// pages on a drive's stage, so `rules --prompt` there shows none either; off
-// the stage the same note is shown.
+// pages on a drive's stage, so `rules --prompt` there shows none either, and
+// says why: the plain form in words, the JSON form with `stage`, so its empty
+// lists read apart from a prompt that matched nothing. Off the stage the same
+// note is shown, and a prompt that matches nothing says `stage` false.
 func TestRulesPromptRecallsNothingOnADrivesStage(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 	_, repo := memoryFixture(t)
 	writeProjectNotes(t, repo, [3]string{"mem-2610111200000009", "A lesson", "note words"})
-	notes := func() int {
+	view := func(prompt string) (int, bool) {
 		t.Helper()
-		jout, stderr, err := runCLISplit(t, "rules", "--prompt", "test", "--json")
+		jout, stderr, err := runCLISplit(t, "rules", "--prompt", prompt, "--json")
 		if err != nil {
 			t.Fatalf("rules --prompt --json: %v\n%s", err, stderr)
 		}
 		var env struct {
+			Stage *bool             `json:"stage"`
 			Notes []json.RawMessage `json:"notes"`
 		}
 		if err := json.Unmarshal([]byte(jout), &env); err != nil {
 			t.Fatal(err)
 		}
-		return len(env.Notes)
+		if env.Stage == nil {
+			t.Fatalf("the JSON form carries no stage field:\n%s", jout)
+		}
+		return len(env.Notes), *env.Stage
 	}
-	if got := notes(); got != 1 {
-		t.Fatalf("off a stage, notes shown = %d, want 1", got)
+	if got, stage := view("test"); got != 1 || stage {
+		t.Fatalf("off a stage, notes shown = %d, stage = %v; want 1, false", got, stage)
+	}
+	if got, stage := view("unrelated"); got != 0 || stage {
+		t.Fatalf("off a stage, a prompt matching nothing shows notes = %d, stage = %v; want 0, false", got, stage)
 	}
 	t.Setenv(runner.StageWritesEnv, "1")
-	if got := notes(); got != 0 {
-		t.Fatalf("on a drive's stage, notes shown = %d, want 0: the hook recalls none there", got)
+	if got, stage := view("test"); got != 0 || !stage {
+		t.Fatalf("on a drive's stage, notes shown = %d, stage = %v; want 0, true: the hook recalls none there", got, stage)
 	}
 	out, stderr, err := runCLISplit(t, "rules", "--prompt", "test")
 	if err != nil {
 		t.Fatalf("rules --prompt: %v\n%s", err, stderr)
 	}
-	if !strings.Contains(out, "Notes: not recalled on a drive's stage") || strings.Contains(out, "Notes: none matched") {
-		t.Fatalf("on a drive's stage the view does not say nothing was recalled:\n%s", out)
+	for _, want := range []string{"Notes: not recalled on a drive's stage", "Pages: not recalled on a drive's stage"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("on a drive's stage the view does not say %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Notes: none matched") || strings.Contains(out, "Pages: none matched") {
+		t.Fatalf("on a drive's stage the view says notes or pages matched none:\n%s", out)
 	}
 }
 
