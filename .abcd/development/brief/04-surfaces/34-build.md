@@ -722,7 +722,13 @@ of this run that built it, with its branch, head and pull request — or that no
 step comes before it, and
 what the implementer hands back: its report, the definition of done's output,
 and the receipt with its exact shape, each at an absolute path in the lane's
-directory. Before the record it carries, the brief states the outbound policy
+directory. The definition of done it asks for is scoped to the packages the lane
+changed, and the brief spells out the load gate's narrow form for a Go package's
+tests, so a lane's test waits behind other narrow runs only, never behind a
+whole preflight; its race tests run in the repository's pre-push gate, or, where
+that gate has none and the conventions ask for them, as a gated run of their
+own.
+Before the record it carries, the brief states the outbound policy
 in its own right, quoted from `scanner.OutboundPolicy`, the value the lint
 rules and the commit gates quote (itd-152): no live session URL and no tool
 attribution footer in a pull request, an issue, a comment, a commit message or

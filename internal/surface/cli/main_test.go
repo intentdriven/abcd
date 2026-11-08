@@ -129,6 +129,7 @@ func TestMain(m *testing.M) {
 	// and a test that wants it names one with t.Setenv.
 	os.Setenv("SHELL", "")
 	os.Unsetenv("ZDOTDIR")
+	clearStageEnv()
 	ahoy.SetCurrentVintageForTest(func() vintage.Current {
 		return vintage.Current{Revision: "testvintage", Known: true}
 	})

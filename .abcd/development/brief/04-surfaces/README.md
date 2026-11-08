@@ -305,7 +305,10 @@ the checkout from the root the loader resolves for the working directory.
   would take (a domain `full`, `shrunk`, `pointer` or `over-budget`, a note or page `full`, `one-line`, `over-budget` or `too-large`), with any layer or page that
   could not be read. The rules take what the away block the hook reads first
   leaves them; the status block is not counted, since reading it takes in the
-  status branches. It writes nothing: no session state is loaded or saved.
+  status branches. On a drive's stage it reads the rules as the lane's base
+  commit holds them and recalls no notes or pages, as the hook does there, and
+  says it is on a stage, so an empty recall there reads apart from a prompt
+  that matched nothing. It writes nothing: no session state is loaded or saved.
 - **Diagnostics go to stderr, never stdout**, so the JSON form stays one
   document: a refused root, a domain skipped for carrying no rules, and each
   bundled entry of a guardrail domain an override's list leaves out.
