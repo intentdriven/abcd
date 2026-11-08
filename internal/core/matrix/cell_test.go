@@ -3,12 +3,16 @@ package matrix
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
 )
 
@@ -39,9 +43,114 @@ func (s *scripted) make(_ context.Context, pin CellPin) (runner.Outcome, error) 
 	return out, nil
 }
 
-func down() runner.Outcome {
-	return runner.Outcome{Failure: &runner.Failure{Runner: "opencode", Reason: runner.ReasonFailed, Detail: "503",
-		Seen: &runner.HarnessSeen{APIStatus: "503"}}}
+// openCodeDown is opencode 1.18.31's run mode meeting a provider that is down,
+// as its source writes it (cli/cmd/run.ts emits a session.error as an "error"
+// event carrying NamedError.toObject(), whose APIError data names the HTTP
+// status as statusCode; session/retry.ts has already retried the 5xx): a
+// step started, the error event, and a non-zero exit.
+const openCodeDown = `{"type":"step_start","timestamp":1,"sessionID":"ses_down","part":{"type":"step-start"}}
+{"type":"error","timestamp":2,"sessionID":"ses_down","error":{"name":"APIError","data":{"message":"Service Unavailable","statusCode":503,"isRetryable":true}}}`
+
+// realCell is a copy's dispatch through the runners' real cell mode: the
+// builder role routed to opencode on the person's own layer, and on PATH a
+// fake opencode that answers every launch with stream and exits with exit,
+// counting its launches in the file launches names.
+type realCell struct {
+	d        *runner.Dispatcher
+	req      runner.Request
+	launches string
+}
+
+func newRealCell(t *testing.T, stream string, exit int) *realCell {
+	t.Helper()
+	bin, lane, dir := t.TempDir(), t.TempDir(), t.TempDir()
+	launches := filepath.Join(lane, "launches")
+	quoted := "'" + strings.ReplaceAll(stream, "'", `'\''`) + "'"
+	script := fmt.Sprintf("#!/bin/sh\necho launched >> '%s'\nprintf '%%s\\n' %s\nexit %d\n", launches, quoted, exit)
+	if err := os.WriteFile(filepath.Join(bin, "opencode"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	for _, v := range []string{"OPENCODE_CONFIG", "OPENCODE_CONFIG_CONTENT", "OPENCODE_CONFIG_DIR"} {
+		t.Setenv(v, "")
+	}
+	r := layered.Roots{Repo: t.TempDir(), Home: t.TempDir()}
+	machine := abcdhome.Path(r.Home, "config.json")
+	if err := os.MkdirAll(filepath.Dir(machine), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(machine, []byte(`{"roles":{"implementer":{"runner":"opencode"}},"runner":{"opencode":{}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := runner.Load(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &realCell{
+		d: &runner.Dispatcher{Config: c, HostSession: true, Cell: true, Transcripts: discard{},
+			Validate: func(string, runner.Request, runner.Answer) error { return nil },
+			Record:   func(runner.FallbackReceipt) error { t.Fatal("a cell's dispatch records no fallback"); return nil }},
+		req: runner.Request{Role: "implementer", Brief: filepath.Join(lane, "brief.md"), Receipt: filepath.Join(lane, "receipt.json"),
+			Dir: dir, SessionID: "mx-cell-implementer", Timeout: 20 * time.Second},
+		launches: launches,
+	}
+}
+
+func (c *realCell) make(ctx context.Context, _ CellPin) (runner.Outcome, error) {
+	return c.d.Dispatch(ctx, c.req)
+}
+
+// count is how many times the fake opencode was launched.
+func (c *realCell) count(t *testing.T) int {
+	t.Helper()
+	raw, err := os.ReadFile(c.launches)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Count(string(raw), "launched")
+}
+
+// discard is a transcript store that keeps nothing.
+type discard struct{}
+
+func (discard) Store(string, runner.Request, runner.Answer, []byte) error { return nil }
+
+// down is the outcome a real cell dispatch returns when the cell's provider is
+// down: the opencode adapter's own failure, not one built by hand.
+func down(t *testing.T) runner.Outcome {
+	t.Helper()
+	out, err := newRealCell(t, openCodeDown, 1).make(context.Background(), openRouterPin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Failure == nil {
+		t.Fatalf("the fake provider outage failed nothing: %+v", out)
+	}
+	return out
+}
+
+// TestAnOpenRouterOutageThroughOpenCodeIsNotStarted: a copy whose cell is
+// dispatched for real, through the opencode adapter in the runners' cell mode,
+// to a provider that stays down, is tried on its pin each time and left not
+// started, never scored as the model's failure.
+func TestAnOpenRouterOutageThroughOpenCodeIsNotStarted(t *testing.T) {
+	c := newRealCell(t, openCodeDown, 1)
+	res, err := runCopy(context.Background(), openRouterPin, 3, noWait, c.make)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != StatusNotStarted || res.NotStarted != 3 || c.count(t) != 3 {
+		t.Fatalf("the outage is retried on the pin and the copy not started: %+v, %d launches", res, c.count(t))
+	}
+	if f := res.Outcome.Failure; f == nil || f.Runner != "opencode" || !f.ProviderDown() {
+		t.Fatalf("the adapter's own failure reads as the provider down: %+v", res.Outcome.Failure)
+	}
+	if rec := (TrialRecord{Status: res.Status}); rec.Attempted() || rec.Failed() || rec.Passed() {
+		t.Fatal("a copy that never started is never scored")
+	}
 }
 
 func answered() runner.Outcome {
@@ -92,7 +201,7 @@ func TestACopyThatFellBackIsExcludedAsTheCellsFailure(t *testing.T) {
 // counted as not started; a copy whose every try met the outage is not
 // started, which is never scored, and one that then answers is made.
 func TestAnOutageIsRetriedOnTheSamePinAndNotScored(t *testing.T) {
-	s := &scripted{outs: []runner.Outcome{down(), down(), answered()}}
+	s := &scripted{outs: []runner.Outcome{down(t), down(t), answered()}}
 	res, err := runCopy(context.Background(), openRouterPin, 3, noWait, s.make)
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +215,7 @@ func TestAnOutageIsRetriedOnTheSamePinAndNotScored(t *testing.T) {
 		}
 	}
 
-	s = &scripted{outs: []runner.Outcome{down()}}
+	s = &scripted{outs: []runner.Outcome{down(t)}}
 	res, err = runCopy(context.Background(), openRouterPin, 3, noWait, s.make)
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +232,7 @@ func TestAnOutageIsRetriedOnTheSamePinAndNotScored(t *testing.T) {
 // and its end is the run's error, not a score.
 func TestAnOutageWaitIsBoundByTheRun(t *testing.T) {
 	stop := errors.New("the run was stopped")
-	s := &scripted{outs: []runner.Outcome{down()}}
+	s := &scripted{outs: []runner.Outcome{down(t)}}
 	_, err := runCopy(context.Background(), openRouterPin, 3, func(context.Context, int) error { return stop }, s.make)
 	if !errors.Is(err, stop) || len(s.pins) != 1 {
 		t.Fatalf("the wait's end ends the copy as the run's error: %v, %d tries", err, len(s.pins))

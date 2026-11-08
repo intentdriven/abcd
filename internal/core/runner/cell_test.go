@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -105,5 +106,50 @@ func TestProviderDownIsAnOutageWithNothingSpent(t *testing.T) {
 		if got := fl.ProviderDown(); got != tc.want {
 			t.Errorf("%s: ProviderDown = %v, want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+// TestAnOpenCodeProviderOutageInACellIsTheProviderDown: an OpenRouter cell
+// runs through opencode, so its outage is what opencode's run mode shows of
+// one: an error event whose APIError names the HTTP status, then (or not) a
+// non-zero exit. Dispatched in cell mode, a 5xx with nothing spent is the
+// provider down before the copy began; one after a costed step had begun, an
+// account's 401 and an error naming no status are not.
+func TestAnOpenCodeProviderOutageInACellIsTheProviderDown(t *testing.T) {
+	for _, tc := range []struct {
+		mode, status string
+		spent, down  bool
+	}{
+		{"oc-503", "503", false, true},
+		{"oc-503-zero", "503", false, true},
+		{"oc-503-spent", "503", true, false},
+		{"oc-401", "401", false, false},
+		{"oc-nostatus", "", false, false},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			f := newFake(t, tc.mode, Claude, OpenCode)
+			h := newHarness(t, mustLoad(t, routed(routedMachine), ""), true)
+			h.d.Cell = true
+			out, err := h.d.Dispatch(context.Background(), f.request("ruthless-reviewer"))
+			if err != nil {
+				t.Fatalf("a cell's failure is an outcome, not an error: %v", err)
+			}
+			fl := out.Failure
+			if fl == nil || fl.Runner != OpenCode || out.Fallback != nil || f.launched(Claude) {
+				t.Fatalf("the runner's failure is the outcome, with nothing fallen back: %+v", out)
+			}
+			if fl.Seen == nil {
+				t.Fatalf("the failure carries what opencode's error event showed: %+v", fl)
+			}
+			if fl.Seen.APIStatus != tc.status || fl.Seen.Spent != tc.spent {
+				t.Fatalf("seen = %+v, want status %q spent %v", fl.Seen, tc.status, tc.spent)
+			}
+			if got := fl.ProviderDown(); got != tc.down {
+				t.Fatalf("ProviderDown = %v, want %v: %+v", got, tc.down, fl)
+			}
+			if tc.status != "" && !strings.Contains(fl.Detail, "API status "+tc.status) {
+				t.Fatalf("the detail names the status in abcd's words: %q", fl.Detail)
+			}
+		})
 	}
 }
