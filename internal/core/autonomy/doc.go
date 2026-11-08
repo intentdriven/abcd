@@ -148,6 +148,21 @@
 // default branch, naming the fetch, and no reservation is reported uncarried
 // (adr-2610181003541997).
 //
+// A pull request into the default branch that is BEHIND, and not a draft, is
+// judged by the merge queue where one guards that branch
+// (iss-2610311339274372, dcn-2611081501502395): the queue tests every entry
+// against the latest base, so merging the base in would only move the head
+// and void its receipts. The forge's live rules for the branch are read once
+// (`gh api repos/{owner}/{repo}/rules/branches/<branch>`, never the in-tree
+// mirror under .abcd/work/rulesets/), and where they declare a merge queue a
+// pull request armed, or already queued (claim.ArmedPullRequestsQuery, read
+// once and only for one the listing shows unarmed), is not owed; one nobody
+// armed is owed with "arm it" as its next move. Each read runs under
+// RulesetDeadline (three seconds, o.RulesetDeadline in a test); one that
+// fails, is late or cannot be read whole is a note, and the pull request is
+// owed its merge as before. A conflict (DIRTY), failing checks and a stacked
+// base are owed as they were.
+//
 // A branch is the session's own when this copy's HEAD reflog has checked it
 // out or the copy's created-branch list holds it, either only while it holds
 // a commit of this checkout's author email made within StaleWindow (14 days)

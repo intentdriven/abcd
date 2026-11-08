@@ -33,7 +33,13 @@ type fakePR struct {
 	ReviewDecision    string           `json:"reviewDecision"`
 	StatusCheckRollup []map[string]any `json:"statusCheckRollup"`
 	IsCrossRepository bool             `json:"isCrossRepository"`
+	IsDraft           bool             `json:"isDraft"`
+	AutoMergeRequest  map[string]any   `json:"autoMergeRequest"`
 }
+
+// armedRequest is a pull request's autoMergeRequest as `gh pr list --json`
+// prints it once auto-merge is armed.
+var armedRequest = map[string]any{"mergeMethod": "MERGE", "enabledAt": "2026-10-31T10:00:00Z", "enabledBy": map[string]any{"login": "alice"}}
 
 var (
 	rollupGreen   = []map[string]any{{"__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS"}}
@@ -46,8 +52,10 @@ func pr(n int, head, base, author string) fakePR {
 		MergeStateStatus: "CLEAN", StatusCheckRollup: rollupGreen}
 }
 
-// fakeForge answers the one listing a stop check makes, refusing a field the
-// real forge client refuses (internal/ghcontract).
+// fakeForge answers the listing a stop check makes, refusing a field the
+// real forge client refuses (internal/ghcontract), and the default branch's
+// live rules and its armed or queued pull requests, read only where the
+// merge queue may decide a behind pull request (iss-2610311339274372).
 type fakeForge struct {
 	t     *testing.T
 	mu    sync.Mutex
@@ -56,9 +64,91 @@ type fakeForge struct {
 	hang  bool
 	err   error
 	ctxs  []context.Context
+
+	// rules are the effective rules the forge answers for the default
+	// branch (none when nil); rulesRaw, when set, is its answer verbatim.
+	rules     []map[string]any
+	rulesRaw  string
+	rulesErr  error
+	rulesHang bool
+	// queued are the pull requests the GraphQL listing names as in the
+	// merge queue; armedErr fails that listing.
+	queued   []int
+	armedErr error
+	// api is every `gh api` call, with the context it ran under.
+	api     [][]string
+	apiCtxs []context.Context
 }
 
+// apiCount is how many `gh api` calls asked for what (the endpoint, or
+// "graphql").
+func (f *fakeForge) apiCount(what string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, a := range f.api {
+		if len(a) > 1 && (a[1] == what || what != "graphql" && strings.HasPrefix(a[1], what)) {
+			n++
+		}
+	}
+	return n
+}
+
+func (f *fakeForge) runAPI(ctx context.Context, args []string) (string, error) {
+	f.mu.Lock()
+	f.api = append(f.api, args)
+	f.apiCtxs = append(f.apiCtxs, ctx)
+	f.mu.Unlock()
+	if args[1] == "graphql" {
+		query := ""
+		for _, a := range args {
+			if q, ok := strings.CutPrefix(a, "query="); ok {
+				query = q
+			}
+		}
+		if err := ghcontract.CheckGraphQL(query); err != nil {
+			f.t.Errorf("the armed listing asks the forge for what it lacks: %v", err)
+		}
+		if f.armedErr != nil {
+			return "", f.armedErr
+		}
+		nodes := []map[string]any{}
+		for _, n := range f.queued {
+			nodes = append(nodes, map[string]any{"number": n, "id": fmt.Sprintf("PR_%d", n), "headRefOid": strings.Repeat("a", 40),
+				"headRefName": fmt.Sprintf("q/%d", n), "isCrossRepository": false, "isInMergeQueue": true, "autoMergeRequest": nil})
+		}
+		page := map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequests": map[string]any{
+			"pageInfo": map[string]any{"hasNextPage": false, "endCursor": nil}, "nodes": nodes}}}}
+		raw, err := json.Marshal(page)
+		return string(raw), err
+	}
+	if !strings.HasPrefix(args[1], "repos/{owner}/{repo}/rules/branches/") {
+		f.t.Errorf("the stop check's forge reads are a listing, the default branch's rules and its armed pull requests; got %v", args)
+	}
+	if f.rulesHang {
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
+	if f.rulesErr != nil {
+		return "", f.rulesErr
+	}
+	if f.rulesRaw != "" {
+		return f.rulesRaw, nil
+	}
+	rules := f.rules
+	if rules == nil {
+		rules = []map[string]any{}
+	}
+	raw, err := json.Marshal(rules)
+	return string(raw), err
+}
+
+// run counts in calls and ctxs the listings alone; a `gh api` call is kept
+// in api.
 func (f *fakeForge) run(ctx context.Context, dir string, args ...string) (string, error) {
+	if len(args) >= 2 && args[0] == "api" {
+		return f.runAPI(ctx, args)
+	}
 	f.mu.Lock()
 	f.calls++
 	f.ctxs = append(f.ctxs, ctx)
@@ -605,6 +695,171 @@ func TestBehindFromMergeState(t *testing.T) {
 	}
 }
 
+// queueRules are the default branch's effective rules where a merge queue
+// guards it, as `GET /repos/{owner}/{repo}/rules/branches/{branch}` answers.
+var queueRules = []map[string]any{
+	{"type": "deletion", "ruleset_source_type": "Repository", "ruleset_source": "o/r", "ruleset_id": 1},
+	{"type": "merge_queue", "ruleset_source_type": "Repository", "ruleset_source": "o/r", "ruleset_id": 1,
+		"parameters": map[string]any{"merge_method": "MERGE", "grouping_strategy": "ALLGREEN"}},
+}
+
+// TestBehindInMergeQueueRepository (iss-2610311339274372,
+// dcn-2611081501502395): where the forge's live rules for the default branch
+// declare a merge queue, a pull request into it that is behind its base and
+// armed (or already queued) is not owed a merge; one not armed is owed with
+// "arm it" as its next move; a draft, a repository with no queue, a rules
+// read that fails, hangs or cannot be read, a conflict, failing checks and a
+// stacked base all stay owed as before. The queue is read from the forge,
+// never from the in-tree mirror.
+func TestBehindInMergeQueueRepository(t *testing.T) {
+	const mergeIt, armIt = "merge it in", "arm it"
+	cases := []struct {
+		name  string
+		setup func(f *fx, p *fakePR)
+		// want is the behind item's next move, "" when it is not owed.
+		want string
+		// noRules is a case whose rules are never read: a draft is
+		// judged as before without them.
+		noRules bool
+	}{
+		{"queue, armed: not owed", func(f *fx, p *fakePR) { p.AutoMergeRequest = armedRequest }, "", false},
+		{"queue, already queued: not owed", func(f *fx, p *fakePR) { f.forge.queued = []int{p.Number} }, "", false},
+		{"queue, not armed: arm it", func(f *fx, p *fakePR) {}, armIt, false},
+		{"queue, not armed, queued listing fails: arm it", func(f *fx, p *fakePR) { f.forge.armedErr = errors.New("gh: HTTP 502") }, armIt, false},
+		{"queue, draft: as before", func(f *fx, p *fakePR) { p.IsDraft = true }, mergeIt, true},
+		{"no queue, armed: as before", func(f *fx, p *fakePR) {
+			f.forge.rules = []map[string]any{{"type": "deletion"}}
+			p.AutoMergeRequest = armedRequest
+		}, mergeIt, false},
+		{"rules read fails, armed: as before", func(f *fx, p *fakePR) {
+			f.forge.rulesErr = errors.New("gh: HTTP 403")
+			p.AutoMergeRequest = armedRequest
+		}, mergeIt, false},
+		{"rules read hangs, armed: as before", func(f *fx, p *fakePR) {
+			f.forge.rulesHang = true
+			p.AutoMergeRequest = armedRequest
+		}, mergeIt, false},
+		{"rules do not parse, armed: as before", func(f *fx, p *fakePR) {
+			f.forge.rulesRaw = `{"message":"Not Found"}`
+			p.AutoMergeRequest = armedRequest
+		}, mergeIt, false},
+		{"rules fill a page with no queue, armed: as before", func(f *fx, p *fakePR) {
+			f.forge.rules = make([]map[string]any, 100)
+			for i := range f.forge.rules {
+				f.forge.rules[i] = map[string]any{"type": "required_status_checks"}
+			}
+			p.AutoMergeRequest = armedRequest
+		}, mergeIt, false},
+		{"in-tree mirror declares a queue the forge does not, armed: as before", func(f *fx, p *fakePR) {
+			f.forge.rules = []map[string]any{{"type": "deletion"}}
+			p.AutoMergeRequest = armedRequest
+			dir := filepath.Join(f.root, ".abcd", "work", "rulesets")
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			mirror := `{"enforcement":"active","conditions":{"ref_name":{"include":["~DEFAULT_BRANCH"],"exclude":[]}},"rules":[{"type":"merge_queue","parameters":{"merge_method":"MERGE"}}]}`
+			if err := os.WriteFile(filepath.Join(dir, "main.json"), []byte(mirror), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			f.git("add", ".abcd/work/rulesets")
+			f.git("commit", "-q", "-m", "mirror")
+			f.git("push", "-q", "origin", "main")
+		}, mergeIt, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFx(t)
+			f.forge.rules = queueRules
+			f.git("branch", "feat/a")
+			f.commitOn("feat/a", "work", "")
+			f.push("feat/a")
+			f.own("feat/a")
+			p := pr(1, "feat/a", "main", "alice")
+			p.MergeStateStatus = "BEHIND"
+			c.setup(f, &p)
+			f.forge.prs = []fakePR{p}
+			o := f.opts()
+			o.Record = f.awayRecord(false)
+			o.RulesetDeadline = 300 * time.Millisecond
+			start := time.Now()
+			owed := f.readWith(o)
+			if took := time.Since(start); took > 5*time.Second {
+				t.Fatalf("a hung rules read must end at its deadline; the check took %v", took)
+			}
+			it, ok := find(owed, OwedBehind, "feat/a")
+			switch {
+			case c.want == "" && ok:
+				t.Fatalf("an armed or queued pull request behind a queue-guarded base is not owed a merge: %s (%s)", it.Reason, describe(owed))
+			case c.want != "" && !ok:
+				t.Fatalf("want the behind item with %q: %s", c.want, describe(owed))
+			case c.want != "" && !strings.HasSuffix(it.Reason, ": "+c.want):
+				t.Fatalf("the behind item's next move: got %q, want it to end %q", it.Reason, ": "+c.want)
+			}
+			if n, want := f.forge.apiCount("repos/{owner}/{repo}/rules/branches/main"), map[bool]int{false: 1, true: 0}[c.noRules]; n != want {
+				t.Fatalf("the default branch's live rules are read from the forge %d times, want %d (%v)", n, want, f.forge.api)
+			}
+			for i, a := range f.forge.api {
+				dl, ok := f.forge.apiCtxs[i].Deadline()
+				if !ok || dl.Sub(start) > o.RulesetDeadline+time.Second {
+					t.Fatalf("forge read %v runs under no bounded deadline (%v)", a, dl.Sub(start))
+				}
+			}
+		})
+	}
+
+	// What else a pull request owes stays owed in a queue repository: a
+	// conflict, failing checks, and a stacked base that is behind.
+	t.Run("queue, armed, conflicts: owed", func(t *testing.T) {
+		f := newFx(t)
+		f.forge.rules = queueRules
+		f.git("branch", "feat/a")
+		f.commitOn("feat/a", "work", "")
+		f.push("feat/a")
+		f.own("feat/a")
+		p := pr(1, "feat/a", "main", "alice")
+		p.MergeStateStatus = "DIRTY"
+		p.AutoMergeRequest = armedRequest
+		f.forge.prs = []fakePR{p}
+		if it, ok := find(f.read(true), OwedBehind, "feat/a"); !ok || !strings.Contains(it.Reason, "conflicts") {
+			t.Fatalf("a conflicting pull request is owed in a queue repository too: %+v", it)
+		}
+	})
+	t.Run("queue, armed, behind and failing: failing owed", func(t *testing.T) {
+		f := newFx(t)
+		f.forge.rules = queueRules
+		f.git("branch", "feat/a")
+		f.commitOn("feat/a", "work", "")
+		f.push("feat/a")
+		f.own("feat/a")
+		p := pr(1, "feat/a", "main", "alice")
+		p.MergeStateStatus = "BEHIND"
+		p.StatusCheckRollup = rollupFailing
+		p.AutoMergeRequest = armedRequest
+		f.forge.prs = []fakePR{p}
+		owed := f.read(true)
+		if !has(owed, OwedFailing, "feat/a") || has(owed, OwedBehind, "feat/a") {
+			t.Fatalf("failing checks stay owed, the merge does not: %s", describe(owed))
+		}
+	})
+	t.Run("queue, armed, stacked base behind: owed", func(t *testing.T) {
+		f := newFx(t)
+		f.forge.rules = queueRules
+		f.stack()
+		f.receipt(f.head("feat/top"))
+		top := pr(2, "feat/top", "feat/base", "alice")
+		top.MergeStateStatus = "BEHIND"
+		top.AutoMergeRequest = armedRequest
+		f.forge.prs = []fakePR{pr(1, "feat/base", "main", "alice"), top}
+		owed := f.read(true)
+		if it, ok := find(owed, OwedStacked, "feat/top"); !ok || !strings.Contains(it.Reason, "the merge from its base") {
+			t.Fatalf("a stacked branch behind its base stays owed: %s", describe(owed))
+		}
+		if n := f.forge.apiCount("repos/"); n != 0 {
+			t.Fatalf("nothing behind the default branch, so its rules are not read: %v", f.forge.api)
+		}
+	})
+}
+
 // stack makes feat/base (own, pushed, one commit off main) and feat/top on it
 // (own, pushed, one commit more).
 func (f *fx) stack() {
@@ -892,8 +1147,8 @@ func TestPresentReadsDiskOnly(t *testing.T) {
 	f.reserve("iss-3", claim.CopyThis, f.now.Add(-3*time.Hour), f.now.Add(time.Hour))
 	f.forge.prs = []fakePR{pr(1, "feat/a", "main", "alice")}
 	owed := f.read(false)
-	if f.forge.calls != 0 {
-		t.Fatalf("present: %d forge calls, want none", f.forge.calls)
+	if f.forge.calls != 0 || len(f.forge.api) != 0 {
+		t.Fatalf("present: %d forge listings and %d other forge calls, want none", f.forge.calls, len(f.forge.api))
 	}
 	if !has(owed, OwedUnpushed, "feat/a") || !has(owed, OwedRenewal, "iss-3") || has(owed, OwedUncarried, "iss-3") {
 		t.Fatalf("present reads renewals due and unpushed branches only: %s", describe(owed))
@@ -904,8 +1159,8 @@ func TestPresentReadsDiskOnly(t *testing.T) {
 	o.Record = rec
 	o.Now = func() time.Time { return rec.Ends().Add(time.Minute) }
 	f.readWith(o)
-	if f.forge.calls != 0 {
-		t.Fatalf("a lapsed record is not away: %d forge calls", f.forge.calls)
+	if f.forge.calls != 0 || len(f.forge.api) != 0 {
+		t.Fatalf("a lapsed record is not away: %d forge listings and %d other forge calls", f.forge.calls, len(f.forge.api))
 	}
 }
 
