@@ -254,3 +254,44 @@ func TestAFoundCommitWhoseAdmissionIsInItsProseIsNotTheRecords(t *testing.T) {
 		t.Fatalf("a found commit whose admission stands in its prose is refused, naming the admission: %+v", r)
 	}
 }
+
+// TestAFoundEmptyCommitWithOtherProseIsNotTheRecords (itd-2610301850454860): a
+// landing that moves no record makes an empty records commit under abcd's own
+// label, whose whole message the run's state decides. An empty commit found on
+// the judged head after a killed call, with the right subject and trailers but
+// prose abcd never composed, is refused rather than taken as the records and
+// pushed under abcd's label.
+func TestAFoundEmptyCommitWithOtherProseIsNotTheRecords(t *testing.T) {
+	const second = "2. The loop\n   - packages: internal/core/implement\n"
+	f := newLandFixtureWith(t, map[string]string{
+		".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
+		specRel: specWithSteps("1. The parser\n   - packages: internal/core/spec\n" + second),
+	})
+	l := f.twoStepLandWithNoResolutions(t)
+	judged := f.commitAtTheJudgedHead(t, l, func() {
+		marked := specWithSteps("1. The parser\n   - packages: internal/core/spec\n   - landed: #1\n" + second)
+		if err := os.WriteFile(filepath.Join(l.Worktree, specRel), []byte(marked), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	f.step(t) // prepare
+	l = f.wantsRecordsCommit(t)
+	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
+	paras := strings.Split(strings.TrimRight(msg, "\n"), "\n\n")
+	if len(paras) != 3 || !strings.Contains(paras[1], recordsOnlyTheAdmission) {
+		t.Fatalf("the records commit is subject, prose and trailers, its prose naming the admission alone: %q", msg)
+	}
+	paras[1] = "Anything at all, under abcd's label."
+	f.repo.Git("-C", l.Worktree, "commit", "-q", "--amend", "--allow-empty", "-m", strings.Join(paras, "\n\n")+"\n")
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		cur := &st.Lanes[st.current()]
+		cur.HeadSHA, cur.Landing.Records, cur.Landing.RecordsDone = judged, "", false
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r := f.wantsRefusedStep(t)
+	if !strings.Contains(r.Reason, "lacks") || !strings.Contains(r.Reason, "message") {
+		t.Fatalf("an empty found commit whose prose abcd did not compose is refused, naming its message: %+v", r)
+	}
+}

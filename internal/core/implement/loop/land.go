@@ -156,6 +156,38 @@ func landSubject(st State, lane Lane) string {
 	return "chore(record): land " + lane.ID + " of " + st.RunID
 }
 
+// recordsMessage is the records commit's message: its subject, one line saying
+// what the landing did, and its trailers, one to a line.
+func recordsMessage(st State, lane Lane, done, trailers []string) string {
+	what := fmt.Sprintf("%s (%s, step %d)", st.Intent, st.Spec, lane.SpecStep)
+	if iss := st.Issue(); iss != "" {
+		what = iss
+	}
+	return landSubject(st, lane) + "\n\n" +
+		fmt.Sprintf("The implement loop's landing for %s: %s.\n\n", what, strings.Join(done, "; ")) +
+		strings.Join(trailers, "\n") + "\n"
+}
+
+// composedRecordsMessage is the whole message of a records commit under abcd's
+// own label, which the run's state alone decides: the step's mark, or the
+// admission alone when the landing moves no record.
+func composedRecordsMessage(st State, lane Lane) string {
+	var done []string
+	if ld := lane.Landing; ld != nil {
+		if ld.MarkStep > 0 {
+			done = append(done, fmt.Sprintf("marked step %d landed at %s", ld.MarkStep, shortSHA(lane.HeadSHA)))
+		}
+		if recordsOnlyAdmission(*ld, lane) {
+			done = append(done, recordsOnlyTheAdmission)
+		}
+	}
+	var trailers []string
+	if st.Admitted != nil {
+		trailers = admittedTrailers(*st.Admitted, lane.Resolves)
+	}
+	return recordsMessage(st, lane, done, append(trailers, composedAssistedBy()))
+}
+
 // recordsOnlyTheAdmission is the records commit's prose when the landing moves no
 // record: the commit is made to carry the admission alone.
 const recordsOnlyTheAdmission = "records only the admission"
@@ -657,13 +689,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	// audit's verdict ingested into the intent. So it names that model, and
 	// it is made with the repository's hooks running (never through pickGit's
 	// hooks-off configuration), so the commit-msg outbound gate judges it.
-	what := fmt.Sprintf("%s (%s, step %d)", st.Intent, st.Spec, lane.SpecStep)
-	if iss := st.Issue(); iss != "" {
-		what = iss
-	}
-	msg := landSubject(st, *lane) + "\n\n" +
-		fmt.Sprintf("The implement loop's landing for %s: %s.\n\n", what, strings.Join(done, "; ")) +
-		strings.Join(append(trailers, assisted...), "\n") + "\n"
+	msg := recordsMessage(st, *lane, done, append(trailers, assisted...))
 	// gitutil.LocalGit runs a local git command under the developer's own
 	// configuration with the repository's hooks running, and none of the
 	// networked runner's settings.
@@ -1605,6 +1631,14 @@ func foundTrailersLack(c Context, lane Lane, tip, raw string, delivers bool) (st
 	if a := st.Admitted; a != nil {
 		if got, ok := landings.ParseAdmitted(msg); !ok || got.Kind != a.Kind || got.Record != a.Record {
 			return "its admission (" + termsafe.Sanitize(a.Trailer()) + ") in its trailer block", nil
+		}
+	}
+	// A commit under abcd's label carries text abcd composed and nothing else, so
+	// its whole message is the one the run's state decides, not its trailers alone.
+	if composed {
+		norm := func(s string) string { return strings.TrimRight(strings.ReplaceAll(s, "\r\n", "\n"), "\n") }
+		if norm(msg) != norm(composedRecordsMessage(st, lane)) {
+			return "the message abcd composes for it under its own label", nil
 		}
 	}
 	return "", nil
