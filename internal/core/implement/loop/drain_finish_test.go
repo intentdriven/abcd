@@ -305,6 +305,42 @@ func TestAMergedLaneCheckedOutElsewhereIsNotPulledFromUnderIt(t *testing.T) {
 			f.repo.Git("worktree", "add", "-q", "-f", other, l.Branch)
 			return other
 		}},
+		// git lists a checkout whose rebase or bisect stopped as detached, yet
+		// the branch it started from is still in use there: the person's
+		// `rebase --continue` cannot write a branch deleted under it.
+		{"a rebase stopped in the main checkout", func(t *testing.T, f *landFixture, l Lane) string {
+			f.repo.Git("worktree", "remove", "--", l.Worktree)
+			f.repo.Git("checkout", "-q", l.Branch)
+			common := f.repo.Git("rev-parse", "--path-format=absolute", "--git-common-dir")
+			if err := os.MkdirAll(filepath.Join(common, "rebase-merge"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(common, "rebase-merge", "head-name"), []byte("refs/heads/"+l.Branch+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			f.repo.Git("checkout", "-q", "--detach", l.Branch)
+			return f.repo.Root()
+		}},
+		{"a bisect stopped in the main checkout", func(t *testing.T, f *landFixture, l Lane) string {
+			f.repo.Git("worktree", "remove", "--", l.Worktree)
+			f.repo.Git("checkout", "-q", l.Branch)
+			f.repo.Git("bisect", "start")
+			f.repo.Git("checkout", "-q", "--detach", l.Branch)
+			return f.repo.Root()
+		}},
+		{"a rebase's update-refs list in a second worktree", func(t *testing.T, f *landFixture, l Lane) string {
+			other := filepath.Join(t.TempDir(), "look")
+			f.repo.Git("worktree", "add", "-q", "--detach", other, l.Branch)
+			gitDir := f.repo.Git("-C", other, "rev-parse", "--path-format=absolute", "--git-dir")
+			if err := os.MkdirAll(filepath.Join(gitDir, "rebase-merge"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			list := "refs/heads/" + l.Branch + "\n" + l.Landing.Pushed + "\n" + strings.Repeat("0", 40) + "\n"
+			if err := os.WriteFile(filepath.Join(gitDir, "rebase-merge", "update-refs"), []byte(list), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return other
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := drainLandFixture(t)

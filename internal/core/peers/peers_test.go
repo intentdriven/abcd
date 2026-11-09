@@ -751,3 +751,50 @@ func TestCheckedOutCountsTheBranchARebaseOrBisectHolds(t *testing.T) {
 		}
 	}
 }
+
+// A rebase or a bisect stopped in the main checkout itself holds its branch
+// from the common dir, which is the main checkout's git dir; so does each
+// branch a stopped rebase's --update-refs list will rewrite, in any worktree
+// (rebase-merge/update-refs, which `git branch -d` and `git branch -f` also
+// read).
+func TestCheckedOutCountsTheBranchAStopInTheMainCheckoutHolds(t *testing.T) {
+	f := newFixture(t)
+	f.git(f.here(), "switch", "-q", "-c", "backup/kept")
+	f.resolve(f.here(), "iss-1-the-first-finding.md")
+	f.git(f.here(), "commit", "-q", "-m", "resolve iss-1 on a kept branch")
+	for _, branch := range []string{"lane/main-merge", "lane/main-bisect", "lane/listed"} {
+		f.git(f.here(), "switch", "-q", "-c", branch, "main")
+		f.resolve(f.here(), "iss-2-the-second-finding.md")
+		f.git(f.here(), "commit", "-q", "-m", "resolve iss-2 on "+branch)
+	}
+	f.git(f.here(), "switch", "-q", "lane/main-bisect")
+	f.git(f.here(), "bisect", "start")
+	f.git(f.here(), "checkout", "-q", "--detach", "main")
+	common := f.git(f.here(), "rev-parse", "--path-format=absolute", "--git-common-dir")
+	f.write(common, "rebase-merge/head-name", "refs/heads/lane/main-merge\n")
+
+	other := f.worktree("updating", "lane/updating")
+	gitDir := f.git(other, "rev-parse", "--path-format=absolute", "--git-dir")
+	f.write(gitDir, "rebase-merge/head-name", "refs/heads/lane/updating\n")
+	f.write(gitDir, "rebase-merge/update-refs", "refs/heads/lane/listed\n"+
+		strings.Repeat("1", 40)+"\n"+strings.Repeat("0", 40)+"\n")
+
+	rep := f.read()
+	for branch, want := range map[string]bool{"backup/kept": false, "lane/main-merge": true, "lane/main-bisect": true, "lane/listed": true} {
+		p, ok := findPeer(rep, branch)
+		if !ok || p.Source != peers.SourceBranch {
+			t.Fatalf("%s is not a branch peer: %+v", branch, rep.Peers)
+		}
+		if p.CheckedOut() != want {
+			t.Errorf("%s: CheckedOut() = %v, want %v", branch, p.CheckedOut(), want)
+		}
+	}
+
+	// A list git would call invalid names no branch for certain: every
+	// branch counts.
+	f.write(gitDir, "rebase-merge/update-refs", "refs/heads/lane/listed\n")
+	rep = f.read()
+	if p, ok := findPeer(rep, "backup/kept"); !ok || !p.CheckedOut() {
+		t.Errorf("backup/kept is not counted checked out past an invalid update-refs list: %+v", p)
+	}
+}
