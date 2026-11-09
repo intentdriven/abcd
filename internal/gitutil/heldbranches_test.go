@@ -237,3 +237,38 @@ func TestHeldCheckoutJoinsARelativeGitdirToTheRealAdminDir(t *testing.T) {
 		t.Errorf("Checkout(%s) with gitdir %q = %q, want the checkout %q", admin, rel, got, wt)
 	}
 }
+
+// An admin dir is a folder anyone who can write the common dir names, read
+// with os.ReadDir and never checked: one holding a stopped rebase's head-name
+// and no gitdir file is named as it is, and Checkout's answer is printed in a
+// refusal, so a line break or an escape in its name is masked there, while
+// the branch is still held.
+func TestHeldCheckoutMasksAControlCharacterInTheAdminDirName(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write("f", "a\n")
+	r.Commit("a")
+	common, err := gitutil.CommonDir(r.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"look\nforged line", "look\x1b[2J"} {
+		admin := filepath.Join(common, "worktrees", name)
+		if err := os.MkdirAll(filepath.Join(admin, "rebase-merge"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(admin, "rebase-merge", "head-name"), []byte("refs/heads/lane/x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		h := gitutil.HeldBranches(common)
+		dir, ok := h.Branches["lane/x"]
+		if !ok {
+			t.Fatalf("admin dir %q: lane/x is not held: %+v", name, h)
+		}
+		if got := h.Checkout(dir, nil); strings.ContainsAny(got, "\n\r\x1b") {
+			t.Errorf("Checkout(%q) = %q, which carries a control character", dir, got)
+		}
+		if err := os.RemoveAll(admin); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

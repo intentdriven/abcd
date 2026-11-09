@@ -51,7 +51,15 @@ type Held struct {
 // gitdir file cannot be read, or when its text holds a rune termsafe.Sanitize
 // would mask (a control character, a line break, a bidi or invisible rune):
 // that text names no folder a person could open, and the answer is printed.
+// Every answer is passed through termsafe.Sanitize, which leaves a clean path
+// as it is: dir and the common dir end in names read from disk unchecked (an
+// admin dir is any folder under <common>/worktrees), so a line break or an
+// escape in one is masked rather than printed.
 func (h Held) Checkout(dir string, wts []Worktree) string {
+	return termsafe.Sanitize(h.checkout(dir, wts))
+}
+
+func (h Held) checkout(dir string, wts []Worktree) string {
 	if dir == h.Common {
 		if len(wts) > 0 && !wts[0].Bare {
 			return wts[0].Path

@@ -2597,7 +2597,7 @@ func branchCheckedOutElsewhere(c Context, lane Lane, stage, again string) error 
 		if !sameBranchRef(wt.Branch, lane.Branch) || fsutil.RealExistingPath(wt.Path) == own {
 			continue
 		}
-		at := fsutil.RedactHome(wt.Path)
+		at := termsafe.Sanitize(fsutil.RedactHome(wt.Path))
 		return refuse(stage, "", lane.ID,
 			lane.Branch+" is checked out in "+at+", a checkout the loop did not make for this lane, and deleting the branch would leave its HEAD naming nothing",
 			"check out another branch in "+at+" (or remove that worktree), then "+again)
@@ -2612,7 +2612,7 @@ func branchCheckedOutElsewhere(c Context, lane Lane, stage, again string) error 
 	}
 	held := gitutil.HeldBranches(common)
 	if held.Unreadable != "" {
-		at := fsutil.RedactHome(held.Unreadable)
+		at := termsafe.Sanitize(fsutil.RedactHome(held.Unreadable))
 		return refuse(stage, "", lane.ID,
 			"a rebase or bisect state file at "+at+" could not be read, so whether "+lane.Branch+" is checked out under a stopped rebase or bisect is unknown",
 			"finish or abort that rebase or bisect (or remove the file if git did not write it), then "+again)
