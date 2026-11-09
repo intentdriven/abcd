@@ -561,14 +561,18 @@ schema version 20's; an older run's rounds read as one reviewer per role, index
 0, asked for no class. Each reviewer's record also carries its `located`
 findings: the `file:line` each finding bullet under its Findings heading leads
 with (`- **file:line** — ...`) is one finding (`file`, `line`); a location cited
-in a bullet's text or its nested Evidence lines is not one. A path under the
+in a bullet's text or its nested Evidence lines is not one, and a line inside a
+fenced code block is neither a heading nor a finding. The record keeps the
+first 256 findings, while `located` counts every one. A path under the
 lane's worktree, in its own case, through the directory its links resolve to
 or its `/private` twin, is taken relative to it, a path longer than 255 bytes
 and anything else is no location, and a return citing none records
 `located: 0` and is not refused. The fix brief lists each failing reviewer's
-located findings and asks the report to name each by its `file:line` on a line
-saying `applied` or `rejected`; a word speaks of the location it follows on its
-line, a line naming a location with neither word says nothing of it, and a
+located findings and asks the report to name each on a line of its own, its
+`file:line` first and then `applied` or `rejected`; a word speaks of the
+location it follows on its line, so on a line naming two, a word written before
+the second is read as said of the first and the second gets none from it, a
+line naming a location with neither word says nothing of it, and a
 word with a negation before it in its sentence (`not applied`, `no fix
 applied`, `couldn't be applied`, `unapplied`) says neither: a comma does not
 end the sentence, so `not a defect, rejected` says neither too. Once the fix

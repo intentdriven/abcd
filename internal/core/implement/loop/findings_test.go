@@ -526,3 +526,92 @@ func TestLocatedFindingsAreTheVersionAfterTheUnlocated(t *testing.T) {
 		t.Fatalf("an older file without them reads at the current version: %v %+v", err, st.SchemaVersion)
 	}
 }
+
+// TestAMaximalReturnOfTheShortestBulletsRecordsACountTheReadAccepts: a return
+// of the most bytes a return may be, packed with the shortest distinct lead
+// bullets (`- .a:1`, seven bytes with its newline), records a count the
+// state's own read accepts, so the run goes on.
+func TestAMaximalReturnOfTheShortestBulletsRecordsACountTheReadAccepts(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	start, err := startedOnce(t, repo, "itd-10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, stages := start.RunID, DefaultStages()
+	implementedOnce(t, repo, id, "one.txt")
+	r0 := stepAwait(t, repo, id, stages, Options{})
+
+	const tail = "\n### Verdict\n\n- **SHIP** — as stated.\n"
+	budget := maxReturnBytes - 160 - len(tail)
+	var b strings.Builder
+	b.WriteString("### Findings\n")
+	letters := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	bullet := func(s string) bool {
+		if b.Len()+len(s) > budget {
+			return false
+		}
+		b.WriteString(s)
+		return true
+	}
+	full := false
+	for _, x := range letters { // seven bytes: a dot, a letter, one digit
+		for d := 1; d <= 9 && !full; d++ {
+			full = !bullet(fmt.Sprintf("- .%c:%d\n", x, d))
+		}
+	}
+	for _, x := range letters { // eight bytes: three path bytes and one digit
+		for _, y := range letters {
+			for d := 1; d <= 9 && !full; d++ {
+				full = !bullet(fmt.Sprintf("- .%c%c:%d\n", x, y, d))
+				full = full || !bullet(fmt.Sprintf("- %c.%c:%d\n", x, y, d))
+			}
+		}
+	}
+	if !full {
+		t.Fatal("the fixture does not fill a return")
+	}
+	b.WriteString(tail)
+	returnAt(t, repo, id, stages, r0, b.String())
+
+	st, err := ReadState(repo.Root(), id)
+	if err != nil {
+		t.Fatalf("the state the loop wrote reads: %v", err)
+	}
+	var located *int
+	for _, r := range st.Lanes[0].Validation {
+		for _, v := range r.Validators {
+			if v.Located != nil && *v.Located > 0 {
+				located = v.Located
+			}
+		}
+	}
+	if located == nil || *located <= maxReturnBytes/8 || *located > maxLocatedCount {
+		t.Fatalf("the count is past what eight-byte bullets could hold and within the bound: %v", located)
+	}
+}
+
+// TestALineInACodeFenceIsNeitherAHeadingNorAFinding: a `#` line inside a
+// fenced code block under the Findings heading does not end the section, a
+// bullet inside a fence is no finding, a shorter run or the other mark does
+// not close a fence, and a one-line ```code``` opens none.
+func TestALineInACodeFenceIsNeitherAHeadingNorAFinding(t *testing.T) {
+	text := "### Findings\n\n" +
+		"- **a.go:1** — a defect.\n" +
+		"  - *Evidence:*\n" +
+		"    ````sh\n" +
+		"    # a comment\n" +
+		"    - in.go:9\n" +
+		"    ```\n" +
+		"    ## not a heading\n" +
+		"    ````\n" +
+		"- **b.go:2** — after the fence.\n" +
+		"~~~\n# tilde comment\n- tilde.go:3\n```\n~~~~\n" +
+		"```c.go:3``` inline, then\n" +
+		"- **d.go:4**\n" +
+		"\n### Verdict\n\n- **e.go:5** FIX FIRST\n"
+	var v ValidatorRun
+	v.recordFindings(text, "")
+	if want := []string{"a.go:1", "b.go:2", "d.go:4"}; !slices.Equal(at(v.Findings), want) || *v.Located != len(want) {
+		t.Fatalf("the located findings: %v, want %v", at(v.Findings), want)
+	}
+}

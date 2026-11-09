@@ -8,7 +8,8 @@ package loop
 //     leads with (`- **file:line** — ...`, the single location each
 //     reviewer's definition asks it to cite) is one located finding of that
 //     reviewer, read when the loop records the verdict. A location cited in a
-//     bullet's text or its nested Evidence and Attack-path lines is not one. A
+//     bullet's text or its nested Evidence and Attack-path lines is not one,
+//     and a line inside a fenced code block is neither a heading nor one. A
 //     return citing none records zero and is not refused: a reviewer that
 //     found nothing, or wrote its findings without locations, still returns.
 //     One location led with twice in one return is one finding, and a range
@@ -40,6 +41,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -80,8 +82,10 @@ const maxLocatedFindings = 256
 
 // maxLocatedCount bounds a stored count of located findings: the most
 // distinct lead bullets a return of maxReturnBytes could hold, each at least
-// the 8 bytes of `- a.b:1` and its newline.
-const maxLocatedCount = maxReturnBytes / len("- a.b:1\n")
+// the 7 bytes of `- .a:1` and its newline (a location's path is at least a
+// dot and a letter). recordFindings stores no count above it, so the loop
+// never writes a state its own read refuses.
+const maxLocatedCount = maxReturnBytes / len("- .a:1\n")
 
 // maxFindingLine bounds a cited line: a number past it is no line.
 const maxFindingLine = 10_000_000
@@ -211,10 +215,19 @@ func leadLocation(ln string) (location, bool) {
 }
 
 // eachFindingsLine calls fn with each line of text under a Findings heading,
-// down to the next heading at the same depth or above, in one pass.
+// down to the next heading at the same depth or above. A line inside a fenced
+// code block, as mdrecord reads fences under its ListNested rule (a fence
+// nested in a list item included), is neither a heading nor passed on, so a
+// `# comment` in a quoted snippet does not end the section, nor a bullet in it
+// count as a finding. The text is split once and read in one pass.
 func eachFindingsLine(text string, fn func(string)) {
+	lines := strings.Split(text, "\n")
+	mask := mdrecord.Read(lines, mdrecord.ListNested).Mask
 	depth := 0
-	eachLine(text, func(ln string) {
+	for i, ln := range lines {
+		if mask[i]&mdrecord.MaskFence != 0 {
+			continue
+		}
 		d := headingDepth(ln)
 		switch {
 		case d > 0 && findingsHeading.MatchString(ln):
@@ -226,7 +239,7 @@ func eachFindingsLine(text string, fn func(string)) {
 		case depth > 0:
 			fn(ln)
 		}
-	})
+	}
 }
 
 // headingDepth is the depth of a markdown heading line, 0 for any other line.
@@ -261,7 +274,7 @@ func (v *ValidatorRun) recordFindings(text, worktree string) {
 			found = append(found, Finding{File: l.file, Line: l.line})
 		}
 	})
-	n := len(seen)
+	n := min(len(seen), maxLocatedCount)
 	v.Located = &n
 	v.Findings = found
 }
