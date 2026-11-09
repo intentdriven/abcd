@@ -18,7 +18,8 @@
 #
 # go is also checked against the toolchain go.mod declares, which the setup
 # resolves through scripts/pinned-toolchain.sh. gitleaks is needed by no gate:
-# secrets-check skips loudly without it, and CI's scan still runs.
+# without CI's version on PATH, secrets-check fetches that release with curl and
+# checks it against scripts/gitleaks-checksums.txt.
 go	preflight,fmt-check,lint-issues,record-lint,issue-drift,docs-lint,check-attribution,vulncheck,site-render,smoke,evals-cold-reading	the setup's toolchain step (the toolchain go.mod declares)
 git	preflight,lint-reviews,lint-issues,record-lint,check-attribution,secrets-check,vulncheck,smoke	the image
 bash	lint-reviews,lint-issues,check-attribution,secrets-check,vulncheck	the image
