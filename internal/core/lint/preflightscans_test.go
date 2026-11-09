@@ -825,6 +825,35 @@ func TestSecretsCheckRefusesWithNoHasher(t *testing.T) {
 	}
 }
 
+// TestSecretsCheckRefusesWhenTheCheckCannotRun: a hasher that is on PATH but
+// fails, or a digest file that cannot be read, is a fault in the check, not a
+// finding: the scan refuses with exit 2 and names it, never exit 1 in silence.
+func TestSecretsCheckRefusesWhenTheCheckCannotRun(t *testing.T) {
+	for name, want := range map[string]string{"a failing hasher": "could not hash", "an unreadable digest file": "could not be read"} {
+		t.Run(name, func(t *testing.T) {
+			r := newScanRepo(t, false)
+			r.stub("gitleaks", `case "$1" in version) echo 8.30.1 ;; esac; exit 0`)
+			tarball, digest := r.pinnedRelease("8.24.3", filepath.Join(t.TempDir(), "pinned.args"))
+			r.pinDigest("8.24.3", digest)
+			r.serve(tarball)
+			if want == "could not hash" {
+				r.stub("sha256sum", `echo 'sha256sum: read error' >&2; exit 1`)
+				r.stub("shasum", `echo 'shasum: read error' >&2; exit 1`)
+			} else {
+				sums := filepath.Join(r.dir, "scripts", "gitleaks-checksums.txt")
+				if err := os.Chmod(sums, 0); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(sums, 0o644) })
+			}
+			code, out := r.runHome("secrets", t.TempDir())
+			if code != 2 || !strings.Contains(out, "REFUSING") || !strings.Contains(out, want) {
+				t.Fatalf("%s: exit %d, want 2 and a refusal saying %q\n%s", name, code, want, out)
+			}
+		})
+	}
+}
+
 // TestSecretsCheckMatchesTheAssetNameLiterally: a digest line for a name that
 // differs from the asset only where the asset has a dot is not its digest.
 func TestSecretsCheckMatchesTheAssetNameLiterally(t *testing.T) {

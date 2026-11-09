@@ -226,7 +226,10 @@ pinned_gitleaks() {
 	# The asset is matched as a whole field, never as a pattern: its dots are
 	# literal.
 	digest=""
-	[ -f "$SUMS_FILE" ] && digest="$(awk -v a="$asset" 'NF == 2 && $2 == a && length($1) == 64 && $1 !~ /[^0-9a-f]/ { print $1 }' "$SUMS_FILE")"
+	if [ -f "$SUMS_FILE" ]; then
+		digest="$(awk -v a="$asset" 'NF == 2 && $2 == a && length($1) == 64 && $1 !~ /[^0-9a-f]/ { print $1 }' "$SUMS_FILE")" ||
+			refuse "$SUMS_FILE could not be read, so there is no sha256 to verify $asset against."
+	fi
 	n="$(printf '%s' "$digest" | grep -c . || true)"
 	if [ "$n" -ne 1 ]; then
 		refuse "$SUMS_FILE holds no single sha256 for $asset, so there is nothing to verify a download against; copy its line from the release's checksum list when bumping GITLEAKS_VERSION."
@@ -250,7 +253,7 @@ pinned_gitleaks() {
 		fi
 		fetched=1
 	fi
-	got="$(sha256_of "$copy")"
+	got="$(sha256_of "$copy")" || refuse "The hasher on PATH could not hash $copy (its error is above), so $asset cannot be verified against $SUMS_FILE."
 	if [ "$got" != "$digest" ]; then
 		if [ "$fetched" -eq 1 ]; then
 			refuse "The downloaded $asset has sha256 $got, not the $digest $SUMS_FILE pins; nothing was kept or run."
