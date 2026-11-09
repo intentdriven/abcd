@@ -3,8 +3,10 @@ package loop
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -206,73 +208,134 @@ func TestTheFixReportSaysAppliedOrRejectedOfEachFinding(t *testing.T) {
 	}
 }
 
-// TestAMaximumSizeReturnAndFixReportAreReadQuickly: a return of the most
-// bytes a return may be, every line a finding bullet or a Findings heading,
-// for each of four failing reviewers, and a fix report of the most bytes a
-// report may be on one line of distinct citations, are recorded and joined
-// in well under the time a quadratic read would take.
-func TestAMaximumSizeReturnAndFixReportAreReadQuickly(t *testing.T) {
-	var ret strings.Builder
-	for i := 1; ret.Len() < maxReturnBytes-64; i++ {
-		if i%2 == 1 {
-			ret.WriteString("### Findings\n")
+// growthUnits is how many sixty-fourths of a size limit the smaller of a
+// growth test's two inputs takes; the larger takes four times as many.
+const growthUnits = 1
+
+// quadraticGrowth is the time ratio a growth test refuses: an input four
+// times larger takes about four times as long to read in linear time and
+// about sixteen times as long in quadratic time.
+const quadraticGrowth = 10
+
+// readGrowth reads an input of units and one of four times as many units,
+// each timed as the fastest of three tries, and returns how many times
+// longer the larger took. build makes the input outside the timing and
+// returns the read. The ratio is judged, never a time, so a slow or loaded
+// machine, or the race detector, which slows both reads alike, cannot fail
+// a linear read (a fixed bound of 15s failed one under CI's race stage).
+func readGrowth(units int, build func(units int) func()) float64 {
+	fastest := func(units int) time.Duration {
+		best := time.Duration(math.MaxInt64)
+		for range 3 {
+			read := build(units)
+			runtime.GC()
+			start := time.Now()
+			read()
+			if d := time.Since(start); d < best {
+				best = d
+			}
 		}
-		fmt.Fprintf(&ret, "- **a.go:%d** — x, see b.go:%d\n", i, i)
+		return max(best, time.Nanosecond)
 	}
-	var report strings.Builder
-	report.WriteString("- applied")
-	for i := 1; report.Len() < maxReportBytes-64; i++ {
-		fmt.Fprintf(&report, " a.go:%d", i)
+	small := fastest(units)
+	return float64(fastest(4*units)) / float64(small)
+}
+
+// TestAReturnAndFixReportAreReadInLinearTime: a return whose every line is a
+// finding bullet or a Findings heading, for each of four failing reviewers,
+// and a fix report on one line of distinct citations, are recorded and
+// joined in time that grows linearly with their size.
+func TestAReturnAndFixReportAreReadInLinearTime(t *testing.T) {
+	var last ValidationRound
+	var bullets int
+	build := func(units int) func() {
+		var ret strings.Builder
+		n := 0
+		for i := 1; ret.Len() < units*maxReturnBytes/64-64; i++ {
+			if i%2 == 1 {
+				ret.WriteString("### Findings\n")
+			}
+			fmt.Fprintf(&ret, "- **a.go:%d** — x, see b.go:%d\n", i, i)
+			n++
+		}
+		var report strings.Builder
+		report.WriteString("- applied")
+		for i := 1; report.Len() < units*maxReportBytes/64-64; i++ {
+			fmt.Fprintf(&report, " a.go:%d", i)
+		}
+		return func() {
+			var r ValidationRound
+			for _, role := range []string{RoleRuthless, RoleRuthless, RoleSecurity, RoleSecurity} {
+				r.Validators = append(r.Validators, ValidatorRun{Role: role, Verdict: "FIX FIRST"})
+				v := &r.Validators[len(r.Validators)-1]
+				v.recordFindings(ret.String(), "/work/lane-1")
+				markCitedBy(&r)
+			}
+			joinFixReport(&r, report.String(), "/work/lane-1")
+			last, bullets = r, n
+		}
 	}
-	done := make(chan ValidationRound, 1)
-	go func() {
-		var r ValidationRound
-		for _, role := range []string{RoleRuthless, RoleRuthless, RoleSecurity, RoleSecurity} {
-			r.Validators = append(r.Validators, ValidatorRun{Role: role, Verdict: "FIX FIRST"})
-			v := &r.Validators[len(r.Validators)-1]
-			v.recordFindings(ret.String(), "/work/lane-1")
-			markCitedBy(&r)
-		}
-		joinFixReport(&r, report.String(), "/work/lane-1")
-		done <- r
-	}()
-	select {
-	case r := <-done:
-		if v := r.Validators[3]; *v.Located < 5_000 || len(v.Findings) != maxLocatedFindings || v.Findings[0].Status != FindingApplied ||
-			len(v.Findings[0].CitedBy) != 4 {
-			t.Fatalf("the record: count %d, %d kept, %+v", *v.Located, len(v.Findings), v.Findings[0])
-		}
-	case <-time.After(15 * time.Second):
-		t.Fatal("a maximum-size return and fix report took more than 15s to read")
+	growth := readGrowth(growthUnits, build)
+	t.Logf("growth on an input four times larger: %.1f", growth)
+	if v := last.Validators[3]; bullets <= maxLocatedFindings || *v.Located != bullets || len(v.Findings) != maxLocatedFindings ||
+		v.Findings[0].Status != FindingApplied || len(v.Findings[0].CitedBy) != 4 {
+		t.Fatalf("the record: %d bullets, count %d, %d kept, %+v", bullets, *v.Located, len(v.Findings), v.Findings[0])
+	}
+	if growth > quadraticGrowth {
+		t.Fatalf("a return and fix report four times larger took %.1f times as long to read, want under %d", growth, quadraticGrowth)
 	}
 }
 
-// TestAReportLineOfManyStatusWordsIsReadQuickly: a fix report of the most
-// bytes a report may be, one line holding one location and a status word
-// repeated after it, or before it, is joined in well under the time a
-// quadratic read would take.
-func TestAReportLineOfManyStatusWordsIsReadQuickly(t *testing.T) {
-	words := strings.Repeat(" applied", 130_000)
-	for name, report := range map[string]string{"after": "- a.go:1" + words, "before": "-" + words + " a.go:1"} {
-		if len(report) > maxReportBytes {
-			t.Fatalf("%s: the fixture is %d bytes, more than a report may be", name, len(report))
-		}
-		done := make(chan string, 1)
-		go func() {
-			n := 1
-			r := ValidationRound{Validators: []ValidatorRun{{Role: RoleRuthless, Located: &n, Findings: []Finding{{File: "a.go", Line: 1}}}}}
-			joinFixReport(&r, report, "")
-			done <- r.Validators[0].Findings[0].Status
-		}()
-		select {
-		case got := <-done:
-			if got != FindingApplied {
-				t.Fatalf("%s: %s, want applied", name, got)
+// TestAReportLineOfManyStatusWordsIsReadInLinearTime: a fix report of one
+// line holding one location and a status word repeated after it, or before
+// it, is joined in time that grows linearly with its size.
+func TestAReportLineOfManyStatusWordsIsReadInLinearTime(t *testing.T) {
+	for _, name := range []string{"after", "before"} {
+		var got string
+		build := func(units int) func() {
+			words := strings.Repeat(" applied", units*130_000/64)
+			report := "- a.go:1" + words
+			if name == "before" {
+				report = "-" + words + " a.go:1"
 			}
-		case <-time.After(15 * time.Second):
-			t.Fatalf("%s: a one-line report of many status words took more than 15s to read", name)
+			return func() {
+				n := 1
+				r := ValidationRound{Validators: []ValidatorRun{{Role: RoleRuthless, Located: &n, Findings: []Finding{{File: "a.go", Line: 1}}}}}
+				joinFixReport(&r, report, "")
+				got = r.Validators[0].Findings[0].Status
+			}
+		}
+		growth := readGrowth(growthUnits, build)
+		t.Logf("%s: growth on an input four times larger: %.1f", name, growth)
+		if got != FindingApplied {
+			t.Fatalf("%s: %s, want applied", name, got)
+		}
+		if growth > quadraticGrowth {
+			t.Fatalf("%s: a report four times larger took %.1f times as long to read, want under %d", name, growth, quadraticGrowth)
 		}
 	}
+}
+
+// TestAReadGrowthTestRefusesAQuadraticRead: the growth judge itself refuses
+// a read whose work is the square of its input, so a linear-time test built
+// on it would fail a quadratic regression.
+func TestAReadGrowthTestRefusesAQuadraticRead(t *testing.T) {
+	var sink int
+	growth := readGrowth(growthUnits, func(units int) func() {
+		n := units * 2_000
+		return func() {
+			for i := range n {
+				for j := range n {
+					sink += i ^ j
+				}
+			}
+		}
+	})
+	t.Logf("growth on an input four times larger: %.1f", growth)
+	if growth <= quadraticGrowth {
+		t.Fatalf("a quadratic read grew %.1f times on an input four times larger, want over %d", growth, quadraticGrowth)
+	}
+	_ = sink
 }
 
 // TestALineNamingALocationWithoutAStatusWordSaysNothingOfIt: a line that
