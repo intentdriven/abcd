@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Held is every local branch a worktree holds that git's worktree listing does
@@ -37,24 +38,19 @@ type Held struct {
 	Common string
 }
 
-// Holder is the git dir in which a stopped rebase or bisect holds branch (its
-// short name), started from it or about to rewrite it; "" when none does.
-func (h Held) Holder(branch string) string {
-	if dir := h.Branches[branch]; dir != "" {
-		return dir
-	}
-	return h.Rewrites[branch]
-}
-
 // Checkout is the checkout a git dir h names belongs to, for a message to
 // point the person at: the main checkout (wts' first entry, which git lists
 // first, unless it is bare) for the common dir itself, and for a linked worktree's
 // <common>/worktrees/<id> the checkout its gitdir file names (that checkout's
 // .git, relative to the admin dir when worktree.useRelativePaths wrote it),
 // since git picks the id when the worktree is added and it can differ from the
-// checkout's folder (a second "look" gets look1). The path is given as wts
-// lists it when an entry is that checkout. dir itself when it is neither, or
-// the gitdir file cannot be read.
+// checkout's folder (a second "look" gets look1). A relative gitdir is joined
+// to dir's real path, as git writes and reads it, so a common dir reached
+// through a symlink still names the checkout. The path is given as wts lists
+// it when an entry is that checkout. dir itself when it is neither, when the
+// gitdir file cannot be read, or when its text holds a rune termsafe.Sanitize
+// would mask (a control character, a line break, a bidi or invisible rune):
+// that text names no folder a person could open, and the answer is printed.
 func (h Held) Checkout(dir string, wts []Worktree) string {
 	if dir == h.Common {
 		if len(wts) > 0 && !wts[0].Bare {
@@ -67,11 +63,11 @@ func (h Held) Checkout(dir string, wts []Worktree) string {
 		return dir
 	}
 	dotGit := strings.TrimRight(string(b), "\r\n")
-	if dotGit == "" {
+	if dotGit == "" || termsafe.Sanitize(dotGit) != dotGit {
 		return dir
 	}
 	if !filepath.IsAbs(dotGit) {
-		dotGit = filepath.Join(dir, dotGit)
+		dotGit = filepath.Join(fsutil.RealExistingPath(dir), dotGit)
 	}
 	checkout := filepath.Dir(filepath.Clean(dotGit))
 	real := fsutil.RealExistingPath(checkout)

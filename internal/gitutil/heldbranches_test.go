@@ -66,13 +66,11 @@ func TestHeldBranchesReadsARebaseGitStoppedInTheMainCheckout(t *testing.T) {
 	if _, ok := h.Branches["lane/base"]; ok {
 		t.Errorf("lane/base is counted started from, though only the update-refs list names it: %v", h.Branches)
 	}
-	for _, b := range []string{"lane/top", "lane/base"} {
-		if h.Holder(b) != common {
-			t.Errorf("Holder(%s) = %q, want %q", b, h.Holder(b), common)
-		}
-	}
-	if h.Holder("main") != "" {
+	if _, ok := h.Branches["main"]; ok {
 		t.Errorf("main is held, though no rebase or bisect names it: %+v", h)
+	}
+	if _, ok := h.Rewrites["main"]; ok {
+		t.Errorf("main is to be rewritten, though no update-refs list names it: %+v", h)
 	}
 }
 
@@ -166,5 +164,76 @@ func TestHeldCheckoutNamesTheCheckoutNotTheAdminDir(t *testing.T) {
 	}
 	if got := h.Checkout(admin, wts); got != admin {
 		t.Errorf("Checkout(%s) with no gitdir file = %q, want the admin dir itself", admin, got)
+	}
+}
+
+// The gitdir file is text anyone who can write the admin dir controls, and
+// Checkout's answer is printed in a refusal: text holding a control character
+// or a line break names no checkout a person could open, so the admin dir is
+// named instead, and no such rune reaches the terminal.
+func TestHeldCheckoutNamesTheAdminDirForAGitdirHoldingAControlCharacter(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write("f", "a\n")
+	r.Commit("a")
+	wt := filepath.Join(t.TempDir(), "look")
+	r.Git("worktree", "add", "-q", "--detach", wt)
+	common, err := gitutil.CommonDir(r.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := gitutil.HeldBranches(common)
+	admin := filepath.Join(common, "worktrees", "look")
+	for _, text := range []string{
+		wt + "\x1b[2J/.git\n",
+		filepath.Join(wt, "a\nforged line", ".git") + "\n",
+		filepath.Join(wt, "a\rb", ".git") + "\n",
+		filepath.Join(wt, "a\u202eb", ".git") + "\n",
+	} {
+		if err := os.WriteFile(filepath.Join(admin, "gitdir"), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if got := h.Checkout(admin, nil); got != admin {
+			t.Errorf("Checkout with gitdir %q = %q, want the admin dir %q", text, got, admin)
+		}
+	}
+}
+
+// git writes a relative gitdir (worktree.useRelativePaths) against the admin
+// dir's real path, and reads it the same way, so a common dir reached through
+// a symlink is resolved before the join: joined to the path as given, the
+// climb out of the admin dir lands beside the symlink, not the checkout.
+func TestHeldCheckoutJoinsARelativeGitdirToTheRealAdminDir(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	real := filepath.Join(base, "a", "b", "real")
+	gd := filepath.Join(base, "gd")
+	for _, d := range []string{real, gd} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := filepath.Join(gd, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	r := gittest.NewRepoAt(t, real)
+	r.Write("f", "a\n")
+	r.Commit("a")
+	wt := filepath.Join(base, "wt")
+	r.Git("-C", link, "worktree", "add", "-q", "--detach", wt)
+	h := gitutil.HeldBranches(filepath.Join(link, ".git"))
+	admin := filepath.Join(link, ".git", "worktrees", "wt")
+	realAdmin := filepath.Join(real, ".git", "worktrees", "wt")
+	rel, err := filepath.Rel(realAdmin, filepath.Join(wt, ".git"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(admin, "gitdir"), []byte(rel+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.Checkout(admin, nil); got != wt {
+		t.Errorf("Checkout(%s) with gitdir %q = %q, want the checkout %q", admin, rel, got, wt)
 	}
 }
