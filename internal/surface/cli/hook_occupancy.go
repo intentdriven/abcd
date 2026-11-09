@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -158,9 +159,10 @@ func storeWriteRefusal(tool string, readings ...string) error {
 // PATH_MAX, above macOS's 1024. The kernel refuses a longer path as written, so
 // the guard refuses it rather than read it. A reading of a path of n parts
 // makes up to n passes of up to n parts each, and a chain of links multiplies
-// that by the targets it reads; maxReadingSteps, not this limit, bounds the
-// total. A var only so a test can lower it: a link on macOS holds no target
-// longer than 1023 bytes, so no real link reaches the limit there.
+// that by the targets it reads; maxReadingSteps and readingDeadline, not this
+// limit, bound the total. A var only so a test can lower it: a link on macOS
+// holds no target longer than 1023 bytes, so no real link reaches the limit
+// there.
 var maxJudgedPath = 4096
 
 // maxLinkHops is how many links deep storeReadings follows a chain of dangling
@@ -168,14 +170,59 @@ var maxJudgedPath = 4096
 const maxLinkHops = 40
 
 // maxReadingSteps is how many path parts the readings of one call may hand to
-// filepath.EvalSymlinks, in all. EvalSymlinks looks up at most the parts it is
-// handed, plus the parts of each link it meets on the way, which it follows
-// under its own bound of 255 links and which are not counted here. An ordinary
-// path, a few tens of parts ending in a part or two that do not exist yet,
-// costs under a few hundred steps across all its readings; 65536 lookups take
-// a small fraction of a second, where a long path missing its tail, read
-// through a chain of links, would cost millions.
-const maxReadingSteps = 1 << 16
+// filepath.EvalSymlinks, in all. It counts path parts, not lookups:
+// EvalSymlinks also looks up the parts of each link it meets on the way, which
+// it follows under its own bound of 255 links and which are not counted here,
+// so a crafted set of links can make few parts cost many lookups. The budget
+// refuses a path whose own spelling is too costly to read; readingDeadline is
+// what bounds the time. An ordinary path, a few tens of parts ending in a part
+// or two that do not exist yet, costs under a few hundred steps across all its
+// readings, where a long path missing its tail, read through a chain of links,
+// would cost millions. A var only so a test can lower it.
+var maxReadingSteps = 1 << 16
+
+// readingDeadline is how long the readings of one call may take, in all. It is
+// checked before every EvalSymlinks, Lstat and Readlink the readings make, and
+// a call past it is refused, so the time one call takes is bounded by the
+// deadline, give or take the one of those calls in flight when it passes. An
+// ordinary path takes microseconds to read, so only a path read through a
+// crafted set of links comes near it. A var only so a test can lower it.
+var readingDeadline = 2 * time.Second
+
+// readingBudget is what the readings of one call may still spend: path parts
+// handed to EvalSymlinks, and time.
+type readingBudget struct {
+	steps    int
+	deadline time.Time
+}
+
+// newReadingBudget is the budget of one call, its deadline counted from now.
+func newReadingBudget() *readingBudget {
+	return &readingBudget{steps: maxReadingSteps, deadline: time.Now().Add(readingDeadline)}
+}
+
+// late is the refusal when the deadline has passed, or "". It is asked before
+// every lookup.
+func (b *readingBudget) late() string {
+	if time.Now().Before(b.deadline) {
+		return ""
+	}
+	return fmt.Sprintf("reading the path through its links takes longer than %s", readingDeadline) +
+		storeReadingsTail + "Name the file by a shorter path, through fewer links."
+}
+
+// spend charges parts path parts about to be handed to EvalSymlinks, and
+// answers the refusal when the deadline has passed or the parts run out, or "".
+func (b *readingBudget) spend(parts int) string {
+	if why := b.late(); why != "" {
+		return why
+	}
+	if b.steps -= parts; b.steps < 0 {
+		return fmt.Sprintf("reading the path through its links takes lookups of more than %d path parts in all", maxReadingSteps) +
+			storeReadingsTail + "Name the file by a shorter path, through fewer links."
+	}
+	return ""
+}
 
 // storeReadingsTail ends every refusal storeReadings answers.
 const storeReadingsTail = ", so the guard cannot tell whether the write reaches the stop or the checklist. "
@@ -193,19 +240,17 @@ const storeReadingsTail = ", so the guard cannot tell whether the write reaches 
 // the kernel's ELOOP leaves nothing written, and two readings of one link that
 // name its target two ways cost one. Each target carries how many links deep
 // it is, and a target past maxLinkHops, a path or target longer than
-// maxJudgedPath, and readings costing more than maxReadingSteps each refuse
-// the write rather than leave a part of the chain unjudged.
-func storeReadings(p string) ([]string, string) {
-	steps := maxReadingSteps
-	overBudget := fmt.Sprintf("reading the path through its links takes more than %d lookups", maxReadingSteps) +
-		storeReadingsTail + "Name the file by a shorter path, through fewer links."
+// maxJudgedPath, readings handing EvalSymlinks more than the budget's path
+// parts, and readings outlasting its deadline each refuse the write rather
+// than leave a part of the chain unjudged.
+func storeReadings(p string, b *readingBudget) ([]string, string) {
 	if len(p) > maxJudgedPath {
 		return nil, fmt.Sprintf("the path is longer than %d bytes (a relative path counts the session directory before it)", maxJudgedPath) +
 			storeReadingsTail + "Name the file by a shorter path."
 	}
-	vol, ok := volumeReading(p, &steps)
-	if !ok {
-		return nil, overBudget
+	vol, why := volumeReading(p, b)
+	if why != "" {
+		return nil, why
 	}
 	type link struct {
 		path, vol string
@@ -217,9 +262,9 @@ func storeReadings(p string) ([]string, string) {
 	for len(queue) > 0 {
 		cur := queue[0]
 		queue = queue[1:]
-		cleaned, ok := volumeReading(filepath.Clean(cur.path), &steps)
-		if !ok {
-			return nil, overBudget
+		cleaned, why := volumeReading(filepath.Clean(cur.path), b)
+		if why != "" {
+			return nil, why
 		}
 		for _, r := range []string{cur.path, cleaned, cur.vol} {
 			if seen[r] {
@@ -227,7 +272,10 @@ func storeReadings(p string) ([]string, string) {
 			}
 			seen[r] = true
 			out = append(out, r)
-			t, ok := linkTarget(r)
+			t, ok, why := linkTarget(r, b)
+			if why != "" {
+				return nil, why
+			}
 			if !ok {
 				continue
 			}
@@ -236,9 +284,9 @@ func storeReadings(p string) ([]string, string) {
 				return nil, fmt.Sprintf("the target of the link %s is longer than %d bytes", named, maxJudgedPath) +
 					storeReadingsTail + "Name the file the link leads to by a shorter path."
 			}
-			tv, ok := volumeReading(t, &steps)
-			if !ok {
-				return nil, overBudget
+			tv, why := volumeReading(t, b)
+			if why != "" {
+				return nil, why
 			}
 			if queued[tv] {
 				continue
@@ -256,25 +304,32 @@ func storeReadings(p string) ([]string, string) {
 
 // linkTarget is the target of p when p's last part is a link, joined as written
 // to the folder holding the link when it is relative, so the readings of the
-// result resolve it where the kernel would; false when p is not a link.
-func linkTarget(p string) (string, bool) {
+// result resolve it where the kernel would; false when p is not a link. The
+// deadline is asked before each lookup, and a passed one is the refusal.
+func linkTarget(p string, b *readingBudget) (string, bool, string) {
+	if why := b.late(); why != "" {
+		return "", false, why
+	}
 	fi, err := os.Lstat(p)
 	if err != nil || fi.Mode()&os.ModeSymlink == 0 {
-		return "", false
+		return "", false, ""
+	}
+	if why := b.late(); why != "" {
+		return "", false, why
 	}
 	t, err := os.Readlink(p)
 	if err != nil || t == "" {
-		return "", false
+		return "", false, ""
 	}
 	if filepath.IsAbs(t) {
-		return t, true
+		return t, true, ""
 	}
 	sep := string(filepath.Separator)
 	dir := sep
 	if i := strings.LastIndex(p, sep); i > 0 {
 		dir = p[:i]
 	}
-	return strings.TrimSuffix(dir, sep) + sep + t, true
+	return strings.TrimSuffix(dir, sep) + sep + t, true, ""
 }
 
 // volumeReading is an absolute path as the volume resolves it on a write: the
@@ -287,22 +342,23 @@ func linkTarget(p string) (string, bool) {
 // there, and a last part that is a link whose target does not exist is left as
 // the link's own name, for storeReadings to follow. A path no leading part of
 // which resolves is returned as it stands. Each pass re-reads the leading part
-// and pays its parts out of steps; false, with nothing read past that pass,
-// when steps run out. Given a cleaned absolute path it answers what
-// fsutil.RealExistingPath does, with the cost counted.
-func volumeReading(p string, steps *int) (string, bool) {
+// and pays its parts out of b first; the refusal, with nothing read past that
+// pass, when the parts run out or the deadline has passed. Given a cleaned
+// absolute path it answers what fsutil.RealExistingPath does, with the cost
+// counted.
+func volumeReading(p string, b *readingBudget) (string, string) {
 	sep := string(filepath.Separator)
 	cur, rest := p, ""
 	for {
-		if *steps -= strings.Count(cur, sep); *steps < 0 {
-			return "", false
+		if why := b.spend(strings.Count(cur, sep)); why != "" {
+			return "", why
 		}
 		if real, err := filepath.EvalSymlinks(cur); err == nil {
-			return filepath.Join(real, rest), true
+			return filepath.Join(real, rest), ""
 		}
 		i := strings.LastIndex(cur, sep)
 		if i <= 0 {
-			return p, true
+			return p, ""
 		}
 		rest = filepath.Join(cur[i+1:], rest)
 		cur = cur[:i]
@@ -319,7 +375,8 @@ func volumeReading(p string, steps *int) (string, bool) {
 // the host's deny with the verbs' own refusal, naming the worktree store. A
 // call naming no file, or a count that could not be made, fails open loud. A
 // call naming a file by both file_path and notebook_path is judged on each: a
-// deny on either is the answer, and otherwise the first that fails open.
+// deny on either is the answer, and otherwise the first that fails open. The
+// readings of both are paid out of one budget, with one deadline for the call.
 func fileWriteGate(cmd *cobra.Command, tool, cwd, filePath, notebookPath string) error {
 	var paths []string
 	for _, p := range []string{filePath, notebookPath} {
@@ -331,8 +388,9 @@ func fileWriteGate(cmd *cobra.Command, tool, cwd, filePath, notebookPath string)
 		return fileWriteFailOpen(cmd.ErrOrStderr(), "the %s call names no file to check", termsafe.Sanitize(tool))
 	}
 	var first error
+	budget := newReadingBudget()
 	for _, p := range paths {
-		err := fileWritePathGate(cmd, tool, cwd, p)
+		err := fileWritePathGate(cmd, tool, cwd, p, budget)
 		var deny *hookDeny
 		if errors.As(err, &deny) {
 			return err
@@ -344,8 +402,9 @@ func fileWriteGate(cmd *cobra.Command, tool, cwd, filePath, notebookPath string)
 	return first
 }
 
-// fileWritePathGate is fileWriteGate's judgement of one named file.
-func fileWritePathGate(cmd *cobra.Command, tool, cwd, path string) error {
+// fileWritePathGate is fileWriteGate's judgement of one named file, its
+// readings paid out of the call's one budget.
+func fileWritePathGate(cmd *cobra.Command, tool, cwd, path string, budget *readingBudget) error {
 	if stageActive() {
 		if why := guard.StageWriteRefusal(filepath.SplitList(os.Getenv(runner.StageWritesEnv)), filepath.SplitList(os.Getenv(runner.StageDeclaredEnv)), path); why != "" {
 			return denyCall("Blocked by the abcd guard (" + termsafe.Sanitize(tool) + "): " + why)
@@ -372,7 +431,7 @@ func fileWritePathGate(cmd *cobra.Command, tool, cwd, path string) error {
 			return fileWriteFailOpen(cmd.ErrOrStderr(), "the %s call names a relative path and a session directory that is not absolute", termsafe.Sanitize(tool))
 		}
 	}
-	readings, why := storeReadings(path)
+	readings, why := storeReadings(path, budget)
 	if why != "" {
 		return denyCall("Blocked by the abcd guard (" + termsafe.Sanitize(tool) + "): " + why)
 	}

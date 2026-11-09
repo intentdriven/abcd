@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/checklist"
@@ -521,5 +522,57 @@ func TestGuardHookRefusesAPathTooCostlyToJudge(t *testing.T) {
 	stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, deep), "guard", "hook")
 	if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "lookups") {
 		t.Errorf("the deny must say the path costs too many lookups; reason = %q", reason)
+	}
+}
+
+// TestGuardHookRefusesAChainOfLinksTooDeepToFollow: a chain of more than 40
+// links is refused for its depth even when it ends at no store, since the
+// guard stops following it there rather than leave the rest unjudged.
+func TestGuardHookRefusesAChainOfLinksTooDeepToFollow(t *testing.T) {
+	root := checklistCheckout(t)
+	first := linkChain(t, maxLinkHops+5, filepath.Join(t.TempDir(), "x.txt"))
+	stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, first), "guard", "hook")
+	if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, fmt.Sprintf("more than %d links", maxLinkHops)) {
+		t.Errorf("the deny must say the chain is too deep; reason = %q", reason)
+	}
+}
+
+// TestGuardHookRefusesACallPastItsDeadline: a call whose readings outlast the
+// guard's deadline is refused rather than let through unjudged. The deadline is
+// lowered to nothing, so an ordinary path the guard otherwise allows runs out
+// of time before its first lookup.
+func TestGuardHookRefusesACallPastItsDeadline(t *testing.T) {
+	root := checklistCheckout(t)
+	path := filepath.Join(root, "notes.txt")
+	if stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, path), "guard", "hook"); code != 0 || stdout != "" || stderr != "" {
+		t.Fatalf("Write %s: exit %d, stdout %q, stderr %q; want a silent allow before the deadline is lowered", path, code, stdout, stderr)
+	}
+	saved := readingDeadline
+	readingDeadline = 0
+	t.Cleanup(func() { readingDeadline = saved })
+	stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, path), "guard", "hook")
+	if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "takes longer than") {
+		t.Errorf("the deny must say the reading ran out of time; reason = %q", reason)
+	}
+}
+
+// TestGuardHookRefusesWhenTheBudgetRunsOutPastTheFirstReading: the budget is
+// spent across every reading of a call, not only the first. It is lowered to
+// three times what the first reading of a chain's first link costs, so that
+// reading passes and a later one, deeper in the chain, runs out.
+func TestGuardHookRefusesWhenTheBudgetRunsOutPastTheFirstReading(t *testing.T) {
+	root := checklistCheckout(t)
+	first := linkChain(t, 30, filepath.Join(t.TempDir(), "x.txt"))
+	b := &readingBudget{steps: maxReadingSteps, deadline: time.Now().Add(time.Hour)}
+	if _, why := volumeReading(first, b); why != "" {
+		t.Fatalf("the first reading alone is refused: %s", why)
+	}
+	cost := maxReadingSteps - b.steps
+	saved := maxReadingSteps
+	maxReadingSteps = 3 * cost
+	t.Cleanup(func() { maxReadingSteps = saved })
+	stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, first), "guard", "hook")
+	if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, fmt.Sprintf("more than %d path parts", 3*cost)) {
+		t.Errorf("the deny must say the readings cost too many path parts; reason = %q", reason)
 	}
 }

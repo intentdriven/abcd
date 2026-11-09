@@ -69,10 +69,12 @@ The guard refuses the host's own file tools any path ending in the local
 tier's two checklist files, wherever it is, in a working copy or not, whatever
 case the path is spelled in, and names the verbs to use instead. It reads the
 path as written, cleaned and then through the links of the folders on it that
-exist, and as the volume resolves it; when the path ends in a link whose target
-does not exist yet, it reads that target the same ways, and it refuses outright
-a path too long to read. That
-refusal only catches a mistake: a shell line still reaches the file, and the
+exist, and as the volume resolves it; when a reading ends in a link, it reads
+that link's target the same ways, and so on down the chain. It refuses outright
+a path it cannot finish reading: a path or a link target longer than the system
+allows, a chain of more than 40 links, a path whose readings would look up too
+many folder names, and a path whose readings take longer than two seconds.
+That refusal only catches a mistake: a shell line still reaches the file, and the
 reader is what holds, since a file written past the verbs is judged like any
 other and a failing one gives way to the last good copy.
 

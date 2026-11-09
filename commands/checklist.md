@@ -81,8 +81,13 @@ way. Relay the refusal to the user as it is.
 
 Write the checklist only through these verbs. The host's own file tools are
 refused `checklist.json` and `checklist.last-good.json`, and the refusal names
-the verb to run instead. A file changed any other way is judged when it is
-read: one that fails its checks is set aside for the last good copy.
+the verb to run instead. They are also refused a path the guard cannot finish
+reading, since it cannot tell whether the write reaches the checklist: a path
+or a link target longer than the system allows, a chain of more than 40 links,
+a path whose readings would look up too many folder names, and a path whose
+readings take longer than two seconds. Name such a file by a shorter, plainer
+path. A file changed any other way is judged when it is read: one that fails
+its checks is set aside for the last good copy.
 
 A write starts from what the reader returns: when checklist.json fails its
 checks it builds on the last good copy, and when both fail it starts a new
