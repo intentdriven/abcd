@@ -654,3 +654,100 @@ func TestHeldUnderCountsTheWorktreesBeneathADirectory(t *testing.T) {
 		t.Errorf("HeldUnder(an empty directory) = %d, %d; want 0, 0", held, spent)
 	}
 }
+
+// A branch no worktree has checked out is a peer the listing reads, and not
+// one a worktree has (iss-2611090125008163); a worktree's branch is, and so is
+// the branch of a worktree that is gone or git refused, read from the store.
+func TestCheckedOutNamesThePeersAWorktreeHas(t *testing.T) {
+	f := newFixture(t)
+	f.git(f.here(), "switch", "-q", "-c", "backup/kept")
+	f.resolve(f.here(), "iss-1-the-first-finding.md")
+	f.git(f.here(), "commit", "-q", "-m", "resolve iss-1 on a kept branch")
+	f.git(f.here(), "switch", "-q", "main")
+	lane := f.worktree("lane", "lane/live")
+	f.resolve(lane, "iss-2-the-second-finding.md")
+	gone := f.worktree("gone", "lane/gone")
+	f.write(gone, ".abcd/work/issues/open/iss-402-on-a-vanished-worktree.md", issue("iss-402", "On a vanished worktree"))
+	f.git(gone, "add", "-A")
+	f.git(gone, "commit", "-q", "-m", "a capture on a worktree about to vanish")
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+
+	rep := f.read()
+	for branch, want := range map[string]bool{"backup/kept": false, "lane/live": true, "lane/gone": true} {
+		p, ok := findPeer(rep, branch)
+		if !ok {
+			t.Fatalf("%s is not a peer: %+v", branch, rep.Peers)
+		}
+		if p.CheckedOut() != want {
+			t.Errorf("%s (source %s): CheckedOut() = %v, want %v", branch, p.Source, p.CheckedOut(), want)
+		}
+	}
+	// Each location carries its peer's answer.
+	for _, l := range append(rep.Locate("iss-1"), rep.Locate("iss-402")...) {
+		if want := l.Branch != "backup/kept"; l.CheckedOut() != want {
+			t.Errorf("a location on %s: CheckedOut() = %v, want %v", l.Branch, l.CheckedOut(), want)
+		}
+	}
+}
+
+// A worktree git lists detached because a rebase or a bisect stopped in it
+// still has the branch it started from checked out, as git counts it
+// (rebase-merge/head-name, rebase-apply/head-name, BISECT_START): that branch
+// is a peer a worktree has, though no listed worktree names it. A state file
+// that is there and cannot be read names no branch, so every branch counts.
+func TestCheckedOutCountsTheBranchARebaseOrBisectHolds(t *testing.T) {
+	f := newFixture(t)
+	f.git(f.here(), "switch", "-q", "-c", "backup/kept")
+	f.resolve(f.here(), "iss-1-the-first-finding.md")
+	f.git(f.here(), "commit", "-q", "-m", "resolve iss-1 on a kept branch")
+	f.git(f.here(), "switch", "-q", "main")
+	stop := map[string]func(dir, gitDir string){
+		"lane/merge": func(dir, gitDir string) {
+			f.write(gitDir, "rebase-merge/head-name", "refs/heads/lane/merge\n")
+		},
+		"lane/apply": func(dir, gitDir string) {
+			f.write(gitDir, "rebase-apply/head-name", "refs/heads/lane/apply\n")
+		},
+		"lane/bisect": func(dir, gitDir string) {
+			f.git(dir, "bisect", "start")
+		},
+	}
+	gitDirs := map[string]string{}
+	for branch, fn := range stop {
+		dir := f.worktree(strings.ReplaceAll(branch, "/", "-"), branch)
+		f.resolve(dir, "iss-2-the-second-finding.md")
+		f.git(dir, "commit", "-q", "-m", "resolve iss-2 on "+branch)
+		gitDir := f.git(dir, "rev-parse", "--path-format=absolute", "--git-dir")
+		gitDirs[branch] = gitDir
+		fn(dir, gitDir)
+		f.git(dir, "checkout", "-q", "--detach", "HEAD~1")
+	}
+	rep := f.read()
+	for branch, want := range map[string]bool{"backup/kept": false, "lane/merge": true, "lane/apply": true, "lane/bisect": true} {
+		p, ok := findPeer(rep, branch)
+		if !ok || p.Source != peers.SourceBranch {
+			t.Fatalf("%s is not a branch peer: %+v", branch, rep.Peers)
+		}
+		if p.CheckedOut() != want {
+			t.Errorf("%s: CheckedOut() = %v, want %v", branch, p.CheckedOut(), want)
+		}
+	}
+
+	// A head-name git would not have written, a symlink, is refused unread:
+	// which branch it names is unknown, so the kept branch counts too.
+	head := filepath.Join(gitDirs["lane/merge"], "rebase-merge", "head-name")
+	if err := os.Remove(head); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(f.home, "elsewhere"), head); err != nil {
+		t.Fatal(err)
+	}
+	rep = f.read()
+	for _, branch := range []string{"backup/kept", "lane/merge"} {
+		if p, ok := findPeer(rep, branch); !ok || !p.CheckedOut() {
+			t.Errorf("%s is not counted checked out past an unreadable head-name: %+v", branch, p)
+		}
+	}
+}

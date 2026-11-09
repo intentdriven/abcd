@@ -23,13 +23,21 @@ import (
 //
 // A worktree git has locked is not unreadable for being locked: the lock keeps
 // `git worktree prune` and `remove` away from it and says nothing of whether
-// it reads, so a locked worktree that reads is an ordinary peer.
+// it reads, so a locked worktree that reads is an ordinary peer. A branch no
+// worktree has checked out holds nothing for the peers check
+// (iss-2611090125008163), so an unreadable one refuses no move either.
 func unreadablePeers(repoRoot string) error {
 	rep, err := peers.Scan(repoRoot)
 	if err != nil {
 		return err
 	}
-	return unreadableRefusal(repoRoot, rep.Unjudged())
+	var bad []peers.Peer
+	for _, p := range rep.Unjudged() {
+		if p.CheckedOut() {
+			bad = append(bad, p)
+		}
+	}
+	return unreadableRefusal(repoRoot, bad)
 }
 
 // unreadableRefusal is the move's refusal over the peers bad names, or nil
