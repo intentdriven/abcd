@@ -7,9 +7,12 @@ package guard
 // guard hook denies the host's own file tools the two files and names the verbs.
 //
 // It is a mistake filter only, and no claim rests on it: a shell line still
-// reaches the file, and the reader is the enforcement. It takes only a file
-// this working copy's own checked write made, and falls back to the last good
-// copy otherwise (checklist.Read).
+// reaches the file, and the reader is the enforcement. A file written past the
+// verbs is judged like any other: the reader sets aside one git tracks, one
+// another account owns or anyone else can read, one in a tier that is a link,
+// and one that fails the schema or the secret scan, and falls back to the last
+// good copy (checklist.Read). It cannot tell a file that passes those from one
+// the verbs wrote.
 
 import (
 	"path"

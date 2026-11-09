@@ -8,7 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/checklist"
+	"github.com/intentdriven/abcd/internal/core/runstop"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // hook_checklist_test.go — the checklist re-injected at every session start
@@ -288,5 +291,70 @@ func TestAShellWriteToTheChecklistReachesOnlyTheReader(t *testing.T) {
 	if res.Source != checklist.FromLastGood || len(res.Checklist.Items) != 1 {
 		t.Fatalf("the reader took the shell's file: source %q, %d items", res.Source, len(res.Checklist.Items))
 	}
+	if !strings.Contains(res.Reason, "carries a secret in updated_by") {
+		t.Errorf("the reader set the file aside for another reason: %q", res.Reason)
+	}
 	assertNoTokenRun(t, "the reader's reason", res.Reason, tok)
+}
+
+// TestGuardHookJudgesTheStoresAsTheVolumeResolvesThem: the checklist and the
+// stop are judged where the write would land as well as where its spelling
+// says, so a symlinked parent and a ".." after a link are caught. A ".." after
+// a link climbs out of the link's target, not out of the folder that holds the
+// link, which a lexical clean reads instead.
+func TestGuardHookJudgesTheStoresAsTheVolumeResolvesThem(t *testing.T) {
+	root := checklistCheckout(t)
+	tier := filepath.Join(root, filepath.FromSlash(localtier.RelDir))
+	homeDir := filepath.Join(t.TempDir(), abcdhome.Rel())
+	for _, d := range []string{filepath.Join(tier, "sub"), filepath.Join(homeDir, "sub")} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	links := t.TempDir()
+	link := func(name, target string) string {
+		p := filepath.Join(links, name)
+		if err := os.Symlink(target, p); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	tierLink, tierSub := link("tier", tier), link("tiersub", filepath.Join(tier, "sub"))
+	homeLink, homeSub := link("home", homeDir), link("homesub", filepath.Join(homeDir, "sub"))
+	up := func(l, leaf string) string {
+		return l + string(filepath.Separator) + ".." + string(filepath.Separator) + leaf
+	}
+	for _, tc := range []struct{ what, path, want string }{
+		{"a symlinked parent of the checklist", filepath.Join(tierLink, "checklist.json"), "abcd checklist add"},
+		{"a .. after a link into the checklist", up(tierSub, "checklist.json"), "abcd checklist add"},
+		{"a .. after a link into the last good copy", up(tierSub, "checklist.last-good.json"), "abcd checklist add"},
+		{"a symlinked parent of the stop", filepath.Join(homeLink, runstop.HomeStopFile), "person"},
+		{"a .. after a link into the stop", up(homeSub, runstop.HomeStopFile), "person"},
+		{"a .. after a link into the setting", up(homeSub, runstop.SettingFile), "person"},
+	} {
+		t.Run(tc.what, func(t *testing.T) {
+			stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, tc.path), "guard", "hook")
+			if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, tc.want) {
+				t.Errorf("the deny must say %q; reason = %q", tc.want, reason)
+			}
+		})
+	}
+}
+
+// TestGuardHookRefusesARelativeStorePathWithNoPlaceToJoinIt: a relative path to
+// the checklist or the stop is refused by its spelling before the guard looks
+// for a directory to read it from, so a payload whose session directory is not
+// absolute is denied rather than let through unchecked.
+func TestGuardHookRefusesARelativeStorePathWithNoPlaceToJoinIt(t *testing.T) {
+	checklistCheckout(t)
+	for _, tc := range []struct{ path, want string }{
+		{filepath.FromSlash(checklist.FileRelPath), "abcd checklist add"},
+		{filepath.Join("sub", "..", filepath.FromSlash(checklist.LastGoodRelPath)), "abcd checklist add"},
+		{filepath.Join("abcd-stop-0", runstop.StopFileName), "person"},
+	} {
+		stdout, stderr, code := runGuard(fileToolPayload(t, "Write", "not-absolute", tc.path), "guard", "hook")
+		if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, tc.want) {
+			t.Errorf("Write %s: the deny must say %q; reason = %q", tc.path, tc.want, reason)
+		}
+	}
 }

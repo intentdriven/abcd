@@ -135,6 +135,49 @@ func fileWriteFailOpen(w io.Writer, format string, a ...any) error {
 	return &exitError{Code: 1}
 }
 
+// storeWriteRefusal is the host's deny for a file tool writing the stop or the
+// checklist by any of the readings of its path, or nil. The stop and the setting
+// are the person's to write, wherever the file tool stands (itd-2611041549471712).
+// The checklist is the verbs' to write (spc-2610230805429429 step 5): a mistake
+// filter only, since a shell line still reaches the file and the reader holds.
+func storeWriteRefusal(tool string, readings ...string) error {
+	for _, p := range readings {
+		if guard.StopStorePath(p) {
+			return denyCall("Blocked by the abcd guard (" + termsafe.Sanitize(tool) + " into the stop): " + guard.StopStoreRefusal())
+		}
+	}
+	for _, p := range readings {
+		if guard.ChecklistStorePath(p) {
+			return denyCall("Blocked by the abcd guard (" + termsafe.Sanitize(tool) + " into the checklist): " + guard.ChecklistStoreRefusal())
+		}
+	}
+	return nil
+}
+
+// volumeReading is an absolute path as the volume resolves it on a write: the
+// longest leading part of it, as written and not cleaned, that resolves is read
+// through its links (filepath.EvalSymlinks applies a ".." to what it has
+// resolved so far), so a ".." after a link climbs out of the link's target,
+// where filepath.Abs and path.Clean climb out of the folder holding the link.
+// A symlinked parent resolves the same way. The rest is joined on lexically: a
+// ".." in it follows a name that does not exist, so the write would fail
+// there. A path no leading part of which resolves is returned as it stands.
+func volumeReading(p string) string {
+	sep := string(filepath.Separator)
+	cur, rest := p, ""
+	for {
+		if real, err := filepath.EvalSymlinks(cur); err == nil {
+			return filepath.Join(real, rest)
+		}
+		i := strings.LastIndex(cur, sep)
+		if i <= 0 {
+			return p
+		}
+		rest = filepath.Join(cur[i+1:], rest)
+		cur = cur[:i]
+	}
+}
+
 // fileWriteGate is the guard hook's judgement of a file the host's own tools
 // are about to write (iss-2610280051498465): the record verbs refuse a main
 // checkout two or more live sessions share, and a file written there through
@@ -157,6 +200,11 @@ func fileWriteGate(cmd *cobra.Command, tool, cwd, filePath, notebookPath string)
 			return denyCall("Blocked by the abcd guard (" + termsafe.Sanitize(tool) + "): " + why)
 		}
 	}
+	// The stores are judged by the path as written first, so a relative one is
+	// refused before the fail-open branches below look for a directory to join it to.
+	if err := storeWriteRefusal(tool, path); err != nil {
+		return err
+	}
 	if !filepath.IsAbs(path) {
 		base := cwd
 		if base == "" {
@@ -173,15 +221,8 @@ func fileWriteGate(cmd *cobra.Command, tool, cwd, filePath, notebookPath string)
 			return fileWriteFailOpen(cmd.ErrOrStderr(), "the %s call names a relative path and a session directory that is not absolute", termsafe.Sanitize(tool))
 		}
 	}
-	// The stop and the setting are the person's to write, wherever the file tool
-	// stands (itd-2611041549471712).
-	if guard.StopStorePath(path) || guard.StopStorePath(fsutil.RealExistingPath(path)) {
-		return denyCall("Blocked by the abcd guard (" + termsafe.Sanitize(tool) + " into the stop): " + guard.StopStoreRefusal())
-	}
-	// The checklist is the verbs' to write (spc-2610230805429429 step 5): a mistake
-	// filter only, since a shell line still reaches the file and the reader holds.
-	if guard.ChecklistStorePath(path) || guard.ChecklistStorePath(fsutil.RealExistingPath(path)) {
-		return denyCall("Blocked by the abcd guard (" + termsafe.Sanitize(tool) + " into the checklist): " + guard.ChecklistStoreRefusal())
+	if err := storeWriteRefusal(tool, path, volumeReading(path)); err != nil {
+		return err
 	}
 	m, ok := sessionNameMachine()
 	if !ok || m.Home == "" {
