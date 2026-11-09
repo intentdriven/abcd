@@ -209,8 +209,12 @@ func TestTheFixReportSaysAppliedOrRejectedOfEachFinding(t *testing.T) {
 }
 
 // growthUnits is how many sixty-fourths of a size limit the smaller of a
-// growth test's two inputs takes; the larger takes four times as many.
-const growthUnits = 1
+// growth test's two inputs takes; the larger takes four times as many, a
+// quarter of the limit. A quadratic cost is refused once it outweighs the
+// linear cost at the smaller size, so the larger the inputs, the smaller a
+// quadratic cost the test catches; a quarter of the limit keeps the race
+// stage's time at what the fixed-bound tests took at the full limit.
+const growthUnits = 4
 
 // quadraticGrowth is the time ratio a growth test refuses: an input four
 // times larger takes about four times as long to read in linear time and
@@ -321,7 +325,9 @@ func TestAReportLineOfManyStatusWordsIsReadInLinearTime(t *testing.T) {
 // on it would fail a quadratic regression.
 func TestAReadGrowthTestRefusesAQuadraticRead(t *testing.T) {
 	var sink int
-	growth := readGrowth(growthUnits, func(units int) func() {
+	// One unit: the judge reads only the ratio, so the control's size
+	// sets only its running time.
+	growth := readGrowth(1, func(units int) func() {
 		n := units * 2_000
 		return func() {
 			for i := range n {
