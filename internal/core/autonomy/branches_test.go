@@ -2,6 +2,7 @@ package autonomy
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -206,5 +207,54 @@ func TestRecreatedNameTakesTheNewCreator(t *testing.T) {
 		if b.Session != wantS || !b.At.Equal(wantAt) {
 			t.Errorf("%s recorded as %q at %v; want %q at %v", b.Name, b.Session, b.At, wantS, wantAt)
 		}
+	}
+}
+
+// TestACheckoutOfABranchAStoppedBisectHoldsIsNotRecorded: git refuses to check
+// out a branch another worktree has, and a worktree whose bisect or rebase
+// stopped still has the branch it started from, though git lists it
+// detached; so a checkout of such a branch is a peer's, as one of a listed
+// worktree's branch is, and the recorder does not take it as this session's.
+func TestACheckoutOfABranchAStoppedBisectHoldsIsNotRecorded(t *testing.T) {
+	root, home := managedCopy(t)
+	for _, b := range []string{"peer/listed", "peer/bisected", "fix/free"} {
+		if _, err := gitutil.Run(root, "branch", b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	listed, bisected := filepath.Join(t.TempDir(), "listed"), filepath.Join(t.TempDir(), "bisected")
+	for dir, b := range map[string]string{listed: "peer/listed", bisected: "peer/bisected"} {
+		if _, err := gitutil.Run(root, "worktree", "add", "-q", dir, b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := gitutil.Run(bisected, "bisect", "start"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitutil.Run(bisected, "checkout", "-q", "--detach"); err != nil {
+		t.Fatal(err)
+	}
+	o := Options{Home: home, SessionID: "sess-a"}
+	var changes []BranchChange
+	for _, b := range []string{"peer/listed", "peer/bisected", "fix/free"} {
+		changes = append(changes, BranchChange{Kind: BranchCheckedOut, Name: b})
+	}
+	if err := RecordCreated(root, root, changes, o); err != nil {
+		t.Fatal(err)
+	}
+	st, err := openStore(home, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := claim.CopyKey(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.CreatedBranches(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "fix/free"; strings.Join(names(got), " ") != want {
+		t.Fatalf("recorded %v, want only %s", names(got), want)
 	}
 }

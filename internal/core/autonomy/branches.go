@@ -241,7 +241,13 @@ func RecordCreated(copyRoot, runDir string, changes []BranchChange, o Options) e
 }
 
 // worktreeBranches are the branches the repository's worktrees have checked
-// out, by short name; empty when they cannot be listed.
+// out, by short name, as git's checkout counts them: each listed worktree's
+// branch, and each branch a rebase or bisect stopped in a worktree started
+// from (gitutil.HeldBranches' Branches), which git lists detached but still
+// refuses to check out elsewhere. A rebase's --update-refs list is left out,
+// since git checks those branches out. Empty when they cannot be listed, and
+// a state file that cannot be read adds nothing, as the listing's failure
+// does: the recorder then records the checkout, as it did before.
 func worktreeBranches(root string) map[string]bool {
 	out := map[string]bool{}
 	wts, err := gitutil.ListWorktrees(root, gitutil.MaxWorktreeListing)
@@ -250,6 +256,11 @@ func worktreeBranches(root string) map[string]bool {
 	}
 	for _, wt := range wts {
 		if name, ok := strings.CutPrefix(wt.Branch, "refs/heads/"); ok {
+			out[name] = true
+		}
+	}
+	if common, err := gitutil.CommonDir(root); err == nil {
+		for name := range gitutil.HeldBranches(common).Branches {
 			out[name] = true
 		}
 	}
