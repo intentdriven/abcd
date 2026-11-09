@@ -2597,7 +2597,7 @@ func branchCheckedOutElsewhere(c Context, lane Lane, stage, again string) error 
 		if !sameBranchRef(wt.Branch, lane.Branch) || fsutil.RealExistingPath(wt.Path) == own {
 			continue
 		}
-		at := fsutil.RedactHome(wt.Path)
+		at := termsafe.Sanitize(fsutil.RedactHome(wt.Path))
 		return refuse(stage, "", lane.ID,
 			lane.Branch+" is checked out in "+at+", a checkout the loop did not make for this lane, and deleting the branch would leave its HEAD naming nothing",
 			"check out another branch in "+at+" (or remove that worktree), then "+again)
@@ -2612,23 +2612,27 @@ func branchCheckedOutElsewhere(c Context, lane Lane, stage, again string) error 
 	}
 	held := gitutil.HeldBranches(common)
 	if held.Unreadable != "" {
-		at := fsutil.RedactHome(held.Unreadable)
+		at := termsafe.Sanitize(fsutil.RedactHome(held.Unreadable))
 		return refuse(stage, "", lane.ID,
 			"a rebase or bisect state file at "+at+" could not be read, so whether "+lane.Branch+" is checked out under a stopped rebase or bisect is unknown",
 			"finish or abort that rebase or bisect (or remove the file if git did not write it), then "+again)
 	}
-	for _, in := range []map[string]string{held.Branches, held.Rewrites} {
-		for b, dir := range in {
-			if !sameBranchRef("refs/heads/"+b, lane.Branch) {
-				continue
-			}
-			if dir == common && len(wts) > 0 && !wts[0].Bare {
-				dir = wts[0].Path // the main checkout, which git lists first
-			}
-			at := fsutil.RedactHome(dir)
+	// Each names the checkout (gitutil.Held.Checkout), never git's admin dir
+	// for it, whose id need not be the checkout's folder name.
+	for b, dir := range held.Branches {
+		if sameBranchRef("refs/heads/"+b, lane.Branch) {
+			at := fsutil.RedactHome(held.Checkout(dir, wts))
 			return refuse(stage, "", lane.ID,
 				lane.Branch+" is checked out in "+at+", where a rebase or bisect stopped on it, and deleting the branch would leave that rebase or bisect unable to write it back",
 				"finish or abort the rebase or bisect in that checkout, then "+again)
+		}
+	}
+	for b, dir := range held.Rewrites {
+		if sameBranchRef("refs/heads/"+b, lane.Branch) {
+			at := fsutil.RedactHome(held.Checkout(dir, wts))
+			return refuse(stage, "", lane.ID,
+				"a rebase stopped in "+at+" will rewrite "+lane.Branch+" (its --update-refs list names the branch), and deleting the branch would leave that rebase unable to write it back",
+				"finish or abort the rebase in that checkout, then "+again)
 		}
 	}
 	return nil

@@ -291,16 +291,34 @@ func TestAMergedLaneTheLoopCannotProveIsNamedNotFatal(t *testing.T) {
 // that checkout's path, and the run's own step refuses the same way, writing
 // nothing; the branch and that checkout's HEAD survive both.
 func TestAMergedLaneCheckedOutElsewhereIsNotPulledFromUnderIt(t *testing.T) {
+	// says is what the refusal says holds the branch: a checkout on it, or a
+	// stopped rebase that will rewrite it (its update-refs list names the
+	// branch, though no checkout stands on it); not is a name it must not
+	// give, git's admin dir for a worktree rather than the checkout.
+	updateRefs := func(t *testing.T, f *landFixture, l Lane, other string) string {
+		f.repo.Git("worktree", "add", "-q", "--detach", other, l.Branch)
+		gitDir := f.repo.Git("-C", other, "rev-parse", "--path-format=absolute", "--git-dir")
+		if err := os.MkdirAll(filepath.Join(gitDir, "rebase-merge"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		list := "refs/heads/" + l.Branch + "\n" + l.Landing.Pushed + "\n" + strings.Repeat("0", 40) + "\n"
+		if err := os.WriteFile(filepath.Join(gitDir, "rebase-merge", "update-refs"), []byte(list), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return other
+	}
 	for _, tc := range []struct {
 		name    string
+		says    string
+		not     string
 		arrange func(t *testing.T, f *landFixture, l Lane) string
 	}{
-		{"the main checkout", func(t *testing.T, f *landFixture, l Lane) string {
+		{"the main checkout", "checked out", "", func(t *testing.T, f *landFixture, l Lane) string {
 			f.repo.Git("worktree", "remove", "--", l.Worktree)
 			f.repo.Git("checkout", "-q", l.Branch)
 			return f.repo.Root()
 		}},
-		{"a second worktree", func(t *testing.T, f *landFixture, l Lane) string {
+		{"a second worktree", "checked out", "", func(t *testing.T, f *landFixture, l Lane) string {
 			other := filepath.Join(t.TempDir(), "look")
 			f.repo.Git("worktree", "add", "-q", "-f", other, l.Branch)
 			return other
@@ -308,7 +326,7 @@ func TestAMergedLaneCheckedOutElsewhereIsNotPulledFromUnderIt(t *testing.T) {
 		// git lists a checkout whose rebase or bisect stopped as detached, yet
 		// the branch it started from is still in use there: the person's
 		// `rebase --continue` cannot write a branch deleted under it.
-		{"a rebase stopped in the main checkout", func(t *testing.T, f *landFixture, l Lane) string {
+		{"a rebase stopped in the main checkout", "checked out", "", func(t *testing.T, f *landFixture, l Lane) string {
 			f.repo.Git("worktree", "remove", "--", l.Worktree)
 			f.repo.Git("checkout", "-q", l.Branch)
 			common := f.repo.Git("rev-parse", "--path-format=absolute", "--git-common-dir")
@@ -321,22 +339,31 @@ func TestAMergedLaneCheckedOutElsewhereIsNotPulledFromUnderIt(t *testing.T) {
 			f.repo.Git("checkout", "-q", "--detach", l.Branch)
 			return f.repo.Root()
 		}},
-		{"a bisect stopped in the main checkout", func(t *testing.T, f *landFixture, l Lane) string {
+		{"a bisect stopped in the main checkout", "checked out", "", func(t *testing.T, f *landFixture, l Lane) string {
 			f.repo.Git("worktree", "remove", "--", l.Worktree)
 			f.repo.Git("checkout", "-q", l.Branch)
 			f.repo.Git("bisect", "start")
 			f.repo.Git("checkout", "-q", "--detach", l.Branch)
 			return f.repo.Root()
 		}},
-		{"a rebase's update-refs list in a second worktree", func(t *testing.T, f *landFixture, l Lane) string {
+		{"a rebase's update-refs list in a second worktree", "will rewrite", "", func(t *testing.T, f *landFixture, l Lane) string {
+			return updateRefs(t, f, l, filepath.Join(t.TempDir(), "look"))
+		}},
+		// git names a worktree's admin dir after its folder, and picks look1
+		// when a look is already taken: the refusal names the checkout.
+		{"a rebase's update-refs list in a worktree whose id is not its folder's name", "will rewrite", "look1", func(t *testing.T, f *landFixture, l Lane) string {
+			f.repo.Git("worktree", "add", "-q", "--detach", filepath.Join(t.TempDir(), "look"), l.Branch)
+			return updateRefs(t, f, l, filepath.Join(t.TempDir(), "look"))
+		}},
+		{"a rebase stopped in a worktree whose id is not its folder's name", "checked out", "look1", func(t *testing.T, f *landFixture, l Lane) string {
+			f.repo.Git("worktree", "add", "-q", "--detach", filepath.Join(t.TempDir(), "look"), l.Branch)
 			other := filepath.Join(t.TempDir(), "look")
 			f.repo.Git("worktree", "add", "-q", "--detach", other, l.Branch)
 			gitDir := f.repo.Git("-C", other, "rev-parse", "--path-format=absolute", "--git-dir")
 			if err := os.MkdirAll(filepath.Join(gitDir, "rebase-merge"), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			list := "refs/heads/" + l.Branch + "\n" + l.Landing.Pushed + "\n" + strings.Repeat("0", 40) + "\n"
-			if err := os.WriteFile(filepath.Join(gitDir, "rebase-merge", "update-refs"), []byte(list), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(gitDir, "rebase-merge", "head-name"), []byte("refs/heads/"+l.Branch+"\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			return other
@@ -353,13 +380,15 @@ func TestAMergedLaneCheckedOutElsewhereIsNotPulledFromUnderIt(t *testing.T) {
 			f.merged(t, l.Landing.Pushed)
 			other := tc.arrange(t, f, l)
 			want := filepath.Base(other)
+			names := func(why string) bool {
+				return strings.Contains(why, tc.says) && strings.Contains(why, want) && (tc.not == "" || !strings.Contains(why, tc.not))
+			}
 
 			res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
 			if err != nil {
 				t.Fatalf("a lane the loop cannot finish does not refuse the drain: %v", err)
 			}
-			if len(res.Finished) != 1 || res.Finished[0].Done || !strings.Contains(res.Finished[0].Note, "checked out") ||
-				!strings.Contains(res.Finished[0].Note, want) {
+			if len(res.Finished) != 1 || res.Finished[0].Done || !names(res.Finished[0].Note) {
 				t.Fatalf("the lane is named unfinished, naming the checkout that stands on its branch: %+v", res.Finished)
 			}
 			if out := f.repo.Git("branch", "--list", l.Branch); strings.TrimSpace(out) == "" {
@@ -376,7 +405,7 @@ func TestAMergedLaneCheckedOutElsewhereIsNotPulledFromUnderIt(t *testing.T) {
 			}
 			_, err = advance(f.repo.Root(), f.runID, f.stages, Options{})
 			r, ok := AsRefusal(err)
-			if !ok || !strings.Contains(r.Reason, "checked out") || !strings.Contains(r.Reason, want) {
+			if !ok || !names(r.Reason) {
 				t.Fatalf("the run's own step refuses, naming the checkout: %v", err)
 			}
 			if after, err := os.ReadFile(file); err != nil || string(after) != string(before) {

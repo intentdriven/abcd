@@ -270,7 +270,19 @@ pinned_gitleaks() {
 		fi
 	fi
 	tar -xzf "$copy" -C "$leaks_tmp" gitleaks || refuse "$asset holds no gitleaks to unpack."
-	raw="$("$leaks_tmp/gitleaks" version 2>/dev/null | head -n 1 | tr -d '[:space:]' || true)"
+	# A binary the system will not execute (a TMPDIR mounted noexec, where
+	# the shell exits 126 with a permission error) reports no version, and
+	# that is not the release's fault: the refusal says so and where.
+	local ran=0 why
+	raw="$("$leaks_tmp/gitleaks" version 2>"$leaks_tmp/version.err")" || ran=$?
+	why="$(head -n 1 "$leaks_tmp/version.err" 2>/dev/null || true)"
+	case "$ran:$why" in
+	0:*) ;;
+	126:* | *"Permission denied"* | *"Operation not permitted"*)
+		refuse "The verified $asset unpacked a gitleaks into $leaks_tmp that could not be executed (${why:-exit $ran}); a temporary directory mounted noexec does this. Set TMPDIR to a directory that allows execution (the temporary directory here is ${TMPDIR:-/tmp}) and run again."
+		;;
+	esac
+	raw="$(printf '%s\n' "$raw" | head -n 1 | tr -d '[:space:]')"
 	[ "${raw#v}" = "$version" ] || refuse "The verified $asset unpacked a gitleaks that reports '${raw:-nothing}', not $version."
 	say "gitleaks: $have, not CI's $version; scanning with CI's gitleaks $version, sha256 verified against $SUMS_FILE"
 	leaks_cmd="$leaks_tmp/gitleaks"
