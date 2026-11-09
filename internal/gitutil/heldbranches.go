@@ -32,6 +32,9 @@ type Held struct {
 	// every one was read. The branch it names is unknown, so a caller about to
 	// act counts every branch as held.
 	Unreadable string
+	// Common is the common dir the branches were read under, the git dir
+	// Branches and Rewrites name for the main checkout.
+	Common string
 }
 
 // Holder is the git dir in which a stopped rebase or bisect holds branch (its
@@ -41,6 +44,43 @@ func (h Held) Holder(branch string) string {
 		return dir
 	}
 	return h.Rewrites[branch]
+}
+
+// Checkout is the checkout a git dir h names belongs to, for a message to
+// point the person at: the main checkout (wts' first entry, which git lists
+// first, unless it is bare) for the common dir itself, and for a linked worktree's
+// <common>/worktrees/<id> the checkout its gitdir file names (that checkout's
+// .git, relative to the admin dir when worktree.useRelativePaths wrote it),
+// since git picks the id when the worktree is added and it can differ from the
+// checkout's folder (a second "look" gets look1). The path is given as wts
+// lists it when an entry is that checkout. dir itself when it is neither, or
+// the gitdir file cannot be read.
+func (h Held) Checkout(dir string, wts []Worktree) string {
+	if dir == h.Common {
+		if len(wts) > 0 && !wts[0].Bare {
+			return wts[0].Path
+		}
+		return dir
+	}
+	b, err := fsutil.ReadGuarded(filepath.Join(dir, "gitdir"), heldStateCap)
+	if err != nil {
+		return dir
+	}
+	dotGit := strings.TrimRight(string(b), "\r\n")
+	if dotGit == "" {
+		return dir
+	}
+	if !filepath.IsAbs(dotGit) {
+		dotGit = filepath.Join(dir, dotGit)
+	}
+	checkout := filepath.Dir(filepath.Clean(dotGit))
+	real := fsutil.RealExistingPath(checkout)
+	for _, wt := range wts {
+		if !wt.Bare && fsutil.RealExistingPath(wt.Path) == real {
+			return wt.Path
+		}
+	}
+	return checkout
 }
 
 // heldStateCap bounds one rebase or bisect state file that names one branch;
@@ -69,7 +109,7 @@ const heldUpdateRefs = "rebase-merge/update-refs"
 // checkout's git dir (common itself) and each linked worktree's
 // (common/worktrees/<id>, the entries `git worktree list` lists).
 func HeldBranches(common string) Held {
-	h := Held{Branches: map[string]string{}, Rewrites: map[string]string{}}
+	h := Held{Branches: map[string]string{}, Rewrites: map[string]string{}, Common: common}
 	unreadable := func(p string) {
 		if h.Unreadable == "" {
 			h.Unreadable = p

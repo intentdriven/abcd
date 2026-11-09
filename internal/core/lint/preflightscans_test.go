@@ -447,12 +447,20 @@ func TestSecretsCheckThatCannotScanIsNotCalledAFinding(t *testing.T) {
 // its arguments to log; it returns the tarball's path and sha256.
 func (r *scanRepo) pinnedRelease(version, log string) (string, string) {
 	r.t.Helper()
+	return r.pinnedReleaseMode(version, log, 0o755)
+}
+
+// pinnedReleaseMode is pinnedRelease with the gitleaks in it unpacked at mode:
+// one without execute bits stands in for a TMPDIR mounted noexec, where the
+// shell refuses to run the binary with exit 126.
+func (r *scanRepo) pinnedReleaseMode(version, log string, mode int64) (string, string) {
+	r.t.Helper()
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
 	body := "#!/bin/sh\nprintf '%s\\n' \"$*\" >>\"" + log + "\"\ncase \"$1\" in version) echo " + version + " ;; esac\nexit 0\n"
 	for _, f := range []struct{ name, body string }{{"LICENSE", "license\n"}, {"gitleaks", body}} {
-		if err := tw.WriteHeader(&tar.Header{Name: f.name, Mode: 0o755, Size: int64(len(f.body)), Typeflag: tar.TypeReg}); err != nil {
+		if err := tw.WriteHeader(&tar.Header{Name: f.name, Mode: mode, Size: int64(len(f.body)), Typeflag: tar.TypeReg}); err != nil {
 			r.t.Fatal(err)
 		}
 		if _, err := tw.Write([]byte(f.body)); err != nil {
@@ -568,6 +576,35 @@ func TestSecretsCheckRefusesADownloadThatDoesNotMatchThePin(t *testing.T) {
 	}
 	if left, _ := filepath.Glob(abcdhome.Path(home, "gate-tools", "gitleaks", "8.24.3", "*")); len(left) != 0 {
 		t.Errorf("an unverified download was kept: %v", left)
+	}
+	r.noCopyLeft()
+}
+
+// A verified gitleaks the system will not execute, as from a TMPDIR mounted
+// noexec, reports no version: the refusal says the binary could not be
+// executed, names the temporary directory and the TMPDIR to set, rather than
+// calling the verified release one that reports nothing.
+func TestSecretsCheckThatCannotExecuteTheVerifiedBinarySaysSo(t *testing.T) {
+	r := newScanRepo(t, false)
+	r.stub("gitleaks", `case "$1" in version) echo 8.30.1 ;; esac; exit 0`)
+	log := filepath.Join(t.TempDir(), "pinned.args")
+	tarball, digest := r.pinnedReleaseMode("8.24.3", log, 0o644)
+	r.pinDigest("8.24.3", digest)
+	r.serve(tarball)
+	code, out := r.run("secrets")
+	if code != 2 || !strings.Contains(out, "REFUSING") {
+		t.Fatalf("a verified binary that cannot be executed: exit %d, want 2 and a refusal\n%s", code, out)
+	}
+	if strings.Contains(out, "reports 'nothing'") {
+		t.Errorf("the refusal blames the release for reporting nothing:\n%s", out)
+	}
+	for _, want := range []string{"could not be executed", r.tmp, "TMPDIR"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the refusal does not say %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(r.args("gitleaks"), "git ") {
+		t.Errorf("the scan fell back to the gitleaks on PATH:\n%s", r.args("gitleaks"))
 	}
 	r.noCopyLeft()
 }

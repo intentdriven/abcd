@@ -111,3 +111,60 @@ func TestHeldBranchesFailsClosedOnAStateFileItCannotRead(t *testing.T) {
 		t.Errorf("a symlinked head-name: Unreadable = %q, want %q", h.Unreadable, head)
 	}
 }
+
+// A holder's git dir is not where the person works: a linked worktree's is
+// <common>/worktrees/<id>, and git picks a new id when the folder name is
+// taken (a second "look" becomes look1). Held.Checkout names the checkout itself,
+// through the gitdir file git keeps there, for a refusal to point at.
+func TestHeldCheckoutNamesTheCheckoutNotTheAdminDir(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write("f", "a\n")
+	r.Commit("a")
+	first := filepath.Join(t.TempDir(), "look")
+	second := filepath.Join(t.TempDir(), "look")
+	r.Git("worktree", "add", "-q", "--detach", first)
+	r.Git("worktree", "add", "-q", "--detach", second)
+	common, err := gitutil.CommonDir(r.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := gitutil.HeldBranches(common)
+	admin := strings.TrimSpace(r.Git("-C", second, "rev-parse", "--path-format=absolute", "--git-dir"))
+	if filepath.Base(admin) != "look1" {
+		t.Fatalf("premise: the second worktree's admin dir is %s, want the id look1", admin)
+	}
+	wts, err := gitutil.ListWorktrees(r.Root(), gitutil.MaxWorktreeListing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	same := func(a, b string) bool {
+		ra, _ := filepath.EvalSymlinks(a)
+		rb, _ := filepath.EvalSymlinks(b)
+		return ra == rb
+	}
+	if got := h.Checkout(admin, wts); !same(got, second) {
+		t.Errorf("Checkout(%s) = %q, want the checkout %q", admin, got, second)
+	}
+	if got := h.Checkout(common, wts); !same(got, r.Root()) {
+		t.Errorf("Checkout(common) = %q, want the main checkout %q", got, r.Root())
+	}
+	// git 2.48's worktree.useRelativePaths writes the gitdir file relative
+	// to the admin dir.
+	rel, err := filepath.Rel(admin, filepath.Join(second, ".git"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(admin, "gitdir"), []byte(rel+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.Checkout(admin, nil); !same(got, second) {
+		t.Errorf("Checkout(%s) with a relative gitdir = %q, want %q", admin, got, second)
+	}
+	// With no gitdir file to read, the admin dir is all there is to name.
+	if err := os.Remove(filepath.Join(admin, "gitdir")); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.Checkout(admin, wts); got != admin {
+		t.Errorf("Checkout(%s) with no gitdir file = %q, want the admin dir itself", admin, got)
+	}
+}

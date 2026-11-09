@@ -215,9 +215,15 @@ func branchHazard(def string, wts []gitutil.Worktree, held gitutil.Held, branch 
 		return unproven("a rebase or bisect state file at "+fsutil.RedactHome(held.Unreadable)+" could not be read, so whether a stopped rebase or bisect holds it is unknown",
 			"Finish or abort that rebase or bisect, then run the delete again."), true
 	}
-	if dir := held.Holder(branch); dir != "" {
-		return unproven("it is checked out in "+fsutil.RedactHome(dir)+", where a rebase or bisect stopped on it",
+	// Each names the checkout (gitutil.Held.Checkout), never git's admin dir
+	// for it, whose id need not be the checkout's folder name.
+	if dir := held.Branches[branch]; dir != "" {
+		return unproven("it is checked out in "+fsutil.RedactHome(held.Checkout(dir, wts))+", where a rebase or bisect stopped on it",
 			"Finish or abort that rebase or bisect, then run the delete again."), true
+	}
+	if dir := held.Rewrites[branch]; dir != "" {
+		return unproven("a rebase stopped in "+fsutil.RedactHome(held.Checkout(dir, wts))+" will rewrite it (its --update-refs list names the branch)",
+			"Finish or abort that rebase, then run the delete again."), true
 	}
 	return guard.DeleteProof{}, false
 }
