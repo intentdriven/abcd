@@ -416,6 +416,34 @@ func TestGuardHookExpandsAPathBeginningWithTilde(t *testing.T) {
 	}
 }
 
+// TestGuardHookJudgesAPathThroughARegularFile: a path one of whose parts is a
+// regular file, so a lookup of it answers that the part is not a folder
+// (ENOTDIR), is allowed when it names no store, since the write fails there on
+// its own, and refused when its spelling or its cleaned reading names one.
+func TestGuardHookJudgesAPathThroughARegularFile(t *testing.T) {
+	root := checklistCheckout(t)
+	notes := filepath.Join(root, "notes.txt")
+	if err := os.WriteFile(notes, []byte("notes\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sep := string(filepath.Separator)
+	for _, p := range []string{filepath.Join(notes, "x.txt"), filepath.Join(notes, "sub", "x.txt")} {
+		stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, p), "guard", "hook")
+		if code != 0 || stdout != "" || stderr != "" {
+			t.Errorf("Write %s: exit %d, stdout %q, stderr %q; want a silent allow", p, code, stdout, stderr)
+		}
+	}
+	for _, p := range []string{
+		filepath.Join(notes, filepath.FromSlash(checklist.FileRelPath)),
+		notes + sep + ".." + sep + filepath.FromSlash(checklist.LastGoodRelPath),
+	} {
+		stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, p), "guard", "hook")
+		if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "abcd checklist add") {
+			t.Errorf("Write %s: the deny must name the verbs; reason = %q", p, reason)
+		}
+	}
+}
+
 // TestGuardHookRefusesAPathTooLongToJudge: a path longer than the system's path
 // limit is refused outright, store or not, since reading it through its links
 // costs time that grows with the square of its length.
