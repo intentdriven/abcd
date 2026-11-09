@@ -414,3 +414,112 @@ func TestGuardHookRefusesARelativeStorePathWithNoPlaceToJoinIt(t *testing.T) {
 		}
 	}
 }
+
+// linkChain makes n relative links in a fresh folder, l0 -> l1 -> ... ->
+// l(n-1) -> end, and answers l0's path through a link to that folder, so each
+// link in the chain reads two ways: through the folder's link and as the
+// volume resolves it.
+func linkChain(t *testing.T, n int, end string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for i := 0; i < n; i++ {
+		target := fmt.Sprintf("l%d", i+1)
+		if i == n-1 {
+			target = end
+		}
+		if err := os.Symlink(target, filepath.Join(dir, fmt.Sprintf("l%d", i))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	via := filepath.Join(t.TempDir(), "via")
+	if err := os.Symlink(dir, via); err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(via, "l0")
+}
+
+// TestGuardHookFollowsALongChainOfLinksToTheStores: a chain of 22 relative
+// links in a symlinked folder, which the kernel follows (32 on macOS, 40 on
+// Linux), is refused when it ends at either store. The chain is followed by
+// how many links deep each target is, not by how many paths were judged.
+func TestGuardHookFollowsALongChainOfLinksToTheStores(t *testing.T) {
+	root := checklistCheckout(t)
+	homeDir := filepath.Join(t.TempDir(), abcdhome.Rel())
+	fresh := filepath.Join(t.TempDir(), filepath.FromSlash(localtier.RelDir))
+	for _, d := range []string{homeDir, fresh} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct{ what, end, want string }{
+		{"the stop", filepath.Join(homeDir, runstop.HomeStopFile), "person"},
+		{"the checklist", filepath.Join(fresh, "checklist.json"), "abcd checklist add"},
+	} {
+		t.Run(tc.what, func(t *testing.T) {
+			stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, linkChain(t, 22, tc.end)), "guard", "hook")
+			if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, tc.want) {
+				t.Errorf("the deny must say %q; reason = %q", tc.want, reason)
+			}
+		})
+	}
+}
+
+// TestGuardHookAllowsALoopOfLinks: a chain of links that loops back on itself
+// is allowed. It names no store, and the kernel refuses the write itself
+// (ELOOP), so nothing is written anywhere; the guard follows each target once,
+// so a loop neither hangs the hook nor runs into the link bound.
+func TestGuardHookAllowsALoopOfLinks(t *testing.T) {
+	checklistCheckout(t)
+	dir := t.TempDir()
+	for _, l := range [][2]string{{"self", "self"}, {"a", "b"}, {"b", "a"}} {
+		if err := os.Symlink(l[1], filepath.Join(dir, l[0])); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, p := range []string{
+		filepath.Join(dir, "self"),
+		filepath.Join(dir, "a"),
+		linkChain(t, 25, "l0"), // l24 -> l0, in a symlinked folder
+	} {
+		stdout, stderr, code := runGuard(fileToolPayload(t, "Write", dir, p), "guard", "hook")
+		if code != 0 || stdout != "" || stderr != "" {
+			t.Errorf("Write %s: exit %d, stdout %q, stderr %q; want a silent allow", p, code, stdout, stderr)
+		}
+	}
+}
+
+// TestGuardHookRefusesALinkTargetTooLongToJudge: a link at the end of a long
+// chain whose target is longer than the limit is refused, and the deny names
+// the link. A link on macOS holds no target past 1023 bytes, so the test
+// lowers the limit to reach the case on every system.
+func TestGuardHookRefusesALinkTargetTooLongToJudge(t *testing.T) {
+	root := checklistCheckout(t)
+	saved := maxJudgedPath
+	maxJudgedPath = 400
+	t.Cleanup(func() { maxJudgedPath = saved })
+	long := filepath.Join(t.TempDir(), strings.Repeat("a"+string(filepath.Separator), 200), "x.txt")
+	first := linkChain(t, 22, long)
+	if len(first) >= maxJudgedPath {
+		t.Fatalf("the chain's first link is already over the lowered limit: %d bytes", len(first))
+	}
+	stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, first), "guard", "hook")
+	reason := mustDeny(t, stdout, stderr, code)
+	for _, want := range []string{"the target of the link", "l21", "longer than 400 bytes"} {
+		if !strings.Contains(reason, want) {
+			t.Errorf("the deny must say %q; reason = %q", want, reason)
+		}
+	}
+}
+
+// TestGuardHookRefusesAPathTooCostlyToJudge: a path under the length limit
+// whose readings would take more lookups than the guard spends on one call is
+// refused rather than let through unjudged. 400 parts that do not exist cost
+// each reading a pass per part.
+func TestGuardHookRefusesAPathTooCostlyToJudge(t *testing.T) {
+	root := checklistCheckout(t)
+	deep := root + strings.Repeat(string(filepath.Separator)+"a", 400) + string(filepath.Separator) + "x.txt"
+	stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, deep), "guard", "hook")
+	if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "lookups") {
+		t.Errorf("the deny must say the path costs too many lookups; reason = %q", reason)
+	}
+}

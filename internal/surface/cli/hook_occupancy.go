@@ -155,48 +155,103 @@ func storeWriteRefusal(tool string, readings ...string) error {
 }
 
 // maxJudgedPath is the longest path, in bytes, the stores are judged by: Linux's
-// PATH_MAX, above macOS's 1024. The kernel refuses a longer path as written, and
-// reading one through its links costs time that grows with the square of its
-// length, so the guard refuses it rather than read it.
-const maxJudgedPath = 4096
+// PATH_MAX, above macOS's 1024. The kernel refuses a longer path as written, so
+// the guard refuses it rather than read it. A reading of a path of n parts
+// makes up to n passes of up to n parts each, and a chain of links multiplies
+// that by the targets it reads; maxReadingSteps, not this limit, bounds the
+// total. A var only so a test can lower it: a link on macOS holds no target
+// longer than 1023 bytes, so no real link reaches the limit there.
+var maxJudgedPath = 4096
 
-// maxLinkHops is how many dangling links in a row storeReadings follows, the
-// kernel's own bound on a chain of links (40 on Linux, 32 on macOS).
+// maxLinkHops is how many links deep storeReadings follows a chain of dangling
+// links, the kernel's own bound on a chain of links (40 on Linux, 32 on macOS).
 const maxLinkHops = 40
 
+// maxReadingSteps is how many path parts the readings of one call may hand to
+// filepath.EvalSymlinks, in all. EvalSymlinks looks up at most the parts it is
+// handed, plus the parts of each link it meets on the way, which it follows
+// under its own bound of 255 links and which are not counted here. An ordinary
+// path, a few tens of parts ending in a part or two that do not exist yet,
+// costs under a few hundred steps across all its readings; 65536 lookups take
+// a small fraction of a second, where a long path missing its tail, read
+// through a chain of links, would cost millions.
+const maxReadingSteps = 1 << 16
+
+// storeReadingsTail ends every refusal storeReadings answers.
+const storeReadingsTail = ", so the guard cannot tell whether the write reaches the stop or the checklist. "
+
 // storeReadings is every reading of the absolute path p the stop and the
-// checklist are judged by, or false when p, or the target of a link it ends in,
-// is longer than maxJudgedPath. Each path is read three ways: as written
-// (the store checks clean it); cleaned first, then through the links of its
-// leading parts that exist (fsutil.RealExistingPath), as a host that cleans a
-// path before it opens it reaches; and as the volume resolves it as written
-// (volumeReading). When a reading's last part is itself a link, which neither
-// resolves when its target does not exist yet, its target, joined to the
-// link's own folder when relative, is read the same three ways, up to
-// maxLinkHops links in a row: a write that creates the file follows the link.
-func storeReadings(p string) ([]string, bool) {
+// checklist are judged by, or the reason the guard cannot read them all. Each
+// path is read three ways: as written (the store checks clean it); cleaned
+// first, then through the links of its leading parts that exist, as a host
+// that cleans a path before it opens it reaches; and as the volume resolves it
+// as written (volumeReading). When a reading's last part is itself a link,
+// which neither resolves when its target does not exist yet, its target,
+// joined to the link's own folder when relative, is read the same three ways:
+// a write that creates the file follows the link. A target is read once, keyed
+// by where the volume resolves it, so a loop of links ends where it closes, as
+// the kernel's ELOOP leaves nothing written, and two readings of one link that
+// name its target two ways cost one. Each target carries how many links deep
+// it is, and a target past maxLinkHops, a path or target longer than
+// maxJudgedPath, and readings costing more than maxReadingSteps each refuse
+// the write rather than leave a part of the chain unjudged.
+func storeReadings(p string) ([]string, string) {
+	steps := maxReadingSteps
+	overBudget := fmt.Sprintf("reading the path through its links takes more than %d lookups", maxReadingSteps) +
+		storeReadingsTail + "Name the file by a shorter path, through fewer links."
+	if len(p) > maxJudgedPath {
+		return nil, fmt.Sprintf("the path is longer than %d bytes (a relative path counts the session directory before it)", maxJudgedPath) +
+			storeReadingsTail + "Name the file by a shorter path."
+	}
+	vol, ok := volumeReading(p, &steps)
+	if !ok {
+		return nil, overBudget
+	}
+	type link struct {
+		path, vol string
+		depth     int // links followed to reach path
+	}
+	queue := []link{{p, vol, 0}}
+	seen, queued := map[string]bool{}, map[string]bool{vol: true}
 	var out []string
-	seen, queued := map[string]bool{}, map[string]bool{p: true}
-	queue := []string{p}
-	for hop := 0; len(queue) > 0 && hop <= maxLinkHops; hop++ {
+	for len(queue) > 0 {
 		cur := queue[0]
 		queue = queue[1:]
-		if len(cur) > maxJudgedPath {
-			return nil, false
+		cleaned, ok := volumeReading(filepath.Clean(cur.path), &steps)
+		if !ok {
+			return nil, overBudget
 		}
-		for _, r := range []string{cur, fsutil.RealExistingPath(cur), volumeReading(cur)} {
+		for _, r := range []string{cur.path, cleaned, cur.vol} {
 			if seen[r] {
 				continue
 			}
 			seen[r] = true
 			out = append(out, r)
-			if t, ok := linkTarget(r); ok && !queued[t] {
-				queued[t] = true
-				queue = append(queue, t)
+			t, ok := linkTarget(r)
+			if !ok {
+				continue
 			}
+			named := termsafe.Sanitize(fsutil.RedactHome(r))
+			if len(t) > maxJudgedPath {
+				return nil, fmt.Sprintf("the target of the link %s is longer than %d bytes", named, maxJudgedPath) +
+					storeReadingsTail + "Name the file the link leads to by a shorter path."
+			}
+			tv, ok := volumeReading(t, &steps)
+			if !ok {
+				return nil, overBudget
+			}
+			if queued[tv] {
+				continue
+			}
+			if cur.depth >= maxLinkHops {
+				return nil, fmt.Sprintf("the path ends in a chain of more than %d links, the last read %s", maxLinkHops, named) +
+					storeReadingsTail + "Name the file the chain leads to."
+			}
+			queued[tv] = true
+			queue = append(queue, link{t, tv, cur.depth + 1})
 		}
 	}
-	return out, true
+	return out, ""
 }
 
 // linkTarget is the target of p when p's last part is a link, joined as written
@@ -231,18 +286,23 @@ func linkTarget(p string) (string, bool) {
 // ".." in it follows a name that does not exist, so the write would fail
 // there, and a last part that is a link whose target does not exist is left as
 // the link's own name, for storeReadings to follow. A path no leading part of
-// which resolves is returned as it stands. Each pass re-reads the leading part,
-// so the caller bounds the path's length (maxJudgedPath).
-func volumeReading(p string) string {
+// which resolves is returned as it stands. Each pass re-reads the leading part
+// and pays its parts out of steps; false, with nothing read past that pass,
+// when steps run out. Given a cleaned absolute path it answers what
+// fsutil.RealExistingPath does, with the cost counted.
+func volumeReading(p string, steps *int) (string, bool) {
 	sep := string(filepath.Separator)
 	cur, rest := p, ""
 	for {
+		if *steps -= strings.Count(cur, sep); *steps < 0 {
+			return "", false
+		}
 		if real, err := filepath.EvalSymlinks(cur); err == nil {
-			return filepath.Join(real, rest)
+			return filepath.Join(real, rest), true
 		}
 		i := strings.LastIndex(cur, sep)
 		if i <= 0 {
-			return p
+			return p, true
 		}
 		rest = filepath.Join(cur[i+1:], rest)
 		cur = cur[:i]
@@ -312,11 +372,9 @@ func fileWritePathGate(cmd *cobra.Command, tool, cwd, path string) error {
 			return fileWriteFailOpen(cmd.ErrOrStderr(), "the %s call names a relative path and a session directory that is not absolute", termsafe.Sanitize(tool))
 		}
 	}
-	readings, ok := storeReadings(path)
-	if !ok {
-		return denyCall(fmt.Sprintf("Blocked by the abcd guard (%s): the path, or the target of a link it ends in, is longer than %d bytes, "+
-			"so the guard cannot tell whether the write reaches the stop or the checklist. Name the file by a shorter path.",
-			termsafe.Sanitize(tool), maxJudgedPath))
+	readings, why := storeReadings(path)
+	if why != "" {
+		return denyCall("Blocked by the abcd guard (" + termsafe.Sanitize(tool) + "): " + why)
 	}
 	if err := storeWriteRefusal(tool, readings...); err != nil {
 		return err
