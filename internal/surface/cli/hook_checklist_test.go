@@ -365,6 +365,85 @@ func TestGuardHookJudgesTheStoresAsTheVolumeResolvesThem(t *testing.T) {
 	}
 }
 
+// TestGuardHookExpandsAPathBeginningWithTilde: a file tool's path beginning
+// with "~/" is expanded to the home directory before the checklist and the stop
+// are judged by it, as a shell expands it, so a folder under home that links
+// to a store is refused for each file tool. The spelling after the tilde is
+// kept as written, so a ".." after a link climbs out of the link's target. A
+// path that is "~" alone names the home directory, which holds no store.
+func TestGuardHookExpandsAPathBeginningWithTilde(t *testing.T) {
+	root := checklistCheckout(t)
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Fatalf("the checkout fixture sets no home directory: %v", err)
+	}
+	tier := filepath.Join(root, filepath.FromSlash(localtier.RelDir))
+	stopDir := filepath.Join(t.TempDir(), abcdhome.Rel())
+	for _, d := range []string{filepath.Join(tier, "sub"), stopDir} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, target := range map[string]string{"tier-link": tier, "tier-sub-link": filepath.Join(tier, "sub"), "stop-link": stopDir} {
+		if err := os.Symlink(target, filepath.Join(home, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tool := range fileWriteTools {
+		for _, tc := range []struct{ path, want string }{
+			{"~/tier-link/checklist.json", "abcd checklist add"},
+			{"~/tier-link/checklist.last-good.json", "abcd checklist add"},
+			{"~/tier-sub-link/../checklist.json", "abcd checklist add"},
+			{"~/stop-link/" + runstop.HomeStopFile, "person"},
+			{"~/stop-link/" + runstop.SettingFile, "person"},
+		} {
+			t.Run(tool+" "+tc.path, func(t *testing.T) {
+				stdout, stderr, code := runGuard(fileToolPayload(t, tool, root, tc.path), "guard", "hook")
+				reason := mustDeny(t, stdout, stderr, code)
+				for _, want := range []string{tool, tc.want} {
+					if !strings.Contains(reason, want) {
+						t.Errorf("the deny must say %q; reason = %q", want, reason)
+					}
+				}
+			})
+		}
+	}
+	for _, p := range []string{"~/notes.md", "~/tier-link-elsewhere/checklist.json"} {
+		stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, p), "guard", "hook")
+		if code != 0 || stdout != "" || stderr != "" {
+			t.Errorf("Write %s: exit %d, stdout %q, stderr %q; want a silent allow", p, code, stdout, stderr)
+		}
+	}
+}
+
+// TestGuardHookJudgesAPathThroughARegularFile: a path one of whose parts is a
+// regular file, so a lookup of it answers that the part is not a folder
+// (ENOTDIR), is allowed when it names no store, since the write fails there on
+// its own, and refused when its spelling or its cleaned reading names one.
+func TestGuardHookJudgesAPathThroughARegularFile(t *testing.T) {
+	root := checklistCheckout(t)
+	notes := filepath.Join(root, "notes.txt")
+	if err := os.WriteFile(notes, []byte("notes\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sep := string(filepath.Separator)
+	for _, p := range []string{filepath.Join(notes, "x.txt"), filepath.Join(notes, "sub", "x.txt")} {
+		stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, p), "guard", "hook")
+		if code != 0 || stdout != "" || stderr != "" {
+			t.Errorf("Write %s: exit %d, stdout %q, stderr %q; want a silent allow", p, code, stdout, stderr)
+		}
+	}
+	for _, p := range []string{
+		filepath.Join(notes, filepath.FromSlash(checklist.FileRelPath)),
+		notes + sep + ".." + sep + filepath.FromSlash(checklist.LastGoodRelPath),
+	} {
+		stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, p), "guard", "hook")
+		if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "abcd checklist add") {
+			t.Errorf("Write %s: the deny must name the verbs; reason = %q", p, reason)
+		}
+	}
+}
+
 // TestGuardHookRefusesAPathTooLongToJudge: a path longer than the system's path
 // limit is refused outright, store or not, since reading it through its links
 // costs time that grows with the square of its length.

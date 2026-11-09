@@ -1640,6 +1640,9 @@ type hookInput struct {
 	Prompt    string `json:"prompt"`
 	Source    string `json:"source"`
 	Event     string `json:"hook_event_name"`
+	// Trigger is the PreCompact payload's "manual" or "auto", read by the
+	// checklist's event sidecar (hook_checklist.go's recordCompaction).
+	Trigger string `json:"trigger"`
 	// SessionTitle is the session's custom title on the session-start and
 	// prompt payloads: a name the person gave it or one a hook set earlier,
 	// never a generated one. Read by session naming (hook_session_name.go).
@@ -2036,16 +2039,23 @@ envelope carries it as system_message.`,
 	})
 
 	// prompt-router-reset — SessionStart / PreCompact: clear the dedup ledger so
-	// the next prompt re-injects (the event-driven refresh, D1/B2).
+	// the next prompt re-injects (the event-driven refresh, D1/B2), and on
+	// PreCompact record the compaction in the checklist's event sidecar.
 	hookCmd.AddCommand(&cobra.Command{
 		Use:   "prompt-router-reset",
-		Short: "SessionStart/PreCompact: clear the dedup ledger and the session's fill file",
+		Short: "SessionStart/PreCompact: clear the dedup ledger and the session's fill file, and record a compaction",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable reset payload (%s)\n", termsafe.Sanitize(err.Error()))
 				return nil
+			}
+			// The checklist's event sidecar (spc-2610230805429429 step 6):
+			// PreCompact runs this verb, and the compaction is recorded
+			// first, so nothing the reset meets keeps it from the file.
+			if in.Event == "PreCompact" {
+				recordCompaction(cmd.ErrOrStderr(), in.Cwd, in.Trigger)
 			}
 			session := hookSession(in)
 			// The fill's half of the reset (spc-2610111627213138 step 5):

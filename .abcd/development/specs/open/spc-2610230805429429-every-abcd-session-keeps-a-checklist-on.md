@@ -66,6 +66,7 @@ Each working copy keeps one checklist (dcn-2610180913444971), a JSON file in its
    - needs: 1
    - packages: internal/surface/cli, hooks
    - tests: internal/surface/cli
+   - landed: 92b207905
 7. **The crash lab**
    The kill loop and the power-cycle receipts, recorded in a dated research note (technical criterion 2).
    - needs: 1

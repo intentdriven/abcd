@@ -1,10 +1,16 @@
 package cli
 
 import (
+	"fmt"
 	"io"
+	"os"
+	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/checklist"
 	"github.com/intentdriven/abcd/internal/core/rules"
+	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
 
@@ -66,4 +72,35 @@ func sessionStartChecklist(cwd string, budget int) (text string) {
 		return ""
 	}
 	return checklist.Render(checklist.Read(root), budget)
+}
+
+// recordCompaction is the PreCompact event sidecar (spc-2610230805429429
+// step 6): the compaction's time and trigger are appended to the managed
+// checkout's checklist.events.jsonl. It never blocks the compaction: the
+// hook's exit and its stdout are the reset's alone, and a compaction that
+// could not be recorded is one line on stderr saying so. Outside a managed
+// checkout, and on a walled stage, it records nothing and says nothing, as the
+// other checklist hooks stand aside there.
+func recordCompaction(w io.Writer, cwd, trigger string) {
+	defer func() {
+		if recover() != nil {
+			fmt.Fprintln(w, "abcd checklist: the compaction was not recorded in "+checklist.EventsRelPath+" (the record failed); the compaction goes ahead")
+		}
+	}()
+	if stageActive() {
+		return
+	}
+	if cwd == "" {
+		if wd, err := os.Getwd(); err == nil {
+			cwd = wd
+		}
+	}
+	root, ok := managedRoot(cwd)
+	if !ok {
+		return
+	}
+	if err := checklist.RecordCompaction(root, trigger, time.Now()); err != nil {
+		fmt.Fprintf(w, "abcd checklist: the compaction was not recorded in %s (%s); the compaction goes ahead\n",
+			checklist.EventsRelPath, termsafe.Sanitize(fsutil.RedactHome(strings.ReplaceAll(err.Error(), root, "<checkout>"))))
+	}
 }

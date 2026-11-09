@@ -581,20 +581,38 @@ func InfoOwnerUID(fi os.FileInfo) (uint32, error) {
 // home. Any other p — `~user`, a `~` later in the word, no `~` at all — is
 // returned as written, and so is every p when home is empty.
 //
-// It is the one tilde expander: the shell guard resolving a script a command
-// names (internal/core/guard) and the harness trust check resolving a binary's
-// path (ExpandHome) both route through it rather than keeping copies.
+// It is TildeHome's result cleaned. TildeHome is the one tilde expander: the
+// shell guard resolving a script a command names and judging a command's
+// operands (internal/core/guard), the guard hook judging a path the host's
+// file tools write, and the harness trust check resolving a binary's path
+// (ExpandHome) all route through it rather than keeping copies.
 func ExpandTilde(p, home string) string {
-	if home == "" {
-		return p
-	}
 	if p == "~" {
+		if home == "" {
+			return p
+		}
 		return home
 	}
-	if rest, ok := strings.CutPrefix(p, "~/"); ok {
-		return filepath.Join(home, rest)
+	if e, ok := TildeHome(p, home); ok {
+		return filepath.Clean(e)
 	}
 	return p
+}
+
+// TildeHome is p with a leading `~` or `~/` replaced by home, the way a shell
+// expands a tilde for the account's own home, and true; the rest of p is kept
+// as written, not cleaned, so a `..` after a link is still there for a reading
+// that resolves the link before it climbs. It answers p and false for any
+// other p (`~user`, a `~` later in the word, no `~` at all) and for every p
+// when home is empty.
+func TildeHome(p, home string) (string, bool) {
+	if home == "" || (p != "~" && !strings.HasPrefix(p, "~/")) {
+		return p, false
+	}
+	if p == "~" {
+		return home, true
+	}
+	return strings.TrimSuffix(home, string(filepath.Separator)) + p[1:], true
 }
 
 // ExpandHome is ExpandTilde, and also the parameter spellings of the home

@@ -1,7 +1,7 @@
 # `/abcd:checklist` — Keep the Working Copy's Checklist on Disk
 
 `/abcd:checklist` keeps what a session in this working copy is doing on disk
-(itd-2610170638184486, spc-2610230805429429 steps 1 to 3): what it works on,
+(itd-2610170638184486, spc-2610230805429429 steps 1 to 3, 5 and 6): what it works on,
 what it waits on and what it has promised. A resumed or a fresh session in the
 same copy reads the same list, and the list survives a compaction or a crash.
 It is an agent's verb, listed in the agents group, and every sub-verb runs in
@@ -67,7 +67,9 @@ or the owner, which a write shows.
 
 The guard refuses the host's own file tools any path ending in the local
 tier's two checklist files, wherever it is, in a working copy or not, whatever
-case the path is spelled in, and names the verbs to use instead. It reads the
+case the path is spelled in, and names the verbs to use instead. A path
+beginning with `~` or `~/` is judged both as written and with the home
+directory in place of the tilde, as a shell expands it. It reads each
 path as written, cleaned and then through the links of the folders on it that
 exist, and as the volume resolves it; when a reading ends in a link, it reads
 that link's target the same ways, and so on down the chain. It refuses outright
@@ -95,6 +97,23 @@ items, newest first, and says how many it left out and how to see them all.
 When the file fails the reader, the last good copy is added with one line
 saying why; when both fail, that line alone. A working copy that never had a
 list is given nothing, and the list never fails a start.
+
+## At every compaction
+
+No hook can make a session bring its list up to date before the host compacts
+its context: the hook that runs then may run a command or block the
+compaction, and nothing more. So the list is kept current as the session
+works, the next start adds it back, and the compaction itself is recorded.
+Each one appends a line to `.abcd/.work.local/checklist.events.jsonl` under
+the schema `abcd/checklist-events/v1`: the time and the trigger, `manual` for
+a compaction the person asked for, `auto` for one a full context set off, and
+`other` for any trigger the host does not document, so nothing else the host
+sends is copied in. The file is made 0600 in a plain local tier; a file at
+that path that is not a plain file this account owns, readable by it alone, is
+left as it is and not added to. The record
+never blocks: a compaction that could not be recorded still goes ahead, and the
+hook says so in one line on its error stream. Outside a managed checkout, and
+on a drive's walled stage, nothing is recorded.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 

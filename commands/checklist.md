@@ -81,7 +81,8 @@ way. Relay the refusal to the user as it is.
 
 Write the checklist only through these verbs. The host's own file tools are
 refused `checklist.json` and `checklist.last-good.json`, and the refusal names
-the verb to run instead. They are also refused a path the guard cannot finish
+the verb to run instead; a path beginning with `~/` is judged with the home
+directory in its place too. They are also refused a path the guard cannot finish
 reading, since it cannot tell whether the write reaches the checklist: a path,
 a link target or any reading of them longer than a fixed 4096-byte limit, a
 chain of more than 40 links, a path whose readings would look up too many path
@@ -90,6 +91,11 @@ but a part that does not exist yet. Name such a file by a shorter, plainer
 path. A path whose readings take longer than twenty seconds is refused too:
 the machine is slow or busy, so try the call again. A file changed any other way is judged when it is read: one that fails
 its checks is set aside for the last good copy.
+
+Before each compaction the host's hook appends the compaction's time and
+trigger to `.abcd/.work.local/checklist.events.jsonl`, beside the list; leave
+that file to the hook. It never holds up the compaction: a compaction it could
+not record goes ahead, with one line on stderr saying so.
 
 A write starts from what the reader returns: when checklist.json fails its
 checks it builds on the last good copy, and when both fail it starts a new
