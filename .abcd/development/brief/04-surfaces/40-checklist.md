@@ -67,7 +67,9 @@ or the owner, which a write shows.
 
 The guard refuses the host's own file tools any path ending in the local
 tier's two checklist files, wherever it is, in a working copy or not, whatever
-case the path is spelled in, and names the verbs to use instead. It reads the
+case the path is spelled in, and names the verbs to use instead. A path
+beginning with `~` or `~/` is judged both as written and with the home
+directory in place of the tilde, as a shell expands it. It reads each
 path as written, cleaned and then through the links of the folders on it that
 exist, and as the volume resolves it; when a reading ends in a link, it reads
 that link's target the same ways, and so on down the chain. It refuses outright

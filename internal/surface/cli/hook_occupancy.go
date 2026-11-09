@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -476,11 +477,24 @@ func volumeReading(p string, b *readingBudget) (string, string) {
 // call naming a file by both file_path and notebook_path is judged on each: a
 // deny on either is the answer, and otherwise the first that fails open. The
 // readings of both are paid out of one budget, with one deadline for the call.
+// A path beginning with "~" or "~/" is judged both as written and expanded to
+// the home directory (fsutil.TildeHome), since a host may expand it as a shell
+// does; one naming another account's home (~user) is judged as written.
 func fileWriteGate(cmd *cobra.Command, tool, cwd, filePath, notebookPath string) error {
+	home, _ := os.UserHomeDir()
 	var paths []string
 	for _, p := range []string{filePath, notebookPath} {
-		if strings.TrimSpace(p) != "" && (len(paths) == 0 || paths[0] != p) {
-			paths = append(paths, p)
+		if strings.TrimSpace(p) == "" {
+			continue
+		}
+		forms := []string{p}
+		if e, ok := fsutil.TildeHome(p, home); ok {
+			forms = append(forms, e)
+		}
+		for _, f := range forms {
+			if !slices.Contains(paths, f) {
+				paths = append(paths, f)
+			}
 		}
 	}
 	if len(paths) == 0 {

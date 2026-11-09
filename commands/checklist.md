@@ -81,7 +81,8 @@ way. Relay the refusal to the user as it is.
 
 Write the checklist only through these verbs. The host's own file tools are
 refused `checklist.json` and `checklist.last-good.json`, and the refusal names
-the verb to run instead. They are also refused a path the guard cannot finish
+the verb to run instead; a path beginning with `~/` is judged with the home
+directory in its place too. They are also refused a path the guard cannot finish
 reading, since it cannot tell whether the write reaches the checklist: a path,
 a link target or any reading of them longer than a fixed 4096-byte limit, a
 chain of more than 40 links, a path whose readings would look up too many path
