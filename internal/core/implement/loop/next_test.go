@@ -84,13 +84,14 @@ func TestNextCandidatesAreWhatTheBuildWouldStart(t *testing.T) {
 		"16": {pickIntent("16", "", settledQuestions, gwt), pickSpec("16", "")},
 	}
 	repo := pickRepo(t, records)
-	// A peer holds itd-16: a local branch that shipped it.
+	// A peer holds itd-16: a lane's branch that shipped it, its worktree gone.
 	repo.Git("checkout", "-q", "-b", "lane-sixteen")
 	ir, _ := pickRel("16")
 	repo.Remove(ir)
 	repo.Write(".abcd/development/intents/shipped/itd-16-i16.md", records["16"][0])
 	repo.Commit("deliver sixteen")
 	repo.Git("checkout", "-q", "main")
+	leftByGoneWorktree(t, repo, "lane-sixteen")
 
 	set, err := candidates(repo.Root(), "")
 	if err != nil {

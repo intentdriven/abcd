@@ -654,3 +654,40 @@ func TestHeldUnderCountsTheWorktreesBeneathADirectory(t *testing.T) {
 		t.Errorf("HeldUnder(an empty directory) = %d, %d; want 0, 0", held, spent)
 	}
 }
+
+// A branch no worktree has checked out is a peer the listing reads, and not
+// one a worktree has (iss-2611090125008163); a worktree's branch is, and so is
+// the branch of a worktree that is gone or git refused, read from the store.
+func TestCheckedOutNamesThePeersAWorktreeHas(t *testing.T) {
+	f := newFixture(t)
+	f.git(f.here(), "switch", "-q", "-c", "backup/kept")
+	f.resolve(f.here(), "iss-1-the-first-finding.md")
+	f.git(f.here(), "commit", "-q", "-m", "resolve iss-1 on a kept branch")
+	f.git(f.here(), "switch", "-q", "main")
+	lane := f.worktree("lane", "lane/live")
+	f.resolve(lane, "iss-2-the-second-finding.md")
+	gone := f.worktree("gone", "lane/gone")
+	f.write(gone, ".abcd/work/issues/open/iss-402-on-a-vanished-worktree.md", issue("iss-402", "On a vanished worktree"))
+	f.git(gone, "add", "-A")
+	f.git(gone, "commit", "-q", "-m", "a capture on a worktree about to vanish")
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+
+	rep := f.read()
+	for branch, want := range map[string]bool{"backup/kept": false, "lane/live": true, "lane/gone": true} {
+		p, ok := findPeer(rep, branch)
+		if !ok {
+			t.Fatalf("%s is not a peer: %+v", branch, rep.Peers)
+		}
+		if p.CheckedOut() != want {
+			t.Errorf("%s (source %s): CheckedOut() = %v, want %v", branch, p.Source, p.CheckedOut(), want)
+		}
+	}
+	// Each location carries its peer's answer.
+	for _, l := range append(rep.Locate("iss-1"), rep.Locate("iss-402")...) {
+		if want := l.Branch != "backup/kept"; l.CheckedOut() != want {
+			t.Errorf("a location on %s: CheckedOut() = %v, want %v", l.Branch, l.CheckedOut(), want)
+		}
+	}
+}

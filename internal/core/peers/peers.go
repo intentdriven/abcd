@@ -116,7 +116,20 @@ type Peer struct {
 	// base is the commit the peer's work is measured from (Report.Holders):
 	// its branch's ref, or a worktree's HEAD as git listed it; "" when none.
 	base string
+	// checkedOut is whether a worktree git lists has the peer checked out
+	// (Peer.CheckedOut): every worktree peer, and a branch peer read from the
+	// common dir because its worktree is gone or git refused it.
+	checkedOut bool
 }
+
+// CheckedOut reports whether a worktree git lists has the peer checked out:
+// a worktree peer always, and a branch peer only when the worktree that has
+// it is gone or git would not answer for it, so the branch was read from the
+// common dir instead. A branch no worktree has checked out is a paused or a
+// kept branch, not a checkout a session can be working in: the listing still
+// shows what it holds, and a start's peers check names it without counting
+// it a holder (iss-2611090125008163).
+func (p Peer) CheckedOut() bool { return p.checkedOut }
 
 // Skip reasons: a spent peer contributes no rows and is counted instead.
 // SkipEmbargo is the embargo store, which is not spent but private: its

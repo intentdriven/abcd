@@ -117,7 +117,8 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling\n" +
 			"worktree or local branch holds it in another bucket having changed it since its\n" +
 			"merge-base with this checkout, so a branch holding this checkout's older copy\n" +
-			"untouched does not count; no session holds a live claim on it; and no other copy holds\n" +
+			"untouched does not count, nor does a branch no worktree has checked out, which the\n" +
+			"passing row names; no session holds a live claim on it; and no other copy holds\n" +
 			"a reservation on it on origin, as this checkout last fetched the reservations; a peer,\n" +
 			"claim or view that cannot be read, or a copy that cannot be compared, counts as holding\n" +
 			"it). The check reads the reservations from disk alone, and names another copy's with\n" +

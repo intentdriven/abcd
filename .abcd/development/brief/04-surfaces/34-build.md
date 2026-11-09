@@ -99,7 +99,12 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   not the default branch, so a branch cut after the default branch shipped an
   intent this checkout, being behind, still holds as planned is a holding. A
   worktree is compared off its disk, against the merge-bases of its HEAD, so an
-  uncommitted move or edit is a change. A copy that cannot be compared (an
+  uncommitted move or edit is a change. A local branch no worktree has checked
+  out, a backup or a paused branch, is no holding (iss-2611090125008163): no
+  session can be working in it, so the check passes and its row names the
+  branch and the bucket it holds the intent in; the branch of a worktree that
+  is gone or that git will not answer for is still a holding. The peer listing
+  still shows such a branch. A copy that cannot be compared (an
   unborn HEAD here, no merge-base, an unreadable file) counts as a holding. The
   check
   fails closed on what it cannot see into, on both sides: a peer the listing

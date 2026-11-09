@@ -1,0 +1,6 @@
+---
+id: dcn-2611090128372504
+slug: technical-facilitator
+date: 2026-11-09
+---
+2026-11-09 — Technical facilitator, iss-2611090125008163: in the start's peers check (build, build next, the auto-plan start, the drain's per-issue start and its unreadable-peer refusal), a local branch counts as holding a record only when a worktree git lists has it checked out; the branch of a worktree that is gone or that git refuses still counts. A branch no worktree has checked out is named in the passing row and does not refuse. Grounds: a session works in a checkout, so a branch checked out nowhere carries no live work; abcd removes a lane's worktree only through prune, which takes merged and clean ones, so an unmerged lane keeps its worktree; a session's own hold is its claim and its reservation, which the check reads separately. The other candidates were turned down: a live-reservation test would add nothing the reservation read does not already say, and a recent-tip window is a guess that hides an old paused branch and counts yesterday's backup. The peer listing, the board's peers line and the not-found refusals keep reading every branch: they answer where a record is, which the 2026-09-01 paused-branch collision behind itd-2609091416295622 needs, not who is working on it.

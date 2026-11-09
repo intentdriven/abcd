@@ -201,6 +201,7 @@ func TestTheStatusHeadPassesOverAnIntentAPeerHolds(t *testing.T) {
 		repo.Write(".abcd/development/intents/shipped/itd-21-i21.md", records["21"][0])
 		repo.Commit("deliver itd-21")
 		repo.Git("checkout", "-q", "main")
+		leftByGoneWorktree(t, repo, "lane-alpha")
 
 		set, err := candidates(repo.Root(), "")
 		if err != nil {
@@ -227,6 +228,7 @@ func TestTheStatusHeadPassesOverAnIntentAPeerHolds(t *testing.T) {
 		repo.Write(".abcd/development/intents/planned/itd-30-beta.md", beta)
 		repo.Commit("split beta")
 		repo.Git("checkout", "-q", "main")
+		leftByGoneWorktree(t, repo, "lane-beta")
 
 		set, err := candidates(repo.Root(), "")
 		if err != nil {

@@ -76,7 +76,13 @@ type Location struct {
 	// the commit the peer's merge-base with this checkout is taken from
 	// (Peer.base): what Holders judges a stale copy by.
 	rel, blob, base string
+	// checkedOut is the peer's Peer.CheckedOut.
+	checkedOut bool
 }
+
+// CheckedOut is the holding peer's Peer.CheckedOut: whether a worktree git
+// lists has it checked out.
+func (l Location) CheckedOut() bool { return l.checkedOut }
 
 // worktree is one entry of `git worktree list --porcelain`.
 type worktree struct {
@@ -177,6 +183,10 @@ func read(root string, titles bool) (Report, error) {
 		return rep, fmt.Errorf("peers: listing this repository's worktrees: %w", err)
 	}
 	checkedOut := map[string]bool{}
+	// worktreeBranch is every branch a listed worktree other than this
+	// checkout has: one whose worktree is gone or refused is read below as a
+	// branch, and is still a branch a worktree has (Peer.CheckedOut).
+	worktreeBranch := map[string]bool{}
 	self := realPath(root)
 	home, _ := abcdhome.MachineHome()
 	for _, wt := range wts {
@@ -196,6 +206,9 @@ func read(root string, titles bool) (Report, error) {
 			continue
 		}
 		p, skip, viaBranch := readWorktree(root, common, wt, merged, defaultRef)
+		if wt.branch != "" {
+			worktreeBranch[wt.branch] = true
+		}
 		// A worktree that is gone, or that git will not read, still leaves its
 		// branch in this repository's object store; the branch source reads it
 		// there rather than letting the dead worktree hide an unmerged commit.
@@ -223,7 +236,9 @@ func read(root string, titles bool) (Report, error) {
 			rep.Skipped = append(rep.Skipped, Skipped{Source: SourceBranch, Branch: b, Reason: SkipMerged})
 			continue
 		}
-		rep.Peers = append(rep.Peers, readBranch(root, b))
+		p := readBranch(root, b)
+		p.checkedOut = worktreeBranch[b]
+		rep.Peers = append(rep.Peers, p)
 	}
 
 	for i := range rep.Peers {
@@ -245,7 +260,7 @@ func embargoStore(home, p string) bool {
 // reports that its disk could not be read at all (gone, or refused by git), so
 // its branch, if any, is left to the branch source.
 func readWorktree(root, common string, wt worktree, merged map[string]bool, defaultRef string) (_ Peer, _ *Skipped, viaBranch bool) {
-	p := Peer{Source: SourceWorktree, Branch: wt.branch, Path: wt.path, Rows: []Row{}, base: wt.head}
+	p := Peer{Source: SourceWorktree, Branch: wt.branch, Path: wt.path, Rows: []Row{}, base: wt.head, checkedOut: true}
 	if _, err := os.Lstat(wt.path); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return p, &Skipped{Source: SourceWorktree, Branch: wt.branch, Path: wt.path, Reason: SkipGone}, true
@@ -398,7 +413,7 @@ func (r Report) Locate(id string) []Location {
 		}
 		for _, h := range p.holdings[id] {
 			out = append(out, Location{Source: p.Source, Branch: p.Branch, Path: p.Path, Folder: h.folder,
-				rel: h.rel, blob: h.blob, base: p.base})
+				rel: h.rel, blob: h.blob, base: p.base, checkedOut: p.checkedOut})
 		}
 	}
 	return out

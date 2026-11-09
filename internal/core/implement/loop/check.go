@@ -123,7 +123,8 @@ const maxIntentBytes = 256 * 1024
 //   - steps: the spec's `## Steps` reads, and leaves a step to build.
 //   - peers: no peer holds the record — no sibling worktree or local branch
 //     holds it in another bucket having changed it since its merge-base with
-//     this checkout, no session holds a live claim on it, and,
+//     this checkout (a branch no worktree has checked out holding nothing,
+//     iss-2611090125008163), no session holds a live claim on it, and,
 //     for an intent, no other copy holds a reservation on it on origin as
 //     this checkout last fetched them (read from disk alone).
 func Check(repoRoot, key string) (CheckResult, error) { return check(repoRoot, key, "", nil) }
@@ -482,17 +483,35 @@ func (snap *peerSnapshot) reservationHolder(id string) (holder string, yours boo
 // (peers.Report.Holders, iss-2610222008081888). A live claim held by
 // session — the one the build is started for — is its own, and so is this
 // copy's reservation.
+//
+// A local branch no worktree has checked out holds nothing here
+// (peers.Peer.CheckedOut, iss-2611090125008163): no session can be working in
+// a branch that is checked out nowhere, a lane's branch keeps its worktree
+// until `abcd ahoy worktree prune` reclaims it merged, and a session's own
+// hold is its claim and its reservation, read below. Such a branch is named in
+// the row's detail, passing, so what it holds is never hidden.
 func peersCheck(id, bucket, session string, snap *peerSnapshot, reservations bool) CheckRow {
 	row := CheckRow{Name: CheckPeers}
-	var holders []string
+	var holders, idle []string
 	for _, l := range snap.rep.Holders(id, bucket) {
-		holders = append(holders, peerName(l.Source, l.Branch, l.Path)+" holds it in "+l.Folder+"/")
+		h := peerName(l.Source, l.Branch, l.Path) + " holds it in " + l.Folder + "/"
+		if !l.CheckedOut() {
+			idle = append(idle, h)
+			continue
+		}
+		holders = append(holders, h)
 	}
 	// A peer the listing names and cannot read may hold the record; the check
-	// fails closed on it, as it does on an unreadable claim below.
-	row.unjudged = snap.rep.Unjudged()
-	for _, p := range row.unjudged {
-		holders = append(holders, peerName(p.Source, p.Branch, p.Path)+" could not be read, so what it holds is unknown ("+p.NotReadShown(snap.root)+")")
+	// fails closed on it, as it does on an unreadable claim below, unless it is
+	// a branch checked out nowhere.
+	for _, p := range snap.rep.Unjudged() {
+		h := peerName(p.Source, p.Branch, p.Path) + " could not be read, so what it holds is unknown (" + p.NotReadShown(snap.root) + ")"
+		if !p.CheckedOut() {
+			idle = append(idle, h)
+			continue
+		}
+		row.unjudged = append(row.unjudged, p)
+		holders = append(holders, h)
 	}
 	for _, c := range snap.claims {
 		if (c.Live || c.Unreadable) && recordid.SameID(c.Record, id) {
@@ -516,6 +535,9 @@ func peersCheck(id, bucket, session string, snap *peerSnapshot, reservations boo
 	if len(holders) == 0 {
 		row.OK = true
 		row.Detail = "no peer holds " + id
+		if len(idle) > 0 {
+			row.Detail += "; not counted, as no worktree has it checked out: " + strings.Join(idle, "; ")
+		}
 		return row
 	}
 	row.contention = true
