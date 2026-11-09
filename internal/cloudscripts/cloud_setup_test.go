@@ -63,7 +63,7 @@ func newSetupCase(t *testing.T) *cloudCase {
 	t.Helper()
 	c := newCloudCase(t)
 	root := checkoutRoot(t)
-	for _, rel := range []string{".github/workflows/ci.yml", "scripts/pinned-toolchain.sh"} {
+	for _, rel := range []string{".github/workflows/ci.yml", "scripts/pinned-toolchain.sh", "scripts/gitleaks-checksums.txt"} {
 		c.copyFrom(root, rel)
 	}
 	c.git("config", "user.name", vendorName)
@@ -322,17 +322,25 @@ func TestSetupReadsGitleaksPinFromCI(t *testing.T) {
 		}
 		log := c.callLog()
 		base := "gitleaks_" + want + "_linux_x64.tar.gz"
-		for _, url := range []string{
-			"https://github.com/gitleaks/gitleaks/releases/download/v" + want + "/" + base,
-			"https://github.com/gitleaks/gitleaks/releases/download/v" + want + "/gitleaks_" + want + "_checksums.txt",
-		} {
-			if !strings.Contains(log, "curl "+url+"\n") {
-				t.Errorf("setup did not fetch %s:\n%s", url, log)
-			}
+		if url := "https://github.com/gitleaks/gitleaks/releases/download/v" + want + "/" + base; !strings.Contains(log, "curl "+url+"\n") {
+			t.Errorf("setup did not fetch %s:\n%s", url, log)
+		}
+		if strings.Contains(log, "checksums.txt") {
+			t.Errorf("setup took its digest from a checksum list fetched beside the download, not the repository's:\n%s", log)
+		}
+		// The one line for this asset in the repository's digest file, the
+		// file CI's job and make secrets-check verify against.
+		sums, err := os.ReadFile(filepath.Join(c.dir, "scripts", "gitleaks-checksums.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		line := regexp.MustCompile(`(?m)^[0-9a-f]{64}  ` + regexp.QuoteMeta(base) + `$`).Find(sums)
+		if line == nil {
+			t.Fatalf("scripts/gitleaks-checksums.txt holds no sha256 for %s", base)
 		}
 		sha, err := os.ReadFile(c.calls + ".sha")
-		if err != nil || string(sha) != "bbbb  "+base+"\n" {
-			t.Errorf("the checksum tool was given %q (%v), want the one line for %s, as the CI job does", sha, err, base)
+		if err != nil || string(sha) != string(line)+"\n" {
+			t.Errorf("the checksum tool was given %q (%v), want the repository's one line for %s, %q, as the CI job does", sha, err, base, line)
 		}
 		if !strings.Contains(log, "sha256sum -c -\n") || !strings.Contains(log, "install gitleaks /usr/local/bin/gitleaks\n") {
 			t.Errorf("gitleaks was not checked and installed as the CI job does:\n%s", log)
@@ -346,9 +354,29 @@ func TestSetupReadsGitleaksPinFromCI(t *testing.T) {
 		c := newSetupCase(t)
 		ci, _ := os.ReadFile(filepath.Join(c.dir, ".github", "workflows", "ci.yml"))
 		c.write(".github/workflows/ci.yml", pinRe.ReplaceAllString(string(ci), "      GITLEAKS_VERSION: 9.8.7"), 0o644)
+		c.write("scripts/gitleaks-checksums.txt", strings.Repeat("c", 64)+"  gitleaks_9.8.7_linux_x64.tar.gz\n", 0o644)
 		c.script(setupRemote, setupScript)
 		if !strings.Contains(c.callLog(), "/v9.8.7/gitleaks_9.8.7_linux_x64.tar.gz\n") {
 			t.Errorf("setup did not follow the pin ci.yml carries:\n%s", c.callLog())
+		}
+	})
+
+	// The asset is matched as a whole name: a line for another file whose
+	// name differs only where the asset has a dot is no digest for it.
+	t.Run("no digest in the repository fetches nothing", func(t *testing.T) {
+		c := newSetupCase(t)
+		ci, _ := os.ReadFile(filepath.Join(c.dir, ".github", "workflows", "ci.yml"))
+		c.write(".github/workflows/ci.yml", pinRe.ReplaceAllString(string(ci), "      GITLEAKS_VERSION: 9.8.7"), 0o644)
+		c.write("scripts/gitleaks-checksums.txt", strings.Repeat("c", 64)+"  gitleaks_9x8x7_linux_x64xtarxgz\n", 0o644)
+		out, code := c.script(setupRemote, setupScript)
+		if code == 0 {
+			t.Errorf("setup exited 0 with no digest to verify gitleaks against\n%s", out)
+		}
+		if strings.Contains(c.callLog(), "curl ") || strings.Contains(c.callLog(), "install ") {
+			t.Errorf("setup fetched or installed with no digest in the repository:\n%s", c.callLog())
+		}
+		if !strings.Contains(out, "scripts/gitleaks-checksums.txt") {
+			t.Errorf("setup does not name the digest file it found nothing in\n%s", out)
 		}
 	})
 

@@ -20,6 +20,10 @@
 # the sha256 in scripts/gitleaks-checksums.txt (iss-2611081341084748): a newer
 # gitleaks passed a token fixture CI's refused. When that release cannot be
 # fetched or verified the secret scan REFUSES (exit 2), naming the skew.
+# A gitleaks on PATH that reports CI's version runs as it is, with no digest
+# check: it is the person's own PATH, trusted exactly as it was before the pin
+# was enforced. Only the release this script fetches is checked against
+# scripts/gitleaks-checksums.txt.
 #
 # A govulncheck that cannot reach its vulnerability database offline is
 # SKIPPED LOUDLY, never passed in silence: govulncheck is not a required check
@@ -181,12 +185,16 @@ vulncheck() {
 # pins, or refuses with exit 2 naming the skew (iss-2611081341084748). A
 # gitleaks on PATH reporting exactly that version is CI's and runs as it is.
 # Anything else, another version or none, is set aside for CI's own release:
-# the tarball for this machine is fetched once into the abcd home, checked
-# against the sha256 the repository holds in $SUMS_FILE (never a checksum list
-# fetched beside it), checked again on every run, and unpacked into a directory
-# of its own that the EXIT trap removes. A fetch or a check that fails refuses:
-# falling back to the PATH copy would judge the branch with rules CI does not
-# run, the false pass this exists to remove (loud staging).
+# the tarball for this machine is kept in the abcd home, in a directory made
+# 0700, and on every run copied into a private temporary directory the EXIT
+# trap removes; that copy is the one checked against the sha256 the repository
+# holds in $SUMS_FILE (never a checksum list fetched beside it) and the one
+# unpacked, so what runs is exactly what was verified. A fetch lands in the
+# private directory first and is kept only once it matches. The kept directory
+# and tarball must belong to this user, be writable by no one else and not be
+# symlinks, or the scan refuses naming the path. A fetch or a check that fails
+# refuses: falling back to the PATH copy would judge the branch with rules CI
+# does not run, the false pass this exists to remove (loud staging).
 pinned_gitleaks() {
 	local version="$1" have="none on PATH" raw os arch asset digest n cache got
 	if command -v gitleaks >/dev/null 2>&1; then
@@ -215,42 +223,72 @@ pinned_gitleaks() {
 	*) refuse "gitleaks $version is fetched for arm64 and x86_64 only, not $(uname -m); install gitleaks $version on PATH." ;;
 	esac
 	asset="gitleaks_${version}_${os}_${arch}.tar.gz"
+	# The asset is matched as a whole field, never as a pattern: its dots are
+	# literal.
 	digest=""
-	[ -f "$SUMS_FILE" ] && digest="$(sed -n "s/^\([0-9a-f]\{64\}\)  $asset\$/\1/p" "$SUMS_FILE")"
+	[ -f "$SUMS_FILE" ] && digest="$(awk -v a="$asset" 'NF == 2 && $2 == a && length($1) == 64 && $1 !~ /[^0-9a-f]/ { print $1 }' "$SUMS_FILE")"
 	n="$(printf '%s' "$digest" | grep -c . || true)"
 	if [ "$n" -ne 1 ]; then
 		refuse "$SUMS_FILE holds no single sha256 for $asset, so there is nothing to verify a download against; copy its line from the release's checksum list when bumping GITLEAKS_VERSION."
 	fi
+	if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+		refuse "Neither sha256sum nor shasum is on PATH, so $asset cannot be verified against $SUMS_FILE."
+	fi
 	[ -n "${HOME:-}" ] || refuse "HOME is not set, so there is no abcd home to keep CI's release in."
 	cache="$HOME/.abcd.noindex/gate-tools/gitleaks/$version"
 	(umask 077 && mkdir -p "$cache") || refuse "$cache could not be made."
-	if [ ! -f "$cache/$asset" ]; then
+	private_to_me "$cache" d directory
+	leaks_tmp="$(mktemp -d "${TMPDIR:-/tmp}/preflight-gitleaks.XXXXXX")" || refuse "no temporary directory to unpack $asset into."
+	local copy="$leaks_tmp/$asset" fetched=0
+	if [ -e "$cache/$asset" ] || [ -L "$cache/$asset" ]; then
+		private_to_me "$cache/$asset" f file
+		cat "$cache/$asset" >"$copy" || refuse "The cached $cache/$asset could not be read."
+	else
 		say "gitleaks $version: fetching CI's release ($asset), to verify against $SUMS_FILE"
-		local part="$cache/$asset.part.$$"
-		if ! curl -sSLf --retry 2 -o "$part" "https://github.com/gitleaks/gitleaks/releases/download/v$version/$asset"; then
-			rm -f "$part"
+		if ! curl -sSLf --retry 2 -o "$copy" "https://github.com/gitleaks/gitleaks/releases/download/v$version/$asset"; then
 			refuse "The download of $asset failed (curl's error is above; the fetch needs network)."
 		fi
-		got="$(sha256_of "$part")"
-		if [ "$got" != "$digest" ]; then
-			rm -f "$part"
+		fetched=1
+	fi
+	got="$(sha256_of "$copy")"
+	if [ "$got" != "$digest" ]; then
+		if [ "$fetched" -eq 1 ]; then
 			refuse "The downloaded $asset has sha256 $got, not the $digest $SUMS_FILE pins; nothing was kept or run."
 		fi
-		mv -f "$part" "$cache/$asset"
-	fi
-	got="$(sha256_of "$cache/$asset")"
-	if [ "$got" != "$digest" ]; then
 		refuse "The cached $cache/$asset has sha256 $got, not the $digest $SUMS_FILE pins; remove it to fetch it again."
 	fi
-	leaks_tmp="$(mktemp -d "${TMPDIR:-/tmp}/preflight-gitleaks.XXXXXX")" || refuse "no temporary directory to unpack $asset into."
-	tar -xzf "$cache/$asset" -C "$leaks_tmp" gitleaks || refuse "$asset holds no gitleaks to unpack."
+	if [ "$fetched" -eq 1 ]; then
+		local part="$cache/$asset.part.$$"
+		if (umask 077 && cat "$copy" >"$part") && mv -f "$part" "$cache/$asset"; then
+			:
+		else
+			rm -f "$part"
+			say "gitleaks $version: the verified $asset could not be kept in $cache; the next run fetches it again."
+		fi
+	fi
+	tar -xzf "$copy" -C "$leaks_tmp" gitleaks || refuse "$asset holds no gitleaks to unpack."
 	raw="$("$leaks_tmp/gitleaks" version 2>/dev/null | head -n 1 | tr -d '[:space:]' || true)"
 	[ "${raw#v}" = "$version" ] || refuse "The verified $asset unpacked a gitleaks that reports '${raw:-nothing}', not $version."
 	say "gitleaks: $have, not CI's $version; scanning with CI's gitleaks $version, sha256 verified against $SUMS_FILE"
 	leaks_cmd="$leaks_tmp/gitleaks"
 }
 
-# sha256_of prints the sha256 of file $1 with whichever tool the system has.
+# private_to_me refuses, through pinned_gitleaks's refuse, unless path $1 is
+# of find type $2 (d or f), is not a symlink, belongs to this user and is
+# writable by no one else; $3 names the kind in the refusal.
+private_to_me() {
+	local p="$1" type="$2" kind="$3" me
+	if [ -L "$p" ]; then
+		refuse "The kept gitleaks $kind $p is a symlink; it is used only as a real $kind of this user's. Remove it to fetch CI's release again."
+	fi
+	me="$(id -u)"
+	if [ -z "$(find "$p" -prune -type "$type" -user "$me" ! -perm -020 ! -perm -002 -print 2>/dev/null)" ]; then
+		refuse "The kept gitleaks $kind $p is not a $kind owned by uid $me that only it can write. Remove it to fetch CI's release again."
+	fi
+}
+
+# sha256_of prints the sha256 of file $1 with whichever tool the system has;
+# pinned_gitleaks has refused already when there is neither.
 sha256_of() {
 	if command -v sha256sum >/dev/null 2>&1; then
 		sha256sum "$1" | awk '{print $1}'

@@ -633,3 +633,229 @@ func TestGitleaksDigestsCoverCIsPin(t *testing.T) {
 		t.Error("ci.yml's gitleaks install does not verify against scripts/gitleaks-checksums.txt alone")
 	}
 }
+
+// keptRelease runs one clean scan that fetches CI's release into home's abcd
+// home, then takes the network away, so a later run can only use what was
+// kept. It returns the kept directory and the pinned binary's argument log.
+func (r *scanRepo) keptRelease(home string) (string, string) {
+	r.t.Helper()
+	r.stub("gitleaks", `case "$1" in version) echo 8.30.1 ;; esac; exit 0`)
+	log := filepath.Join(r.t.TempDir(), "pinned.args")
+	tarball, digest := r.pinnedRelease("8.24.3", log)
+	r.pinDigest("8.24.3", digest)
+	r.serve(tarball)
+	if code, out := r.runHome("secrets", home); code != 0 {
+		r.t.Fatalf("the first scan, which keeps CI's release: exit %d\n%s", code, out)
+	}
+	r.serve("")
+	if err := os.Remove(log); err != nil {
+		r.t.Fatal(err)
+	}
+	return abcdhome.Path(home, "gate-tools", "gitleaks", "8.24.3"), log
+}
+
+// keptArchive is the one tarball in the kept directory.
+func keptArchive(t *testing.T, cache string) string {
+	t.Helper()
+	kept, _ := filepath.Glob(filepath.Join(cache, "gitleaks_8.24.3_*.tar.gz"))
+	if len(kept) != 1 {
+		t.Fatalf("the kept directory holds %v, want one release", kept)
+	}
+	return kept[0]
+}
+
+// refusedKept asserts a run refused naming path, and ran no pinned gitleaks.
+func (r *scanRepo) refusedKept(home, log, path string) {
+	r.t.Helper()
+	code, out := r.runHome("secrets", home)
+	if code != 2 || !strings.Contains(out, "REFUSING") || !strings.Contains(out, path) {
+		r.t.Fatalf("exit %d, want 2 and a refusal naming %s\n%s", code, path, out)
+	}
+	if ran, _ := os.ReadFile(log); len(ran) != 0 {
+		r.t.Errorf("CI's gitleaks ran from a kept copy that was refused: %q", ran)
+	}
+	if strings.Contains(r.args("gitleaks"), "git ") {
+		r.t.Errorf("the scan fell back to the gitleaks on PATH:\n%s", r.args("gitleaks"))
+	}
+	r.noCopyLeft()
+}
+
+// TestSecretsCheckKeepsCIsReleasePrivate: the kept directory is made 0700,
+// and a kept directory or tarball another user owns, or anyone else can write,
+// or that is a symlink, is refused by name rather than verified and run.
+func TestSecretsCheckKeepsCIsReleasePrivate(t *testing.T) {
+	t.Run("the kept directory is made 0700", func(t *testing.T) {
+		r := newScanRepo(t, false)
+		cache, _ := r.keptRelease(t.TempDir())
+		st, err := os.Stat(cache)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Mode().Perm() != 0o700 {
+			t.Errorf("the kept directory is %o, want 700", st.Mode().Perm())
+		}
+	})
+	t.Run("a group-writable directory", func(t *testing.T) {
+		r := newScanRepo(t, false)
+		home := t.TempDir()
+		cache, log := r.keptRelease(home)
+		if err := os.Chmod(cache, 0o770); err != nil {
+			t.Fatal(err)
+		}
+		r.refusedKept(home, log, cache)
+	})
+	t.Run("an others-writable tarball", func(t *testing.T) {
+		r := newScanRepo(t, false)
+		home := t.TempDir()
+		cache, log := r.keptRelease(home)
+		archive := keptArchive(t, cache)
+		if err := os.Chmod(archive, 0o602); err != nil {
+			t.Fatal(err)
+		}
+		r.refusedKept(home, log, archive)
+	})
+	t.Run("another user's directory", func(t *testing.T) {
+		r := newScanRepo(t, false)
+		home := t.TempDir()
+		cache, log := r.keptRelease(home)
+		// The script asks id who it runs as; an answer that is not the
+		// directory's owner makes the kept copy another user's.
+		r.stub("id", `case "$1" in -u) echo 4242424 ;; *) exec /usr/bin/id "$@" ;; esac`)
+		r.refusedKept(home, log, cache)
+	})
+	t.Run("a symlinked directory", func(t *testing.T) {
+		r := newScanRepo(t, false)
+		home := t.TempDir()
+		cache, log := r.keptRelease(home)
+		elsewhere := filepath.Join(t.TempDir(), "elsewhere")
+		if err := os.Rename(cache, elsewhere); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(elsewhere, cache); err != nil {
+			t.Fatal(err)
+		}
+		r.refusedKept(home, log, cache)
+	})
+	t.Run("a symlinked tarball", func(t *testing.T) {
+		r := newScanRepo(t, false)
+		home := t.TempDir()
+		cache, log := r.keptRelease(home)
+		archive := keptArchive(t, cache)
+		elsewhere := filepath.Join(t.TempDir(), "release.tar.gz")
+		if err := os.Rename(archive, elsewhere); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(elsewhere, archive); err != nil {
+			t.Fatal(err)
+		}
+		r.refusedKept(home, log, archive)
+	})
+}
+
+// TestSecretsCheckVerifiesAndUnpacksOnePrivateCopy: the tarball that is
+// hashed and the one unpacked are the same copy, in the script's own
+// temporary directory, never the kept file in the abcd home.
+func TestSecretsCheckVerifiesAndUnpacksOnePrivateCopy(t *testing.T) {
+	r := newScanRepo(t, false)
+	home := t.TempDir()
+	r.keptRelease(home)
+	tarPath, err := exec.LookPath("tar")
+	if err != nil {
+		t.Skip("tar unavailable")
+	}
+	r.stub("tar", `exec '`+tarPath+`' "$@"`)
+	r.stub("sha256sum", `if command -v shasum >/dev/null 2>&1; then exec shasum -a 256 "$@"; fi; exec /usr/bin/sha256sum "$@"`)
+	if code, out := r.runHome("secrets", home); code != 0 {
+		t.Fatalf("a scan from the kept release: exit %d\n%s", code, out)
+	}
+	hashed, unpacked := strings.TrimSpace(r.args("sha256sum")), r.args("tar")
+	if !strings.HasPrefix(hashed, r.tmp+"/") {
+		t.Errorf("the hash was taken of %q, not of a copy in the script's TMPDIR %s", hashed, r.tmp)
+	}
+	if !strings.Contains(unpacked, "-xzf "+hashed+" ") {
+		t.Errorf("tar unpacked %q, not the copy that was hashed, %s", unpacked, hashed)
+	}
+	r.noCopyLeft()
+}
+
+// TestSecretsCheckRefusesWithNoHasher: with neither sha256sum nor shasum
+// there is no way to verify CI's release, so the scan refuses with exit 2 and
+// says so, before fetching anything.
+func TestSecretsCheckRefusesWithNoHasher(t *testing.T) {
+	r := newScanRepo(t, false)
+	r.stub("gitleaks", `case "$1" in version) echo 8.30.1 ;; esac; exit 0`)
+	tarball, digest := r.pinnedRelease("8.24.3", filepath.Join(t.TempDir(), "pinned.args"))
+	r.pinDigest("8.24.3", digest)
+	r.serve(tarball)
+	// The system's tools, every one but the two hashers.
+	sys := t.TempDir()
+	for _, d := range []string{"/usr/bin", "/bin"} {
+		entries, _ := os.ReadDir(d)
+		for _, e := range entries {
+			name := e.Name()
+			if name == "sha256sum" || name == "shasum" {
+				continue
+			}
+			if _, err := os.Lstat(filepath.Join(sys, name)); err == nil {
+				continue
+			}
+			if err := os.Symlink(filepath.Join(d, name), filepath.Join(sys, name)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	cmd := r.command("secrets")
+	for i, e := range cmd.Env {
+		if strings.HasPrefix(e, "PATH=") {
+			cmd.Env[i] = strings.Replace(e, ":/usr/bin:/bin", ":"+sys, 1)
+		}
+	}
+	out, err := cmd.CombinedOutput()
+	code := 0
+	if ee, ok := err.(*exec.ExitError); ok {
+		code = ee.ExitCode()
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	if code != 2 || !strings.Contains(string(out), "REFUSING") || !strings.Contains(string(out), "sha256sum") {
+		t.Fatalf("no hasher: exit %d, want 2 and a refusal naming the missing tool\n%s", code, out)
+	}
+	if r.args("curl") != "" {
+		t.Errorf("a release was fetched with no way to verify it: %q", r.args("curl"))
+	}
+}
+
+// TestSecretsCheckMatchesTheAssetNameLiterally: a digest line for a name that
+// differs from the asset only where the asset has a dot is not its digest.
+func TestSecretsCheckMatchesTheAssetNameLiterally(t *testing.T) {
+	r := newScanRepo(t, false)
+	r.stub("gitleaks", `case "$1" in version) echo 8.30.1 ;; esac; exit 0`)
+	tarball, digest := r.pinnedRelease("8.24.3", filepath.Join(t.TempDir(), "pinned.args"))
+	var b strings.Builder
+	for _, p := range []string{"darwin_arm64", "darwin_x64", "linux_arm64", "linux_x64"} {
+		b.WriteString(digest + "  gitleaks_8x24x3_" + p + "xtarxgz\n")
+	}
+	r.write("scripts/gitleaks-checksums.txt", b.String())
+	r.serve(tarball)
+	code, out := r.run("secrets")
+	if code != 2 || !strings.Contains(out, "holds no single sha256") {
+		t.Fatalf("a near-miss name: exit %d, want 2 and a refusal for no digest\n%s", code, out)
+	}
+	if r.args("curl") != "" {
+		t.Errorf("a near-miss line was taken as the asset's digest, and the release fetched: %q", r.args("curl"))
+	}
+}
+
+// TestCIsGitleaksInstallMatchesTheAssetNameLiterally: ci.yml picks the
+// digest line by the whole asset name, never by a pattern whose dots match
+// any character.
+func TestCIsGitleaksInstallMatchesTheAssetNameLiterally(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ci := readRepoFile(t, root, ".github/workflows/ci.yml")
+	if strings.Contains(ci, `grep "  $base\$"`) || !strings.Contains(ci, `awk -v a="$base" 'NF == 2 && $2 == a'`) {
+		t.Error("ci.yml's gitleaks install does not pick its digest line by the whole asset name")
+	}
+}
