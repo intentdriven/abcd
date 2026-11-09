@@ -154,6 +154,74 @@ func storeWriteRefusal(tool string, readings ...string) error {
 	return nil
 }
 
+// maxJudgedPath is the longest path, in bytes, the stores are judged by: Linux's
+// PATH_MAX, above macOS's 1024. The kernel refuses a longer path as written, and
+// reading one through its links costs time that grows with the square of its
+// length, so the guard refuses it rather than read it.
+const maxJudgedPath = 4096
+
+// maxLinkHops is how many dangling links in a row storeReadings follows, the
+// kernel's own bound on a chain of links (40 on Linux, 32 on macOS).
+const maxLinkHops = 40
+
+// storeReadings is every reading of the absolute path p the stop and the
+// checklist are judged by, or false when p, or the target of a link it ends in,
+// is longer than maxJudgedPath. Each path is read three ways: as written
+// (the store checks clean it); cleaned first, then through the links of its
+// leading parts that exist (fsutil.RealExistingPath), as a host that cleans a
+// path before it opens it reaches; and as the volume resolves it as written
+// (volumeReading). When a reading's last part is itself a link, which neither
+// resolves when its target does not exist yet, its target, joined to the
+// link's own folder when relative, is read the same three ways, up to
+// maxLinkHops links in a row: a write that creates the file follows the link.
+func storeReadings(p string) ([]string, bool) {
+	var out []string
+	seen, queued := map[string]bool{}, map[string]bool{p: true}
+	queue := []string{p}
+	for hop := 0; len(queue) > 0 && hop <= maxLinkHops; hop++ {
+		cur := queue[0]
+		queue = queue[1:]
+		if len(cur) > maxJudgedPath {
+			return nil, false
+		}
+		for _, r := range []string{cur, fsutil.RealExistingPath(cur), volumeReading(cur)} {
+			if seen[r] {
+				continue
+			}
+			seen[r] = true
+			out = append(out, r)
+			if t, ok := linkTarget(r); ok && !queued[t] {
+				queued[t] = true
+				queue = append(queue, t)
+			}
+		}
+	}
+	return out, true
+}
+
+// linkTarget is the target of p when p's last part is a link, joined as written
+// to the folder holding the link when it is relative, so the readings of the
+// result resolve it where the kernel would; false when p is not a link.
+func linkTarget(p string) (string, bool) {
+	fi, err := os.Lstat(p)
+	if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		return "", false
+	}
+	t, err := os.Readlink(p)
+	if err != nil || t == "" {
+		return "", false
+	}
+	if filepath.IsAbs(t) {
+		return t, true
+	}
+	sep := string(filepath.Separator)
+	dir := sep
+	if i := strings.LastIndex(p, sep); i > 0 {
+		dir = p[:i]
+	}
+	return strings.TrimSuffix(dir, sep) + sep + t, true
+}
+
 // volumeReading is an absolute path as the volume resolves it on a write: the
 // longest leading part of it, as written and not cleaned, that resolves is read
 // through its links (filepath.EvalSymlinks applies a ".." to what it has
@@ -161,7 +229,10 @@ func storeWriteRefusal(tool string, readings ...string) error {
 // where filepath.Abs and path.Clean climb out of the folder holding the link.
 // A symlinked parent resolves the same way. The rest is joined on lexically: a
 // ".." in it follows a name that does not exist, so the write would fail
-// there. A path no leading part of which resolves is returned as it stands.
+// there, and a last part that is a link whose target does not exist is left as
+// the link's own name, for storeReadings to follow. A path no leading part of
+// which resolves is returned as it stands. Each pass re-reads the leading part,
+// so the caller bounds the path's length (maxJudgedPath).
 func volumeReading(p string) string {
 	sep := string(filepath.Separator)
 	cur, rest := p, ""
@@ -186,15 +257,35 @@ func volumeReading(p string) string {
 // by occupancy.Check, so a linked worktree, a checkout one session or none
 // works in, and a path in no checkout are allowed silently. A shared one is
 // the host's deny with the verbs' own refusal, naming the worktree store. A
-// call naming no file, or a count that could not be made, fails open loud.
+// call naming no file, or a count that could not be made, fails open loud. A
+// call naming a file by both file_path and notebook_path is judged on each: a
+// deny on either is the answer, and otherwise the first that fails open.
 func fileWriteGate(cmd *cobra.Command, tool, cwd, filePath, notebookPath string) error {
-	path := filePath
-	if path == "" {
-		path = notebookPath
+	var paths []string
+	for _, p := range []string{filePath, notebookPath} {
+		if strings.TrimSpace(p) != "" && (len(paths) == 0 || paths[0] != p) {
+			paths = append(paths, p)
+		}
 	}
-	if strings.TrimSpace(path) == "" {
+	if len(paths) == 0 {
 		return fileWriteFailOpen(cmd.ErrOrStderr(), "the %s call names no file to check", termsafe.Sanitize(tool))
 	}
+	var first error
+	for _, p := range paths {
+		err := fileWritePathGate(cmd, tool, cwd, p)
+		var deny *hookDeny
+		if errors.As(err, &deny) {
+			return err
+		}
+		if first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
+// fileWritePathGate is fileWriteGate's judgement of one named file.
+func fileWritePathGate(cmd *cobra.Command, tool, cwd, path string) error {
 	if stageActive() {
 		if why := guard.StageWriteRefusal(filepath.SplitList(os.Getenv(runner.StageWritesEnv)), filepath.SplitList(os.Getenv(runner.StageDeclaredEnv)), path); why != "" {
 			return denyCall("Blocked by the abcd guard (" + termsafe.Sanitize(tool) + "): " + why)
@@ -221,7 +312,13 @@ func fileWriteGate(cmd *cobra.Command, tool, cwd, filePath, notebookPath string)
 			return fileWriteFailOpen(cmd.ErrOrStderr(), "the %s call names a relative path and a session directory that is not absolute", termsafe.Sanitize(tool))
 		}
 	}
-	if err := storeWriteRefusal(tool, path, volumeReading(path)); err != nil {
+	readings, ok := storeReadings(path)
+	if !ok {
+		return denyCall(fmt.Sprintf("Blocked by the abcd guard (%s): the path, or the target of a link it ends in, is longer than %d bytes, "+
+			"so the guard cannot tell whether the write reaches the stop or the checklist. Name the file by a shorter path.",
+			termsafe.Sanitize(tool), maxJudgedPath))
+	}
+	if err := storeWriteRefusal(tool, readings...); err != nil {
 		return err
 	}
 	m, ok := sessionNameMachine()

@@ -324,6 +324,21 @@ func TestGuardHookJudgesTheStoresAsTheVolumeResolvesThem(t *testing.T) {
 	up := func(l, leaf string) string {
 		return l + string(filepath.Separator) + ".." + string(filepath.Separator) + leaf
 	}
+	sep := string(filepath.Separator)
+	// elsewhere/deep holds no "tier" or "home", so a ".." after the link to it
+	// names nothing as the volume reads it; cleaned first, the same spelling
+	// goes through the links beside it into the stores.
+	deep := filepath.Join(t.TempDir(), "deep")
+	if err := os.MkdirAll(deep, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	away := link("away", deep)
+	// A tier whose checklist files do not exist yet, so a link to them dangles.
+	fresh := filepath.Join(t.TempDir(), filepath.FromSlash(localtier.RelDir))
+	if err := os.MkdirAll(fresh, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dangling := link("dangling", filepath.Join(fresh, "checklist.json"))
 	for _, tc := range []struct{ what, path, want string }{
 		{"a symlinked parent of the checklist", filepath.Join(tierLink, "checklist.json"), "abcd checklist add"},
 		{"a .. after a link into the checklist", up(tierSub, "checklist.json"), "abcd checklist add"},
@@ -331,6 +346,13 @@ func TestGuardHookJudgesTheStoresAsTheVolumeResolvesThem(t *testing.T) {
 		{"a symlinked parent of the stop", filepath.Join(homeLink, runstop.HomeStopFile), "person"},
 		{"a .. after a link into the stop", up(homeSub, runstop.HomeStopFile), "person"},
 		{"a .. after a link into the setting", up(homeSub, runstop.SettingFile), "person"},
+		{"a path cleaned, then through its links, into the checklist", away + sep + ".." + sep + "tier" + sep + "checklist.json", "abcd checklist add"},
+		{"a path cleaned, then through its links, into the stop", away + sep + ".." + sep + "home" + sep + runstop.HomeStopFile, "person"},
+		{"a dangling link to the checklist", dangling, "abcd checklist add"},
+		{"a dangling link to the last good copy", link("dangling-last-good", filepath.Join(fresh, "checklist.last-good.json")), "abcd checklist add"},
+		{"a dangling link to the setting", link("dangling-setting", filepath.Join(homeDir, runstop.SettingFile)), "person"},
+		{"a dangling relative link to the stop", link("dangling-relative", "home"+sep+runstop.HomeStopFile), "person"},
+		{"a link to a dangling link to the checklist", link("chain", dangling), "abcd checklist add"},
 	} {
 		t.Run(tc.what, func(t *testing.T) {
 			stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, tc.path), "guard", "hook")
@@ -338,6 +360,40 @@ func TestGuardHookJudgesTheStoresAsTheVolumeResolvesThem(t *testing.T) {
 				t.Errorf("the deny must say %q; reason = %q", tc.want, reason)
 			}
 		})
+	}
+}
+
+// TestGuardHookRefusesAPathTooLongToJudge: a path longer than the system's path
+// limit is refused outright, store or not, since reading it through its links
+// costs time that grows with the square of its length.
+func TestGuardHookRefusesAPathTooLongToJudge(t *testing.T) {
+	root := checklistCheckout(t)
+	long := root + strings.Repeat(string(filepath.Separator)+"a", 2100) + string(filepath.Separator) + "x.txt"
+	stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, long), "guard", "hook")
+	if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "longer than") {
+		t.Errorf("the deny must say the path is too long; reason = %q", reason)
+	}
+}
+
+// TestGuardHookJudgesBothPathsOfANotebookEdit: a call naming a file by both
+// keys is judged on each, so a harmless file_path beside the checklist as the
+// notebook_path is still refused.
+func TestGuardHookJudgesBothPathsOfANotebookEdit(t *testing.T) {
+	root := checklistCheckout(t)
+	store := filepath.Join(root, filepath.FromSlash(checklist.FileRelPath))
+	other := filepath.Join(root, "notes.ipynb")
+	for _, tc := range []struct{ file, notebook string }{{other, store}, {store, other}} {
+		b, err := json.Marshal(map[string]any{
+			"session_id": "s-one", "cwd": root, "hook_event_name": "PreToolUse",
+			"tool_name": "NotebookEdit", "tool_input": map[string]any{"file_path": tc.file, "notebook_path": tc.notebook},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		stdout, stderr, code := runGuard(string(b), "guard", "hook")
+		if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "abcd checklist add") {
+			t.Errorf("file_path %s, notebook_path %s: reason = %q", tc.file, tc.notebook, reason)
+		}
 	}
 }
 

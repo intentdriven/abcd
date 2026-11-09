@@ -67,8 +67,11 @@ or the owner, which a write shows.
 
 The guard refuses the host's own file tools any path ending in the local
 tier's two checklist files, wherever it is, in a working copy or not, whatever
-case the path is spelled in and as the path reads both written and through its
-links, and names the verbs to use instead. That
+case the path is spelled in, and names the verbs to use instead. It reads the
+path as written, cleaned and then through the links of the folders on it that
+exist, and as the volume resolves it; when the path ends in a link whose target
+does not exist yet, it reads that target the same ways, and it refuses outright
+a path too long to read. That
 refusal only catches a mistake: a shell line still reaches the file, and the
 reader is what holds, since a file written past the verbs is judged like any
 other and a failing one gives way to the last good copy.
