@@ -65,6 +65,12 @@ refuses; and it refuses with exit 2 a list the reader refuses for its mode or
 owner, and a working copy whose filesystem does not keep the owner-only mode
 or the owner, which a write shows.
 
+The guard refuses the host's own file tools both files, in any working copy,
+whatever case the path is spelled in, and names the verbs to use instead. That
+refusal only catches a mistake: a shell line still reaches the file, and the
+reader is what holds, since a file written past the verbs is judged like any
+other and a failing one gives way to the last good copy.
+
 ## At every session start
 
 Every session start, whether a startup, a resume, a clear or a compaction,

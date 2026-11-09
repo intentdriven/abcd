@@ -219,3 +219,74 @@ func TestSessionStartNeverInjectsTheScannerConfigsText(t *testing.T) {
 		}
 	}
 }
+
+// TestGuardHookRefusesTheFileToolsTheChecklist is spc-2610230805429429 step 5:
+// every file tool the hook manifest matches is denied the checklist and its last
+// good copy, by an absolute or a relative path, naming the verbs to use. The
+// refusal is a mistake filter; the reader is the enforcement
+// (TestAShellWriteToTheChecklistReachesOnlyTheReader).
+func TestGuardHookRefusesTheFileToolsTheChecklist(t *testing.T) {
+	root := checklistCheckout(t)
+	file := filepath.Join(root, filepath.FromSlash(checklist.FileRelPath))
+	lastGood := filepath.Join(root, filepath.FromSlash(checklist.LastGoodRelPath))
+	for _, tc := range []struct{ tool, cwd, path string }{
+		{"Write", root, file},
+		{"Edit", t.TempDir(), file},
+		{"MultiEdit", root, lastGood},
+		{"NotebookEdit", root, file},
+		{"Write", root, filepath.FromSlash(checklist.FileRelPath)},
+		{"Edit", filepath.Join(root, ".abcd"), filepath.Join(".work.local", "checklist.last-good.json")},
+	} {
+		t.Run(tc.tool+" "+tc.path, func(t *testing.T) {
+			stdout, stderr, code := runGuard(fileToolPayload(t, tc.tool, tc.cwd, tc.path), "guard", "hook")
+			reason := mustDeny(t, stdout, stderr, code)
+			for _, want := range []string{tc.tool, "abcd checklist add", "abcd checklist set"} {
+				if !strings.Contains(reason, want) {
+					t.Errorf("the deny must say %q; reason = %q", want, reason)
+				}
+			}
+		})
+	}
+}
+
+// TestGuardHookLetsTheFileToolsWriteTheTiersOtherFiles: the refusal is the two
+// checklist files only; the tier's handover and scratch stay the session's.
+func TestGuardHookLetsTheFileToolsWriteTheTiersOtherFiles(t *testing.T) {
+	root := checklistCheckout(t)
+	for _, rel := range []string{".abcd/.work.local/NEXT.md", ".abcd/.work.local/scratch/checklist.json", "checklist.json"} {
+		stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, filepath.Join(root, filepath.FromSlash(rel))), "guard", "hook")
+		if code != 0 || stdout != "" || stderr != "" {
+			t.Errorf("Write %s: exit %d, stdout %q, stderr %q; want a silent allow", rel, code, stdout, stderr)
+		}
+	}
+}
+
+// TestAShellWriteToTheChecklistReachesOnlyTheReader: the guard does not refuse
+// a shell line that writes the checklist (the spec's "a shell write still
+// reaches the file"), and the reader catches what it wrote: a secret written
+// past the verbs is never shown, and the last good copy is.
+func TestAShellWriteToTheChecklistReachesOnlyTheReader(t *testing.T) {
+	root := checklistCheckout(t)
+	writeItems(t, root, 1)
+	line := `printf '%s' '{}' > ` + checklist.FileRelPath
+	b, err := json.Marshal(map[string]any{
+		"session_id": "s-one", "cwd": root, "hook_event_name": "PreToolUse",
+		"tool_name": "Bash", "tool_input": map[string]any{"command": line},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stdout, _, code := runGuard(string(b), "guard", "hook"); code != 0 || strings.Contains(stdout, `"deny"`) {
+		t.Fatalf("the shell line was refused (exit %d): %s", code, stdout)
+	}
+	tok := secretToken()
+	bad := fmt.Sprintf(`{"schema":%q,"updated_at":"2026-10-23T08:00:00Z","updated_by":%q,"items":[]}`, checklist.Schema, tok)
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(checklist.FileRelPath)), []byte(bad), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res := checklist.Read(root)
+	if res.Source != checklist.FromLastGood || len(res.Checklist.Items) != 1 {
+		t.Fatalf("the reader took the shell's file: source %q, %d items", res.Source, len(res.Checklist.Items))
+	}
+	assertNoTokenRun(t, "the reader's reason", res.Reason, tok)
+}

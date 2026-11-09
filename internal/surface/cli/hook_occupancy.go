@@ -178,6 +178,11 @@ func fileWriteGate(cmd *cobra.Command, tool, cwd, filePath, notebookPath string)
 	if guard.StopStorePath(path) || guard.StopStorePath(fsutil.RealExistingPath(path)) {
 		return denyCall("Blocked by the abcd guard (" + termsafe.Sanitize(tool) + " into the stop): " + guard.StopStoreRefusal())
 	}
+	// The checklist is the verbs' to write (spc-2610230805429429 step 5): a mistake
+	// filter only, since a shell line still reaches the file and the reader holds.
+	if guard.ChecklistStorePath(path) || guard.ChecklistStorePath(fsutil.RealExistingPath(path)) {
+		return denyCall("Blocked by the abcd guard (" + termsafe.Sanitize(tool) + " into the checklist): " + guard.ChecklistStoreRefusal())
+	}
 	m, ok := sessionNameMachine()
 	if !ok || m.Home == "" {
 		return nil
