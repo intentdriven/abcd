@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -444,6 +445,7 @@ func linkChain(t *testing.T, n int, end string) string {
 // Linux), is refused when it ends at either store. The chain is followed by
 // how many links deep each target is, not by how many paths were judged.
 func TestGuardHookFollowsALongChainOfLinksToTheStores(t *testing.T) {
+	raiseReadingDeadline(t)
 	root := checklistCheckout(t)
 	homeDir := filepath.Join(t.TempDir(), abcdhome.Rel())
 	fresh := filepath.Join(t.TempDir(), filepath.FromSlash(localtier.RelDir))
@@ -470,6 +472,7 @@ func TestGuardHookFollowsALongChainOfLinksToTheStores(t *testing.T) {
 // (ELOOP), so nothing is written anywhere; the guard follows each target once,
 // so a loop neither hangs the hook nor runs into the link bound.
 func TestGuardHookAllowsALoopOfLinks(t *testing.T) {
+	raiseReadingDeadline(t)
 	checklistCheckout(t)
 	dir := t.TempDir()
 	for _, l := range [][2]string{{"self", "self"}, {"a", "b"}, {"b", "a"}} {
@@ -494,6 +497,7 @@ func TestGuardHookAllowsALoopOfLinks(t *testing.T) {
 // the link. A link on macOS holds no target past 1023 bytes, so the test
 // lowers the limit to reach the case on every system.
 func TestGuardHookRefusesALinkTargetTooLongToJudge(t *testing.T) {
+	raiseReadingDeadline(t)
 	root := checklistCheckout(t)
 	saved := maxJudgedPath
 	maxJudgedPath = 400
@@ -529,6 +533,7 @@ func TestGuardHookRefusesAPathTooCostlyToJudge(t *testing.T) {
 // links is refused for its depth even when it ends at no store, since the
 // guard stops following it there rather than leave the rest unjudged.
 func TestGuardHookRefusesAChainOfLinksTooDeepToFollow(t *testing.T) {
+	raiseReadingDeadline(t)
 	root := checklistCheckout(t)
 	first := linkChain(t, maxLinkHops+5, filepath.Join(t.TempDir(), "x.txt"))
 	stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, first), "guard", "hook")
@@ -561,6 +566,7 @@ func TestGuardHookRefusesACallPastItsDeadline(t *testing.T) {
 // three times what the first reading of a chain's first link costs, so that
 // reading passes and a later one, deeper in the chain, runs out.
 func TestGuardHookRefusesWhenTheBudgetRunsOutPastTheFirstReading(t *testing.T) {
+	raiseReadingDeadline(t)
 	root := checklistCheckout(t)
 	first := linkChain(t, 30, filepath.Join(t.TempDir(), "x.txt"))
 	b := &readingBudget{steps: maxReadingSteps, deadline: time.Now().Add(time.Hour)}
@@ -574,5 +580,173 @@ func TestGuardHookRefusesWhenTheBudgetRunsOutPastTheFirstReading(t *testing.T) {
 	stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, first), "guard", "hook")
 	if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, fmt.Sprintf("more than %d path parts", 3*cost)) {
 		t.Errorf("the deny must say the readings cost too many path parts; reason = %q", reason)
+	}
+}
+
+// systemPathLimit is the longest path, in bytes, the system's calls take: 1023
+// on macOS, 4095 on Linux.
+func systemPathLimit() int {
+	if runtime.GOOS == "darwin" {
+		return 1023
+	}
+	return 4095
+}
+
+// TestGuardHookRefusesAReadingTooLongForTheSystemToRead: a reading the system
+// refuses for its length (ENAMETOOLONG) is refused, not taken as a part that
+// does not exist. A folder R just under the system's limit holds a link whose
+// name takes R past it, to the checklist, beside a link "away" to an
+// unrelated folder. Written as s/away/../<leaf>, with s a link to R, the path
+// as written and as the volume resolves it climbs out of "away" and names
+// nothing; cleaned first it is R/<leaf>, which the system cannot look up.
+func TestGuardHookRefusesAReadingTooLongForTheSystemToRead(t *testing.T) {
+	raiseReadingDeadline(t)
+	root := checklistCheckout(t)
+	fresh := filepath.Join(t.TempDir(), filepath.FromSlash(localtier.RelDir))
+	if err := os.MkdirAll(fresh, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// The real temp folder, so no link above R (macOS has /var) counts against the limit.
+	r, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for limit := systemPathLimit() - 10; len(r) < limit; {
+		r = filepath.Join(r, strings.Repeat("d", min(200, limit-len(r)-1)))
+	}
+	if err := os.MkdirAll(r, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(r, "away")); err != nil {
+		t.Fatal(err)
+	}
+	leaf := strings.Repeat("l", 30)
+	dir, err := os.OpenRoot(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+	if err := dir.Symlink(filepath.Join(fresh, "checklist.json"), leaf); err != nil {
+		t.Fatal(err)
+	}
+	links := t.TempDir()
+	if err := os.Symlink(r, filepath.Join(links, "s")); err != nil {
+		t.Fatal(err)
+	}
+	sep := string(filepath.Separator)
+	p := links + sep + "s" + sep + "away" + sep + ".." + sep + leaf
+	stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, p), "guard", "hook")
+	if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "cannot read") {
+		t.Errorf("the deny must say the guard cannot read the path; reason = %q", reason)
+	}
+}
+
+// TestGuardHookRefusesAPathItCannotRead: a lookup that fails for any reason but
+// a part that does not exist or is not a folder is refused, since the guard
+// cannot tell where the write lands: a folder it may not search (EACCES), and
+// a loop of links in a leading part (ELOOP).
+func TestGuardHookRefusesAPathItCannotRead(t *testing.T) {
+	raiseReadingDeadline(t)
+	root := checklistCheckout(t)
+	t.Run("a folder the guard may not search", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root searches every folder")
+		}
+		locked := filepath.Join(t.TempDir(), "locked")
+		if err := os.MkdirAll(filepath.Join(locked, "sub"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(locked, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+		stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, filepath.Join(locked, "sub", "notes.txt")), "guard", "hook")
+		if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "cannot read") {
+			t.Errorf("the deny must say the guard cannot read the path; reason = %q", reason)
+		}
+	})
+	t.Run("a loop of links in a leading part", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.Symlink("self", filepath.Join(dir, "self")); err != nil {
+			t.Fatal(err)
+		}
+		stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, filepath.Join(dir, "self", "notes.txt")), "guard", "hook")
+		if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "cannot read") {
+			t.Errorf("the deny must say the guard cannot read the path; reason = %q", reason)
+		}
+	})
+}
+
+// raiseReadingDeadline lifts the deadline for a test that reads long chains of
+// links, so a loaded machine or the race detector cannot turn its answer into
+// the deadline's refusal.
+func raiseReadingDeadline(t *testing.T) {
+	t.Helper()
+	saved := readingDeadline
+	readingDeadline = time.Hour
+	t.Cleanup(func() { readingDeadline = saved })
+}
+
+// lateFrom sets the readings' clock to stand still until its n-th reading and to
+// stand past any deadline from then on, and answers how many times it was read.
+func lateFrom(t *testing.T, n int) *int {
+	t.Helper()
+	saved := readingClock
+	t.Cleanup(func() { readingClock = saved })
+	base, reads := time.Now(), new(int)
+	readingClock = func() time.Time {
+		*reads++
+		if n > 0 && *reads >= n {
+			return base.Add(readingDeadline + time.Hour)
+		}
+		return base
+	}
+	return reads
+}
+
+// TestGuardHookRefusesWhenTheDeadlinePassesAfterTheFirstReading: the deadline
+// is asked at every lookup, not only the first. The clock passes it just after
+// the first reading of an ordinary path, which the guard otherwise allows, and
+// the deny says the machine is slow and to try again, not to change the path.
+func TestGuardHookRefusesWhenTheDeadlinePassesAfterTheFirstReading(t *testing.T) {
+	root := checklistCheckout(t)
+	path := filepath.Join(root, "sub", "notes.txt")
+	reads := lateFrom(t, 0)
+	if _, why := volumeReading(path, newReadingBudget()); why != "" {
+		t.Fatalf("the first reading alone is refused: %s", why)
+	}
+	first := *reads // the budget's own reading of the clock, then the first reading's
+	lateFrom(t, first+1)
+	stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, path), "guard", "hook")
+	reason := mustDeny(t, stdout, stderr, code)
+	for _, want := range []string{"takes longer than", "slow", "try the call again"} {
+		if !strings.Contains(reason, want) {
+			t.Errorf("the deny must say %q; reason = %q", want, reason)
+		}
+	}
+	if strings.Contains(reason, "shorter path") {
+		t.Errorf("the deny blames the path's shape for a slow machine; reason = %q", reason)
+	}
+}
+
+// TestLinkTargetAsksTheDeadlineBeforeEachLookup: linkTarget refuses when the
+// deadline has passed before its Lstat, and when it passes between the Lstat
+// and the Readlink, so neither lookup starts late.
+func TestLinkTargetAsksTheDeadlineBeforeEachLookup(t *testing.T) {
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink("elsewhere", link); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		what string
+		n    int
+	}{{"before the Lstat", 2}, {"before the Readlink", 3}} {
+		t.Run(tc.what, func(t *testing.T) {
+			lateFrom(t, tc.n)
+			b := newReadingBudget() // the clock's first reading
+			if _, ok, why := linkTarget(link, b); ok || !strings.Contains(why, "takes longer than") {
+				t.Errorf("linkTarget past the deadline: ok %v, refusal %q; want the deadline's refusal", ok, why)
+			}
+		})
 	}
 }

@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -183,11 +185,19 @@ var maxReadingSteps = 1 << 16
 
 // readingDeadline is how long the readings of one call may take, in all. It is
 // checked before every EvalSymlinks, Lstat and Readlink the readings make, and
-// a call past it is refused, so the time one call takes is bounded by the
-// deadline, give or take the one of those calls in flight when it passes. An
-// ordinary path takes microseconds to read, so only a path read through a
-// crafted set of links comes near it. A var only so a test can lower it.
-var readingDeadline = 2 * time.Second
+// a call past it is refused, so no lookup starts after it. The one call in
+// flight when it passes can run well past it: one EvalSymlinks follows up to
+// 255 links and looks up every part of each target, which a crafted set of
+// links makes seconds on macOS and tens of seconds on Linux, by estimate. The
+// host waits ten minutes for the hook (hooks_timeout_test.go). An ordinary path
+// takes microseconds to read, so the deadline is set well past what a slow,
+// busy machine needs, and its refusal says to try again. A var only so a test
+// can lower it.
+var readingDeadline = 20 * time.Second
+
+// readingClock is the time the deadline is counted and checked by. A var only so
+// a test can move it.
+var readingClock = time.Now
 
 // readingBudget is what the readings of one call may still spend: path parts
 // handed to EvalSymlinks, and time.
@@ -198,17 +208,53 @@ type readingBudget struct {
 
 // newReadingBudget is the budget of one call, its deadline counted from now.
 func newReadingBudget() *readingBudget {
-	return &readingBudget{steps: maxReadingSteps, deadline: time.Now().Add(readingDeadline)}
+	return &readingBudget{steps: maxReadingSteps, deadline: readingClock().Add(readingDeadline)}
 }
 
 // late is the refusal when the deadline has passed, or "". It is asked before
 // every lookup.
 func (b *readingBudget) late() string {
-	if time.Now().Before(b.deadline) {
+	if readingClock().Before(b.deadline) {
 		return ""
 	}
-	return fmt.Sprintf("reading the path through its links takes longer than %s", readingDeadline) +
+	return fmt.Sprintf("the machine is too slow or busy to finish reading the path: it takes longer than %s", readingDeadline) +
+		storeReadingsTail + "Wait a moment, then try the call again."
+}
+
+// unreadablePath is the refusal for a reading longer than maxJudgedPath, or "".
+// It is asked before a reading is handed to any lookup, so the system's own
+// length limit is never what decides it.
+func unreadablePath(p string) string {
+	if len(p) <= maxJudgedPath {
+		return ""
+	}
+	return fmt.Sprintf("the guard cannot read the path: a reading of it through its links is longer than %d bytes", maxJudgedPath) +
 		storeReadingsTail + "Name the file by a shorter path, through fewer links."
+}
+
+// partMissing reports whether a lookup's error says only that a part of the
+// path does not exist (ENOENT) or is not a folder (ENOTDIR): the two answers
+// that leave the rest of the path for the write to create, or to fail on.
+func partMissing(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+}
+
+// evalSymlinksLinkBound is filepath.EvalSymlinks' own error past 255 links,
+// the one error it makes that is not the system's.
+const evalSymlinksLinkBound = "EvalSymlinks: too many links"
+
+// unreadableError is the refusal for a lookup that failed for any other reason:
+// a name too long for the system (ENAMETOOLONG), a loop the system meets
+// (ELOOP), a folder it may not search (EACCES), a failed read (EIO), or an
+// error the guard does not know. None says where the write lands.
+func unreadableError(err error) string {
+	cause := "an error the guard does not know"
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		cause = errno.Error()
+	}
+	return "the guard cannot read the path (" + cause + ")" + storeReadingsTail +
+		"Name the file by a path the guard can read: shorter, through fewer links, in folders it may search."
 }
 
 // spend charges parts path parts about to be handed to EvalSymlinks, and
@@ -241,8 +287,36 @@ const storeReadingsTail = ", so the guard cannot tell whether the write reaches 
 // name its target two ways cost one. Each target carries how many links deep
 // it is, and a target past maxLinkHops, a path or target longer than
 // maxJudgedPath, readings handing EvalSymlinks more than the budget's path
-// parts, and readings outlasting its deadline each refuse the write rather
-// than leave a part of the chain unjudged.
+// parts, readings outlasting its deadline, and a lookup that fails for any
+// reason but a missing part each refuse the write rather than leave a part of
+// the chain unjudged: the store check refuses anything it cannot finish
+// reading.
+//
+// Every exit of the store check, and what it answers:
+//
+//	storeReadings  path over maxJudgedPath            refuse  too long to read
+//	storeReadings  link target over maxJudgedPath     refuse  too long to read
+//	storeReadings  chain past maxLinkHops             refuse  rest of the chain unread
+//	storeReadings  queue empty                        allow   every reading read to its end
+//	volumeReading  reading over maxJudgedPath         refuse  before any lookup
+//	volumeReading  budget's parts spent, or deadline  refuse  reading unfinished
+//	volumeReading  EvalSymlinks resolves              allow   the reading
+//	volumeReading  ENOENT, ENOTDIR                    allow   walk up: the write creates or fails on the rest
+//	volumeReading  EvalSymlinks' own 255-link bound   allow   walk up: storeReadings follows the chain itself, bounded
+//	volumeReading  any other error                    refuse  ENAMETOOLONG, ELOOP, EACCES, EIO, unknown
+//	volumeReading  no leading part resolves           allow   the path as written, every error a missing part
+//	linkTarget     reading over maxJudgedPath         refuse  before the Lstat
+//	linkTarget     deadline, before Lstat or Readlink refuse  lookup would start late
+//	linkTarget     Lstat ENOENT, ENOTDIR              allow   not a link: nothing there to follow
+//	linkTarget     Lstat or Readlink, any other error refuse  cannot tell whether it is a link
+//	linkTarget     not a link                         allow   nothing to follow
+//	linkTarget     Readlink ENOENT, or empty target   allow   gone, or a link the system cannot follow
+//	linkTarget     a target                           follow  read three ways by storeReadings
+//	gate           no file named                      allow   loud: there is no path to read
+//	gate           relative, no session directory     allow   loud, after its spelling is judged (exit 1;
+//	                                                          a drive's stage denies); pinned by
+//	                                                          TestGuardHookFailsOpenLoudOnAnUnreadableFileToolPayload
+//	gate           any reading names a store          refuse  the stop or the checklist
 func storeReadings(p string, b *readingBudget) ([]string, string) {
 	if len(p) > maxJudgedPath {
 		return nil, fmt.Sprintf("the path is longer than %d bytes (a relative path counts the session directory before it)", maxJudgedPath) +
@@ -305,20 +379,36 @@ func storeReadings(p string, b *readingBudget) ([]string, string) {
 // linkTarget is the target of p when p's last part is a link, joined as written
 // to the folder holding the link when it is relative, so the readings of the
 // result resolve it where the kernel would; false when p is not a link. The
-// deadline is asked before each lookup, and a passed one is the refusal.
+// length and the deadline are asked before each lookup, and a lookup failing
+// for any reason but a missing part is the refusal (the table at storeReadings).
 func linkTarget(p string, b *readingBudget) (string, bool, string) {
+	if why := unreadablePath(p); why != "" {
+		return "", false, why
+	}
 	if why := b.late(); why != "" {
 		return "", false, why
 	}
 	fi, err := os.Lstat(p)
-	if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+	if err != nil {
+		if partMissing(err) {
+			return "", false, ""
+		}
+		return "", false, unreadableError(err)
+	}
+	if fi.Mode()&os.ModeSymlink == 0 {
 		return "", false, ""
 	}
 	if why := b.late(); why != "" {
 		return "", false, why
 	}
 	t, err := os.Readlink(p)
-	if err != nil || t == "" {
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", false, ""
+		}
+		return "", false, unreadableError(err)
+	}
+	if t == "" {
 		return "", false, ""
 	}
 	if filepath.IsAbs(t) {
@@ -343,18 +433,27 @@ func linkTarget(p string, b *readingBudget) (string, bool, string) {
 // the link's own name, for storeReadings to follow. A path no leading part of
 // which resolves is returned as it stands. Each pass re-reads the leading part
 // and pays its parts out of b first; the refusal, with nothing read past that
-// pass, when the parts run out or the deadline has passed. Given a cleaned
-// absolute path it answers what fsutil.RealExistingPath does, with the cost
-// counted.
+// pass, when the parts run out or the deadline has passed. Only a missing part,
+// or EvalSymlinks' own bound on links, walks up a part; any other error is the
+// refusal (the table at storeReadings). Given a cleaned absolute path it
+// answers what fsutil.RealExistingPath does, with the cost counted and every
+// error it cannot read past refused.
 func volumeReading(p string, b *readingBudget) (string, string) {
+	if why := unreadablePath(p); why != "" {
+		return "", why
+	}
 	sep := string(filepath.Separator)
 	cur, rest := p, ""
 	for {
 		if why := b.spend(strings.Count(cur, sep)); why != "" {
 			return "", why
 		}
-		if real, err := filepath.EvalSymlinks(cur); err == nil {
+		real, err := filepath.EvalSymlinks(cur)
+		if err == nil {
 			return filepath.Join(real, rest), ""
+		}
+		if !partMissing(err) && err.Error() != evalSymlinksLinkBound {
+			return "", unreadableError(err)
 		}
 		i := strings.LastIndex(cur, sep)
 		if i <= 0 {

@@ -71,9 +71,14 @@ case the path is spelled in, and names the verbs to use instead. It reads the
 path as written, cleaned and then through the links of the folders on it that
 exist, and as the volume resolves it; when a reading ends in a link, it reads
 that link's target the same ways, and so on down the chain. It refuses outright
-a path it cannot finish reading: a path or a link target longer than the system
-allows, a chain of more than 40 links, a path whose readings would look up too
-many folder names, and a path whose readings take longer than two seconds.
+a path it cannot finish reading: a path, a link target or any reading of them
+longer than a fixed 4096-byte limit, a chain of more than 40 links, a path
+whose readings would hand the link lookups too many path parts, and a path the
+guard cannot read, because a lookup fails for any reason but a part that does
+not exist yet: a name too long for the system, a loop of links in a folder on
+the path, a folder the guard may not search. It also refuses a path whose
+readings take longer than twenty seconds, which only a slow or busy machine
+reaches, and that refusal says to try the call again.
 That refusal only catches a mistake: a shell line still reaches the file, and the
 reader is what holds, since a file written past the verbs is judged like any
 other and a failing one gives way to the last good copy.
