@@ -485,11 +485,15 @@ func (snap *peerSnapshot) reservationHolder(id string) (holder string, yours boo
 // copy's reservation.
 //
 // A local branch no worktree has checked out holds nothing here
-// (peers.Peer.CheckedOut, iss-2611090125008163): no session can be working in
-// a branch that is checked out nowhere, a lane's branch keeps its worktree
-// until `abcd ahoy worktree prune` reclaims it merged, and a session's own
-// hold is its claim and its reservation, read below. Such a branch is named in
-// the row's detail, passing, so what it holds is never hidden.
+// (peers.Peer.CheckedOut, iss-2611090125008163). Checked out is as git counts
+// it: a worktree's branch, and the branch a rebase or a bisect stopped in a
+// worktree started from, though git lists that worktree detached. A session
+// works in a checkout, so a branch git counts checked out nowhere carries no
+// work in progress there; a lane's branch keeps its worktree until
+// `abcd ahoy worktree prune` reclaims it merged, and a session's own hold is
+// its claim and its reservation, read below. A session can still check such
+// a branch out later; until it does, the branch is named in the row's detail,
+// passing, so what it holds is never hidden.
 func peersCheck(id, bucket, session string, snap *peerSnapshot, reservations bool) CheckRow {
 	row := CheckRow{Name: CheckPeers}
 	var holders, idle []string

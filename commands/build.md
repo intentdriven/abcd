@@ -177,9 +177,10 @@ pass:
   the default branch shipped what this checkout, being behind, still holds as
   planned does count. A worktree is judged off its disk, so an uncommitted move
   or edit counts. A local branch no worktree has checked out (a backup or a
-  paused branch) holds nothing: no session can be working in it, and the
-  passing row names what it holds; a branch whose worktree is gone or refused
-  still counts. A peer that
+  paused branch) holds nothing, as no checkout has work in progress on it, and
+  the passing row names what it holds; a branch whose worktree is gone or
+  refused still counts, and so does a branch a rebase or a bisect stopped in a
+  worktree started from, which git counts checked out there. A peer that
   cannot be read (a worktree git will not answer for, a ledger holding one id
   twice) and an unreadable claim count as holding it: what they hold is unknown,
   and so does a copy that cannot be compared with every merge-base.

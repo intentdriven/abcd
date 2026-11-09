@@ -2,6 +2,7 @@ package loop
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -223,5 +224,62 @@ func TestThePeersCheckRefusesALaneInAWorktree(t *testing.T) {
 		if row := peersRow(t, repo); row.OK || !strings.Contains(row.Detail, "branch lane-2 holds it in shipped/") {
 			t.Fatalf("a gone worktree's lane branch must still hold it: %+v", row)
 		}
+	})
+}
+
+// TestThePeersCheckRefusesALaneStoppedMidRebaseOrBisect: git lists a worktree
+// detached while a rebase or a bisect has stopped in it, and still counts the
+// branch it started from as checked out there (its rebase-merge/head-name,
+// rebase-apply/head-name or BISECT_START). A lane that shipped the intent and
+// stopped there, its disk holding none of the ship, still holds it through its
+// branch, and the build is refused.
+func TestThePeersCheckRefusesALaneStoppedMidRebaseOrBisect(t *testing.T) {
+	shipped := ".abcd/development/intents/shipped/itd-10-alpha.md"
+	stopped := func(t *testing.T, name string, stop func(repo *gittest.Repo, dir string)) {
+		t.Helper()
+		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+		dir := filepath.Join(t.TempDir(), "lane-x")
+		repo.Git("worktree", "add", "-q", "-b", "lane-x", dir, "main")
+		if err := os.WriteFile(filepath.Join(dir, "clash"), []byte("lane\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		repo.Git("-C", dir, "add", "clash")
+		repo.Git("-C", dir, "commit", "-q", "-m", "clash on the lane")
+		if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(shipped)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		repo.Git("-C", dir, "mv", plannedRel, shipped)
+		repo.Git("-C", dir, "commit", "-q", "-m", "ship itd-10")
+		stop(repo, dir)
+		if _, err := os.Stat(filepath.Join(dir, shipped)); err == nil {
+			t.Fatalf("%s: the stopped lane's disk still holds the ship", name)
+		}
+		if got := repo.Git("worktree", "list", "--porcelain"); strings.Contains(got, "branch refs/heads/lane-x") {
+			t.Fatalf("%s: git still lists lane-x as a worktree's branch:\n%s", name, got)
+		}
+		if row := peersRow(t, repo); row.OK || !strings.Contains(row.Detail, "branch lane-x holds it in shipped/") {
+			t.Fatalf("%s: a lane stopped with its ship on its branch must hold it: %+v", name, row)
+		}
+		if _, err := Start(repo.Root(), "itd-10", Options{}); err == nil {
+			t.Fatalf("%s: the start was let past a lane stopped with its ship on its branch", name)
+		}
+	}
+	t.Run("a rebase stopped on a conflict", func(t *testing.T) {
+		stopped(t, "rebase", func(repo *gittest.Repo, dir string) {
+			repo.Write("clash", "main\n")
+			repo.Commit("clash on main")
+			cmd := exec.Command("git", "-C", dir, "-c", "user.email=fixture@example.invalid", "-c", "user.name=Fixture",
+				"-c", "commit.gpgsign=false", "rebase", "main")
+			cmd.Env = repo.Env()
+			if out, err := cmd.CombinedOutput(); err == nil {
+				t.Fatalf("the rebase did not stop on its conflict:\n%s", out)
+			}
+		})
+	})
+	t.Run("a bisect", func(t *testing.T) {
+		stopped(t, "bisect", func(repo *gittest.Repo, dir string) {
+			repo.Git("-C", dir, "bisect", "start")
+			repo.Git("-C", dir, "checkout", "-q", "--detach", "HEAD~1")
+		})
 	})
 }

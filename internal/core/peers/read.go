@@ -185,8 +185,13 @@ func read(root string, titles bool) (Report, error) {
 	checkedOut := map[string]bool{}
 	// worktreeBranch is every branch a listed worktree other than this
 	// checkout has: one whose worktree is gone or refused is read below as a
-	// branch, and is still a branch a worktree has (Peer.CheckedOut).
-	worktreeBranch := map[string]bool{}
+	// branch, and is still a branch a worktree has (Peer.CheckedOut). So is a
+	// branch a rebase or a bisect stopped in any worktree, this one included,
+	// started from: git lists that worktree detached, and its disk is not the
+	// branch, so the branch is read below; allHeld is a state file that is
+	// there and could not be read, which names no branch, so every branch is
+	// one a worktree may have.
+	worktreeBranch, allHeld := heldBranches(common)
 	self := realPath(root)
 	home, _ := abcdhome.MachineHome()
 	for _, wt := range wts {
@@ -237,7 +242,7 @@ func read(root string, titles bool) (Report, error) {
 			continue
 		}
 		p := readBranch(root, b)
-		p.checkedOut = worktreeBranch[b]
+		p.checkedOut = allHeld || worktreeBranch[b]
 		rep.Peers = append(rep.Peers, p)
 	}
 
@@ -254,6 +259,86 @@ func read(root string, titles bool) (Report, error) {
 // still leaves every store skipped.
 func embargoStore(home, p string) bool {
 	return storepath.IsStorePath(home, p) || storepath.HasStoreShape(p)
+}
+
+// stateFileCap bounds one rebase or bisect state file heldBranches reads: a
+// branch name on one line.
+const stateFileCap = 4 << 10
+
+// stateFiles are the files git reads, in a worktree's own git dir, for the
+// branch a stopped rebase or bisect started from: wt-status.c's
+// wt_status_check_rebase and wt_status_check_bisect, which worktree.c's
+// is_worktree_being_rebased and is_worktree_being_bisected ask, so that
+// `git branch -d`, `git switch` and `git worktree add` refuse that branch as
+// in use there while the worktree's HEAD is detached.
+var stateFiles = []string{"rebase-apply/head-name", "rebase-merge/head-name", "BISECT_START"}
+
+// heldBranches is every branch a rebase or a bisect stopped in some worktree
+// of the repository whose common dir is common started from: the main
+// checkout's git dir (common itself) and each linked worktree's
+// (common/worktrees/<id>, the entries `git worktree list` lists). all reports
+// a state file, or a worktrees/ directory, that is there and could not be
+// read through fsutil.ReadGuarded (a symlink, not a regular file, or past
+// stateFileCap): the branch it names is unknown, so the caller counts every
+// branch as one a worktree may have.
+func heldBranches(common string) (held map[string]bool, all bool) {
+	held = map[string]bool{}
+	dirs := []string{common}
+	entries, err := os.ReadDir(filepath.Join(common, "worktrees"))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		all = true
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			dirs = append(dirs, filepath.Join(common, "worktrees", e.Name()))
+		}
+	}
+	for _, dir := range dirs {
+		for _, name := range stateFiles {
+			b, err := fsutil.ReadGuarded(filepath.Join(dir, filepath.FromSlash(name)), stateFileCap)
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				all = true
+				continue
+			}
+			if branch := stateBranch(string(b)); branch != "" {
+				held[branch] = true
+			}
+		}
+	}
+	return held, all
+}
+
+// stateBranch is the local branch a state file names, read as git's
+// wt-status.c get_branch reads it: trailing newlines dropped, a refs/heads/
+// name shortened, and no branch for another ref, an object name (a bisect
+// started detached) or rebase's "detached HEAD"; any other text is a bisect's
+// short branch name.
+func stateBranch(s string) string {
+	s = strings.TrimRight(s, "\n")
+	if b, ok := strings.CutPrefix(s, "refs/heads/"); ok {
+		return b
+	}
+	if s == "" || s == "detached HEAD" || strings.HasPrefix(s, "refs/") || objectName(s) {
+		return ""
+	}
+	return s
+}
+
+// objectName reports whether s opens with a full hex object name, as git's
+// get_oid_hex reads one (SHA-1's 40 digits; a SHA-256 name opens with 40 too).
+func objectName(s string) bool {
+	if len(s) < 40 {
+		return false
+	}
+	for _, c := range s[:40] {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", c) {
+			return false
+		}
+	}
+	return true
 }
 
 // readWorktree reads one linked worktree, or says why it is spent. viaBranch
