@@ -562,8 +562,11 @@ schema version 20's; an older run's rounds read as one reviewer per role, index
 findings: the `file:line` each finding bullet under its Findings heading leads
 with (`- **file:line** — ...`) is one finding (`file`, `line`); a location cited
 in a bullet's text or its nested Evidence lines is not one, and a line inside a
-fenced code block is neither a heading nor a finding. The record keeps the
-first 256 findings, while `located` counts every one. A path under the
+fenced code block or an HTML comment is neither a heading nor a finding. The
+record keeps the first 256 findings, while `located` counts every one, and
+keeps them on the lane's latest round only: an earlier round keeps its count
+alone, and a run whose state would outgrow what its read accepts drops them a
+round at a time, the oldest first, keeping every count. A path under the
 lane's worktree, in its own case, through the directory its links resolve to
 or its `/private` twin, is taken relative to it, a path longer than 255 bytes
 and anything else is no location, and a return citing none records

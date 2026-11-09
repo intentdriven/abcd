@@ -9,7 +9,8 @@ package loop
 //     reviewer's definition asks it to cite) is one located finding of that
 //     reviewer, read when the loop records the verdict. A location cited in a
 //     bullet's text or its nested Evidence and Attack-path lines is not one,
-//     and a line inside a fenced code block is neither a heading nor one. A
+//     and a line inside a fenced code block or an HTML comment is neither a
+//     heading nor one. A
 //     return citing none records zero and is not refused: a reviewer that
 //     found nothing, or wrote its findings without locations, still returns.
 //     One location led with twice in one return is one finding, and a range
@@ -22,6 +23,13 @@ package loop
 //     status word says nothing of it.
 //   - A location two or more reviewers of the round cite is marked, on each
 //     of their findings, with every reviewer that cites it.
+//   - The state keeps each reviewer's count on every round, and its findings
+//     only on each lane's latest round, the one a fix brief or a judge reads
+//     (keepLatestFindings); an earlier round's are dropped when the state is
+//     written. A state that would still outgrow what its read accepts has
+//     its findings dropped a round at a time, the oldest first, its counts
+//     kept (trimOldestFindings), and is not written when that is not enough,
+//     so the loop never writes a state its own read refuses.
 //
 // A location is a path of at most 255 bytes relative to the lane's worktree:
 // a path the reviewer wrote under the worktree, in any of its spellings
@@ -30,8 +38,12 @@ package loop
 // no location, so no text a reviewer wrote outside a plain repository path
 // reaches the state or a --json stream. Two locations are one only when
 // their paths match byte for byte, as git's paths do. Every read is one pass
-// over the text, so a return or report of the most bytes it may be is read
-// in linear time.
+// over the text, and so bounded: the passes here are linear, and mdrecord's
+// fence and comment pass, which pairs a line's backtick runs, is O(L^1.5) on
+// one line of length L at worst (unpaired runs differ in length, so a line
+// holds about the square root of 2L of them), so a return or report of the
+// most bytes it may be is read in well under a second, though not strictly in
+// linear time.
 
 import (
 	"fmt"
@@ -175,7 +187,15 @@ func relativeTo(text, worktree string) string {
 	for i, s := range spellings {
 		alt[i] = regexp.QuoteMeta(s)
 	}
-	return regexp.MustCompile(`(^|[^A-Za-z0-9_./+@-])(?:`+strings.Join(alt, "|")+`)/`).ReplaceAllString(text, "${1}")
+	// A spelling that is no valid UTF-8 (a link target's name on a
+	// filesystem that allows one) compiles to no pattern; the text is then
+	// read as written, so a path under the worktree is no location rather
+	// than the verifier stopping.
+	re, err := regexp.Compile(`(^|[^A-Za-z0-9_./+@-])(?:` + strings.Join(alt, "|") + `)/`)
+	if err != nil {
+		return text
+	}
+	return re.ReplaceAllString(text, "${1}")
 }
 
 // toLocation is the location a cited path and line name, and whether they
@@ -216,16 +236,18 @@ func leadLocation(ln string) (location, bool) {
 
 // eachFindingsLine calls fn with each line of text under a Findings heading,
 // down to the next heading at the same depth or above. A line inside a fenced
-// code block, as mdrecord reads fences under its ListNested rule (a fence
-// nested in a list item included), is neither a heading nor passed on, so a
-// `# comment` in a quoted snippet does not end the section, nor a bullet in it
-// count as a finding. The text is split once and read in one pass.
+// code block or an HTML comment, as mdrecord reads both under its ListNested
+// rule (a fence nested in a list item included, and each delimiter line, as
+// mdrecord.BulletBlocks skips them), is neither a heading nor passed on, so a
+// `# comment` in a quoted snippet does not end the section, nor a bullet in a
+// snippet or a commented-out note count as a finding. The text is split once
+// and read in one pass.
 func eachFindingsLine(text string, fn func(string)) {
 	lines := strings.Split(text, "\n")
 	mask := mdrecord.Read(lines, mdrecord.ListNested).Mask
 	depth := 0
 	for i, ln := range lines {
-		if mask[i]&mdrecord.MaskFence != 0 {
+		if mask[i]&(mdrecord.MaskFence|mdrecord.MaskComment) != 0 {
 			continue
 		}
 		d := headingDepth(ln)
@@ -460,14 +482,18 @@ func (s State) located() string {
 }
 
 // findingsWritten reports whether every located finding a state carries is
-// one the loop writes: on a reviewer whose verdict is recorded, as many as
-// its count up to the bound, each a location citations writes, once; a
-// status exactly where a verified fix report answered a failing reviewer;
-// and the reviewers citing each location as markCitedBy marks them.
+// one the loop writes: on a reviewer whose verdict is recorded, and only on
+// its lane's latest round, none or as many as its count up to the bound
+// (none where the writer trimmed them), each a location citations writes,
+// once; a status exactly where a verified fix report answered a failing
+// reviewer; and the reviewers citing each location as markCitedBy marks them.
 func (s State) findingsWritten() bool {
 	for _, l := range s.Lanes {
-		for _, r := range l.Validation {
+		for ri, r := range l.Validation {
 			for _, v := range r.Validators {
+				if len(v.Findings) > 0 && ri < len(l.Validation)-1 {
+					return false
+				}
 				if v.Located == nil {
 					if len(v.Findings) > 0 {
 						return false
@@ -475,7 +501,7 @@ func (s State) findingsWritten() bool {
 					continue
 				}
 				if !slices.Contains(reviewRoles, v.Role) || v.Verdict == "" || *v.Located < 0 || *v.Located > maxLocatedCount ||
-					len(v.Findings) != min(*v.Located, maxLocatedFindings) {
+					len(v.Findings) != 0 && len(v.Findings) != min(*v.Located, maxLocatedFindings) {
 					return false
 				}
 				answered := r.Fix != "" && !v.Pass
@@ -512,4 +538,61 @@ func (s State) findingsWritten() bool {
 		}
 	}
 	return true
+}
+
+// keepLatestFindings drops, from every validation round but each lane's
+// latest, its reviewers' located findings, keeping their counts: a fix brief
+// and a judge read only the latest round's, and a finding kept on every
+// round would grow the state by a return's worth each round.
+func (st *State) keepLatestFindings() {
+	for i := range st.Lanes {
+		rs := st.Lanes[i].Validation
+		for j := 0; j+1 < len(rs); j++ {
+			dropFindings(&rs[j])
+		}
+	}
+}
+
+// trimOldestFindings drops the located findings of the oldest round still
+// carrying any, by round number and then lane order, keeping its counts, and
+// reports whether there was one. A round's findings go whole, so the
+// reviewers left citing a location are the ones markCitedBy marks.
+func (st *State) trimOldestFindings() bool {
+	var oldest *ValidationRound
+	for i := range st.Lanes {
+		for j := range st.Lanes[i].Validation {
+			r := &st.Lanes[i].Validation[j]
+			if r.carriesFindings() && (oldest == nil || r.Round < oldest.Round) {
+				oldest = r
+			}
+		}
+	}
+	if oldest == nil {
+		return false
+	}
+	dropFindings(oldest)
+	return true
+}
+
+// carriesFindings reports whether any reviewer of r keeps a located finding.
+func (r ValidationRound) carriesFindings() bool {
+	for _, v := range r.Validators {
+		if len(v.Findings) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// dropFindings drops every reviewer's located findings from r, keeping each
+// count. The validators are copied first, so a round sharing them is not
+// changed.
+func dropFindings(r *ValidationRound) {
+	if !r.carriesFindings() {
+		return
+	}
+	r.Validators = slices.Clone(r.Validators)
+	for k := range r.Validators {
+		r.Validators[k].Findings = nil
+	}
 }

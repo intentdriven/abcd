@@ -402,9 +402,17 @@ const (
 	filePerm fs.FileMode = 0o600
 )
 
-// maxStateBytes caps a state file read. A run's record grows by one entry per
-// stage; a file past this is not one the loop wrote.
+// maxStateBytes caps a state file, read and written. A run's record grows by
+// one entry per stage, and a reviewer's located findings, which grow with its
+// return, are kept on each lane's latest round only and dropped from a state
+// that would pass stateRoomBytes (stateData); writeState and a reservation
+// save write no file past this, so a file past it is not one the loop wrote.
 const maxStateBytes = 4 << 20
+
+// stateRoomBytes is the size past which writeState drops located findings,
+// below maxStateBytes by the room a reservation save, which grows the record
+// without writeState, takes between two writes.
+const stateRoomBytes = maxStateBytes - 256<<10
 
 // lockTimeout bounds how long a mutation waits for another invocation's
 // mutation to finish before it reports contention. It is a variable so a test
@@ -790,9 +798,10 @@ type ValidatorRun struct {
 	ModelStatus string `json:"model_status,omitempty"`
 	// Located is how many located findings (findings.go) the loop read from a
 	// reviewer's return when it recorded the verdict, 0 included, and
-	// Findings the first maxLocatedFindings of them; both absent on the
-	// intent-auditor, while the reviewer is out, and on a verdict recorded
-	// before version 24.
+	// Findings the first maxLocatedFindings of them, kept on the lane's
+	// latest round only and dropped from it too when the state would outgrow
+	// its read (stateData); both absent on the intent-auditor, while the
+	// reviewer is out, and on a verdict recorded before version 24.
 	Located  *int      `json:"located,omitempty"`
 	Findings []Finding `json:"findings,omitempty"`
 }
@@ -1594,18 +1603,49 @@ func serialCarries(st State, version int) error {
 // never half of either. The caller holds the lock.
 //
 // The repository and tool text the state carries is stored masked
-// (State.masked, iss-2610121542240257).
+// (State.masked, iss-2610121542240257), and no larger than its read accepts
+// (stateData).
 func writeState(root *os.Root, st State) error {
-	data, err := json.MarshalIndent(st.masked(), "", "  ")
+	data, err := stateData(st)
 	if err != nil {
 		return err
 	}
-	data = append(data, '\n')
 	rel := StateRelPath(st.RunID)
 	if err := fsutil.WriteFileAtomicInRoot(root, rel, data, filePerm); err != nil {
 		return fmt.Errorf("writing %s: %w", rel, err)
 	}
 	return nil
+}
+
+// stateData is the file writeState stores for st: masked, with located
+// findings kept on each lane's latest round only (keepLatestFindings) and
+// dropped a round at a time, the oldest first, their counts kept, while the
+// file would pass stateRoomBytes (trimOldestFindings). A state still past
+// maxStateBytes is refused, so nothing is written and the file already there
+// stands: the loop never writes a state its own read refuses.
+func stateData(st State) ([]byte, error) {
+	m := st.masked()
+	m.keepLatestFindings()
+	for {
+		data, err := json.MarshalIndent(m, "", "  ")
+		if err != nil {
+			return nil, err
+		}
+		data = append(data, '\n')
+		if len(data) <= stateRoomBytes || !m.trimOldestFindings() {
+			return data, stateFits(st.RunID, data)
+		}
+	}
+}
+
+// stateFits refuses a state file past maxStateBytes, the most its read
+// accepts.
+func stateFits(runID string, data []byte) error {
+	if len(data) <= maxStateBytes {
+		return nil
+	}
+	return refuse("state", "", "", fmt.Sprintf("%s would be %d bytes with no located finding left to drop, past the %d its read accepts; nothing was written, and the file already there stands",
+		StateRelPath(runID), len(data), maxStateBytes), "this is a fault in abcd, so report it")
 }
 
 // runIDs lists the run directories under the run tier, in name order: mint

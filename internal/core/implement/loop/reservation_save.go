@@ -77,6 +77,9 @@ func mutateReservation(repoRoot, runID string, fn func(st *State) (bool, error))
 		if err != nil {
 			return fmt.Errorf("saving %s: %w", rel, err)
 		}
+		if err := stateFits(runID, saved); err != nil {
+			return err
+		}
 		if err := fsutil.WriteFileAtomicInRoot(root, rel, saved, filePerm); err != nil {
 			return fmt.Errorf("writing %s: %w", rel, err)
 		}

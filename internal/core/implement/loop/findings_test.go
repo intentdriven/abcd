@@ -615,3 +615,198 @@ func TestALineInACodeFenceIsNeitherAHeadingNorAFinding(t *testing.T) {
 		t.Fatalf("the located findings: %v, want %v", at(v.Findings), want)
 	}
 }
+
+// hostileFindings is a return leading the most findings a record keeps, each
+// at a distinct path of the most bytes a location may be.
+func hostileFindings(verdict string) string {
+	var b strings.Builder
+	b.WriteString("### Findings\n\n")
+	for j := range maxLocatedFindings {
+		p := fmt.Sprintf("d%03d/", j) + strings.Repeat("a", maxLocationPath-len("d000/")-len(".go")) + ".go"
+		fmt.Fprintf(&b, "- **%s:1000000** — x\n", p)
+	}
+	b.WriteString("\n### Verdict\n\n- **" + verdict + "** — as stated.\n")
+	return b.String()
+}
+
+// TestTheMostFindingsReviewersCanWriteLeaveAStateTheReadAccepts: many lanes,
+// each of several rounds failed by two reviewers whose returns lead the most
+// findings a record keeps at the longest paths, every location cited by both
+// and answered by a fix report, make a state the loop writes no larger than
+// its read accepts and reads back, each count kept.
+func TestTheMostFindingsReviewersCanWriteLeaveAStateTheReadAccepts(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	start, err := startedOnce(t, repo, "itd-10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, stages := start.RunID, DefaultStages()
+	implementedOnce(t, repo, id, "one.txt")
+	stepAwait(t, repo, id, stages, Options{})
+	st, err := ReadState(repo.Root(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const lanes, rounds = 16, 4
+	base, tmpl := st.Lanes[0], st.Lanes[0].Validation[0]
+	var hostile []int
+	for k, v := range tmpl.Validators {
+		if (v.Role == RoleRuthless || v.Role == RoleSecurity) && v.Reviewer == 0 {
+			hostile = append(hostile, k)
+		}
+	}
+	if len(hostile) != 2 {
+		t.Fatalf("the round hands out a ruthless and a security reviewer: %+v", tmpl.Validators)
+	}
+	st.Lanes = nil
+	for i := range lanes {
+		l := base
+		l.ID = fmt.Sprintf("%s-%d", base.ID, i)
+		l.Validation = nil
+		for k := range rounds {
+			r := tmpl
+			r.Round = k + 1
+			r.Validators = slices.Clone(tmpl.Validators)
+			for _, h := range hostile {
+				v := &r.Validators[h]
+				v.Verdict, v.Pass = "FIX FIRST", false
+				v.recordFindings(hostileFindings("FIX FIRST"), l.Worktree)
+			}
+			markCitedBy(&r)
+			r.Fix = tmpl.Validators[hostile[0]].Return
+			joinFixReport(&r, "", l.Worktree)
+			l.Validation = append(l.Validation, r)
+		}
+		st.Lanes = append(st.Lanes, l)
+	}
+	root, err := os.OpenRoot(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if err := writeState(root, st); err != nil {
+		t.Fatalf("the loop writes the state: %v", err)
+	}
+	if n := len(stateBytes(t, repo.Root(), id)); n > maxStateBytes {
+		t.Fatalf("the state is %d bytes, past the %d its read accepts", n, maxStateBytes)
+	}
+	got, err := readListedState(root, id)
+	if err != nil {
+		t.Fatalf("the state the loop wrote reads: %v", err)
+	}
+	kept := 0
+	for _, l := range got.Lanes {
+		for _, r := range l.Validation {
+			for _, h := range hostile {
+				v := r.Validators[h]
+				if v.Located == nil || *v.Located != maxLocatedFindings {
+					t.Fatalf("%s round %d keeps its count: %v", l.ID, r.Round, v.Located)
+				}
+				kept += len(v.Findings)
+			}
+		}
+	}
+	if kept == 0 {
+		t.Fatal("the latest rounds that fit keep their findings")
+	}
+}
+
+// TestAStateTooLargeEvenWithoutFindingsIsNotWritten: a state past what its
+// read accepts with no located finding left to drop is refused by writeState
+// and by a reservation save, and the file already there stands.
+func TestAStateTooLargeEvenWithoutFindingsIsNotWritten(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	start, err := startedOnce(t, repo, "itd-10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := start.RunID
+	before := stateBytes(t, repo.Root(), id)
+	st, err := ReadState(repo.Root(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	big := Entry{At: time.Now().UTC(), Stage: "receipt", Note: strings.Repeat("x", maxStateBytes)}
+	root, err := os.OpenRoot(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	grown := st
+	grown.Record = append(slices.Clone(st.Record), big)
+	if r := mustRefusal(t, writeState(root, grown)); !strings.Contains(r.Reason, "nothing was written") {
+		t.Fatalf("the refusal says nothing was written: %+v", r)
+	}
+	err = mutateReservation(repo.Root(), id, func(s *State) (bool, error) {
+		s.Record = append(s.Record, big)
+		return true, nil
+	})
+	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "nothing was written") {
+		t.Fatalf("a reservation save says nothing was written: %+v", r)
+	}
+	if after := stateBytes(t, repo.Root(), id); string(after) != string(before) {
+		t.Fatal("the file already there stands")
+	}
+	if _, err := ReadState(repo.Root(), id); err != nil {
+		t.Fatalf("and still reads: %v", err)
+	}
+}
+
+// TestFindingsAreKeptOnALanesLatestRoundOnly: the writer drops an earlier
+// round's findings, keeping its count; the read refuses a state carrying
+// findings on an earlier round, and accepts a latest round whose findings the
+// writer dropped.
+func TestFindingsAreKeptOnALanesLatestRoundOnly(t *testing.T) {
+	n := 1
+	round := func(no int) ValidationRound {
+		return ValidationRound{Round: no, Validators: []ValidatorRun{{Role: RoleRuthless, Verdict: "FIX FIRST", Located: &n,
+			Findings: []Finding{{File: "a.go", Line: 1}}}}}
+	}
+	st := State{Lanes: []Lane{{ID: "lane-1", Validation: []ValidationRound{round(1), round(2)}}}}
+	if st.findingsWritten() {
+		t.Fatal("findings on an earlier round are refused")
+	}
+	kept := st
+	kept.Lanes = slices.Clone(st.Lanes)
+	kept.Lanes[0].Validation = slices.Clone(st.Lanes[0].Validation)
+	kept.keepLatestFindings()
+	if !kept.findingsWritten() || len(kept.Lanes[0].Validation[0].Validators[0].Findings) != 0 ||
+		*kept.Lanes[0].Validation[0].Validators[0].Located != 1 || len(kept.Lanes[0].Validation[1].Validators[0].Findings) != 1 {
+		t.Fatalf("the writer keeps the latest round's findings and every count: %+v", kept.Lanes[0].Validation)
+	}
+	if len(st.Lanes[0].Validation[0].Validators[0].Findings) != 1 {
+		t.Fatal("the state the writer was handed is not changed")
+	}
+	if !kept.trimOldestFindings() || kept.trimOldestFindings() || !kept.findingsWritten() {
+		t.Fatalf("a latest round whose findings the writer dropped reads: %+v", kept.Lanes[0].Validation)
+	}
+}
+
+// TestAWorktreeSpellingNoPatternCompilesLeavesTheTextAsWritten: a worktree
+// spelling that is no valid UTF-8 leaves the text unchanged rather than
+// stopping the verifier.
+func TestAWorktreeSpellingNoPatternCompilesLeavesTheTextAsWritten(t *testing.T) {
+	const text = "- **/wt\xff/a.go:1** — x"
+	if got := relativeTo(text, "/wt\xff"); got != text {
+		t.Fatalf("the text is read as written: %q", got)
+	}
+}
+
+// TestALineInAnHTMLCommentIsNeitherAHeadingNorAFinding: a heading inside an
+// HTML comment under the Findings heading does not end the section, and a
+// bullet inside one is no finding.
+func TestALineInAnHTMLCommentIsNeitherAHeadingNorAFinding(t *testing.T) {
+	text := "### Findings\n\n" +
+		"- **a.go:1** — a defect.\n" +
+		"<!--\n" +
+		"## parked\n" +
+		"- **in.go:9** — parked.\n" +
+		"-->\n" +
+		"- **b.go:2** — after the comment.\n" +
+		"\n### Verdict\n\n- **FIX FIRST**\n"
+	var v ValidatorRun
+	v.recordFindings(text, "")
+	if want := []string{"a.go:1", "b.go:2"}; !slices.Equal(at(v.Findings), want) || *v.Located != len(want) {
+		t.Fatalf("the located findings: %v, want %v", at(v.Findings), want)
+	}
+}
