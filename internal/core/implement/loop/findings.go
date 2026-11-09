@@ -4,28 +4,36 @@ package loop
 // spc-2610240951109420 step 4): what each reviewer of a round found, by
 // location, so a later choice of review set is made from counts.
 //
-//   - Each `file:line` cited under a return's Findings heading is one located
-//     finding of that reviewer, read when the loop records the verdict. A
+//   - The `file:line` each finding bullet under a return's Findings heading
+//     leads with (`- **file:line** — ...`, the single location each
+//     reviewer's definition asks it to cite) is one located finding of that
+//     reviewer, read when the loop records the verdict. A location cited in a
+//     bullet's text or its nested Evidence and Attack-path lines is not one. A
 //     return citing none records zero and is not refused: a reviewer that
 //     found nothing, or wrote its findings without locations, still returns.
-//     One location cited twice in one return is one finding, and a range or a
-//     column (`a.go:12-20`, `a.go:12:5`) is its first line.
+//     One location led with twice in one return is one finding, and a range
+//     or a column (`a.go:12-20`, `a.go:12:5`) is its first line.
 //   - Once the round's fix report is verified, each finding of a reviewer
 //     whose verdict failed the round, the findings the fix brief handed on,
-//     carries applied or rejected as the report says it on a line citing the
-//     finding's location, and unknown when no line does or the lines that do
-//     say both or neither.
+//     carries applied or rejected as the report says it of the finding's
+//     location (reportStatuses), and unknown when no line does, or the lines
+//     that do say both, neither or a negated word.
 //   - A location two or more reviewers of the round cite is marked, on each
 //     of their findings, with every reviewer that cites it.
 //
-// A location is a path relative to the lane's worktree: a path the reviewer
-// wrote under the worktree is taken relative to it, and any other absolute
-// path, a path climbing out with `..`, and a word with no `/` or `.` in it
-// (`round:2`) are no location, so no text a reviewer wrote outside a plain
-// repository path reaches the state or a --json stream.
+// A location is a path of at most 255 bytes relative to the lane's worktree:
+// a path the reviewer wrote under the worktree, however spelled
+// (relativeTo), is taken relative to it, and any other absolute path, a path
+// climbing out with `..`, and a word with no `/` or `.` in it (`round:2`) are
+// no location, so no text a reviewer wrote outside a plain repository path
+// reaches the state or a --json stream. Two locations are one only when
+// their paths match byte for byte, as git's paths do. Every read is one pass
+// over the text, so a return or report of the most bytes it may be is read
+// in linear time.
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -72,79 +80,143 @@ const maxLocatedFindings = 256
 // maxFindingLine bounds a cited line: a number past it is no line.
 const maxFindingLine = 10_000_000
 
+// maxLocationPath bounds a location's path, in bytes: a longer path is no
+// location.
+const maxLocationPath = 255
+
 // citationRe is a `file:line` citation: a path token standing after the
 // start of a line, a space or an opening mark, then a colon and a line, and
 // an optional range end or column.
 var citationRe = regexp.MustCompile("(?:^|[\\s(\\[{<\"'`*,;])(/?[A-Za-z0-9_.][A-Za-z0-9_./+@-]*):([0-9]+)(?:[-:][0-9]+)?")
 
-// statusRe is a status word on a line of a fix report.
-var statusRe = regexp.MustCompile(`(?i)\b(applied|rejected)\b`)
+// leadRe is the opening of a finding bullet: a list marker at the top level,
+// then any opening marks its location stands behind.
+var leadRe = regexp.MustCompile("^ ?(?:[-*+]|[0-9]{1,9}[.)])[ \\t]+[*_`\\[(<\"']*")
+
+// leadCitationRe is the `file:line` a finding bullet leads with.
+var leadCitationRe = regexp.MustCompile(`^(/?[A-Za-z0-9_.][A-Za-z0-9_./+@-]*):([0-9]+)(?:[-:][0-9]+)?`)
+
+// statusRe is a status word on a line of a fix report, with the prefix that
+// negates it (`unapplied`, `non-applied`).
+var statusRe = regexp.MustCompile(`(?i)\b(un-?|non-?)?(applied|rejected)\b`)
+
+// negationRe is a word that negates a status word standing after it in its
+// clause.
+var negationRe = regexp.MustCompile(`(?i)\b(?:not|cannot|never|neither|nor)\b|n['\x{2019}]t\b`)
+
+// clauseMarks end a clause: a negation before one does not reach a word
+// after it.
+const clauseMarks = ",;:.!?()[]—–"
 
 // hasLetter is a path's need of a letter: `12:30` is a time, not a location.
 var hasLetter = regexp.MustCompile(`[A-Za-z]`)
 
-// citations are the locations text cites, in order, each once, with
-// worktree the lane's worktree a path under it is taken relative to.
-func citations(text, worktree string) []Finding {
-	var out []Finding
-	for _, m := range citationRe.FindAllStringSubmatch(text, -1) {
-		file, ok := locationPath(m[1], worktree)
-		if !ok {
-			continue
-		}
-		n, err := strconv.Atoi(m[2])
-		if err != nil || n < 1 || n > maxFindingLine {
-			continue
-		}
-		if slices.ContainsFunc(out, func(f Finding) bool { return f.File == file && f.Line == n }) {
-			continue
-		}
-		out = append(out, Finding{File: file, Line: n})
-	}
-	return out
+// location is one file and line.
+type location struct {
+	file string
+	line int
 }
 
-// locationPath is p as a location relative to the worktree, and whether it
-// is one.
-func locationPath(p, worktree string) (string, bool) {
-	if wt := strings.TrimSuffix(worktree, "/"); wt != "" {
-		if rest, ok := strings.CutPrefix(p, wt+"/"); ok {
-			p = rest
+// at is f's location.
+func (f Finding) at() location { return location{f.File, f.Line} }
+
+// eachLine calls fn with each line of text, without its newline, reading the
+// text once.
+func eachLine(text string, fn func(string)) {
+	for text != "" {
+		ln, rest, _ := strings.Cut(text, "\n")
+		fn(ln)
+		text = rest
+	}
+}
+
+// relativeTo is text with every spelling of the lane's worktree before a `/`
+// taken out, so a path under it reads relative to it: the worktree as given,
+// the directory its links resolve to, the /private twin macOS gives /var,
+// /tmp and /etc, each in any case. A spelling may hold a space.
+func relativeTo(text, worktree string) string {
+	var spellings []string
+	var add func(string)
+	add = func(p string) {
+		p = strings.TrimSuffix(p, "/")
+		if p == "" || slices.ContainsFunc(spellings, func(o string) bool { return strings.EqualFold(o, p) }) {
+			return
+		}
+		spellings = append(spellings, p)
+		if rest, ok := strings.CutPrefix(p, "/private/"); ok {
+			add("/" + rest)
+		} else if strings.HasPrefix(p, "/var/") || strings.HasPrefix(p, "/tmp/") || strings.HasPrefix(p, "/etc/") {
+			add("/private" + p)
 		}
 	}
-	p = strings.TrimPrefix(p, "./")
+	add(worktree)
+	if len(spellings) == 0 {
+		return text
+	}
+	if resolved, err := filepath.EvalSymlinks(filepath.FromSlash(worktree)); err == nil {
+		add(filepath.ToSlash(resolved))
+	}
+	slices.SortFunc(spellings, func(a, b string) int { return len(b) - len(a) })
+	alt := make([]string, len(spellings))
+	for i, s := range spellings {
+		alt[i] = regexp.QuoteMeta(s)
+	}
+	return regexp.MustCompile(`(?i)(?:`+strings.Join(alt, "|")+`)/`).ReplaceAllLiteralString(text, "")
+}
+
+// toLocation is the location a cited path and line name, and whether they
+// name one.
+func toLocation(path, line string) (location, bool) {
+	p := strings.TrimPrefix(path, "./")
 	p = strings.TrimRight(p, ".")
-	return p, validLocation(p)
+	n, err := strconv.Atoi(line)
+	if !validLocation(p) || err != nil || n < 1 || n > maxFindingLine {
+		return location{}, false
+	}
+	return location{p, n}, true
 }
 
-// validLocation reports whether a stored finding's file is one citations
+// validLocation reports whether a stored finding's file is one the loop
 // writes.
 func validLocation(p string) bool {
-	return fsutil.ValidRelPath(p) && strings.ContainsAny(p, "/.") && hasLetter.MatchString(p) &&
+	return len(p) <= maxLocationPath && fsutil.ValidRelPath(p) && strings.ContainsAny(p, "/.") && hasLetter.MatchString(p) &&
 		!strings.HasSuffix(p, ".") && !strings.ContainsFunc(p, func(r rune) bool {
 		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("_./+@-", r))
 	})
 }
 
-// findingsSections are the parts of a return under its Findings headings:
-// each runs to the next heading at the same depth or above.
-func findingsSections(text string) []string {
-	var out []string
-	for _, at := range findingsHeading.FindAllStringIndex(text, -1) {
-		depth := strings.Count(strings.TrimSpace(text[at[0]:at[1]]), "#")
-		rest := text[at[1]:]
-		end := len(rest)
-		off := 0
-		for _, ln := range strings.SplitAfter(rest, "\n") {
-			if d := headingDepth(ln); off > 0 && d > 0 && d <= depth {
-				end = off
-				break
-			}
-			off += len(ln)
-		}
-		out = append(out, rest[:end])
+// leadLocation is the location a finding bullet line leads with, and whether
+// the line is one: a top-level list item whose first token, behind any
+// opening marks, is a `file:line`.
+func leadLocation(ln string) (location, bool) {
+	m := leadRe.FindStringIndex(ln)
+	if m == nil {
+		return location{}, false
 	}
-	return out
+	c := leadCitationRe.FindStringSubmatch(ln[m[1]:])
+	if c == nil {
+		return location{}, false
+	}
+	return toLocation(c[1], c[2])
+}
+
+// eachFindingsLine calls fn with each line of text under a Findings heading,
+// down to the next heading at the same depth or above, in one pass.
+func eachFindingsLine(text string, fn func(string)) {
+	depth := 0
+	eachLine(text, func(ln string) {
+		d := headingDepth(ln)
+		switch {
+		case d > 0 && findingsHeading.MatchString(ln):
+			if depth == 0 || d < depth {
+				depth = d
+			}
+		case d > 0 && d <= depth:
+			depth = 0
+		case depth > 0:
+			fn(ln)
+		}
+	})
 }
 
 // headingDepth is the depth of a markdown heading line, 0 for any other line.
@@ -163,37 +235,34 @@ func headingDepth(ln string) int {
 	return d
 }
 
-// recordFindings records on v the located findings its return cites: their
-// count, and the first maxLocatedFindings of them.
+// recordFindings records on v the located findings its return cites: the
+// location each finding bullet under its Findings headings leads with, each
+// once, their count, and the first maxLocatedFindings of them.
 func (v *ValidatorRun) recordFindings(text, worktree string) {
 	var found []Finding
-	for _, s := range findingsSections(text) {
-		for _, f := range citations(s, worktree) {
-			if !slices.ContainsFunc(found, func(o Finding) bool { return o.File == f.File && o.Line == f.Line }) {
-				found = append(found, f)
-			}
+	seen := map[location]bool{}
+	eachFindingsLine(relativeTo(text, worktree), func(ln string) {
+		l, ok := leadLocation(ln)
+		if !ok || seen[l] {
+			return
 		}
-	}
-	n := len(found)
+		seen[l] = true
+		if len(found) < maxLocatedFindings {
+			found = append(found, Finding{File: l.file, Line: l.line})
+		}
+	})
+	n := len(seen)
 	v.Located = &n
-	v.Findings = nil
-	if n > 0 {
-		v.Findings = found[:min(n, maxLocatedFindings)]
-	}
+	v.Findings = found
 }
 
 // markCitedBy marks, on every located finding of round r, the reviewers of
 // the round that cite its file and line, where more than one does.
 func markCitedBy(r *ValidationRound) {
-	type at struct {
-		file string
-		line int
-	}
-	by := map[at][]Citer{}
+	by := map[location][]Citer{}
 	for _, v := range r.Validators {
 		for _, f := range v.Findings {
-			k := at{f.File, f.Line}
-			by[k] = append(by[k], Citer{Role: v.Role, Reviewer: v.Reviewer})
+			by[f.at()] = append(by[f.at()], Citer{Role: v.Role, Reviewer: v.Reviewer})
 		}
 	}
 	for i := range r.Validators {
@@ -205,7 +274,7 @@ func markCitedBy(r *ValidationRound) {
 		for j := range v.Findings {
 			f := &v.Findings[j]
 			f.CitedBy = nil
-			if c := by[at{f.File, f.Line}]; len(c) > 1 {
+			if c := by[f.at()]; len(c) > 1 {
 				f.CitedBy = slices.Clone(c)
 			}
 		}
@@ -213,9 +282,9 @@ func markCitedBy(r *ValidationRound) {
 }
 
 // joinFixReport records, on each finding of a reviewer whose verdict failed
-// round r, what the fix report says of it (fixStatus).
+// round r, what the fix report says of it (reportStatuses).
 func joinFixReport(r *ValidationRound, report, worktree string) {
-	lines := strings.Split(report, "\n")
+	said := reportStatuses(report, worktree)
 	for i := range r.Validators {
 		v := &r.Validators[i]
 		if v.Pass || len(v.Findings) == 0 {
@@ -223,38 +292,91 @@ func joinFixReport(r *ValidationRound, report, worktree string) {
 		}
 		v.Findings = slices.Clone(v.Findings)
 		for j := range v.Findings {
-			v.Findings[j].Status = fixStatus(lines, v.Findings[j], worktree)
+			s, ok := said[v.Findings[j].at()]
+			if !ok {
+				s = FindingUnknown
+			}
+			v.Findings[j].Status = s
 		}
 	}
 }
 
-// fixStatus is what the lines of a fix report say of f: applied or rejected
-// when every line citing its location says that word and not the other, and
-// unknown otherwise.
-func fixStatus(lines []string, f Finding, worktree string) string {
-	said := ""
-	for _, ln := range lines {
-		if !slices.ContainsFunc(citations(ln, worktree), func(o Finding) bool { return o.File == f.File && o.Line == f.Line }) {
-			continue
+// The words a stretch of a fix report line says, as bits.
+const (
+	saysApplied = 1 << iota
+	saysRejected
+	saysNegated
+)
+
+// reportStatuses is what a fix report says of each location it cites, read
+// in one pass. On a line, a status word speaks of the location it follows,
+// and the words before the line's first location of that one; a word with a
+// negation before it in its clause (`not`, `cannot`, `never`, `n't`, an
+// `un` or `non` prefix) says neither. A location is applied or rejected when
+// every line citing it says that word alone of it, and unknown otherwise.
+func reportStatuses(report, worktree string) map[location]string {
+	out := map[location]string{}
+	eachLine(relativeTo(report, worktree), func(ln string) {
+		type cite struct {
+			at         location
+			start, end int
 		}
-		words := map[string]bool{}
-		for _, m := range statusRe.FindAllString(ln, -1) {
-			words[strings.ToLower(m)] = true
-		}
-		if len(words) != 1 {
-			return FindingUnknown
-		}
-		for w := range words {
-			if said != "" && said != w {
-				return FindingUnknown
+		var cites []cite
+		for _, m := range citationRe.FindAllStringSubmatchIndex(ln, -1) {
+			if l, ok := toLocation(ln[m[2]:m[3]], ln[m[4]:m[5]]); ok {
+				cites = append(cites, cite{l, m[2], m[1]})
 			}
-			said = w
+		}
+		if len(cites) == 0 {
+			return
+		}
+		words := map[location]int{}
+		for i, c := range cites {
+			end := len(ln)
+			if i+1 < len(cites) {
+				end = cites[i+1].start
+			}
+			w := statusWords(ln[c.end:end])
+			if i == 0 {
+				w |= statusWords(ln[:c.start])
+			}
+			words[c.at] |= w
+		}
+		for l, w := range words {
+			s := FindingUnknown
+			switch w {
+			case saysApplied:
+				s = FindingApplied
+			case saysRejected:
+				s = FindingRejected
+			}
+			if prev, ok := out[l]; ok && prev != s {
+				s = FindingUnknown
+			}
+			out[l] = s
+		}
+	})
+	return out
+}
+
+// statusWords are the status words a stretch of a line says.
+func statusWords(text string) int {
+	w := 0
+	for _, m := range statusRe.FindAllStringSubmatchIndex(text, -1) {
+		clause := text[:m[0]]
+		if i := strings.LastIndexAny(clause, clauseMarks); i >= 0 {
+			clause = clause[i:]
+		}
+		switch {
+		case m[2] >= 0 || negationRe.MatchString(clause):
+			w |= saysNegated
+		case strings.EqualFold(text[m[4]:m[5]], FindingApplied):
+			w |= saysApplied
+		default:
+			w |= saysRejected
 		}
 	}
-	if said == "" {
-		return FindingUnknown
-	}
-	return said
+	return w
 }
 
 // findingLocations names each finding by its `file:line`.
@@ -325,11 +447,12 @@ func (s State) findingsWritten() bool {
 					return false
 				}
 				answered := r.Fix != "" && !v.Pass
-				for i, f := range v.Findings {
-					if !validLocation(f.File) || f.Line < 1 || f.Line > maxFindingLine ||
-						slices.ContainsFunc(v.Findings[:i], func(o Finding) bool { return o.File == f.File && o.Line == f.Line }) {
+				seen := make(map[location]bool, len(v.Findings))
+				for _, f := range v.Findings {
+					if !validLocation(f.File) || f.Line < 1 || f.Line > maxFindingLine || seen[f.at()] {
 						return false
 					}
+					seen[f.at()] = true
 					switch f.Status {
 					case "":
 						if answered {
