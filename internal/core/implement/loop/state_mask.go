@@ -151,6 +151,14 @@ func (r ValidationRound) masked() ValidationRound {
 			return a
 		})
 		v.Route = maskPtr(v.Route, maskRoute)
+		v.Findings = maskEach(v.Findings, func(f Finding) Finding {
+			f.File, f.Status = line(f.File), line(f.Status)
+			f.CitedBy = maskEach(f.CitedBy, func(c Citer) Citer {
+				c.Role = line(c.Role)
+				return c
+			})
+			return f
+		})
 		return v
 	})
 	r.Routes = maskEach(r.Routes, func(t Round) Round {

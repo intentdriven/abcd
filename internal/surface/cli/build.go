@@ -1531,7 +1531,12 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 			fmt.Fprintf(w, "    receipt %s (%s; model %s)%s\n", termsafe.Sanitize(r.Receipt), termsafe.Sanitize(r.Role), termsafe.Sanitize(model), routeSuffix(r.Route))
 		}
 		for _, v := range l.Verdicts {
-			fmt.Fprintf(w, "    round %d at %s: %s %s%s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(v.Role), termsafe.Sanitize(v.Verdict), routeSuffix(v.Route))
+			located := ""
+			if v.Located != nil {
+				located = fmt.Sprintf(", %d located finding(s)", *v.Located)
+			}
+			fmt.Fprintf(w, "    round %d at %s: %s %s%s%s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(v.Role), termsafe.Sanitize(v.Verdict), located, routeSuffix(v.Route))
+			renderFindings(w, v.Findings)
 		}
 		if len(l.Resolves) > 0 {
 			fmt.Fprintf(w, "    resolves %s\n", termsafe.Sanitize(strings.Join(l.Resolves, ", ")))
@@ -1563,6 +1568,26 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 	for _, e := range rec.Record {
 		fmt.Fprintf(w, "    %s  %-10s %s  %s\n", e.At.Format("2006-01-02T15:04:05Z"), termsafe.Sanitize(e.Stage),
 			termsafe.Sanitize(e.Lane), termsafe.Sanitize(fsutil.RedactHome(e.Note)))
+	}
+}
+
+// renderFindings renders a reviewer's located findings, one a line: its
+// location, what the fix report said of it once one answered it, and every
+// reviewer of the round citing it where more than one does.
+func renderFindings(w io.Writer, fs []loop.Finding) {
+	for _, f := range fs {
+		line := fmt.Sprintf("      %s:%d", f.File, f.Line)
+		if f.Status != "" {
+			line += "  " + f.Status
+		}
+		if len(f.CitedBy) > 1 {
+			by := make([]string, 0, len(f.CitedBy))
+			for _, c := range f.CitedBy {
+				by = append(by, fmt.Sprintf("%s %d", c.Role, c.Reviewer))
+			}
+			line += "  cited by " + strings.Join(by, ", ")
+		}
+		fmt.Fprintln(w, termsafe.Sanitize(line))
 	}
 }
 

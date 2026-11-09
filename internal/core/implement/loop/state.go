@@ -288,10 +288,23 @@ const lockFileName = ".lock"
 // that write version 22 refuse a version-23 file as a newer abcd's before any strict
 // decode.
 //
+// Version 24 kept each reviewer's located findings (itd-2610240922461281,
+// spc-2610240951109420 step 4): a validator's `located` count and its
+// `findings`, each a file and line with the fix report's `status` and the
+// reviewers of the round citing it (`cited_by`). Version 23 is its strict
+// subset, read as a run whose verdicts were recorded with no findings read; a
+// file of version 23 or lower carrying them is not one its version wrote, and
+// is refused naming them. Releases that write version 23 refuse a version-24
+// file as a newer abcd's before any strict decode.
+//
 // A version raises when the abcd driving the run writes it. A lane's own abcd
 // may be a version ahead of its driver, and what it saves leaves the version
 // where it was (mutateReservation, iss-2611020719494343).
-const SchemaVersion = 23
+const SchemaVersion = 24
+
+// schemaVersionUnlocated is the last version before a reviewer's located
+// findings: read, never written.
+const schemaVersionUnlocated = 23
 
 // schemaVersionUnsettled is the last version before a landing kept that it took a
 // change to the lane's spec: read, never written.
@@ -775,6 +788,13 @@ type ValidatorRun struct {
 	// model, so Model was never asked of what ran. Empty while the reviewer
 	// is out and wherever Model is.
 	ModelStatus string `json:"model_status,omitempty"`
+	// Located is how many located findings (findings.go) the loop read from a
+	// reviewer's return when it recorded the verdict, 0 included, and
+	// Findings the first maxLocatedFindings of them; both absent on the
+	// intent-auditor, while the reviewer is out, and on a verdict recorded
+	// before version 24.
+	Located  *int      `json:"located,omitempty"`
+	Findings []Finding `json:"findings,omitempty"`
 }
 
 // The statuses of a reviewer's model.
@@ -1350,7 +1370,10 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnsettled && st.settledSpec() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.settledSpec(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnsettled:
+	case st.SchemaVersion <= schemaVersionUnlocated && st.located() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.located(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnlocated:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.
@@ -1394,6 +1417,14 @@ func readListedState(root *os.Root, runID string) (State, error) {
 		return State{}, refuse("state", "", "", rel+" carries a reviewer the loop never writes: an index past its role's reviewers, "+
 			"a class or model other than the one the run's review set names for that reviewer, "+
 			"or a model status other than asked, reported, or unsent on a review the reviewer route answered",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	// A reviewer's located findings are the ones the loop reads from its
+	// return: a plain repository path and a line each, so a hand edit never
+	// reaches a --json stream with text the loop did not read as a location.
+	if !st.findingsWritten() {
+		return State{}, refuse("state", "", "", rel+" carries located findings the loop never writes: on a validator with no recorded reviewer verdict, "+
+			"more or fewer than its count, a file that is no plain repository path, a status where no fix report answered it, or reviewers citing it other than the round's",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	if !st.handBacksWritten() {
