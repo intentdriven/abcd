@@ -88,7 +88,7 @@ intent-auditor's fan-out.
    - packages: internal/core/implement/loop, internal/surface/cli, commands
    - tests: each `file:line` under a return's findings is one located finding of its reviewer; a return with none records zero and is not refused; the fix report's applied or rejected status is joined to each finding, `unknown` where it is silent; two findings at the same file and line are marked as cited by both; `implement record --json` carries them
    - needs: 3
-   - landed: 0c9d9721a04a
+   - landed: 904e2a8f59c9
 5. The judge strikes false findings only
    - packages: internal/core/implement/loop, commands
    - tests: with a calibrated judge fixture, a disagreement hands the judge both returns and the head; a struck finding leaves the fix brief with its reason recorded; the judge never passes a round; a round whose failing findings are all struck still opens a fix round with an empty brief; agreeing reviewers start no judge

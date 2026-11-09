@@ -17,12 +17,13 @@ package loop
 //     whose verdict failed the round, the findings the fix brief handed on,
 //     carries applied or rejected as the report says it of the finding's
 //     location (reportStatuses), and unknown when no line does, or the lines
-//     that do say both, neither or a negated word.
+//     that do say both or a negated word. A line naming the location with no
+//     status word says nothing of it.
 //   - A location two or more reviewers of the round cite is marked, on each
 //     of their findings, with every reviewer that cites it.
 //
 // A location is a path of at most 255 bytes relative to the lane's worktree:
-// a path the reviewer wrote under the worktree, however spelled
+// a path the reviewer wrote under the worktree, in any of its spellings
 // (relativeTo), is taken relative to it, and any other absolute path, a path
 // climbing out with `..`, and a word with no `/` or `.` in it (`round:2`) are
 // no location, so no text a reviewer wrote outside a plain repository path
@@ -77,6 +78,11 @@ const (
 // count still counts every location the return cites.
 const maxLocatedFindings = 256
 
+// maxLocatedCount bounds a stored count of located findings: the most
+// distinct lead bullets a return of maxReturnBytes could hold, each at least
+// the 8 bytes of `- a.b:1` and its newline.
+const maxLocatedCount = maxReturnBytes / len("- a.b:1\n")
+
 // maxFindingLine bounds a cited line: a number past it is no line.
 const maxFindingLine = 10_000_000
 
@@ -96,17 +102,19 @@ var leadRe = regexp.MustCompile("^ ?(?:[-*+]|[0-9]{1,9}[.)])[ \\t]+[*_`\\[(<\"']
 // leadCitationRe is the `file:line` a finding bullet leads with.
 var leadCitationRe = regexp.MustCompile(`^(/?[A-Za-z0-9_.][A-Za-z0-9_./+@-]*):([0-9]+)(?:[-:][0-9]+)?`)
 
-// statusRe is a status word on a line of a fix report, with the prefix that
-// negates it (`unapplied`, `non-applied`).
-var statusRe = regexp.MustCompile(`(?i)\b(un-?|non-?)?(applied|rejected)\b`)
-
-// negationRe is a word that negates a status word standing after it in its
-// clause.
-var negationRe = regexp.MustCompile(`(?i)\b(?:not|cannot|never|neither|nor)\b|n['\x{2019}]t\b`)
-
-// clauseMarks end a clause: a negation before one does not reach a word
-// after it.
-const clauseMarks = ",;:.!?()[]—–"
+// statusRe is, on a line of a fix report, one of three tokens, read forward
+// in one pass: a status word, with the prefix that negates it (`unapplied`,
+// `non-applied`) as its first group and the word as its second; a word that
+// negates a status word standing after it in its clause, as its third; or a
+// mark that ends a clause, so a negation before it does not reach a word
+// after it. Only a sentence mark ends a clause: `.`, `;`, `:`, `!` or `?`
+// before a space or the stretch's end, an em or en dash, or `--`. A comma
+// does not, nor the dot inside a file name, so `not, on reflection, applied`
+// stays negated: a negation read too far makes a finding unknown, where one
+// cut short would record a fix that was not made.
+var statusRe = regexp.MustCompile(`(?i)\b(un-?|non-?)?(applied|rejected)\b` +
+	`|(\b(?:not|cannot|never|neither|nor|no|nothing|failed)\b|n['\x{2019}]t\b)` +
+	`|[.;:!?](?:\s|$)|[\x{2014}\x{2013}]|--`)
 
 // hasLetter is a path's need of a letter: `12:30` is a time, not a location.
 var hasLetter = regexp.MustCompile(`[A-Za-z]`)
@@ -131,15 +139,17 @@ func eachLine(text string, fn func(string)) {
 }
 
 // relativeTo is text with every spelling of the lane's worktree before a `/`
-// taken out, so a path under it reads relative to it: the worktree as given,
-// the directory its links resolve to, the /private twin macOS gives /var,
-// /tmp and /etc, each in any case. A spelling may hold a space.
+// taken out where it starts a token, so a path under it reads relative to
+// it: the worktree as given, the directory its links resolve to, and the
+// /private twin macOS gives /var, /tmp and /etc, each matched byte for byte.
+// A spelling standing after a path's own characters (`x/work/a.go`) is part
+// of that path and stays. A spelling may hold a space.
 func relativeTo(text, worktree string) string {
 	var spellings []string
 	var add func(string)
 	add = func(p string) {
 		p = strings.TrimSuffix(p, "/")
-		if p == "" || slices.ContainsFunc(spellings, func(o string) bool { return strings.EqualFold(o, p) }) {
+		if p == "" || slices.Contains(spellings, p) {
 			return
 		}
 		spellings = append(spellings, p)
@@ -161,7 +171,7 @@ func relativeTo(text, worktree string) string {
 	for i, s := range spellings {
 		alt[i] = regexp.QuoteMeta(s)
 	}
-	return regexp.MustCompile(`(?i)(?:`+strings.Join(alt, "|")+`)/`).ReplaceAllLiteralString(text, "")
+	return regexp.MustCompile(`(^|[^A-Za-z0-9_./+@-])(?:`+strings.Join(alt, "|")+`)/`).ReplaceAllString(text, "${1}")
 }
 
 // toLocation is the location a cited path and line name, and whether they
@@ -311,9 +321,12 @@ const (
 // reportStatuses is what a fix report says of each location it cites, read
 // in one pass. On a line, a status word speaks of the location it follows,
 // and the words before the line's first location of that one; a word with a
-// negation before it in its clause (`not`, `cannot`, `never`, `n't`, an
-// `un` or `non` prefix) says neither. A location is applied or rejected when
-// every line citing it says that word alone of it, and unknown otherwise.
+// negation before it in its clause (`not`, `no`, `nothing`, `cannot`,
+// `never`, `neither`, `nor`, `failed`, `n't`, an `un` or `non` prefix) says
+// neither. A line that names a location but says no status word of it says
+// nothing of it, so a report repeating the brief's list changes nothing. A
+// location is applied or rejected when every line saying a word of it says
+// that word alone, and unknown otherwise.
 func reportStatuses(report, worktree string) map[location]string {
 	out := map[location]string{}
 	eachLine(relativeTo(report, worktree), func(ln string) {
@@ -343,6 +356,9 @@ func reportStatuses(report, worktree string) map[location]string {
 			words[c.at] |= w
 		}
 		for l, w := range words {
+			if w == 0 {
+				continue
+			}
 			s := FindingUnknown
 			switch w {
 			case saysApplied:
@@ -359,21 +375,23 @@ func reportStatuses(report, worktree string) map[location]string {
 	return out
 }
 
-// statusWords are the status words a stretch of a line says.
+// statusWords are the status words a stretch of a line says, read forward
+// once: whether a negation has stood since the clause's last mark is carried
+// along, never looked back for.
 func statusWords(text string) int {
-	w := 0
+	w, negated := 0, false
 	for _, m := range statusRe.FindAllStringSubmatchIndex(text, -1) {
-		clause := text[:m[0]]
-		if i := strings.LastIndexAny(clause, clauseMarks); i >= 0 {
-			clause = clause[i:]
-		}
 		switch {
-		case m[2] >= 0 || negationRe.MatchString(clause):
+		case m[4] >= 0 && (m[2] >= 0 || negated):
 			w |= saysNegated
-		case strings.EqualFold(text[m[4]:m[5]], FindingApplied):
+		case m[4] >= 0 && strings.EqualFold(text[m[4]:m[5]], FindingApplied):
 			w |= saysApplied
-		default:
+		case m[4] >= 0:
 			w |= saysRejected
+		case m[6] >= 0:
+			negated = true
+		default:
+			negated = false
 		}
 	}
 	return w
@@ -443,7 +461,8 @@ func (s State) findingsWritten() bool {
 					}
 					continue
 				}
-				if !slices.Contains(reviewRoles, v.Role) || v.Verdict == "" || *v.Located < 0 || len(v.Findings) != min(*v.Located, maxLocatedFindings) {
+				if !slices.Contains(reviewRoles, v.Role) || v.Verdict == "" || *v.Located < 0 || *v.Located > maxLocatedCount ||
+					len(v.Findings) != min(*v.Located, maxLocatedFindings) {
 					return false
 				}
 				answered := r.Fix != "" && !v.Pass

@@ -562,17 +562,21 @@ schema version 20's; an older run's rounds read as one reviewer per role, index
 findings: the `file:line` each finding bullet under its Findings heading leads
 with (`- **file:line** — ...`) is one finding (`file`, `line`); a location cited
 in a bullet's text or its nested Evidence lines is not one. A path under the
-lane's worktree, however spelled, is taken relative to it, a path longer than
-255 bytes and anything else is no location, and a return citing none records
+lane's worktree, in its own case, through the directory its links resolve to
+or its `/private` twin, is taken relative to it, a path longer than 255 bytes
+and anything else is no location, and a return citing none records
 `located: 0` and is not refused. The fix brief lists each failing reviewer's
 located findings and asks the report to name each by its `file:line` on a line
 saying `applied` or `rejected`; a word speaks of the location it follows on its
-line, and a word with a negation before it (`not applied`, `couldn't be
-applied`, `unapplied`) says neither. Once the fix receipt is verified, each
-finding of a failing reviewer carries that `status`, or `unknown` in either
-case: where no line says one of the two of it, or where the lines that cite it
-say both, or one says a negated word. A location two reviewers of the round
-cite carries `cited_by`, naming both. `implement record` (and its `--json`) shows them under each verdict, and
+line, a line naming a location with neither word says nothing of it, and a
+word with a negation before it in its sentence (`not applied`, `no fix
+applied`, `couldn't be applied`, `unapplied`) says neither: a comma does not
+end the sentence, so `not a defect, rejected` says neither too. Once the fix
+receipt is verified, each finding of a failing reviewer carries that `status`,
+or `unknown` in either case: where no line says one of the two of it, or where
+the lines that say a word of it say both, or one says a negated word. A
+location two reviewers of the round cite carries `cited_by`, naming both.
+`implement record` (and its `--json`) shows them under each verdict, and
 `implement status --json` in the round. Located findings are state schema
 version 24's. Each role a round hands
 out is asked for the model tier its routing row names, and a round that does

@@ -116,8 +116,12 @@ func TestAWorktreeSpelledAnotherWayIsStillTheWorktree(t *testing.T) {
 	v.Role = RoleRuthless
 	v.recordFindings("### Findings\n\n- **"+spaced+"/a.go:3** — x\n- **/USERS/jane doe/work trees/s/l/b.go:4** — x\n"+
 		"- **/Users/Other Person/c.go:5** — x\n- `/private/var/w/l/d.go:6`\n", spaced)
-	if want := []string{"a.go:3", "b.go:4"}; !slices.Equal(at(v.Findings), want) {
-		t.Fatalf("a spaced worktree and its case: %v, want %v", at(v.Findings), want)
+	if want := []string{"a.go:3"}; !slices.Equal(at(v.Findings), want) {
+		t.Fatalf("a spaced worktree, matched in its own case only: %v, want %v", at(v.Findings), want)
+	}
+	v.recordFindings("### Findings\n\n- **x/work/lane-1/a.go:1** — x\n- **/work/lane-1/b.go:2** — x\n- `/WORK/LANE-1/c.go:3`\n", "/work/lane-1")
+	if want := []string{"x/work/lane-1/a.go:1", "b.go:2"}; !slices.Equal(at(v.Findings), want) {
+		t.Fatalf("the worktree is taken out only at a token's start, in its own case: %v, want %v", at(v.Findings), want)
 	}
 	v.recordFindings("### Findings\n\n- `/private/var/w/l/d.go:6`\n- `/var/w/l/e.go:7`\n", "/var/w/l")
 	if want := []string{"d.go:6", "e.go:7"}; !slices.Equal(at(v.Findings), want) {
@@ -165,7 +169,9 @@ func loc(t *testing.T, s string) Finding {
 // does, where they say both or neither, where a negation stands before the
 // word in its clause, or where the word follows another location on the
 // line: a word speaks of the location it follows, and the words before a
-// line's first location of that one.
+// line's first location of that one. Only a sentence mark (`.`, `;`, `:`,
+// `!` or `?` before a space or the line's end, or a dash) ends a clause: a
+// comma, and the dot inside a file name, do not.
 func TestTheFixReportSaysAppliedOrRejectedOfEachFinding(t *testing.T) {
 	report := "# Fix report\n\n- a.go:1 applied in abc123\n- `b.go:2`: Rejected, not a defect\n" +
 		"- c.go:3 looked at\n- d.go:4 applied, then rejected\n- e.go:5 applied\n- e.go:5 rejected after all\n- f.go:6:2 applied\n" +
@@ -173,13 +179,19 @@ func TestTheFixReportSaysAppliedOrRejectedOfEachFinding(t *testing.T) {
 		"- k.go:11 unapplied, rejected instead\n- l.go:12 cannot be rejected, applied\n" +
 		"- m.go:13 applied; n.go:14 needed nothing\n- Rejected: `o.go:15` (not a defect)\n" +
 		"- q.go:17 and r.go:18 applied in abc\n- s.go:19 applied (see s.go:19 above)\n- Not applied: t.go:20\n" +
-		"- the caller at u.go:21, not a defect, rejected\n- v.go:22 never applied\n- w.go:23 non-applied\n- x.go:24 wasn\u2019t applied\n"
+		"- the caller at u.go:21, not a defect, rejected\n- v.go:22 never applied\n- w.go:23 non-applied\n- x.go:24 wasn\u2019t applied\n" +
+		"- y.go:25 no fix applied\n- z.go:26 nothing applied\n- aa.go:27 failed to be applied\n- ab.go:28 was not, on reflection, applied\n" +
+		"- ac.go:29 not a defect. Rejected\n- ad.go:30 not a defect; rejected\n- ae.go:31 not a defect \u2014 rejected\n" +
+		"- af.go:32 not a defect: rejected\n- ag.go:33 not in x.go, applied\n- ah.go:34 not a defect -- rejected\n"
 	want := map[string]string{"a.go:1": FindingApplied, "b.go:2": FindingRejected, "c.go:3": FindingUnknown,
+		"y.go:25": FindingUnknown, "z.go:26": FindingUnknown, "aa.go:27": FindingUnknown, "ab.go:28": FindingUnknown,
+		"ac.go:29": FindingRejected, "ad.go:30": FindingRejected, "ae.go:31": FindingRejected, "af.go:32": FindingRejected,
+		"ag.go:33": FindingUnknown, "ah.go:34": FindingRejected,
 		"d.go:4": FindingUnknown, "e.go:5": FindingUnknown, "f.go:6": FindingApplied, "g.go:7": FindingUnknown,
 		"h.go:8": FindingUnknown, "i.go:9": FindingUnknown, "j.go:10": FindingUnknown, "k.go:11": FindingUnknown,
 		"l.go:12": FindingUnknown, "m.go:13": FindingApplied, "n.go:14": FindingUnknown, "o.go:15": FindingRejected,
 		"q.go:17": FindingUnknown, "r.go:18": FindingApplied, "s.go:19": FindingApplied, "t.go:20": FindingUnknown,
-		"u.go:21": FindingRejected, "v.go:22": FindingUnknown, "w.go:23": FindingUnknown, "x.go:24": FindingUnknown}
+		"u.go:21": FindingUnknown, "v.go:22": FindingUnknown, "w.go:23": FindingUnknown, "x.go:24": FindingUnknown}
 	var fs []Finding
 	for l := range want {
 		fs = append(fs, loc(t, l))
@@ -232,6 +244,75 @@ func TestAMaximumSizeReturnAndFixReportAreReadQuickly(t *testing.T) {
 		}
 	case <-time.After(15 * time.Second):
 		t.Fatal("a maximum-size return and fix report took more than 15s to read")
+	}
+}
+
+// TestAReportLineOfManyStatusWordsIsReadQuickly: a fix report of the most
+// bytes a report may be, one line holding one location and a status word
+// repeated after it, or before it, is joined in well under the time a
+// quadratic read would take.
+func TestAReportLineOfManyStatusWordsIsReadQuickly(t *testing.T) {
+	words := strings.Repeat(" applied", 130_000)
+	for name, report := range map[string]string{"after": "- a.go:1" + words, "before": "-" + words + " a.go:1"} {
+		if len(report) > maxReportBytes {
+			t.Fatalf("%s: the fixture is %d bytes, more than a report may be", name, len(report))
+		}
+		done := make(chan string, 1)
+		go func() {
+			n := 1
+			r := ValidationRound{Validators: []ValidatorRun{{Role: RoleRuthless, Located: &n, Findings: []Finding{{File: "a.go", Line: 1}}}}}
+			joinFixReport(&r, report, "")
+			done <- r.Validators[0].Findings[0].Status
+		}()
+		select {
+		case got := <-done:
+			if got != FindingApplied {
+				t.Fatalf("%s: %s, want applied", name, got)
+			}
+		case <-time.After(15 * time.Second):
+			t.Fatalf("%s: a one-line report of many status words took more than 15s to read", name)
+		}
+	}
+}
+
+// TestALineNamingALocationWithoutAStatusWordSaysNothingOfIt: a line that
+// names a location but says no status word of it, the fix brief's list of
+// located findings repeated among them, leaves what the other lines say of
+// it; a location only such lines name is unknown.
+func TestALineNamingALocationWithoutAStatusWordSaysNothingOfIt(t *testing.T) {
+	report := "located findings: a.go:1, b.go:2, c.go:3\n\n- a.go:1 applied in abc\n- see a.go:1 above\n- b.go:2 rejected\n- c.go:3 looked at\n"
+	n := 3
+	r := ValidationRound{Validators: []ValidatorRun{{Role: RoleRuthless, Located: &n,
+		Findings: []Finding{{File: "a.go", Line: 1}, {File: "b.go", Line: 2}, {File: "c.go", Line: 3}}}}}
+	joinFixReport(&r, report, "")
+	var got []string
+	for _, f := range r.Validators[0].Findings {
+		got = append(got, f.Status)
+	}
+	if want := []string{FindingApplied, FindingRejected, FindingUnknown}; !slices.Equal(got, want) {
+		t.Fatalf("a bare mention says nothing: %v, want %v", got, want)
+	}
+}
+
+// TestAStoredCountPastAnyReturnIsRefused: a stored count of located findings
+// greater than a return of the most bytes it may be could hold is refused at
+// read, however many findings it keeps; the bound itself reads.
+func TestAStoredCountPastAnyReturnIsRefused(t *testing.T) {
+	var fs []Finding
+	for i := range maxLocatedFindings {
+		fs = append(fs, Finding{File: "a.go", Line: i + 1})
+	}
+	state := func(n int) State {
+		return State{Lanes: []Lane{{ID: "lane-1", Validation: []ValidationRound{{Round: 1, Validators: []ValidatorRun{
+			{Role: RoleRuthless, Verdict: "FIX FIRST", Located: &n, Findings: fs}}}}}}}
+	}
+	if !state(maxLocatedCount).findingsWritten() {
+		t.Fatal("a count at the bound reads")
+	}
+	for _, n := range []int{maxLocatedCount + 1, 1 << 62} {
+		if state(n).findingsWritten() {
+			t.Errorf("a count of %d is refused", n)
+		}
 	}
 }
 
