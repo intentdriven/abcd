@@ -92,6 +92,11 @@ path. A path whose readings take longer than twenty seconds is refused too:
 the machine is slow or busy, so try the call again. A file changed any other way is judged when it is read: one that fails
 its checks is set aside for the last good copy.
 
+Before each compaction the host's hook appends the compaction's time and
+trigger to `.abcd/.work.local/checklist.events.jsonl`, beside the list; leave
+that file to the hook. It never holds up the compaction: a compaction it could
+not record goes ahead, with one line on stderr saying so.
+
 A write starts from what the reader returns: when checklist.json fails its
 checks it builds on the last good copy, and when both fail it starts a new
 list; either way it says so (on stderr, or as `notice` with `--json`). Relay
