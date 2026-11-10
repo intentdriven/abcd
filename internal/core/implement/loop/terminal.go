@@ -275,6 +275,9 @@ type terminal struct {
 	// lane's base as the run first read it.
 	minted map[string]bool
 	bases  map[string]string
+	// stuckGiven is the run whose lane the drive last gave back to the next move as
+	// stuck (stuckBack), "" once a lane it steps is not stuck.
+	stuckGiven string
 }
 
 // launchBlame is what one failed launch said of its work.
@@ -967,6 +970,9 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 		if outcome, _, _ := laneOutcome(run); outcome != DrainLaneInProgress {
 			return "", nil
 		}
+		if back, ended := t.stuckBack(ctx, runID, run); back {
+			return ended, nil
+		}
 		if i := run.current(); i >= 0 {
 			lane := run.Lanes[i]
 			key := runID + " " + lane.ID
@@ -1062,6 +1068,39 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 			}
 		}
 	}
+}
+
+// stuckBack reports whether the lane in progress of run is stuck by the drain's
+// stuck bounds (stuck.go), so the drive gives it back to the next move, which hands
+// it back and takes up the next issue, rather than wait on it here; and why the run
+// ends, "" to go on. A drive holding the lane was the one place the drain's stuck
+// check did not reach (iss-2611071242184002). Bounds that cannot be read give it
+// back too: the move reads them again and refuses in its own frame. The same run
+// given back again with no other lane stepped between, the move having not handed
+// it back, first waits at the floor, as an idle drive does, so the drive and the
+// move never turn between them with no wait.
+func (t *terminal) stuckBack(ctx context.Context, runID string, run State) (bool, string) {
+	why := ""
+	b, err := resolveStuckBounds(t.o.Options.roots(t.repoRoot))
+	switch {
+	case err != nil:
+		why = refusalReason(err)
+	default:
+		why = stuckReason(run, b)
+	}
+	if why == "" {
+		t.stuckGiven = ""
+		return false, ""
+	}
+	if t.stuckGiven == runID {
+		if t.idle(ctx, TerminalWaitFloor, runID+" is stuck and the last move did not hand it back: "+why) {
+			return true, TerminalWaited
+		}
+		return true, ""
+	}
+	t.stuckGiven = runID
+	t.say("%s is stuck, so the next move hands it back: %s", runID, why)
+	return true, ""
 }
 
 // moved ends the counts a wait keeps: the outage's and the limit's. It is the moment

@@ -18,7 +18,9 @@ package loop
 //     this change move too. A role whose receipt is written is the host's to
 //     hand back, and is never retried; nor is a routed implementer whose runner
 //     was started and whose receipt stands (receipt_standing.go), since a step
-//     collects it or says why it cannot.
+//     collects it or says why it cannot. A drive sets aside a receipt refused
+//     for the work as it is refused, so that role is retried
+//     (iss-2611071242184002).
 //   - `--route` for a held role retries it at once on that route, and a
 //     restart while a route is in force starts the fresh agent on its runner
 //     rather than re-telling it to the host.
@@ -648,6 +650,14 @@ func pauseAwait(repoRoot, runID, laneID string, aw Await, session string, fb run
 			if err := setAsideCutShort(repoRoot, st, st.Lanes[i], aw.Receipt, now); err != nil {
 				return false, err
 			}
+		}
+		// A drive consumes its implementer's receipt refused for the work, so
+		// the next step starts the role again rather than read the same receipt
+		// (receipt_standing.go). A set-aside that fails is the record's line and
+		// the pause is still written.
+		if rf, ok := AsRefusal(handIn); ok && rf.work && o.driverIsSelf && aw.Role == RoleImplementer {
+			consumeRefused(repoRoot, st, st.Lanes[i], aw.Receipt, handIn, now)
+			noteRefusal(st, handIn, now)
 		}
 		fb.At, fb.Ran = now, ranNone
 		if !st.Trial {

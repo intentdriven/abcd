@@ -387,6 +387,9 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 	modelFromRoute(c, &rc)
 
 	var missing []string
+	// foreign is a receipt that is not this lane's to judge: another schema, run,
+	// lane or branch. Every other gap is in the work it reports.
+	foreign := rc.SchemaVersion != ReceiptSchemaVersion || rc.RunID != c.State.RunID || rc.Lane != lane.ID || rc.Branch != lane.Branch
 	if rc.SchemaVersion != ReceiptSchemaVersion {
 		missing = append(missing, fmt.Sprintf("schema_version %d (this abcd reads %d)", rc.SchemaVersion, ReceiptSchemaVersion))
 	}
@@ -450,8 +453,10 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 		missing = append(missing, gap)
 	}
 	if len(missing) > 0 {
-		return refuse("receipt", "", lane.ID, receiptRel+" is missing "+strings.Join(missing, "; "),
+		rf := refuse("receipt", "", lane.ID, receiptRel+" is missing "+strings.Join(missing, "; "),
 			"correct the receipt (or finish the lane) so it carries what is missing, then hand it back to `abcd implement receipt "+receiptRel+"`")
+		rf.work = !foreign
+		return rf
 	}
 
 	head, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", "refs/heads/"+lane.Branch+"^{commit}", "--")

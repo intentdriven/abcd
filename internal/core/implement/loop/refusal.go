@@ -47,6 +47,11 @@ type Refusal struct {
 	// and a later hand-in brings no report, so the return is set aside as the role
 	// pauses.
 	cutShort bool
+	// work marks an implementer's receipt refused for the work it reports: it
+	// names this run, this lane and this branch in the schema this abcd reads,
+	// and what it reports is short of done (verifyLaneReceipt). A drive sets such
+	// a receipt aside and starts the role again (receipt_standing.go).
+	work bool
 	// unjudged is each peer a start's peers check could not read, copied from
 	// its row: the drain stops its move on them rather than passing the issue
 	// over as contended.

@@ -236,7 +236,13 @@ nothing by itself. With nothing spent, a launch that was retrying the model serv
 result naming 401, 403, 429 or 5xx, says nothing of the work. An init event says nothing,
 since version 2.1.318 was seen to write one before any contact with the model. Any other
 failure is put to a probe, one short launch per failure: an answer shows the account is
-alive, which leaves the work, and a rejection or no answer counts nothing. Three in a row
+alive, which leaves the work, and a rejection or no answer counts nothing. An implementer's
+receipt refused for the work it reports is set aside, kept, in the same write as the refusal,
+and the implementer started again, so each such receipt is a failed launch that is the
+work's (iss-2611071242184002); one refused for anything else stays and stops the lane until
+the stuck bounds hand it back. A lane stuck by those bounds goes back from the drive to the
+next move, which hands it back; given the same lane again, the drive first waits as an idle drive does,
+thirty seconds at least, so the two never turn with no wait. Three in a row
 that are the work's hand the lane back as stuck, the run going on to other issues, and the
 same test decides whether a failed judge counts against its issue, beside the count of
 judgements that gave no answer. Six launches in a row that spend and fail with no probe

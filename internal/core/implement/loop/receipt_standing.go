@@ -42,6 +42,20 @@ package loop
 // as a refused one, so a drain hands the lane back at the stuck bounds (stuck.go).
 // After a runner that exited badly it may be unfinished anywhere, so the role is
 // retried as ever, and the file is set aside as the retry's claim is taken.
+//
+// A drive is the exception to the stop (iss-2611071242184002). Where the drive
+// itself drives the run (Options.driverIsSelf), a receipt refused for the work it
+// reports (Refusal.work) is consumed in the same write as the refusal: set aside
+// into the lane's aside directory, kept and never deleted, with the refusal in the
+// record's line, and counted as a refused step (noteRefusal). Nothing then stands
+// at the path, so the next step starts the role again on its runner (heldRole),
+// the launch counts toward the drive's bound of failed launches, and the refusals
+// toward the drain's stuck bounds, which hand the lane back. That is the
+// runner's own hand-in (pauseAwait) and a receipt a step finds standing, left by
+// a step that was killed or by an older abcd (advanceWith). A receipt refused
+// for anything else (unreadable, another run's, a hand-back, a fix round with no
+// commit) is not consumed: it stops the lane as above, and each step counts it
+// until the stuck bounds hand the lane back. A host-stepped run keeps the stop.
 
 import (
 	"fmt"
@@ -103,6 +117,10 @@ type stoppedReceipt struct {
 	note    string
 	refusal error
 	whole   bool
+	// receipt is the await's path, and consume says a drive sets what stands there
+	// aside, its refusal being for the work (consumeStopped).
+	receipt string
+	consume bool
 }
 
 // collectStanding is a step's read of the receipts of the awaits startedRunner
@@ -159,7 +177,8 @@ func collectStanding(repoRoot, runID string, steps Stages, o Options) (StepResul
 			if rf.handBack {
 				note = stoppedHandBackNote(l.ID, a.Receipt)
 			}
-			stopped = append(stopped, stoppedReceipt{lane: l.ID, note: note, refusal: rf, whole: true})
+			stopped = append(stopped, stoppedReceipt{lane: l.ID, note: note, refusal: rf, whole: true,
+				receipt: a.Receipt, consume: o.driverIsSelf && rf.work})
 		}
 	}
 	return StepResult{}, false, stopped
@@ -200,6 +219,60 @@ func stoppedText(stopped []stoppedReceipt) string {
 	}
 	return strings.Join(notes, "; ")
 }
+
+// consumeStopped consumes each receipt a drive's step read and found refused for
+// the work (stoppedReceipt.consume): set aside and counted as a refused step, in
+// the step's own write, so noteStopped does not count it again and the step's
+// answer says what became of it. It reports whether it changed the state. The
+// caller holds the run's lock and writes the state.
+func consumeStopped(repoRoot string, st *State, stopped []stoppedReceipt, now time.Time) bool {
+	changed := false
+	for k := range stopped {
+		s := &stopped[k]
+		if !s.consume || s.refusal == nil {
+			continue
+		}
+		i, at := st.findAwait(repoRoot, s.receipt)
+		if i < 0 || st.Lanes[i].ID != s.lane {
+			continue
+		}
+		reason := refusalReason(s.refusal)
+		if consumeRefused(repoRoot, st, st.Lanes[i], st.Lanes[i].Awaits[at].Receipt, s.refusal, now) {
+			s.note = fmt.Sprintf("a receipt stood at %s and was refused for the work (%s), so it is set aside, kept, and the implementer is started again on its runner",
+				s.receipt, reason)
+		}
+		noteRefusal(st, s.refusal, now)
+		s.refusal = nil
+		st.UpdatedAt = now
+		changed = true
+	}
+	return changed
+}
+
+// consumeRefused sets aside a receipt refused for the work, with the refusal in the
+// record's line, and reports whether nothing stands at path now. A set-aside that
+// fails takes nothing else from the caller's write: the failure is the record's
+// line, the receipt stands, and each later step counts it as a refused one until
+// the drain's stuck bounds hand the lane back. The caller holds the run's lock and
+// writes the state.
+func consumeRefused(repoRoot string, st *State, lane Lane, path string, refusal error, now time.Time) bool {
+	why := bounded(refusalReason(refusal), maxConsumedReason)
+	err := setAside(repoRoot, st, lane, path, now, func(rel, dir string) string {
+		return fmt.Sprintf("the receipt at %s was refused for the work (%s), so it is set aside at %s, kept, and the implementer is started again on its runner",
+			rel, why, dir)
+	})
+	if err == nil {
+		return true
+	}
+	st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner,
+		Note: fmt.Sprintf("the receipt at %s was refused for the work (%s) and could not be set aside (%s); it stands, and each later step counts it as a refused one until the drain's stuck bounds hand %s back",
+			path, why, bounded(refusalReason(err), maxConsumedReason), lane.ID)})
+	return false
+}
+
+// maxConsumedReason bounds, in runes, a refusal the record's line for a consumed
+// receipt carries.
+const maxConsumedReason = 600
 
 // noteStopped counts each stopped lane as a refused step, and reports whether it
 // changed the state. A run a drain does not read, an intent's, has no such count,

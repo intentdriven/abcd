@@ -570,7 +570,16 @@ then exited badly. One from a runner that exited badly and that does not verify
 is set aside as the role is retried. One the verifier refused after its runner
 ended starts no second runner over the work: the step says what the receipt
 lacks and how to correct it or restart, and counts the stop so a drain hands the
-lane back as stuck at its bounds. What stands at an agent's path when it is handed out, or when a
+lane back as stuck at its bounds. That stop is a host-stepped run's. A drive, which
+steps the run itself, consumes a receipt refused for the work it reports, one that
+names this run, lane and branch in the schema this abcd reads (iss-2611071242184002):
+in the same write as the refusal, which is counted, the receipt is set aside under
+the lane's aside directory, kept and never deleted, and the record's line names the
+refusal; the next step starts the implementer again on its runner, so the drain's stuck
+bounds hand the lane back, and under a bound so does the third such launch in a row. A
+set-aside that fails is the record's line and leaves the receipt standing, the pause
+written all the same. A receipt refused for anything else stays and stops the lane
+in a drive too. What stands at an agent's path when it is handed out, or when a
 runner is claimed for it, is set aside unread. A paused role whose route the person has since
 moved to the host is handed to the host by the next step, its pause cleared
 and the person's route, not a fallback, recorded. The

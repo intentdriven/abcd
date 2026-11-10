@@ -651,7 +651,11 @@ One the verifier refused after its runner ended stops the lane: no runner is
 started over that work, `next` names the ways out, correcting the receipt (then
 `implement receipt`, or a plain `implement step` reads it) or
 `implement step --restart <lane>`, and a drain hands the lane back as stuck at
-its bounds. A role already with you, from a step before its route existed,
+its bounds. Under `abcd drain --drive`, which steps the run itself, a receipt refused
+for the work it reports (it names this run, lane and branch) is set aside instead, in
+the same write, kept under the lane's `aside/` with the refusal in the run record, and
+counted; the next step starts the implementer again, so the drain's stuck bounds hand
+the lane back, and under `--until` so does the third such launch in a row. A receipt refused for anything else stops the lane there too. A role already with you, from a step before its route existed,
 whose receipt you have not written is retried the same way, so do not start an
 agent for it once its role is routed. A paused role whose route has since
 moved to the host is handed to you by the next step that hands no other agent

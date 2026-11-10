@@ -380,7 +380,14 @@ After a runner that exited badly the role is retried and the file set aside. Aft
 a runner whose answer was refused the lane is stopped: no runner is started over
 the work, `next` names the ways out (correct the receipt and run `receipt`, which a
 plain `step` also reads, or `step --restart`), and a drain hands the lane back as
-stuck at its bounds. A `--route` for that role is refused.
+stuck at its bounds. A `--route` for that role is refused. That stop is a host-stepped
+run's: under `abcd drain --drive`, which steps the run itself, a receipt refused for the
+work it reports (it names this run, lane and branch in the schema abcd reads) is set
+aside under the lane's `aside/`, kept, in the same write as the refusal, which counts as
+a refused step; the run record's line names the refusal, and the next step starts the
+implementer again on its runner. If it cannot be set aside, the record says so, the
+receipt stands and the pause is written as ever. A receipt refused for anything else
+stops the lane under a drive too.
 What stands at an agent's path when it is handed out, or when a runner is claimed
 for it, is set aside unread under the lane's `aside/`. A `--route`
 for a held role retries it at once on that route, as the step's one move; a

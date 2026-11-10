@@ -259,7 +259,13 @@ nothing but the bound, the cap, an empty ledger or a stop ends the run:
   401, 403, 429 or 5xx, or a launch that ran out of retries, says nothing of the work.
   Any other failure, one that spent included, since the service may have gone after
   the spending, is put to a short probe: an answer shows the account is alive, which
-  makes it the work's, and a rejection or no answer counts nothing. A judge is judged
+  makes it the work's, and a rejection or no answer counts nothing. An implementer's
+  receipt refused for the work it reports is set aside, kept under the lane's `aside/`,
+  and the implementer started again, so each such receipt is one of the three; a receipt
+  refused for anything else stays at its path and stops the lane until the stuck bounds
+  below hand it back. A lane stuck by those bounds goes back from the drive to the next
+  move, which hands it back; given the same lane again, the drive first waits as an idle
+  drive does, thirty seconds at least. A judge is judged
   the same way against its issue, so one at its deadline having spent is held back while
   the account answers, and an account-wide failure does not empty the drain. Six launches
   in a row that spend and fail with no probe answered hand the lane back too, or hold the
@@ -688,7 +694,7 @@ what it did in `next`:
   kept being refused at one stage for sixty minutes, counted from its first
   refusal to its last (a quiet of more than fifteen minutes starts the time
   afresh, and the quiet after the last refusal never counts), the next drain
-  hands the lane
+  hands the lane, one `abcd drain --drive` is driving included,
   back as `stuck`, naming the refusal, releases its reservation with a
   tombstone marking it `stuck`, and takes up the next issue in the same move.
   A refusal that cannot change hands the lane back at once: its issue finished

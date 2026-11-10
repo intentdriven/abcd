@@ -1097,6 +1097,13 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 			openWindow(st, now)
 			changed = true
 		}
+		// A drive's receipt refused for the work is consumed in this write, before
+		// the window is read, so a window that closes here delays the role's next
+		// start and never loses it (receipt_standing.go).
+		consumed := consumeStopped(repoRoot, st, stopped, now)
+		if consumed {
+			changed = true
+		}
 		if until, ok := windowElapsed(*st, now); ok {
 			closeWindow(st, now, until)
 			res = idleResult(*st)
@@ -1124,7 +1131,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 			if noteRefusal(st, err, now) {
 				moved = true
 			}
-			if moved || renewed {
+			if moved || renewed || consumed {
 				// The wait, or a later lane's refusal, is the call's answer,
 				// and the time a lane began waiting for its full check, or
 				// the reservation's renewal, is written with it (ruling
@@ -1143,6 +1150,10 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	})
 	if err == nil && wait != nil {
 		err = wait
+	}
+	if len(stopped) > 0 {
+		// What a consumed receipt became is said in its own words.
+		standing = stoppedText(stopped)
 	}
 	if standing != "" {
 		if r, ok := AsRefusal(err); ok {
