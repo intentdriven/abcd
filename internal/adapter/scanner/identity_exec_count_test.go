@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // identity_exec_count_test.go (iss-2609281546130900): building a scanner
@@ -129,10 +131,7 @@ func TestParseConfigListing(t *testing.T) {
 // spent deadline runs no identity probe and is unavailable, never a scanner
 // that scans as though the caller had no identity to redact.
 func TestNewContextOnASpentDeadlineRunsNoGitAndFailsClosed(t *testing.T) {
-	dir := t.TempDir()
-	if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v\n%s", err, out)
-	}
+	dir := gittest.NewRepo(t).Root()
 	calls := countingGit(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
