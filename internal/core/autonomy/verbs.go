@@ -82,12 +82,12 @@ func resolveWho(root, home string) string {
 // Resolve is the checkout root a caller standing in cwd acts from, the away
 // store its repository keys, and the home it lives under.
 func Resolve(cwd string, o Options) (root string, st Store, err error) {
-	return ResolveContext(context.Background(), cwd, o)
+	return resolveContext(context.Background(), cwd, o)
 }
 
-// ResolveContext is Resolve bound to ctx, for a hook on a deadline: each git
+// resolveContext is Resolve bound to ctx, for a hook on a deadline: each git
 // call it makes, the root's and the root commit's, is killed when ctx ends.
-func ResolveContext(ctx context.Context, cwd string, o Options) (root string, st Store, err error) {
+func resolveContext(ctx context.Context, cwd string, o Options) (root string, st Store, err error) {
 	root, err = gitutil.CheckoutRootContext(ctx, cwd, StoreName)
 	if err != nil {
 		return "", Store{}, err

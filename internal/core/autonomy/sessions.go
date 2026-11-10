@@ -136,7 +136,7 @@ func ResolveCopy(cwd, sessionID string, o Options) (string, Store, error) {
 // every git call it makes is killed when ctx ends. A noted copy whose check
 // ctx cut short is not confirmed, as one git cannot answer for.
 func ResolveCopyContext(ctx context.Context, cwd, sessionID string, o Options) (string, Store, error) {
-	root, st, err := ResolveContext(ctx, cwd, o)
+	root, st, err := resolveContext(ctx, cwd, o)
 	if err != nil {
 		return root, st, err
 	}
