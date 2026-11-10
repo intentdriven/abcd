@@ -1,133 +1,187 @@
-# Context-free git calls the hook verbs reach (iss-2611100548341325,
-# dcn-2611100854404911). One entry per line, sorted: <caller> -> <callee>.
-# TestHookGitCallsMatchBaseline (hook_git_audit_test.go) fails on a reached
-# call not listed here and on a listed call no longer reached.
-# Entries may only be removed, never added: bind the call to the hook's
-# context instead. After binding calls, drop the stale entries with
+# Deadline-free git calls the hook verbs reach (iss-2611100548341325,
+# dcn-2611100854404911). One entry per line, sorted:
+#   <caller> -> <callee> x<times reached code makes the call>
+# TestHookGitCallsMatchBaseline (hook_git_audit_test.go) refuses a reached
+# call not listed here or made more times than listed, and fails on an entry
+# made fewer times or no longer reached until it is lowered or removed.
+# A line added here by hand is not caught by the test, only by review of this
+# file's diff: add none, bind the call to the hook's context instead. After
+# binding calls, lower the counts with
 #   ABCD_UPDATE_BASELINE=1 go test -run TestHookGitCallsMatchBaseline ./internal/surface/cli
-# which removes stale entries only and still fails on a new one.
-internal/core/ahoy.checkBanlistIgnores -> gitutil.CheckIgnored
-internal/core/ahoy.checkBanlistIgnores -> gitutil.InRepo
-internal/core/ahoy.deriveIdentity -> gitutil.RootCommit
-internal/core/ahoy.dogfoodStalenessFrom -> gitutil.Run
-internal/core/ahoy.effectiveVisibilityEntries -> gitutil.InRepo
-internal/core/ahoy.effectiveVisibilityEntries -> gitutil.RunLimited
-internal/core/ahoy.gitattributesPinsHookEOL -> gitutil.Run
-internal/core/ahoy.hooksPathState -> gitutil.HooksPaths
-internal/core/ahoy.hooksPathState -> gitutil.Run
-internal/core/ahoy.localHooksPathUnset -> gitutil.Run
-internal/core/ahoy.runGit -> exec.Command
-internal/core/ahoy/worktree.judgeTip -> gitutil.IsAncestor
-internal/core/ahoy/worktree.ownCommit -> gitutil.IsAncestor
-internal/core/ahoy/worktree.ownCommit -> gitutil.RunCappedAsStored
-internal/core/ahoy/worktree.rebased -> gitutil.RunCappedAsStored
-internal/core/ahoy/worktree.squashed -> gitutil.Run
-internal/core/autonomy.RecordCreated -> gitutil.Run
-internal/core/autonomy.branchExists -> gitutil.Run
-internal/core/autonomy.resolves -> gitutil.Run
-internal/core/autonomy.worktreeBranches -> gitutil.CommonDir
-internal/core/autonomy.worktreeBranches -> gitutil.ListWorktrees
-internal/core/banlist.readPrivate -> localtier.Untracked
-internal/core/capture.discoverRepoRoot -> gitutil.CheckoutRoot
-internal/core/capture.uncommittedLedgerPaths -> gitutil.Status
-internal/core/claim.copyKey -> localtier.ReadInRoot
-internal/core/claim.emptyTree -> gitutil.EmptyTree
-internal/core/claim.emptyTreeName -> gitutil.EmptyTreeName
-internal/core/claim.hasCommitCtx -> gitutil.RunCappedExitOneAsStored
-internal/core/claim.keptFetch -> localtier.ReadInRoot
-internal/core/claim.localGit -> gitutil.RunCapped
-internal/core/claim.originDefault -> gitutil.TrackedDefaultBranch
-internal/core/claim.ownCopyKey -> localtier.ReadInRoot
-internal/core/claim.siblingCopies -> gitutil.ListWorktrees
-internal/core/claim.storedGit -> gitutil.RunCappedAsStored
-internal/core/claim.viewOf -> localtier.Untracked
-internal/core/dogfood.Resolve -> gitutil.RootCommit
-internal/core/dogfood.listedCheckout -> gitutil.ListWorktrees
-internal/core/dogfood.listedCheckout -> gitutil.Toplevel
-internal/core/dogfood.recordsWorktree -> gitutil.ListWorktrees
-internal/core/dogfood.trackingTip -> gitutil.Run
-internal/core/embargo.(Store).Verify -> gitutil.RevParseAbsPath
-internal/core/embargo.(Store).Verify -> gitutil.RunCappedExitOne
-internal/core/embargo.(Store).Verify -> gitutil.Toplevel
-internal/core/embargo.(Store).refuseTracked -> gitutil.RunCappedBytes
-internal/core/embargo.Check -> gitutil.Toplevel
-internal/core/embargo.commitAdds -> gitutil.RunCappedBytes
-internal/core/embargo.originRepo -> gitutil.Run
-internal/core/embargo.readOtherStore -> gitutil.Toplevel
-internal/core/embargo.readRange -> gitutil.ResolveCommit
-internal/core/embargo.readRange -> gitutil.RunCappedBytes
-internal/core/embargo.trackedThere -> localtier.Untracked
-internal/core/embargo.tracksLocalTier -> gitutil.RunCappedBytes
-internal/core/embargo.untracked -> localtier.Untracked
-internal/core/embargo/storepath.liveWorktree -> gitutil.EachWorktree
-internal/core/embargo/storepath.liveWorktree -> gitutil.Toplevel
-internal/core/embargo/storepath.registeredStore -> gitutil.EachWorktree
-internal/core/github.Pushers -> gitutil.Run
-internal/core/guard.FileAtCommit -> gitutil.Run
-internal/core/guard.FileAtCommit -> gitutil.RunLimited
-internal/core/guard.LoadRepoAt -> gitutil.ResolveCommit
-internal/core/guard.factsFor -> gitutil.HooksPaths
-internal/core/guard.factsFor -> gitutil.ListWorktrees
-internal/core/guard.factsFor -> gitutil.RevParseAbsPath
-internal/core/guard.factsFor -> gitutil.Toplevel
-internal/core/guard.registryAt -> gitutil.Run
-internal/core/guard.registryAt -> gitutil.RunLimited
-internal/core/guard.worktreeCounter$lit -> gitutil.ListWorktrees
-internal/core/identity.PlanMigration -> gitutil.RootCommit
-internal/core/identity.checkWithHome -> gitutil.RootCommit
-internal/core/identity.gitConfigScope -> exec.Command
-internal/core/identity.stampedIdentity -> exec.Command
-internal/core/implement/loop.RunningUnattended -> gitutil.ListWorktrees
-internal/core/implement/loop.readDrain -> localtier.ReadInRoot
-internal/core/interview.Latest -> localtier.Untracked
-internal/core/landing.findReceipts -> gitutil.ListWorktrees
-internal/core/landing.findReceipts -> localtier.Untracked
-internal/core/landing.provesCleanMerge -> gitutil.MergeDriverOverrides
-internal/core/landing.provesCleanMerge -> gitutil.RunCappedAsStored
-internal/core/landing.provesCleanMerge -> gitutil.RunCappedExitOneAsStored
-internal/core/landing.readFetchedFacilitator -> gitutil.NetContext
-internal/core/landing.rearmGate -> gitutil.Run
-internal/core/landing.storedAncestor -> gitutil.RunCappedExitOneAsStored
-internal/core/landing.trackedDefault -> gitutil.DefaultRef
-internal/core/mode.ResetOnAnswer -> localtier.LstatInRoot
-internal/core/mode.Root -> gitutil.CheckoutRoot
-internal/core/peers.scanTree -> gitutil.RunCapped
-internal/core/pendingref.lookup -> gitutil.RunCapped
-internal/core/rules.LoadAt -> gitutil.ResolveCommit
-internal/core/rules.Resolve -> gitutil.Toplevel
-internal/core/sweep.(deleteProver).localBranch -> gitutil.Run
-internal/core/sweep.(deleteProver).prove -> gitutil.CommonDir
-internal/core/sweep.(deleteProver).prove -> gitutil.ListWorktrees
-internal/core/sweep.(deleteProver).prove -> gitutil.Run
-internal/core/sweep.(deleteProver).prove -> gitutil.Toplevel
-internal/core/sweep.(deleteProver).prove -> gitutil.TrackedDefaultBranch
-internal/core/sweep.(deleteProver).remoteBranch -> gitutil.Run
-internal/core/sweep.(deleteProver).worktree -> gitutil.Status
-internal/core/sweep.changedPaths -> gitutil.RunCappedBytes
-internal/core/sweep.changedPaths -> gitutil.Status
-internal/core/sweep.keptBy -> gitutil.IsAncestor
-internal/core/tools.runArgv -> exec.Command
-internal/core/vintage.(checkoutTipProvider).Expected -> gitutil.Run
-internal/gitutil.CheckIgnored -> gitutil.isolatedGit
-internal/gitutil.FilterOverrides -> gitutil.configNames
-internal/gitutil.HooksPaths -> exec.Command
-internal/gitutil.InRepo -> gitutil.isolatedGit
-internal/gitutil.IsAncestor -> gitutil.isolatedGit
-internal/gitutil.Run -> gitutil.isolatedGit
-internal/gitutil.RunCappedAsStored -> gitutil.isolatedGit
-internal/gitutil.RunCappedExitOne -> gitutil.isolatedGit
-internal/gitutil.RunCappedExitOneAsStored -> gitutil.isolatedGit
-internal/gitutil.Status -> gitutil.RunCappedBytes
-internal/gitutil.eachWorktree -> gitutil.isolatedGit
-internal/gitutil.isolatedGit -> exec.Command
-internal/gitutil.netSSHCommand -> exec.Command
-internal/gitutil.runBoundedBytes -> gitutil.isolatedGit
-internal/localtier.LstatInRoot -> localtier.Untracked
-internal/localtier.ReadInRoot -> localtier.Untracked
-internal/surface/cli.allowRoot -> gitutil.RootCommit
-internal/surface/cli.allowRoot -> gitutil.Toplevel
-internal/surface/cli.captureRoot -> gitutil.Toplevel
-internal/surface/cli.noteOccupancy -> gitutil.Toplevel
-internal/surface/cli.spawnCacheTrim$lit -> exec.Command
-internal/surface/cli.spawnDogfoodBuild$lit -> exec.Command
-internal/surface/cli.spawnScheduledRefresh$lit -> exec.Command
+# which only lowers and removes, and refuses to write while any call is new
+# or rising, or while the hook verbs found differ from those hooks/ runs.
+internal/adapter/gitleaks.(*Augmenter).Scan -> internal/adapter/gitleaks.(*Adapter).Augment(Background) x1
+internal/adapter/scanner.New -> internal/adapter/scanner.NewContext(Background) x1
+internal/core/ahoy.Managed -> internal/core/ahoy.ManagedContext(Background) x1
+internal/core/ahoy.checkBanlistIgnores -> gitutil.CheckIgnored x1
+internal/core/ahoy.checkBanlistIgnores -> gitutil.InRepo x1
+internal/core/ahoy.deriveIdentity -> gitutil.RootCommit x1
+internal/core/ahoy.dogfoodStalenessFrom -> gitutil.Run x2
+internal/core/ahoy.effectiveVisibilityEntries -> gitutil.InRepo x1
+internal/core/ahoy.effectiveVisibilityEntries -> gitutil.RunLimited x1
+internal/core/ahoy.gitattributesPinsHookEOL -> gitutil.Run x1
+internal/core/ahoy.hooksPathState -> gitutil.HooksPaths x1
+internal/core/ahoy.hooksPathState -> gitutil.Run x1
+internal/core/ahoy.localHooksPathUnset -> gitutil.Run x1
+internal/core/ahoy.runGit -> exec.Command x1
+internal/core/ahoy/worktree.LaneFor -> gitutil.RootCommit x1
+internal/core/ahoy/worktree.asStored -> gitutil.RunCappedBytesAsStoredContext(Background) x1
+internal/core/ahoy/worktree.belongs -> gitutil.CommonDir x1
+internal/core/ahoy/worktree.judge -> gitutil.Run x1
+internal/core/ahoy/worktree.judgeAll -> gitutil.DefaultRef x1
+internal/core/ahoy/worktree.judgeAll -> gitutil.Status x1
+internal/core/ahoy/worktree.judgeTip -> gitutil.IsAncestor x1
+internal/core/ahoy/worktree.ownCommit -> gitutil.IsAncestor x2
+internal/core/ahoy/worktree.ownCommit -> gitutil.RunCappedAsStored x1
+internal/core/ahoy/worktree.rebased -> gitutil.RunCappedAsStored x1
+internal/core/ahoy/worktree.scan -> gitutil.CommonDir x1
+internal/core/ahoy/worktree.scan -> gitutil.ListWorktrees x1
+internal/core/ahoy/worktree.scanLane -> gitutil.CommonDir x1
+internal/core/ahoy/worktree.scanLane -> gitutil.ListWorktrees x1
+internal/core/ahoy/worktree.squashed -> gitutil.Run x1
+internal/core/autonomy.(*owedReader).landed -> gitutil.BuiltinMergeDriver x1
+internal/core/autonomy.Managed -> internal/core/autonomy.ManagedContext(Background) x1
+internal/core/autonomy.RecordCreated -> gitutil.Run x1
+internal/core/autonomy.Resolve -> internal/core/autonomy.resolveContext(Background) x1
+internal/core/autonomy.ResolveCopy -> internal/core/autonomy.ResolveCopyContext(Background) x1
+internal/core/autonomy.branchExists -> gitutil.Run x1
+internal/core/autonomy.openStore -> internal/core/autonomy.openStoreContext(Background) x1
+internal/core/autonomy.resolves -> gitutil.Run x1
+internal/core/autonomy.worktreeBranches -> gitutil.CommonDir x1
+internal/core/autonomy.worktreeBranches -> gitutil.ListWorktrees x1
+internal/core/banlist.readPrivate -> localtier.Untracked x1
+internal/core/capture.discoverRepoRoot -> gitutil.CheckoutRoot x1
+internal/core/capture.uncommittedLedgerPaths -> gitutil.Status x1
+internal/core/claim.commitBodies -> internal/core/claim.storedGitInput(Background) x2
+internal/core/claim.copyKey -> localtier.ReadInRoot x1
+internal/core/claim.emptyTree -> gitutil.EmptyTree x1
+internal/core/claim.emptyTreeName -> gitutil.EmptyTreeName x1
+internal/core/claim.firstParents -> internal/core/claim.firstParentsCtx(Background) x1
+internal/core/claim.hasCommitCtx -> gitutil.RunCappedExitOneAsStored x1
+internal/core/claim.keptFetch -> localtier.ReadInRoot x1
+internal/core/claim.localGit -> gitutil.RunCapped x1
+internal/core/claim.originDefault -> gitutil.TrackedDefaultBranch x1
+internal/core/claim.ownCopyKey -> localtier.ReadInRoot x1
+internal/core/claim.personalGit -> internal/core/claim.personalGitContext(Background) x1
+internal/core/claim.readerHolder -> internal/core/claim.readerHolderContext(Background) x1
+internal/core/claim.resolveRef -> internal/core/claim.resolveRefCtx(Background) x1
+internal/core/claim.siblingCopies -> gitutil.ListWorktrees x1
+internal/core/claim.storedGit -> gitutil.RunCappedAsStored x1
+internal/core/claim.viewOf -> localtier.Untracked x1
+internal/core/dogfood.Resolve -> gitutil.RootCommit x1
+internal/core/dogfood.listedCheckout -> gitutil.ListWorktrees x1
+internal/core/dogfood.listedCheckout -> gitutil.Toplevel x1
+internal/core/dogfood.recordsWorktree -> gitutil.ListWorktrees x1
+internal/core/dogfood.trackingTip -> gitutil.Run x1
+internal/core/embargo.(Store).Verify -> gitutil.RevParseAbsPath x2
+internal/core/embargo.(Store).Verify -> gitutil.RunCappedExitOne x1
+internal/core/embargo.(Store).Verify -> gitutil.Toplevel x1
+internal/core/embargo.(Store).refuseTracked -> gitutil.RunCappedBytes x1
+internal/core/embargo.Check -> gitutil.Toplevel x1
+internal/core/embargo.commitAdds -> gitutil.RunCappedBytes x1
+internal/core/embargo.originRepo -> gitutil.Run x1
+internal/core/embargo.readOtherStore -> gitutil.Toplevel x1
+internal/core/embargo.readRange -> gitutil.ResolveCommit x2
+internal/core/embargo.readRange -> gitutil.RunCappedBytes x3
+internal/core/embargo.trackedThere -> localtier.Untracked x1
+internal/core/embargo.tracksLocalTier -> gitutil.RunCappedBytes x1
+internal/core/embargo.untracked -> localtier.Untracked x1
+internal/core/embargo/storepath.liveWorktree -> gitutil.EachWorktree x1
+internal/core/embargo/storepath.liveWorktree -> gitutil.Toplevel x1
+internal/core/embargo/storepath.registeredStore -> gitutil.EachWorktree x1
+internal/core/github.API -> internal/core/github.apiContext(Background) x1
+internal/core/github.Pushers -> gitutil.Run x1
+internal/core/github.Run -> internal/core/github.runContext(Background) x1
+internal/core/guard.FileAtCommit -> gitutil.Run x1
+internal/core/guard.FileAtCommit -> gitutil.RunLimited x1
+internal/core/guard.LoadRepoAt -> gitutil.ResolveCommit x1
+internal/core/guard.factsFor -> gitutil.HooksPaths x1
+internal/core/guard.factsFor -> gitutil.ListWorktrees x1
+internal/core/guard.factsFor -> gitutil.RevParseAbsPath x1
+internal/core/guard.factsFor -> gitutil.Toplevel x1
+internal/core/guard.registryAt -> gitutil.Run x1
+internal/core/guard.registryAt -> gitutil.RunLimited x1
+internal/core/guard.worktreeCounter$lit -> gitutil.ListWorktrees x1
+internal/core/identity.(*identityConfig).get -> internal/core/identity.listIdentityConfig(Background) x1
+internal/core/identity.PlanMigration -> gitutil.RootCommit x1
+internal/core/identity.checkWithHome -> gitutil.RootCommit x1
+internal/core/identity.gitConfigScope -> exec.Command x1
+internal/core/identity.stampedIdentity -> exec.Command x1
+internal/core/implement/loop.RunningUnattended -> gitutil.ListWorktrees x1
+internal/core/implement/loop.readDrain -> localtier.ReadInRoot x1
+internal/core/implement/loop.runIDs -> localtier.UntrackedEach(Background) x1
+internal/core/interview.Latest -> localtier.Untracked x1
+internal/core/landing.GH -> internal/core/landing.GHContext(Background) x1
+internal/core/landing.findReceipts -> gitutil.ListWorktrees x1
+internal/core/landing.findReceipts -> localtier.Untracked x1
+internal/core/landing.provesCleanMerge -> gitutil.BuiltinMergeDriver x1
+internal/core/landing.provesCleanMerge -> gitutil.MergeDriverOverrides x1
+internal/core/landing.provesCleanMerge -> gitutil.RunCappedAsStored x1
+internal/core/landing.provesCleanMerge -> gitutil.RunCappedExitOneAsStored x1
+internal/core/landing.readMode -> internal/core/landing.readModeContext(Background) x1
+internal/core/landing.rearmGate -> gitutil.Run x1
+internal/core/landing.storedAncestor -> gitutil.RunCappedExitOneAsStored x1
+internal/core/landing.storedBytes -> gitutil.RunCappedBytesAsStoredContext(Background) x1
+internal/core/landing.trackedDefault -> gitutil.DefaultRef x1
+internal/core/layered.Load -> internal/core/layered.LoadContext(Background) x1
+internal/core/mode.ReadAt -> internal/core/mode.ReadAtContext(Background) x1
+internal/core/mode.ResetOnAnswer -> localtier.LstatInRoot x1
+internal/core/mode.Root -> gitutil.CheckoutRoot x1
+internal/core/peers.scanTree -> gitutil.RunCapped x1
+internal/core/pendingref.lookup -> gitutil.RunCapped x1
+internal/core/rules.LoadAt -> gitutil.ResolveCommit x1
+internal/core/rules.Resolve -> gitutil.Toplevel x1
+internal/core/site.HeadCommit -> gitutil.InRepo x1
+internal/core/site.HeadCommit -> gitutil.Run x1
+internal/core/site.checkoutRoot -> gitutil.Toplevel x1
+internal/core/sweep.(deleteProver).localBranch -> gitutil.Run x2
+internal/core/sweep.(deleteProver).prove -> gitutil.CommonDir x1
+internal/core/sweep.(deleteProver).prove -> gitutil.ListWorktrees x1
+internal/core/sweep.(deleteProver).prove -> gitutil.Run x1
+internal/core/sweep.(deleteProver).prove -> gitutil.Toplevel x1
+internal/core/sweep.(deleteProver).prove -> gitutil.TrackedDefaultBranch x1
+internal/core/sweep.(deleteProver).remoteBranch -> gitutil.Run x1
+internal/core/sweep.(deleteProver).worktree -> gitutil.Status x1
+internal/core/sweep.changedPaths -> gitutil.RunCappedBytes x1
+internal/core/sweep.changedPaths -> gitutil.Status x1
+internal/core/sweep.keptBy -> gitutil.IsAncestor x1
+internal/core/tools.runArgv -> exec.Command x1
+internal/core/vintage.(checkoutTipProvider).Expected -> gitutil.Run x2
+internal/gitutil.(*versionCache).atLeast -> gitutil.(*versionCache).atLeastContext(Background) x1
+internal/gitutil.(*versionCache).honoursNoLazyFetch -> gitutil.(*versionCache).atLeast x1
+internal/gitutil.BuiltinMergeDriver -> gitutil.(*versionCache).atLeast x1
+internal/gitutil.CheckIgnored -> gitutil.isolatedGit x1
+internal/gitutil.CheckoutRoot -> gitutil.CheckoutRootContext(Background) x1
+internal/gitutil.FilterOverrides -> gitutil.configNames x1
+internal/gitutil.HooksPaths -> exec.Command x1
+internal/gitutil.InRepo -> gitutil.isolatedGit x1
+internal/gitutil.IsAncestor -> gitutil.isolatedGit x1
+internal/gitutil.ListWorktrees -> gitutil.ListWorktreesContext(Background) x1
+internal/gitutil.MergeDriverOverrides -> gitutil.MergeDriverOverridesContext(Background) x1
+internal/gitutil.RootCommit -> gitutil.RootCommitContext(Background) x1
+internal/gitutil.Run -> gitutil.isolatedGit x1
+internal/gitutil.RunCappedAsStored -> gitutil.isolatedGit x1
+internal/gitutil.RunCappedAsStored -> gitutil.runBoundedCmd(Background) x1
+internal/gitutil.RunCappedExitOne -> gitutil.isolatedGit x1
+internal/gitutil.RunCappedExitOneAsStored -> gitutil.isolatedGit x1
+internal/gitutil.Status -> gitutil.RunCappedBytes x1
+internal/gitutil.Toplevel -> gitutil.ToplevelContext(Background) x1
+internal/gitutil.configNames -> gitutil.configNamesContext(Background) x1
+internal/gitutil.eachWorktree -> gitutil.isolatedGit x1
+internal/gitutil.isolatedGit -> exec.Command x1
+internal/gitutil.isolatedGit -> gitutil.guardObjectRead(Background) x1
+internal/gitutil.netSSHCommand -> exec.Command x1
+internal/gitutil.runBoundedBytes -> gitutil.isolatedGit x1
+internal/gitutil.runBoundedBytes -> gitutil.runBoundedCmd(Background) x1
+internal/localtier.LstatInRoot -> localtier.Untracked x1
+internal/localtier.ReadInRoot -> localtier.Untracked x1
+internal/localtier.Untracked -> localtier.UntrackedContext(Background) x1
+internal/surface/cli.allowRoot -> gitutil.RootCommit x1
+internal/surface/cli.allowRoot -> gitutil.Toplevel x1
+internal/surface/cli.captureRoot -> gitutil.Toplevel x1
+internal/surface/cli.managedRoot -> internal/surface/cli.managedRootContext(Background) x1
+internal/surface/cli.noteOccupancy -> gitutil.Toplevel x1
+internal/surface/cli.spawnCacheTrim$lit -> exec.Command x1
+internal/surface/cli.spawnDogfoodBuild$lit -> exec.Command x1
+internal/surface/cli.spawnScheduledRefresh$lit -> exec.Command x1
+internal/surface/cli.worktreeCheckout -> gitutil.Toplevel x1
