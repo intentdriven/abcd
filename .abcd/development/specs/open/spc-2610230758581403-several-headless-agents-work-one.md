@@ -37,10 +37,12 @@ Seven parts, each landing as its own pull request in this order:
 
 1. **The `coord` package, as a pure function**
    It reads the records and returns the decisions. Table tests: the same records give the same decisions, and a pass stopped mid-way and re-run from the records reaches the same decisions (technical criterion 2).
+   Landed as staged code: the pass is unexported and has no production caller yet, which keeps it out of the exported-reach audit's view without satisfying that audit. Step 2 must export it and wire its first caller, or remove it (dcn-2611101309224327).
    - packages: internal/core/coord
    - tests: internal/core/coord
+   - landed: 1d2bcabe9
 2. **`Depends-On`**
-   Parse it, and refuse a closed-unmerged, unresolvable or cyclic dependency with its reason (story 2). `land` does not queue while the dependency is open, then merges it in, preflights and queues (story 1); this is a live test against a scratch repository on the forge, per real-tests-over-fakes. The re-submit summary (technical criterion 5).
+   Parse it, and refuse a closed-unmerged, unresolvable or cyclic dependency with its reason (story 2). `land` does not queue while the dependency is open, then merges it in, preflights and queues (story 1); this is a live test against a scratch repository on the forge, per real-tests-over-fakes. The re-submit summary (technical criterion 5). It exports step 1's pass and wires its first caller, or removes the pass (dcn-2611101309224327).
    - packages: internal/core/coord, internal/core/landing, internal/surface/cli
    - tests: internal/core/coord, internal/core/landing
 3. **Fencing and version**
