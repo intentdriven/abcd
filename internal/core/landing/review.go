@@ -81,8 +81,9 @@ func NormalizeLineBreaks(text string) string { return lineBreaks.Replace(text) }
 //     capitals) that ends the line or is followed by a separator;
 //   - subject is named in full, on that line or on a `Head: <name>` line directly
 //     under the heading, and no other name stands on either: a run of hex holding a
-//     digit is another name, unless it is all digits and the number of a record id
-//     (recordid.IDNumberAt), as the digits of iss-2611060835372141 are.
+//     digit is another name, unless it is the number of a record id, all digits
+//     and no more than twenty of them (recordid.IDNumberAt), as the digits of
+//     iss-2611060835372141 are.
 //
 // subject is named in full because a head's name is a hash over the text it reviews,
 // which therefore cannot hold it, and only the full name is. It returns the word as

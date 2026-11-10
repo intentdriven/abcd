@@ -310,6 +310,7 @@ func TestARecordIDOnTheVerdictLineNamesNoOtherCommit(t *testing.T) {
 		"a record in capitals":      "SHIP " + sha + " — ISS-2611060835372141",
 		"a record's file name":      "SHIP " + sha + " — iss-2611060835372141-a-slug.md",
 		"an adr by its old ordinal": "SHIP " + sha + " \u2014 per adr-0045 and dcn-2611031722512037",
+		"a twenty-digit record id":  "SHIP " + sha + " \u2014 iss-26110608353721410000",
 	} {
 		t.Run(name, func(t *testing.T) {
 			text := "### Verdict\n\n" + line + "\n"
@@ -319,13 +320,15 @@ func TestARecordIDOnTheVerdictLineNamesNoOtherCommit(t *testing.T) {
 		})
 	}
 	for name, line := range map[string]string{
-		"another commit beside a record":       "SHIP " + sha + " — fixes iss-2611060835372141, as " + other + " did",
-		"another commit after a family":        "SHIP " + sha + " — iss-" + other,
-		"a record number running into letters": "SHIP " + sha + " — iss-2611060835372141abc",
-		"a family inside a word":               "SHIP " + sha + " — xiss-2611060835372141",
-		"a bare digit run":                     "SHIP " + sha + " — 2611060835372141",
-		"the head abbreviated beside a record": "SHIP " + sha[:9] + " — fixes iss-2611060835372141",
-		"the head abbreviated after a family":  "SHIP iss-" + sha[:9],
+		"another commit beside a record":             "SHIP " + sha + " — fixes iss-2611060835372141, as " + other + " did",
+		"another commit after a family":              "SHIP " + sha + " — iss-" + other,
+		"a record number running into letters":       "SHIP " + sha + " — iss-2611060835372141abc",
+		"a family inside a word":                     "SHIP " + sha + " — xiss-2611060835372141",
+		"a bare digit run":                           "SHIP " + sha + " — 2611060835372141",
+		"a commit's length of digits after a family": "SHIP " + sha + " — iss-" + strings.Repeat("1234567890", 4),
+		"a digest's length of digits after a family": "SHIP " + sha + " — iss-" + strings.Repeat("1234567890", 6) + "1234",
+		"the head abbreviated beside a record":       "SHIP " + sha[:9] + " — fixes iss-2611060835372141",
+		"the head abbreviated after a family":        "SHIP iss-" + sha[:9],
 	} {
 		t.Run(name, func(t *testing.T) {
 			if word, err := ReadVerdict("### Verdict\n\n"+line+"\n", sha); err == nil {

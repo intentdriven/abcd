@@ -52,6 +52,7 @@ func TestIDNumberAtReadsOnlyARecordIDsDigits(t *testing.T) {
 		"(ITD-79)":                       "79",
 		"the file spc-12-a-slug.md":      "12",
 		"by mem-2610111200001234, which": "2610111200001234",
+		"iss-12345678901234567890":       "12345678901234567890",
 	} {
 		if !at(text, num) {
 			t.Errorf("IDNumberAt(%q, %q) = false; want true", text, num)
@@ -64,6 +65,7 @@ func TestIDNumberAtReadsOnlyARecordIDsDigits(t *testing.T) {
 		"xiss-2611060835372141":        "2611060835372141",
 		"a-iss-2611060835372141":       "2611060835372141",
 		"lane-2611060835372141":        "2611060835372141",
+		"iss-123456789012345678901":    "123456789012345678901",
 		"iss-2611060835372141 runs on": "261106083537214",
 	} {
 		if at(text, num) {

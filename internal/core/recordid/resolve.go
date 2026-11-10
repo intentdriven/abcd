@@ -508,13 +508,18 @@ const handleFamilies = `adr|itd|spc|iss|dcn|rdi|rdg|dsp|adm|srp|rfm|cond|mem`
 // opening a word, then the hyphen.
 var idNumberHeadRe = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9-])(?:` + handleFamilies + `|run)-$`)
 
+// maxIDNumberDigits bounds a record id's number: a minted one is 16 digits, so a
+// longer run of digits, a commit's or a digest's length among them, is not one.
+const maxIDNumberDigits = 20
+
 // IDNumberAt reports whether text[start:end] is the whole number of a numbered
-// id written in running text: decimal digits only, directly after a family and
-// its hyphen, with no letter or digit after them (a hyphen may follow, as a
-// slug does). It is how a reader that looks for some other name in prose, a
-// commit's among them, knows a record id's digits are not one.
+// id written in running text: decimal digits only, at most maxIDNumberDigits of
+// them, directly after a family and its hyphen, with no letter or digit after
+// them (a hyphen may follow, as a slug does). It is how a reader that looks for
+// some other name in prose, a commit's among them, knows a record id's digits
+// are not one.
 func IDNumberAt(text string, start, end int) bool {
-	if start < 0 || end > len(text) || start >= end {
+	if start < 0 || end > len(text) || start >= end || end-start > maxIDNumberDigits {
 		return false
 	}
 	for i := start; i < end; i++ {
