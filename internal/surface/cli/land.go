@@ -71,7 +71,16 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"     gate allows it, pinned to the head: into the merge queue by its method where\n" +
 			"     one gates the default branch (then confirmed in the queue), otherwise as the\n" +
 			"     forge's auto-merge (a merge commit; a forge that refuses it is said). An\n" +
-			"     arming someone else made at a head the gate arms is left as it is. Where a merge\n" +
+			"     arming someone else made at a head the gate arms is left as it is. Before it\n" +
+			"     arms, a pull request whose body has a line Depends-On: #N (or #N, #N) is read\n" +
+			"     with the pull requests it names, and theirs, at most 25 in all: one not yet\n" +
+			"     merged stops the step, nothing armed, naming it and when the wait is refused\n" +
+			"     (24 hours after the pull request was opened); one closed unmerged, one that\n" +
+			"     is no pull request or merges into another branch, a cycle, a wait past its\n" +
+			"     24 hours, a line that looks like one in another shape, and a forge answer\n" +
+			"     land cannot read whole refuse, exit 2, nothing armed, saying what to reword\n" +
+			"     or settle. Rebuilding it on the default branch once they merge\n" +
+			"     is not done yet: run abcd land again. Where a merge\n" +
 			"     queue gates the\n" +
 			"     default branch, a branch that shares a commit not on it with another pull\n" +
 			"     request queued or armed into it (a branch cut from that one's) is not armed:\n" +

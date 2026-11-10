@@ -52,7 +52,11 @@ package landing
 //  8. enqueue (land.enqueue): the open pull request for the branch, armed by
 //     the merge gate (mergeGate), pinned to the head, and confirmed in the
 //     merge queue (PRStateQuery, asked of the repository the forge client
-//     named when origin was checked). Before it arms, a branch that shares a
+//     named when origin was checked). Before it arms or toggles, a pull
+//     request whose body names a dependency in a Depends-On line stops
+//     unarmed while one has not merged, and is refused when one is closed,
+//     cannot be resolved, or is on a cycle, or when its wait passes its
+//     limit (depends.go). Before it arms, a branch that shares a
 //     commit not on the default branch with another pull request queued or
 //     armed into it (one cut from that one's branch) stops unarmed, naming
 //     it: the queue would remove this one as an invalid merge commit
@@ -178,6 +182,9 @@ type Options struct {
 	// Sleep pauses between the forge readings that wait for land's own push
 	// to show; nil is time.Sleep.
 	Sleep func(time.Duration)
+	// Now is the clock the enqueue step judges a pull request's dependencies
+	// by (depends.go); nil is time.Now.
+	Now func() time.Time
 	// StopRead reads a person's stop; nil is the read every other verb makes.
 	StopRead func() runstop.Reading
 	// Announce is the options the announcements before the push are made
@@ -256,6 +263,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.Sleep == nil {
 		o.Sleep = time.Sleep
+	}
+	if o.Now == nil {
+		o.Now = time.Now
 	}
 	if o.Gate == nil {
 		o.Gate = makePreflight(o.GateOutput)
@@ -1375,6 +1385,13 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 	if s.IsInMergeQueue {
 		res.add("enqueue", StatusDone, note+reviewText(s)+"; it is already in the merge queue", "")
 		return nil
+	}
+	// The dependency check (depends.go), before land arms or toggles anything:
+	// a pull request another account armed is reported below as before.
+	if !s.armed() || s.ownArming() {
+		if held, err := dependsHold(res, o, dir, owner, name, pr.Number, s.armed()); err != nil || held {
+			return err
+		}
 	}
 	// rearm makes the arming again after a toggle: land's own arguments for
 	// an arming it makes now, the forge's method for one already made.

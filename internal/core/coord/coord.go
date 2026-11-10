@@ -23,12 +23,12 @@
 // closed or missing dependency, or on a cycle, gets none either. Claims and
 // the record version are later steps of the spec.
 //
-// Reading the dependency line is parseDependsOn's, in depends.go.
+// Reading the dependency line is ParseDependsOn's, in depends.go.
 //
-// This is staged code: nothing outside the package calls the pass, its
-// at-once refusals or parseDependsOn yet. Step 2a's landing wiring exports
-// them and wires their first caller in one commit, and this package's step-2a
-// code is never pushed or landed without that wiring (dcn-2611101309224327).
+// Its first caller is land's enqueue step (internal/core/landing/depends.go),
+// which reads its own pull request and its dependencies from the forge,
+// passes them to Pass and acts on its own pull request's decision
+// (spc-2610230758581403, step 2a; dcn-2611101309224327).
 package coord
 
 import (
@@ -158,7 +158,7 @@ type Decision struct {
 	Reason string
 }
 
-// pass reads the records and returns one decision for each open change,
+// Pass reads the records and returns one decision for each open change,
 // ordered by change number; queued, merged and closed changes need none. A
 // snapshot it cannot judge is refused whole: no time, a wait limit that is not
 // positive or is above MaxWaitLimit, more than maxChanges changes, a change
@@ -170,18 +170,13 @@ type Decision struct {
 // maxDepends on its count, its dependencies' numbers unjudged. The
 // one error names the defects found, sorted and once each, at most maxNamed,
 // then how many more, so it is the same whatever order the records were read
-// in, and it quotes an unknown state cut to maxStateRunes. pass does not
+// in, and it quotes an unknown state cut to maxStateRunes. Pass does not
 // change the records it reads.
 //
 // A caller whose whole pass is refused refuses its own act, arms nothing, and
 // names the defect. It never sets the defective record aside and goes on,
 // since a dependency set aside would read as satisfied.
-//
-// It is unexported because nothing in production calls it yet, only its
-// tests. That takes it out of the exported-reach audit's view and does not
-// satisfy the audit: step 2a of spc-2610230758581403 exports it and wires its
-// first caller in one commit (dcn-2611101309224327).
-func pass(r Records) ([]Decision, error) {
+func Pass(r Records) ([]Decision, error) {
 	var defects []string
 	if r.Now.IsZero() {
 		defects = append(defects, "the records carry no time to judge them by")
@@ -325,7 +320,7 @@ type cycleReach struct {
 // each dependency that is open or queued; a merged or closed change, or a
 // number with no record, ends the walk. A cycle is a self-edge or a strongly
 // connected group of two or more, so a diamond is none. Each change's
-// DependsOn is ascending and once each (pass), so no edge is read twice.
+// DependsOn is ascending and once each (Pass), so no edge is read twice.
 //
 // Its cost, with N changes, E edges and C cycle groups (C at most N): the
 // groups are found by one iterative walk (Tarjan's), with no recursion, in

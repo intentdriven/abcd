@@ -1,6 +1,7 @@
 package landing
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -108,6 +109,47 @@ type fakeForge struct {
 	// of its reviews.
 	pullErr    error
 	reviewsErr error
+	// depends answers the dependency check's read of pull request N
+	// (dependsQuery) with depends[N], a whole answer; a number it lacks is
+	// answered open into main, created at dependsCreated, with an empty body;
+	// one beginning "!" fails the read with the rest as its message.
+	// dependsErr fails every such read.
+	depends    map[int]string
+	dependsErr error
+}
+
+// dependsCreated is the creation time the fake forge gives a pull request
+// the dependency check reads, when a test sets none.
+const dependsCreated = "2026-11-10T08:00:00Z"
+
+// dependsAnswered answers dependsQuery on owner/name, as the forge does. It
+// refuses any other arguments, and a query the pinned schema does not have.
+func (f *fakeForge) dependsAnswered(args []string) (string, error) {
+	owner, name, _ := strings.Cut(f.owner(), "/")
+	var n int
+	if _, err := fmt.Sscanf(args[len(args)-1], "n=%d", &n); err != nil || !slices.Equal(args, dependsArgs(owner, name, n)) {
+		return "", fmt.Errorf("fake forge: unexpected dependency read %v", args)
+	}
+	if err := ghcontract.CheckGraphQL(dependsQuery); err != nil {
+		return "", err
+	}
+	if f.dependsErr != nil {
+		return "", f.dependsErr
+	}
+	if a, ok := f.depends[n]; ok {
+		if msg, failed := strings.CutPrefix(a, "!"); failed {
+			return "", errors.New(msg)
+		}
+		return a, nil
+	}
+	return dependsPRAnswer(n, "OPEN", false, "main", dependsCreated, ""), nil
+}
+
+// dependsPRAnswer is the forge's answer to dependsQuery for one pull request.
+func dependsPRAnswer(n int, state string, queued bool, base, created, body string) string {
+	b, _ := json.Marshal(body)
+	return fmt.Sprintf(`{"data":{"repository":{"pullRequest":{"number":%d,"state":%q,"isInMergeQueue":%t,"baseRefName":%q,"createdAt":%q,"body":%s}}}}`,
+		n, state, queued, base, created, b)
 }
 
 // armedListing answers the listing of the open pull requests into main on
@@ -250,6 +292,9 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		}
 		if slices.Contains(args, "query="+ArmingsQuery) {
 			return f.armingsAnswered(args)
+		}
+		if slices.Contains(args, "query="+dependsQuery) {
+			return f.dependsAnswered(args)
 		}
 		if slices.Contains(args, "query="+claim.DequeueMutation) {
 			if f.dequeueErr != nil {

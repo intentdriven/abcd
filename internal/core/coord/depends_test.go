@@ -35,12 +35,12 @@ func TestParseDependsOnAccepts(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := parseDependsOn(tc.body)
+			got, err := ParseDependsOn(tc.body)
 			if err != nil {
-				t.Fatalf("parseDependsOn: %v", err)
+				t.Fatalf("ParseDependsOn: %v", err)
 			}
 			if !reflect.DeepEqual(got, tc.want) {
-				t.Fatalf("parseDependsOn = %#v, want %#v", got, tc.want)
+				t.Fatalf("ParseDependsOn = %#v, want %#v", got, tc.want)
 			}
 		})
 	}
@@ -137,9 +137,9 @@ func TestParseDependsOnRefuses(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := parseDependsOn(tc.body)
+			got, err := ParseDependsOn(tc.body)
 			if err == nil {
-				t.Fatalf("parseDependsOn accepted the body and gave %#v", got)
+				t.Fatalf("ParseDependsOn accepted the body and gave %#v", got)
 			}
 			if err.Error() != tc.want {
 				t.Fatalf("error\n got  %q\n want %q", err, tc.want)
@@ -152,7 +152,7 @@ func TestParseDependsOnRefuses(t *testing.T) {
 }
 
 // TestParseDependsOnReadsPast: what the scan does not decode is read past,
-// with no dependency and no error, as parseDependsOn's comment says: an HTML
+// with no dependency and no error, as ParseDependsOn's comment says: an HTML
 // entity, letters from other scripts that look like Latin ones, fullwidth
 // letters, a form with no colon, a bare "Depends:", a space other than an ASCII
 // space or tab between the words or between on and the colon, an invisible
@@ -178,9 +178,9 @@ func TestParseDependsOnReadsPast(t *testing.T) {
 		"an invalid byte splitting the word":        "Depe\xffnds-On: #5",
 		"a precomposed accent":                      "Cela dépend on: the queue",
 	} {
-		got, err := parseDependsOn(body)
+		got, err := ParseDependsOn(body)
 		if err != nil || got != nil {
-			t.Fatalf("%s: parseDependsOn = %#v, %v; want nil, nil", name, got, err)
+			t.Fatalf("%s: ParseDependsOn = %#v, %v; want nil, nil", name, got, err)
 		}
 	}
 }
@@ -195,9 +195,9 @@ func TestParseDependsOnNeverQuotesTheBody(t *testing.T) {
 		canary + " depends-on",
 		"Depends-On: #" + canary,
 	} {
-		_, err := parseDependsOn(body)
+		_, err := ParseDependsOn(body)
 		if err == nil {
-			t.Fatalf("parseDependsOn accepted %q", body)
+			t.Fatalf("ParseDependsOn accepted %q", body)
 		}
 		if strings.Contains(err.Error(), canary) || strings.Contains(err.Error(), "7f3a") {
 			t.Fatalf("the error quotes the body: %q", err)

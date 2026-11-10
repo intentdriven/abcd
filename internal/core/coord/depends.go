@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	// maxBodyBytes is the largest body parseDependsOn reads. A larger one is
+	// maxBodyBytes is the largest body ParseDependsOn reads. A larger one is
 	// refused, never truncated, so no dependency line is lost past the cut.
 	maxBodyBytes = 65536
 	// maxDepends is the most distinct dependencies one body may name, and the
@@ -31,7 +31,7 @@ var (
 	dependsWordRe = regexp.MustCompile(`(?i)depends-on|depends?[-_ \t\p{Pd}\x{2212}\x{2043}]*on[ \t]*:`)
 )
 
-// parseDependsOn reads the dependencies a pull request body declares
+// ParseDependsOn reads the dependencies a pull request body declares
 // (dcn-2610180720362692): each line exactly `Depends-On: #N` or
 // `Depends-On: #N, #N, ...`, the numbers separated by commas with optional
 // spaces or tabs around each, the body split on newlines with one trailing
@@ -86,11 +86,9 @@ var (
 // <!-- Depends-On: #N -->, is refused, so a body that keeps a template's
 // placeholder is refused until the placeholder is edited or removed.
 //
-// It is staged code like the pass: nothing outside the package calls it yet.
-// Step 2a's landing wiring exports it and wires its first caller in one
-// commit, and it is never pushed or landed without that wiring
-// (dcn-2611101309224327).
-func parseDependsOn(body string) ([]int, error) {
+// land's dependency check (internal/core/landing/depends.go) calls it on each
+// pull request body it reads.
+func ParseDependsOn(body string) ([]int, error) {
 	if len(body) > maxBodyBytes {
 		return nil, fmt.Errorf("coord: the body is %d bytes, above the most of %d", len(body), maxBodyBytes)
 	}

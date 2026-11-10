@@ -4408,7 +4408,16 @@ credentials, so run it only on a branch whose content you trust.
      gate allows it, pinned to the head: into the merge queue by its method where
      one gates the default branch (then confirmed in the queue), otherwise as the
      forge's auto-merge (a merge commit; a forge that refuses it is said). An
-     arming someone else made at a head the gate arms is left as it is. Where a merge
+     arming someone else made at a head the gate arms is left as it is. Before it
+     arms, a pull request whose body has a line Depends-On: #N (or #N, #N) is read
+     with the pull requests it names, and theirs, at most 25 in all: one not yet
+     merged stops the step, nothing armed, naming it and when the wait is refused
+     (24 hours after the pull request was opened); one closed unmerged, one that
+     is no pull request or merges into another branch, a cycle, a wait past its
+     24 hours, a line that looks like one in another shape, and a forge answer
+     land cannot read whole refuse, exit 2, nothing armed, saying what to reword
+     or settle. Rebuilding it on the default branch once they merge
+     is not done yet: run abcd land again. Where a merge
      queue gates the
      default branch, a branch that shares a commit not on it with another pull
      request queued or armed into it (a branch cut from that one's) is not armed:

@@ -148,6 +148,29 @@ bound: the refusal says so and gives the push to run by hand.
    person's way on: wait for the forge, or withdraw and re-arm it with the
    exact `gh pr merge` commands the note gives. A toggle whose re-arming fails
    says the pull request is now disarmed and gives the command that arms it.
+   Before it arms or toggles, the step reads its own pull request again, and
+   the pull requests its body's `Depends-On: #N` lines name, and theirs while
+   those are open, at most 25 in all, through one GraphQL query of each
+   pull request's number, state, `isInMergeQueue`, base, `createdAt` and body
+   (dcn-2610180720362692, spc-2610230758581403 step 2a). Each body is read
+   by `coord.ParseDependsOn`, which fails closed and quotes no body text,
+   and the records go to the coordination pass, `coord.Pass`, whose decision
+   for the verb's own pull request alone is acted on: queue goes on as
+   before, and a body with no such line is that case; wait leaves the step
+   stopped, nothing armed, naming the dependencies and the deadline; refuse
+   refuses, nothing armed, with the pass's reason and what to reword. The
+   wait's start is the pull request's `createdAt`, which no agent can move,
+   its limit 24 hours (`coord.MaxWaitLimit`), its clock the local one, and a
+   start later than that clock is refused, with no allowance for skew. What
+   only the forge can know is refused before the pass: a number the forge
+   has no pull request for, a dependency into another base than the
+   default branch, a state outside OPEN, MERGED and CLOSED, an answer it
+   cannot read whole, and a walk past 25 pull requests. A pull request
+   already queued, or armed by another account, is reported as before, its
+   dependencies unread; this account's arming already in place is left as
+   it is, and the note or refusal says so. Rebuilding a dependant on the
+   default branch once its dependency merges is the spec's step 2b and is
+   not done yet.
    With no
    pull request the step stops with the `gh pr create` command; the verb never opens one (ruling R2), and the next run
    queues it. The command names a body land composed from the branch's commits (iss-220): each subject, then their

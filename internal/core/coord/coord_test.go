@@ -315,7 +315,7 @@ func TestPassDecides(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := pass(tc.in)
+			got, err := Pass(tc.in)
 			if err != nil {
 				t.Fatalf("pass: %v", err)
 			}
@@ -340,7 +340,7 @@ func TestPassDeadlineIsDerivedFromTheRecords(t *testing.T) {
 		{Change: 2, Action: ActionWait, WaitsOn: []int{1}, Until: at(10, 0)},
 	}
 	for _, now := range []time.Time{t0, at(9, 59)} {
-		got, err := pass(records(now, ch...))
+		got, err := Pass(records(now, ch...))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -484,7 +484,7 @@ func TestPassSameRecordsSameDecisions(t *testing.T) {
 				ch = shuffled(rng, ch)
 			}
 			before := cloneChanges(ch)
-			got, err := pass(records(t0, ch...))
+			got, err := Pass(records(t0, ch...))
 			if err != nil {
 				t.Fatalf("%s, read %d: %v", s.name, i, err)
 			}
@@ -537,7 +537,7 @@ func TestPassStoppedMidwayReachesTheSameDecisions(t *testing.T) {
 					remaining = append(remaining, d)
 				}
 			}
-			got, err := pass(records(t0, shuffled(rng, ch)...))
+			got, err := Pass(records(t0, shuffled(rng, ch)...))
 			if err != nil {
 				t.Fatalf("%s, acts %b: %v", s.name, mask, err)
 			}
@@ -604,7 +604,7 @@ func TestPassAcrossPasses(t *testing.T) {
 	}
 	for _, st := range steps {
 		st.act()
-		got, err := pass(records(st.now, cloneChanges(ch)...))
+		got, err := Pass(records(st.now, cloneChanges(ch)...))
 		if err != nil {
 			t.Fatalf("%s: %v", st.name, err)
 		}
@@ -665,7 +665,7 @@ func TestPassRefusesRecordsItCannotRead(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := pass(tc.in)
+			got, err := Pass(tc.in)
 			if err == nil {
 				t.Fatalf("pass accepted the records and gave %+v", got)
 			}
@@ -674,7 +674,7 @@ func TestPassRefusesRecordsItCannotRead(t *testing.T) {
 			}
 		})
 	}
-	if _, err := pass(Records{Now: t0, WaitLimit: MaxWaitLimit}); err != nil {
+	if _, err := Pass(Records{Now: t0, WaitLimit: MaxWaitLimit}); err != nil {
 		t.Fatalf("a limit of exactly %s was refused: %v", MaxWaitLimit, err)
 	}
 	if MaxWaitLimit != 24*time.Hour {
@@ -683,10 +683,10 @@ func TestPassRefusesRecordsItCannotRead(t *testing.T) {
 	if maxChanges != 500 || maxDependsRead != 1000 {
 		t.Fatalf("maxChanges %d, maxDependsRead %d; want 500 and 1000", maxChanges, maxDependsRead)
 	}
-	if _, err := pass(records(t0, merged(1, maxChanges)...)); err != nil {
+	if _, err := Pass(records(t0, merged(1, maxChanges)...)); err != nil {
 		t.Fatalf("exactly %d changes were refused: %v", maxChanges, err)
 	}
-	if _, err := pass(records(t0, Change{Number: 11, State: StateOpen, DependsOn: repeated(10, 100)})); err != nil {
+	if _, err := Pass(records(t0, Change{Number: 11, State: StateOpen, DependsOn: repeated(10, 100)})); err != nil {
 		t.Fatalf("exactly 1000 dependency numbers as read were refused: %v", err)
 	}
 }
@@ -720,7 +720,7 @@ func TestPassRefusalNamesEveryDefectInAnyOrder(t *testing.T) {
 		if i > 0 {
 			ch = shuffled(rng, ch)
 		}
-		got, err := pass(Records{Changes: ch})
+		got, err := Pass(Records{Changes: ch})
 		if err == nil {
 			t.Fatalf("read %d: pass accepted the records and gave %+v", i, got)
 		}
@@ -778,7 +778,7 @@ func TestPassRefusalIsCapped(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := pass(records(t0, tc.changes...))
+			got, err := Pass(records(t0, tc.changes...))
 			if err == nil {
 				t.Fatalf("pass accepted the records and gave %+v", got)
 			}
@@ -833,7 +833,7 @@ func TestPassReasonNamesAtMostTwenty(t *testing.T) {
 		members int
 		on      string
 	}{{20, twenty}, {21, twenty + " and 1 more"}} {
-		got, err := pass(records(t0, ring(101, 100+tc.members)...))
+		got, err := Pass(records(t0, ring(101, 100+tc.members)...))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -851,7 +851,7 @@ func TestPassReasonNamesAtMostTwentyAcrossCycles(t *testing.T) {
 	t.Parallel()
 	ch := append(ring(101, 115), ring(201, 215)...)
 	ch = append(ch, Change{Number: 300, State: StateOpen, DependsOn: []int{101, 201}, WaitingSince: at(8, 30)})
-	got, err := pass(records(t0, ch...))
+	got, err := Pass(records(t0, ch...))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -877,7 +877,7 @@ func TestPassLongChainIntoLargeCycle(t *testing.T) {
 	if len(ch) != maxChanges {
 		t.Fatalf("the snapshot holds %d changes, want %d", len(ch), maxChanges)
 	}
-	got, err := pass(records(t0, ch...))
+	got, err := Pass(records(t0, ch...))
 	if err != nil {
 		t.Fatal(err)
 	}
