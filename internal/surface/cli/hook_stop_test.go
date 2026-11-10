@@ -642,3 +642,50 @@ func TestHookStopBudgetFailsOpen(t *testing.T) {
 		t.Errorf("recorded %+v, want the stop allowed by the budget", stops)
 	}
 }
+
+// TestHookStopChecklistBehind: step 4 of spc-2610230805429429. Owned work the
+// checklist does not list blocks the stop once while away, naming it, inside
+// the host's continuation cap; while present the stop is not blocked, and the
+// next prompt, and only that one, carries the note into the context.
+func TestHookStopChecklistBehind(t *testing.T) {
+	root := awayCheckout(t)
+	pinStopClock(t, stopTestNow, time.UTC)
+	owed := autonomy.Owed{Owned: []autonomy.OwnedRef{{Ref: "branch:feat/unlisted"}}}
+	fakeOwed(t, &owed)
+
+	// Present: the stop goes as before, and the next prompt carries the note once.
+	out, so, _ := runStop(t, stopHookPayload(t, "s1", root, false, "Done."))
+	if out.Decision != "" || so != "" {
+		t.Fatalf("present, the checklist behind: the stop must go unblocked and quiet, got %s", so)
+	}
+	prompt := hookInputJSON(t, "s1", root, "carry on")
+	first, _ := runHook(t, prompt, "hook", "prompt-router")
+	if !strings.Contains(first, "## CHECKLIST") || !strings.Contains(first, "branch:feat/unlisted") {
+		t.Fatalf("the next prompt does not carry the checklist note: %s", first)
+	}
+	if again, _ := runHook(t, prompt, "hook", "prompt-router"); strings.Contains(again, "## CHECKLIST") {
+		t.Fatalf("the note came back on a second prompt: %s", again)
+	}
+	// The same set, stopped on again, is not noted again.
+	runStop(t, stopHookPayload(t, "s1", root, false, "Done."))
+	if third, _ := runHook(t, prompt, "hook", "prompt-router"); strings.Contains(third, "## CHECKLIST") {
+		t.Fatalf("the same set was noted twice: %s", third)
+	}
+
+	// Away, nothing owed, a qualifying wake: blocked once, naming the reference.
+	setAwayAt(t, root, stopTestNow, false)
+	out, so, _ = runStop(t, stopHookPayload(t, "s2", root, false, "Done.", "*/30 * * * *"))
+	if out.Decision != "block" || !strings.Contains(out.Reason, "branch:feat/unlisted") || !strings.Contains(out.Reason, "checklist is behind") {
+		t.Fatalf("away, the checklist behind: want one block naming the branch, got %s", so)
+	}
+	if out, so, _ := runStop(t, stopHookPayload(t, "s2", root, true, "Done.", "*/30 * * * *")); out.Decision != "" || so != "" {
+		t.Fatalf("away, the same set: the stop must go, got %s", so)
+	}
+	// The cap holds: a session at the host's cap is not blocked for it.
+	if err := autonomy.SaveSession(root, "s3", autonomy.SessionState{Blocks: autonomy.DefaultBlockCap}); err != nil {
+		t.Fatal(err)
+	}
+	if out, so, _ := runStop(t, stopHookPayload(t, "s3", root, true, "Done.", "*/30 * * * *")); out.Decision != "" {
+		t.Fatalf("away at the cap: the checklist must not block past it, got %s", so)
+	}
+}

@@ -97,6 +97,14 @@ trigger to `.abcd/.work.local/checklist.events.jsonl`, beside the list; leave
 that file to the hook. It never holds up the compaction: a compaction it could
 not record goes ahead, with one line on stderr saying so.
 
+Name the work an item is about in its owner_refs: a branch as
+`branch:<name>`, a pull request as `pr:<number>`, a reservation by its record
+id. When a turn ends with a branch or reservation of this session's that no
+item names, or one that moved after the list was last written, the list is
+behind: while the person is away the stop is blocked once naming them, and
+while they are present the next prompt carries the same note. Bring the list
+up to date with `add` or `set` when it does.
+
 A write starts from what the reader returns: when checklist.json fails its
 checks it builds on the last good copy, and when both fail it starts a new
 list; either way it says so (on stderr, or as `notice` with `--json`). Relay

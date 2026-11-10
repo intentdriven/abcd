@@ -40,6 +40,15 @@ type SessionState struct {
 	// (dcn-2610181035361997).
 	Wakes           int    `json:"wakes"`
 	WakeFingerprint string `json:"wake_fingerprint,omitempty"`
+	// ChecklistBlocked is the behind set (Behind.Fingerprint) a stop was
+	// last blocked on while away, so each set blocks once; "" once the
+	// checklist caught up.
+	ChecklistBlocked string `json:"checklist_blocked,omitempty"`
+	// ChecklistNoted is the behind set last left for the prompt hook while the
+	// person was present, and ChecklistNote that note, until the next prompt
+	// takes it into the session's context.
+	ChecklistNoted string `json:"checklist_noted,omitempty"`
+	ChecklistNote  string `json:"checklist_note,omitempty"`
 }
 
 // sessionStatePath is the session's state file below the working copy at

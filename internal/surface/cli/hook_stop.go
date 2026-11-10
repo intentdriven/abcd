@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/autonomy"
+	"github.com/intentdriven/abcd/internal/core/checklist"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -122,6 +123,13 @@ this one: it is named once, as that session's. The owed work is read within
 naming what was not read, recorded in the away record while the person is
 away.
 
+The same work is compared with the working copy's checklist: a branch or
+reservation of the session's own that no item's owner_refs names, or one
+that moved after the checklist was last written, is the checklist behind.
+While away, a stop is blocked once for each such set, naming it, never past
+the host's cap; while present the stop is not blocked, and the next prompt
+carries the note to the session (abcd hook prompt-router).
+
 The session's state is kept per session id in its start copy's local tier,
 .abcd/.work.local/autonomy/sessions/<session-id>.json. A malformed payload,
 an unreadable record or a lock not had allows the stop, naming why on
@@ -180,6 +188,7 @@ nothing.`,
 				}
 			}
 			v := autonomy.Judge(rec, owed, in, prev, now)
+			v = stopChecklistBehind(cmd, copyRoot, p.SessionID, owed, in, prev, v, away)
 			if v.Save {
 				if err := autonomy.SaveSession(copyRoot, p.SessionID, v.State); err != nil {
 					return stopAllow(cmd, "the session's state could not be saved (%s)", fsutil.RedactHome(err.Error()))
@@ -198,6 +207,39 @@ nothing.`,
 			return emitStop(cmd, v)
 		},
 	}
+}
+
+// stopChecklistBehind folds the checklist's behind check into the verdict
+// (spc-2610230805429429 step 4): the owned work the reading found is compared
+// with the working copy's checklist, read only when the session owns any.
+// While away a set not blocked on yet blocks once; while present the stop is
+// not blocked, and the note is left in the session's state for the next
+// prompt. A session id the store cannot key, or a reading cut short, leaves
+// the verdict as it was, and a present state that cannot be read or saved
+// leaves no note, naming why on stderr.
+func stopChecklistBehind(cmd *cobra.Command, copyRoot, sessionID string, owed autonomy.Owed, in autonomy.StopInput, prev autonomy.SessionState, v autonomy.Verdict, away bool) autonomy.Verdict {
+	if !autonomy.ValidSessionID(sessionID) || owed.Incomplete {
+		return v
+	}
+	if !away {
+		st, err := autonomy.LoadSession(copyRoot, sessionID)
+		if err != nil {
+			diagnosticLine(cmd.ErrOrStderr(), "abcd stop: the session's state could not be read (%s); no checklist note is left", fsutil.RedactHome(err.Error()))
+			return v
+		}
+		prev = st
+	}
+	res := checklist.Result{Source: checklist.FromNothing}
+	if len(owed.Owned) > 0 {
+		res = checklist.Read(copyRoot)
+	}
+	v, present, save := autonomy.JudgeChecklist(v, autonomy.CheckBehind(owed.Owned, res), in, prev, away)
+	if save {
+		if err := autonomy.SaveSession(copyRoot, sessionID, present); err != nil {
+			diagnosticLine(cmd.ErrOrStderr(), "abcd stop: the checklist note was not left for the next prompt (%s)", fsutil.RedactHome(err.Error()))
+		}
+	}
+	return v
 }
 
 // stopStoreWords names an away-store failure, the lock's included.

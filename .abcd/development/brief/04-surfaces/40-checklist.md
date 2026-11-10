@@ -119,6 +119,30 @@ never blocks: a compaction that could not be recorded still goes ahead, and the
 hook says so in one line on its error stream. Outside a managed checkout, and
 on a drive's walled stage, nothing is recorded.
 
+## When the list is behind
+
+The list is behind when the work the session owns holds something no item
+names, or moved after the list was last written. The stop check reads that
+work as it reads owed work: each branch of the session's own, each live
+reservation under this working copy's key that no other live session's run
+holds, and, while the person is away and the forge is read, each own
+branch's open pull request, which an item may name in place of its branch.
+An item names work in its owner_refs; a branch whose head was committed after
+the list's updated_at has moved.
+
+While the person is away, a turn's end with the list behind is blocked once
+for that set of references, naming them: on a stop the away check already
+blocks, the note is added to its reason, and on one it allows, the note is a
+block of its own, counted toward the host's cap on consecutive continuations
+as every block is and never past it. The same set does not block again until
+the list has caught up. While the person is present, the stop is never
+blocked for it, and the stop check reads disk alone, calling no forge; a
+stop's message reaches the person, not the model, so the note is kept in the
+session's stop state and the next prompt carries it into the model's context,
+once, under a CHECKLIST heading, and a set already noted is not noted again.
+A step the session never wrote down and that left no branch or reservation
+behind cannot be seen.
+
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
 ## Appendix: the shipped surface

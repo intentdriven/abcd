@@ -177,6 +177,7 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 	r.readLanes()
 	r.findOwn()
 	r.scope()
+	owned := r.ownedRefs()
 	r.branchItems()
 	r.reservationItems()
 	r.handBack()
@@ -194,7 +195,35 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 		}
 		return a.Record < b.Record
 	})
-	return Owed{Items: r.items, Notes: r.notes, NextRenewal: r.nextRenewal, WakeBy: r.wakeBy, HandedBack: r.handed, Incomplete: r.incomplete}, nil
+	return Owed{Items: r.items, Notes: r.notes, NextRenewal: r.nextRenewal, WakeBy: r.wakeBy, HandedBack: r.handed, Incomplete: r.incomplete, Owned: owned}, nil
+}
+
+// ownedRefs is the work this session owns as the reading found it, after
+// another live session's share is taken out (scope): each own branch, with
+// its open pull request while the forge was read (away only), and each live
+// reservation under this copy's key that no other live session's run holds.
+// They are spelled as a checklist item's owner_refs names them.
+func (r *owedReader) ownedRefs() []OwnedRef {
+	var out []OwnedRef
+	for _, name := range r.ownNames() {
+		ref := OwnedRef{Ref: "branch:" + name}
+		if b := r.branches[name]; b != nil {
+			ref.Changed = b.committed
+		}
+		if r.list.read {
+			if p, ok := r.list.byHead(name, r.person); ok && p.Number > 0 {
+				ref.Aliases = []string{"pr:" + strconv.Itoa(p.Number)}
+			}
+		}
+		out = append(out, ref)
+	}
+	for _, res := range r.mine {
+		if r.heldRes[res.Record] != "" {
+			continue
+		}
+		out = append(out, OwnedRef{Ref: res.Record})
+	}
+	return out
 }
 
 // owedReader is one ReadOwed's state.
@@ -260,6 +289,8 @@ type localBranch struct {
 	name, head   string
 	upstream     string
 	upstreamGone bool
+	// committed is the head commit's committer time, zero when git gave none.
+	committed time.Time
 }
 
 type laneState struct {
@@ -332,7 +363,7 @@ func (r *owedReader) readRefs() {
 		r.defTip = strings.TrimSpace(r.defTip)
 	}
 	r.branches = map[string]*localBranch{}
-	out, err := r.git("for-each-ref", "--format=%(refname:short)%00%(objectname)%00%(upstream)%00%(upstream:track)", "refs/heads")
+	out, err := r.git("for-each-ref", "--format=%(refname:short)%00%(objectname)%00%(upstream)%00%(upstream:track)%00%(committerdate:unix)", "refs/heads")
 	if err != nil {
 		// A listing the deadline cut short is a reading not done, not a
 		// copy with no branches: the verdict must fail open and say so.
@@ -345,10 +376,14 @@ func (r *owedReader) readRefs() {
 	}
 	for _, line := range strings.Split(out, "\n") {
 		f := strings.Split(line, "\x00")
-		if len(f) != 4 || f[0] == "" {
+		if len(f) != 5 || f[0] == "" {
 			continue
 		}
-		r.branches[f[0]] = &localBranch{name: f[0], head: f[1], upstream: f[2], upstreamGone: strings.Contains(f[3], "gone")}
+		b := &localBranch{name: f[0], head: f[1], upstream: f[2], upstreamGone: strings.Contains(f[3], "gone")}
+		if sec, err := strconv.ParseInt(f[4], 10, 64); err == nil && sec > 0 {
+			b.committed = time.Unix(sec, 0)
+		}
+		r.branches[f[0]] = b
 	}
 }
 
