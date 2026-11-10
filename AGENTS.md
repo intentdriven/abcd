@@ -72,6 +72,20 @@ command alone, or waits a turn.
 - Explicit activation: start a prompt with `*<DOMAIN>` (e.g. `*COMMITTING`,
   `*PII`) to inject that domain unconditionally — overrides a `dormant` state,
   but never the kill switch.
+- Memory recall: after the rules, the same hook recall-matches the prompt
+  against memory notes (`~/.abcd.noindex/memory.json`, written by
+  `abcd memory add`, and `<repo>/.abcd/memory.json`, written only by a
+  reviewed change) and memory pages that carry a `recall:` list
+  (`<repo>/.abcd/memory/`, `~/.abcd.noindex/memory/`), ranks them together, and
+  appends them under `## MEMORY`, each naming its layer. The kill switch
+  silences recall too. `abcd rules --prompt "<text>"` shows what one prompt
+  would bring back, and why.
+- Context brackets: as the session's context window fills (read from the
+  status line's fill file under `~/.abcd.noindex/fill/`, else the transcript's
+  tail), notes and pages go from full to one line each, never to nothing, and
+  below 70% free each matched domain shrinks to its heading, its first rule
+  and a pointer to `abcd rules <DOMAIN>`. When nothing tells how full the
+  session is, rules come in full and notes and pages as one line each.
 
 ### Default domains
 
@@ -115,8 +129,9 @@ job.
 
 ### Reset triggers
 
-`SessionStart` and `PreCompact` clear the per-session dedup ledger, so a matched
-domain re-injects on the next prompt (the event-driven refresh that recovers
+`SessionStart` and `PreCompact` clear the per-session dedup ledgers, for rules
+and for recalled notes and pages, and delete the session's fill file, so a
+matched domain or item re-injects on the next prompt (the event-driven refresh that recovers
 after compaction). Within a session a domain still in force whose rules were sent is not
 re-injected unchanged, short of the backstop; one that leaves the active set (deleted, renamed, made
 dormant, or a `*<DOMAIN>` activation the next prompt does not repeat) is

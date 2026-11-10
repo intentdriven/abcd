@@ -327,8 +327,12 @@ and it changes one entry there, `statusLine`, only after you say yes:
   which passes. It never runs the plugin's own copy, which the next plugin
   update deletes.
 
-The status line writes nothing itself, and it is time-bounded: abcd's own work
-stops at half a second and your previous status command at five seconds, so a
+The status line writes one file only, and only when it shows abcd's own row:
+the share of the context window the session has used, in
+`~/.abcd.noindex/fill/`, from which abcd's prompt hook decides how much of the
+rules and memory to bring back (see
+[Library and memory](../explanation/memory.md)). It is time-bounded: abcd's own
+work stops at half a second and your previous status command at five seconds, so a
 slow disk or a hung command never freezes the line.
 
 `abcd ahoy` reports any hook in those settings that runs abcd, and a status line
