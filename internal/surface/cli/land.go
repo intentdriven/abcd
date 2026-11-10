@@ -73,14 +73,15 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"     forge's auto-merge (a merge commit; a forge that refuses it is said). An\n" +
 			"     arming someone else made at a head the gate arms is left as it is. Before it\n" +
 			"     arms, a pull request whose body has a line Depends-On: #N (or #N, #N) is read\n" +
-			"     with the pull requests it names, and theirs, at most 25 in all: one not yet\n" +
-			"     merged stops the step, nothing armed, naming it and when the wait is refused\n" +
-			"     (24 hours after the pull request was opened); one closed unmerged, one that\n" +
-			"     is no pull request or merges into another branch, a cycle, a wait past its\n" +
-			"     24 hours, a line that looks like one in another shape, and a forge answer\n" +
-			"     land cannot read whole refuse, exit 2, nothing armed, saying what to reword\n" +
-			"     or settle. Rebuilding it on the default branch once they merge\n" +
-			"     is not done yet: run abcd land again. Where a merge\n" +
+			"     with the pull requests it names, and theirs while open, at most 25 in all: one\n" +
+			"     not yet merged stops the step, nothing armed, naming it and when the wait is\n" +
+			"     refused (24 hours after the pull request was opened); one closed unmerged,\n" +
+			"     one that is no pull request or merges into another branch, a cycle, a wait\n" +
+			"     at or past its 24 hours, a line that looks like one in another shape, and a\n" +
+			"     forge answer land cannot read whole refuse, exit 2, nothing armed, saying\n" +
+			"     what to reword or settle. This account's arming already in place is\n" +
+			"     withdrawn on such a stop or refusal. Rebuilding it on the default branch\n" +
+			"     once they merge is not done yet: run abcd land again. Where a merge\n" +
 			"     queue gates the\n" +
 			"     default branch, a branch that shares a commit not on it with another pull\n" +
 			"     request queued or armed into it (a branch cut from that one's) is not armed:\n" +

@@ -71,9 +71,9 @@ Seven parts, each landing as its own pull request in this order:
    - packages: .abcd/development/brief/02-constraints/03-invariants.md, commands/land.md, commands/build.md, commands/drain.md, commands/status.md
    - tests: internal/surface/cli
 9. **`Depends-On`: rebuild and re-submit (2b)**
-   Once the dependency merges, `land` merges the default branch into the dependant, preflights and queues it (story 1); this is a live test against a scratch repository on the forge, per real-tests-over-fakes. `land` carries a `Depends-On:` commit trailer into the body it composes. The re-submit summary: the pull requests merged since the merge base that touch the footprint (technical criterion 5).
-   - packages: internal/core/landing, internal/surface/cli
-   - tests: internal/core/landing
+   Once the dependency merges, `land` merges the default branch into the dependant, preflights and queues it (story 1); this is a live test against a scratch repository on the forge, per real-tests-over-fakes. `land` carries a `Depends-On:` commit trailer into the body it composes. The re-submit summary: the pull requests merged since the merge base that touch the footprint (technical criterion 5). The other routes that arm a pull request make no dependency check yet: the build loop's land and queue steps and the re-arm of a withdrawn merge must hold a dependant as `land` does, and nothing enforces that until this step does.
+   - packages: internal/core/landing, internal/core/implement/loop, internal/core/claim, internal/surface/cli
+   - tests: internal/core/landing, internal/core/implement/loop, internal/core/claim
    - needs: 2
 
 ## Size

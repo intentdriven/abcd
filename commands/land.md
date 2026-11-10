@@ -128,23 +128,36 @@ that name with none at this head, since the proof may lie past the bound.
    armed is left as it is and its queue state reported. Before it arms or
    toggles anything, land reads the pull request again (number, state, base,
    creation time and body) for its `Depends-On: #N` lines (exact case, one or
-   more numbers separated by commas, any number of lines, at most 10 numbers in
-   all, a body of at most 65536 bytes), then each pull request they name, and
-   theirs while those are open, at most 25 pull requests in all. A body with no
-   such line goes on as before. One not yet merged (open or queued) leaves the
-   step `stopped`, nothing armed, naming it and when the wait is refused: 24
-   hours after the pull request was opened, by the forge's creation time, which
-   no agent can move. Relay it: run `abcd land` again once it has merged. These
-   refuse at once, exit 2, nothing armed, each naming the numbers and what to
-   reword or settle: a dependency closed unmerged; a number the forge has no
-   pull request for, or one into another branch than the default branch; a
+   more numbers separated by commas, any number of lines, at most 10 distinct
+   numbers, a body of at most 65536 bytes), then each pull request they name,
+   and theirs while those are open, at most 25 pull requests in all. Only an
+   open or queued pull request's body is read for its lines; a merged or closed
+   one's is not. A body with no such line goes on as before, unless it is over
+   the bound. One not yet merged (open or queued) leaves the step `stopped`,
+   nothing armed, naming it and when the wait is refused: 24 hours after the
+   pull request was opened, by the forge's creation time, which no agent can
+   move. A reopened pull request keeps that time; closing it and opening a new
+   one for the same branch starts a fresh 24 hours. Relay it: run `abcd land`
+   again once it has merged. A dependency the forge reports merged counts
+   however it merged; a later revert of it is not read. These refuse at once,
+   exit 2, nothing armed, each naming the numbers and what to reword or settle:
+   a dependency closed unmerged; a number the forge has no pull request for, or
+   one into another branch than the default branch, merged there or not; a
    dependency on a cycle, or the pull request itself; a wait at or past its 24
-   hours; a creation time later than the local clock; a line that looks like a
-   `Depends-On:` line in another shape (lower case, indented, quoted, with
-   another separator), named by its line number, never quoted; a body over
-   the bound; more than 25 pull requests; and a forge answer land cannot read
-   whole. This account's arming already in place is left as it is, and the
-   step says so and how to withdraw it. Rebuilding a dependant on the default
+   hours, which includes a `Depends-On:` line added to a pull request opened
+   more than 24 hours earlier; a creation time later than the local clock, or
+   one land cannot read; a line that looks like a `Depends-On:` line in
+   another shape (lower case, indented, quoted, with another separator), named
+   by its line number, never quoted; a body over the bound; more than 25 pull
+   requests; and a forge answer land cannot read whole, an offline or
+   rate-limited forge included. This account's arming already in place is
+   withdrawn on a wait or a refusal, and the step says so; if land cannot
+   withdraw it, it refuses with the command to withdraw it by hand. Another
+   account's arming is never touched. One limit of the check: a pull request
+   already in the merge queue, or armed by another account, is reported as
+   before with its dependencies unread. Only `abcd land` makes the check: a
+   pull request the build loop or a re-arm of a withdrawn merge arms is not
+   held by its `Depends-On:` lines. Rebuilding a dependant on the default
    branch once its dependency merges is not done yet. Where a merge queue
    gates the default branch, land lists before arming the open pull requests
    into it that are queued or armed, and a branch that shares a commit not on

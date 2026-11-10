@@ -152,25 +152,42 @@ bound: the refusal says so and gives the push to run by hand.
    the pull requests its body's `Depends-On: #N` lines name, and theirs while
    those are open, at most 25 in all, through one GraphQL query of each
    pull request's number, state, `isInMergeQueue`, base, `createdAt` and body
-   (dcn-2610180720362692, spc-2610230758581403 step 2a). Each body is read
-   by `coord.ParseDependsOn`, which fails closed and quotes no body text,
-   and the records go to the coordination pass, `coord.Pass`, whose decision
-   for the verb's own pull request alone is acted on: queue goes on as
-   before, and a body with no such line is that case; wait leaves the step
-   stopped, nothing armed, naming the dependencies and the deadline; refuse
-   refuses, nothing armed, with the pass's reason and what to reword. The
-   wait's start is the pull request's `createdAt`, which no agent can move,
-   its limit 24 hours (`coord.MaxWaitLimit`), its clock the local one, and a
-   start later than that clock is refused, with no allowance for skew. What
-   only the forge can know is refused before the pass: a number the forge
-   has no pull request for, a dependency into another base than the
-   default branch, a state outside OPEN, MERGED and CLOSED, an answer it
-   cannot read whole, and a walk past 25 pull requests. A pull request
-   already queued, or armed by another account, is reported as before, its
-   dependencies unread; this account's arming already in place is left as
-   it is, and the note or refusal says so. Rebuilding a dependant on the
-   default branch once its dependency merges is the spec's step 2b and is
-   not done yet.
+   (dcn-2610180720362692, spc-2610230758581403 step 2a). The body of the
+   pull request itself and of each one still open or queued is read by
+   `coord.ParseDependsOn`, which fails closed and quotes no body text; a
+   merged or closed one's body is not read. A body over 65536 bytes is
+   refused even with no such line. The records go to the coordination
+   pass, `coord.Pass`, whose decision for the verb's own pull request alone
+   is acted on: queue goes on as before, and a body with no such line is
+   that case; wait leaves the step stopped, nothing armed, naming the
+   dependencies and the deadline; refuse refuses, nothing armed, with the
+   pass's reason and what to reword. A dependency the forge reports merged
+   into the default branch counts as satisfied however it merged, and a
+   later revert of it is not read. The wait's start is the pull request's
+   `createdAt`, which no agent can move: a reopened pull request keeps it,
+   while closing it and opening a new one for the same branch starts a
+   fresh 24 hours. Its limit is 24 hours (`coord.MaxWaitLimit`), its clock
+   the local one, and a start later than that clock is refused, with no
+   allowance for skew. A `Depends-On` line added to a pull request opened
+   more than 24 hours earlier is refused at once, as a wait past its
+   deadline, with the pull request's opening time and the deadline it
+   passed. What only the forge can know is refused before the pass: a
+   number the forge has no pull request for, a dependency into another base
+   than the default branch, merged there or not, a state outside OPEN,
+   MERGED and CLOSED, an answer it cannot read whole, a creation time it
+   cannot read, and a walk past 25 pull requests. Offline or rate-limited,
+   the extra read refuses, exit 2. This account's arming already in place
+   is withdrawn on a wait or a refusal, since it could merge the pull
+   request before what it depends on, and the note or refusal says so; a
+   withdrawal that fails, or that the forge does not confirm, refuses with
+   the command that withdraws it by hand. Another account's arming is never
+   touched. The check has one limit: a pull request already queued, or
+   armed by another account, is reported as before with its dependencies
+   unread. The other routes that arm a pull request (the build loop's land
+   and queue steps, and the re-arm of a withdrawn merge) make no dependency
+   check: a dependant one of them arms is not held. Rebuilding a dependant
+   on the default branch once its dependency merges is the spec's step 9
+   and is not done yet.
    With no
    pull request the step stops with the `gh pr create` command; the verb never opens one (ruling R2), and the next run
    queues it. The command names a body land composed from the branch's commits (iss-220): each subject, then their
