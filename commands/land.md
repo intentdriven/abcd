@@ -151,25 +151,29 @@ that name with none at this head, since the proof may lie past the bound.
    another separator), named by its line number, never quoted; a body over the
    bound; more than 25 pull requests; and a forge answer land cannot read
    whole (one missing a field included), an offline or rate-limited forge
-   included. This account's arming already in place is withdrawn on a wait or
-   a refusal, and the step says so. That includes a forge that could not be
-   asked: a forge error on a re-run takes this account's arming off, and the
-   next `abcd land` run arms it again. A pull request the forge has queued
-   meanwhile is taken out of the merge queue. If land cannot withdraw it, it
-   refuses with the step to take it off by hand: the command for an arming,
-   the pull request's page for a queue entry. A pull request the forge reports
-   merged or closed since land read it is refused as such, with nothing
-   withdrawn. Another account's arming, as the forge reported it when land
-   read it, is not withdrawn; one the forge shows after land's withdrawal is
-   refused as another account's. The check also runs, with the withdrawal,
-   where this account's arming stands at the gated head and the merge gate
-   cannot be read or does not arm, or the pull request conflicts. It is not
-   made, and an arming already in place is left with its dependencies unread,
-   where: the pull request is already in the merge queue; another account
-   armed it; `land.enqueue` is off; a stop holds; the forge lists a head other
-   than the local one; it merges into a base other than the default branch; or
-   this account's arming is at a head land did not gate, which is refused with
-   the command that withdraws it. Only `abcd land` makes the check: a pull
+   included. A body is required of the pull request's own read and of a
+   dependency still open or queued. This account's arming already in place is
+   withdrawn on a wait or a refusal, and the step says what was done: the
+   arming withdrawn, the pull request taken out of the merge queue, both, or
+   nothing left to take off. A forge error in the dependency read takes this
+   account's arming off, and the next `abcd land` run arms it again. Land
+   acts only on what its last read of the pull request shows, and reads
+   again, three times at most. A queue entry or arming another account made,
+   or one the forge does not attribute, is left and refused, naming who the
+   forge says queued it. If land cannot confirm the withdrawal, it refuses
+   with the step to take it off by hand: the pull request's page for a queue
+   entry, the command for an arming, both where it cannot say which. A pull
+   request the forge reports merged or closed since land read it is refused
+   as such, with nothing withdrawn. The check runs once land has read the
+   pull request's state on the route that would arm it, and on the three
+   early returns where this account's arming stands at the gated head: the
+   merge gate unread, the gate not arming, and a conflict. The stop is read
+   again after the merge gate arms and before that state read, so the check
+   on the first two early returns runs before it and the conflict's after it.
+   Every refusal before that point (a forge read that fails, the merge rule or
+   the default branch's tip unread, a listing land cannot use, any step
+   before enqueue) leaves an arming as it is with its dependencies unread.
+   Only `abcd land` makes the check: a pull
    request the build loop or a re-arm of a withdrawn merge arms is not held by
    its `Depends-On:` lines. Rebuilding a dependant on the default branch once
    its dependency merges is not done yet. Where a merge queue

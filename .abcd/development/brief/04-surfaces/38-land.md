@@ -174,31 +174,38 @@ bound: the refusal says so and gives the push to run by hand.
    passed. What only the forge can know is refused before the pass: a number
    the forge has no pull request for, a dependency into another base than
    the default branch, merged there or not, a state outside OPEN, MERGED and
-   CLOSED, an answer it cannot read whole (a body field missing included,
-   where an empty body is no line), a creation time it cannot read, and a
-   walk past 25 pull requests. Offline or rate-limited, the extra read
+   CLOSED, an answer it cannot read whole, a creation time it cannot read,
+   and a walk past 25 pull requests. A body is required of the pull
+   request's own read and of a dependency still open or queued, where an
+   empty body is no line. Offline or rate-limited, the extra read
    refuses, exit 2. This account's arming already in place is withdrawn on a
    wait or a refusal, since it could merge the pull request before what it
-   depends on, and the note or refusal says so. That includes a forge that
-   could not be asked: a forge error on a re-run takes this account's arming
-   off, and the next land run arms it again. The withdrawal is read back, an
-   answer with no `autoMergeRequest` field refused; a pull request the forge
-   queued meanwhile is taken out of the merge queue by its node id and read
-   back again. A withdrawal that fails, or that the forge does not confirm,
-   refuses with the step that withdraws it by hand: the command for an
-   arming, the pull request's page for a queue entry. A pull request whose
-   own read shows it merged or closed is refused as such, with nothing
-   withdrawn. Another account's arming, as the forge reported it when land
-   read it, is not withdrawn; one the read-back shows is refused as another
-   account's. The check also runs, with the withdrawal, where this account's
-   arming stands at the gated head and the merge gate cannot be read or does
-   not arm, or the pull request conflicts. It is not made, and an arming
-   already in place is left with its dependencies unread, where: the pull
-   request is already queued; another account armed it; `land.enqueue` is
-   off; a stop holds; the forge's listing gives a head other than the local
-   one; it merges into a base other than the default branch; or this
-   account's arming is at a head land did not gate, which is refused with
-   the command that withdraws it. The other routes that arm a pull request
+   depends on, and the note or refusal says what was done: the arming
+   withdrawn, the pull request taken out of the merge queue, both, or
+   nothing left to take off. A forge error in the dependency read takes
+   this account's arming off, and the next land run arms it again. The
+   withdrawal reads the pull request's state whole (`autoMergeRequest`,
+   `isInMergeQueue`, the queue entry and who queued it, the viewer's login
+   and the node id), acts only on what that read shows, and reads again, at
+   most three times: a queue entry this account made is taken out by its
+   node id, and this account's arming is turned off. A queue entry counts
+   as queued whatever the flag says. An arming or queue entry another
+   account made, or one the forge does not attribute, is left and refused,
+   naming who the forge says queued it. A state not read whole, a read that
+   fails, or this account's arming or queue entry still there after three
+   tries refuses with the step that withdraws it by hand: the pull request's
+   page for a queue entry, the command for an arming, and both where land
+   cannot say which. A pull request whose own read shows it merged or
+   closed is refused as such, with nothing withdrawn. The check runs once
+   land has read the pull request's state on the route that would arm it,
+   and on the three early returns where this account's arming stands at
+   the gated head: the merge gate unread, the gate not arming, and a
+   conflict. The stop is read again after the merge gate arms and before
+   that state read, so the check on the first two early returns runs before
+   it and the conflict's after it. Every refusal before that point (a forge
+   read that fails, the merge rule or the default branch's tip unread, a
+   listing land cannot use, any step before enqueue) leaves an arming as it
+   is with its dependencies unread. The other routes that arm a pull request
    (the build loop's land and queue steps, and the re-arm of a withdrawn
    merge) make no dependency check: a dependant one of them arms is not
    held. Rebuilding a dependant on the default branch once its dependency
