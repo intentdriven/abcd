@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -146,5 +147,116 @@ func runsGone(t *testing.T, root string) {
 	t.Helper()
 	if err := os.RemoveAll(filepath.Join(root, filepath.FromSlash(RunRelDir))); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// judgedRunAtReview is a run started with a calibrated judge at the research
+// class, stepped to its first reviewer: its state carries every stored class
+// label, in the review set, the judge and the await.
+func judgedRunAtReview(t *testing.T) (repoRoot, runID string, data []byte) {
+	t.Helper()
+	repo := briefRepo(t, agentsMarked)
+	repoConfig(t, repo, `{"review": {"judge": "research"}}`)
+	res, err := Start(repo.Root(), "itd-10", Options{judgeCalibrated: func() (bool, string) { return true, "" }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	implemented(t, repo, res.RunID, DefaultStages(), "one.txt")
+	stepAwait(t, repo, res.RunID, DefaultStages(), Options{})
+	return repo.Root(), res.RunID, stateBytes(t, repo.Root(), res.RunID)
+}
+
+// TestAnEarlierStateTakesTheNewClassNames: a state written before the rename
+// is migrated by its version: each stored label takes its new name, each
+// keeps the model it was resolved to, a stored judge gains its status, and
+// the run goes on with the reviewers it started with.
+func TestAnEarlierStateTakesTheNewClassNames(t *testing.T) {
+	root, id, data := judgedRunAtReview(t)
+	current, err := ReadState(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	earlier := olderState(t, data, schemaVersionUnrenamed)
+	for _, w := range []string{`"class": "top"`, `"class": "middle"`, `"class": "below"`} {
+		if !strings.Contains(string(earlier), w) {
+			t.Fatalf("the earlier state carries %s:\n%s", w, earlier)
+		}
+	}
+	for _, w := range []string{`"research"`, `"default"`, `"status"`} {
+		if strings.Contains(string(earlier), w) {
+			t.Fatalf("the earlier state carries no %s:\n%s", w, earlier)
+		}
+	}
+	path := filepath.Join(root, filepath.FromSlash(StateRelPath(id)))
+	if err := os.WriteFile(path, earlier, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := ReadState(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.SchemaVersion != SchemaVersion {
+		t.Fatalf("read at the current version: %d", st.SchemaVersion)
+	}
+	if j := st.Review.Judge; j == nil || j.Class != ClassResearch || j.Model != current.Review.Judge.Model || j.Status != JudgeActive {
+		t.Fatalf("the judge takes research, keeps its model and is active: %+v", j)
+	}
+	for i, r := range st.Review.Roles {
+		for k, c := range r.Reviewers {
+			was := current.Review.Roles[i].Reviewers[k]
+			if c.Class != was.Class || c.Model != was.Model {
+				t.Fatalf("%s reviewer %d reads as %+v, want %+v", r.Role, k, c, was)
+			}
+		}
+	}
+	aw := st.Lanes[0].Awaits
+	if len(aw) == 0 || aw[0].Class != current.Lanes[0].Awaits[0].Class || aw[0].Model != current.Lanes[0].Awaits[0].Model {
+		t.Fatalf("the await keeps its reviewer: %+v", aw)
+	}
+	if _, err := advance(root, id, DefaultStages(), Options{}); err != nil {
+		t.Fatalf("the migrated run steps: %v", err)
+	}
+}
+
+// TestAnEarlierStateCarryingWhatItNeverWroteIsRefused: a version-24 file
+// carrying a judge's status, or a class label outside the four it named, is
+// not one its version wrote, and is refused.
+func TestAnEarlierStateCarryingWhatItNeverWroteIsRefused(t *testing.T) {
+	root, id, data := judgedRunAtReview(t)
+	earlier := string(olderState(t, data, schemaVersionUnrenamed))
+	path := filepath.Join(root, filepath.FromSlash(StateRelPath(id)))
+	for name, edit := range map[string]func(string) string{
+		"a judge's status": func(s string) string {
+			return strings.Replace(s, `"class": "top",`, `"class": "top", "status": "active",`, 1)
+		},
+		"a new class name": func(s string) string { return strings.Replace(s, `"class": "below"`, `"class": "default"`, 1) },
+		"no class at all":  func(s string) string { return strings.Replace(s, `"class": "below"`, `"class": "huge"`, 1) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			edited := edit(earlier)
+			if edited == earlier {
+				t.Fatalf("the edit changed nothing:\n%s", earlier)
+			}
+			if err := os.WriteFile(path, []byte(edited), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := ReadState(root, id)
+			if r := mustRefusal(t, err); r.Stage != "state" {
+				t.Fatalf("want the state's refusal: %+v", r)
+			}
+		})
+	}
+}
+
+// TestTheRenameMovesTheStateOneVersion: the rename is version 25's, and a
+// file of the version after it is refused as a newer abcd's, the refusal an
+// abcd before the rename gives a version-25 file.
+func TestTheRenameMovesTheStateOneVersion(t *testing.T) {
+	if SchemaVersion != 25 || schemaVersionUnrenamed != 24 {
+		t.Fatalf("the rename is version 25's: %d %d", SchemaVersion, schemaVersionUnrenamed)
+	}
+	_, err := decodeState([]byte(fmt.Sprintf(`{"schema_version": %d}`, SchemaVersion+1)))
+	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "a newer abcd wrote") {
+		t.Fatalf("a newer state is refused as a newer abcd's: %+v", r)
 	}
 }

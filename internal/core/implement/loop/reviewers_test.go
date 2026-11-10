@@ -341,6 +341,7 @@ func TestAnOlderStateMigratesItsReviewerToIndexZero(t *testing.T) {
 		t.Fatal(err)
 	}
 	doc["schema_version"] = schemaVersionUnkeyed
+	unrenameOlder(doc)
 	lane := doc["lanes"].([]any)[0].(map[string]any)
 	for _, a := range lane["awaits"].([]any) {
 		for _, k := range []string{"reviewer", "class", "model"} {

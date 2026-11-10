@@ -128,7 +128,11 @@ type RoleReviewers struct {
 }
 
 // ReviewJudge is a review set's judge: its class, the model it resolves to,
-// and the layer and origin of review.judge.
+// the layer and origin of review.judge, and its status, fixed when the run
+// starts (itd-2611101419006280 decision 5): active once a judge agent has
+// cleared itd-81's calibration gate, else waiting. A waiting judge is never
+// launched, awaited or counted in an estimate, and a run never gains a judge
+// part-way.
 type ReviewJudge struct {
 	Class     string `json:"class"`
 	Model     string `json:"model"`
@@ -136,7 +140,18 @@ type ReviewJudge struct {
 	MapOrigin string `json:"map_origin"`
 	Layer     string `json:"layer"`
 	Origin    string `json:"origin"`
+	Status    string `json:"status"`
 }
+
+// The statuses a judge is stored with.
+const (
+	JudgeWaiting = "waiting"
+	JudgeActive  = "active"
+)
+
+// Active reports whether the run's judge runs on a disagreement: a judge the
+// run started with as active. nil, and a waiting judge, never run.
+func (j *ReviewJudge) Active() bool { return j != nil && j.Status == JudgeActive }
 
 // ReviewSet is a run's review set: each role's reviewers, the judge (nil for
 // none) and the ceiling the lists were held to.
@@ -223,7 +238,8 @@ func (rs ReviewSet) written() bool {
 	}
 	if j := rs.Judge; j != nil {
 		if !slices.Contains(Classes, j.Class) || !mapLayer(j.MapLayer) || !validRoute(j.Model) ||
-			!slices.Contains(paceLayers, j.Layer) || !clean(j.Origin, j.MapOrigin) {
+			!slices.Contains(paceLayers, j.Layer) || !clean(j.Origin, j.MapOrigin) ||
+			(j.Status != JudgeWaiting && j.Status != JudgeActive) {
 			return false
 		}
 	}
@@ -354,12 +370,64 @@ func resolveReviewSet(roots layered.Roots, o Options) (ReviewSet, []string, erro
 				fmt.Sprintf("remove %s.%s from %s; without a judge the stricter verdict alone decides; nothing was written", reviewNamespace, keyJudge, j.Origin))
 		}
 		rs.Judge = &ReviewJudge{Class: rc.Class, Model: rc.Model, MapLayer: rc.MapLayer, MapOrigin: rc.MapOrigin,
-			Layer: j.Layer.String(), Origin: j.Origin}
+			Layer: j.Layer.String(), Origin: j.Origin, Status: JudgeActive}
 	}
 	if d := topNote(named, cm); d != "" {
 		diags = append(diags, d)
 	}
 	return rs, diags, nil
+}
+
+// renamed reports the first thing, in a state, that only version 25 and later
+// write: a judge's status; "" when there is none.
+func (s State) renamed() string {
+	if s.Review != nil && s.Review.Judge != nil && s.Review.Judge.Status != "" {
+		return "a judge's status"
+	}
+	return ""
+}
+
+// renameClasses migrates a state of version 24 or lower to the class names of
+// version 25: every stored label, in the review set, its judge, each await and
+// each validator, takes its new name, and a stored judge, which those versions
+// kept only once its calibration had cleared, is active. It reports false, and
+// the caller refuses the file, when a label is none of the four old names.
+func (s *State) renameClasses() bool {
+	ok := true
+	rename := func(c *string) {
+		if *c == "" {
+			return
+		}
+		n, known := renamedClasses[*c]
+		if !known {
+			ok = false
+			return
+		}
+		*c = n
+	}
+	if rs := s.Review; rs != nil {
+		for i := range rs.Roles {
+			for k := range rs.Roles[i].Reviewers {
+				rename(&rs.Roles[i].Reviewers[k].Class)
+			}
+		}
+		if rs.Judge != nil {
+			rename(&rs.Judge.Class)
+			rs.Judge.Status = JudgeActive
+		}
+	}
+	for i := range s.Lanes {
+		l := &s.Lanes[i]
+		for k := range l.Awaits {
+			rename(&l.Awaits[k].Class)
+		}
+		for r := range l.Validation {
+			for v := range l.Validation[r].Validators {
+				rename(&l.Validation[r].Validators[v].Class)
+			}
+		}
+	}
+	return ok
 }
 
 // namedClass is one place a configuration file names a class: the key that

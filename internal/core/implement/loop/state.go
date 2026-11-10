@@ -297,10 +297,27 @@ const lockFileName = ".lock"
 // is refused naming them. Releases that write version 23 refuse a version-24
 // file as a newer abcd's before any strict decode.
 //
+// Version 25 renamed the model classes for what each is for
+// (itd-2611101419006280, spc-2611101423523725): a stored class label is one of
+// research, top, default and small, where version 24 and earlier stored top,
+// middle, below and smallest for the same classes; and a stored judge carries
+// its `status`, waiting or active, fixed when the run started. A file of
+// version 24 or lower is migrated on read: each label takes its new name
+// (renamedClasses), each reviewer keeps the model it was resolved to, and a
+// stored judge, which those versions kept only once its calibration had
+// cleared, is active. Such a file carrying a label outside the four old names,
+// or a judge's status, is not one its version wrote, and is refused. Releases
+// that write version 24 refuse a version-25 file as a newer abcd's before any
+// strict decode.
+//
 // A version raises when the abcd driving the run writes it. A lane's own abcd
 // may be a version ahead of its driver, and what it saves leaves the version
 // where it was (mutateReservation, iss-2611020719494343).
-const SchemaVersion = 24
+const SchemaVersion = 25
+
+// schemaVersionUnrenamed is the last version before the classes took their new
+// names and a judge its status: read and migrated, never written.
+const schemaVersionUnrenamed = 24
 
 // schemaVersionUnlocated is the last version before a reviewer's located
 // findings: read, never written.
@@ -1382,10 +1399,18 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnlocated && st.located() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.located(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnlocated:
+	case st.SchemaVersion <= schemaVersionUnrenamed && st.renamed() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.renamed(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnrenamed:
 		// Read as the current version, its stages already carried over by
-		// decodeState when it named them `step`; the next write carries it, and
-		// this read writes nothing.
+		// decodeState when it named them `step` and its class labels renamed
+		// here; the next write carries it, and this read writes nothing.
+		if !st.renameClasses() {
+			return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a class label other than top, middle, below and smallest, "+
+				"the names version %d wrote (the value is not repeated here)", rel, st.SchemaVersion, st.SchemaVersion),
+				"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+		}
 		st.SchemaVersion = SchemaVersion
 	case st.SchemaVersion != SchemaVersion:
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d to %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),

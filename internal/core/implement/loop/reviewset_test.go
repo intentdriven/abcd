@@ -370,6 +370,88 @@ func unreviewOlder(doc map[string]any) {
 	if v <= schemaVersionUnkeyed {
 		unkeyOlder(doc)
 	}
+	if v <= schemaVersionUnrenamed {
+		unrenameOlder(doc)
+	}
+}
+
+// olderClasses maps each class name to the name the same class took before
+// version 25 (itd-2611101419006280), the inverse of renamedClasses.
+var olderClasses = map[string]string{ClassResearch: "top", ClassTop: "middle", ClassDefault: "below", ClassSmall: "smallest"}
+
+// renameNewer rewrites a state document of a version before 25 as the read
+// migrates it: every stored class label by its new name, and a stored judge
+// active.
+func renameNewer(doc map[string]any) {
+	label := func(m map[string]any) {
+		if c, ok := m["class"].(string); ok && c != "" {
+			m["class"] = renamedClasses[c]
+		}
+	}
+	each := func(v any, f func(map[string]any)) {
+		list, _ := v.([]any)
+		for _, x := range list {
+			if m, ok := x.(map[string]any); ok {
+				f(m)
+			}
+		}
+	}
+	if rv, ok := doc["review"].(map[string]any); ok {
+		each(rv["roles"], func(r map[string]any) { each(r["reviewers"], label) })
+		if j, ok := rv["judge"].(map[string]any); ok {
+			label(j)
+			j["status"] = JudgeActive
+		}
+	}
+	each(doc["lanes"], func(l map[string]any) {
+		each(l["awaits"], label)
+		each(l["validation"], func(r map[string]any) { each(r["validators"], label) })
+	})
+}
+
+// unrenameOlder rewrites a state document as a version before 25 wrote it:
+// every stored class label by its old name, no judge's status and no
+// effort. A judge that waits was never stored before version 25, so it is
+// dropped.
+func unrenameOlder(doc map[string]any) {
+	label := func(m map[string]any) {
+		if c, ok := m["class"].(string); ok && c != "" {
+			m["class"] = olderClasses[c]
+		}
+		for _, k := range []string{"effort", "effort_layer", "effort_origin"} {
+			delete(m, k)
+		}
+	}
+	each := func(v any, f func(map[string]any)) {
+		list, _ := v.([]any)
+		for _, x := range list {
+			if m, ok := x.(map[string]any); ok {
+				f(m)
+			}
+		}
+	}
+	if rv, ok := doc["review"].(map[string]any); ok {
+		each(rv["roles"], func(r map[string]any) { each(r["reviewers"], label) })
+		if j, ok := rv["judge"].(map[string]any); ok {
+			if j["status"] == JudgeWaiting {
+				rv["judge"] = nil
+			} else {
+				delete(j, "status")
+				label(j)
+			}
+		}
+	}
+	each(doc["lanes"], func(l map[string]any) {
+		each(l["awaits"], label)
+		each(l["validation"], func(r map[string]any) {
+			each(r["validators"], func(v map[string]any) {
+				label(v)
+				if rt, ok := v["route"].(map[string]any); ok {
+					delete(rt, "effort_asked")
+				}
+			})
+		})
+	})
 }
 
 // unkeyOlder rewrites a state document's rounds as a version before 20 wrote

@@ -205,7 +205,7 @@ func (rs ReviewSet) masked() ReviewSet {
 	})
 	rs.Judge = maskPtr(rs.Judge, func(j ReviewJudge) ReviewJudge {
 		j.Class, j.Model, j.MapLayer, j.MapOrigin = line(j.Class), line(j.Model), line(j.MapLayer), line(j.MapOrigin)
-		j.Layer, j.Origin = line(j.Layer), line(j.Origin)
+		j.Layer, j.Origin, j.Status = line(j.Layer), line(j.Origin), line(j.Status)
 		return j
 	})
 	return rs
