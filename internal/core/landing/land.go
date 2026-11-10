@@ -952,6 +952,8 @@ type openPR struct {
 
 // prState is what the forge reports of a pull request's way to the merge.
 type prState struct {
+	// ID is the pull request's node id, the dequeue's handle.
+	ID                string          `json:"id"`
 	Mergeable         string          `json:"mergeable"`
 	MergeStateStatus  string          `json:"mergeStateStatus"`
 	IsInMergeQueue    bool            `json:"isInMergeQueue"`
@@ -1143,7 +1145,8 @@ const maxListedPRs = 20
 // merge: `gh pr view --json` has no merge-queue field (gh 2.100.0 refuses
 // isInMergeQueue), so the state is read through the forge's API instead.
 //
-// It also reads the viewer's login (whose arming is land's own), the review
+// It also reads the pull request's node id (what the dequeue takes), the
+// viewer's login (whose arming is land's own), the review
 // decision, when and by whom the arming was made, and the head's checks with
 // whether this pull request requires each (isRequired takes the pull
 // request's number; with neither it nor an id the forge refuses the field).
@@ -1154,7 +1157,7 @@ const maxListedPRs = 20
 // "exceeds the `first` limit of 100 records"), with whether more follow, and
 // each with the time it finished (completedAt; a status's createdAt), which
 // times the toggle's grace.
-const PRStateQuery = `query($o:String!,$r:String!,$n:Int!){viewer{login} repository(owner:$o,name:$r){pullRequest(number:$n){isInMergeQueue mergeQueueEntry{state position} autoMergeRequest{mergeMethod enabledAt enabledBy{login}} reviewDecision mergeStateStatus mergeable headRefOid statusCheckRollup{state contexts(first:100){pageInfo{hasNextPage} nodes{... on CheckRun{name status conclusion completedAt isRequired(pullRequestNumber:$n)} ... on StatusContext{context state createdAt isRequired(pullRequestNumber:$n)}}}}}}}`
+const PRStateQuery = `query($o:String!,$r:String!,$n:Int!){viewer{login} repository(owner:$o,name:$r){pullRequest(number:$n){id isInMergeQueue mergeQueueEntry{state position} autoMergeRequest{mergeMethod enabledAt enabledBy{login}} reviewDecision mergeStateStatus mergeable headRefOid statusCheckRollup{state contexts(first:100){pageInfo{hasNextPage} nodes{... on CheckRun{name status conclusion completedAt isRequired(pullRequestNumber:$n)} ... on StatusContext{context state createdAt isRequired(pullRequestNumber:$n)}}}}}}}`
 
 // prStateArgs are the forge client's arguments for PRStateQuery on pull
 // request n of the repository owner/name. The owner and the name go as raw
@@ -1320,31 +1323,9 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 		return refuse("the forge client names the repository "+strconv.Quote(nameWithOwner)+", not owner/name, so land cannot ask the forge for pull request #"+n+"'s state, and nothing was armed",
 			"check the forge client (gh repo view), then run abcd land again")
 	}
-	// The merge gate (facilitator.go): the mode as the default branch's tip
-	// just fetched and the machine layer declare it, never the branch's own
-	// checkout (dcn-2610230058333177), the author's role, the approvals of
-	// the head, and in auto a review receipt naming it.
-	d, err := DecideMerge(MergeQuery{RepoRoot: dir, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
-		Rule: rule, Repo: nameWithOwner, PR: n, Head: res.Head, Forge: func(args ...string) (string, error) { return o.Forge(dir, args...) }})
-	if err != nil {
-		left := ", so nothing was armed"
-		if atHead {
-			left = ", and the arming already at " + short(res.Head) + " is left as it is"
-		}
-		return refuse(fsutil.RedactHome(err.Error())+" at "+Remote+"/"+res.Default+left, "correct the file it names, then run abcd land again")
-	}
-	if !d.Arm {
-		note := "pull request #" + n + ": " + d.Why
-		if atHead {
-			note += "; the arming already at " + short(res.Head) + " is left as it is"
-		}
-		res.add("enqueue", StatusLeft, note, "")
-		return nil
-	}
-	if err := stopHold(res, o); err != nil {
-		return err
-	}
-	view := func() (prState, error) {
+	// viewAs reads the pull request's state; left is what an answer with
+	// errors says became of the arming. view is the step's own read.
+	viewAs := func(left string) (prState, error) {
 		out, err := forge(o, dir, prStateArgs(owner, name, n)...)
 		if err != nil {
 			return prState{}, err
@@ -1354,7 +1335,7 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 			return prState{}, refuse("the forge's view of pull request #"+n+" does not parse", "check the forge client, then run abcd land again")
 		}
 		if len(a.Errors) > 0 {
-			return prState{}, refuse("the forge answered the query for pull request #"+n+"'s state with errors, so nothing was armed: "+a.errorText(),
+			return prState{}, refuse("the forge answered the query for pull request #"+n+"'s state with errors"+left+": "+a.errorText(),
 				"settle what the forge reports (gh pr view "+n+"), then run abcd land again")
 		}
 		if a.Data.Repository == nil || a.Data.Repository.PullRequest == nil {
@@ -1365,6 +1346,64 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 			st.viewer = a.Data.Viewer.Login
 		}
 		return st, nil
+	}
+	view := func() (prState, error) { return viewAs(", so nothing was armed") }
+	// withdraw takes this account's arming off and confirms it did
+	// (withdrawOwn); the read-back's answer with errors says nothing of an
+	// arming.
+	withdraw := func() error { return withdrawOwn(o, dir, n, func() (prState, error) { return viewAs("") }) }
+	// ownChecked is the dependency check, with its withdrawal, for this
+	// account's arming at the gated head that a return before the check would
+	// leave in place: held or an error stops the step, the check's outcome
+	// standing for the return's.
+	ownChecked := func(s prState) (bool, error) {
+		if s.IsInMergeQueue || !s.ownArming() || s.HeadRefOid != res.Head {
+			return false, nil
+		}
+		held, err := dependsHold(res, o, dir, owner, name, pr.Number, withdraw)
+		return held || err != nil, err
+	}
+	// atHeadChecked reads the state for ownChecked where the push step left an
+	// arming at the local head (atHead).
+	atHeadChecked := func() (bool, error) {
+		if !atHead {
+			return false, nil
+		}
+		s, err := view()
+		if err != nil {
+			return true, err
+		}
+		return ownChecked(s)
+	}
+	// The merge gate (facilitator.go): the mode as the default branch's tip
+	// just fetched and the machine layer declare it, never the branch's own
+	// checkout (dcn-2610230058333177), the author's role, the approvals of
+	// the head, and in auto a review receipt naming it.
+	d, err := DecideMerge(MergeQuery{RepoRoot: dir, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
+		Rule: rule, Repo: nameWithOwner, PR: n, Head: res.Head, Forge: func(args ...string) (string, error) { return o.Forge(dir, args...) }})
+	if err != nil {
+		if stop, cerr := atHeadChecked(); stop {
+			return cerr
+		}
+		left := ", so nothing was armed"
+		if atHead {
+			left = ", and the arming already at " + short(res.Head) + " is left as it is"
+		}
+		return refuse(fsutil.RedactHome(err.Error())+" at "+Remote+"/"+res.Default+left, "correct the file it names, then run abcd land again")
+	}
+	if !d.Arm {
+		if stop, cerr := atHeadChecked(); stop {
+			return cerr
+		}
+		note := "pull request #" + n + ": " + d.Why
+		if atHead {
+			note += "; the arming already at " + short(res.Head) + " is left as it is"
+		}
+		res.add("enqueue", StatusLeft, note, "")
+		return nil
+	}
+	if err := stopHold(res, o); err != nil {
+		return err
 	}
 	// The arming is pinned to the head land checked: the forge refuses it when
 	// the pull request's head is another commit.
@@ -1378,6 +1417,11 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 		return err
 	}
 	if s.Mergeable == "CONFLICTING" || s.MergeStateStatus == "DIRTY" {
+		// This account's arming at the gated head is judged first: the
+		// conflict leaves it in place.
+		if stop, cerr := ownChecked(s); stop {
+			return cerr
+		}
 		return refuse("pull request #"+n+" conflicts with "+res.Default+", and a conflicting pull request never enters the queue, so nothing was armed",
 			"merge "+res.Default+" into "+res.Branch+" and settle the conflict, then run abcd land again")
 	}
@@ -1398,23 +1442,11 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 	// account's arming already in place comes off on a wait or a refusal, the
 	// forge asked again that it did.
 	if !s.armed() || s.ownArming() {
-		var withdraw func() error
+		var off func() error
 		if s.armed() {
-			withdraw = func() error {
-				if err := WithdrawArming(func(args ...string) (string, error) { return o.Forge(dir, args...) }, n, "", true, false); err != nil {
-					return err
-				}
-				again, err := view()
-				if err != nil {
-					return err
-				}
-				if again.armed() || again.IsInMergeQueue {
-					return errors.New("the forge still reports it armed after the withdrawal")
-				}
-				return nil
-			}
+			off = withdraw
 		}
-		if held, err := dependsHold(res, o, dir, owner, name, pr.Number, withdraw); err != nil || held {
+		if held, err := dependsHold(res, o, dir, owner, name, pr.Number, off); err != nil || held {
 			return err
 		}
 	}

@@ -204,7 +204,8 @@ func TestLandRefusesOverAnotherAccountsArmingAtAHeadTheGateRefuses(t *testing.T)
 }
 
 // An answer the gate could not read refuses nothing, and the enqueue step says
-// the arming stays.
+// the arming stays: this account's, once the dependency check (which reads
+// the state) lets it stand, another account's as the forge reports it.
 func TestLandLeavesAnArmingWhenItCannotReadTheGate(t *testing.T) {
 	for _, c := range []struct {
 		name, config, by string
@@ -225,6 +226,10 @@ func TestLandLeavesAnArmingWhenItCannotReadTheGate(t *testing.T) {
 			f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": c.config})
 			f.forge.prs = f.prFor(f.head())
 			f.forge.armings = []string{armingBy(f.head(), true, false, c.by)}
+			f.forge.views = []string{viewArmedByOther}
+			if c.by == "alice" {
+				f.forge.answer = ownArmed
+			}
 			if c.set != nil {
 				c.set(f)
 			}
@@ -233,6 +238,9 @@ func TestLandLeavesAnArmingWhenItCannotReadTheGate(t *testing.T) {
 				t.Fatal(err)
 			}
 			noWithdrawal(t, f)
+			if got := f.forge.dependsReads(); (c.by == "alice") != (len(got) == 1) {
+				t.Fatalf("dependency reads %v: want #7 read for this account's arming alone", got)
+			}
 			if s := step(t, res, "enqueue"); !strings.Contains(s.Note, c.says) || !strings.Contains(s.Note, "is left as it is") {
 				t.Fatalf("enqueue step %+v: want %q and the arming said left", s, c.says)
 			}
@@ -245,6 +253,7 @@ func TestLandLeavesAnArmingWhenItCannotReadTheGate(t *testing.T) {
 		f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": `{"facilitator":{"mode":"sometimes"}}` + "\n"})
 		f.forge.prs = f.prFor(f.head())
 		f.forge.armings = []string{armingBy(f.head(), true, false, "alice")}
+		f.forge.answer = ownArmed
 		_, err := f.land(f.options())
 		wantRefusal(t, err, "is left as it is")
 		noWithdrawal(t, f)

@@ -7,13 +7,26 @@ package landing
 // reads its own pull request and, through their own Depends-On lines, the
 // pull requests it depends on, builds the records the coordination pass reads
 // and acts on the pass's decision for its own pull request alone: queue goes
-// on as before, wait stops with nothing armed, refuse refuses. This account's
-// arming already in place is withdrawn on a wait or a refusal (WithdrawArming),
-// since it could merge the pull request before what it depends on; a
-// withdrawal that fails, or that the forge does not confirm, refuses with the
-// command that withdraws it by hand. Another account's arming, and a pull
-// request already queued, are never judged here: land reports them with their
-// dependencies unread.
+// on as before, wait stops with no new arming made, refuse refuses. This
+// account's arming already in place is withdrawn on a wait or a refusal, a
+// forge that could not be asked included (withdrawOwn), since it could merge
+// the pull request before what it depends on: a forge error on a re-run takes
+// it off, and the next run arms it again. A read-back that finds the pull
+// request queued takes it out of the merge queue. A withdrawal that fails, or
+// that the forge does not confirm, refuses with the step that withdraws it by
+// hand: the command for an arming, the pull request's page for a queue entry.
+// A pull request whose own read shows it merged or closed is refused as such,
+// nothing withdrawn. Another account's arming, as the forge reported it when
+// land read it, is not withdrawn.
+//
+// The check runs where this account's arming stands at the gated head and the
+// merge gate cannot be read or does not arm, or the pull request conflicts.
+// It is not made, and an arming in place is left with its dependencies
+// unread, where: the pull request is already queued; another account armed
+// it; land.enqueue is off; a stop holds; the forge's listing gives a head
+// other than the local one; it merges into a base other than the default
+// branch; or this account's arming is at a head land did not gate, which is
+// refused with the command that withdraws it.
 //
 // Every body and every forge answer is untrusted. The bodies of the dependant
 // and of each dependency still open or queued are read by
@@ -25,13 +38,12 @@ package landing
 // answers with no pull request, a pull request into another base than the
 // default branch (merged there or not), a state land cannot map, a creation
 // time it cannot read or that is the zero time, and a walk past
-// maxDependsReads pull requests. A dependency the forge reports MERGED into
-// the default branch is satisfied however it merged; a later revert of it is
-// not read.
+// maxDependsReads pull requests. A dependency is satisfied once the forge
+// reports it MERGED into the default branch, however it merged.
 //
 // The wait's start is the dependant's createdAt as the forge reports it: set
 // when the pull request is opened, and no agent can move it. A reopened pull
-// request keeps it; a new pull request for the same branch has its own, and so
+// request keeps it, as the forge reports it; a new pull request for the same branch has its own, and so
 // a fresh dependsWaitLimit. A Depends-On line added to a pull request opened
 // more than dependsWaitLimit ago is refused at once, as a wait past its
 // deadline. A start later than the clock (Options.Now) is refused, with no
@@ -83,7 +95,9 @@ type dependsPR struct {
 	IsInMergeQueue bool   `json:"isInMergeQueue"`
 	BaseRefName    string `json:"baseRefName"`
 	CreatedAt      string `json:"createdAt"`
-	Body           string `json:"body"`
+	// Body is nil when the answer has no body field: an answer land cannot
+	// read whole, where an empty body is no Depends-On line.
+	Body *string `json:"body"`
 }
 
 type dependsAnswer struct {
@@ -106,6 +120,9 @@ type dependsCheck struct {
 	// none is what the check's texts say became of the arming: nothing was
 	// armed, or this account's earlier arming was withdrawn.
 	none string
+	// gone is set when the pull request's own read shows it merged or
+	// closed: there is no arming left to withdraw.
+	gone bool
 }
 
 // cannot is the fix for a forge answer about pull request n that land cannot
@@ -220,7 +237,10 @@ func (c *dependsCheck) change(pr dependsPR) (coord.Change, error) {
 	}
 	ch := coord.Change{Number: n, State: st}
 	if st == coord.StateOpen || st == coord.StateQueued {
-		deps, err := coord.ParseDependsOn(pr.Body)
+		if pr.Body == nil {
+			return coord.Change{}, refuse(fmt.Sprintf("the forge's answer for pull request #%d gives no body, so land cannot judge #%d's dependencies, and %s", n, c.self, c.none), c.cannot(n))
+		}
+		deps, err := coord.ParseDependsOn(*pr.Body)
 		if err != nil {
 			why := strings.TrimPrefix(err.Error(), "coord: ")
 			if n == c.self {
@@ -251,10 +271,14 @@ func dependsHold(res *Result, o Options, dir, owner, name string, self int, with
 	if wait == "" && err == nil {
 		return false, nil
 	}
-	if withdraw != nil {
+	if withdraw != nil && !c.gone {
 		if werr := withdraw(); werr != nil {
 			if errors.Is(werr, ErrNoForgeClient) {
 				return false, noForgeClient()
+			}
+			var w worded
+			if errors.As(werr, &w) {
+				return false, w.r
 			}
 			return false, refuse(fmt.Sprintf("land's dependency check does not let pull request #%d queue, and land could not withdraw this account's earlier arming, which can merge #%d before what it depends on: %s", self, self, forgeWhy(werr)),
 				fmt.Sprintf("withdraw it yourself (gh pr merge %d --disable-auto), then run abcd land again, which says what holds it", self))
@@ -275,6 +299,16 @@ func (c *dependsCheck) judge(res *Result) (wait string, err error) {
 	own, ok, err := c.readPR(self)
 	if err != nil {
 		return "", err
+	}
+	// Merged or closed since land read its state: nothing is left to judge,
+	// and no arming to withdraw.
+	if ok && (own.State == "MERGED" || own.State == "CLOSED") {
+		c.gone = true
+		what, fix := "merged", fmt.Sprintf("nothing is left to land for #%d (gh pr view %d)", self, self)
+		if own.State == "CLOSED" {
+			what, fix = "closed", fmt.Sprintf("reopen it (gh pr reopen %d) if it is still to merge, then run abcd land again", self)
+		}
+		return "", refuse(fmt.Sprintf("the forge reports pull request #%d %s since land read its state, so land judged none of its dependencies and armed or withdrew nothing", self, what), fix)
 	}
 	if !ok || own.State != "OPEN" || own.IsInMergeQueue || own.BaseRefName != res.Default {
 		return "", refuse(fmt.Sprintf("the forge's answer for pull request #%d no longer reads it as open into %s and outside the merge queue, so land cannot judge its dependencies, and %s", self, res.Default, c.none),
@@ -377,4 +411,65 @@ func numbered(nums []int) string {
 		parts[i] = fmt.Sprintf("#%d", n)
 	}
 	return strings.Join(parts, ", ")
+}
+
+// worded is a refusal the withdrawal words whole, which dependsHold returns
+// as it is.
+type worded struct{ r error }
+
+func (w worded) Error() string { return w.r.Error() }
+
+// withdrawOwn takes this account's arming of pull request n off and asks the
+// forge again (view) that it came off. A read-back that finds it in the merge
+// queue (the forge can queue it from the arming between the reads) takes it
+// out through the dequeue, by its node id, and asks again; one still queued,
+// or that the dequeue cannot take out, refuses with the step that dequeues. A
+// read-back that shows an arming another account made since land read the
+// state refuses saying so. An answer with no autoMergeRequest field is one
+// land cannot read whole (null is off).
+func withdrawOwn(o Options, dir, n string, view func() (prState, error)) error {
+	ask := func(args ...string) (string, error) { return o.Forge(dir, args...) }
+	if err := WithdrawArming(ask, n, "", true, false); err != nil {
+		return err
+	}
+	read := func() (prState, error) {
+		s, err := view()
+		var r *Refusal
+		if errors.As(err, &r) {
+			return s, errors.New(r.Reason)
+		}
+		return s, err
+	}
+	queued := func(why string) error {
+		return worded{refuse(fmt.Sprintf("land's dependency check does not let pull request #%s queue, but after land withdrew this account's earlier arming the forge reports #%s in the merge queue, where it can merge before what it depends on, %s", n, n, why),
+			fmt.Sprintf("take #%s out of the merge queue on its page, then run abcd land again, which says what holds it", n))}
+	}
+	again, err := read()
+	for dequeued := false; ; dequeued = true {
+		switch {
+		case err != nil:
+			return err
+		case len(again.AutoMergeRequest) == 0:
+			return fmt.Errorf("the forge's read-back of #%s gives no autoMergeRequest, so land cannot say the arming came off", n)
+		case again.IsInMergeQueue && dequeued:
+			return queued("and it is still there after land took it out")
+		case again.IsInMergeQueue && again.ID == "":
+			return queued("and the forge gives no id land can take it out by")
+		case again.IsInMergeQueue:
+			if werr := WithdrawArming(ask, n, again.ID, again.armed(), true); werr != nil {
+				if errors.Is(werr, ErrNoForgeClient) {
+					return werr
+				}
+				return queued("and land could not take it out: " + forgeWhy(werr))
+			}
+			again, err = read()
+			continue
+		case again.armed() && !again.ownArming():
+			return worded{refuse(fmt.Sprintf("land's dependency check does not let pull request #%s queue; land withdrew this account's earlier arming, but the forge now reports #%s armed by another account (or one it does not attribute), which can merge #%s before what it depends on and which land does not withdraw", n, n, n),
+				fmt.Sprintf("ask whoever armed it to withdraw it, or withdraw it yourself (gh pr merge %s --disable-auto), then run abcd land again", n))}
+		case again.armed():
+			return errors.New("the forge still reports it armed after the withdrawal")
+		}
+		return nil
+	}
 }

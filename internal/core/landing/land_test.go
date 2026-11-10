@@ -67,6 +67,7 @@ type fakeForge struct {
 	answer string
 	// answers are whole answers to the state query, one a call, the last
 	// repeated, each @HEAD@ replaced as a view's is; they come before views.
+	// One beginning "!" fails the query with the rest as its message.
 	answers []string
 	calls   [][]string
 	// onRepoView runs when the repository is viewed, before the answer.
@@ -99,9 +100,11 @@ type fakeForge struct {
 	// armingsErrAt fails the arming read with this ordinal (1 is the first).
 	armingsErrAt int
 	armingReads  int
-	// failDisarm fails `pr merge --disable-auto`; dequeueErr fails the
-	// dequeue, and dequeueAnswer replaces its answer.
+	// failDisarm fails `pr merge --disable-auto`, and disarmErr fails it
+	// with that error; dequeueErr fails the dequeue, and dequeueAnswer
+	// replaces its answer.
 	failDisarm    bool
+	disarmErr     error
 	failDisarmOf  string
 	dequeueErr    error
 	dequeueAnswer string
@@ -325,6 +328,9 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 			if len(f.answers) > 1 {
 				f.answers = f.answers[1:]
 			}
+			if msg, failed := strings.CutPrefix(a, "!"); failed {
+				return "", errors.New(msg)
+			}
 			return strings.ReplaceAll(a, "@HEAD@", f.head), nil
 		}
 		if len(f.views) == 0 {
@@ -336,6 +342,9 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		}
 		return `{"data":{"repository":{"pullRequest":` + strings.ReplaceAll(v, "@HEAD@", f.head) + `}}}`, nil
 	case "pr merge":
+		if slices.Contains(args, "--disable-auto") && f.disarmErr != nil {
+			return "", f.disarmErr
+		}
 		if slices.Contains(args, "--disable-auto") && (f.failDisarm || (f.failDisarmOf != "" && slices.Contains(args, f.failDisarmOf))) {
 			return "", errors.New("fake forge: the disarm failed")
 		}
