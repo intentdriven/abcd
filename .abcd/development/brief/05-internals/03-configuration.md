@@ -1288,8 +1288,9 @@ Three properties are load-bearing:
   tracked check and the secret scanner's identity probe, a probe the deadline
   cut short leaving the scanner unavailable rather than blind to the person's
   identity. At a stop: those, the session's copy, the session's identity and
-  holder, the default branch, the last-fetch stamp and the landing-receipt
-  read. The hooks' other reads, among them the stop's reservations' view, are
+  holder, the default branch, the last-fetch stamp, the landing-receipt read,
+  this copy's key and the reservations' view as last fetched. The hooks' other
+  reads, among them the guard's reservations' view in its delete check, are
   not yet bound (iss-2611100548341325); the away session's state, read after the
   deadline may be spent, runs under a two-second bound of its own. At a
   session start, a deadline spent before or during the read leaves the list

@@ -160,8 +160,9 @@
 // armed is owed with "arm it" as its next move. Each read runs under
 // RulesetDeadline (three seconds, o.RulesetDeadline in a test); one that
 // fails, is late or cannot be read whole is a note, and the pull request is
-// owed its merge as before. A conflict (DIRTY), failing checks and a stacked
-// base are owed as they were.
+// owed its merge as before, unless the check's own deadline ended it: then
+// it owes nothing on that account and the reading is marked cut short. A
+// conflict (DIRTY), failing checks and a stacked base are owed as they were.
 //
 // A branch is the session's own when this copy's HEAD reflog has checked it
 // out or the copy's created-branch list holds it, either only while it holds
@@ -215,28 +216,32 @@
 // These reads of ReadOwed are bound to ctx: finding the checkout, the
 // author's identity and the reservations' holder, the default branch and
 // the local branches, the fetch stamp, the receipt folder and the landing
-// receipt, the runs' tracked check, the created-branch list's store key, the
-// other worktrees, each branch's own history, reflog, ancestry and landing,
-// the forge reads and the live sessions' wait. The reservations' view
-// (claim.View) is not yet bound (iss-2611100548341325). The stack-base search
-// reads each own branch's reflog once a check and walks each branch's own
-// history once, so its cost grows with the branches, not their pairs. A
-// context that ends before everything is read stops the reading where it
-// is: Owed.Incomplete is set, a note says what was not read, and Judge
-// allows the stop with a line naming it, recording a StopCheckIncomplete
-// while away. These reads mark the reading cut short, which sets
-// Owed.Incomplete, when the context ended them: the author's identity, the
-// holder, the default branch, the receipt folder, the landing receipt, the
-// runs' tracked check, the created-branch list's store, the other worktrees,
-// the fetch stamp, the stack index, the live sessions' wait, the merge
-// queue's rules and its armed set, and each git call the reader runs itself.
-// The pull-request listing and the landing check's merge-driver, merge-tree
-// and cherry reads are marked when the reading runs out. Four of the reads owe nothing on their own account once the context
-// has ended: no preflight for a receipt it could not read, no merge for an
-// ancestry it could not ask, and no merge or arming for a merge queue's rules
-// or armed set it could not read. A branch with no upstream and no commit in
-// any remote branch is owed only when merging it into the last-fetched
-// default branch would change it; one squash- or rebase-merged already is
-// not, and one that cannot be told is a note. A listing at its limit of 200 may be truncated:
-// a note says so, and no reservation is reported uncarried from it.
+// receipt, the runs' tracked check, the created-branch list's store key and
+// this copy's key, the other worktrees, each branch's own history, reflog,
+// ancestry and landing, the reservations as last fetched (claim.ViewContext),
+// the forge reads and the live sessions' wait. The stack-base search reads
+// each own branch's reflog once a check and walks each branch's own history
+// once, so its cost grows with the branches, not their pairs. A context
+// that ends before everything is read stops the reading where it is:
+// Owed.Incomplete is set, a note says what was not read, and Judge allows
+// the stop with a line naming it, recording a StopCheckIncomplete while
+// away. These reads mark the reading cut short, which sets Owed.Incomplete,
+// when the context ended them: the author's identity, the holder, the
+// default branch, the receipt folder, the landing receipt, the runs' tracked
+// check, this copy's key and the created-branch list's store, the other
+// worktrees, the fetch stamp, the stack index, the reservations as last
+// fetched, the live sessions' wait, the merge queue's rules and its armed
+// set, and each call made through `r.git`. A reservations read the context
+// ended uses none of what it read: no reservation reads as live from it, and
+// none counts as this copy's. The pull-request listing and the landing
+// check's merge-driver, merge-tree and cherry reads are marked when the
+// reading runs out. Four of the reads owe nothing on their own account once
+// the context has ended: no preflight for a receipt it could not read, no
+// merge for an ancestry it could not ask, and no merge or arming for a merge
+// queue's rules or armed set it could not read. A branch with no upstream
+// and no commit in any remote branch is owed only when merging it into the
+// last-fetched default branch would change it; one squash- or rebase-merged
+// already is not, and one that cannot be told is a note. A listing at its
+// limit of 200 may be truncated: a note says so, and no reservation is
+// reported uncarried from it.
 package autonomy
