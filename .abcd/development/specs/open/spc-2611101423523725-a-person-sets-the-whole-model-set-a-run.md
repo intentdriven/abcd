@@ -86,3 +86,4 @@ repository names only which classes review.
    - packages: internal/core/runner
    - tests: behind the existing live build tag, one short launch per bundled class through the harness runner at `high` returns an answer and reports a model; the check is skipped, saying so, where no harness is logged in
    - needs: 5
+   - landed: 14917d053
