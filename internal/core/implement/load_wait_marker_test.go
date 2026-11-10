@@ -2,8 +2,10 @@ package implement
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -38,15 +40,30 @@ func readMarkerFile(t *testing.T, home string, pid int) (WholeRunMarker, bool) {
 	return m, true
 }
 
+// markHead is the commit a fixture's checkout is at.
+const markHead = "0123456789abcdef0123456789abcdef01234567"
+
+// yes is a marker's Preflight field set.
+func yes() *bool { b := true; return &b }
+
+// wholeReq is the waiter at pid 60000 gating the preflight's stages in a
+// checkout at markHead.
 func wholeReq(home string, clock *fakeClock) WaitRequest {
 	req := waitReq(home, 60000, clock, poll{load: 3})
-	req.Command, req.Dir = true, "/work/wt"
+	req.Command, req.Dir, req.Words = true, "/work/wt", wholeRunCommand
+	req.ReadHead = func(string) (string, error) { return markHead, nil }
 	return req
 }
 
+// goodMarker is a well-formed marker for pid, started at start.
+func goodMarker(pid int, start int64, began time.Time) WholeRunMarker {
+	return WholeRunMarker{SchemaVersion: wholeRunSchema, PID: pid, StartUnix: start, Dir: "/x", Head: markHead, Preflight: yes(), Kind: WholeRunKind, Began: began}
+}
+
 // TestWholeRunWaiterRecordsItself: a whole run's waiter opens with its marker
-// written, naming its pid, its start time as the table read it, its checkout
-// and the whole kind; the release of its hold removes it.
+// written, naming its pid, its start time as the table read it, its checkout,
+// the checkout's HEAD, that its command is the preflight's stages, and the
+// whole kind; the release of its hold removes it.
 func TestWholeRunWaiterRecordsItself(t *testing.T) {
 	home := t.TempDir()
 	clock := &fakeClock{now: waitT0}
@@ -60,11 +77,12 @@ func TestWholeRunWaiterRecordsItself(t *testing.T) {
 	}
 	start := waitT0.Add(-time.Second).Unix()
 	if m.PID != 60000 || m.Dir != "/work/wt" || m.Kind != WholeRunKind || m.SchemaVersion != wholeRunSchema ||
-		m.StartUnix < start-holdStartSlack || m.StartUnix > start+holdStartSlack || m.Began.IsZero() {
-		t.Fatalf("marker = %+v, want pid 60000 started about %d in /work/wt, whole", m, start)
+		m.StartUnix < start-holdStartSlack || m.StartUnix > start+holdStartSlack || m.Began.IsZero() ||
+		m.Head != markHead || m.Preflight == nil || !*m.Preflight {
+		t.Fatalf("marker = %+v, want pid 60000 started about %d in /work/wt at %s, the preflight, whole", m, start, markHead)
 	}
 	got, err := ReadWholeRunMarkers(home)
-	if err != nil || len(got) != 1 || got[0] != m {
+	if err != nil || len(got) != 1 || !reflect.DeepEqual(got[0], m) {
 		t.Fatalf("read back %+v, err %v, want the one marker written", got, err)
 	}
 	if res.Hold == nil {
@@ -103,7 +121,8 @@ func TestOnlyAWholeRunRecordsItself(t *testing.T) {
 		home := t.TempDir()
 		clock := &fakeClock{now: waitT0}
 		req := waitReq(home, 60000, clock, poll{load: 40})
-		req.Command, req.Dir, req.Timeout = true, "/work/wt", time.Minute
+		req.Command, req.Dir, req.Timeout, req.Words = true, "/work/wt", time.Minute, wholeRunCommand
+		req.ReadHead = func(string) (string, error) { return markHead, nil }
 		seen := false
 		req.OnWait = func(WaitResult) { _, seen = readMarkerFile(t, home, 60000) }
 		res, err := WaitLoad(req)
@@ -148,8 +167,9 @@ func TestWholeRunMarkerSweepsTheDead(t *testing.T) {
 		t.Fatal(err)
 	}
 	live := machineload.Proc{PID: 777, PPID: 1, PGID: 777, UID: 501, Age: time.Hour, Name: "abcd"}
+	// Each planted marker was written an hour before the sweeper's reading.
 	plant := func(pid int, start int64) {
-		raw, _ := json.Marshal(WholeRunMarker{SchemaVersion: wholeRunSchema, PID: pid, StartUnix: start, Dir: "/x", Kind: WholeRunKind, Began: waitT0})
+		raw, _ := json.Marshal(goodMarker(pid, start, waitT0.Add(-time.Hour)))
 		if err := os.WriteFile(markerPath(home, pid), raw, 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -159,7 +179,8 @@ func TestWholeRunMarkerSweepsTheDead(t *testing.T) {
 	plant(777+1, waitT0.Add(-time.Hour).Unix()) // gone
 	clock := &fakeClock{now: waitT0}
 	req := waitReq(home, 60000, clock, poll{load: 3, procs: []machineload.Proc{live}})
-	req.Command, req.Dir = true, "/work/wt"
+	req.Command, req.Dir, req.Words = true, "/work/wt", wholeRunCommand
+	req.ReadHead = func(string) (string, error) { return markHead, nil }
 	if _, err := WaitLoad(req); err != nil {
 		t.Fatal(err)
 	}
@@ -181,8 +202,9 @@ func TestWholeRunMarkerSweepsTheDead(t *testing.T) {
 // TestReadWholeRunMarkersIsStrict: the markers are untrusted on read. Absent
 // is none; a file that is too large, not one JSON document of the marker's
 // shape, named for another pid, of another kind, with a relative or unclean
-// checkout, or not a regular file counts for nothing; a symlinked folder, or
-// one others can write, is refused.
+// checkout, missing its commit or whether its command is the preflight, with
+// a negative slack, or not a regular file counts for nothing; a symlinked
+// folder, or one others can write, is refused.
 func TestReadWholeRunMarkersIsStrict(t *testing.T) {
 	home := t.TempDir()
 	if got, err := ReadWholeRunMarkers(home); err != nil || got != nil {
@@ -192,7 +214,7 @@ func TestReadWholeRunMarkersIsStrict(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	good := WholeRunMarker{SchemaVersion: wholeRunSchema, PID: 4242, StartUnix: 1700000000, Dir: "/work/wt", Kind: WholeRunKind, Began: waitT0}
+	good := WholeRunMarker{SchemaVersion: wholeRunSchema, PID: 4242, StartUnix: 1700000000, Dir: "/work/wt", Head: markHead, Preflight: yes(), Kind: WholeRunKind, Began: waitT0}
 	write := func(name string, v any) {
 		var raw []byte
 		switch x := v.(type) {
@@ -211,19 +233,25 @@ func TestReadWholeRunMarkersIsStrict(t *testing.T) {
 	write("4245.json", bad(func(m *WholeRunMarker) { m.PID = 4245; m.Kind = "narrow" }))
 	write("4246.json", bad(func(m *WholeRunMarker) { m.PID = 4246; m.Dir = "work/wt" }))
 	write("4247.json", bad(func(m *WholeRunMarker) { m.PID = 4247; m.Dir = "/work/../etc" }))
-	write("4248.json", bad(func(m *WholeRunMarker) { m.PID = 4248; m.SchemaVersion = 2 }))
+	write("4248.json", bad(func(m *WholeRunMarker) { m.PID = 4248; m.SchemaVersion = 1 }))
 	write("4249.json", bad(func(m *WholeRunMarker) { m.PID = 4249; m.StartUnix = 0 }))
-	write("4250.json", `{"schema_version":1,"pid":4250,"start_unix":1700000000,"dir":"/w","kind":"whole","began":"2026-10-11T18:00:00Z","extra":1}`)
-	write("4251.json", `{"schema_version":1,"pid":4251,"pid":4251,"start_unix":1700000000,"dir":"/w","kind":"whole","began":"2026-10-11T18:00:00Z"}`)
-	write("4252.json", `{"schema_version":1,"pid":4252,"start_unix":1700000000,"dir":"/w","kind":"whole","began":"2026-10-11T18:00:00Z"} {}`)
-	write("4253.json", `{"schema_version":1,"pid":4253,"start_unix":1700000000,"dir":"/`+strings.Repeat("a", maxWholeRunMarkerBytes)+`","kind":"whole","began":"2026-10-11T18:00:00Z"}`)
+	const tail = `"head":"` + markHead + `","preflight":true,"kind":"whole","began":"2026-10-11T18:00:00Z"`
+	write("4250.json", `{"schema_version":2,"pid":4250,"start_unix":1700000000,"dir":"/w",`+tail+`,"extra":1}`)
+	write("4251.json", `{"schema_version":2,"pid":4251,"pid":4251,"start_unix":1700000000,"dir":"/w",`+tail+`}`)
+	write("4252.json", `{"schema_version":2,"pid":4252,"start_unix":1700000000,"dir":"/w",`+tail+`} {}`)
+	write("4253.json", `{"schema_version":2,"pid":4253,"start_unix":1700000000,"dir":"/`+strings.Repeat("a", maxWholeRunMarkerBytes)+`",`+tail+`}`)
+	// A marker missing the commit, or whether its command is the preflight.
+	write("4255.json", bad(func(m *WholeRunMarker) { m.PID = 4255; m.Head = "" }))
+	write("4256.json", bad(func(m *WholeRunMarker) { m.PID = 4256; m.Head = "abc1234" }))
+	write("4257.json", `{"schema_version":2,"pid":4257,"start_unix":1700000000,"dir":"/w","head":"`+markHead+`","kind":"whole","began":"2026-10-11T18:00:00Z"}`)
+	write("4258.json", bad(func(m *WholeRunMarker) { m.PID = 4258; m.StartSlack = -time.Second }))
 	write("1.json", bad(func(m *WholeRunMarker) { m.PID = 1 }))
 	write("notes.txt", "4242")
 	if err := os.Symlink(filepath.Join(dir, "4242.json"), filepath.Join(dir, "4254.json")); err != nil {
 		t.Fatal(err)
 	}
 	got, err := ReadWholeRunMarkers(home)
-	if err != nil || len(got) != 1 || got[0] != good {
+	if err != nil || len(got) != 1 || !reflect.DeepEqual(got[0], good) {
 		t.Fatalf("read %+v, err %v, want only the one well-formed marker", got, err)
 	}
 
@@ -246,5 +274,147 @@ func TestReadWholeRunMarkersIsStrict(t *testing.T) {
 	}
 	if got, err := ReadWholeRunMarkers(linked); err == nil {
 		t.Fatalf("a symlinked folder was read: %+v", got)
+	}
+}
+
+// TestWholeRunMarkerSaysWhetherItIsThePreflight: a whole-form command that is
+// not the preflight's stages writes its marker saying so.
+func TestWholeRunMarkerSaysWhetherItIsThePreflight(t *testing.T) {
+	home := t.TempDir()
+	req := wholeReq(home, &fakeClock{now: waitT0})
+	req.Words = []string{"sh", "-c", "make preflight-stages"}
+	if _, err := WaitLoad(req); err != nil {
+		t.Fatal(err)
+	}
+	m, ok := readMarkerFile(t, home, 60000)
+	if !ok || m.Preflight == nil || *m.Preflight {
+		t.Fatalf("marker = %+v (present %v), want one saying its command is not the preflight", m, ok)
+	}
+}
+
+// TestWholeRunMarkerNeedsTheHead: a checkout whose HEAD cannot be read
+// writes no marker, says so in MarkNote, and the wait still opens.
+func TestWholeRunMarkerNeedsTheHead(t *testing.T) {
+	home := t.TempDir()
+	req := wholeReq(home, &fakeClock{now: waitT0})
+	req.ReadHead = func(string) (string, error) { return "", errors.New("not a git repository") }
+	res, err := WaitLoad(req)
+	if err != nil || res.Status != WaitOpen {
+		t.Fatalf("result %+v, err %v, want open", res, err)
+	}
+	if _, ok := readMarkerFile(t, home, 60000); ok {
+		t.Fatal("a marker was written with no commit")
+	}
+	if !strings.Contains(res.MarkNote, "HEAD") {
+		t.Fatalf("MarkNote = %q, want it to say the HEAD was not read", res.MarkNote)
+	}
+}
+
+// TestWholeRunMarkerStartIsTakenBeforeTheRead: the marker's start time is
+// measured back from the moment the table read began, as sessionname.Table
+// measures a host's, so it is early by up to the read's length and never
+// late, and the read's length is recorded as its slack. Here the read takes
+// five seconds and the table gives the age as at the read's start.
+func TestWholeRunMarkerStartIsTakenBeforeTheRead(t *testing.T) {
+	home := t.TempDir()
+	clock := &fakeClock{now: waitT0}
+	req := wholeReq(home, clock)
+	inner := req.Read
+	req.Read = func() (machineload.Snapshot, error) {
+		snap, err := inner()
+		clock.Sleep(5 * time.Second)
+		return snap, err
+	}
+	if _, err := WaitLoad(req); err != nil {
+		t.Fatal(err)
+	}
+	m, ok := readMarkerFile(t, home, 60000)
+	if !ok {
+		t.Fatal("no marker")
+	}
+	start := waitT0.Add(-time.Second).Unix() // waiterAt's abcd, a second old at waitT0
+	if d := m.StartUnix - start; d < -machineload.StartTolerance || d > machineload.StartTolerance {
+		t.Errorf("StartUnix = %d, want %d: the start is measured from the read's beginning", m.StartUnix, start)
+	}
+	if m.StartSlack != 5*time.Second {
+		t.Errorf("StartSlack = %s, want the read's five seconds", m.StartSlack)
+	}
+}
+
+// TestWholeRunMarkerSweepLeavesALaterMarker: a marker written after the
+// sweeper's table was read is left, its pid absent from that table or not:
+// its waiter may have started after the read.
+func TestWholeRunMarkerSweepLeavesALaterMarker(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(abcdhome.Path(home, WholeRunsLeaf), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for pid, began := range map[int]time.Time{991: waitT0.Add(time.Minute), 992: waitT0.Add(-time.Minute)} {
+		raw, _ := json.Marshal(goodMarker(pid, waitT0.Unix(), began))
+		if err := os.WriteFile(markerPath(home, pid), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := WaitLoad(wholeReq(home, &fakeClock{now: waitT0})); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := readMarkerFile(t, home, 991); !ok {
+		t.Error("a marker written after the sweeper's reading was swept")
+	}
+	if _, ok := readMarkerFile(t, home, 992); ok {
+		t.Error("a marker written before the sweeper's reading, its pid gone, was kept")
+	}
+}
+
+// TestWholeRunMarkerSweepRemovesWhatDoesNotParse: a file named as a marker
+// that a reader would refuse is removed, so such files cannot fill the
+// entries a reader looks at; a file not named as a marker is left.
+func TestWholeRunMarkerSweepRemovesWhatDoesNotParse(t *testing.T) {
+	home := t.TempDir()
+	dir := abcdhome.Path(home, WholeRunsLeaf)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old, _ := json.Marshal(map[string]any{"schema_version": 1, "pid": 994, "start_unix": 1, "dir": "/x", "kind": "whole", "began": waitT0})
+	for name, body := range map[string]string{"993.json": "not json", "994.json": string(old), "notes.txt": "x"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := WaitLoad(wholeReq(home, &fakeClock{now: waitT0})); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]bool{"993.json": false, "994.json": false, "notes.txt": true} {
+		if _, err := os.Stat(filepath.Join(dir, name)); (err == nil) != want {
+			t.Errorf("%s present = %v, want %v", name, err == nil, want)
+		}
+	}
+}
+
+// TestWholeRunMarkerEndsWithItsCommand: above one slot a whole run takes the
+// settle hold, whose release is not the command's end, so the result's
+// EndMark removes the marker once the command exits.
+func TestWholeRunMarkerEndsWithItsCommand(t *testing.T) {
+	home := t.TempDir()
+	req := wholeReq(home, &fakeClock{now: waitT0})
+	req.Getenv = func(k string) string {
+		if k == PreflightSlotsEnv {
+			return "2"
+		}
+		return ""
+	}
+	res, err := WaitLoad(req)
+	if err != nil || res.Status != WaitOpen || res.Hold == nil || res.Hold.Form != HoldSettle {
+		t.Fatalf("result %+v, err %v, want open on the settle hold", res, err)
+	}
+	if _, ok := readMarkerFile(t, home, 60000); !ok {
+		t.Fatal("an open whole run left no marker")
+	}
+	if res.EndMark == nil {
+		t.Fatal("the result carries no EndMark")
+	}
+	res.EndMark()
+	if _, ok := readMarkerFile(t, home, 60000); ok {
+		t.Fatal("EndMark left the marker")
 	}
 }
