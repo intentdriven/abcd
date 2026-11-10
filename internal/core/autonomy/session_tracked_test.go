@@ -83,8 +83,11 @@ func TestTheStopAndPromptReadsRunNoGitOnASpentDeadline(t *testing.T) {
 	}
 }
 
-// hangingIdentityGit puts a git first on PATH that logs every call and hangs
-// on any that reads a user.* identity key, handing the rest to the real git.
+// hangingIdentityGit puts a git first on PATH that hangs on any call whose
+// config key argument is an identity key (user.name, user.email, or the
+// identity listing's pattern), logging each such call, and hands every other
+// call to the real git. It matches the key argument alone, so a path that
+// happens to hold "user" hangs nothing.
 func hangingIdentityGit(t *testing.T) (log string) {
 	t.Helper()
 	real, err := exec.LookPath("git")
@@ -92,8 +95,8 @@ func hangingIdentityGit(t *testing.T) (log string) {
 		t.Skip("git not on PATH")
 	}
 	bin := t.TempDir()
-	log = filepath.Join(t.TempDir(), "calls")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '" + log + "'\ncase \"$*\" in *user*) exec sleep 60;; esac\nexec '" + real + "' \"$@\"\n"
+	log = filepath.Join(t.TempDir(), "identity-reads")
+	script := "#!/bin/sh\nfor a in \"$@\"; do\n  case \"$a\" in\n    user.name|user.email|'^(user|author|committer)\\.(name|email)$')\n      printf '%s\\n' \"$*\" >> '" + log + "'\n      exec sleep 60;;\n  esac\ndone\nexec '" + real + "' \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -102,13 +105,18 @@ func hangingIdentityGit(t *testing.T) (log string) {
 }
 
 // TestTheOwedReadsLaterGitCallsAreBound: the owed read's identity reads run
-// under its ctx after the root lookup. The person's email is read first and
-// its git hangs until the deadline kills it; the reader's holder, read later
+// under its ctx after the root lookup. The first identity read's git hangs
+// until the deadline kills it; the reader's holder, read later
 // while away, then forks no git at all. Unbound, the first would hang the
 // read past its deadline and the second would start a git after it.
 func TestTheOwedReadsLaterGitCallsAreBound(t *testing.T) {
 	repo := gittest.NewRepo(t)
 	repo.Commit("seed")
+	// An identity the environment sets resolves with no git at all, which
+	// would pass this test with the identity read unbound.
+	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"} {
+		t.Setenv(k, "")
+	}
 	log := hangingIdentityGit(t)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -126,12 +134,12 @@ func TestTheOwedReadsLaterGitCallsAreBound(t *testing.T) {
 	raw, _ := os.ReadFile(log)
 	var identityReads []string
 	for _, line := range strings.Split(string(raw), "\n") {
-		if strings.Contains(line, "user") {
+		if line != "" {
 			identityReads = append(identityReads, line)
 		}
 	}
 	if len(identityReads) != 1 {
-		t.Errorf("identity reads %q, want only the email's, killed at the deadline", identityReads)
+		t.Errorf("identity reads %q, want only the first, killed at the deadline", identityReads)
 	}
 }
 
