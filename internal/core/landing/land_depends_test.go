@@ -405,8 +405,8 @@ func TestLandRefusesWhenItCannotWithdrawThisAccountsArming(t *testing.T) {
 		answers    []string
 		want       string
 	}{
-		{"the withdrawal fails", true, []string{ownArmed}, "pull request #7 is held by its dependencies, and land could not withdraw this account's earlier arming, which can merge #7 before them: fake forge: the disarm failed" + fix},
-		{"the forge still reports it armed", false, []string{ownArmed, ownArmed}, "pull request #7 is held by its dependencies, and land could not withdraw this account's earlier arming, which can merge #7 before them: the forge still reports it armed after the withdrawal" + fix},
+		{"the withdrawal fails", true, []string{ownArmed}, "land's dependency check does not let pull request #7 queue, and land could not withdraw this account's earlier arming, which can merge #7 before what it depends on: fake forge: the disarm failed" + fix},
+		{"the forge still reports it armed", false, []string{ownArmed, ownArmed}, "land's dependency check does not let pull request #7 queue, and land could not withdraw this account's earlier arming, which can merge #7 before what it depends on: the forge still reports it armed after the withdrawal" + fix},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f, o := dependsFixture(t, "Depends-On: #5", map[int]string{5: openDep(5, "")}, dependsAt)

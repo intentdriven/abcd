@@ -256,7 +256,7 @@ func dependsHold(res *Result, o Options, dir, owner, name string, self int, with
 			if errors.Is(werr, ErrNoForgeClient) {
 				return false, noForgeClient()
 			}
-			return false, refuse(fmt.Sprintf("pull request #%d is held by its dependencies, and land could not withdraw this account's earlier arming, which can merge #%d before them: %s", self, self, forgeWhy(werr)),
+			return false, refuse(fmt.Sprintf("land's dependency check does not let pull request #%d queue, and land could not withdraw this account's earlier arming, which can merge #%d before what it depends on: %s", self, self, forgeWhy(werr)),
 				fmt.Sprintf("withdraw it yourself (gh pr merge %d --disable-auto), then run abcd land again, which says what holds it", self))
 		}
 	}
