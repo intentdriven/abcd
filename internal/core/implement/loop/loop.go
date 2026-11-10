@@ -1098,9 +1098,18 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 			changed = true
 		}
 		// A drive's receipt refused for the work is consumed in this write, before
-		// the window is read, so a window that closes here delays the role's next
-		// start and never loses it (receipt_standing.go).
-		consumed := consumeStopped(repoRoot, st, stopped, now)
+		// the window is read, so the step whose window closes here still sets it
+		// aside and counts it, and the role starts again in the next window
+		// (receipt_standing.go). A receipt left standing would be read again by
+		// the next step, so placing this later would delay the consuming, not
+		// lose the relaunch.
+		//
+		// Invariant: once consumeStopped reports a change it may have moved a file
+		// and counted it, so every return below writes the state (returns true):
+		// one that did not would drop the record's line and the count while the
+		// file stays moved. The window's return does, the refusal's path does
+		// through consumed, and the success path does through changed.
+		consumed := consumeStopped(repoRoot, root, st, stopped, now)
 		if consumed {
 			changed = true
 		}

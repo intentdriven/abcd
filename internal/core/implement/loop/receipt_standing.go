@@ -45,21 +45,36 @@ package loop
 //
 // A drive is the exception to the stop (iss-2611071242184002). Where the drive
 // itself drives the run (Options.driverIsSelf), a receipt refused for the work it
-// reports (Refusal.work) is consumed in the same write as the refusal: set aside
-// into the lane's aside directory, kept and never deleted, with the refusal in the
-// record's line, and counted as a refused step (noteRefusal). Nothing then stands
-// at the path, so the next step starts the role again on its runner (heldRole),
-// the launch counts toward the drive's bound of failed launches, and the refusals
-// toward the drain's stuck bounds, which hand the lane back. That is the
-// runner's own hand-in (pauseAwait) and a receipt a step finds standing, left by
-// a step that was killed or by an older abcd (advanceWith). A receipt refused
-// for anything else (unreadable, another run's, a hand-back, a fix round with no
-// commit) is not consumed: it stops the lane as above, and each step counts it
-// until the stuck bounds hand the lane back. A host-stepped run keeps the stop.
+// reports (Refusal.work) is consumed in the same write as the refusal
+// (consumeRefused): set aside into a new directory under the lane's aside
+// directory, kept and never deleted, with the report and the definition of done's
+// output it names where each is a regular file of the lane's own directory, and
+// the refusal and the digest of the bytes judged in the record's line. Only those
+// bytes are moved: a file replaced since it was judged, or an await a runner has
+// claimed since, is left standing for the next step to read, uncounted. Every
+// consumed receipt is counted as a refused step under one check and reason
+// (consumedRefusal), whatever it lacked, so the drain's stuck bound of identical
+// refusals, three by default, is a bound of consumed receipts in a row: the third
+// makes the lane stuck, with or without the drive's --until, and since the count
+// is the lane's in the run's state, a fresh drive on the same state carries it
+// on. Time between them does not matter: the count of identical refusals is
+// never reset by a quiet, which restarts only the stuck minutes. A step of the
+// lane that succeeds clears it, and a refusal of another kind starts its own.
+// Nothing then stands at the path, so the next step starts the role again on its
+// runner (heldRole). That is the runner's own hand-in (pauseAwait), which under a
+// bound is also a failed launch of the drive's, and a receipt a step finds
+// standing, left by a step that was killed or by an older abcd (advanceWith),
+// which is a refused step and no launch. A receipt refused for anything else
+// (unreadable, another run's, a hand-back, a fix round with no commit) is not
+// consumed: it stops the lane as above, and each step counts it until the stuck
+// bounds hand the lane back. A host-stepped run keeps the stop.
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -68,6 +83,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/localtier"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // startedRunner is the runner the run's state shows was started for await a of
@@ -221,11 +237,11 @@ func stoppedText(stopped []stoppedReceipt) string {
 }
 
 // consumeStopped consumes each receipt a drive's step read and found refused for
-// the work (stoppedReceipt.consume): set aside and counted as a refused step, in
-// the step's own write, so noteStopped does not count it again and the step's
-// answer says what became of it. It reports whether it changed the state. The
-// caller holds the run's lock and writes the state.
-func consumeStopped(repoRoot string, st *State, stopped []stoppedReceipt, now time.Time) bool {
+// the work (stoppedReceipt.consume), in the step's own write, through
+// consumeRefused, so noteStopped does not count it again and the step's answer
+// says what became of it. It reports whether it changed the state. The caller
+// holds the run's lock and writes the state.
+func consumeStopped(repoRoot string, root *os.Root, st *State, stopped []stoppedReceipt, now time.Time) bool {
 	changed := false
 	for k := range stopped {
 		s := &stopped[k]
@@ -236,12 +252,14 @@ func consumeStopped(repoRoot string, st *State, stopped []stoppedReceipt, now ti
 		if i < 0 || st.Lanes[i].ID != s.lane {
 			continue
 		}
-		reason := refusalReason(s.refusal)
-		if consumeRefused(repoRoot, st, st.Lanes[i], st.Lanes[i].Awaits[at].Receipt, s.refusal, now) {
+		switch consumeRefused(repoRoot, root, st, i, at, "", s.refusal, now) {
+		case consumedAside:
 			s.note = fmt.Sprintf("a receipt stood at %s and was refused for the work (%s), so it is set aside, kept, and the implementer is started again on its runner",
-				s.receipt, reason)
+				s.receipt, refusalReason(s.refusal))
+		case consumedLeft:
+			s.note = fmt.Sprintf("a receipt stands at %s that is not the one this step judged, or its role has been claimed since, so it is left for the next step to read", s.receipt)
 		}
-		noteRefusal(st, s.refusal, now)
+		// Counted in consumeRefused, or left uncounted: never again here.
 		s.refusal = nil
 		st.UpdatedAt = now
 		changed = true
@@ -249,30 +267,179 @@ func consumeStopped(repoRoot string, st *State, stopped []stoppedReceipt, now ti
 	return changed
 }
 
-// consumeRefused sets aside a receipt refused for the work, with the refusal in the
-// record's line, and reports whether nothing stands at path now. A set-aside that
-// fails takes nothing else from the caller's write: the failure is the record's
-// line, the receipt stands, and each later step counts it as a refused one until
-// the drain's stuck bounds hand the lane back. The caller holds the run's lock and
-// writes the state.
-func consumeRefused(repoRoot string, st *State, lane Lane, path string, refusal error, now time.Time) bool {
-	why := bounded(refusalReason(refusal), maxConsumedReason)
-	err := setAside(repoRoot, st, lane, path, now, func(rel, dir string) string {
-		return fmt.Sprintf("the receipt at %s was refused for the work (%s), so it is set aside at %s, kept, and the implementer is started again on its runner",
-			rel, why, dir)
-	})
-	if err == nil {
-		return true
+// consumed is what consumeRefused made of a receipt refused for the work.
+type consumed int
+
+const (
+	// consumedAside: set aside, kept, and counted.
+	consumedAside consumed = iota
+	// consumedStands: the set-aside failed; counted, and the receipt stands.
+	consumedStands
+	// consumedLeft: not the bytes judged, or the role claimed since; left
+	// standing for the next step to read, and not counted.
+	consumedLeft
+)
+
+// consumeRefused consumes the receipt await k of lane i awaits, refused for the
+// work. Under the caller's lock it first checks that what it would move is what was
+// judged: no runner's claim but session's own stands on the await, and the file at
+// the path still has the digest of the bytes the verifier judged (Refusal.judged).
+// Either failing, the file is left standing for the next step to read, and nothing
+// is counted. Otherwise the receipt is set aside into a new directory under the
+// lane's aside directory, the report and the definition of done's output it names
+// with it where each is the lane's own (moveNamed), the record's line names the
+// refusal, the digest and what went with it, and the step is counted under the one
+// identity every consumed receipt shares (consumedRefusal), whatever it lacked, so
+// the drain's stuck bound of identical refusals is a bound of consumed receipts in a
+// row. A set-aside that fails takes nothing else from the caller's write: the
+// failure is the record's line, the receipt stands, and it is counted the same way,
+// as each later step that reads and consumes it again is. The caller holds the
+// run's lock and writes the state.
+func consumeRefused(repoRoot string, root *os.Root, st *State, i, k int, session string, refusal error, now time.Time) consumed {
+	lane, a := st.Lanes[i], st.Lanes[i].Awaits[k]
+	path := a.Receipt
+	judged := ""
+	var named []laneNamed
+	if rf, ok := AsRefusal(refusal); ok {
+		judged, named = rf.judged, rf.named
 	}
-	st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner,
-		Note: fmt.Sprintf("the receipt at %s was refused for the work (%s) and could not be set aside (%s); it stands, and each later step counts it as a refused one until the drain's stuck bounds hand %s back",
-			path, why, bounded(refusalReason(err), maxConsumedReason), lane.ID)})
-	return false
+	why := bounded(refusalReason(refusal), maxConsumedReason)
+	left := func(because string) consumed {
+		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner,
+			Note: fmt.Sprintf("the receipt at %s was refused for the work (%s), but %s, so it is left standing for the next step to read and is not counted",
+				path, why, because)})
+		return consumedLeft
+	}
+	if c := a.Running; c != nil && c.Session != session && now.Before(c.Until) {
+		return left(fmt.Sprintf("the %s runner has claimed the role since, until %s", termsafe.Sanitize(c.Runner), stamp(c.Until)))
+	}
+	data, err := standingBytes(repoRoot, root, path)
+	if err != nil || judged == "" || answerDigest(data) != judged {
+		return left(fmt.Sprintf("what stands there is not the bytes judged (sha256 %s)", judgedOrNone(judged)))
+	}
+	rel, dir, err := moveAside(repoRoot, st, lane, path, now, "after it was refused for the work")
+	switch {
+	case err != nil:
+		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner,
+			Note: fmt.Sprintf("the receipt at %s was refused for the work (%s; sha256 %s) and could not be set aside (%s); it stands, and each later step counts it as a refused one until the drain's stuck bounds hand %s back",
+				path, why, judged, bounded(refusalReason(err), maxConsumedReason), lane.ID)})
+		noteRefusal(st, consumedRefusal(lane.ID), now)
+		return consumedStands
+	case rel == "":
+		return left("nothing stands there now")
+	}
+	note := fmt.Sprintf("the receipt at %s was refused for the work (%s), so it is set aside at %s, kept (sha256 %s)", rel, why, dir, judged)
+	laneDir, lerr := laneRel(st.RunID, lane.ID, "aside")
+	var moved, kept []string
+	if lerr == nil {
+		moved, kept = moveNamed(root, laneDir, dir, named)
+	}
+	if len(moved) > 0 {
+		note += ", with " + strings.Join(moved, " and ")
+	}
+	note += ", and the implementer is started again on its runner"
+	if len(kept) > 0 {
+		note += "; left in place: " + strings.Join(kept, "; ")
+	}
+	st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner, Note: note})
+	noteRefusal(st, consumedRefusal(lane.ID), now)
+	return consumedAside
+}
+
+// judgedOrNone is a judged digest, or says there is none.
+func judgedOrNone(d string) string {
+	if d == "" {
+		return "none recorded"
+	}
+	return d
+}
+
+// consumedRefusal is the refused step every consumed receipt of a lane is counted
+// as: one stage, check and reason, whatever the receipt lacked, which the record's
+// line for it keeps instead. A step of the lane that succeeds clears the count, as
+// any refusal of another kind starts its own.
+func consumedRefusal(laneID string) *Refusal {
+	return refuse("receipt", consumedCheck, laneID, consumedReason, "")
+}
+
+// consumedReason is the reason every consumed receipt is counted under.
+const consumedReason = "an implementer's receipt was refused for the work it reports, so it was set aside and the implementer started again; the run record keeps what each one lacked"
+
+// moveNamed moves each file a consumed receipt names into dir, the receipt's new
+// directory under the lane's aside directory, where it is a regular file of the
+// lane's own directory laneDir: a path inside it, outside its aside directory,
+// reached through no link and itself no link, and with no file of its name already
+// in dir, so nothing is followed out of the lane's directory and nothing is
+// written over. It reports what moved and what was left in place, and why, each
+// in the record's words. The caller holds the run's lock.
+func moveNamed(root *os.Root, laneDir, dir string, named []laneNamed) (moved, kept []string) {
+	for _, n := range named {
+		if n.rel == "" {
+			continue
+		}
+		if !fsutil.ValidRelPath(n.rel) || strings.SplitN(n.rel, "/", 2)[0] == AsideDirName {
+			kept = append(kept, fmt.Sprintf("%s %s (not a path of the lane's own directory)", n.what, termsafe.DescribeRefused(n.rel)))
+			continue
+		}
+		shown := bounded(termsafe.Sanitize(n.rel), maxNamedShown)
+		if why := ownFileGap(root, laneDir, n.rel); why != "" {
+			kept = append(kept, fmt.Sprintf("%s %s (%s)", n.what, shown, why))
+			continue
+		}
+		dest := dir + "/" + path.Base(n.rel)
+		if _, err := root.Lstat(dest); !errors.Is(err, fs.ErrNotExist) {
+			kept = append(kept, fmt.Sprintf("%s %s (a file of its name is already set aside there)", n.what, shown))
+			continue
+		}
+		if err := root.Rename(laneDir+"/"+n.rel, dest); err != nil {
+			kept = append(kept, fmt.Sprintf("%s %s (it could not be moved: %s)", n.what, shown, fsutil.RedactHome(err.Error())))
+			continue
+		}
+		moved = append(moved, n.what+" "+shown)
+	}
+	return moved, kept
+}
+
+// maxNamedShown bounds, in runes, a named file's path in the record's line.
+const maxNamedShown = 200
+
+// ownFileGap is why rel is not a regular file of the lane's directory laneDir that
+// is reached through no link, "" when it is.
+func ownFileGap(root *os.Root, laneDir, rel string) string {
+	parts := strings.Split(rel, "/")
+	at := laneDir
+	for j, p := range parts {
+		at += "/" + p
+		fi, err := root.Lstat(at)
+		last := j == len(parts)-1
+		switch {
+		case err != nil:
+			return "it is not there"
+		case fi.Mode()&fs.ModeSymlink != 0:
+			return "a link, which is not followed"
+		case !last && !fi.IsDir():
+			return "not a file of the lane's own directory"
+		case last && !fi.Mode().IsRegular():
+			return "not a regular file"
+		}
+	}
+	return ""
 }
 
 // maxConsumedReason bounds, in runes, a refusal the record's line for a consumed
 // receipt carries.
 const maxConsumedReason = 600
+
+// laneNamed is a file a receipt names in the lane's directory: what it is to the
+// receipt, and its path as the receipt names it, relative to that directory.
+type laneNamed struct {
+	what, rel string
+}
+
+// consumedCheck is the check every consumed receipt is counted under, whatever it
+// lacked, so the drain's stuck bound of identical refusals counts consumed
+// receipts in a row (noteRefusal).
+const consumedCheck = "refused for the work"
 
 // noteStopped counts each stopped lane as a refused step, and reports whether it
 // changed the state. A run a drain does not read, an intent's, has no such count,
@@ -343,7 +510,7 @@ func noWorkPastRound(c Context, lane Lane, await Await) string {
 // path or a runner is claimed for it: from here on what stands there is that
 // agent's. The caller holds the run's lock and writes the state.
 func setAsideForAgent(repoRoot string, st *State, lane Lane, path string, now time.Time) error {
-	return setAside(repoRoot, st, lane, path, now, func(rel, dir string) string {
+	return setAside(repoRoot, st, lane, path, now, "before its agent was started", func(rel, dir string) string {
 		return fmt.Sprintf("what stood at %s before its agent was started is set aside at %s, unread", rel, dir)
 	})
 }
@@ -352,47 +519,59 @@ func setAsideForAgent(repoRoot string, st *State, lane Lane, path string, now ti
 // path a later hand-in would read it at, with no report to say so. The caller holds
 // the run's lock and writes the state.
 func setAsideCutShort(repoRoot string, st *State, lane Lane, path string, now time.Time) error {
-	return setAside(repoRoot, st, lane, path, now, func(rel, dir string) string {
+	return setAside(repoRoot, st, lane, path, now, "after its launch reported it stopped short", func(rel, dir string) string {
 		return fmt.Sprintf("the return at %s, whose launch reports it stopped short, is set aside at %s", rel, dir)
 	})
 }
 
 // setAside moves whatever stands at path into the lane's aside directory, and logs it
-// in the run record in the words note gives it. The caller holds the run's lock and
-// writes the state.
-func setAside(repoRoot string, st *State, lane Lane, path string, now time.Time, note func(rel, dir string) string) error {
-	if !received(repoRoot, path) {
-		return nil
-	}
-	rel, err := filepath.Rel(repoRoot, absIn(repoRoot, path))
-	if err != nil {
+// in the run record in the words note gives it (moveAside). The caller holds the
+// run's lock and writes the state.
+func setAside(repoRoot string, st *State, lane Lane, path string, now time.Time, when string, note func(rel, dir string) string) error {
+	rel, dir, err := moveAside(repoRoot, st, lane, path, now, when)
+	if err != nil || rel == "" {
 		return err
+	}
+	st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner, Note: note(rel, dir)})
+	return nil
+}
+
+// moveAside moves whatever stands at path into a new directory under the lane's
+// aside directory, made exclusively, and reports the path it moved, relative to the
+// checkout, and that directory; rel is "" when nothing stood there. A move that
+// fails is refused in the caller's words: when says at what point it was being set
+// aside. The caller holds the run's lock and writes the state.
+func moveAside(repoRoot string, st *State, lane Lane, path string, now time.Time, when string) (rel, dir string, err error) {
+	if !received(repoRoot, path) {
+		return "", "", nil
+	}
+	rel, err = filepath.Rel(repoRoot, absIn(repoRoot, path))
+	if err != nil {
+		return "", "", err
 	}
 	rel = filepath.ToSlash(rel)
 	laneDir, err := laneRel(st.RunID, lane.ID, "aside")
 	if err != nil {
-		return err
+		return "", "", err
 	}
 	parent := laneDir + "/" + AsideDirName
 	if err := fsutil.EnsureRealDirAll(repoRoot, parent, dirPerm); err != nil {
-		return err
+		return "", "", err
 	}
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
-		return err
+		return "", "", err
 	}
 	defer root.Close()
-	dir, err := asideDir(root, parent, now)
-	if err != nil {
-		return err
+	if dir, err = asideDir(root, parent, now); err != nil {
+		return "", "", err
 	}
 	name := filepath.Base(filepath.FromSlash(rel))
 	if err := root.Rename(rel, dir+"/"+name); err != nil {
-		return refuse("state", "", lane.ID, fmt.Sprintf("%s could not be set aside before its agent was started: %s", rel, fsutil.RedactHome(err.Error())),
+		return "", "", refuse("state", "", lane.ID, fmt.Sprintf("%s could not be set aside %s: %s", rel, when, fsutil.RedactHome(err.Error())),
 			"move it out of the way yourself, then run `abcd implement step` again")
 	}
-	st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner, Note: note(rel, dir)})
-	return nil
+	return rel, dir, nil
 }
 
 // carryStanding keeps what from's step said of a receipt it did not take on r,

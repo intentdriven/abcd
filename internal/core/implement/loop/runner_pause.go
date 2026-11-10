@@ -639,7 +639,7 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 func pauseAwait(repoRoot, runID, laneID string, aw Await, session string, fb runner.FallbackReceipt, stderr string, handIn error, o Options) (StepResult, *RunnerPause, error) {
 	var res StepResult
 	var paused *RunnerPause
-	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
 		i, k := st.findAwait(repoRoot, aw.Receipt)
 		if i < 0 || st.Lanes[i].ID != laneID {
@@ -656,8 +656,7 @@ func pauseAwait(repoRoot, runID, laneID string, aw Await, session string, fb run
 		// (receipt_standing.go). A set-aside that fails is the record's line and
 		// the pause is still written.
 		if rf, ok := AsRefusal(handIn); ok && rf.work && o.driverIsSelf && aw.Role == RoleImplementer {
-			consumeRefused(repoRoot, st, st.Lanes[i], aw.Receipt, handIn, now)
-			noteRefusal(st, handIn, now)
+			consumeRefused(repoRoot, root, st, i, k, session, handIn, now)
 		}
 		fb.At, fb.Ran = now, ranNone
 		if !st.Trial {

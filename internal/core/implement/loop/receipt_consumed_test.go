@@ -87,8 +87,20 @@ func TestADrivesReceiptRefusedForTheWorkIsSetAsideAndItsRoleStartedAgain(t *test
 		if !asideHolds(t, root, id, l.ID, body) {
 			t.Fatal("the refused receipt is kept in the lane's aside directory")
 		}
-		if !recordSays(t, root, id, StageRunner, "refused for the work", "it exited 1", "set aside at", "started again") {
-			t.Fatal("the record says the receipt was set aside, and with what refusal")
+		if !recordSays(t, root, id, StageRunner, "refused for the work", "it exited 1", "set aside at", "started again", "sha256 "+answerDigest([]byte(body))) {
+			t.Fatal("the record says the receipt was set aside, with what refusal and the digest of the bytes judged")
+		}
+		dir := filepath.Join(root, filepath.FromSlash(RunRelDir), id, l.ID)
+		for name, kept := range map[string]string{ReportFileName: "built it\n", DoDFileName: "ok\n"} {
+			if _, err := os.Lstat(filepath.Join(dir, name)); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("%s the receipt names is moved aside with it: %v", name, err)
+			}
+			if !asideHolds(t, root, id, l.ID, kept) {
+				t.Fatalf("%s is kept in the lane's aside directory", name)
+			}
+		}
+		if !recordSays(t, root, id, StageRunner, "with the report "+ReportFileName, "the definition of done's output "+DoDFileName) {
+			t.Fatal("the record says which files went aside with the receipt")
 		}
 		if strings.Contains(res.Next, "no runner is started over") {
 			t.Fatalf("the step says nothing false of the lane: %s", res.Next)
@@ -162,8 +174,10 @@ func TestAClosedWindowDelaysTheRelaunchOfAConsumedReceipt(t *testing.T) {
 // drive leaves it standing and starts no runner over it, as a host-stepped run does.
 func TestAReceiptRefusedForAnythingButTheWorkIsNotConsumed(t *testing.T) {
 	for name, edit := range map[string]func(*LaneReceipt){
-		"another run's":  func(rc *LaneReceipt) { rc.RunID = "run-2609300000000000" },
-		"another lane's": func(rc *LaneReceipt) { rc.Lane = "lane-9" },
+		"another run's":    func(rc *LaneReceipt) { rc.RunID = "run-2609300000000000" },
+		"another lane's":   func(rc *LaneReceipt) { rc.Lane = "lane-9" },
+		"another schema's": func(rc *LaneReceipt) { rc.SchemaVersion = ReceiptSchemaVersion + 1 },
+		"another branch's": func(rc *LaneReceipt) { rc.Branch = "build/another" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			root, id, l, rs, env, body := refusedForTheWork(t, edit)
@@ -203,12 +217,13 @@ func wantKept(t *testing.T, root, id string, l Lane, rs Runners, env driveEnv, b
 // implementer again in the same step; here its runner's report names the model
 // the standing receipt lacked, so the lane moves on.
 func TestAReceiptLeftStandingIsConsumedByADrive(t *testing.T) {
-	repo, id, l, _, stages, rs, env, _ := stalledOnModel(t)
+	repo, id, l, dir, stages, rs, env, _ := stalledOnModel(t)
 	root := repo.Root()
 	body, err := os.ReadFile(absIn(root, l.awaiting().Receipt))
 	if err != nil {
 		t.Fatal(err)
 	}
+	rs.Transcripts = &duringRun{fn: func() { goodReceipt(t, id, l, dir) }}
 	res, err := Drive(context.Background(), root, id, stages, Options{driverIsSelf: true}, rs)
 	if err != nil {
 		t.Fatal(err)
@@ -262,5 +277,229 @@ func TestASetAsideThatFailsKeepsThePause(t *testing.T) {
 	}
 	if n := env.launches(t, "claude"); n != 1 {
 		t.Fatalf("one launch: %d", n)
+	}
+}
+
+// TestAReceiptLeftStandingThatMeetsAClosingWindowIsSetAsideInThatStep: the step
+// whose window closes still sets aside, and counts, a receipt it found standing
+// and refused for the work, so the closed window's answer is true of the lane;
+// the step after the pause starts the implementer again.
+func TestAReceiptLeftStandingThatMeetsAClosingWindowIsSetAsideInThatStep(t *testing.T) {
+	repo, id, l, dir, stages, rs, env, _ := stalledOnModel(t)
+	root := repo.Root()
+	body, err := os.ReadFile(absIn(root, l.awaiting().Receipt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &clock{t: time.Now().UTC()}
+	o := Options{driverIsSelf: true, Now: c.now}
+	elapsedWindow(t, root, id, c)
+	res, err := Drive(context.Background(), root, id, stages, o, rs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.NextEligibleAt == nil || env.launches(t, "claude") != 1 {
+		t.Fatalf("the closed window starts nothing: %+v, %d launches", res, env.launches(t, "claude"))
+	}
+	if stands(t, root, l) || !asideHolds(t, root, id, l.ID, string(body)) {
+		t.Fatal("the step that closes the window sets the standing receipt aside")
+	}
+	rs.Transcripts = &duringRun{fn: func() { goodReceipt(t, id, l, dir) }}
+	c.t = res.NextEligibleAt.Add(time.Second)
+	if _, err := Drive(context.Background(), root, id, stages, o, rs); err != nil {
+		t.Fatal(err)
+	}
+	if n := env.launches(t, "claude"); n != 2 {
+		t.Fatalf("the step after the pause starts the implementer again: %d launches", n)
+	}
+}
+
+// elapsedWindow gives the run a pace whose window opened an hour before c's now.
+func elapsedWindow(t *testing.T, root, id string, c *clock) {
+	t.Helper()
+	if err := mutate(root, id, func(_ *os.Root, st *State) (bool, error) {
+		started := c.now().Add(-time.Hour)
+		bundled := func(v int) PaceValue { return PaceValue{Value: v, Layer: "bundled"} }
+		st.Pace = &Pace{WorkMinutes: bundled(30), PauseMinutes: bundled(10), SubAgents: bundled(1)}
+		st.WindowStartedAt = &started
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// refusedCount is the first lane's count of refused steps, 0 with none.
+func refusedCount(t *testing.T, root, id string) int {
+	t.Helper()
+	st, err := ReadState(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := st.Lanes[0].Refused; r != nil {
+		return r.Count
+	}
+	return 0
+}
+
+// TestAReceiptChangedSinceItWasJudgedIsLeftStanding: under the run's lock a drive
+// sets aside only the bytes it judged, and only while no runner's claim stands on
+// the await. A file replaced since, or an await claimed since, is left standing
+// for the next step to read, and nothing is counted; at both places a receipt is
+// consumed, a step's read of one standing and a runner's hand-in.
+func TestAReceiptChangedSinceItWasJudgedIsLeftStanding(t *testing.T) {
+	replace := func(t *testing.T, root string, l Lane) string {
+		t.Helper()
+		body := `{"replaced": true}`
+		if err := os.WriteFile(absIn(root, l.awaiting().Receipt), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
+	claimed := func(t *testing.T, root, id string) {
+		t.Helper()
+		if err := mutate(root, id, func(_ *os.Root, st *State) (bool, error) {
+			st.Lanes[0].Awaits[0].Running = &RunnerClaim{Runner: "claude", Session: "a-restart", Until: time.Now().Add(time.Hour)}
+			return true, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantLeft := func(t *testing.T, root, id string, l Lane, body string) {
+		t.Helper()
+		if raw, err := os.ReadFile(absIn(root, l.awaiting().Receipt)); err != nil || string(raw) != body {
+			t.Fatalf("the file stands for the next step to read: %q %v", raw, err)
+		}
+		if n := asides(t, root, id, l.ID); n != 0 {
+			t.Fatalf("nothing is set aside: %d", n)
+		}
+		if n := refusedCount(t, root, id); n != 0 {
+			t.Fatalf("nothing is counted: %d", n)
+		}
+		if !recordSays(t, root, id, StageRunner, "left standing for the next step to read") {
+			t.Fatal("the record says why it was left")
+		}
+	}
+	standing := func(t *testing.T, change func(t *testing.T, root, id string, l Lane) string) {
+		t.Helper()
+		repo, id, l, _, stages, _, _, _ := stalledOnModel(t)
+		root := repo.Root()
+		_, took, stopped := collectStanding(root, id, stages, Options{driverIsSelf: true})
+		if took || len(stopped) != 1 || !stopped[0].consume {
+			t.Fatalf("the step's read finds the receipt refused for the work: %v %+v", took, stopped)
+		}
+		body := change(t, root, id, l)
+		if err := mutate(root, id, func(r *os.Root, st *State) (bool, error) {
+			return consumeStopped(root, r, st, stopped, time.Now()), nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		wantLeft(t, root, id, l, body)
+	}
+	handedIn := func(t *testing.T, change func(t *testing.T, root, id string, l Lane) string) {
+		t.Helper()
+		repo, id, l, _, _, _, _, _ := stalledOnModel(t)
+		root := repo.Root()
+		judged, err := os.ReadFile(absIn(root, l.awaiting().Receipt))
+		if err != nil {
+			t.Fatal(err)
+		}
+		rf := refuse("receipt", "", l.ID, "the receipt is missing a passing definition of done (it exited 1)", "finish the lane")
+		rf.work, rf.judged = true, answerDigest(judged)
+		body := change(t, root, id, l)
+		st, err := ReadState(root, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fb := runner.FallbackReceipt{Role: RoleImplementer, Asked: "claude", Reason: runner.ReasonInvalid, Detail: "refused"}
+		if _, _, err := pauseAwait(root, id, l.ID, st.Lanes[0].Awaits[0], "the-runner", fb, "", rf, Options{driverIsSelf: true}); err != nil {
+			t.Fatal(err)
+		}
+		wantLeft(t, root, id, l, body)
+	}
+	unchanged := func(t *testing.T, root, id string, l Lane) string {
+		t.Helper()
+		claimed(t, root, id)
+		raw, err := os.ReadFile(absIn(root, l.awaiting().Receipt))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(raw)
+	}
+	t.Run("replaced, found standing", func(t *testing.T) {
+		standing(t, func(t *testing.T, root, _ string, l Lane) string { return replace(t, root, l) })
+	})
+	t.Run("replaced, handed in", func(t *testing.T) {
+		handedIn(t, func(t *testing.T, root, _ string, l Lane) string { return replace(t, root, l) })
+	})
+	t.Run("claimed, found standing", func(t *testing.T) { standing(t, unchanged) })
+	t.Run("claimed, handed in", func(t *testing.T) { handedIn(t, unchanged) })
+}
+
+// TestAFileTheReceiptNamesIsMovedOnlyWhenItIsTheLanesOwn: the report and the
+// definition of done's output go aside with a consumed receipt only when each is
+// a regular file inside the lane's own directory, outside its aside directory,
+// and no file already set aside has its name. Anything else is left where it is,
+// and the record's line says so.
+func TestAFileTheReceiptNamesIsMovedOnlyWhenItIsTheLanesOwn(t *testing.T) {
+	for name, tc := range map[string]struct {
+		setup func(t *testing.T, dir string)
+		edit  func(rc *LaneReceipt)
+		left  string
+	}{
+		"a link": {
+			setup: func(t *testing.T, dir string) {
+				if err := os.Symlink(filepath.Join(dir, ReportFileName), filepath.Join(dir, "link.md")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			edit: func(rc *LaneReceipt) { rc.Report = "link.md" },
+			left: "link.md",
+		},
+		"a file already set aside": {
+			setup: func(t *testing.T, dir string) {
+				old := filepath.Join(dir, AsideDirName, "earlier")
+				if err := os.MkdirAll(old, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(old, "old.txt"), []byte("earlier\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			edit: func(rc *LaneReceipt) { rc.DefinitionOfDone.Output = AsideDirName + "/earlier/old.txt" },
+			left: AsideDirName + "/earlier/old.txt",
+		},
+		"two of one name": {
+			setup: func(t *testing.T, dir string) {
+				if err := os.MkdirAll(filepath.Join(dir, "sub"), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "sub", DoDFileName), []byte("another\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			edit: func(rc *LaneReceipt) { rc.Report = "sub/" + DoDFileName },
+			left: DoDFileName,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var dir string
+			root, id, l, rs, _, _ := refusedForTheWork(t, func(rc *LaneReceipt) {
+				tc.edit(rc)
+			})
+			dir = filepath.Join(root, filepath.FromSlash(RunRelDir), id, l.ID)
+			tc.setup(t, dir)
+			if _, err := Drive(context.Background(), root, id, DefaultStages(), Options{driverIsSelf: true}, rs); err != nil {
+				t.Fatal(err)
+			}
+			if stands(t, root, l) {
+				t.Fatal("the receipt is set aside")
+			}
+			if _, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(tc.left))); err != nil {
+				t.Fatalf("%s is left where it is: %v", tc.left, err)
+			}
+			if !recordSays(t, root, id, StageRunner, "set aside at", "left in place") {
+				t.Fatal("the record says what was left in place")
+			}
+		})
 	}
 }

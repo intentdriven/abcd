@@ -52,6 +52,13 @@ type Refusal struct {
 	// and what it reports is short of done (verifyLaneReceipt). A drive sets such
 	// a receipt aside and starts the role again (receipt_standing.go).
 	work bool
+	// judged is the hex sha256 of the receipt's bytes the verifier judged, and
+	// named the files of the lane's directory the receipt names beside it (its
+	// report and its definition of done's output), as the receipt names them. A
+	// drive sets aside only those bytes, and moves those files with them
+	// (consumeRefused). Neither is ever written to the run's state.
+	judged string
+	named  []laneNamed
 	// unjudged is each peer a start's peers check could not read, copied from
 	// its row: the drain stops its move on them rather than passing the issue
 	// over as contended.

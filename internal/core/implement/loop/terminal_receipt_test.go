@@ -9,8 +9,10 @@ package loop
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -19,11 +21,115 @@ import (
 	"github.com/intentdriven/abcd/internal/core/layered"
 )
 
+// refusedDifferently is a verifier that refuses every receipt for the work, each
+// time for another gap, as an implementer that fails a new way at each attempt
+// does; during runs first, with the attempt's number.
+func refusedDifferently(during func(n int)) func(c Context, l *Lane, receipt string) error {
+	n := 0
+	return func(c Context, l *Lane, receipt string) error {
+		n++
+		if during != nil {
+			during(n)
+		}
+		raw := c.standingReceipt
+		if raw == nil {
+			raw, _ = os.ReadFile(absIn(c.RepoRoot, receipt))
+		}
+		r := refuse("receipt", "", l.ID, fmt.Sprintf("the receipt is missing a passing definition of done (it exited %d)", n), "finish the lane")
+		r.work, r.judged = true, answerDigest(raw)
+		return r
+	}
+}
+
+// refusingWorld is a terminal world whose implementer's every receipt verify
+// refuses for the work, and its options: a drain of one issue, under a bound
+// or not, that fails when the drive and the drain turn with no end or the lane
+// waits with no deadline.
+func refusingWorld(t *testing.T, bound bool, verify func(c Context, l *Lane, receipt string) error) (*terminalWorld, TerminalOptions) {
+	t.Helper()
+	w := newTerminalWorld(t)
+	for i := range w.stages {
+		if w.stages[i].Name == StageImplement {
+			w.stages[i].Verify = verify
+		}
+	}
+	return w, w.refusingOptions(t, bound)
+}
+
+// refusingOptions are refusingWorld's options, made afresh for each terminal.
+func (w *terminalWorld) refusingOptions(t *testing.T, bound bool) TerminalOptions {
+	t.Helper()
+	o := w.options(t)
+	o.Drain.Max = 1
+	if bound {
+		o.Until = w.clock.now().Add(72 * time.Hour)
+	}
+	moves := 0
+	o.Moved = func() {
+		if moves++; moves > 20 {
+			t.Fatalf("the drive and the drain turn with no end: %d moves\n%s", moves, strings.Join(w.lines, "\n"))
+		}
+	}
+	sleep := o.Sleep
+	o.Sleep = func(ctx context.Context, d time.Duration) {
+		if len(w.sleeps) > 100 {
+			t.Fatalf("the lane waits with no deadline: %v\n%s", w.sleeps[:8], strings.Join(w.lines, "\n"))
+		}
+		sleep(ctx, d)
+	}
+	return o
+}
+
+// wantStuckAtTheThird wants the judge and three implementer launches, the lane
+// handed back as stuck with the reason, and each refused receipt kept.
+func (w *terminalWorld) wantStuckAtTheThird(t *testing.T, bound bool) {
+	t.Helper()
+	if n := w.launches(t); n != 4 {
+		t.Fatalf("the implementer is started three times: %d launches\n%s", n, strings.Join(w.lines, "\n"))
+	}
+	st, _, err := readDrain(w.repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.HandBacks) != 1 || st.HandBacks[0].Kind != claim.HandBackStuck {
+		t.Fatalf("the lane is handed back as stuck: %+v\n%s", st.HandBacks, strings.Join(w.lines, "\n"))
+	}
+	why := []string{"3 times in a row", consumedCheck}
+	if bound {
+		why = []string{"failed 3 times in a row"}
+	}
+	for _, s := range why {
+		if !strings.Contains(st.HandBacks[0].Reason, s) {
+			t.Fatalf("the hand-back says why (%q): %s", s, st.HandBacks[0].Reason)
+		}
+	}
+	kept := 0
+	_ = filepath.WalkDir(filepath.Join(w.repo.Root(), filepath.FromSlash(RunRelDir), st.Lanes[0].RunID), func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.Contains(filepath.ToSlash(p), "/"+AsideDirName+"/") {
+			kept++
+		}
+		return nil
+	})
+	if kept != 3 {
+		t.Fatalf("each refused receipt is kept: %d", kept)
+	}
+	run, err := ReadState(w.repo.Root(), st.Lanes[0].RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for n := 1; n <= 3; n++ {
+		if !slices.ContainsFunc(run.Record, func(e Entry) bool {
+			return e.Stage == StageRunner && strings.Contains(e.Note, fmt.Sprintf("(it exited %d)", n)) && strings.Contains(e.Note, "set aside at")
+		}) {
+			t.Fatalf("the record keeps what receipt %d lacked", n)
+		}
+	}
+}
+
 // TestADriveHandsBackALaneWhoseReceiptsAreRefusedForTheWork: every receipt the
-// implementer writes is refused for the work. The drive starts it three times,
-// keeps each receipt aside, and the lane goes back with the reason; the run goes
-// on to its cap. With no bound the drain's stuck bounds hand it back; under a
-// bound the third failed launch does.
+// implementer writes is refused for the work, each for another gap. The drive
+// starts it three times, keeps each receipt aside, and the lane goes back as
+// stuck at the third, with or without a bound; the run goes on to its cap.
 func TestADriveHandsBackALaneWhoseReceiptsAreRefusedForTheWork(t *testing.T) {
 	for _, bound := range []bool{false, true} {
 		name := "with no bound"
@@ -31,34 +137,7 @@ func TestADriveHandsBackALaneWhoseReceiptsAreRefusedForTheWork(t *testing.T) {
 			name = "under a bound"
 		}
 		t.Run(name, func(t *testing.T) {
-			w := newTerminalWorld(t)
-			for i := range w.stages {
-				if w.stages[i].Name == StageImplement {
-					w.stages[i].Verify = func(c Context, l *Lane, receipt string) error {
-						r := refuse("receipt", "", l.ID, "the receipt is missing a passing definition of done (it exited 1)", "finish the lane")
-						r.work = true
-						return r
-					}
-				}
-			}
-			o := w.options(t)
-			o.Drain.Max = 1
-			if bound {
-				o.Until = w.clock.now().Add(72 * time.Hour)
-			}
-			moves := 0
-			o.Moved = func() {
-				if moves++; moves > 20 {
-					t.Fatalf("the drive and the drain turn with no end: %d moves\n%s", moves, strings.Join(w.lines, "\n"))
-				}
-			}
-			sleep := o.Sleep
-			o.Sleep = func(ctx context.Context, d time.Duration) {
-				if len(w.sleeps) > 100 {
-					t.Fatalf("the lane waits with no deadline: %v\n%s", w.sleeps[:8], strings.Join(w.lines, "\n"))
-				}
-				sleep(ctx, d)
-			}
+			w, o := refusingWorld(t, bound, refusedDifferently(nil))
 			res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 			if err != nil {
 				t.Fatal(err)
@@ -66,36 +145,67 @@ func TestADriveHandsBackALaneWhoseReceiptsAreRefusedForTheWork(t *testing.T) {
 			if res.Ended != DrainStoppedCap {
 				t.Fatalf("the lane goes back and the run reaches its cap: %+v\n%s", res, strings.Join(w.lines, "\n"))
 			}
-			// The judge, and the implementer three times.
-			if n := w.launches(t); n != 4 {
-				t.Fatalf("the implementer is started three times: %d launches\n%s", n, strings.Join(w.lines, "\n"))
+			w.wantStuckAtTheThird(t, bound)
+		})
+	}
+}
+
+// TestAFreshDriveCarriesOnTheCountOfConsumedReceipts: a drive stopped after its
+// second consumed receipt, in the wait before its next launch, and a fresh one on the same state, start the
+// implementer three times between them, and the third receipt hands the lane
+// back as stuck: the count lives in the run's state, not in the drive.
+func TestAFreshDriveCarriesOnTheCountOfConsumedReceipts(t *testing.T) {
+	for _, bound := range []bool{false, true} {
+		name := "with no bound"
+		if bound {
+			name = "under a bound"
+		}
+		t.Run(name, func(t *testing.T) {
+			refused, stopped := 0, false
+			w, o := refusingWorld(t, bound, refusedDifferently(func(n int) { refused = n }))
+			// A real worktree, so the stop has nothing it cannot save aside.
+			w.realWorktree()
+			// The stop comes in the wait after the second refusal, with no
+			// agent in its call.
+			w.onSleep = func(time.Duration) {
+				if refused == 2 && !stopped {
+					stopped = true
+					close(w.stop)
+				}
 			}
-			st, _, err := readDrain(w.repo.Root())
+			res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(st.HandBacks) != 1 || st.HandBacks[0].Kind != claim.HandBackStuck {
-				t.Fatalf("the lane is handed back as stuck: %+v", st.HandBacks)
+			if res.Ended != TerminalStopped || w.launches(t) != 3 {
+				t.Fatalf("the first drive stops after its second consumed receipt: %+v, %d launches\n%s", res, w.launches(t), strings.Join(w.lines, "\n"))
 			}
-			why := "refused the same way 3 times"
-			if bound {
-				why = "failed 3 times in a row"
+			o = w.refusingOptions(t, bound)
+			o.Stop = make(chan struct{})
+			o.Drain.Max = 0
+			res, err = RunTerminal(context.Background(), w.repo.Root(), o)
+			if err != nil {
+				t.Fatal(err)
 			}
-			if !strings.Contains(st.HandBacks[0].Reason, why) {
-				t.Fatalf("the hand-back says why (%q): %s", why, st.HandBacks[0].Reason)
-			}
-			kept := 0
-			_ = filepath.WalkDir(filepath.Join(w.repo.Root(), filepath.FromSlash(RunRelDir), st.Lanes[0].RunID), func(p string, d os.DirEntry, err error) error {
-				if err == nil && !d.IsDir() && strings.Contains(filepath.ToSlash(p), "/"+AsideDirName+"/") {
-					kept++
-				}
-				return nil
-			})
-			if kept != 3 {
-				t.Fatalf("each refused receipt is kept: %d", kept)
-			}
+			t.Logf("the fresh drive: %+v", res)
+			w.wantStuckAtTheThird(t, false)
 		})
 	}
+}
+
+// TestAConsumedReceiptCountsAfterALaunchLongerThanTheGap: each launch takes
+// longer than the quiet that starts the stuck time afresh, and the third
+// consumed receipt in a row still hands the lane back.
+func TestAConsumedReceiptCountsAfterALaunchLongerThanTheGap(t *testing.T) {
+	var w *terminalWorld
+	var o TerminalOptions
+	w, o = refusingWorld(t, false, refusedDifferently(func(int) {
+		w.clock.t = w.clock.t.Add(stuckGap + 5*time.Minute)
+	}))
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatal(err)
+	}
+	w.wantStuckAtTheThird(t, false)
 }
 
 // TestADriveHandsBackALaneHeldOnAReceiptItCannotConsume: a receipt refused for

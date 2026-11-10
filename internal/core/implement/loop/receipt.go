@@ -375,12 +375,13 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 	}
 	defer root.Close()
 	// A step's own read hands its bytes in, so what it judged is what is verified.
-	var rc LaneReceipt
-	if c.standingReceipt != nil {
-		rc, err = decodeReceipt(c.RepoRoot, c.standingReceipt, receiptRel, lane.ID)
-	} else {
-		rc, err = readReceipt(c.RepoRoot, root, receiptRel, lane.ID)
+	data := c.standingReceipt
+	if data == nil {
+		if data, err = receiptBytes(root, receiptRel, lane.ID); err != nil {
+			return err
+		}
 	}
+	rc, err := decodeReceipt(c.RepoRoot, data, receiptRel, lane.ID)
 	if err != nil {
 		return err
 	}
@@ -456,6 +457,11 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 		rf := refuse("receipt", "", lane.ID, receiptRel+" is missing "+strings.Join(missing, "; "),
 			"correct the receipt (or finish the lane) so it carries what is missing, then hand it back to `abcd implement receipt "+receiptRel+"`")
 		rf.work = !foreign
+		rf.judged = answerDigest(data)
+		rf.named = []laneNamed{{what: "the report", rel: rc.Report}}
+		if rc.DefinitionOfDone != nil {
+			rf.named = append(rf.named, laneNamed{what: "the definition of done's output", rel: rc.DefinitionOfDone.Output})
+		}
 		return rf
 	}
 
@@ -512,19 +518,29 @@ func modelFromRoute(c Context, rc *LaneReceipt) {
 // fault, so it is redacted through the canonical scanner for repoRoot rather
 // than quoted raw (iss-2609290300462829).
 func readReceipt(repoRoot string, root *os.Root, rel, laneID string) (LaneReceipt, error) {
+	data, err := receiptBytes(root, rel, laneID)
+	if err != nil {
+		return LaneReceipt{}, err
+	}
+	return decodeReceipt(repoRoot, data, rel, laneID)
+}
+
+// receiptBytes reads a receipt's bytes at rel inside root, refusing in the
+// receipt's own words a file that is not there or cannot be read as one.
+func receiptBytes(root *os.Root, rel, laneID string) ([]byte, error) {
 	data, err := localtier.ReadInRoot(root, rel, maxReceiptBytes)
 	if errors.Is(err, fs.ErrNotExist) {
-		return LaneReceipt{}, refuse("receipt", "", laneID, "no receipt at "+rel,
+		return nil, refuse("receipt", "", laneID, "no receipt at "+rel,
 			"the implementer writes it there when its lane is built; hand it back once it exists")
 	}
 	if rf := tierRefusal("receipt", laneID, err); rf != nil {
-		return LaneReceipt{}, rf
+		return nil, rf
 	}
 	if err != nil {
-		return LaneReceipt{}, refuse("receipt", "", laneID, fmt.Sprintf("%s cannot be read as a receipt: %v", rel, err),
+		return nil, refuse("receipt", "", laneID, fmt.Sprintf("%s cannot be read as a receipt: %v", rel, err),
 			fmt.Sprintf("write the receipt as a regular file of at most %d bytes", maxReceiptBytes))
 	}
-	return decodeReceipt(repoRoot, data, rel, laneID)
+	return data, nil
 }
 
 // decodeReceipt decodes a receipt's bytes, read from rel.
