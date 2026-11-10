@@ -163,8 +163,10 @@ nothing.`,
 				return stopAllow(cmd, "unreadable Stop payload (%s)", termsafe.Sanitize(err.Error()))
 			}
 			// Naming the checkout and the session's copy run under the one
-			// deadline too, as does every git call of the owed read but the
-			// reservations' view (iss-2611100548341325).
+			// deadline too. So, in the owed read, do the identity and holder,
+			// the default branch and the last-fetch stamp; its other reads,
+			// the reservations' view and the landing receipt among them, are
+			// not yet bound (iss-2611100548341325).
 			root, ok := managedRootContext(ctx, p.Cwd)
 			if !ok {
 				if ctx.Err() != nil && looksManaged(p.Cwd) {

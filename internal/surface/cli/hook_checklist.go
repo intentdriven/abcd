@@ -41,11 +41,11 @@ const (
 )
 
 // sessionStartBudget is the deadline the session-start hook sets at its start
-// for its checklist part, and only that part runs under it, every git call of
-// it included (the checkout root's lookup, the read's tracked check and the
-// scanner's identity probe): a deadline spent before or during it leaves the
-// checklist out of this start, said on stderr in a checkout abcd manages. The
-// rest of the hook's git calls are not bound to it (iss-2611100548341325).
+// for its checklist part. These reads run under it: the checkout root's
+// lookup, the read's tracked check and the scanner's identity probe. A
+// deadline spent before or during them leaves the checklist out of this
+// start, said on stderr in a checkout abcd manages. The hook's other reads are
+// not yet bound to it (iss-2611100548341325).
 // The host gives the hook's shell 240 seconds, a first run's download of the
 // binary among them, so a minute keeps the read well inside what the host
 // allows.

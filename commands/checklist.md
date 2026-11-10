@@ -107,8 +107,9 @@ set naming them, and
 while they are present the next prompt carries the same note. Bring the list
 up to date with `add` or `set` when it does.
 
-The hooks read the list within their own deadlines, every git call of the read
-included.
+The hooks read the list within their own deadlines: finding the checkout, the
+read's check that git does not track the list, and the secret scanner's
+reading of your git identity.
 A session start that runs out of time before the list is read shows no list
 and says so in one line on stderr. A stop whose reading of owned work runs out
 of time does not read the list: it goes through with that reading's own

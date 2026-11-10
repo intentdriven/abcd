@@ -2171,9 +2171,9 @@ outside the dedup ledger.`,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// The checklist part's deadline, set before anything else runs:
-			// that part, last, runs under what is left of it, every git call
-			// of it included; the rest of the hook is not bound to it
-			// (hook_checklist.go, sessionStartBudget).
+			// that part's reads, last, run under what is left of it; the
+			// hook's other reads are not yet bound to it (hook_checklist.go,
+			// sessionStartBudget).
 			ctx, cancel := context.WithTimeout(context.Background(), sessionStartBudget)
 			defer cancel()
 			in, err := readHookInput(cmd)
