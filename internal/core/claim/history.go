@@ -184,7 +184,7 @@ func tipLineCtx(ctx context.Context, root, ref, tip string, limit int) (line []s
 	out, err := storedGitCtx(ctx, root, (limit+1)*3*(len(tip)+1)+1,
 		"rev-list", "--first-parent", "--parents", "--max-count="+strconv.Itoa(limit+1), tip, "--")
 	if err != nil {
-		if !strings.Contains(err.Error(), "exceeded") {
+		if !overCap(err) {
 			return nil, nil, fmt.Errorf("reading %s: %w", ref, err)
 		}
 		line, err := firstParentsCtx(ctx, root, ref, tip, limit)

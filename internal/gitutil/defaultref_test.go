@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -355,3 +356,68 @@ func TestTheDefaultBranchIsAListingAndOneQuestion(t *testing.T) {
 }
 
 func gitPath() (string, error) { return exec.LookPath("git") }
+
+// TestBothDefaultBranchFormsAskAlikePastTheCap: a listing past its cap is
+// refused whole by the context-free forms as by their Context forms, so each
+// pair asks one repository the same questions (the listing, then symbolic-ref
+// and a question per ref) and gives the same answer, differing in the context
+// alone. The refs below origin/trunk/ fill the listing past refAnswerCap.
+func TestBothDefaultBranchFormsAskAlikePastTheCap(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Commit("c0")
+	sha := r.Git("rev-parse", "HEAD")
+	r.Git("update-ref", "refs/remotes/origin/main", sha)
+	r.Git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+	for i := range 2000 {
+		writeLooseRef(t, r, fmt.Sprintf("refs/remotes/origin/trunk/b%04d", i), sha)
+	}
+	real, err := gitPath()
+	if err != nil {
+		t.Skip(err)
+	}
+	dir := t.TempDir()
+	log := filepath.Join(dir, "calls")
+	shim := "#!/bin/sh\nprintf '%s\\n' \"$*\" >>'" + log + "'\nexec '" + real + "' \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(shim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	asked := func(read func() string) (string, []string) {
+		t.Helper()
+		_ = os.Remove(log)
+		got := read()
+		raw, _ := os.ReadFile(log)
+		return got, strings.Split(strings.TrimSpace(string(raw)), "\n")
+	}
+	ctx := context.Background()
+	pairs := map[string][2]func() string{
+		"TrackedDefaultBranch": {
+			func() string { return gitutil.TrackedDefaultBranch(r.Root(), "origin") },
+			func() string { return gitutil.TrackedDefaultBranchContext(ctx, r.Root(), "origin") },
+		},
+		"DefaultRef": {
+			func() string { return gitutil.DefaultRef(r.Root()) },
+			func() string { return gitutil.DefaultRefContext(ctx, r.Root()) },
+		},
+	}
+	for name, pair := range pairs {
+		t.Run(name, func(t *testing.T) {
+			// One read of each first, so a probe a first git call caches (the
+			// lazy-fetch guard's version) is in neither log.
+			pair[0]()
+			pair[1]()
+			free, freeQs := asked(pair[0])
+			bound, boundQs := asked(pair[1])
+			if free != "refs/remotes/origin/main" || bound != free {
+				t.Errorf("past the cap: %s = %q, its Context form %q; want both origin/main", name, free, bound)
+			}
+			if strings.Join(freeQs, "\n") != strings.Join(boundQs, "\n") {
+				t.Errorf("past the cap the two forms asked different questions:\n%s:\n  %s\nits Context form:\n  %s",
+					name, strings.Join(freeQs, "\n  "), strings.Join(boundQs, "\n  "))
+			}
+			if !slices.ContainsFunc(freeQs, func(q string) bool { return strings.Contains(q, "symbolic-ref") }) {
+				t.Errorf("past the cap %s asked no symbolic-ref, so it read the listing whole: %q", name, freeQs)
+			}
+		})
+	}
+}

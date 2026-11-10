@@ -249,7 +249,7 @@ func releaseHolds(root string, now time.Time, o Options) ([]Hold, error) {
 // disagree about one reservation.
 func releaseHoldsAndLapsed(root string, now time.Time, o Options) ([]Hold, []Lapsed, error) {
 	now = now.UTC().Truncate(time.Second)
-	snap, err := viewOf(root, now, true, isRelease)
+	snap, err := viewOf(viewGit{}, root, now, true, isRelease)
 	if err != nil {
 		return nil, nil, err
 	}
