@@ -87,6 +87,7 @@ Each working copy keeps one checklist (dcn-2610180913444971), a JSON file in its
    - needs: 2, 3, 4, 5, 6
    - packages: commands/checklist.md, .abcd/development/brief/04-surfaces, .abcd/development/brief/05-internals, .abcd/development/brief/02-constraints/03-invariants.md
    - tests: internal/surface/cli
+   - landed: 994f1adc9
 
 ## Remainder: waits, promises, wakes, the blocker sweep and the return lists
 
