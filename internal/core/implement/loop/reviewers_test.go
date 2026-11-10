@@ -29,9 +29,10 @@ func oneReviewerPerRole(t *testing.T) {
 }
 
 // bundledClassProvider configures the provider the bundled class map's
-// models name, listing them, so a runner handed a reviewer's class model
-// admits it (the runner's admission, spc-2610240951109420 step 2).
-const bundledClassProvider = `"oracle":{"api":{"anthropic":{"base_url":"https://api.anthropic.com/v1","key":"anthropic","models":["claude-opus-5-5","claude-sonnet-5-5"]}}}`
+// models name, listing every one of them, so a runner handed any class's model
+// admits it (the runner's admission, spc-2610240951109420 step 2), whichever
+// classes the bundled pair and judge name (itd-2611101419006280).
+const bundledClassProvider = `"oracle":{"api":{"anthropic":{"base_url":"https://api.anthropic.com/v1","key":"anthropic","models":["claude-fable-5","claude-opus-5-5","claude-sonnet-5-5","claude-haiku-4-5"]}}}`
 
 // stepAwait takes the run's next step and returns what it handed out.
 func stepAwait(t *testing.T, repo *gittest.Repo, runID string, stages Stages, o Options) Await {
