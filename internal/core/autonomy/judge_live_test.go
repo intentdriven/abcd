@@ -161,7 +161,9 @@ func TestLiveWorkPastTheBound(t *testing.T) {
 	}
 	// A change in the capped set starts the span again: with the old span
 	// nineteen hours back, the unchanged set is past the bound and refused,
-	// and the changed one starts its span at now.
+	// and the changed one starts its span at now. This step pins behaviour
+	// Judge already had (the round changed only a comment there), so it was
+	// not watched fail.
 	st.Wakes = MaxWakesUnchanged
 	st.WaitingSince = now.Add(-19 * time.Hour)
 	if v := judgeAt(t, rec, young, wake, st, now); !v.Block || v.Row != 4 {
@@ -175,7 +177,8 @@ func TestLiveWorkPastTheBound(t *testing.T) {
 
 // TestLiveWorkClockSteppedBack: a span stored later than now, the clock
 // having stepped back, is moved to now, the earlier of the two, so the bound
-// is not pushed further out by the step.
+// is not pushed further out by the step. It pins behaviour Judge already had
+// (the round changed only a comment there), so it was not watched fail.
 func TestLiveWorkClockSteppedBack(t *testing.T) {
 	now := at(t, "2026-10-18 21:01")
 	rec := awayRec(now, false)

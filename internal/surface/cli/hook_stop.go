@@ -115,10 +115,11 @@ before the deadline: within half an hour while work is owed (an hour when
 none is) and before the session's reservations need renewing. A wake
 releases an unchanged set of work the session can do itself at most twice
 in a row, unless each item of it has the preflight's whole test run of this
-account (make preflight, at the load gate or running) live in the worktree
-its branch is checked out in, its waiter's marker naming the preflight's
-stages and the item's head as the commit it was written at, with no receipt
-for that head: then every wake releases it, for at most 18 hours from the
+account (a full preflight, at the load gate or running; a records-only one
+writes no marker) live in the worktree its branch is checked out in, its
+waiter's marker naming the preflight's stages and the item's head as the
+commit it was queued or started at (the commit the stages test is not
+known), with no receipt for that head: then every wake releases it, for at most 18 hours from the
 first check that found it (restarting when the set changes), and a stop with
 no wake names the branch, the run and since when. A process of this account
 can write a marker and run under abcd's name, so this holds against other

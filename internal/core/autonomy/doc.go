@@ -86,13 +86,14 @@
 // a wake releases at most twice in a row), and its branch or record id (plus
 // its pull request and head where it has them). While away, a capped item on
 // a branch carries Live, the live work standing for it, when the preflight's
-// whole test run of this account (`make preflight` at the load gate or
-// running past it, whose waiter records itself: implement.WholeRunMarker) has
-// a marker that says its command is the preflight's stages and names the
-// item's head as the commit it was written at, runs in the worktree the
-// item's branch is checked out in, and no receipt names that head
-// (livework.go); Owed.CappedAllLive reports that every capped item has it. A
-// run started before a commit does not count for it. A checkout whose abcd
+// whole test run of this account (a full preflight at the load gate or
+// running past it, whose waiter records itself: implement.WholeRunMarker; a
+// records-only preflight writes no marker) has a marker that says its command
+// is the preflight's stages and names the item's head as the commit it was
+// queued or started at, runs in the worktree the item's branch is checked out
+// in, and no receipt names that head (livework.go); Owed.CappedAllLive reports
+// that every capped item has it. The commit the stages test is not known: a
+// run queued or started before a commit does not count for it. A checkout whose abcd
 // predates the marker's present shape writes none that counts. A process of
 // this account can write a marker and run under abcd's name, so the proof
 // holds against other accounts and stale state, not against this account's

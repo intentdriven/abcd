@@ -18,11 +18,14 @@ import (
 // hours, so while the person is away a set whose every capped item has live
 // work is waiting, not stuck (Judge, row 3). What counts as live work is only
 // what abcd can prove from state it owns and the process table: the
-// preflight's whole test run, `make preflight` waiting at the load gate or
-// running past it, whose waiter records itself under abcd's home
+// preflight's whole test run, a full preflight waiting at the load gate or
+// running past it (a records-only preflight waits at no gate and writes no
+// marker), whose waiter records itself under abcd's home
 // (implement.WholeRunMarker). A marker counts only when its command is the
 // preflight's stages, the commit it recorded when it was written is the
-// item's head, its checkout is the worktree the item's branch is checked out
+// item's head (the run was queued or started at that commit; the commit its
+// stages test is not known, and a commit made while it is queued leaves it
+// uncounted), its checkout is the worktree the item's branch is checked out
 // in, and its process is in the table as this account's, named abcd and
 // started when the marker says (within the start tolerance widened by each
 // reading's slack, as sessionname.Table judges a host), while no receipt
@@ -108,7 +111,7 @@ func (r *owedReader) readLiveWork() {
 			continue
 		}
 		it.Live = &LiveWork{
-			What:  fmt.Sprintf("a whole test run (abcd process %d) of %s, queued at the load gate or running", run.pid, shortHead(it.Head)),
+			What:  fmt.Sprintf("a whole test run (abcd process %d) queued or started at %s (the commit its stages test is not known)", run.pid, shortHead(it.Head)),
 			Since: run.since,
 		}
 	}

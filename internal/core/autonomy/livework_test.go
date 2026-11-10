@@ -122,8 +122,9 @@ func TestLiveWholeRunMarksTheItem(t *testing.T) {
 	if it.Live == nil {
 		t.Fatal("a whole run live for the item's head did not mark it")
 	}
-	if !strings.Contains(it.Live.What, "abcd process 4242") || !strings.Contains(it.Live.What, shortHead(f.head("feat/live"))) {
-		t.Errorf("Live.What = %q, want the process and the commit named", it.Live.What)
+	if !strings.Contains(it.Live.What, "abcd process 4242") || !strings.Contains(it.Live.What, "queued or started at "+shortHead(f.head("feat/live"))) ||
+		!strings.Contains(it.Live.What, "commit its stages test is not known") {
+		t.Errorf("Live.What = %q, want the process and the commit it was queued or started at named, and the stages' commit said unknown", it.Live.What)
 	}
 	if d := it.Live.Since.Sub(start); d < -3*time.Second || d > 3*time.Second {
 		t.Errorf("Live.Since = %s, want about %s, the process's start", it.Live.Since, start)
@@ -168,6 +169,10 @@ func TestLiveWholeRunCountsOnlyItsOwn(t *testing.T) {
 			f.plant(m)
 			return &table{procs: map[int]tableProc{livePID: {me(), "abcd", start}}}
 		},
+		// This case pins behaviour the reader already had: a start ten
+		// seconds early was outside the tolerance before the slack existed,
+		// so it was not watched fail. TestLiveWholeRunStartWithinItsSlack
+		// holds the slack's wiring.
 		"a marker its read's slack does not cover": func(f *fx) *table {
 			f.plantMarker(livePID, start.Add(-10*time.Second), f.root)
 			return &table{procs: map[int]tableProc{livePID: {me(), "abcd", start}}}
