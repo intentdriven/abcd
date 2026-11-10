@@ -52,10 +52,13 @@ becomes the last good copy.
 The reader takes only a file this working copy's own write could have made:
 it refuses a file git tracks, staged or committed, since that came with the
 checkout; a file group or others can read, or another account owns, since the
-write makes it 0600 as the person; a file under a local tier that is not a
+write makes it 0600 as the person; a file with a second name (a hard link),
+since the write makes it by a rename; a file under a local tier that is not a
 plain directory (a symlink, or a submodule's top, whose files the outer git
 does not list); and, inside a git checkout, every file when git cannot say
-whether they are tracked. Otherwise it validates and scans the file. When the
+whether they are tracked. The file it opens is checked the same way, not only
+its path, and must be the file the path named. Otherwise it validates and
+scans the file. When the
 file fails, the reader judges the last good copy the same way and says why it
 fell back; when both fail, it reads nothing and says so. A reason never
 quotes the file. A change is held to the same gate, so no item is written
@@ -109,8 +112,9 @@ the schema `abcd/checklist-events/v1`: the time and the trigger, `manual` for
 a compaction the person asked for, `auto` for one a full context set off, and
 `other` for any trigger the host does not document, so nothing else the host
 sends is copied in. The file is made 0600 in a plain local tier; a file at
-that path that is not a plain file this account owns, readable by it alone, is
-left as it is and not added to. The record
+that path that is not a plain file this account owns, with one name and
+readable by it alone, is left as it is and not added to, and the file opened
+for the line is checked the same way, not only its path. The record
 never blocks: a compaction that could not be recorded still goes ahead, and the
 hook says so in one line on its error stream. Outside a managed checkout, and
 on a drive's walled stage, nothing is recorded.
