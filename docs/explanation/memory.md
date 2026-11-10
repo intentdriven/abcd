@@ -8,7 +8,7 @@ abcd keeps two kinds of remembered material, and they do different jobs. The
 | What it holds | Outside material: papers, links, and the cited pages distilled from them | Short lessons learned while working, such as "this test is flaky under load" or "the person wants every question to carry an example" |
 | Who adds to it | The person, deliberately, saying whether each source is confidential or public | Mostly agents, in the middle of a session, without asking |
 | How it comes back | You ask ("what do my sources say about pacing?") and get answers that cite the page they came from | Automatically, when a prompt matches the words a note or page was saved with |
-| Where it can go | Into a decision as a cited source; a confidential source is never named in anything public | Into the project's own memory file, through a person's reviewed change, so that agents working in the project receive it too |
+| Where it can go | Into a decision as a cited source; citing a source in public is a step the person takes for each one | Into the project's own memory file, through a person's reviewed change, so that agents working in the project receive it too |
 
 A library answer can become a memory note ("source X says Y", with its
 citation), but the two are not one store with two names. The library is for
