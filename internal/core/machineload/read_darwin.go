@@ -31,7 +31,11 @@ var runPS = func(cmd *exec.Cmd) error { return cmd.Run() }
 // sysconf(_SC_NPROCESSORS_ONLN) reports), and the process table from one ps run.
 // A load average that reads while the process table does not is returned with
 // the error, so the extreme trigger can still apply.
-func Read() (Snapshot, error) { return ReadContext(context.Background()) }
+func Read() (Snapshot, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), psTimeout)
+	defer cancel()
+	return ReadContext(ctx)
+}
 
 // ReadContext is Read bound to ctx as well as to ps's own psTimeout: a ctx
 // already ended reads nothing and starts no ps, answering ctx's error, and one
