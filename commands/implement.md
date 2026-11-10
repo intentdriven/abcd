@@ -1036,13 +1036,16 @@ they are stored, with no replace ref and no graft file honoured.
 
 A branch that already stands under the lane's name (a step stopped between git
 making the branch and the worktree) is checked out only when its head's hooks
-directory, read as stored, is the tip's; otherwise the stage refuses before git
-adds the worktree, so nothing of that branch is checked out and none of its
-hooks runs. One hook does run before the proof: git's add runs the
-post-checkout hook of the commit it checks out, which is the tip's, or that
-branch head's once its hooks were found to be the tip's. git's add itself
-honours replace refs, so a replace ref can make it write other hooks and run
-their post-checkout; the proof, reading as stored, then refuses the lane.
+directory, read as stored, is the tip's, judged by the hooks directory git
+takes at the checkout from all your settings, global ones included; otherwise
+the stage refuses before git adds the worktree, so nothing of that branch is
+checked out and none of its hooks runs. One hook does run before the proof:
+git's add runs the post-checkout hook of the commit it checks out, which is the
+tip's, or that branch head's once its hooks were found to be the tip's. The add
+also takes git's objects as stored, so a replace ref or a graft file changes
+neither what the lane holds nor which hook runs, and it is told on its command
+line the hooks directory read at the checkout, so a setting that applies only
+inside the lane's own git directory cannot choose another one.
 
 Then, before any commit in the lane, a lane whose hooks directory is its own
 copy has that directory proved against the commit it opens on: the same
