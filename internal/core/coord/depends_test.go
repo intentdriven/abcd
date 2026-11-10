@@ -49,15 +49,16 @@ func TestParseDependsOnAccepts(t *testing.T) {
 // padTo is head followed by plain text up to exactly n bytes.
 func padTo(head string, n int) string { return head + strings.Repeat("x", n-len(head)) }
 
-// TestParseDependsOnRefuses: any other line naming depends-on, in any case and
-// anywhere on the line, is refused by its line number alone; so are more than
-// maxDepends distinct numbers and a body over maxBodyBytes, never truncated.
+// TestParseDependsOnRefuses: any other line that looks like a Depends-On line
+// after scanForm, in any case and anywhere on the line, is refused by its line
+// number alone, honest prose and paths included; so are more than maxDepends
+// distinct numbers and a body over maxBodyBytes, never truncated.
 func TestParseDependsOnRefuses(t *testing.T) {
 	t.Parallel()
 	if maxBodyBytes != 65536 || maxDepends != 10 {
 		t.Fatalf("maxBodyBytes %d, maxDepends %d; want 65536 and 10", maxBodyBytes, maxDepends)
 	}
-	const shape = `coord: line %s names depends-on but is not a line of the form "Depends-On: #N, #N"`
+	const shape = `coord: line %s looks like a Depends-On line but is not in the accepted form "Depends-On: #N, #N"; reword that line, or write it in that form`
 	line := func(n string) string { return strings.Replace(shape, "%s", n, 1) }
 	cases := []struct {
 		name string
@@ -110,6 +111,21 @@ func TestParseDependsOnRefuses(t *testing.T) {
 		{"a NUL inside the word", "Depe\x00nds-On: #5", line("1")},
 		{"a markdown escape of the hyphen", "Depends\\-On: #5", line("1")},
 		{"a markdown escape of the hash", "Depends-On: \\#5", line("1")},
+		{"a combining grapheme joiner after the hyphen", "Depends-\u034fOn: #5", line("1")},
+		{"a variation selector inside the word", "Depen\ufe0fds-On: #5", line("1")},
+		{"a Mongolian free variation selector inside the word", "Depends-O\u180bn: #5", line("1")},
+		{"an enclosing mark inside the word", "Depends\u20dd-On: #5", line("1")},
+		{"a Hangul choseong filler inside the word", "Dep\u115fends-On: #5", line("1")},
+		{"a Hangul jungseong filler after the hyphen", "Depends-\u1160On: #5", line("1")},
+		{"a Hangul filler inside the word", "Depends\u3164-On: #5", line("1")},
+		{"a minus sign for the hyphen", "Depends\u2212On: #5", line("1")},
+		{"a hyphen bullet for the hyphen", "Depends\u2043On: #5", line("1")},
+		{"honest prose with a colon after depends on", "The order depends on: the queue", line("1")},
+		{"a quoted compose key", "Set `depends_on:` for the service", line("1")},
+		{"a compose key in a YAML snippet", "    depends_on:", line("1")},
+		{"a path holding depends-on", "see docs/depends-on.md", line("1")},
+		{"a word beginning depends-on", "this depends-only on the flag", line("1")},
+		{"a Windows path, its backslashes dropped", "see C:\\depends\\on: here", line("1")},
 		{"the line number is the first bad line's, counted from one",
 			"Title\n\nDepends-On: #2\nmore\n  depends-on #3\ndepends-on #4", line("5")},
 		{"eleven distinct numbers", "Depends-On: #1, #2, #3, #4, #5, #6, #7, #8, #9, #10\nDepends-On: #11",
@@ -138,19 +154,27 @@ func TestParseDependsOnRefuses(t *testing.T) {
 // with no dependency and no error, as parseDependsOn's comment says: an HTML
 // entity, letters from other scripts that look like Latin ones, fullwidth
 // letters, a form with no colon, a bare "Depends:", a space other than an ASCII
-// space or tab between the words, and a word split across two lines. Each is
-// pinned so that widening the scan changes this table with the comment.
+// space or tab between the words or between on and the colon, an invisible
+// character outside the stripped set, and the word split by a newline, a lone
+// carriage return, U+2028, U+0085 or an invalid byte. Each is pinned so that
+// widening the scan changes this table with the comment.
 func TestParseDependsOnReadsPast(t *testing.T) {
 	t.Parallel()
 	for name, body := range map[string]string{
-		"an HTML entity for the hyphen":    "Depends&#45;On: #5",
-		"a Cyrillic e":                     "D\u0435pends-On: #5",
-		"fullwidth letters":                "\uff24\uff45\uff50\uff45\uff4e\uff44\uff53-\uff2f\uff4e: #5",
-		"no colon":                         "Depends on #5",
-		"Depends with no on":               "Depends: #5",
-		"a no-break space between words":   "Depends\u00a0On: #5",
-		"the word split across two lines":  "Depends-\nOn: #5",
-		"depend-on in prose with no colon": "this does not depend-on #5",
+		"an HTML entity for the hyphen":             "Depends&#45;On: #5",
+		"a Cyrillic e":                              "D\u0435pends-On: #5",
+		"fullwidth letters":                         "\uff24\uff45\uff50\uff45\uff4e\uff44\uff53-\uff2f\uff4e: #5",
+		"no colon":                                  "Depends on #5",
+		"Depends with no on":                        "Depends: #5",
+		"a no-break space between words":            "Depends\u00a0On: #5",
+		"the word split across two lines":           "Depends-\nOn: #5",
+		"depend-on in prose with no colon":          "this does not depend-on #5",
+		"a halfwidth Hangul filler inside the word": "Depends\uffa0-On: #5",
+		"a no-break space between on and the colon": "Depends On\u00a0: #5",
+		"a line separator splitting the word":       "Depends\u2028On: #5",
+		"a next-line character splitting the word":  "Depe\u0085nds-On: #5",
+		"a lone carriage return splitting the word": "Depends\rOn: #5",
+		"an invalid byte splitting the word":        "Depe\xffnds-On: #5",
 	} {
 		got, err := parseDependsOn(body)
 		if err != nil || got != nil {
