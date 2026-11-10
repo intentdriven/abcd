@@ -475,6 +475,20 @@ func (s State) renamed() string {
 			}
 		}
 	}
+	for _, l := range s.Lanes {
+		for _, a := range l.Awaits {
+			if a.Effort != "" {
+				return "an effort on " + l.ID + "'s await of the " + a.Role
+			}
+		}
+		for _, r := range l.Validation {
+			for i, v := range r.Validators {
+				if v.Effort != "" || (v.Route != nil && v.Route.EffortAsked != "") {
+					return fmt.Sprintf("an effort on %s's round %d validator %d", l.ID, r.Round, i+1)
+				}
+			}
+		}
+	}
 	return ""
 }
 

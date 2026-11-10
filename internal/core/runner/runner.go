@@ -106,6 +106,13 @@ type Request struct {
 	// dispatched, as a configured route is when it is read, never trusted
 	// because a caller stored it.
 	Model string
+	// Class is the model class the request runs at, and Effort that class's
+	// effort (itd-2611101419006280 decision 7): a runner that can pass an
+	// effort passes it, and its record says what was asked. Both are "" for a
+	// role launched with no class, the implementer among them, which keeps the
+	// harness's default effort, as a runner's own configured model does.
+	Class  string
+	Effort string
 	// SessionID names the run's transcript record when the harness reports no
 	// session of its own.
 	SessionID string

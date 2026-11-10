@@ -494,3 +494,36 @@ func TestAStoredEffortTheLoopNeverWritesIsRefused(t *testing.T) {
 		})
 	}
 }
+
+// TestAHostRunReviewerIsAskedForItsClassEffort: a reviewer handed to the host
+// carries its class's effort in its await and its validator, and the move the
+// host is told names the model and the effort as asked, not confirmed.
+func TestAHostRunReviewerIsAskedForItsClassEffort(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	machineConfig(t, `{"models": {"effort": {"research": "max"}}}`)
+	res, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	implemented(t, repo, res.RunID, DefaultStages(), "one.txt")
+	step, err := advance(repo.Root(), res.RunID, DefaultStages(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := step.Awaiting
+	if a == nil || a.Class != ClassResearch || a.Effort != "max" {
+		t.Fatalf("the await carries the class's effort: %+v", a)
+	}
+	for _, w := range []string{BundledClasses[ClassResearch], "effort max", "asked, not confirmed"} {
+		if !strings.Contains(step.Next, w) {
+			t.Fatalf("the move names %q: %s", w, step.Next)
+		}
+	}
+	st, err := ReadState(repo.Root(), res.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := st.Lanes[0].Validation[0].Validators[0]; v.Effort != "max" || st.Lanes[0].Awaits[0].Effort != "max" {
+		t.Fatalf("the state keeps the reviewer's effort: %+v %+v", v, st.Lanes[0].Awaits[0])
+	}
+}

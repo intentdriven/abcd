@@ -78,7 +78,7 @@ func (l Lane) masked() Lane {
 	l.Stage = Stage(line(string(l.Stage)))
 	l.Awaits = maskEach(l.Awaits, func(a Await) Await {
 		a.Role, a.Brief, a.Receipt, a.Kept = line(a.Role), line(a.Brief), line(a.Receipt), free(a.Kept)
-		a.Class, a.Model = line(a.Class), line(a.Model)
+		a.Class, a.Model, a.Effort = line(a.Class), line(a.Model), line(a.Effort)
 		a.Answered = maskPtr(a.Answered, func(r RouteAnswer) RouteAnswer {
 			r.Route, r.SHA256 = line(r.Route), line(r.SHA256)
 			return r
@@ -144,7 +144,7 @@ func (r ValidationRound) masked() ValidationRound {
 	r.ResolvesShown = maskEach(r.ResolvesShown, line)
 	r.Validators = maskEach(r.Validators, func(v ValidatorRun) ValidatorRun {
 		v.Role, v.Brief, v.Return, v.Verdict = line(v.Role), line(v.Brief), line(v.Return), line(v.Verdict)
-		v.Class, v.Model, v.ModelStatus = line(v.Class), line(v.Model), line(v.ModelStatus)
+		v.Class, v.Model, v.ModelStatus, v.Effort = line(v.Class), line(v.Model), line(v.ModelStatus), line(v.Effort)
 		v.Audit = maskPtr(v.Audit, func(a AuditRun) AuditRun {
 			a.ReceiptID, a.Request, a.BaseSHA, a.HeadSHA, a.Worst = line(a.ReceiptID), line(a.Request), line(a.BaseSHA), line(a.HeadSHA), line(a.Worst)
 			a.NotMet, a.Inconclusive = maskEach(a.NotMet, line), maskEach(a.Inconclusive, line)

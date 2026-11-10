@@ -170,6 +170,7 @@ type RecordVerdict struct {
 	Reviewer    int    `json:"reviewer,omitempty"`
 	Class       string `json:"class,omitempty"`
 	Model       string `json:"model,omitempty"`
+	Effort      string `json:"effort,omitempty"`
 	ModelStatus string `json:"model_status,omitempty"`
 	// Located and Findings are the reviewer's located findings (findings.go):
 	// how many its return cites, 0 included, and each with what the fix
@@ -219,7 +220,7 @@ func recordOf(st State) RunRecord {
 				}
 				rl.Verdicts = append(rl.Verdicts, RecordVerdict{Round: r.Round, HeadSHA: r.HeadSHA, Role: v.Role,
 					Verdict: v.Verdict, Pass: v.Pass, Return: v.Return, Route: v.Route,
-					Reviewer: v.Reviewer, Class: v.Class, Model: v.Model, ModelStatus: v.ModelStatus,
+					Reviewer: v.Reviewer, Class: v.Class, Model: v.Model, Effort: v.Effort, ModelStatus: v.ModelStatus,
 					Located: v.Located, Findings: v.Findings})
 			}
 			for _, c := range r.Comparisons {

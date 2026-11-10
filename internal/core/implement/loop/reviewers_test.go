@@ -440,6 +440,9 @@ func TestAStoredReviewerTheLoopNeverWritesIsRefused(t *testing.T) {
 		"a class the map does not name": func(s string) string { return replaceLast(s, `"class": "default"`, `"class": "huge"`) },
 		"a model that is no route":      func(s string) string { return replaceLast(s, `"model": "`+researchModel+`"`, `"model": "no-slash"`) },
 		"an index past the ceiling":     func(s string) string { return replaceLast(s, `"reviewer": 1`, `"reviewer": 7`) },
+		"an effort other than its class's": func(s string) string {
+			return replaceLast(s, `"effort": "`+BundledEffort+`"`, `"effort": "max"`)
+		},
 		"a model status it never writes": func(s string) string {
 			return replaceLast(s, `"class": "default"`, `"class": "default", "model_status": "confirmed"`)
 		},
@@ -505,7 +508,7 @@ func TestARunnerRunReviewerIsHandedItsClassModel(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(repo.Root(), "review", "brief.md"), []byte("# review\n\n`Reviewed head: "+strings.Repeat("a", 40)+"`\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		v := ValidatorRun{Role: RoleRuthless, Brief: briefRel, Return: returnRel, Reviewer: 1, Class: ClassDefault, Model: model}
+		v := ValidatorRun{Role: RoleRuthless, Brief: briefRel, Return: returnRel, Reviewer: 1, Class: ClassDefault, Model: model, Effort: BundledEffort}
 		steps[2] = StageDef{Name: StageImplement, Piece: 7,
 			Run: func(c Context, l *Lane) (Outcome, error) {
 				if len(l.Validation) == 0 {
@@ -564,5 +567,9 @@ func TestARunnerRunReviewerIsHandedItsClassModel(t *testing.T) {
 	}
 	if routed.Route.ModelAsked != "qwen3-small" {
 		t.Fatalf("the route records the class's model as the one asked: %+v", routed.Route)
+	}
+	// The class's effort rides with its model (itd-2611101419006280).
+	if !slices.Contains(env.argv(t, "claude"), "--effort="+BundledEffort) || routed.Route.EffortAsked != BundledEffort {
+		t.Fatalf("the runner is handed the class's effort and records it as asked: %v %+v", env.argv(t, "claude"), routed.Route)
 	}
 }

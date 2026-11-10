@@ -804,6 +804,11 @@ type ValidatorRun struct {
 	// intent-auditor, which keeps its single run.
 	Class string `json:"class,omitempty"`
 	Model string `json:"model,omitempty"`
+	// Effort is the class's effort the reviewer was asked to run at
+	// (itd-2611101419006280): handed to a runner that can pass it, asked of
+	// the host, and never confirmed. Empty wherever Class is, and for a run
+	// started before efforts.
+	Effort string `json:"effort,omitempty"`
 	// ModelStatus says how far Model is known to be the model that ran, once
 	// the verdict is recorded: ModelReported when the runner that ran the
 	// reviewer reported a model (Route.Model, beside it), ModelAsked when
@@ -905,6 +910,10 @@ type Await struct {
 	Reviewer *int   `json:"reviewer,omitempty"`
 	Class    string `json:"class,omitempty"`
 	Model    string `json:"model,omitempty"`
+	// Effort is the class's effort the reviewer is asked to run at, which a
+	// runner that can pass it is handed and a host is asked for; empty for
+	// every other await and for a run started before efforts.
+	Effort string `json:"effort,omitempty"`
 }
 
 // RouteAnswer is the answer a reviewer route placed at an await's return path:

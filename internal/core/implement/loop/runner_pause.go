@@ -482,6 +482,8 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		// runner's own (reviewers.go); the runner admits it against the
 		// provider's allowlist whoever stored it. "" keeps the route's.
 		Model:     aw.Model,
+		Class:     aw.Class,
+		Effort:    aw.Effort,
 		SessionID: session,
 		Timeout:   timeout,
 		Work:      runner.LaunchWork{Run: runID, Lane: laneID, Await: aw.Receipt},

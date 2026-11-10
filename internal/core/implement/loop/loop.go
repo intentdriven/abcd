@@ -1468,6 +1468,9 @@ func handedMove(a Await, tier oracle.Tier) string {
 		// A review set's reviewer: the host is asked for the class's model,
 		// which nothing confirms (reviewers.go).
 		at += fmt.Sprintf(" on %s, the model of the %s class (reviewer %d of its role)", a.Model, a.Class, *a.Reviewer)
+		if a.Effort != "" {
+			at += fmt.Sprintf(", at effort %s, the class's, asked, not confirmed", a.Effort)
+		}
 	}
 	return fmt.Sprintf("start a fresh %s agent%s with the brief %s; when it has written its receipt, run `abcd implement receipt %s`",
 		a.Role, at, a.Brief, a.Receipt)

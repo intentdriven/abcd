@@ -34,6 +34,9 @@ type Sides struct {
 	// ModelAsked is the model the runner passed the harness, "" when it
 	// passed none and the harness chose.
 	ModelAsked string `json:"model_asked,omitempty"`
+	// EffortAsked is the effort the runner passed the harness, the effort of
+	// the class the role was launched at; "" when it passed none.
+	EffortAsked string `json:"effort_asked,omitempty"`
 	// ServedModels is every model the harness says served the run (claude's
 	// per-model usage), sorted; empty when it names none.
 	ServedModels []string `json:"served_models,omitempty"`
@@ -74,6 +77,9 @@ type Sides struct {
 	// record lists the local fields (iss-2610171545099084). A harness's
 	// output cannot say so; the configuration does.
 	Local bool `json:"local,omitempty"`
+	// effortUnpassed says the request asked for an effort this runner has no
+	// way to pass (askedUnpinned lists it as not passed).
+	effortUnpassed bool
 }
 
 // StoppedShort reports whether the harness says the run's last turn ended before its
@@ -118,9 +124,11 @@ func cleanHarness(s string) string {
 }
 
 // askedUnpinned lists the asked side's fields neither command-line runner
-// can pin: no sampling setting, seed, effort or context variant is passed to
-// a harness (each is the harness's or the owner's configuration), nor, when
-// the runner passed none, a model, nor a provider pin unless the run was
+// can pin: no sampling setting, seed or context variant is passed to a
+// harness (each is the harness's or the owner's configuration); an effort is
+// passed only where the role runs at a class, and is then not verified, or
+// not passed where the runner cannot pass one; nor, when the runner passed
+// none, a model, nor a provider pin unless the run was
 // pointed at one (an opencode run to a pinned model, pin.go). A pin a run was
 // pointed at is listed as not verified beside the pin the record carries:
 // the harness was handed it, and nothing it returns shows it reached the
@@ -134,9 +142,16 @@ func askedUnpinned(un *oracle.Unpin, s Sides) {
 	} else {
 		un.Add(oracle.AskedProviderPin, oracle.NotConfigured)
 	}
-	for _, f := range []oracle.Field{oracle.AskedTemperature, oracle.AskedTopP,
-		oracle.AskedSeed, oracle.AskedEffort} {
+	for _, f := range []oracle.Field{oracle.AskedTemperature, oracle.AskedTopP, oracle.AskedSeed} {
 		un.Add(f, oracle.NotConfigured)
+	}
+	switch {
+	case s.EffortAsked != "":
+		un.Add(oracle.AskedEffort, oracle.NotVerified)
+	case s.effortUnpassed:
+		un.Add(oracle.AskedEffort, oracle.NotPassed)
+	default:
+		un.Add(oracle.AskedEffort, oracle.NotConfigured)
 	}
 	if s.Local && s.LocalPin != nil {
 		// opencode merges ~/.opencode/opencode.json after the sealed

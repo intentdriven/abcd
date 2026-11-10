@@ -66,6 +66,7 @@ repository names only which classes review.
    - packages: internal/core/implement/loop, internal/core/layered, internal/core/runner
    - tests: with nothing configured every class resolves `high` from the bundled layer; one level in the machine file applies to all four; an object applies per class and a class left out is `high`; a level outside the five, or an object keyed by anything but the four classes, is refused naming key, value and what is accepted; `models.effort` in a repository file is skipped with one line naming the machine's file; the resolved effort is stored with each class in the run state and survives a re-read
    - needs: 2
+   - landed: e4a4b119b
 5. A runner is handed the effort and records what was asked
    - packages: internal/core/runner, internal/core/implement/loop
    - tests: the harness runner's arguments carry the effort flag for a request at a class and none for a request with no class or for the runner's own configured model; the launch record's asked effort is the level, and `not configured` with no class; a runner with no way to pass an effort launches and records that it was not passed; a launch the harness fails naming the effort surfaces the effort and class in the failure; a host-run reviewer's await names the class's effort as asked, not confirmed
