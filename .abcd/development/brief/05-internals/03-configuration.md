@@ -1283,13 +1283,15 @@ Three properties are load-bearing:
   temporary file a killed writer left is never read. Whether that holds
   across a crash or a power cut is not yet shown: the spec's crash lab
   (spc-2610230805429429 step 7) has not run.
-- **A hook reads within its deadline.** The session-start and stop hooks make
-  every git call on the list's way under the hook's own deadline: the
-  checkout's root, the session's copy and state, the read's tracked check and
-  the secret scanner's identity probe, a probe the deadline cut short leaving
-  the scanner unavailable rather than blind to the person's identity. The stop
-  check's reading of the reservations, through the reservations' own reader,
-  is the one read on its way not yet bound to the deadline. At a
+- **A hook reads within its deadline.** The session start's checklist part
+  and the stop check make every git call on the list's way under the hook's
+  own deadline: the checkout's root, the session's copy, the read's tracked
+  check and the secret scanner's identity probe, a probe the deadline cut short
+  leaving the scanner unavailable rather than blind to the person's identity.
+  The stop check's whole read runs under it but for one read, the
+  reservations' view, not yet bound (iss-2611100548341325); the away session's
+  state, read after the deadline may be spent, runs under a two-second bound
+  of its own. At a
   session start, a deadline spent before or during the read leaves the list
   out, said on the error stream. At a stop, a reading of owned work the
   deadline cut short lets the stop through with that reading's own incomplete
