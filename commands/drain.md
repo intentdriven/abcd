@@ -264,9 +264,15 @@ nothing but the bound, the cap, an empty ledger or a stop ends the run:
   and the implementer started again. Each such receipt counts as a refused step under one
   check, whatever it lacked, so the third in a row (the stuck bound of identical refusals
   below, three by default) hands the lane back as stuck, with or without `--until`, and a
-  fresh drive on the same state carries the count on. Under `--until` the runner's hand-in
-  of one is also one of the three failures; one found standing and consumed is a refused
-  step and no launch. A receipt refused for anything else stays at its path and stops the
+  fresh drive on the same state carries the count on. The receipt that brings the lane to
+  that bound is followed by no further launch: the drive gives the lane back on its next
+  turn. Only the drain's issue runs are stepped this way and keep the count; an intent's
+  run keeps its stop. A refusal of another kind restarts the count; such a lane is still
+  ended by three failed launches in a row under `--until`, and by the outage limit
+  without it. Under `--until` the runner's hand-in of one is also one of the three
+  failures; one found standing and consumed is a refused step and no launch. Only the
+  report and the definition of done's output at the names the loop assigned them go
+  aside with a receipt; anything else it names is left where it is. A receipt refused for anything else stays at its path and stops the
   lane until the stuck bounds below hand it back. A lane stuck by those bounds goes back from the drive to the next
   move, which hands it back; given the same lane again, the drive first waits as an idle
   drive does, thirty seconds at least. A judge is judged

@@ -241,7 +241,13 @@ receipt refused for the work it reports is set aside, kept, in the same write as
 and the implementer started again (iss-2611071242184002). Each such receipt counts as a
 refused step under one check, whatever it lacked, so at the stuck bound of identical refusals,
 three by default, the lane is stuck, with a bound or without and across a fresh drive on the
-same state. The runner's own hand-in of one is also a failed launch that is the work's, one of
+same state, and the receipt that brings it there is followed by no further launch: the drive
+gives the lane back on its next turn. The count is kept on the drain's issue runs, the only
+runs a drive steps this way; an intent's run keeps its stop. A refusal of another kind
+restarts the count, so such a lane is ended instead by three failed launches in a row under a
+bound, and by the outage limit without one. Only the report and the definition of done's
+output at the names the loop assigned them go aside with the receipt; anything else it names
+is left in place. The runner's own hand-in of one is also a failed launch that is the work's, one of
 the three in a row below; one found standing and consumed is a refused step and no launch. One
 refused for anything else stays and stops the lane until the stuck bounds hand it back. A lane stuck by those bounds goes back from the drive to the
 next move, which hands it back; given the same lane again, the drive first waits as an idle drive does,
