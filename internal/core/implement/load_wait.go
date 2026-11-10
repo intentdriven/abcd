@@ -8,8 +8,10 @@ import (
 	"math/rand/v2"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -17,6 +19,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/cienv"
+	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/core/runner"
@@ -494,6 +497,10 @@ type WaitResult struct {
 	// it once its command has started, or could not be started; nil when there
 	// is no mark.
 	Unmark func() `json:"-"`
+	// MarkNote says the whole run's marker (WholeRunMarker) could not be
+	// written, and why; "" when it was, or when this wait writes none. The
+	// wait goes on either way.
+	MarkNote string `json:"mark_note,omitempty"`
 }
 
 // WaitLoad waits until the gate opens or the timeout passes. Its error is a
@@ -575,6 +582,17 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		return res, fmt.Errorf("nothing was waited for: %w", err)
 	}
 	defer root.Close()
+	// A whole run records itself from its first reading of the table until its
+	// command ends (wholeRunMark); a wait that does not open removes it.
+	if req.Command && !req.Race && !req.Narrow {
+		mark := &wholeRunMark{home: home, pid: req.Self.PID, dir: req.Dir, now: now, res: &res}
+		req.Read = mark.reading(req.Read)
+		defer func() {
+			if res.Status != WaitOpen {
+				mark.end()
+			}
+		}()
+	}
 	start := now()
 	// readSlots reads the count at every look, before the machine is read, so
 	// a change to it reaches a waiter already queued at its next look, and the
@@ -1337,6 +1355,10 @@ func readHoldIn(root *os.Root, gate string) (WaitHolder, bool) {
 // force: the command form calls it when its command exits. A hold another
 // waiter has since taken is left alone.
 func ReleaseWaitHold(home string, h WaitHolder) error {
+	// The whole run's marker goes with the hold: its command has ended. A
+	// marker left behind counts for nothing once its process is gone, and
+	// the next whole run's write sweeps it.
+	removeWholeRunMarker(home, h.PID, h.StartUnix)
 	root, err := fsutil.OpenHomeScope(home, abcdhome.Rel())
 	if err != nil {
 		return err
@@ -1406,4 +1428,237 @@ func PreflightTimeout(getenv func(string) string, read func() (machineload.Snaps
 		return base
 	}
 	return machineload.GoTestTimeout(snap, base)
+}
+
+// The whole-run marker (the away mode's live work, autonomy's livework.go).
+// While the person is away, the stop check holds an unchanged set of owed
+// items to two wakes in a row, which is wrong for an item whose next step is
+// its preflight, queued at this gate or running for an hour. Every `make
+// preflight` runs its whole run through this waiter's command form, which
+// lives until its command exits and knows its checkout, so that waiter
+// records itself: ~/.abcd.noindex/whole-runs/<pid>.json, written at its first
+// reading of the process table that holds it (its start time comes from that
+// reading) and removed when its hold is released (ReleaseWaitHold) or when
+// the wait does not open. A marker left behind by a run whose hold was a
+// settle hold (above one slot), or by a waiter killed, is swept by the next
+// whole run's write, and counts for nothing meanwhile: a reader takes a
+// marker only for a live abcd process of its own account whose start time
+// matches. The marker is the waiter's word about itself; it says neither
+// which commit the run tests nor whether it is queued or running.
+//
+// A marker that cannot be written is said in WaitResult.MarkNote, and the
+// wait goes on: the marker never fails or slows a preflight.
+
+// wholeRunsLeaf is the markers' folder under abcd's home.
+const wholeRunsLeaf = "whole-runs"
+
+// WholeRunKind is the kind a whole run's marker carries; a reader counts no
+// other.
+const WholeRunKind = "whole"
+
+// wholeRunSchema is the marker's schema version.
+const wholeRunSchema = 1
+
+// maxWholeRunMarkerBytes bounds one marker's read and write.
+const maxWholeRunMarkerBytes = 4 << 10
+
+// MaxWholeRunMarkers bounds how many folder entries one read or sweep looks
+// at: a machine runs a handful of whole runs at once.
+const MaxWholeRunMarkers = 256
+
+// WholeRunMarker is one whole run's record of itself.
+type WholeRunMarker struct {
+	SchemaVersion int `json:"schema_version"`
+	// PID is the waiter's process id, and the file's name.
+	PID int `json:"pid"`
+	// StartUnix is its start time in Unix seconds, read from the process
+	// table as the hold reads its holder's (procStart).
+	StartUnix int64 `json:"start_unix"`
+	// Dir is the checkout it runs in (WaitRequest.Dir), absolute and clean.
+	Dir string `json:"dir"`
+	// Kind is WholeRunKind.
+	Kind string `json:"kind"`
+	// Began is when the marker was written.
+	Began time.Time `json:"began"`
+}
+
+// valid reports whether m is a marker of the shape a writer writes, under the
+// file name leaf.
+func (m WholeRunMarker) valid(leaf string) bool {
+	return m.SchemaVersion == wholeRunSchema && m.PID > 1 && leaf == strconv.Itoa(m.PID)+".json" &&
+		m.StartUnix > 0 && m.Kind == WholeRunKind && filepath.IsAbs(m.Dir) && filepath.Clean(m.Dir) == m.Dir &&
+		!m.Began.IsZero()
+}
+
+// wholeRunMark is one wait's marker as it is written and ended.
+type wholeRunMark struct {
+	home string
+	pid  int
+	dir  string
+	now  func() time.Time
+	res  *WaitResult
+	// tried is set once a write was made or failed: a wait writes at most once.
+	tried bool
+	start int64
+}
+
+// reading wraps the wait's machine reader: the first reading that holds this
+// waiter writes its marker, after which the reader is read as before.
+func (m *wholeRunMark) reading(read func() (machineload.Snapshot, error)) func() (machineload.Snapshot, error) {
+	return func() (machineload.Snapshot, error) {
+		snap, err := read()
+		if !m.tried {
+			if start, ok := procStart(snap, m.pid, m.now()); ok {
+				m.tried = true
+				if werr := m.write(snap, start); werr != nil {
+					m.res.MarkNote = fmt.Sprintf("the whole run's marker %s could not be written (%s), so the away mode's stop check cannot see this run; the run goes on",
+						abcdhome.Display(wholeRunsLeaf, strconv.Itoa(m.pid)+".json"), termsafe.CleanProseLine(fsutil.RedactHome(werr.Error()), 256))
+				} else {
+					m.start = start
+				}
+			}
+		}
+		return snap, err
+	}
+}
+
+// write sweeps the markers whose process snap does not hold, then writes this
+// waiter's, through a folder walked as a reader of it walks it, so a writer
+// never writes where its reader would refuse to read.
+func (m *wholeRunMark) write(snap machineload.Snapshot, start int64) error {
+	dir := m.dir
+	if !filepath.IsAbs(dir) {
+		return errors.New("the checkout is not an absolute path")
+	}
+	rec := WholeRunMarker{SchemaVersion: wholeRunSchema, PID: m.pid, StartUnix: start, Dir: filepath.Clean(dir), Kind: WholeRunKind, Began: m.now().UTC()}
+	raw, err := json.Marshal(rec)
+	if err != nil {
+		return err
+	}
+	if len(raw)+1 > maxWholeRunMarkerBytes {
+		return fmt.Errorf("the checkout's path is too long for a marker of %d bytes", maxWholeRunMarkerBytes)
+	}
+	root, err := fsutil.EnsureHomeDeclarationScope(m.home, abcdhome.Rel(wholeRunsLeaf), abcdhome.DirMode)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	sweepWholeRunMarkers(root, snap, m.now())
+	return fsutil.WriteFileAtomicInRoot(root, strconv.Itoa(m.pid)+".json", append(raw, '\n'), abcdhome.FileMode)
+}
+
+// end removes this wait's marker, when it wrote one.
+func (m *wholeRunMark) end() {
+	if m.start != 0 {
+		removeWholeRunMarker(m.home, m.pid, m.start)
+	}
+}
+
+// sweepWholeRunMarkers removes each marker in root whose pid snap does not
+// hold with the start time it names (within holdStartSlack, the hold's own
+// rule for its holder): its run has ended. A marker that does not parse is
+// left for no reader to count.
+func sweepWholeRunMarkers(root *os.Root, snap machineload.Snapshot, t time.Time) {
+	if !snap.HasProcs {
+		return
+	}
+	for _, leaf := range wholeRunLeaves(root) {
+		raw, err := fsutil.ReadGuardedInRoot(root, leaf, maxWholeRunMarkerBytes)
+		if err != nil {
+			continue
+		}
+		var mk WholeRunMarker
+		if json.Unmarshal(raw, &mk) != nil || !mk.valid(leaf) {
+			continue
+		}
+		if s, ok := procStart(snap, mk.PID, t); ok && s-mk.StartUnix <= holdStartSlack && mk.StartUnix-s <= holdStartSlack {
+			continue
+		}
+		_ = root.Remove(leaf)
+	}
+}
+
+// removeWholeRunMarker removes pid's marker when it names start (within
+// holdStartSlack): a marker a later process of the same pid wrote is left.
+// It reports nothing: a marker left behind counts for nothing once its
+// process is gone.
+func removeWholeRunMarker(home string, pid int, start int64) {
+	if pid <= 1 || home == "" {
+		return
+	}
+	if _, err := os.Lstat(abcdhome.Path(home, wholeRunsLeaf)); err != nil {
+		return
+	}
+	root, err := fsutil.OpenHomeScope(home, abcdhome.Rel(wholeRunsLeaf))
+	if err != nil {
+		return
+	}
+	defer root.Close()
+	leaf := strconv.Itoa(pid) + ".json"
+	raw, err := fsutil.ReadGuardedInRoot(root, leaf, maxWholeRunMarkerBytes)
+	if err != nil {
+		return
+	}
+	var mk WholeRunMarker
+	if json.Unmarshal(raw, &mk) != nil || mk.PID != pid || (start != 0 && (mk.StartUnix-start > holdStartSlack || start-mk.StartUnix > holdStartSlack)) {
+		return
+	}
+	_ = root.Remove(leaf)
+}
+
+// wholeRunLeaves are the regular-file names in root shaped as a marker's,
+// at most MaxWholeRunMarkers of the folder's entries looked at.
+func wholeRunLeaves(root *os.Root) []string {
+	f, err := root.Open(".")
+	if err != nil {
+		return nil
+	}
+	entries, _ := f.ReadDir(MaxWholeRunMarkers)
+	f.Close()
+	var out []string
+	for _, e := range entries {
+		name := e.Name()
+		digits, ok := strings.CutSuffix(name, ".json")
+		if !e.Type().IsRegular() || !ok || digits == "" || len(digits) > 10 || strings.Trim(digits, "0123456789") != "" || digits[0] == '0' {
+			continue
+		}
+		out = append(out, name)
+	}
+	return out
+}
+
+// ReadWholeRunMarkers reads the whole runs' markers under home, untrusted:
+// the folder is walked as a declaration's is (a symlinked level, or one
+// another account owns or every account can write, is refused with an
+// error), each file must be a regular file this account alone owns and can
+// write, at most maxWholeRunMarkerBytes, exactly one JSON document of the
+// marker's shape with no unknown or repeated field, named for its own pid,
+// of the whole kind, with an absolute clean checkout; one that is not counts
+// for nothing. An absent folder is none. It reads no process: whether a
+// marker's process is live, and this account's, is the caller's to judge.
+func ReadWholeRunMarkers(home string) ([]WholeRunMarker, error) {
+	if home == "" || !filepath.IsAbs(home) {
+		return nil, errors.New("there is no home folder to read the whole runs' markers from")
+	}
+	if _, err := os.Lstat(abcdhome.Path(home, wholeRunsLeaf)); errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	root, err := fsutil.OpenHomeDeclarationScope(home, abcdhome.Rel(wholeRunsLeaf))
+	if err != nil {
+		return nil, fmt.Errorf("the whole runs' markers %s were not read: %w", abcdhome.Display(wholeRunsLeaf), err)
+	}
+	defer root.Close()
+	var out []WholeRunMarker
+	for _, leaf := range wholeRunLeaves(root) {
+		raw, refusal, err := fsutil.ReadHomeDeclarationDenyingIn(root, home, abcdhome.Rel(wholeRunsLeaf, leaf), maxWholeRunMarkerBytes, 0)
+		if err != nil || refusal != fsutil.DeclarationOK {
+			continue
+		}
+		var mk WholeRunMarker
+		if jsonstrict.Decode(raw, &mk) != nil || !mk.valid(leaf) {
+			continue
+		}
+		out = append(out, mk)
+	}
+	return out, nil
 }
