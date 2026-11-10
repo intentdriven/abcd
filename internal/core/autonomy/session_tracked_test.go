@@ -204,31 +204,46 @@ func TestTheLandingReceiptIsReadUnderTheDeadline(t *testing.T) {
 	}
 }
 
-// TestEachOwedReadMarksASpentDeadline: every read of the owed reader that
-// runs under the check's ctx and takes a failure for nothing there marks the
-// reading cut short once that ctx has ended, so the verdict fails open rather
-// than judging from what the deadline emptied: an author email, a holder or a
-// receipt folder not read, a receipt not found, a created-branch list or the
-// other worktrees not listed, the fetch stamp not judged, the live sessions
-// not read, and the merge queue's rules and its armed pull requests not read.
+// TestEachOwedReadMarksASpentDeadline: each read of the owed reader that
+// passes through cutShort marks the reading cut short once the check's ctx has
+// ended, so the verdict fails open rather than judging from what the deadline
+// emptied: the author email, the holder, the default branch and the receipt
+// folder not read, a receipt not found, the runs' tracked check not made, a
+// created-branch list or the other worktrees not listed, the fetch stamp not
+// judged, the stack index cut short, the live sessions not read, and the
+// merge queue's rules and its armed pull requests not read. These are the
+// reads named here; the reader's other reads are marked by its git or by
+// ranOut, and this test does not hold them.
 func TestEachOwedReadMarksASpentDeadline(t *testing.T) {
 	f := newFx(t)
 	if _, err := claim.CopyKey(f.root); err != nil {
 		t.Fatal(err)
 	}
 	f.receipt(f.head("main"))
+	if err := os.MkdirAll(filepath.Join(f.root, runRelDir, "run-0000000000000001"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	spent, cancel := context.WithCancel(context.Background())
 	cancel()
 	refused := func(ctx context.Context, _ string, _ ...string) (string, error) { return "", ctx.Err() }
 	behind := pullRequest{Number: 1, HeadRefName: "feat/x", BaseRefName: "main", MergeStateStatus: "BEHIND"}
 	reads := map[string]func(r *owedReader){
-		"the author email":      func(r *owedReader) { r.readEmail() },
-		"the holder":            func(r *owedReader) { r.readPerson() },
-		"the receipt folder":    func(r *owedReader) { r.readReceiptsMinted() },
-		"the landing receipt":   func(r *owedReader) { r.hasReceipt(f.head("main")) },
-		"the created branches":  func(r *owedReader) { r.recordedBranches() },
-		"the other worktrees":   func(r *owedReader) { r.checkedOutElsewhere() },
-		"the fetch stamp":       func(r *owedReader) { r.fetchedAt() },
+		"the author email":    func(r *owedReader) { r.readEmail() },
+		"the holder":          func(r *owedReader) { r.readPerson() },
+		"the default branch":  func(r *owedReader) { r.readDefault() },
+		"the receipt folder":  func(r *owedReader) { r.readReceiptsMinted() },
+		"the landing receipt": func(r *owedReader) { r.hasReceipt(f.head("main")) },
+		"the runs' tracked check": func(r *owedReader) {
+			r.lanes, r.runDrivers = nil, nil
+			r.readLanes()
+		},
+		"the created branches": func(r *owedReader) { r.recordedBranches() },
+		"the other worktrees":  func(r *owedReader) { r.checkedOutElsewhere() },
+		"the fetch stamp":      func(r *owedReader) { r.fetchedAt() },
+		"the stack index": func(r *owedReader) {
+			r.baseNames, r.branches = []string{"main"}, map[string]*localBranch{"main": {name: "main", head: f.head("main")}}
+			r.stackIdx()
+		},
 		"the live sessions":     func(r *owedReader) { r.liveSessions() },
 		"the merge queue rules": func(r *owedReader) { r.queueKeepsCurrent(behind) },
 		"the armed pull requests": func(r *owedReader) {
@@ -331,6 +346,14 @@ func nthWith(calls []string, i int, word string) int {
 // "no receipt names its head" item is made up from the read the deadline
 // emptied. The branch is the last one judged and has no local branch, so no
 // later git call can mark the cut on the receipt read's behalf.
+//
+// The test finds the receipt read as the check's last two git calls, which
+// has two limits. A git call added after the last branch's judgement (in
+// reservationItems or breachNote, say) moves the read off the end, and the
+// test then fails loudly on its own check rather than passing. And it covers
+// only the stacked route's receipt read: the hand-back route's (handBack)
+// has no test at this level, and is held only by hasReceipt's own mark,
+// which TestTheLandingReceiptIsReadUnderTheDeadline asserts.
 func TestAReceiptReadTheDeadlineCutsShortFailsOpen(t *testing.T) {
 	const noReceipt = "no receipt names its head"
 	owesPreflight := func(o Owed) bool {
@@ -425,5 +448,123 @@ func TestASpentDeadlineMakesUpNoMergeOwed(t *testing.T) {
 	r.forgeItems("feat/top", top, top.head, pullRequest{}, false)
 	if len(r.items) != 0 || !r.cut {
 		t.Errorf("a pushed branch judged on disk once the deadline had ended: items %v, cut %v; want none, and cut", r.items, r.cut)
+	}
+}
+
+// endsAfter is a check's ctx that reads as live for its first n looks at Err
+// and as ended from then on. It has no Done channel, so no git is killed by
+// it: it only moves the moment the deadline ends between any two looks a
+// read takes, wherever n puts it.
+type endsAfter struct {
+	context.Context
+	n int
+}
+
+func (c *endsAfter) Err() error {
+	if c.n > 0 {
+		c.n--
+		return nil
+	}
+	return context.DeadlineExceeded
+}
+
+func (c *endsAfter) Done() <-chan struct{} { return nil }
+
+// TestADeadlineEndingBetweenLooksStillMarks: the ancestry check and the
+// receipt read owe a merge or a preflight only on an answer the deadline did
+// not end, and owe none once it has, marking the reading cut short. Whichever
+// look at the deadline it ends between, an item left out is marked: the
+// deadline ending after the look that would mark and before the one that
+// leaves the item out is the window this sweeps.
+func TestADeadlineEndingBetweenLooksStillMarks(t *testing.T) {
+	f := newFx(t)
+	f.stack()
+	top, main := f.head("feat/top"), f.head("main")
+	reads := map[string]func(r *owedReader) bool{
+		"the ancestry check": func(r *owedReader) bool { return r.notAncestor(top, main) },
+		"the receipt read":   func(r *owedReader) bool { return r.owesPreflight(top) },
+	}
+	const looks = 64
+	for name, owes := range reads {
+		t.Run(name, func(t *testing.T) {
+			if !owes(&owedReader{ctx: &endsAfter{Context: context.Background(), n: looks}, root: f.root}) {
+				t.Fatalf("with the deadline live throughout, %s owes nothing; the sweep proves nothing", name)
+			}
+			for n := 0; n < looks; n++ {
+				r := &owedReader{ctx: &endsAfter{Context: context.Background(), n: n}, root: f.root}
+				if !owes(r) && !r.cut {
+					t.Errorf("the deadline ending after look %d: %s owes nothing and the reading is not marked cut short", n, name)
+				}
+			}
+		})
+	}
+}
+
+// TestAnAncestryCheckTheDeadlineEndsMidReadMakesUpNoMerge: the deadline
+// ending while git answers the ancestry check, not before it, owes no merge
+// from a check git was killed in, and marks the reading cut short. The base
+// is in the branch, so git, left to answer, owes nothing either.
+func TestAnAncestryCheckTheDeadlineEndsMidReadMakesUpNoMerge(t *testing.T) {
+	f := newFx(t)
+	f.stack()
+	top := &localBranch{name: "feat/top", head: f.head("feat/top"), upstream: "refs/remotes/origin/feat/top"}
+	reader := func(ctx context.Context) *owedReader {
+		return &owedReader{ctx: ctx, root: f.root, def: "refs/remotes/origin/main", defName: "main",
+			defTip: f.head("main"), branches: map[string]*localBranch{"feat/top": top}}
+	}
+	judges := map[string]func(r *owedReader){
+		"the stacked branch's base": func(r *owedReader) {
+			r.stacked("feat/top", top.head, "feat/base", f.head("feat/base"), pullRequest{}, false)
+		},
+		"the default branch on disk": func(r *owedReader) {
+			r.forgeItems("feat/top", top, top.head, pullRequest{}, false)
+		},
+	}
+	for name, judge := range judges {
+		t.Run(name, func(t *testing.T) {
+			r := reader(context.Background())
+			judge(r)
+			if len(r.items) != 0 || r.cut {
+				t.Fatalf("with git answering: items %v, cut %v; want none; the test proves nothing", r.items, r.cut)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			_, stalled := stallNthGit(t, "--is-ancestor", 1, cancel)
+			r = reader(ctx)
+			judge(r)
+			if !stalled() {
+				t.Fatal("the ancestry check never reached git; the test proves nothing")
+			}
+			if len(r.items) != 0 || !r.cut {
+				t.Errorf("an ancestry check the deadline ended mid-read: items %v, cut %v; want none, and cut", r.items, r.cut)
+			}
+		})
+	}
+}
+
+// TestASpentQueueReadMakesUpNoMergeOrArming: a behind pull request into a
+// default branch a merge queue may guard is owed a merge or its arming only
+// on what the forge answered: a queue read the check's deadline ended, the
+// rules or the armed set, owes neither, and marks the reading cut short.
+func TestASpentQueueReadMakesUpNoMergeOrArming(t *testing.T) {
+	f := newFx(t)
+	spent, cancel := context.WithCancel(context.Background())
+	cancel()
+	refused := func(ctx context.Context, _ string, _ ...string) (string, error) { return "", ctx.Err() }
+	behind := pullRequest{Number: 1, HeadRefName: "feat/x", BaseRefName: "main", MergeStateStatus: "BEHIND"}
+	reads := map[string]func(r *owedReader){
+		"the merge queue rules":   func(*owedReader) {},
+		"the armed pull requests": func(r *owedReader) { r.queueRead, r.queue = true, queueRule{queue: true} },
+	}
+	for name, given := range reads {
+		t.Run(name, func(t *testing.T) {
+			r := &owedReader{ctx: spent, root: f.root, def: "refs/remotes/origin/main", defName: "main",
+				defTip: f.head("main"), forge: refused, rulesDeadline: time.Second}
+			given(r)
+			r.forgeItems("feat/x", nil, f.head("main"), behind, true)
+			if len(r.items) != 0 || !r.cut {
+				t.Errorf("%s unread once the deadline had ended: items %v, cut %v; want none, and cut", name, r.items, r.cut)
+			}
+		})
 	}
 }
