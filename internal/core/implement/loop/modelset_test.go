@@ -341,3 +341,156 @@ func TestACalibratedBundledJudgeIsActive(t *testing.T) {
 		t.Fatalf("one record line says a judge will run on a disagreement: %q", notes)
 	}
 }
+
+// effortsOf is each class of a review set with the effort it carries and the
+// layer that set it, the judge last: "research=high@bundled".
+func effortsOf(rs *ReviewSet) []string {
+	var out []string
+	for _, r := range rs.Roles {
+		for _, c := range r.Reviewers {
+			out = append(out, c.Class+"="+c.Effort+"@"+c.EffortLayer)
+		}
+	}
+	if j := rs.Judge; j != nil {
+		out = append(out, "judge "+j.Class+"="+j.Effort+"@"+j.EffortLayer)
+	}
+	return out
+}
+
+// TestEachClassCarriesAnEffort: with nothing configured every class runs at
+// high from the bundled layer; one level in the machine's file applies to
+// every class; an object applies per class, and a class it leaves out is
+// high; the resolved effort is stored with each class and survives a re-read.
+func TestEachClassCarriesAnEffort(t *testing.T) {
+	machine := abcdhome.Display("config.json")
+	cases := []struct {
+		name, machine string
+		want          string
+	}{
+		{name: "nothing configured",
+			want: "research=high@bundled default=high@bundled research=high@bundled default=high@bundled judge top=high@bundled"},
+		{name: "one level", machine: `{"models": {"effort": "max"}}`,
+			want: "research=max@machine default=max@machine research=max@machine default=max@machine judge top=max@machine"},
+		{name: "a level per class", machine: `{"models": {"effort": {"research": "xhigh", "default": "low"}}}`,
+			want: "research=xhigh@machine default=low@machine research=xhigh@machine default=low@machine judge top=high@bundled"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+			if tc.machine != "" {
+				machineConfig(t, tc.machine)
+			}
+			res, err := Start(repo.Root(), "itd-10", Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Join(effortsOf(res.Review), " "); got != tc.want {
+				t.Fatalf("efforts = %s, want %s", got, tc.want)
+			}
+			if c := res.Review.Roles[0].Reviewers[0]; c.EffortLayer == "machine" && c.EffortOrigin != machine {
+				t.Fatalf("a machine effort names the machine's file: %+v", c)
+			}
+			st, err := ReadState(repo.Root(), res.RunID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Join(effortsOf(st.Review), " "); got != tc.want {
+				t.Fatalf("the state keeps the efforts: %s", got)
+			}
+		})
+	}
+}
+
+// TestAnEffortOutsideTheLevelsIsRefused: an effort that is not one of the
+// five levels, or an object keyed by anything but the four classes, is
+// refused before anything is written, naming the key, the value and what is
+// accepted; an old class name there is refused with the mapping.
+func TestAnEffortOutsideTheLevelsIsRefused(t *testing.T) {
+	levels := "low, medium, high, xhigh and max"
+	cases := []struct {
+		name, machine string
+		want          []string
+	}{
+		{name: "an unknown level", machine: `{"models": {"effort": "extreme"}}`, want: []string{"models.effort", `"extreme"`, levels}},
+		{name: "an unknown level for a class", machine: `{"models": {"effort": {"default": "turbo"}}}`,
+			want: []string{"models.effort.default", `"turbo"`, levels}},
+		{name: "an unknown class", machine: `{"models": {"effort": {"huge": "high"}}}`,
+			want: []string{"models.effort", `"huge"`, "research, top, default, small"}},
+		{name: "an old class", machine: `{"models": {"effort": {"middle": "high"}}}`,
+			want: append([]string{"models.effort.middle"}, renameMapping...)},
+		{name: "not a level or an object", machine: `{"models": {"effort": 3}}`, want: []string{"models.effort", "3", levels}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+			machineConfig(t, tc.machine)
+			_, err := Start(repo.Root(), "itd-10", Options{})
+			r := mustRefusal(t, err)
+			if r.Stage != StageReview {
+				t.Fatalf("want the review stage's refusal: %+v", r)
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(r.Reason+" "+r.Remedy, w) {
+					t.Fatalf("the refusal names %q: %+v", w, r)
+				}
+			}
+			runTierAbsent(t, repo.Root())
+		})
+	}
+}
+
+// TestARepositoryEffortIsSkipped: a repository must not raise what a review
+// spends, so its models.effort is skipped with one line naming the machine's
+// file, and every class runs at the bundled high.
+func TestARepositoryEffortIsSkipped(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	repoConfig(t, repo, `{"models": {"effort": "max"}}`)
+	res, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(effortsOf(res.Review), " "); strings.Contains(got, "max") {
+		t.Fatalf("the repository's effort changes nothing: %s", got)
+	}
+	if len(res.Diagnostics) != 1 || !strings.Contains(res.Diagnostics[0], "models.effort") ||
+		!strings.Contains(res.Diagnostics[0], abcdhome.Display("config.json")) || !strings.Contains(res.Diagnostics[0], "skipped") {
+		t.Fatalf("one line names the machine's file: %q", res.Diagnostics)
+	}
+}
+
+// TestAStoredEffortTheLoopNeverWritesIsRefused: an effort read back from the
+// state is one of the five levels from the machine or the bundled layer, and
+// an earlier version's file carrying one is not one its version wrote.
+func TestAStoredEffortTheLoopNeverWritesIsRefused(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	res, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(res.RunID)))
+	orig := stateBytes(t, repo.Root(), res.RunID)
+	earlier := string(olderState(t, orig, schemaVersionUnrenamed))
+	for name, edit := range map[string]func() string{
+		"a level it never writes": func() string { return strings.Replace(string(orig), `"effort": "high"`, `"effort": "turbo"`, 1) },
+		"a layer it never writes": func() string {
+			return strings.Replace(string(orig), `"effort_layer": "bundled"`, `"effort_layer": "repo"`, 1)
+		},
+		"an effort in an earlier version": func() string {
+			return strings.Replace(earlier, `"map_layer": "bundled",`, `"map_layer": "bundled", "effort": "high",`, 1)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			edited := edit()
+			if edited == string(orig) || edited == earlier {
+				t.Fatalf("the edit changed nothing:\n%s", orig)
+			}
+			if err := os.WriteFile(path, []byte(edited), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := ReadState(repo.Root(), res.RunID)
+			if r := mustRefusal(t, err); r.Stage != "state" {
+				t.Fatalf("want the state's refusal: %+v", r)
+			}
+		})
+	}
+}

@@ -22,6 +22,14 @@ package loop
 //     a repository's list longer than the ceiling is clamped, with one line
 //     on stderr naming both files, and a repository's own max_reviewers is
 //     skipped with a warning.
+//   - models.effort is how hard each class works (itd-2611101419006280
+//     decision 6): one of the levels for every class, or an object naming a
+//     level per class, and high for a class nothing names. A higher effort
+//     spends more of the person's budget, so it is read from the machine's
+//     file or the bundled default alone, as the class map is, and a
+//     repository's value is skipped with a warning. The effort rides with
+//     each resolved class into the run's state and, where a runner launches a
+//     role at the class, into the request it is handed (decision 7).
 //   - models.classes is the class map: research, top, default and small, each
 //     a <provider>/<model> route. Which model spends the person's key is
 //     theirs alone (decision 3), so the map is read from the machine's file
@@ -112,17 +120,36 @@ const (
 	keyReviewers    = "reviewers"
 	keyJudge        = "judge"
 	keyMaxReviewers = "max_reviewers"
-	classNamespace  = "models.classes"
+	modelsNamespace = "models"
+	keyClasses      = "classes"
+	keyEffort       = "effort"
+	classNamespace  = modelsNamespace + "." + keyClasses
+	effortKey       = modelsNamespace + "." + keyEffort
 )
+
+// EffortLevels are the levels models.effort takes, lowest first: the five the
+// harness takes (decision 6).
+var EffortLevels = []string{"low", "medium", "high", "xhigh", "max"}
+
+// BundledEffort is every class's effort when the machine names none.
+const BundledEffort = "high"
+
+// effortLevelsPhrase names the levels as a refusal says them.
+var effortLevelsPhrase = strings.Join(EffortLevels[:len(EffortLevels)-1], ", ") + " and " + EffortLevels[len(EffortLevels)-1]
 
 // ReviewClass is one class of a review set with the model the class map
 // resolves it to, and the map layer ("machine" or "bundled") and origin that
-// supplied the model.
+// supplied the model; and the effort the class runs at, with the layer and
+// origin of models.effort that set it. A run started before efforts carries
+// none of the three.
 type ReviewClass struct {
-	Class     string `json:"class"`
-	Model     string `json:"model"`
-	MapLayer  string `json:"map_layer"`
-	MapOrigin string `json:"map_origin"`
+	Class        string `json:"class"`
+	Model        string `json:"model"`
+	MapLayer     string `json:"map_layer"`
+	MapOrigin    string `json:"map_origin"`
+	Effort       string `json:"effort,omitempty"`
+	EffortLayer  string `json:"effort_layer,omitempty"`
+	EffortOrigin string `json:"effort_origin,omitempty"`
 }
 
 // RoleReviewers is one role's reviewers, with the layer and origin of the
@@ -143,13 +170,16 @@ type RoleReviewers struct {
 // launched, awaited or counted in an estimate, and a run never gains a judge
 // part-way.
 type ReviewJudge struct {
-	Class     string `json:"class"`
-	Model     string `json:"model"`
-	MapLayer  string `json:"map_layer"`
-	MapOrigin string `json:"map_origin"`
-	Layer     string `json:"layer"`
-	Origin    string `json:"origin"`
-	Status    string `json:"status"`
+	Class        string `json:"class"`
+	Model        string `json:"model"`
+	MapLayer     string `json:"map_layer"`
+	MapOrigin    string `json:"map_origin"`
+	Effort       string `json:"effort,omitempty"`
+	EffortLayer  string `json:"effort_layer,omitempty"`
+	EffortOrigin string `json:"effort_origin,omitempty"`
+	Layer        string `json:"layer"`
+	Origin       string `json:"origin"`
+	Status       string `json:"status"`
 }
 
 // The statuses a judge is stored with.
@@ -250,7 +280,8 @@ func (rs ReviewSet) written() bool {
 			return false
 		}
 		for _, c := range r.Reviewers {
-			if !slices.Contains(Classes, c.Class) || !mapLayer(c.MapLayer) || !validRoute(c.Model) || !clean(c.MapOrigin) {
+			if !slices.Contains(Classes, c.Class) || !mapLayer(c.MapLayer) || !validRoute(c.Model) || !clean(c.MapOrigin) ||
+				!effortWritten(c.Effort, c.EffortLayer, c.EffortOrigin) {
 				return false
 			}
 		}
@@ -258,11 +289,23 @@ func (rs ReviewSet) written() bool {
 	if j := rs.Judge; j != nil {
 		if !slices.Contains(Classes, j.Class) || !mapLayer(j.MapLayer) || !validRoute(j.Model) ||
 			!slices.Contains(paceLayers, j.Layer) || !clean(j.Origin, j.MapOrigin) ||
-			(j.Status != JudgeWaiting && j.Status != JudgeActive) {
+			(j.Status != JudgeWaiting && j.Status != JudgeActive) || !effortWritten(j.Effort, j.EffortLayer, j.EffortOrigin) {
 			return false
 		}
 	}
 	return true
+}
+
+// effortWritten reports whether a stored class's effort is one the resolver
+// writes: one of the levels, from the machine or the bundled layer, with an
+// origin carrying no rune termsafe masks; or none of the three, for a run
+// started before efforts.
+func effortWritten(effort, layer, origin string) bool {
+	if effort == "" && layer == "" && origin == "" {
+		return true
+	}
+	return slices.Contains(EffortLevels, effort) && (layer == layered.Machine.String() || layer == layered.Bundled.String()) &&
+		origin != "" && termsafe.Sanitize(origin) == origin
 }
 
 // validRoute reports whether s is a <provider>/<model> route: a non-empty
@@ -317,6 +360,9 @@ func resolveReviewSet(roots layered.Roots, o Options) (ReviewSet, []string, erro
 	if err := s.Claim(reviewNamespace, keyReviewers, keyJudge, keyMaxReviewers); err != nil {
 		return ReviewSet{}, nil, reviewRefusal(err.Error())
 	}
+	if err := s.Claim(modelsNamespace, keyClasses, keyEffort); err != nil {
+		return ReviewSet{}, nil, reviewRefusal(err.Error())
+	}
 	// The retired names are claimed too, so a file naming one is refused below
 	// with the whole mapping rather than as a key nothing reads.
 	if err := s.Claim(classNamespace, append(slices.Clone(Classes), retiredClasses...)...); err != nil {
@@ -332,6 +378,10 @@ func resolveReviewSet(roots layered.Roots, o Options) (ReviewSet, []string, erro
 	var diags []string
 	cm, d, err := resolveClassMap(s)
 	if err != nil {
+		return ReviewSet{}, nil, err
+	}
+	diags = append(diags, d...)
+	if d, err = resolveEffort(s, cm); err != nil {
 		return ReviewSet{}, nil, err
 	}
 	diags = append(diags, d...)
@@ -396,6 +446,7 @@ func resolveReviewSet(roots layered.Roots, o Options) (ReviewSet, []string, erro
 		status = JudgeWaiting
 	}
 	rs.Judge = &ReviewJudge{Class: rc.Class, Model: rc.Model, MapLayer: rc.MapLayer, MapOrigin: rc.MapOrigin,
+		Effort: rc.Effort, EffortLayer: rc.EffortLayer, EffortOrigin: rc.EffortOrigin,
 		Layer: j.Layer.String(), Origin: j.Origin, Status: status}
 	if d := topNote(named, cm); d != "" {
 		diags = append(diags, d)
@@ -406,8 +457,23 @@ func resolveReviewSet(roots layered.Roots, o Options) (ReviewSet, []string, erro
 // renamed reports the first thing, in a state, that only version 25 and later
 // write: a judge's status; "" when there is none.
 func (s State) renamed() string {
-	if s.Review != nil && s.Review.Judge != nil && s.Review.Judge.Status != "" {
-		return "a judge's status"
+	if s.Review == nil {
+		return ""
+	}
+	if j := s.Review.Judge; j != nil {
+		if j.Status != "" {
+			return "a judge's status"
+		}
+		if j.Effort != "" || j.EffortLayer != "" || j.EffortOrigin != "" {
+			return "a judge's effort"
+		}
+	}
+	for _, r := range s.Review.Roles {
+		for _, c := range r.Reviewers {
+			if c.Effort != "" || c.EffortLayer != "" || c.EffortOrigin != "" {
+				return "a class's effort on the " + r.Role
+			}
+		}
 	}
 	return ""
 }
@@ -484,6 +550,16 @@ func classNamesIn(s *layered.Stack) ([]namedClass, error) {
 		}
 		for _, c := range slices.Sorted(maps.Keys(m)) {
 			add(classNamespace+"."+c, c, f)
+		}
+	}
+	if found, err = s.Lookup(effortKey); err != nil {
+		return nil, reviewRefusal(err.Error())
+	}
+	for _, f := range found {
+		if m, err := layered.Decode[map[string]any](f.Raw); err == nil {
+			for _, c := range slices.Sorted(maps.Keys(m)) {
+				add(effortKey+"."+c, c, f)
+			}
 		}
 	}
 	key := reviewNamespace + "." + keyReviewers
@@ -615,6 +691,67 @@ func resolveClassMap(s *layered.Stack) (classMap, []string, error) {
 			"the class map is this machine's alone to say; set it in %s", classNamespace, layered.Config.RepoOrigin(), layered.Config.MachineOrigin()))
 	}
 	return cm, diags, nil
+}
+
+// resolveEffort sets each class of cm to the effort models.effort names for
+// it in the machine's file, else the bundled high. A repository's value is
+// skipped with one warning; a value that is not one level, or an object
+// naming a level per class, is refused naming the key, the value and what is
+// accepted.
+func resolveEffort(s *layered.Stack, cm classMap) ([]string, error) {
+	found, err := s.Lookup(effortKey)
+	if err != nil {
+		return nil, reviewRefusal(err.Error())
+	}
+	for c, rc := range cm {
+		rc.Effort, rc.EffortLayer, rc.EffortOrigin = BundledEffort, layered.Bundled.String(), layered.Bundled.String()
+		cm[c] = rc
+	}
+	var diags []string
+	accepted := fmt.Sprintf("%s takes one of %s for every class, or an object naming one per class (%s), in %s alone",
+		effortKey, effortLevelsPhrase, strings.Join(Classes, ", "), layered.Config.MachineOrigin())
+	for _, f := range found {
+		if f.Layer != layered.Machine {
+			diags = append(diags, fmt.Sprintf("review: %s in %s is skipped: a higher effort spends more of the person's budget, so how hard "+
+				"each class works is this machine's alone to say; set it in %s", effortKey, f.Origin, layered.Config.MachineOrigin()))
+			continue
+		}
+		set := func(c, level string) {
+			rc := cm[c]
+			rc.Effort, rc.EffortLayer, rc.EffortOrigin = level, f.Layer.String(), f.Origin
+			cm[c] = rc
+		}
+		bad := func(key, value, why string) error {
+			return refuse(StageReview, "", "", fmt.Sprintf("%s (%s layer): %s is %s: %s", f.Origin, f.Layer, key, value, why),
+				accepted+"; nothing was written")
+		}
+		raw := strings.TrimSpace(string(f.Raw))
+		if strings.HasPrefix(raw, "{") {
+			per, err := layered.Decode[map[string]string](f.Raw)
+			if err != nil {
+				return nil, bad(effortKey, layered.BoundKey(raw), fmt.Sprintf("want an object naming one of %s per class", effortLevelsPhrase))
+			}
+			for _, c := range slices.Sorted(maps.Keys(per)) {
+				if !slices.Contains(Classes, c) {
+					return nil, bad(effortKey, layered.BoundKey(raw), fmt.Sprintf("it names %q, which is no class; an effort object is keyed by %s",
+						layered.BoundKey(c), strings.Join(Classes, ", ")))
+				}
+				if !slices.Contains(EffortLevels, per[c]) {
+					return nil, bad(effortKey+"."+c, fmt.Sprintf("%q", layered.BoundKey(per[c])), "an effort is one of "+effortLevelsPhrase)
+				}
+				set(c, per[c])
+			}
+			continue
+		}
+		level, err := layered.Decode[string](f.Raw)
+		if err != nil || !slices.Contains(EffortLevels, level) {
+			return nil, bad(effortKey, layered.BoundKey(raw), "an effort is one of "+effortLevelsPhrase)
+		}
+		for _, c := range Classes {
+			set(c, level)
+		}
+	}
+	return diags, nil
 }
 
 // resolveCeiling reads review.max_reviewers from the machine's file, else the

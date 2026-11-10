@@ -171,9 +171,11 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"fixed at the run's start, and a judge a file names is refused until then) and, from\n" +
 			abcdhome.Display("config.json") + " alone, review.max_reviewers (1 or 2, bundled 2) and the class map\n" +
 			"models.classes (research, top, default, small, strongest first, each a <provider>/<model>\n" +
-			"route over the bundled map). A repository list above the machine's ceiling is clamped with\n" +
-			"one line on stderr naming both files; a repository's ceiling or class map is skipped with a\n" +
-			"warning. An unknown class or a malformed set is refused at the review stage and writes nothing.\n" +
+			"route over the bundled map) and each class's effort, models.effort (one of low, medium, high,\n" +
+			"xhigh and max for every class, or an object naming one per class; bundled: high). A repository\n" +
+			"list above the machine's ceiling is clamped with one line on stderr naming both files; a\n" +
+			"repository's ceiling, class map or effort is skipped with a warning. An unknown class or\n" +
+			"level, or a malformed set, is refused at the review stage and writes nothing.\n" +
 			"The classes were renamed: top is now research, middle is top, below is default and smallest\n" +
 			"is small. A file naming middle, below or smallest is refused with that mapping, and so is a\n" +
 			"machine class map that sets top without research; a review list or judge naming top, while\n" +

@@ -61,6 +61,7 @@ repository names only which classes review.
    - packages: internal/core/implement/loop, internal/surface/cli
    - tests: with nothing configured each role resolves to two reviewers at `research` and `default` and a judge at `top` with status `waiting`, the run starts, its record carries one line saying the judge waits on calibration, and no step hands out, awaits or estimates a judge; with a calibrated judge fixture the status is `active`; a status fixed at start does not change when the fixture changes mid-run; `review.judge` in a file with no calibrated agent is refused at the `review` stage
    - needs: 2
+   - landed: aba860608
 4. Each class carries an effort
    - packages: internal/core/implement/loop, internal/core/layered, internal/core/runner
    - tests: with nothing configured every class resolves `high` from the bundled layer; one level in the machine file applies to all four; an object applies per class and a class left out is `high`; a level outside the five, or an object keyed by anything but the four classes, is refused naming key, value and what is accepted; `models.effort` in a repository file is skipped with one line naming the machine's file; the resolved effort is stored with each class in the run state and survives a re-read

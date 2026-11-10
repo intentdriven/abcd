@@ -199,6 +199,7 @@ func (rs ReviewSet) masked() ReviewSet {
 		r.Role, r.Layer, r.Origin = line(r.Role), line(r.Layer), line(r.Origin)
 		r.Reviewers = maskEach(r.Reviewers, func(c ReviewClass) ReviewClass {
 			c.Class, c.Model, c.MapLayer, c.MapOrigin = line(c.Class), line(c.Model), line(c.MapLayer), line(c.MapOrigin)
+			c.Effort, c.EffortLayer, c.EffortOrigin = line(c.Effort), line(c.EffortLayer), line(c.EffortOrigin)
 			return c
 		})
 		return r
@@ -206,6 +207,7 @@ func (rs ReviewSet) masked() ReviewSet {
 	rs.Judge = maskPtr(rs.Judge, func(j ReviewJudge) ReviewJudge {
 		j.Class, j.Model, j.MapLayer, j.MapOrigin = line(j.Class), line(j.Model), line(j.MapLayer), line(j.MapOrigin)
 		j.Layer, j.Origin, j.Status = line(j.Layer), line(j.Origin), line(j.Status)
+		j.Effort, j.EffortLayer, j.EffortOrigin = line(j.Effort), line(j.EffortLayer), line(j.EffortOrigin)
 		return j
 	})
 	return rs

@@ -12,7 +12,8 @@
 // match.threshold), how a plain-Terminal interview takes a choice from a
 // list (itd-2610030810370060, interview.list), and the build loop's review set
 // and model-class map (itd-2610240922461281, review.* and models.classes, the
-// map and the ceiling read from the machine layer alone), and the layout
+// map, each class's effort models.effort (itd-2611101419006280) and the
+// ceiling read from the machine layer alone), and the layout
 // limits of abcd's questions (itd-2610301914350541, question.*, the machine
 // layer admitted only where it tightens). A consumer reads through it rather than opening a file of
 // its own, so the precedence order, the guarded reads and the refusals are
