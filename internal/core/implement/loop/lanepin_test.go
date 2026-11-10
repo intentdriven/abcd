@@ -8,6 +8,7 @@ package loop
 // changed in the lane, or standing there other than the commit's, is refused.
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -245,6 +246,13 @@ func TestALaneWhoseHooksAreNotItsCommitsIsRefusedAsItOpens(t *testing.T) {
 			undo: func(t *testing.T, hooks string) { removeAll(t, filepath.Join(hooks, "post-commit")) },
 			want: "post-commit",
 		},
+		"a file whose size is not the commit's": {
+			alter: func(t *testing.T, hooks string) {
+				writeMode(t, filepath.Join(hooks, "pre-commit"), strings.Repeat("#", 2<<20), 0o755)
+			},
+			undo: func(t *testing.T, hooks string) { writeMode(t, filepath.Join(hooks, "pre-commit"), hookV1, 0o755) },
+			want: fmt.Sprintf("is %d bytes, and the commit's file %d", 2<<20, len(hookV1)),
+		},
 		"an entry the commit holds is missing": {
 			alter: func(t *testing.T, hooks string) { removeAll(t, filepath.Join(hooks, "pre-merge-commit")) },
 			undo: func(t *testing.T, hooks string) {
@@ -315,7 +323,19 @@ func TestALaneCannotChooseWhatItOpensOn(t *testing.T) {
 				peer.Commit("merged elsewhere")
 				peer.Git("push", "-q", "origin", "main")
 			},
-			want: "fetch",
+			want: "does not hold yet",
+		},
+		"a remote whose default branch is not the one here": {
+			move: func(t *testing.T, repo *gittest.Repo, bare string) {
+				repo.Git("checkout", "-q", "-b", "develop")
+				repo.Write("notes.txt", "on develop\n")
+				repo.Commit("on develop")
+				repo.Git("push", "-q", "origin", "develop")
+				repo.Git("checkout", "-q", "main")
+				repo.Git("fetch", "-q", "origin")
+				repo.Git("-C", bare, "symbolic-ref", "HEAD", "refs/heads/develop")
+			},
+			want: "origin's default branch is develop, and the default branch here is main",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -331,10 +351,146 @@ func TestALaneCannotChooseWhatItOpensOn(t *testing.T) {
 	}
 }
 
+// plantedCommit commits a hook named name holding body on top of parent and
+// sets the checkout back to parent, so the commit is in the repository and on
+// no branch. It returns the commit.
+func plantedCommit(t *testing.T, repo *gittest.Repo, parent, name, body string) string {
+	t.Helper()
+	writeHook(t, repo, name, body)
+	repo.Commit("planted")
+	planted := repo.Git("rev-parse", "HEAD")
+	repo.Git("reset", "-q", "--hard", parent)
+	return planted
+}
+
+// TestAReplacedObjectDoesNotChooseTheLanesHooks: the proof reads git's
+// objects as stored, so a replace ref standing a planted tree in for the tip's
+// hooks directory, or a planted commit in for the tip itself, is refused at the
+// worktree stage: git's checkout writes the replacement, and the proof holds it
+// to the tree the commit stores.
+func TestAReplacedObjectDoesNotChooseTheLanesHooks(t *testing.T) {
+	for name, plant := range map[string]func(t *testing.T, repo *gittest.Repo, tip, planted string){
+		"on the hooks tree": func(t *testing.T, repo *gittest.Repo, tip, planted string) {
+			repo.Git("replace", repo.Git("rev-parse", tip+":.githooks"), repo.Git("rev-parse", planted+":.githooks"))
+		},
+		"on the tip commit": func(t *testing.T, repo *gittest.Repo, tip, planted string) {
+			stand := repo.Git("commit-tree", planted+"^{tree}", "-p", tip+"^", "-m", "planted")
+			repo.Git("replace", tip, stand)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo, _, tip := hookedOrigin(t)
+			planted := plantedCommit(t, repo, tip, "pre-commit", "#!/bin/sh\ntouch ran\n")
+			plant(t, repo, tip, planted)
+			runID, path, err := openHookedLane(t, repo)
+			worktreeRefused(t, err, "pre-commit")
+			if _, ok := pinned(t, repo, runID, path); ok {
+				t.Fatal("nothing is pinned for a lane whose hooks a replace ref chose")
+			}
+		})
+	}
+}
+
+// TestABranchStandingUnderTheLanesNameIsCheckedOutOnlyWithTheTipsHooks: a
+// branch already standing under the lane's name is checked out (and its
+// post-checkout hook run) only once its head's hooks directory, as stored, is
+// the tip's: one holding other hooks is refused before the worktree is added,
+// so none of its hooks runs. One holding the tip's hooks is the lane's.
+func TestABranchStandingUnderTheLanesNameIsCheckedOutOnlyWithTheTipsHooks(t *testing.T) {
+	for name, tc := range map[string]struct {
+		plant   bool
+		refused bool
+	}{
+		"other hooks": {plant: true, refused: true},
+		"the tip's":   {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo, _, tip := hookedOrigin(t)
+			marker := filepath.Join(t.TempDir(), "post-checkout-ran")
+			head := tip
+			if tc.plant {
+				head = plantedCommit(t, repo, tip, "post-checkout", "#!/bin/sh\ntouch '"+marker+"'\n")
+			}
+			start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			lw, err := laneWorktree(repo.Root(), start.RunID, "lane-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			repo.Git("branch", lw.Branch, head)
+			_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+			if !tc.refused {
+				if err != nil {
+					t.Fatalf("the branch holding the tip's hooks is the lane's: %v", err)
+				}
+				return
+			}
+			worktreeRefused(t, err, lw.Branch)
+			absent(t, lw.Path, "no lane worktree is made")
+			absent(t, marker, "the branch's post-checkout hook does not run")
+		})
+	}
+}
+
+// TestALaneConfigTooLargeToReadIsRefused: a lane whose git configuration is
+// past the read's cap once git has made it cannot have its hooks told, so the
+// worktree stage refuses it and pins nothing.
+func TestALaneConfigTooLargeToReadIsRefused(t *testing.T) {
+	repo, _, _ := hookedOrigin(t)
+	was := addWorktree
+	t.Cleanup(func() { addWorktree = was })
+	addWorktree = func(root string, o worktree.AddOptions) (worktree.Added, error) {
+		added, err := was(root, o)
+		if err == nil {
+			f, ferr := os.OpenFile(filepath.Join(root, ".git", "config"), os.O_APPEND|os.O_WRONLY, 0)
+			if ferr != nil {
+				t.Fatal(ferr)
+			}
+			_, _ = f.WriteString("[filter \"big\"]\n\tclean = " + strings.Repeat("a", 1<<20) + "\n")
+			_ = f.Close()
+		}
+		return added, err
+	}
+	runID, path, err := openHookedLane(t, repo)
+	worktreeRefused(t, err, "too large to read whole")
+	if _, ok := pinned(t, repo, runID, path); ok {
+		t.Fatal("nothing is pinned for a lane whose configuration cannot be read")
+	}
+}
+
+// TestAFilterThatRewritesTheHooksOnCheckoutRefusesTheLane: a content filter
+// that rewrites the hook files as git checks them out (an end-of-line
+// conversion, a smudge filter) leaves them other than the commit's, so the
+// lane is refused as it opens.
+func TestAFilterThatRewritesTheHooksOnCheckoutRefusesTheLane(t *testing.T) {
+	for name, attr := range map[string]string{
+		"an end-of-line conversion": ".githooks/pre-commit text eol=crlf\n",
+		"a smudge filter":           ".githooks/pre-commit filter=upper\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo, _, _ := hookedOrigin(t)
+			repo.Git("config", "filter.upper.smudge", "tr a-z A-Z")
+			repo.Git("config", "filter.upper.clean", "cat")
+			repo.Write(".gitattributes", attr)
+			repo.Commit("attributes")
+			repo.Git("push", "-q", "origin", "main")
+			repo.Git("fetch", "-q", "origin")
+			runID, path, err := openHookedLane(t, repo)
+			worktreeRefused(t, err, "pre-commit")
+			if _, ok := pinned(t, repo, runID, path); ok {
+				t.Fatal("nothing is pinned")
+			}
+		})
+	}
+}
+
 // TestAChangedRemoteURLStopsTheStepBeforeTheLaneOpens: the remote the lane's
 // tip is asked of is the checkout's origin, whose URL the run's fingerprint
 // watches, so pointing it elsewhere after the fingerprint was recorded stops
-// the step before the worktree stage asks it.
+// the step before the worktree stage asks it. A regression guard: the run's
+// tripwire stopped this before the pin, and the test passes without it.
 func TestAChangedRemoteURLStopsTheStepBeforeTheLaneOpens(t *testing.T) {
 	repo, _, _ := hookedOrigin(t)
 	start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
@@ -398,7 +554,8 @@ func TestALaneIsRefusedWhenTheRemoteCannotBeAsked(t *testing.T) {
 
 // TestALaneWithNoOriginIsNotPinned: with no origin there is no reviewed
 // branch to pin a lane from, so nothing is pinned and the lane is compared
-// with the checkout as the run recorded it.
+// with the checkout as the run recorded it. A regression guard: nothing was
+// pinned before the pin either, and the test passes without it.
 func TestALaneWithNoOriginIsNotPinned(t *testing.T) {
 	repo, runID, lane := laneRun(t, func(repo *gittest.Repo) {
 		writeHook(t, repo, "pre-commit", hookV1)
@@ -500,7 +657,9 @@ func TestAnAdoptedLaneWhoseHooksTheTipChangedIsRefused(t *testing.T) {
 
 // TestATrialLaneIsNotPinnedAndAsksNoRemote: a trial's lanes are cut from its
 // frozen commit, never from the default branch, so the stage asks no remote
-// (origin here is gone, and the lane still opens) and pins nothing.
+// (origin here is gone, and the lane still opens) and pins nothing. A
+// regression guard: a trial asked no remote before the pin either, and the
+// test passes without it.
 func TestATrialLaneIsNotPinnedAndAsksNoRemote(t *testing.T) {
 	repo, bare, head := hookedOrigin(t)
 	removeAll(t, bare)

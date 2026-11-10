@@ -37,6 +37,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -696,8 +697,13 @@ func ConfigTripwire(repoRoot string) error {
 // records it; a listing past it is refused whole.
 const maxHookTreeBytes = 1 << 20
 
-// hookTreeEntry is one entry of a hooks directory as a commit records it.
-type hookTreeEntry struct{ mode, oid string }
+// hookTreeEntry is one entry of a hooks directory as a commit records it:
+// its mode, its object and, for a blob, the size git stores for it (-1 for a
+// tree).
+type hookTreeEntry struct {
+	mode, oid string
+	size      int64
+}
 
 // pinLaneHooks is the lane's hooks pin (iss-2611071820538335), made by the
 // worktree stage under the run tier's lock, before any commit in the lane.
@@ -708,11 +714,14 @@ type hookTreeEntry struct{ mode, oid string }
 //
 // A lane whose hooks directory is its own copy (the last core.hooksPath the
 // lane reads is relative, so git takes it under the lane's working tree) is
-// pinned from git's objects, never from what anything wrote in the lane: the
-// directory's tree in base must be its tree in tip, and what stands on disk
-// must be base's entries exactly, each name, each file's bytes (its blob id
-// recomputed from them), its exec bit, each symlink's target and each
-// subdirectory's kind. Any difference is refused at the worktree stage and
+// pinned from git's objects as stored (no replace ref or graft file stands in
+// for them: hooksTreeAt, hookTreeEntries), never from what anything wrote in
+// the lane: the directory's tree in base must be its tree in tip, and what
+// stands on disk must be base's entries exactly, each name, each file's size
+// and bytes (its blob id recomputed from them), its exec bit, each symlink's
+// target and each subdirectory's kind. A subdirectory's contents are neither
+// proved nor pinned, and a symlink is proved by its target's text, not by the
+// file it points to. Any difference is refused at the worktree stage and
 // nothing is pinned. The entries proved are recorded, hashed from the bytes
 // that were proved, as the run's fingerprint holds the lane, with each watched
 // key the lane reads at the hash the fingerprint recorded for the checkout, so
@@ -751,12 +760,11 @@ func pinLaneHooks(c Context, laneID, lanePath, base, tip string) error {
 	if hooksPath == "" {
 		return nil
 	}
-	dir := expandHooksPath(lane, hooksPath)
-	rel, err := filepath.Rel(lane, dir)
-	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	rel := ownHooksDir(lane, hooksPath)
+	if rel == "" {
 		return nil
 	}
-	rel = filepath.ToSlash(rel)
+	dir := filepath.Join(lane, filepath.FromSlash(rel))
 	again := ", then run `abcd implement step` again; nothing was committed in the lane"
 	tree := hooksTreeAt(c.RepoRoot, base, rel)
 	if base != tip && hooksTreeAt(c.RepoRoot, tip, rel) != tree {
@@ -768,6 +776,9 @@ func pinLaneHooks(c Context, laneID, lanePath, base, tip string) error {
 	if err == nil {
 		var hooks map[string]string
 		if hooks, err = provenHooks(fp.Salt, dir, want); err == nil {
+			// Between this proof and the lane's first git step another
+			// process of the account can still write in the lane; the pin
+			// holds the hashes proved here, so that step's check names it.
 			if !recorded {
 				return nil
 			}
@@ -786,6 +797,49 @@ func pinLaneHooks(c Context, laneID, lanePath, base, tip string) error {
 		"look at what wrote in the lane's hooks directory once git made it (the repository's post-checkout hook runs there); remove the lane's worktree (`git worktree remove --force "+fsutil.RedactHome(lane)+"`) so the stage makes it afresh"+again)
 }
 
+// ownHooksDir is the hooks directory, relative and slash-separated, that git
+// runs in a working tree at dir when hooksPath (the last core.hooksPath the
+// repository's own settings give) names the tree's own copy; "" when it names
+// none or a directory outside the tree.
+func ownHooksDir(dir, hooksPath string) string {
+	if hooksPath == "" {
+		return ""
+	}
+	rel, err := filepath.Rel(dir, expandHooksPath(dir, hooksPath))
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	return filepath.ToSlash(rel)
+}
+
+// standingBranchHooks is the worktree stage's check, before the add, of a
+// branch already standing under the lane's name where origin reported tip:
+// the add checks the branch's head out and runs the post-checkout hook it
+// holds, so where the hooks are a working tree's own copy (the checkout's
+// settings say so) the head's hooks directory, as stored (hooksTreeAt), must
+// be the tip's. Otherwise the branch is refused and nothing of it is checked
+// out. A checkout whose hooks are not a working tree's own runs none of the
+// branch's files as a hook, and passes.
+func standingBranchHooks(c Context, laneID, branchRef, branch, tip string) error {
+	entries, err := gitutil.RepoConfig(c.RepoRoot, `^core\.hookspath$`)
+	if err != nil {
+		return refuse(string(StageWorktree), "", laneID,
+			"the branch "+branch+" already stands, and the checkout's git configuration cannot be read, so the hooks a checkout of it would run cannot be told: "+scanner.RedactRefusal(c.RepoRoot, fsutil.RedactHome(err.Error())),
+			"look at the repository's git configuration (`git config --local --list --show-origin`), then run `abcd implement step` again; nothing was made")
+	}
+	hooksPath := ""
+	for _, e := range entries {
+		hooksPath = e.Value
+	}
+	rel := ownHooksDir(c.RepoRoot, hooksPath)
+	if rel == "" || hooksTreeAt(c.RepoRoot, branchRef, rel) == hooksTreeAt(c.RepoRoot, tip, rel) {
+		return nil
+	}
+	return refuse(string(StageWorktree), "", laneID,
+		fmt.Sprintf("the branch %s already stands, and its hooks in %s are not those of %s's tip %s, so it is not checked out and none of its hooks runs", branch, rel, Remote, tip[:12]),
+		"look at what made the branch; remove it (`git branch -D "+branch+"`) so the stage cuts the lane afresh from the tip, then run `abcd implement step` again; nothing was made")
+}
+
 // lanesBranch is the branch the worktree stage cuts for laneID.
 func lanesBranch(c Context, laneID string) string {
 	if lw, err := laneWorktree(c.RepoRoot, c.State.RunID, laneID); err == nil {
@@ -795,38 +849,49 @@ func lanesBranch(c Context, laneID string) string {
 }
 
 // hooksTreeAt is the object a commit records at rel, "" when it records
-// nothing there. git failing to answer reads as nothing recorded, which can
+// nothing there. It is read as stored (gitutil.RunCappedAsStored): a replace
+// ref or a graft file cannot stand another commit or tree in for the one the
+// commit stores. git failing to answer reads as nothing recorded, which can
 // only refuse more: a lane is then held to an empty hooks directory.
 func hooksTreeAt(repoRoot, commit, rel string) string {
-	out, err := gitutil.Run(repoRoot, "rev-parse", "--verify", "--quiet", commit+":"+rel)
+	out, err := gitutil.RunCappedAsStored(repoRoot, 4096, "rev-parse", "--verify", "--quiet", commit+":"+rel)
 	if err != nil || !gitutil.IsFullSHA(out) {
 		return ""
 	}
 	return out
 }
 
-// hookTreeEntries lists the tree tree by entry name (none for ""): its mode
-// and object. An object that is not a tree, a listing past its cap or past
-// maxHookEntries entries, or a record git does not document is an error.
+// hookTreeEntries lists the tree tree by entry name (none for ""), as stored
+// (gitutil.RunCappedAsStored): its mode, its object and a blob's stored size.
+// An object that is not a tree, a listing past its cap or past maxHookEntries
+// entries, or a record git does not document is an error.
 func hookTreeEntries(repoRoot, tree string) (map[string]hookTreeEntry, error) {
 	want := map[string]hookTreeEntry{}
 	if tree == "" {
 		return want, nil
 	}
-	out, err := gitutil.RunCappedBytes(repoRoot, maxHookTreeBytes, "ls-tree", "-z", tree)
+	out, err := gitutil.RunCappedAsStored(repoRoot, maxHookTreeBytes, "ls-tree", "-z", "-l", tree)
 	if err != nil {
 		return nil, fmt.Errorf("the commit's hooks directory is not a directory git can list: %v", err)
 	}
-	for _, rec := range strings.Split(string(out), "\x00") {
+	for _, rec := range strings.Split(out, "\x00") {
 		if rec == "" {
 			continue
 		}
 		meta, name, ok := strings.Cut(rec, "\t")
 		f := strings.Fields(meta)
-		if !ok || len(f) != 3 || name == "" || !gitutil.IsFullSHA(f[2]) {
+		if !ok || len(f) != 4 || name == "" || !gitutil.IsFullSHA(f[2]) {
 			return nil, errors.New("git ls-tree listed the hooks directory in a form it does not document")
 		}
-		want[name] = hookTreeEntry{mode: f[0], oid: f[2]}
+		size := int64(-1)
+		if f[1] == "blob" {
+			n, err := strconv.ParseInt(f[3], 10, 64)
+			if err != nil || n < 0 {
+				return nil, errors.New("git ls-tree listed a hook's size in a form it does not document")
+			}
+			size = n
+		}
+		want[name] = hookTreeEntry{mode: f[0], oid: f[2], size: size}
 	}
 	if len(want) > maxHookEntries {
 		return nil, fmt.Errorf("the commit's hooks directory holds more than %d entries", maxHookEntries)
@@ -893,6 +958,9 @@ func provenEntry(salt, path string, e hookTreeEntry) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("cannot be read: %v", err)
 		}
+		if int64(len(target)) != e.size {
+			return "", errors.New("points elsewhere than the commit's symlink")
+		}
 		blob, ok := blobHasher(e.oid, int64(len(target)))
 		if !ok {
 			return "", errors.New("is recorded under an object name of no known length")
@@ -917,6 +985,12 @@ func provenEntry(salt, path string, e hookTreeEntry) (string, error) {
 		}
 		if exec := held.Mode().Perm()&0o100 != 0; exec != (e.mode == "100755") {
 			return "", fmt.Errorf("has its exec bit %s, unlike the commit's mode %s", map[bool]string{true: "set", false: "clear"}[exec], e.mode)
+		}
+		// The size is judged before a byte is read, so a file of any size at
+		// a hook's name costs one stat, and the read below is bounded by the
+		// size git stores for the blob.
+		if held.Size() != e.size {
+			return "", fmt.Errorf("is %d bytes, and the commit's file %d", held.Size(), e.size)
 		}
 		blob, ok := blobHasher(e.oid, held.Size())
 		if !ok {

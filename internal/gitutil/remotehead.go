@@ -66,8 +66,10 @@ func remoteHeadFrom(root, remote, out string) (string, error) {
 // that branch's tip is: `git ls-remote --symref <remote> HEAD`, run through
 // git, the caller's runner (nil is NetContext: the person's own configuration
 // and credentials, none of the checkout's hooks, bounded by ctx as well as
-// NetTimeout, its answer refused whole past NetContext's output cap). It never
-// fetches and never writes.
+// NetTimeout). NetContext buffers the whole answer in memory and judges its
+// output cap only once git has exited, refusing an answer past the cap whole:
+// until ctx or NetTimeout ends git, a remote can make the caller hold whatever
+// it sends. It never fetches and never writes.
 //
 // The answer is the remote's, so it is read as untrusted: it must carry
 // exactly one symref line for HEAD, naming a branch under refs/heads/ that

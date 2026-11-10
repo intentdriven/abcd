@@ -472,7 +472,7 @@ func agentWants(st State) []want {
 // it waits on the shared probe as a landing waits on its merge, and a stage
 // that met a network failure waits the same way, its report collected for the
 // call to record (outage.go).
-func move(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate, rt *roundRouter, guard func() error) (StepResult, bool, error) {
+func move(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate, rt *roundRouter, guard func() error, remote *remoteIdentity) (StepResult, bool, error) {
 	// A landing waiting on the forge's merge or on its full check (a
 	// contention refusal, ruling DR6d-2) holds only its own lane: the call
 	// moves the next lane and names the wait beside what it did; when nothing
@@ -496,7 +496,7 @@ func move(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate
 		if g.holdsMove(*st, w) {
 			err = g.networkWait(string(st.Lanes[i].Stage), st.Lanes[i].ID, st.Lanes[i].ID+"'s landing")
 		} else {
-			res, err = performMove(repoRoot, st, steps, w, now, rt, guard)
+			res, err = performMove(repoRoot, st, steps, w, now, rt, guard, remote)
 		}
 		if err != nil {
 			r, ok := AsRefusal(err)
@@ -520,7 +520,7 @@ func move(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate
 	// stage body succeeds replaces a slice or appends past its length, so the
 	// shallow copy is the state as it was.
 	before := *st
-	res, did, err := moveAgent(repoRoot, st, steps, now, g, rt, guard)
+	res, did, err := moveAgent(repoRoot, st, steps, now, g, rt, guard, remote)
 	if err != nil {
 		*st = before
 		return StepResult{}, began, err
@@ -623,7 +623,7 @@ func withBlocked(next string, blocked []Refusal) string {
 // moveAgent hands the first waiting work an agent when a slot is free, or
 // records the work the ceiling, or the want of a free helper, holds back; it
 // reports whether it moved or wrote.
-func moveAgent(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate, rt *roundRouter, guard func() error) (StepResult, bool, error) {
+func moveAgent(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate, rt *roundRouter, guard func() error, remote *remoteIdentity) (StepResult, bool, error) {
 	c := chooseAgent(*st, g)
 	switch c.pick {
 	case pickNone:
@@ -652,7 +652,7 @@ func moveAgent(repoRoot string, st *State, steps Stages, now time.Time, g *outag
 		// implementer takes the slot left for it.
 		w = want{lane: openLaneRecorded(st, w.open, now), kind: wantBinary, open: -1}
 	}
-	res, err := performMove(repoRoot, st, steps, w, now, rt, guard)
+	res, err := performMove(repoRoot, st, steps, w, now, rt, guard, remote)
 	if err != nil {
 		return StepResult{}, false, err
 	}
@@ -662,11 +662,12 @@ func moveAgent(repoRoot string, st *State, steps Stages, now time.Time, g *outag
 	return res, true, nil
 }
 
-// performMove runs one lane's next stage body and applies its outcome.
-func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time, rt *roundRouter, guard func() error) (StepResult, error) {
+// performMove runs one lane's next stage body and applies its outcome. remote
+// is a drive's record of origin's identity (Options.remote), nil for none.
+func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time, rt *roundRouter, guard func() error, remote *remoteIdentity) (StepResult, error) {
 	i := w.lane
 	lane := st.Lanes[i]
-	c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now, router: rt, planGuard: guard}
+	c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now, router: rt, planGuard: guard, remote: remote}
 	var out Outcome
 	var err error
 	if w.hold {

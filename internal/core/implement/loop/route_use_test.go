@@ -131,7 +131,7 @@ func TestARouteTheOutageHoldsIsRefusedBeforeTheWait(t *testing.T) {
 
 	moving := st
 	moving.Lanes = slices.Clone(st.Lanes)
-	_, _, err := move("", &moving, Stages{}, now, g, nil, nil)
+	_, _, err := move("", &moving, Stages{}, now, g, nil, nil, nil)
 	r := mustRefusal(t, err)
 	if !r.Contention || !strings.Contains(r.Reason, "implementer of lane-2 is not started") {
 		t.Fatalf("the move ends waiting on the outage for the implementer: %+v", r)

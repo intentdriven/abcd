@@ -157,6 +157,11 @@ type Options struct {
 	// text that put it there; "" for the host. Drive sets it from the runner
 	// configuration, so a round's route names the runner it ran on.
 	runnerRoute func(role string) (name, override string)
+	// remote is origin's identity as a drive read it when it started
+	// (remoteid.go): the worktree stage of each lane the drive opens reads it
+	// again before it asks origin anything, and refuses the lane on any
+	// difference. Nil (a step the host runs, a single build) checks nothing.
+	remote *remoteIdentity
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
@@ -232,6 +237,8 @@ type Context struct {
 	router *roundRouter
 	// planGuard is Options.PlanGuard, for the plan stage; nil guards nothing.
 	planGuard func() error
+	// remote is Options.remote, for the worktree stage; nil checks nothing.
+	remote *remoteIdentity
 }
 
 // Outcome is what a stage's body returns. A body that hands its work to an agent
@@ -1114,7 +1121,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		if noteStopped(st, stopped, now) {
 			renewed = true
 		}
-		r, moved, err := move(repoRoot, st, steps.takingReceipts(o.ReceiptOwn), now, g, newRoundRouter(o), o.PlanGuard)
+		r, moved, err := move(repoRoot, st, steps.takingReceipts(o.ReceiptOwn), now, g, newRoundRouter(o), o.PlanGuard, o.remote)
 		if err != nil {
 			if rf, ok := AsRefusal(err); ok && renewNote != "" {
 				rf.Remedy += "; " + renewNote

@@ -628,6 +628,17 @@ func (t *terminal) failed(ctx context.Context, judge bool, what string) bool {
 func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 	t.ctx = ctx
 	t.joinSharedRun()
+	// origin's identity is read once, before the drive's first move, and held
+	// here for every lane it opens (remoteid.go): a lane's agent can rewrite
+	// the checkout's settings, and each lane's run records its own afresh. A
+	// restarted drive reads it afresh.
+	id, err := readRemoteIdentity(t.repoRoot)
+	if err != nil {
+		t.leaveSharedRun()
+		return TerminalResult{}, refuse(StageDrain, "", "", "the drive cannot start: "+err.Error(),
+			"settle what git reports (`git config --list`), then start the drive again")
+	}
+	t.o.Options.remote = id
 	if t.o.Resumed {
 		t.reportHeldBack()
 	}

@@ -238,8 +238,13 @@ var originAskTimeout = time.Minute
 // that cannot be asked is never read as one that agrees: a lost network (or
 // no answer within the bound) is the stage's network failure (netFailure), a
 // contention refusal, and any other failure the stage's plain refusal; either
-// way nothing is made, and the step is taken again as any refused step is. It
-// returns the remote's default branch and its tip.
+// way nothing is made, and the step is taken again as any refused step is.
+// The remote's default branch must be the one read here by its short name
+// (main for refs/remotes/origin/main), or the lane would open on a branch
+// this checkout does not take as its default. Every read of the repository
+// here is as stored (gitutil.RunCappedAsStored), so no replace ref or graft
+// file changes what the tip holds or descends from. It returns the remote's
+// default branch and its tip.
 func originTip(c Context, laneID, defRef, base string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), originAskTimeout)
 	defer cancel()
@@ -257,19 +262,33 @@ func originTip(c Context, laneID, defRef, base string) (string, string, error) {
 			"could not ask "+Remote+" for its default branch's tip, so the commit the lane opens on cannot be shown to be the reviewed default branch: "+gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())),
 			"settle what git reports (`git ls-remote --symref "+Remote+" HEAD`), then run `abcd implement step` again; nothing was made")
 	}
-	if _, err := gitutil.Run(c.RepoRoot, "cat-file", "-e", tip+"^{commit}"); err != nil {
+	if here := defaultBranchName(defRef); branch != here {
+		return "", "", refuse(string(StageWorktree), "", laneID,
+			fmt.Sprintf("%s's default branch is %s, and the default branch here is %s, so the lane would open on a branch this checkout does not take as its default", Remote, branch, here),
+			"set the default branch here to "+Remote+"'s (`git remote set-head "+Remote+" --auto`), or "+Remote+"'s to this one, then run `abcd implement step` again; nothing was made")
+	}
+	if _, err := gitutil.RunCappedAsStored(c.RepoRoot, 4096, "cat-file", "-e", tip+"^{commit}"); err != nil {
 		return "", "", refuse(string(StageWorktree), "", laneID,
 			fmt.Sprintf("%s reports its %s at %s, which this repository does not hold yet, so the lane's commit cannot be shown to be on it", Remote, branch, tip[:12]),
 			"fetch "+Remote+" (`git fetch "+Remote+"`), then run `abcd implement step` again; nothing was made")
 	}
 	if base != tip {
-		if _, err := gitutil.Run(c.RepoRoot, "merge-base", "--is-ancestor", base, tip); err != nil {
+		if _, err := gitutil.RunCappedAsStored(c.RepoRoot, 4096, "merge-base", "--is-ancestor", base, tip); err != nil {
 			return "", "", refuse(string(StageWorktree), "", laneID,
 				fmt.Sprintf("the default branch here, %s at %s, is not the remote's: it is neither %s's %s tip %s nor an ancestor of it", gitutil.ShortRef(defRef), base[:12], Remote, branch, tip[:12]),
 				"look at what moved "+gitutil.ShortRef(defRef)+" here, set it back to "+Remote+"'s (`git fetch "+Remote+"`), then run `abcd implement step` again; nothing was made")
 		}
 	}
 	return branch, tip, nil
+}
+
+// defaultBranchName is the branch name a default ref names: main for
+// refs/remotes/origin/main or refs/heads/main.
+func defaultBranchName(defRef string) string {
+	if s, ok := strings.CutPrefix(defRef, "refs/remotes/"+Remote+"/"); ok {
+		return s
+	}
+	return strings.TrimPrefix(defRef, "refs/heads/")
 }
 
 // worktreeStage is the worktree stage's body. It finds what it made last time
@@ -297,11 +316,14 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 			return Outcome{}, refuse(string(StageWorktree), "", lane.ID, "the repository has no default branch to cut the lane from (no origin/HEAD, and no main, master, trunk or develop)",
 				"fetch the remote, or create the default branch, then run `abcd implement step` again")
 		}
-		base, err = gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", defRef+"^{commit}", "--")
+		base, err = gitutil.RunCappedAsStored(c.RepoRoot, 4096, "rev-parse", "--verify", "--quiet", defRef+"^{commit}", "--")
 		if err != nil || !gitutil.IsFullSHA(base) {
 			return Outcome{}, fmt.Errorf("resolving the default branch %s: %v", defRef, err)
 		}
 		from = gitutil.ShortRef(defRef)
+		if err := remoteUnchanged(c, lane.ID); err != nil {
+			return Outcome{}, err
+		}
 		has, err := claim.HasOrigin(c.RepoRoot)
 		if err != nil {
 			return Outcome{}, err
@@ -329,7 +351,7 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 	switch {
 	case adopted:
 		// Made last time; the base is where the branch left the default branch.
-		mb, err := gitutil.Run(c.RepoRoot, "merge-base", base, branchRef)
+		mb, err := gitutil.RunCappedAsStored(c.RepoRoot, 4096, "merge-base", base, branchRef)
 		if err != nil || !gitutil.IsFullSHA(mb) {
 			return Outcome{}, fmt.Errorf("finding where %s left %s: %v", lw.Branch, from, err)
 		}
@@ -339,8 +361,16 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		if _, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", branchRef, "--"); err == nil {
 			// A process killed between git making the branch and the worktree
 			// left the branch: it is the lane's, checked out rather than remade.
+			// Where origin reported the tip, it is checked out only once its
+			// head's hooks are the tip's (standingBranchHooks), since the add
+			// runs the post-checkout hook the branch holds.
 			opts.Existing = true
-			if mb, err := gitutil.Run(c.RepoRoot, "merge-base", base, branchRef); err == nil && gitutil.IsFullSHA(mb) {
+			if tip != "" {
+				if err := standingBranchHooks(c, lane.ID, branchRef, lw.Branch, tip); err != nil {
+					return Outcome{}, err
+				}
+			}
+			if mb, err := gitutil.RunCappedAsStored(c.RepoRoot, 4096, "merge-base", base, branchRef); err == nil && gitutil.IsFullSHA(mb) {
 				base = mb
 			}
 		}
@@ -387,14 +417,20 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, fmt.Errorf("resolving the lane branch %s: %v", lw.Branch, err)
 	}
 	// The lane's hooks are pinned before any commit in it (pinLaneHooks),
-	// made or adopted alike, from the commit it opens on. One hook has run
-	// there already: git's add ran the post-checkout hook git runs in the
-	// new worktree. Where the lane's hooks are its own copy, that is base's
-	// own hook, checked out from a commit origin's answer above vouched for,
-	// which is why the remote is asked before the add; any other hooks
-	// directory is the checkout's or the machine's, which the run's
-	// fingerprint already watches. With no origin, or in a trial, nothing is
-	// pinned and the lane is compared with the checkout as the run recorded it.
+	// made or adopted alike, from the commit it opens on. One hook may have
+	// run there already: git's add ran the post-checkout hook git runs in the
+	// new worktree. Where the lane's hooks are its own copy, that hook is the
+	// one checked out: for a branch the stage cut, the tip origin's answer
+	// above named, which is why the remote is asked before the add; for a
+	// branch that already stood, its head's, which standingBranchHooks held,
+	// as stored, to the tip's hooks before the add. git's add reads objects
+	// as the repository's replace refs say, so a replaced object can put
+	// other hooks on disk and run its post-checkout; the proof below reads as
+	// stored and refuses such a lane, but only once that hook has run. Any
+	// other hooks directory is the checkout's or the machine's, which the
+	// run's fingerprint already watches. An adopted worktree ran its hook
+	// when it was made. With no origin, or in a trial, nothing is pinned and
+	// the lane is compared with the checkout as the run recorded it.
 	if tip != "" {
 		if err := pinLaneHooks(c, lane.ID, lw.Path, base, tip); err != nil {
 			return Outcome{}, err
