@@ -254,6 +254,11 @@ func TestEachOwedReadMarksASpentDeadline(t *testing.T) {
 			r.queueRead, r.queue = true, queueRule{queue: true}
 			r.queueKeepsCurrent(behind)
 		},
+		"the whole test runs": func(r *owedReader) {
+			r.away = true
+			r.items = []OwedItem{{Kind: OwedUnpushed, Capped: true, Branch: "main", Head: f.head("main")}}
+			r.readLiveWork()
+		},
 	}
 	for name, read := range reads {
 		t.Run(name, func(t *testing.T) {

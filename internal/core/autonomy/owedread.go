@@ -17,6 +17,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/core/occupancy"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -71,6 +72,11 @@ type ReadOptions struct {
 	// every item owed as this copy's, as does any item whose holder the
 	// evidence cannot tell.
 	SessionID string
+	// ProcTable reads the machine's process table under the check's ctx, for
+	// the live work standing for an owed item (livework.go); nil means
+	// machineload.ReadContext. It is read at most once a check, only while
+	// away, and only when a whole run's marker is found.
+	ProcTable func(ctx context.Context) (machineload.Snapshot, error)
 	// LiveSessions reads the sessions running on the machine, each with the
 	// checkout it started in; nil means occupancy.Live under Home with the
 	// machine's process table. It is read at most once a check, and only
@@ -130,6 +136,7 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 		liveRead: o.LiveSessions,
 		heldRes:  map[string]string{},
 	}
+	r.procTable = o.ProcTable
 	if r.liveRead == nil {
 		r.liveRead = func() ([]occupancy.Session, error) {
 			return occupancy.Live(home, sessionname.Live().ReadTable)
@@ -179,6 +186,7 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 	r.branchItems()
 	r.reservationItems()
 	r.handBack()
+	r.readLiveWork()
 	r.breachNote()
 	if r.cut {
 		r.ranOut("the rest of this copy's work")
@@ -271,6 +279,9 @@ type owedReader struct {
 	heldRes    map[string]string   // a reservation -> the live session whose run it is for
 	held       map[string]*holding // by session: what another live session holds
 
+	// procTable reads the process table for the live work (livework.go).
+	procTable func(ctx context.Context) (machineload.Snapshot, error)
+
 	receiptsMinted bool
 	own            map[string]bool
 	baseNames      []string          // the own branches as findOwn found them, before scope: what stackIdx indexes
@@ -353,7 +364,8 @@ func (r *owedReader) expired() bool { return r.ctx.Err() != nil }
 // folder, the landing receipt, the runs' tracked check, this copy's key and
 // the created-branch list's store, the other worktrees, the fetch stamp, the
 // stack index, the reservations as last fetched, the live sessions, the merge
-// queue's rules and its armed set, and each call made through `r.git`.
+// queue's rules and its armed set, the whole test runs (the process table and
+// the worktree listing livework.go reads), and each call made through `r.git`.
 // TestEachOwedReadMarksASpentDeadline holds each of these but `r.git`. The
 // pull-request listing and landed's merge-driver, merge-tree and cherry reads
 // are marked by ranOut instead, and finding the checkout returns its error.

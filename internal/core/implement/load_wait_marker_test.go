@@ -19,7 +19,7 @@ import (
 // running from one nobody works.
 
 func markerPath(home string, pid int) string {
-	return abcdhome.Path(home, wholeRunsLeaf, strconv.Itoa(pid)+".json")
+	return abcdhome.Path(home, WholeRunsLeaf, strconv.Itoa(pid)+".json")
 }
 
 func readMarkerFile(t *testing.T, home string, pid int) (WholeRunMarker, bool) {
@@ -127,7 +127,7 @@ func TestWholeRunMarkerWriteFailureIsANote(t *testing.T) {
 	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(t.TempDir(), abcdhome.Path(home, wholeRunsLeaf)); err != nil {
+	if err := os.Symlink(t.TempDir(), abcdhome.Path(home, WholeRunsLeaf)); err != nil {
 		t.Fatal(err)
 	}
 	res, err := WaitLoad(wholeReq(home, &fakeClock{now: waitT0}))
@@ -143,7 +143,7 @@ func TestWholeRunMarkerWriteFailureIsANote(t *testing.T) {
 // pid the table does not hold with its start time, and keeps a live one.
 func TestWholeRunMarkerSweepsTheDead(t *testing.T) {
 	home := t.TempDir()
-	dir := abcdhome.Path(home, wholeRunsLeaf)
+	dir := abcdhome.Path(home, WholeRunsLeaf)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestReadWholeRunMarkersIsStrict(t *testing.T) {
 	if got, err := ReadWholeRunMarkers(home); err != nil || got != nil {
 		t.Fatalf("an absent folder read %+v, %v; want none", got, err)
 	}
-	dir := abcdhome.Path(home, wholeRunsLeaf)
+	dir := abcdhome.Path(home, WholeRunsLeaf)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestReadWholeRunMarkersIsStrict(t *testing.T) {
 	if err := os.MkdirAll(abcdhome.Path(linked), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(dir, abcdhome.Path(linked, wholeRunsLeaf)); err != nil {
+	if err := os.Symlink(dir, abcdhome.Path(linked, WholeRunsLeaf)); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := ReadWholeRunMarkers(linked); err == nil {

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/shellquote"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -17,8 +18,17 @@ import (
 const DefaultBlockCap = 8
 
 // MaxWakesUnchanged is how many wakes in a row may release an unchanged set
-// of capped items (dcn-2610181035361997).
+// of capped items (dcn-2610181035361997), while live work does not stand for
+// every one of them (Owed.CappedAllLive).
 const MaxWakesUnchanged = 2
+
+// LiveWorkBound is how long a session waits on live work for one unchanged
+// set of capped items before the set is held to MaxWakesUnchanged again:
+// landing's bound on one `make preflight`, its wait at the load gate, its race
+// stage's wait at the race gate and the run itself (12h + 2h + 4h), which
+// landing's own test holds to the Makefile. It is measured from the first
+// waiting check (SessionState.WaitingSince).
+const LiveWorkBound = landing.PreflightBound
 
 // The session states while away (dcn-2610180936577720): working (the stop is
 // blocked), waiting (allowed with a qualifying wake), and stopped (the host's
@@ -76,12 +86,16 @@ type Verdict struct {
 //     this message: block with the reroute's reason;
 //  2. owed, the set changed (or the first check): block, naming the next
 //     item and the count;
-//  3. owed, unchanged, a qualifying wake, and no capped item owed or the wake
-//     count below two: allow (waiting; the wake count adds one if a capped
-//     item is owed);
+//  3. owed, unchanged, a qualifying wake, and no capped item owed, live work
+//     standing for every capped item (Owed.CappedAllLive) within
+//     LiveWorkBound of the first check that found it, or the wake count
+//     below two: allow (waiting; the wake count adds one if a capped item is
+//     owed and live work does not stand for every one);
 //  4. owed, unchanged, a qualifying wake, a capped item owed and the wake
-//     count at two: block;
-//  5. owed, unchanged, no qualifying wake: block;
+//     count at two: block, saying the wait is past LiveWorkBound when live
+//     work stood for every capped item;
+//  5. owed, unchanged, no qualifying wake: block, naming the live work and
+//     since when when it stands for every capped item;
 //  6. none owed, a qualifying wake: allow (waiting);
 //  7. none owed, no qualifying wake: block, taking the next ready item first.
 //
@@ -111,7 +125,18 @@ func Judge(rec *Record, owed Owed, in StopInput, st SessionState, now time.Time)
 	next := st
 	next.SchemaVersion = SchemaVersion
 	if cfp := owed.CappedFingerprint(); cfp != next.WakeFingerprint {
-		next.Wakes, next.WakeFingerprint = 0, cfp
+		next.Wakes, next.WakeFingerprint, next.WaitingSince = 0, cfp, time.Time{}
+	}
+	// Live work standing for every capped item makes the set waiting, not
+	// stuck, within LiveWorkBound of the first check that found it.
+	live, pastBound := owed.HasCapped() && owed.CappedAllLive(), false
+	if live {
+		if next.WaitingSince.IsZero() || next.WaitingSince.After(now) {
+			next.WaitingSince = now
+		}
+		if now.Sub(next.WaitingSince) > LiveWorkBound {
+			live, pastBound = false, true
+		}
 	}
 	fp := owed.Fingerprint()
 	changed := fp != st.Fingerprint
@@ -132,14 +157,23 @@ func Judge(rec *Record, owed Owed, in StopInput, st SessionState, now time.Time)
 		next.Fingerprint = st.Fingerprint
 	case !owed.Empty() && changed:
 		v.Row, v.Reason = 2, owedReason(rec, owed, "")
-	case !owed.Empty() && wake && (!owed.HasCapped() || next.Wakes < MaxWakesUnchanged):
+	case !owed.Empty() && wake && (!owed.HasCapped() || live || next.Wakes < MaxWakesUnchanged):
 		v.Row = 3
-		if owed.HasCapped() {
+		if owed.HasCapped() && !live {
 			next.Wakes++
 		}
 	case !owed.Empty() && wake:
-		v.Row, v.Reason = 4, owedReason(rec, owed,
-			"The set has not moved over two wakes, so a wake no longer releases this stop: move the item, or take another.")
+		tail := "The set has not moved over two wakes, so a wake no longer releases this stop: move the item, or take another."
+		if pastBound {
+			tail = fmt.Sprintf("Live work has been waited on for it since %s, longer than the bound of %s on one preflight, so a wake no longer releases this stop: move the item, or take another.",
+				clock(next.WaitingSince, in.Location), shortDuration(LiveWorkBound))
+		}
+		v.Row, v.Reason = 4, owedReason(rec, owed, tail)
+	case !owed.Empty() && live:
+		w := owed.liveNamed()
+		v.Row, v.Reason = 5, owedReason(rec, owed,
+			fmt.Sprintf("It is waiting on %s, running since %s: schedule a look before %s (a cron that fires by then, the host's lateness included), or take another meanwhile.",
+				termsafe.CleanProseLine(w.What, 256), clock(w.Since, in.Location), clock(deadline, in.Location)))
 	case !owed.Empty():
 		v.Row, v.Reason = 5, owedReason(rec, owed,
 			fmt.Sprintf("If it cannot move, take another or schedule a look before %s (a cron that fires by then, the host's lateness included).", clock(deadline, in.Location)))
@@ -345,6 +379,13 @@ func incompleteLine(owed Owed) string {
 func presentLine(owed Owed) string {
 	item, _ := owed.Next()
 	return fmt.Sprintf("abcd: stopped with work owed (%s); next: %s.", count(len(owed.Items), "item", "items"), describeItem(item))
+}
+
+// shortDuration is d as a person reads it: 18h, not 18h0m0s.
+func shortDuration(d time.Duration) string {
+	s := d.String()
+	s = strings.TrimSuffix(s, "0s")
+	return strings.TrimSuffix(s, "0m")
 }
 
 func clock(t time.Time, loc *time.Location) string {

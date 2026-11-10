@@ -1,0 +1,6 @@
+---
+id: dcn-2611101818557506
+slug: with-the-person-away-the-stop-check
+date: 2026-11-10
+---
+2026-11-10 — With the person away, the stop check counts an owed capped item as waiting only on a whole test run it can prove: the command-form load-gate waiter of make preflight records itself in a marker under abcd's home, and the marker counts only for a live process of this account named abcd with the marker's start time, in the worktree the item's branch is checked out in, at the item's head, while no receipt names the head. A build run's lane agent is not counted: the loop's judgement of its agents is unexported and answers unknown for a host-driven agent while the driving session lives. The wait is bounded by landing's bound on one preflight, 18 hours, measured from the first waiting check in the session state rather than from the run's age, so a run restarted each wake cannot renew it; past the bound, and whenever the run is not live, the two-wake count resumes where it stood. A live-work read the deadline ends marks the reading cut short; one that fails otherwise is a note and today's rule. The process table is read apart from the live-sessions read, twice in a check that needs both, since sharing one read would change occupancy and sessionname.

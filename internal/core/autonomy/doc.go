@@ -84,7 +84,16 @@
 // Owed is the stop check's input: the owed items, each an OwedItem with its
 // OwedKind, whether it is capped (an item the session can act on itself, which
 // a wake releases at most twice in a row), and its branch or record id (plus
-// its pull request and head where it has them). The kinds, in the order the
+// its pull request and head where it has them). While away, a capped item on
+// a branch carries Live, the live work standing for it, when a whole test run
+// of this account (`make preflight` at the load gate or running past it,
+// which records itself: implement.WholeRunMarker) runs in the worktree its
+// branch is checked out in, at its head, and no receipt names that head
+// (livework.go); Owed.CappedAllLive reports that every capped item has it. A
+// checkout whose abcd predates the marker writes none. A build run's lane
+// agent and a host's background agent abcd did not start are not live work,
+// and must not be counted as such until something proves them; nothing
+// enforces that beyond the reader reading neither. The kinds, in the order the
 // next item is chosen (owedKinds): a renewal due, a failing pull request, a
 // behind one, a stacked branch, an unpushed branch, and a reservation whose
 // work no pull request carries. Owed.Fingerprint and Owed.CappedFingerprint
@@ -102,7 +111,13 @@
 // present, it allows (with a SystemMessage naming owed work); away, the seven
 // rows of the plan decide, from the owed set, the host's payload (StopInput:
 // stop_hook_active, the last message, session_crons, background_tasks, the
-// host's cap) and the session's SessionState. A wake qualifies
+// host's cap) and the session's SessionState. A set whose every capped item
+// has live work is waiting, not stuck: a qualifying wake releases it however
+// many wakes have passed, and the wake count does not advance, for
+// LiveWorkBound (one preflight's bound, 18 hours) from the first check that
+// found it (SessionState.WaitingSince, reset with the capped set); past it the
+// two-wake rule holds again, and its block says the wait is past the bound.
+// Without a wake, the block names the live work and since when. A wake qualifies
 // (qualifyingWake) when a session cron's latest fire time (latestFire: its
 // next match, by abcd's own five-field cron parser, parseCron, plus the
 // host's lateness) is no later than wakeDeadline, which is never sooner than

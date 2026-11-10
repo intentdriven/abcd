@@ -1449,8 +1449,8 @@ func PreflightTimeout(getenv func(string) string, read func() (machineload.Snaps
 // A marker that cannot be written is said in WaitResult.MarkNote, and the
 // wait goes on: the marker never fails or slows a preflight.
 
-// wholeRunsLeaf is the markers' folder under abcd's home.
-const wholeRunsLeaf = "whole-runs"
+// WholeRunsLeaf is the markers' folder under abcd's home.
+const WholeRunsLeaf = "whole-runs"
 
 // WholeRunKind is the kind a whole run's marker carries; a reader counts no
 // other.
@@ -1512,7 +1512,7 @@ func (m *wholeRunMark) reading(read func() (machineload.Snapshot, error)) func()
 				m.tried = true
 				if werr := m.write(snap, start); werr != nil {
 					m.res.MarkNote = fmt.Sprintf("the whole run's marker %s could not be written (%s), so the away mode's stop check cannot see this run; the run goes on",
-						abcdhome.Display(wholeRunsLeaf, strconv.Itoa(m.pid)+".json"), termsafe.CleanProseLine(fsutil.RedactHome(werr.Error()), 256))
+						abcdhome.Display(WholeRunsLeaf, strconv.Itoa(m.pid)+".json"), termsafe.CleanProseLine(fsutil.RedactHome(werr.Error()), 256))
 				} else {
 					m.start = start
 				}
@@ -1538,7 +1538,7 @@ func (m *wholeRunMark) write(snap machineload.Snapshot, start int64) error {
 	if len(raw)+1 > maxWholeRunMarkerBytes {
 		return fmt.Errorf("the checkout's path is too long for a marker of %d bytes", maxWholeRunMarkerBytes)
 	}
-	root, err := fsutil.EnsureHomeDeclarationScope(m.home, abcdhome.Rel(wholeRunsLeaf), abcdhome.DirMode)
+	root, err := fsutil.EnsureHomeDeclarationScope(m.home, abcdhome.Rel(WholeRunsLeaf), abcdhome.DirMode)
 	if err != nil {
 		return err
 	}
@@ -1586,10 +1586,10 @@ func removeWholeRunMarker(home string, pid int, start int64) {
 	if pid <= 1 || home == "" {
 		return
 	}
-	if _, err := os.Lstat(abcdhome.Path(home, wholeRunsLeaf)); err != nil {
+	if _, err := os.Lstat(abcdhome.Path(home, WholeRunsLeaf)); err != nil {
 		return
 	}
-	root, err := fsutil.OpenHomeScope(home, abcdhome.Rel(wholeRunsLeaf))
+	root, err := fsutil.OpenHomeScope(home, abcdhome.Rel(WholeRunsLeaf))
 	if err != nil {
 		return
 	}
@@ -1640,17 +1640,17 @@ func ReadWholeRunMarkers(home string) ([]WholeRunMarker, error) {
 	if home == "" || !filepath.IsAbs(home) {
 		return nil, errors.New("there is no home folder to read the whole runs' markers from")
 	}
-	if _, err := os.Lstat(abcdhome.Path(home, wholeRunsLeaf)); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Lstat(abcdhome.Path(home, WholeRunsLeaf)); errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
-	root, err := fsutil.OpenHomeDeclarationScope(home, abcdhome.Rel(wholeRunsLeaf))
+	root, err := fsutil.OpenHomeDeclarationScope(home, abcdhome.Rel(WholeRunsLeaf))
 	if err != nil {
-		return nil, fmt.Errorf("the whole runs' markers %s were not read: %w", abcdhome.Display(wholeRunsLeaf), err)
+		return nil, fmt.Errorf("the whole runs' markers %s were not read: %w", abcdhome.Display(WholeRunsLeaf), err)
 	}
 	defer root.Close()
 	var out []WholeRunMarker
 	for _, leaf := range wholeRunLeaves(root) {
-		raw, refusal, err := fsutil.ReadHomeDeclarationDenyingIn(root, home, abcdhome.Rel(wholeRunsLeaf, leaf), maxWholeRunMarkerBytes, 0)
+		raw, refusal, err := fsutil.ReadHomeDeclarationDenyingIn(root, home, abcdhome.Rel(WholeRunsLeaf, leaf), maxWholeRunMarkerBytes, 0)
 		if err != nil || refusal != fsutil.DeclarationOK {
 			continue
 		}
