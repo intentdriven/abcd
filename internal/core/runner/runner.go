@@ -102,9 +102,12 @@ type Request struct {
 	// Model is the <provider>/<model> route this request runs at, over the
 	// model the runner's own route names, so one runner serves two reviewers
 	// at two classes (itd-2610240922461281 decision 4); "" keeps the route's.
-	// It is admitted against the provider's allowlist when the request is
-	// dispatched, as a configured route is when it is read, never trusted
-	// because a caller stored it.
+	// It is admitted when the request is dispatched, never trusted because a
+	// caller stored it: against the provider's allowlist, as a configured
+	// route is when it is read, or, on a drive's walled launch of the claude
+	// harness for a route of the harness's own vendor, by its being one the
+	// machine's class map resolves, with the denylist still refusing it
+	// (Config.admitModelFor).
 	Model string
 	// Class is the model class the request runs at, and Effort that class's
 	// effort (itd-2611101419006280 decision 7): a runner that can pass an

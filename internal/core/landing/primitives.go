@@ -54,7 +54,19 @@ const (
 // the repository at repoRoot, as the pre-push hook's check does, and returns
 // its path, or "" when none names sha. A receipt must be a regular file, never
 // a symlink.
+//
+// It stays on the deadline-free finder rather than calling ReceiptContext
+// with a Background context, which the hook git audit would count as a new
+// deadline-free call (dcn-2611101237202451).
 func Receipt(repoRoot, sha string) (string, error) { return findReceipt(repoRoot, ReceiptsRelDir, sha) }
+
+// ReceiptContext is Receipt with its git calls (the worktree listing and each
+// receipt's tracked check) bound to ctx, for a reader on a deadline, the away
+// mode's stop check among them: a ctx already ended starts no git and
+// refuses with its own error, and one that ends while git runs kills it.
+func ReceiptContext(ctx context.Context, repoRoot, sha string) (string, error) {
+	return findReceiptContext(ctx, repoRoot, ReceiptsRelDir, sha)
+}
 
 // findReceipt finds the receipt file named sha under rel in any worktree git
 // lists for the repository at repoRoot: a regular file, never a symlink, and
@@ -62,7 +74,17 @@ func Receipt(repoRoot, sha string) (string, error) { return findReceipt(repoRoot
 // (localtier.Untracked) rather than counted. Preflight and review receipts
 // are found the same way.
 func findReceipt(repoRoot, rel, sha string) (string, error) {
-	found, err := findReceipts(repoRoot, rel, sha)
+	return firstReceipt(findReceipts(repoRoot, rel, sha))
+}
+
+// findReceiptContext is findReceipt bound to ctx (findReceiptsContext).
+func findReceiptContext(ctx context.Context, repoRoot, rel, sha string) (string, error) {
+	return firstReceipt(findReceiptsContext(ctx, repoRoot, rel, sha))
+}
+
+// firstReceipt is the first worktree's receipt of found: its path, or why it
+// does not count, or "" when none was found.
+func firstReceipt(found []foundReceipt, err error) (string, error) {
 	if err != nil || len(found) == 0 {
 		return "", err
 	}
@@ -79,7 +101,8 @@ type foundReceipt struct {
 }
 
 // findReceipts finds every worktree's receipt named sha under rel, in the order
-// git lists the worktrees, by findReceipt's rule.
+// git lists the worktrees, by findReceipt's rule. Its git calls run with no
+// deadline; a reader on one uses findReceiptsContext.
 func findReceipts(repoRoot, rel, sha string) ([]foundReceipt, error) {
 	wts, err := gitutil.ListWorktrees(repoRoot, gitutil.MaxWorktreeListing)
 	if err != nil {
@@ -87,15 +110,48 @@ func findReceipts(repoRoot, rel, sha string) ([]foundReceipt, error) {
 	}
 	var found []foundReceipt
 	for _, wt := range wts {
-		if wt.Bare {
-			continue
-		}
-		p := filepath.Join(wt.Path, filepath.FromSlash(rel), sha)
-		if fi, err := os.Lstat(p); err == nil && fi.Mode().IsRegular() {
+		if p := receiptIn(wt, rel, sha); p != "" {
 			found = append(found, foundReceipt{p, localtier.Untracked(wt.Path, rel+"/"+sha)})
 		}
 	}
 	return found, nil
+}
+
+// findReceiptsContext is findReceipts with its git calls bound to ctx: a ctx
+// already ended refuses before any git starts, one that ends while git runs
+// kills it, and each worktree's tracked check is asked only while ctx lives.
+func findReceiptsContext(ctx context.Context, repoRoot, rel, sha string) ([]foundReceipt, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	wts, err := gitutil.ListWorktreesContext(ctx, repoRoot, gitutil.MaxWorktreeListing)
+	if err != nil {
+		return nil, fmt.Errorf("listing the repository's worktrees: %w", err)
+	}
+	var found []foundReceipt
+	for _, wt := range wts {
+		if p := receiptIn(wt, rel, sha); p != "" {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			found = append(found, foundReceipt{p, localtier.UntrackedContext(ctx, wt.Path, rel+"/"+sha)})
+		}
+	}
+	return found, nil
+}
+
+// receiptIn is the path of the receipt named sha under rel in wt when one is
+// there as a regular file, never a symlink; "" otherwise, and for a bare
+// repository's entry.
+func receiptIn(wt gitutil.Worktree, rel, sha string) string {
+	if wt.Bare {
+		return ""
+	}
+	p := filepath.Join(wt.Path, filepath.FromSlash(rel), sha)
+	if fi, err := os.Lstat(p); err == nil && fi.Mode().IsRegular() {
+		return p
+	}
+	return ""
 }
 
 // runCapped runs cmd, returning its stdout within MaxOutput and, on a failure,

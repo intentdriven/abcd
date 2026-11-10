@@ -297,7 +297,29 @@ func drivePreconditions(ctx context.Context, cmd *cobra.Command, repoRoot string
 	}
 	p = p.ForCheckout(repoRoot)
 	p.Ledger = cfg.Ledger()
+	// Every reviewer the review set names must be one a route here can launch,
+	// asked of the walled configuration the drive's lanes launch on, never the
+	// unwalled one read above; one that cannot would wait at review for ever
+	// (iss-2611080057001367).
+	walled, err := driveWalled(cfg, p, roots)
+	if err != nil {
+		return nil, p, driveRefusal("%s", err.Error())
+	}
+	if err := loop.CheckReviewersLaunch(loop.Options{Roots: &roots, Runners: walled}, repoRoot); err != nil {
+		return nil, p, driveRefusal("%s", err.Error())
+	}
 	return cfg, p, nil
+}
+
+// driveWalled is cfg for this drive: every role on the claude harness on p
+// (runner.Config.Walled), holding the routes the machine's class map resolves
+// as the only ones the launch takes by name (iss-2611080057001367).
+func driveWalled(cfg *runner.Config, p runner.Profile, roots layered.Roots) (*runner.Config, error) {
+	routes, err := loop.ClassRoutes(roots)
+	if err != nil {
+		return nil, err
+	}
+	return cfg.Walled(p).WithClassRoutes(routes), nil
 }
 
 // driveHoldsToProfile refuses a drive that would go on with a lane on another profile
@@ -549,8 +571,14 @@ func runDriveLocked(starting context.Context, cmd *cobra.Command, asJSON bool, r
 	if f.resuming() {
 		p.Began = &f.began
 	}
-	walled := cfg.Walled(p)
-	o := loop.Options{Roots: &roots, Runners: walled, TakeOver: f.takeOver, Pace: f.pace, SubAgents: f.subAgents, FixRounds: f.fixRounds, Profile: p.Name()}
+	walled, err := driveWalled(cfg, p, roots)
+	if err != nil {
+		return driveFail(cmd, asJSON, f, nil, err)
+	}
+	// Each run's start reads the class map again, and what it reads joins the
+	// routes the walled launch takes by name.
+	o := loop.Options{Roots: &roots, Runners: walled, ClassMapRead: walled.AddClassRoutes, TakeOver: f.takeOver, Pace: f.pace,
+		SubAgents: f.subAgents, FixRounds: f.fixRounds, Profile: p.Name()}
 	if err := driveHoldsToProfile(repoRoot, p.Name()); err != nil {
 		return err
 	}

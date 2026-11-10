@@ -398,9 +398,26 @@ rather than skipped:
   bundles no vendor denylist (adr-2609300107513982), so a model a provider lists
   is served whichever vendor made it. `oracle.denylist` is the configuration's
   own: each layer's entries apply, an entry is a vendor prefix (`vendor/*`) or
-  one model, and matching ignores case, OpenRouter's `~` alias prefix and a
-  `:variant` suffix. No layer removes another's entry, and a block listing a
+  one model, and matching ignores case, OpenRouter's `~` alias prefix, a
+  `:variant` suffix and a bracketed suffix (`[1m]`). No layer removes another's entry, and a block listing a
   model an entry matches is refused, naming the entry, whatever else it lists.
+- **A drive's launch takes its vendor's models by name**
+  (iss-2611080057001367). A model a runner request asks for, such as a review
+  set's class, is admitted against its provider's list, except on a drive's
+  launch of the claude harness on its separate login, for a route naming the
+  harness's own vendor that the machine's class map resolves (`models.classes`
+  over the bundled map, handed to the walled configuration as the drive
+  starts) and that this machine configures no block for: the harness is
+  handed the model's name alone and runs it on that login's subscription, so
+  the route is admitted without a block. An `oracle.denylist` entry matching
+  the route as written, or the model, still refuses it, and a vendor the
+  machine does configure still holds the launch to its list. The denylist
+  matches model names as written, so an entry for a full model id does not
+  refuse a shorter alias a person maps a class to; a person who denies a
+  model maps no class to an alias of it. Everything else keeps the provider
+  allowlist: a launch outside a drive, a route outside the class map, another
+  vendor's route, opencode and the host. `runner.<name>.model` and a `--route`'s model are admitted against a
+  configured provider when they are read, as before.
 - **A route is `<provider>/<model>`.** A role or a judgement type the
   machine's file points at a model its provider does not list is refused naming
   the list. The same route in a repository's `.abcd/config.json`, to a provider
@@ -1330,9 +1347,9 @@ Three properties are load-bearing:
   tracked check and the secret scanner's identity probe, a probe the deadline
   cut short leaving the scanner unavailable rather than blind to the person's
   identity. At a stop: those, the session's copy, the session's identity and
-  holder, the default branch and the last-fetch stamp. The hooks' other reads,
-  among them the stop's reservations' view and landing-receipt read, are not
-  yet bound (iss-2611100548341325); the away session's state, read after the
+  holder, the default branch, the last-fetch stamp and the landing-receipt
+  read. The hooks' other reads, among them the stop's reservations' view, are
+  not yet bound (iss-2611100548341325); the away session's state, read after the
   deadline may be spent, runs under a two-second bound of its own. At a
   session start, a deadline spent before or during the read leaves the list
   out, said on the error stream. At a stop, a reading of owned work the
@@ -1348,18 +1365,22 @@ Three properties are load-bearing:
   `StartProcess`; an `exec.Cmd` literal, declaration or `new(exec.Cmd)`; a
   gitutil or localtier function or method that has a Context form, or a call
   of one of theirs that reaches one; and any `context.Background` or `TODO`
-  passed to a context parameter of an abcd function or method, whether or
-  not it reaches git, directly, wrapped by `WithCancel`, `WithValue` or
+  passed to a context parameter of an abcd function or method (a variadic
+  one included, and one called as a method expression, after its receiver),
+  whether or not it reaches git, directly, wrapped by `WithCancel`, `WithValue` or
   `WithoutCancel`, as a cobra command's `Context`, returned by an abcd
   function, or held in a variable or a struct field set from one, in any
   package. A static walk cannot follow every route a value takes, and these
   are not matched: such a context passed through a function-typed variable
   or field, a positional struct literal, a map, slice or channel, one of
   several results, an interface method's or a function literal's result;
-  alias types; a Run or RunE set by assignment on a verb that is not a hook
-  (a hook verb's is refused); a handler that calls on through a struct field;
-  a call the standard library makes back into abcd through an interface
-  (String, MarshalJSON, and the Error, Is, As and Unwrap callbacks); and
+  a method expression on an instantiated generic type; alias types; an
+  `exec.Cmd` held as a struct field or a slice or map element; a Run or RunE
+  set by assignment on a verb that is not a hook (a hook verb's is refused);
+  a handler that calls on through a struct field; a call the standard
+  library or a dependency makes back into abcd through an interface (String,
+  MarshalJSON, the Error, Is, As and Unwrap callbacks, and an abcd type
+  implementing a dependency's interface whose method takes a context); and
   reflection. The hook scripts are read for the binary called as `"$g"`,
   `"$x"` or `"$r/abcd"`, and a call by another spelling is not seen. The test
   compares the counts with

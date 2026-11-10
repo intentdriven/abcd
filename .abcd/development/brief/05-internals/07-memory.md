@@ -6,21 +6,23 @@ Per itd-36 (storage model) and itd-39 (scope-aware retrieval).
 
 ## 0. Memory scopes and routing
 
-Memory exists at the two `.abcd/` scopes (see [`03-configuration.md`](03-configuration.md#the-two-abcd-scopes)):
+Memory pages exist at the two `.abcd/` scopes (see [`03-configuration.md`](03-configuration.md#the-two-abcd-scopes)):
 
 | Scope | Location | What lands here |
 |---|---|---|
-| **repo** | in-tree `.abcd/memory/` | **The primary home.** Project-shaped knowledge — pitfalls, decisions, principles tied to the project being built. Most memory is repo-scoped. |
-| **user** | `~/.abcd.noindex/memory/` | **Personal preferences** and cross-project principles that have no single repo home (e.g. a preferred phrasing convention, or a lesson that applies to every project). |
+| **repo** | in-tree `.abcd/memory/` | **The primary home.** Project-shaped knowledge — pitfalls, decisions, principles tied to the project being built. `/abcd:library ingest` writes pages here, and only here. |
+| **user** | `~/.abcd.noindex/memory/` | **Personal preferences** and cross-project principles that have no single repo home (e.g. a preferred phrasing convention, or a lesson that applies to every project). The recall reads it, and the memory commands do not write it: a page gets there when a person puts it there. |
 
-**Routing rule.** Which scope a curated page lands in is decided by `principle-distiller` at curation time, by the *kind* of knowledge — not by where the source happened to sit:
+Beside the pages sit the **memory notes** of `/abcd:memory` ([`37-memory.md`](../04-surfaces/37-memory.md)): short lessons, one JSON file per layer beside each `rules.json` layer. Personal notes live in the machine's `~/.abcd.noindex/memory.json`, which `memory add` and `memory remove` write; promoted notes live in the project's `.abcd/memory.json`, which the memory commands do not write (`TestWriteTouchesOnlyTheMachineLayer`, `TestMemoryRemoveRefusesANoteInTheProjectsFile`): a note gets there through a person's reviewed change to that file. The loader reads both layers with the trust checks it applies to the two `rules.json` layers.
+
+**Routing rule (the curator's design, not built).** Which scope a curated page lands in is to be decided by `principle-distiller` at curation time, by the *kind* of knowledge — not by where the source happened to sit:
 
 - Default → **repo**. Anything project-shaped.
 - Promote to **user** when the knowledge is a personal preference, or a principle that applies across projects with no single repo home.
 
-**The vendor boundary.** abcd never writes to `~/.claude/.../memory/`. The Claude Code memory directory is a *read-only harvest source* for `dev-sync memory` (see [`02-adapters.md`](02-adapters.md)); curated output is written to the scope-appropriate `.abcd/memory/`, never back upstream.
+**The vendor boundary.** The recall and the fill reader open none of the host's own memory files: `TestRecallOpensOnlyTheDeclaredPlaces` (`internal/core/recall`, a test built on Linux only) holds the recall to its four places, the directories on the way to them and the repository's git data, and the fill reader to the session's fill file and the one transcript the hook's payload names. `abcd memory add` takes the note's text on stdin and refuses a path operand (`TestMemoryAddTakesNoPathOperand`), and writes the machine layer only (`TestWriteTouchesOnlyTheMachineLayer`). So a lesson there moves by hand: the person points at it, the agent reads it with the host's own tools and files it with `abcd memory add --moved-from-host`.
 
-**Retrieval is not flat inheritance.** An agent does **not** load the union of both scopes — that is precisely the context-overflow failure mode. Retrieval is keyword-recall + budget-bracketed injection; see § 9.
+**Retrieval is not flat inheritance.** An agent does **not** load the union of both scopes — that is precisely the context-overflow failure mode. Retrieval is keyword recall, ranked, and bracketed by how full the session is; see § 9.
 
 ## 1. Page model
 
@@ -39,7 +41,7 @@ Memory pages use the existing flat naming `<type>_<domain>_<slug>.md`. The flat 
     └── <sha256>.<ext>
 ```
 
-`index.md` and `log.md` are generated/maintained by `principle-distiller` (the curator). `contradictions.md` is curator-surfaced. Existing memory pages from pre-itd-36 projects are NOT renamed; the schema extension generates `index.md` over them in place, and `source:` frontmatter is backfilled with `source.class: session_memory` as the default on first `/abcd:ahoy` after itd-36 ships.
+`index.md` and `log.md` are generated/maintained by `principle-distiller` (the curator). `contradictions.md` is curator-surfaced. Existing memory pages from pre-itd-36 projects are NOT renamed; the schema extension generates `index.md` over them in place, and `source:` frontmatter is to be backfilled with `source.class: session_memory` as the default on first `/abcd:ahoy` after itd-36 ships (not built: `ahoy` has no such step).
 
 ## 2. Page-class enum
 
@@ -47,7 +49,7 @@ Every memory page declares its source class via typed `source:` frontmatter. The
 
 | `source.class` | Upstream | Mutability |
 |---|---|---|
-| `session_memory` | Vendor session memory (Claude / opencode / future), distilled by the `internal/core/memory` adapter via `dev-sync memory` | Re-distilled on each sync; lossy upstream |
+| `session_memory` | Vendor session memory (Claude / opencode / future), to be distilled by an `internal/core/memory` adapter via `dev-sync memory` (not built: neither `dev-sync memory` nor the adapter exists; the class value is accepted on a page that declares it) | Re-distilled on each sync; lossy upstream |
 | `external_pdf` | User-ingested PDF via `/abcd:library ingest <path>` | Immutable post-ingest (original NOT stored unless `--keep-original`) |
 | `external_transcript` | User-ingested transcript via `/abcd:library ingest <path>` | Immutable post-ingest |
 | `external_article` | User-ingested article (URL or local) via `/abcd:library ingest <path-or-url>` | Immutable post-ingest |
@@ -150,7 +152,7 @@ total_source_coverage_pct(source_hash) =
 | Input | Source | Behaviour |
 |---|---|---|
 | Existing memory pages | `.abcd/memory/<type>_<domain>_<slug>.md` | Read for cross-source dedup (topic-hash) |
-| Vendor session memory | `internal/core/memory` adapter (Claude / opencode) | Distill into `session_memory` pages (existing behaviour, unchanged) |
+| Vendor session memory | `internal/core/memory` adapter (Claude / opencode) | Distill into `session_memory` pages (not built: the adapter does not exist; see the vendor boundary, § 0) |
 | External sources (new at itd-36) | `/abcd:library ingest` invocations | Distill into typed `external_*` pages with citation frontmatter |
 | `spec_modification_grammar` (new at itd-37) | A spec's `## Modification Grammar` section at spec completion | Append per-spec page; run domain-curator pass to update `modification_grammar_<domain>.md` |
 | `dredge_synthesis` (itd-25, a draft intent) | `/abcd:dredge synth` runs | Write synthesised entries to memory with `source.class: dredge_synthesis` |
@@ -178,32 +180,37 @@ User-facing surface (per itd-36):
 
 itd-36 (above) is the **storage** model. itd-39 is the **retrieval** model: how the right memory reaches an agent at the right moment without overflowing context. It builds on infrastructure abcd already has rather than introducing a parallel system.
 
-**One engine, two payloads.** itd-3's prompt router is abcd's in-plugin adoption of [CARL][carl]'s recall engine — a `UserPromptSubmit` hook with keyword recall, signature dedup, and force-refresh-every-N. It is a sub-command of the abcd binary reached through the hook manifest, not a script file in `hooks/`. CARL's same engine drives two payloads: procedural rules *and* a memory layer. itd-3 adopted the rules payload; itd-39 adopts the memory payload. The hook is extended to scan each prompt against **both** `rules.json` domains **and** memory-page `recall:` frontmatter, and to inject matching memory pages alongside matching rules. Same scan, same dedup, same refresh discipline.
+**One engine, two payloads.** itd-3's prompt router (`abcd hook prompt-router`, reached through the hook manifest) is abcd's in-plugin adoption of [CARL][carl]'s recall engine — a `UserPromptSubmit` hook with keyword recall, signature dedup and a fixed-N refresh backstop. CARL's same engine drives two payloads: procedural rules *and* a memory layer. itd-3 adopted the rules payload; itd-39 adopts the memory payload. After the rules, the hook recall-matches the same prompt against memory notes (both `memory.json` layers, § 0) and memory pages (both scopes), through one package, `internal/core/recall`, and appends what matches as one block headed `## MEMORY` after the rules block. A note or page is a candidate when one of its recall words hits the prompt by the loader's own term rule (word boundary, stems, multi-word phrases), so a note's recall word and a rule domain's hit on the same prompts. A page is a candidate only when its frontmatter carries a `recall:` list (§ 3), and a page over 128 KiB is never read for recall. Each page scope is read per prompt in name order within 256 pages or 1 MiB; the pages past either bound are not recalled, and one stderr line names the bound and the first page left out (`internal/core/memory/recallpages.go`, `TestRecallPagesBoundTheScope`). A personal note is recalled only in the repository it was written in, unless it was written with `--everywhere`. On a drive's stage the hook recalls no notes or pages, and only the rules inject (`recallMemory`; `TestTheHooksStandAsideOnAStage`, subtest `recall`); `rules --prompt` recalls none there either (`TestRulesPromptRecallsNothingOnADrivesStage`).
 
-**Context brackets — the bounded-retrieval control.** § 5's quotation budgets bound *ingest*; nothing yet bounds *retrieval*. itd-39 adopts CARL's context brackets — injection adapts to remaining context window:
+**Ranking.** Candidates are ranked together, notes and pages alike, by BM25F (`internal/core/recall/ranking.go`): a term found in an item's recall words counts three times, in its title twice and in its body once, with `k1 = 1.2` and `b = 0.75`, so a rare matching word outranks a common one. Ties break on the narrower scope, then the more recent item, then the id, so the order is the same on every run (`TestTiesBreakOnScopeThenRecencyThenID`, `TestRankingIsDeterministicAcrossRuns`). The ranking decides which candidates fit the turn's budget, which rules and memory share: the rules render first, leaving memory a floor, and memory takes what the rules leave.
 
-| Bracket | Window free | Memory injection |
-|---|---|---|
-| `FRESH` | ≥ 70% | matched pages injected in full |
-| `MODERATE` | 40–70% | only highest-relevance matched pages, in full |
-| `DEPLETED` | < 40% | matching `index.md` lines only — titles, not bodies |
+**Context brackets — the bounded-retrieval control.** § 5's quotation budgets bound *ingest*; the brackets bound *retrieval*. One table in `internal/core/rules/brackets.go` serves rules, notes and pages, read as the share of the context window still free:
 
-This is what makes "memory never overflows" an enforced property rather than a hope: a long session degrades gracefully to titles-only instead of crowding out the work.
+| Bracket | Window free | Rules | Notes and pages |
+|---|---|---|---|
+| fresh | 70% or more | matched domains in full where the turn's budget holds them | in full, in ranked order, within the turn's budget; one line each within 2 KiB for those that do not fit |
+| moderate | 40% to 70% | each matched domain as its heading and first rule, with a line naming how many rules it holds and `abcd rules <DOMAIN>` | the top-ranked in full within 8 KiB, the rest as one line each within the turn's budget |
+| depleted | below 40%, to the end of the session | as in moderate | the best-ranked as one line each (a note's title and id, a page's index line) within 2 KiB, and at least the top-ranked new candidate, past that bound but within the turn's budget |
+| unknown | no source tells | as in fresh | as in depleted |
 
-**Two-scope query, narrower wins.** The hook queries the `index.md` of both memory scopes (repo / user — § 0). It injects keyword-matched, bracket-filtered pages — never the union of both scopes. On a recall-keyword collision across scopes, the **narrower scope wins**: repo overrides user.
+With the turn's whole budget free, no bracket withholds a matched new candidate entirely (`TestNoBracketSendsNothing`, `TestTopRankedLineAlwaysComesBack`): a long session degrades to the best-ranked matches as one line each, at least the top one where the turn has room, instead of crowding out the work. The take stops sending lines at the first candidate whose line does not fit, so that candidate and the ones below it are left out that turn, unrecorded, and tried again on a later prompt that matches them (`internal/core/recall/recall.go`; shown for the depleted row by `TestRankingChoosesWhichLinesFit`, and by `TestTopRankedLineAlwaysComesBack` for the next turn); a candidate whose line alone is over the whole per-turn budget is set aside (`too-large`). The rules leave memory a floor of 2,500 bytes (`rules.MemoryFloorBytes`) of what the blocks read before them leave.
 
-**Per-prompt, not sticky.** Consistent with itd-3, recall is independent per prompt — no cross-prompt "pin this page" mode in scope. A session-sticky mode is a later candidate (see itd-39 Open Questions).
+**How full the session is.** The hook's payload carries no measure of the window, so `internal/core/rules/fill.go` reads two sources, the status line's first. Where the person accepted abcd's status line at install, the `statusline` verb records the host's context percentage for the session in `~/.abcd.noindex/fill/<sha256 of the session id>.json`, its one write, made only into a directory the session-start hook already created. Without that file, the hook reads at most the last 256 KiB of the transcript its payload names, takes the last response's input tokens and divides them by the window a per-model table declares, the smaller where a model is offered with more than one. With neither, the fill is unknown: rules keep their full form where the turn's budget holds them, and notes and pages come back as in depleted. The hook's `--json` envelope names the fill and its source on every prompt it evaluates (on a prompt it could not evaluate, fill and bracket are absent), and one stderr line says an unknown fill once per session: the resets clear that record with the ledgers, and the refresh backstop does not (`TestUnknownFillIsSaidOncePerSession`).
 
-**Diagnostic (a design target; not built).** A `recall [keyword]` sub-verb of `abcd library` would show which pages a prompt or keyword surfaces and in which bracket — explainability, per the bare-command-as-render discipline. The shipped surface carries `ingest`, `ask` and `lint` and nothing else.
+**Two scopes, narrower wins.** The recall reads four places (the Linux test above holds it to them): the two `memory.json` layers and the two page scopes. A page in both scopes with the same `<type>_<domain>_<slug>` name is the repository's: the machine page of that name is not recalled, including when the repository page carries no `recall:` list or is over the 128 KiB page cap, and then nothing of that name comes back (`TestAWorkspacePageShadowsTheMachinePageEvenWhenItIsSilent`); a note in the project's file suppresses a machine copy with the same id. Each item's head names its layer, so a project note or page, which anyone who can commit to the repository can write, never reads as the person's own (`TestRecalledNoteNamesItsLayer`, `TestARecalledPageIsLabelledAsAPage`).
 
-See [`../../intents/drafts/itd-39-scope-aware-memory-retrieval.md`](../../intents/planned/itd-39-scope-aware-memory-retrieval.md) for the full intent, acceptance criteria, and the architectural-audit reconciliation with itd-3's global-rules rejection.
+**Not sent again unchanged.** A note or page sent once, in whatever form its bracket gave it, is not sent again unchanged within a session, short of a reset or the refresh backstop: a separate `recalled` ledger beside the rules ledger keys each item on its content (its key, layer, title, body and recall words), not its form, so a bracket change does not send an item again (`TestABracketChangeNeverResendsAnItem`), and a changed item is sent again (the body and the layer tested: `TestRecallKeysTheLedgerOnContent`, `TestRecallKeysTheLedgerOnLayer`). `SessionStart` and `PreCompact` clear both ledgers and delete the session's fill file (`TestResetClearsBothLedgers`, `TestResetDeletesTheFillFile`), and the backstop prompt, every 15th by default (`rules.force_refresh_every_n` in `.abcd/config.json`), clears both ledgers too (`TestResetClearsBothLedgers`, `TestRepeatedPromptInjectsMemoryOnce`), so a matched item comes back after a compaction, in a new session and on the backstop's prompt. The kill switch in either `rules.json` silences recall as well as rules.
+
+**Diagnostic.** `abcd rules --prompt "<text>"` shows what one prompt would bring back to a session that has sent nothing yet: the bracket in force (`--fill <percent-used>` sets it; without it the fill is unknown), each matched domain with the recall words that hit and its form, and each candidate note and page with its rank, score, each matched term's field and contribution, and its form. It writes nothing.
+
+See [`itd-39`](../../intents/planned/itd-39-scope-aware-memory-retrieval.md) for the full intent and its acceptance criteria, and [spc-2610111627213138](../../specs/open/spc-2610111627213138-memory-recall.md) for the design this section describes.
 
 ## References
 
 - [Karpathy LLM Wiki gist (April 2026)][karpathy-llm-wiki] — pattern source for the wiki organisation
 - [`research/related-work.md`](../../research/related-work.md#karpathy-llm-wiki--pattern-source-for-abcdmemory) — full prior-art comparison
 - [`04-universal-patterns.md § 8`](04-universal-patterns.md#8-artefact-lifecycle-taxonomy) — artefact-lifecycle taxonomy this file's lifecycle class derives from
-- [`02-adapters.md`](02-adapters.md) — `internal/core/memory` semantic adapter (vendor-agnostic dispatcher)
+- [`02-adapters.md`](02-adapters.md) — `internal/core/memory` semantic adapter (vendor-agnostic dispatcher; not built)
 - [CARL][carl] — recall-engine prior art; itd-3 adopts its rule payload, itd-39 its memory payload + context brackets
 - [`itd-39`](../../intents/planned/itd-39-scope-aware-memory-retrieval.md) — scope-aware memory retrieval intent
 

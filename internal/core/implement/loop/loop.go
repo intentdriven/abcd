@@ -39,6 +39,12 @@ type Options struct {
 	// RunStateWatch has a walled launch compare what the driver wrote with what
 	// stands after the launch.
 	RunStateWatch bool
+	// ClassMapRead, on a drive, is handed the routes of every class map a
+	// review set is resolved from (the machine's models.classes over the
+	// bundled map, never a repository's or a run's stored state), as each
+	// run starts; the drive adds them to the routes its walled launch takes
+	// by name (runner.Config.AddClassRoutes). nil does nothing.
+	ClassMapRead func(routes []string)
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 	// driverIsSelf has a claim on the run name this process, where a drive runs the
