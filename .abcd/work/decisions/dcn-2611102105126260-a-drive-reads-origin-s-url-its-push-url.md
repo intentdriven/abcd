@@ -1,0 +1,6 @@
+---
+id: dcn-2611102105126260
+slug: a-drive-reads-origin-s-url-its-push-url
+date: 2026-11-10
+---
+2026-11-10 — A drive reads origin's URL, its push URL and every URL rewrite (insteadOf and pushInsteadOf) once as it starts, before its first lane, as the effective values git reads for the checkout, and holds a hash of each in its own memory; each lane's worktree stage the drive runs reads them again before it asks origin anything and refuses the lane on any difference, naming the key with any URL in its name hidden. Nothing is written to a file, so no persisted shape or schema version changes and an older pinned build reading those files is unaffected. Every URL rewrite is covered, not only one that applies to origin's URL, since telling which applies is git's own matching rule. A step the host runs and a single build carry nothing and check nothing, as before, and a restarted drive reads the values afresh. Grounds: each lane of a drain is a run of its own that records its watched settings afresh, so a lane's agent that repointed origin would otherwise choose the remote whose answer vouches for the next lane's hooks. To reverse: drop the remote field from the step options and the check from the worktree stage. Refs: iss-2611071820538335
