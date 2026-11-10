@@ -192,6 +192,15 @@ The one exception is the drive (itd-2610222215485265,
 [adr-2610222222326104](../../decisions/adrs/2610222222326104-abcd-drives-agents-with-no-host-session.md)):
 typed in a plain terminal, on the person's own yes, it makes these moves itself, on
 one separate login under `~/.abcd.noindex/profiles/`, one subscription and no other.
+On that separate login the harness takes a model of its own vendor by name,
+with no provider block, when it is one the machine's class map resolves
+(iss-2611080057001367); everything else keeps the provider allowlist. The map is
+read at the drive's start and again as each run starts; a run in progress whose
+model no map read during the drive names is refused at its next reviewer, naming
+the model and the class map. The start refuses, before anything is reserved, a review set
+with a reviewer no route on the machine can launch, naming the role, the model
+and the configuration to set (`runner.Config.CanLaunch`, the admission the
+dispatch makes, asked of the configuration the drive's lanes launch on).
 Each iteration is one move under the drain's lock for that move alone; a
 lane is driven in-process through `loop.Drive` and `DriveReview`, every role on the
 launch on that login; a landing that waits for its receipt has its preflight run behind the

@@ -93,7 +93,8 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"it has no profile directory under " + abcdhome.Display("profiles") + "/ to run on, logged in, when a\n" +
 			"wall does not hold or no git identity resolves, when a credential variable the harness would bill through is set\n" +
 			"(a drive runs on a subscription alone, for now), when the judge is routed\n" +
-			"to opencode, when a role is pinned to the host, and when it is started from inside an\n" +
+			"to opencode, when a role is pinned to the host, when a reviewer's model in the review set is\n" +
+			"one no route on this machine can launch (naming the role, the model and what to set), and when it is started from inside an\n" +
 			"agent's own session. It shows the cap (eight unless --max says otherwise), an estimate\n" +
 			"of the agent runs, the runner and the route, and asks once; --yes is the scripted\n" +
 			"answer, and with no terminal nothing else answers. A profile is a separate login and\n" +

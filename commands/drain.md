@@ -50,6 +50,22 @@ link moved to such a file only holds a waiting release back, with one line sayin
 run carries on. A credential variable the harness would bill through, set in the environment,
 refuses the start, naming `itd-2611011230226453`.
 
+On the drive's separate login the harness takes a model of its own vendor by name when it is
+one the class map resolves (`models.classes` in `~/.abcd.noindex/config.json` over the
+bundled map), so the bundled review set runs with no provider block there. Where the file
+does configure that vendor under `oracle.api.<provider>`, its list still decides which models
+may run, and an `oracle.denylist` entry still refuses one. The denylist matches model names
+as written, so an entry for a full model id does not refuse a shorter alias a class is mapped
+to: to deny a model, map no class to an alias of it. A model outside the class map, any
+other vendor's model, and every launch outside a drive keep the provider allowlist. The drive
+reads the class map at its start and again as each run starts, so a run started after the
+map changed runs at the new routes. A run keeps the models it started with: one already in
+progress whose model no map read during the drive names is refused at its next reviewer,
+naming the model. Map a class to it in `models.classes` and start the drive again. A review set with a reviewer
+no route on this machine can launch refuses the start, before anything is reserved, naming
+the role, the model and what to set: the denylist entry or `models.classes` for a model an
+entry refuses, `oracle.api.<provider>` otherwise.
+
 **Two subscriptions, two directories.** With one directory there the drive runs on it.
 With several it refuses, naming them, until `--profile <name>` names the one to run on:
 

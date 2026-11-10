@@ -25,7 +25,14 @@ package runner
 //     so abcd bundles no vendor denylist and the allowlist alone decides, and
 //     an oracle.denylist entry the configuration writes still refuses a model
 //     it matches), so a route off the list is refused before any runner can
-//     be launched.
+//     be launched. A model a request asks for (a review set's class) is
+//     admitted the same way, with one exception (admitModelFor,
+//     iss-2611080057001367): on a drive's walled launch of the claude harness,
+//     a model of the harness's own vendor is admitted by name where it is a
+//     route the machine's class map resolved during the drive (at its start
+//     and as each run starts) and the machine configures no block for that
+//     vendor; the denylist still refuses it, and everything else keeps the
+//     provider allowlist.
 //   - runner.fallback_host names the enabled runner that runs a role when abcd
 //     runs with no host session (the intent's Decision 2).
 //
@@ -43,10 +50,12 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -137,6 +146,10 @@ type Config struct {
 	// judgeOpenCode says the machine routes the drain's judge to opencode, a
 	// route the read skips (readRoles).
 	judgeOpenCode bool
+	// classRoutes are the routes the machine's class map resolved during this
+	// process (WithClassRoutes, AddClassRoutes), the only ones a walled launch
+	// takes by name; nil for none.
+	classRoutes *routeSet
 }
 
 // Load reads and validates the runner configuration. A fault is an error
@@ -309,8 +322,10 @@ func (c *Config) providerConfigured(provider string) bool {
 	return ok
 }
 
-// admitModel is the allowlist check a model route passes when it is read and
-// again before a runner is launched.
+// admitModel is the allowlist check a model route passes when it is read
+// (runner.<name>.model, a --route's model): the provider is configured on this
+// machine, lists the model, and no oracle.denylist entry matches it. A model a
+// request asks of a known runner is admitted by admitModelFor instead.
 func (c *Config) admitModel(route string) error {
 	provider, model, ok := strings.Cut(route, "/")
 	if !ok || provider == "" || model == "" {
@@ -320,6 +335,174 @@ func (c *Config) admitModel(route string) error {
 		return fmt.Errorf("which is refused before any runner is launched: %w", err)
 	}
 	return nil
+}
+
+// noClassMapNames is what a refusal adds for a route of the harness's own
+// vendor that a walled launch would take by name but no class map read during
+// this process names, as a run in progress may hold after the map changed. A
+// run keeps the models it stored when it started, so the way on is a map that
+// names the model and a new start of the drive, which reads the map again.
+const noClassMapNames = "; no class map read during this drive names %s, so the drive does not take it by name: map a class to it " +
+	"in models.classes in %s and start the drive again"
+
+// admitModelFor is the admission a request's model passes for target, the
+// runner that will run it (Host for the host session), when the dispatch
+// begins and again at the launch. It is admitModel, with one exception
+// (iss-2611080057001367, byName): a drive's walled launch of the claude
+// harness takes a route of the harness's own vendor (claudeVendor) by its
+// model name alone (askedModel) when the route is one the machine's class map
+// resolved during this process (WithClassRoutes, AddClassRoutes) and the
+// machine configures no block for that vendor, provided it is <provider>/<model> in plain characters and no
+// oracle.denylist entry matches it as written. Everything else keeps
+// admitModel whole: an unwalled launch, a route outside the class map,
+// another vendor's route, opencode, the host, and a vendor the machine
+// configures.
+func (c *Config) admitModelFor(target, route string) error {
+	_, model, ok := strings.Cut(route, "/")
+	provider, _, _ := strings.Cut(route, "/")
+	if !ok || model == "" || !c.byName(target, route) {
+		err := c.admitModel(route)
+		if err != nil && ok && model != "" && c.ownVendorUnblocked(target, provider) {
+			err = fmt.Errorf("%w"+noClassMapNames, err, layered.BoundKey(route), layered.Config.MachineOrigin())
+		}
+		return err
+	}
+	if !modelRe.MatchString(route) {
+		return fmt.Errorf("which is not a <provider>/<model> route of at most 128 plain characters")
+	}
+	if err := c.api.Refuses(provider, model); err != nil {
+		return fmt.Errorf("which is refused before any runner is launched: %w", err)
+	}
+	return nil
+}
+
+// byName reports whether route asked of target is admitted by its model name
+// with no provider block: only on a drive's walled launch (Walled) of the
+// claude harness, only for a route of the harness's own vendor that the
+// machine's class map resolved during this process (WithClassRoutes,
+// AddClassRoutes), and only where this machine configures no block for that
+// vendor, whose list would otherwise decide.
+func (c *Config) byName(target, route string) bool {
+	provider, _, _ := strings.Cut(route, "/")
+	return c.ownVendorUnblocked(target, provider) && c.classRoutes.has(route)
+}
+
+// ownVendorUnblocked reports whether target is a walled launch of the claude
+// harness that holds a class map, asked for a route of its own vendor that this
+// machine configures no block for: the launch byName admits from, when the
+// class map names the route.
+func (c *Config) ownVendorUnblocked(target, provider string) bool {
+	return target == Claude && c.profile != nil && c.classRoutes != nil && provider == claudeVendor &&
+		!c.providerConfigured(provider)
+}
+
+// routeSet is the class map routes a walled configuration takes by name. The
+// drive's lanes share one configuration and add to it as each run starts, so
+// it is guarded; it only grows.
+type routeSet struct {
+	mu     sync.RWMutex
+	routes map[string]bool
+}
+
+func (s *routeSet) has(route string) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.routes[route]
+}
+
+func (s *routeSet) add(routes []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, r := range routes {
+		s.routes[r] = true
+	}
+}
+
+// deniedFor reports whether the admission of route for target was refused by
+// an oracle.denylist entry, judged as admitModelFor judges it.
+func (c *Config) deniedFor(target, route string) bool {
+	provider, model, _ := strings.Cut(route, "/")
+	switch {
+	case c.api == nil:
+		return false
+	case c.byName(target, route):
+		return c.api.Refuses(provider, model) != nil
+	case !c.providerConfigured(provider):
+		return false
+	}
+	_, denied := oracle.Denied(c.api.Denylist(), model)
+	return denied
+}
+
+// admitRequest is everything a request's model is held to before target
+// launches it, given the role's route: the admission (admitModelFor) and the
+// two rules of holdRequestModel. Dispatch and CanLaunch both answer through
+// it, so a drive's start and its dispatch cannot disagree.
+func (c *Config) admitRequest(route Route, target string, req Request) error {
+	if err := c.admitModelFor(target, req.Model); err != nil {
+		return fmt.Errorf("runner: the model %q asked for %s, %w", req.Model, req.Role, err)
+	}
+	return c.holdRequestModel(route, target, req)
+}
+
+// target is the runner a role on route runs on: the route's runner, or, for a
+// role on the host with no host session, the configured fallback host ("" for
+// none).
+func (c *Config) target(route Route, hostSession bool) string {
+	if route.Runner == Host && !hostSession {
+		return c.fallback
+	}
+	return route.Runner
+}
+
+// CanLaunch reports whether role can be launched at model on this machine, as
+// Dispatch would admit it (admitRequest), with or without a host session: nil
+// when it can, else a refusal naming the role, the model and what would let
+// it run, by why it was refused: for a model a denylist entry refuses, that
+// entry or models.classes, since a provider block does not lift it; for a
+// provider not configured or a model off its list, oracle.api.<provider>; and
+// outside a drive's walled launch, where every role runs on the claude
+// harness whatever its route, a runner route too. It names configuration keys
+// and the machine's file as abcd displays it, never a secret or an absolute
+// path. A drive asks it of its walled configuration, for every reviewer in its
+// review set, before it opens a lane.
+func (c *Config) CanLaunch(role, model string, hostSession bool) error {
+	route := c.RouteFor(role)
+	target := c.target(route, hostSession)
+	switch {
+	case target == "":
+		return fmt.Errorf("runner: the %s's model %s cannot be launched: the role is on the host, there is no host session "+
+			"and no %s.%s is configured; set it in %s, or route %s.%s.%s to a runner", role, layered.BoundKey(model),
+			runnerKey, fallbackKey, layered.Config.MachineOrigin(), rolesKey, role, runnerKey)
+	case target != Host:
+		if _, ok := c.runners[target]; !ok {
+			return fmt.Errorf("runner: the %s's model %s cannot be launched: the role runs on %s, which is not enabled on "+
+				"this machine; set %s.%s in %s", role, layered.BoundKey(model), target, runnerKey, target, layered.Config.MachineOrigin())
+		}
+	}
+	err := c.admitRequest(route, target, Request{Role: role, Model: model})
+	if err == nil {
+		return nil
+	}
+	text := "runner: on " + target + ", " + strings.TrimPrefix(err.Error(), "runner: ")
+	provider, id, _ := strings.Cut(model, "/")
+	switch {
+	case c.deniedFor(target, model):
+		return fmt.Errorf("%s; remove the oracle.denylist entry that matches it, or set models.classes to a model it does not "+
+			"match, in %s; a provider block does not lift a denylist entry", text, layered.Config.MachineOrigin())
+	case c.admitModelFor(target, model) == nil:
+		// The request's own rules refused it (holdRequestModel), in words that
+		// say what to do.
+		return errors.New(text)
+	}
+	remedy := fmt.Sprintf("set oracle.api.%s listing %s in %s", layered.BoundKey(provider), layered.BoundKey(id), layered.Config.MachineOrigin())
+	if c.profile == nil {
+		remedy += fmt.Sprintf(", or route %s.%s.%s to a runner that can launch it", rolesKey, role, runnerKey)
+	}
+	return fmt.Errorf("%s; %s", text, remedy)
 }
 
 func (c *Config) readFallback(s *layered.Stack) error {
@@ -775,4 +958,27 @@ func (c *Config) Walled(p Profile) *Config {
 		w.roles[a] = walledRoute
 	}
 	return &w
+}
+
+// WithClassRoutes is c holding routes, the routes the machine's class map
+// resolves (the loop's ClassRoutes), as the routes a walled launch of the
+// claude harness may take by name (byName); c is left as it was. A
+// configuration that holds none takes nothing by name. A drive's start sets
+// it where it walls the configuration.
+func (c *Config) WithClassRoutes(routes []string) *Config {
+	w := *c
+	w.classRoutes = &routeSet{routes: map[string]bool{}}
+	w.classRoutes.add(routes)
+	return &w
+}
+
+// AddClassRoutes adds routes, those of a class map read during this process
+// (the machine's models.classes over the bundled map, as a run's start reads
+// it), to the routes c takes by name, so a run started after the map changed
+// launches its reviewers. It is safe from concurrent lanes, and a
+// configuration WithClassRoutes never set takes nothing by name still.
+func (c *Config) AddClassRoutes(routes []string) {
+	if c.classRoutes != nil {
+		c.classRoutes.add(routes)
+	}
 }
