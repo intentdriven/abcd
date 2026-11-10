@@ -37,14 +37,15 @@ Seven parts, each landing as its own pull request in this order:
 
 1. **The `coord` package, as a pure function**
    It reads the records and returns the decisions. Table tests: the same records give the same decisions, and a pass stopped mid-way and re-run from the records reaches the same decisions (technical criterion 2).
-   Landed as staged code: the pass is unexported and has no production caller yet, which keeps it out of the exported-reach audit's view without satisfying that audit. Step 2 must export it and wire its first caller, or remove it (dcn-2611101309224327).
+   Landed as staged code, unexported with no production caller; step 2 exported it together with its first caller, land's enqueue step (dcn-2611101309224327). The pass cannot see a wait's start being moved, so its caller writes each start once, from a source the waiting agent cannot rewrite, and never moves it: land takes the pull request's createdAt as the forge reports it.
    - packages: internal/core/coord
    - tests: internal/core/coord
    - landed: 1d2bcabe9
-2. **`Depends-On`**
-   Parse it, and refuse a closed-unmerged, unresolvable or cyclic dependency with its reason (story 2). `land` does not queue while the dependency is open, then merges it in, preflights and queues (story 1); this is a live test against a scratch repository on the forge, per real-tests-over-fakes. The re-submit summary (technical criterion 5). It exports step 1's pass and wires its first caller, or removes the pass (dcn-2611101309224327).
+2. **`Depends-On` in `land` (2a)**
+   Parse it, and refuse a closed-unmerged, unresolvable or cyclic dependency with its reason (story 2). `land` reads its own pull request and its dependencies from the forge and does not arm while one is open or queued, until 24 hours from the pull request's createdAt, and refuses what only the forge can know before the pass. It exports step 1's pass and wires its first caller (dcn-2611101309224327). The rest of the step is step 9 (dcn-2611101412089327).
    - packages: internal/core/coord, internal/core/landing, internal/surface/cli
    - tests: internal/core/coord, internal/core/landing
+   - landed: ad646aef4
 3. **Fencing and version**
    Opens with the live probe of `git push --atomic` with a claim renewal on a scratch repository. A queue or tag under a moved tip is refused; a take-over waits for expiry plus the delay (story 3); the version field, and the refusal of a newer one (technical criterion 3).
    - packages: internal/core/claim, internal/core/landing, internal/core/coord
@@ -69,7 +70,12 @@ Seven parts, each landing as its own pull request in this order:
    Invariant 25 is rewritten from the rule the build must meet to the present tense, naming the tests that hold each part; the command pages and generated docs follow.
    - packages: .abcd/development/brief/02-constraints/03-invariants.md, commands/land.md, commands/build.md, commands/drain.md, commands/status.md
    - tests: internal/surface/cli
+9. **`Depends-On`: rebuild and re-submit (2b)**
+   Once the dependency merges, `land` merges the default branch into the dependant, preflights and queues it (story 1); this is a live test against a scratch repository on the forge, per real-tests-over-fakes. `land` carries a `Depends-On:` commit trailer into the body it composes. The re-submit summary: the pull requests merged since the merge base that touch the footprint (technical criterion 5). The other routes that arm a pull request make no dependency check yet: the build loop's land and queue steps and the re-arm of a withdrawn merge must hold a dependant as `land` does, and nothing enforces that until this step does.
+   - packages: internal/core/landing, internal/core/implement/loop, internal/core/claim, internal/surface/cli
+   - tests: internal/core/landing, internal/core/implement/loop, internal/core/claim
+   - needs: 2
 
 ## Size
 
-About 12 to 15 days of agent work. Steps 2 and 6 carry the live forge tests and are the long poles.
+About 12 to 15 days of agent work. Steps 9 and 6 carry the live forge tests and are the long poles.

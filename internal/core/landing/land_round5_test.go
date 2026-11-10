@@ -112,7 +112,7 @@ func TestTheRecordedLiveAnswersParse(t *testing.T) {
 		t.Fatalf("decode #1018: %v, %+v", err, a.Data.Viewer)
 	}
 	s := a.Data.Repository.PullRequest
-	if !s.IsInMergeQueue || s.StatusCheckRollup == nil || len(s.StatusCheckRollup.Contexts.Nodes) != 13 || s.ReviewDecision != "" {
+	if !s.queued() || s.StatusCheckRollup == nil || len(s.StatusCheckRollup.Contexts.Nodes) != 13 || s.ReviewDecision != "" {
 		t.Fatalf("#1018 read as %+v", s)
 	}
 	required := 0
