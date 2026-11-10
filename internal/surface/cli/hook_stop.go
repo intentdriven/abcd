@@ -128,7 +128,7 @@ away.
 The same work is compared with the working copy's checklist: a branch or
 reservation of the session's own that no item's owner_refs names, or one
 that moved after the checklist was last written, is the checklist behind.
-While away, a stop is blocked once for each such set, naming it, never past
+While away, a stop is blocked once per consecutive set, naming it, never past
 the host's cap; while present the stop is not blocked, and the next prompt
 carries the note to the session (abcd hook prompt-router).
 
@@ -214,7 +214,7 @@ nothing.`,
 // stopChecklistBehind folds the checklist's behind check into the verdict
 // (spc-2610230805429429 step 4): the owned work the reading found is compared
 // with the working copy's checklist, read only when the session owns any.
-// While away a set not blocked on yet blocks once; while present the stop is
+// While away a set blocks once per consecutive set; while present the stop is
 // not blocked, and the note is left in the session's state for the next
 // prompt. A session id the store cannot key, or a reading cut short, leaves
 // the verdict as it was, and a present state that cannot be read or saved

@@ -101,7 +101,8 @@ Name the work an item is about in its owner_refs: a branch as
 `branch:<name>`, a pull request as `pr:<number>`, a reservation by its record
 id. When a turn ends with a branch or reservation of this session's that no
 item names, or one that moved after the list was last written, the list is
-behind: while the person is away the stop is blocked once naming them, and
+behind: while the person is away the stop is blocked once per consecutive
+set naming them, and
 while they are present the next prompt carries the same note. Bring the list
 up to date with `add` or `set` when it does.
 

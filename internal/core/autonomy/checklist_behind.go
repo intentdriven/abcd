@@ -18,7 +18,7 @@ import (
 // read as the stop check reads owed work (its reservations, its pull requests,
 // its branches), holds a reference no item's owner_refs names, or moved after
 // the checklist's updated_at. While the person is away the stop is blocked
-// once for each such set, inside the host's continuation cap; while present
+// once per consecutive set, inside the host's continuation cap; while present
 // the stop is never blocked, and the next prompt carries the note instead,
 // since a stop's message reaches the person and not the model. A step the
 // session never recorded and that left no reference cannot be seen.
@@ -130,10 +130,13 @@ func namedRefs(refs []string) string {
 // JudgeChecklist folds the behind check into the stop verdict v that Judge
 // returned over st, the session's state before it.
 //
-// While away (v.Save), a set not blocked on yet blocks the stop once, naming
+// While away (v.Save), a set other than the one last blocked on blocks the
+// stop once, naming
 // it: added to a block's reason, or, on a stop Judge allowed, as a block of
 // its own, counted toward the host's continuation cap as every block is and
-// never past it. A set already blocked on, or a block the cap would override,
+// never past it. Only the last set is kept, so the block is once per
+// consecutive set: a set that comes back after another blocks again, within
+// the cap. The set last blocked on, or a block the cap would override,
 // leaves v as it was. While present the stop is never blocked: a set not yet
 // noted is kept in the session's state for the next prompt (TakeChecklistNote),
 // and save says the state must be written.

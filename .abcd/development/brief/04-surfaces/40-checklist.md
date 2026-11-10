@@ -131,15 +131,18 @@ An item names work in its owner_refs; a branch whose head was committed after
 the list's updated_at has moved.
 
 While the person is away, a turn's end with the list behind is blocked once
-for that set of references, naming them: on a stop the away check already
+per consecutive set of references, naming them: on a stop the away check already
 blocks, the note is added to its reason, and on one it allows, the note is a
 block of its own, counted toward the host's cap on consecutive continuations
-as every block is and never past it. The same set does not block again until
-the list has caught up. While the person is present, the stop is never
+as every block is and never past it. Only the set last blocked on is kept, so
+the same set does not block again on the stops that follow it, while a
+different set blocks, and so does a set that comes back after another; the
+cap bounds the blocks either way. While the person is present, the stop is never
 blocked for it, and the stop check reads disk alone, calling no forge; a
 stop's message reaches the person, not the model, so the note is kept in the
 session's stop state and the next prompt carries it into the model's context,
-once, under a CHECKLIST heading, and a set already noted is not noted again.
+once, under a CHECKLIST heading, and a set is noted once per consecutive
+set, on the same terms.
 A step the session never wrote down and that left no branch or reservation
 behind cannot be seen.
 

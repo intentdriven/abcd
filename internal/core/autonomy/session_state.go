@@ -41,7 +41,8 @@ type SessionState struct {
 	Wakes           int    `json:"wakes"`
 	WakeFingerprint string `json:"wake_fingerprint,omitempty"`
 	// ChecklistBlocked is the behind set (Behind.Fingerprint) a stop was
-	// last blocked on while away, so each set blocks once; "" once the
+	// last blocked on while away, so a set blocks once per consecutive run of
+	// stops on it; "" once the
 	// checklist caught up.
 	ChecklistBlocked string `json:"checklist_blocked,omitempty"`
 	// ChecklistNoted is the behind set last left for the prompt hook while the
