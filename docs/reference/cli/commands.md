@@ -519,13 +519,17 @@ handed back: it stops as unachievable with the last round's findings, the run st
 further for it, and `abcd implement step` refuses naming the hand-back.
 
 A new run reads its review set once, too: review.reviewers (one or two model classes per
-code-review role, for both roles or per role; bundled: middle and below), review.judge (a
+code-review role, for both roles or per role; bundled: top and default), review.judge (a
 class; refused until a judge agent clears itd-81's calibration gate) and, from
 ~/.abcd.noindex/config.json alone, review.max_reviewers (1 or 2, bundled 2) and the class map
-models.classes (top, middle, below, smallest, each a <provider>/<model> route over the
-bundled map). A repository list above the machine's ceiling is clamped with one line on
-stderr naming both files; a repository's ceiling or class map is skipped with a warning.
-An unknown class or a malformed set is refused at the review stage and writes nothing.
+models.classes (research, top, default, small, strongest first, each a <provider>/<model>
+route over the bundled map). A repository list above the machine's ceiling is clamped with
+one line on stderr naming both files; a repository's ceiling or class map is skipped with a
+warning. An unknown class or a malformed set is refused at the review stage and writes nothing.
+The classes were renamed: top is now research, middle is top, below is default and smallest
+is small. A file naming middle, below or smallest is refused with that mapping, and so is a
+machine class map that sets top without research; a review list or judge naming top, while
+no file names research, default or small, runs and says on stderr what top now stands for.
 The result's review and the run record name each class with its model and each layer.
 
 The run then moves one step per `abcd implement step`, driven by the host session.

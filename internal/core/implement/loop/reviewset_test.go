@@ -50,8 +50,8 @@ func reviewRecord(t *testing.T, st State) string {
 }
 
 // TestTheBundledReviewSetIsTwoReviewersPerRole: with no review set in any
-// layer, each reviewer role runs twice, at the middle class and the class
-// below it, each class named with the model the bundled map holds for it,
+// layer, each reviewer role runs twice, at the top class and the default
+// class, each class named with the model the bundled map holds for it,
 // and the payload, the state and the record name the bundled layer.
 func TestTheBundledReviewSetIsTwoReviewersPerRole(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
@@ -62,10 +62,10 @@ func TestTheBundledReviewSetIsTwoReviewersPerRole(t *testing.T) {
 	for _, rs := range []*ReviewSet{res.Review} {
 		for _, role := range []string{RoleRuthless, RoleSecurity} {
 			r := reviewRole(t, rs, role)
-			if got := strings.Join(classesOf(r), ","); got != "middle,below" || r.Layer != "bundled" || r.Origin != "bundled" {
-				t.Fatalf("%s = %+v, want middle,below from the bundled layer", role, r)
+			if got := strings.Join(classesOf(r), ","); got != "top,default" || r.Layer != "bundled" || r.Origin != "bundled" {
+				t.Fatalf("%s = %+v, want top,default from the bundled layer", role, r)
 			}
-			if r.Reviewers[0].Model != BundledClasses[ClassMiddle] || r.Reviewers[1].Model != BundledClasses[ClassBelow] ||
+			if r.Reviewers[0].Model != BundledClasses[ClassTop] || r.Reviewers[1].Model != BundledClasses[ClassDefault] ||
 				r.Reviewers[0].MapLayer != "bundled" {
 				t.Fatalf("each class names the model the bundled map holds: %+v", r.Reviewers)
 			}
@@ -78,11 +78,11 @@ func TestTheBundledReviewSetIsTwoReviewersPerRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(classesOf(reviewRole(t, st.Review, RoleSecurity)), ","); got != "middle,below" {
+	if got := strings.Join(classesOf(reviewRole(t, st.Review, RoleSecurity)), ","); got != "top,default" {
 		t.Fatalf("the state keeps the set: %s", got)
 	}
 	note := reviewRecord(t, st)
-	for _, want := range []string{"middle (" + BundledClasses[ClassMiddle] + ")", "below (" + BundledClasses[ClassBelow] + ")", "bundled", "no judge"} {
+	for _, want := range []string{"top (" + BundledClasses[ClassTop] + ")", "default (" + BundledClasses[ClassDefault] + ")", "bundled", "no judge"} {
 		if !strings.Contains(note, want) {
 			t.Fatalf("the record names %q: %q", want, note)
 		}
@@ -96,24 +96,24 @@ func TestTheBundledReviewSetIsTwoReviewersPerRole(t *testing.T) {
 // list for one role and a machine class each name their own layer and file.
 func TestTheReviewSetPayloadNamesEachValuesLayer(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	machineConfig(t, `{"review": {"reviewers": ["top"]}, "models": {"classes": {"top": "acme/big-1"}}}`)
-	repoConfig(t, repo, `{"review": {"reviewers": {"security-reviewer": ["middle", "smallest"]}}}`)
+	machineConfig(t, `{"review": {"reviewers": ["research"]}, "models": {"classes": {"research": "acme/big-1"}}}`)
+	repoConfig(t, repo, `{"review": {"reviewers": {"security-reviewer": ["top", "small"]}}}`)
 	res, err := Start(repo.Root(), "itd-10", Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ruth := reviewRole(t, res.Review, RoleRuthless)
-	if strings.Join(classesOf(ruth), ",") != "top" || ruth.Layer != "machine" || ruth.Origin != abcdhome.Display("config.json") {
+	if strings.Join(classesOf(ruth), ",") != "research" || ruth.Layer != "machine" || ruth.Origin != abcdhome.Display("config.json") {
 		t.Fatalf("the ruthless reviewer falls to the machine's list: %+v", ruth)
 	}
 	if c := ruth.Reviewers[0]; c.Model != "acme/big-1" || c.MapLayer != "machine" || c.MapOrigin != abcdhome.Display("config.json") {
 		t.Fatalf("the machine's class names its model and file: %+v", c)
 	}
 	sec := reviewRole(t, res.Review, RoleSecurity)
-	if strings.Join(classesOf(sec), ",") != "middle,smallest" || sec.Layer != "repo" || sec.Origin != ".abcd/config.json" {
+	if strings.Join(classesOf(sec), ",") != "top,small" || sec.Layer != "repo" || sec.Origin != ".abcd/config.json" {
 		t.Fatalf("the security reviewer takes the repository's list: %+v", sec)
 	}
-	if c := sec.Reviewers[1]; c.Model != BundledClasses[ClassSmallest] || c.MapLayer != "bundled" {
+	if c := sec.Reviewers[1]; c.Model != BundledClasses[ClassSmall] || c.MapLayer != "bundled" {
 		t.Fatalf("a class the machine leaves out is the bundled map's: %+v", c)
 	}
 	raw, err := json.Marshal(res)
@@ -138,14 +138,14 @@ func TestTheReviewSetPayloadNamesEachValuesLayer(t *testing.T) {
 func TestARepositoryListAboveTheMachinesCeilingIsClamped(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 	machineConfig(t, `{"review": {"max_reviewers": 1}}`)
-	repoConfig(t, repo, `{"review": {"reviewers": ["below", "middle"]}}`)
+	repoConfig(t, repo, `{"review": {"reviewers": ["default", "top"]}}`)
 	res, err := Start(repo.Root(), "itd-10", Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, role := range []string{RoleRuthless, RoleSecurity} {
 		r := reviewRole(t, res.Review, role)
-		if strings.Join(classesOf(r), ",") != "below" || r.Clamped != 2 {
+		if strings.Join(classesOf(r), ",") != "default" || r.Clamped != 2 {
 			t.Fatalf("%s is clamped to the machine's one: %+v", role, r)
 		}
 	}
@@ -168,7 +168,7 @@ func TestARepositoryListAboveTheMachinesCeilingIsClamped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r := reviewRole(t, res.Review, RoleRuthless); strings.Join(classesOf(r), ",") != "below,middle" || r.Clamped != 0 || len(res.Diagnostics) != 0 {
+	if r := reviewRole(t, res.Review, RoleRuthless); strings.Join(classesOf(r), ",") != "default,top" || r.Clamped != 0 || len(res.Diagnostics) != 0 {
 		t.Fatalf("two fit the bundled ceiling: %+v %q", r, res.Diagnostics)
 	}
 }
@@ -178,13 +178,13 @@ func TestARepositoryListAboveTheMachinesCeilingIsClamped(t *testing.T) {
 // warning naming the machine's file, and the run starts on the rest.
 func TestTheRepositoryCannotSetTheCeilingOrTheClassMap(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	repoConfig(t, repo, `{"review": {"max_reviewers": 1}, "models": {"classes": {"middle": "acme/cheap-1"}}}`)
+	repoConfig(t, repo, `{"review": {"max_reviewers": 1}, "models": {"classes": {"top": "acme/cheap-1"}}}`)
 	res, err := Start(repo.Root(), "itd-10", Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := reviewRole(t, res.Review, RoleRuthless)
-	if strings.Join(classesOf(r), ",") != "middle,below" || r.Reviewers[0].Model != BundledClasses[ClassMiddle] {
+	if strings.Join(classesOf(r), ",") != "top,default" || r.Reviewers[0].Model != BundledClasses[ClassTop] {
 		t.Fatalf("the repository's ceiling and map change nothing: %+v", r)
 	}
 	if res.Review.MaxReviewers.Layer != "bundled" {
@@ -206,24 +206,24 @@ func TestAnUnknownClassOrAnUncalibratedJudgeIsRefused(t *testing.T) {
 		name, repo, machine string
 		want                []string
 	}{
-		{name: "unknown class", repo: `{"review": {"reviewers": ["middle", "huge"]}}`,
+		{name: "unknown class", repo: `{"review": {"reviewers": ["top", "huge"]}}`,
 			want: []string{`"huge"`, "models.classes", abcdhome.Display("config.json")}},
 		{name: "unknown judge class", machine: `{"review": {"judge": "giant"}}`,
 			want: []string{`"giant"`, "models.classes"}},
-		{name: "uncalibrated judge", repo: `{"review": {"judge": "top"}}`,
+		{name: "uncalibrated judge", repo: `{"review": {"judge": "research"}}`,
 			want: []string{"review.judge", "itd-81", "calibration"}},
-		{name: "three reviewers", repo: `{"review": {"reviewers": ["top", "middle", "below"]}}`,
+		{name: "three reviewers", repo: `{"review": {"reviewers": ["research", "top", "default"]}}`,
 			want: []string{"review.reviewers", "one or two"}},
 		{name: "no reviewer", repo: `{"review": {"reviewers": []}}`,
 			want: []string{"review.reviewers", "one or two"}},
-		{name: "unknown role", repo: `{"review": {"reviewers": {"intent-auditor": ["top"]}}}`,
+		{name: "unknown role", repo: `{"review": {"reviewers": {"intent-auditor": ["research"]}}}`,
 			want: []string{"intent-auditor", RoleRuthless}},
-		{name: "misspelt key", repo: `{"review": {"reviewer": ["top"]}}`,
+		{name: "misspelt key", repo: `{"review": {"reviewer": ["research"]}}`,
 			want: []string{"review.reviewer"}},
 		{name: "ceiling past two", machine: `{"review": {"max_reviewers": 3}}`,
 			want: []string{"review.max_reviewers", "3"}},
-		{name: "a route with no provider", machine: `{"models": {"classes": {"below": "sonnet"}}}`,
-			want: []string{"models.classes.below", "<provider>/<model>"}},
+		{name: "a route with no provider", machine: `{"models": {"classes": {"default": "sonnet"}}}`,
+			want: []string{"models.classes.default", "<provider>/<model>"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -253,13 +253,13 @@ func TestAnUnknownClassOrAnUncalibratedJudgeIsRefused(t *testing.T) {
 // fixture seam), the judge is kept in the set with its class, model and layer.
 func TestACalibratedJudgeJoinsTheSet(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	repoConfig(t, repo, `{"review": {"judge": "top"}}`)
+	repoConfig(t, repo, `{"review": {"judge": "research"}}`)
 	res, err := Start(repo.Root(), "itd-10", Options{judgeCalibrated: func() (bool, string) { return true, "" }})
 	if err != nil {
 		t.Fatal(err)
 	}
 	j := res.Review.Judge
-	if j == nil || j.Class != ClassTop || j.Model != BundledClasses[ClassTop] || j.Layer != "repo" || j.Origin != ".abcd/config.json" {
+	if j == nil || j.Class != ClassResearch || j.Model != BundledClasses[ClassResearch] || j.Layer != "repo" || j.Origin != ".abcd/config.json" {
 		t.Fatalf("the judge is kept with its class and layer: %+v", j)
 	}
 }
@@ -274,14 +274,14 @@ func TestARunningRunKeepsTheReviewSetItStartedWith(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := stateBytes(t, repo.Root(), first.RunID)
-	repoConfig(t, repo, `{"review": {"reviewers": ["top"]}}`)
-	machineConfig(t, `{"models": {"classes": {"middle": "acme/other-1"}}}`)
+	repoConfig(t, repo, `{"review": {"reviewers": ["research"]}}`)
+	machineConfig(t, `{"models": {"classes": {"top": "acme/other-1"}}}`)
 	again, err := Start(repo.Root(), "itd-10", Options{})
 	if err != nil || !again.Resumed {
 		t.Fatalf("the run resumes: %+v %v", again, err)
 	}
 	r := reviewRole(t, again.Review, RoleRuthless)
-	if strings.Join(classesOf(r), ",") != "middle,below" || r.Reviewers[0].Model != BundledClasses[ClassMiddle] {
+	if strings.Join(classesOf(r), ",") != "top,default" || r.Reviewers[0].Model != BundledClasses[ClassTop] {
 		t.Fatalf("the resume keeps the set the run started with: %+v", r)
 	}
 	if string(before) != string(stateBytes(t, repo.Root(), first.RunID)) {
@@ -309,7 +309,7 @@ func TestAStoredReviewSetTheLoopNeverWritesIsRefused(t *testing.T) {
 		"a layer it never writes": func(s string) string {
 			return strings.Replace(s, `"map_layer": "bundled"`, `"map_layer": "elsewhere"`, 1)
 		},
-		"a class it never names": func(s string) string { return strings.Replace(s, `"class": "middle"`, `"class": "huge"`, 1) },
+		"a class it never names": func(s string) string { return strings.Replace(s, `"class": "top"`, `"class": "huge"`, 1) },
 		"an older version":       func(s string) string { return strings.Replace(s, current, unreviewed, 1) },
 	} {
 		t.Run(name, func(t *testing.T) {

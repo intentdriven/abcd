@@ -166,13 +166,17 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"handed back: it stops as unachievable with the last round's findings, the run starts nothing\n" +
 			"further for it, and `abcd implement step` refuses naming the hand-back.\n\n" +
 			"A new run reads its review set once, too: review.reviewers (one or two model classes per\n" +
-			"code-review role, for both roles or per role; bundled: middle and below), review.judge (a\n" +
+			"code-review role, for both roles or per role; bundled: top and default), review.judge (a\n" +
 			"class; refused until a judge agent clears itd-81's calibration gate) and, from\n" +
 			abcdhome.Display("config.json") + " alone, review.max_reviewers (1 or 2, bundled 2) and the class map\n" +
-			"models.classes (top, middle, below, smallest, each a <provider>/<model> route over the\n" +
-			"bundled map). A repository list above the machine's ceiling is clamped with one line on\n" +
-			"stderr naming both files; a repository's ceiling or class map is skipped with a warning.\n" +
-			"An unknown class or a malformed set is refused at the review stage and writes nothing.\n" +
+			"models.classes (research, top, default, small, strongest first, each a <provider>/<model>\n" +
+			"route over the bundled map). A repository list above the machine's ceiling is clamped with\n" +
+			"one line on stderr naming both files; a repository's ceiling or class map is skipped with a\n" +
+			"warning. An unknown class or a malformed set is refused at the review stage and writes nothing.\n" +
+			"The classes were renamed: top is now research, middle is top, below is default and smallest\n" +
+			"is small. A file naming middle, below or smallest is refused with that mapping, and so is a\n" +
+			"machine class map that sets top without research; a review list or judge naming top, while\n" +
+			"no file names research, default or small, runs and says on stderr what top now stands for.\n" +
 			"The result's review and the run record name each class with its model and each layer.\n\n" +
 			"The run then moves one step per `abcd implement step`, driven by the host session.\n\n" +
 			"While the away mode holds (`abcd mode autonomous`), or its record cannot be read, starting or resuming a\n" +

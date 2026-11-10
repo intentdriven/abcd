@@ -10,8 +10,8 @@ package loop
 //
 //   - review.reviewers is a list of one or two classes, for both roles, or an
 //     object naming a list per role ({"security-reviewer": [...]}); each role
-//     takes the highest layer that sets it, else the bundled pair (middle and
-//     the class below it, the product thinker's ruling of 2026-10-24).
+//     takes the highest layer that sets it, else the bundled pair (top and
+//     default, the product thinker's ruling of 2026-10-24).
 //   - review.judge is one class, or absent. A judge runs only once its agent
 //     has cleared itd-81's calibration gate; until one has, a set naming a
 //     judge is refused.
@@ -20,7 +20,7 @@ package loop
 //     a repository's list longer than the ceiling is clamped, with one line
 //     on stderr naming both files, and a repository's own max_reviewers is
 //     skipped with a warning.
-//   - models.classes is the class map: top, middle, below and smallest, each
+//   - models.classes is the class map: research, top, default and small, each
 //     a <provider>/<model> route. Which model spends the person's key is
 //     theirs alone (decision 3), so the map is read from the machine's file
 //     or the bundled default alone, and a repository's map is skipped with a
@@ -35,6 +35,7 @@ package loop
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"unicode"
@@ -43,31 +44,47 @@ import (
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
-// The model classes, top to smallest (the scale of iss-2610140652230444's
-// ruling of 2026-10-14).
+// The model classes, strongest first, named for what each is for
+// (itd-2611101419006280 decision 1): research, top, default and small. They
+// renamed the scale of iss-2610140652230444's ruling of 2026-10-14 one for one
+// (top, middle, below and smallest), and the old names are refused, never
+// aliased, since the old top and the new top are different classes.
 const (
+	ClassResearch = "research"
 	ClassTop      = "top"
-	ClassMiddle   = "middle"
-	ClassBelow    = "below"
-	ClassSmallest = "smallest"
+	ClassDefault  = "default"
+	ClassSmall    = "small"
 )
 
-// Classes are the class names the class map carries, top first.
-var Classes = []string{ClassTop, ClassMiddle, ClassBelow, ClassSmallest}
+// Classes are the class names the class map carries, strongest first.
+var Classes = []string{ClassResearch, ClassTop, ClassDefault, ClassSmall}
+
+// renamedClasses maps each class name the classes took before
+// itd-2611101419006280 to the name the same class takes now. The old top is
+// research, so a top read in a file is the new top, and is caught where a file
+// can show which names it was written for (oldClassFault).
+var renamedClasses = map[string]string{"top": ClassResearch, "middle": ClassTop, "below": ClassDefault, "smallest": ClassSmall}
+
+// retiredClasses are the old names no class takes any more.
+var retiredClasses = []string{"middle", "below", "smallest"}
+
+// renameNote is the whole mapping, as every refusal of an old name says it.
+const renameNote = "the classes were renamed for what each is for: `top` is now `research`, `middle` is `top`, `below` is `default` " +
+	"and `smallest` is `small`"
 
 // BundledClasses is the bundled class map: one vendor's models, a default and
 // not part of the rule (decision 3). For that vendor today the classes are
 // Fable, Opus, Sonnet and Haiku (iss-2610140652230444).
 var BundledClasses = map[string]string{
-	ClassTop:      "anthropic/claude-fable-5",
-	ClassMiddle:   "anthropic/claude-opus-5-5",
-	ClassBelow:    "anthropic/claude-sonnet-5-5",
-	ClassSmallest: "anthropic/claude-haiku-4-5",
+	ClassResearch: "anthropic/claude-fable-5",
+	ClassTop:      "anthropic/claude-opus-5-5",
+	ClassDefault:  "anthropic/claude-sonnet-5-5",
+	ClassSmall:    "anthropic/claude-haiku-4-5",
 }
 
-// BundledReviewers is the bundled list each role runs: the middle class and
-// the class below it, the pair the first paired reviews used (decision 1).
-var BundledReviewers = []string{ClassMiddle, ClassBelow}
+// BundledReviewers is the bundled list each role runs: the top class and the
+// default class, the pair the first paired reviews used (decision 1).
+var BundledReviewers = []string{ClassTop, ClassDefault}
 
 // BundledMaxReviewers is the ceiling on reviewers per role when the machine
 // sets none, and maxReviewers the most any ceiling may be.
@@ -265,8 +282,17 @@ func resolveReviewSet(roots layered.Roots, o Options) (ReviewSet, []string, erro
 	if err := s.Claim(reviewNamespace, keyReviewers, keyJudge, keyMaxReviewers); err != nil {
 		return ReviewSet{}, nil, reviewRefusal(err.Error())
 	}
-	if err := s.Claim(classNamespace, Classes...); err != nil {
+	// The retired names are claimed too, so a file naming one is refused below
+	// with the whole mapping rather than as a key nothing reads.
+	if err := s.Claim(classNamespace, append(slices.Clone(Classes), retiredClasses...)...); err != nil {
 		return ReviewSet{}, nil, reviewRefusal(err.Error())
+	}
+	named, err := classNamesIn(s)
+	if err != nil {
+		return ReviewSet{}, nil, err
+	}
+	if err := oldClassFault(named); err != nil {
+		return ReviewSet{}, nil, err
 	}
 	var diags []string
 	cm, d, err := resolveClassMap(s)
@@ -330,7 +356,128 @@ func resolveReviewSet(roots layered.Roots, o Options) (ReviewSet, []string, erro
 		rs.Judge = &ReviewJudge{Class: rc.Class, Model: rc.Model, MapLayer: rc.MapLayer, MapOrigin: rc.MapOrigin,
 			Layer: j.Layer.String(), Origin: j.Origin}
 	}
+	if d := topNote(named, cm); d != "" {
+		diags = append(diags, d)
+	}
 	return rs, diags, nil
+}
+
+// namedClass is one place a configuration file names a class: the key that
+// names it (models.classes.<class>, review.reviewers, review.reviewers.<role>,
+// review.judge), the name, and the file's layer and origin.
+type namedClass struct {
+	key, name string
+	layer     layered.Layer
+	origin    string
+}
+
+// classNamesIn is every class a configuration file names, in a class map, a
+// review list or a judge, in the order the layers are read. A value that does
+// not decode is left to the reader of its key, which refuses it naming the
+// file.
+func classNamesIn(s *layered.Stack) ([]namedClass, error) {
+	var out []namedClass
+	add := func(key, name string, f layered.Found) {
+		out = append(out, namedClass{key: key, name: name, layer: f.Layer, origin: f.Origin})
+	}
+	found, err := s.Lookup(classNamespace)
+	if err != nil {
+		return nil, reviewRefusal(err.Error())
+	}
+	for _, f := range found {
+		m, err := layered.Decode[map[string]any](f.Raw)
+		if err != nil {
+			continue
+		}
+		for _, c := range slices.Sorted(maps.Keys(m)) {
+			add(classNamespace+"."+c, c, f)
+		}
+	}
+	key := reviewNamespace + "." + keyReviewers
+	if found, err = s.Lookup(key); err != nil {
+		return nil, reviewRefusal(err.Error())
+	}
+	for _, f := range found {
+		if per, err := layered.Decode[map[string][]string](f.Raw); err == nil {
+			for _, role := range slices.Sorted(maps.Keys(per)) {
+				for _, c := range per[role] {
+					add(key+"."+role, c, f)
+				}
+			}
+		} else if list, err := layered.Decode[[]string](f.Raw); err == nil {
+			for _, c := range list {
+				add(key, c, f)
+			}
+		}
+	}
+	key = reviewNamespace + "." + keyJudge
+	if found, err = s.Lookup(key); err != nil {
+		return nil, reviewRefusal(err.Error())
+	}
+	for _, f := range found {
+		if c, err := layered.Decode[string](f.Raw); err == nil {
+			add(key, c, f)
+		}
+	}
+	return out, nil
+}
+
+// oldClassFault refuses a file naming a class by a name it took before the
+// rename (decision 1), and a machine class map that sets top without research
+// (decision 2): an old file can never hold research, so such a map may have
+// been written for the old names, where top was the strongest class.
+func oldClassFault(named []namedClass) error {
+	for _, n := range named {
+		if slices.Contains(retiredClasses, n.name) {
+			return refuse(StageReview, "", "", fmt.Sprintf("%s in %s (%s layer) names class %q, a name no class takes any more: %s",
+				n.key, n.origin, n.layer, layered.BoundKey(n.name), renameNote),
+				fmt.Sprintf("write %q in %s for the class it meant; nothing was written", renamedClasses[n.name], n.origin))
+		}
+	}
+	top, research := "", false
+	for _, n := range named {
+		if n.layer != layered.Machine || !strings.HasPrefix(n.key, classNamespace+".") {
+			continue
+		}
+		switch n.name {
+		case ClassTop:
+			top = n.origin
+		case ClassResearch:
+			research = true
+		}
+	}
+	if top != "" && !research {
+		return refuse(StageReview, "", "", fmt.Sprintf("%s.%s in %s (machine layer) is set and %s.%s is not: `top` once named the strongest class "+
+			"and now names the second (%s), so a map that sets top alone may have been written for the old names",
+			classNamespace, ClassTop, top, classNamespace, ClassResearch, renameNote),
+			fmt.Sprintf("a map that sets %s.%s sets %s.%s too, so the file shows which names it was written for: set %s.%s in %s to the strongest "+
+				"model (the old top), and %s.%s to the second; nothing was written",
+				classNamespace, ClassTop, classNamespace, ClassResearch, classNamespace, ClassResearch, top, classNamespace, ClassTop))
+	}
+	return nil
+}
+
+// topNote is the one line a review list or a judge naming top is announced
+// with while no configuration file names research, default or small (decision
+// 2): a list cannot show which names it was written for, so it is read as the
+// new top and the person is told what that now stands for. "" once a file
+// names a new class, or where no list or judge in a file names top.
+func topNote(named []namedClass, cm classMap) string {
+	at := ""
+	for _, n := range named {
+		if n.name != ClassTop && slices.Contains(Classes, n.name) {
+			return ""
+		}
+		if at == "" && n.name == ClassTop && !strings.HasPrefix(n.key, classNamespace+".") {
+			at = fmt.Sprintf("%s in %s", n.key, n.origin)
+		}
+	}
+	if at == "" {
+		return ""
+	}
+	return fmt.Sprintf("review: %s names `top`, which now stands for %s, the second class; the strongest class is now `research` (%s). "+
+		"This line stops once a configuration file names research, default or small",
+		at, cm[ClassTop].Model, cm[ClassResearch].Model)
 }
 
 // unknownClass refuses a class the class map does not carry, naming the class

@@ -149,7 +149,7 @@ func TestTheReviewsGoToRepoPromptOverMCPAndTheLoopRecordsTheirVerdicts(t *testin
 		// The route's request carries no model, so the reviewer's class
 		// model was never asked of what ran: the record says so, and never
 		// that the model was asked for.
-		if v.Class != ClassMiddle || v.ModelStatus != ModelUnsent {
+		if v.Class != ClassTop || v.ModelStatus != ModelUnsent {
 			t.Fatalf("a review the route answered records its class's model as unsent, not asked: %+v", v)
 		}
 	}

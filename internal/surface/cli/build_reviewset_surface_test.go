@@ -36,12 +36,12 @@ func TestBuildNamesTheBundledReviewSet(t *testing.T) {
 		t.Fatalf("the payload carries the review set and no diagnostics: %s", out)
 	}
 	for _, r := range res.Review.Roles {
-		if len(r.Reviewers) != 2 || r.Reviewers[0].Class != "middle" || r.Reviewers[1].Class != "below" || r.Layer != "bundled" {
-			t.Fatalf("%s runs middle and below from the bundled layer: %s", r.Role, out)
+		if len(r.Reviewers) != 2 || r.Reviewers[0].Class != "top" || r.Reviewers[1].Class != "default" || r.Layer != "bundled" {
+			t.Fatalf("%s runs top and default from the bundled layer: %s", r.Role, out)
 		}
 	}
 	status := mustImplement(t, "implement", "status")
-	if !strings.Contains(status, "review:  ruthless-reviewer middle (anthropic/claude-opus-5-5) and below (anthropic/claude-sonnet-5-5) (bundled)") {
+	if !strings.Contains(status, "review:  ruthless-reviewer top (anthropic/claude-opus-5-5) and default (anthropic/claude-sonnet-5-5) (bundled)") {
 		t.Fatalf("the status names each class with its model:\n%s", status)
 	}
 }
@@ -57,7 +57,7 @@ func TestBuildSaysAClampedReviewSetOnStderr(t *testing.T) {
 	if err := os.WriteFile(abcdhome.Path(home, "config.json"), []byte(`{"review": {"max_reviewers": 1}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	repo.Write(".abcd/config.json", `{"review": {"reviewers": ["middle", "below"]}}`)
+	repo.Write(".abcd/config.json", `{"review": {"reviewers": ["top", "default"]}}`)
 	repo.Commit("review set")
 	code, out, errOut := implementCLI(t, "build", "itd-10")
 	if code != 0 {

@@ -19,13 +19,13 @@ import (
 // (itd-2610240922461281, spc-2610240951109420 step 3).
 
 // oneReviewerPerRole sets the test's machine layer to a review set of one
-// reviewer per role, at the middle class, for a test of something else that
+// reviewer per role, at the top class, for a test of something else that
 // counts one ruthless and one security reviewer a round; it is written over
 // the test's HOME, so call it after the repository is made and before the
 // run starts.
 func oneReviewerPerRole(t *testing.T) {
 	t.Helper()
-	machineConfig(t, `{"review":{"reviewers":["middle"]}}`)
+	machineConfig(t, `{"review":{"reviewers":["top"]}}`)
 }
 
 // bundledClassProvider configures the provider the bundled class map's
@@ -90,8 +90,8 @@ func TestTwoReviewersOfOneRoleAreKeyedByIndex(t *testing.T) {
 
 	first := stepAwait(t, repo, id, stages, Options{})
 	second := stepAwait(t, repo, id, stages, Options{})
-	wantReviewer(t, first, RoleRuthless, 0, ClassMiddle)
-	wantReviewer(t, second, RoleRuthless, 1, ClassBelow)
+	wantReviewer(t, first, RoleRuthless, 0, ClassTop)
+	wantReviewer(t, second, RoleRuthless, 1, ClassDefault)
 
 	dir0, dir1 := filepath.Dir(first.Receipt), filepath.Dir(second.Receipt)
 	if dir0 == dir1 || !strings.HasSuffix(dir0, "/round-1/"+RoleRuthless) || !strings.HasSuffix(dir1, "/round-1/"+RoleRuthless+".1") {
@@ -140,7 +140,7 @@ func TestTwoReviewersOfOneRoleAreKeyedByIndex(t *testing.T) {
 	for _, v := range cur.Validators {
 		got = append(got, fmt.Sprintf("%s/%d/%s", v.Role, v.Reviewer, v.Class))
 	}
-	want := []string{RoleRuthless + "/0/middle", RoleRuthless + "/1/below", RoleSecurity + "/0/middle", RoleSecurity + "/1/below", RoleAuditor + "/0/"}
+	want := []string{RoleRuthless + "/0/top", RoleRuthless + "/1/default", RoleSecurity + "/0/top", RoleSecurity + "/1/default", RoleAuditor + "/0/"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("the round's validators, in reviewer order: %v, want %v", got, want)
 	}
@@ -173,8 +173,8 @@ func TestTwoReviewersOfOneRoleAreKeyedByIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	rv := rec.Lanes[0].Verdicts
-	if len(rv) != 2 || rv[1].Reviewer != 1 || rv[1].Class != ClassBelow || rv[1].Model != BundledClasses[ClassBelow] || rv[1].ModelStatus != ModelAsked ||
-		rv[0].Reviewer != 0 || rv[0].Class != ClassMiddle || rv[0].Verdict != "SHIP" {
+	if len(rv) != 2 || rv[1].Reviewer != 1 || rv[1].Class != ClassDefault || rv[1].Model != BundledClasses[ClassDefault] || rv[1].ModelStatus != ModelAsked ||
+		rv[0].Reviewer != 0 || rv[0].Class != ClassTop || rv[0].Verdict != "SHIP" {
 		t.Fatalf("the run record names each reviewer's index, class, model and its status: %+v", rv)
 	}
 	if c := rec.Lanes[0].Comparisons; len(c) != 1 || c[0].Round != 1 || c[0].Outcome != ComparisonDisagree {
@@ -184,8 +184,8 @@ func TestTwoReviewersOfOneRoleAreKeyedByIndex(t *testing.T) {
 	// The security reviewers both fail, BLOCK and NEEDS-INPUT: that agrees.
 	sec0 := stepAwait(t, repo, id, stages, Options{})
 	sec1 := stepAwait(t, repo, id, stages, Options{})
-	wantReviewer(t, sec0, RoleSecurity, 0, ClassMiddle)
-	wantReviewer(t, sec1, RoleSecurity, 1, ClassBelow)
+	wantReviewer(t, sec0, RoleSecurity, 0, ClassTop)
+	wantReviewer(t, sec1, RoleSecurity, 1, ClassDefault)
 	returnAt(t, repo, id, stages, sec0, reviewerReturn("BLOCK"))
 	returnAt(t, repo, id, stages, sec1, reviewerReturn("NEEDS-INPUT"))
 	aud := stepAwait(t, repo, id, stages, Options{})
@@ -208,8 +208,8 @@ func TestTwoReviewersOfOneRoleAreKeyedByIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, w := range []string{"ruthless-reviewer (reviewer 1 at below (" + BundledClasses[ClassBelow] + ")): FIX FIRST", r1,
-		"security-reviewer (reviewer 0 at middle", "security-reviewer (reviewer 1 at below"} {
+	for _, w := range []string{"ruthless-reviewer (reviewer 1 at default (" + BundledClasses[ClassDefault] + ")): FIX FIRST", r1,
+		"security-reviewer (reviewer 0 at top", "security-reviewer (reviewer 1 at default"} {
 		if !strings.Contains(string(fb), w) {
 			t.Fatalf("the fix brief names %q:\n%s", w, fb)
 		}
@@ -250,7 +250,7 @@ func TestCompareRoleIsThePassBitOfEachVerdict(t *testing.T) {
 			t.Errorf("%s: %+v (recorded %v), want %s", verdictsLine(r), cmp, ok, tc.want)
 		}
 	}
-	r := ValidationRound{Validators: []ValidatorRun{v(RoleRuthless, 0, "SHIP"), {Role: RoleRuthless, Reviewer: 1, Class: ClassBelow, Model: BundledClasses[ClassBelow]}}}
+	r := ValidationRound{Validators: []ValidatorRun{v(RoleRuthless, 0, "SHIP"), {Role: RoleRuthless, Reviewer: 1, Class: ClassDefault, Model: BundledClasses[ClassDefault]}}}
 	if _, ok := compareRole(&r, RoleRuthless); ok || len(r.Comparisons) != 0 {
 		t.Fatalf("no comparison while a reviewer is out: %+v", r.Comparisons)
 	}
@@ -277,7 +277,7 @@ func TestBothReviewersAreHandedOutWithinTheSubAgentCeiling(t *testing.T) {
 	id, stages := start.RunID, DefaultStages()
 	l := implemented(t, repo, id, stages, "one.txt")
 	first := stepAwait(t, repo, id, stages, Options{})
-	wantReviewer(t, first, RoleRuthless, 0, ClassMiddle)
+	wantReviewer(t, first, RoleRuthless, 0, ClassTop)
 	res, err := advance(repo.Root(), id, stages, Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -287,7 +287,7 @@ func TestBothReviewersAreHandedOutWithinTheSubAgentCeiling(t *testing.T) {
 	}
 	returnAt(t, repo, id, stages, first, reviewerReturn("SHIP"))
 	second := stepAwait(t, repo, id, stages, Options{})
-	wantReviewer(t, second, RoleRuthless, 1, ClassBelow)
+	wantReviewer(t, second, RoleRuthless, 1, ClassDefault)
 	st, _ := ReadState(repo.Root(), id)
 	if st.Lanes[0].Validation[0].HeadSHA != l.HeadSHA || len(st.Lanes[0].Validation) != 1 {
 		t.Fatalf("the second reviewer reads the round's one head: %+v", st.Lanes[0].Validation)
@@ -295,7 +295,7 @@ func TestBothReviewersAreHandedOutWithinTheSubAgentCeiling(t *testing.T) {
 
 	// One reviewer per role: each role runs once, and no comparison is made.
 	repo = briefRepo(t, agentsMarked)
-	machineConfig(t, `{"review":{"reviewers":["below"]}}`)
+	machineConfig(t, `{"review":{"reviewers":["default"]}}`)
 	start, err = Start(repo.Root(), "itd-10", Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -303,9 +303,9 @@ func TestBothReviewersAreHandedOutWithinTheSubAgentCeiling(t *testing.T) {
 	id = start.RunID
 	implemented(t, repo, id, stages, "one.txt")
 	ruth := stepAwait(t, repo, id, stages, Options{})
-	wantReviewer(t, ruth, RoleRuthless, 0, ClassBelow)
+	wantReviewer(t, ruth, RoleRuthless, 0, ClassDefault)
 	sec := stepAwait(t, repo, id, stages, Options{})
-	wantReviewer(t, sec, RoleSecurity, 0, ClassBelow)
+	wantReviewer(t, sec, RoleSecurity, 0, ClassDefault)
 	returnAt(t, repo, id, stages, ruth, reviewerReturn("SHIP"))
 	st, _ = ReadState(repo.Root(), id)
 	cmps := st.Lanes[0].Validation[0].Comparisons
@@ -366,7 +366,7 @@ func TestAnOlderStateMigratesItsReviewerToIndexZero(t *testing.T) {
 	}
 	for name, edit := range map[string]func(string) string{
 		"a reviewer's class": func(s string) string {
-			return strings.Replace(s, `"pass": false`, `"pass": false, "class": "middle", "model": "`+BundledClasses[ClassMiddle]+`"`, 1)
+			return strings.Replace(s, `"pass": false`, `"pass": false, "class": "top", "model": "`+BundledClasses[ClassTop]+`"`, 1)
 		},
 		"a reviewer's index": func(s string) string { return strings.Replace(s, `"pass": false`, `"pass": false, "reviewer": 1`, 1) },
 		"an await's reviewer": func(s string) string {
@@ -431,28 +431,28 @@ func TestAStoredReviewerTheLoopNeverWritesIsRefused(t *testing.T) {
 	stepAwait(t, repo, id, stages, Options{})
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(id)))
 	orig := stateBytes(t, repo.Root(), id)
-	middle, below := BundledClasses[ClassMiddle], BundledClasses[ClassBelow]
+	topModel, defaultModel := BundledClasses[ClassTop], BundledClasses[ClassDefault]
 	// Each edit is made to the last occurrence, a reviewer on the lane: the
 	// run's review set is written before its lanes, and an edit to the set
 	// is the set's own refusal, not the reviewer's.
 	for name, edit := range map[string]func(string) string{
-		"a class the map does not name": func(s string) string { return replaceLast(s, `"class": "below"`, `"class": "huge"`) },
-		"a model that is no route":      func(s string) string { return replaceLast(s, `"model": "`+middle+`"`, `"model": "no-slash"`) },
+		"a class the map does not name": func(s string) string { return replaceLast(s, `"class": "default"`, `"class": "huge"`) },
+		"a model that is no route":      func(s string) string { return replaceLast(s, `"model": "`+topModel+`"`, `"model": "no-slash"`) },
 		"an index past the ceiling":     func(s string) string { return replaceLast(s, `"reviewer": 1`, `"reviewer": 7`) },
 		"a model status it never writes": func(s string) string {
-			return replaceLast(s, `"class": "below"`, `"class": "below", "model_status": "confirmed"`)
+			return replaceLast(s, `"class": "default"`, `"class": "default", "model_status": "confirmed"`)
 		},
-		// The run's review set holds below at the bundled model; an
+		// The run's review set holds default at the bundled model; an
 		// admitted-looking route of another provider is not the model the
 		// run resolved for the class, and never reaches a runner's request.
 		"a model other than its class's in the run's set": func(s string) string {
-			return replaceLast(s, `"model": "`+below+`"`, `"model": "openai/gpt-other"`)
+			return replaceLast(s, `"model": "`+defaultModel+`"`, `"model": "openai/gpt-other"`)
 		},
 		"a class other than the set names at its index": func(s string) string {
-			return replaceLast(s, `"class": "below"`, `"class": "middle"`)
+			return replaceLast(s, `"class": "default"`, `"class": "top"`)
 		},
 		"unsent on a reviewer no route answered": func(s string) string {
-			return replaceLast(s, `"class": "below"`, `"class": "below", "model_status": "unsent"`)
+			return replaceLast(s, `"class": "default"`, `"class": "default", "model_status": "unsent"`)
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -491,7 +491,7 @@ func TestARunnerRunReviewerIsHandedItsClassModel(t *testing.T) {
 		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 		// The run's review set holds the below class at the model the
 		// reviewer below is cut with, as every round's reviewers are.
-		machineConfig(t, `{"models":{"classes":{"below":"`+model+`"}}}`)
+		machineConfig(t, `{"models":{"classes":{"default":"`+model+`"}}}`)
 		start, err := Start(repo.Root(), "itd-10", Options{})
 		if err != nil {
 			t.Fatal(err)
@@ -504,7 +504,7 @@ func TestARunnerRunReviewerIsHandedItsClassModel(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(repo.Root(), "review", "brief.md"), []byte("# review\n\n`Reviewed head: "+strings.Repeat("a", 40)+"`\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		v := ValidatorRun{Role: RoleRuthless, Brief: briefRel, Return: returnRel, Reviewer: 1, Class: ClassBelow, Model: model}
+		v := ValidatorRun{Role: RoleRuthless, Brief: briefRel, Return: returnRel, Reviewer: 1, Class: ClassDefault, Model: model}
 		steps[2] = StageDef{Name: StageImplement, Piece: 7,
 			Run: func(c Context, l *Lane) (Outcome, error) {
 				if len(l.Validation) == 0 {
