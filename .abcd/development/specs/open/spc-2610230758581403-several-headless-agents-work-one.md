@@ -45,6 +45,7 @@ Seven parts, each landing as its own pull request in this order:
    Parse it, and refuse a closed-unmerged, unresolvable or cyclic dependency with its reason (story 2). `land` reads its own pull request and its dependencies from the forge and does not arm while one is open or queued, until 24 hours from the pull request's createdAt, and refuses what only the forge can know before the pass. It exports step 1's pass and wires its first caller (dcn-2611101309224327). The rest of the step is step 9 (dcn-2611101412089327).
    - packages: internal/core/coord, internal/core/landing, internal/surface/cli
    - tests: internal/core/coord, internal/core/landing
+   - landed: ad646aef4
 3. **Fencing and version**
    Opens with the live probe of `git push --atomic` with a claim renewal on a scratch repository. A queue or tag under a moved tip is refused; a take-over waits for expiry plus the delay (story 3); the version field, and the refusal of a newer one (technical criterion 3).
    - packages: internal/core/claim, internal/core/landing, internal/core/coord
