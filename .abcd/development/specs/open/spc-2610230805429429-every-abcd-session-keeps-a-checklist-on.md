@@ -56,6 +56,7 @@ Each working copy keeps one checklist (dcn-2610180913444971), a JSON file in its
    - needs: 1
    - packages: internal/core/autonomy, internal/surface/cli
    - tests: internal/core/autonomy, internal/surface/cli
+   - landed: 6b424e5f7
 5. **The file-tool refusal on the checklist path**
    Tests: each file tool is refused; a shell write is not refused, and the reader catches it (step 3's tests).
    - needs: none
