@@ -81,6 +81,7 @@ repository names only which classes review.
    - packages: commands, docs/reference/cli, .abcd/development/brief/04-surfaces, .abcd/development/brief/05-internals, .abcd/development/intents/planned, .abcd/development/intents/drafts, .abcd/development/specs/open
    - tests: the command page for build carries the mapping, a worked class map for a second provider and the one-line cheaper review; the generated command reference is regenerated and its drift check passes; record-lint and docs-lint pass; itd-2610240922461281's first criterion and its spec's first step name the new pair with a dated note pointing at this intent, and its judge step launches only an active judge; itd-2610100704270254 and spc-2610301925429250 use the new names; no shipped, closed or resolved record is changed
    - needs: 6
+   - landed: f30035816
 8. A live check that each bundled class launches at its effort
    - packages: internal/core/runner
    - tests: behind the existing live build tag, one short launch per bundled class through the harness runner at `high` returns an answer and reports a model; the check is skipped, saying so, where no harness is logged in
