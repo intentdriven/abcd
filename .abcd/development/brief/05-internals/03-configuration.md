@@ -1241,6 +1241,54 @@ the network path can move, and the person declares one the agent cannot push
 to. The checkout's refs, remotes, replacement objects and object store no
 longer choose the build.
 
+## The checklist store
+
+The checklist store holds one working copy's checklist
+([`../04-surfaces/40-checklist.md`](../04-surfaces/40-checklist.md),
+itd-2610170638184486). It lives in the working copy's local tier, so each
+worktree keeps its own, and it is **never committed**:
+
+```
+.abcd/.work.local/
+  checklist.json             the list, written only by the checklist verbs
+  checklist.last-good.json   the same checked bytes, kept as the fallback
+  checklist.lock             held across every read, change and write
+  checklist.events.jsonl     one line per compaction, appended by the hook
+```
+
+`checklist.json` is one JSON document under the schema `abcd/checklist/v1`:
+`schema`, `updated_at` (RFC 3339), `updated_by` (the last writer's session id,
+or the name the away record gives it where the host exports none) and `items`. An item carries `id` (a short slug, stable once minted), `title` (one
+line of at most 200 characters), `state` (`working`, `waiting`, `done` or
+`dropped`), and optionally `waits_on`, `next_look` (RFC 3339), `promise`
+(`trigger` and `act`), `owner_refs` (the branches, pull requests and
+reservations the item is about) and `credential`, which has three fields and
+no more: `kind` and `scope`, each from a closed list, and `expiry`, a time or
+`none` (brief invariant 24). The decode is strict: a repeated key, a second
+document or a field the schema does not name refuses the file. Each line of
+`checklist.events.jsonl` is one JSON object under `abcd/checklist-events/v1`:
+`schema`, `at`, `event` (`compact`) and `trigger` (`manual`, `auto` or
+`other`).
+
+Three properties are load-bearing:
+
+- **The reader is the enforcement.** A file written past the verbs reaches the
+  reader unchecked, so the reader takes only a file a checked write in this
+  working copy could have made, validates and scans it, and falls back to the
+  last good copy judged the same way, then to nothing; it never writes, so a
+  read never promotes a file to last good.
+- **Every write is checked whole and lands atomically.** A write validates and
+  scans every field before any byte reaches the disk, writes the file 0600
+  through an atomic replace, and writes the same bytes as the last good copy; a
+  temporary file a killed writer left is never read. Whether that holds
+  across a crash or a power cut is not yet shown: the spec's crash lab
+  (spc-2610230805429429 step 7) has not run.
+- **A hook reads within its deadline.** The session-start and stop hooks read
+  the list under the hook's own deadline, its one git call included; a
+  deadline spent before or during the read leaves the list out of that hook's
+  output, said on its error stream, rather than reading it as a list that
+  names nothing.
+
 ## The two `.abcd/` scopes
 
 abcd keeps **one namespace pattern instantiated at two scopes**, under two names:
