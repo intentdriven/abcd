@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -136,4 +137,54 @@ func TestPreCompactRecordsNothingElsewhere(t *testing.T) {
 	if _, err := os.Lstat(filepath.Join(plain, filepath.FromSlash(checklist.EventsRelPath))); !os.IsNotExist(err) {
 		t.Errorf("a sidecar was written outside a managed checkout (%v)", err)
 	}
+}
+
+// TestPreCompactLeavesAFileItDidNotMakeAlone: a second name for another file,
+// or a FIFO, in the sidecar's place is left as it was, and the hook still exits
+// 0 with nothing on stdout, so the compaction goes ahead unrecorded.
+func TestPreCompactLeavesAFileItDidNotMakeAlone(t *testing.T) {
+	t.Run("a second name for another file", func(t *testing.T) {
+		root := checklistCheckout(t)
+		other := filepath.Join(t.TempDir(), "log.txt")
+		if err := os.WriteFile(other, []byte("someone else's file\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Link(other, filepath.Join(root, filepath.FromSlash(checklist.EventsRelPath))); err != nil {
+			t.Skipf("no hard link across these directories: %v", err)
+		}
+		stdout, stderr, code := preCompact(t, root, "auto")
+		if code != 0 || stdout != "" || !strings.Contains(stderr, "compaction was not recorded") {
+			t.Fatalf("exit %d, stdout %q, stderr %q; want exit 0, nothing on stdout, and the unrecorded line", code, stdout, stderr)
+		}
+		if got, err := os.ReadFile(other); err != nil || string(got) != "someone else's file\n" {
+			t.Fatalf("the other file was appended to: %q (%v)", got, err)
+		}
+	})
+	t.Run("a FIFO", func(t *testing.T) {
+		root := checklistCheckout(t)
+		p := filepath.Join(root, filepath.FromSlash(checklist.EventsRelPath))
+		if err := syscall.Mkfifo(p, 0o600); err != nil {
+			t.Skipf("no FIFO here: %v", err)
+		}
+		type res struct {
+			stdout, stderr string
+			code           int
+		}
+		done := make(chan res, 1)
+		go func() {
+			so, se, c := preCompact(t, root, "auto")
+			done <- res{so, se, c}
+		}()
+		select {
+		case r := <-done:
+			if r.code != 0 || r.stdout != "" || !strings.Contains(r.stderr, "compaction was not recorded") {
+				t.Fatalf("exit %d, stdout %q, stderr %q; want exit 0, nothing on stdout, and the unrecorded line", r.code, r.stdout, r.stderr)
+			}
+		case <-time.After(60 * time.Second):
+			t.Fatal("the hook waited on a FIFO in the sidecar's place")
+		}
+		if fi, err := os.Lstat(p); err != nil || fi.Mode()&os.ModeNamedPipe == 0 {
+			t.Fatalf("the FIFO was replaced: %v %v", fi, err)
+		}
+	})
 }

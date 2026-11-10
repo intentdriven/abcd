@@ -1857,7 +1857,12 @@ items handed back, and abcd mode back; once its window has lapsed unclosed
 with a queued step or a recorded stop, one line naming abcd mode back
 instead. Plain stdout is then one object carrying that line as systemMessage
 beside the additional context (and sessionTitle when owed), and the --json
-envelope carries it as system_message.`,
+envelope carries it as system_message.
+
+When a stop while the person was present found the session's checklist
+behind the work it owns (abcd hook stop), the next prompt's text carries
+that note once, under a "## CHECKLIST" heading, beside the away block and
+outside the dedup ledger.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// The hook's one deadline (C12), set before anything else runs:
@@ -1907,6 +1912,10 @@ envelope carries it as system_message.`,
 			// hook's one deadline: the status read below takes what it leaves.
 			root := rulesRoot(cwd, cmd.ErrOrStderr())
 			away := readPromptAway(cmd.ErrOrStderr(), drained, root)
+			// The checklist's behind note a present session's last stop left
+			// (spc-2610230805429429 step 4), carried once, beside the away
+			// block and outside the dedup ledger.
+			away.Block = joinBlocks(checklistPromptNote(cmd.ErrOrStderr(), cwd, in.SessionID), away.Block)
 			rs, err := rulesForHook(root)
 			if err != nil {
 				// rules.Load errors already carry their own "rules:" prefix, so

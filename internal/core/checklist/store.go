@@ -2,15 +2,18 @@ package checklist
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
@@ -67,10 +70,14 @@ var ErrNotKept = errors.New("checklist: the checklist file here does not keep th
 
 // ownerOf and gitRun are the owner lookup and the git runner Read and the
 // writes use, held as vars so a test can provoke another account's file and
-// a git that fails inside a checkout.
+// a git that fails inside a checkout. The owner is read from the FileInfo of
+// the file being judged, never from a second lookup by path, so the file
+// judged is the file whose owner is read.
 var (
-	ownerOf = fsutil.OwnerUID
-	gitRun  = gitutil.Run
+	ownerOf = fsutil.InfoOwnerUID
+	gitRun  = func(ctx context.Context, root string, args ...string) (string, error) {
+		return gitutil.RunLimitedContext(ctx, root, 1<<20, args...)
+	}
 )
 
 // ErrScannerUnavailable is the refusal when the native secret scanner cannot be
@@ -123,7 +130,7 @@ func write(repoRoot string, c Checklist) error {
 		return fmt.Errorf("%w: %s/ is not a plain directory in this checkout, and it is never created on the way to a write",
 			ErrNoLocalTier, TierRelPath)
 	}
-	if tracked, err := trackedFiles(repoRoot); err != nil {
+	if tracked, err := trackedFiles(context.Background(), repoRoot); err != nil {
 		return fmt.Errorf("checklist: asking git whether the checklist is tracked: %w", err)
 	} else if len(tracked) > 0 {
 		return ErrTracked
@@ -152,7 +159,7 @@ func write(repoRoot string, c Checklist) error {
 	// fixed modes, a volume ignoring ownership) shows it only now; the reader
 	// would refuse what was written, so the caller is told rather than every
 	// later change silently starting a new list.
-	if fileGate(root, repoRoot, FileRelPath) != "" {
+	if fileGate(root, FileRelPath) != "" {
 		return ErrNotKept
 	}
 	return nil
@@ -198,7 +205,12 @@ type Result struct {
 // a second failure answers FromNothing. It never writes, so a read never
 // promotes a file to last-good. A temp file a killed writer left is never
 // read: only the two named paths are.
-func Read(repoRoot string) Result {
+func Read(repoRoot string) Result { return ReadContext(context.Background(), repoRoot) }
+
+// ReadContext is Read with its one git call, the tracked check, bound to ctx:
+// when ctx ends, git is killed and the read answers as for a git that could
+// not say, FromNothing. A hook reads under its own deadline through it.
+func ReadContext(ctx context.Context, repoRoot string) Result {
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
 		return Result{Source: FromNothing, Reason: "No checklist to show: the checkout could not be opened."}
@@ -210,7 +222,7 @@ func Read(repoRoot string) Result {
 	case tierNotDir:
 		return Result{Source: FromNothing, Reason: "No checklist to show: .abcd/.work.local is not a plain directory in this checkout."}
 	}
-	tracked, trackedErr := trackedFiles(repoRoot)
+	tracked, trackedErr := trackedFiles(ctx, repoRoot)
 	if trackedErr != nil {
 		return Result{Source: FromNothing, Reason: "No checklist to show: git could not say whether the checklist files are tracked."}
 	}
@@ -219,7 +231,7 @@ func Read(repoRoot string) Result {
 		if tracked[rel] {
 			return Checklist{}, "is tracked by git, so it came with the checkout rather than from a checked write in it"
 		}
-		return load(repoRoot, root, sc, scanErr, rel)
+		return load(root, sc, scanErr, rel)
 	}
 
 	c, why := judge(FileRelPath)
@@ -271,20 +283,114 @@ func tierState(root *os.Root) int {
 }
 
 // fileGate is why the file at rel is not one this working copy's own write
-// could have made, or "": write makes it as the caller, with no bit for group
-// or others. An absent or irregular file is load's to judge.
-func fileGate(root *os.Root, repoRoot, rel string) string {
+// could have made, or "", judged on its Lstat. An absent or irregular file is
+// load's to judge.
+func fileGate(root *os.Root, rel string) string {
 	fi, err := root.Lstat(rel)
 	if err != nil || !fi.Mode().IsRegular() {
 		return ""
 	}
+	return fileVerdict(fi)
+}
+
+// fileVerdict is why the file fi describes is not one this working copy's own
+// write could have made, or "". write makes each tier file as the caller, a
+// regular file with no bit for group or others, and by a rename, so with one
+// name. fi is an Lstat of the path or the Stat of an opened handle: a caller
+// that opens a file judges the handle too, so the file read or appended to is
+// the one judged, not only the file its path named a moment before.
+func fileVerdict(fi os.FileInfo) string {
+	if !fi.Mode().IsRegular() {
+		return "is not a regular file"
+	}
 	if fi.Mode().Perm()&0o077 != 0 {
 		return "is readable by others than its owner, so a checked write did not make it"
 	}
-	if uid, err := ownerOf(filepath.Join(repoRoot, filepath.FromSlash(rel))); err != nil || uid != uint32(os.Getuid()) {
+	if uid, err := ownerOf(fi); err != nil || uid != uint32(os.Getuid()) {
 		return "is owned by another account, or its owner could not be read"
 	}
+	if n, ok := linkCount(fi); !ok || n != 1 {
+		return "has another name as well (a hard link), so a checked write did not make it"
+	}
 	return ""
+}
+
+// linkCount is how many names the file fi describes has.
+func linkCount(fi os.FileInfo) (uint64, bool) {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, false
+	}
+	return uint64(st.Nlink), true
+}
+
+// readAttempts bounds readKept's re-judging of a file replaced between its
+// Lstat and its open: a checked write renames a new file over the old, so a
+// read beside it can see one swap, and only a file replaced every time is
+// refused.
+const readAttempts = 8
+
+// readKept reads rel when it is a file this working copy's own write could
+// have made, or answers why not as a clause that follows the file's name. The
+// path is judged by its Lstat, and the opened handle is judged again and must
+// be the very file the Lstat saw, so the bytes read are the judged file's.
+// O_NONBLOCK keeps a FIFO or a device put at the path from holding the open,
+// and maxReadBytes caps both the handle's size and the bytes read.
+func readKept(root *os.Root, rel string) ([]byte, string) {
+	for attempt := 1; ; attempt++ {
+		data, why, replaced := readKeptOnce(root, rel)
+		if !replaced {
+			return data, why
+		}
+		if attempt == readAttempts {
+			return nil, "was replaced each time it was read"
+		}
+	}
+}
+
+// readKeptOnce is one judging and one read of readKept; replaced reports a
+// handle that is not the file the Lstat judged.
+func readKeptOnce(root *os.Root, rel string) (data []byte, why string, replaced bool) {
+	fi, err := root.Lstat(rel)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil, absent, false
+	case err != nil:
+		return nil, "could not be read", false
+	}
+	if why := fileVerdict(fi); why != "" {
+		return nil, why, false
+	}
+	f, err := root.OpenFile(rel, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil, "", true
+	case err != nil:
+		return nil, "could not be read", false
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return nil, "could not be read", false
+	}
+	if !os.SameFile(fi, st) {
+		return nil, "", true
+	}
+	if why := fileVerdict(st); why != "" {
+		return nil, why, false
+	}
+	tooBig := fmt.Sprintf("is larger than the %d-byte read cap", maxReadBytes)
+	if st.Size() > maxReadBytes {
+		return nil, tooBig, false
+	}
+	data, err = io.ReadAll(io.LimitReader(f, maxReadBytes+1))
+	switch {
+	case err != nil:
+		return nil, "could not be read", false
+	case int64(len(data)) > maxReadBytes:
+		return nil, tooBig, false
+	}
+	return data, "", false
 }
 
 // trackedFiles is which of the two files git's index holds, staged or
@@ -294,8 +400,8 @@ func fileGate(root *os.Root, repoRoot, rel string) string {
 // so it tracks nothing; inside a checkout, any failure of git (absent, or
 // refusing a checkout another account owns) is an error, since the files
 // cannot then be vouched for.
-func trackedFiles(repoRoot string) (map[string]bool, error) {
-	out, err := gitRun(repoRoot, "ls-files", "-z", "--cached", "--", FileRelPath, LastGoodRelPath)
+func trackedFiles(ctx context.Context, repoRoot string) (map[string]bool, error) {
+	out, err := gitRun(ctx, repoRoot, "ls-files", "-z", "--cached", "--", FileRelPath, LastGoodRelPath)
 	if err != nil {
 		if !underGit(repoRoot) {
 			return nil, nil
@@ -329,24 +435,13 @@ func underGit(repoRoot string) bool {
 
 // load reads one of the two files and answers the checklist, or why it cannot
 // be used as a clause that follows the file's name.
-func load(repoRoot string, root *os.Root, sc *scanner.Scanner, scanErr error, rel string) (Checklist, string) {
+func load(root *os.Root, sc *scanner.Scanner, scanErr error, rel string) (Checklist, string) {
 	// write makes both files storePerm; a file group or others can read was
 	// made some other way, most often checked out of a commit at the umask's
 	// 0644, and is refused before its bytes are read.
-	if why := fileGate(root, repoRoot, rel); why != "" {
+	data, why := readKept(root, rel)
+	if why != "" {
 		return Checklist{}, why
-	}
-	data, err := fsutil.ReadGuardedInRoot(root, rel, maxReadBytes)
-	switch {
-	case err == nil:
-	case errors.Is(err, fs.ErrNotExist):
-		return Checklist{}, absent
-	case errors.Is(err, fsutil.ErrNotRegular):
-		return Checklist{}, "is not a regular file"
-	case errors.Is(err, fsutil.ErrTooBig):
-		return Checklist{}, fmt.Sprintf("is larger than the %d-byte read cap", maxReadBytes)
-	default:
-		return Checklist{}, "could not be read"
 	}
 	c, err := decode(data)
 	if err != nil {
@@ -468,9 +563,24 @@ func encode(c Checklist) ([]byte, error) {
 
 // removeTorn removes, best effort, every temp file in the tier a killed writer
 // left behind: the atomic writer's prefix, a regular file, and older than
-// tornAfter. A younger one may belong to a write still running.
+// tornAfter. A younger one may belong to a write still running. The tier is
+// opened as a root of its own and must be the plain directory its Lstat saw,
+// and each removal goes through that opened tier, so it is the judged
+// directory's files that are listed and removed.
 func removeTorn(root *os.Root, now time.Time) {
-	dir, err := root.Open(TierRelPath)
+	want, err := root.Lstat(TierRelPath)
+	if err != nil || !want.IsDir() {
+		return
+	}
+	tier, err := root.OpenRoot(TierRelPath)
+	if err != nil {
+		return
+	}
+	defer tier.Close()
+	if got, err := tier.Stat("."); err != nil || !os.SameFile(want, got) {
+		return
+	}
+	dir, err := tier.Open(".")
 	if err != nil {
 		return
 	}
@@ -487,7 +597,7 @@ func removeTorn(root *os.Root, now time.Time) {
 		if err != nil || !info.Mode().IsRegular() || now.Sub(info.ModTime()) <= tornAfter {
 			continue
 		}
-		_ = root.Remove(path.Join(TierRelPath, e.Name()))
+		_ = tier.Remove(e.Name())
 	}
 }
 
@@ -528,7 +638,7 @@ func Update(repoRoot string, change func(Result) (Checklist, error)) error {
 		return fmt.Errorf("%w: %s/ is not a plain directory in this checkout, and it is never created on the way to a write",
 			ErrNoLocalTier, TierRelPath)
 	}
-	if tracked, err := trackedFiles(repoRoot); err != nil {
+	if tracked, err := trackedFiles(context.Background(), repoRoot); err != nil {
 		return fmt.Errorf("checklist: asking git whether the checklist is tracked: %w", err)
 	} else if len(tracked) > 0 {
 		return ErrTracked
@@ -540,7 +650,7 @@ func Update(repoRoot string, change func(Result) (Checklist, error)) error {
 		// changed: a new list written over it would hide what it holds, and
 		// on a filesystem that does not keep the mode the next read would
 		// refuse the new one too.
-		if fileGate(root, repoRoot, FileRelPath) != "" {
+		if fileGate(root, FileRelPath) != "" {
 			return ErrNotKept
 		}
 		c, err := change(Read(repoRoot))

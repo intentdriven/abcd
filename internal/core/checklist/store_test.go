@@ -2,6 +2,7 @@ package checklist_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -638,7 +639,7 @@ func TestReadRefusesATierThatIsNotAPlainDirectory(t *testing.T) {
 func TestReadRefusesAChecklistAnotherAccountOwns(t *testing.T) {
 	root := newRepo(t)
 	plant(t, abs(root, checklist.FileRelPath), marshal(t, sample()))
-	defer checklist.SwapOwnerForTest(func(string) (uint32, error) { return uint32(os.Getuid()) + 1, nil })()
+	defer checklist.SwapOwnerForTest(func(os.FileInfo) (uint32, error) { return uint32(os.Getuid()) + 1, nil })()
 	if got := checklist.Read(root); got.Source != checklist.FromNothing || !strings.Contains(got.Reason, "another account") {
 		t.Fatalf("a checklist another account owns was read: %+v", got)
 	}
@@ -736,7 +737,7 @@ func TestWriteRefusesWhereTheReaderWouldRefuse(t *testing.T) {
 	})
 	t.Run("a filesystem that does not keep the owner", func(t *testing.T) {
 		root := newRepo(t)
-		defer checklist.SwapOwnerForTest(func(string) (uint32, error) { return uint32(os.Getuid()) + 1, nil })()
+		defer checklist.SwapOwnerForTest(func(os.FileInfo) (uint32, error) { return uint32(os.Getuid()) + 1, nil })()
 		if err := checklist.WriteForTest(root, sample()); !errors.Is(err, checklist.ErrNotKept) {
 			t.Fatalf("Write where the owner is not kept = %v, want ErrNotKept", err)
 		}
@@ -765,4 +766,72 @@ func TestWriteRefusesWhereTheReaderWouldRefuse(t *testing.T) {
 			t.Fatalf("an owner-only file is refused: %+v", got)
 		}
 	})
+}
+
+// TestTheOpenedChecklistIsCheckedNotOnlyItsPath: the file the reader opens is
+// checked as its path is (a regular file, this account's, owner-only, one
+// name), so a checklist.json that is a second name for another file, or a
+// FIFO, is never read or written over, and the read never waits on a FIFO.
+func TestTheOpenedChecklistIsCheckedNotOnlyItsPath(t *testing.T) {
+	t.Run("a second name for another file", func(t *testing.T) {
+		root := newRepo(t)
+		other := filepath.Join(t.TempDir(), "notes.json")
+		plant(t, other, marshal(t, sample()))
+		if err := os.Link(other, abs(root, checklist.FileRelPath)); err != nil {
+			t.Skipf("no hard link across these directories: %v", err)
+		}
+		before := readFile(t, other)
+		if got := checklist.Read(root); got.Source == checklist.FromFile || !strings.Contains(got.Reason, "another name") {
+			t.Fatalf("a checklist.json that is another file's second name was read: %+v", got)
+		}
+		err := checklist.Update(root, func(checklist.Result) (checklist.Checklist, error) { return sample(), nil })
+		if !errors.Is(err, checklist.ErrNotKept) || !bytes.Equal(readFile(t, other), before) {
+			t.Fatalf("Update over a second name = %v, and the other file must stand", err)
+		}
+	})
+	t.Run("a FIFO", func(t *testing.T) {
+		root := newRepo(t)
+		if err := mkfifo(abs(root, checklist.FileRelPath)); err != nil {
+			t.Skipf("no FIFO here: %v", err)
+		}
+		done := make(chan checklist.Result, 1)
+		go func() { done <- checklist.Read(root) }()
+		select {
+		case got := <-done:
+			if got.Source == checklist.FromFile || !strings.Contains(got.Reason, "not a regular file") {
+				t.Fatalf("a FIFO at checklist.json was read: %+v", got)
+			}
+		case <-time.After(30 * time.Second):
+			t.Fatal("the read waited on a FIFO at checklist.json")
+		}
+	})
+	t.Run("a last-good copy that is a second name", func(t *testing.T) {
+		root := newRepo(t)
+		other := filepath.Join(t.TempDir(), "notes.json")
+		plant(t, other, marshal(t, sample()))
+		if err := os.Link(other, abs(root, checklist.LastGoodRelPath)); err != nil {
+			t.Skipf("no hard link across these directories: %v", err)
+		}
+		if got := checklist.Read(root); got.Source != checklist.FromNothing || !strings.Contains(got.Reason, "another name") {
+			t.Fatalf("a last-good copy that is another file's second name was read: %+v", got)
+		}
+	})
+}
+
+// TestReadContextKeepsTheCallersDeadline: the read's git call runs under the
+// caller's context, so a context already ended reads nothing, as a git that
+// could not say does, and never waits on git.
+func TestReadContextKeepsTheCallersDeadline(t *testing.T) {
+	_, root := gitCheckout(t, "")
+	if err := checklist.WriteForTest(root, sample()); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got := checklist.ReadContext(ctx, root); got.Source != checklist.FromNothing || !strings.Contains(got.Reason, "git could not say") {
+		t.Fatalf("a read under an ended context = %+v", got)
+	}
+	if got := checklist.ReadContext(context.Background(), root); got.Source != checklist.FromFile {
+		t.Fatalf("a read under a live context = %+v", got)
+	}
 }

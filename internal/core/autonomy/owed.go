@@ -97,6 +97,21 @@ type Owed struct {
 	// what was not read, and the verdict allows the stop, naming it, rather
 	// than judge from part of the work.
 	Incomplete bool `json:"incomplete,omitempty"`
+	// Owned is the work the session owns as the reading found it, which the
+	// checklist's behind check compares with the items' owner_refs
+	// (spc-2610230805429429 step 4).
+	Owned []OwnedRef `json:"owned,omitempty"`
+}
+
+// OwnedRef is one piece of work the session owns, spelled as a checklist
+// item's owner_refs names it: `branch:<name>` or a reservation's record id.
+// Aliases are other spellings of the same work (a branch's open pull request,
+// `pr:<n>`), any one of which an item may name instead. Changed is when the
+// work last moved (a branch's head commit), zero when unknown.
+type OwnedRef struct {
+	Ref     string    `json:"ref"`
+	Aliases []string  `json:"aliases,omitempty"`
+	Changed time.Time `json:"changed,omitempty"`
 }
 
 // Empty reports whether nothing is owed.

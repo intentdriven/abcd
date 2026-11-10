@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/autonomy"
 	"github.com/intentdriven/abcd/internal/core/checklist"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -103,4 +104,34 @@ func recordCompaction(w io.Writer, cwd, trigger string) {
 		fmt.Fprintf(w, "abcd checklist: the compaction was not recorded in %s (%s); the compaction goes ahead\n",
 			checklist.EventsRelPath, termsafe.Sanitize(fsutil.RedactHome(strings.ReplaceAll(err.Error(), root, "<checkout>"))))
 	}
+}
+
+// checklistPromptNote is the behind note a present session's last stop left
+// for this prompt (spc-2610230805429429 step 4): the stop hook's message
+// reaches the person, not the model, so the next prompt carries the same note
+// into the session's context, once, outside the rules loader's dedup ledger.
+// It reads the session's state in the working copy the session acts from, and
+// nothing else: no owed reading, no network. Outside a managed checkout, on a
+// drive's stage, or with a session id the store cannot key, it adds nothing;
+// a state that cannot be read adds nothing and is named on stderr.
+func checklistPromptNote(stderr io.Writer, cwd, sessionID string) string {
+	if stageActive() || !autonomy.ValidSessionID(sessionID) {
+		return ""
+	}
+	if _, ok := managedRoot(cwd); !ok {
+		return ""
+	}
+	copyRoot, _, err := autonomy.ResolveCopy(cwd, sessionID, autonomy.Options{})
+	if err != nil {
+		return ""
+	}
+	note, err := autonomy.TakeChecklistNote(copyRoot, sessionID)
+	if err != nil {
+		diagnosticLine(stderr, "abcd checklist: no behind note is shown (%s)", fsutil.RedactHome(err.Error()))
+		return ""
+	}
+	if note == "" {
+		return ""
+	}
+	return "## CHECKLIST\n\n" + note + "\n"
 }
