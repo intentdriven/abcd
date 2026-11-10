@@ -158,7 +158,15 @@ func readCommitIn[M any](g viewGit, root, name, tree string, fetchedAt time.Time
 	if n <= maxObjectBytes {
 		obj, err = g.stored(root, maxObjectBytes, "cat-file", "commit", name)
 	}
-	if n > maxObjectBytes || (err != nil && strings.Contains(err.Error(), "exceeded")) {
+	// A read the bound context ended is not an object too big: it answers the
+	// context's error, never a tip made unreadable and dated from the fetch.
+	if g.bound() && g.ctx.Err() != nil {
+		if err == nil {
+			err = fmt.Errorf("git cat-file commit %s: %w", name, g.ctx.Err())
+		}
+		return head{}, zero, err
+	}
+	if n > maxObjectBytes || overCap(err) {
 		h := head{Commit: name, Unreadable: reasonObjectTooBig}
 		// The object is too big to parse, but git reads its date, from the
 		// object as stored.

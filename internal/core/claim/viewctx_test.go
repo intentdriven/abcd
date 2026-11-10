@@ -3,10 +3,12 @@ package claim
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -16,16 +18,24 @@ import (
 
 // The reservations' view a hook reads on a deadline (iss-2611100548341325):
 // ViewContext reads what View reads, starts no git once its ctx has ended,
-// and a git that hangs anywhere on its route is stopped when the ctx ends,
-// answering ctx's error and no snapshot read in part.
+// and a git that hangs at any of the sites the fixtures reach is stopped when
+// the ctx ends, answering ctx's error and no snapshot read in part.
 
-// viewOnEveryRoute is a copy whose view starts git on every reader of its
-// route: the fetch stamp's tracked check, the reservation and release-tag
-// listings, the empty tree's name, origin's default branch and the records
-// on it, this copy's kept key, the tip batch, a tip too big for the batch
-// read on its own, a tip dated ahead whose first sighting is kept, and the
-// generated files a live footprint is judged against.
-func viewOnEveryRoute(t *testing.T) *participant {
+// viewOnEveryRoute is a copy whose view starts git at the sites viewSites
+// names: the tracked checks (the fetch stamp, this copy's kept key, and the
+// kept first sightings of a tip dated ahead and of a tip that is not a
+// commit, the last read both as its date and as its first sighting), the
+// reservation and release-tag listings, the empty tree's name,
+// origin's default-branch listing, the records on that branch, the tip
+// batch's listing, headers and bodies, the own reads of a tip too big for the
+// batch (its ref, its size and its date) and of the tip that is not a commit
+// (its ref), and the generated files a live footprint is judged against
+// (the tree listing, the root attributes' entry and blob). crowded fills
+// origin's default-branch listing past its cap, so the default branch is
+// named by symbolic-ref and a question per ref as well. It does not reach a
+// small commit read on its own (the batch reads every one), which
+// TestABoundTipReadOnItsOwnStopsAHungGit reaches.
+func viewOnEveryRoute(t *testing.T, crowded bool) *participant {
 	t.Helper()
 	w := newWorld(t)
 	w.declare("gen.md linguist-generated\n", "gen.md")
@@ -48,29 +58,124 @@ func viewOnEveryRoute(t *testing.T) *participant {
 	if _, err := Fetch(p.dir, p.opts()); err != nil {
 		t.Fatal(err)
 	}
+	// A tip that is not a commit, its first sighting kept as a fetch keeps
+	// one, so the view's read of it asks its tracked check.
+	blob := strings.TrimSpace(runGitStdin(t, p.dir, "not a commit\n", "hash-object", "-w", "--stdin"))
+	p.git("update-ref", trackingName("iss-9"), blob)
+	tree, err := emptyTree(p.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok, err := readTip(p.dir, "iss-9", trackingName("iss-9"), tree, t0, true); err != nil || !ok || got.Unreadable != reasonNoObject {
+		t.Fatalf("the blob tip = %+v, %v, %v; want it unreadable, its first sighting kept", got, ok, err)
+	}
+	if crowded {
+		sha := strings.TrimSpace(p.git("rev-parse", "refs/remotes/origin/main"))
+		var lines strings.Builder
+		for i := range 2000 {
+			fmt.Fprintf(&lines, "create refs/remotes/origin/trunk/b%04d %s\n", i, sha)
+		}
+		runGitStdin(t, p.dir, lines.String(), "update-ref", "--stdin")
+	}
 	return p
 }
 
-// gitOnPath puts a git first on PATH that logs each call and, on call n
-// (counting from 1; 0 for none), signals and then sleeps for stallFor in
+// viewSite is one place the view starts git, matched on the subcommand's
+// argv as git was called, and how many times the fixture makes it.
+type viewSite struct {
+	name  string
+	match func(argv string) bool
+	times int
+}
+
+// argvEnds matches a call whose argv ends with s.
+func argvEnds(s string) func(string) bool {
+	return func(a string) bool { return strings.HasSuffix(a, s) }
+}
+
+// argvHas matches a call whose argv holds s.
+func argvHas(s string) func(string) bool {
+	return func(a string) bool { return strings.Contains(a, s) }
+}
+
+// viewSites are the sites viewOnEveryRoute's view reaches, each with the
+// times it is made; crowded adds the default branch's two fallback questions.
+func viewSites(crowded bool) []viewSite {
+	own := func(id string) string {
+		return "for-each-ref --format=%(refname) %(objectname) %(objecttype) " + TrackingPrefix + id
+	}
+	sites := []viewSite{
+		// The tip that is not a commit asks its kept first sighting twice: as
+		// its date (dated) and as its first sighting (seen).
+		{"the tracked checks (fetch stamp, kept key, the kept first sightings of the tip ahead and twice of the tip not a commit)", argvEnds(" ls-files -z"), 5},
+		{"the reservation listing", argvEnds(" for-each-ref --format=%(refname) " + TrackingPrefix), 1},
+		{"the release-tag listing", argvEnds(" for-each-ref --format=%(refname) " + ReleaseTagsTracking), 1},
+		{"the empty tree's name", argvEnds(" hash-object -t tree --stdin"), 1},
+		{"origin's default-branch listing", argvHas(" for-each-ref --format=%(refname) %(symref) "), 1},
+		{"the records on origin's default branch", argvHas(" ls-tree -r -z --full-tree refs/remotes/origin/main -- "), 1},
+		{"the tip batch's listing", argvEnds(" " + own("")), 1},
+		{"the tip batch's headers", argvHas(" cat-file --batch-check="), 1},
+		{"the tip batch's bodies", argvEnds(" cat-file --batch"), 1},
+		{"the own ref read of the tip too big for the batch", argvEnds(" " + own("iss-8")), 1},
+		{"the own ref read of the tip that is not a commit", argvEnds(" " + own("iss-9")), 1},
+		{"the size of the tip too big for the batch", argvHas(" cat-file -s "), 1},
+		{"the date of the tip too big for the batch", argvHas(" show -s --format=%ct "), 1},
+		{"the generated files' tree listing", argvEnds(" ls-tree -r -z --full-tree refs/remotes/origin/main"), 1},
+		{"the root attributes' entry", argvEnds(" ls-tree -l -z --full-tree refs/remotes/origin/main -- .gitattributes"), 1},
+		{"the root attributes' blob", argvHas(" cat-file blob "), 1},
+	}
+	if crowded {
+		sites = append(sites,
+			viewSite{"the default branch's symbolic-ref question", argvEnds(" symbolic-ref --quiet refs/remotes/origin/HEAD"), 1},
+			viewSite{"the default branch's question per ref", argvEnds(" rev-parse --verify --quiet refs/remotes/origin/main^{commit} --"), 1})
+	}
+	return sites
+}
+
+// checkSites fails t for each site log does not hold the times named, and
+// for each call no site names (git's own version probe aside).
+func checkSites(t *testing.T, log []string, sites []viewSite) {
+	t.Helper()
+	claimed := make([]bool, len(log))
+	for _, s := range sites {
+		n := 0
+		for i, a := range log {
+			if s.match(a) {
+				n++
+				claimed[i] = true
+			}
+		}
+		if n != s.times {
+			t.Errorf("%s: made %d time(s), want %d", s.name, n, s.times)
+		}
+	}
+	for i, a := range log {
+		if !claimed[i] && !strings.HasSuffix(a, " version") && a != "version" {
+			t.Errorf("a git call no site names: %s", a)
+		}
+	}
+}
+
+// gitOnPath puts a git first on PATH that logs each call's argv and, on call
+// n (counting from 1; 0 for none), signals and then sleeps for stallFor in
 // place of git; every other call runs the real git. The returned calls
-// empties the log and answers it; stalled, once the read is done, whether
-// call n came. The stall cancels cancel, so the ctx ends exactly while git
-// hangs.
-func gitOnPath(t *testing.T, n int, cancel context.CancelFunc) (calls func() int, stalled func() bool) {
+// empties the log and answers it, one argv per call; stalled, once the read
+// is done, whether call n came. The stall calls cancel, so a ctx it cancels
+// ends exactly while git hangs.
+func gitOnPath(t *testing.T, n int, cancel context.CancelFunc) (calls func() []string, stalled func() bool) {
 	t.Helper()
 	real, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("git not on PATH")
 	}
 	bin, dir := t.TempDir(), t.TempDir()
-	log, fifo := filepath.Join(dir, "calls"), filepath.Join(dir, "stall")
-	script := "#!/bin/sh\necho x >> '" + log + "'\n"
+	log, count, fifo := filepath.Join(dir, "calls"), filepath.Join(dir, "count"), filepath.Join(dir, "stall")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '" + log + "'\necho x >> '" + count + "'\n"
 	if n > 0 {
 		if err := syscall.Mkfifo(fifo, 0o600); err != nil {
 			t.Skipf("no fifo: %v", err)
 		}
-		script += "if [ $(wc -l < '" + log + "') -eq " + strconv.Itoa(n) + " ]; then printf x > '" + fifo + "'; exec sleep " +
+		script += "if [ $(wc -l < '" + count + "') -eq " + strconv.Itoa(n) + " ]; then printf x > '" + fifo + "'; exec sleep " +
 			strconv.Itoa(int(stallFor/time.Second)) + "; fi\n"
 	}
 	script += "exec '" + real + "' \"$@\"\n"
@@ -78,10 +183,16 @@ func gitOnPath(t *testing.T, n int, cancel context.CancelFunc) (calls func() int
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	calls = func() int {
+	calls = func() []string {
 		raw, _ := os.ReadFile(log)
 		_ = os.WriteFile(log, nil, 0o600)
-		return strings.Count(string(raw), "\n")
+		var out []string
+		for _, l := range strings.Split(string(raw), "\n") {
+			if l != "" {
+				out = append(out, l)
+			}
+		}
+		return out
 	}
 	if n == 0 {
 		return calls, func() bool { return false }
@@ -107,31 +218,36 @@ func gitOnPath(t *testing.T, n int, cancel context.CancelFunc) (calls func() int
 const stallFor = 60 * time.Second
 
 // TestViewContextReadsWhatViewReads: one body, so a live ctx reads the same
-// snapshot the context-free view does.
+// snapshot the context-free view does, a default-branch listing past its cap
+// included (crowded), where both forms refuse the listing whole.
 func TestViewContextReadsWhatViewReads(t *testing.T) {
-	p := viewOnEveryRoute(t)
-	want, err := View(p.dir, p.w.clock())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(want.Reservations) < 4 || want.Generated.files == nil {
-		t.Fatalf("the fixture's view holds %d reservations and generated %v; the test proves nothing", len(want.Reservations), want.Generated.files)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
-	defer cancel()
-	got, err := ViewContext(ctx, p.dir, p.w.clock())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("ViewContext = %+v\nwant View's %+v", got, want)
+	for _, crowded := range []bool{false, true} {
+		t.Run("crowded "+strconv.FormatBool(crowded), func(t *testing.T) {
+			p := viewOnEveryRoute(t, crowded)
+			want, err := View(p.dir, p.w.clock())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(want.Reservations) < 5 || want.Generated.files == nil {
+				t.Fatalf("the fixture's view holds %d reservations and generated %v; the test proves nothing", len(want.Reservations), want.Generated.files)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+			defer cancel()
+			got, err := ViewContext(ctx, p.dir, p.w.clock())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("ViewContext = %+v\nwant View's %+v", got, want)
+			}
+		})
 	}
 }
 
 // TestViewContextStartsNoGitOnceEnded: a ctx already ended starts no git and
 // answers its error, with no reservation in the snapshot.
 func TestViewContextStartsNoGitOnceEnded(t *testing.T) {
-	p := viewOnEveryRoute(t)
+	p := viewOnEveryRoute(t, false)
 	calls, _ := gitOnPath(t, 0, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -139,16 +255,18 @@ func TestViewContextStartsNoGitOnceEnded(t *testing.T) {
 	if !errors.Is(err, context.Canceled) || len(snap.Reservations) != 0 {
 		t.Errorf("a spent ctx = %d reservations, %v; want none and ctx's error", len(snap.Reservations), err)
 	}
-	if n := calls(); n != 0 {
-		t.Errorf("a spent ctx still started git %d time(s)", n)
+	if n := calls(); len(n) != 0 {
+		t.Errorf("a spent ctx still started git %d time(s): %q", len(n), n)
 	}
 }
 
-// TestViewContextStopsAHungGitOnEveryRoute: each git the view starts, hung in
-// turn, is stopped when the ctx ends, and the view answers ctx's error and no
-// snapshot read in part, whichever reader the hang was in.
+// TestViewContextStopsAHungGitOnEveryRoute: the bound view makes each site
+// viewSites names (the crowded fixture, so the default branch's fallback
+// questions too), and each git it starts, hung in turn, is stopped when the
+// ctx ends, the view answering ctx's error and no snapshot read in part,
+// whichever reader the hang was in.
 func TestViewContextStopsAHungGitOnEveryRoute(t *testing.T) {
-	p := viewOnEveryRoute(t)
+	p := viewOnEveryRoute(t, true)
 	calls, _ := gitOnPath(t, 0, nil)
 	calls()
 	live, cancel := context.WithTimeout(context.Background(), time.Hour)
@@ -156,11 +274,12 @@ func TestViewContextStopsAHungGitOnEveryRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	cancel()
-	total := calls()
-	if total < 12 {
-		t.Fatalf("the view started git %d times; the fixture does not reach every reader", total)
+	log := calls()
+	checkSites(t, log, viewSites(true))
+	if t.Failed() {
+		t.Fatalf("the bound view did not make the sites named; the hangs below would prove less than they say:\n  %s", strings.Join(log, "\n  "))
 	}
-	for n := 1; n <= total; n++ {
+	for n := 1; n <= len(log); n++ {
 		t.Run("call "+strconv.Itoa(n), func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -169,14 +288,141 @@ func TestViewContextStopsAHungGitOnEveryRoute(t *testing.T) {
 			snap, err := ViewContext(ctx, p.dir, p.w.clock())
 			took := time.Since(start)
 			if !stalled() {
-				t.Fatalf("call %d never came; the test proves nothing", n)
+				t.Fatalf("call %d (%s) never came; the test proves nothing", n, log[n-1])
 			}
 			if took >= stallFor {
 				t.Errorf("the view waited out the hung git (%s)", took)
 			}
 			if !errors.Is(err, context.Canceled) || len(snap.Reservations) != 0 || snap.Generated.files != nil {
-				t.Errorf("a view whose call %d hung until the ctx ended = %d reservations, %v; want none and ctx's error", n, len(snap.Reservations), err)
+				t.Errorf("a view whose call %d (%s) hung until the ctx ended = %d reservations, %v; want none and ctx's error", n, log[n-1], len(snap.Reservations), err)
 			}
 		})
+	}
+}
+
+// boundTipOnItsOwn is a copy holding one small reservation tip, and the batch
+// budget that leaves it out of the batch, so the bound reader reads it on its
+// own: its ref, its size, and its commit.
+func boundTipOnItsOwn(t *testing.T) (p *participant, refs []string, tree string) {
+	t.Helper()
+	w := newWorld(t)
+	p = w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.reserve("iss-1", "a.go"); err != nil {
+		t.Fatal(err)
+	}
+	tree, err := emptyTree(p.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p, []string{TrackingPrefix + "iss-1"}, tree
+}
+
+// ownReadSites are the sites the bound reader makes for a small tip past a
+// budget of 0: the batch's listing and headers, then the tip's own ref, size
+// and commit.
+var ownReadSites = []viewSite{
+	{"the tip batch's listing", argvEnds(" for-each-ref --format=%(refname) %(objectname) %(objecttype) " + TrackingPrefix), 1},
+	{"the tip batch's headers", argvHas(" cat-file --batch-check="), 1},
+	{"the tip's own ref read", argvEnds(" for-each-ref --format=%(refname) %(objectname) %(objecttype) " + TrackingPrefix + "iss-1"), 1},
+	{"the tip's size", argvHas(" cat-file -s "), 1},
+	{"the tip's commit", argvHas(" cat-file commit "), 1},
+}
+
+// TestABoundTipReadOnItsOwnStopsAHungGit: a small commit past the batch's
+// budget is read on its own through the bound viewGit (its ref, its size and
+// its commit), and each git that read starts, hung in turn, is stopped when
+// the ctx ends, the read answering ctx's error rather than a tip.
+func TestABoundTipReadOnItsOwnStopsAHungGit(t *testing.T) {
+	p, refs, tree := boundTipOnItsOwn(t)
+	calls, _ := gitOnPath(t, 0, nil)
+	calls()
+	live, cancel := context.WithTimeout(context.Background(), time.Hour)
+	got := readSeenTipsWithin(viewGit{ctx: live}, p.dir, refs, tree, t0, false, 0)
+	cancel()
+	if !got[0].ok || got[0].err != nil || got[0].t.Unreadable != "" {
+		t.Fatalf("a live ctx read the small tip as %+v; the test proves nothing", got[0])
+	}
+	log := calls()
+	checkSites(t, log, ownReadSites)
+	if t.Failed() {
+		t.Fatalf("the bound reader did not make the sites named:\n  %s", strings.Join(log, "\n  "))
+	}
+	for n := 1; n <= len(log); n++ {
+		t.Run("call "+strconv.Itoa(n), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			_, stalled := gitOnPath(t, n, cancel)
+			start := time.Now()
+			got := readSeenTipsWithin(viewGit{ctx: ctx}, p.dir, refs, tree, t0, false, 0)
+			took := time.Since(start)
+			if !stalled() {
+				t.Fatalf("call %d (%s) never came; the test proves nothing", n, log[n-1])
+			}
+			if took >= stallFor {
+				t.Errorf("the read waited out the hung git (%s)", took)
+			}
+			if got[0].ok || !errors.Is(got[0].err, context.Canceled) {
+				t.Errorf("a tip read whose call %d (%s) hung until the ctx ended = %+v; want ctx's error and no tip", n, log[n-1], got[0])
+			}
+		})
+	}
+}
+
+// TestATipReadItsDeadlineEndsIsNoObjectTooBig: the hook ends its ctx by a
+// deadline, whose error reads "context deadline exceeded". A commit read that
+// deadline ends answers the deadline's error, never a tip made unreadable as
+// too big and dated from the fetch, which matched "exceeded" in the cap's
+// refusal.
+func TestATipReadItsDeadlineEndsIsNoObjectTooBig(t *testing.T) {
+	p, refs, tree := boundTipOnItsOwn(t)
+	calls, _ := gitOnPath(t, 0, nil)
+	calls()
+	start := time.Now()
+	live, cancel := context.WithTimeout(context.Background(), time.Hour)
+	readSeenTipsWithin(viewGit{ctx: live}, p.dir, refs, tree, t0, false, 0)
+	cancel()
+	took := time.Since(start)
+	log := calls()
+	n := slices.IndexFunc(log, argvHas(" cat-file commit ")) + 1
+	if n == 0 {
+		t.Fatalf("the bound reader never read the tip's commit; the test proves nothing:\n  %s", strings.Join(log, "\n  "))
+	}
+	// The deadline must fall while the commit read hangs: well after the
+	// reads before it, which took less than the whole read did, and well
+	// before the hung git would have answered.
+	wait := min(max(5*time.Second, 20*took), stallFor-15*time.Second)
+	ctx, stop := context.WithDeadline(context.Background(), time.Now().Add(wait))
+	defer stop()
+	_, stalled := gitOnPath(t, n, func() {})
+	start = time.Now()
+	got := readSeenTipsWithin(viewGit{ctx: ctx}, p.dir, refs, tree, t0, false, 0)
+	took = time.Since(start)
+	if !stalled() {
+		t.Fatalf("the commit read (call %d) never came before the deadline (%s); the test proves nothing", n, wait)
+	}
+	if took >= stallFor {
+		t.Errorf("the read waited out the hung git (%s)", took)
+	}
+	if got[0].ok || !errors.Is(got[0].err, context.DeadlineExceeded) || got[0].t.Unreadable != "" {
+		t.Errorf("a commit read the deadline ended = %+v; want the deadline's error, no tip and nothing unreadable", got[0])
+	}
+}
+
+// TestACapRefusalIsNotAContextsEnd: overCap reads the cap's own words, and a
+// context's end, whose error also says "exceeded", is never one.
+func TestACapRefusalIsNotAContextsEnd(t *testing.T) {
+	capped := errors.New("git cat-file commit x: output exceeded the 8192-byte cap; the answer would be truncated")
+	if !overCap(capped) {
+		t.Errorf("overCap(%v) = false; want the cap's refusal read as one", capped)
+	}
+	for _, err := range []error{
+		fmt.Errorf("git cat-file commit x: %w", context.DeadlineExceeded),
+		fmt.Errorf("git cat-file commit x: %w", context.Canceled),
+		errors.New("git cat-file commit x: exit status 128"),
+		nil,
+	} {
+		if overCap(err) {
+			t.Errorf("overCap(%v) = true; want it read as no cap refusal", err)
+		}
 	}
 }

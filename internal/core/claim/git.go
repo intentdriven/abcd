@@ -23,6 +23,18 @@ func trace(args ...string) {
 	}
 }
 
+// overCap reports whether err is a capped read refusing an answer past its
+// cap, matched on the cap's own words ("output exceeded the"). A read a
+// context ended is never one, though its error ends "context deadline
+// exceeded": a reader that folds an answer too big into an unreadable tip must
+// not fold the hook's deadline into one.
+func overCap(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	return strings.Contains(err.Error(), "output exceeded the")
+}
+
 // Bounds on a git command run under the developer's own configuration.
 const (
 	personalTimeout = 2 * time.Minute

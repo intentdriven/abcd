@@ -58,11 +58,13 @@ func (g viewGit) originDefault(root string) string {
 }
 
 // recordsAt is peers.RecordsAt, bound to g's context when it holds one.
+// Both arms trace the listing, as every git this package's readers start is
+// traced, though peers runs it.
 func (g viewGit) recordsAt(root, ref string) (map[string][]peers.RecordAt, error) {
+	trace("ls-tree", "-r", "-z", "--full-tree", ref, "--")
 	if !g.bound() {
 		return peers.RecordsAt(root, ref)
 	}
-	trace("ls-tree", "-r", "-z", "--full-tree", ref, "--")
 	return peers.RecordsAtContext(g.ctx, root, ref)
 }
 
@@ -92,9 +94,11 @@ func (g viewGit) ownCopyKey(root string) string {
 // check): every git the view starts runs under ctx, and none starts once ctx
 // has ended. The view folds several failures into an empty answer (a default
 // branch it could not name, a copy key or a kept first sighting it could not
-// read, the generated files), so a view ctx ended is not a view: whenever ctx
-// has ended by the time it returns, ViewContext answers ctx's error and an
-// empty snapshot, never a snapshot read in part.
+// read, the generated files, and a tip whose commit read failed past its cap,
+// which reads as an object too big), so a view ctx ended is not a view:
+// whenever ctx has ended by the time it returns, ViewContext answers ctx's
+// error and an empty snapshot, never a snapshot read in part. A commit read
+// ctx ended is not folded into an object too big at all (readCommitIn).
 func ViewContext(ctx context.Context, root string, now time.Time) (Snapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return Snapshot{}, fmt.Errorf("reading the reservations: %w", err)
