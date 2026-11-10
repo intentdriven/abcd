@@ -2,8 +2,11 @@ package machineload
 
 import (
 	"math/rand/v2"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -892,5 +895,45 @@ func TestQueuedAtNamesTheQueueAtOneGate(t *testing.T) {
 	}
 	if got := QueuedAt(Snapshot{}, self, args, false); got != nil {
 		t.Fatalf("an unread table: queued %v, want none", got)
+	}
+}
+
+// TestIsPreflightStagesCommand: the command `make preflight`'s waiter gates
+// is the Makefile's PREFLIGHT_STAGES_MAKE, read as the gate reads a make's
+// goals: make under any path, its flags and a flag's value passed over. Any
+// other goal, program, or a shell that runs the make, is not.
+func TestIsPreflightStagesCommand(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var line string
+	for _, l := range strings.Split(string(raw), "\n") {
+		if v, ok := strings.CutPrefix(l, "PREFLIGHT_STAGES_MAKE = "); ok {
+			line = v
+		}
+	}
+	if line == "" {
+		t.Fatal("the Makefile declares no PREFLIGHT_STAGES_MAKE")
+	}
+	for _, mk := range []string{"make", "/usr/bin/make", "gmake"} {
+		words := strings.Fields(strings.ReplaceAll(line, "$(MAKE)", mk))
+		if !IsPreflightStagesCommand(words) {
+			t.Errorf("the Makefile's preflight command %q is not read as the preflight's stages", words)
+		}
+	}
+	for cmd, want := range map[string]bool{
+		"make -C /work/wt preflight-stages": true,
+		"make preflight":                    false,
+		"make test":                         false,
+		"make -C preflight-stages test":     false,
+		"make GOAL=preflight-stages test":   false,
+		"go test ./...":                     false,
+		"sh -c make preflight-stages":       false,
+		"":                                  false,
+	} {
+		if got := IsPreflightStagesCommand(strings.Fields(cmd)); got != want {
+			t.Errorf("IsPreflightStagesCommand(%q) = %v, want %v", cmd, got, want)
+		}
 	}
 }

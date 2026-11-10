@@ -108,18 +108,35 @@ var makeValueFlags = []string{"-C", "-f", "-I", "-o", "-W", "--directory", "--fi
 // isPreflightMake reports whether args, a make's arguments after the program
 // name, name the goal preflight: a word that is neither a flag, the value of a
 // flag that takes the next word, nor a variable assignment.
-func isPreflightMake(args []string) bool {
+func isPreflightMake(args []string) bool { return makeNamesGoal(args, "preflight") }
+
+// makeNamesGoal reports whether args, a make's arguments after the program
+// name, name goal: a word that is neither a flag, the value of a flag that
+// takes the next word, nor a variable assignment.
+func makeNamesGoal(args []string, goal string) bool {
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
 		case slices.Contains(makeValueFlags, a):
 			i++
 		case strings.HasPrefix(a, "-"), strings.Contains(a, "="):
-		case a == "preflight":
+		case a == goal:
 			return true
 		}
 	}
 	return false
+}
+
+// PreflightStagesGoal is the goal of the command `make preflight` gates
+// through the load gate's command form: the Makefile's PREFLIGHT_STAGES_MAKE.
+const PreflightStagesGoal = "preflight-stages"
+
+// IsPreflightStagesCommand reports whether cmd, a command a waiter gates (the
+// words after `--`, its program first), is a whole preflight's stages: its
+// program is make and its goals, read as a preflight's are (isPreflightMake),
+// name PreflightStagesGoal. A shell that runs that make is not read into.
+func IsPreflightStagesCommand(cmd []string) bool {
+	return len(cmd) > 0 && isMakeName(path.Base(cmd[0])) && makeNamesGoal(cmd[1:], PreflightStagesGoal)
 }
 
 // isLoadWaiter reports whether args, abcd's arguments after the program name,
