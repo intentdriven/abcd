@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -121,5 +122,28 @@ func TestParseConfigListing(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestNewContextOnASpentDeadlineRunsNoGitAndFailsClosed: a scanner built on a
+// spent deadline runs no identity probe and is unavailable, never a scanner
+// that scans as though the caller had no identity to redact.
+func TestNewContextOnASpentDeadlineRunsNoGitAndFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	calls := countingGit(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	sc, err := NewContext(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unavail, why := sc.Unavailable(); !unavail || !strings.Contains(why, "deadline") {
+		t.Errorf("a scanner built on a spent deadline is available (%v, %q)", unavail, why)
+	}
+	if n := calls(); n != 0 {
+		t.Errorf("a spent deadline still ran git %d time(s)", n)
 	}
 }

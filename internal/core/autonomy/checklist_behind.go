@@ -1,6 +1,7 @@
 package autonomy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -193,6 +194,7 @@ var ErrChecklistNoteForeign = errors.New("the behind note in the session's state
 
 // TakeChecklistNote is the behind note the stop hook left for this session,
 // cleared as it is taken, so one note reaches one prompt; "" when none waits.
+// The state's read runs under ctx, the prompt hook's deadline.
 // The noted set is kept, so the same set is not noted again until the
 // checklist has caught up.
 //
@@ -200,8 +202,8 @@ var ErrChecklistNoteForeign = errors.New("the behind note in the session's state
 // it is cleaned as it is read, not only as it was written: one line, no
 // control or bidi character, within maxNoteBytes, and opening with the words
 // Note opens with, so it can never start a heading of its own in the prompt.
-func TakeChecklistNote(copyRoot, sessionID string) (string, error) {
-	st, err := LoadSession(copyRoot, sessionID)
+func TakeChecklistNote(ctx context.Context, copyRoot, sessionID string) (string, error) {
+	st, err := LoadSession(ctx, copyRoot, sessionID)
 	if err != nil || st.ChecklistNote == "" {
 		return "", err
 	}

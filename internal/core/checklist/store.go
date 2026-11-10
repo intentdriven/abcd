@@ -207,9 +207,10 @@ type Result struct {
 // read: only the two named paths are.
 func Read(repoRoot string) Result { return ReadContext(context.Background(), repoRoot) }
 
-// ReadContext is Read with its one git call, the tracked check, bound to ctx:
-// when ctx ends, git is killed and the read answers as for a git that could
-// not say, FromNothing. A hook reads under its own deadline through it.
+// ReadContext is Read with its git calls bound to ctx, the tracked check and
+// the scanner's identity probe: when ctx ends, git is killed and the read
+// answers as for a git that could not say, or a scanner that could not run,
+// FromNothing. A hook reads under its own deadline through it.
 func ReadContext(ctx context.Context, repoRoot string) Result {
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
@@ -226,7 +227,7 @@ func ReadContext(ctx context.Context, repoRoot string) Result {
 	if trackedErr != nil {
 		return Result{Source: FromNothing, Reason: "No checklist to show: git could not say whether the checklist files are tracked."}
 	}
-	sc, scanErr := newScanner(repoRoot)
+	sc, scanErr := newScannerContext(ctx, repoRoot)
 	judge := func(rel string) (Checklist, string) {
 		if tracked[rel] {
 			return Checklist{}, "is tracked by git, so it came with the checkout rather than from a checked write in it"
@@ -494,7 +495,14 @@ var bundledKinds = sync.OnceValue(func() map[string]bool {
 // decide and decisions stores' fail-closed stance, since a checklist is
 // re-injected into every later session.
 func newScanner(repoRoot string) (*scanner.Scanner, error) {
-	sc, err := scanner.New(repoRoot)
+	return newScannerContext(context.Background(), repoRoot)
+}
+
+// newScannerContext is newScanner with the identity probe's git calls bound to
+// ctx: a probe ctx cut short is a scanner that is unavailable, so the read
+// falls back as for any scanner that cannot run.
+func newScannerContext(ctx context.Context, repoRoot string) (*scanner.Scanner, error) {
+	sc, err := scanner.NewContext(ctx, repoRoot)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrScannerUnavailable, err)
 	}

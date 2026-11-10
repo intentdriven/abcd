@@ -806,6 +806,48 @@ func RunCappedExitOne(root string, maxBytes int, args ...string) ([]byte, bool, 
 	return runCappedExitOneCmd(isolatedGit(root, args...), maxBytes, args)
 }
 
+// RunCappedExitOneContext is RunCappedExitOne bound to ctx, for a hook on a
+// deadline: git is killed when ctx ends, its output is read to EOF before
+// Wait, and a run ctx ended answers ctx's own error, never a partial answer.
+func RunCappedExitOneContext(ctx context.Context, root string, maxBytes int, args ...string) ([]byte, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, false, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+	w := &capWriter{remaining: maxBytes}
+	e := &capWriter{remaining: 4096}
+	err := procgroup.RunToEOF(ctx, isolatedGitContext(ctx, root, args...), w, e)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, false, fmt.Errorf("git %s: %w", strings.Join(args, " "), ctxErr)
+	}
+	one := false
+	if err != nil {
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) || ee.ExitCode() != 1 {
+			return nil, false, fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
+		}
+		one = true
+	}
+	if w.overflowed {
+		return nil, false, fmt.Errorf("git %s: output exceeded the %d-byte cap", strings.Join(args, " "), maxBytes)
+	}
+	return w.buf, one, nil
+}
+
+// RunCappedContext is RunCapped bound to ctx (RunLimitedContext's runner): an
+// answer past maxBytes is an error, never a truncated string, and a run ctx
+// ended answers ctx's own error.
+func RunCappedContext(ctx context.Context, root string, maxBytes int, args ...string) (string, error) {
+	out, overflowed, err := runLimitedOverflow(ctx, root, maxBytes, false, args)
+	if err != nil {
+		return "", err
+	}
+	if overflowed {
+		return "", fmt.Errorf("git %s: output exceeded the %d-byte cap; the answer would be truncated, and a truncated history is a wrong one",
+			strings.Join(args, " "), maxBytes)
+	}
+	return out, nil
+}
+
 // runCappedExitOneCmd is RunCappedExitOne's body, for an isolated command
 // already built.
 func runCappedExitOneCmd(cmd *exec.Cmd, maxBytes int, args []string) ([]byte, bool, error) {

@@ -109,6 +109,23 @@ func readAwayFailOpen(stderr io.Writer, cwd string) (*autonomy.Record, bool, boo
 // say nothing, and run no git at all where the checkout's .git is a folder.
 func managedRoot(cwd string) (string, bool) { return managedRootContext(context.Background(), cwd) }
 
+// looksManaged reports, running no git, whether cwd stands in a checkout whose
+// root holds a .abcd/ folder: what a hook whose deadline was spent before it
+// could name the checkout asks before it says so, so a checkout abcd does not
+// manage hears nothing. A linked worktree whose .abcd/ is only in its main
+// worktree cannot be told without git, and stays silent.
+func looksManaged(cwd string) bool {
+	if cwd == "" {
+		return false
+	}
+	shaped := gitutil.RepoShapedRoot(cwd)
+	if shaped == "" {
+		return false
+	}
+	fi, err := os.Lstat(filepath.Join(shaped, ".abcd"))
+	return err == nil && fi.IsDir()
+}
+
 // managedRootContext is managedRoot with its git calls bound to ctx, for a
 // hook on a deadline: a call ctx ended answers false, and the caller tells a
 // spent deadline from an unmanaged checkout by ctx.Err.

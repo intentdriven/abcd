@@ -109,7 +109,7 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 	if o.Root == "" {
 		return Owed{}, errors.New("autonomy: no working copy to read the owed work of")
 	}
-	root, err := gitutil.CheckoutRoot(o.Root, StoreName)
+	root, err := gitutil.CheckoutRootContext(ctx, o.Root, StoreName)
 	if err != nil {
 		return Owed{}, err
 	}
@@ -173,7 +173,7 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 			r.note("the forge listed %d open pull requests, its limit, so the listing may be truncated: a reservation no listed pull request carries is not counted as uncarried", len(r.list.prs))
 		}
 	}
-	r.receiptsMinted = receiptsMinted(root)
+	r.receiptsMinted = receiptsMinted(ctx, root)
 	r.readLanes()
 	r.findOwn()
 	r.scope()
@@ -348,7 +348,7 @@ func (r *owedReader) ranOut(what string) {
 // readRefs reads the default branch as last fetched and every local branch
 // with its head and upstream.
 func (r *owedReader) readRefs() {
-	r.def = gitutil.DefaultRef(r.root)
+	r.def = gitutil.DefaultRefContext(r.ctx, r.root)
 	switch {
 	case strings.HasPrefix(r.def, "refs/remotes/"):
 		parts := strings.SplitN(strings.TrimPrefix(r.def, "refs/remotes/"), "/", 2)
@@ -416,8 +416,8 @@ func (r *owedReader) liveMine(id string) bool {
 
 // receiptsMinted reports whether the repository mints preflight receipts: a
 // receipt folder exists in one of its worktrees.
-func receiptsMinted(root string) bool {
-	wts, err := gitutil.ListWorktrees(root, gitutil.MaxWorktreeListing)
+func receiptsMinted(ctx context.Context, root string) bool {
+	wts, err := gitutil.ListWorktreesContext(ctx, root, gitutil.MaxWorktreeListing)
 	if err != nil {
 		return false
 	}
@@ -590,7 +590,7 @@ func (r *owedReader) recordedBranches() []string {
 	if key == "" || r.home == "" {
 		return nil
 	}
-	st, err := openStore(r.home, r.root)
+	st, err := openStoreContext(r.ctx, r.home, r.root)
 	if err != nil {
 		return nil
 	}
@@ -737,7 +737,7 @@ func (r *owedReader) findOwn() {
 // checked out, each with that worktree's path.
 func (r *owedReader) checkedOutElsewhere() map[string]string {
 	out := map[string]string{}
-	wts, err := gitutil.ListWorktrees(r.root, gitutil.MaxWorktreeListing)
+	wts, err := gitutil.ListWorktreesContext(r.ctx, r.root, gitutil.MaxWorktreeListing)
 	if err != nil {
 		return out
 	}
@@ -1164,10 +1164,10 @@ func (r *owedReader) landed(b *localBranch) landedness {
 	if r.defTip == "" || r.expired() {
 		return landedUnknown
 	}
-	if overrides, err := gitutil.MergeDriverOverrides(r.root); err == nil {
+	if overrides, err := gitutil.MergeDriverOverridesContext(r.ctx, r.root); err == nil {
 		args := append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriver(), "-c", "merge.renormalize=false",
 			"merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", r.defTip, b.head)
-		out, conflicted, err := gitutil.RunCappedExitOne(r.root, maxLandedOutput, args...)
+		out, conflicted, err := gitutil.RunCappedExitOneContext(r.ctx, r.root, maxLandedOutput, args...)
 		if err == nil && !conflicted {
 			tree, _, _ := strings.Cut(string(out), "\x00")
 			tree = strings.TrimSpace(tree)

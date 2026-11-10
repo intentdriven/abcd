@@ -18,7 +18,7 @@ func TestASessionStateACommitCarriesIsRefused(t *testing.T) {
 	if err := SaveSession(root, "sess-1", SessionState{SchemaVersion: SchemaVersion}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadSession(root, "sess-1"); err != nil {
+	if _, err := LoadSession(context.Background(), root, "sess-1"); err != nil {
 		t.Fatalf("this copy's own state: %v", err)
 	}
 	for _, args := range [][]string{{"init", "-q"}, {"add", "-f", "--", path.Join(SessionsDir, "sess-1.json")}} {
@@ -28,7 +28,7 @@ func TestASessionStateACommitCarriesIsRefused(t *testing.T) {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
 	}
-	if _, err := LoadSession(root, "sess-1"); err == nil || !strings.Contains(err.Error(), "git tracks") {
+	if _, err := LoadSession(context.Background(), root, "sess-1"); err == nil || !strings.Contains(err.Error(), "git tracks") {
 		t.Fatalf("LoadSession over a tracked state = %v; want it refused as tracked", err)
 	}
 }
@@ -46,5 +46,35 @@ func TestALaneCheckTheBudgetEndedIsACutReading(t *testing.T) {
 	r.readLanes()
 	if !r.cut || len(r.lanes) != 0 {
 		t.Fatalf("a lane check the budget ended: cut %v, %d lanes; want a cut reading", r.cut, len(r.lanes))
+	}
+}
+
+// TestTheStopAndPromptReadsRunNoGitOnASpentDeadline: the session's state, the
+// behind note, the copy's resolution and the owed reading all run their git
+// under the hook's ctx, so a spent deadline runs none and each read refuses.
+func TestTheStopAndPromptReadsRunNoGitOnASpentDeadline(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	repo.Commit("seed")
+	root := repo.Root()
+	if err := SaveSession(root, "sess-1", SessionState{SchemaVersion: SchemaVersion, ChecklistNote: notePrefix + "x"}); err != nil {
+		t.Fatal(err)
+	}
+	calls := countGit(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := LoadSession(ctx, root, "sess-1"); err == nil {
+		t.Error("LoadSession read the state on a spent deadline")
+	}
+	if note, err := TakeChecklistNote(ctx, root, "sess-1"); err == nil || note != "" {
+		t.Errorf("TakeChecklistNote took %q on a spent deadline", note)
+	}
+	if _, _, err := ResolveCopyContext(ctx, root, "sess-1", Options{Home: t.TempDir()}); err == nil {
+		t.Error("ResolveCopyContext resolved on a spent deadline")
+	}
+	if _, err := ReadOwed(ctx, ReadOptions{Root: root, Home: t.TempDir()}); err == nil {
+		t.Error("ReadOwed read on a spent deadline")
+	}
+	if n := calls(); n != 0 {
+		t.Errorf("a spent deadline still ran git %d time(s)", n)
 	}
 }

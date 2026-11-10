@@ -55,6 +55,12 @@ var stopClock = func() (time.Time, *time.Location) { return time.Now(), nil }
 // A var only so a test can spend it.
 var stopReadBudget = 14 * time.Second
 
+// stopStateBudget bounds the away session's state read, the one git call it
+// makes (the tracked check) included, which follows the owed read and so
+// starts once stopReadBudget may already be spent: two seconds keeps the hook
+// within the twenty the read budget's comment counts.
+var stopStateBudget = 2 * time.Second
+
 // stopBlockCapEnv names the host's setting that raises its continuation cap.
 const stopBlockCapEnv = "CLAUDE_CODE_STOP_HOOK_BLOCK_CAP"
 
@@ -158,10 +164,11 @@ nothing.`,
 				return stopAllow(cmd, "unreadable Stop payload (%s)", termsafe.Sanitize(err.Error()))
 			}
 			// Naming the checkout and the session's copy run under the one
-			// deadline too, so no git call the hook makes outlasts it.
+			// deadline too. The reservations' reader, inside the owed read,
+			// is the one git reader on this path not yet bound to it.
 			root, ok := managedRootContext(ctx, p.Cwd)
 			if !ok {
-				if ctx.Err() != nil {
+				if ctx.Err() != nil && looksManaged(p.Cwd) {
 					return stopAllow(cmd, "the checkout was not named in the stop check's time")
 				}
 				return nil // not a checkout abcd manages: nothing to check, and no git spent
@@ -193,7 +200,12 @@ nothing.`,
 			}
 			var prev autonomy.SessionState
 			if away {
-				if prev, err = autonomy.LoadSession(copyRoot, p.SessionID); err != nil {
+				// The state is read after the owed read's budget, as
+				// stopReadBudget counts it, under a short bound of its own.
+				sctx, scancel := context.WithTimeout(context.Background(), stopStateBudget)
+				prev, err = autonomy.LoadSession(sctx, copyRoot, p.SessionID)
+				scancel()
+				if err != nil {
 					return stopAllow(cmd, "the session's state could not be read (%s)", fsutil.RedactHome(err.Error()))
 				}
 			}
@@ -245,7 +257,7 @@ func stopChecklistBehind(ctx context.Context, cmd *cobra.Command, copyRoot, sess
 		return v
 	}
 	if !away {
-		st, err := autonomy.LoadSession(copyRoot, sessionID)
+		st, err := autonomy.LoadSession(ctx, copyRoot, sessionID)
 		if err != nil {
 			diagnosticLine(cmd.ErrOrStderr(), "abcd stop: the session's state could not be read (%s); no checklist note is left", fsutil.RedactHome(err.Error()))
 			return v

@@ -42,10 +42,10 @@ const (
 
 // sessionStartBudget is the session-start hook's one deadline, counted from
 // the hook's start: the checklist's part of the hook runs under it, every git
-// call included, the checkout root's lookup and the read's tracked check, and
-// a deadline spent before or during it leaves the checklist out of this
-// start, said on stderr. The host gives the hook's
-// shell 240 seconds, a first run's download of the binary among them, so a
+// call included (the checkout root's lookup, the read's tracked check and the
+// scanner's identity probe), and a deadline spent before or during it leaves
+// the checklist out of this start, said on stderr in a checkout abcd manages.
+// The host gives the hook's shell 240 seconds, a first run's download of the binary among them, so a
 // minute keeps the read well inside what the host allows.
 //
 // A var only so a test can spend it.
@@ -69,7 +69,8 @@ func emitSessionStart(ctx context.Context, cmd *cobra.Command, composed, cwd str
 // session with a checklist"), and otherwise checklist.Render of what the
 // reader returns, which carries its own line when it fell back or found
 // nothing usable. It reads no network and writes nothing. Its git calls, the
-// root's lookup and the read's, run under the hook's deadline (ctx): a
+// root's lookup and the read's (the tracked check and the scanner's identity
+// probe), run under the hook's deadline (ctx): a
 // deadline spent before or during them leaves the checklist out and says so on
 // stderr, so a checklist git did not answer for in time is never shown as one
 // git could not judge, and a spent deadline runs no git at all.
@@ -85,11 +86,15 @@ func sessionStartChecklist(ctx context.Context, stderr io.Writer, cwd string, bu
 	if stageActive() {
 		return ""
 	}
+	// A spent deadline is named only where abcd manages the checkout, asked
+	// with no git (looksManaged): any other checkout hears nothing.
 	spent := func() bool {
 		if ctx.Err() == nil {
 			return false
 		}
-		diagnosticLine(stderr, "abcd checklist: the checklist was not read at this start, the hook's time being spent; `abcd checklist` shows it")
+		if looksManaged(cwd) {
+			diagnosticLine(stderr, "abcd checklist: the checklist was not read at this start, the hook's time being spent; `abcd checklist` shows it")
+		}
 		return true
 	}
 	// A deadline already spent runs no git at all, not even the root's.
@@ -164,7 +169,7 @@ func checklistPromptNote(ctx context.Context, stderr io.Writer, cwd, sessionID s
 	if err != nil {
 		return ""
 	}
-	note, err := autonomy.TakeChecklistNote(copyRoot, sessionID)
+	note, err := autonomy.TakeChecklistNote(ctx, copyRoot, sessionID)
 	if err != nil {
 		diagnosticLine(stderr, "abcd checklist: no behind note is shown (%s)", fsutil.RedactHome(err.Error()))
 		return ""
