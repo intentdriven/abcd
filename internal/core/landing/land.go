@@ -1386,10 +1386,35 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 		res.add("enqueue", StatusDone, note+reviewText(s)+"; it is already in the merge queue", "")
 		return nil
 	}
+	// This account's arming on a head other than the one land gated may merge
+	// a commit land did not check: refused, as after a fresh arming, and before
+	// the dependency check, whose wait would hide it.
+	if s.ownArming() && s.HeadRefOid != res.Head {
+		return refuse(fmt.Sprintf("pull request #%s is armed by this account, but its head on the forge is %s, not %s, the head land gated, so the arming may merge a commit land did not check", n, short(s.HeadRefOid), short(res.Head)),
+			"withdraw the arming (gh pr merge "+n+" --disable-auto), bring the branch to the commit you mean to merge (pull the forge's head, or push the gated one), then run abcd land again: land gates and arms only the branch's local head")
+	}
 	// The dependency check (depends.go), before land arms or toggles anything:
-	// a pull request another account armed is reported below as before.
+	// a pull request another account armed is reported below as before. This
+	// account's arming already in place comes off on a wait or a refusal, the
+	// forge asked again that it did.
 	if !s.armed() || s.ownArming() {
-		if held, err := dependsHold(res, o, dir, owner, name, pr.Number, s.armed()); err != nil || held {
+		var withdraw func() error
+		if s.armed() {
+			withdraw = func() error {
+				if err := WithdrawArming(func(args ...string) (string, error) { return o.Forge(dir, args...) }, n, "", true, false); err != nil {
+					return err
+				}
+				again, err := view()
+				if err != nil {
+					return err
+				}
+				if again.armed() || again.IsInMergeQueue {
+					return errors.New("the forge still reports it armed after the withdrawal")
+				}
+				return nil
+			}
+		}
+		if held, err := dependsHold(res, o, dir, owner, name, pr.Number, withdraw); err != nil || held {
 			return err
 		}
 	}
@@ -1406,13 +1431,8 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 	case s.armed():
 		// This account's arming, land's own from an earlier run (the forge
 		// cannot tell land's arming from the person's own): the grace below
-		// decides whether it has sat long enough to toggle.
-		// An arming on a head other than the one land gated may merge a commit
-		// land did not check: refused, as after a fresh arming.
-		if s.HeadRefOid != res.Head {
-			return refuse(fmt.Sprintf("pull request #%s is armed by this account, but its head on the forge is %s, not %s, the head land gated, so the arming may merge a commit land did not check", n, short(s.HeadRefOid), short(res.Head)),
-				"withdraw the arming (gh pr merge "+n+" --disable-auto), bring the branch to the commit you mean to merge (pull the forge's head, or push the gated one), then run abcd land again: land gates and arms only the branch's local head")
-		}
+		// decides whether it has sat long enough to toggle. Its head is the one
+		// land gated: another was refused above.
 		note = "pull request #" + n + " is already armed (" + armedMethod(s) + ") by this account"
 		rearm = rearmArgs(s, n, res.Head)
 	default:

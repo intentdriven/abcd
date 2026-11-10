@@ -43,6 +43,11 @@ import (
 // wait open-ended by stating a limit of centuries.
 const MaxWaitLimit = 24 * time.Hour
 
+// RefusedAtOnce begins the reason of a refusal no wait can release (a closed
+// or missing dependency, or a cycle), so a caller can tell it from a refusal
+// of the wait's start or deadline, which leave Until zero too.
+const RefusedAtOnce = "refused at once, since no wait can release it: "
+
 const (
 	// maxNamed is the most defects the one error names, and the most numbers
 	// a reason lists; the rest are counted, never listed.
@@ -287,7 +292,7 @@ func decide(r Records, states map[int]State, cycle cycleReach, c Change) Decisio
 	}
 	if len(causes) > 0 {
 		return Decision{Change: c.Number, Action: ActionRefuse, WaitsOn: waits,
-			Reason: "refused at once, since no wait can release it: " + strings.Join(causes, "; ")}
+			Reason: RefusedAtOnce + strings.Join(causes, "; ")}
 	}
 	on := names(waits)
 	if c.WaitingSince.IsZero() {

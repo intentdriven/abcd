@@ -183,7 +183,11 @@ func TestLandRefusesWhatNoWaitCanRelease(t *testing.T) {
 		{"itself", "Depends-On: #7", nil, dependsAt,
 			prefix + "refused at once, since no wait can release it: is on or reaches a cycle of unmerged changes among #7" + reword},
 		{"at the deadline", "Depends-On: #5", map[int]string{5: openDep(5, "")}, dependsDeadline,
-			prefix + "waited on #5 for the 24h0m0s limit since 2026-11-10T08:00:00Z; deadline 2026-11-11T08:00:00Z reached; merge #5 first and run abcd land again, or remove the Depends-On line from #7's body (gh pr edit 7 --body-file <file>) if #7 need not wait for it"},
+			prefix + "#5 has not merged, and the 24 hours #7 may wait for it, from its opening at 2026-11-10T08:00:00Z, ended at 2026-11-11T08:00:00Z; merge #5 first and run abcd land again, or remove the Depends-On line from #7's body (gh pr edit 7 --body-file <file>) if #7 need not wait for it"},
+		// A line added to a pull request opened more than 24 hours earlier
+		// is refused at once, and the text does not say it waited.
+		{"a line added past the deadline, two dependencies", "Depends-On: #5, #6", map[int]string{5: openDep(5, ""), 6: openDep(6, "")}, dependsDeadline.Add(72 * time.Hour),
+			prefix + "#5, #6 have not merged, and the 24 hours #7 may wait for them, from its opening at 2026-11-10T08:00:00Z, ended at 2026-11-11T08:00:00Z; merge #5, #6 first and run abcd land again, or remove the Depends-On line from #7's body (gh pr edit 7 --body-file <file>) if #7 need not wait for it"},
 		{"a start later than the clock", "Depends-On: #5", map[int]string{5: openDep(5, "")}, time.Date(2026, 11, 10, 7, 59, 59, 0, time.UTC),
 			prefix + "waits on #5 from a recorded start of 2026-11-10T08:00:00Z, later than the records' time of 2026-11-10T07:59:59Z, so no deadline is derived from it; check this computer's clock against the forge's, then run abcd land again"},
 		{"no pull request", "Depends-On: #5", map[int]string{5: notFound}, dependsAt,
@@ -224,6 +228,35 @@ func TestLandRefusesWhatNoWaitCanRelease(t *testing.T) {
 			"the forge's answer for pull request #7 no longer reads it as open into main and outside the merge queue, so land cannot judge its dependencies, and nothing was armed; run abcd land again"},
 		{"its own pull request into another base", "", map[int]string{7: dependsPRAnswer(7, "OPEN", false, "release", dependsCreated, "")}, dependsAt,
 			"the forge's answer for pull request #7 no longer reads it as open into main and outside the merge queue, so land cannot judge its dependencies, and nothing was armed; run abcd land again"},
+		{"its own pull request answered as missing", "", map[int]string{7: strings.ReplaceAll(notFound, "of 5.", "of 7.")}, dependsAt,
+			"the forge's answer for pull request #7 no longer reads it as open into main and outside the merge queue, so land cannot judge its dependencies, and nothing was armed; run abcd land again"},
+		{"no pull request and no error", "Depends-On: #5", map[int]string{5: `{"data":{"repository":{"pullRequest":null}}}`}, dependsAt,
+			"the forge has no pull request #5 in o/r, so it cannot be resolved as a dependency of #7, and nothing was armed" + resolve("5")},
+		{"a dependency merged into another base", "Depends-On: #5", map[int]string{5: dependsPRAnswer(5, "MERGED", false, "release", dependsCreated, "")}, dependsAt,
+			"pull request #5 merges into another branch than the default branch main, so it cannot be resolved as a dependency of #7, and nothing was armed" + resolve("5")},
+		// The fix follows the reason: a refusal at once takes the reword fix,
+		// the clock fix only the start later than the clock.
+		{"closed unmerged with a start later than the clock", "Depends-On: #5", map[int]string{5: dependsPRAnswer(5, "CLOSED", false, "main", dependsCreated, "")}, time.Date(2026, 11, 10, 7, 59, 59, 0, time.UTC),
+			prefix + "refused at once, since no wait can release it: depends on #5, closed unmerged" + reword},
+		// A creation time that parses to the zero time is no start at all.
+		{"its own creation time the zero time", "Depends-On: #5", map[int]string{7: dependsPRAnswer(7, "OPEN", false, "main", "0001-01-01T00:00:00Z", "Depends-On: #5"), 5: openDep(5, "")}, dependsAt,
+			"the forge gives pull request #7 no creation time land can read, so no deadline can be derived for its wait on its dependencies, and nothing was armed" + settle("7")},
+		// The client's message for that number, whole, and nothing else, is
+		// no pull request; beside any other text it is a forge not asked.
+		{"the client's message for that number beside another", "Depends-On: #5", map[int]string{5: "!gh api graphql: exit status 1 (gh: rate limited\ngh: Could not resolve to a PullRequest with the number of 5.)"}, dependsAt,
+			"the forge could not be asked for pull request #5, so land cannot judge #7's dependencies, and nothing was armed: gh api graphql: exit status 1 (gh: rate limited?gh: Could not resolve to a PullRequest with the number of 5.)" + settle("5")},
+		{"the client's message for that number after other text", "Depends-On: #5", map[int]string{5: "!gh api graphql: exit status 1 (x (gh: Could not resolve to a PullRequest with the number of 5.)"}, dependsAt,
+			"the forge could not be asked for pull request #5, so land cannot judge #7's dependencies, and nothing was armed: gh api graphql: exit status 1 (x (gh: Could not resolve to a PullRequest with the number of 5.)" + settle("5")},
+		// A NOT_FOUND for the repository, or one with no path, is no missing
+		// pull request.
+		{"no repository, not found", "Depends-On: #5", map[int]string{5: `{"data":{"repository":null},"errors":[{"type":"NOT_FOUND","path":["repository"],"message":"Could not resolve to a Repository with the name 'o/r'."}]}`}, dependsAt,
+			"the forge answered the query for pull request #5 with errors, so land cannot judge #7's dependencies, and nothing was armed: Could not resolve to a Repository with the name 'o/r'." + settle("5")},
+		{"a not-found error with no path", "Depends-On: #5", map[int]string{5: `{"data":{"repository":{"pullRequest":null}},"errors":[{"type":"NOT_FOUND","message":"y"}]}`}, dependsAt,
+			"the forge answered the query for pull request #5 with errors, so land cannot judge #7's dependencies, and nothing was armed: y" + settle("5")},
+		// A body with no Depends-On line over the bound in bytes, though
+		// under it in characters, is refused all the same.
+		{"a body with no line of 65537 bytes", strings.Repeat("語", 21845) + "xx", nil, dependsAt,
+			"pull request #7's body cannot be read for its dependencies, so nothing was armed: the body is 65537 bytes, above the most of 65536; edit #7's body on the forge (gh pr edit 7 --body-file <file>), then run abcd land again"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f, o := dependsFixture(t, c.body, c.deps, c.clock)
@@ -320,32 +353,91 @@ func TestLandReportsAQueuedOrOtherArmedPullRequestWithoutReadingDependencies(t *
 // CLEAN outside the queue.
 const ownArmed = `{"data":{"viewer":{"login":"alice"},"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":false,"autoMergeRequest":{"mergeMethod":"MERGE","enabledAt":"2026-11-10T08:30:00Z","enabledBy":{"login":"alice"}},"headRefOid":"@HEAD@"}}}}`
 
-// This account's arming already in place is left as it is on a wait or a
-// refusal, and the note or the refusal says so and how to withdraw it; nothing
-// is toggled.
-func TestLandLeavesThisAccountsArmingOnAWaitAndSaysSo(t *testing.T) {
+// ownDisarmed is ownArmed once its arming came off.
+const ownDisarmed = `{"data":{"viewer":{"login":"alice"},"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":false,"autoMergeRequest":null,"headRefOid":"@HEAD@"}}}}`
+
+// withdrewOnly fails the test unless the landing withdrew #7's arming once and
+// armed nothing.
+func withdrewOnly(t *testing.T, f *fixture) {
+	t.Helper()
+	if f.forge.called("pr", "merge", "7", "--disable-auto") != 1 || f.forge.called("pr", "merge") != 1 {
+		t.Fatalf("forge calls %v: want one withdrawal of #7 and nothing armed", f.forge.calls)
+	}
+}
+
+// This account's arming already in place is withdrawn on a wait or a
+// refusal, since it could merge the pull request before what it depends on,
+// and the note or the refusal says so; the forge is asked again that it came
+// off.
+func TestLandWithdrawsThisAccountsArmingOnAWaitOrARefusal(t *testing.T) {
 	f, o := dependsFixture(t, "Depends-On: #5", map[int]string{5: openDep(5, "")}, dependsAt)
 	f.forge.views = nil
-	f.forge.answer = ownArmed
+	f.forge.answers = []string{ownArmed, ownDisarmed}
 	res, err := f.land(o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	noArming(t, f)
-	want := "pull request #7 depends on #5, which has not merged, so nothing was armed: run abcd land again after it merges; the wait is refused from 2026-11-11T08:00:00Z, 24 hours after #7 was opened; this account's arming already in place is left as it is: withdraw it (gh pr merge 7 --disable-auto) if #7 must not merge first"
+	withdrewOnly(t, f)
+	want := "pull request #7 depends on #5, which has not merged, so land withdrew this account's earlier arming: run abcd land again after it merges; the wait is refused from 2026-11-11T08:00:00Z, 24 hours after #7 was opened"
 	if s := step(t, res, "enqueue"); s.Status != StatusStopped || s.Note != want {
 		t.Fatalf("enqueue step %+v\n want stopped, saying %q", s, want)
 	}
 
-	// And on a refusal: the arming is left, and the refusal says so.
 	f, o = dependsFixture(t, "Depends-On: #5", map[int]string{5: dependsPRAnswer(5, "CLOSED", false, "main", dependsCreated, "")}, dependsAt)
 	f.forge.views = nil
-	f.forge.answer = ownArmed
+	f.forge.answers = []string{ownArmed, ownDisarmed}
 	_, err = f.land(o)
 	var r *Refusal
-	want = "pull request #7's dependencies refuse it, so nothing was armed: refused at once, since no wait can release it: depends on #5, closed unmerged; this account's arming already in place is left as it is: withdraw it (gh pr merge 7 --disable-auto) if #7 must not merge first; reword #7's Depends-On line (gh pr edit 7 --body-file <file>) so it names only open or merged pull requests into main with no cycle among them, or remove it, then run abcd land again"
+	want = "pull request #7's dependencies refuse it, so land withdrew this account's earlier arming: refused at once, since no wait can release it: depends on #5, closed unmerged; reword #7's Depends-On line (gh pr edit 7 --body-file <file>) so it names only open or merged pull requests into main with no cycle among them, or remove it, then run abcd land again"
 	if !errors.As(err, &r) || r.Error() != want {
 		t.Fatalf("err = %v\n want %q", err, want)
+	}
+	withdrewOnly(t, f)
+}
+
+// A withdrawal that fails, or that the forge does not confirm, refuses and
+// tells the author to withdraw the arming by hand.
+func TestLandRefusesWhenItCannotWithdrawThisAccountsArming(t *testing.T) {
+	fix := "; withdraw it yourself (gh pr merge 7 --disable-auto), then run abcd land again, which says what holds it"
+	for _, c := range []struct {
+		name       string
+		failDisarm bool
+		answers    []string
+		want       string
+	}{
+		{"the withdrawal fails", true, []string{ownArmed}, "pull request #7 is held by its dependencies, and land could not withdraw this account's earlier arming, which can merge #7 before them: fake forge: the disarm failed" + fix},
+		{"the forge still reports it armed", false, []string{ownArmed, ownArmed}, "pull request #7 is held by its dependencies, and land could not withdraw this account's earlier arming, which can merge #7 before them: the forge still reports it armed after the withdrawal" + fix},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f, o := dependsFixture(t, "Depends-On: #5", map[int]string{5: openDep(5, "")}, dependsAt)
+			f.forge.views = nil
+			f.forge.answers = c.answers
+			f.forge.failDisarm = c.failDisarm
+			_, err := f.land(o)
+			var r *Refusal
+			if !errors.As(err, &r) || r.Held || r.Error() != c.want {
+				t.Fatalf("err = %v\n want %q", err, c.want)
+			}
+			if f.forge.called("pr", "merge", "7", "--auto") != 0 {
+				t.Fatalf("forge calls %v: want nothing armed", f.forge.calls)
+			}
+		})
+	}
+}
+
+// This account's arming at a head land did not gate is refused before the
+// dependency check, which reads nothing: a wait would hide it.
+func TestLandRefusesThisAccountsArmingAtAnotherHeadBeforeTheDependencies(t *testing.T) {
+	f, o := dependsFixture(t, "Depends-On: #5", map[int]string{5: openDep(5, "")}, dependsAt)
+	f.forge.views = nil
+	f.forge.answer = strings.ReplaceAll(ownArmed, "@HEAD@", strings.Repeat("b", 40))
+	_, err := f.land(o)
+	var r *Refusal
+	if !errors.As(err, &r) || !strings.HasPrefix(r.Reason, "pull request #7 is armed by this account, but its head on the forge is bbbbbbb") {
+		t.Fatalf("err = %v, want the refusal of this account's arming at another head", err)
+	}
+	if got := f.forge.dependsReads(); len(got) != 0 {
+		t.Fatalf("dependency reads %v, want none", got)
 	}
 	noArming(t, f)
 }

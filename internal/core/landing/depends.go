@@ -7,20 +7,35 @@ package landing
 // reads its own pull request and, through their own Depends-On lines, the
 // pull requests it depends on, builds the records the coordination pass reads
 // and acts on the pass's decision for its own pull request alone: queue goes
-// on as before, wait stops with nothing armed, refuse refuses.
+// on as before, wait stops with nothing armed, refuse refuses. This account's
+// arming already in place is withdrawn on a wait or a refusal (WithdrawArming),
+// since it could merge the pull request before what it depends on; a
+// withdrawal that fails, or that the forge does not confirm, refuses with the
+// command that withdraws it by hand. Another account's arming, and a pull
+// request already queued, are never judged here: land reports them with their
+// dependencies unread.
 //
-// Every body and every forge answer is untrusted. The bodies are read by
-// coord.ParseDependsOn, which fails closed and quotes no body text; only
+// Every body and every forge answer is untrusted. The bodies of the dependant
+// and of each dependency still open or queued are read by
+// coord.ParseDependsOn, which fails closed and quotes no body text; a merged
+// or closed dependency's body is not read. Only
 // numbers, the forge's times as UTC and a state cut to maxForgeStateRunes,
 // sanitised, reach a note or a refusal. What only the forge can know, why a
 // number has no record, is refused here before the pass: a number the forge
 // answers with no pull request, a pull request into another base than the
-// default branch, a state land cannot map, a creation time it cannot read,
-// and a walk past maxDependsReads pull requests.
+// default branch (merged there or not), a state land cannot map, a creation
+// time it cannot read or that is the zero time, and a walk past
+// maxDependsReads pull requests. A dependency the forge reports MERGED into
+// the default branch is satisfied however it merged; a later revert of it is
+// not read.
 //
 // The wait's start is the dependant's createdAt as the forge reports it: set
-// once, and no agent can move it. Its limit is dependsWaitLimit. A start
-// later than the clock (Options.Now) is refused, with no allowance for skew.
+// when the pull request is opened, and no agent can move it. A reopened pull
+// request keeps it; a new pull request for the same branch has its own, and so
+// a fresh dependsWaitLimit. A Depends-On line added to a pull request opened
+// more than dependsWaitLimit ago is refused at once, as a wait past its
+// deadline. A start later than the clock (Options.Now) is refused, with no
+// allowance for skew.
 // Rebuilding a dependant on the default branch once its dependency merges is
 // not done here (the spec's step 2b).
 
@@ -88,6 +103,9 @@ type dependsCheck struct {
 	def              string
 	self             int
 	reads            int
+	// none is what the check's texts say became of the arming: nothing was
+	// armed, or this account's earlier arming was withdrawn.
+	none string
 }
 
 // cannot is the fix for a forge answer about pull request n that land cannot
@@ -104,8 +122,9 @@ func (c *dependsCheck) rewording(n int) string {
 
 // readPR reads pull request n. ok is false, with a nil error, when the forge
 // answers that n is no pull request: no pull request in its data, and every
-// error it gives of type NOT_FOUND, or the forge client failing with its
-// message for that number (gh exits 1 on such an answer, read 2026-11-10).
+// error it gives of type NOT_FOUND at the pull request (pullRequestNotFound),
+// or the forge client failing with its message for that number and nothing
+// else (noSuchPR; gh exits 1 on such an answer, read 2026-11-10).
 func (c *dependsCheck) readPR(n int) (dependsPR, bool, error) {
 	c.reads++
 	raw, err := c.o.Forge(c.dir, dependsArgs(c.owner, c.name, n)...)
@@ -115,45 +134,57 @@ func (c *dependsCheck) readPR(n int) (dependsPR, bool, error) {
 	// The forge client exits 1 on an answer carrying errors, and its stdout,
 	// the NOT_FOUND answer, is not kept: what reaches here of a number with no
 	// pull request is the client's message, which names the number.
-	if err != nil && strings.Contains(err.Error(), fmt.Sprintf("Could not resolve to a PullRequest with the number of %d.", n)) {
+	if err != nil && noSuchPR(err, n) {
 		return dependsPR{}, false, nil
 	}
 	if err != nil {
-		return dependsPR{}, false, refuse(fmt.Sprintf("the forge could not be asked for pull request #%d, so land cannot judge #%d's dependencies, and nothing was armed: %s", n, c.self, termsafe.Sanitize(fsutil.RedactHome(err.Error()))), c.cannot(n))
+		return dependsPR{}, false, refuse(fmt.Sprintf("the forge could not be asked for pull request #%d, so land cannot judge #%d's dependencies, and %s: %s", n, c.self, c.none, termsafe.Sanitize(fsutil.RedactHome(err.Error()))), c.cannot(n))
 	}
 	var a dependsAnswer
 	if json.Unmarshal([]byte(raw), &a) != nil {
-		return dependsPR{}, false, refuse(fmt.Sprintf("the forge's answer for pull request #%d does not parse, so land cannot judge #%d's dependencies, and nothing was armed", n, c.self), c.cannot(n))
+		return dependsPR{}, false, refuse(fmt.Sprintf("the forge's answer for pull request #%d does not parse, so land cannot judge #%d's dependencies, and %s", n, c.self, c.none), c.cannot(n))
 	}
 	var pr *dependsPR
 	if a.Data.Repository != nil {
 		pr = a.Data.Repository.PullRequest
 	}
-	if pr == nil && len(a.Errors) > 0 && allNotFound(a.Errors) {
+	if pr == nil && len(a.Errors) > 0 && pullRequestNotFound(a.Errors) {
 		return dependsPR{}, false, nil
 	}
 	if len(a.Errors) > 0 {
-		return dependsPR{}, false, refuse(fmt.Sprintf("the forge answered the query for pull request #%d with errors, so land cannot judge #%d's dependencies, and nothing was armed: %s", n, c.self, forgeErrorText(a.Errors)), c.cannot(n))
+		return dependsPR{}, false, refuse(fmt.Sprintf("the forge answered the query for pull request #%d with errors, so land cannot judge #%d's dependencies, and %s: %s", n, c.self, c.none, forgeErrorText(a.Errors)), c.cannot(n))
 	}
 	if a.Data.Repository == nil {
-		return dependsPR{}, false, refuse(fmt.Sprintf("the forge answered no repository %s/%s for pull request #%d, so land cannot judge #%d's dependencies, and nothing was armed", c.owner, c.name, n, c.self), c.cannot(n))
+		return dependsPR{}, false, refuse(fmt.Sprintf("the forge answered no repository %s/%s for pull request #%d, so land cannot judge #%d's dependencies, and %s", c.owner, c.name, n, c.self, c.none), c.cannot(n))
 	}
 	if pr == nil {
 		return dependsPR{}, false, nil
 	}
 	if pr.Number != n {
-		return dependsPR{}, false, refuse(fmt.Sprintf("the forge answered pull request #%d when asked for #%d, so land cannot judge #%d's dependencies, and nothing was armed", pr.Number, n, c.self), c.cannot(n))
+		return dependsPR{}, false, refuse(fmt.Sprintf("the forge answered pull request #%d when asked for #%d, so land cannot judge #%d's dependencies, and %s", pr.Number, n, c.self, c.none), c.cannot(n))
 	}
 	return *pr, true, nil
 }
 
-// allNotFound reports whether every GraphQL error is of type NOT_FOUND.
-func allNotFound(errs []json.RawMessage) bool {
+// noSuchPR reports whether err is the forge client's failure whose whole
+// message is its words for no pull request n. The runner (runCapped) gives
+// "gh api graphql: <exit> (<stderr>)"; those words beside any other text in
+// stderr are not read as it.
+func noSuchPR(err error, n int) bool {
+	head, msg, ok := strings.Cut(err.Error(), " (")
+	return ok && strings.HasPrefix(head, "gh api graphql: ") && msg == fmt.Sprintf("gh: Could not resolve to a PullRequest with the number of %d.)", n)
+}
+
+// pullRequestNotFound reports whether every GraphQL error is of type
+// NOT_FOUND at a path ending in pullRequest: a repository not found is not a
+// pull request missing.
+func pullRequestNotFound(errs []json.RawMessage) bool {
 	for _, raw := range errs {
 		var e struct {
 			Type string `json:"type"`
+			Path []any  `json:"path"`
 		}
-		if json.Unmarshal(raw, &e) != nil || e.Type != "NOT_FOUND" {
+		if json.Unmarshal(raw, &e) != nil || e.Type != "NOT_FOUND" || len(e.Path) == 0 || e.Path[len(e.Path)-1] != "pullRequest" {
 			return false
 		}
 	}
@@ -182,10 +213,10 @@ func (c *dependsCheck) change(pr dependsPR) (coord.Change, error) {
 		if len(state) > maxForgeStateRunes {
 			state, cut = state[:maxForgeStateRunes], fmt.Sprintf(", cut to its first %d runes", maxForgeStateRunes)
 		}
-		return coord.Change{}, refuse(fmt.Sprintf("the forge reports pull request #%d in state %q%s, which land cannot read, so it cannot judge #%d's dependencies, and nothing was armed", n, string(state), cut, c.self), c.cannot(n))
+		return coord.Change{}, refuse(fmt.Sprintf("the forge reports pull request #%d in state %q%s, which land cannot read, so it cannot judge #%d's dependencies, and %s", n, string(state), cut, c.self, c.none), c.cannot(n))
 	}
 	if pr.BaseRefName != c.def {
-		return coord.Change{}, refuse(fmt.Sprintf("pull request #%d merges into another branch than the default branch %s, so it cannot be resolved as a dependency of #%d, and nothing was armed", n, c.def, c.self), c.rewording(n))
+		return coord.Change{}, refuse(fmt.Sprintf("pull request #%d merges into another branch than the default branch %s, so it cannot be resolved as a dependency of #%d, and %s", n, c.def, c.self, c.none), c.rewording(n))
 	}
 	ch := coord.Change{Number: n, State: st}
 	if st == coord.StateOpen || st == coord.StateQueued {
@@ -193,10 +224,10 @@ func (c *dependsCheck) change(pr dependsPR) (coord.Change, error) {
 		if err != nil {
 			why := strings.TrimPrefix(err.Error(), "coord: ")
 			if n == c.self {
-				return coord.Change{}, refuse(fmt.Sprintf("pull request #%d's body cannot be read for its dependencies, so nothing was armed: %s", n, why),
+				return coord.Change{}, refuse(fmt.Sprintf("pull request #%d's body cannot be read for its dependencies, so %s: %s", n, c.none, why),
 					fmt.Sprintf("edit #%d's body on the forge (gh pr edit %d --body-file <file>), then run abcd land again", n, n))
 			}
-			return coord.Change{}, refuse(fmt.Sprintf("pull request #%d, which #%d depends on, has a body that cannot be read for its dependencies, so nothing was armed: %s", n, c.self, why),
+			return coord.Change{}, refuse(fmt.Sprintf("pull request #%d, which #%d depends on, has a body that cannot be read for its dependencies, so %s: %s", n, c.self, c.none, why),
 				fmt.Sprintf("edit #%d's body on the forge (gh pr edit %d --body-file <file>), or take #%d out of #%d's Depends-On line, then run abcd land again", n, n, n, c.self))
 		}
 		ch.DependsOn = deps
@@ -205,34 +236,61 @@ func (c *dependsCheck) change(pr dependsPR) (coord.Change, error) {
 }
 
 // dependsHold is the dependency check for pull request self before land arms
-// or toggles it; armed says this account's arming is already in place, which
-// the check leaves as it is. held is true when the step stopped (a wait), and
-// a refusal is returned as an error; a pull request with no Depends-On line,
-// or whose every dependency has merged, is neither, and the step goes on.
-func dependsHold(res *Result, o Options, dir, owner, name string, self int, armed bool) (held bool, err error) {
-	left := ""
-	if armed {
-		left = fmt.Sprintf("; this account's arming already in place is left as it is: withdraw it (gh pr merge %d --disable-auto) if #%d must not merge first", self, self)
+// or toggles it. withdraw, nil when no arming is in place, withdraws this
+// account's arming already in place and confirms it came off: it runs on a
+// wait or a refusal, and a withdrawal that fails refuses with the command that
+// withdraws it by hand. held is true when the step stopped (a wait), and a
+// refusal is returned as an error; a pull request with no Depends-On line, or
+// whose every dependency has merged, is neither, and the step goes on.
+func dependsHold(res *Result, o Options, dir, owner, name string, self int, withdraw func() error) (held bool, err error) {
+	c := &dependsCheck{o: o, dir: dir, owner: owner, name: name, def: res.Default, self: self, none: "nothing was armed"}
+	if withdraw != nil {
+		c.none = "land withdrew this account's earlier arming"
 	}
-	c := &dependsCheck{o: o, dir: dir, owner: owner, name: name, def: res.Default, self: self}
-	own, ok, err := c.readPR(self)
+	wait, err := c.judge(res)
+	if wait == "" && err == nil {
+		return false, nil
+	}
+	if withdraw != nil {
+		if werr := withdraw(); werr != nil {
+			if errors.Is(werr, ErrNoForgeClient) {
+				return false, noForgeClient()
+			}
+			return false, refuse(fmt.Sprintf("pull request #%d is held by its dependencies, and land could not withdraw this account's earlier arming, which can merge #%d before them: %s", self, self, forgeWhy(werr)),
+				fmt.Sprintf("withdraw it yourself (gh pr merge %d --disable-auto), then run abcd land again, which says what holds it", self))
+		}
+	}
 	if err != nil {
 		return false, err
 	}
+	res.add("enqueue", StatusStopped, wait, "")
+	return true, nil
+}
+
+// judge reads the pull requests and acts on the pass's decision for c.self:
+// the wait's note for a wait, a refusal as an error, and neither when the
+// step goes on.
+func (c *dependsCheck) judge(res *Result) (wait string, err error) {
+	self, owner, name := c.self, c.owner, c.name
+	own, ok, err := c.readPR(self)
+	if err != nil {
+		return "", err
+	}
 	if !ok || own.State != "OPEN" || own.IsInMergeQueue || own.BaseRefName != res.Default {
-		return false, refuse(fmt.Sprintf("the forge's answer for pull request #%d no longer reads it as open into %s and outside the merge queue, so land cannot judge its dependencies, and nothing was armed", self, res.Default),
+		return "", refuse(fmt.Sprintf("the forge's answer for pull request #%d no longer reads it as open into %s and outside the merge queue, so land cannot judge its dependencies, and %s", self, res.Default, c.none),
 			"run abcd land again")
 	}
 	ownChange, err := c.change(own)
 	if err != nil {
-		return false, err
+		return "", err
 	}
 	if len(ownChange.DependsOn) == 0 {
-		return false, nil
+		return "", nil
 	}
+	// The zero time is no start: the pass would read it as none recorded.
 	start, err := time.Parse(time.RFC3339, own.CreatedAt)
-	if err != nil {
-		return false, refuse(fmt.Sprintf("the forge gives pull request #%d no creation time land can read, so no deadline can be derived for its wait on its dependencies, and nothing was armed", self), c.cannot(self))
+	if err != nil || start.IsZero() {
+		return "", refuse(fmt.Sprintf("the forge gives pull request #%d no creation time land can read, so no deadline can be derived for its wait on its dependencies, and %s", self, c.none), c.cannot(self))
 	}
 	ownChange.WaitingSince = start
 	changes := []coord.Change{ownChange}
@@ -247,29 +305,29 @@ func dependsHold(res *Result, o Options, dir, owner, name string, self int, arme
 			}
 			seen[n] = true
 			if c.reads == maxDependsReads {
-				return false, refuse(fmt.Sprintf("pull request #%d's dependencies reach more than %d pull requests, past what land reads, so they cannot be resolved, and nothing was armed", self, maxDependsReads),
+				return "", refuse(fmt.Sprintf("pull request #%d's dependencies reach more than %d pull requests, past what land reads, so they cannot be resolved, and %s", self, maxDependsReads, c.none),
 					fmt.Sprintf("name fewer pull requests in the Depends-On lines #%d reaches (gh pr edit %d --body-file <file>), then run abcd land again", self, self))
 			}
 			pr, ok, err := c.readPR(n)
 			if err != nil {
-				return false, err
+				return "", err
 			}
 			if !ok {
-				return false, refuse(fmt.Sprintf("the forge has no pull request #%d in %s/%s, so it cannot be resolved as a dependency of #%d, and nothing was armed", n, owner, name, self), c.rewording(n))
+				return "", refuse(fmt.Sprintf("the forge has no pull request #%d in %s/%s, so it cannot be resolved as a dependency of #%d, and %s", n, owner, name, self, c.none), c.rewording(n))
 			}
 			ch, err := c.change(pr)
 			if err != nil {
-				return false, err
+				return "", err
 			}
 			changes = append(changes, ch)
 			later = append(later, ch.DependsOn...)
 		}
 		next = later
 	}
-	now := o.Now()
+	now := c.o.Now()
 	decisions, err := coord.Pass(coord.Records{Now: now, WaitLimit: dependsWaitLimit, Changes: changes})
 	if err != nil {
-		return false, refuse(fmt.Sprintf("pull request #%d's dependencies cannot be judged, so nothing was armed: %s", self, strings.TrimPrefix(err.Error(), "coord: ")),
+		return "", refuse(fmt.Sprintf("pull request #%d's dependencies cannot be judged, so %s: %s", self, c.none, strings.TrimPrefix(err.Error(), "coord: ")),
 			fmt.Sprintf("settle what it names in the pull requests #%d depends on, then run abcd land again", self))
 	}
 	for _, d := range decisions {
@@ -279,26 +337,37 @@ func dependsHold(res *Result, o Options, dir, owner, name string, self int, arme
 		on := numbered(d.WaitsOn)
 		switch d.Action {
 		case coord.ActionQueue:
-			return false, nil
+			return "", nil
 		case coord.ActionWait:
-			verb := "has not merged, so nothing was armed: run abcd land again after it merges"
+			verb := fmt.Sprintf("has not merged, so %s: run abcd land again after it merges", c.none)
 			if len(d.WaitsOn) > 1 {
-				verb = "have not merged, so nothing was armed: run abcd land again after they merge"
+				verb = fmt.Sprintf("have not merged, so %s: run abcd land again after they merge", c.none)
 			}
-			res.add("enqueue", StatusStopped, fmt.Sprintf("pull request #%d depends on %s, which %s; the wait is refused from %s, %d hours after #%d was opened%s",
-				self, on, verb, d.Until.UTC().Format(time.RFC3339), int(dependsWaitLimit/time.Hour), self, left), "")
-			return true, nil
+			return fmt.Sprintf("pull request #%d depends on %s, which %s; the wait is refused from %s, %d hours after #%d was opened",
+				self, on, verb, d.Until.UTC().Format(time.RFC3339), int(dependsWaitLimit/time.Hour), self), nil
 		}
-		fix := fmt.Sprintf("reword #%d's Depends-On line (gh pr edit %d --body-file <file>) so it names only open or merged pull requests into %s with no cycle among them, or remove it, then run abcd land again", self, self, res.Default)
+		// The fix follows the reason: the deadline's for a wait past it, the
+		// clock's only for a start later than the clock, and the reword for a
+		// refusal at once.
+		why, fix := d.Reason, fmt.Sprintf("reword #%d's Depends-On line (gh pr edit %d --body-file <file>) so it names only open or merged pull requests into %s with no cycle among them, or remove it, then run abcd land again", self, self, res.Default)
 		switch {
+		case strings.HasPrefix(d.Reason, coord.RefusedAtOnce):
 		case !d.Until.IsZero():
+			// Past the deadline, whether land waited or the line was added
+			// after it: the text says when the wait ended, not that it waited.
+			has, it := "has", "it"
+			if len(d.WaitsOn) > 1 {
+				has, it = "have", "them"
+			}
+			why = fmt.Sprintf("%s %s not merged, and the %d hours #%d may wait for %s, from its opening at %s, ended at %s",
+				on, has, int(dependsWaitLimit/time.Hour), self, it, start.UTC().Format(time.RFC3339), d.Until.UTC().Format(time.RFC3339))
 			fix = fmt.Sprintf("merge %s first and run abcd land again, or remove the Depends-On line from #%d's body (gh pr edit %d --body-file <file>) if #%d need not wait for it", on, self, self, self)
-		case ownChange.WaitingSince.After(now):
+		case start.After(now):
 			fix = "check this computer's clock against the forge's, then run abcd land again"
 		}
-		return false, refuse(fmt.Sprintf("pull request #%d's dependencies refuse it, so nothing was armed: %s%s", self, d.Reason, left), fix)
+		return "", refuse(fmt.Sprintf("pull request #%d's dependencies refuse it, so %s: %s", self, c.none, why), fix)
 	}
-	return false, refuse(fmt.Sprintf("the coordination pass gave pull request #%d no decision, so nothing was armed", self), "run abcd land again")
+	return "", refuse(fmt.Sprintf("the coordination pass gave pull request #%d no decision, so %s", self, c.none), "run abcd land again")
 }
 
 // numbered names the numbers as #N, comma-separated.
