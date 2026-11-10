@@ -212,9 +212,13 @@ func TestTheLandingReceiptIsReadUnderTheDeadline(t *testing.T) {
 // this copy's key for the created-branch list not read, the other worktrees
 // not listed, the fetch stamp not judged, the stack index cut short before it
 // asks for a reflog, the reservations as last fetched not read, the live
-// sessions not read, and the merge queue's rules and its armed pull requests
-// not read. These are the reads named here; the created-branch list's store
-// open is held by TestACreatedBranchStoreTheDeadlineEndsIsMarkedCutShort, and
+// sessions not read, the merge queue's rules and its armed pull requests not
+// read, and the whole test runs not looked for (at their first look at the
+// deadline; their table read and worktree listing are held by
+// TestLiveWorkDeadlineInTheTableRead and
+// TestLiveWorkDeadlineBeforeTheWorktreeListing). These are the reads named
+// here; the created-branch list's store open is held by
+// TestACreatedBranchStoreTheDeadlineEndsIsMarkedCutShort, and
 // the reader's other reads are marked by its git or by ranOut, which this test
 // does not hold.
 func TestEachOwedReadMarksASpentDeadline(t *testing.T) {

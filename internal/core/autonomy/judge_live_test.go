@@ -15,7 +15,7 @@ import (
 
 // running is item with a whole run live for it since since.
 func running(item OwedItem, since time.Time) OwedItem {
-	item.Live = &LiveWork{What: "a whole test run (abcd process 4242) for " + item.Branch, Since: since}
+	item.Live = &LiveWork{What: "a whole test run (abcd process 4242) of " + item.Head, Since: since}
 	return item
 }
 
@@ -123,7 +123,7 @@ func TestShortDuration(t *testing.T) {
 	}
 }
 
-// TestLiveWorkPastTheBound:a session that has waited on live work for one
+// TestLiveWorkPastTheBound: a session that has waited on live work for one
 // unchanged capped set longer than the bound is held to today's rule: with
 // the count at two the wake is refused, and the reason says the wait is
 // older than the bound. The span is measured from the first waiting turn,
@@ -159,11 +159,52 @@ func TestLiveWorkPastTheBound(t *testing.T) {
 	if v := judgeAt(t, rec, young, wake, st, now); v.Block || v.State.Wakes != 1 {
 		t.Fatalf("past the bound with no wakes counted: block %v wakes %d, want released with the count at one", v.Block, v.State.Wakes)
 	}
-	// A change in the capped set starts the span again.
+	// A change in the capped set starts the span again: with the old span
+	// nineteen hours back, the unchanged set is past the bound and refused,
+	// and the changed one starts its span at now.
+	st.Wakes = MaxWakesUnchanged
+	st.WaitingSince = now.Add(-19 * time.Hour)
+	if v := judgeAt(t, rec, young, wake, st, now); !v.Block || v.Row != 4 {
+		t.Fatalf("the unchanged set nineteen hours on: block %v row %d, want row 4 past the bound", v.Block, v.Row)
+	}
 	moved := owedOf(running(stackedBr, now))
-	st.WaitingSince = now.Add(-LiveWorkBound - time.Minute)
-	if v := judgeAt(t, rec, moved, wake, st, now); !v.State.WaitingSince.IsZero() && !v.State.WaitingSince.Equal(now) {
-		t.Fatalf("a new capped set kept the old span: %s", v.State.WaitingSince)
+	if v := judgeAt(t, rec, moved, wake, st, now); !v.State.WaitingSince.Equal(now) {
+		t.Fatalf("a new capped set's span starts at %s, want now (%s)", v.State.WaitingSince, now)
+	}
+}
+
+// TestLiveWorkClockSteppedBack: a span stored later than now, the clock
+// having stepped back, is moved to now, the earlier of the two, so the bound
+// is not pushed further out by the step.
+func TestLiveWorkClockSteppedBack(t *testing.T) {
+	now := at(t, "2026-10-18 21:01")
+	rec := awayRec(now, false)
+	wake := StopInput{SessionCrons: crons("*/10 * * * *")}
+	owed := owedOf(running(unpushedBr, now))
+	st := SessionState{Fingerprint: owed.Fingerprint(), WakeFingerprint: owed.CappedFingerprint(), WaitingSince: now.Add(3 * time.Hour)}
+	if v := judgeAt(t, rec, owed, wake, st, now); !v.State.WaitingSince.Equal(now) {
+		t.Fatalf("a span stored after now is %s, want now (%s)", v.State.WaitingSince, now)
+	}
+}
+
+// TestLiveWorkReasonsNameTheBranch: the waiting reason and the past-bound
+// tail name the branch the live run stands for, the one the reason hands on
+// when it is live, never "it".
+func TestLiveWorkReasonsNameTheBranch(t *testing.T) {
+	now := at(t, "2026-10-18 21:01")
+	rec := awayRec(now, false)
+	// The unpushed item comes first in the set, the stacked one first in the
+	// order the next item is chosen by.
+	owed := owedOf(running(unpushedBr, now), running(stackedBr, now))
+	st := SessionState{Fingerprint: owed.Fingerprint(), WakeFingerprint: owed.CappedFingerprint()}
+	v := judgeAt(t, rec, owed, StopInput{}, st, now)
+	if v.Row != 5 || !strings.Contains(v.Reason, "feat/stacked is waiting on a whole test run (abcd process 4242) of dddd") || strings.Contains(v.Reason, "It is waiting") {
+		t.Errorf("the waiting reason does not name the branch handed on with its run: %q", v.Reason)
+	}
+	st.Wakes, st.WaitingSince = MaxWakesUnchanged, now.Add(-LiveWorkBound-time.Minute)
+	v = judgeAt(t, rec, owed, StopInput{SessionCrons: crons("*/10 * * * *")}, st, now)
+	if v.Row != 4 || !strings.Contains(v.Reason, "waited on for feat/stacked since") || strings.Contains(v.Reason, "for it") {
+		t.Errorf("the past-bound tail does not name the branch: %q", v.Reason)
 	}
 }
 
@@ -180,7 +221,7 @@ func TestLiveWorkWithoutAWakeNamesIt(t *testing.T) {
 	if !v.Block || v.Row != 5 {
 		t.Fatalf("no wake: block %v row %d, want row 5", v.Block, v.Row)
 	}
-	for _, w := range []string{"a whole test run (abcd process 4242) for feat/unpushed", "since 20:31", "schedule a look"} {
+	for _, w := range []string{"feat/unpushed is waiting on a whole test run (abcd process 4242) of cccc", "since 20:31", "schedule a look"} {
 		if !strings.Contains(v.Reason, w) {
 			t.Errorf("the reason misses %q: %q", w, v.Reason)
 		}
@@ -192,7 +233,9 @@ func TestLiveWorkWithoutAWakeNamesIt(t *testing.T) {
 
 // TestLiveWorkCutShortLeavesTheState: a reading the deadline cut short is
 // allowed as today, the session's state left as it was, whatever live work
-// it found before the cut.
+// it found before the cut. It pins behaviour Judge had before live work
+// existed (it returns on Incomplete before reading Live), so it was not
+// watched fail: it holds that the live-work change did not alter that.
 func TestLiveWorkCutShortLeavesTheState(t *testing.T) {
 	now := at(t, "2026-10-18 21:01")
 	owed := owedOf(running(unpushedBr, now))

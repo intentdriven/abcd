@@ -366,7 +366,11 @@ func (r *owedReader) expired() bool { return r.ctx.Err() != nil }
 // stack index, the reservations as last fetched, the live sessions, the merge
 // queue's rules and its armed set, the whole test runs (the process table and
 // the worktree listing livework.go reads), and each call made through `r.git`.
-// TestEachOwedReadMarksASpentDeadline holds each of these but `r.git`. The
+// TestEachOwedReadMarksASpentDeadline holds each of these but `r.git` and the
+// whole test runs' two reads: it reaches the whole test runs only at their
+// first look at the deadline, before any marker is read.
+// TestLiveWorkDeadlineInTheTableRead holds the process table's read, and
+// TestLiveWorkDeadlineBeforeTheWorktreeListing the worktree listing. The
 // pull-request listing and landed's merge-driver, merge-tree and cherry reads
 // are marked by ranOut instead, and finding the checkout returns its error.
 func (r *owedReader) cutShort(failed bool) bool {

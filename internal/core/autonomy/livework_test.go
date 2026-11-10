@@ -17,9 +17,9 @@ import (
 )
 
 // livework_test.go: the owed reading marks a capped item with the live work
-// standing for it: a whole test run of this account, queued at the load gate
-// or running, in the worktree the item's branch is checked out in, at the
-// item's head, while no receipt names that head.
+// standing for it: the preflight's whole test run of this account, queued at
+// the load gate or running, in the worktree the item's branch is checked out
+// in, its marker written at the item's head, while no receipt names that head.
 
 const livePID = 4242
 
@@ -33,15 +33,30 @@ func liveFx(t *testing.T) *fx {
 	return f
 }
 
-// plantMarker writes a whole run's marker for pid under the fixture's home.
+// plantMarker writes the preflight's marker for pid under the fixture's
+// home, written in dir at feat/live's head as it stands.
 func (f *fx) plantMarker(pid int, start time.Time, dir string) {
+	f.t.Helper()
+	f.plant(f.marker(pid, start, dir))
+}
+
+// marker is plantMarker's marker, to edit before planting.
+func (f *fx) marker(pid int, start time.Time, dir string) implement.WholeRunMarker {
+	f.t.Helper()
+	preflight := true
+	return implement.WholeRunMarker{SchemaVersion: 2, PID: pid, StartUnix: start.Unix(), Dir: dir, Head: f.head("feat/live"),
+		Preflight: &preflight, Kind: implement.WholeRunKind, Began: start}
+}
+
+// plant writes m under the fixture's home.
+func (f *fx) plant(m implement.WholeRunMarker) {
 	f.t.Helper()
 	d := abcdhome.Path(f.home, implement.WholeRunsLeaf)
 	if err := os.MkdirAll(d, 0o700); err != nil {
 		f.t.Fatal(err)
 	}
-	raw, _ := json.Marshal(implement.WholeRunMarker{SchemaVersion: 1, PID: pid, StartUnix: start.Unix(), Dir: dir, Kind: implement.WholeRunKind, Began: start})
-	if err := os.WriteFile(filepath.Join(d, strconv.Itoa(pid)+".json"), raw, 0o600); err != nil {
+	raw, _ := json.Marshal(m)
+	if err := os.WriteFile(filepath.Join(d, strconv.Itoa(m.PID)+".json"), raw, 0o600); err != nil {
 		f.t.Fatal(err)
 	}
 }
@@ -107,8 +122,8 @@ func TestLiveWholeRunMarksTheItem(t *testing.T) {
 	if it.Live == nil {
 		t.Fatal("a whole run live for the item's head did not mark it")
 	}
-	if !strings.Contains(it.Live.What, "abcd process 4242") || !strings.Contains(it.Live.What, "feat/live") {
-		t.Errorf("Live.What = %q, want the process and the branch named", it.Live.What)
+	if !strings.Contains(it.Live.What, "abcd process 4242") || !strings.Contains(it.Live.What, shortHead(f.head("feat/live"))) {
+		t.Errorf("Live.What = %q, want the process and the commit named", it.Live.What)
 	}
 	if d := it.Live.Since.Sub(start); d < -3*time.Second || d > 3*time.Second {
 		t.Errorf("Live.Since = %s, want about %s, the process's start", it.Live.Since, start)
@@ -120,7 +135,8 @@ func TestLiveWholeRunMarksTheItem(t *testing.T) {
 
 // TestLiveWholeRunCountsOnlyItsOwn: a marker counts for nothing when its pid
 // is another account's process, is not abcd, started at another time, or is
-// gone; when it names another worktree; or when a receipt names the head.
+// gone; when it names another worktree; when its command is not the
+// preflight's stages; or when a receipt names the head.
 func TestLiveWholeRunCountsOnlyItsOwn(t *testing.T) {
 	start := time.Now().Add(-30 * time.Minute).Truncate(time.Second)
 	cases := map[string]func(f *fx) *table{
@@ -144,6 +160,16 @@ func TestLiveWholeRunCountsOnlyItsOwn(t *testing.T) {
 			other := filepath.Join(t.TempDir(), "other")
 			f.git("worktree", "add", "-q", "--detach", other, "main")
 			f.plantMarker(livePID, start, other)
+			return &table{procs: map[int]tableProc{livePID: {me(), "abcd", start}}}
+		},
+		"a whole-form command that is not the preflight": func(f *fx) *table {
+			m, no := f.marker(livePID, start, f.root), false
+			m.Preflight = &no
+			f.plant(m)
+			return &table{procs: map[int]tableProc{livePID: {me(), "abcd", start}}}
+		},
+		"a marker its read's slack does not cover": func(f *fx) *table {
+			f.plantMarker(livePID, start.Add(-10*time.Second), f.root)
 			return &table{procs: map[int]tableProc{livePID: {me(), "abcd", start}}}
 		},
 		"a head a receipt names": func(f *fx) *table {
@@ -222,5 +248,85 @@ func TestLiveWorkSpentStartsNothing(t *testing.T) {
 	r.readLiveWork()
 	if !r.cut || tb.reads != 0 || r.items[0].Live != nil {
 		t.Fatalf("a spent deadline: cut %v, table reads %d, live %+v; want cut short with nothing read", r.cut, tb.reads, r.items[0].Live)
+	}
+}
+
+// TestLiveWholeRunHeadMovedUnderIt: a run whose marker was written at one
+// commit does not count for the next commit made on the branch while it runs:
+// it can never mint a receipt for it.
+func TestLiveWholeRunHeadMovedUnderIt(t *testing.T) {
+	f := liveFx(t)
+	start := time.Now().Add(-30 * time.Minute).Truncate(time.Second)
+	f.plantMarker(livePID, start, f.root)
+	tb := &table{procs: map[int]tableProc{livePID: {me(), "abcd", start}}}
+	if it := liveItem(t, f.readLive(tb)); it.Live == nil {
+		t.Fatal("the run did not count for the head it was written at")
+	}
+	f.commitOn("feat/live", "more work", "")
+	if it := liveItem(t, f.readLive(tb)); it.Live != nil {
+		t.Fatalf("a run written at the old head counted for the new one: %+v", it.Live)
+	}
+}
+
+// TestLiveWholeRunStartWithinItsSlack: a marker's start is early by up to the
+// length of the table read it came from, which it records as its slack, and
+// counts within that slack, as sessionname.Table judges a host.
+func TestLiveWholeRunStartWithinItsSlack(t *testing.T) {
+	f := liveFx(t)
+	start := time.Now().Add(-30 * time.Minute).Truncate(time.Second)
+	m := f.marker(livePID, start.Add(-10*time.Second), f.root)
+	m.StartSlack = 10 * time.Second
+	f.plant(m)
+	tb := &table{procs: map[int]tableProc{livePID: {me(), "abcd", start}}}
+	if it := liveItem(t, f.readLive(tb)); it.Live == nil {
+		t.Fatal("a marker early by its own read's slack did not count")
+	}
+}
+
+// liveReader is an owed reader of f's feat/live item under ctx, with a marker
+// for a live run planted and tb as the table.
+func liveReader(t *testing.T, f *fx, ctx context.Context, tb func(context.Context) (machineload.Snapshot, error)) *owedReader {
+	t.Helper()
+	return &owedReader{ctx: ctx, root: f.root, home: f.home, away: true, procTable: tb,
+		items: []OwedItem{{Kind: OwedUnpushed, Capped: true, Branch: "feat/live", Head: f.head("feat/live")}}}
+}
+
+// TestLiveWorkDeadlineInTheTableRead: a deadline that ends while the process
+// table is read, the read answering its ctx's error, marks the reading cut
+// short and marks no item live.
+func TestLiveWorkDeadlineInTheTableRead(t *testing.T) {
+	f := liveFx(t)
+	start := time.Now().Add(-30 * time.Minute).Truncate(time.Second)
+	f.plantMarker(livePID, start, f.root)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r := liveReader(t, f, ctx, func(ctx context.Context) (machineload.Snapshot, error) {
+		cancel()
+		return machineload.Snapshot{}, ctx.Err()
+	})
+	r.readLiveWork()
+	if !r.cut || r.items[0].Live != nil {
+		t.Fatalf("a deadline in the table read: cut %v, live %+v; want cut short, nothing live", r.cut, r.items[0].Live)
+	}
+}
+
+// TestLiveWorkDeadlineBeforeTheWorktreeListing: a deadline that ends after
+// the table answered with the run live, before the worktrees are listed,
+// marks the reading cut short and marks no item live.
+func TestLiveWorkDeadlineBeforeTheWorktreeListing(t *testing.T) {
+	f := liveFx(t)
+	start := time.Now().Add(-30 * time.Minute).Truncate(time.Second)
+	f.plantMarker(livePID, start, f.root)
+	tb := &table{procs: map[int]tableProc{livePID: {me(), "abcd", start}}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r := liveReader(t, f, ctx, func(c context.Context) (machineload.Snapshot, error) {
+		snap, err := tb.read(c)
+		cancel()
+		return snap, err
+	})
+	r.readLiveWork()
+	if !r.cut || r.items[0].Live != nil {
+		t.Fatalf("a deadline before the worktree listing: cut %v, live %+v; want cut short, nothing live", r.cut, r.items[0].Live)
 	}
 }

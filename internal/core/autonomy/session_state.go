@@ -46,7 +46,14 @@ type SessionState struct {
 	// every capped item of the set WakeFingerprint names (Owed.CappedAllLive),
 	// zero before one; reset with WakeFingerprint. The wait it starts is
 	// bounded by LiveWorkBound, measured from it rather than from the run's
-	// age, so a run restarted at each wake cannot renew it.
+	// age, so a run restarted at each wake cannot renew it. It restarts when
+	// the capped set changes, so the bound does not hold against a set that
+	// keeps changing (nor does the wake count). A new commit changes the set,
+	// but a run whose marker was written at the old head does not count for
+	// the new one (TestLiveWholeRunHeadMovedUnderIt), so committing does not
+	// keep a hung run counted. A value later than now, the clock having
+	// stepped back, is moved to now, the earlier of the two
+	// (TestLiveWorkClockSteppedBack).
 	WaitingSince time.Time `json:"waiting_since,omitempty"`
 	// ChecklistBlocked is the behind set (Behind.Fingerprint) a stop was
 	// last blocked on while away, so a set blocks once per consecutive run of

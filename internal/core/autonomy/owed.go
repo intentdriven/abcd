@@ -67,9 +67,9 @@ type OwedItem struct {
 	// not part of the item's identity.
 	Reason string `json:"reason,omitempty"`
 	// Live is the live work standing for the item, when the reading found
-	// some (livework.go): a whole test run of this account for its head, in
-	// the worktree its branch is checked out in, while no receipt names the
-	// head. Nor is it part of the item's identity, so the fingerprints do not
+	// some (livework.go): the preflight's whole test run of this account,
+	// its marker written at the item's head, in the worktree its branch is
+	// checked out in, while no receipt names the head. Nor is it part of the item's identity, so the fingerprints do not
 	// change as the run ages or ends.
 	Live *LiveWork `json:"live,omitempty"`
 }
@@ -156,15 +156,19 @@ func (o Owed) CappedAllLive() bool {
 	return capped
 }
 
-// liveNamed is the first capped item's live work, the one a waiting reason
-// names.
-func (o Owed) liveNamed() *LiveWork {
+// liveNamed is the capped item with live work a waiting reason names: the
+// next item (Next), the one the reason hands on, when it is one, and
+// otherwise the first such item. Called only when CappedAllLive holds.
+func (o Owed) liveNamed() OwedItem {
+	if n, ok := o.Next(); ok && n.Capped && n.Live != nil {
+		return n
+	}
 	for _, i := range o.Items {
 		if i.Capped && i.Live != nil {
-			return i.Live
+			return i
 		}
 	}
-	return nil
+	return OwedItem{Live: &LiveWork{}}
 }
 
 // Next is the item the session is handed: the first by owedKinds' order, the

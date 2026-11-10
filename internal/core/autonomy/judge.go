@@ -27,7 +27,9 @@ const MaxWakesUnchanged = 2
 // landing's bound on one `make preflight`, its wait at the load gate, its race
 // stage's wait at the race gate and the run itself (12h + 2h + 4h), which
 // landing's own test holds to the Makefile. It is measured from the first
-// waiting check (SessionState.WaitingSince).
+// waiting check (SessionState.WaitingSince), and restarts when the capped set
+// changes, so it does not hold against a set that keeps changing; the wake
+// count has the same property.
 const LiveWorkBound = landing.PreflightBound
 
 // The session states while away (dcn-2610180936577720): working (the stop is
@@ -131,6 +133,8 @@ func Judge(rec *Record, owed Owed, in StopInput, st SessionState, now time.Time)
 	// stuck, within LiveWorkBound of the first check that found it.
 	live, pastBound := owed.HasCapped() && owed.CappedAllLive(), false
 	if live {
+		// A span stored later than now (the clock stepped back) is moved to
+		// now, the earlier of the two.
 		if next.WaitingSince.IsZero() || next.WaitingSince.After(now) {
 			next.WaitingSince = now
 		}
@@ -165,15 +169,15 @@ func Judge(rec *Record, owed Owed, in StopInput, st SessionState, now time.Time)
 	case !owed.Empty() && wake:
 		tail := "The set has not moved over two wakes, so a wake no longer releases this stop: move the item, or take another."
 		if pastBound {
-			tail = fmt.Sprintf("Live work has been waited on for it since %s, longer than the bound of %s on one preflight, so a wake no longer releases this stop: move the item, or take another.",
-				clock(next.WaitingSince, in.Location), shortDuration(LiveWorkBound))
+			tail = fmt.Sprintf("Live work has been waited on for %s since %s, longer than the bound of %s on one preflight, so a wake no longer releases this stop: move the item, or take another.",
+				termsafe.CleanProseLine(owed.liveNamed().Branch, 256), clock(next.WaitingSince, in.Location), shortDuration(LiveWorkBound))
 		}
 		v.Row, v.Reason = 4, owedReason(rec, owed, tail)
 	case !owed.Empty() && live:
-		w := owed.liveNamed()
+		it := owed.liveNamed()
 		v.Row, v.Reason = 5, owedReason(rec, owed,
-			fmt.Sprintf("It is waiting on %s, running since %s: schedule a look before %s (a cron that fires by then, the host's lateness included), or take another meanwhile.",
-				termsafe.CleanProseLine(w.What, 256), clock(w.Since, in.Location), clock(deadline, in.Location)))
+			fmt.Sprintf("%s is waiting on %s, live since %s: schedule a look before %s (a cron that fires by then, the host's lateness included), or take another meanwhile.",
+				termsafe.CleanProseLine(it.Branch, 256), termsafe.CleanProseLine(it.Live.What, 256), clock(it.Live.Since, in.Location), clock(deadline, in.Location)))
 	case !owed.Empty():
 		v.Row, v.Reason = 5, owedReason(rec, owed,
 			fmt.Sprintf("If it cannot move, take another or schedule a look before %s (a cron that fires by then, the host's lateness included).", clock(deadline, in.Location)))

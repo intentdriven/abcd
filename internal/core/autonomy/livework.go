@@ -17,14 +17,24 @@ import (
 // its preflight cannot move until that run ends, which takes from minutes to
 // hours, so while the person is away a set whose every capped item has live
 // work is waiting, not stuck (Judge, row 3). What counts as live work is only
-// what abcd can prove from state it owns and the process table: a whole test
-// run, `make preflight` waiting at the load gate or running past it, which
-// records itself under abcd's home (implement.WholeRunMarker). A marker counts
-// only for a process in the table that is this account's, is named abcd and
-// started when the marker says, whose checkout is the worktree the item's
-// branch is checked out in, at the item's head, while no receipt names that
-// head: with a receipt the next step is the push, not a wait. A checkout whose
-// abcd predates the marker writes none, and its items keep the two-wake rule.
+// what abcd can prove from state it owns and the process table: the
+// preflight's whole test run, `make preflight` waiting at the load gate or
+// running past it, whose waiter records itself under abcd's home
+// (implement.WholeRunMarker). A marker counts only when its command is the
+// preflight's stages, the commit it recorded when it was written is the
+// item's head, its checkout is the worktree the item's branch is checked out
+// in, and its process is in the table as this account's, named abcd and
+// started when the marker says (within the start tolerance widened by each
+// reading's slack, as sessionname.Table judges a host), while no receipt
+// names that head: with a receipt the next step is the push, not a wait. A
+// run started before a commit therefore does not count for that commit. A
+// checkout whose abcd predates the marker's present shape writes none that
+// counts, and its items keep the two-wake rule.
+//
+// A process of this account can write a marker and run under abcd's name, so
+// the proof holds against other accounts and stale state, not against this
+// account's own agent. That a counted marker is a real preflight is a must
+// nothing enforces.
 //
 // Not counted, and must not be until something proves it: a build run's lane
 // agent (the loop's judgement of its agents is its own, and answers unknown
@@ -98,25 +108,28 @@ func (r *owedReader) readLiveWork() {
 			continue
 		}
 		it.Live = &LiveWork{
-			What:  fmt.Sprintf("a whole test run (abcd process %d), queued at the load gate or running, for %s at %s", run.pid, it.Branch, shortHead(it.Head)),
+			What:  fmt.Sprintf("a whole test run (abcd process %d) of %s, queued at the load gate or running", run.pid, shortHead(it.Head)),
 			Since: run.since,
 		}
 	}
 }
 
 // liveRun is a whole run's marker its process proves: the checkout it runs
-// in and when the process started, as the table read it.
+// in, the commit it was written at, and when the process started, as the
+// table read it.
 type liveRun struct {
 	pid   int
 	dir   string
+	head  string
 	since time.Time
 }
 
-// liveWholeRuns are the markers whose pid the table holds as a process of
-// uid, named abcd, started when the marker says (sessionname.Table.Alive,
-// within the start tolerance and the read's slack). Any other marker counts
-// for nothing: another account's process, a later process given the pid, or
-// a run that has ended.
+// liveWholeRuns are the preflight's markers whose pid the table holds as a
+// process of uid, named abcd, started when the marker says
+// (sessionname.Table.Alive, within the start tolerance widened by the
+// table's read and the marker's own slack). Any other marker counts for
+// nothing: a command that is not the preflight's stages, another account's
+// process, a later process given the pid, or a run that has ended.
 func liveWholeRuns(marks []implement.WholeRunMarker, snap machineload.Snapshot, tab sessionname.Table, uid uint32) []liveRun {
 	byPID := make(map[int]machineload.Proc, len(snap.Procs))
 	for _, p := range snap.Procs {
@@ -125,26 +138,27 @@ func liveWholeRuns(marks []implement.WholeRunMarker, snap machineload.Snapshot, 
 	var out []liveRun
 	for _, m := range marks {
 		p, ok := byPID[m.PID]
-		if !ok || p.UID != uid || !machineload.IsAbcdName(p.Name) || m.Kind != implement.WholeRunKind {
+		if !ok || p.UID != uid || !machineload.IsAbcdName(p.Name) || m.Kind != implement.WholeRunKind || m.Preflight == nil || !*m.Preflight {
 			continue
 		}
-		if !tab.Alive(sessionname.Host{PID: m.PID, StartUnix: m.StartUnix}) {
+		if !tab.Alive(sessionname.Host{PID: m.PID, StartUnix: m.StartUnix, Slack: m.StartSlack}) {
 			continue
 		}
-		out = append(out, liveRun{pid: m.PID, dir: m.Dir, since: tab.ReadAt.Add(-p.Age)})
+		out = append(out, liveRun{pid: m.PID, dir: m.Dir, head: m.Head, since: tab.ReadAt.Add(-p.Age)})
 	}
 	return out
 }
 
-// runFor is the live run for branch at head: one whose checkout is the
-// worktree branch is checked out in, that worktree's HEAD being head.
+// runFor is the live run for branch at head: one whose marker was written at
+// head, in the checkout that is the worktree branch is checked out in, that
+// worktree's HEAD being head.
 func runFor(runs []liveRun, wts []gitutil.Worktree, branch, head string) (liveRun, bool) {
 	for _, wt := range wts {
 		if wt.Bare || wt.Branch != "refs/heads/"+branch || wt.Head != head {
 			continue
 		}
 		for _, run := range runs {
-			if sameDir(run.dir, wt.Path) {
+			if run.head == head && sameDir(run.dir, wt.Path) {
 				return run, true
 			}
 		}
