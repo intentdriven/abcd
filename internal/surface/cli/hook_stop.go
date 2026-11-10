@@ -114,7 +114,12 @@ session cron whose latest fire time, the host's lateness included, falls
 before the deadline: within half an hour while work is owed (an hour when
 none is) and before the session's reservations need renewing. A wake
 releases an unchanged set of work the session can do itself at most twice
-in a row, and a last message ending on a question is blocked once. Plain
+in a row, unless each item of it has a whole test run of this account
+(make preflight, at the load gate or running) live in the worktree its
+branch is checked out in, at its head, with no receipt for that head: then
+every wake releases it, for at most 18 hours from the first check that found
+it, and a stop with no wake names the run and since when. A last message
+ending on a question is blocked once. Plain
 stdout is then the host's non-error Stop feedback,
 {"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":...}},
 which continues the session as a block does; the block passing the
