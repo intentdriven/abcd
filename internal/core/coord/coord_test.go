@@ -238,6 +238,23 @@ func TestPassDecides(t *testing.T) {
 				Change{Number: 54, State: StateOpen, DependsOn: []int{52, 50}, WaitingSince: start}),
 			[]Decision{{Change: 54, Action: ActionRefuse, WaitsOn: []int{50, 52},
 				Reason: atOnce + "is on or reaches a cycle of unmerged changes among #50, #51, #52, #53"}}},
+		{"a change depending on two members of one cycle names each member once",
+			records(t0,
+				Change{Number: 55, State: StateQueued, DependsOn: []int{56}},
+				Change{Number: 56, State: StateQueued, DependsOn: []int{55}},
+				Change{Number: 57, State: StateOpen, DependsOn: []int{55, 56}, WaitingSince: start}),
+			[]Decision{{Change: 57, Action: ActionRefuse, WaitsOn: []int{55, 56},
+				Reason: atOnce + "is on or reaches a cycle of unmerged changes among #55, #56"}}},
+		{"two cycles found higher-numbered first are named ascending",
+			records(t0,
+				Change{Number: 10, State: StateQueued, DependsOn: []int{30}},
+				Change{Number: 20, State: StateQueued, DependsOn: []int{21}},
+				Change{Number: 21, State: StateQueued, DependsOn: []int{20}},
+				Change{Number: 30, State: StateQueued, DependsOn: []int{31}},
+				Change{Number: 31, State: StateQueued, DependsOn: []int{30}},
+				Change{Number: 40, State: StateOpen, DependsOn: []int{20, 30}, WaitingSince: start}),
+			[]Decision{{Change: 40, Action: ActionRefuse, WaitsOn: []int{20, 30},
+				Reason: atOnce + "is on or reaches a cycle of unmerged changes among #20, #21, #30, #31"}}},
 		{"a diamond is not a cycle",
 			records(t0,
 				Change{Number: 60, State: StateOpen, DependsOn: []int{61, 62}, WaitingSince: start},
@@ -626,6 +643,9 @@ func TestPassRefusesRecordsItCannotRead(t *testing.T) {
 			"change #4 depends on more than 10 distinct numbers"},
 		{"one change more than the most", records(t0, merged(1, maxChanges+1)...),
 			"the records hold 501 changes, above the most of 500"},
+		{"one change more than the most, one numbered zero, is named for its count alone",
+			records(t0, append(merged(1, maxChanges), Change{Number: 0, State: StateMerged})...),
+			"the records hold 501 changes, above the most of 500"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -803,6 +823,25 @@ func TestPassReasonNamesAtMostTwenty(t *testing.T) {
 		if len(got) != tc.members || !reflect.DeepEqual(got[0], want) {
 			t.Fatalf("a cycle of %d:\n got  %+v\n want %+v first of %d", tc.members, got[0], want, tc.members)
 		}
+	}
+}
+
+// TestPassReasonNamesAtMostTwentyAcrossCycles: a change reaching several
+// cycles lists at most maxNamed of their members together, ascending, then
+// how many more.
+func TestPassReasonNamesAtMostTwentyAcrossCycles(t *testing.T) {
+	t.Parallel()
+	ch := append(ring(101, 115), ring(201, 215)...)
+	ch = append(ch, Change{Number: 300, State: StateOpen, DependsOn: []int{101, 201}, WaitingSince: at(8, 30)})
+	got, err := pass(records(t0, ch...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Decision{Change: 300, Action: ActionRefuse, WaitsOn: []int{101, 201}, Reason: atOnce + cycle +
+		"#101, #102, #103, #104, #105, #106, #107, #108, #109, #110, " +
+		"#111, #112, #113, #114, #115, #201, #202, #203, #204, #205 and 10 more"}
+	if len(got) != 31 || !reflect.DeepEqual(got[30], want) {
+		t.Fatalf("a change reaching two cycles of 15:\n got  %+v\n want %+v last of 31", got[len(got)-1], want)
 	}
 }
 
