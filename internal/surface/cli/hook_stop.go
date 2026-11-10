@@ -119,14 +119,14 @@ account (a full preflight, at the load gate or running; a records-only one
 writes no marker) live in the worktree its branch is checked out in, its
 waiter's marker naming the preflight's stages and the item's head as the
 commit it was queued or started at (the commit the stages test is not
-known), with no receipt for that head: then every wake releases it, for at most 18 hours from the
-first check that found it (restarting when the set changes), and a stop with
-no wake names the branch, the run and since when. A process of this account
-can write a marker and run under abcd's name, so this holds against other
-accounts and stale state, not against this account's own agent; nothing
-enforces more. A last message
-ending on a question is blocked once. Plain
-stdout is then the host's non-error Stop feedback,
+known), with no receipt for that head: then every wake releases it, for at
+most 18 hours from the first check that found it (restarting when the set
+changes), and a stop with no wake names the branch, the run and since when.
+A process of this account can write a marker and run under abcd's name, so
+this holds against other accounts and stale state, not against this
+account's own agent; nothing enforces more. A last message ending on a
+question is blocked once. Plain stdout is then the host's non-error Stop
+feedback,
 {"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":...}},
 which continues the session as a block does; the block passing the
 host's cap of consecutive continuations (eight, or

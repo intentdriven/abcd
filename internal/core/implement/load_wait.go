@@ -1506,7 +1506,11 @@ const maxWholeRunMarkerBytes = 4 << 10
 // MaxWholeRunMarkers bounds how many folder entries one read or sweep looks
 // at: a machine runs a handful of whole runs at once. It bounds the look, not
 // the folder: past it a marker may go unread, which counts its run as not
-// live, today's rule.
+// live, today's rule. Two kinds of file the sweep leaves can take up those
+// entries: a later build's marker (a higher schema version), which this build
+// never removes whatever its pid, and a refused file named for a pid the
+// reading holds, which stays while that pid lives. Both fail safe: the reader
+// counts neither, and a marker crowded out falls back to the two-wake rule.
 const MaxWholeRunMarkers = 256
 
 // maxWholeRunSlack bounds a marker's recorded slack: sessionname caps a
@@ -1518,7 +1522,8 @@ const wholeRunHeadTimeout = 10 * time.Second
 
 // wholeRunLaterAllowance is how much later than a sweeper's reading a
 // marker's Began may be and still be left as written after that reading: it
-// covers the reading's length (at most maxWholeRunSlack) and the HEAD read
+// covers the process read's length (bounded by the read's own timeout,
+// machineload's psTimeout where ps is run) and the HEAD read
 // (wholeRunHeadTimeout) that come between a reading and the sweep, with room
 // to spare. A marker dated later still is judged as an old one.
 const wholeRunLaterAllowance = 5 * time.Minute
@@ -1671,7 +1676,8 @@ func readCheckoutHead(dir string) (string, error) {
 // takes in, unless it is a later build's marker (it parses as JSON with a
 // higher schema version, which that build sweeps) or the pid its name gives
 // is in tab: checkouts on one machine run different builds, and neither
-// removes the other's live markers.
+// removes a live marker whose pid the reading holds. Those two kinds stay
+// unswept (see MaxWholeRunMarkers).
 func sweepWholeRunMarkers(root *os.Root, tab sessionname.Table) {
 	held := make(map[int]bool, len(tab.Procs))
 	for _, p := range tab.Procs {
@@ -1768,6 +1774,9 @@ func wholeRunLeaves(root *os.Root) []string {
 // its command is the preflight, and a slack within its bound; one that is not
 // counts for nothing. An absent folder is none. It reads no process: whether
 // a marker's process is live, and this account's, is the caller's to judge.
+// It looks at MaxWholeRunMarkers entries, which two kinds of file the sweep
+// leaves can fill: a later build's marker and a refused file named for a pid
+// the reading holds. A marker past the look counts its run as not live.
 func ReadWholeRunMarkers(home string) ([]WholeRunMarker, error) {
 	if home == "" || !filepath.IsAbs(home) {
 		return nil, errors.New("there is no home folder to read the whole runs' markers from")

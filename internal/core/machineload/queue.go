@@ -138,8 +138,9 @@ const PreflightStagesGoal = "preflight-stages"
 // the one goal PreflightStagesGoal. Any other flag (one that moves make to
 // another tree, reads another makefile, or runs nothing), a flag's value, a
 // variable assignment or a second goal makes it false, since the marker names
-// the waiter's own checkout and only that make tests it. A shell that runs
-// that make is not read into.
+// the waiter's own checkout and only that make tests it. Only argv is read:
+// the environment (MAKEFLAGS and the like) is not, and a shell that runs that
+// make is not read into.
 func IsPreflightStagesCommand(cmd []string) bool {
 	if len(cmd) == 0 || !isMakeName(path.Base(cmd[0])) {
 		return false
