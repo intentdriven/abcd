@@ -242,7 +242,7 @@ func TestHookStopWakeCountAcrossRuns(t *testing.T) {
 	if q := (*asked)[0]; q.Root != root {
 		t.Errorf("the reader was asked about %s, want the start copy %s", q.Root, root)
 	}
-	st, err := autonomy.LoadSession(root, "wake-1")
+	st, err := autonomy.LoadSession(context.Background(), root, "wake-1")
 	if err != nil || st.Wakes != 2 || st.WakeFingerprint != owed.CappedFingerprint() {
 		t.Errorf("the start copy's state file: %+v (%v)", st, err)
 	}
@@ -337,7 +337,7 @@ func TestHookStopWakeAcrossDaylightSaving(t *testing.T) {
 				t.Errorf("the block names no deadline at %s in the zone it was given: %s", tc.deadline, out.Reason)
 			}
 			if !tc.blocked {
-				st, err := autonomy.LoadSession(root, "dst-1")
+				st, err := autonomy.LoadSession(context.Background(), root, "dst-1")
 				if err != nil || st.State != autonomy.StateWaiting || !st.NextLook.After(tc.now) || st.NextLook.After(tc.now.Add(time.Hour)) {
 					t.Errorf("the session's state after a wake: %+v (%v), want waiting on a look within the hour", st, err)
 				}
@@ -698,7 +698,7 @@ func TestHookStopChecklistReadKeepsTheDeadline(t *testing.T) {
 	pinStopClock(t, stopTestNow, time.UTC)
 	setAwayAt(t, root, stopTestNow, false)
 	prevBudget, prevReader := stopReadBudget, stopOwedReader
-	stopReadBudget = 50 * time.Millisecond
+	stopReadBudget = 2 * time.Second
 	stopOwedReader = func(ctx context.Context, _ autonomy.ReadOptions) (autonomy.Owed, error) {
 		<-ctx.Done()
 		return autonomy.Owed{Owned: []autonomy.OwnedRef{{Ref: "branch:feat/late"}}}, nil
@@ -707,6 +707,109 @@ func TestHookStopChecklistReadKeepsTheDeadline(t *testing.T) {
 	out, so, se := runStop(t, stopHookPayload(t, "s1", root, false, "Done.", "*/30 * * * *"))
 	if out.Decision != "" || so != "" || !strings.Contains(se, "checklist was not read") {
 		t.Fatalf("a spent deadline must skip the checklist and allow the stop: stdout %q stderr %q", so, se)
+	}
+}
+
+// TestHookStopChecklistDeadlineLeavesNoNoteWhilePresent: present, a deadline
+// the owed reading spent leaves the session's state with no note, so the next
+// prompt is not told the checklist is behind on a read that never finished.
+func TestHookStopChecklistDeadlineLeavesNoNoteWhilePresent(t *testing.T) {
+	root := awayCheckout(t)
+	pinStopClock(t, stopTestNow, time.UTC)
+	prevBudget, prevReader := stopReadBudget, stopOwedReader
+	stopReadBudget = 2 * time.Second
+	stopOwedReader = func(ctx context.Context, _ autonomy.ReadOptions) (autonomy.Owed, error) {
+		<-ctx.Done()
+		return autonomy.Owed{Owned: []autonomy.OwnedRef{{Ref: "branch:feat/late"}}}, nil
+	}
+	t.Cleanup(func() { stopReadBudget, stopOwedReader = prevBudget, prevReader })
+	out, so, se := runStop(t, stopHookPayload(t, "s1", root, false, "Done."))
+	if out.Decision != "" || so != "" || !strings.Contains(se, "checklist was not read") {
+		t.Fatalf("present, a spent deadline must skip the checklist and allow the stop: stdout %q stderr %q", so, se)
+	}
+	st, err := autonomy.LoadSession(context.Background(), root, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.ChecklistNote != "" {
+		t.Fatalf("present, a spent deadline left a note: %q", st.ChecklistNote)
+	}
+}
+
+// TestHookStopIncompleteReadingLeavesNoNoteWhilePresent: the common route a
+// spent deadline takes. A reading of owned work cut short (Incomplete) lets
+// the stop through with its own incomplete message on stdout, reads no
+// checklist, writes no checklist line on stderr, and leaves no note for the
+// next prompt.
+func TestHookStopIncompleteReadingLeavesNoNoteWhilePresent(t *testing.T) {
+	root := awayCheckout(t)
+	pinStopClock(t, stopTestNow, time.UTC)
+	owed := autonomy.Owed{Owned: []autonomy.OwnedRef{{Ref: "branch:feat/late"}}, Incomplete: true,
+		Notes: []string{"the check ran out of its time budget before reading 4 of 40 own branches (from feat/m36 on)"}}
+	fakeOwed(t, &owed)
+	out, so, se := runStop(t, stopHookPayload(t, "s1", root, false, "Done."))
+	if out.Decision != "" || !strings.Contains(out.SystemMessage, "4 of 40 own branches") {
+		t.Fatalf("a reading cut short must allow the stop with its incomplete message: %s", so)
+	}
+	if strings.Contains(se, "checklist") {
+		t.Errorf("a reading cut short wrote a checklist line on stderr: %q", se)
+	}
+	st, err := autonomy.LoadSession(context.Background(), root, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.ChecklistNote != "" {
+		t.Fatalf("a reading cut short left a note: %q", st.ChecklistNote)
+	}
+	if next, _ := runHook(t, hookInputJSON(t, "s1", root, "carry on"), "hook", "prompt-router"); strings.Contains(next, "## CHECKLIST") {
+		t.Fatalf("the next prompt carries a note from a reading cut short: %s", next)
+	}
+}
+
+// TestHookStopSpentDeadlineRunsNoGit: naming the checkout and the session's
+// copy run under the stop hook's one deadline, so a deadline spent before the
+// hook names anything runs no git, allows the stop and says why on stderr.
+func TestHookStopSpentDeadlineRunsNoGit(t *testing.T) {
+	root := awayCheckout(t)
+	pinStopClock(t, stopTestNow, time.UTC)
+	owed := autonomy.Owed{Owned: []autonomy.OwnedRef{{Ref: "branch:feat/late"}}}
+	asked := fakeOwed(t, &owed)
+	prev := stopReadBudget
+	stopReadBudget = 0
+	t.Cleanup(func() { stopReadBudget = prev })
+	log := gitCallLog(t)
+	out, so, se := runStop(t, stopHookPayload(t, "s1", root, false, "Done."))
+	if out.Decision != "" || so != "" || !strings.Contains(se, "in the stop check's time") {
+		t.Fatalf("a spent deadline must allow the stop, naming why: stdout %q stderr %q", so, se)
+	}
+	if calls, _ := os.ReadFile(log); len(calls) != 0 {
+		t.Errorf("a spent deadline still ran git:\n%s", calls)
+	}
+	if len(*asked) != 0 {
+		t.Errorf("a spent deadline still read the owed work")
+	}
+}
+
+// TestASpentDeadlineIsSilentOutsideAManagedCheckout: a stop or a session
+// start whose deadline is spent before it names the checkout says nothing
+// where abcd does not manage the checkout, and runs no git there either.
+func TestASpentDeadlineIsSilentOutsideAManagedCheckout(t *testing.T) {
+	repo := unmanagedOwnUnpushed(t)
+	log := gitCallLog(t)
+	prev := stopReadBudget
+	stopReadBudget = 0
+	t.Cleanup(func() { stopReadBudget = prev })
+	if out, so, se := runStop(t, stopHookPayload(t, "s1", repo, false, "Done.")); out.Decision != "" || so != "" || se != "" {
+		t.Errorf("an unmanaged checkout heard of a spent stop deadline: stdout %q stderr %q", so, se)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var se strings.Builder
+	if got := sessionStartChecklist(ctx, &se, repo, 4000); got != "" || se.Len() != 0 {
+		t.Errorf("an unmanaged checkout heard of a spent start deadline: %q, stderr %q", got, se.String())
+	}
+	if calls, _ := os.ReadFile(log); len(calls) != 0 {
+		t.Errorf("a spent deadline still ran git:\n%s", calls)
 	}
 }
 

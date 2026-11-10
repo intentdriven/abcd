@@ -41,16 +41,19 @@ Each working copy keeps one checklist (dcn-2610180913444971), a JSON file in its
    - needs: none
    - packages: internal/core/checklist
    - tests: internal/core/checklist
+   - landed: 5c984dc61
 2. **The `abcd checklist` verbs**
    Tests: each verb and its JSON output, and the generated surface chapter.
    - needs: 1
    - packages: internal/surface/cli, commands/checklist.md
    - tests: internal/surface/cli
+   - landed: 7008e58a1
 3. **Render and injection for all four sources**
    Tests: each source injects; the budget is computed against the hook's whole output with the away block present; over budget cuts and says so; a corrupt or secret-bearing file falls back to a scanned last-good; both failing inject only the line (technical criteria 1 and 3, story 2).
    - needs: 1
    - packages: internal/core/checklist, internal/surface/cli
    - tests: internal/core/checklist, internal/surface/cli
+   - landed: 65e5909e0
 4. **The behind check**
    Tests: an unlisted reservation, pull request or branch blocks once while away, naming it; the slice's bound holds; while present, the next prompt carries the note and the stop is not blocked; no network call while present (story 3).
    - needs: 1
@@ -62,6 +65,7 @@ Each working copy keeps one checklist (dcn-2610180913444971), a JSON file in its
    - needs: none
    - packages: internal/core/guard, hooks
    - tests: internal/core/guard
+   - landed: c9f1e8821
 6. **The PreCompact event sidecar**
    Tests: it records, and it never blocks.
    - needs: 1
@@ -83,6 +87,7 @@ Each working copy keeps one checklist (dcn-2610180913444971), a JSON file in its
    - needs: 2, 3, 4, 5, 6
    - packages: commands/checklist.md, .abcd/development/brief/04-surfaces, .abcd/development/brief/05-internals, .abcd/development/brief/02-constraints/03-invariants.md
    - tests: internal/surface/cli
+   - landed: 994f1adc9
 
 ## Remainder: waits, promises, wakes, the blocker sweep and the return lists
 

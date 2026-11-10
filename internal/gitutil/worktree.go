@@ -1,6 +1,7 @@
 package gitutil
 
 import (
+	"context"
 	"strconv"
 	"strings"
 )
@@ -44,10 +45,19 @@ const MaxWorktreeListing = 16 << 20
 // The newline form is exact for every path without a newline in it, which is
 // the only limit it carries.
 func ListWorktrees(root string, maxBytes int) ([]Worktree, error) {
-	if out, err := RunCapped(root, maxBytes, "worktree", "list", "--porcelain", "-z"); err == nil {
+	return ListWorktreesContext(context.Background(), root, maxBytes)
+}
+
+// ListWorktreesContext is ListWorktrees bound to ctx, for a hook on a
+// deadline: each listing is killed when ctx ends, and a listing ctx ended
+// answers ctx's own error, never the older form's fallback.
+func ListWorktreesContext(ctx context.Context, root string, maxBytes int) ([]Worktree, error) {
+	if out, err := RunCappedContext(ctx, root, maxBytes, "worktree", "list", "--porcelain", "-z"); err == nil {
 		return ParseWorktreeList(out, "\x00"), nil
+	} else if ctx.Err() != nil {
+		return nil, err
 	}
-	out, err := RunCapped(root, maxBytes, "worktree", "list", "--porcelain")
+	out, err := RunCappedContext(ctx, root, maxBytes, "worktree", "list", "--porcelain")
 	if err != nil {
 		return nil, err
 	}

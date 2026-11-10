@@ -8,6 +8,7 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1915,7 +1916,9 @@ outside the dedup ledger.`,
 			// The checklist's behind note a present session's last stop left
 			// (spc-2610230805429429 step 4), carried once, beside the away
 			// block and outside the dedup ledger.
-			away.Block = joinBlocks(checklistPromptNote(cmd.ErrOrStderr(), cwd, in.SessionID), away.Block)
+			noteCtx, noteCancel := context.WithDeadline(context.Background(), deadline)
+			away.Block = joinBlocks(checklistPromptNote(noteCtx, cmd.ErrOrStderr(), cwd, in.SessionID), away.Block)
+			noteCancel()
 			rs, err := rulesForHook(root)
 			if err != nil {
 				// rules.Load errors already carry their own "rules:" prefix, so
@@ -2167,6 +2170,12 @@ outside the dedup ledger.`,
 		Short: "SessionStart: drain staged transcripts into the store, and warn about an unbootstrapped store or a stale binary",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// The checklist part's deadline, set before anything else runs:
+			// that part's reads, last, run under what is left of it; the
+			// hook's other reads are not yet bound to it (hook_checklist.go,
+			// sessionStartBudget).
+			ctx, cancel := context.WithTimeout(context.Background(), sessionStartBudget)
+			defer cancel()
 			in, err := readHookInput(cmd)
 			if err != nil {
 				return nil // malformed payload: not a store problem, stay silent
@@ -2181,7 +2190,7 @@ outside the dedup ledger.`,
 			// checklist last, in what the rest leaves of the host's cap
 			// (hook_checklist.go).
 			out := new(strings.Builder)
-			defer func() { emitSessionStart(cmd, out.String(), cwd) }()
+			defer func() { emitSessionStart(ctx, cmd, out.String(), cwd) }()
 			// Naming first, before the drain's time budget: it reserves the
 			// name the first prompt sets, and writes nothing to stdout
 			// (hook_session_name.go).

@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -195,6 +197,51 @@ func TestSessionStartWithNoChecklistInjectsNothing(t *testing.T) {
 	so := hookStart(t, root, "startup")
 	if strings.Contains(strings.ToLower(so), "checklist") {
 		t.Errorf("a working copy with no checklist was given one:\n%s", so)
+	}
+}
+
+// TestSessionStartChecklistReadKeepsTheDeadline: the checklist is read under
+// the session-start hook's one deadline, so a deadline already spent skips the
+// read, names it on stderr, and the start goes on at exit 0 with no checklist
+// in its output rather than a line that blames git.
+func TestSessionStartChecklistReadKeepsTheDeadline(t *testing.T) {
+	root := checklistCheckout(t)
+	mustChecklist(t, "add", "Land step three")
+	prev := sessionStartBudget
+	sessionStartBudget = 0
+	t.Cleanup(func() { sessionStartBudget = prev })
+	b, _ := json.Marshal(map[string]string{"session_id": "s-late", "cwd": root, "source": "startup", "hook_event_name": "SessionStart"})
+	so, se, code := runSessionStart(string(b), "hook", "session-start")
+	if code != 0 {
+		t.Fatalf("a spent deadline failed the start: exit %d\nstderr: %s", code, se)
+	}
+	if strings.Contains(strings.ToLower(so), "checklist") {
+		t.Errorf("a spent deadline still injected a checklist or its line:\n%s", so)
+	}
+	if !strings.Contains(se, "checklist was not read") {
+		t.Errorf("a spent deadline is not named on stderr: %q", se)
+	}
+}
+
+// TestSessionStartSpentDeadlineRunsNoGit: a deadline spent before the
+// checklist's part of the start runs no git for it, not even the checkout
+// root's lookup, and says so on stderr; the hook-level test above shows the
+// start still exits 0.
+func TestSessionStartSpentDeadlineRunsNoGit(t *testing.T) {
+	root := checklistCheckout(t)
+	mustChecklist(t, "add", "Land step three")
+	log := gitCallLog(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var se bytes.Buffer
+	if got := sessionStartChecklist(ctx, &se, root, 4000); got != "" {
+		t.Errorf("a spent deadline still rendered the checklist: %q", got)
+	}
+	if !strings.Contains(se.String(), "checklist was not read") {
+		t.Errorf("a spent deadline is not named on stderr: %q", se.String())
+	}
+	if calls, _ := os.ReadFile(log); len(calls) != 0 {
+		t.Errorf("a spent deadline still ran git:\n%s", calls)
 	}
 }
 

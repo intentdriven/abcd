@@ -55,6 +55,11 @@ var stopClock = func() (time.Time, *time.Location) { return time.Now(), nil }
 // A var only so a test can spend it.
 var stopReadBudget = 14 * time.Second
 
+// stopStateBudget bounds the away session's state read, the one git call it
+// makes (the tracked check) included, which follows the owed read and so
+// starts once stopReadBudget may already be spent.
+var stopStateBudget = 2 * time.Second
+
 // stopBlockCapEnv names the host's setting that raises its continuation cap.
 const stopBlockCapEnv = "CLAUDE_CODE_STOP_HOOK_BLOCK_CAP"
 
@@ -157,12 +162,23 @@ nothing.`,
 			if err != nil {
 				return stopAllow(cmd, "unreadable Stop payload (%s)", termsafe.Sanitize(err.Error()))
 			}
-			root, ok := managedRoot(p.Cwd)
+			// Naming the checkout and the session's copy run under the one
+			// deadline too. So, in the owed read, do the identity and holder,
+			// the default branch and the last-fetch stamp; its other reads,
+			// the reservations' view and the landing receipt among them, are
+			// not yet bound (iss-2611100548341325).
+			root, ok := managedRootContext(ctx, p.Cwd)
 			if !ok {
+				if ctx.Err() != nil && looksManaged(p.Cwd) {
+					return stopAllow(cmd, "the checkout was not named in the stop check's time")
+				}
 				return nil // not a checkout abcd manages: nothing to check, and no git spent
 			}
-			copyRoot, st, err := autonomy.ResolveCopy(root, p.SessionID, autonomy.Options{})
+			copyRoot, st, err := autonomy.ResolveCopyContext(ctx, root, p.SessionID, autonomy.Options{})
 			if err != nil {
+				if ctx.Err() != nil {
+					return stopAllow(cmd, "the away store was not found in the stop check's time")
+				}
 				return nil // not a checkout abcd can key a store on: nothing to check
 			}
 			now, loc := stopClock()
@@ -185,7 +201,12 @@ nothing.`,
 			}
 			var prev autonomy.SessionState
 			if away {
-				if prev, err = autonomy.LoadSession(copyRoot, p.SessionID); err != nil {
+				// The state is read after the owed read's budget, as
+				// stopReadBudget counts it, under a short bound of its own.
+				sctx, scancel := context.WithTimeout(context.Background(), stopStateBudget)
+				prev, err = autonomy.LoadSession(sctx, copyRoot, p.SessionID)
+				scancel()
+				if err != nil {
 					return stopAllow(cmd, "the session's state could not be read (%s)", fsutil.RedactHome(err.Error()))
 				}
 			}
@@ -237,7 +258,7 @@ func stopChecklistBehind(ctx context.Context, cmd *cobra.Command, copyRoot, sess
 		return v
 	}
 	if !away {
-		st, err := autonomy.LoadSession(copyRoot, sessionID)
+		st, err := autonomy.LoadSession(ctx, copyRoot, sessionID)
 		if err != nil {
 			diagnosticLine(cmd.ErrOrStderr(), "abcd stop: the session's state could not be read (%s); no checklist note is left", fsutil.RedactHome(err.Error()))
 			return v

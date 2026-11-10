@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -39,12 +40,26 @@ const (
 	checklistRenderBudget = sessionStartOutputCap - sessionStartMargin
 )
 
+// sessionStartBudget is the deadline the session-start hook sets at its start
+// for its checklist part. These reads run under it: the checkout root's
+// lookup, the read's tracked check and the scanner's identity probe. A
+// deadline spent before or during them leaves the checklist out of this
+// start, said on stderr in a checkout abcd manages. The hook's other reads are
+// not yet bound to it (iss-2611100548341325).
+// The host gives the hook's shell 240 seconds, a first run's download of the
+// binary among them, so a minute keeps the read well inside what the host
+// allows.
+//
+// A var only so a test can spend it.
+var sessionStartBudget = time.Minute
+
 // emitSessionStart writes the session-start hook's one output: composed, the
 // text the hook gathered, then the checklist within what composed leaves of
-// the cap. The rest is never cut; a checklist that cannot be read becomes the
-// reader's one line, never an error or a non-zero exit.
-func emitSessionStart(cmd *cobra.Command, composed, cwd string) {
-	text := composed + sessionStartChecklist(cwd, checklistRenderBudget-len(composed))
+// the cap, read under the hook's deadline (ctx). The rest is never cut; a
+// checklist that cannot be read becomes the reader's one line, never an error
+// or a non-zero exit.
+func emitSessionStart(ctx context.Context, cmd *cobra.Command, composed, cwd string) {
+	text := composed + sessionStartChecklist(ctx, cmd.ErrOrStderr(), cwd, checklistRenderBudget-len(composed))
 	if text != "" {
 		io.WriteString(cmd.OutOrStdout(), text)
 	}
@@ -55,8 +70,13 @@ func emitSessionStart(cmd *cobra.Command, composed, cwd string) {
 // working copy that has never had a checklist (the intent re-injects "a
 // session with a checklist"), and otherwise checklist.Render of what the
 // reader returns, which carries its own line when it fell back or found
-// nothing usable. It reads no network and writes nothing.
-func sessionStartChecklist(cwd string, budget int) (text string) {
+// nothing usable. It reads no network and writes nothing. Its git calls, the
+// root's lookup and the read's (the tracked check and the scanner's identity
+// probe), run under the hook's deadline (ctx): a
+// deadline spent before or during them leaves the checklist out and says so on
+// stderr, so a checklist git did not answer for in time is never shown as one
+// git could not judge, and a spent deadline runs no git at all.
+func sessionStartChecklist(ctx context.Context, stderr io.Writer, cwd string, budget int) (text string) {
 	// A start is never failed for the checklist: a panic in the read or the
 	// render is the line, not a crash of the hook.
 	defer func() {
@@ -68,11 +88,34 @@ func sessionStartChecklist(cwd string, budget int) (text string) {
 	if stageActive() {
 		return ""
 	}
-	root, ok := managedRoot(cwd)
-	if !ok || !checklistFilesExist(root) {
+	// A spent deadline is named only where abcd manages the checkout, asked
+	// with no git (looksManaged): any other checkout hears nothing.
+	spent := func() bool {
+		if ctx.Err() == nil {
+			return false
+		}
+		if looksManaged(cwd) {
+			diagnosticLine(stderr, "abcd checklist: the checklist was not read at this start, the hook's time being spent; `abcd checklist` shows it")
+		}
+		return true
+	}
+	// A deadline already spent runs no git at all, not even the root's.
+	if spent() {
 		return ""
 	}
-	return checklist.Render(checklist.Read(root), budget)
+	root, ok := managedRootContext(ctx, cwd)
+	if !ok {
+		spent()
+		return ""
+	}
+	if !checklistFilesExist(root) {
+		return ""
+	}
+	res := checklist.ReadContext(ctx, root)
+	if spent() {
+		return ""
+	}
+	return checklist.Render(res, budget)
 }
 
 // recordCompaction is the PreCompact event sidecar (spc-2610230805429429
@@ -113,20 +156,27 @@ func recordCompaction(w io.Writer, cwd, trigger string) {
 // It reads the session's state in the working copy the session acts from, and
 // nothing else: no owed reading, no network. Outside a managed checkout, on a
 // drive's stage, or with a session id the store cannot key, it adds nothing;
-// a state that cannot be read adds nothing and is named on stderr.
-func checklistPromptNote(stderr io.Writer, cwd, sessionID string) string {
-	if stageActive() || !autonomy.ValidSessionID(sessionID) {
+// a state that cannot be read adds nothing and is named on stderr. Its git
+// calls, naming the checkout and the session's copy, run under the prompt
+// hook's one deadline (ctx); a deadline spent first leaves the note waiting in
+// the state for a later prompt.
+func checklistPromptNote(ctx context.Context, stderr io.Writer, cwd, sessionID string) string {
+	if stageActive() || !autonomy.ValidSessionID(sessionID) || ctx.Err() != nil {
 		return ""
 	}
-	if _, ok := managedRoot(cwd); !ok {
+	if _, ok := managedRootContext(ctx, cwd); !ok {
 		return ""
 	}
-	copyRoot, _, err := autonomy.ResolveCopy(cwd, sessionID, autonomy.Options{})
+	copyRoot, _, err := autonomy.ResolveCopyContext(ctx, cwd, sessionID, autonomy.Options{})
 	if err != nil {
 		return ""
 	}
-	note, err := autonomy.TakeChecklistNote(copyRoot, sessionID)
+	note, err := autonomy.TakeChecklistNote(ctx, copyRoot, sessionID)
 	if err != nil {
+		// A deadline spent leaves the note waiting, and is no fault to name.
+		if ctx.Err() != nil {
+			return ""
+		}
 		diagnosticLine(stderr, "abcd checklist: no behind note is shown (%s)", fsutil.RedactHome(err.Error()))
 		return ""
 	}

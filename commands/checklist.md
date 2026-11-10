@@ -11,7 +11,8 @@ user-invocable: false
 The working copy's checklist: what this session is working on, what it waits
 on and what it has promised. It lives in `.abcd/.work.local/checklist.json`,
 one file per working copy, so a resumed or a fresh session in the same copy
-reads the same list, and it survives compaction and a crash. Keep it current
+reads the same list, and every session start, after a compaction too, adds it
+back to the session's context. Keep it current
 as you work, through these verbs only: the file is checked when it is read,
 and a hand edit the reader cannot vouch for is passed over.
 
@@ -105,6 +106,16 @@ behind: while the person is away the stop is blocked once per consecutive
 set naming them, and
 while they are present the next prompt carries the same note. Bring the list
 up to date with `add` or `set` when it does.
+
+The hooks read the list within their own deadlines: finding the checkout, the
+read's check that git does not track the list, and the secret scanner's
+reading of your git identity.
+A session start that runs out of time before the list is read shows no list
+and says so in one line on stderr. A stop whose reading of owned work runs out
+of time does not read the list: it goes through with that reading's own
+message saying what was not read, and leaves no note. A stop that runs out of
+time at the list's own read says so in one line on stderr, adds no block for
+the list and leaves no note. Run the bare verb to see the list then.
 
 A write starts from what the reader returns: when checklist.json fails its
 checks it builds on the last good copy, and when both fail it starts a new

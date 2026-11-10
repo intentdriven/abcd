@@ -1,9 +1,14 @@
 # `/abcd:checklist` — Keep the Working Copy's Checklist on Disk
 
 `/abcd:checklist` keeps what a session in this working copy is doing on disk
-(itd-2610170638184486, spc-2610230805429429 steps 1 to 3, 5 and 6): what it works on,
+(itd-2610170638184486, spc-2610230805429429 steps 1 to 6): what it works on,
 what it waits on and what it has promised. A resumed or a fresh session in the
-same copy reads the same list, and the list survives a compaction or a crash.
+same copy reads the same list, and every session start, a compaction's
+included, adds it back to the session's context. Two of the spec's steps have
+not run: the crash lab (step 7), so nothing here yet shows the list surviving a
+crash or a power cut, and the live capture in a real session (step 8), so the
+re-injection after a compaction is shown by the hook's tests, not yet in a live
+session.
 It is an agent's verb, listed in the agents group, and every sub-verb runs in
 the process, touching no network.
 
@@ -99,7 +104,13 @@ list gets what they leave, less a margin of 500. Past that, it keeps the open
 items, newest first, and says how many it left out and how to see them all.
 When the file fails the reader, the last good copy is added with one line
 saying why; when both fail, that line alone. A working copy that never had a
-list is given nothing, and the list never fails a start.
+list is given nothing, and the list never fails a start. The start sets a
+deadline of one minute at its own start, and these reads of the list's part
+run within it: finding the checkout, the checklist read's tracked check and
+the secret scanner's reading of the person's git identity. The start's other
+reads are not yet bound to it (iss-2611100548341325). A deadline spent before
+or during the list's part runs none of those reads and adds nothing; where the checkout holds abcd's folder it says so in one line on the
+hook's error stream, and the start goes on.
 
 ## At every compaction
 
@@ -142,7 +153,22 @@ blocked for it, and the stop check reads disk alone, calling no forge; a
 stop's message reaches the person, not the model, so the note is kept in the
 session's stop state and the next prompt carries it into the model's context,
 once, under a CHECKLIST heading, and a set is noted once per consecutive
-set, on the same terms.
+set, on the same terms. These reads of the stop check run within its one
+deadline: finding the checkout and the session's copy, the checklist read,
+the secret scanner's identity probe, the session's identity and holder, the
+default branch and the last-fetch stamp. The stop check's other reads, among
+them the reservations' view and the landing-receipt read, are not yet bound
+to it (iss-2611100548341325). The away session's state, read once that
+deadline may be spent, runs under a two-second bound of its own. How a spent deadline shows depends on where it is
+spent. When the reading of
+owned work is cut short, the list is not read: the stop goes through with that
+reading's own message to the person, saying what was not read, adds no block
+for the list, leaves no note and writes no line about the list. Only a
+deadline spent at the list's own read writes one line on the hook's error
+stream; the stop then goes as judged without the list, adds no block of its
+own and leaves no note. A deadline spent before the checkout is named allows
+the stop, with one line on the error stream saying so where the checkout holds
+abcd's folder, and nothing anywhere else.
 A step the session never wrote down and that left no branch or reservation
 behind cannot be seen.
 

@@ -1,6 +1,7 @@
 package autonomy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -81,7 +82,13 @@ func resolveWho(root, home string) string {
 // Resolve is the checkout root a caller standing in cwd acts from, the away
 // store its repository keys, and the home it lives under.
 func Resolve(cwd string, o Options) (root string, st Store, err error) {
-	root, err = gitutil.CheckoutRoot(cwd, StoreName)
+	return resolveContext(context.Background(), cwd, o)
+}
+
+// resolveContext is Resolve bound to ctx, for a hook on a deadline: each git
+// call it makes, the root's and the root commit's, is killed when ctx ends.
+func resolveContext(ctx context.Context, cwd string, o Options) (root string, st Store, err error) {
+	root, err = gitutil.CheckoutRootContext(ctx, cwd, StoreName)
 	if err != nil {
 		return "", Store{}, err
 	}
@@ -89,7 +96,7 @@ func Resolve(cwd string, o Options) (root string, st Store, err error) {
 	if err != nil {
 		return "", Store{}, err
 	}
-	st, err = openStore(home, root)
+	st, err = openStoreContext(ctx, home, root)
 	return root, st, err
 }
 
@@ -101,7 +108,12 @@ func Resolve(cwd string, o Options) (root string, st Store, err error) {
 // worktree. The away mode's hooks and recorder act only in such a checkout,
 // so a plugin installed for every repository reads nothing, writes nothing,
 // runs no git past naming the roots, and says nothing in any other.
-func Managed(root string) bool {
+func Managed(root string) bool { return ManagedContext(context.Background(), root) }
+
+// ManagedContext is Managed bound to ctx, for a hook on a deadline: the one
+// git call a linked worktree takes is killed when ctx ends, and a call ctx
+// ended answers false.
+func ManagedContext(ctx context.Context, root string) bool {
 	if root == "" {
 		return false
 	}
@@ -111,7 +123,7 @@ func Managed(root string) bool {
 	if fi, err := os.Lstat(filepath.Join(root, ".git")); err != nil || !fi.Mode().IsRegular() {
 		return false // not a linked worktree: there is no main worktree to ask
 	}
-	common, err := gitutil.RevParseAbsPath(root, "--git-common-dir")
+	common, err := gitutil.RevParseAbsPathContext(ctx, root, "--git-common-dir")
 	if err != nil || filepath.Base(common) != ".git" {
 		return false
 	}

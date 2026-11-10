@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -80,12 +81,17 @@ func (id identity) person() bool {
 // it is, and that account authors the reservation, so git never composes an
 // author from the machine's name, which a public commit must never carry.
 func gitIdentity(root string) (identity, error) {
+	return gitIdentityContext(context.Background(), root)
+}
+
+// gitIdentityContext is gitIdentity with its git reads bound to ctx.
+func gitIdentityContext(ctx context.Context, root string) (identity, error) {
 	var id identity
 	for _, f := range []struct {
 		key  string
 		into *string
 	}{{"user.name", &id.Name}, {"user.email", &id.Email}} {
-		v, err := personalConfig(root, f.key)
+		v, err := personalConfigContext(ctx, root, f.key)
 		if err != nil {
 			return identity{}, refuse("could not read git's %s: %v; %s", f.key, err, nothingSent)
 		}
@@ -426,7 +432,12 @@ func forgeClass(err error) error {
 // personalConfig reads one git config value under the developer's own
 // configuration; "" when it is unset.
 func personalConfig(root, key string) (string, error) {
-	out, code, err := personalGit(root, "", nil, "config", "--get", key)
+	return personalConfigContext(context.Background(), root, key)
+}
+
+// personalConfigContext is personalConfig with its git bound to ctx.
+func personalConfigContext(ctx context.Context, root, key string) (string, error) {
+	out, code, err := personalGitContext(ctx, root, "", nil, "config", "--get", key)
 	if code == 1 {
 		return "", nil
 	}
