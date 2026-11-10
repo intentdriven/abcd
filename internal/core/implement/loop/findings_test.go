@@ -221,28 +221,129 @@ const growthUnits = 4
 // about sixteen times as long in quadratic time.
 const quadraticGrowth = 10
 
-// readGrowth reads an input of units and one of four times as many units,
-// each timed as the fastest of three tries, and returns how many times
-// longer the larger took. build makes the input outside the timing and
-// returns the read. The ratio is judged, never a time, so a slow or loaded
-// machine, or the race detector, which slows both reads alike, cannot fail
-// a linear read (a fixed bound of 15s failed one under CI's race stage).
+// growthRounds is the most rounds a growth judge times; each round reads the
+// smaller input and then the larger, back to back.
+const growthRounds = 5
+
+// readGrowth reads an input of units and one of four times as many units in
+// rounds of one read of each, and returns the median of the rounds' ratios:
+// how many times longer the larger read took. build makes the input outside
+// the timing and returns the read. The ratio is judged, never a time, so a
+// slow or loaded machine, or the race detector, which slows both reads alike,
+// cannot fail a linear read (a fixed bound of 15s failed one under CI's race
+// stage).
+//
+// The median of the rounds' ratios holds against a burst of noise, where the
+// fastest read of each size does not. A burst that covers both reads of a
+// round slows them alike and leaves its ratio as it was; only a round the
+// burst starts or ends in is skewed, one each way, or one round alone when
+// the burst falls inside a single read. So one burst skews at most one round
+// upwards and one downwards, two bursts at most two the same way, and the
+// median of five is a clean round's. The ratio of the fastest reads fails
+// whenever noise covers every read of one size and spares one of the other:
+// three back-to-back small reads took a burst that brought a quadratic
+// read's ratio from about sixteen down to 9.1 under CI's race stage, and
+// with the sizes interleaved a load that rises just after the first small
+// read and outlasts the rest still triples a linear read's ratio.
+//
+// An untimed read of the smaller input first pays the one-time costs, a cold
+// cache among them, outside every round. Once three rounds fall on one side
+// of quadraticGrowth, three of five lie there whatever the last two say, so
+// the median of five falls on that side too and the judge stops: a quiet
+// machine pays for three rounds, the time the fastest of three tries of each
+// size took, and only a noisy one for five.
 func readGrowth(units int, build func(units int) func()) float64 {
-	fastest := func(units int) time.Duration {
-		best := time.Duration(math.MaxInt64)
-		for range 3 {
-			read := build(units)
-			runtime.GC()
-			start := time.Now()
+	timeRead(build(units))
+	var ratios []float64
+	for len(ratios) < growthRounds {
+		small := max(timeRead(build(units)), time.Nanosecond)
+		large := max(timeRead(build(4*units)), time.Nanosecond)
+		ratios = append(ratios, float64(large)/float64(small))
+		if len(ratios) == growthRounds/2+1 && (slices.Min(ratios) > quadraticGrowth || slices.Max(ratios) <= quadraticGrowth) {
+			break
+		}
+	}
+	slices.Sort(ratios)
+	return ratios[len(ratios)/2]
+}
+
+// timeRead collects the garbage the input's making left, then times one read.
+// The noise test replaces it with a simulated machine, which is safe while no
+// test that reads growth runs in parallel.
+var timeRead = func(read func()) time.Duration {
+	runtime.GC()
+	start := time.Now()
+	read()
+	return time.Since(start)
+}
+
+// noisyMachine is a simulated machine that delivers one unit of work per
+// unit of time, and a third of that during one burst of noise from from to
+// to, as when other processes take two thirds of the processor.
+type noisyMachine struct{ now, from, to float64 }
+
+// run advances the machine's clock by the time work takes on it, and returns
+// that time.
+func (m *noisyMachine) run(work float64) float64 {
+	const slow = 3
+	start := m.now
+	for work > 0 {
+		rate, until := 1.0, math.Inf(1)
+		switch {
+		case m.now < m.from:
+			until = m.from
+		case m.now < m.to:
+			rate, until = 1.0/slow, m.to
+		}
+		if span := until - m.now; span*rate < work {
+			work -= span * rate
+			m.now = until
+		} else {
+			m.now += work / rate
+			work = 0
+		}
+	}
+	return m.now - start
+}
+
+// TestOneBurstOfNoiseNeverChangesTheGrowthVerdict: one burst of noise that
+// slows the machine threefold, however long and wherever it falls among a
+// growth judge's tries, neither lets a quadratic read pass nor fails a linear
+// one. A burst as long as three back-to-back reads of one size once did both:
+// over the small reads it deflated the ratio, over the large ones it
+// inflated it.
+func TestOneBurstOfNoiseNeverChangesTheGrowthVerdict(t *testing.T) {
+	saved := timeRead
+	t.Cleanup(func() { timeRead = saved })
+	for _, c := range []struct {
+		name      string
+		work      func(units int) float64
+		quadratic bool
+	}{
+		{"linear", func(units int) float64 { return float64(units) }, false},
+		{"quadratic", func(units int) float64 { return float64(units * units) }, true},
+	} {
+		var m noisyMachine
+		var work float64
+		timeRead = func(read func()) time.Duration {
 			read()
-			if d := time.Since(start); d < best {
-				best = d
+			return time.Duration(m.run(work) * float64(time.Millisecond))
+		}
+		build := func(units int) func() {
+			return func() { work = c.work(units) }
+		}
+	bursts:
+		for _, length := range []float64{0.5, 1, 2, 3, 6, 12, 24, 48, 96, 200} {
+			for from := 0.0; from < 120; from += 0.25 {
+				m = noisyMachine{from: from, to: from + length}
+				growth := readGrowth(1, build)
+				if c.quadratic && growth <= quadraticGrowth || !c.quadratic && growth > quadraticGrowth {
+					t.Errorf("%s: a burst from %v to %v made the growth %.1f", c.name, from, from+length, growth)
+					break bursts
+				}
 			}
 		}
-		return max(best, time.Nanosecond)
 	}
-	small := fastest(units)
-	return float64(fastest(4*units)) / float64(small)
 }
 
 // TestAReturnAndFixReportAreReadInLinearTime: a return whose every line is a
