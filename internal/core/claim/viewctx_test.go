@@ -428,8 +428,9 @@ func (c deadlineAtSignal) Err() error {
 // TestACapRefusalIsNotAContextsEnd: overCap reads the refusal of each capped
 // runner this package's readers fold into an object too big, both as stored
 // reads and the bound one, from a real git past a tiny cap, so gitutil
-// rewording it fails here; and a context's end, whose error also says
-// "exceeded", is never one.
+// rewording it fails here; and a context's end is never one. The context
+// cases hold only that its words do not match the cap's: they pass without
+// overCap's errors.Is guard, which no test here holds.
 func TestACapRefusalIsNotAContextsEnd(t *testing.T) {
 	r := gittest.NewRepo(t)
 	r.Write("README.md", "a project\n")

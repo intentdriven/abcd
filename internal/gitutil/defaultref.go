@@ -15,7 +15,8 @@ import (
 // reviews board counts the commits it has moved since a review's pin. Two
 // readers of one repository asking the same question must get one answer.
 // A listing past its 64 KiB cap is refused whole, and the branch is then asked
-// ref by ref: the same answer, for a few more git processes.
+// ref by ref, for a few more git processes; resolveDefault names where a
+// question per ref can answer differently from the listing.
 func DefaultRef(root string) string {
 	return defaultRef(askCapped(root))
 }
@@ -84,8 +85,9 @@ var defaultNames = []string{"main", "master", "trunk", "develop"}
 // present wins). It serves readers that measure against the default branch;
 // it must never decide an act on the remote, such as which branch a push may
 // target, which asks the remote itself. A listing past its 64 KiB cap is
-// refused whole, and the branch is then asked ref by ref: the same answer, for
-// a few more git processes.
+// refused whole, and the branch is then asked ref by ref, for a few more git
+// processes; resolveDefault names where a question per ref can answer
+// differently from the listing.
 func TrackedDefaultBranch(root, remote string) string {
 	return trackedDefaultBranch(askCapped(root), remote)
 }

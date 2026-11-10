@@ -261,7 +261,8 @@ const growthRounds = 5
 // every round the same way; under a machine that keeps speeding up or
 // slowing down inside every round, since the larger read always follows the
 // smaller (a speed-up of 1.6 times from each small read to its large one
-// passes a quadratic read, a slow-down of 2.5 times fails a linear one);
+// passes a quadratic read, a slow-down of more than 2.5 times fails a linear
+// one);
 // under a cost only the larger input meets, such as heap growth, when it
 // recurs in every round; and under independent short stalls on the smaller
 // read, the shorter one. The fastest-of-three judge failed the control only
