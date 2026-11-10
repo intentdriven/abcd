@@ -19,14 +19,17 @@ package loop
 // theirs; adr-2609091248200336).
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -220,18 +223,69 @@ func derivedLaneWorktree(repoRoot, runID string, lane Lane, stage string) (LaneW
 	return lw, nil
 }
 
+// originAskTimeout bounds the worktree stage's ask of origin for its default
+// branch's tip. It is a variable only so a test can shorten it.
+var originAskTimeout = time.Minute
+
+// originTip is the commit a lane in a checkout with an origin opens on:
+// origin's own answer for its default branch's tip, asked of the remote and
+// never read from a ref here, since anything that runs in the checkout can
+// move a ref here (gitutil.RemoteHeadTip, bounded by originAskTimeout). The
+// default branch as read here, defRef at base, must be that tip or an
+// ancestor of it, so a default branch here the remote never had is refused
+// rather than passed over; and the tip must already be in the repository, as
+// a fetch leaves it, or nothing here can show base descends to it. A remote
+// that cannot be asked is never read as one that agrees: a lost network (or
+// no answer within the bound) is the stage's network failure (netFailure), a
+// contention refusal, and any other failure the stage's plain refusal; either
+// way nothing is made, and the step is taken again as any refused step is. It
+// returns the remote's default branch and its tip.
+func originTip(c Context, laneID, defRef, base string) (string, string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), originAskTimeout)
+	defer cancel()
+	what := "git ls-remote " + Remote
+	branch, tip, err := gitutil.RemoteHeadTip(ctx, nil, c.RepoRoot, Remote)
+	if err != nil {
+		if ctx.Err() != nil {
+			err = fmt.Errorf("%s did not answer within %s: operation timed out", Remote, originAskTimeout)
+		}
+		if r := netFailure(StageWorktree, laneID, what, err); r != nil {
+			r.Remedy = "keep to offline work; run `abcd implement step` again once the network is back; nothing was made"
+			return "", "", r
+		}
+		return "", "", refuse(string(StageWorktree), "", laneID,
+			"could not ask "+Remote+" for its default branch's tip, so the commit the lane opens on cannot be shown to be the reviewed default branch: "+gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())),
+			"settle what git reports (`git ls-remote --symref "+Remote+" HEAD`), then run `abcd implement step` again; nothing was made")
+	}
+	if _, err := gitutil.Run(c.RepoRoot, "cat-file", "-e", tip+"^{commit}"); err != nil {
+		return "", "", refuse(string(StageWorktree), "", laneID,
+			fmt.Sprintf("%s reports its %s at %s, which this repository does not hold yet, so the lane's commit cannot be shown to be on it", Remote, branch, tip[:12]),
+			"fetch "+Remote+" (`git fetch "+Remote+"`), then run `abcd implement step` again; nothing was made")
+	}
+	if base != tip {
+		if _, err := gitutil.Run(c.RepoRoot, "merge-base", "--is-ancestor", base, tip); err != nil {
+			return "", "", refuse(string(StageWorktree), "", laneID,
+				fmt.Sprintf("the default branch here, %s at %s, is not the remote's: it is neither %s's %s tip %s nor an ancestor of it", gitutil.ShortRef(defRef), base[:12], Remote, branch, tip[:12]),
+				"look at what moved "+gitutil.ShortRef(defRef)+" here, set it back to "+Remote+"'s (`git fetch "+Remote+"`), then run `abcd implement step` again; nothing was made")
+		}
+	}
+	return branch, tip, nil
+}
+
 // worktreeStage is the worktree stage's body. It finds what it made last time
 // before making anything: a worktree git already lists at the lane's path on
 // the lane's branch is the lane's, and is adopted; one on another branch, or
 // anything else occupying the path, is refused and left where it is. Otherwise
-// the lane's branch is cut from the default branch into the store, or, in a
-// trial, from the trial's frozen commit (trialBase).
+// the lane's branch is cut into the store from the default branch (where the
+// checkout has an origin, from the tip origin reports for it: originTip), or,
+// in a trial, from the trial's frozen commit (trialBase). Where origin reported
+// the tip, the lane's hooks are pinned before any commit in it (pinLaneHooks).
 func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 	lw, err := laneWorktree(c.RepoRoot, c.State.RunID, lane.ID)
 	if err != nil {
 		return Outcome{}, err
 	}
-	var defRef, base, from string
+	var defRef, base, from, tip string
 	if c.State.Trial {
 		if base, err = trialBase(c, lane.ID); err != nil {
 			return Outcome{}, err
@@ -248,6 +302,18 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 			return Outcome{}, fmt.Errorf("resolving the default branch %s: %v", defRef, err)
 		}
 		from = gitutil.ShortRef(defRef)
+		has, err := claim.HasOrigin(c.RepoRoot)
+		if err != nil {
+			return Outcome{}, err
+		}
+		if has {
+			branch, reported, err := originTip(c, lane.ID, defRef, base)
+			if err != nil {
+				return Outcome{}, err
+			}
+			tip, base = reported, reported
+			from = Remote + "/" + branch + " as " + Remote + " reports it"
+		}
 	}
 
 	if err := lw.lane.Ensure(); err != nil {
@@ -319,6 +385,20 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 	head, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", branchRef+"^{commit}", "--")
 	if err != nil || !gitutil.IsFullSHA(head) {
 		return Outcome{}, fmt.Errorf("resolving the lane branch %s: %v", lw.Branch, err)
+	}
+	// The lane's hooks are pinned before any commit in it (pinLaneHooks),
+	// made or adopted alike, from the commit it opens on. One hook has run
+	// there already: git's add ran the post-checkout hook git runs in the
+	// new worktree. Where the lane's hooks are its own copy, that is base's
+	// own hook, checked out from a commit origin's answer above vouched for,
+	// which is why the remote is asked before the add; any other hooks
+	// directory is the checkout's or the machine's, which the run's
+	// fingerprint already watches. With no origin, or in a trial, nothing is
+	// pinned and the lane is compared with the checkout as the run recorded it.
+	if tip != "" {
+		if err := pinLaneHooks(c, lane.ID, lw.Path, base, tip); err != nil {
+			return Outcome{}, err
+		}
 	}
 	// A picked run's first lane carries the pick's reason as its first
 	// commit, made here, before the brief and the implementer

@@ -1020,9 +1020,39 @@ hooks directory and `info/attributes`. For each lane worktree it also covers
 every such setting git reads there, whether from the shared settings, a
 conditional include that applies only there or the worktree's own settings,
 and the hooks directory git runs there: a relative `core.hooksPath` such as
-`.githooks` names the lane's own copy. A lane made after the fingerprint was
-recorded is compared with the checkout as recorded, for any setting or hook it
-adds or holds differently. Your global and system
+`.githooks` names the lane's own copy.
+
+Where the checkout has an `origin`, the worktree stage pins a lane's own hooks
+as the lane opens, so a reviewed hook change merged on the default branch
+during a run is no change in the lanes cut after it. Before it makes the lane,
+the stage asks `origin` itself, within a minute, for its default branch's tip,
+and cuts the lane from that tip. It refuses, making nothing, when the default
+branch read here is neither that tip nor an ancestor of it, when the tip has
+not been fetched here, or when `origin` cannot be asked: a lost network is a
+wait, and any other failure a refusal. Then, before any commit in the lane, a
+lane whose hooks directory is its own copy has that directory proved to hold
+exactly what the commit it opens on holds: the same entries, each file's bytes
+and exec bit, each symlink's target and each subdirectory as a directory. A
+lane abcd finds again (a step stopped before its state was written) must also
+hold the same hooks as the tip. Anything else is refused at the worktree
+stage. What was proved is pinned for the lane, and the lane is compared with
+it from then on: a hook changed in the lane stops the next step, even one put
+back to the checkout's older copy. A content filter that rewrites the hook
+files as they are checked out (an end-of-line or smudge filter) makes them
+differ from the commit, so such a lane is refused.
+
+With no `origin`, in a trial, or where the lane's hooks directory is not its
+own copy, nothing is pinned: a lane made after the fingerprint was recorded is
+compared with the checkout as recorded, for any setting or hook it adds or
+holds differently. The pin leaves these out, and nothing checks them for you:
+an absolute `core.hooksPath` or a hook dispatcher your global settings name
+gets no pin of its own, and is compared with the checkout as recorded; the
+checkout's own hooks and settings changing when you pull it during a run are a
+change like any other, which stops the next step until you accept it; and each
+run records the watched settings afresh when it first checks them, so a
+setting changed before a run's first check is that run's starting point (each
+lane of a drain is a run of its own), and you must look at what changes
+between runs yourself. Your global and system
 settings are your own and are not watched. The file holds salted hashes, never
 a value: a credential helper's value may carry a secret, so only key names and
 file paths are ever stored or reported. A key's name can carry a secret too (a
