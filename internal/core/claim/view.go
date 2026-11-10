@@ -174,24 +174,31 @@ func View(root string, now time.Time) (Snapshot, error) {
 // whose fetch could not read origin's default branch does not trust the copy
 // this clone holds of it.
 func view(root string, now time.Time, derive bool) (Snapshot, error) {
-	return viewOf(root, now, derive, nil)
+	return viewOf(viewGit{}, root, now, derive, nil)
 }
 
 // viewOf is view over the subjects only admits (every subject when only is
 // nil): a reader that needs the releases alone (releaseHolds) reads no other
 // tip, and origin's default branch only when a record is there to derive.
-func viewOf(root string, now time.Time, derive bool, only func(subject string) bool) (Snapshot, error) {
+// Its git runs through g: viewGit{} for every reader but ViewContext.
+func viewOf(g viewGit, root string, now time.Time, derive bool, only func(subject string) bool) (Snapshot, error) {
 	now = now.UTC().Truncate(time.Second)
 	// The fetch stamp says when this copy last read origin; one git tracks
 	// came with a commit and says nothing of this copy. Asked only of a stamp
 	// there is.
 	if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(reservations.stampRel()))); err == nil {
-		if err := localtier.Untracked(root, reservations.stampRel()); err != nil {
+		var err error
+		if g.bound() {
+			err = localtier.UntrackedContext(g.ctx, root, reservations.stampRel())
+		} else {
+			err = localtier.Untracked(root, reservations.stampRel())
+		}
+		if err != nil {
 			return Snapshot{}, err
 		}
 	}
 	snap := Snapshot{FetchedAt: lastFetched(root, reservations), Reservations: []Reservation{}}
-	out, err := localGit(root, 1<<20, "for-each-ref", "--format=%(refname)", TrackingPrefix)
+	out, err := g.local(root, 1<<20, "for-each-ref", "--format=%(refname)", TrackingPrefix)
 	if err != nil {
 		return snap, fmt.Errorf("reading the reservations: %s", redacted(err))
 	}
@@ -205,7 +212,7 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 	if len(refs) == 0 {
 		return snap, nil
 	}
-	tree, err := emptyTreeName(root)
+	tree, err := g.emptyTreeName(root)
 	if err != nil {
 		return snap, fmt.Errorf("reading the reservations: %s", redacted(err))
 	}
@@ -218,27 +225,27 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 	anyRecord := slices.ContainsFunc(refs, func(ref string) bool { return !isRelease(strings.TrimPrefix(ref, TrackingPrefix)) })
 	// One name for origin's default branch per view (iss-2610180545134593): a
 	// view fetches nothing, so the name cannot move under it.
-	defaultRef := originDefault(root)
+	defaultRef := g.originDefault(root)
 	if ref := defaultRef; derive && anyRecord && ref != "" {
-		if records, err = peers.RecordsAt(root, ref); err != nil {
+		if records, err = g.recordsAt(root, ref); err != nil {
 			return snap, fmt.Errorf("reading %s: %s", gitutil.ShortRef(ref), redacted(err))
 		}
 	}
 	// The release tags are read only when a release subject is there to end.
 	var tagged map[string]bool
 	if slices.ContainsFunc(refs, func(ref string) bool { return isRelease(strings.TrimPrefix(ref, TrackingPrefix)) }) {
-		if tagged, err = releaseTags(root); err != nil {
+		if tagged, err = releaseTags(g, root); err != nil {
 			return snap, fmt.Errorf("reading the release tags: %s", redacted(err))
 		}
 	}
-	own := ownCopyKey(root)
+	own := g.ownCopyKey(root)
 	dated := snap.FetchedAt
 	if dated.IsZero() {
 		dated = now
 	}
 	// The tips in one batch where they read cleanly, each as readSeen reads
 	// it (iss-2610180545134593).
-	reads := readSeenTips(root, refs, tree, dated, false)
+	reads := readSeenTipsWithin(g, root, refs, tree, dated, false, batchBudget)
 	for i, ref := range refs {
 		id := strings.TrimPrefix(ref, TrackingPrefix)
 		t, ok, err := reads[i].t, reads[i].ok, reads[i].err
@@ -266,7 +273,7 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 	// origin's default branch recognises none.
 	if slices.ContainsFunc(snap.Reservations, func(r Reservation) bool { return r.State == StateLive && len(r.Footprint) > 0 }) {
 		if derive {
-			snap.Generated, snap.GeneratedUnread = generatedFilesAt(root, defaultRef)
+			snap.Generated, snap.GeneratedUnread = generatedFilesAt(g, root, defaultRef)
 		} else {
 			snap.GeneratedUnread = "origin's default branch could not be read when the reservations were fetched"
 		}
@@ -318,8 +325,8 @@ func listed(t tip, id, derivedBy, own string, now time.Time) Reservation {
 }
 
 // releaseTags is the set of release tags on origin as last fetched, by tag.
-func releaseTags(root string) (map[string]bool, error) {
-	out, err := localGit(root, 1<<20, "for-each-ref", "--format=%(refname)", ReleaseTagsTracking)
+func releaseTags(g viewGit, root string) (map[string]bool, error) {
+	out, err := g.local(root, 1<<20, "for-each-ref", "--format=%(refname)", ReleaseTagsTracking)
 	if err != nil {
 		return nil, err
 	}
@@ -453,7 +460,12 @@ func ownCopyKey(root string) string {
 		return ""
 	}
 	defer r.Close()
-	data, err := localtier.ReadInRoot(r, copyKeyRel, 256)
+	return copyKeyOf(localtier.ReadInRoot(r, copyKeyRel, 256))
+}
+
+// copyKeyOf is the copy key a kept file's read answered, "" when the read
+// failed or the key is not valid.
+func copyKeyOf(data []byte, err error) string {
 	if err != nil {
 		return ""
 	}

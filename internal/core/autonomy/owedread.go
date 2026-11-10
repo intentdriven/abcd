@@ -54,9 +54,9 @@ type ReadOptions struct {
 	// live rules, and its armed or queued pull requests; zero means
 	// RulesetDeadline.
 	RulesetDeadline time.Duration
-	// Reservations reads the reservations as last fetched, with no network;
-	// nil means claim.View.
-	Reservations func(root string, now time.Time) (claim.Snapshot, error)
+	// Reservations reads the reservations as last fetched, with no network,
+	// under the check's ctx; nil means claim.ViewContext.
+	Reservations func(ctx context.Context, root string, now time.Time) (claim.Snapshot, error)
 	// Person is the person's forge name, which tells their pull requests
 	// from another person's; "" means the holder name reservations resolve
 	// without a network read (claim.ReaderHolder), and when that is unknown
@@ -333,8 +333,8 @@ func (r *owedReader) ancestor(a, b string) bool {
 
 // notAncestor reports whether git said a is not an ancestor of b, with the
 // check's deadline still live: what owes a merge. Once the deadline has ended
-// it cannot say, so it owes none, and the reading is marked cut short. The
-// deadline is looked at once, so what marks and what owes cannot disagree.
+// it cannot say, so it owes none, and the reading is marked cut short. One
+// look both marks and decides, so what marks and what owes cannot disagree.
 func (r *owedReader) notAncestor(a, b string) bool {
 	if r.ancestor(a, b) {
 		return false
@@ -350,11 +350,11 @@ func (r *owedReader) expired() bool { return r.ctx.Err() != nil }
 // did, looking at the deadline once: a caller that leaves an item out on its
 // answer leaves it out only when the reading is marked. These reads pass
 // through it: the author email, the holder, the default branch, the receipt
-// folder, the landing receipt, the runs' tracked check, the created-branch
-// list's store, the other worktrees, the fetch stamp, the stack index, the
-// live sessions, the merge queue's rules and its armed set, and each git call
-// the reader runs itself (git). TestEachOwedReadMarksASpentDeadline holds
-// each of these but git. The pull-request listing and landed's merge-driver,
+// folder, the landing receipt, the runs' tracked check, this copy's key and
+// the created-branch list's store, the other worktrees, the fetch stamp, the
+// stack index, the reservations as last fetched, the live sessions, the merge
+// queue's rules and its armed set, and each call made through `r.git`.
+// TestEachOwedReadMarksASpentDeadline holds each of these but `r.git`. The pull-request listing and landed's merge-driver,
 // merge-tree and cherry reads are marked by ranOut instead, and finding the
 // checkout returns its error.
 func (r *owedReader) cutShort(failed bool) bool {
@@ -447,13 +447,21 @@ func (r *owedReader) readRefs() {
 	}
 }
 
-// readReservations keeps the live reservations under this copy's key.
+// readReservations keeps the live reservations under this copy's key, read
+// under the check's ctx. A read the deadline ended uses none of what it read
+// (claim.ViewContext answers ctx's error then), so a reservation is neither
+// read as live from it nor lost from this copy's own without a mark: the
+// reading is marked cut short, one look both marking and deciding.
 func (r *owedReader) readReservations(o ReadOptions) {
 	view := o.Reservations
 	if view == nil {
-		view = claim.View
+		view = claim.ViewContext
 	}
-	snap, err := view(r.root, r.now)
+	snap, err := view(r.ctx, r.root, r.now)
+	if r.cutShort(err != nil) {
+		r.note("the reservations as last fetched were not read before the check's deadline, so none is counted as this copy's")
+		return
+	}
 	if err != nil {
 		r.note("the reservations as last fetched could not be read")
 		return
@@ -505,8 +513,8 @@ func (r *owedReader) hasReceipt(head string) bool {
 
 // owesPreflight reports whether the read found no receipt naming head, with
 // the check's deadline still live. A read the deadline ended cannot say, so
-// it owes none, and the reading is marked cut short. The deadline is looked
-// at once, so what marks and what owes cannot disagree.
+// it owes none, and the reading is marked cut short. One look both marks and
+// decides, so what marks and what owes cannot disagree.
 func (r *owedReader) owesPreflight(head string) bool {
 	if r.hasReceipt(head) {
 		return false
@@ -658,8 +666,8 @@ func (r *owedReader) reflogBranches() []string {
 // created each, where the record kept one.
 func (r *owedReader) recordedBranches() []string {
 	r.recordedBy = map[string]string{}
-	key := claim.OwnCopyKey(r.root)
-	if key == "" || r.home == "" {
+	key := claim.OwnCopyKeyContext(r.ctx, r.root)
+	if r.cutShort(key == "") || key == "" || r.home == "" {
 		return nil
 	}
 	st, err := openStoreContext(r.ctx, r.home, r.root)
@@ -1102,7 +1110,7 @@ func (r *owedReader) queueKeepsCurrent(p pullRequest) queueStanding {
 		switch {
 		case r.cutShort(r.queue.unread != ""):
 			r.queueCut = true
-			r.note("whether a merge queue guards %s was not read from the forge before the check's deadline (%s), so a pull request behind it is owed nothing on that account", r.defName, r.queue.unread)
+			r.note("whether a merge queue guards %s was not read from the forge: the check's deadline ended; the read's last answer: %s; so a pull request behind it is owed nothing on that account", r.defName, r.queue.unread)
 		case r.queue.unread != "":
 			r.note("whether a merge queue guards %s was not read from the forge (%s), so a pull request behind it is owed a merge as before", r.defName, r.queue.unread)
 		}
@@ -1122,7 +1130,7 @@ func (r *owedReader) queueKeepsCurrent(p pullRequest) queueStanding {
 		switch {
 		case r.cutShort(r.armedInto.unread != ""):
 			r.queueCut = true
-			r.note("which pull requests into %s are already in its merge queue was not read from the forge before the check's deadline (%s), so a behind one not armed is owed nothing on that account", r.defName, r.armedInto.unread)
+			r.note("which pull requests into %s are already in its merge queue was not read from the forge: the check's deadline ended; the read's last answer: %s; so a behind one not armed is owed nothing on that account", r.defName, r.armedInto.unread)
 		case r.armedInto.unread != "":
 			r.note("which pull requests into %s are already in its merge queue was not read from the forge (%s), so each behind one not armed is owed its arming", r.defName, r.armedInto.unread)
 		case !r.armedInto.complete:

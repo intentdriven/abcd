@@ -56,17 +56,17 @@ func (g Generated) Is(p string) bool {
 // root .gitattributes); otherwise the set is empty and the reason says why
 // generated files were not recognised.
 func GeneratedFiles(root string) (Generated, string) {
-	return generatedFilesAt(root, originDefault(root))
+	return generatedFilesAt(viewGit{}, root, originDefault(root))
 }
 
 // generatedFilesAt is GeneratedFiles read from ref, origin's default branch as
 // the caller resolved it ("" for none), so an operation that has named the
-// branch once reads it under that one name.
-func generatedFilesAt(root, ref string) (Generated, string) {
+// branch once reads it under that one name. Its git runs through g.
+func generatedFilesAt(g viewGit, root, ref string) (Generated, string) {
 	if ref == "" {
 		return Generated{}, ""
 	}
-	text, why := rootAttributes(root, ref)
+	text, why := rootAttributes(g, root, ref)
 	if why != "" {
 		return Generated{}, why
 	}
@@ -78,7 +78,7 @@ func generatedFilesAt(root, ref string) (Generated, string) {
 	if !rules.any() {
 		return Generated{}, ""
 	}
-	out, err := storedGit(root, treeListCap, "ls-tree", "-r", "-z", "--full-tree", ref)
+	out, err := g.stored(root, treeListCap, "ls-tree", "-r", "-z", "--full-tree", ref)
 	if err != nil {
 		return Generated{}, fmt.Sprintf("the files on %s could not be listed: %s", gitutil.ShortRef(ref), redacted(err))
 	}
@@ -264,9 +264,9 @@ func asciiLower(s string) string {
 
 // rootAttributes is the root .gitattributes on ref, "" when there is none,
 // with the reason when it is there but was not read.
-func rootAttributes(root, ref string) (string, string) {
+func rootAttributes(g viewGit, root, ref string) (string, string) {
 	short := gitutil.ShortRef(ref)
-	out, err := storedGit(root, 4096, "ls-tree", "-l", "-z", "--full-tree", ref, "--", ".gitattributes")
+	out, err := g.stored(root, 4096, "ls-tree", "-l", "-z", "--full-tree", ref, "--", ".gitattributes")
 	if err != nil {
 		return "", fmt.Sprintf(".gitattributes on %s could not be read: %s", short, redacted(err))
 	}
@@ -285,7 +285,7 @@ func rootAttributes(root, ref string) (string, string) {
 	if size > attributesCap {
 		return "", fmt.Sprintf(".gitattributes on %s is %d bytes, past the %d KiB abcd reads", short, size, attributesCap>>10)
 	}
-	text, err := storedGit(root, attributesCap, "cat-file", "blob", f[2])
+	text, err := g.stored(root, attributesCap, "cat-file", "blob", f[2])
 	if err != nil {
 		return "", fmt.Sprintf(".gitattributes on %s could not be read: %s", short, redacted(err))
 	}

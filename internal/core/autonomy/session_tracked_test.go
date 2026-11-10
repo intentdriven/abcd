@@ -210,7 +210,8 @@ func TestTheLandingReceiptIsReadUnderTheDeadline(t *testing.T) {
 // emptied: the author email, the holder, the default branch and the receipt
 // folder not read, a receipt not found, the runs' tracked check not made, a
 // created-branch list or the other worktrees not listed, the fetch stamp not
-// judged, the stack index cut short, the live sessions not read, and the
+// judged, the stack index cut short before it asks for a reflog, the
+// reservations as last fetched not read, the live sessions not read, and the
 // merge queue's rules and its armed pull requests not read. These are the
 // reads named here; the reader's other reads are marked by its git or by
 // ranOut, and this test does not hold them.
@@ -244,6 +245,7 @@ func TestEachOwedReadMarksASpentDeadline(t *testing.T) {
 			r.baseNames, r.branches = []string{"main"}, map[string]*localBranch{"main": {name: "main", head: f.head("main")}}
 			r.stackIdx()
 		},
+		"the reservations":      func(r *owedReader) { r.readReservations(ReadOptions{}) },
 		"the live sessions":     func(r *owedReader) { r.liveSessions() },
 		"the merge queue rules": func(r *owedReader) { r.queueKeepsCurrent(behind) },
 		"the armed pull requests": func(r *owedReader) {
@@ -260,8 +262,75 @@ func TestEachOwedReadMarksASpentDeadline(t *testing.T) {
 			if !r.cut && !r.incomplete {
 				t.Errorf("%s, read once the deadline had ended, is not marked cut short", name)
 			}
+			// The index marks before it asks for a reflog, and so indexes no
+			// base: its reflog read would be marked by git alone, so a mark
+			// with the base indexed and its reflog asked for holds nothing.
+			if name == "the stack index" && (r.stacks == nil || len(r.stacks.heads) > 0) {
+				t.Error("the stack index, read once the deadline had ended, still indexed a base and asked for its reflog")
+			}
 		})
 	}
+}
+
+// TestAReservationsReadTheDeadlineEndsIsMarkedCutShort: the reservations as
+// last fetched are read under the check's ctx (claim.ViewContext), so a spent
+// deadline starts no git for them and a git that hangs in the view is stopped
+// when the deadline ends; either way the reading is marked cut short and says
+// the reservations were not read, rather than counting none as this copy's.
+func TestAReservationsReadTheDeadlineEndsIsMarkedCutShort(t *testing.T) {
+	f := newFx(t)
+	if _, err := claim.CopyKey(f.root); err != nil {
+		t.Fatal(err)
+	}
+	const unread = "the reservations as last fetched were not read before the check's deadline"
+	t.Run("spent", func(t *testing.T) {
+		calls := countGit(t)
+		spent, cancel := context.WithCancel(context.Background())
+		cancel()
+		r := &owedReader{ctx: spent, root: f.root}
+		r.readReservations(ReadOptions{})
+		if !r.cut || !slices.ContainsFunc(r.notes, func(n string) bool { return strings.Contains(n, unread) }) {
+			t.Errorf("a reservations read once the deadline had ended: cut %v, notes %q; want cut, and the note", r.cut, r.notes)
+		}
+		if n := calls(); n != 0 {
+			t.Errorf("a spent deadline still ran git %d time(s)", n)
+		}
+	})
+	t.Run("hung", func(t *testing.T) {
+		o := f.opts()
+		o.Reservations = nil
+		calls, _ := stallNthGit(t, "", 0, nil)
+		calls()
+		if whole := f.readWith(o); whole.Incomplete {
+			t.Fatalf("with git answering, the reading is whole: %s", describe(whole))
+		}
+		log := calls()
+		at := slices.IndexFunc(log, func(c string) bool {
+			return strings.HasSuffix(c, "for-each-ref --format=%(refname) "+claim.TrackingPrefix)
+		})
+		if at < 0 {
+			t.Fatalf("the view never listed the reservations; the test proves nothing: %q", log)
+		}
+		n := nthWith(log, at, claim.TrackingPrefix)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		_, stalled := stallNthGit(t, claim.TrackingPrefix, n, cancel)
+		start := time.Now()
+		owed, err := ReadOwed(ctx, o)
+		took := time.Since(start)
+		if !stalled() {
+			t.Fatalf("the view's listing (call %d naming the prefix) never came; the test proves nothing", n)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if took >= 60*time.Second {
+			t.Errorf("the check waited out the hung git (%s)", took)
+		}
+		if !owed.Incomplete || !slices.ContainsFunc(owed.Notes, func(n string) bool { return strings.Contains(n, unread) }) {
+			t.Errorf("a reservations read the deadline cut short: %s; want it incomplete, saying the reservations were not read", describe(owed))
+		}
+	})
 }
 
 // stallNthGit puts a git first on PATH that logs each call's arguments and, on

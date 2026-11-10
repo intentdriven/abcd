@@ -1,6 +1,10 @@
 package gitutil
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+	"strings"
+)
 
 // EmptyTree is the object name of the empty tree in the repository at root,
 // for the repository's own object format (4b825dc6… under SHA-1, 6ef19b41…
@@ -29,10 +33,26 @@ func EmptyTreeName(root string) (string, error) {
 	return emptyTree(root, "hash-object", "-t", "tree", "--stdin")
 }
 
+// EmptyTreeNameContext is EmptyTreeName bound to ctx (RunCappedContext): a
+// ctx already ended starts no git, and a git still running when it ends is
+// killed, answering ctx's error.
+func EmptyTreeNameContext(ctx context.Context, root string) (string, error) {
+	out, err := RunCappedContext(ctx, root, emptyTreeCap, "hash-object", "-t", "tree", "--stdin")
+	return emptyTreeAnswer(strings.TrimSpace(out), err)
+}
+
+// emptyTreeCap bounds the bound form's answer: one object name, under any
+// object format.
+const emptyTreeCap = 256
+
 // emptyTree runs args, a hash-object of empty standard input typed as a tree,
 // and checks that git answered an object name.
 func emptyTree(root string, args ...string) (string, error) {
-	out, err := Run(root, args...)
+	return emptyTreeAnswer(Run(root, args...))
+}
+
+// emptyTreeAnswer checks that git answered the empty tree with an object name.
+func emptyTreeAnswer(out string, err error) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("git could not name the empty tree: %w", err)
 	}

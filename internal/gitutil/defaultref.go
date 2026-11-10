@@ -23,13 +23,19 @@ func DefaultRef(root string) string {
 // answer is "". A caller that must tell "no default branch" from "git did not
 // answer in time" checks ctx.Err() after it.
 func DefaultRefContext(ctx context.Context, root string) string {
-	return defaultRef(func(args ...string) (string, error) {
+	return defaultRef(askContext(ctx, root))
+}
+
+// askContext is one ref question bounded by ctx (RunLimitedContext), its
+// answer refused whole past refAnswerCap.
+func askContext(ctx context.Context, root string) gitAsk {
+	return func(args ...string) (string, error) {
 		out, overflowed, err := runLimitedOverflow(ctx, root, refAnswerCap, false, args)
 		if err == nil && overflowed {
 			return "", errRefAnswerCut
 		}
 		return strings.TrimSpace(out), err
-	})
+	}
 }
 
 // refAnswerCap bounds one ref question's answer: a ref name, an object name, or
@@ -63,6 +69,15 @@ var defaultNames = []string{"main", "master", "trunk", "develop"}
 // target, which asks the remote itself.
 func TrackedDefaultBranch(root, remote string) string {
 	return trackedDefaultBranch(func(args ...string) (string, error) { return Run(root, args...) }, remote)
+}
+
+// TrackedDefaultBranchContext is TrackedDefaultBranch with every git question
+// bounded by ctx, as DefaultRefContext bounds its own: a ctx already ended
+// starts no git, a git still running when it ends is killed, and the answer
+// is "". A caller that must tell "no default branch" from "git did not answer
+// in time" checks ctx.Err() after it.
+func TrackedDefaultBranchContext(ctx context.Context, root, remote string) string {
+	return trackedDefaultBranch(askContext(ctx, root), remote)
 }
 
 func trackedDefaultBranch(ask gitAsk, remote string) string {

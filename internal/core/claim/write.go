@@ -82,14 +82,19 @@ func unwritableWithdrawals(ws []Withdrawal) string {
 // readTip reads the commit ref names in this checkout's object store as the
 // tip of record's reservation branch. ok is false when the ref does not exist.
 func readTip(root, record, ref, tree string, fetchedAt time.Time, keep bool) (t tip, ok bool, err error) {
-	name, typ, ok, err := resolveRef(root, ref)
+	return readTipIn(viewGit{}, root, record, ref, tree, fetchedAt, keep)
+}
+
+// readTipIn is readTip with its git run through g.
+func readTipIn(g viewGit, root, record, ref, tree string, fetchedAt time.Time, keep bool) (t tip, ok bool, err error) {
+	name, typ, ok, err := g.resolveRef(root, ref)
 	if err != nil || !ok {
 		return tip{}, false, err
 	}
 	if typ != "commit" {
-		return tip{head: dated(root, head{Commit: name, Unreadable: reasonNoObject}, fetchedAt, keep)}, true, nil
+		return tip{head: dated(g, root, head{Commit: name, Unreadable: reasonNoObject}, fetchedAt, keep)}, true, nil
 	}
-	h, m, err := readCommit(root, name, tree, fetchedAt, keep, reservationParser(record))
+	h, m, err := readCommitIn(g, root, name, tree, fetchedAt, keep, reservationParser(record))
 	if err != nil {
 		return tip{}, false, fmt.Errorf("reading %s: %w", ref, err)
 	}
@@ -135,8 +140,13 @@ func resolveRefCtx(ctx context.Context, root, ref string) (name, typ string, ok 
 // when this copy first fetched it (dated). The error is git's, for its caller
 // to say what it was reading.
 func readCommit[M any](root, name, tree string, fetchedAt time.Time, keep bool, parse func(string) (M, string)) (head, M, error) {
+	return readCommitIn(viewGit{}, root, name, tree, fetchedAt, keep, parse)
+}
+
+// readCommitIn is readCommit with its git run through g.
+func readCommitIn[M any](g viewGit, root, name, tree string, fetchedAt time.Time, keep bool, parse func(string) (M, string)) (head, M, error) {
 	var zero M
-	size, err := storedGit(root, 32, "cat-file", "-s", name)
+	size, err := g.stored(root, 32, "cat-file", "-s", name)
 	if err != nil {
 		return head{}, zero, err
 	}
@@ -146,24 +156,24 @@ func readCommit[M any](root, name, tree string, fetchedAt time.Time, keep bool, 
 	}
 	var obj string
 	if n <= maxObjectBytes {
-		obj, err = storedGit(root, maxObjectBytes, "cat-file", "commit", name)
+		obj, err = g.stored(root, maxObjectBytes, "cat-file", "commit", name)
 	}
 	if n > maxObjectBytes || (err != nil && strings.Contains(err.Error(), "exceeded")) {
 		h := head{Commit: name, Unreadable: reasonObjectTooBig}
 		// The object is too big to parse, but git reads its date, from the
 		// object as stored.
-		if out, derr := storedGit(root, 256, "show", "-s", "--format=%ct", name); derr == nil {
+		if out, derr := g.stored(root, 256, "show", "-s", "--format=%ct", name); derr == nil {
 			if sec, perr := strconv.ParseInt(strings.TrimSpace(out), 10, 64); perr == nil {
 				h.WrittenAt = time.Unix(sec, 0).UTC()
 			}
 		}
-		return dated(root, h, fetchedAt, keep), zero, nil
+		return dated(g, root, h, fetchedAt, keep), zero, nil
 	}
 	if err != nil {
 		return head{}, zero, err
 	}
 	h, m := parseTip(name, []byte(obj), tree, parse)
-	return dated(root, h, fetchedAt, keep), m, nil
+	return dated(g, root, h, fetchedAt, keep), m, nil
 }
 
 // undatedRelDir keeps, per tip, when this copy first fetched an unreadable
@@ -176,19 +186,19 @@ const undatedRelDir = stateRelDir + "/undated"
 // later fetch does not restart the hold; if it cannot be kept, the fetch at
 // hand is the time. keep is false for a reader that writes nothing (the view),
 // which reads a kept time and records none.
-func dated(root string, h head, fetchedAt time.Time, keep bool) head {
+func dated(g viewGit, root string, h head, fetchedAt time.Time, keep bool) head {
 	if h.Unreadable == "" || !h.WrittenAt.IsZero() {
 		return h
 	}
-	h.WrittenAt, h.DatedFromFetch = firstFetched(root, h.Commit, fetchedAt, keep), true
+	h.WrittenAt, h.DatedFromFetch = firstFetched(g, root, h.Commit, fetchedAt, keep), true
 	return h
 }
 
 // firstFetched is when this copy first fetched commit, recorded as at when
 // nothing records it yet and keep allows it (keptFetch).
-func firstFetched(root, commit string, at time.Time, keep bool) time.Time {
+func firstFetched(g viewGit, root, commit string, at time.Time, keep bool) time.Time {
 	at = at.UTC().Truncate(time.Second)
-	if first, ok := keptFetch(root, commit, at, keep); ok {
+	if first, ok := keptFetch(g, root, commit, at, keep); ok {
 		return first
 	}
 	if keep {
@@ -200,8 +210,9 @@ func firstFetched(root, commit string, at time.Time, keep bool) time.Time {
 // keptFetch is the time kept for when this copy first fetched commit; ok is
 // false when none is kept. With keep, a kept time more than lease.Skew after
 // at, kept while this copy's clock ran fast, is kept again as at and answered
-// as at, so it holds no longer than one kept now would.
-func keptFetch(root, commit string, at time.Time, keep bool) (time.Time, bool) {
+// as at, so it holds no longer than one kept now would. Its tracked check
+// runs through g.
+func keptFetch(g viewGit, root, commit string, at time.Time, keep bool) (time.Time, bool) {
 	at = at.UTC().Truncate(time.Second)
 	if !gitutil.IsFullSHA(commit) {
 		return time.Time{}, false
@@ -211,7 +222,12 @@ func keptFetch(root, commit string, at time.Time, keep bool) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	defer r.Close()
-	data, err := localtier.ReadInRoot(r, undatedRelDir+"/"+commit, 64)
+	var data []byte
+	if g.bound() {
+		data, err = localtier.ReadInRootContext(g.ctx, r, undatedRelDir+"/"+commit, 64)
+	} else {
+		data, err = localtier.ReadInRoot(r, undatedRelDir+"/"+commit, 64)
+	}
 	if err != nil {
 		return time.Time{}, false
 	}

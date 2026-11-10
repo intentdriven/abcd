@@ -114,7 +114,7 @@ func TestABatchedViewReadsEveryTipAsItsOwnReadWould(t *testing.T) {
 	}
 	// The batch, not a fallback, read the commits within the bound; the
 	// oversized commit and the blob it left to be read on their own.
-	bodies := batchedTipBodies(p.dir, refs, batchBudget)
+	bodies := batchedTipBodies(viewGit{}, p.dir, refs, batchBudget)
 	for i, inBatch := range []bool{true, false, true, false, true} {
 		if _, ok := bodies[refs[i]]; ok != inBatch {
 			t.Errorf("%s read in the batch = %v; want %v", refs[i], ok, inBatch)
@@ -205,7 +205,7 @@ func TestABatchedReadAgreesWithItsOwnReadAtEveryBound(t *testing.T) {
 			t.Errorf("%s batched = %+v\n read on its own = %+v", id, got[i], want)
 		}
 	}
-	bodies := batchedTipBodies(p.dir, refs, batchBudget)
+	bodies := batchedTipBodies(viewGit{}, p.dir, refs, batchBudget)
 	for _, id := range []string{"iss-1", "iss-10", "iss-11", "iss-12", "iss-13", "iss-15", "iss-20", "iss-30"} {
 		if _, ok := bodies[TrackingPrefix+id]; !ok {
 			t.Errorf("%s was not read in the batch; the comparison above did not exercise it", id)
@@ -270,7 +270,7 @@ func TestATipPastTheBatchBudgetIsReadOnItsOwn(t *testing.T) {
 	// The batch's own allowance (64) and two tips' (each its size, its name
 	// and 32): room for two, not three.
 	budget := 64 + 2*(size+40+32) + size/2
-	bodies := batchedTipBodies(p.dir, refs, budget)
+	bodies := batchedTipBodies(viewGit{}, p.dir, refs, budget)
 	for i, ref := range refs {
 		if _, ok := bodies[ref]; ok != (i < 2) {
 			t.Errorf("%s read in the batch = %v; want %v with room for two", ref, ok, i < 2)
@@ -281,7 +281,7 @@ func TestATipPastTheBatchBudgetIsReadOnItsOwn(t *testing.T) {
 		t.Fatal(err)
 	}
 	at := t0.Add(time.Minute)
-	got := readSeenTipsWithin(p.dir, refs, tree, at, false, budget)
+	got := readSeenTipsWithin(viewGit{}, p.dir, refs, tree, at, false, budget)
 	for i, ref := range refs {
 		id := strings.TrimPrefix(ref, TrackingPrefix)
 		tp, ok, err := readSeen(p.dir, id, ref, tree, at, false)

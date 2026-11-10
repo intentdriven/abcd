@@ -17,11 +17,16 @@ import (
 
 // readSeen is readTip, with the tip's first sighting set (seen).
 func readSeen(root, record, ref, tree string, fetchedAt time.Time, keep bool) (tip, bool, error) {
-	t, ok, err := readTip(root, record, ref, tree, fetchedAt, keep)
+	return readSeenIn(viewGit{}, root, record, ref, tree, fetchedAt, keep)
+}
+
+// readSeenIn is readSeen with its git run through g.
+func readSeenIn(g viewGit, root, record, ref, tree string, fetchedAt time.Time, keep bool) (tip, bool, error) {
+	t, ok, err := readTipIn(g, root, record, ref, tree, fetchedAt, keep)
 	if err != nil || !ok {
 		return t, ok, err
 	}
-	return seen(root, t, fetchedAt, keep), true, nil
+	return seen(g, root, t, fetchedAt, keep), true, nil
 }
 
 // seen gives a tip the time this copy first fetched it whenever one is kept,
@@ -33,8 +38,8 @@ func readSeen(root, record, ref, tree string, fetchedAt time.Time, keep bool) (t
 // FirstSeen: lease.Judge then counts one dated ahead from the reader's now, as
 // the act that would keep it does, never from an earlier fetch that may not
 // have brought it.
-func seen(root string, t tip, fetchedAt time.Time, keep bool) tip {
-	if at, ok := keptFetch(root, t.Commit, fetchedAt, keep); ok {
+func seen(g viewGit, root string, t tip, fetchedAt time.Time, keep bool) tip {
+	if at, ok := keptFetch(g, root, t.Commit, fetchedAt, keep); ok {
 		t.FirstSeen = at
 		return t
 	}
@@ -43,7 +48,7 @@ func seen(root string, t tip, fetchedAt time.Time, keep bool) tip {
 		date = t.WrittenAt
 	}
 	if keep && lease.Ahead(date, fetchedAt) {
-		t.FirstSeen = firstFetched(root, t.Commit, fetchedAt, true)
+		t.FirstSeen = firstFetched(g, root, t.Commit, fetchedAt, true)
 	}
 	return t
 }
