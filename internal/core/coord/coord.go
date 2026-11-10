@@ -10,16 +10,21 @@
 // its acts left, gives again every decision but those for the changes its acts
 // recorded as queued.
 //
-// What this step decides: an open change no dependency holds (every one it
-// names has merged) is queued; an open change waiting on any other change
+// What it decides: an open change no dependency holds (every one it names has
+// merged) is queued. One that depends directly on a change closed unmerged or
+// on a number with no record, or is on or reaches a cycle of unmerged changes,
+// itself included, is refused at once, naming the numbers and the cause (story
+// 2), since no wait can release it. Any other open change waiting on another
 // waits until its recorded start plus the stated wait limit; a wait at or past
 // that deadline, one with no recorded start, or one whose recorded start is
 // later than the records' time is refused with a reason naming what it waited
-// on (adr-2610222026262980, rule 1). A change depending on itself or on a
-// cycle is never queued: it waits, then is refused at its deadline. Reading
-// the dependency line, refusing a closed, unresolvable or cyclic dependency at
-// once, claims and the record version are later steps of the spec, not this
-// package yet. Nothing outside the package calls the pass yet (see pass).
+// on (adr-2610222026262980, rule 1). Claims and the record version are later
+// steps of the spec.
+//
+// This is staged code: nothing outside the package calls the pass or its
+// at-once refusals yet. Step 2a's landing wiring exports them and wires their
+// first caller in one commit, and this package's step-2a code is never pushed
+// or landed without that wiring (dcn-2611101309224327).
 package coord
 
 import (
@@ -68,7 +73,9 @@ type Change struct {
 	// State is where the change stands.
 	State State
 	// DependsOn names the changes this one waits on, already read from its
-	// record. A number with no record of its own counts as not merged.
+	// record. A number with no record of its own in the snapshot refuses the
+	// change at once; why there is none is the caller's to say before the
+	// pass.
 	DependsOn []int
 	// WaitingSince is the recorded time the change's wait began, the start
 	// its deadline is derived from. The caller writes it once, before the
@@ -94,7 +101,7 @@ type Change struct {
 // The snapshot must hold only changes the caller is entitled to queue: a queue
 // decision says only that no dependency holds the change, not whose change it
 // is or that it is ready. Rebuilding a dependant on the default branch and the
-// full test run before it is queued stay the caller's (the spec's part 2).
+// full test run before it is queued stay the caller's (the spec's step 2b).
 type Records struct {
 	// Now is the time the records were read at, which the pass judges by.
 	Now time.Time
@@ -115,7 +122,7 @@ const (
 	ActionQueue Action = "queue"
 	// ActionWait: the change waits on WaitsOn until Until.
 	ActionWait Action = "wait"
-	// ActionRefuse: the change's wait is refused, for Reason.
+	// ActionRefuse: the change is refused, for Reason.
 	ActionRefuse Action = "refuse"
 )
 
@@ -129,8 +136,9 @@ type Decision struct {
 	// for a wait or a refusal.
 	WaitsOn []int
 	// Until is the wait's deadline in UTC, for a wait, and for a refusal at
-	// or past its deadline. It is zero for a refusal of a change with no
-	// recorded start or with one later than the records' time.
+	// or past its deadline. It is zero for a refusal at once and for a
+	// refusal of a change with no recorded start or with one later than the
+	// records' time.
 	Until time.Time
 	// Reason says why a refusal was made.
 	Reason string
@@ -152,8 +160,8 @@ type Decision struct {
 //
 // It is unexported because nothing in production calls it yet, only its
 // tests. That takes it out of the exported-reach audit's view and does not
-// satisfy the audit: step 2 of spc-2610230758581403 exports it and wires its
-// first caller, or removes it (dcn-2611101309224327).
+// satisfy the audit: step 2a of spc-2610230758581403 exports it and wires its
+// first caller in one commit (dcn-2611101309224327).
 func pass(r Records) ([]Decision, error) {
 	var defects []string
 	if r.Now.IsZero() {
@@ -200,25 +208,53 @@ func pass(r Records) ([]Decision, error) {
 	}
 	slices.SortFunc(open, func(a, b Change) int { return a.Number - b.Number })
 
+	cycles := cyclesReached(r.Changes, states)
 	decisions := make([]Decision, 0, len(open))
 	for _, c := range open {
-		decisions = append(decisions, decide(r, states, c))
+		decisions = append(decisions, decide(r, states, cycles[c.Number], c))
 	}
 	return decisions, nil
 }
 
-func decide(r Records, states map[int]State, c Change) Decision {
-	var waits []int
+// decide rules on one open change. A direct dependency closed unmerged or
+// with no record, or a cycle the change is on or reaches, refuses it at once,
+// before its start or deadline is judged: no wait can release it. A change
+// depending on an open change that is itself refused is not refused at once;
+// it waits to its own deadline.
+func decide(r Records, states map[int]State, cycle []int, c Change) Decision {
+	var waits, closed, missing []int
 	for _, n := range c.DependsOn {
-		if states[n] != StateMerged {
-			waits = append(waits, n)
+		switch st, ok := states[n]; {
+		case !ok:
+			missing = append(missing, n)
+		case st == StateClosed:
+			closed = append(closed, n)
+		case st == StateMerged:
+			continue
 		}
+		waits = append(waits, n)
 	}
 	if len(waits) == 0 {
 		return Decision{Change: c.Number, Action: ActionQueue}
 	}
 	slices.Sort(waits)
 	waits = slices.Compact(waits)
+	var causes []string
+	if len(closed) > 0 {
+		slices.Sort(closed)
+		causes = append(causes, fmt.Sprintf("depends on %s, closed unmerged", names(slices.Compact(closed))))
+	}
+	if len(missing) > 0 {
+		slices.Sort(missing)
+		causes = append(causes, fmt.Sprintf("depends on %s, with no record", names(slices.Compact(missing))))
+	}
+	if len(cycle) > 0 {
+		causes = append(causes, "is on or reaches a cycle of unmerged changes among "+names(cycle))
+	}
+	if len(causes) > 0 {
+		return Decision{Change: c.Number, Action: ActionRefuse, WaitsOn: waits,
+			Reason: "refused at once, since no wait can release it: " + strings.Join(causes, "; ")}
+	}
 	on := names(waits)
 	if c.WaitingSince.IsZero() {
 		return Decision{Change: c.Number, Action: ActionRefuse, WaitsOn: waits,
@@ -236,6 +272,123 @@ func decide(r Records, states map[int]State, c Change) Decision {
 				on, r.WaitLimit, stamp(c.WaitingSince), stamp(until))}
 	}
 	return Decision{Change: c.Number, Action: ActionWait, WaitsOn: waits, Until: until}
+}
+
+// cyclesReached maps each open or queued change that is on or reaches a cycle
+// to the cycle members it reaches, ascending and once each. Edges run from an
+// open or queued change to each dependency that is open or queued; a merged or
+// closed change, or a number with no record, ends the walk. A cycle is a
+// self-edge or a strongly connected group of two or more, so a diamond is
+// none. The groups are found by one iterative walk (Tarjan's), linear in
+// changes plus edges; a group's reached members are then joined from the
+// groups it depends on, each finished before it.
+func cyclesReached(changes []Change, states map[int]State) map[int][]int {
+	unmerged := func(st State) bool { return st == StateOpen || st == StateQueued }
+	var nodes []Change
+	for _, c := range changes {
+		if unmerged(c.State) {
+			nodes = append(nodes, c)
+		}
+	}
+	slices.SortFunc(nodes, func(a, b Change) int { return a.Number - b.Number })
+	index := make(map[int]int, len(nodes))
+	for i, c := range nodes {
+		index[c.Number] = i
+	}
+	adj := make([][]int, len(nodes))
+	self := make([]bool, len(nodes))
+	for i, c := range nodes {
+		for _, n := range c.DependsOn {
+			if st, ok := states[n]; ok && unmerged(st) {
+				adj[i] = append(adj[i], index[n])
+				self[i] = self[i] || n == c.Number
+			}
+		}
+	}
+
+	const unseen = -1
+	order, low := make([]int, len(nodes)), make([]int, len(nodes))
+	for i := range order {
+		order[i] = unseen
+	}
+	onStack := make([]bool, len(nodes))
+	group := make([]int, len(nodes))
+	var stack []int
+	var groups [][]int // each group finished after every group it reaches
+	next := 0
+	type frame struct{ v, edge int }
+	for root := range nodes {
+		if order[root] != unseen {
+			continue
+		}
+		order[root], low[root] = next, next
+		next++
+		stack, onStack[root] = append(stack, root), true
+		calls := []frame{{root, 0}}
+		for len(calls) > 0 {
+			top := len(calls) - 1
+			v := calls[top].v
+			if e := calls[top].edge; e < len(adj[v]) {
+				calls[top].edge++
+				w := adj[v][e]
+				switch {
+				case order[w] == unseen:
+					order[w], low[w] = next, next
+					next++
+					stack, onStack[w] = append(stack, w), true
+					calls = append(calls, frame{w, 0})
+				case onStack[w]:
+					low[v] = min(low[v], order[w])
+				}
+				continue
+			}
+			calls = calls[:top]
+			if top > 0 {
+				p := calls[top-1].v
+				low[p] = min(low[p], low[v])
+			}
+			if low[v] != order[v] {
+				continue
+			}
+			var members []int
+			for {
+				w := stack[len(stack)-1]
+				stack, onStack[w] = stack[:len(stack)-1], false
+				group[w] = len(groups)
+				members = append(members, w)
+				if w == v {
+					break
+				}
+			}
+			groups = append(groups, members)
+		}
+	}
+
+	reached := make([][]int, len(groups))
+	out := make(map[int][]int)
+	for g, members := range groups {
+		var nums []int
+		if len(members) > 1 || self[members[0]] {
+			for _, m := range members {
+				nums = append(nums, nodes[m].Number)
+			}
+		}
+		for _, m := range members {
+			for _, w := range adj[m] {
+				if group[w] != g {
+					nums = append(nums, reached[group[w]]...)
+				}
+			}
+		}
+		slices.Sort(nums)
+		reached[g] = slices.Compact(nums)
+		if len(reached[g]) > 0 {
+			for _, m := range members {
+				out[nodes[m].Number] = reached[g]
+			}
+		}
+	}
+	return out
 }
 
 func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
