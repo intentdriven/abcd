@@ -34,6 +34,14 @@ import (
 // wait open-ended by stating a limit of centuries.
 const MaxWaitLimit = 24 * time.Hour
 
+const (
+	// maxNamed is the most defects the one error names, and the most numbers
+	// a reason lists; the rest are counted, never listed.
+	maxNamed = 20
+	// maxStateRunes is the most of an unknown state the error quotes.
+	maxStateRunes = 32
+)
+
 // State is where a change stands in the records.
 type State string
 
@@ -63,17 +71,25 @@ type Change struct {
 	// record. A number with no record of its own counts as not merged.
 	DependsOn []int
 	// WaitingSince is the recorded time the change's wait began, the start
-	// its deadline is derived from. The caller records it before the first
-	// pass that finds the change waiting: a waiting change with no recorded
-	// start is refused, since no deadline can be derived for it. A start later
-	// than the records' Now is refused too, with no allowance for clock skew;
-	// any allowance is the caller's to make before the pass.
+	// its deadline is derived from. The caller writes it once, before the
+	// first pass that finds the change waiting, keeps that first start and
+	// never moves it, and takes it from a source the waiting agent cannot
+	// rewrite. A start re-stamped at each pass waits forever, and a pure pass
+	// cannot see that it was. A waiting change with no recorded start is
+	// refused, since no deadline can be derived for it. A start later than
+	// the records' Now is refused too, with no allowance for clock skew; any
+	// allowance is the caller's to make before the pass.
 	WaitingSince time.Time
 }
 
 // Records is the snapshot one pass reads. The records are written by other
-// agents, so the pass trusts none of them: a field it cannot judge refuses the
-// change or the whole snapshot, never queues.
+// agents, so the pass judges these fields before deciding anything: the time,
+// the wait limit, each change's number, a number read twice, the state against
+// the set of known states, each dependency's number, and each start against
+// Now. A field it cannot judge refuses the change or the whole snapshot, never
+// queues. That a change is merged or queued is taken as the caller's verified
+// fact, not judged: land takes it from the forge's answer, never from a pull
+// request body.
 //
 // The snapshot must hold only changes the caller is entitled to queue: a queue
 // decision says only that no dependency holds the change, not whose change it
@@ -126,7 +142,13 @@ type Decision struct {
 // positive or is above MaxWaitLimit, a change with a number of zero or less,
 // one read twice, an unknown state, or a dependency numbered zero or less. The
 // one error names every defect found, sorted, so it is the same whatever
-// order the records were read in. pass does not change the records it reads.
+// order the records were read in. It names at most maxNamed defects, then how
+// many more there are, and quotes an unknown state cut to maxStateRunes. pass
+// does not change the records it reads.
+//
+// A caller whose whole pass is refused refuses its own act, arms nothing, and
+// names the defect. It never sets the defective record aside and goes on,
+// since a dependency set aside would read as satisfied.
 //
 // It is unexported because nothing in production calls it yet, only its
 // tests. That takes it out of the exported-reach audit's view and does not
@@ -152,7 +174,7 @@ func pass(r Records) ([]Decision, error) {
 			defects = append(defects, fmt.Sprintf("change #%d is in the records more than once", c.Number))
 		}
 		if !c.State.known() {
-			defects = append(defects, fmt.Sprintf("change #%d has unknown state %q", c.Number, c.State))
+			defects = append(defects, unknownState(c))
 		}
 		for _, n := range c.DependsOn {
 			if n <= 0 {
@@ -163,7 +185,11 @@ func pass(r Records) ([]Decision, error) {
 	}
 	if len(defects) > 0 {
 		slices.Sort(defects)
-		return nil, fmt.Errorf("coord: the records cannot be judged: %s", strings.Join(slices.Compact(defects), "; "))
+		defects = slices.Compact(defects)
+		if more := len(defects) - maxNamed; more > 0 {
+			defects = append(defects[:maxNamed], fmt.Sprintf("and %d more", more))
+		}
+		return nil, fmt.Errorf("coord: the records cannot be judged: %s", strings.Join(defects, "; "))
 	}
 
 	open := make([]Change, 0, len(r.Changes))
@@ -214,10 +240,29 @@ func decide(r Records, states map[int]State, c Change) Decision {
 
 func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
 
+// unknownState names a change's unknown state, quoting at most its first
+// maxStateRunes runes, so a state of any length gives a bounded defect.
+func unknownState(c Change) string {
+	s, runes := string(c.State), 0
+	for i := range s {
+		if runes == maxStateRunes {
+			return fmt.Sprintf("change #%d has unknown state %q, cut to its first %d runes", c.Number, s[:i], maxStateRunes)
+		}
+		runes++
+	}
+	return fmt.Sprintf("change #%d has unknown state %q", c.Number, s)
+}
+
+// names lists the numbers, at most maxNamed of them, then how many more.
 func names(nums []int) string {
-	parts := make([]string, len(nums))
-	for i, n := range nums {
+	shown := nums[:min(len(nums), maxNamed)]
+	parts := make([]string, len(shown))
+	for i, n := range shown {
 		parts[i] = fmt.Sprintf("#%d", n)
 	}
-	return strings.Join(parts, ", ")
+	out := strings.Join(parts, ", ")
+	if more := len(nums) - len(shown); more > 0 {
+		out += fmt.Sprintf(" and %d more", more)
+	}
+	return out
 }

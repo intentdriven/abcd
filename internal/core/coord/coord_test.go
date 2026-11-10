@@ -3,6 +3,7 @@ package coord
 import (
 	"math/rand"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -102,6 +103,16 @@ func TestPassDecides(t *testing.T) {
 			records(t0,
 				Change{Number: 2, State: StateOpen, DependsOn: []int{1}, WaitingSince: time.Date(2026, 11, 10, 10, 30, 0, 0, plus2)}),
 			[]Decision{{Change: 2, Action: ActionWait, WaitsOn: []int{1}, Until: deadline}}},
+		{"a refusal past a deadline from a zoned start names both times in UTC",
+			records(at(23, 0),
+				Change{Number: 2, State: StateOpen, DependsOn: []int{1}, WaitingSince: time.Date(2026, 11, 10, 10, 30, 0, 0, plus2)}),
+			[]Decision{{Change: 2, Action: ActionRefuse, WaitsOn: []int{1}, Until: deadline,
+				Reason: "waited on #1 for the 2h0m0s limit since 2026-11-10T08:30:00Z; deadline 2026-11-10T10:30:00Z reached"}}},
+		{"a refusal of a zoned start in the future names it in UTC",
+			records(t0,
+				Change{Number: 2, State: StateOpen, DependsOn: []int{1}, WaitingSince: time.Date(2026, 11, 10, 12, 0, 0, 0, plus2)}),
+			[]Decision{{Change: 2, Action: ActionRefuse, WaitsOn: []int{1},
+				Reason: "waits on #1 from a recorded start of 2026-11-10T10:00:00Z, later than the records' time of 2026-11-10T09:00:00Z, so no deadline is derived from it"}}},
 		{"a change depending on itself waits, never queued",
 			records(t0,
 				Change{Number: 5, State: StateOpen, DependsOn: []int{5}, WaitingSince: start}),
@@ -309,8 +320,8 @@ func TestPassStoppedMidwayReachesTheSameDecisions(t *testing.T) {
 				queue = append(queue, d.Change)
 			}
 		}
-		if len(queue) < 2 {
-			t.Fatalf("%s: the sample needs at least two queue decisions, has %d", s.name, len(queue))
+		if len(queue) < 2 || len(queue) > 8 {
+			t.Fatalf("%s: the sample needs two to eight queue decisions, has %d", s.name, len(queue))
 		}
 		for mask := 0; mask < 1<<len(queue); mask++ {
 			acted := map[int]bool{}
@@ -412,6 +423,10 @@ func TestPassRefusesRecordsItCannotRead(t *testing.T) {
 		{"a change read twice", records(t0,
 			Change{Number: 3, State: StateOpen}, Change{Number: 3, State: StateMerged}), "change #3 is in the records more than once"},
 		{"an unknown state", records(t0, Change{Number: 3, State: "draft"}), `change #3 has unknown state "draft"`},
+		{"an unknown state of 32 runes is quoted whole", records(t0, Change{Number: 3, State: State(strings.Repeat("é", 32))}),
+			`change #3 has unknown state "éééééééééééééééééééééééééééééééé"`},
+		{"an unknown state of 33 runes is cut to 32", records(t0, Change{Number: 3, State: State(strings.Repeat("é", 33))}),
+			`change #3 has unknown state "éééééééééééééééééééééééééééééééé", cut to its first 32 runes`},
 		{"a dependency numbered zero", records(t0, Change{Number: 4, State: StateOpen, DependsOn: []int{0}}),
 			"change #4 depends on number 0"},
 		{"a dependency numbered below zero", records(t0, Change{Number: 4, State: StateMerged, DependsOn: []int{-5}}),
@@ -448,7 +463,8 @@ func TestPassRefusalNamesEveryDefectInAnyOrder(t *testing.T) {
 		"change #3 is in the records more than once; " +
 		"change #4 depends on number -1; " +
 		"change #4 depends on number 0; " +
-		"the records carry no time to judge them by"
+		"the records carry no time to judge them by; " +
+		"the records state no positive wait limit (0s)"
 	defective := func() []Change {
 		return []Change{
 			{Number: 0, State: StateOpen},
@@ -465,12 +481,94 @@ func TestPassRefusalNamesEveryDefectInAnyOrder(t *testing.T) {
 		if i > 0 {
 			ch = shuffled(rng, ch)
 		}
-		got, err := pass(Records{WaitLimit: limit, Changes: ch})
+		got, err := pass(Records{Changes: ch})
 		if err == nil {
 			t.Fatalf("read %d: pass accepted the records and gave %+v", i, got)
 		}
 		if err.Error() != want {
 			t.Fatalf("read %d: error\n got  %q\n want %q", i, err, want)
+		}
+	}
+}
+
+// depsBelowZero is a change #2 depending on -1 to -n, which is n defects.
+func depsBelowZero(n int) Change {
+	c := Change{Number: 2, State: StateOpen}
+	for i := 1; i <= n; i++ {
+		c.DependsOn = append(c.DependsOn, -i)
+	}
+	return c
+}
+
+// TestPassRefusalIsCapped: the one error names at most maxNamed defects,
+// sorted and once each, then how many more there are, and an unknown state is
+// quoted cut to maxStateRunes, so no snapshot makes the error unbounded.
+func TestPassRefusalIsCapped(t *testing.T) {
+	t.Parallel()
+	if maxNamed != 20 || maxStateRunes != 32 {
+		t.Fatalf("maxNamed %d, maxStateRunes %d; want 20 and 32", maxNamed, maxStateRunes)
+	}
+	const prefix = "coord: the records cannot be judged: "
+	const d = "change #2 depends on number "
+	const first13 = d + "-1; " +
+		d + "-10; " + d + "-11; " + d + "-12; " + d + "-13; " + d + "-14; " +
+		d + "-15; " + d + "-16; " + d + "-17; " + d + "-18; " + d + "-19; " +
+		d + "-2; " + d + "-20"
+	many := depsBelowZero(24)
+	many.DependsOn = append(many.DependsOn, -1)
+	cases := []struct {
+		name    string
+		changes []Change
+		want    string
+	}{
+		{"20 defects are all named", []Change{depsBelowZero(20)},
+			first13 + "; " + d + "-3; " + d + "-4; " + d + "-5; " + d + "-6; " + d + "-7; " + d + "-8; " + d + "-9"},
+		{"21 defects name 20, then one more", []Change{depsBelowZero(21)},
+			first13 + "; " + d + "-21; " + d + "-3; " + d + "-4; " + d + "-5; " + d + "-6; " + d + "-7; " + d + "-8; and 1 more"},
+		{"25 defects, one read twice, and a long state name 20, then five more",
+			[]Change{{Number: 1, State: State(strings.Repeat("Z", 100))}, many},
+			`change #1 has unknown state "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", cut to its first 32 runes; ` +
+				first13 + "; " + d + "-21; " + d + "-22; " + d + "-23; " + d + "-24; " + d + "-3; " + d + "-4; and 5 more"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := pass(records(t0, tc.changes...))
+			if err == nil {
+				t.Fatalf("pass accepted the records and gave %+v", got)
+			}
+			if want := prefix + tc.want; err.Error() != want {
+				t.Fatalf("error\n got  %q\n want %q", err, want)
+			}
+		})
+	}
+}
+
+// TestPassReasonNamesAtMostTwenty: a reason lists at most maxNamed numbers,
+// then how many more, while WaitsOn keeps every one.
+func TestPassReasonNamesAtMostTwenty(t *testing.T) {
+	t.Parallel()
+	const twenty = "#101, #102, #103, #104, #105, #106, #107, #108, #109, #110, " +
+		"#111, #112, #113, #114, #115, #116, #117, #118, #119, #120"
+	for _, tc := range []struct {
+		deps int
+		on   string
+	}{{20, twenty}, {21, twenty + " and 1 more"}} {
+		ch := []Change{{Number: 200, State: StateOpen}}
+		var waits []int
+		for n := 101; n < 101+tc.deps; n++ {
+			ch = append(ch, Change{Number: n, State: StateOpen})
+			ch[0].DependsOn = append(ch[0].DependsOn, n)
+			waits = append(waits, n)
+		}
+		got, err := pass(records(t0, ch...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := Decision{Change: 200, Action: ActionRefuse, WaitsOn: waits,
+			Reason: "waits on " + tc.on + " with no recorded start, so no deadline can be derived from the 2h0m0s limit"}
+		if last := got[len(got)-1]; !reflect.DeepEqual(last, want) {
+			t.Fatalf("%d dependencies:\n got  %+v\n want %+v", tc.deps, last, want)
 		}
 	}
 }
