@@ -28,10 +28,11 @@ package loop
 //     route's shape is checked here; its admission is the runner's, made when
 //     a runner is handed the model (spec step 2), since a host-run reviewer is
 //     only asked for the class: against the provider's allowlist, except that
-//     the claude subscription harness takes a model whose provider the machine
-//     configures no block for by its name alone (iss-2611080057001367), so the
-//     bundled map runs on a subscription-only machine. A drive asks the same
-//     admission of every reviewer before it starts (CheckReviewersLaunch).
+//     a drive's walled launch of the claude harness takes a model of the
+//     harness's own vendor by name where the machine configures no block for
+//     that vendor (iss-2611080057001367), so the bundled map runs in a drive
+//     on a subscription-only machine. A drive asks the same admission of
+//     every reviewer before it starts (CheckReviewersLaunch).
 //
 // A fault in any of them is refused at the review stage before anything is
 // written. The two roles are the loop's ruthless-reviewer and
@@ -454,7 +455,8 @@ func reviewersFor(s *layered.Stack, role string) ([]string, layered.Layer, strin
 // CheckReviewersLaunch refuses a review set o's runners cannot launch
 // (iss-2611080057001367): each reviewer of each role, at its class's model, is
 // put to the runner configuration's CanLaunch, the admission the dispatch makes,
-// with no host session, as a drive has none. A drive asks it before it takes
+// with no host session, as a drive has none. o.Runners is the configuration the
+// lanes will launch on, a drive's walled one. A drive asks it before it takes
 // its checkout or opens a lane, so a reviewer no route on this machine can run
 // is refused there, naming the role, the model and the configuration to set,
 // rather than waiting at review for ever. A review set that does not resolve

@@ -400,17 +400,18 @@ rather than skipped:
   one model, and matching ignores case, OpenRouter's `~` alias prefix and a
   `:variant` suffix. No layer removes another's entry, and a block listing a
   model an entry matches is refused, naming the entry, whatever else it lists.
-- **The subscription harness takes a model by name** (iss-2611080057001367).
-  A model a runner request asks for, such as a review set's class, is admitted
-  against its provider's list, except when the runner that will run it is the
-  claude harness and this machine configures no block for the provider: the
-  harness is handed the model's name alone and runs it on the person's own
-  login, spending no provider key, so the route is admitted without a block.
-  An `oracle.denylist` entry matching the model or the whole route still
-  refuses it, a provider the machine does configure still holds every runner
-  to its list, and opencode, which spends a provider's key, never takes a
-  model this way. `runner.<name>.model` and a `--route`'s model are still
-  admitted against a configured provider when they are read.
+- **A drive's launch takes its vendor's models by name**
+  (iss-2611080057001367). A model a runner request asks for, such as a review
+  set's class, is admitted against its provider's list, except on a drive's
+  launch of the claude harness on its separate login, for a route naming the
+  harness's own vendor that this machine configures no block for: the harness
+  is handed the model's name alone and runs it on that login's subscription,
+  so the route is admitted without a block. An `oracle.denylist` entry
+  matching the route as written, or the model, still refuses it, and a vendor
+  the machine does configure still holds the launch to its list. Everything
+  else keeps the provider allowlist: a launch outside a drive, another
+  vendor's route, opencode and the host. `runner.<name>.model` and a `--route`'s model are admitted against a
+  configured provider when they are read, as before.
 - **A route is `<provider>/<model>`.** A role or a judgement type the
   machine's file points at a model its provider does not list is refused naming
   the list. The same route in a repository's `.abcd/config.json`, to a provider

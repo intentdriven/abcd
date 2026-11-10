@@ -8,11 +8,12 @@ import (
 	"testing"
 )
 
-// The subscription harness takes a model by its name alone (iss-2611080057001367):
-// a role whose runner is the claude harness is admitted at a <provider>/<model>
-// route whose provider the machine does not configure, since the harness runs
-// it on the person's own login and spends no provider key. Every other runner,
-// and every provider the machine does configure, keeps the allowlist.
+// A drive's walled launch of the claude harness takes a model of the harness's
+// own vendor by its name alone (iss-2611080057001367): on the walled login, with
+// no provider block for that vendor, the route is admitted, since the launch
+// runs on the person's subscription with the billing variables taken out.
+// Everything else keeps the provider allowlist: an unwalled launch, another
+// vendor's route, opencode, the host, and a vendor the machine does configure.
 
 // bundledReviewModel is the bundled class map's middle class (the loop's
 // BundledClasses, which this package cannot import).
@@ -22,17 +23,34 @@ const bundledReviewModel = "anthropic/claude-opus-5-5"
 // and the reviewer routed to it.
 const claudeOnly = `{"roles":{"ruthless-reviewer":{"runner":"claude"}},"runner":{"claude":{}}}`
 
-// TestASubscriptionHarnessLaunchesAReviewerWithNoProviderBlock: a reviewer
-// request at the bundled class's model launches on a claude-only machine, the
-// harness handed the model's name, and the route records it as asked.
-func TestASubscriptionHarnessLaunchesAReviewerWithNoProviderBlock(t *testing.T) {
+// walledOn is machine read and walled onto a drive's profile, whose
+// settings are written so a launch on it stands.
+func walledOn(t *testing.T, machine string) *Config {
+	t.Helper()
+	c := mustLoad(t, machine, "")
+	p, err := DriveProfile(profileHome(t, "walled"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Ledger = c.Ledger()
+	if _, err := WriteWallSettings(p, selfBinary()); err != nil {
+		t.Fatal(err)
+	}
+	return c.Walled(p)
+}
+
+// TestAWalledHarnessLaunchesAReviewerWithNoProviderBlock: a reviewer request
+// at the bundled class's model launches on a drive's walled launch of a
+// claude-only machine, the harness handed the model's name, and the route
+// records it as asked.
+func TestAWalledHarnessLaunchesAReviewerWithNoProviderBlock(t *testing.T) {
 	f := newFake(t, "ok", Claude, OpenCode)
-	h := newHarness(t, mustLoad(t, claudeOnly, ""), true)
+	h := newHarness(t, walledOn(t, claudeOnly), true)
 	req := f.request("ruthless-reviewer")
 	req.Model = bundledReviewModel
 	out, err := h.d.Dispatch(context.Background(), req)
 	if err != nil {
-		t.Fatalf("a subscription machine refused the bundled reviewer: %v", err)
+		t.Fatalf("a walled subscription launch refused the bundled reviewer: %v", err)
 	}
 	if argv := f.argv(t, Claude); !slices.Contains(argv, "--model=claude-opus-5-5") {
 		t.Errorf("claude argv %q does not carry the model's name", argv)
@@ -45,41 +63,76 @@ func TestASubscriptionHarnessLaunchesAReviewerWithNoProviderBlock(t *testing.T) 
 	}
 }
 
-// TestASubscriptionFallbackHostIsAdmittedToo: with no host session, a role on
-// the host runs on the configured host, and when that is the claude harness
-// the same rule admits the model.
-func TestASubscriptionFallbackHostIsAdmittedToo(t *testing.T) {
-	f := newFake(t, "ok", Claude, OpenCode)
-	h := newHarness(t, mustLoad(t, `{"runner":{"fallback_host":"claude","claude":{}}}`, ""), false)
-	req := f.request("security-reviewer")
-	req.Model = bundledReviewModel
-	out, err := h.d.Dispatch(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out.Receipt.Route.Ran != Claude || !slices.Contains(f.argv(t, Claude), "--model=claude-opus-5-5") {
-		t.Errorf("route = %+v, want claude at the model's name", out.Receipt.Route)
-	}
-}
-
-// TestOpencodeStillNeedsTheProviderBlock: the rule is the subscription
-// harness's alone. opencode spends a provider's key, so a model whose provider
-// the machine does not configure is refused for it before anything starts,
-// with no fallback, routed or as the configured host; and a role the host
-// session runs is still handed only a model the providers admit.
-func TestOpencodeStillNeedsTheProviderBlock(t *testing.T) {
+// TestAnUnwalledHarnessStillNeedsTheProviderBlock: a claude launch that is not
+// a drive's walled one is held to the provider allowlist as before, routed or
+// as the configured host, and CanLaunch answers the same.
+func TestAnUnwalledHarnessStillNeedsTheProviderBlock(t *testing.T) {
 	for name, tc := range map[string]struct {
-		machine string
-		host    bool
-		role    string
+		machine, role string
+		host          bool
 	}{
-		"routed to opencode": {`{"roles":{"ruthless-reviewer":{"runner":"opencode"}},"runner":{"fallback_host":"claude","claude":{},"opencode":{}}}`, false, "ruthless-reviewer"},
-		"opencode the host":  {`{"runner":{"fallback_host":"opencode","claude":{},"opencode":{}}}`, false, "security-reviewer"},
-		"the host session":   {`{"runner":{"claude":{}}}`, true, "security-reviewer"},
+		"routed to claude":  {claudeOnly, "ruthless-reviewer", true},
+		"claude as host":    {`{"runner":{"fallback_host":"claude","claude":{}}}`, "security-reviewer", false},
+		"no host, routed":   {`{"roles":{"ruthless-reviewer":{"runner":"claude"}},"runner":{"fallback_host":"claude","claude":{}}}`, "ruthless-reviewer", false},
+		"host session only": {`{"runner":{"claude":{}}}`, "security-reviewer", true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newFake(t, "ok", Claude, OpenCode)
-			h := newHarness(t, mustLoad(t, tc.machine, ""), tc.host)
+			c := mustLoad(t, tc.machine, "")
+			h := newHarness(t, c, tc.host)
+			req := f.request(tc.role)
+			req.Model = bundledReviewModel
+			out, err := h.d.Dispatch(context.Background(), req)
+			var fl *Failure
+			if err == nil || errors.As(err, &fl) || out.Handoff {
+				t.Fatalf("outcome %+v, err %v; want a refusal that is not a fallback", out, err)
+			}
+			if !strings.Contains(err.Error(), `provider "anthropic" is not configured`) {
+				t.Errorf("err = %v, want it to name the unconfigured provider", err)
+			}
+			if f.launched(Claude) || f.launched(OpenCode) || len(h.receipts) != 0 {
+				t.Fatalf("a runner launched or a receipt was written: receipts %v", h.receipts)
+			}
+			if err := c.CanLaunch(tc.role, bundledReviewModel, tc.host); err == nil {
+				t.Error("CanLaunch admits what the dispatch refuses")
+			}
+		})
+	}
+}
+
+// TestAnotherVendorIsRefusedOnTheWalledHarness: the walled launch takes the
+// harness's own vendor's models by name and no other's; a route to a vendor
+// the machine does not configure is refused as unconfigured.
+func TestAnotherVendorIsRefusedOnTheWalledHarness(t *testing.T) {
+	f := newFake(t, "ok", Claude)
+	c := walledOn(t, claudeOnly)
+	h := newHarness(t, c, true)
+	req := f.request("ruthless-reviewer")
+	req.Model = "x/claude-opus-5-5"
+	if out, err := h.d.Dispatch(context.Background(), req); err == nil || !strings.Contains(err.Error(), `provider "x" is not configured`) {
+		t.Fatalf("outcome %+v, err %v; want the other vendor refused as unconfigured", out, err)
+	}
+	if f.launched(Claude) || len(h.receipts) != 0 {
+		t.Fatal("a refused model launched or wrote a receipt")
+	}
+	if err := c.CanLaunch("ruthless-reviewer", "x/claude-opus-5-5", false); err == nil || !strings.Contains(err.Error(), "oracle.api.x") {
+		t.Fatalf("CanLaunch = %v, want the refusal naming oracle.api.x", err)
+	}
+}
+
+// TestOpencodeStillNeedsTheProviderBlock: opencode spends a provider's key, so
+// a model whose provider the machine does not configure is refused for it
+// before anything starts, with no fallback, routed or as the configured host.
+func TestOpencodeStillNeedsTheProviderBlock(t *testing.T) {
+	for name, tc := range map[string]struct {
+		machine, role string
+	}{
+		"routed to opencode": {`{"roles":{"ruthless-reviewer":{"runner":"opencode"}},"runner":{"fallback_host":"claude","claude":{},"opencode":{}}}`, "ruthless-reviewer"},
+		"opencode the host":  {`{"runner":{"fallback_host":"opencode","claude":{},"opencode":{}}}`, "security-reviewer"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFake(t, "ok", Claude, OpenCode)
+			h := newHarness(t, mustLoad(t, tc.machine, ""), false)
 			req := f.request(tc.role)
 			req.Model = bundledReviewModel
 			out, err := h.d.Dispatch(context.Background(), req)
@@ -100,13 +153,12 @@ func TestOpencodeStillNeedsTheProviderBlock(t *testing.T) {
 // anthropicBlock configures the provider with one model, so its list decides.
 const anthropicBlock = `"oracle":{"api":{"anthropic":{"base_url":"https://api.example.invalid/v1","models":["claude-haiku-4-5"]}}}`
 
-// TestAConfiguredProviderStillHoldsClaudeToItsList: where the machine does
-// configure the provider, its list decides for the claude harness too, so a
-// model off it is refused, and one on it runs.
-func TestAConfiguredProviderStillHoldsClaudeToItsList(t *testing.T) {
-	machine := `{"roles":{"ruthless-reviewer":{"runner":"claude"}},` + anthropicBlock + `,"runner":{"claude":{}}}`
+// TestAConfiguredProviderStillHoldsTheWalledHarnessToItsList: where the
+// machine does configure the vendor, its list decides for the walled launch
+// too, so a model off it is refused, and one on it runs.
+func TestAConfiguredProviderStillHoldsTheWalledHarnessToItsList(t *testing.T) {
 	f := newFake(t, "ok", Claude)
-	h := newHarness(t, mustLoad(t, machine, ""), true)
+	h := newHarness(t, walledOn(t, `{"roles":{"ruthless-reviewer":{"runner":"claude"}},`+anthropicBlock+`,"runner":{"claude":{}}}`), true)
 	req := f.request("ruthless-reviewer")
 	req.Model = bundledReviewModel
 	if out, err := h.d.Dispatch(context.Background(), req); err == nil || !strings.Contains(err.Error(), "not on anthropic's list") {
@@ -121,17 +173,22 @@ func TestAConfiguredProviderStillHoldsClaudeToItsList(t *testing.T) {
 	}
 }
 
-// TestADenylistedModelIsRefusedOnTheSubscriptionHarness: an oracle.denylist
-// entry refuses a model with no provider block as it does with one, whether it
-// names the model or its vendor.
-func TestADenylistedModelIsRefusedOnTheSubscriptionHarness(t *testing.T) {
-	for _, entry := range []string{"claude-opus-5-5", "anthropic/claude-opus-5-5", "anthropic/*"} {
-		t.Run(entry, func(t *testing.T) {
-			machine := `{"roles":{"ruthless-reviewer":{"runner":"claude"}},"oracle":{"denylist":["` + entry + `"]},"runner":{"claude":{}}}`
+// TestADenylistedModelIsRefusedOnTheWalledHarness: an oracle.denylist entry
+// refuses a model the walled launch takes by name, matched against the route
+// as written, whether it names the model, the route or the vendor, and with a
+// bracketed suffix on the model.
+func TestADenylistedModelIsRefusedOnTheWalledHarness(t *testing.T) {
+	for _, tc := range []struct{ entry, model string }{
+		{"claude-opus-5-5", bundledReviewModel},
+		{"anthropic/claude-opus-5-5", bundledReviewModel},
+		{"anthropic/*", bundledReviewModel},
+		{"anthropic/claude-opus-5-5", bundledReviewModel + "[1m]"},
+	} {
+		t.Run(tc.entry+" "+tc.model, func(t *testing.T) {
 			f := newFake(t, "ok", Claude)
-			h := newHarness(t, mustLoad(t, machine, ""), true)
+			h := newHarness(t, walledOn(t, `{"roles":{"ruthless-reviewer":{"runner":"claude"}},"oracle":{"denylist":["`+tc.entry+`"]},"runner":{"claude":{}}}`), true)
 			req := f.request("ruthless-reviewer")
-			req.Model = bundledReviewModel
+			req.Model = tc.model
 			if out, err := h.d.Dispatch(context.Background(), req); err == nil || !strings.Contains(err.Error(), "oracle.denylist") {
 				t.Fatalf("outcome %+v, err %v; want the denylist's refusal", out, err)
 			}
@@ -144,32 +201,38 @@ func TestADenylistedModelIsRefusedOnTheSubscriptionHarness(t *testing.T) {
 
 // TestCanLaunchSharesTheDispatchsAdmission: the check a drive makes at its
 // start answers as the dispatch would, and a refusal names the role, the
-// model and the configuration to add, and nothing else of the machine.
+// model and the configuration that would let it run, by why it was refused,
+// and nothing else of the machine.
 func TestCanLaunchSharesTheDispatchsAdmission(t *testing.T) {
-	ok := mustLoad(t, claudeOnly, "")
-	if err := ok.CanLaunch("ruthless-reviewer", bundledReviewModel, false); err != nil {
-		t.Fatalf("a subscription machine cannot launch the bundled reviewer: %v", err)
+	if err := walledOn(t, claudeOnly).CanLaunch("ruthless-reviewer", bundledReviewModel, false); err != nil {
+		t.Fatalf("a walled subscription machine cannot launch the bundled reviewer: %v", err)
 	}
+	const runnerAdvice = "roles.ruthless-reviewer.runner"
 	for name, tc := range map[string]struct {
-		machine string
-		want    []string
+		cfg           *Config
+		want, without []string
 	}{
-		"opencode route": {`{"roles":{"ruthless-reviewer":{"runner":"opencode"}},"runner":{"claude":{},"opencode":{}}}`,
-			[]string{"oracle.api.anthropic", "roles.ruthless-reviewer.runner"}},
-		"off the list": {`{"roles":{"ruthless-reviewer":{"runner":"claude"}},` + anthropicBlock + `,"runner":{"claude":{}}}`,
-			[]string{"oracle.api.anthropic", "not on anthropic's list"}},
-		"denylisted": {`{"roles":{"ruthless-reviewer":{"runner":"claude"}},"oracle":{"denylist":["anthropic/*"]},"runner":{"claude":{}}}`,
-			[]string{"oracle.denylist"}},
-		"no landing": {`{"runner":{"claude":{}}}`, []string{"runner.fallback_host", "roles.ruthless-reviewer.runner"}},
+		"opencode route": {mustLoad(t, `{"roles":{"ruthless-reviewer":{"runner":"opencode"}},"runner":{"claude":{},"opencode":{}}}`, ""),
+			[]string{"oracle.api.anthropic", runnerAdvice}, []string{"oracle.denylist"}},
+		"walled, off the list": {walledOn(t, `{`+anthropicBlock+`,"runner":{"claude":{}}}`),
+			[]string{"oracle.api.anthropic", "not on anthropic's list"}, []string{runnerAdvice}},
+		"walled, denylisted": {walledOn(t, `{"oracle":{"denylist":["anthropic/*"]},"runner":{"claude":{}}}`),
+			[]string{"oracle.denylist", "models.classes"}, []string{"oracle.api.anthropic", runnerAdvice}},
+		"no landing": {mustLoad(t, `{"runner":{"claude":{}}}`, ""), []string{"runner.fallback_host", runnerAdvice}, nil},
 	} {
 		t.Run(name, func(t *testing.T) {
-			err := mustLoad(t, tc.machine, "").CanLaunch("ruthless-reviewer", bundledReviewModel, false)
+			err := tc.cfg.CanLaunch("ruthless-reviewer", bundledReviewModel, false)
 			if err == nil {
 				t.Fatal("launchable, want a refusal")
 			}
 			for _, w := range append(tc.want, "ruthless-reviewer", bundledReviewModel) {
 				if !strings.Contains(err.Error(), w) {
 					t.Errorf("refusal %q does not name %q", err, w)
+				}
+			}
+			for _, w := range tc.without {
+				if strings.Contains(err.Error(), w) {
+					t.Errorf("refusal %q names %q, which does not apply", err, w)
 				}
 			}
 			if strings.Contains(err.Error(), "/Users/") || strings.Contains(err.Error(), "/home/") || strings.Contains(err.Error(), "/tmp") {

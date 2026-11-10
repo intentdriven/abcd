@@ -119,8 +119,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 		// A request's model is admitted here, once the runner that will run it
 		// is known, as a configured route is when it is read: whoever stored
 		// it, it is never trusted for that. The provider's allowlist decides,
-		// except on the subscription harness, which takes a model by name with
-		// no provider block (admitModelFor). One refused ends the dispatch with
+		// except on a drive's walled launch of the claude harness, which takes
+		// its own vendor's models by name with no provider block
+		// (admitModelFor). One refused ends the dispatch with
 		// nothing started and no fallback, since a role run on another model,
 		// the host's included, is a run nobody asked for.
 		target := route.Runner

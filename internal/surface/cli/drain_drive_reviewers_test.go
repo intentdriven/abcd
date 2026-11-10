@@ -19,9 +19,14 @@ func TestADriveWhoseReviewersCannotLaunchIsRefusedAtItsStart(t *testing.T) {
 	w.passWalls(t)
 	w.machineConfig(t, `{"oracle":{"denylist":["anthropic/*"]},"runner":{"claude":{}}}`)
 	text := refusedDrive(t, "drain", "--drive", "--yes")
-	for _, want := range []string{loop.BundledClasses[loop.ClassMiddle], loop.RoleRuthless, "oracle.api.anthropic", "nothing started"} {
+	for _, want := range []string{loop.BundledClasses[loop.ClassMiddle], loop.RoleRuthless, "oracle.denylist", "models.classes", "nothing started"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the refusal %q does not name %q", text, want)
+		}
+	}
+	for _, wrong := range []string{"oracle.api.anthropic", "roles." + loop.RoleRuthless + ".runner"} {
+		if strings.Contains(text, wrong) {
+			t.Errorf("the refusal %q names %q, which would not let it run", text, wrong)
 		}
 	}
 	if strings.Contains(text, w.home) || strings.Contains(text, w.repo) {

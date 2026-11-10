@@ -27,11 +27,10 @@ package runner
 //     it matches), so a route off the list is refused before any runner can
 //     be launched. A model a request asks for (a review set's class) is
 //     admitted the same way, with one exception (admitModelFor,
-//     iss-2611080057001367): when the runner that will run it is the claude
-//     subscription harness and the machine configures no block for its
-//     provider, it is admitted by name, since the harness spends no provider
-//     key; the denylist still refuses it, and a configured provider's list
-//     still decides.
+//     iss-2611080057001367): on a drive's walled launch of the claude harness,
+//     a model of the harness's own vendor is admitted by name where the
+//     machine configures no block for that vendor; the denylist still refuses
+//     it, and everything else keeps the provider allowlist.
 //   - runner.fallback_host names the enabled runner that runs a role when abcd
 //     runs with no host session (the intent's Decision 2).
 //
@@ -49,6 +48,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -333,17 +333,17 @@ func (c *Config) admitModel(route string) error {
 // admitModelFor is the admission a request's model passes for target, the
 // runner that will run it (Host for the host session), when the dispatch
 // begins and again at the launch. It is admitModel, with one exception
-// (iss-2611080057001367): the claude runner, the subscription harness, takes a
-// model by its name alone (askedModel) and runs it on the person's own login,
-// spending no provider key, so for it a route whose provider this machine does
-// not configure is admitted without a provider block, provided the route is
-// <provider>/<model> in plain characters and no oracle.denylist entry matches
-// the model or the route. A provider the machine does configure keeps its list
-// for every runner, claude included, and opencode, the host and every other
-// runner keep admitModel whole: none of them is ever admitted this way.
+// (iss-2611080057001367, byName): a drive's walled launch of the claude
+// harness takes a model of the harness's own vendor (claudeVendor) by its name
+// alone (askedModel), on the person's subscription with the billing variables
+// taken out (Profile.Env), so where this machine configures no block for that
+// vendor the route is admitted without one, provided it is <provider>/<model>
+// in plain characters and no oracle.denylist entry matches it as written.
+// Everything else keeps admitModel whole: an unwalled launch, another
+// vendor's route, opencode, the host, and a vendor the machine configures.
 func (c *Config) admitModelFor(target, route string) error {
 	provider, model, ok := strings.Cut(route, "/")
-	if target != Claude || !ok || provider == "" || model == "" || c.providerConfigured(provider) {
+	if !ok || model == "" || !c.byName(target, provider) {
 		return c.admitModel(route)
 	}
 	if !modelRe.MatchString(route) {
@@ -353,6 +353,30 @@ func (c *Config) admitModelFor(target, route string) error {
 		return fmt.Errorf("which is refused before any runner is launched: %w", err)
 	}
 	return nil
+}
+
+// byName reports whether a model of provider asked of target is admitted by
+// its name with no provider block: only on a drive's walled launch (Walled) of
+// the claude harness, only for the harness's own vendor, and only where this
+// machine configures no block for it, whose list would otherwise decide.
+func (c *Config) byName(target, provider string) bool {
+	return target == Claude && c.profile != nil && provider == claudeVendor && !c.providerConfigured(provider)
+}
+
+// deniedFor reports whether the admission of route for target was refused by
+// an oracle.denylist entry, judged as admitModelFor judges it.
+func (c *Config) deniedFor(target, route string) bool {
+	provider, model, _ := strings.Cut(route, "/")
+	switch {
+	case c.api == nil:
+		return false
+	case c.byName(target, provider):
+		return c.api.Refuses(provider, model) != nil
+	case !c.providerConfigured(provider):
+		return false
+	}
+	_, denied := oracle.Denied(c.api.Denylist(), model)
+	return denied
 }
 
 // admitRequest is everything a request's model is held to before target
@@ -378,16 +402,18 @@ func (c *Config) target(route Route, hostSession bool) string {
 
 // CanLaunch reports whether role can be launched at model on this machine, as
 // Dispatch would admit it (admitRequest), with or without a host session: nil
-// when it can, else a refusal naming the role, the model and the configuration
-// that would let it run. It names configuration keys and the machine's file
-// as abcd displays it, never a secret or an absolute path. A drive asks it of
-// every reviewer in its review set before it opens a lane.
+// when it can, else a refusal naming the role, the model and what would let
+// it run, by why it was refused: for a model a denylist entry refuses, that
+// entry or models.classes, since a provider block does not lift it; for a
+// provider not configured or a model off its list, oracle.api.<provider>; and
+// outside a drive's walled launch, where every role runs on the claude
+// harness whatever its route, a runner route too. It names configuration keys
+// and the machine's file as abcd displays it, never a secret or an absolute
+// path. A drive asks it of its walled configuration, for every reviewer in its
+// review set, before it opens a lane.
 func (c *Config) CanLaunch(role, model string, hostSession bool) error {
 	route := c.RouteFor(role)
 	target := c.target(route, hostSession)
-	provider, _, _ := strings.Cut(model, "/")
-	remedy := fmt.Sprintf("set %s.%s listing it in %s, or route %s.%s.%s to a runner that can launch it",
-		"oracle.api", layered.BoundKey(provider), layered.Config.MachineOrigin(), rolesKey, role, runnerKey)
 	switch {
 	case target == "":
 		return fmt.Errorf("runner: the %s's model %s cannot be launched: the role is on the host, there is no host session "+
@@ -399,10 +425,26 @@ func (c *Config) CanLaunch(role, model string, hostSession bool) error {
 				"this machine; set %s.%s in %s", role, layered.BoundKey(model), target, runnerKey, target, layered.Config.MachineOrigin())
 		}
 	}
-	if err := c.admitRequest(route, target, Request{Role: role, Model: model}); err != nil {
-		return fmt.Errorf("runner: on %s, %s; %s", target, strings.TrimPrefix(err.Error(), "runner: "), remedy)
+	err := c.admitRequest(route, target, Request{Role: role, Model: model})
+	if err == nil {
+		return nil
 	}
-	return nil
+	text := "runner: on " + target + ", " + strings.TrimPrefix(err.Error(), "runner: ")
+	provider, id, _ := strings.Cut(model, "/")
+	switch {
+	case c.deniedFor(target, model):
+		return fmt.Errorf("%s; remove the oracle.denylist entry that matches it, or set models.classes to a model it does not "+
+			"match, in %s; a provider block does not lift a denylist entry", text, layered.Config.MachineOrigin())
+	case c.admitModelFor(target, model) == nil:
+		// The request's own rules refused it (holdRequestModel), in words that
+		// say what to do.
+		return errors.New(text)
+	}
+	remedy := fmt.Sprintf("set oracle.api.%s listing %s in %s", layered.BoundKey(provider), layered.BoundKey(id), layered.Config.MachineOrigin())
+	if c.profile == nil {
+		remedy += fmt.Sprintf(", or route %s.%s.%s to a runner that can launch it", rolesKey, role, runnerKey)
+	}
+	return fmt.Errorf("%s; %s", text, remedy)
 }
 
 func (c *Config) readFallback(s *layered.Stack) error {

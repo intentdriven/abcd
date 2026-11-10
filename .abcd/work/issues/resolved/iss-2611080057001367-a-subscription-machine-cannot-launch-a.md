@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/reviewset.go"
 remedy: "When the role's runner is the subscription harness, admit a class's model by the model name the harness takes, without a provider block, so a subscription-only machine's bundled review set runs; and refuse a drive at its start, naming the configuration to add, when its review set has no route that can launch."
-resolution: "The subscription harness admits a request's model with no provider block, and a drive refuses at its start a review set no route can launch"
+resolution: "A drive's walled launch of the harness admits the harness's own vendor's models with no provider block, everything else keeping the provider allowlist, and a drive refuses at its start a review set no route can launch"
 impact: fix
 ---
 

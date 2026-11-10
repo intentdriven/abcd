@@ -45,12 +45,17 @@ func TestTheBundledReviewSetLaunchesOnASubscriptionOnlyMachine(t *testing.T) {
 // machine's routes cannot launch is refused before anything is written,
 // naming the role, the model and the configuration to set.
 func TestAReviewSetNoRouteCanLaunchIsRefusedAtTheStart(t *testing.T) {
-	for name, machine := range map[string]string{
-		"denylisted":   `{"oracle":{"denylist":["anthropic/*"]},"runner":{"claude":{}}}`,
-		"off its list": `{"oracle":{"api":{"anthropic":{"base_url":"https://api.example.invalid/v1","models":["claude-haiku-4-5"]}}},"runner":{"claude":{}}}`,
+	for name, tc := range map[string]struct {
+		machine       string
+		want, without []string
+	}{
+		"denylisted": {`{"oracle":{"denylist":["anthropic/*"]},"runner":{"claude":{}}}`,
+			[]string{"oracle.denylist", "models.classes"}, []string{"oracle.api.anthropic"}},
+		"off its list": {`{"oracle":{"api":{"anthropic":{"base_url":"https://api.example.invalid/v1","models":["claude-haiku-4-5"]}}},"runner":{"claude":{}}}`,
+			[]string{"oracle.api.anthropic"}, nil},
 	} {
 		t.Run(name, func(t *testing.T) {
-			r := launchRoots(t, machine)
+			r := launchRoots(t, tc.machine)
 			cfg, err := runner.Load(r)
 			if err != nil {
 				t.Fatal(err)
@@ -60,9 +65,16 @@ func TestAReviewSetNoRouteCanLaunchIsRefusedAtTheStart(t *testing.T) {
 			if ref.Stage != StageReview {
 				t.Fatalf("want the review stage's refusal: %+v", ref)
 			}
-			for _, w := range []string{RoleRuthless, BundledClasses[ClassMiddle], "oracle.api.anthropic", "nothing was written"} {
+			for _, w := range append(tc.want, RoleRuthless, BundledClasses[ClassMiddle], "nothing was written") {
 				if !strings.Contains(err.Error(), w) {
 					t.Errorf("the refusal %q does not name %q", err, w)
+				}
+			}
+			// A walled drive runs every role on the harness, so a runner route
+			// would change nothing there.
+			for _, w := range append(tc.without, "roles."+RoleRuthless+".runner") {
+				if strings.Contains(err.Error(), w) {
+					t.Errorf("the refusal %q names %q, which does not apply", err, w)
 				}
 			}
 		})

@@ -298,8 +298,9 @@ func drivePreconditions(ctx context.Context, cmd *cobra.Command, repoRoot string
 	p = p.ForCheckout(repoRoot)
 	p.Ledger = cfg.Ledger()
 	// Every reviewer the review set names must be one a route here can launch,
-	// on the walled route the drive will run it on; one that cannot would wait
-	// at review for ever (iss-2611080057001367).
+	// asked of the walled configuration the drive's lanes launch on, never the
+	// unwalled one read above; one that cannot would wait at review for ever
+	// (iss-2611080057001367).
 	if err := loop.CheckReviewersLaunch(loop.Options{Roots: &roots, Runners: cfg.Walled(p)}, repoRoot); err != nil {
 		return nil, p, driveRefusal("%s", err.Error())
 	}

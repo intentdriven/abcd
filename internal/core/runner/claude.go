@@ -72,6 +72,12 @@ type ClaudeCLI struct {
 	profile *Profile
 }
 
+// claudeVendor is the claude harness's own vendor, as a <provider>/<model>
+// route names it (the bundled class map's provider): on a drive's walled
+// launch the harness takes this vendor's models by name with no provider block
+// (Config.admitModelFor), and no other vendor's.
+const claudeVendor = "anthropic"
+
 // approverServer is the name of the one server a shell launch starts, and
 // ApproverTool the permission prompt tool it names on that server.
 const (
