@@ -42,44 +42,57 @@ import (
 // THE WALK. The module's packages are type-checked from source with the
 // standard library alone (go list names the files, for darwin and for linux;
 // go/parser and go/types do the rest; golang.org/x/tools is not a
-// dependency), and the counts are the larger of the two systems'. The graph's
-// nodes are the module's declared functions and methods, its function
-// literals and its package-level variables. Any use of a function, called or
-// taken as a value, is an edge to it; a function literal is an edge from the
-// function that holds it; a call of an interface method is an edge to that
-// method on every module type that implements the interface; a use of a
-// package variable is an edge to what its initialiser refers to, which is how
-// a seam (var x = pkg.F) is followed. The roots are cmd/abcd's main, which
-// builds the whole command tree, every package's init, and each hook verb's
-// Run and RunE handlers. A command literal's Run and RunE are its only fields
-// not followed from the function that builds it: a hook's are rooted, and
-// every other verb's are left out, a call that builds one included. What the
-// walk does not follow: a call the standard library or a dependency makes
-// back into the module through an interface (String, MarshalJSON, the fmt
-// and errors callbacks Error, Is, As and Unwrap, a sort.Interface), and
-// reflection; a call through a function value reaches only the functions
-// whose value reached code takes.
+// dependency), and each system is counted on its own. The graph's nodes are
+// the module's declared functions and methods, its function literals and its
+// package-level variables. Any use of a function, called or taken as a value,
+// is an edge to it; a function literal is an edge from the function that
+// holds it; a call of an interface method is an edge to that method on every
+// module type that implements the interface; a use of a package variable is
+// an edge to what its initialiser refers to, which is how a seam (var x =
+// pkg.F) is followed. The roots are cmd/abcd's main, which builds the whole
+// command tree, every package's init, and each hook verb's Run and RunE
+// handlers. A command literal's Run and RunE are its only fields not followed
+// from the function that builds it: a hook's are rooted, and every other
+// verb's are left out, a call that builds one included.
 //
-// A FLAGGED CALL is a use of exec.Command or an exec.Cmd literal; a use of a
+// A FLAGGED CALL is a use of exec.Command, os.StartProcess, syscall.Exec,
+// ForkExec or StartProcess, or an exec.Cmd composite literal; a use of a
 // gitutil or localtier function or method that has a sibling named
 // <Name>Context; a call from outside those two packages of one of theirs
 // that takes no context but reaches a flagged call; and a call passing a
-// context with no deadline (context.Background or TODO, directly, through
-// WithCancel, WithValue or WithoutCancel, through a variable assigned one,
-// through a module function that returns one, or a cobra command's Context,
-// which is Background as run executes it) to exec.CommandContext, to gitutil
-// or localtier, or to a module function that reaches any of them. Each is
-// keyed on the caller (module-relative package and function, a literal as its
-// enclosing function with $lit, a handler built by a call with $run) and the
-// callee, with the number of times reached code makes it, never a line.
+// deadline-free context to exec.CommandContext, to gitutil or localtier, to a
+// module function that reaches any of them, or to an interface method a
+// module implementation of which does. A context is deadline-free when it is
+// context.Background() or TODO(); WithCancel, WithCancelCause, WithValue or
+// WithoutCancel of one; a cobra command's Context(), which is Background as
+// run executes it; a call of a module function that returns one (to a
+// fixpoint, in any declaration order); or a variable or struct field
+// assigned or keyed-initialised one. Each is keyed on the system, the caller
+// (module-relative package and function, a literal as its enclosing function
+// with $lit, a handler built by a call with $run) and the callee, with the
+// number of times reached code makes it, never a line.
+//
+// NOT MATCHED, so not counted (a static walk cannot follow every route a
+// value takes): a deadline-free context passed through a call of a
+// function-typed variable or field (tools.Run's seam in internal/core/ahoy is
+// one), through a positional struct literal, a map, slice or channel, or a
+// function literal's result; new(exec.Cmd), and exec.Cmd or a context under an
+// alias type; a Run or RunE set by assignment, which is walked with the
+// function that sets it rather than rooted or pruned; a handler that calls on
+// through a struct field holding a function; a call the standard library or
+// a dependency makes back into the module through an interface (String,
+// MarshalJSON, the fmt and errors callbacks Error, Is, As and Unwrap, a
+// sort.Interface); and reflection.
 
 // hookGitBaseline is the ratchet's file, beside this test.
 const hookGitBaseline = "testdata/hook-git-baseline.txt"
 
 // hookGitBaselineHeader heads the baseline when the update rewrites it.
 const hookGitBaselineHeader = `# Deadline-free git calls the hook verbs reach (iss-2611100548341325,
-# dcn-2611100854404911). One entry per line, sorted:
-#   <caller> -> <callee> x<times reached code makes the call>
+# dcn-2611100854404911). One entry per line, sorted, each system on its own:
+#   <goos> <caller> -> <callee> x<times reached code makes the call>
+# The forms counted, and those the walk does not match, are named in the
+# test's comment.
 # TestHookGitCallsMatchBaseline (hook_git_audit_test.go) refuses a reached
 # call not listed here or made more times than listed, and fails on an entry
 # made fewer times or no longer reached until it is lowered or removed.
@@ -202,7 +215,7 @@ func TestHookGitAuditFollowsAndFlags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{
+	common := []string{
 		"cmd/fx.(*disk).Read -> exec.Command x1",
 		"cmd/fx.helper -> gitutil.Run x1",
 		"cmd/fx.loadPlain -> localtier.Untracked x1",
@@ -220,7 +233,25 @@ func TestHookGitAuditFollowsAndFlags(t *testing.T) {
 		"internal/gitutil.Wrapped -> gitutil.Run x1",
 		"internal/gitutil.init -> exec.Command x1",
 		"internal/localtier.Untracked -> localtier.UntrackedContext(Background) x1",
+		// A context through a chain of functions declared out of order, an
+		// interface method an implementation of which reaches git, and a
+		// struct field set two ways; a process started without exec.
+		"cmd/fx.viaChain -> gitutil.RunContext(Background) x1",
+		"cmd/fx.viaField -> gitutil.RunContext(Background) x2",
+		"cmd/fx.viaIface -> cmd/fx.(runner).Do(Background) x1",
+		"cmd/fx.viaProcess -> os.StartProcess x1",
+		"cmd/fx.viaProcess -> syscall.Exec x1",
 	}
+	// Each system is counted on its own: osCall makes two calls on darwin and
+	// one on linux, so a rise on linux is not hidden by darwin's count.
+	perOS := map[string][]string{"darwin": {"cmd/fx.osCall -> gitutil.Run x2"}, "linux": {"cmd/fx.osCall -> gitutil.Run x1"}}
+	var want []string
+	for _, goos := range hookGitAuditGOOS {
+		for _, l := range append(slices.Clone(common), perOS[goos]...) {
+			want = append(want, goos+" "+l)
+		}
+	}
+	sort.Strings(want)
 	if g := got.lines(); !slices.Equal(g, want) {
 		t.Fatalf("reached:\n  %s\nwant:\n  %s", strings.Join(g, "\n  "), strings.Join(want, "\n  "))
 	}
@@ -275,6 +306,20 @@ func TestHookGitBaselineFileIsSortedAndUnique(t *testing.T) {
 			t.Errorf("%s baseline read without error", name)
 		}
 	}
+	p := filepath.Join(dir, "good")
+	if err := os.WriteFile(p, []byte("# h\ndarwin a.f -> gitutil.Run x3\nlinux a.f -> gitutil.Run x1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := readHookGitBaseline(p); err != nil || c["linux a.f -> gitutil.Run"] != 1 || c["darwin a.f -> gitutil.Run"] != 3 {
+		t.Errorf("a per-system baseline read as %v, %v", c, err)
+	}
+	p = filepath.Join(dir, "nosystem")
+	if err := os.WriteFile(p, []byte("plan9 a.f -> gitutil.Run x1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readHookGitBaseline(p); err == nil {
+		t.Error("an entry for a system the audit does not walk read without error")
+	}
 }
 
 // TestHookEntriesAreTheScriptsVerbs: the audit's roots are exactly the verbs
@@ -290,6 +335,23 @@ func TestHookEntriesAreTheScriptsVerbs(t *testing.T) {
 	}
 	if err := hookEntriesMatch(append(slices.Clone(verbs), "hook planted")); err == nil {
 		t.Error("a verb the scripts run that hookEntries lacks was not refused")
+	}
+	// A call of the binary the verb pattern does not classify is refused,
+	// not passed over.
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "hooks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"command":"sh \"${CLAUDE_PLUGIN_ROOT}/hooks/stop.sh\""}]}]}}`,
+		"hooks/stop.sh":    "case \"$x\" in /*) ;; esac\n[ -x \"$r/abcd\" ] && \"$g\" hook stop; \"$g\" ahoy install\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(name)), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if v, err := hookVerbsInScripts(dir); err == nil || !strings.Contains(err.Error(), "ahoy install") {
+		t.Errorf("an unclassified call of the binary was passed over (verbs %q, err %v)", v, err)
 	}
 }
 
@@ -347,11 +409,15 @@ func Untracked(p string) bool { return UntrackedContext(context.Background(), p)
 
 func UntrackedContext(ctx context.Context, p string) bool { return ctx.Err() == nil && p != "" }
 `,
+	"cmd/fx/os_darwin.go": "package main\n\nimport \"example.com/fx/internal/gitutil\"\n\nfunc osCall() { _ = gitutil.Run(\"a\"); _ = gitutil.Run(\"b\") }\n",
+	"cmd/fx/os_linux.go":  "package main\n\nimport \"example.com/fx/internal/gitutil\"\n\nfunc osCall() { _ = gitutil.Run(\"a\") }\n",
 	"cmd/fx/main.go": `package main
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"syscall"
 
 	"example.com/fx/internal/gitutil"
 	"example.com/fx/internal/localtier"
@@ -391,6 +457,35 @@ func wrapped() error { _ = gitutil.Run("w"); return nil }
 
 var handlerVar = func() error { return nil }
 
+func a() context.Context { return b() }
+
+func b() context.Context { return context.Background() }
+
+func viaChain() { _ = gitutil.RunContext(a()) }
+
+type opts struct{ ctx context.Context }
+
+func viaField() {
+	o := opts{ctx: context.Background()}
+	_ = gitutil.RunContext(o.ctx)
+	var p opts
+	p.ctx = context.TODO()
+	_ = gitutil.RunContext(p.ctx)
+}
+
+type runner interface{ Do(ctx context.Context) }
+
+type gitRunner struct{}
+
+func (gitRunner) Do(ctx context.Context) { _ = gitutil.RunContext(ctx) }
+
+func viaIface(r runner) { r.Do(context.Background()) }
+
+func viaProcess() {
+	_, _ = os.StartProcess("git", nil, nil)
+	_ = syscall.Exec("git", nil, nil)
+}
+
 func tree() *Command {
 	_ = gitutil.Run("tree")
 	return &Command{
@@ -417,6 +512,11 @@ func newHook(r reader) *Command {
 		r.Read()
 		load()
 		viaLit()()
+		viaChain()
+		viaField()
+		viaIface(gitRunner{})
+		viaProcess()
+		osCall()
 		return nil
 	}}
 }
@@ -509,16 +609,18 @@ func readHookGitBaseline(path string) (hookCounts, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		caller, rest, ok := strings.Cut(line, " -> ")
+		goos, tail, _ := strings.Cut(line, " ")
+		caller, rest, ok := strings.Cut(tail, " -> ")
+		ok = ok && slices.Contains(hookGitAuditGOOS, goos)
 		f := strings.Fields(rest)
 		var times int
 		if ok && len(f) == 2 && strings.HasPrefix(f[1], "x") {
 			times, err = strconv.Atoi(f[1][1:])
 		}
 		if !ok || caller == "" || strings.ContainsAny(caller, " \t") || len(f) != 2 || err != nil || times < 1 {
-			return nil, fmt.Errorf("%s:%d: %q is not <caller> -> <callee> x<N>, N at least 1", path, n, line)
+			return nil, fmt.Errorf("%s:%d: %q is not <goos> <caller> -> <callee> x<N>, goos one of %q, N at least 1", path, n, line, hookGitAuditGOOS)
 		}
-		key := caller + " -> " + f[0]
+		key := goos + " " + caller + " -> " + f[0]
 		if key <= prev {
 			return nil, fmt.Errorf("%s:%d: %q is out of order or repeated; keep the file sorted, one entry per call", path, n, line)
 		}
@@ -540,6 +642,9 @@ func writeHookGitBaseline(path string, c hookCounts) error {
 var (
 	auditScriptRef  = regexp.MustCompile(`hooks/([a-z][a-z-]*\.sh)`)
 	auditScriptVerb = regexp.MustCompile(`"\$(?:g|x|r/abcd)" (guard hook|hook [a-z][a-z-]*)`)
+	// auditScriptCall is any word after a quoted binary variable; "case $x
+	// in" and a test's closing bracket are not calls.
+	auditScriptCall = regexp.MustCompile(`(case )?"\$(?:g|x|r/abcd)" ([A-Za-z-][^\s;|&)]*(?: [a-z][a-z-]*)?)`)
 )
 
 // hookVerbsInScripts is every abcd verb the scripts hooks/hooks.json names
@@ -561,6 +666,12 @@ func hookVerbsInScripts(root string) ([]string, error) {
 		}
 		for _, m := range auditScriptVerb.FindAllStringSubmatch(string(body), -1) {
 			verbs[m[1]] = true
+		}
+		for _, m := range auditScriptCall.FindAllStringSubmatch(string(body), -1) {
+			if m[1] != "" || auditScriptVerb.MatchString(m[0]) {
+				continue
+			}
+			return nil, fmt.Errorf("hooks/%s calls the binary as %q, which the audit cannot classify as a hook verb", s, m[2])
 		}
 	}
 	if len(verbs) == 0 {
@@ -589,7 +700,8 @@ func hookEntriesMatch(verbs []string) error {
 	return nil
 }
 
-// hookGitAuditGOOS are the systems walked; the counts are the larger of each.
+// hookGitAuditGOOS are the systems walked; each is counted on its own, its
+// entries keyed with its name.
 var hookGitAuditGOOS = []string{"darwin", "linux"}
 
 func hookGitAuditAll(root, mainPkg string, spec auditSpec) (hookCounts, error) {
@@ -600,7 +712,7 @@ func hookGitAuditAll(root, mainPkg string, spec auditSpec) (hookCounts, error) {
 			return nil, fmt.Errorf("GOOS=%s: %w", goos, err)
 		}
 		for k, n := range c {
-			out[k] = max(out[k], n)
+			out[goos+" "+k] = n
 		}
 	}
 	return out, nil
@@ -651,8 +763,9 @@ func goListDeps(root, mainPkg, goos string) ([]listedPkg, error) {
 
 // testToolchainGo is the go command of the toolchain that built this test.
 // A -trimpath build records no GOROOT, so the go on PATH is asked for its
-// root and version, never allowed to switch toolchains, and refused unless its
-// version is this test's own.
+// root and version, under the inherited GOTOOLCHAIN so a pinned switch
+// applies, and refused unless the version is this test's own. go list itself
+// then runs that toolchain's go with GOTOOLCHAIN=local.
 func testToolchainGo(ctx context.Context) (string, error) {
 	goroot := runtime.GOROOT()
 	if goroot == "" {
@@ -661,7 +774,7 @@ func testToolchainGo(ctx context.Context) (string, error) {
 			return "", fmt.Errorf("the test's own toolchain is not named (runtime.GOROOT is empty) and no go is on PATH to ask: %v", err)
 		}
 		cmd := exec.CommandContext(ctx, path, "env", "GOROOT", "GOVERSION")
-		cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local", "GOFLAGS=")
+		cmd.Env = append(os.Environ(), "GOFLAGS=") // the inherited GOTOOLCHAIN picks the pinned one
 		out, err := cmd.Output()
 		f := strings.Fields(string(out))
 		if err != nil || len(f) != 2 {
@@ -860,11 +973,15 @@ func (g *callGraph) addPackage(pkg *types.Package, files []*ast.File, info *type
 			}
 		}
 	}
-	// The deadline-free contexts first: variables, then the functions that
-	// return one, then variables again for a function of this package.
-	g.markBgVars(files, info)
-	g.markBgFuncs(files, info)
-	g.markBgVars(files, info)
+	// The deadline-free contexts first, to a fixpoint: variables and fields
+	// assigned one, and functions returning one, in any declaration order.
+	// A dependency's are already marked, go list naming it first.
+	for {
+		v, f := g.markBgVars(files, info), g.markBgFuncs(files, info)
+		if !v && !f {
+			break
+		}
+	}
 	for _, f := range files {
 		for _, d := range f.Decls {
 			switch d := d.(type) {
@@ -1050,24 +1167,36 @@ func (g *callGraph) isBg(e ast.Expr, info *types.Info) bool {
 		return g.bgFuncs[fn]
 	case *ast.Ident:
 		v, ok := info.Uses[e].(*types.Var)
-		return ok && g.bgVars[v]
+		return ok && g.bgVars[v.Origin()]
+	case *ast.SelectorExpr:
+		v, ok := info.Uses[e.Sel].(*types.Var)
+		return ok && v.IsField() && g.bgVars[v.Origin()]
 	}
 	return false
 }
 
-// markBgVars records each variable assigned a deadline-free context.
-func (g *callGraph) markBgVars(files []*ast.File, info *types.Info) {
+// markBgVars records each variable and struct field assigned or
+// initialised a deadline-free context, saying whether it marked any anew.
+func (g *callGraph) markBgVars(files []*ast.File, info *types.Info) bool {
+	changed := false
 	mark := func(lhs ast.Expr, rhs ast.Expr) {
-		id, ok := lhs.(*ast.Ident)
-		if !ok || !g.isBg(rhs, info) {
+		var id *ast.Ident
+		switch l := lhs.(type) {
+		case *ast.Ident:
+			id = l
+		case *ast.SelectorExpr:
+			id = l.Sel
+		}
+		if id == nil || !g.isBg(rhs, info) {
 			return
 		}
 		obj := info.Defs[id]
 		if obj == nil {
 			obj = info.Uses[id]
 		}
-		if v, ok := obj.(*types.Var); ok {
-			g.bgVars[v] = true
+		if v, ok := obj.(*types.Var); ok && !g.bgVars[v.Origin()] {
+			g.bgVars[v.Origin()] = true
+			changed = true
 		}
 	}
 	pair := func(lhs []ast.Expr, rhs []ast.Expr) {
@@ -1091,15 +1220,23 @@ func (g *callGraph) markBgVars(files []*ast.File, info *types.Info) {
 					lhs[i] = n
 				}
 				pair(lhs, x.Values)
+			case *ast.KeyValueExpr:
+				if f, ok := x.Key.(*ast.Ident); ok {
+					if v, ok := info.Uses[f].(*types.Var); ok && v.IsField() {
+						mark(f, x.Value)
+					}
+				}
 			}
 			return true
 		})
 	}
+	return changed
 }
 
 // markBgFuncs records each module function that returns a deadline-free
-// context from its own body.
-func (g *callGraph) markBgFuncs(files []*ast.File, info *types.Info) {
+// context from its own body, saying whether it marked any anew.
+func (g *callGraph) markBgFuncs(files []*ast.File, info *types.Info) bool {
+	changed := false
 	for _, f := range files {
 		for _, d := range f.Decls {
 			fd, ok := d.(*ast.FuncDecl)
@@ -1116,8 +1253,9 @@ func (g *callGraph) markBgFuncs(files []*ast.File, info *types.Info) {
 					return false
 				case *ast.ReturnStmt:
 					for _, r := range x.Results {
-						if g.isBg(r, info) {
+						if !g.bgFuncs[fn] && g.isBg(r, info) {
 							g.bgFuncs[fn] = true
+							changed = true
 						}
 					}
 				}
@@ -1125,6 +1263,7 @@ func (g *callGraph) markBgFuncs(files []*ast.File, info *types.Info) {
 			})
 		}
 	}
+	return changed
 }
 
 // checkContextArgs records a call passing a deadline-free context in a
@@ -1178,10 +1317,17 @@ func (g *callGraph) flagKey(fn *types.Func) string {
 	if p == nil {
 		return ""
 	}
-	if p.Path() == "os/exec" {
-		if fn.Name() == "Command" && fn.Type().(*types.Signature).Recv() == nil {
+	if fn.Type().(*types.Signature).Recv() == nil {
+		switch p.Path() + "." + fn.Name() {
+		case "os/exec.Command":
 			return "exec.Command"
+		case "os.StartProcess":
+			return "os.StartProcess"
+		case "syscall.Exec", "syscall.ForkExec", "syscall.StartProcess":
+			return "syscall." + fn.Name()
 		}
+	}
+	if p.Path() == "os/exec" {
 		return ""
 	}
 	if !g.gitPkg(p.Path()) {
@@ -1281,6 +1427,21 @@ func (g *callGraph) reachesGit() map[any]bool {
 	return seen
 }
 
+// implReachesGit says whether fn is an interface method some module
+// implementation of which reaches git.
+func (g *callGraph) implReachesGit(fn *types.Func, git map[any]bool) bool {
+	r := fn.Type().(*types.Signature).Recv()
+	if r == nil || !types.IsInterface(r.Type()) {
+		return false
+	}
+	for _, impl := range g.implementations(fn) {
+		if git[impl] {
+			return true
+		}
+	}
+	return false
+}
+
 // taintedGitNodes are the nodes of gitutil and localtier that make a flagged
 // call or reach, within those packages, one that does.
 func (g *callGraph) taintedGitNodes() map[any]bool {
@@ -1347,7 +1508,7 @@ func (g *callGraph) reach(spec auditSpec) (hookCounts, error) {
 			out[name+" -> "+k]++
 		}
 		for _, fn := range g.bgCalls[n] {
-			if p := fn.Pkg().Path(); g.gitPkg(p) || p == "os/exec" || git[fn] {
+			if p := fn.Pkg().Path(); g.gitPkg(p) || p == "os/exec" || git[fn] || g.implReachesGit(fn, git) {
 				out[name+" -> "+g.calleeKey(fn)+"(Background)"]++
 			}
 		}

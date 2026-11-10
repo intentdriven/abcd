@@ -1300,14 +1300,22 @@ Three properties are load-bearing:
   git did not answer for in time is never read as one that names nothing.
 - **The hooks' unbound git calls are counted.** A test in
   `internal/surface/cli/hook_git_audit_test.go` walks the calls from the
-  binary's entry and each hook verb's handlers and counts the git calls it
-  reaches with no deadline: a plain `exec.Command` or `exec.Cmd`, a gitutil
-  or localtier function or method that has a Context form, a call of one of
-  theirs that reaches such a call, and a call passed a context with no
-  deadline (`context.Background` or `TODO`, however it is passed on). It does
-  not follow a call the standard library makes back into abcd through an
-  interface (String, MarshalJSON, and the Error, Is, As and Unwrap callbacks),
-  nor reflection. It compares the counts with
+  binary's entry and each hook verb's handlers, for darwin and for linux each
+  on its own, and counts the git calls it reaches in the forms it matches: a
+  plain `exec.Command`, `os.StartProcess` or `syscall.Exec`, or an `exec.Cmd`
+  literal; a gitutil or localtier function or method that has a Context form,
+  or a call of one of theirs that reaches one; and a call that passes
+  `context.Background` or `TODO` to git, directly, wrapped by `WithCancel`,
+  `WithValue` or `WithoutCancel`, as a cobra command's `Context`, returned by
+  an abcd function, or held in a variable or a struct field set from one. A
+  static walk cannot follow every route a value takes, and these are not
+  matched: such a context passed through a function-typed variable or field,
+  a positional struct literal, a map, slice or channel, or a function
+  literal's result; `new(exec.Cmd)` and alias types; a Run or RunE set by
+  assignment; a handler that calls on through a struct field; a call the
+  standard library makes back into abcd through an interface (String,
+  MarshalJSON, and the Error, Is, As and Unwrap callbacks); and reflection.
+  The test compares the counts with
   `internal/surface/cli/testdata/hook-git-baseline.txt`: a reached call
   missing from the file, or made more often than it lists, fails the test,
   and so does an entry made less often or no longer reached, until the file
