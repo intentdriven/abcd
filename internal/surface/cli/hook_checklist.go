@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -39,12 +40,23 @@ const (
 	checklistRenderBudget = sessionStartOutputCap - sessionStartMargin
 )
 
+// sessionStartBudget is the session-start hook's one deadline, counted from
+// the hook's start: the checklist's read, its one git call included, runs
+// under it, and a deadline spent before or during the read leaves the
+// checklist out of this start, said on stderr. The host gives the hook's
+// shell 240 seconds, a first run's download of the binary among them, so a
+// minute keeps the read well inside what the host allows.
+//
+// A var only so a test can spend it.
+var sessionStartBudget = time.Minute
+
 // emitSessionStart writes the session-start hook's one output: composed, the
 // text the hook gathered, then the checklist within what composed leaves of
-// the cap. The rest is never cut; a checklist that cannot be read becomes the
-// reader's one line, never an error or a non-zero exit.
-func emitSessionStart(cmd *cobra.Command, composed, cwd string) {
-	text := composed + sessionStartChecklist(cwd, checklistRenderBudget-len(composed))
+// the cap, read under the hook's deadline (ctx). The rest is never cut; a
+// checklist that cannot be read becomes the reader's one line, never an error
+// or a non-zero exit.
+func emitSessionStart(ctx context.Context, cmd *cobra.Command, composed, cwd string) {
+	text := composed + sessionStartChecklist(ctx, cmd.ErrOrStderr(), cwd, checklistRenderBudget-len(composed))
 	if text != "" {
 		io.WriteString(cmd.OutOrStdout(), text)
 	}
@@ -55,8 +67,11 @@ func emitSessionStart(cmd *cobra.Command, composed, cwd string) {
 // working copy that has never had a checklist (the intent re-injects "a
 // session with a checklist"), and otherwise checklist.Render of what the
 // reader returns, which carries its own line when it fell back or found
-// nothing usable. It reads no network and writes nothing.
-func sessionStartChecklist(cwd string, budget int) (text string) {
+// nothing usable. It reads no network and writes nothing. The read runs under
+// the hook's deadline (ctx): a deadline spent before or during it leaves the
+// checklist out and says so on stderr, so a checklist git did not answer for
+// in time is never shown as one git could not judge.
+func sessionStartChecklist(ctx context.Context, stderr io.Writer, cwd string, budget int) (text string) {
 	// A start is never failed for the checklist: a panic in the read or the
 	// render is the line, not a crash of the hook.
 	defer func() {
@@ -72,7 +87,21 @@ func sessionStartChecklist(cwd string, budget int) (text string) {
 	if !ok || !checklistFilesExist(root) {
 		return ""
 	}
-	return checklist.Render(checklist.Read(root), budget)
+	spent := func() bool {
+		if ctx.Err() == nil {
+			return false
+		}
+		diagnosticLine(stderr, "abcd checklist: the checklist was not read at this start, the hook's time being spent; `abcd checklist` shows it")
+		return true
+	}
+	if spent() {
+		return ""
+	}
+	res := checklist.ReadContext(ctx, root)
+	if spent() {
+		return ""
+	}
+	return checklist.Render(res, budget)
 }
 
 // recordCompaction is the PreCompact event sidecar (spc-2610230805429429

@@ -1,0 +1,6 @@
+---
+id: dcn-2611100347208820
+slug: the-session-start-hook-gets-one-deadline
+date: 2026-11-10
+---
+2026-11-10 — The session-start hook gets one deadline of a minute, counted from its start, and the checklist read runs under what is left of it: the host gives the hook's shell 240 seconds with a first run's binary download inside them, the stop hook's 14 seconds is tuned to a 30-second host timeout and would cut a slow start's drain short, and a minute keeps the read well inside the host's limit while a start that spends it leaves the list out and says so on stderr (spc-2610230805429429).

@@ -198,6 +198,29 @@ func TestSessionStartWithNoChecklistInjectsNothing(t *testing.T) {
 	}
 }
 
+// TestSessionStartChecklistReadKeepsTheDeadline: the checklist is read under
+// the session-start hook's one deadline, so a deadline already spent skips the
+// read, names it on stderr, and the start goes on at exit 0 with no checklist
+// in its output rather than a line that blames git.
+func TestSessionStartChecklistReadKeepsTheDeadline(t *testing.T) {
+	root := checklistCheckout(t)
+	mustChecklist(t, "add", "Land step three")
+	prev := sessionStartBudget
+	sessionStartBudget = 0
+	t.Cleanup(func() { sessionStartBudget = prev })
+	b, _ := json.Marshal(map[string]string{"session_id": "s-late", "cwd": root, "source": "startup", "hook_event_name": "SessionStart"})
+	so, se, code := runSessionStart(string(b), "hook", "session-start")
+	if code != 0 {
+		t.Fatalf("a spent deadline failed the start: exit %d\nstderr: %s", code, se)
+	}
+	if strings.Contains(strings.ToLower(so), "checklist") {
+		t.Errorf("a spent deadline still injected a checklist or its line:\n%s", so)
+	}
+	if !strings.Contains(se, "checklist was not read") {
+		t.Errorf("a spent deadline is not named on stderr: %q", se)
+	}
+}
+
 // TestSessionStartNeverInjectsTheScannerConfigsText: a scanner the tracked
 // .abcd/config/pii.json breaks is reported by a fixed clause, never by the
 // scanner's error, which quotes the file (iss-2608241115201044's rule: nothing

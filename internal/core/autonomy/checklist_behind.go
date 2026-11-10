@@ -210,6 +210,10 @@ func TakeChecklistNote(copyRoot, sessionID string) (string, error) {
 	if err := SaveSession(copyRoot, sessionID, st); err != nil {
 		return "", err
 	}
+	// The prefix check drops a note that does not begin as abcd's notes do.
+	// It proves nothing about who wrote one that does: any process of this
+	// account can write those words, so what it keeps is only ever the clean
+	// line above, never a note proven to be abcd's.
 	if !strings.HasPrefix(note, notePrefix) {
 		return "", ErrChecklistNoteForeign
 	}

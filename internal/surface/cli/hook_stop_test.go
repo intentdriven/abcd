@@ -710,6 +710,32 @@ func TestHookStopChecklistReadKeepsTheDeadline(t *testing.T) {
 	}
 }
 
+// TestHookStopChecklistDeadlineLeavesNoNoteWhilePresent: present, a deadline
+// the owed reading spent leaves the session's state with no note, so the next
+// prompt is not told the checklist is behind on a read that never finished.
+func TestHookStopChecklistDeadlineLeavesNoNoteWhilePresent(t *testing.T) {
+	root := awayCheckout(t)
+	pinStopClock(t, stopTestNow, time.UTC)
+	prevBudget, prevReader := stopReadBudget, stopOwedReader
+	stopReadBudget = 50 * time.Millisecond
+	stopOwedReader = func(ctx context.Context, _ autonomy.ReadOptions) (autonomy.Owed, error) {
+		<-ctx.Done()
+		return autonomy.Owed{Owned: []autonomy.OwnedRef{{Ref: "branch:feat/late"}}}, nil
+	}
+	t.Cleanup(func() { stopReadBudget, stopOwedReader = prevBudget, prevReader })
+	out, so, se := runStop(t, stopHookPayload(t, "s1", root, false, "Done."))
+	if out.Decision != "" || so != "" || !strings.Contains(se, "checklist was not read") {
+		t.Fatalf("present, a spent deadline must skip the checklist and allow the stop: stdout %q stderr %q", so, se)
+	}
+	st, err := autonomy.LoadSession(root, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.ChecklistNote != "" {
+		t.Fatalf("present, a spent deadline left a note: %q", st.ChecklistNote)
+	}
+}
+
 // TestPromptRouterCleansAPlantedChecklistNote: a note planted in the
 // session's stop state reaches the prompt as one clean line under the one
 // CHECKLIST heading, with no heading, line break or bidi control of its own.

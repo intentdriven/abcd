@@ -8,6 +8,7 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -2167,6 +2168,11 @@ outside the dedup ledger.`,
 		Short: "SessionStart: drain staged transcripts into the store, and warn about an unbootstrapped store or a stale binary",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// The hook's one deadline, set before anything else runs: the
+			// checklist's read, last, runs under what is left of it
+			// (hook_checklist.go, sessionStartBudget).
+			ctx, cancel := context.WithTimeout(context.Background(), sessionStartBudget)
+			defer cancel()
 			in, err := readHookInput(cmd)
 			if err != nil {
 				return nil // malformed payload: not a store problem, stay silent
@@ -2181,7 +2187,7 @@ outside the dedup ledger.`,
 			// checklist last, in what the rest leaves of the host's cap
 			// (hook_checklist.go).
 			out := new(strings.Builder)
-			defer func() { emitSessionStart(cmd, out.String(), cwd) }()
+			defer func() { emitSessionStart(ctx, cmd, out.String(), cwd) }()
 			// Naming first, before the drain's time budget: it reserves the
 			// name the first prompt sets, and writes nothing to stdout
 			// (hook_session_name.go).

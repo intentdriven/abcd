@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -602,11 +603,11 @@ func TestTheHooksStandAsideOnAStage(t *testing.T) {
 	t.Run("checklist", func(t *testing.T) {
 		root := checklistCheckout(t)
 		mustChecklist(t, "add", "Fix the parser's error path")
-		if sessionStartChecklist(root, 4000) == "" {
+		if sessionStartChecklist(context.Background(), io.Discard, root, 4000) == "" {
 			t.Fatal("another session is shown its checklist")
 		}
 		t.Setenv(runner.StageWritesEnv, root)
-		if got := sessionStartChecklist(root, 4000); got != "" {
+		if got := sessionStartChecklist(context.Background(), io.Discard, root, 4000); got != "" {
 			t.Fatalf("the checklist reached a stage: %q", got)
 		}
 	})
