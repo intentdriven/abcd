@@ -132,11 +132,29 @@ func makeNamesGoal(args []string, goal string) bool {
 const PreflightStagesGoal = "preflight-stages"
 
 // IsPreflightStagesCommand reports whether cmd, a command a waiter gates (the
-// words after `--`, its program first), is a whole preflight's stages: its
-// program is make and its goals, read as a preflight's are (isPreflightMake),
-// name PreflightStagesGoal. A shell that runs that make is not read into.
+// words after `--`, its program first), is a whole preflight's stages in the
+// Makefile's exact shape (PREFLIGHT_STAGES_MAKE): its program is make or
+// gmake under any path, and every word after it is --no-print-directory or
+// the one goal PreflightStagesGoal. Any other flag (one that moves make to
+// another tree, reads another makefile, or runs nothing), a flag's value, a
+// variable assignment or a second goal makes it false, since the marker names
+// the waiter's own checkout and only that make tests it. A shell that runs
+// that make is not read into.
 func IsPreflightStagesCommand(cmd []string) bool {
-	return len(cmd) > 0 && isMakeName(path.Base(cmd[0])) && makeNamesGoal(cmd[1:], PreflightStagesGoal)
+	if len(cmd) == 0 || !isMakeName(path.Base(cmd[0])) {
+		return false
+	}
+	goals := 0
+	for _, a := range cmd[1:] {
+		switch a {
+		case "--no-print-directory":
+		case PreflightStagesGoal:
+			goals++
+		default:
+			return false
+		}
+	}
+	return goals == 1
 }
 
 // isLoadWaiter reports whether args, abcd's arguments after the program name,

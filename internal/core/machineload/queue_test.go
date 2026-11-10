@@ -899,9 +899,11 @@ func TestQueuedAtNamesTheQueueAtOneGate(t *testing.T) {
 }
 
 // TestIsPreflightStagesCommand: the command `make preflight`'s waiter gates
-// is the Makefile's PREFLIGHT_STAGES_MAKE, read as the gate reads a make's
-// goals: make under any path, its flags and a flag's value passed over. Any
-// other goal, program, or a shell that runs the make, is not.
+// is the Makefile's PREFLIGHT_STAGES_MAKE in its exact shape: make under any
+// path, then only --no-print-directory and the one goal preflight-stages. Any
+// other flag (one that moves make elsewhere, reads another makefile, or runs
+// nothing), a variable assignment, a second goal, another program, or a shell
+// that runs the make, is not.
 func TestIsPreflightStagesCommand(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "Makefile"))
 	if err != nil {
@@ -923,14 +925,28 @@ func TestIsPreflightStagesCommand(t *testing.T) {
 		}
 	}
 	for cmd, want := range map[string]bool{
-		"make -C /work/wt preflight-stages": true,
-		"make preflight":                    false,
-		"make test":                         false,
-		"make -C preflight-stages test":     false,
-		"make GOAL=preflight-stages test":   false,
-		"go test ./...":                     false,
-		"sh -c make preflight-stages":       false,
-		"":                                  false,
+		"make -C /work/wt preflight-stages":                               false,
+		"make --directory=/work/wt preflight-stages":                      false,
+		"make -f other.mk preflight-stages":                               false,
+		"make --file=other.mk preflight-stages":                           false,
+		"make -n preflight-stages":                                        false,
+		"make -q preflight-stages":                                        false,
+		"make -t preflight-stages":                                        false,
+		"make test preflight-stages":                                      false,
+		"make preflight-stages preflight-stages":                          false,
+		"make preflight-stages GOFLAGS=-count=1":                          false,
+		"make --no-print-directory preflight-stages MAKE=true":            false,
+		"make --no-print-directory --no-print-directory preflight-stages": true,
+		"make preflight-stages":                                           true,
+		"/usr/local/bin/gmake --no-print-directory preflight-stages":      true,
+		"make --no-print-directory":                                       false,
+		"make preflight":                                                  false,
+		"make test":                                                       false,
+		"make -C preflight-stages test":                                   false,
+		"make GOAL=preflight-stages test":                                 false,
+		"go test ./...":                                                   false,
+		"sh -c make preflight-stages":                                     false,
+		"":                                                                false,
 	} {
 		if got := IsPreflightStagesCommand(strings.Fields(cmd)); got != want {
 			t.Errorf("IsPreflightStagesCommand(%q) = %v, want %v", cmd, got, want)
