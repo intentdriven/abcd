@@ -479,8 +479,10 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		// lane was cut from, never one the lane has since changed.
 		Base: base,
 		// A review set's reviewer runs at its class's model, over the
-		// runner's own (reviewers.go); the runner admits it against the
-		// provider's allowlist whoever stored it. "" keeps the route's.
+		// runner's own (reviewers.go); the runner admits it whoever stored
+		// it, against the provider's allowlist, or on a drive's walled launch
+		// of the harness's own vendor, by membership of the machine's class
+		// map, the denylist still refusing it. "" keeps the route's.
 		Model:     aw.Model,
 		SessionID: session,
 		Timeout:   timeout,

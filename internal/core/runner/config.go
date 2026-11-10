@@ -143,6 +143,10 @@ type Config struct {
 	// judgeOpenCode says the machine routes the drain's judge to opencode, a
 	// route the read skips (readRoles).
 	judgeOpenCode bool
+	// classRoutes are the routes the machine's class map resolves
+	// (WithClassRoutes), the only ones a walled launch takes by name; nil
+	// for none.
+	classRoutes map[string]bool
 }
 
 // Load reads and validates the runner configuration. A fault is an error
@@ -334,18 +338,20 @@ func (c *Config) admitModel(route string) error {
 // runner that will run it (Host for the host session), when the dispatch
 // begins and again at the launch. It is admitModel, with one exception
 // (iss-2611080057001367, byName): a drive's walled launch of the claude
-// harness takes a model of the harness's own vendor (claudeVendor) by its name
-// alone (askedModel), on the person's subscription with the billing variables
-// taken out (Profile.Env), so where this machine configures no block for that
-// vendor the route is admitted without one, provided it is <provider>/<model>
-// in plain characters and no oracle.denylist entry matches it as written.
-// Everything else keeps admitModel whole: an unwalled launch, another
-// vendor's route, opencode, the host, and a vendor the machine configures.
+// harness takes a route of the harness's own vendor (claudeVendor) by its
+// model name alone (askedModel) when the route is one the machine's class map
+// resolves (WithClassRoutes) and the machine configures no block for that
+// vendor, provided it is <provider>/<model> in plain characters and no
+// oracle.denylist entry matches it as written. Everything else keeps
+// admitModel whole: an unwalled launch, a route outside the class map,
+// another vendor's route, opencode, the host, and a vendor the machine
+// configures.
 func (c *Config) admitModelFor(target, route string) error {
-	provider, model, ok := strings.Cut(route, "/")
-	if !ok || model == "" || !c.byName(target, provider) {
+	_, model, ok := strings.Cut(route, "/")
+	if !ok || model == "" || !c.byName(target, route) {
 		return c.admitModel(route)
 	}
+	provider, _, _ := strings.Cut(route, "/")
 	if !modelRe.MatchString(route) {
 		return fmt.Errorf("which is not a <provider>/<model> route of at most 128 plain characters")
 	}
@@ -355,12 +361,15 @@ func (c *Config) admitModelFor(target, route string) error {
 	return nil
 }
 
-// byName reports whether a model of provider asked of target is admitted by
-// its name with no provider block: only on a drive's walled launch (Walled) of
-// the claude harness, only for the harness's own vendor, and only where this
-// machine configures no block for it, whose list would otherwise decide.
-func (c *Config) byName(target, provider string) bool {
-	return target == Claude && c.profile != nil && provider == claudeVendor && !c.providerConfigured(provider)
+// byName reports whether route asked of target is admitted by its model name
+// with no provider block: only on a drive's walled launch (Walled) of the
+// claude harness, only for a route of the harness's own vendor that the
+// machine's class map resolves (WithClassRoutes), and only where this machine
+// configures no block for that vendor, whose list would otherwise decide.
+func (c *Config) byName(target, route string) bool {
+	provider, _, _ := strings.Cut(route, "/")
+	return target == Claude && c.profile != nil && provider == claudeVendor && c.classRoutes[route] &&
+		!c.providerConfigured(provider)
 }
 
 // deniedFor reports whether the admission of route for target was refused by
@@ -370,7 +379,7 @@ func (c *Config) deniedFor(target, route string) bool {
 	switch {
 	case c.api == nil:
 		return false
-	case c.byName(target, provider):
+	case c.byName(target, route):
 		return c.api.Refuses(provider, model) != nil
 	case !c.providerConfigured(provider):
 		return false
@@ -898,6 +907,20 @@ func (c *Config) Walled(p Profile) *Config {
 	w.roles = map[string]Route{roleImplementer: walledRoute, roleDrainJudge: walledRoute}
 	for _, a := range oracle.Roster() {
 		w.roles[a] = walledRoute
+	}
+	return &w
+}
+
+// WithClassRoutes is c holding routes, the routes the machine's class map
+// resolves (the loop's ClassRoutes), as the routes a walled launch of the
+// claude harness may take by name (byName); c is left as it was. A
+// configuration that holds none takes nothing by name. A drive's start sets
+// it where it walls the configuration.
+func (c *Config) WithClassRoutes(routes []string) *Config {
+	w := *c
+	w.classRoutes = make(map[string]bool, len(routes))
+	for _, r := range routes {
+		w.classRoutes[r] = true
 	}
 	return &w
 }

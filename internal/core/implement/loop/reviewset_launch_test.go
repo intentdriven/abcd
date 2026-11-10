@@ -3,6 +3,7 @@ package loop
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -26,17 +27,28 @@ func launchRoots(t *testing.T, machine string) layered.Roots {
 	return r
 }
 
+// walledFor is r's runner configuration walled for a drive, holding the
+// routes r's class map resolves, as the drive's start hands them over.
+func walledFor(t *testing.T, r layered.Roots) *runner.Config {
+	t.Helper()
+	cfg, err := runner.Load(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	routes, err := ClassRoutes(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg.Walled(runner.Profile{}).WithClassRoutes(routes)
+}
+
 // TestTheBundledReviewSetLaunchesOnASubscriptionOnlyMachine
 // (iss-2611080057001367): a drive walls every role onto the claude harness, and
 // on a machine that enables it and configures no provider, every reviewer of
 // the bundled review set can be launched, so the drive's start lets it through.
 func TestTheBundledReviewSetLaunchesOnASubscriptionOnlyMachine(t *testing.T) {
 	r := launchRoots(t, `{"runner":{"claude":{}}}`)
-	cfg, err := runner.Load(r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := CheckReviewersLaunch(Options{Roots: &r, Runners: cfg.Walled(runner.Profile{})}, r.Repo); err != nil {
+	if err := CheckReviewersLaunch(Options{Roots: &r, Runners: walledFor(t, r)}, r.Repo); err != nil {
 		t.Fatalf("a subscription machine cannot launch the bundled review set: %v", err)
 	}
 }
@@ -56,11 +68,7 @@ func TestAReviewSetNoRouteCanLaunchIsRefusedAtTheStart(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := launchRoots(t, tc.machine)
-			cfg, err := runner.Load(r)
-			if err != nil {
-				t.Fatal(err)
-			}
-			err = CheckReviewersLaunch(Options{Roots: &r, Runners: cfg.Walled(runner.Profile{})}, r.Repo)
+			err := CheckReviewersLaunch(Options{Roots: &r, Runners: walledFor(t, r)}, r.Repo)
 			ref := mustRefusal(t, err)
 			if ref.Stage != StageReview {
 				t.Fatalf("want the review stage's refusal: %+v", ref)
@@ -78,5 +86,30 @@ func TestAReviewSetNoRouteCanLaunchIsRefusedAtTheStart(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestTheMachinesClassMapBoundsWhatADriveTakesByName: ClassRoutes is the class
+// map this machine resolves, its own classes over the bundled ones, and a
+// drive's walled launch takes those routes by name and no others: the
+// machine's route for a class runs with no provider block, and the bundled
+// route it replaced is no longer one it takes.
+func TestTheMachinesClassMapBoundsWhatADriveTakesByName(t *testing.T) {
+	const override = "anthropic/claude-opus-6"
+	r := launchRoots(t, `{"models":{"classes":{"middle":"`+override+`"}},"runner":{"claude":{}}}`)
+	routes, err := ClassRoutes(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(routes, override) || slices.Contains(routes, BundledClasses[ClassMiddle]) ||
+		!slices.Contains(routes, BundledClasses[ClassBelow]) {
+		t.Fatalf("class routes = %q, want the machine's middle over the bundled one, and the bundled rest", routes)
+	}
+	cfg := walledFor(t, r)
+	if err := CheckReviewersLaunch(Options{Roots: &r, Runners: cfg}, r.Repo); err != nil {
+		t.Fatalf("the machine's class map cannot launch: %v", err)
+	}
+	if err := cfg.CanLaunch(RoleRuthless, BundledClasses[ClassMiddle], false); err == nil {
+		t.Fatal("the bundled route the machine replaced is still taken by name")
 	}
 }

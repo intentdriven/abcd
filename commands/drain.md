@@ -50,11 +50,14 @@ link moved to such a file only holds a waiting release back, with one line sayin
 run carries on. A credential variable the harness would bill through, set in the environment,
 refuses the start, naming `itd-2611011230226453`.
 
-On the drive's separate login the harness takes a model of its own vendor by name, so the
-bundled review set runs with no provider block in `~/.abcd.noindex/config.json`. Where the
-file does configure that vendor under `oracle.api.<provider>`, its list still decides which
-models may run, and an `oracle.denylist` entry still refuses one. Any other vendor's model,
-and every launch outside a drive, keeps the provider allowlist. A review set with a reviewer
+On the drive's separate login the harness takes a model of its own vendor by name when it is
+one the class map resolves (`models.classes` in `~/.abcd.noindex/config.json` over the
+bundled map), so the bundled review set runs with no provider block there. Where the file
+does configure that vendor under `oracle.api.<provider>`, its list still decides which models
+may run, and an `oracle.denylist` entry still refuses one. The denylist matches model names
+as written, so an entry for a full model id does not refuse a shorter alias a class is mapped
+to: to deny a model, map no class to an alias of it. A model outside the class map, any
+other vendor's model, and every launch outside a drive keep the provider allowlist. A review set with a reviewer
 no route on this machine can launch refuses the start, before anything is reserved, naming
 the role, the model and what to set: the denylist entry or `models.classes` for a model an
 entry refuses, `oracle.api.<provider>` otherwise.

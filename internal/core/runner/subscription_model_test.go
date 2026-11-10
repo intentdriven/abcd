@@ -9,11 +9,11 @@ import (
 )
 
 // A drive's walled launch of the claude harness takes a model of the harness's
-// own vendor by its name alone (iss-2611080057001367): on the walled login, with
-// no provider block for that vendor, the route is admitted, since the launch
-// runs on the person's subscription with the billing variables taken out.
-// Everything else keeps the provider allowlist: an unwalled launch, another
-// vendor's route, opencode, the host, and a vendor the machine does configure.
+// own vendor by its name alone (iss-2611080057001367), when the route is one
+// the machine's class map resolves and the machine configures no block for
+// that vendor. Everything else keeps the provider allowlist: an unwalled
+// launch, a route outside the class map, another vendor's route, opencode,
+// the host, and a vendor the machine does configure.
 
 // bundledReviewModel is the bundled class map's middle class (the loop's
 // BundledClasses, which this package cannot import).
@@ -23,9 +23,13 @@ const bundledReviewModel = "anthropic/claude-opus-5-5"
 // and the reviewer routed to it.
 const claudeOnly = `{"roles":{"ruthless-reviewer":{"runner":"claude"}},"runner":{"claude":{}}}`
 
+// testClassRoutes stands in for the routes the bundled class map resolves.
+var testClassRoutes = []string{"anthropic/claude-fable-5", bundledReviewModel, "anthropic/claude-sonnet-5-5", "anthropic/claude-haiku-4-5"}
+
 // walledOn is machine read and walled onto a drive's profile, whose
-// settings are written so a launch on it stands.
-func walledOn(t *testing.T, machine string) *Config {
+// settings are written so a launch on it stands, holding routes as the class
+// map's (testClassRoutes when none is named).
+func walledOn(t *testing.T, machine string, routes ...string) *Config {
 	t.Helper()
 	c := mustLoad(t, machine, "")
 	p, err := DriveProfile(profileHome(t, "walled"), "")
@@ -36,7 +40,10 @@ func walledOn(t *testing.T, machine string) *Config {
 	if _, err := WriteWallSettings(p, selfBinary()); err != nil {
 		t.Fatal(err)
 	}
-	return c.Walled(p)
+	if len(routes) == 0 {
+		routes = testClassRoutes
+	}
+	return c.Walled(p).WithClassRoutes(routes)
 }
 
 // TestAWalledHarnessLaunchesAReviewerWithNoProviderBlock: a reviewer request
@@ -186,7 +193,8 @@ func TestADenylistedModelIsRefusedOnTheWalledHarness(t *testing.T) {
 	} {
 		t.Run(tc.entry+" "+tc.model, func(t *testing.T) {
 			f := newFake(t, "ok", Claude)
-			h := newHarness(t, walledOn(t, `{"roles":{"ruthless-reviewer":{"runner":"claude"}},"oracle":{"denylist":["`+tc.entry+`"]},"runner":{"claude":{}}}`), true)
+			h := newHarness(t, walledOn(t, `{"roles":{"ruthless-reviewer":{"runner":"claude"}},"oracle":{"denylist":["`+tc.entry+`"]},"runner":{"claude":{}}}`,
+				append(slices.Clone(testClassRoutes), tc.model)...), true)
 			req := f.request("ruthless-reviewer")
 			req.Model = tc.model
 			if out, err := h.d.Dispatch(context.Background(), req); err == nil || !strings.Contains(err.Error(), "oracle.denylist") {
@@ -237,6 +245,53 @@ func TestCanLaunchSharesTheDispatchsAdmission(t *testing.T) {
 			}
 			if strings.Contains(err.Error(), "/Users/") || strings.Contains(err.Error(), "/home/") || strings.Contains(err.Error(), "/tmp") {
 				t.Errorf("refusal %q names an absolute path", err)
+			}
+		})
+	}
+}
+
+// TestTheWalledHarnessTakesByNameOnlyWhatTheClassMapResolves: the name-only
+// admission is bounded by the class map the drive resolved. A route of the
+// harness's own vendor outside it falls through to the provider allowlist and
+// is refused there, one inside it runs, a machine's own class route stands in
+// for the bundled one, and a walled configuration handed no class map admits
+// nothing by name. CanLaunch answers the same each time.
+func TestTheWalledHarnessTakesByNameOnlyWhatTheClassMapResolves(t *testing.T) {
+	const override = "anthropic/claude-opus-6"
+	for name, tc := range map[string]struct {
+		routes []string
+		model  string
+		admit  bool
+	}{
+		"in the class map":         {testClassRoutes, bundledReviewModel, true},
+		"outside the class map":    {testClassRoutes, "anthropic/claude-unlisted-1", false},
+		"the machine's own class":  {[]string{override, "anthropic/claude-sonnet-5-5"}, override, true},
+		"the class it replaced":    {[]string{override, "anthropic/claude-sonnet-5-5"}, bundledReviewModel, false},
+		"no class map handed over": {nil, bundledReviewModel, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFake(t, "ok", Claude)
+			c := walledOn(t, claudeOnly, "unused/placeholder")
+			c = c.WithClassRoutes(tc.routes)
+			h := newHarness(t, c, true)
+			req := f.request("ruthless-reviewer")
+			req.Model = tc.model
+			_, err := h.d.Dispatch(context.Background(), req)
+			can := c.CanLaunch("ruthless-reviewer", tc.model, false)
+			if tc.admit {
+				if err != nil || can != nil {
+					t.Fatalf("dispatch %v, CanLaunch %v; want the class map's route admitted", err, can)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), `provider "anthropic" is not configured`) {
+				t.Fatalf("dispatch err = %v; want the provider allowlist's refusal", err)
+			}
+			if can == nil || !strings.Contains(can.Error(), "oracle.api.anthropic") {
+				t.Fatalf("CanLaunch = %v; want the refusal naming oracle.api.anthropic", can)
+			}
+			if f.launched(Claude) || len(h.receipts) != 0 {
+				t.Fatal("a refused model launched or wrote a receipt")
 			}
 		})
 	}

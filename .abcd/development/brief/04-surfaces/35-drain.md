@@ -193,8 +193,8 @@ The one exception is the drive (itd-2610222215485265,
 typed in a plain terminal, on the person's own yes, it makes these moves itself, on
 one separate login under `~/.abcd.noindex/profiles/`, one subscription and no other.
 On that separate login the harness takes a model of its own vendor by name,
-with no provider block (iss-2611080057001367); everything else keeps the
-provider allowlist. The start refuses, before anything is reserved, a review set
+with no provider block, when it is one the machine's class map resolves
+(iss-2611080057001367); everything else keeps the provider allowlist. The start refuses, before anything is reserved, a review set
 with a reviewer no route on the machine can launch, naming the role, the model
 and the configuration to set (`runner.Config.CanLaunch`, the admission the
 dispatch makes, asked of the configuration the drive's lanes launch on).

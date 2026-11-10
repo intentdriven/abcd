@@ -480,3 +480,27 @@ func CheckReviewersLaunch(o Options, repoRoot string) error {
 	}
 	return nil
 }
+
+// ClassRoutes is the routes the class map resolves on roots, the machine's
+// models.classes over the bundled map, in class order (Classes): the routes a
+// drive's walled launch of the claude harness may take by name
+// (runner.Config.WithClassRoutes). A map that does not resolve is refused in
+// the review stage's own words.
+func ClassRoutes(roots layered.Roots) ([]string, error) {
+	s, err := layered.Load(layered.Config, roots)
+	if err != nil {
+		return nil, reviewRefusal(err.Error())
+	}
+	if err := s.Claim(classNamespace, Classes...); err != nil {
+		return nil, reviewRefusal(err.Error())
+	}
+	cm, _, err := resolveClassMap(s)
+	if err != nil {
+		return nil, err
+	}
+	routes := make([]string, 0, len(Classes))
+	for _, c := range Classes {
+		routes = append(routes, cm[c].Model)
+	}
+	return routes, nil
+}

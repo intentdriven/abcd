@@ -397,19 +397,24 @@ rather than skipped:
   bundles no vendor denylist (adr-2609300107513982), so a model a provider lists
   is served whichever vendor made it. `oracle.denylist` is the configuration's
   own: each layer's entries apply, an entry is a vendor prefix (`vendor/*`) or
-  one model, and matching ignores case, OpenRouter's `~` alias prefix and a
-  `:variant` suffix. No layer removes another's entry, and a block listing a
+  one model, and matching ignores case, OpenRouter's `~` alias prefix, a
+  `:variant` suffix and a bracketed suffix (`[1m]`). No layer removes another's entry, and a block listing a
   model an entry matches is refused, naming the entry, whatever else it lists.
 - **A drive's launch takes its vendor's models by name**
   (iss-2611080057001367). A model a runner request asks for, such as a review
   set's class, is admitted against its provider's list, except on a drive's
   launch of the claude harness on its separate login, for a route naming the
-  harness's own vendor that this machine configures no block for: the harness
-  is handed the model's name alone and runs it on that login's subscription,
-  so the route is admitted without a block. An `oracle.denylist` entry
-  matching the route as written, or the model, still refuses it, and a vendor
-  the machine does configure still holds the launch to its list. Everything
-  else keeps the provider allowlist: a launch outside a drive, another
+  harness's own vendor that the machine's class map resolves (`models.classes`
+  over the bundled map, handed to the walled configuration as the drive
+  starts) and that this machine configures no block for: the harness is
+  handed the model's name alone and runs it on that login's subscription, so
+  the route is admitted without a block. An `oracle.denylist` entry matching
+  the route as written, or the model, still refuses it, and a vendor the
+  machine does configure still holds the launch to its list. The denylist
+  matches model names as written, so an entry for a full model id does not
+  refuse a shorter alias a person maps a class to; a person who denies a
+  model maps no class to an alias of it. Everything else keeps the provider
+  allowlist: a launch outside a drive, a route outside the class map, another
   vendor's route, opencode and the host. `runner.<name>.model` and a `--route`'s model are admitted against a
   configured provider when they are read, as before.
 - **A route is `<provider>/<model>`.** A role or a judgement type the
