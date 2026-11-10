@@ -164,6 +164,8 @@ every finding applied here); the two open questions above are the product thinke
   oracle rows and wins only for a configured review set.
 - **refines `itd-81`** (judge calibration): the judge inherits its gate.
 - **keeps both with `itd-2610100704270254`**, **`itd-2610161733316518`** and **`itd-83`**.
+- **built on by `itd-2611101419006280`** (the model set): it renames the four classes,
+  changes the bundled pair and names a default judge that waits on the same gate.
 
 ## Audit Notes
 
