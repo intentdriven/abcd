@@ -64,8 +64,9 @@ import (
 // sibling named <Name>Context; a call from outside those two packages of one
 // of theirs that takes no context but reaches a flagged call; and any
 // deadline-free context passed to a context parameter of a module function or
-// method (an interface method included) or of exec.CommandContext, whether or
-// not that callee reaches git. That last over-counts on purpose: a wrapper or
+// method (an interface method included, a variadic context parameter, and a
+// method expression's, its arguments read after the receiver) or of
+// exec.CommandContext, whether or not that callee reaches git. That last over-counts on purpose: a wrapper or
 // a constructor that carries the context on is caught where it is passed, and
 // an entry is lowered only by passing a real deadline. A context is
 // deadline-free when it is context.Background() or TODO(); WithCancel,
@@ -86,13 +87,16 @@ import (
 // literal, a map, slice or channel, returned as one of several results
 // (ctx, err := f()), returned by an interface method or a function literal,
 // or made in a function literal called in place (the over-count catches most
-// of these where the context is passed on); exec.Cmd or a context under an
-// alias type; a Run or RunE set by assignment on a verb that is not a hook,
+// of these where the context is passed on); a method expression on an
+// instantiated generic type (T[int].M); exec.Cmd or a context under an alias
+// type; an exec.Cmd held as a struct field or a slice or map element (a
+// variable declared as one is matched); a Run or RunE set by assignment on a verb that is not a hook,
 // which is walked with the function that sets it; a handler that calls on
 // through a struct field holding a function; a call the standard library or
 // a dependency makes back into the module through an interface (String,
 // MarshalJSON, the fmt and errors callbacks Error, Is, As and Unwrap, a
-// sort.Interface); and reflection. The hook scripts are read for the binary
+// sort.Interface, and a module type implementing a dependency's interface
+// whose method takes a context); and reflection. The hook scripts are read for the binary
 // called as "$g", "$x" or "$r/abcd"; a call by another spelling is not seen.
 
 // hookGitBaseline is the ratchet's file, beside this test.
@@ -211,7 +215,8 @@ func TestHookGitCallsMatchBaseline(t *testing.T) {
 // proves the walk reaches them through a helper, an interface, a seam, a
 // literal, the tree's constructor and its Args, and a handler built by a
 // call; that it flags the context-free forms, a deadline-free context passed
-// four ways, an exec.Cmd literal, a method with a Context sibling and a call
+// six ways (a method expression's and a variadic parameter's among them), an
+// exec.Cmd literal and one a package variable holds, a method with a Context sibling and a call
 // of a wrapper that reaches one; that it counts each call; and that it leaves
 // out a verb's own handler, an unreached caller and a git-free helper.
 func TestHookGitAuditFollowsAndFlags(t *testing.T) {
@@ -250,6 +255,11 @@ func TestHookGitAuditFollowsAndFlags(t *testing.T) {
 		"cmd/fx.viaChain -> gitutil.RunContext(Background) x1",
 		"cmd/fx.viaField -> gitutil.RunContext(Background) x2",
 		"cmd/fx.viaIface -> cmd/fx.(runner).Do(Background) x1",
+		// A context passed to a method expression, after its receiver, and to
+		// a variadic context parameter; an exec.Cmd a package variable holds.
+		"cmd/fx.viaMethodExpr -> cmd/fx.(gitRunner).Do(Background) x1",
+		"cmd/fx.viaVariadic -> cmd/fx.withAll(Background) x1",
+		"cmd/fx.heldCmd -> exec.Cmd x1",
 		"cmd/fx.viaProcess -> os.StartProcess x1",
 		"cmd/fx.viaProcess -> syscall.Exec x1",
 		"cmd/fx.viaProcess -> syscall.ForkExec x1",
@@ -513,6 +523,16 @@ func (gitRunner) Do(ctx context.Context) { _ = gitutil.RunContext(ctx) }
 
 func viaIface(r runner) { r.Do(context.Background()) }
 
+func viaMethodExpr() { gitRunner.Do(gitRunner{}, context.Background()) }
+
+func withAll(ctxs ...context.Context) {}
+
+func viaVariadic() { withAll(context.TODO(), context.Background()) }
+
+var heldCmd exec.Cmd
+
+func viaHeld() { _ = heldCmd.Path }
+
 func viaProcess() {
 	_, _ = os.StartProcess("git", nil, nil)
 	_ = syscall.Exec("git", nil, nil)
@@ -567,6 +587,9 @@ func newHook(r reader) *Command {
 		viaChain()
 		viaField()
 		viaIface(gitRunner{})
+		viaMethodExpr()
+		viaVariadic()
+		viaHeld()
 		viaProcess()
 		osCall()
 		viaPkg()
@@ -1357,9 +1380,24 @@ func (g *callGraph) checkContextArgs(node any, call *ast.CallExpr, info *types.I
 	if p := fn.Pkg().Path(); p != "os/exec" && !g.inModule(p) {
 		return
 	}
-	params := fn.Type().(*types.Signature).Params()
-	for i := 0; i < params.Len() && i < len(call.Args); i++ {
-		if isContextType(params.At(i).Type()) && g.isBg(call.Args[i], info) {
+	sig := fn.Type().(*types.Signature)
+	params := sig.Params()
+	// A method expression (T.M(recv, ...)) takes its receiver as its first
+	// argument, so its parameters start one argument on.
+	args := call.Args
+	if sel, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr); ok && len(args) > 0 && sig.Recv() != nil && namesType(sel.X, info) {
+		args = args[1:]
+	}
+	for i, a := range args {
+		t := types.Type(nil)
+		switch {
+		case i < params.Len()-1 || i < params.Len() && !sig.Variadic():
+			t = params.At(i).Type()
+		case sig.Variadic() && params.Len() > 0 && call.Ellipsis == token.NoPos:
+			// Each argument a variadic parameter takes is of its element type.
+			t = params.At(params.Len() - 1).Type().(*types.Slice).Elem()
+		}
+		if t != nil && isContextType(t) && g.isBg(a, info) {
 			g.bgCalls[node] = append(g.bgCalls[node], fn)
 			return
 		}
@@ -1427,6 +1465,28 @@ func (g *callGraph) flagKey(fn *types.Func) string {
 		return g.calleeKey(fn)
 	}
 	return ""
+}
+
+// namesType says whether x names a type, T or *T, plain or package-qualified:
+// the receiver part of a method expression. An instantiated generic type
+// (T[int].M) is not recognised.
+func namesType(x ast.Expr, info *types.Info) bool {
+	x = ast.Unparen(x)
+	if star, ok := x.(*ast.StarExpr); ok {
+		x = ast.Unparen(star.X)
+	}
+	var id *ast.Ident
+	switch e := x.(type) {
+	case *ast.Ident:
+		id = e
+	case *ast.SelectorExpr:
+		id = e.Sel
+	}
+	if id == nil {
+		return false
+	}
+	_, ok := info.Uses[id].(*types.TypeName)
+	return ok
 }
 
 // takesContext says whether fn has a context parameter.

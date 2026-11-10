@@ -1288,9 +1288,9 @@ Three properties are load-bearing:
   tracked check and the secret scanner's identity probe, a probe the deadline
   cut short leaving the scanner unavailable rather than blind to the person's
   identity. At a stop: those, the session's copy, the session's identity and
-  holder, the default branch and the last-fetch stamp. The hooks' other reads,
-  among them the stop's reservations' view and landing-receipt read, are not
-  yet bound (iss-2611100548341325); the away session's state, read after the
+  holder, the default branch, the last-fetch stamp and the landing-receipt
+  read. The hooks' other reads, among them the stop's reservations' view, are
+  not yet bound (iss-2611100548341325); the away session's state, read after the
   deadline may be spent, runs under a two-second bound of its own. At a
   session start, a deadline spent before or during the read leaves the list
   out, said on the error stream. At a stop, a reading of owned work the
@@ -1306,18 +1306,22 @@ Three properties are load-bearing:
   `StartProcess`; an `exec.Cmd` literal, declaration or `new(exec.Cmd)`; a
   gitutil or localtier function or method that has a Context form, or a call
   of one of theirs that reaches one; and any `context.Background` or `TODO`
-  passed to a context parameter of an abcd function or method, whether or
-  not it reaches git, directly, wrapped by `WithCancel`, `WithValue` or
+  passed to a context parameter of an abcd function or method (a variadic
+  one included, and one called as a method expression, after its receiver),
+  whether or not it reaches git, directly, wrapped by `WithCancel`, `WithValue` or
   `WithoutCancel`, as a cobra command's `Context`, returned by an abcd
   function, or held in a variable or a struct field set from one, in any
   package. A static walk cannot follow every route a value takes, and these
   are not matched: such a context passed through a function-typed variable
   or field, a positional struct literal, a map, slice or channel, one of
   several results, an interface method's or a function literal's result;
-  alias types; a Run or RunE set by assignment on a verb that is not a hook
-  (a hook verb's is refused); a handler that calls on through a struct field;
-  a call the standard library makes back into abcd through an interface
-  (String, MarshalJSON, and the Error, Is, As and Unwrap callbacks); and
+  a method expression on an instantiated generic type; alias types; an
+  `exec.Cmd` held as a struct field or a slice or map element; a Run or RunE
+  set by assignment on a verb that is not a hook (a hook verb's is refused);
+  a handler that calls on through a struct field; a call the standard
+  library or a dependency makes back into abcd through an interface (String,
+  MarshalJSON, the Error, Is, As and Unwrap callbacks, and an abcd type
+  implementing a dependency's interface whose method takes a context); and
   reflection. The hook scripts are read for the binary called as `"$g"`,
   `"$x"` or `"$r/abcd"`, and a call by another spelling is not seen. The test
   compares the counts with
