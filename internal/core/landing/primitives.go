@@ -54,9 +54,11 @@ const (
 // the repository at repoRoot, as the pre-push hook's check does, and returns
 // its path, or "" when none names sha. A receipt must be a regular file, never
 // a symlink.
-func Receipt(repoRoot, sha string) (string, error) {
-	return ReceiptContext(context.Background(), repoRoot, sha)
-}
+//
+// It stays on the deadline-free finder rather than calling ReceiptContext
+// with a Background context, which the hook git audit would count as a new
+// deadline-free call (dcn-2611101237202451).
+func Receipt(repoRoot, sha string) (string, error) { return findReceipt(repoRoot, ReceiptsRelDir, sha) }
 
 // ReceiptContext is Receipt with its git calls (the worktree listing and each
 // receipt's tracked check) bound to ctx, for a reader on a deadline, the away

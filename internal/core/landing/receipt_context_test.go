@@ -85,6 +85,9 @@ func TestTheReceiptReadStartsNoGitOnASpentDeadline(t *testing.T) {
 // read makes, the worktree listing and the receipt's tracked check, is killed
 // when the caller's deadline ends, so a git that hangs holds the read no
 // longer than the deadline, and the read refuses rather than finding nothing.
+// The read must end within endBound of its start: generous for a loaded
+// machine over a 500 ms deadline, and far short of the stalled git's 60
+// seconds, so a read that waited on git rather than killing it fails.
 func TestTheReceiptReadEndsAtItsDeadlineWhileGitHangs(t *testing.T) {
 	for name, stall := range map[string]string{
 		"the worktree listing": "worktree",
@@ -99,7 +102,9 @@ func TestTheReceiptReadEndsAtItsDeadlineWhileGitHangs(t *testing.T) {
 				p   string
 				err error
 			}
+			const endBound = 10 * time.Second
 			done := make(chan answer, 1)
+			start := time.Now()
 			go func() {
 				p, err := ReceiptContext(ctx, root, sha)
 				done <- answer{p, err}
@@ -109,6 +114,9 @@ func TestTheReceiptReadEndsAtItsDeadlineWhileGitHangs(t *testing.T) {
 			case a = <-done:
 			case <-time.After(30 * time.Second):
 				t.Fatalf("the receipt read hung past its deadline on %s", name)
+			}
+			if took := time.Since(start); took > endBound {
+				t.Errorf("a hanging %s held the receipt read %v past a 500ms deadline; want it ended within %v", name, took, endBound)
 			}
 			if a.p != "" || a.err == nil {
 				t.Errorf("a hanging %s: %q, %v; want the read refused", name, a.p, a.err)
