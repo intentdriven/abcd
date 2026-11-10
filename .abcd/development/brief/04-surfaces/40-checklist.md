@@ -106,10 +106,11 @@ When the file fails the reader, the last good copy is added with one line
 saying why; when both fail, that line alone. A working copy that never had a
 list is given nothing, and the list never fails a start. The list's part of
 the start runs within the start's own deadline of one minute, counted from the
-hook's start, every git call it makes included, the checkout's root and the
-read's tracked check: a deadline spent before or during it runs no further git,
-adds nothing, says so in one line on the hook's error stream, and the start
-goes on.
+hook's start, every git call it makes included: the checkout's root, the
+read's tracked check and the secret scanner's reading of the person's git
+identity. A deadline spent before or during it runs no further git and adds
+nothing; where the checkout holds abcd's folder it says so in one line on the
+hook's error stream, and the start goes on.
 
 ## At every compaction
 
@@ -152,16 +153,21 @@ blocked for it, and the stop check reads disk alone, calling no forge; a
 stop's message reaches the person, not the model, so the note is kept in the
 session's stop state and the next prompt carries it into the model's context,
 once, under a CHECKLIST heading, and a set is noted once per consecutive
-set, on the same terms. Every git call the stop check makes, naming the
-checkout and the session's copy included, runs within its one deadline, and
-how a spent deadline shows depends on where it is spent. When the reading of
+set, on the same terms. The stop check runs within its one deadline every git
+call it makes itself: naming the checkout and the session's copy, reading its
+branches and the worktrees, and the list's read; the away session's state,
+read once that deadline may be spent, has a short bound of its own. The
+reading of the reservations, made through the reservations' own reader, is not
+yet bound to it, so a git that hangs there holds the stop until the host's own
+timeout. How a spent deadline shows depends on where it is spent. When the reading of
 owned work is cut short, the list is not read: the stop goes through with that
 reading's own message to the person, saying what was not read, adds no block
 for the list, leaves no note and writes no line about the list. Only a
 deadline spent at the list's own read writes one line on the hook's error
 stream; the stop then goes as judged without the list, adds no block of its
 own and leaves no note. A deadline spent before the checkout is named allows
-the stop, with one line on the error stream saying so.
+the stop, with one line on the error stream saying so where the checkout holds
+abcd's folder, and nothing anywhere else.
 A step the session never wrote down and that left no branch or reservation
 behind cannot be seen.
 

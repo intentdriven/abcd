@@ -1285,7 +1285,11 @@ Three properties are load-bearing:
   (spc-2610230805429429 step 7) has not run.
 - **A hook reads within its deadline.** The session-start and stop hooks make
   every git call on the list's way under the hook's own deadline: the
-  checkout's root, the session's copy and the read's tracked check. At a
+  checkout's root, the session's copy and state, the read's tracked check and
+  the secret scanner's identity probe, a probe the deadline cut short leaving
+  the scanner unavailable rather than blind to the person's identity. The stop
+  check's reading of the reservations, through the reservations' own reader,
+  is the one read on its way not yet bound to the deadline. At a
   session start, a deadline spent before or during the read leaves the list
   out, said on the error stream. At a stop, a reading of owned work the
   deadline cut short lets the stop through with that reading's own incomplete
