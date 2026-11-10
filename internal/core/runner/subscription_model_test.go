@@ -296,3 +296,43 @@ func TestTheWalledHarnessTakesByNameOnlyWhatTheClassMapResolves(t *testing.T) {
 		})
 	}
 }
+
+// TestAModelNoClassMapNamesIsRefusedNamingTheClassMap: a request at a route of
+// the harness's own vendor that no class map read during this process names,
+// as a lane in progress may hold after the map changed, is refused naming the
+// model, saying the class map no longer names it, and how to go on; once a map
+// read during the process names it, the walled launch takes it.
+func TestAModelNoClassMapNamesIsRefusedNamingTheClassMap(t *testing.T) {
+	const gone = "anthropic/claude-gone-1"
+	f := newFake(t, "ok", Claude)
+	c := walledOn(t, claudeOnly)
+	h := newHarness(t, c, true)
+	req := f.request("ruthless-reviewer")
+	req.Model = gone
+	_, err := h.d.Dispatch(context.Background(), req)
+	if err == nil {
+		t.Fatal("a model no class map names was admitted")
+	}
+	for _, w := range []string{gone, "class map no longer names", "models.classes", "start the lane again"} {
+		if !strings.Contains(err.Error(), w) {
+			t.Errorf("refusal %q does not name %q", err, w)
+		}
+	}
+	if f.launched(Claude) || len(h.receipts) != 0 {
+		t.Fatal("a refused model launched or wrote a receipt")
+	}
+	c.AddClassRoutes([]string{gone})
+	if _, err := h.d.Dispatch(context.Background(), req); err != nil {
+		t.Fatalf("a route a class map read during the process names is refused: %v", err)
+	}
+}
+
+// TestAConfigurationHandedNoClassMapGrowsNone: adding routes to a walled
+// configuration that holds no class map leaves it taking nothing by name.
+func TestAConfigurationHandedNoClassMapGrowsNone(t *testing.T) {
+	c := mustLoad(t, claudeOnly, "").Walled(Profile{})
+	c.AddClassRoutes([]string{bundledReviewModel})
+	if err := c.CanLaunch("ruthless-reviewer", bundledReviewModel, false); err == nil {
+		t.Fatal("a configuration handed no class map took a route by name")
+	}
+}

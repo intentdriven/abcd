@@ -572,7 +572,10 @@ func runDriveLocked(starting context.Context, cmd *cobra.Command, asJSON bool, r
 	if err != nil {
 		return driveFail(cmd, asJSON, f, nil, err)
 	}
-	o := loop.Options{Roots: &roots, Runners: walled, TakeOver: f.takeOver, Pace: f.pace, SubAgents: f.subAgents, FixRounds: f.fixRounds, Profile: p.Name()}
+	// Each run's start reads the class map again, and what it reads joins the
+	// routes the walled launch takes by name.
+	o := loop.Options{Roots: &roots, Runners: walled, ClassMapRead: walled.AddClassRoutes, TakeOver: f.takeOver, Pace: f.pace,
+		SubAgents: f.subAgents, FixRounds: f.fixRounds, Profile: p.Name()}
 	if err := driveHoldsToProfile(repoRoot, p.Name()); err != nil {
 		return err
 	}

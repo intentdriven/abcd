@@ -113,3 +113,29 @@ func TestTheMachinesClassMapBoundsWhatADriveTakesByName(t *testing.T) {
 		t.Fatal("the bundled route the machine replaced is still taken by name")
 	}
 }
+
+// TestARunStartedAfterTheClassMapChangedLaunchesItsReviewers: inside a drive,
+// each run's start reads the class map again, and the routes it read join the
+// walled configuration's, so a lane started after the machine's map changed
+// launches its reviewer at the new route; a route no map read in the process
+// names stays refused.
+func TestARunStartedAfterTheClassMapChangedLaunchesItsReviewers(t *testing.T) {
+	const changed = "anthropic/claude-opus-6"
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	machineConfig(t, `{"runner":{"claude":{}}}`)
+	roots, _ := layered.RootsFor(repo.Root())
+	cfg := walledFor(t, roots)
+	if err := cfg.CanLaunch(RoleRuthless, changed, false); err == nil {
+		t.Fatal("a route no map has named yet is taken by name")
+	}
+	machineConfig(t, `{"models":{"classes":{"middle":"`+changed+`"}},"runner":{"claude":{}}}`)
+	if _, err := Start(repo.Root(), "itd-10", Options{Runners: cfg, ClassMapRead: cfg.AddClassRoutes}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.CanLaunch(RoleRuthless, changed, false); err != nil {
+		t.Fatalf("the run's reviewer at the map's new route cannot launch: %v", err)
+	}
+	if err := cfg.CanLaunch(RoleRuthless, "anthropic/claude-gone-1", false); err == nil {
+		t.Fatal("a route no map read in the process names is taken by name")
+	}
+}

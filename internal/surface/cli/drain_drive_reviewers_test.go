@@ -43,7 +43,9 @@ func TestADriveWhoseReviewersCannotLaunchIsRefusedAtItsStart(t *testing.T) {
 
 // TestASubscriptionOnlyDriveIsNotRefusedForItsReviewers: the bundled review set
 // on a machine that enables the claude harness and configures no provider
-// passes the start's check and reaches the loop.
+// passes the start's check and reaches the loop, and the configuration the
+// loop's lanes launch on holds the class map's routes too, with the seam that
+// adds the routes each run's start reads: each walling site carries them.
 func TestASubscriptionOnlyDriveIsNotRefusedForItsReviewers(t *testing.T) {
 	w := newDriveWorld(t)
 	w.passWalls(t)
@@ -53,5 +55,15 @@ func TestASubscriptionOnlyDriveIsNotRefusedForItsReviewers(t *testing.T) {
 	}
 	if w.terminalCalls != 1 {
 		t.Fatalf("the loop ran %d times, want once", w.terminalCalls)
+	}
+	cfg := w.terminal.Options.Runners
+	if cfg == nil || cfg.CanLaunch(loop.RoleRuthless, loop.BundledClasses[loop.ClassMiddle], false) != nil {
+		t.Fatal("the lanes' configuration does not hold the class map's routes")
+	}
+	if w.terminal.Runners.Config != cfg {
+		t.Fatal("the lanes' runners are not the configuration that holds the routes")
+	}
+	if w.terminal.Options.ClassMapRead == nil {
+		t.Fatal("the lanes' runs have no seam to add the class map each reads")
 	}
 }

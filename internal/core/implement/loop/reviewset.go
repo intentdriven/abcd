@@ -29,10 +29,13 @@ package loop
 //     a runner is handed the model (spec step 2), since a host-run reviewer is
 //     only asked for the class: against the provider's allowlist, except that
 //     a drive's walled launch of the claude harness takes a model of the
-//     harness's own vendor by name where the machine configures no block for
-//     that vendor (iss-2611080057001367), so the bundled map runs in a drive
-//     on a subscription-only machine. A drive asks the same admission of
-//     every reviewer before it starts (CheckReviewersLaunch).
+//     harness's own vendor by name where the class map resolved it during the
+//     drive and the machine configures no block for that vendor
+//     (iss-2611080057001367), so the bundled map runs in a drive on a
+//     subscription-only machine. The drive reads the map at its start
+//     (ClassRoutes) and each run's start reads it again, handing its routes
+//     on (Options.ClassMapRead). A drive asks the same admission of every
+//     reviewer before it starts (CheckReviewersLaunch).
 //
 // A fault in any of them is refused at the review stage before anything is
 // written. The two roles are the loop's ruthless-reviewer and
@@ -279,6 +282,9 @@ func resolveReviewSet(roots layered.Roots, o Options) (ReviewSet, []string, erro
 		return ReviewSet{}, nil, err
 	}
 	diags = append(diags, d...)
+	if o.ClassMapRead != nil {
+		o.ClassMapRead(cm.routes())
+	}
 	ceiling, d, err := resolveCeiling(s)
 	if err != nil {
 		return ReviewSet{}, nil, err
@@ -498,9 +504,14 @@ func ClassRoutes(roots layered.Roots) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	return cm.routes(), nil
+}
+
+// routes are the map's routes in class order (Classes).
+func (cm classMap) routes() []string {
 	routes := make([]string, 0, len(Classes))
 	for _, c := range Classes {
 		routes = append(routes, cm[c].Model)
 	}
-	return routes, nil
+	return routes
 }

@@ -28,9 +28,11 @@ package runner
 //     be launched. A model a request asks for (a review set's class) is
 //     admitted the same way, with one exception (admitModelFor,
 //     iss-2611080057001367): on a drive's walled launch of the claude harness,
-//     a model of the harness's own vendor is admitted by name where the
-//     machine configures no block for that vendor; the denylist still refuses
-//     it, and everything else keeps the provider allowlist.
+//     a model of the harness's own vendor is admitted by name where it is a
+//     route the machine's class map resolved during the drive (at its start
+//     and as each run starts) and the machine configures no block for that
+//     vendor; the denylist still refuses it, and everything else keeps the
+//     provider allowlist.
 //   - runner.fallback_host names the enabled runner that runs a role when abcd
 //     runs with no host session (the intent's Decision 2).
 //
@@ -53,6 +55,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -143,10 +146,10 @@ type Config struct {
 	// judgeOpenCode says the machine routes the drain's judge to opencode, a
 	// route the read skips (readRoles).
 	judgeOpenCode bool
-	// classRoutes are the routes the machine's class map resolves
-	// (WithClassRoutes), the only ones a walled launch takes by name; nil
-	// for none.
-	classRoutes map[string]bool
+	// classRoutes are the routes the machine's class map resolved during this
+	// process (WithClassRoutes, AddClassRoutes), the only ones a walled launch
+	// takes by name; nil for none.
+	classRoutes *routeSet
 }
 
 // Load reads and validates the runner configuration. A fault is an error
@@ -334,24 +337,34 @@ func (c *Config) admitModel(route string) error {
 	return nil
 }
 
+// noClassMapNames is what a refusal adds for a route of the harness's own
+// vendor that a walled launch would take by name but no class map read during
+// this process names, as a lane in progress may hold after the map changed.
+const noClassMapNames = "; the class map no longer names %s, so the drive does not take it by name: map a class to it " +
+	"in models.classes in %s, or start the lane again"
+
 // admitModelFor is the admission a request's model passes for target, the
 // runner that will run it (Host for the host session), when the dispatch
 // begins and again at the launch. It is admitModel, with one exception
 // (iss-2611080057001367, byName): a drive's walled launch of the claude
 // harness takes a route of the harness's own vendor (claudeVendor) by its
 // model name alone (askedModel) when the route is one the machine's class map
-// resolves (WithClassRoutes) and the machine configures no block for that
-// vendor, provided it is <provider>/<model> in plain characters and no
+// resolved during this process (WithClassRoutes, AddClassRoutes) and the
+// machine configures no block for that vendor, provided it is <provider>/<model> in plain characters and no
 // oracle.denylist entry matches it as written. Everything else keeps
 // admitModel whole: an unwalled launch, a route outside the class map,
 // another vendor's route, opencode, the host, and a vendor the machine
 // configures.
 func (c *Config) admitModelFor(target, route string) error {
 	_, model, ok := strings.Cut(route, "/")
-	if !ok || model == "" || !c.byName(target, route) {
-		return c.admitModel(route)
-	}
 	provider, _, _ := strings.Cut(route, "/")
+	if !ok || model == "" || !c.byName(target, route) {
+		err := c.admitModel(route)
+		if err != nil && ok && model != "" && c.ownVendorUnblocked(target, provider) {
+			err = fmt.Errorf("%w"+noClassMapNames, err, layered.BoundKey(route), layered.Config.MachineOrigin())
+		}
+		return err
+	}
 	if !modelRe.MatchString(route) {
 		return fmt.Errorf("which is not a <provider>/<model> route of at most 128 plain characters")
 	}
@@ -364,12 +377,46 @@ func (c *Config) admitModelFor(target, route string) error {
 // byName reports whether route asked of target is admitted by its model name
 // with no provider block: only on a drive's walled launch (Walled) of the
 // claude harness, only for a route of the harness's own vendor that the
-// machine's class map resolves (WithClassRoutes), and only where this machine
-// configures no block for that vendor, whose list would otherwise decide.
+// machine's class map resolved during this process (WithClassRoutes,
+// AddClassRoutes), and only where this machine configures no block for that
+// vendor, whose list would otherwise decide.
 func (c *Config) byName(target, route string) bool {
 	provider, _, _ := strings.Cut(route, "/")
-	return target == Claude && c.profile != nil && provider == claudeVendor && c.classRoutes[route] &&
+	return c.ownVendorUnblocked(target, provider) && c.classRoutes.has(route)
+}
+
+// ownVendorUnblocked reports whether target is a walled launch of the claude
+// harness that holds a class map, asked for a route of its own vendor that this
+// machine configures no block for: the launch byName admits from, when the
+// class map names the route.
+func (c *Config) ownVendorUnblocked(target, provider string) bool {
+	return target == Claude && c.profile != nil && c.classRoutes != nil && provider == claudeVendor &&
 		!c.providerConfigured(provider)
+}
+
+// routeSet is the class map routes a walled configuration takes by name. The
+// drive's lanes share one configuration and add to it as each run starts, so
+// it is guarded; it only grows.
+type routeSet struct {
+	mu     sync.RWMutex
+	routes map[string]bool
+}
+
+func (s *routeSet) has(route string) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.routes[route]
+}
+
+func (s *routeSet) add(routes []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, r := range routes {
+		s.routes[r] = true
+	}
 }
 
 // deniedFor reports whether the admission of route for target was refused by
@@ -918,9 +965,18 @@ func (c *Config) Walled(p Profile) *Config {
 // it where it walls the configuration.
 func (c *Config) WithClassRoutes(routes []string) *Config {
 	w := *c
-	w.classRoutes = make(map[string]bool, len(routes))
-	for _, r := range routes {
-		w.classRoutes[r] = true
-	}
+	w.classRoutes = &routeSet{routes: map[string]bool{}}
+	w.classRoutes.add(routes)
 	return &w
+}
+
+// AddClassRoutes adds routes, those of a class map read during this process
+// (the machine's models.classes over the bundled map, as a run's start reads
+// it), to the routes c takes by name, so a lane started after the map changed
+// launches its reviewers. It is safe from concurrent lanes, and a
+// configuration WithClassRoutes never set takes nothing by name still.
+func (c *Config) AddClassRoutes(routes []string) {
+	if c.classRoutes != nil {
+		c.classRoutes.add(routes)
+	}
 }
