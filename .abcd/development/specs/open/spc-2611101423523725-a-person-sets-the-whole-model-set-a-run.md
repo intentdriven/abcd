@@ -76,6 +76,7 @@ repository names only which classes review.
    - packages: internal/surface/cli, internal/core/implement/loop
    - tests: `abcd build`'s and `abcd implement`'s text and JSON renders of a review set carry name, model and effort for each reviewer and the judge with its status; a drive's start text names the pair and their efforts before the question; no render shows a class name alone
    - needs: 3, 5
+   - landed: 47f23997e
 7. The pages and the open records use the new names
    - packages: commands, docs/reference/cli, .abcd/development/brief/04-surfaces, .abcd/development/brief/05-internals, .abcd/development/intents/planned, .abcd/development/intents/drafts, .abcd/development/specs/open
    - tests: the command page for build carries the mapping, a worked class map for a second provider and the one-line cheaper review; the generated command reference is regenerated and its drift check passes; record-lint and docs-lint pass; itd-2610240922461281's first criterion and its spec's first step name the new pair with a dated note pointing at this intent, and its judge step launches only an active judge; itd-2610100704270254 and spc-2610301925429250 use the new names; no shipped, closed or resolved record is changed
