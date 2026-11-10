@@ -348,6 +348,17 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, storeRefusal(err, lane.ID)
 	}
 	branchRef := "refs/heads/" + lw.Branch
+	// Where origin reported the tip, the hooks directory git takes at the
+	// checkout is read once: a standing branch is judged by it and the add
+	// is told it (laneAddGit).
+	hooksPath := ""
+	if tip != "" && !adopted {
+		if hooksPath, err = checkoutHooksPath(c.RepoRoot); err != nil {
+			return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
+				"the hooks directory git takes at the checkout cannot be read, so the hooks the lane's checkout would run cannot be told: "+gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())),
+				"look at the repository's git configuration (`git config --show-origin --get-all core.hooksPath`), then run `abcd implement step` again; nothing was made")
+		}
+	}
 	switch {
 	case adopted:
 		// Made last time; the base is where the branch left the default branch.
@@ -357,7 +368,7 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		}
 		base = mb
 	default:
-		opts := worktree.AddOptions{Name: name, Branch: lw.Branch, Base: base, Git: worktreeAddGit}
+		opts := worktree.AddOptions{Name: name, Branch: lw.Branch, Base: base, Git: laneAddGit(hooksPath)}
 		if _, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", branchRef, "--"); err == nil {
 			// A process killed between git making the branch and the worktree
 			// left the branch: it is the lane's, checked out rather than remade.
@@ -366,7 +377,7 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 			// runs the post-checkout hook the branch holds.
 			opts.Existing = true
 			if tip != "" {
-				if err := standingBranchHooks(c, lane.ID, branchRef, lw.Branch, tip); err != nil {
+				if err := standingBranchHooks(c, lane.ID, branchRef, lw.Branch, tip, hooksPath); err != nil {
 					return Outcome{}, err
 				}
 			}
@@ -412,7 +423,7 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 	if adopted {
 		_, _ = fsutil.NarrowToOwner(lw.Path)
 	}
-	head, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", branchRef+"^{commit}", "--")
+	head, err := gitutil.RunCappedAsStored(c.RepoRoot, 4096, "rev-parse", "--verify", "--quiet", branchRef+"^{commit}", "--")
 	if err != nil || !gitutil.IsFullSHA(head) {
 		return Outcome{}, fmt.Errorf("resolving the lane branch %s: %v", lw.Branch, err)
 	}
@@ -423,11 +434,11 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 	// one checked out: for a branch the stage cut, the tip origin's answer
 	// above named, which is why the remote is asked before the add; for a
 	// branch that already stood, its head's, which standingBranchHooks held,
-	// as stored, to the tip's hooks before the add. git's add reads objects
-	// as the repository's replace refs say, so a replaced object can put
-	// other hooks on disk and run its post-checkout; the proof below reads as
-	// stored and refuses such a lane, but only once that hook has run. Any
-	// other hooks directory is the checkout's or the machine's, which the
+	// as stored, to the tip's hooks before the add. The add reads objects as
+	// stored and is told the hooks directory read at the checkout
+	// (laneAddGit), so the hook it runs is from that commit's stored tree,
+	// never from a replaced object or a directory a setting only the lane
+	// reads names. Any other hooks directory is the checkout's or the machine's, which the
 	// run's fingerprint already watches. An adopted worktree ran its hook
 	// when it was made. With no origin, or in a trial, nothing is pinned and
 	// the lane is compared with the checkout as the run recorded it.

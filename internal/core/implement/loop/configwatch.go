@@ -23,6 +23,7 @@ package loop
 // a salted-hash token wherever the key is stored or named.
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -35,6 +36,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -812,25 +814,37 @@ func ownHooksDir(dir, hooksPath string) string {
 	return filepath.ToSlash(rel)
 }
 
+// checkoutHooksPath is the core.hooksPath git takes at the checkout, from
+// every settings scope the lane's add reads (gitutil.WorkingTreeCommitCommand,
+// the person's global and system settings included), "" when none sets it.
+func checkoutHooksPath(repoRoot string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), originAskTimeout)
+	defer cancel()
+	cmd := gitutil.WorkingTreeCommitCommand(ctx, repoRoot, "config", "--get", "core.hooksPath")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	var ee *exec.ExitError
+	switch {
+	case errors.As(err, &ee) && ee.ExitCode() == 1 && len(out) == 0:
+		return "", nil
+	case err != nil:
+		return "", fmt.Errorf("git config --get core.hooksPath: %v (%s)", err, strings.TrimSpace(stderr.String()))
+	case len(out) > 4096:
+		return "", errors.New("git config --get core.hooksPath answered past 4096 bytes")
+	}
+	return strings.TrimSuffix(string(out), "\n"), nil
+}
+
 // standingBranchHooks is the worktree stage's check, before the add, of a
 // branch already standing under the lane's name where origin reported tip:
 // the add checks the branch's head out and runs the post-checkout hook it
-// holds, so where the hooks are a working tree's own copy (the checkout's
-// settings say so) the head's hooks directory, as stored (hooksTreeAt), must
-// be the tip's. Otherwise the branch is refused and nothing of it is checked
-// out. A checkout whose hooks are not a working tree's own runs none of the
-// branch's files as a hook, and passes.
-func standingBranchHooks(c Context, laneID, branchRef, branch, tip string) error {
-	entries, err := gitutil.RepoConfig(c.RepoRoot, `^core\.hookspath$`)
-	if err != nil {
-		return refuse(string(StageWorktree), "", laneID,
-			"the branch "+branch+" already stands, and the checkout's git configuration cannot be read, so the hooks a checkout of it would run cannot be told: "+scanner.RedactRefusal(c.RepoRoot, fsutil.RedactHome(err.Error())),
-			"look at the repository's git configuration (`git config --local --list --show-origin`), then run `abcd implement step` again; nothing was made")
-	}
-	hooksPath := ""
-	for _, e := range entries {
-		hooksPath = e.Value
-	}
+// holds, so where hooksPath (checkoutHooksPath, which the add is also told)
+// names a working tree's own copy, the head's hooks directory, as stored
+// (hooksTreeAt), must be the tip's. Otherwise the branch is refused and
+// nothing of it is checked out. A hooks directory outside the working tree
+// runs none of the branch's files as a hook, and passes.
+func standingBranchHooks(c Context, laneID, branchRef, branch, tip, hooksPath string) error {
 	rel := ownHooksDir(c.RepoRoot, hooksPath)
 	if rel == "" || hooksTreeAt(c.RepoRoot, branchRef, rel) == hooksTreeAt(c.RepoRoot, tip, rel) {
 		return nil

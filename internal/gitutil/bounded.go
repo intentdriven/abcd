@@ -72,9 +72,27 @@ func RunTreeCommand(cmd *exec.Cmd, args []string) (string, error) {
 // children are the repository's), but its hold on git's output is cut after
 // stopGrace. A git that exited 0 made its change even then.
 func RunCommitCommandBounded(dir string, limit time.Duration, stalled error, args ...string) (string, error) {
+	return runCommitBounded(dir, limit, stalled, false, args)
+}
+
+// RunCommitCommandBoundedAsStored is RunCommitCommandBounded reading objects
+// as stored (asStored): no replace ref or graft file stands another object in
+// for one the repository stores, for git itself or for any git a hook it runs
+// starts, since the environment is inherited. For a checkout that must write
+// exactly the stored tree of a commit and run that tree's own hooks: a lane's
+// `git worktree add`.
+func RunCommitCommandBoundedAsStored(dir string, limit time.Duration, stalled error, args ...string) (string, error) {
+	return runCommitBounded(dir, limit, stalled, true, args)
+}
+
+// runCommitBounded is RunCommitCommandBounded's body, as stored when stored.
+func runCommitBounded(dir string, limit time.Duration, stalled error, stored bool, args []string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	cmd := WorkingTreeCommitCommand(ctx, dir, args...)
+	if stored {
+		asStored(cmd)
+	}
 	sweep := stopWithDescendants(cmd)
 	cmd.WaitDelay = stopGrace
 	out, err := RunTreeCommand(cmd, args)

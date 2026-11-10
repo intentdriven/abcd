@@ -127,9 +127,30 @@ func commitGit(dir string, args ...string) (string, error) {
 // the repository's post-checkout hook as the person's own does
 // (iss-2610120640452939), bounded by worktreeAddTimeout instead: a checkout's
 // time scales with the tree, and a stop at its bound is refused as a checkout
-// that did not finish (errCheckoutStalled), never as a signing prompt.
+// that did not finish (errCheckoutStalled), never as a signing prompt. It
+// reads objects as stored (gitutil.RunCommitCommandBoundedAsStored), so the
+// lane holds the tree its commit stores and the post-checkout hook that runs
+// is that tree's, whatever replace ref or graft file stands in the
+// repository (iss-2611071820538335).
 func worktreeAddGit(dir string, args ...string) (string, error) {
-	return gitutil.RunCommitCommandBounded(dir, worktreeAddTimeout, errCheckoutStalled, args...)
+	return gitutil.RunCommitCommandBoundedAsStored(dir, worktreeAddTimeout, errCheckoutStalled, args...)
+}
+
+// laneAddGit is worktreeAddGit with hooksPath, when it is not "", named on
+// git's command line as core.hooksPath: the hooks directory the worktree
+// stage read at the checkout and judged a standing branch by
+// (standingBranchHooks), so no setting that applies only in the lane's own
+// git directory (a path-conditional include) changes which hooks directory
+// the add runs its post-checkout hook from. A command-line value outranks
+// every settings file, and a relative one is taken as git takes it from a
+// file.
+func laneAddGit(hooksPath string) func(dir string, args ...string) (string, error) {
+	return func(dir string, args ...string) (string, error) {
+		if hooksPath != "" {
+			args = append([]string{"-c", "core.hooksPath=" + hooksPath}, args...)
+		}
+		return worktreeAddGit(dir, args...)
+	}
 }
 
 // errCommitStalled names a commitGit command stopped at its deadline.

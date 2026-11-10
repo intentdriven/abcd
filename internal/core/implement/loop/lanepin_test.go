@@ -363,11 +363,11 @@ func plantedCommit(t *testing.T, repo *gittest.Repo, parent, name, body string) 
 	return planted
 }
 
-// TestAReplacedObjectDoesNotChooseTheLanesHooks: the proof reads git's
-// objects as stored, so a replace ref standing a planted tree in for the tip's
-// hooks directory, or a planted commit in for the tip itself, is refused at the
-// worktree stage: git's checkout writes the replacement, and the proof holds it
-// to the tree the commit stores.
+// TestAReplacedObjectDoesNotChooseTheLanesHooks: the lane's checkout and
+// every read the proof rests on take git's objects as stored, so a replace ref
+// standing a planted tree in for the tip's hooks directory, or a planted
+// commit in for the tip itself, changes nothing: the lane opens holding the
+// hooks the tip stores, and the planted post-checkout hook never runs.
 func TestAReplacedObjectDoesNotChooseTheLanesHooks(t *testing.T) {
 	for name, plant := range map[string]func(t *testing.T, repo *gittest.Repo, tip, planted string){
 		"on the hooks tree": func(t *testing.T, repo *gittest.Repo, tip, planted string) {
@@ -380,15 +380,55 @@ func TestAReplacedObjectDoesNotChooseTheLanesHooks(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			repo, _, tip := hookedOrigin(t)
-			planted := plantedCommit(t, repo, tip, "pre-commit", "#!/bin/sh\ntouch ran\n")
+			marker := filepath.Join(t.TempDir(), "post-checkout-ran")
+			planted := plantedCommit(t, repo, tip, "post-checkout", "#!/bin/sh\ntouch '"+marker+"'\n")
 			plant(t, repo, tip, planted)
 			runID, path, err := openHookedLane(t, repo)
-			worktreeRefused(t, err, "pre-commit")
-			if _, ok := pinned(t, repo, runID, path); ok {
-				t.Fatal("nothing is pinned for a lane whose hooks a replace ref chose")
+			if err != nil {
+				t.Fatalf("the lane opens on the stored tip: %v", err)
+			}
+			absent(t, marker, "the planted post-checkout hook does not run")
+			var names []string
+			des, err := os.ReadDir(filepath.Join(path, ".githooks"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, de := range des {
+				names = append(names, de.Name())
+			}
+			stored := repo.Git("-c", "core.useReplaceRefs=false", "ls-tree", "--name-only", tip+":.githooks")
+			if strings.Join(names, "\n") != stored {
+				t.Fatalf("the lane holds the stored hooks %q, not %q", stored, names)
+			}
+			if got, err := os.ReadFile(filepath.Join(path, ".githooks", "pre-commit")); err != nil || string(got) != hookV1 {
+				t.Fatalf("the lane's pre-commit is the stored one: %q %v", got, err)
+			}
+			if _, ok := pinned(t, repo, runID, path); !ok {
+				t.Fatal("the lane is pinned from the stored tip")
 			}
 		})
 	}
+}
+
+// TestAPathConditionalIncludeDoesNotChooseTheAddsHooks: the lane's add runs
+// with the hooks directory the checkout's settings give named on its command
+// line, so an include that applies only in a lane's git directory and names
+// another hooks directory does not choose the post-checkout hook the add runs.
+func TestAPathConditionalIncludeDoesNotChooseTheAddsHooks(t *testing.T) {
+	repo, _, _ := hookedOrigin(t)
+	marker := filepath.Join(t.TempDir(), "post-checkout-ran")
+	other := filepath.Join(t.TempDir(), "hooks")
+	if err := os.Mkdir(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeMode(t, filepath.Join(other, "post-checkout"), "#!/bin/sh\ntouch '"+marker+"'\n", 0o755)
+	inc := filepath.Join(t.TempDir(), "lane.inc")
+	if err := os.WriteFile(inc, []byte("[core]\n\thooksPath = "+other+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	repo.Git("config", "includeIf.gitdir:**/worktrees/**.path", inc)
+	_, _, _ = openHookedLane(t, repo)
+	absent(t, marker, "the include's post-checkout hook does not run in the add")
 }
 
 // TestABranchStandingUnderTheLanesNameIsCheckedOutOnlyWithTheTipsHooks: a
@@ -398,14 +438,23 @@ func TestAReplacedObjectDoesNotChooseTheLanesHooks(t *testing.T) {
 // so none of its hooks runs. One holding the tip's hooks is the lane's.
 func TestABranchStandingUnderTheLanesNameIsCheckedOutOnlyWithTheTipsHooks(t *testing.T) {
 	for name, tc := range map[string]struct {
-		plant   bool
-		refused bool
+		plant, global bool
+		refused       bool
 	}{
 		"other hooks": {plant: true, refused: true},
-		"the tip's":   {},
+		"other hooks, the hooks directory named in the global settings": {plant: true, global: true, refused: true},
+		"the tip's": {},
 	} {
 		t.Run(name, func(t *testing.T) {
 			repo, _, tip := hookedOrigin(t)
+			if tc.global {
+				global := filepath.Join(t.TempDir(), "global.gitconfig")
+				if err := os.WriteFile(global, []byte("[core]\n\thooksPath = .githooks\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv("GIT_CONFIG_GLOBAL", global)
+				repo.Git("config", "--unset", "core.hooksPath")
+			}
 			marker := filepath.Join(t.TempDir(), "post-checkout-ran")
 			head := tip
 			if tc.plant {
