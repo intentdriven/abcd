@@ -1026,20 +1026,57 @@ Where the checkout has an `origin`, the worktree stage pins a lane's own hooks
 as the lane opens, so a reviewed hook change merged on the default branch
 during a run is no change in the lanes cut after it. Before it makes the lane,
 the stage asks `origin` itself, within a minute, for its default branch's tip,
-and cuts the lane from that tip. It refuses, making nothing, when the default
-branch read here is neither that tip nor an ancestor of it, when the tip has
-not been fetched here, or when `origin` cannot be asked: a lost network is a
-wait, and any other failure a refusal. Then, before any commit in the lane, a
-lane whose hooks directory is its own copy has that directory proved to hold
-exactly what the commit it opens on holds: the same entries, each file's bytes
-and exec bit, each symlink's target and each subdirectory as a directory. A
-lane abcd finds again (a step stopped before its state was written) must also
-hold the same hooks as the tip. Anything else is refused at the worktree
-stage. What was proved is pinned for the lane, and the lane is compared with
-it from then on: a hook changed in the lane stops the next step, even one put
-back to the checkout's older copy. A content filter that rewrites the hook
-files as they are checked out (an end-of-line or smudge filter) makes them
-differ from the commit, so such a lane is refused.
+and cuts the lane from that tip. It refuses, making nothing, when `origin`'s
+default branch is not the one read here as the default (the refusal names
+both), when the default branch read here is neither that tip nor an ancestor of
+it, when the tip has not been fetched here, or when `origin` cannot be asked: a
+lost network is a wait, and any other failure a refusal. Every read of the
+repository these checks and the proof below rest on takes git's objects as
+they are stored, with no replace ref and no graft file honoured.
+
+A branch that already stands under the lane's name (a step stopped between git
+making the branch and the worktree) is checked out only when its head's hooks
+directory, read as stored, is the tip's; otherwise the stage refuses before git
+adds the worktree, so nothing of that branch is checked out and none of its
+hooks runs. One hook does run before the proof: git's add runs the
+post-checkout hook of the commit it checks out, which is the tip's, or that
+branch head's once its hooks were found to be the tip's. git's add itself
+honours replace refs, so a replace ref can make it write other hooks and run
+their post-checkout; the proof, reading as stored, then refuses the lane.
+
+Then, before any commit in the lane, a lane whose hooks directory is its own
+copy has that directory proved against the commit it opens on: the same
+entries, each file's size, bytes and exec bit, each symlink's target text and
+each subdirectory as a directory. A lane abcd finds again (a step stopped
+before its state was written) must also hold the same hooks as the tip.
+Anything else is refused at the worktree stage. What was proved is pinned for
+the lane, and the lane is compared with it from then on: a hook changed in the
+lane stops the next step, even one put back to the checkout's older copy.
+
+The proof covers less than the whole directory, and nothing else checks these
+for you. A subdirectory is proved and pinned only as a directory: the files in
+it, which a hook may run or read, are outside the pin. A symlink is proved by
+the text of its target only, not by the file it points to. A lane on a file
+system that keeps no exec bit is always refused, and so is one where a content
+filter rewrites the hook files as they are checked out (an end-of-line or
+smudge filter), since either leaves them other than the commit's. A lane that
+later merges in a reviewed hook change from the default branch is refused
+against its pin, which is the commit the lane opened on. A lane abcd finds
+again after the tip's hooks changed stays refused until you remove its
+worktree and its branch by hand. Between the proof and the lane's first git
+step another process of your account can still write in the lane; the pin
+holds what was proved, so that step's check names the change.
+
+A drive reads `origin`'s URL, its push URL and every URL rewrite
+(`url.*.insteadOf` and `pushInsteadOf`) once as it starts, before its first
+lane, as git reads them for the checkout from every settings scope, and keeps
+them in its own memory, never in a file. Each lane's worktree stage reads them
+again before it asks `origin` anything, and refuses the lane on any difference,
+naming the key (a URL in a key's name hidden, as below). A drive started again
+reads them afresh, so a change made while no drive runs is the new drive's
+starting point. A step the host runs and a single build carry no such record:
+there `origin`'s settings must not change between one lane's run and the next,
+and nothing enforces it.
 
 With no `origin`, in a trial, or where the lane's hooks directory is not its
 own copy, nothing is pinned: a lane made after the fingerprint was recorded is
@@ -1051,8 +1088,8 @@ checkout's own hooks and settings changing when you pull it during a run are a
 change like any other, which stops the next step until you accept it; and each
 run records the watched settings afresh when it first checks them, so a
 setting changed before a run's first check is that run's starting point (each
-lane of a drain is a run of its own), and you must look at what changes
-between runs yourself. Your global and system
+lane of a drain is a run of its own, and a drive holds only `origin`'s settings
+across its lanes), and you must look at what changes between runs yourself. Your global and system
 settings are your own and are not watched. The file holds salted hashes, never
 a value: a credential helper's value may carry a secret, so only key names and
 file paths are ever stored or reported. A key's name can carry a secret too (a
