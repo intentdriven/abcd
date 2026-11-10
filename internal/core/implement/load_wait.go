@@ -396,6 +396,10 @@ type WaitRequest struct {
 	// marker (WholeRunMarker.Head); nil reads it with git under its own
 	// bound.
 	ReadHead func(dir string) (string, error)
+	// OnMarkNote, when set, is called with WaitResult.MarkNote at the look
+	// that failed to write the whole run's marker, so the note is said then,
+	// not when the wait returns.
+	OnMarkNote func(note string)
 	// ReadMemory reads the machine's memory pressure; nil is ReadMemory, the
 	// package's reader (machineload.ReadMemory in the binary).
 	ReadMemory func() (machineload.Memory, error)
@@ -594,15 +598,15 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		return res, fmt.Errorf("nothing was waited for: %w", err)
 	}
 	defer root.Close()
-	// A whole run records itself from its first reading of the table until its
-	// command ends (wholeRunMark); a wait that does not open removes it.
-	if req.Command && !req.Race && !req.Narrow {
+	// The preflight's whole run records itself from its first reading of the
+	// table until its command ends (wholeRunMark); a wait that does not open
+	// removes it. Another whole-form command writes none and says nothing.
+	if req.Command && !req.Race && !req.Narrow && machineload.IsPreflightStagesCommand(req.Words) {
 		readHead := req.ReadHead
 		if readHead == nil {
 			readHead = readCheckoutHead
 		}
-		mark := &wholeRunMark{home: home, pid: req.Self.PID, dir: req.Dir, preflight: machineload.IsPreflightStagesCommand(req.Words),
-			readHead: readHead, now: now, res: &res}
+		mark := &wholeRunMark{home: home, pid: req.Self.PID, dir: req.Dir, readHead: readHead, now: now, res: &res, onNote: req.OnMarkNote}
 		req.Read = mark.reading(req.Read)
 		res.EndMark = mark.end
 		defer func() {
@@ -1451,17 +1455,20 @@ func PreflightTimeout(getenv func(string) string, read func() (machineload.Snaps
 // The whole-run marker (the away mode's live work, autonomy's livework.go).
 // While the person is away, the stop check holds an unchanged set of owed
 // items to two wakes in a row, which is wrong for an item whose next step is
-// its preflight, queued at this gate or running for an hour. Every `make
-// preflight` runs its whole run through this waiter's command form, which
-// lives until its command exits and knows its checkout and its command, so
-// that waiter records itself: ~/.abcd.noindex/whole-runs/<pid>.json, written
+// its preflight, queued at this gate or running for an hour. Every full
+// preflight (a records-only preflight waits at no gate and writes no marker)
+// runs its whole run through this waiter's command form, which lives until
+// its command exits and knows its checkout and its command, so that waiter
+// records itself: ~/.abcd.noindex/whole-runs/<pid>.json, written
 // at its first reading of the process table that holds it and removed when
 // its command ends (WaitResult.EndMark, and ReleaseWaitHold for the command
 // hold) or when the wait does not open. The marker names the checkout, the
-// commit the checkout's HEAD was at when it was written, and whether the
-// command is the preflight's stages (machineload.IsPreflightStagesCommand,
-// the gate's own reading of a make's goals); a reader counts it only for
-// that commit and only for the preflight. Its start time is measured back
+// commit the checkout's HEAD was at when it was written, and that the
+// command is the preflight's stages; a reader counts it only for that
+// commit. That commit is the HEAD at the waiter's first reading, which can be
+// hours before the stages start, so the marker says the run was queued or
+// started at that commit: the commit the stages test is not known, and a
+// commit made while the run is queued leaves the run uncounted. Its start time is measured back
 // from the moment the table read began, as sessionname.Table measures a
 // host's, so it is early by up to the read's length and never late, and that
 // length is recorded as its slack, which widens the start-time tolerance on
@@ -1474,9 +1481,13 @@ func PreflightTimeout(getenv func(string) string, read func() (machineload.Snaps
 // abcd's own gate is a must nothing enforces: the proof holds against other
 // accounts and stale state, not against this account's own agent.
 //
-// A marker that cannot be written is said in WaitResult.MarkNote, which the
+// A marker that cannot be written is said in WaitResult.MarkNote, and at the
+// look that tried to write it through WaitRequest.OnMarkNote, which the
 // command form prints on standard error, and the wait goes on: the marker
-// never fails or slows a preflight.
+// never fails a preflight and can delay its first look by up to the HEAD
+// read's bound (wholeRunHeadTimeout). Only the preflight's stages write one
+// (machineload.IsPreflightStagesCommand, the Makefile's exact shape); another
+// whole-form command writes none and says nothing.
 
 // WholeRunsLeaf is the markers' folder under abcd's home.
 const WholeRunsLeaf = "whole-runs"
@@ -1485,8 +1496,8 @@ const WholeRunsLeaf = "whole-runs"
 // other.
 const WholeRunKind = "whole"
 
-// wholeRunSchema is the marker's schema version: 2 added the commit, whether
-// the command is the preflight, and the start's slack.
+// wholeRunSchema is the marker's schema version: 2 added the commit, that the
+// command is the preflight, and the start's slack.
 const wholeRunSchema = 2
 
 // maxWholeRunMarkerBytes bounds one marker's read and write.
@@ -1505,6 +1516,13 @@ const maxWholeRunSlack = time.Minute
 // wholeRunHeadTimeout bounds the one git read of the checkout's HEAD.
 const wholeRunHeadTimeout = 10 * time.Second
 
+// wholeRunLaterAllowance is how much later than a sweeper's reading a
+// marker's Began may be and still be left as written after that reading: it
+// covers the reading's length (at most maxWholeRunSlack) and the HEAD read
+// (wholeRunHeadTimeout) that come between a reading and the sweep, with room
+// to spare. A marker dated later still is judged as an old one.
+const wholeRunLaterAllowance = 5 * time.Minute
+
 // WholeRunMarker is one whole run's record of itself.
 type WholeRunMarker struct {
 	SchemaVersion int `json:"schema_version"`
@@ -1521,8 +1539,10 @@ type WholeRunMarker struct {
 	// Head is the commit Dir's HEAD was at when the marker was written, a
 	// full object name.
 	Head string `json:"head"`
-	// Preflight says whether the waiter's command is the preflight's stages
-	// (machineload.IsPreflightStagesCommand); a marker without it is refused.
+	// Preflight says the waiter's command is the preflight's stages
+	// (machineload.IsPreflightStagesCommand), the only command that writes a
+	// marker; a reader counts only a marker that says so, and refuses one
+	// without the field.
 	Preflight *bool `json:"preflight"`
 	// Kind is WholeRunKind.
 	Kind string `json:"kind"`
@@ -1546,13 +1566,13 @@ func (m WholeRunMarker) host() sessionname.Host {
 
 // wholeRunMark is one wait's marker as it is written and ended.
 type wholeRunMark struct {
-	home      string
-	pid       int
-	dir       string
-	preflight bool
-	readHead  func(dir string) (string, error)
-	now       func() time.Time
-	res       *WaitResult
+	home     string
+	pid      int
+	dir      string
+	readHead func(dir string) (string, error)
+	now      func() time.Time
+	res      *WaitResult
+	onNote   func(string)
 	// tried is set once a write was made or failed: a wait writes at most once.
 	tried bool
 	start int64
@@ -1574,6 +1594,9 @@ func (m *wholeRunMark) reading(read func() (machineload.Snapshot, error)) func()
 				if werr := m.write(snap, tab, start, slack); werr != nil {
 					m.res.MarkNote = fmt.Sprintf("the whole run's marker %s could not be written (%s), so the away mode's stop check cannot see this run; the run goes on",
 						abcdhome.Display(WholeRunsLeaf, strconv.Itoa(m.pid)+".json"), termsafe.CleanProseLine(fsutil.RedactHome(werr.Error()), 256))
+					if m.onNote != nil {
+						m.onNote(m.res.MarkNote)
+					}
 				} else {
 					m.start, m.slack = start, slack
 				}
@@ -1598,7 +1621,7 @@ func (m *wholeRunMark) write(snap machineload.Snapshot, tab sessionname.Table, s
 	if !gitutil.IsFullSHA(head) {
 		return errors.New("the checkout's HEAD is not a commit")
 	}
-	preflight := m.preflight
+	preflight := true
 	rec := WholeRunMarker{SchemaVersion: wholeRunSchema, PID: m.pid, StartUnix: start, StartSlack: slack, Dir: filepath.Clean(dir),
 		Head: head, Preflight: &preflight, Kind: WholeRunKind, Began: m.now().UTC()}
 	raw, err := json.Marshal(rec)
@@ -1640,23 +1663,45 @@ func readCheckoutHead(dir string) (string, error) {
 // of the table, shows ended: one whose pid tab does not hold with the start
 // time it names (sessionname.Table.Alive, within the start tolerance widened
 // by each reading's slack). A marker written after tab's read began is left,
-// whatever tab holds, since its waiter may have started after the read. A
-// file named as a marker that a reader would refuse (it does not parse, or is
-// not of the marker's shape) is removed, so such files cannot fill the
-// entries a look takes in.
+// whatever tab holds, since its waiter may have started after the read; one
+// dated later than the read by more than wholeRunLaterAllowance is judged as
+// an old one, so a date in the future cannot keep it. A file named as a
+// marker that a reader would refuse (it does not parse, or is not of the
+// marker's shape) is removed, so such files cannot fill the entries a look
+// takes in, unless it is a later build's marker (it parses as JSON with a
+// higher schema version, which that build sweeps) or the pid its name gives
+// is in tab: checkouts on one machine run different builds, and neither
+// removes the other's live markers.
 func sweepWholeRunMarkers(root *os.Root, tab sessionname.Table) {
+	held := make(map[int]bool, len(tab.Procs))
+	for _, p := range tab.Procs {
+		held[p.PID] = true
+	}
 	for _, leaf := range wholeRunLeaves(root) {
 		raw, err := fsutil.ReadGuardedInRoot(root, leaf, maxWholeRunMarkerBytes)
 		var mk WholeRunMarker
 		if err != nil || jsonstrict.Decode(raw, &mk) != nil || !mk.valid(leaf) {
+			if pid, _ := strconv.Atoi(strings.TrimSuffix(leaf, ".json")); held[pid] || (err == nil && laterSchema(raw)) {
+				continue
+			}
 			_ = root.Remove(leaf)
 			continue
 		}
-		if !mk.Began.Before(tab.ReadAt) || tab.Alive(mk.host()) {
+		later := !mk.Began.Before(tab.ReadAt) && !mk.Began.After(tab.ReadAt.Add(wholeRunLaterAllowance))
+		if later || tab.Alive(mk.host()) {
 			continue
 		}
 		_ = root.Remove(leaf)
 	}
+}
+
+// laterSchema reports whether raw parses as a JSON object whose
+// schema_version is higher than wholeRunSchema: a marker a later build wrote.
+func laterSchema(raw []byte) bool {
+	var v struct {
+		SchemaVersion int `json:"schema_version"`
+	}
+	return json.Unmarshal(raw, &v) == nil && v.SchemaVersion > wholeRunSchema
 }
 
 // removeWholeRunMarker removes pid's marker when it names start (within

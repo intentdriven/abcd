@@ -13,6 +13,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/machineload"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The whole-run marker: the command-form waiter at the first gate records
@@ -277,18 +278,65 @@ func TestReadWholeRunMarkersIsStrict(t *testing.T) {
 	}
 }
 
-// TestWholeRunMarkerSaysWhetherItIsThePreflight: a whole-form command that is
-// not the preflight's stages writes its marker saying so.
-func TestWholeRunMarkerSaysWhetherItIsThePreflight(t *testing.T) {
+// TestOnlyThePreflightRecordsItself: a whole-form command that is not the
+// preflight's stages writes no marker and says nothing, even where a marker
+// could not be written.
+func TestOnlyThePreflightRecordsItself(t *testing.T) {
+	for _, words := range [][]string{
+		{"sh", "-c", "make preflight-stages"},
+		{"make", "-C", "/elsewhere", "preflight-stages"},
+		{"go", "test", "./..."},
+	} {
+		home := t.TempDir()
+		if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(t.TempDir(), abcdhome.Path(home, WholeRunsLeaf)); err != nil {
+			t.Fatal(err)
+		}
+		req := wholeReq(home, &fakeClock{now: waitT0})
+		req.Words = words
+		said := 0
+		req.OnMarkNote = func(string) { said++ }
+		res, err := WaitLoad(req)
+		if err != nil || res.Status != WaitOpen {
+			t.Fatalf("%q: result %+v, err %v, want open", words, res, err)
+		}
+		if res.MarkNote != "" || said != 0 || res.EndMark != nil {
+			t.Fatalf("%q: MarkNote %q, said %d times, EndMark set %v; want no marker and nothing said", words, res.MarkNote, said, res.EndMark != nil)
+		}
+	}
+}
+
+// TestWholeRunMarkerNoteIsSaidAtItsLook: a marker that cannot be written is
+// said once, at the look that tried to write it, before the wait goes on, so
+// a run queued for hours does not wait to say the stop check cannot see it.
+func TestWholeRunMarkerNoteIsSaidAtItsLook(t *testing.T) {
 	home := t.TempDir()
-	req := wholeReq(home, &fakeClock{now: waitT0})
-	req.Words = []string{"sh", "-c", "make preflight-stages"}
-	if _, err := WaitLoad(req); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	m, ok := readMarkerFile(t, home, 60000)
-	if !ok || m.Preflight == nil || *m.Preflight {
-		t.Fatalf("marker = %+v (present %v), want one saying its command is not the preflight", m, ok)
+	if err := os.Symlink(t.TempDir(), abcdhome.Path(home, WholeRunsLeaf)); err != nil {
+		t.Fatal(err)
+	}
+	clock := &fakeClock{now: waitT0}
+	req := waitReq(home, 60000, clock, poll{load: 40})
+	req.Command, req.Dir, req.Timeout, req.Words = true, "/work/wt", time.Minute, wholeRunCommand
+	req.ReadHead = func(string) (string, error) { return markHead, nil }
+	waits := 0
+	req.OnWait = func(WaitResult) { waits++ }
+	var notes []string
+	var waitsAtNote int
+	req.OnMarkNote = func(n string) { notes = append(notes, n); waitsAtNote = waits }
+	res, err := WaitLoad(req)
+	if err != nil || res.Status != WaitTimedOut {
+		t.Fatalf("result %+v, err %v, want timed out", res, err)
+	}
+	if len(notes) != 1 || notes[0] != res.MarkNote || !strings.Contains(notes[0], "could not be written") {
+		t.Fatalf("notes said %q, MarkNote %q; want the one note said once", notes, res.MarkNote)
+	}
+	if waitsAtNote != 0 || waits == 0 {
+		t.Fatalf("the note was said after %d of %d waits, want before the first", waitsAtNote, waits)
 	}
 }
 
@@ -343,13 +391,16 @@ func TestWholeRunMarkerStartIsTakenBeforeTheRead(t *testing.T) {
 
 // TestWholeRunMarkerSweepLeavesALaterMarker: a marker written after the
 // sweeper's table was read is left, its pid absent from that table or not:
-// its waiter may have started after the read.
+// its waiter may have started after the read. A marker dated later than the
+// reading by more than wholeRunLaterAllowance is judged as an old one, so a
+// date in the future cannot keep a file the sweep would remove.
 func TestWholeRunMarkerSweepLeavesALaterMarker(t *testing.T) {
 	home := t.TempDir()
 	if err := os.MkdirAll(abcdhome.Path(home, WholeRunsLeaf), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for pid, began := range map[int]time.Time{991: waitT0.Add(time.Minute), 992: waitT0.Add(-time.Minute)} {
+	for pid, began := range map[int]time.Time{991: waitT0.Add(time.Minute), 992: waitT0.Add(-time.Minute),
+		996: waitT0.Add(wholeRunLaterAllowance + time.Second), 997: waitT0.Add(24 * time.Hour)} {
 		raw, _ := json.Marshal(goodMarker(pid, waitT0.Unix(), began))
 		if err := os.WriteFile(markerPath(home, pid), raw, 0o600); err != nil {
 			t.Fatal(err)
@@ -364,11 +415,18 @@ func TestWholeRunMarkerSweepLeavesALaterMarker(t *testing.T) {
 	if _, ok := readMarkerFile(t, home, 992); ok {
 		t.Error("a marker written before the sweeper's reading, its pid gone, was kept")
 	}
+	for _, pid := range []int{996, 997} {
+		if _, ok := readMarkerFile(t, home, pid); ok {
+			t.Errorf("marker %d, dated past the reading and its allowance, its pid gone, was kept", pid)
+		}
+	}
 }
 
 // TestWholeRunMarkerSweepRemovesWhatDoesNotParse: a file named as a marker
 // that a reader would refuse is removed, so such files cannot fill the
-// entries a reader looks at; a file not named as a marker is left.
+// entries a reader looks at, unless it parses as a later build's marker (a
+// higher schema version) or its pid is in the table; a file not named as a
+// marker is left.
 func TestWholeRunMarkerSweepRemovesWhatDoesNotParse(t *testing.T) {
 	home := t.TempDir()
 	dir := abcdhome.Path(home, WholeRunsLeaf)
@@ -376,15 +434,24 @@ func TestWholeRunMarkerSweepRemovesWhatDoesNotParse(t *testing.T) {
 		t.Fatal(err)
 	}
 	old, _ := json.Marshal(map[string]any{"schema_version": 1, "pid": 994, "start_unix": 1, "dir": "/x", "kind": "whole", "began": waitT0})
-	for name, body := range map[string]string{"993.json": "not json", "994.json": string(old), "notes.txt": "x"} {
+	// A later build's marker, which this build cannot read, is that build's to
+	// sweep; so is any file whose pid the table holds.
+	later, _ := json.Marshal(map[string]any{"schema_version": wholeRunSchema + 1, "pid": 995, "start_unix": 1, "added": true})
+	liveOld, _ := json.Marshal(map[string]any{"schema_version": 1, "pid": 777, "start_unix": 1, "dir": "/x", "kind": "whole", "began": waitT0})
+	for name, body := range map[string]string{"993.json": "not json", "994.json": string(old), "995.json": string(later),
+		"777.json": string(liveOld), "notes.txt": "x"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := WaitLoad(wholeReq(home, &fakeClock{now: waitT0})); err != nil {
+	live := machineload.Proc{PID: 777, PPID: 1, PGID: 777, UID: 501, Age: time.Hour, Name: "abcd"}
+	req := waitReq(home, 60000, &fakeClock{now: waitT0}, poll{load: 3, procs: []machineload.Proc{live}})
+	req.Command, req.Dir, req.Words = true, "/work/wt", wholeRunCommand
+	req.ReadHead = func(string) (string, error) { return markHead, nil }
+	if _, err := WaitLoad(req); err != nil {
 		t.Fatal(err)
 	}
-	for name, want := range map[string]bool{"993.json": false, "994.json": false, "notes.txt": true} {
+	for name, want := range map[string]bool{"993.json": false, "994.json": false, "995.json": true, "777.json": true, "notes.txt": true} {
 		if _, err := os.Stat(filepath.Join(dir, name)); (err == nil) != want {
 			t.Errorf("%s present = %v, want %v", name, err == nil, want)
 		}
@@ -416,5 +483,27 @@ func TestWholeRunMarkerEndsWithItsCommand(t *testing.T) {
 	res.EndMark()
 	if _, ok := readMarkerFile(t, home, 60000); ok {
 		t.Fatal("EndMark left the marker")
+	}
+}
+
+// TestReadCheckoutHead pins the one git read the marker makes, against a real
+// repository: a branch's commit and a detached HEAD's are read in full, and
+// an unborn branch is an error, so no marker is written for it.
+func TestReadCheckoutHead(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	if _, err := readCheckoutHead(repo.Root()); err == nil {
+		t.Fatal("an unborn branch read as a commit")
+	}
+	repo.Write("a.txt", "a")
+	repo.Commit("first")
+	first := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	if got, err := readCheckoutHead(repo.Root()); err != nil || got != first {
+		t.Fatalf("on a branch: %q, %v; want %s", got, err, first)
+	}
+	repo.Write("b.txt", "b")
+	repo.Commit("second")
+	repo.Git("checkout", "--quiet", "--detach", first)
+	if got, err := readCheckoutHead(repo.Root()); err != nil || got != first {
+		t.Fatalf("detached: %q, %v; want %s", got, err, first)
 	}
 }
