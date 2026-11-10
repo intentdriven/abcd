@@ -126,6 +126,7 @@ func TestParseDependsOnRefuses(t *testing.T) {
 		{"a path holding depends-on", "see docs/depends-on.md", line("1")},
 		{"a word beginning depends-on", "this depends-only on the flag", line("1")},
 		{"a Windows path, its backslashes dropped", "see C:\\depends\\on: here", line("1")},
+		{"a decomposed accent, its combining mark dropped", "Cela de\u0301pend on: the queue", line("1")},
 		{"the line number is the first bad line's, counted from one",
 			"Title\n\nDepends-On: #2\nmore\n  depends-on #3\ndepends-on #4", line("5")},
 		{"eleven distinct numbers", "Depends-On: #1, #2, #3, #4, #5, #6, #7, #8, #9, #10\nDepends-On: #11",
@@ -175,6 +176,7 @@ func TestParseDependsOnReadsPast(t *testing.T) {
 		"a next-line character splitting the word":  "Depe\u0085nds-On: #5",
 		"a lone carriage return splitting the word": "Depends\rOn: #5",
 		"an invalid byte splitting the word":        "Depe\xffnds-On: #5",
+		"a precomposed accent":                      "Cela dépend on: the queue",
 	} {
 		got, err := parseDependsOn(body)
 		if err != nil || got != nil {

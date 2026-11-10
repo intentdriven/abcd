@@ -337,7 +337,7 @@ type cycleReach struct {
 // member list; one reaching several appends and sorts their members, at most
 // N numbers, so at most N * N appends and N * N * log2(N) comparisons over
 // every group. pass holds N to maxChanges and E to maxChanges * maxDepends:
-// at the bounds (N 500, E 5000) that is at most 2.5 million appends and tens
+// at the bounds (N 500, E 5000) that is under 3 million appends and tens
 // of millions of steps in all, the sorts' comparisons the most of them. It
 // keeps at most N * C ids in reach, and, through each change's shown, which
 // slices the list it was cut from, at most N member lists of at most N

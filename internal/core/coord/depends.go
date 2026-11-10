@@ -72,9 +72,12 @@ var (
 // direction and by line number: ordinary prose with a colon after the words
 // (The order depends on: the queue), a quoted or indented compose key
 // (depends_on:), a path or URL holding depends-on, a word that begins with it
-// (depends-only), and a Windows path such as C:\depends\on: once its
-// backslashes are dropped. The error tells the author to reword that line or
-// write it in the accepted form.
+// (depends-only), a Windows path such as C:\depends\on: once its
+// backslashes are dropped, and a word written with a decomposed accent, such
+// as dépend on: with its accent a combining mark (Mn), once the mark is
+// dropped; the same word with its accent precomposed (U+00E9) is read past.
+// The error tells the author to reword that line or write it in the accepted
+// form.
 //
 // Lines are judged one at a time, with no regard for markdown. A well-formed
 // line inside a code fence or an HTML comment that spans several lines is read
