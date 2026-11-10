@@ -21,10 +21,12 @@
 // on (adr-2610222026262980, rule 1). Claims and the record version are later
 // steps of the spec.
 //
-// This is staged code: nothing outside the package calls the pass or its
-// at-once refusals yet. Step 2a's landing wiring exports them and wires their
-// first caller in one commit, and this package's step-2a code is never pushed
-// or landed without that wiring (dcn-2611101309224327).
+// Reading the dependency line is parseDependsOn's, in depends.go.
+//
+// This is staged code: nothing outside the package calls the pass, its
+// at-once refusals or parseDependsOn yet. Step 2a's landing wiring exports
+// them and wires their first caller in one commit, and this package's step-2a
+// code is never pushed or landed without that wiring (dcn-2611101309224327).
 package coord
 
 import (
