@@ -90,6 +90,8 @@ func TestParseDependsOnRefuses(t *testing.T) {
 		{"a space for the hyphen", "Depends On: #5", line("1")},
 		{"a space for the hyphen, lower-case on", "Depends on: #5", line("1")},
 		{"spaces and a tab before the colon", "Depends on \t : #5", line("1")},
+		{"a tab for the hyphen", "Depends\tOn: #5", line("1")},
+		{"tabs around a hyphen", "Depends\t-\tOn: #5", line("1")},
 		{"an underscore for the hyphen", "Depends_On: #5", line("1")},
 		{"no hyphen", "DependsOn: #5", line("1")},
 		{"no hyphen, lower-case on", "Dependson: #5", line("1")},
