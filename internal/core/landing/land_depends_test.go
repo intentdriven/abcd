@@ -351,10 +351,10 @@ func TestLandReportsAQueuedOrOtherArmedPullRequestWithoutReadingDependencies(t *
 
 // ownArmed is the forge's state answer for #7 armed by this account (alice),
 // CLEAN outside the queue.
-const ownArmed = `{"data":{"viewer":{"login":"alice"},"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":false,"autoMergeRequest":{"mergeMethod":"MERGE","enabledAt":"2026-11-10T08:30:00Z","enabledBy":{"login":"alice"}},"headRefOid":"@HEAD@"}}}}`
+const ownArmed = `{"data":{"viewer":{"login":"alice"},"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":false,"mergeQueueEntry":null,"autoMergeRequest":{"mergeMethod":"MERGE","enabledAt":"2026-11-10T08:30:00Z","enabledBy":{"login":"alice"}},"headRefOid":"@HEAD@"}}}}`
 
 // ownDisarmed is ownArmed once its arming came off.
-const ownDisarmed = `{"data":{"viewer":{"login":"alice"},"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":false,"autoMergeRequest":null,"headRefOid":"@HEAD@"}}}}`
+const ownDisarmed = `{"data":{"viewer":{"login":"alice"},"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":false,"mergeQueueEntry":null,"autoMergeRequest":null,"headRefOid":"@HEAD@"}}}}`
 
 // withdrewOnly fails the test unless the landing withdrew #7's arming once and
 // armed nothing.
@@ -395,18 +395,19 @@ func TestLandWithdrawsThisAccountsArmingOnAWaitOrARefusal(t *testing.T) {
 	withdrewOnly(t, f)
 }
 
-// A withdrawal that fails, or that the forge does not confirm, refuses and
-// tells the author to withdraw the arming by hand.
+// A withdrawal that fails, or that the forge does not confirm, is tried
+// again on what the next read shows, three times at most, and then refuses
+// and tells the author to withdraw the arming by hand.
 func TestLandRefusesWhenItCannotWithdrawThisAccountsArming(t *testing.T) {
-	fix := "; withdraw it yourself (gh pr merge 7 --disable-auto), then run abcd land again, which says what holds it"
+	want := "land's dependency check does not let pull request #7 queue, but after 3 tries the forge still reports #7 armed by this account, which can merge it before what it depends on; withdraw it yourself (gh pr merge 7 --disable-auto), then run abcd land again, which says what holds it"
 	for _, c := range []struct {
 		name       string
 		failDisarm bool
 		answers    []string
 		want       string
 	}{
-		{"the withdrawal fails", true, []string{ownArmed}, "land's dependency check does not let pull request #7 queue, and land could not withdraw this account's earlier arming, which can merge #7 before what it depends on: fake forge: the disarm failed" + fix},
-		{"the forge still reports it armed", false, []string{ownArmed, ownArmed}, "land's dependency check does not let pull request #7 queue, and land could not withdraw this account's earlier arming, which can merge #7 before what it depends on: the forge still reports it armed after the withdrawal" + fix},
+		{"the withdrawal fails", true, []string{ownArmed}, want},
+		{"the forge still reports it armed", false, []string{ownArmed, ownArmed}, want},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f, o := dependsFixture(t, "Depends-On: #5", map[int]string{5: openDep(5, "")}, dependsAt)
@@ -418,8 +419,8 @@ func TestLandRefusesWhenItCannotWithdrawThisAccountsArming(t *testing.T) {
 			if !errors.As(err, &r) || r.Held || r.Error() != c.want {
 				t.Fatalf("err = %v\n want %q", err, c.want)
 			}
-			if f.forge.called("pr", "merge", "7", "--auto") != 0 {
-				t.Fatalf("forge calls %v: want nothing armed", f.forge.calls)
+			if f.forge.called("pr", "merge", "7", "--auto") != 0 || f.forge.called("pr", "merge", "7", "--disable-auto") != 3 {
+				t.Fatalf("forge calls %v: want three withdrawals and nothing armed", f.forge.calls)
 			}
 		})
 	}
@@ -455,10 +456,10 @@ const withdrewWait = "pull request #7 depends on #5, which has not merged, so la
 // ownQueued is #7 in the merge queue with its auto-merge off, as the forge
 // shows a pull request it queued from an arming: the node id is the queue
 // entry's handle.
-const ownQueued = `{"data":{"viewer":{"login":"alice"},"repository":{"pullRequest":{"id":"PR_7","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":true,"autoMergeRequest":null,"headRefOid":"@HEAD@"}}}}`
+const ownQueued = `{"data":{"viewer":{"login":"alice"},"repository":{"pullRequest":{"id":"PR_7","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":true,"mergeQueueEntry":{"enqueuer":{"login":"alice"}},"autoMergeRequest":null,"headRefOid":"@HEAD@"}}}}`
 
 // otherArmed is #7 armed by another account (bob) where the viewer is alice.
-const otherArmed = `{"data":{"viewer":{"login":"alice"},"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":false,"autoMergeRequest":{"mergeMethod":"MERGE","enabledAt":"2026-11-10T08:40:00Z","enabledBy":{"login":"bob"}},"headRefOid":"@HEAD@"}}}}`
+const otherArmed = `{"data":{"viewer":{"login":"alice"},"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":false,"mergeQueueEntry":null,"autoMergeRequest":{"mergeMethod":"MERGE","enabledAt":"2026-11-10T08:40:00Z","enabledBy":{"login":"bob"}},"headRefOid":"@HEAD@"}}}}`
 
 // Where enqueue returns before the dependency check with this account's
 // arming at the gated head (the merge gate unread or not arming, or a
@@ -522,11 +523,12 @@ func TestLandTakesThisAccountsPullRequestOutOfTheQueueOnTheReadBack(t *testing.T
 	if f.forge.called(dequeue7...) != 1 || f.forge.called("pr", "merge", "7", "--disable-auto") != 1 || f.forge.called("pr", "merge", "7", "--auto") != 0 {
 		t.Fatalf("forge calls %v: want one withdrawal, one dequeue of PR_7 and nothing armed", f.forge.calls)
 	}
-	if s := step(t, res, "enqueue"); s.Status != StatusStopped || s.Note != withdrewWait {
-		t.Fatalf("enqueue step %+v\n want stopped, saying %q", s, withdrewWait)
+	both := "pull request #7 depends on #5, which has not merged, so land withdrew this account's earlier arming and took #7 out of the merge queue: run abcd land again after it merges; the wait is refused from 2026-11-11T08:00:00Z, 24 hours after #7 was opened"
+	if s := step(t, res, "enqueue"); s.Status != StatusStopped || s.Note != both {
+		t.Fatalf("enqueue step %+v\n want stopped, saying %q", s, both)
 	}
 
-	const queued = "land's dependency check does not let pull request #7 queue, but after land withdrew this account's earlier arming the forge reports #7 in the merge queue, where it can merge before what it depends on"
+	const still = "land's dependency check does not let pull request #7 queue; land withdrew this account's earlier arming, but after 3 tries the forge still reports #7 in the merge queue from this account, where it can merge before what it depends on"
 	const fix = "; take #7 out of the merge queue on its page, then run abcd land again, which says what holds it"
 	for _, c := range []struct {
 		name       string
@@ -534,9 +536,9 @@ func TestLandTakesThisAccountsPullRequestOutOfTheQueueOnTheReadBack(t *testing.T
 		dequeueErr error
 		want       string
 	}{
-		{"the dequeue fails", []string{ownArmed, ownQueued}, errors.New("fake forge: the dequeue failed"), queued + ", and land could not take it out: fake forge: the dequeue failed" + fix},
-		{"still queued after the dequeue", []string{ownArmed, ownQueued, ownQueued}, nil, queued + ", and it is still there after land took it out" + fix},
-		{"queued with no id", []string{ownArmed, strings.ReplaceAll(ownQueued, `"id":"PR_7",`, "")}, nil, queued + ", and the forge gives no id land can take it out by" + fix},
+		{"the dequeue fails", []string{ownArmed, ownQueued}, errors.New("fake forge: the dequeue failed"), still + fix},
+		{"still queued after the dequeue", []string{ownArmed, ownQueued, ownQueued}, nil, still + fix},
+		{"queued with no id", []string{ownArmed, strings.ReplaceAll(ownQueued, `"id":"PR_7",`, "")}, nil, "land's dependency check does not let pull request #7 queue; land withdrew this account's earlier arming, but the forge's answer for #7's state gives no id, so land cannot confirm that this account's arming and queue entry are off" + fix},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f, o := dependsFixture(t, "Depends-On: #5", map[int]string{5: openDep(5, "")}, dependsAt)
@@ -590,7 +592,7 @@ func TestLandRefusesAForgeAnswerMissingAField(t *testing.T) {
 	f.forge.views = nil
 	f.forge.answers = []string{ownArmed, strings.ReplaceAll(ownDisarmed, `"autoMergeRequest":null,`, "")}
 	_, err = f.land(o)
-	want = "land's dependency check does not let pull request #7 queue, and land could not withdraw this account's earlier arming, which can merge #7 before what it depends on: the forge's read-back of #7 gives no autoMergeRequest, so land cannot say the arming came off; withdraw it yourself (gh pr merge 7 --disable-auto), then run abcd land again, which says what holds it"
+	want = "land's dependency check does not let pull request #7 queue; land withdrew this account's earlier arming, but the forge's answer for #7's state gives no autoMergeRequest, so land cannot confirm that this account's arming and queue entry are off; " + bothSteps
 	if !errors.As(err, &r) || r.Error() != want {
 		t.Fatalf("err = %v\n want %q", err, want)
 	}
@@ -622,8 +624,8 @@ func TestLandWithdrawsNothingFromAPullRequestMergedOrClosedSinceItsState(t *test
 // carrying errors, and no forge client to withdraw with; and a check the forge
 // could not be asked for takes this account's arming off all the same.
 func TestLandRefusesWhenTheWithdrawalCannotBeConfirmed(t *testing.T) {
-	const could = "land's dependency check does not let pull request #7 queue, and land could not withdraw this account's earlier arming, which can merge #7 before what it depends on: "
-	const fix = "; withdraw it yourself (gh pr merge 7 --disable-auto), then run abcd land again, which says what holds it"
+	const could = "land's dependency check does not let pull request #7 queue; land withdrew this account's earlier arming, but the forge could not be read again for #7's state ("
+	fix := "), so land cannot confirm that this account's arming and queue entry are off; " + bothSteps
 	for _, c := range []struct {
 		name      string
 		answers   []string
@@ -632,7 +634,8 @@ func TestLandRefusesWhenTheWithdrawalCannotBeConfirmed(t *testing.T) {
 	}{
 		{"the read-back fails", []string{ownArmed, "!gh: HTTP 502: Bad Gateway"}, nil, could + "gh: HTTP 502: Bad Gateway" + fix},
 		{"the read-back carries errors", []string{ownArmed, `{"data":null,"errors":[{"message":"boom"}]}`}, nil, could + "the forge answered the query for pull request #7's state with errors: boom" + fix},
-		{"no forge client", []string{ownArmed}, ErrNoForgeClient, noForgeClient().Error()},
+		// An act's own error returns nothing early: the next read decides.
+		{"the disarm finds no forge client", []string{ownArmed}, ErrNoForgeClient, "land's dependency check does not let pull request #7 queue, but after 3 tries the forge still reports #7 armed by this account, which can merge it before what it depends on; withdraw it yourself (gh pr merge 7 --disable-auto), then run abcd land again, which says what holds it"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f, o := dependsFixture(t, "Depends-On: #5", map[int]string{5: openDep(5, "")}, dependsAt)
@@ -663,4 +666,256 @@ func TestLandRefusesWhenTheWithdrawalCannotBeConfirmed(t *testing.T) {
 		}
 		withdrewOnly(t, f)
 	})
+}
+
+// bothSteps is the hand steps where land cannot say whether #7 is armed or
+// queued.
+const bothSteps = "check #7 (gh pr view 7): withdraw an arming by this account (gh pr merge 7 --disable-auto) and take a queue entry by this account out of the merge queue on its page, then run abcd land again, which says what holds it"
+
+// modelFixture is dependsFixture waiting on #5, its state read from m.
+func modelFixture(t *testing.T, m *forgeModel) (*fixture, Options) {
+	t.Helper()
+	f, o := dependsFixture(t, "Depends-On: #5", map[int]string{5: openDep(5, "")}, dependsAt)
+	f.forge.views = nil
+	f.forge.model = m
+	return f, o
+}
+
+// withdrawalCalls fails the test unless the landing withdrew #7's auto-merge
+// disarms times and dequeued it dequeues times, and armed nothing.
+func withdrawalCalls(t *testing.T, f *fixture, disarms, dequeues int) {
+	t.Helper()
+	if f.forge.called("pr", "merge", "7", "--disable-auto") != disarms || f.forge.called(dequeue7...) != dequeues || f.forge.called("pr", "merge", "7", "--auto") != 0 {
+		t.Fatalf("forge calls %v: want %d withdrawals, %d dequeues and nothing armed", f.forge.calls, disarms, dequeues)
+	}
+}
+
+// The withdrawal acts on what each read shows: a disarm the forge refuses
+// because it queued the pull request meanwhile is followed by the read that
+// shows it queued by this account, and the dequeue; one queued and armed by
+// this account comes out of the queue and off auto-merge; a queue entry the
+// forge shows with its flag false counts as queued. The note says what was
+// done.
+func TestLandWithdrawsWhatTheNextReadShows(t *testing.T) {
+	waitSaying := func(did string) string {
+		return "pull request #7 depends on #5, which has not merged, so " + did + ": run abcd land again after it merges; the wait is refused from 2026-11-11T08:00:00Z, 24 hours after #7 was opened"
+	}
+	t.Run("the disarm fails and the read shows it queued", func(t *testing.T) {
+		f, o := modelFixture(t, &forgeModel{armedBy: "alice", rule: true, queueAfter: 1, queuer: "alice"})
+		res, err := f.land(o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		withdrawalCalls(t, f, 1, 1)
+		if s, want := step(t, res, "enqueue"), waitSaying("land took #7 out of the merge queue"); s.Status != StatusStopped || s.Note != want {
+			t.Fatalf("enqueue step %+v\n want stopped, saying %q", s, want)
+		}
+	})
+	t.Run("queued and armed by this account", func(t *testing.T) {
+		f, o := modelFixture(t, &forgeModel{armedBy: "alice", queueAfter: 1, queuer: "alice", failDisarms: 1})
+		res, err := f.land(o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		withdrawalCalls(t, f, 2, 1)
+		if s, want := step(t, res, "enqueue"), waitSaying("land withdrew this account's earlier arming and took #7 out of the merge queue"); s.Status != StatusStopped || s.Note != want {
+			t.Fatalf("enqueue step %+v\n want stopped, saying %q", s, want)
+		}
+	})
+	t.Run("a queue entry with the flag false", func(t *testing.T) {
+		f, o := dependsFixture(t, "Depends-On: #5", map[int]string{5: openDep(5, "")}, dependsAt)
+		f.forge.views = nil
+		entry := strings.ReplaceAll(strings.ReplaceAll(ownDisarmed, `"mergeQueueEntry":null`, `"mergeQueueEntry":{"enqueuer":{"login":"alice"}}`), `{"mergeable"`, `{"id":"PR_7","mergeable"`)
+		f.forge.answers = []string{ownArmed, entry, ownDisarmed}
+		res, err := f.land(o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		withdrawalCalls(t, f, 1, 1)
+		if s, want := step(t, res, "enqueue"), waitSaying("land withdrew this account's earlier arming and took #7 out of the merge queue"); s.Status != StatusStopped || s.Note != want {
+			t.Fatalf("enqueue step %+v\n want stopped, saying %q", s, want)
+		}
+	})
+}
+
+// A queue entry another account made, or one the forge does not attribute,
+// is left in the queue and refused, naming who the forge says queued it.
+func TestLandLeavesAnotherAccountsQueueEntry(t *testing.T) {
+	for _, c := range []struct{ queuer, who string }{
+		{"bob", "another account (bob)"},
+		{"?", "an account the forge does not name"},
+	} {
+		t.Run(c.who, func(t *testing.T) {
+			f, o := modelFixture(t, &forgeModel{armedBy: "alice", rule: true, queueAfter: 1, queuer: c.queuer})
+			_, err := f.land(o)
+			want := "land's dependency check does not let pull request #7 queue, but the forge reports #7 in the merge queue, queued by " + c.who + ", while land has not found what it depends on merged; land does not take out a queue entry it did not make; ask whoever queued it to take it out of the merge queue, or take it out yourself on its page, then run abcd land again, which says what holds it"
+			var r *Refusal
+			if !errors.As(err, &r) || r.Error() != want {
+				t.Fatalf("err = %v\n want %q", err, want)
+			}
+			withdrawalCalls(t, f, 1, 0)
+		})
+	}
+}
+
+// Three tries that leave this account's arming or queue entry in place
+// refuse with the hand step for the state last read: the queue page for a
+// queued pull request, never the command that only turns auto-merge off.
+func TestLandRefusesAfterThreeTries(t *testing.T) {
+	t.Run("still armed", func(t *testing.T) {
+		f, o := modelFixture(t, &forgeModel{armedBy: "alice", stuck: true})
+		_, err := f.land(o)
+		want := "land's dependency check does not let pull request #7 queue, but after 3 tries the forge still reports #7 armed by this account, which can merge it before what it depends on; withdraw it yourself (gh pr merge 7 --disable-auto), then run abcd land again, which says what holds it"
+		var r *Refusal
+		if !errors.As(err, &r) || r.Error() != want {
+			t.Fatalf("err = %v\n want %q", err, want)
+		}
+		withdrawalCalls(t, f, 3, 0)
+	})
+	t.Run("still queued", func(t *testing.T) {
+		f, o := modelFixture(t, &forgeModel{armedBy: "alice", rule: true, queueAfter: 1, queuer: "alice", stuck: true})
+		_, err := f.land(o)
+		want := "land's dependency check does not let pull request #7 queue, but after 3 tries the forge still reports #7 in the merge queue from this account, where it can merge before what it depends on; take #7 out of the merge queue on its page, then run abcd land again, which says what holds it"
+		var r *Refusal
+		if !errors.As(err, &r) || r.Error() != want {
+			t.Fatalf("err = %v\n want %q", err, want)
+		}
+		withdrawalCalls(t, f, 1, 2)
+	})
+}
+
+// A read that fails after the dequeue refuses, saying what land did and
+// that it cannot confirm the rest, with the queue page as the step.
+func TestLandRefusesWhenTheReadAfterTheDequeueFails(t *testing.T) {
+	f, o := modelFixture(t, &forgeModel{armedBy: "alice", rule: true, queueAfter: 1, queuer: "alice", failReadAt: 3})
+	_, err := f.land(o)
+	want := "land's dependency check does not let pull request #7 queue; land took #7 out of the merge queue, but the forge could not be read again for #7's state (fake forge: the state read failed), so land cannot confirm that this account's arming and queue entry are off; take #7 out of the merge queue on its page, then run abcd land again, which says what holds it"
+	var r *Refusal
+	if !errors.As(err, &r) || r.Error() != want {
+		t.Fatalf("err = %v\n want %q", err, want)
+	}
+	withdrawalCalls(t, f, 1, 1)
+}
+
+// An isInMergeQueue or autoMergeRequest absent from the state land reads
+// before the check, or from a read after a withdrawal, and an
+// isInMergeQueue absent from the check's own read of the pull request, are
+// answers land cannot read whole.
+func TestLandRefusesAStateMissingAQueueField(t *testing.T) {
+	both := bothSteps
+	for _, field := range []string{`"isInMergeQueue":false,`, `"autoMergeRequest":{"mergeMethod":"MERGE","enabledAt":"2026-11-10T08:30:00Z","enabledBy":{"login":"alice"}},`} {
+		name := strings.Split(field, `"`)[1]
+		t.Run(name+" in the first read", func(t *testing.T) {
+			f, o := dependsFixture(t, "Depends-On: #5", map[int]string{5: openDep(5, "")}, dependsAt)
+			f.forge.views = nil
+			f.forge.answers = []string{strings.ReplaceAll(ownArmed, field, "")}
+			_, err := f.land(o)
+			want := "the forge's answer for pull request #7's state gives no " + name + ", so land cannot confirm whether it is armed or queued, or judge its dependencies: land arms nothing, and any arming already in place is left as it is; " + both
+			var r *Refusal
+			if !errors.As(err, &r) || r.Error() != want {
+				t.Fatalf("err = %v\n want %q", err, want)
+			}
+			if got := f.forge.dependsReads(); len(got) != 0 {
+				t.Fatalf("dependency reads %v, want none", got)
+			}
+			noArming(t, f)
+		})
+	}
+	t.Run("isInMergeQueue in the read after the withdrawal", func(t *testing.T) {
+		f, o := dependsFixture(t, "Depends-On: #5", map[int]string{5: openDep(5, "")}, dependsAt)
+		f.forge.views = nil
+		f.forge.answers = []string{ownArmed, strings.ReplaceAll(ownDisarmed, `"isInMergeQueue":false,`, "")}
+		_, err := f.land(o)
+		want := "land's dependency check does not let pull request #7 queue; land withdrew this account's earlier arming, but the forge's answer for #7's state gives no isInMergeQueue, so land cannot confirm that this account's arming and queue entry are off; " + both
+		var r *Refusal
+		if !errors.As(err, &r) || r.Error() != want {
+			t.Fatalf("err = %v\n want %q", err, want)
+		}
+		withdrewOnly(t, f)
+	})
+	t.Run("isInMergeQueue in the pull request's own read", func(t *testing.T) {
+		f, o := dependsFixture(t, "", map[int]string{7: `{"data":{"repository":{"pullRequest":{"number":7,"state":"OPEN","baseRefName":"main","createdAt":"2026-11-10T08:00:00Z","body":"Depends-On: #5"}}}}`}, dependsAt)
+		_, err := f.land(o)
+		want := "the forge's answer for pull request #7 gives no isInMergeQueue, so land cannot judge #7's dependencies, and nothing was armed; settle what the forge reports for #7 (gh pr view 7), then run abcd land again"
+		var r *Refusal
+		if !errors.As(err, &r) || r.Error() != want {
+			t.Fatalf("err = %v\n want %q", err, want)
+		}
+		noArming(t, f)
+	})
+}
+
+// A dependency still open whose answer has no body is an answer land cannot
+// read whole: its own Depends-On lines cannot be read.
+func TestLandRefusesADependencyWithNoBody(t *testing.T) {
+	f, o := dependsFixture(t, "Depends-On: #5", map[int]string{5: `{"data":{"repository":{"pullRequest":{"number":5,"state":"OPEN","isInMergeQueue":false,"baseRefName":"main","createdAt":"2026-11-09T08:00:00Z"}}}}`}, dependsAt)
+	_, err := f.land(o)
+	want := "the forge's answer for pull request #5 gives no body, so land cannot judge #7's dependencies, and nothing was armed; settle what the forge reports for #5 (gh pr view 5), then run abcd land again"
+	var r *Refusal
+	if !errors.As(err, &r) || r.Error() != want {
+		t.Fatalf("err = %v\n want %q", err, want)
+	}
+	noArming(t, f)
+}
+
+// Where the push step left an arming at the gated head and the state read
+// fails, the early return keeps its meaning: the arming is left as it is,
+// said plainly with its dependencies unread, and nothing is refused for it.
+func TestLandLeavesTheArmingAtTheHeadWhenItsStateCannotBeRead(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		config string
+		set    func(f *fixture)
+	}{
+		{"the merge gate cannot be read", `{"facilitator":{"mode":"sometimes"}}` + "\n", nil},
+		{"the merge gate does not arm", autoConfig, func(f *fixture) {
+			f.forge.roles = map[string]string{"author-a": "!gh: HTTP 502: Bad Gateway"}
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": c.config})
+			f.forge.prs = f.prFor(f.head())
+			f.forge.armings = []string{armingBy(f.head(), true, false, "alice")}
+			f.forge.answers = []string{"!gh: HTTP 502: Bad Gateway"}
+			if c.set != nil {
+				c.set(f)
+			}
+			o := f.options()
+			o.Now = func() time.Time { return dependsAt }
+			res, err := f.land(o)
+			left := "the arming already at " + short(f.head()) + " is left as it is, its dependencies unread, since gh: HTTP 502: Bad Gateway"
+			var r *Refusal
+			switch {
+			case errors.As(err, &r):
+				if !strings.Contains(r.Reason, ", and "+left) {
+					t.Fatalf("refusal %q\n want it to say %q", r.Reason, left)
+				}
+			case err != nil:
+				t.Fatal(err)
+			default:
+				if s := step(t, res, "enqueue"); s.Status != StatusLeft || !strings.HasSuffix(s.Note, "; "+left) {
+					t.Fatalf("enqueue step %+v\n want left, saying %q", s, left)
+				}
+			}
+			if got := f.forge.dependsReads(); len(got) != 0 {
+				t.Fatalf("dependency reads %v, want none", got)
+			}
+			noArming(t, f)
+		})
+	}
+}
+
+// The conflict refusal says land arms nothing and leaves any arming in place,
+// this account's at another head than the gated one included.
+func TestLandSaysAConflictLeavesAnArmingAtAnotherHead(t *testing.T) {
+	f, o := dependsFixture(t, "Depends-On: #5", map[int]string{5: openDep(5, "")}, dependsAt)
+	f.forge.views = nil
+	f.forge.answer = strings.ReplaceAll(strings.ReplaceAll(ownArmed, `"MERGEABLE"`, `"CONFLICTING"`), "@HEAD@", strings.Repeat("b", 40))
+	_, err := f.land(o)
+	want := "pull request #7 conflicts with main, and a conflicting pull request never enters the queue, so land arms nothing, and any arming already in place is left as it is; merge main into feat/x and settle the conflict, then run abcd land again"
+	var r *Refusal
+	if !errors.As(err, &r) || r.Error() != want {
+		t.Fatalf("err = %v\n want %q", err, want)
+	}
+	noArming(t, f)
 }

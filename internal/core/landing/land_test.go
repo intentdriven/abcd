@@ -119,6 +119,89 @@ type fakeForge struct {
 	// dependsErr fails every such read.
 	depends    map[int]string
 	dependsErr error
+	// model, when set, answers the state query and takes the withdrawal's
+	// calls (forgeModel), before answer, answers and views.
+	model *forgeModel
+}
+
+// forgeModel is the forge's state of the pull request land reads, for the
+// tests of the withdrawal. Which shapes come from where:
+//   - from a recorded forge answer (testdata/pr-state-1018-queued.json): a
+//     pull request the forge queued from an arming shows autoMergeRequest
+//     null while it is queued, so with rule on, entering the queue clears
+//     the arming;
+//   - from the forge's documented mutation: the dequeue (dequeuePullRequest,
+//     by node id) takes a queued pull request out of the queue;
+//   - a guess, unconfirmed: with rule on, `gh pr merge --disable-auto` on a
+//     queued pull request fails, and its message here is made up.
+type forgeModel struct {
+	// armedBy and queuedBy are the logins the arming and the queue entry are
+	// by: "" is none, and "?" one the forge does not name.
+	armedBy, queuedBy string
+	// rule is the forge's rule above, switched on.
+	rule bool
+	// queueAfter, when above 0, has the forge queue the pull request from its
+	// arming, by queuer, once that many state reads are answered.
+	queueAfter int
+	queuer     string
+	// failReadAt fails the state read with this ordinal (1 is the first).
+	failReadAt int
+	// failDisarms fails the first that many disarms.
+	failDisarms int
+	// stuck answers the disarm and the dequeue and changes nothing.
+	stuck bool
+	reads int
+}
+
+// answer is the state query's answer for the model's state.
+func (m *forgeModel) answer() (string, error) {
+	m.reads++
+	if m.reads == m.failReadAt {
+		return "", errors.New("fake forge: the state read failed")
+	}
+	actor := func(login string) string {
+		if login == "?" {
+			return "null"
+		}
+		return `{"login":"` + login + `"}`
+	}
+	arm, entry := "null", "null"
+	if m.armedBy != "" {
+		arm = `{"mergeMethod":"MERGE","enabledAt":"2026-11-10T08:30:00Z","enabledBy":` + actor(m.armedBy) + `}`
+	}
+	if m.queuedBy != "" {
+		entry = `{"state":"QUEUED","position":1,"enqueuer":` + actor(m.queuedBy) + `}`
+	}
+	a := fmt.Sprintf(`{"data":{"viewer":{"login":"alice"},"repository":{"pullRequest":{"id":"PR_7","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":%t,"mergeQueueEntry":%s,"autoMergeRequest":%s,"headRefOid":"@HEAD@"}}}}`,
+		m.queuedBy != "", entry, arm)
+	if m.reads == m.queueAfter {
+		m.queuedBy = m.queuer
+		if m.rule {
+			m.armedBy = ""
+		}
+	}
+	return a, nil
+}
+
+// disarm is `gh pr merge --disable-auto` on the model.
+func (m *forgeModel) disarm() error {
+	switch {
+	case m.failDisarms > 0:
+		m.failDisarms--
+		return errors.New("fake forge: the disarm failed")
+	case m.rule && m.queuedBy != "":
+		return errors.New("fake forge: the pull request is in the merge queue")
+	case !m.stuck:
+		m.armedBy = ""
+	}
+	return nil
+}
+
+// dequeue is the dequeue mutation on the model.
+func (m *forgeModel) dequeue() {
+	if !m.stuck {
+		m.queuedBy = ""
+	}
 }
 
 // dependsCreated is the creation time the fake forge gives a pull request
@@ -303,6 +386,9 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 			if f.dequeueErr != nil {
 				return "", f.dequeueErr
 			}
+			if f.model != nil {
+				f.model.dequeue()
+			}
 			if f.dequeueAnswer != "" {
 				return f.dequeueAnswer, nil
 			}
@@ -319,6 +405,10 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		// one, from the schema as ghcontract pins it.
 		if err := ghcontract.CheckGraphQL(PRStateQuery); err != nil {
 			return "", err
+		}
+		if f.model != nil {
+			a, err := f.model.answer()
+			return strings.ReplaceAll(a, "@HEAD@", f.head), err
 		}
 		if f.answer != "" {
 			return strings.ReplaceAll(f.answer, "@HEAD@", f.head), nil
@@ -340,8 +430,11 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		if len(f.views) > 1 {
 			f.views = f.views[1:]
 		}
-		return `{"data":{"repository":{"pullRequest":` + strings.ReplaceAll(v, "@HEAD@", f.head) + `}}}`, nil
+		return `{"data":{"viewer":{"login":"alice"},"repository":{"pullRequest":` + strings.ReplaceAll(v, "@HEAD@", f.head) + `}}}`, nil
 	case "pr merge":
+		if slices.Contains(args, "--disable-auto") && f.model != nil {
+			return "", f.model.disarm()
+		}
 		if slices.Contains(args, "--disable-auto") && f.disarmErr != nil {
 			return "", f.disarmErr
 		}
@@ -757,13 +850,13 @@ func TestAPullRequestAtAnotherHeadIsNotArmed(t *testing.T) {
 }
 
 const (
-	viewBlocked = `{"mergeable":"MERGEABLE","mergeStateStatus":"BLOCKED","isInMergeQueue":false,"autoMergeRequest":null,"headRefOid":"@HEAD@"}`
+	viewBlocked = `{"mergeable":"MERGEABLE","mergeStateStatus":"BLOCKED","isInMergeQueue":false,"mergeQueueEntry":null,"autoMergeRequest":null,"headRefOid":"@HEAD@"}`
 	viewQueued  = `{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":true,"autoMergeRequest":{"mergeMethod":"MERGE"},"headRefOid":"@HEAD@"}`
-	viewCleanUn = `{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":false,"autoMergeRequest":{"mergeMethod":"MERGE"},"headRefOid":"@HEAD@"}`
-	viewDirty   = `{"mergeable":"CONFLICTING","mergeStateStatus":"DIRTY","isInMergeQueue":false,"autoMergeRequest":null,"headRefOid":"@HEAD@"}`
+	viewCleanUn = `{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":false,"mergeQueueEntry":null,"autoMergeRequest":{"mergeMethod":"MERGE"},"headRefOid":"@HEAD@"}`
+	viewDirty   = `{"mergeable":"CONFLICTING","mergeStateStatus":"DIRTY","isInMergeQueue":false,"mergeQueueEntry":null,"autoMergeRequest":null,"headRefOid":"@HEAD@"}`
 	// viewArmedByOther is a pull request someone else armed (squash), CLEAN
 	// and outside the queue.
-	viewArmedByOther = `{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":false,"autoMergeRequest":{"mergeMethod":"SQUASH"},"headRefOid":"@HEAD@"}`
+	viewArmedByOther = `{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":false,"mergeQueueEntry":null,"autoMergeRequest":{"mergeMethod":"SQUASH"},"headRefOid":"@HEAD@"}`
 )
 
 func TestAQueueBehindApprovalIsArmedAndConfirmed(t *testing.T) {
@@ -1063,7 +1156,7 @@ func TestAForgeThatCannotBeAskedGetsNoPush(t *testing.T) {
 func TestAHeadThatMovesOnTheForgeAfterArmingIsRefused(t *testing.T) {
 	f := newFixture(t, queueRuleset)
 	f.forge.prs = f.prFor(f.head())
-	moved := `{"mergeable":"MERGEABLE","mergeStateStatus":"BLOCKED","isInMergeQueue":false,"autoMergeRequest":{"mergeMethod":"MERGE"},"headRefOid":"` + strings.Repeat("b", 40) + `"}`
+	moved := `{"mergeable":"MERGEABLE","mergeStateStatus":"BLOCKED","isInMergeQueue":false,"mergeQueueEntry":null,"autoMergeRequest":{"mergeMethod":"MERGE"},"headRefOid":"` + strings.Repeat("b", 40) + `"}`
 	f.forge.views = []string{viewBlocked, moved}
 	_, err := f.land(f.options())
 	wantRefusal(t, err, "--disable-auto")
