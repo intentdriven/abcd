@@ -572,14 +572,26 @@ ended starts no second runner over the work: the step says what the receipt
 lacks and how to correct it or restart, and counts the stop so a drain hands the
 lane back as stuck at its bounds. That stop is a host-stepped run's. A drive, which
 steps the run itself, consumes a receipt refused for the work it reports, one that
-names this run, lane and branch in the schema this abcd reads (iss-2611071242184002):
-in the same write as the refusal, which is counted, the receipt is set aside under
-the lane's aside directory, kept and never deleted, and the record's line names the
-refusal; the next step starts the implementer again on its runner, so the drain's stuck
-bounds hand the lane back, and under a bound so does the third such launch in a row. A
-set-aside that fails is the record's line and leaves the receipt standing, the pause
-written all the same. A receipt refused for anything else stays and stops the lane
-in a drive too. What stands at an agent's path when it is handed out, or when a
+names this run, lane and branch in the schema this abcd reads (iss-2611071242184002).
+Under the run's lock it first checks that the file still holds the bytes it judged
+and that no runner has claimed the role since; if either fails, the file is left
+standing for the next step to read and nothing is counted. Otherwise, in the same
+write as the refusal, the receipt is set aside into a new directory under the lane's
+aside directory, kept and never deleted, with the report and the definition of done's
+output it names when each is a regular file of the lane's own directory, reached
+through no link, outside the aside directory and of no name already moved there;
+anything else it names is left in place, and the record's line says so beside the
+refusal and the digest of the bytes judged. The next step starts the implementer again
+on its runner. Each consumed receipt counts as a refused step under one check,
+whatever it lacked, so at the stuck bound of identical refusals, three by default, the
+lane is handed back as stuck, with a bound or without, and a fresh drive on the same
+state carries the count on; the time between them does not matter. A step of the lane
+that succeeds clears the count, and a refusal of another kind starts its own. The
+runner's own hand-in is also a failed launch, so under a bound the third such launch in
+a row hands the lane back too; a receipt found standing and consumed is a refused step
+and no launch. A set-aside that fails is the record's line and leaves the receipt
+standing, the step counted and the pause written all the same. A receipt refused for
+anything else stays and stops the lane in a drive too. What stands at an agent's path when it is handed out, or when a
 runner is claimed for it, is set aside unread. A paused role whose route the person has since
 moved to the host is handed to the host by the next step, its pause cleared
 and the person's route, not a fallback, recorded. The

@@ -383,11 +383,19 @@ plain `step` also reads, or `step --restart`), and a drain hands the lane back a
 stuck at its bounds. A `--route` for that role is refused. That stop is a host-stepped
 run's: under `abcd drain --drive`, which steps the run itself, a receipt refused for the
 work it reports (it names this run, lane and branch in the schema abcd reads) is set
-aside under the lane's `aside/`, kept, in the same write as the refusal, which counts as
-a refused step; the run record's line names the refusal, and the next step starts the
-implementer again on its runner. If it cannot be set aside, the record says so, the
-receipt stands and the pause is written as ever. A receipt refused for anything else
-stops the lane under a drive too.
+aside in a new directory under the lane's `aside/`, kept, in the same write as the
+refusal, with the report and the definition of done's output it names when each is a
+regular file of the lane's own directory, reached through no link, not under `aside/`
+and of no name already moved there; anything else stays and the record says so. Only
+the bytes judged are moved: a file replaced since, or a role a runner has claimed since,
+is left for the next step to read and not counted. The run record's line names the
+refusal and the digest of the bytes judged, and the next step starts the implementer
+again on its runner. Each consumed receipt, found standing or handed in by its runner,
+counts as a refused step under one check, whatever it lacked, so the third in a row
+hands the lane back at the drain's stuck bound of identical refusals, three by default;
+the runner's hand-in is also a failed launch of the drive's. If it cannot be set aside,
+the record says so, the receipt stands, the step is counted and the pause is written as
+ever. A receipt refused for anything else stops the lane under a drive too.
 What stands at an agent's path when it is handed out, or when a runner is claimed
 for it, is set aside unread under the lane's `aside/`. A `--route`
 for a held role retries it at once on that route, as the step's one move; a

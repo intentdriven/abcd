@@ -261,9 +261,13 @@ nothing but the bound, the cap, an empty ledger or a stop ends the run:
   the spending, is put to a short probe: an answer shows the account is alive, which
   makes it the work's, and a rejection or no answer counts nothing. An implementer's
   receipt refused for the work it reports is set aside, kept under the lane's `aside/`,
-  and the implementer started again, so each such receipt is one of the three; a receipt
-  refused for anything else stays at its path and stops the lane until the stuck bounds
-  below hand it back. A lane stuck by those bounds goes back from the drive to the next
+  and the implementer started again. Each such receipt counts as a refused step under one
+  check, whatever it lacked, so the third in a row (the stuck bound of identical refusals
+  below, three by default) hands the lane back as stuck, with or without `--until`, and a
+  fresh drive on the same state carries the count on. Under `--until` the runner's hand-in
+  of one is also one of the three failures; one found standing and consumed is a refused
+  step and no launch. A receipt refused for anything else stays at its path and stops the
+  lane until the stuck bounds below hand it back. A lane stuck by those bounds goes back from the drive to the next
   move, which hands it back; given the same lane again, the drive first waits as an idle
   drive does, thirty seconds at least. A judge is judged
   the same way against its issue, so one at its deadline having spent is held back while

@@ -653,9 +653,17 @@ started over that work, `next` names the ways out, correcting the receipt (then
 `implement step --restart <lane>`, and a drain hands the lane back as stuck at
 its bounds. Under `abcd drain --drive`, which steps the run itself, a receipt refused
 for the work it reports (it names this run, lane and branch) is set aside instead, in
-the same write, kept under the lane's `aside/` with the refusal in the run record, and
-counted; the next step starts the implementer again, so the drain's stuck bounds hand
-the lane back, and under `--until` so does the third such launch in a row. A receipt refused for anything else stops the lane there too. A role already with you, from a step before its route existed,
+the same write, kept in a new directory under the lane's `aside/`, with the report and
+the definition of done's output it names when each is a regular file of the lane's own
+directory (no link followed, nothing taken from `aside/`, nothing written over; anything
+else stays where it is and the run record says so), and the refusal and the digest of
+the bytes judged in the run record. A receipt replaced since it was judged, or a role a
+runner has claimed since, is left for the next step to read and not counted. The next
+step starts the implementer again. Each consumed receipt counts as a refused step under
+one check, whatever it lacked, so the third in a row (the drain's stuck bound of
+identical refusals, three by default) hands the lane back as stuck, with or without
+`--until`, and a fresh drive on the same state carries the count on; a step of the lane
+that succeeds clears it. A receipt refused for anything else stops the lane there too. A role already with you, from a step before its route existed,
 whose receipt you have not written is retried the same way, so do not start an
 agent for it once its role is routed. A paused role whose route has since
 moved to the host is handed to you by the next step that hands no other agent
