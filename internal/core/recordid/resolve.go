@@ -498,7 +498,37 @@ func readDirIfPresent(dir string) ([]os.DirEntry, error) {
 // memory note's id (mem, internal/core/memnote) is one too, since the memory
 // recall brings notes back into running text (spc-2610111627213138 step 2).
 var handleInTextRe = regexp.MustCompile(
-	`(?i)(?:^|[^A-Za-z0-9-])((?:adr|itd|spc|iss|dcn|rdi|rdg|dsp|adm|srp|rfm|cond|mem)-[0-9]+)(?:$|[^A-Za-z0-9])`)
+	`(?i)(?:^|[^A-Za-z0-9-])((?:` + handleFamilies + `)-[0-9]+)(?:$|[^A-Za-z0-9])`)
+
+// handleFamilies are the families handleInTextRe finds, as an alternation.
+const handleFamilies = `adr|itd|spc|iss|dcn|rdi|rdg|dsp|adm|srp|rfm|cond|mem`
+
+// idNumberHeadRe is what stands before a numbered id's number: a family
+// HandleInText finds, or a build run's (run, which the same allocator mints),
+// opening a word, then the hyphen.
+var idNumberHeadRe = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9-])(?:` + handleFamilies + `|run)-$`)
+
+// IDNumberAt reports whether text[start:end] is the whole number of a numbered
+// id written in running text: decimal digits only, directly after a family and
+// its hyphen, with no letter or digit after them (a hyphen may follow, as a
+// slug does). It is how a reader that looks for some other name in prose, a
+// commit's among them, knows a record id's digits are not one.
+func IDNumberAt(text string, start, end int) bool {
+	if start < 0 || end > len(text) || start >= end {
+		return false
+	}
+	for i := start; i < end; i++ {
+		if text[i] < '0' || text[i] > '9' {
+			return false
+		}
+	}
+	if end < len(text) {
+		if c := text[end]; c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' {
+			return false
+		}
+	}
+	return idNumberHeadRe.MatchString(text[:start])
+}
 
 // HandleInText returns the first record handle the text carries, and whether it
 // carries one. It is the one answer the principles lint and the reading

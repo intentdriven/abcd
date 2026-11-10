@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -79,7 +80,9 @@ func NormalizeLineBreaks(text string) string { return lineBreaks.Replace(text) }
 //     emphasis stripped, its words joined by a space, a hyphen or an underscore, in
 //     capitals) that ends the line or is followed by a separator;
 //   - subject is named in full, on that line or on a `Head: <name>` line directly
-//     under the heading, and no other name stands on either.
+//     under the heading, and no other name stands on either: a run of hex holding a
+//     digit is another name, unless it is all digits and the number of a record id
+//     (recordid.IDNumberAt), as the digits of iss-2611060835372141 are.
 //
 // subject is named in full because a head's name is a hash over the text it reviews,
 // which therefore cannot hold it, and only the full name is. It returns the word as
@@ -118,12 +121,13 @@ func ReadVerdict(text, subject string) (string, error) {
 		return "", fmt.Errorf("its verdict %s is not one a validator writes", clip(line))
 	}
 	abbreviated := false
-	for _, name := range verdictNames.FindAllString(rest, -1) {
-		switch {
+	for _, at := range verdictNames.FindAllStringIndex(rest, -1) {
+		switch name := rest[at[0]:at[1]]; {
 		case name == subject:
 			named = true
 		case strings.HasPrefix(subject, name):
 			abbreviated = true
+		case recordid.IDNumberAt(rest, at[0], at[1]):
 		case strings.ContainsAny(name, "0123456789"):
 			return "", namesOther(name, subject)
 		}
@@ -138,7 +142,7 @@ func ReadVerdict(text, subject string) (string, error) {
 }
 
 // verdictNames is a name on a verdict line. A run of hex letters with no digit in it
-// is a word unless it is the name itself.
+// is a word unless it is the name itself, and a record id's number is that id's.
 var verdictNames = regexp.MustCompile(`\b(?:sha256:)?[0-9a-f]{7,64}\b`)
 
 // verdictNameLine is a labelled line naming what a verdict judges and nothing else,
