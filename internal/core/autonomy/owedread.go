@@ -354,9 +354,9 @@ func (r *owedReader) expired() bool { return r.ctx.Err() != nil }
 // the created-branch list's store, the other worktrees, the fetch stamp, the
 // stack index, the reservations as last fetched, the live sessions, the merge
 // queue's rules and its armed set, and each call made through `r.git`.
-// TestEachOwedReadMarksASpentDeadline holds each of these but `r.git`. The pull-request listing and landed's merge-driver,
-// merge-tree and cherry reads are marked by ranOut instead, and finding the
-// checkout returns its error.
+// TestEachOwedReadMarksASpentDeadline holds each of these but `r.git`. The
+// pull-request listing and landed's merge-driver, merge-tree and cherry reads
+// are marked by ranOut instead, and finding the checkout returns its error.
 func (r *owedReader) cutShort(failed bool) bool {
 	if failed && r.expired() {
 		r.cut = true

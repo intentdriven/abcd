@@ -208,13 +208,15 @@ func TestTheLandingReceiptIsReadUnderTheDeadline(t *testing.T) {
 // passes through cutShort marks the reading cut short once the check's ctx has
 // ended, so the verdict fails open rather than judging from what the deadline
 // emptied: the author email, the holder, the default branch and the receipt
-// folder not read, a receipt not found, the runs' tracked check not made, a
-// created-branch list or the other worktrees not listed, the fetch stamp not
-// judged, the stack index cut short before it asks for a reflog, the
-// reservations as last fetched not read, the live sessions not read, and the
-// merge queue's rules and its armed pull requests not read. These are the
-// reads named here; the reader's other reads are marked by its git or by
-// ranOut, and this test does not hold them.
+// folder not read, a receipt not found, the runs' tracked check not made,
+// this copy's key for the created-branch list not read, the other worktrees
+// not listed, the fetch stamp not judged, the stack index cut short before it
+// asks for a reflog, the reservations as last fetched not read, the live
+// sessions not read, and the merge queue's rules and its armed pull requests
+// not read. These are the reads named here; the created-branch list's store
+// open is held by TestACreatedBranchStoreTheDeadlineEndsIsMarkedCutShort, and
+// the reader's other reads are marked by its git or by ranOut, which this test
+// does not hold.
 func TestEachOwedReadMarksASpentDeadline(t *testing.T) {
 	f := newFx(t)
 	if _, err := claim.CopyKey(f.root); err != nil {
@@ -238,9 +240,9 @@ func TestEachOwedReadMarksASpentDeadline(t *testing.T) {
 			r.lanes, r.runDrivers = nil, nil
 			r.readLanes()
 		},
-		"the created branches": func(r *owedReader) { r.recordedBranches() },
-		"the other worktrees":  func(r *owedReader) { r.checkedOutElsewhere() },
-		"the fetch stamp":      func(r *owedReader) { r.fetchedAt() },
+		"this copy's key":     func(r *owedReader) { r.recordedBranches() },
+		"the other worktrees": func(r *owedReader) { r.checkedOutElsewhere() },
+		"the fetch stamp":     func(r *owedReader) { r.fetchedAt() },
 		"the stack index": func(r *owedReader) {
 			r.baseNames, r.branches = []string{"main"}, map[string]*localBranch{"main": {name: "main", head: f.head("main")}}
 			r.stackIdx()
@@ -269,6 +271,35 @@ func TestEachOwedReadMarksASpentDeadline(t *testing.T) {
 				t.Error("the stack index, read once the deadline had ended, still indexed a base and asked for its reflog")
 			}
 		})
+	}
+}
+
+// TestACreatedBranchStoreTheDeadlineEndsIsMarkedCutShort: the created-branch
+// list's store is opened once this copy's key is read, and the open asks git
+// for the root commit under the check's ctx. A ctx still live when the key is
+// read and ended while that root-commit lookup hangs marks the reading cut
+// short by the store open's own mark: the key read, which answered, marks
+// nothing.
+func TestACreatedBranchStoreTheDeadlineEndsIsMarkedCutShort(t *testing.T) {
+	f := newFx(t)
+	if _, err := claim.CopyKey(f.root); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_, stalled := stallNthGit(t, "--max-parents=0", 1, cancel)
+	r := &owedReader{ctx: ctx, root: f.root, home: f.home}
+	start := time.Now()
+	got := r.recordedBranches()
+	took := time.Since(start)
+	if !stalled() {
+		t.Fatal("the store's root-commit lookup never came, so the key read did not answer; the test proves nothing")
+	}
+	if took >= 60*time.Second {
+		t.Errorf("the check waited out the hung git (%s)", took)
+	}
+	if !r.cut || got != nil {
+		t.Errorf("a created-branch store the deadline ended while it opened: cut %v, list %q; want cut and no list", r.cut, got)
 	}
 }
 

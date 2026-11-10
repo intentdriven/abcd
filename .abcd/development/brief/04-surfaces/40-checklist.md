@@ -159,9 +159,9 @@ the secret scanner's identity probe, the session's identity and holder, the
 default branch, the last-fetch stamp, the landing-receipt read, this copy's
 key and the reservations' view as last fetched, which the deadline cut short
 reads as not read, never as no reservation. The stop check's other reads are
-not yet bound to it (iss-2611100548341325). The away session's state, read once that
-deadline may be spent, runs under a two-second bound of its own. How a spent deadline shows depends on where it is
-spent. When the reading of
+not yet bound to it (iss-2611100548341325). The away session's state, read
+once that deadline may be spent, runs under a two-second bound of its own. How
+a spent deadline shows depends on where it is spent. When the reading of
 owned work is cut short, the list is not read: the stop goes through with that
 reading's own message to the person, saying what was not read, adds no block
 for the list, leaves no note and writes no line about the list. Only a
