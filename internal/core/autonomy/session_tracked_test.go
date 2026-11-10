@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -162,6 +163,32 @@ func TestTheFetchStampIsJudgedUnderTheDeadline(t *testing.T) {
 	r := &owedReader{ctx: ctx, root: repo.Root()}
 	if got := r.fetchedAt(); got != "an unknown time" {
 		t.Errorf("a spent deadline still named the fetch: %q", got)
+	}
+	if n := calls(); n != 0 {
+		t.Errorf("a spent deadline still ran git %d time(s)", n)
+	}
+}
+
+// TestTheLandingReceiptIsReadUnderTheDeadline: the owed read asks for a
+// head's landing receipt under its own ctx, so a spent deadline forks no git
+// for it, and the head reads as having none.
+func TestTheLandingReceiptIsReadUnderTheDeadline(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	repo.Write(".gitignore", ".abcd/.work.local/\n")
+	repo.Commit("seed")
+	head := repo.Git("rev-parse", "HEAD")
+	repo.Write(landing.ReceiptsRelDir+"/"+head, "commit "+head+"\n")
+	calls := countGit(t)
+	if !(&owedReader{ctx: context.Background(), root: repo.Root()}).hasReceipt(head) {
+		t.Fatal("a live ctx found no receipt; the test proves nothing")
+	}
+	if calls() == 0 {
+		t.Fatal("a live ctx ran no git; the count proves nothing")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if (&owedReader{ctx: ctx, root: repo.Root()}).hasReceipt(head) {
+		t.Error("a spent deadline still found the receipt")
 	}
 	if n := calls(); n != 0 {
 		t.Errorf("a spent deadline still ran git %d time(s)", n)

@@ -436,7 +436,7 @@ func (r *owedReader) hasReceipt(head string) bool {
 	if head == "" {
 		return false
 	}
-	p, err := landing.Receipt(r.root, head)
+	p, err := landing.ReceiptContext(r.ctx, r.root, head)
 	return err == nil && p != ""
 }
 
