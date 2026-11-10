@@ -224,12 +224,19 @@
 // context that ends before everything is read stops the reading where it
 // is: Owed.Incomplete is set, a note says what was not read, and Judge
 // allows the stop with a line naming it, recording a StopCheckIncomplete
-// while away. A bound read the context ended is never taken for "nothing
-// there": it marks the reading cut short, which sets Owed.Incomplete, and
-// owes nothing on its own account (no preflight for a receipt it could not
-// read, no merge for an ancestry it could not ask). A branch with no upstream and no commit in any remote branch
-// is owed only when merging it into the last-fetched default branch would
-// change it; one squash- or rebase-merged already is not, and one that
-// cannot be told is a note. A listing at its limit of 200 may be truncated:
+// while away. These reads mark the reading cut short, which sets
+// Owed.Incomplete, when the context ended them: the author's identity, the
+// holder, the default branch, the receipt folder, the landing receipt, the
+// runs' tracked check, the created-branch list's store, the other worktrees,
+// the fetch stamp, the stack index, the live sessions' wait, the merge
+// queue's rules and its armed set, and each git call the reader runs itself.
+// The pull-request listing and the landing check's merge-driver, merge-tree
+// and cherry reads are marked when the reading runs out. Four of the reads owe nothing on their own account once the context
+// has ended: no preflight for a receipt it could not read, no merge for an
+// ancestry it could not ask, and no merge or arming for a merge queue's rules
+// or armed set it could not read. A branch with no upstream and no commit in
+// any remote branch is owed only when merging it into the last-fetched
+// default branch would change it; one squash- or rebase-merged already is
+// not, and one that cannot be told is a note. A listing at its limit of 200 may be truncated:
 // a note says so, and no reservation is reported uncarried from it.
 package autonomy
