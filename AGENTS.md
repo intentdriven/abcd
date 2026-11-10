@@ -17,8 +17,8 @@ reading any file loaded this file as its instructions (itd-2610030814013772).
 This repository uses the abcd modular rules loader. On `UserPromptSubmit`, a hook
 recall-matches the prompt against keyword triggers declared in the plugin-bundled
 default domains, the machine's `~/.abcd.noindex/rules.json` and `<repo>/.abcd/rules.json`,
-and injects only the matched domain rules into context — instead of
-force-loading the full ruleset every turn.
+and injects only the matched domain rules, then the memory it recalls —
+instead of the full ruleset every turn.
 A prompt that matches no domain injects no rules. Output stays under the host's
 10,000-character cap: a domain that does not fit shrinks to its first rule or the
 command alone, or waits a turn.
