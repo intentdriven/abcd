@@ -193,6 +193,92 @@ func TestAFreshDriveCarriesOnTheCountOfConsumedReceipts(t *testing.T) {
 	}
 }
 
+// TestAStandingReceiptThatBringsTheLaneToTheBoundStartsNoFurtherLaunch: a drive
+// killed after its second consumed receipt leaves the count at two; a third
+// receipt then stands under a claim that has lapsed, as a drive killed during its
+// third launch leaves it. A fresh drive's step finds it standing and consumes it,
+// which brings the lane to the stuck bound, so the implementer is not started
+// again in that call, and the lane is handed back as stuck with no launch between.
+func TestAStandingReceiptThatBringsTheLaneToTheBoundStartsNoFurtherLaunch(t *testing.T) {
+	for _, bound := range []bool{false, true} {
+		name := "with no bound"
+		if bound {
+			name = "under a bound"
+		}
+		t.Run(name, func(t *testing.T) {
+			refused := 0
+			w, o := refusingWorld(t, bound, refusedDifferently(func(n int) { refused = n }))
+			w.realWorktree()
+			// The first drive is killed in the wait after the second refusal: no
+			// stop is applied, so the lane stays in progress for a fresh drive.
+			ctx, kill := context.WithCancel(context.Background())
+			defer kill()
+			w.onSleep = func(time.Duration) {
+				if refused == 2 {
+					kill()
+				}
+			}
+			res, err := RunTerminal(ctx, w.repo.Root(), o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Ended != TerminalKilled || w.launches(t) != 3 {
+				t.Fatalf("the first drive is killed after starting the implementer twice: %+v, %d launches\n%s", res, w.launches(t), strings.Join(w.lines, "\n"))
+			}
+			drain, _, err := readDrain(w.repo.Root())
+			if err != nil {
+				t.Fatal(err)
+			}
+			runID := drain.Lanes[0].RunID
+			body := `{"a third receipt": "written by the agent of a drive that was killed"}`
+			if err := mutate(w.repo.Root(), runID, func(_ *os.Root, st *State) (bool, error) {
+				if r := st.Lanes[0].Refused; r == nil || r.Count != 2 || r.Check != consumedCheck {
+					t.Fatalf("the count is at two: %+v", r)
+				}
+				for k, a := range st.Lanes[0].Awaits {
+					if a.Role != RoleImplementer {
+						continue
+					}
+					st.Lanes[0].Awaits[k].Paused = nil
+					st.Lanes[0].Awaits[k].Running = &RunnerClaim{Runner: "claude", Session: "a-killed-drive", Until: w.clock.now().Add(-time.Minute)}
+					if err := os.WriteFile(absIn(w.repo.Root(), a.Receipt), []byte(body), 0o600); err != nil {
+						t.Fatal(err)
+					}
+					return true, nil
+				}
+				t.Fatal("the lane awaits its implementer")
+				return false, nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			o = w.refusingOptions(t, bound)
+			o.Stop = make(chan struct{})
+			o.Drain.Max = 0
+			if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+				t.Fatal(err)
+			}
+			if n := w.launches(t); n != 3 {
+				t.Fatalf("no launch follows the receipt that brought the lane to the bound: %d launches\n%s", n, strings.Join(w.lines, "\n"))
+			}
+			if drain, _, err = readDrain(w.repo.Root()); err != nil {
+				t.Fatal(err)
+			}
+			if len(drain.HandBacks) != 1 || drain.HandBacks[0].Kind != claim.HandBackStuck || !strings.Contains(drain.HandBacks[0].Reason, "3 times in a row") {
+				t.Fatalf("the lane is handed back as stuck: %+v\n%s", drain.HandBacks, strings.Join(w.lines, "\n"))
+			}
+			run, err := ReadState(w.repo.Root(), runID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.ContainsFunc(run.Record, func(e Entry) bool {
+				return e.Stage == StageRunner && strings.Contains(e.Note, "(it exited 3)") && strings.Contains(e.Note, "set aside at")
+			}) {
+				t.Fatal("the standing receipt is set aside and kept")
+			}
+		})
+	}
+}
+
 // TestAConsumedReceiptCountsAfterALaunchLongerThanTheGap: each launch takes
 // longer than the quiet that starts the stuck time afresh, and the third
 // consumed receipt in a row still hands the lane back.

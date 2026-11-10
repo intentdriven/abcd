@@ -458,9 +458,9 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 			"correct the receipt (or finish the lane) so it carries what is missing, then hand it back to `abcd implement receipt "+receiptRel+"`")
 		rf.work = !foreign
 		rf.judged = answerDigest(data)
-		rf.named = []laneNamed{{what: "the report", rel: rc.Report}}
+		rf.named = []laneNamed{{what: "the report", rel: rc.Report, assigned: ReportFileName}}
 		if rc.DefinitionOfDone != nil {
-			rf.named = append(rf.named, laneNamed{what: "the definition of done's output", rel: rc.DefinitionOfDone.Output})
+			rf.named = append(rf.named, laneNamed{what: "the definition of done's output", rel: rc.DefinitionOfDone.Output, assigned: DoDFileName})
 		}
 		return rf
 	}

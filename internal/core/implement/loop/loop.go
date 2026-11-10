@@ -468,6 +468,10 @@ type StepResult struct {
 	// carried to whatever answer a later move of the same call gives
 	// (carryStanding).
 	standing string
+	// consumed says the step consumed and counted a receipt it found standing
+	// (consumeStopped), so a drive checks the drain's stuck bounds before it
+	// retries the role in the same call (stuckAfterConsumed).
+	consumed bool
 	// RouteUnused is each `implement step --route` the step did not use: a
 	// landing ahead of its role moved first (route_use.go). Every other
 	// --route the step would not use is refused before anything is written.
@@ -1060,6 +1064,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	}
 	var res StepResult
 	var wait error
+	counted := false
 	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		// A stop may have come since the check: under the lock nothing acts on a
 		// run that took one.
@@ -1109,7 +1114,8 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		// one that did not would drop the record's line and the count while the
 		// file stays moved. The window's return does, the refusal's path does
 		// through consumed, and the success path does through changed.
-		consumed := consumeStopped(repoRoot, root, st, stopped, now)
+		consumed, n := consumeStopped(repoRoot, root, st, stopped, now)
+		counted = n
 		if consumed {
 			changed = true
 		}
@@ -1159,6 +1165,9 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	})
 	if err == nil && wait != nil {
 		err = wait
+	}
+	if err == nil {
+		res.consumed = counted
 	}
 	if len(stopped) > 0 {
 		// What a consumed receipt became is said in its own words.
