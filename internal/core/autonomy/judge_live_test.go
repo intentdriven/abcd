@@ -114,7 +114,16 @@ func TestLiveWorkBoundIsOnePreflight(t *testing.T) {
 	}
 }
 
-// TestLiveWorkPastTheBound: a session that has waited on live work for one
+// TestShortDuration: a bound is shown as a person reads it.
+func TestShortDuration(t *testing.T) {
+	for d, want := range map[time.Duration]string{18 * time.Hour: "18h", 18*time.Hour + 30*time.Minute: "18h30m", 90 * time.Second: "1m30s", 20 * time.Minute: "20m"} {
+		if got := shortDuration(d); got != want {
+			t.Errorf("shortDuration(%s) = %q, want %q", d, got, want)
+		}
+	}
+}
+
+// TestLiveWorkPastTheBound:a session that has waited on live work for one
 // unchanged capped set longer than the bound is held to today's rule: with
 // the count at two the wake is refused, and the reason says the wait is
 // older than the bound. The span is measured from the first waiting turn,

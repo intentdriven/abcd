@@ -384,8 +384,13 @@ func presentLine(owed Owed) string {
 // shortDuration is d as a person reads it: 18h, not 18h0m0s.
 func shortDuration(d time.Duration) string {
 	s := d.String()
-	s = strings.TrimSuffix(s, "0s")
-	return strings.TrimSuffix(s, "0m")
+	if strings.HasSuffix(s, "m0s") {
+		s = strings.TrimSuffix(s, "0s")
+	}
+	if strings.HasSuffix(s, "h0m") {
+		s = strings.TrimSuffix(s, "0m")
+	}
+	return s
 }
 
 func clock(t time.Time, loc *time.Location) string {
