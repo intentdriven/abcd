@@ -1252,7 +1252,7 @@ worktree keeps its own, and it is **never committed**:
 .abcd/.work.local/
   checklist.json             the list, written only by the checklist verbs
   checklist.last-good.json   the same checked bytes, kept as the fallback
-  checklist.lock             held across every read, change and write
+  checklist.lock             held across each read-change-write cycle
   checklist.events.jsonl     one line per compaction, appended by the hook
 ```
 
@@ -1283,11 +1283,15 @@ Three properties are load-bearing:
   temporary file a killed writer left is never read. Whether that holds
   across a crash or a power cut is not yet shown: the spec's crash lab
   (spc-2610230805429429 step 7) has not run.
-- **A hook reads within its deadline.** The session-start and stop hooks read
-  the list under the hook's own deadline, its one git call included; a
-  deadline spent before or during the read leaves the list out of that hook's
-  output, said on its error stream, rather than reading it as a list that
-  names nothing.
+- **A hook reads within its deadline.** The session-start and stop hooks make
+  every git call on the list's way under the hook's own deadline: the
+  checkout's root, the session's copy and the read's tracked check. At a
+  session start, a deadline spent before or during the read leaves the list
+  out, said on the error stream. At a stop, a reading of owned work the
+  deadline cut short lets the stop through with that reading's own incomplete
+  message and reads no list; only a deadline spent at the list's own read
+  writes a line on the error stream. Either way no note is left, and a list
+  git did not answer for in time is never read as one that names nothing.
 
 ## The two `.abcd/` scopes
 

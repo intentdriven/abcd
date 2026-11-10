@@ -107,11 +107,13 @@ set naming them, and
 while they are present the next prompt carries the same note. Bring the list
 up to date with `add` or `set` when it does.
 
-The hooks read the list within their own deadlines. When a session start or a
-stop runs out of time before the list is read, that hook leaves the list out,
-names it in one line on stderr and goes on: a start shows no list, and a stop
-adds no block for the list and leaves no note. Run the bare verb to see the
-list then.
+The hooks read the list within their own deadlines, every git call included.
+A session start that runs out of time before the list is read shows no list
+and says so in one line on stderr. A stop whose reading of owned work runs out
+of time does not read the list: it goes through with that reading's own
+message saying what was not read, and leaves no note. A stop that runs out of
+time at the list's own read says so in one line on stderr, adds no block for
+the list and leaves no note. Run the bare verb to see the list then.
 
 A write starts from what the reader returns: when checklist.json fails its
 checks it builds on the last good copy, and when both fail it starts a new
