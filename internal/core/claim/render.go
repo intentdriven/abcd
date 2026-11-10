@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -162,7 +163,12 @@ func count(n int, noun string) string {
 // that cannot be told. It is never pushed: a hold made before the holder id
 // names it (Self.Login).
 func readerHolder(root string, o Options) string {
-	who, err := gitIdentity(root)
+	return readerHolderContext(context.Background(), root, o)
+}
+
+// readerHolderContext is readerHolder with git's identity read under ctx.
+func readerHolderContext(ctx context.Context, root string, o Options) string {
+	who, err := gitIdentityContext(ctx, root)
 	if err != nil {
 		return ""
 	}
@@ -178,3 +184,9 @@ func readerHolder(root string, o Options) string {
 // told. Whether a hold is the person's own is ReaderSelf's to say, since a
 // hold made since the holder id names no login.
 func ReaderHolder(root string, o Options) string { return readerHolder(root, o) }
+
+// ReaderHolderContext is ReaderHolder with its git reads bound to ctx, for a
+// hook on a deadline: a ctx already ended forks no git and answers "".
+func ReaderHolderContext(ctx context.Context, root string, o Options) string {
+	return readerHolderContext(ctx, root, o)
+}

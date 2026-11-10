@@ -40,13 +40,15 @@ const (
 	checklistRenderBudget = sessionStartOutputCap - sessionStartMargin
 )
 
-// sessionStartBudget is the session-start hook's one deadline, counted from
-// the hook's start: the checklist's part of the hook runs under it, every git
-// call included (the checkout root's lookup, the read's tracked check and the
-// scanner's identity probe), and a deadline spent before or during it leaves
-// the checklist out of this start, said on stderr in a checkout abcd manages.
-// The host gives the hook's shell 240 seconds, a first run's download of the binary among them, so a
-// minute keeps the read well inside what the host allows.
+// sessionStartBudget is the deadline the session-start hook sets at its start
+// for its checklist part, and only that part runs under it, every git call of
+// it included (the checkout root's lookup, the read's tracked check and the
+// scanner's identity probe): a deadline spent before or during it leaves the
+// checklist out of this start, said on stderr in a checkout abcd manages. The
+// rest of the hook's git calls are not bound to it (iss-2611100548341325).
+// The host gives the hook's shell 240 seconds, a first run's download of the
+// binary among them, so a minute keeps the read well inside what the host
+// allows.
 //
 // A var only so a test can spend it.
 var sessionStartBudget = time.Minute
@@ -171,6 +173,10 @@ func checklistPromptNote(ctx context.Context, stderr io.Writer, cwd, sessionID s
 	}
 	note, err := autonomy.TakeChecklistNote(ctx, copyRoot, sessionID)
 	if err != nil {
+		// A deadline spent leaves the note waiting, and is no fault to name.
+		if ctx.Err() != nil {
+			return ""
+		}
 		diagnosticLine(stderr, "abcd checklist: no behind note is shown (%s)", fsutil.RedactHome(err.Error()))
 		return ""
 	}

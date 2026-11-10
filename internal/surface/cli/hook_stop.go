@@ -57,8 +57,7 @@ var stopReadBudget = 14 * time.Second
 
 // stopStateBudget bounds the away session's state read, the one git call it
 // makes (the tracked check) included, which follows the owed read and so
-// starts once stopReadBudget may already be spent: two seconds keeps the hook
-// within the twenty the read budget's comment counts.
+// starts once stopReadBudget may already be spent.
 var stopStateBudget = 2 * time.Second
 
 // stopBlockCapEnv names the host's setting that raises its continuation cap.
@@ -164,8 +163,8 @@ nothing.`,
 				return stopAllow(cmd, "unreadable Stop payload (%s)", termsafe.Sanitize(err.Error()))
 			}
 			// Naming the checkout and the session's copy run under the one
-			// deadline too. The reservations' reader, inside the owed read,
-			// is the one git reader on this path not yet bound to it.
+			// deadline too, as does every git call of the owed read but the
+			// reservations' view (iss-2611100548341325).
 			root, ok := managedRootContext(ctx, p.Cwd)
 			if !ok {
 				if ctx.Err() != nil && looksManaged(p.Cwd) {

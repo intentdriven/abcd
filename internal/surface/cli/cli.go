@@ -2170,9 +2170,10 @@ outside the dedup ledger.`,
 		Short: "SessionStart: drain staged transcripts into the store, and warn about an unbootstrapped store or a stale binary",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// The hook's one deadline, set before anything else runs: the
-			// checklist's part, last, runs under what is left of it, every
-			// git call included (hook_checklist.go, sessionStartBudget).
+			// The checklist part's deadline, set before anything else runs:
+			// that part, last, runs under what is left of it, every git call
+			// of it included; the rest of the hook is not bound to it
+			// (hook_checklist.go, sessionStartBudget).
 			ctx, cancel := context.WithTimeout(context.Background(), sessionStartBudget)
 			defer cancel()
 			in, err := readHookInput(cmd)

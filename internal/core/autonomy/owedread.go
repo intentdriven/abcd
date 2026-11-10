@@ -137,7 +137,7 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 	}
 	r.away = o.Record.Holds(r.now)
 	if r.email == "" {
-		if id, err := identity.EffectiveIdentity(root); err == nil {
+		if id, err := identity.EffectiveIdentityContext(ctx, root); err == nil {
 			r.email = id.Email
 		}
 	}
@@ -146,7 +146,7 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 	if r.away {
 		r.person = o.Person
 		if r.person == "" {
-			r.person = claim.ReaderHolder(root, claim.Options{Home: home})
+			r.person = claim.ReaderHolderContext(ctx, root, claim.Options{Home: home})
 		}
 		forge := o.Forge
 		if forge == nil {
@@ -773,7 +773,7 @@ func (r *owedReader) fetchedAt() string {
 			}
 		}
 	}
-	if t := claim.LastFetched(r.root); !t.IsZero() {
+	if t := claim.LastFetchedContext(r.ctx, r.root); !t.IsZero() {
 		return showTime(t)
 	}
 	return "an unknown time"
