@@ -192,6 +192,11 @@ The one exception is the drive (itd-2610222215485265,
 [adr-2610222222326104](../../decisions/adrs/2610222222326104-abcd-drives-agents-with-no-host-session.md)):
 typed in a plain terminal, on the person's own yes, it makes these moves itself, on
 one separate login under `~/.abcd.noindex/profiles/`, one subscription and no other.
+The harness takes a reviewer's class model by name, with no provider block
+(iss-2611080057001367), and the start refuses, before anything is reserved, a
+review set with a reviewer no route on the machine can launch, naming the role,
+the model and the configuration to set (`runner.Config.CanLaunch`, the admission
+the dispatch makes).
 Each iteration is one move under the drain's lock for that move alone; a
 lane is driven in-process through `loop.Drive` and `DriveReview`, every role on the
 launch on that login; a landing that waits for its receipt has its preflight run behind the

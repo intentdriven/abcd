@@ -400,6 +400,17 @@ rather than skipped:
   one model, and matching ignores case, OpenRouter's `~` alias prefix and a
   `:variant` suffix. No layer removes another's entry, and a block listing a
   model an entry matches is refused, naming the entry, whatever else it lists.
+- **The subscription harness takes a model by name** (iss-2611080057001367).
+  A model a runner request asks for, such as a review set's class, is admitted
+  against its provider's list, except when the runner that will run it is the
+  claude harness and this machine configures no block for the provider: the
+  harness is handed the model's name alone and runs it on the person's own
+  login, spending no provider key, so the route is admitted without a block.
+  An `oracle.denylist` entry matching the model or the whole route still
+  refuses it, a provider the machine does configure still holds every runner
+  to its list, and opencode, which spends a provider's key, never takes a
+  model this way. `runner.<name>.model` and a `--route`'s model are still
+  admitted against a configured provider when they are read.
 - **A route is `<provider>/<model>`.** A role or a judgement type the
   machine's file points at a model its provider does not list is refused naming
   the list. The same route in a repository's `.abcd/config.json`, to a provider

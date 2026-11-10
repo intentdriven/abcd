@@ -818,6 +818,24 @@ func (c *APIConfig) Admit(provider, model string) error {
 		provider, listNames(p.Models))
 }
 
+// Refuses is the denylist's part of Admit alone, for a model asked of a
+// harness that takes it by name with no provider block (the runner's
+// subscription harness, iss-2611080057001367): the denylist's refusal when an
+// oracle.denylist entry matches the model, or the whole <provider>/<model>
+// route, so a vendor entry (anthropic/*) refuses that vendor's route too; nil
+// otherwise. It reads no provider block and admits nothing on its own.
+func (c *APIConfig) Refuses(provider, model string) error {
+	if c == nil {
+		return nil
+	}
+	for _, m := range []string{model, provider + "/" + model} {
+		if e, denied := Denied(c.denylist, m); denied {
+			return errors.New(denial(e))
+		}
+	}
+	return nil
+}
+
 // listNames renders a list for a refusal, bounded.
 func listNames(ms []string) string {
 	const shown = 10

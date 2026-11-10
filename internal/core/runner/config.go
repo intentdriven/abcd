@@ -25,7 +25,13 @@ package runner
 //     so abcd bundles no vendor denylist and the allowlist alone decides, and
 //     an oracle.denylist entry the configuration writes still refuses a model
 //     it matches), so a route off the list is refused before any runner can
-//     be launched.
+//     be launched. A model a request asks for (a review set's class) is
+//     admitted the same way, with one exception (admitModelFor,
+//     iss-2611080057001367): when the runner that will run it is the claude
+//     subscription harness and the machine configures no block for its
+//     provider, it is admitted by name, since the harness spends no provider
+//     key; the denylist still refuses it, and a configured provider's list
+//     still decides.
 //   - runner.fallback_host names the enabled runner that runs a role when abcd
 //     runs with no host session (the intent's Decision 2).
 //
@@ -309,8 +315,10 @@ func (c *Config) providerConfigured(provider string) bool {
 	return ok
 }
 
-// admitModel is the allowlist check a model route passes when it is read and
-// again before a runner is launched.
+// admitModel is the allowlist check a model route passes when it is read
+// (runner.<name>.model, a --route's model): the provider is configured on this
+// machine, lists the model, and no oracle.denylist entry matches it. A model a
+// request asks of a known runner is admitted by admitModelFor instead.
 func (c *Config) admitModel(route string) error {
 	provider, model, ok := strings.Cut(route, "/")
 	if !ok || provider == "" || model == "" {
@@ -318,6 +326,81 @@ func (c *Config) admitModel(route string) error {
 	}
 	if err := c.api.Admit(provider, model); err != nil {
 		return fmt.Errorf("which is refused before any runner is launched: %w", err)
+	}
+	return nil
+}
+
+// admitModelFor is the admission a request's model passes for target, the
+// runner that will run it (Host for the host session), when the dispatch
+// begins and again at the launch. It is admitModel, with one exception
+// (iss-2611080057001367): the claude runner, the subscription harness, takes a
+// model by its name alone (askedModel) and runs it on the person's own login,
+// spending no provider key, so for it a route whose provider this machine does
+// not configure is admitted without a provider block, provided the route is
+// <provider>/<model> in plain characters and no oracle.denylist entry matches
+// the model or the route. A provider the machine does configure keeps its list
+// for every runner, claude included, and opencode, the host and every other
+// runner keep admitModel whole: none of them is ever admitted this way.
+func (c *Config) admitModelFor(target, route string) error {
+	provider, model, ok := strings.Cut(route, "/")
+	if target != Claude || !ok || provider == "" || model == "" || c.providerConfigured(provider) {
+		return c.admitModel(route)
+	}
+	if !modelRe.MatchString(route) {
+		return fmt.Errorf("which is not a <provider>/<model> route of at most 128 plain characters")
+	}
+	if err := c.api.Refuses(provider, model); err != nil {
+		return fmt.Errorf("which is refused before any runner is launched: %w", err)
+	}
+	return nil
+}
+
+// admitRequest is everything a request's model is held to before target
+// launches it, given the role's route: the admission (admitModelFor) and the
+// two rules of holdRequestModel. Dispatch and CanLaunch both answer through
+// it, so a drive's start and its dispatch cannot disagree.
+func (c *Config) admitRequest(route Route, target string, req Request) error {
+	if err := c.admitModelFor(target, req.Model); err != nil {
+		return fmt.Errorf("runner: the model %q asked for %s, %w", req.Model, req.Role, err)
+	}
+	return c.holdRequestModel(route, target, req)
+}
+
+// target is the runner a role on route runs on: the route's runner, or, for a
+// role on the host with no host session, the configured fallback host ("" for
+// none).
+func (c *Config) target(route Route, hostSession bool) string {
+	if route.Runner == Host && !hostSession {
+		return c.fallback
+	}
+	return route.Runner
+}
+
+// CanLaunch reports whether role can be launched at model on this machine, as
+// Dispatch would admit it (admitRequest), with or without a host session: nil
+// when it can, else a refusal naming the role, the model and the configuration
+// that would let it run. It names configuration keys and the machine's file
+// as abcd displays it, never a secret or an absolute path. A drive asks it of
+// every reviewer in its review set before it opens a lane.
+func (c *Config) CanLaunch(role, model string, hostSession bool) error {
+	route := c.RouteFor(role)
+	target := c.target(route, hostSession)
+	provider, _, _ := strings.Cut(model, "/")
+	remedy := fmt.Sprintf("set %s.%s listing it in %s, or route %s.%s.%s to a runner that can launch it",
+		"oracle.api", layered.BoundKey(provider), layered.Config.MachineOrigin(), rolesKey, role, runnerKey)
+	switch {
+	case target == "":
+		return fmt.Errorf("runner: the %s's model %s cannot be launched: the role is on the host, there is no host session "+
+			"and no %s.%s is configured; set it in %s, or route %s.%s.%s to a runner", role, layered.BoundKey(model),
+			runnerKey, fallbackKey, layered.Config.MachineOrigin(), rolesKey, role, runnerKey)
+	case target != Host:
+		if _, ok := c.runners[target]; !ok {
+			return fmt.Errorf("runner: the %s's model %s cannot be launched: the role runs on %s, which is not enabled on "+
+				"this machine; set %s.%s in %s", role, layered.BoundKey(model), target, runnerKey, target, layered.Config.MachineOrigin())
+		}
+	}
+	if err := c.admitRequest(route, target, Request{Role: role, Model: model}); err != nil {
+		return fmt.Errorf("runner: on %s, %s; %s", target, strings.TrimPrefix(err.Error(), "runner: "), remedy)
 	}
 	return nil
 }

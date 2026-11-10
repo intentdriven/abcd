@@ -50,6 +50,13 @@ link moved to such a file only holds a waiting release back, with one line sayin
 run carries on. A credential variable the harness would bill through, set in the environment,
 refuses the start, naming `itd-2611011230226453`.
 
+The harness takes a reviewer's model by its name, so the bundled review set runs with no
+provider block in `~/.abcd.noindex/config.json`. Where the file does configure that
+provider under `oracle.api.<provider>`, its list still decides which models may run, and an
+`oracle.denylist` entry still refuses one. A review set with a reviewer no route on this
+machine can launch refuses the start, before anything is reserved, naming the role, the
+model and what to set.
+
 **Two subscriptions, two directories.** With one directory there the drive runs on it.
 With several it refuses, naming them, until `--profile <name>` names the one to run on:
 
