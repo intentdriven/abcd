@@ -1298,6 +1298,16 @@ Three properties are load-bearing:
   message and reads no list; only a deadline spent at the list's own read
   writes a line on the error stream. Either way no note is left, and a list
   git did not answer for in time is never read as one that names nothing.
+- **The hooks' unbound git calls are counted, and the count only falls.** A
+  test in `internal/surface/cli/hook_git_audit_test.go` walks the calls from
+  each hook verb's entry and lists the git calls it reaches that take no
+  context: a plain `exec.Command`, a gitutil or localtier call that has a
+  Context form, and a call of one of theirs that reaches such a call. It
+  compares that list with `internal/surface/cli/testdata/hook-git-baseline.txt`:
+  a reached call missing from the file fails the test, and so does an entry no
+  longer reached, so entries are only ever removed, as calls are bound
+  (dcn-2611100854404911). While the file lists any call, some hook git calls
+  still run with no deadline.
 
 ## The two `.abcd/` scopes
 
