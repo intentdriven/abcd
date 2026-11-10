@@ -1916,7 +1916,9 @@ outside the dedup ledger.`,
 			// The checklist's behind note a present session's last stop left
 			// (spc-2610230805429429 step 4), carried once, beside the away
 			// block and outside the dedup ledger.
-			away.Block = joinBlocks(checklistPromptNote(cmd.ErrOrStderr(), cwd, in.SessionID), away.Block)
+			noteCtx, noteCancel := context.WithDeadline(context.Background(), deadline)
+			away.Block = joinBlocks(checklistPromptNote(noteCtx, cmd.ErrOrStderr(), cwd, in.SessionID), away.Block)
+			noteCancel()
 			rs, err := rulesForHook(root)
 			if err != nil {
 				// rules.Load errors already carry their own "rules:" prefix, so
@@ -2169,8 +2171,8 @@ outside the dedup ledger.`,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// The hook's one deadline, set before anything else runs: the
-			// checklist's read, last, runs under what is left of it
-			// (hook_checklist.go, sessionStartBudget).
+			// checklist's part, last, runs under what is left of it, every
+			// git call included (hook_checklist.go, sessionStartBudget).
 			ctx, cancel := context.WithTimeout(context.Background(), sessionStartBudget)
 			defer cancel()
 			in, err := readHookInput(cmd)

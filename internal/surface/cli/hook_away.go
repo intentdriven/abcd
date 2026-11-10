@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -106,7 +107,12 @@ func readAwayFailOpen(stderr io.Writer, cwd string) (*autonomy.Record, bool, boo
 // manages it (autonomy.Managed). Every away hook and the branch recorder ask
 // it first: outside a managed checkout they read nothing, write nothing and
 // say nothing, and run no git at all where the checkout's .git is a folder.
-func managedRoot(cwd string) (string, bool) {
+func managedRoot(cwd string) (string, bool) { return managedRootContext(context.Background(), cwd) }
+
+// managedRootContext is managedRoot with its git calls bound to ctx, for a
+// hook on a deadline: a call ctx ended answers false, and the caller tells a
+// spent deadline from an unmanaged checkout by ctx.Err.
+func managedRootContext(ctx context.Context, cwd string) (string, bool) {
 	if cwd == "" {
 		return "", false
 	}
@@ -119,11 +125,11 @@ func managedRoot(cwd string) (string, bool) {
 	if shaped == "" {
 		return "", false
 	}
-	if fi, err := os.Lstat(filepath.Join(shaped, ".git")); err == nil && fi.IsDir() && !autonomy.Managed(shaped) {
+	if fi, err := os.Lstat(filepath.Join(shaped, ".git")); err == nil && fi.IsDir() && !autonomy.ManagedContext(ctx, shaped) {
 		return "", false
 	}
-	root, err := gitutil.CheckoutRoot(cwd, autonomy.StoreName)
-	if err != nil || !autonomy.Managed(root) {
+	root, err := gitutil.CheckoutRootContext(ctx, cwd, autonomy.StoreName)
+	if err != nil || !autonomy.ManagedContext(ctx, root) {
 		return "", false
 	}
 	return root, true

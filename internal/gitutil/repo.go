@@ -567,8 +567,19 @@ var ErrNoCheckoutRoot = errors.New("no checkout root")
 //     which is the same lost trail this resolution exists to prevent. Every
 //     store this resolves for is per-repository by definition.
 func CheckoutRoot(cwd, store string) (string, error) {
-	if top, err := Toplevel(cwd); err == nil {
+	return CheckoutRootContext(context.Background(), cwd, store)
+}
+
+// CheckoutRootContext is CheckoutRoot bound to ctx, for a hook on a deadline:
+// the same answers, with git killed when ctx ends. A lookup ctx ended answers
+// ctx's own error, so a caller can tell a spent deadline from a refusal.
+func CheckoutRootContext(ctx context.Context, cwd, store string) (string, error) {
+	top, err := ToplevelContext(ctx, cwd)
+	if err == nil {
 		return top, nil
+	}
+	if ctx.Err() != nil {
+		return "", ctx.Err()
 	}
 	// Neither message carries the working directory: an error envelope never
 	// leaks an absolute local path (iss-76), and the caller already knows where
@@ -987,6 +998,23 @@ func RevParseAbsPath(dir, flag string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return absPathAnswer(out, flag)
+}
+
+// RevParseAbsPathContext is RevParseAbsPath bound to ctx, for a hook on a
+// deadline: the same question and the same refusal, with git killed when ctx
+// ends and the context's own error returned (RunLimitedContext).
+func RevParseAbsPathContext(ctx context.Context, dir, flag string) (string, error) {
+	out, err := RunLimitedContext(ctx, dir, toplevelCap, "rev-parse", "--path-format=absolute", flag)
+	if err != nil {
+		return "", err
+	}
+	return absPathAnswer(out, flag)
+}
+
+// absPathAnswer is RevParseAbsPath's refusal of an answer that is not exactly
+// one absolute line.
+func absPathAnswer(out, flag string) (string, error) {
 	if out == "" || strings.ContainsAny(out, "\r\n") || !filepath.IsAbs(out) {
 		return "", fmt.Errorf("git rev-parse %s named no single absolute path (--path-format needs git 2.31 or later)", flag)
 	}

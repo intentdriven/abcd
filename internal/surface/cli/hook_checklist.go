@@ -41,9 +41,10 @@ const (
 )
 
 // sessionStartBudget is the session-start hook's one deadline, counted from
-// the hook's start: the checklist's read, its one git call included, runs
-// under it, and a deadline spent before or during the read leaves the
-// checklist out of this start, said on stderr. The host gives the hook's
+// the hook's start: the checklist's part of the hook runs under it, every git
+// call included, the checkout root's lookup and the read's tracked check, and
+// a deadline spent before or during it leaves the checklist out of this
+// start, said on stderr. The host gives the hook's
 // shell 240 seconds, a first run's download of the binary among them, so a
 // minute keeps the read well inside what the host allows.
 //
@@ -67,10 +68,11 @@ func emitSessionStart(ctx context.Context, cmd *cobra.Command, composed, cwd str
 // working copy that has never had a checklist (the intent re-injects "a
 // session with a checklist"), and otherwise checklist.Render of what the
 // reader returns, which carries its own line when it fell back or found
-// nothing usable. It reads no network and writes nothing. The read runs under
-// the hook's deadline (ctx): a deadline spent before or during it leaves the
-// checklist out and says so on stderr, so a checklist git did not answer for
-// in time is never shown as one git could not judge.
+// nothing usable. It reads no network and writes nothing. Its git calls, the
+// root's lookup and the read's, run under the hook's deadline (ctx): a
+// deadline spent before or during them leaves the checklist out and says so on
+// stderr, so a checklist git did not answer for in time is never shown as one
+// git could not judge, and a spent deadline runs no git at all.
 func sessionStartChecklist(ctx context.Context, stderr io.Writer, cwd string, budget int) (text string) {
 	// A start is never failed for the checklist: a panic in the read or the
 	// render is the line, not a crash of the hook.
@@ -83,10 +85,6 @@ func sessionStartChecklist(ctx context.Context, stderr io.Writer, cwd string, bu
 	if stageActive() {
 		return ""
 	}
-	root, ok := managedRoot(cwd)
-	if !ok || !checklistFilesExist(root) {
-		return ""
-	}
 	spent := func() bool {
 		if ctx.Err() == nil {
 			return false
@@ -94,7 +92,16 @@ func sessionStartChecklist(ctx context.Context, stderr io.Writer, cwd string, bu
 		diagnosticLine(stderr, "abcd checklist: the checklist was not read at this start, the hook's time being spent; `abcd checklist` shows it")
 		return true
 	}
+	// A deadline already spent runs no git at all, not even the root's.
 	if spent() {
+		return ""
+	}
+	root, ok := managedRootContext(ctx, cwd)
+	if !ok {
+		spent()
+		return ""
+	}
+	if !checklistFilesExist(root) {
 		return ""
 	}
 	res := checklist.ReadContext(ctx, root)
@@ -142,15 +149,18 @@ func recordCompaction(w io.Writer, cwd, trigger string) {
 // It reads the session's state in the working copy the session acts from, and
 // nothing else: no owed reading, no network. Outside a managed checkout, on a
 // drive's stage, or with a session id the store cannot key, it adds nothing;
-// a state that cannot be read adds nothing and is named on stderr.
-func checklistPromptNote(stderr io.Writer, cwd, sessionID string) string {
-	if stageActive() || !autonomy.ValidSessionID(sessionID) {
+// a state that cannot be read adds nothing and is named on stderr. Its git
+// calls, naming the checkout and the session's copy, run under the prompt
+// hook's one deadline (ctx); a deadline spent first leaves the note waiting in
+// the state for a later prompt.
+func checklistPromptNote(ctx context.Context, stderr io.Writer, cwd, sessionID string) string {
+	if stageActive() || !autonomy.ValidSessionID(sessionID) || ctx.Err() != nil {
 		return ""
 	}
-	if _, ok := managedRoot(cwd); !ok {
+	if _, ok := managedRootContext(ctx, cwd); !ok {
 		return ""
 	}
-	copyRoot, _, err := autonomy.ResolveCopy(cwd, sessionID, autonomy.Options{})
+	copyRoot, _, err := autonomy.ResolveCopyContext(ctx, cwd, sessionID, autonomy.Options{})
 	if err != nil {
 		return ""
 	}

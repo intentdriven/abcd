@@ -157,12 +157,20 @@ nothing.`,
 			if err != nil {
 				return stopAllow(cmd, "unreadable Stop payload (%s)", termsafe.Sanitize(err.Error()))
 			}
-			root, ok := managedRoot(p.Cwd)
+			// Naming the checkout and the session's copy run under the one
+			// deadline too, so no git call the hook makes outlasts it.
+			root, ok := managedRootContext(ctx, p.Cwd)
 			if !ok {
+				if ctx.Err() != nil {
+					return stopAllow(cmd, "the checkout was not named in the stop check's time")
+				}
 				return nil // not a checkout abcd manages: nothing to check, and no git spent
 			}
-			copyRoot, st, err := autonomy.ResolveCopy(root, p.SessionID, autonomy.Options{})
+			copyRoot, st, err := autonomy.ResolveCopyContext(ctx, root, p.SessionID, autonomy.Options{})
 			if err != nil {
+				if ctx.Err() != nil {
+					return stopAllow(cmd, "the away store was not found in the stop check's time")
+				}
 				return nil // not a checkout abcd can key a store on: nothing to check
 			}
 			now, loc := stopClock()

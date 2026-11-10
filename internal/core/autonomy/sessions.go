@@ -1,6 +1,7 @@
 package autonomy
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -128,15 +129,22 @@ func (s Store) SessionCopy(sessionID string) (string, bool) {
 // repository keys. The store is keyed on the root commit, so every worktree
 // of the repository opens the same one and finds the note.
 func ResolveCopy(cwd, sessionID string, o Options) (string, Store, error) {
-	root, st, err := Resolve(cwd, o)
+	return ResolveCopyContext(context.Background(), cwd, sessionID, o)
+}
+
+// ResolveCopyContext is ResolveCopy bound to ctx, for a hook on a deadline:
+// every git call it makes is killed when ctx ends. A noted copy whose check
+// ctx cut short is not confirmed, as one git cannot answer for.
+func ResolveCopyContext(ctx context.Context, cwd, sessionID string, o Options) (string, Store, error) {
+	root, st, err := ResolveContext(ctx, cwd, o)
 	if err != nil {
 		return root, st, err
 	}
 	if c, ok := st.SessionCopy(sessionID); ok {
 		// A noted copy git cannot answer for is not confirmed, and the
 		// session acts from cwd's worktree, as when it is no repository.
-		if top, err := gitutil.Toplevel(c); err == nil {
-			if sha, err := gitutil.RootCommit(top); err == nil && sha == st.RootSHA() {
+		if top, err := gitutil.ToplevelContext(ctx, c); err == nil {
+			if sha, err := gitutil.RootCommitContext(ctx, top); err == nil && sha == st.RootSHA() {
 				return top, st, nil
 			}
 		}

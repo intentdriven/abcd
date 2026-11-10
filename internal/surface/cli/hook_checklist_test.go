@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -218,6 +220,28 @@ func TestSessionStartChecklistReadKeepsTheDeadline(t *testing.T) {
 	}
 	if !strings.Contains(se, "checklist was not read") {
 		t.Errorf("a spent deadline is not named on stderr: %q", se)
+	}
+}
+
+// TestSessionStartSpentDeadlineRunsNoGit: a deadline spent before the
+// checklist's part of the start runs no git for it, not even the checkout
+// root's lookup, and says so on stderr; the hook-level test above shows the
+// start still exits 0.
+func TestSessionStartSpentDeadlineRunsNoGit(t *testing.T) {
+	root := checklistCheckout(t)
+	mustChecklist(t, "add", "Land step three")
+	log := gitCallLog(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var se bytes.Buffer
+	if got := sessionStartChecklist(ctx, &se, root, 4000); got != "" {
+		t.Errorf("a spent deadline still rendered the checklist: %q", got)
+	}
+	if !strings.Contains(se.String(), "checklist was not read") {
+		t.Errorf("a spent deadline is not named on stderr: %q", se.String())
+	}
+	if calls, _ := os.ReadFile(log); len(calls) != 0 {
+		t.Errorf("a spent deadline still ran git:\n%s", calls)
 	}
 }
 
