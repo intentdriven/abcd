@@ -1,8 +1,9 @@
 # Keep memory notes
 
 A memory note is a short lesson an agent keeps so that a later session does
-not have to learn it again. Agents write notes on their own, through abcd's
-agents' command for memory. This guide shows how to write one by hand, review
+not have to learn it again. Agents write notes on their own with
+`abcd memory add`; the memory command is meant for agents, so it is not in a
+person's command menu. This guide shows how to write one by hand, review
 the notes kept for you, and see what a prompt brings back. For what notes are
 and how they differ from the library, see
 [Library and memory](../explanation/memory.md).
@@ -39,16 +40,18 @@ exits 2 and writes nothing.
 
 ## Review your notes
 
-Count the notes kept for this repository, for every repository, and in the
-project's file:
+Count the personal notes tied to this repository and those recalled
+everywhere, and the notes in the project's file:
 
 ```bash
 abcd memory
 ```
 
-It also names any memory file it could not read, and why. Read the notes
-themselves, each with its body, recall words, who wrote it, when, in which
-session, and whether it is tied to this repository or recalled everywhere:
+When some of your notes are tied to other repositories, it says how many. It
+also names any memory file it could not read, and why. Read the notes in both
+files, each with its body, recall words, who wrote it, when, in which session,
+its origin, and its reach: this repository, everywhere, another repository, or
+the project's file:
 
 ```bash
 abcd memory list
@@ -74,9 +77,11 @@ abcd rules --prompt "why do the tests fail under load?"
 It shows, for that one prompt in a fresh session, the rule domains it matches
 with the words that hit, then each note and page it would recall with its
 rank, its score and the terms that scored it, and the form each would take:
-in full or as one line. Without `--fill` it does not know how full a session
-is, so it shows the form used when nothing tells: rules in full, notes and
-pages as one line each. To see a session that is 65% full:
+in full, as one line, or left out of that turn for want of room. Without
+`--fill` it does not know how full a session is, so it shows the forms used
+when nothing tells: rules in full where the turn has room, and notes and pages
+as one line each, best-ranked first within a small bound, at least the top
+one. To see a session that is 65% full:
 
 ```bash
 abcd rules --prompt "why do the tests fail under load?" --fill 65

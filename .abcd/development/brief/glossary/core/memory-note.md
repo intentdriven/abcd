@@ -15,7 +15,7 @@ versions: null
 
 # memory note
 
-A **memory note** is know-how that finds you. An agent writes one with `abcd memory add` when it learns something worth keeping ("the person wants every question to carry an example"), together with the words that should bring it back. The same loader that brings in the project's rules brings the note back when a prompt matches those words, so no one has to remember to look it up. A note lives in the machine's `~/.abcd.noindex/memory.json` and is recalled in the repository it was written in, or in every repository when written with `--everywhere`. A note in the project's `.abcd/memory.json` is recalled for every agent working in the project; it gets there only through a person's reviewed change to that file, since no command promotes a note.
+A **memory note** is know-how that finds you. An agent writes one with `abcd memory add` when it learns something worth keeping ("the person wants every question to carry an example"), together with the words that should bring it back. The same loader that brings in the project's rules brings the note back when a prompt matches those words, so no one has to remember to look it up. A note lives in the machine's `~/.abcd.noindex/memory.json` and is recalled in the repository it was written in, or in every repository when written with `--everywhere`. A note in the project's `.abcd/memory.json` is recalled in that project when a prompt matches it; it gets there only through a person's reviewed change to that file, since no memory command writes that file.
 
 ## When to use
 
