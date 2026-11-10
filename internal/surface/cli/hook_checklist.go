@@ -127,7 +127,7 @@ func checklistPromptNote(stderr io.Writer, cwd, sessionID string) string {
 	}
 	note, err := autonomy.TakeChecklistNote(copyRoot, sessionID)
 	if err != nil {
-		diagnosticLine(stderr, "abcd checklist: the behind note could not be read (%s)", fsutil.RedactHome(err.Error()))
+		diagnosticLine(stderr, "abcd checklist: no behind note is shown (%s)", fsutil.RedactHome(err.Error()))
 		return ""
 	}
 	if note == "" {

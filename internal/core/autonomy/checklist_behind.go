@@ -1,12 +1,14 @@
 package autonomy
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/checklist"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // checklist_behind.go is the checklist's behind check (spc-2610230805429429
@@ -24,6 +26,16 @@ import (
 // maxBehindNamed is how many references the note names before it counts the
 // rest.
 const maxBehindNamed = 10
+
+// notePrefix opens every note Note words; a note read back without it was not
+// abcd's and is dropped.
+const notePrefix = "abcd: your checklist is behind the work this session owns: "
+
+// maxNoteBytes bounds a note read back from the session's state: the fixed
+// words, under 512 bytes, and the two lists' maxBehindNamed names each, a name
+// at most clean's 2*echoCap bytes with its separator. A note Note words is
+// never longer, so a real one loses nothing.
+const maxNoteBytes = 512 + 2*maxBehindNamed*(2*echoCap+2)
 
 // Behind is what a checklist does not keep up with.
 type Behind struct {
@@ -93,7 +105,7 @@ func (b Behind) Note() string {
 	if len(b.Moved) > 0 {
 		parts = append(parts, namedRefs(b.Moved)+" moved after it was last written")
 	}
-	return "abcd: your checklist is behind the work this session owns: " + strings.Join(parts, "; ") +
+	return notePrefix + strings.Join(parts, "; ") +
 		". Bring it up to date now, with `abcd checklist add` or `abcd checklist set`, naming each in an item's owner_refs, so it is current before a compaction can come."
 }
 
@@ -172,19 +184,31 @@ func JudgeChecklist(v Verdict, b Behind, in StopInput, st SessionState, away boo
 	return v, st, false
 }
 
+// ErrChecklistNoteForeign is TakeChecklistNote's word for a note in the
+// session's state that abcd did not word: it is cleared and nothing is shown.
+var ErrChecklistNoteForeign = errors.New("the behind note in the session's state is not one abcd words, so it was dropped")
+
 // TakeChecklistNote is the behind note the stop hook left for this session,
 // cleared as it is taken, so one note reaches one prompt; "" when none waits.
 // The noted set is kept, so the same set is not noted again until the
 // checklist has caught up.
+//
+// The note is read back from a file any process of this account can write, so
+// it is cleaned as it is read, not only as it was written: one line, no
+// control or bidi character, within maxNoteBytes, and opening with the words
+// Note opens with, so it can never start a heading of its own in the prompt.
 func TakeChecklistNote(copyRoot, sessionID string) (string, error) {
 	st, err := LoadSession(copyRoot, sessionID)
 	if err != nil || st.ChecklistNote == "" {
 		return "", err
 	}
-	note := st.ChecklistNote
+	note := termsafe.CleanProseLine(st.ChecklistNote, maxNoteBytes)
 	st.ChecklistNote = ""
 	if err := SaveSession(copyRoot, sessionID, st); err != nil {
 		return "", err
+	}
+	if !strings.HasPrefix(note, notePrefix) {
+		return "", ErrChecklistNoteForeign
 	}
 	return note, nil
 }

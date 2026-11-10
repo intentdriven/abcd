@@ -51,7 +51,9 @@ var stopClock = func() (time.Time, *time.Location) { return time.Now(), nil }
 // within about 20 seconds, well inside the host's 30-second timeout. A read
 // the budget cuts short is incomplete, and the stop is allowed, naming what
 // was not read (spc-2610180914469489, "Diff review round 1", major 6).
-const stopReadBudget = 14 * time.Second
+//
+// A var only so a test can spend it.
+var stopReadBudget = 14 * time.Second
 
 // stopBlockCapEnv names the host's setting that raises its continuation cap.
 const stopBlockCapEnv = "CLAUDE_CODE_STOP_HOOK_BLOCK_CAP"
@@ -188,7 +190,7 @@ nothing.`,
 				}
 			}
 			v := autonomy.Judge(rec, owed, in, prev, now)
-			v = stopChecklistBehind(cmd, copyRoot, p.SessionID, owed, in, prev, v, away)
+			v = stopChecklistBehind(ctx, cmd, copyRoot, p.SessionID, owed, in, prev, v, away)
 			if v.Save {
 				if err := autonomy.SaveSession(copyRoot, p.SessionID, v.State); err != nil {
 					return stopAllow(cmd, "the session's state could not be saved (%s)", fsutil.RedactHome(err.Error()))
@@ -216,9 +218,22 @@ nothing.`,
 // not blocked, and the note is left in the session's state for the next
 // prompt. A session id the store cannot key, or a reading cut short, leaves
 // the verdict as it was, and a present state that cannot be read or saved
-// leaves no note, naming why on stderr.
-func stopChecklistBehind(cmd *cobra.Command, copyRoot, sessionID string, owed autonomy.Owed, in autonomy.StopInput, prev autonomy.SessionState, v autonomy.Verdict, away bool) autonomy.Verdict {
+// leaves no note, naming why on stderr. The checklist's read runs under the
+// hook's one deadline (ctx): a deadline spent before or during it leaves the
+// verdict as it was, so a checklist git did not answer for in time is never
+// read as one that lists nothing.
+func stopChecklistBehind(ctx context.Context, cmd *cobra.Command, copyRoot, sessionID string, owed autonomy.Owed, in autonomy.StopInput, prev autonomy.SessionState, v autonomy.Verdict, away bool) autonomy.Verdict {
 	if !autonomy.ValidSessionID(sessionID) || owed.Incomplete {
+		return v
+	}
+	spent := func() bool {
+		if ctx.Err() == nil {
+			return false
+		}
+		diagnosticLine(cmd.ErrOrStderr(), "abcd stop: the checklist was not read, the stop check's time being spent; the stop goes as judged without it")
+		return true
+	}
+	if spent() {
 		return v
 	}
 	if !away {
@@ -231,7 +246,9 @@ func stopChecklistBehind(cmd *cobra.Command, copyRoot, sessionID string, owed au
 	}
 	res := checklist.Result{Source: checklist.FromNothing}
 	if len(owed.Owned) > 0 {
-		res = checklist.Read(copyRoot)
+		if res = checklist.ReadContext(ctx, copyRoot); spent() {
+			return v
+		}
 	}
 	v, present, save := autonomy.JudgeChecklist(v, autonomy.CheckBehind(owed.Owned, res), in, prev, away)
 	if save {

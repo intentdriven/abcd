@@ -2,6 +2,7 @@ package checklist
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -74,7 +75,9 @@ var ErrNotKept = errors.New("checklist: the checklist file here does not keep th
 // judged is the file whose owner is read.
 var (
 	ownerOf = fsutil.InfoOwnerUID
-	gitRun  = gitutil.Run
+	gitRun  = func(ctx context.Context, root string, args ...string) (string, error) {
+		return gitutil.RunLimitedContext(ctx, root, 1<<20, args...)
+	}
 )
 
 // ErrScannerUnavailable is the refusal when the native secret scanner cannot be
@@ -127,7 +130,7 @@ func write(repoRoot string, c Checklist) error {
 		return fmt.Errorf("%w: %s/ is not a plain directory in this checkout, and it is never created on the way to a write",
 			ErrNoLocalTier, TierRelPath)
 	}
-	if tracked, err := trackedFiles(repoRoot); err != nil {
+	if tracked, err := trackedFiles(context.Background(), repoRoot); err != nil {
 		return fmt.Errorf("checklist: asking git whether the checklist is tracked: %w", err)
 	} else if len(tracked) > 0 {
 		return ErrTracked
@@ -202,7 +205,12 @@ type Result struct {
 // a second failure answers FromNothing. It never writes, so a read never
 // promotes a file to last-good. A temp file a killed writer left is never
 // read: only the two named paths are.
-func Read(repoRoot string) Result {
+func Read(repoRoot string) Result { return ReadContext(context.Background(), repoRoot) }
+
+// ReadContext is Read with its one git call, the tracked check, bound to ctx:
+// when ctx ends, git is killed and the read answers as for a git that could
+// not say, FromNothing. A hook reads under its own deadline through it.
+func ReadContext(ctx context.Context, repoRoot string) Result {
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
 		return Result{Source: FromNothing, Reason: "No checklist to show: the checkout could not be opened."}
@@ -214,7 +222,7 @@ func Read(repoRoot string) Result {
 	case tierNotDir:
 		return Result{Source: FromNothing, Reason: "No checklist to show: .abcd/.work.local is not a plain directory in this checkout."}
 	}
-	tracked, trackedErr := trackedFiles(repoRoot)
+	tracked, trackedErr := trackedFiles(ctx, repoRoot)
 	if trackedErr != nil {
 		return Result{Source: FromNothing, Reason: "No checklist to show: git could not say whether the checklist files are tracked."}
 	}
@@ -392,8 +400,8 @@ func readKeptOnce(root *os.Root, rel string) (data []byte, why string, replaced 
 // so it tracks nothing; inside a checkout, any failure of git (absent, or
 // refusing a checkout another account owns) is an error, since the files
 // cannot then be vouched for.
-func trackedFiles(repoRoot string) (map[string]bool, error) {
-	out, err := gitRun(repoRoot, "ls-files", "-z", "--cached", "--", FileRelPath, LastGoodRelPath)
+func trackedFiles(ctx context.Context, repoRoot string) (map[string]bool, error) {
+	out, err := gitRun(ctx, repoRoot, "ls-files", "-z", "--cached", "--", FileRelPath, LastGoodRelPath)
 	if err != nil {
 		if !underGit(repoRoot) {
 			return nil, nil
@@ -630,7 +638,7 @@ func Update(repoRoot string, change func(Result) (Checklist, error)) error {
 		return fmt.Errorf("%w: %s/ is not a plain directory in this checkout, and it is never created on the way to a write",
 			ErrNoLocalTier, TierRelPath)
 	}
-	if tracked, err := trackedFiles(repoRoot); err != nil {
+	if tracked, err := trackedFiles(context.Background(), repoRoot); err != nil {
 		return fmt.Errorf("checklist: asking git whether the checklist is tracked: %w", err)
 	} else if len(tracked) > 0 {
 		return ErrTracked

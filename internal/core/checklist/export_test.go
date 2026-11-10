@@ -1,6 +1,7 @@
 package checklist
 
 import (
+	"context"
 	"os"
 	"time"
 )
@@ -25,7 +26,7 @@ func SwapOwnerForTest(fn func(os.FileInfo) (uint32, error)) (restore func()) {
 // that fails inside a checkout can be provoked, and returns the restore.
 func SwapGitForTest(fn func(string, ...string) (string, error)) (restore func()) {
 	was := gitRun
-	gitRun = fn
+	gitRun = func(_ context.Context, root string, args ...string) (string, error) { return fn(root, args...) }
 	return func() { gitRun = was }
 }
 

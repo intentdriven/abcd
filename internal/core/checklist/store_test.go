@@ -2,6 +2,7 @@ package checklist_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -815,4 +816,22 @@ func TestTheOpenedChecklistIsCheckedNotOnlyItsPath(t *testing.T) {
 			t.Fatalf("a last-good copy that is another file's second name was read: %+v", got)
 		}
 	})
+}
+
+// TestReadContextKeepsTheCallersDeadline: the read's git call runs under the
+// caller's context, so a context already ended reads nothing, as a git that
+// could not say does, and never waits on git.
+func TestReadContextKeepsTheCallersDeadline(t *testing.T) {
+	_, root := gitCheckout(t, "")
+	if err := checklist.WriteForTest(root, sample()); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got := checklist.ReadContext(ctx, root); got.Source != checklist.FromNothing || !strings.Contains(got.Reason, "git could not say") {
+		t.Fatalf("a read under an ended context = %+v", got)
+	}
+	if got := checklist.ReadContext(context.Background(), root); got.Source != checklist.FromFile {
+		t.Fatalf("a read under a live context = %+v", got)
+	}
 }
