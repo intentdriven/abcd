@@ -53,36 +53,47 @@ import (
 // command tree, every package's init, and each hook verb's Run and RunE
 // handlers. A command literal's Run and RunE are its only fields not followed
 // from the function that builds it: a hook's are rooted, and every other
-// verb's are left out, a call that builds one included.
+// verb's are left out, a call that builds one included. A hook verb whose
+// literal sets no Run or RunE (its handler set by assignment) is refused at
+// its entry, and so is a handler that is not a literal, a call or a module
+// function.
 //
 // A FLAGGED CALL is a use of exec.Command, os.StartProcess, syscall.Exec,
-// ForkExec or StartProcess, or an exec.Cmd composite literal; a use of a
-// gitutil or localtier function or method that has a sibling named
-// <Name>Context; a call from outside those two packages of one of theirs
-// that takes no context but reaches a flagged call; and a call passing a
-// deadline-free context to exec.CommandContext, to gitutil or localtier, to a
-// module function that reaches any of them, or to an interface method a
-// module implementation of which does. A context is deadline-free when it is
-// context.Background() or TODO(); WithCancel, WithCancelCause, WithValue or
-// WithoutCancel of one; a cobra command's Context(), which is Background as
-// run executes it; a call of a module function that returns one (to a
-// fixpoint, in any declaration order); or a variable or struct field
-// assigned or keyed-initialised one. Each is keyed on the system, the caller
-// (module-relative package and function, a literal as its enclosing function
-// with $lit, a handler built by a call with $run) and the callee, with the
-// number of times reached code makes it, never a line.
+// ForkExec or StartProcess; an exec.Cmd composite literal, declaration or
+// new(exec.Cmd); a use of a gitutil or localtier function or method that has a
+// sibling named <Name>Context; a call from outside those two packages of one
+// of theirs that takes no context but reaches a flagged call; and any
+// deadline-free context passed to a context parameter of a module function or
+// method (an interface method included) or of exec.CommandContext, whether or
+// not that callee reaches git. That last over-counts on purpose: a wrapper or
+// a constructor that carries the context on is caught where it is passed, and
+// an entry is lowered only by passing a real deadline. A context is
+// deadline-free when it is context.Background() or TODO(); WithCancel,
+// WithCancelCause, WithValue or WithoutCancel of one; a cobra command's
+// Context(), which is Background as run executes it; a call of a module
+// function that returns one; or a variable or struct field assigned or
+// keyed-initialised one. These are marked to one fixpoint over the whole
+// module before anything is walked, so the order of declarations and of
+// packages does not matter. Each flagged call is keyed on the system, the
+// caller (module-relative package and function, a literal as its enclosing
+// function with $lit, a handler built by a call with $run) and the callee,
+// with the number of times reached code makes it, never a line.
 //
 // NOT MATCHED, so not counted (a static walk cannot follow every route a
 // value takes): a deadline-free context passed through a call of a
-// function-typed variable or field (tools.Run's seam in internal/core/ahoy is
-// one), through a positional struct literal, a map, slice or channel, or a
-// function literal's result; new(exec.Cmd), and exec.Cmd or a context under an
-// alias type; a Run or RunE set by assignment, which is walked with the
-// function that sets it rather than rooted or pruned; a handler that calls on
+// function-typed variable or field (the Run seam of tools.Installer in
+// internal/core/tools/install.go is one), held in a positional struct
+// literal, a map, slice or channel, returned as one of several results
+// (ctx, err := f()), returned by an interface method or a function literal,
+// or made in a function literal called in place (the over-count catches most
+// of these where the context is passed on); exec.Cmd or a context under an
+// alias type; a Run or RunE set by assignment on a verb that is not a hook,
+// which is walked with the function that sets it; a handler that calls on
 // through a struct field holding a function; a call the standard library or
 // a dependency makes back into the module through an interface (String,
 // MarshalJSON, the fmt and errors callbacks Error, Is, As and Unwrap, a
-// sort.Interface); and reflection.
+// sort.Interface); and reflection. The hook scripts are read for the binary
+// called as "$g", "$x" or "$r/abcd"; a call by another spelling is not seen.
 
 // hookGitBaseline is the ratchet's file, beside this test.
 const hookGitBaseline = "testdata/hook-git-baseline.txt"
@@ -219,7 +230,7 @@ func TestHookGitAuditFollowsAndFlags(t *testing.T) {
 		"cmd/fx.(*disk).Read -> exec.Command x1",
 		"cmd/fx.helper -> gitutil.Run x1",
 		"cmd/fx.loadPlain -> localtier.Untracked x1",
-		"cmd/fx.newHook$lit -> exec.Cmd{} x1",
+		"cmd/fx.newHook$lit -> exec.Cmd x3",
 		"cmd/fx.newHook$lit -> gitutil.(Repo).Status x1",
 		"cmd/fx.newHook$lit -> gitutil.Run x2",
 		"cmd/fx.newHook$lit -> gitutil.RunContext(Background) x3",
@@ -241,6 +252,14 @@ func TestHookGitAuditFollowsAndFlags(t *testing.T) {
 		"cmd/fx.viaIface -> cmd/fx.(runner).Do(Background) x1",
 		"cmd/fx.viaProcess -> os.StartProcess x1",
 		"cmd/fx.viaProcess -> syscall.Exec x1",
+		"cmd/fx.viaProcess -> syscall.ForkExec x1",
+		"cmd/fx.viaProcess -> syscall.StartProcess x1",
+		// A field another package's code passes to git, set in this one; and a
+		// deadline-free context passed to any context parameter, a wrapper's
+		// and a constructor's, whether or not that callee reaches git.
+		"cmd/fx.viaParam -> cmd/fx.newT(Background) x1",
+		"cmd/fx.viaParam -> cmd/fx.withLog(Background) x1",
+		"internal/loop.(X).Run -> gitutil.RunContext(Background) x1",
 	}
 	// Each system is counted on its own: osCall makes two calls on darwin and
 	// one on linux, so a rise on linux is not hidden by darwin's count.
@@ -409,6 +428,18 @@ func Untracked(p string) bool { return UntrackedContext(context.Background(), p)
 
 func UntrackedContext(ctx context.Context, p string) bool { return ctx.Err() == nil && p != "" }
 `,
+	"internal/loop/loop.go": `package loop
+
+import (
+	"context"
+
+	"example.com/fx/internal/gitutil"
+)
+
+type X struct{ Context context.Context }
+
+func (x X) Run() { _ = gitutil.RunContext(x.Context) }
+`,
 	"cmd/fx/os_darwin.go": "package main\n\nimport \"example.com/fx/internal/gitutil\"\n\nfunc osCall() { _ = gitutil.Run(\"a\"); _ = gitutil.Run(\"b\") }\n",
 	"cmd/fx/os_linux.go":  "package main\n\nimport \"example.com/fx/internal/gitutil\"\n\nfunc osCall() { _ = gitutil.Run(\"a\") }\n",
 	"cmd/fx/main.go": `package main
@@ -421,6 +452,7 @@ import (
 
 	"example.com/fx/internal/gitutil"
 	"example.com/fx/internal/localtier"
+	"example.com/fx/internal/loop"
 )
 
 type Command struct {
@@ -484,6 +516,23 @@ func viaIface(r runner) { r.Do(context.Background()) }
 func viaProcess() {
 	_, _ = os.StartProcess("git", nil, nil)
 	_ = syscall.Exec("git", nil, nil)
+	_, _ = syscall.ForkExec("git", nil, nil)
+	_, _, _ = syscall.StartProcess("git", nil, nil)
+}
+
+func viaPkg() { loop.X{Context: context.Background()}.Run() }
+
+func withLog(ctx context.Context) context.Context { return ctx }
+
+type T struct{ ctx context.Context }
+
+func newT(ctx context.Context) *T { return &T{ctx: ctx} }
+
+func (t *T) Run() { _ = gitutil.RunContext(t.ctx) }
+
+func viaParam() {
+	_ = gitutil.RunContext(withLog(context.Background()))
+	newT(context.Background()).Run()
 }
 
 func tree() *Command {
@@ -508,6 +557,9 @@ func newHook(r reader) *Command {
 		_ = gitutil.Wrapped()
 		_ = gitutil.Repo{}.Status()
 		_ = &exec.Cmd{Path: "git"}
+		var c exec.Cmd
+		_ = c
+		_ = new(exec.Cmd)
 		helper()
 		r.Read()
 		load()
@@ -517,6 +569,8 @@ func newHook(r reader) *Command {
 		viaIface(gitRunner{})
 		viaProcess()
 		osCall()
+		viaPkg()
+		viaParam()
 		return nil
 	}}
 }
@@ -812,8 +866,8 @@ func hookGitAudit(root, mainPkg string, spec auditSpec, goos string) (hookCounts
 	g := &callGraph{
 		cmdPkg: spec.cmdPkg,
 		edges:  map[any][]any{}, flags: map[any][]string{}, ifaceUses: map[any][]*types.Func{},
-		bgCalls: map[any][]*types.Func{}, gitUse: map[any]bool{},
-		names: map[any]string{}, pkgs: map[string]*pkgDecls{}, funcs: map[string]*types.Func{},
+		bgCalls: map[any][]*types.Func{},
+		names:   map[any]string{}, pkgs: map[string]*pkgDecls{}, funcs: map[string]*types.Func{},
 		methodSets: map[types.Type]*types.MethodSet{}, resolved: map[*types.Func][]any{},
 		bgFuncs: map[*types.Func]bool{}, bgVars: map[*types.Var]bool{},
 	}
@@ -826,6 +880,12 @@ func hookGitAudit(root, mainPkg string, spec auditSpec, goos string) (hookCounts
 	if g.mod == "" {
 		return nil, errors.New("go list named no package of the main module")
 	}
+	type modPkg struct {
+		pkg   *types.Package
+		files []*ast.File
+		info  *types.Info
+	}
+	var mods []modPkg
 	fset := token.NewFileSet()
 	checked := map[string]*types.Package{"unsafe": types.Unsafe}
 	sizes := types.SizesFor("gc", runtime.GOARCH)
@@ -871,8 +931,26 @@ func hookGitAudit(root, mainPkg string, spec auditSpec, goos string) (hookCounts
 		}
 		checked[lp.ImportPath] = pkg
 		if mine {
-			g.addPackage(pkg, files, info)
+			mods = append(mods, modPkg{pkg, files, info})
 		}
+	}
+	// The deadline-free contexts are marked to one fixpoint over the whole
+	// module before anything is walked: a field one package passes to git may
+	// be set from Background in a package that imports it, and a function may
+	// return one declared after it.
+	for changed := true; changed; {
+		changed = false
+		for _, m := range mods {
+			if g.markBgVars(m.files, m.info) {
+				changed = true
+			}
+			if g.markBgFuncs(m.files, m.info) {
+				changed = true
+			}
+		}
+	}
+	for _, m := range mods {
+		g.addPackage(m.pkg, m.files, m.info)
 	}
 	return g.reach(spec)
 }
@@ -891,7 +969,6 @@ type callGraph struct {
 	flags       map[any][]string      // flagged uses, one per use
 	ifaceUses   map[any][]*types.Func // interface methods used
 	bgCalls     map[any][]*types.Func // callees passed a deadline-free context
-	gitUse      map[any]bool          // uses gitutil, localtier or os/exec
 	names       map[any]string
 	inits       []any
 	named       []*types.Named
@@ -973,15 +1050,6 @@ func (g *callGraph) addPackage(pkg *types.Package, files []*ast.File, info *type
 			}
 		}
 	}
-	// The deadline-free contexts first, to a fixpoint: variables and fields
-	// assigned one, and functions returning one, in any declaration order.
-	// A dependency's are already marked, go list naming it first.
-	for {
-		v, f := g.markBgVars(files, info), g.markBgFuncs(files, info)
-		if !v && !f {
-			break
-		}
-	}
 	for _, f := range files {
 		for _, d := range f.Decls {
 			switch d := d.(type) {
@@ -1015,6 +1083,9 @@ func (g *callGraph) addPackage(pkg *types.Package, files []*ast.File, info *type
 						}
 						name := g.rel(pkg.Path()) + "." + id.Name
 						g.names[v] = name
+						if vs.Type != nil && g.isExecCmd(vs.Type, info) {
+							g.flags[v] = append(g.flags[v], "exec.Cmd")
+						}
 						for _, e := range vs.Values {
 							g.walk(v, e, info, name)
 						}
@@ -1048,8 +1119,7 @@ func (g *callGraph) walk(node any, n ast.Node, info *types.Info, name string) {
 			return false
 		case *ast.CompositeLit:
 			if g.isExecCmd(x.Type, info) {
-				g.flags[node] = append(g.flags[node], "exec.Cmd{}")
-				g.gitUse[node] = true
+				g.flags[node] = append(g.flags[node], "exec.Cmd")
 			}
 			if !g.isCommandLit(x, info) {
 				return true
@@ -1062,7 +1132,18 @@ func (g *callGraph) walk(node any, n ast.Node, info *types.Info, name string) {
 				g.walk(node, el, info, name)
 			}
 			return false
+		case *ast.ValueSpec:
+			if x.Type != nil && g.isExecCmd(x.Type, info) {
+				for range x.Names {
+					g.flags[node] = append(g.flags[node], "exec.Cmd")
+				}
+			}
 		case *ast.CallExpr:
+			if id, ok := ast.Unparen(x.Fun).(*ast.Ident); ok && len(x.Args) == 1 {
+				if b, ok := info.Uses[id].(*types.Builtin); ok && b.Name() == "new" && g.isExecCmd(x.Args[0], info) {
+					g.flags[node] = append(g.flags[node], "exec.Cmd")
+				}
+			}
 			g.checkContextArgs(node, x, info)
 		case *ast.Ident:
 			g.use(node, info.Uses[x])
@@ -1289,9 +1370,6 @@ func (g *callGraph) use(node any, obj types.Object) {
 	switch o := obj.(type) {
 	case *types.Func:
 		o = o.Origin()
-		if p := o.Pkg(); p != nil && (g.gitPkg(p.Path()) || p.Path() == "os/exec") {
-			g.gitUse[node] = true
-		}
 		if k := g.flagKey(o); k != "" {
 			g.flags[node] = append(g.flags[node], k)
 		}
@@ -1401,47 +1479,6 @@ func (g *callGraph) successors(n any) []any {
 	return out
 }
 
-// reachesGit is every node from which some use of gitutil, localtier or
-// os/exec is reachable.
-func (g *callGraph) reachesGit() map[any]bool {
-	rev := map[any][]any{}
-	var queue []any
-	for n := range g.names {
-		for _, s := range g.successors(n) {
-			rev[s] = append(rev[s], n)
-		}
-		if g.gitUse[n] {
-			queue = append(queue, n)
-		}
-	}
-	seen := map[any]bool{}
-	for len(queue) > 0 {
-		n := queue[0]
-		queue = queue[1:]
-		if seen[n] {
-			continue
-		}
-		seen[n] = true
-		queue = append(queue, rev[n]...)
-	}
-	return seen
-}
-
-// implReachesGit says whether fn is an interface method some module
-// implementation of which reaches git.
-func (g *callGraph) implReachesGit(fn *types.Func, git map[any]bool) bool {
-	r := fn.Type().(*types.Signature).Recv()
-	if r == nil || !types.IsInterface(r.Type()) {
-		return false
-	}
-	for _, impl := range g.implementations(fn) {
-		if git[impl] {
-			return true
-		}
-	}
-	return false
-}
-
 // taintedGitNodes are the nodes of gitutil and localtier that make a flagged
 // call or reach, within those packages, one that does.
 func (g *callGraph) taintedGitNodes() map[any]bool {
@@ -1499,7 +1536,6 @@ func (g *callGraph) reach(spec auditSpec) (hookCounts, error) {
 		seen[n] = true
 		queue = append(queue, g.successors(n)...)
 	}
-	git := g.reachesGit()
 	tainted := g.taintedGitNodes()
 	out := hookCounts{}
 	for n := range seen {
@@ -1507,10 +1543,13 @@ func (g *callGraph) reach(spec auditSpec) (hookCounts, error) {
 		for _, k := range g.flags[n] {
 			out[name+" -> "+k]++
 		}
+		// Any deadline-free context passed to a module function's or
+		// method's context parameter, or to exec.CommandContext, is counted
+		// whether or not that callee reaches git: a wrapper or a constructor
+		// may carry it on, and the over-count is lowered only by passing a
+		// real deadline.
 		for _, fn := range g.bgCalls[n] {
-			if p := fn.Pkg().Path(); g.gitPkg(p) || p == "os/exec" || git[fn] || g.implReachesGit(fn, git) {
-				out[name+" -> "+g.calleeKey(fn)+"(Background)"]++
-			}
+			out[name+" -> "+g.calleeKey(fn)+"(Background)"]++
 		}
 		// A call from outside gitutil and localtier of one of theirs that
 		// takes no context and has no Context sibling, but reaches a flagged
