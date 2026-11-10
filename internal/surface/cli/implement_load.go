@@ -526,6 +526,9 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race, m
 	if res.MemoryNote != "" {
 		fmt.Fprintf(errOut, "abcd implement load %s: %s\n", flag, res.MemoryNote)
 	}
+	if res.MarkNote != "" {
+		fmt.Fprintf(errOut, "abcd implement load %s: %s\n", flag, res.MarkNote)
+	}
 	// A timeout's closing line is the last the wait says, so a renewal's message
 	// on a standard error sent to the same pipe cannot land after it.
 	if res.Status == implement.WaitTimedOut {
@@ -566,6 +569,11 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race, m
 	}
 	code, runErr := runGated(cmd, command, env, errOut, unmark)
 	unmark()
+	// The whole run's marker goes with its command, whatever the hold's form:
+	// above one slot the hold is a settle hold, never released here.
+	if res.EndMark != nil {
+		res.EndMark()
+	}
 	if res.Hold != nil && res.Hold.Form == implement.HoldCommand {
 		home, _ := abcdhome.MachineHome()
 		if err := implement.ReleaseWaitHold(home, *res.Hold); err != nil {

@@ -369,3 +369,44 @@ func TestImplementLoadRefusesAnUnknownSite(t *testing.T) {
 		}
 	}
 }
+
+// TestImplementLoadWaitSaysTheMarkNoteOnce: a whole run whose marker cannot
+// be written (a symlink stands at the markers' folder) says why once on
+// standard error, and its command still runs.
+func TestImplementLoadWaitSaysTheMarkNoteOnce(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3))
+	home, _ := os.UserHomeDir()
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), abcdhome.Path(home, implement.WholeRunsLeaf)); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--", "sh", "-c", "echo gated-command-ran")
+	if code != 0 || !strings.Contains(out, "gated-command-ran") {
+		t.Fatalf("exit %d, want the command run\n%s%s", code, out, errOut)
+	}
+	if n := strings.Count(errOut, "whole run's marker"); n != 1 || !strings.Contains(errOut, "could not be written") {
+		t.Fatalf("the marker's note said %d times, want once:\n%s", n, errOut)
+	}
+}
+
+// TestImplementLoadWaitEndsTheMarkerOnTheSettleHold: above one slot a whole
+// run takes the settle hold, which is not released when its command exits;
+// its marker stands while the command runs and goes when it exits.
+func TestImplementLoadWaitEndsTheMarkerOnTheSettleHold(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3))
+	t.Setenv(implement.PreflightSlotsEnv, "2")
+	home, _ := os.UserHomeDir()
+	marker := abcdhome.Path(home, implement.WholeRunsLeaf, "50000.json")
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--", "sh", "-c", `test -f "$1" && echo marker-present`, "sh", marker)
+	if code != 0 || !strings.Contains(out, "marker-present") {
+		t.Fatalf("exit %d, want the marker present while the command ran\n%s%s", code, out, errOut)
+	}
+	if _, err := os.Stat(abcdhome.Path(home, implement.WaitHoldFileName)); err != nil {
+		t.Fatalf("no settle hold stands after the command (%v): this is not the settle route", err)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("the marker outlived its command on the settle hold: %v", err)
+	}
+}
