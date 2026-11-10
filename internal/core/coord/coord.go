@@ -50,8 +50,13 @@ const (
 	// maxStateRunes is the most of an unknown state the error quotes.
 	maxStateRunes = 32
 	// maxChanges is the most changes one snapshot may hold; with maxDepends,
-	// it bounds the pass's work (cyclesReached).
+	// it bounds the cycle work (cyclesReached).
 	maxChanges = 500
+	// maxDependsRead is the most dependency numbers one change may carry as
+	// read, repeats included. With maxChanges it bounds the work of reading
+	// the dependencies (distinct), so the pass's whole work is bounded by its
+	// stated limits.
+	maxDependsRead = 1000
 )
 
 // State is where a change stands in the records.
@@ -99,8 +104,9 @@ type Change struct {
 // Records is the snapshot one pass reads. The records are written by other
 // agents, so the pass judges these fields before deciding anything: the time,
 // the wait limit, how many changes there are, each change's number, a number
-// read twice, the state against the set of known states, how many distinct
-// dependencies each change carries and each one's number, and each start
+// read twice, the state against the set of known states, how many dependency
+// numbers each change carries as read, how many distinct ones and each one's
+// number, and each start
 // against Now. A field it cannot judge refuses the change or the whole snapshot, never
 // queues. That a change is merged or queued is taken as the caller's verified
 // fact, not judged: land takes it from the forge's answer, never from a pull
@@ -157,9 +163,11 @@ type Decision struct {
 // snapshot it cannot judge is refused whole: no time, a wait limit that is not
 // positive or is above MaxWaitLimit, more than maxChanges changes, a change
 // with a number of zero or less, one read twice, an unknown state, more than
-// maxDepends distinct dependencies, or a dependency numbered zero or less. A
-// snapshot over maxChanges is refused on its count, its changes unread, and a
-// change over maxDepends on its count, its dependencies' numbers unjudged. The
+// maxDependsRead dependency numbers as read, more than maxDepends distinct
+// dependencies, or a dependency numbered zero or less. A snapshot over
+// maxChanges is refused on its count, its changes unread; a change over
+// maxDependsRead on its count, its dependencies unread; and a change over
+// maxDepends on its count, its dependencies' numbers unjudged. The
 // one error names the defects found, sorted and once each, at most maxNamed,
 // then how many more, so it is the same whatever order the records were read
 // in, and it quotes an unknown state cut to maxStateRunes. pass does not
@@ -203,9 +211,13 @@ func pass(r Records) ([]Decision, error) {
 			if !c.State.known() {
 				defects = append(defects, unknownState(c))
 			}
-			deps, ok := distinct(c.DependsOn)
-			if !ok {
+			var deps []int
+			if len(c.DependsOn) > maxDependsRead {
+				defects = append(defects, fmt.Sprintf("change #%d carries %d dependency numbers, above the most of %d", c.Number, len(c.DependsOn), maxDependsRead))
+			} else if d, ok := distinct(c.DependsOn); !ok {
 				defects = append(defects, fmt.Sprintf("change #%d depends on more than %d distinct numbers", c.Number, maxDepends))
+			} else {
+				deps = d
 			}
 			for _, n := range deps {
 				if n <= 0 {
@@ -315,15 +327,21 @@ type cycleReach struct {
 // connected group of two or more, so a diamond is none. Each change's
 // DependsOn is ascending and once each (pass), so no edge is read twice.
 //
-// Its cost, with N changes, E edges and C cycle groups: the groups are found
-// by one iterative walk (Tarjan's), with no recursion, in about N + E steps.
-// Each group then joins the ids of the cycle groups it reaches from the groups
-// it depends on, each finished before it, in at most E * C steps. Each cycle
-// group's member numbers are listed once; a group reaching one cycle group
-// shares that list, and one reaching several sorts their members together, at
-// most N numbers, once per group. pass holds N to maxChanges and E to
-// maxChanges * maxDepends, so the whole is a few million steps at most and
-// keeps at most N * C ids.
+// Its cost, with N changes, E edges and C cycle groups (C at most N): the
+// groups are found by one iterative walk (Tarjan's), with no recursion, in
+// about N + E steps. Each cycle group's member numbers are sorted once, at
+// most N log N comparisons in all. Each group then appends the ids of the
+// cycle groups reached through its edges, from groups finished before it, at
+// most E * C appends in all, and sorts them, at most E * C * log2(E * C)
+// comparisons in all. A group reaching one cycle group shares that group's
+// member list; one reaching several appends and sorts their members, at most
+// N numbers, so at most N * N appends and N * N * log2(N) comparisons over
+// every group. pass holds N to maxChanges and E to maxChanges * maxDepends:
+// at the bounds (N 500, E 5000) that is at most 2.5 million appends and tens
+// of millions of steps in all, the sorts' comparisons the most of them. It
+// keeps at most N * C ids in reach, and, through each change's shown, which
+// slices the list it was cut from, at most N member lists of at most N
+// numbers each.
 func cyclesReached(changes []Change, states map[int]State) map[int]cycleReach {
 	unmerged := func(st State) bool { return st == StateOpen || st == StateQueued }
 	var nodes []Change

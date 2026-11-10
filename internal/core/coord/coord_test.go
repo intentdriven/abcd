@@ -164,9 +164,9 @@ func TestPassDecides(t *testing.T) {
 				Change{Number: 2, State: StateOpen, DependsOn: []int{92, 91, 92, 91}, WaitingSince: start}),
 			[]Decision{{Change: 2, Action: ActionRefuse, WaitsOn: []int{91, 92},
 				Reason: atOnce + "depends on #91, #92, each of which has no record"}}},
-		{"ten distinct dependencies read many times over are judged",
+		{"ten distinct dependencies read a hundred times, the most read, are judged",
 			records(t0, append(merged(1, 10),
-				Change{Number: 11, State: StateOpen, DependsOn: repeated(10, 1000), WaitingSince: start})...),
+				Change{Number: 11, State: StateOpen, DependsOn: repeated(10, 100), WaitingSince: start})...),
 			[]Decision{{Change: 11, Action: ActionQueue}}},
 		{"a change on an open change that is itself refused waits to its own deadline",
 			records(t0,
@@ -641,6 +641,12 @@ func TestPassRefusesRecordsItCannotRead(t *testing.T) {
 		{"eleven distinct dependencies, below zero, are named for their count alone",
 			records(t0, Change{Number: 4, State: StateOpen, DependsOn: []int{-1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11}}),
 			"change #4 depends on more than 10 distinct numbers"},
+		{"a change carrying 1001 dependency numbers as read, one number repeated",
+			records(t0, Change{Number: 1, State: StateMerged}, Change{Number: 4, State: StateOpen, DependsOn: repeated(1, 1001)}),
+			"change #4 carries 1001 dependency numbers, above the most of 1000"},
+		{"1001 dependency numbers, one numbered zero and eleven distinct, are named for their count alone",
+			records(t0, Change{Number: 4, State: StateOpen, DependsOn: append(repeated(10, 100), 0)}),
+			"change #4 carries 1001 dependency numbers, above the most of 1000"},
 		{"one change more than the most", records(t0, merged(1, maxChanges+1)...),
 			"the records hold 501 changes, above the most of 500"},
 		{"one change more than the most, one numbered zero, is named for its count alone",
@@ -665,11 +671,14 @@ func TestPassRefusesRecordsItCannotRead(t *testing.T) {
 	if MaxWaitLimit != 24*time.Hour {
 		t.Fatalf("MaxWaitLimit is %s, want 24h0m0s", MaxWaitLimit)
 	}
-	if maxChanges != 500 {
-		t.Fatalf("maxChanges is %d, want 500", maxChanges)
+	if maxChanges != 500 || maxDependsRead != 1000 {
+		t.Fatalf("maxChanges %d, maxDependsRead %d; want 500 and 1000", maxChanges, maxDependsRead)
 	}
 	if _, err := pass(records(t0, merged(1, maxChanges)...)); err != nil {
 		t.Fatalf("exactly %d changes were refused: %v", maxChanges, err)
+	}
+	if _, err := pass(records(t0, Change{Number: 11, State: StateOpen, DependsOn: repeated(10, 100)})); err != nil {
+		t.Fatalf("exactly 1000 dependency numbers as read were refused: %v", err)
 	}
 }
 
