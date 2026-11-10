@@ -1298,6 +1298,35 @@ Three properties are load-bearing:
   message and reads no list; only a deadline spent at the list's own read
   writes a line on the error stream. Either way no note is left, and a list
   git did not answer for in time is never read as one that names nothing.
+- **The hooks' unbound git calls are counted.** A test in
+  `internal/surface/cli/hook_git_audit_test.go` walks the calls from the
+  binary's entry and each hook verb's handlers, for darwin and for linux each
+  on its own, and counts the calls it reaches in the forms it matches: a
+  plain `exec.Command`, `os.StartProcess` or `syscall.Exec`, `ForkExec` or
+  `StartProcess`; an `exec.Cmd` literal, declaration or `new(exec.Cmd)`; a
+  gitutil or localtier function or method that has a Context form, or a call
+  of one of theirs that reaches one; and any `context.Background` or `TODO`
+  passed to a context parameter of an abcd function or method, whether or
+  not it reaches git, directly, wrapped by `WithCancel`, `WithValue` or
+  `WithoutCancel`, as a cobra command's `Context`, returned by an abcd
+  function, or held in a variable or a struct field set from one, in any
+  package. A static walk cannot follow every route a value takes, and these
+  are not matched: such a context passed through a function-typed variable
+  or field, a positional struct literal, a map, slice or channel, one of
+  several results, an interface method's or a function literal's result;
+  alias types; a Run or RunE set by assignment on a verb that is not a hook
+  (a hook verb's is refused); a handler that calls on through a struct field;
+  a call the standard library makes back into abcd through an interface
+  (String, MarshalJSON, and the Error, Is, As and Unwrap callbacks); and
+  reflection. The hook scripts are read for the binary called as `"$g"`,
+  `"$x"` or `"$r/abcd"`, and a call by another spelling is not seen. The test
+  compares the counts with
+  `internal/surface/cli/testdata/hook-git-baseline.txt`: a reached call
+  missing from the file, or made more often than it lists, fails the test,
+  and so does an entry made less often or no longer reached, until the file
+  is lowered to match (dcn-2611100854404911). A line added to the file by hand
+  is caught only by review of its diff. While the file lists any call, some
+  hook git calls still run with no deadline.
 
 ## The two `.abcd/` scopes
 
