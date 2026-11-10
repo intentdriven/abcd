@@ -28,22 +28,36 @@ func EmptyTree(root string) (string, error) {
 
 // EmptyTreeName is EmptyTree's name without the write: the same answer, for a
 // reader that compares against it and must leave .git/objects as it found
-// it. A path that commits on the empty tree uses EmptyTree.
+// it. A path that commits on the empty tree uses EmptyTree. Its answer is
+// capped as EmptyTreeNameContext's is, and refused whole past the cap.
 func EmptyTreeName(root string) (string, error) {
-	return emptyTree(root, "hash-object", "-t", "tree", "--stdin")
+	return emptyTreeNamed(runBounded(root, emptyTreeCap, emptyTreeNameArgs...))
 }
 
-// EmptyTreeNameContext is EmptyTreeName bound to ctx (RunCappedContext): a
-// ctx already ended starts no git, and a git still running when it ends is
-// killed, answering ctx's error.
+// EmptyTreeNameContext is EmptyTreeName bound to ctx (RunLimitedContext's
+// runner): a ctx already ended starts no git, and a git still running when it
+// ends is killed, answering ctx's error. The two forms share one body
+// (emptyTreeNamed) and one cap, so they differ in the context alone.
 func EmptyTreeNameContext(ctx context.Context, root string) (string, error) {
-	out, err := RunCappedContext(ctx, root, emptyTreeCap, "hash-object", "-t", "tree", "--stdin")
-	return emptyTreeAnswer(strings.TrimSpace(out), err)
+	return emptyTreeNamed(runLimitedOverflow(ctx, root, emptyTreeCap, false, emptyTreeNameArgs))
 }
 
-// emptyTreeCap bounds the bound form's answer: one object name, under any
+// emptyTreeNameArgs is the question both forms of EmptyTreeName ask.
+var emptyTreeNameArgs = []string{"hash-object", "-t", "tree", "--stdin"}
+
+// emptyTreeCap bounds EmptyTreeName's answer: one object name, under any
 // object format.
 const emptyTreeCap = 256
+
+// emptyTreeNamed is the answer of either form of EmptyTreeName: an answer
+// past emptyTreeCap is refused whole, and the rest is checked as an object
+// name (emptyTreeAnswer).
+func emptyTreeNamed(out string, overflowed bool, err error) (string, error) {
+	if err == nil && overflowed {
+		err = fmt.Errorf("git %s: output exceeded the %d-byte cap", strings.Join(emptyTreeNameArgs, " "), emptyTreeCap)
+	}
+	return emptyTreeAnswer(strings.TrimSpace(out), err)
+}
 
 // emptyTree runs args, a hash-object of empty standard input typed as a tree,
 // and checks that git answered an object name.

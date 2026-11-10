@@ -142,15 +142,13 @@ func commitBodies(g viewGit, root string, shas []string, budget int) map[string]
 	for _, s := range shas {
 		inBatch[s] = true
 	}
-	checkStdin, checkCap := strings.Join(shas, "\n")+"\n", len(shas)*(len(shas[0])+32)+64
-	checkArgs := []string{"cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"}
-	var check []byte
-	var err error
+	// The context is chosen once, so both commands run under the same one.
+	ctx := context.Background()
 	if g.bound() {
-		check, err = storedGitInput(g.ctx, root, checkStdin, checkCap, checkArgs...)
-	} else {
-		check, err = storedGitInput(context.Background(), root, checkStdin, checkCap, checkArgs...)
+		ctx = g.ctx
 	}
+	check, err := storedGitInput(ctx, root, strings.Join(shas, "\n")+"\n", len(shas)*(len(shas[0])+32)+64,
+		"cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)")
 	if err != nil {
 		return nil
 	}
@@ -178,12 +176,7 @@ func commitBodies(g viewGit, root string, shas []string, budget int) map[string]
 	for i, w := range wants {
 		names[i] = w.name
 	}
-	var objs []byte
-	if g.bound() {
-		objs, err = storedGitInput(g.ctx, root, strings.Join(names, "\n")+"\n", total, "cat-file", "--batch")
-	} else {
-		objs, err = storedGitInput(context.Background(), root, strings.Join(names, "\n")+"\n", total, "cat-file", "--batch")
-	}
+	objs, err := storedGitInput(ctx, root, strings.Join(names, "\n")+"\n", total, "cat-file", "--batch")
 	if err != nil {
 		return nil
 	}
