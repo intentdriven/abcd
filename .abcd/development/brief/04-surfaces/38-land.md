@@ -184,25 +184,34 @@ bound: the refusal says so and gives the push to run by hand.
    withdrawn, the pull request taken out of the merge queue, both, or
    nothing left to take off. A forge error in the dependency read takes
    this account's arming off, and the next land run arms it again. The
-   withdrawal reads the pull request's state whole (`autoMergeRequest`,
-   `isInMergeQueue`, the queue entry and who queued it, the viewer's login
-   and the node id), acts only on what that read shows, and reads again, at
-   most three times: a queue entry this account made is taken out by its
-   node id, and this account's arming is turned off. A queue entry counts
-   as queued whatever the flag says. An arming or queue entry another
-   account made, or one the forge does not attribute, is left and refused,
-   naming who the forge says queued it. A state not read whole, a read that
-   fails, or this account's arming or queue entry still there after three
-   tries refuses with the step that withdraws it by hand: the pull request's
-   page for a queue entry, the command for an arming, and both where land
-   cannot say which. A pull request whose own read shows it merged or
-   closed is refused as such, with nothing withdrawn. The check runs once
+   withdrawal runs only after the check waits or refuses. It reads the pull
+   request's state whole (`autoMergeRequest`, `isInMergeQueue`, the queue
+   entry and who queued it, the viewer's login and the node id) again before
+   its first act, acts only on what the last read shows, and reads again
+   after each act, three acts at most. Inside the withdrawal, a queue entry
+   this account made is taken out by its node id, and this account's arming
+   is turned off, also where another account's queue entry stands beside
+   it. A queue entry counts as queued whatever the flag says. An arming or
+   queue entry another account made, or one the forge does not attribute,
+   is left and refused, saying what land did and naming who the forge says
+   queued it, by a login in the forge's own alphabet only. A state not read
+   whole, a read that fails, or this account's arming or queue entry still
+   there after three tries refuses with the step that withdraws it by hand:
+   the pull request's page for a queue entry, the command for an arming,
+   and both where both stand or land cannot say which. After three tries
+   the refusal also gives the last act's failure. A pull request whose own
+   read shows it merged or closed is refused as such, with nothing withdrawn. The check runs once
    land has read the pull request's state on the route that would arm it,
    and on the three early returns where this account's arming stands at
    the gated head: the merge gate unread, the gate not arming, and a
    conflict. The stop is read again after the merge gate arms and before
    that state read, so the check on the first two early returns runs before
-   it and the conflict's after it. Every refusal before that point (a forge
+   it and the conflict's after it. Three returns after that read make no
+   check: a pull request already in the merge queue is reported done with
+   its dependencies unread, this account's own queue entry included; one
+   another account armed, or one the forge does not attribute, is reported
+   as before; and this account's arming at a head land did not gate is
+   refused before the check. Every refusal before that point (a forge
    read that fails, the merge rule or the default branch's tip unread, a
    listing land cannot use, any step before enqueue) leaves an arming as it
    is with its dependencies unread. The other routes that arm a pull request

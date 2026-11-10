@@ -156,13 +156,19 @@ that name with none at this head, since the proof may lie past the bound.
    withdrawn on a wait or a refusal, and the step says what was done: the
    arming withdrawn, the pull request taken out of the merge queue, both, or
    nothing left to take off. A forge error in the dependency read takes this
-   account's arming off, and the next `abcd land` run arms it again. Land
-   acts only on what its last read of the pull request shows, and reads
-   again, three times at most. A queue entry or arming another account made,
-   or one the forge does not attribute, is left and refused, naming who the
-   forge says queued it. If land cannot confirm the withdrawal, it refuses
-   with the step to take it off by hand: the pull request's page for a queue
-   entry, the command for an arming, both where it cannot say which. A pull
+   account's arming off, and the next `abcd land` run arms it again. The
+   withdrawal runs only after the check waits or refuses: land reads the
+   pull request's state again before its first act, acts only on what its
+   last read shows, and reads again after each act, three acts at most.
+   Inside the withdrawal, this account's queue entry is taken out and its
+   arming turned off, the arming also where another account's queue entry
+   stands beside it. A queue entry or arming another account made, or one
+   the forge does not attribute, is left and refused, saying what land did
+   and naming who the forge says queued it, by a login in the forge's own
+   alphabet only. If land cannot confirm the withdrawal, it refuses with
+   the step to take it off by hand: the pull request's page for a queue
+   entry, the command for an arming, both where both stand or it cannot say
+   which, and after three tries the last act's failure. A pull
    request the forge reports merged or closed since land read it is refused
    as such, with nothing withdrawn. The check runs once land has read the
    pull request's state on the route that would arm it, and on the three
@@ -170,6 +176,11 @@ that name with none at this head, since the proof may lie past the bound.
    merge gate unread, the gate not arming, and a conflict. The stop is read
    again after the merge gate arms and before that state read, so the check
    on the first two early returns runs before it and the conflict's after it.
+   Three returns after that read make no check: a pull request already in
+   the merge queue is reported done with its dependencies unread, this
+   account's own queue entry included; one another account armed, or one
+   the forge does not attribute, is reported as before; and this account's
+   arming at a head land did not gate is refused before the check.
    Every refusal before that point (a forge read that fails, the merge rule or
    the default branch's tip unread, a listing land cannot use, any step
    before enqueue) leaves an arming as it is with its dependencies unread.
