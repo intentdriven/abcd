@@ -51,10 +51,12 @@ repository names only which classes review.
    - packages: internal/core/implement/loop, internal/core/layered, internal/surface/cli
    - tests: the bundled map resolves `research`, `top`, `default`, `small`; `middle`, `below` or `smallest` in `models.classes`, `review.reviewers` or `review.judge` is refused naming the key, the file and the mapping, with nothing written; a machine map setting `top` without `research` is refused; a review list naming `top` with no new name in any configuration file resolves with one diagnostic, and with a new name present resolves with none; a repository class map is still skipped with its warning
    - needs: none
+   - landed: 6be8139b0
 2. Run state moves one schema version and stored labels are migrated
    - packages: internal/core/implement/loop
    - tests: a state file of the earlier version with `top`, `middle`, `below` labels reads as `research`, `top`, `default` with each stored model unchanged and the run steppable; a stored judge gains a status; the earlier version's reader refuses the new version as a newer abcd's state (the existing refusal, asserted for this bump); a hand-edited label outside the four names is refused as before
    - needs: 1
+   - landed: 71bbfc13c
 3. The bundled pair is research and default, and the bundled judge waits
    - packages: internal/core/implement/loop, internal/surface/cli
    - tests: with nothing configured each role resolves to two reviewers at `research` and `default` and a judge at `top` with status `waiting`, the run starts, its record carries one line saying the judge waits on calibration, and no step hands out, awaits or estimates a judge; with a calibrated judge fixture the status is `active`; a status fixed at start does not change when the fixture changes mid-run; `review.judge` in a file with no calibrated agent is refused at the `review` stage

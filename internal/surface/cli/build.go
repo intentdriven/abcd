@@ -166,8 +166,9 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"handed back: it stops as unachievable with the last round's findings, the run starts nothing\n" +
 			"further for it, and `abcd implement step` refuses naming the hand-back.\n\n" +
 			"A new run reads its review set once, too: review.reviewers (one or two model classes per\n" +
-			"code-review role, for both roles or per role; bundled: top and default), review.judge (a\n" +
-			"class; refused until a judge agent clears itd-81's calibration gate) and, from\n" +
+			"code-review role, for both roles or per role; bundled: research and default), review.judge\n" +
+			"(a class; bundled: top, which waits until a judge agent clears itd-81's calibration gate,\n" +
+			"fixed at the run's start, and a judge a file names is refused until then) and, from\n" +
 			abcdhome.Display("config.json") + " alone, review.max_reviewers (1 or 2, bundled 2) and the class map\n" +
 			"models.classes (research, top, default, small, strongest first, each a <provider>/<model>\n" +
 			"route over the bundled map). A repository list above the machine's ceiling is clamped with\n" +

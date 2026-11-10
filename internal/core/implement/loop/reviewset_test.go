@@ -50,9 +50,11 @@ func reviewRecord(t *testing.T, st State) string {
 }
 
 // TestTheBundledReviewSetIsTwoReviewersPerRole: with no review set in any
-// layer, each reviewer role runs twice, at the top class and the default
-// class, each class named with the model the bundled map holds for it,
-// and the payload, the state and the record name the bundled layer.
+// layer, each reviewer role runs twice, at the research class and the default
+// class (itd-2611101419006280 decision 4), each class named with the model the
+// bundled map holds for it, the judge is the top class and waits on
+// calibration, and the payload, the state and the record name the bundled
+// layer.
 func TestTheBundledReviewSetIsTwoReviewersPerRole(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 	res, err := startedOnce(t, repo, "itd-10")
@@ -62,27 +64,35 @@ func TestTheBundledReviewSetIsTwoReviewersPerRole(t *testing.T) {
 	for _, rs := range []*ReviewSet{res.Review} {
 		for _, role := range []string{RoleRuthless, RoleSecurity} {
 			r := reviewRole(t, rs, role)
-			if got := strings.Join(classesOf(r), ","); got != "top,default" || r.Layer != "bundled" || r.Origin != "bundled" {
-				t.Fatalf("%s = %+v, want top,default from the bundled layer", role, r)
+			if got := strings.Join(classesOf(r), ","); got != "research,default" || r.Layer != "bundled" || r.Origin != "bundled" {
+				t.Fatalf("%s = %+v, want research,default from the bundled layer", role, r)
 			}
-			if r.Reviewers[0].Model != BundledClasses[ClassTop] || r.Reviewers[1].Model != BundledClasses[ClassDefault] ||
+			if r.Reviewers[0].Model != BundledClasses[ClassResearch] || r.Reviewers[1].Model != BundledClasses[ClassDefault] ||
 				r.Reviewers[0].MapLayer != "bundled" {
 				t.Fatalf("each class names the model the bundled map holds: %+v", r.Reviewers)
 			}
 		}
-		if rs.Judge != nil || rs.MaxReviewers.Value != 2 || rs.MaxReviewers.Layer != "bundled" {
-			t.Fatalf("no judge and a ceiling of two by default: %+v", *rs)
+		j := rs.Judge
+		if j == nil || j.Class != ClassTop || j.Model != BundledClasses[ClassTop] || j.Layer != "bundled" || j.Status != JudgeWaiting || j.Active() {
+			t.Fatalf("the bundled judge is top, waiting: %+v", j)
+		}
+		if rs.MaxReviewers.Value != 2 || rs.MaxReviewers.Layer != "bundled" {
+			t.Fatalf("a ceiling of two by default: %+v", *rs)
 		}
 	}
 	st, err := ReadState(repo.Root(), res.RunID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(classesOf(reviewRole(t, st.Review, RoleSecurity)), ","); got != "top,default" {
+	if got := strings.Join(classesOf(reviewRole(t, st.Review, RoleSecurity)), ","); got != "research,default" {
 		t.Fatalf("the state keeps the set: %s", got)
 	}
+	if st.Review.Judge == nil || st.Review.Judge.Status != JudgeWaiting {
+		t.Fatalf("the state keeps the judge waiting: %+v", st.Review.Judge)
+	}
 	note := reviewRecord(t, st)
-	for _, want := range []string{"top (" + BundledClasses[ClassTop] + ")", "default (" + BundledClasses[ClassDefault] + ")", "bundled", "no judge"} {
+	for _, want := range []string{"research (" + BundledClasses[ClassResearch], "default (" + BundledClasses[ClassDefault], "bundled",
+		"judge top (" + BundledClasses[ClassTop]} {
 		if !strings.Contains(note, want) {
 			t.Fatalf("the record names %q: %q", want, note)
 		}
@@ -178,13 +188,13 @@ func TestARepositoryListAboveTheMachinesCeilingIsClamped(t *testing.T) {
 // warning naming the machine's file, and the run starts on the rest.
 func TestTheRepositoryCannotSetTheCeilingOrTheClassMap(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	repoConfig(t, repo, `{"review": {"max_reviewers": 1}, "models": {"classes": {"top": "acme/cheap-1"}}}`)
+	repoConfig(t, repo, `{"review": {"max_reviewers": 1}, "models": {"classes": {"research": "acme/cheap-1"}}}`)
 	res, err := Start(repo.Root(), "itd-10", Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := reviewRole(t, res.Review, RoleRuthless)
-	if strings.Join(classesOf(r), ",") != "top,default" || r.Reviewers[0].Model != BundledClasses[ClassTop] {
+	if strings.Join(classesOf(r), ",") != "research,default" || r.Reviewers[0].Model != BundledClasses[ClassResearch] {
 		t.Fatalf("the repository's ceiling and map change nothing: %+v", r)
 	}
 	if res.Review.MaxReviewers.Layer != "bundled" {
@@ -275,13 +285,13 @@ func TestARunningRunKeepsTheReviewSetItStartedWith(t *testing.T) {
 	}
 	before := stateBytes(t, repo.Root(), first.RunID)
 	repoConfig(t, repo, `{"review": {"reviewers": ["research"]}}`)
-	machineConfig(t, `{"models": {"classes": {"top": "acme/other-1"}}}`)
+	machineConfig(t, `{"models": {"classes": {"research": "acme/other-1"}}}`)
 	again, err := Start(repo.Root(), "itd-10", Options{})
 	if err != nil || !again.Resumed {
 		t.Fatalf("the run resumes: %+v %v", again, err)
 	}
 	r := reviewRole(t, again.Review, RoleRuthless)
-	if strings.Join(classesOf(r), ",") != "top,default" || r.Reviewers[0].Model != BundledClasses[ClassTop] {
+	if strings.Join(classesOf(r), ",") != "research,default" || r.Reviewers[0].Model != BundledClasses[ClassResearch] {
 		t.Fatalf("the resume keeps the set the run started with: %+v", r)
 	}
 	if string(before) != string(stateBytes(t, repo.Root(), first.RunID)) {

@@ -150,13 +150,13 @@ func runsGone(t *testing.T, root string) {
 	}
 }
 
-// judgedRunAtReview is a run started with a calibrated judge at the research
+// judgedRunAtReview is a run started with a calibrated judge at the top
 // class, stepped to its first reviewer: its state carries every stored class
 // label, in the review set, the judge and the await.
 func judgedRunAtReview(t *testing.T) (repoRoot, runID string, data []byte) {
 	t.Helper()
 	repo := briefRepo(t, agentsMarked)
-	repoConfig(t, repo, `{"review": {"judge": "research"}}`)
+	repoConfig(t, repo, `{"review": {"judge": "top"}}`)
 	res, err := Start(repo.Root(), "itd-10", Options{judgeCalibrated: func() (bool, string) { return true, "" }})
 	if err != nil {
 		t.Fatal(err)
@@ -198,8 +198,8 @@ func TestAnEarlierStateTakesTheNewClassNames(t *testing.T) {
 	if st.SchemaVersion != SchemaVersion {
 		t.Fatalf("read at the current version: %d", st.SchemaVersion)
 	}
-	if j := st.Review.Judge; j == nil || j.Class != ClassResearch || j.Model != current.Review.Judge.Model || j.Status != JudgeActive {
-		t.Fatalf("the judge takes research, keeps its model and is active: %+v", j)
+	if j := st.Review.Judge; j == nil || j.Class != ClassTop || j.Model != current.Review.Judge.Model || j.Status != JudgeActive {
+		t.Fatalf("the judge takes top, keeps its model and is active: %+v", j)
 	}
 	for i, r := range st.Review.Roles {
 		for k, c := range r.Reviewers {
@@ -227,7 +227,7 @@ func TestAnEarlierStateCarryingWhatItNeverWroteIsRefused(t *testing.T) {
 	path := filepath.Join(root, filepath.FromSlash(StateRelPath(id)))
 	for name, edit := range map[string]func(string) string{
 		"a judge's status": func(s string) string {
-			return strings.Replace(s, `"class": "top",`, `"class": "top", "status": "active",`, 1)
+			return strings.Replace(s, `"class": "middle",`, `"class": "middle", "status": "active",`, 1)
 		},
 		"a new class name": func(s string) string { return strings.Replace(s, `"class": "below"`, `"class": "default"`, 1) },
 		"no class at all":  func(s string) string { return strings.Replace(s, `"class": "below"`, `"class": "huge"`, 1) },
@@ -258,5 +258,86 @@ func TestTheRenameMovesTheStateOneVersion(t *testing.T) {
 	_, err := decodeState([]byte(fmt.Sprintf(`{"schema_version": %d}`, SchemaVersion+1)))
 	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "a newer abcd wrote") {
 		t.Fatalf("a newer state is refused as a newer abcd's: %+v", r)
+	}
+}
+
+// judgeNotes are the run record's lines about the judge.
+func judgeNotes(st State) []string {
+	var out []string
+	for _, e := range st.Record {
+		if e.Stage == StageReview && strings.HasPrefix(e.Note, "the judge") {
+			out = append(out, e.Note)
+		}
+	}
+	return out
+}
+
+// TestTheBundledJudgeWaitsForTheWholeRun: with no calibrated judge agent a
+// run starts with the bundled judge waiting, says so in one record line, and
+// keeps it waiting whatever is calibrated later; no step hands out or awaits a
+// judge, and no estimate counts one.
+func TestTheBundledJudgeWaitsForTheWholeRun(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	res, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := ReadState(repo.Root(), res.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	notes := judgeNotes(st)
+	if len(notes) != 1 || !strings.Contains(notes[0], "waits") || !strings.Contains(notes[0], "calibration") ||
+		!strings.Contains(notes[0], "stricter verdict") {
+		t.Fatalf("one record line says the judge waits on calibration: %q", notes)
+	}
+	calibrated := Options{judgeCalibrated: func() (bool, string) { return true, "" }}
+	again, err := Start(repo.Root(), "itd-10", calibrated)
+	if err != nil || !again.Resumed || again.Review.Judge.Status != JudgeWaiting {
+		t.Fatalf("a resume keeps the judge it started with: %+v %v", again.Review, err)
+	}
+	implemented(t, repo, res.RunID, DefaultStages(), "one.txt")
+	for i := 0; i < 2; i++ {
+		a := stepAwait(t, repo, res.RunID, DefaultStages(), calibrated)
+		if a.Role != RoleRuthless && a.Role != RoleSecurity && a.Role != RoleAuditor {
+			t.Fatalf("the round hands out only its validators: %+v", a)
+		}
+	}
+	if st, _ = ReadState(repo.Root(), res.RunID); st.Review.Judge.Status != JudgeWaiting {
+		t.Fatalf("the judge still waits: %+v", st.Review.Judge)
+	}
+	runs, err := EstimateRuns(Options{}, repo.Root(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unjudged := *st.Review
+	unjudged.Judge = nil
+	want := 0
+	for _, s := range estimateShares(nil, 1, false, &unjudged) {
+		want += s.runs
+	}
+	if runs != want {
+		t.Fatalf("a waiting judge is counted in no estimate: %d runs, %d without it", runs, want)
+	}
+}
+
+// TestACalibratedBundledJudgeIsActive: once a judge agent has cleared the
+// gate (the fixture seam), a new run starts with the bundled judge active,
+// and its record says a judge will run on a disagreement.
+func TestACalibratedBundledJudgeIsActive(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	res, err := Start(repo.Root(), "itd-10", Options{judgeCalibrated: func() (bool, string) { return true, "" }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j := res.Review.Judge; j == nil || j.Class != ClassTop || j.Status != JudgeActive || !j.Active() {
+		t.Fatalf("the bundled judge is active: %+v", j)
+	}
+	st, err := ReadState(repo.Root(), res.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if notes := judgeNotes(st); len(notes) != 1 || !strings.Contains(notes[0], "will run") || !strings.Contains(notes[0], "disagree") {
+		t.Fatalf("one record line says a judge will run on a disagreement: %q", notes)
 	}
 }

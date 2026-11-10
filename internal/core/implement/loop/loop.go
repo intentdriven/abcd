@@ -715,6 +715,9 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		st.Record = append(st.Record, Entry{At: now, Stage: StagePace,
 			Note: "pace " + pace.String() + "; the first window opens now"})
 		st.Record = append(st.Record, Entry{At: now, Stage: StageReview, Note: "review set " + review.String()})
+		if review.Judge != nil {
+			st.Record = append(st.Record, Entry{At: now, Stage: StageReview, Note: review.Judge.note()})
+		}
 		st.Record = append(st.Record, Entry{At: now, Stage: CheckBudget, Note: budget.Detail})
 		if rsv.note != "" {
 			st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: rsv.note})

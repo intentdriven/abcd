@@ -90,7 +90,7 @@ func TestTwoReviewersOfOneRoleAreKeyedByIndex(t *testing.T) {
 
 	first := stepAwait(t, repo, id, stages, Options{})
 	second := stepAwait(t, repo, id, stages, Options{})
-	wantReviewer(t, first, RoleRuthless, 0, ClassTop)
+	wantReviewer(t, first, RoleRuthless, 0, ClassResearch)
 	wantReviewer(t, second, RoleRuthless, 1, ClassDefault)
 
 	dir0, dir1 := filepath.Dir(first.Receipt), filepath.Dir(second.Receipt)
@@ -140,7 +140,7 @@ func TestTwoReviewersOfOneRoleAreKeyedByIndex(t *testing.T) {
 	for _, v := range cur.Validators {
 		got = append(got, fmt.Sprintf("%s/%d/%s", v.Role, v.Reviewer, v.Class))
 	}
-	want := []string{RoleRuthless + "/0/top", RoleRuthless + "/1/default", RoleSecurity + "/0/top", RoleSecurity + "/1/default", RoleAuditor + "/0/"}
+	want := []string{RoleRuthless + "/0/research", RoleRuthless + "/1/default", RoleSecurity + "/0/research", RoleSecurity + "/1/default", RoleAuditor + "/0/"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("the round's validators, in reviewer order: %v, want %v", got, want)
 	}
@@ -174,7 +174,7 @@ func TestTwoReviewersOfOneRoleAreKeyedByIndex(t *testing.T) {
 	}
 	rv := rec.Lanes[0].Verdicts
 	if len(rv) != 2 || rv[1].Reviewer != 1 || rv[1].Class != ClassDefault || rv[1].Model != BundledClasses[ClassDefault] || rv[1].ModelStatus != ModelAsked ||
-		rv[0].Reviewer != 0 || rv[0].Class != ClassTop || rv[0].Verdict != "SHIP" {
+		rv[0].Reviewer != 0 || rv[0].Class != ClassResearch || rv[0].Verdict != "SHIP" {
 		t.Fatalf("the run record names each reviewer's index, class, model and its status: %+v", rv)
 	}
 	if c := rec.Lanes[0].Comparisons; len(c) != 1 || c[0].Round != 1 || c[0].Outcome != ComparisonDisagree {
@@ -184,7 +184,7 @@ func TestTwoReviewersOfOneRoleAreKeyedByIndex(t *testing.T) {
 	// The security reviewers both fail, BLOCK and NEEDS-INPUT: that agrees.
 	sec0 := stepAwait(t, repo, id, stages, Options{})
 	sec1 := stepAwait(t, repo, id, stages, Options{})
-	wantReviewer(t, sec0, RoleSecurity, 0, ClassTop)
+	wantReviewer(t, sec0, RoleSecurity, 0, ClassResearch)
 	wantReviewer(t, sec1, RoleSecurity, 1, ClassDefault)
 	returnAt(t, repo, id, stages, sec0, reviewerReturn("BLOCK"))
 	returnAt(t, repo, id, stages, sec1, reviewerReturn("NEEDS-INPUT"))
@@ -209,7 +209,7 @@ func TestTwoReviewersOfOneRoleAreKeyedByIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, w := range []string{"ruthless-reviewer (reviewer 1 at default (" + BundledClasses[ClassDefault] + ")): FIX FIRST", r1,
-		"security-reviewer (reviewer 0 at top", "security-reviewer (reviewer 1 at default"} {
+		"security-reviewer (reviewer 0 at research", "security-reviewer (reviewer 1 at default"} {
 		if !strings.Contains(string(fb), w) {
 			t.Fatalf("the fix brief names %q:\n%s", w, fb)
 		}
@@ -277,7 +277,7 @@ func TestBothReviewersAreHandedOutWithinTheSubAgentCeiling(t *testing.T) {
 	id, stages := start.RunID, DefaultStages()
 	l := implemented(t, repo, id, stages, "one.txt")
 	first := stepAwait(t, repo, id, stages, Options{})
-	wantReviewer(t, first, RoleRuthless, 0, ClassTop)
+	wantReviewer(t, first, RoleRuthless, 0, ClassResearch)
 	res, err := advance(repo.Root(), id, stages, Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -432,13 +432,13 @@ func TestAStoredReviewerTheLoopNeverWritesIsRefused(t *testing.T) {
 	stepAwait(t, repo, id, stages, Options{})
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(id)))
 	orig := stateBytes(t, repo.Root(), id)
-	topModel, defaultModel := BundledClasses[ClassTop], BundledClasses[ClassDefault]
+	researchModel, defaultModel := BundledClasses[ClassResearch], BundledClasses[ClassDefault]
 	// Each edit is made to the last occurrence, a reviewer on the lane: the
 	// run's review set is written before its lanes, and an edit to the set
 	// is the set's own refusal, not the reviewer's.
 	for name, edit := range map[string]func(string) string{
 		"a class the map does not name": func(s string) string { return replaceLast(s, `"class": "default"`, `"class": "huge"`) },
-		"a model that is no route":      func(s string) string { return replaceLast(s, `"model": "`+topModel+`"`, `"model": "no-slash"`) },
+		"a model that is no route":      func(s string) string { return replaceLast(s, `"model": "`+researchModel+`"`, `"model": "no-slash"`) },
 		"an index past the ceiling":     func(s string) string { return replaceLast(s, `"reviewer": 1`, `"reviewer": 7`) },
 		"a model status it never writes": func(s string) string {
 			return replaceLast(s, `"class": "default"`, `"class": "default", "model_status": "confirmed"`)

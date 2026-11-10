@@ -12,9 +12,11 @@ package loop
 //     object naming a list per role ({"security-reviewer": [...]}); each role
 //     takes the highest layer that sets it, else the bundled pair (top and
 //     default, the product thinker's ruling of 2026-10-24).
-//   - review.judge is one class, or absent. A judge runs only once its agent
-//     has cleared itd-81's calibration gate; until one has, a set naming a
-//     judge is refused.
+//   - review.judge is one class, else the bundled top. A judge runs only once
+//     its agent has cleared itd-81's calibration gate, so the bundled judge is
+//     stored waiting, or active once the gate has cleared, decided once when
+//     the run starts (itd-2611101419006280 decision 5); a judge a
+//     configuration file names while no agent has cleared it is refused.
 //   - review.max_reviewers is the machine's ceiling on reviewers per role,
 //     one or two (two when unset). It is read from the machine's file alone:
 //     a repository's list longer than the ceiling is clamped, with one line
@@ -82,9 +84,16 @@ var BundledClasses = map[string]string{
 	ClassSmall:    "anthropic/claude-haiku-4-5",
 }
 
-// BundledReviewers is the bundled list each role runs: the top class and the
-// default class, the pair the first paired reviews used (decision 1).
-var BundledReviewers = []string{ClassTop, ClassDefault}
+// BundledReviewers is the bundled list each role runs: the research class and
+// the default class, the widest spread between two reviewers
+// (itd-2611101419006280 decision 4, reversing the top and default pair of
+// itd-2610240922461281 decision 1).
+var BundledReviewers = []string{ClassResearch, ClassDefault}
+
+// BundledJudge is the bundled judge's class: the class between the pair. It
+// runs only once a judge agent has cleared itd-81's calibration gate, and
+// until then a run starts with it waiting (decision 5).
+const BundledJudge = ClassTop
 
 // BundledMaxReviewers is the ceiling on reviewers per role when the machine
 // sets none, and maxReviewers the most any ceiling may be.
@@ -195,9 +204,19 @@ func (rs ReviewSet) String() string {
 	if rs.Judge == nil {
 		parts = append(parts, "no judge")
 	} else {
-		parts = append(parts, fmt.Sprintf("judge %s (%s)", classPhrase(rs.Judge.Class, rs.Judge.Model), describeLayer(rs.Judge.Layer, rs.Judge.Origin)))
+		parts = append(parts, fmt.Sprintf("judge %s (%s), %s", classPhrase(rs.Judge.Class, rs.Judge.Model),
+			describeLayer(rs.Judge.Layer, rs.Judge.Origin), rs.Judge.Status))
 	}
 	return strings.Join(parts, "; ")
+}
+
+// note is the run record's one line about the judge the run started with.
+func (j ReviewJudge) note() string {
+	if j.Active() {
+		return fmt.Sprintf("the judge, %s, is active: a judge will run where a role's two reviewers disagree", classPhrase(j.Class, j.Model))
+	}
+	return fmt.Sprintf("the judge, %s, waits for the whole run: no judge agent has cleared itd-81's calibration gate, "+
+		"so where a role's two reviewers disagree the stricter verdict decides, and no judge is launched, awaited or counted", classPhrase(j.Class, j.Model))
 }
 
 func describeLayer(layer, origin string) string {
@@ -355,23 +374,29 @@ func resolveReviewSet(roots layered.Roots, o Options) (ReviewSet, []string, erro
 			reviewNamespace, keyReviewers, origin, strings.Join(clamped[origin], " and "), ceiling.Value,
 			reviewNamespace, keyMaxReviewers, describeOrigin(ceiling), ceiling.Value))
 	}
-	j, err := layered.Get(s, reviewNamespace+"."+keyJudge, "", nil)
+	j, err := layered.Get(s, reviewNamespace+"."+keyJudge, BundledJudge, nil)
 	if err != nil {
 		return ReviewSet{}, nil, reviewRefusal(err.Error())
 	}
-	if j.Layer != layered.Bundled {
-		rc, ok := cm[j.V]
-		if !ok {
-			return ReviewSet{}, nil, unknownClass(keyJudge, j.V, j.Layer, j.Origin)
-		}
-		if ok, why := o.judgeGate(); !ok {
+	rc, ok := cm[j.V]
+	if !ok {
+		return ReviewSet{}, nil, unknownClass(keyJudge, j.V, j.Layer, j.Origin)
+	}
+	status := JudgeActive
+	if calibrated, why := o.judgeGate(); !calibrated {
+		// A judge a person wrote into a file is one the run cannot give, so it
+		// is refused; the bundled judge waits instead, since refusing it would
+		// stop every run.
+		if j.Layer != layered.Bundled {
 			return ReviewSet{}, nil, refuse(StageReview, "", "", fmt.Sprintf("%s.%s is %q in %s (%s layer), but a judge runs only once its agent "+
 				"has cleared itd-81's calibration gate, and %s", reviewNamespace, keyJudge, layered.BoundKey(j.V), j.Origin, j.Layer, why),
-				fmt.Sprintf("remove %s.%s from %s; without a judge the stricter verdict alone decides; nothing was written", reviewNamespace, keyJudge, j.Origin))
+				fmt.Sprintf("remove %s.%s from %s; the bundled judge then waits on the gate, and the stricter verdict decides; nothing was written",
+					reviewNamespace, keyJudge, j.Origin))
 		}
-		rs.Judge = &ReviewJudge{Class: rc.Class, Model: rc.Model, MapLayer: rc.MapLayer, MapOrigin: rc.MapOrigin,
-			Layer: j.Layer.String(), Origin: j.Origin, Status: JudgeActive}
+		status = JudgeWaiting
 	}
+	rs.Judge = &ReviewJudge{Class: rc.Class, Model: rc.Model, MapLayer: rc.MapLayer, MapOrigin: rc.MapOrigin,
+		Layer: j.Layer.String(), Origin: j.Origin, Status: status}
 	if d := topNote(named, cm); d != "" {
 		diags = append(diags, d)
 	}

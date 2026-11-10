@@ -36,13 +36,14 @@ func TestBuildNamesTheBundledReviewSet(t *testing.T) {
 		t.Fatalf("the payload carries the review set and no diagnostics: %s", out)
 	}
 	for _, r := range res.Review.Roles {
-		if len(r.Reviewers) != 2 || r.Reviewers[0].Class != "top" || r.Reviewers[1].Class != "default" || r.Layer != "bundled" {
-			t.Fatalf("%s runs top and default from the bundled layer: %s", r.Role, out)
+		if len(r.Reviewers) != 2 || r.Reviewers[0].Class != "research" || r.Reviewers[1].Class != "default" || r.Layer != "bundled" {
+			t.Fatalf("%s runs research and default from the bundled layer: %s", r.Role, out)
 		}
 	}
 	status := mustImplement(t, "implement", "status")
-	if !strings.Contains(status, "review:  ruthless-reviewer top (anthropic/claude-opus-5-5) and default (anthropic/claude-sonnet-5-5) (bundled)") {
-		t.Fatalf("the status names each class with its model:\n%s", status)
+	if !strings.Contains(status, "review:  ruthless-reviewer research (anthropic/claude-fable-5) and default (anthropic/claude-sonnet-5-5) (bundled)") ||
+		!strings.Contains(status, "judge top (anthropic/claude-opus-5-5) (bundled), waiting") {
+		t.Fatalf("the status names each class with its model, and the judge waiting:\n%s", status)
 	}
 }
 

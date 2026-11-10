@@ -519,8 +519,9 @@ handed back: it stops as unachievable with the last round's findings, the run st
 further for it, and `abcd implement step` refuses naming the hand-back.
 
 A new run reads its review set once, too: review.reviewers (one or two model classes per
-code-review role, for both roles or per role; bundled: top and default), review.judge (a
-class; refused until a judge agent clears itd-81's calibration gate) and, from
+code-review role, for both roles or per role; bundled: research and default), review.judge
+(a class; bundled: top, which waits until a judge agent clears itd-81's calibration gate,
+fixed at the run's start, and a judge a file names is refused until then) and, from
 ~/.abcd.noindex/config.json alone, review.max_reviewers (1 or 2, bundled 2) and the class map
 models.classes (research, top, default, small, strongest first, each a <provider>/<model>
 route over the bundled map). A repository list above the machine's ceiling is clamped with
