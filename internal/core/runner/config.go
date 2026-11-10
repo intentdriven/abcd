@@ -339,9 +339,11 @@ func (c *Config) admitModel(route string) error {
 
 // noClassMapNames is what a refusal adds for a route of the harness's own
 // vendor that a walled launch would take by name but no class map read during
-// this process names, as a lane in progress may hold after the map changed.
-const noClassMapNames = "; the class map no longer names %s, so the drive does not take it by name: map a class to it " +
-	"in models.classes in %s, or start the lane again"
+// this process names, as a run in progress may hold after the map changed. A
+// run keeps the models it stored when it started, so the way on is a map that
+// names the model and a new start of the drive, which reads the map again.
+const noClassMapNames = "; no class map read during this drive names %s, so the drive does not take it by name: map a class to it " +
+	"in models.classes in %s and start the drive again"
 
 // admitModelFor is the admission a request's model passes for target, the
 // runner that will run it (Host for the host session), when the dispatch
@@ -972,7 +974,7 @@ func (c *Config) WithClassRoutes(routes []string) *Config {
 
 // AddClassRoutes adds routes, those of a class map read during this process
 // (the machine's models.classes over the bundled map, as a run's start reads
-// it), to the routes c takes by name, so a lane started after the map changed
+// it), to the routes c takes by name, so a run started after the map changed
 // launches its reviewers. It is safe from concurrent lanes, and a
 // configuration WithClassRoutes never set takes nothing by name still.
 func (c *Config) AddClassRoutes(routes []string) {

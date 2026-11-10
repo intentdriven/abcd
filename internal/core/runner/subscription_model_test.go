@@ -299,8 +299,8 @@ func TestTheWalledHarnessTakesByNameOnlyWhatTheClassMapResolves(t *testing.T) {
 
 // TestAModelNoClassMapNamesIsRefusedNamingTheClassMap: a request at a route of
 // the harness's own vendor that no class map read during this process names,
-// as a lane in progress may hold after the map changed, is refused naming the
-// model, saying the class map no longer names it, and how to go on; once a map
+// as a run in progress may hold after the map changed, is refused naming the
+// model, saying no class map read during the drive names it, and how to go on; once a map
 // read during the process names it, the walled launch takes it.
 func TestAModelNoClassMapNamesIsRefusedNamingTheClassMap(t *testing.T) {
 	const gone = "anthropic/claude-gone-1"
@@ -313,7 +313,7 @@ func TestAModelNoClassMapNamesIsRefusedNamingTheClassMap(t *testing.T) {
 	if err == nil {
 		t.Fatal("a model no class map names was admitted")
 	}
-	for _, w := range []string{gone, "class map no longer names", "models.classes", "start the lane again"} {
+	for _, w := range []string{gone, "no class map read during this drive names", "models.classes", "start the drive again"} {
 		if !strings.Contains(err.Error(), w) {
 			t.Errorf("refusal %q does not name %q", err, w)
 		}

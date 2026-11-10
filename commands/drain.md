@@ -58,10 +58,10 @@ may run, and an `oracle.denylist` entry still refuses one. The denylist matches 
 as written, so an entry for a full model id does not refuse a shorter alias a class is mapped
 to: to deny a model, map no class to an alias of it. A model outside the class map, any
 other vendor's model, and every launch outside a drive keep the provider allowlist. The drive
-reads the class map at its start and again as each lane starts, so a lane started after the
-map changed runs at the new routes. A lane already in progress whose model no map names any
-more is refused at its next reviewer, naming the model: map a class to it in `models.classes`,
-or start the lane again. A review set with a reviewer
+reads the class map at its start and again as each run starts, so a run started after the
+map changed runs at the new routes. A run keeps the models it started with: one already in
+progress whose model no map read during the drive names is refused at its next reviewer,
+naming the model. Map a class to it in `models.classes` and start the drive again. A review set with a reviewer
 no route on this machine can launch refuses the start, before anything is reserved, naming
 the role, the model and what to set: the denylist entry or `models.classes` for a model an
 entry refuses, `oracle.api.<provider>` otherwise.
