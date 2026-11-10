@@ -10,7 +10,6 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/claim"
 remedy: "abcd peers and the drain name an expired reservation whose footprint names a record file absent from origin's default branch and from every branch on origin as stranded work, naming the copy and the files; and an autonomous run pushes each record it creates to its own branch as it creates it, so a crash loses no record."
-related_intents: [itd-2611041549461012]
 ---
 
 A crashed copy strands records it reserved but never pushed, and nothing says so. After the 2026-10-24 crash, origin holds expired reservations whose footprints name records that exist nowhere on origin. Under reservation iss-2610222001116066 they are:

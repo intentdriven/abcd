@@ -86,7 +86,7 @@ explicit consent with a cap below the core count on a live development machine;
 and the load gate a preflight waits at: as many whole runs at once as the
 person's own `load.preflights` in `~/.abcd.noindex/config.json` allows (one by
 default, four at most, never a repository's), a test of a few named
-packages on its own limit behind no whole run, race stages kept apart among
+packages on its own limit, giving an overdue whole run five minutes at most, race stages kept apart among
 checkouts with the race gate (one at a time within an account, and across accounts
 all but the window the domain names), and no test stage started under memory
 pressure at or above the person's own floor.
@@ -360,7 +360,7 @@ with `*CONCURRENCY` to force it).
   harness ends each command after about ten minutes, and the drive runs `make
   preflight` itself before landing. A lane runs `make precheck`, then
   `scripts/abcd.sh implement load --wait --narrow --timeout 2m -- go test
-  -trimpath -race -count=1 -timeout 7m` on up to three changed packages,
+  -trimpath -count=1 -timeout 7m` on up to three changed packages,
   `-run` on the changed tests in `claim`, `implement/loop` and `surface/cli`.
   A command cut off has failed.
 - **Preflight judges with CI's toolchain.** `make fmt-check`, the format gate

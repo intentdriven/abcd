@@ -2,6 +2,7 @@ package loop
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -69,33 +70,37 @@ func TestThePeersCheckPassesOverAStaleCopy(t *testing.T) {
 	}
 }
 
-// TestThePeersCheckStillRefusesAPeerThatChangedTheRecord: a branch that
+// TestThePeersCheckStillRefusesAPeerThatChangedTheRecord: a lane that
 // re-drafted the intent since its merge-base, one cut while it was a draft
 // that rewrote the draft, and a worktree with an uncommitted move each hold
-// it; and so does a branch cut after main shipped it, when this checkout is
-// behind main (the peer is measured against this checkout, not main).
+// it; and so does a lane cut after main shipped it, when this checkout is
+// behind main (the peer is measured against this checkout, not main). Each
+// lane is in a worktree: a branch checked out nowhere holds nothing
+// (iss-2611090125008163).
 func TestThePeersCheckStillRefusesAPeerThatChangedTheRecord(t *testing.T) {
 	t.Run("a branch that re-drafted it", func(t *testing.T) {
 		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-		repo.Git("checkout", "-q", "-b", "lane-redraft")
-		if err := os.MkdirAll(filepath.Join(repo.Root(), filepath.Dir(draftedRel)), 0o755); err != nil {
+		wt := filepath.Join(t.TempDir(), "wt-redraft")
+		repo.Git("worktree", "add", "-q", "-b", "lane-redraft", wt)
+		if err := os.MkdirAll(filepath.Join(wt, filepath.Dir(draftedRel)), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		repo.Git("mv", plannedRel, draftedRel)
-		repo.Git("commit", "-q", "-m", "re-draft")
-		repo.Git("checkout", "-q", "main")
-		if row := peersRow(t, repo); row.OK || !strings.Contains(row.Detail, "branch lane-redraft holds it in drafts/") {
+		repo.Git("-C", wt, "mv", plannedRel, draftedRel)
+		repo.Git("-C", wt, "commit", "-q", "-m", "re-draft")
+		if row := peersRow(t, repo); row.OK || !strings.Contains(row.Detail, "(branch lane-redraft) holds it in drafts/") {
 			t.Fatalf("want lane-redraft named as holding it in drafts/: %+v", row)
 		}
 	})
 	t.Run("a stale branch that rewrote its draft", func(t *testing.T) {
 		repo := draftedThenPlanned(t, func(repo *gittest.Repo) {
-			repo.Git("checkout", "-q", "-b", "lane-edit")
-			repo.Write(draftedRel, readyIntent("", settledQuestions)+"\nRewritten.\n")
-			repo.Commit("rewrite the draft")
-			repo.Git("checkout", "-q", "main")
+			wt := filepath.Join(t.TempDir(), "wt-edit")
+			repo.Git("worktree", "add", "-q", "-b", "lane-edit", wt)
+			if err := os.WriteFile(filepath.Join(wt, draftedRel), []byte(readyIntent("", settledQuestions)+"\nRewritten.\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			repo.Git("-C", wt, "commit", "-q", "-am", "rewrite the draft")
 		})
-		if row := peersRow(t, repo); row.OK || !strings.Contains(row.Detail, "branch lane-edit holds it in drafts/") {
+		if row := peersRow(t, repo); row.OK || !strings.Contains(row.Detail, "(branch lane-edit) holds it in drafts/") {
 			t.Fatalf("want lane-edit named as holding it in drafts/: %+v", row)
 		}
 	})
@@ -135,9 +140,146 @@ func TestThePeersCheckStillRefusesAPeerThatChangedTheRecord(t *testing.T) {
 		}
 		repo.Git("-C", tmp, "add", "note")
 		repo.Git("-C", tmp, "commit", "-q", "-m", "ahead of main")
-		repo.Git("worktree", "remove", tmp)
-		if row := peersRow(t, repo); row.OK || !strings.Contains(row.Detail, "branch lane-fresh holds it in shipped/") {
+		if row := peersRow(t, repo); row.OK || !strings.Contains(row.Detail, "(branch lane-fresh) holds it in shipped/") {
 			t.Fatalf("an intent main shipped past this checkout must not start here: %+v", row)
 		}
+	})
+}
+
+// leftByGoneWorktree gives branch, already made, a worktree git lists and then
+// deletes its directory: a lane whose worktree is gone, read through the branch
+// source and still a branch a worktree has (iss-2611090125008163). A fixture
+// that builds a peer by committing on a branch in the main checkout calls it,
+// since a branch checked out nowhere holds nothing.
+func leftByGoneWorktree(t *testing.T, repo *gittest.Repo, branch string) {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "gone")
+	repo.Git("worktree", "add", "-q", dir, branch)
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// shipOn ships itd-10 on branch, committed, in a worktree of its own at dir,
+// cut from main: the shape of a lane that delivered the intent and has not
+// merged.
+func shipOn(t *testing.T, repo *gittest.Repo, branch, dir string) {
+	t.Helper()
+	shipped := ".abcd/development/intents/shipped/itd-10-alpha.md"
+	repo.Git("worktree", "add", "-q", "-b", branch, dir, "main")
+	if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(shipped)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repo.Git("-C", dir, "mv", plannedRel, shipped)
+	repo.Git("-C", dir, "commit", "-q", "-m", "ship alpha on "+branch)
+}
+
+// TestThePeersCheckPassesOverABranchCheckedOutNowhere is iss-2611090125008163:
+// two branches kept by hand as backups of a lane, each holding the intent in
+// shipped/ and checked out by no worktree, are no session's work. The build's
+// peers check passes, naming them, and the build starts.
+func TestThePeersCheckPassesOverABranchCheckedOutNowhere(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	for _, b := range []string{"backup/pre-rebase", "backup/rebased"} {
+		dir := filepath.Join(t.TempDir(), "wt")
+		shipOn(t, repo, b, dir)
+		repo.Git("worktree", "remove", dir)
+	}
+	row := peersRow(t, repo)
+	if !row.OK {
+		t.Fatalf("branches checked out nowhere refuse the build: %+v", row)
+	}
+	for _, b := range []string{"backup/pre-rebase", "backup/rebased"} {
+		if !strings.Contains(row.Detail, "branch "+b+" holds it in shipped/") || !strings.Contains(row.Detail, "no worktree has it checked out") {
+			t.Errorf("the passing row does not name %s as not counted: %q", b, row.Detail)
+		}
+	}
+	if _, err := Start(repo.Root(), "itd-10", Options{}); err != nil {
+		t.Fatalf("the start is refused past branches checked out nowhere: %v", err)
+	}
+}
+
+// TestThePeersCheckRefusesALaneInAWorktree: a session's lane that shipped the
+// intent, committed and clean, in a worktree of its own still holds it; so
+// does the branch of a lane whose worktree directory is gone, which git still
+// lists.
+func TestThePeersCheckRefusesALaneInAWorktree(t *testing.T) {
+	t.Run("a lane's worktree", func(t *testing.T) {
+		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+		shipOn(t, repo, "lane-1", filepath.Join(t.TempDir(), "lane-1"))
+		if row := peersRow(t, repo); row.OK || !strings.Contains(row.Detail, "(branch lane-1) holds it in shipped/") {
+			t.Fatalf("a lane in a worktree that shipped it must hold it: %+v", row)
+		}
+		if _, err := Start(repo.Root(), "itd-10", Options{}); err == nil {
+			t.Fatal("the start was let past a lane in a worktree that shipped it")
+		}
+	})
+	t.Run("a lane whose worktree is gone", func(t *testing.T) {
+		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+		dir := filepath.Join(t.TempDir(), "lane-2")
+		shipOn(t, repo, "lane-2", dir)
+		if err := os.RemoveAll(dir); err != nil {
+			t.Fatal(err)
+		}
+		if row := peersRow(t, repo); row.OK || !strings.Contains(row.Detail, "branch lane-2 holds it in shipped/") {
+			t.Fatalf("a gone worktree's lane branch must still hold it: %+v", row)
+		}
+	})
+}
+
+// TestThePeersCheckRefusesALaneStoppedMidRebaseOrBisect: git lists a worktree
+// detached while a rebase or a bisect has stopped in it, and still counts the
+// branch it started from as checked out there (its rebase-merge/head-name,
+// rebase-apply/head-name or BISECT_START). A lane that shipped the intent and
+// stopped there, its disk holding none of the ship, still holds it through its
+// branch, and the build is refused.
+func TestThePeersCheckRefusesALaneStoppedMidRebaseOrBisect(t *testing.T) {
+	shipped := ".abcd/development/intents/shipped/itd-10-alpha.md"
+	stopped := func(t *testing.T, name string, stop func(repo *gittest.Repo, dir string)) {
+		t.Helper()
+		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+		dir := filepath.Join(t.TempDir(), "lane-x")
+		repo.Git("worktree", "add", "-q", "-b", "lane-x", dir, "main")
+		if err := os.WriteFile(filepath.Join(dir, "clash"), []byte("lane\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		repo.Git("-C", dir, "add", "clash")
+		repo.Git("-C", dir, "commit", "-q", "-m", "clash on the lane")
+		if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(shipped)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		repo.Git("-C", dir, "mv", plannedRel, shipped)
+		repo.Git("-C", dir, "commit", "-q", "-m", "ship itd-10")
+		stop(repo, dir)
+		if _, err := os.Stat(filepath.Join(dir, shipped)); err == nil {
+			t.Fatalf("%s: the stopped lane's disk still holds the ship", name)
+		}
+		if got := repo.Git("worktree", "list", "--porcelain"); strings.Contains(got, "branch refs/heads/lane-x") {
+			t.Fatalf("%s: git still lists lane-x as a worktree's branch:\n%s", name, got)
+		}
+		if row := peersRow(t, repo); row.OK || !strings.Contains(row.Detail, "branch lane-x holds it in shipped/") {
+			t.Fatalf("%s: a lane stopped with its ship on its branch must hold it: %+v", name, row)
+		}
+		if _, err := Start(repo.Root(), "itd-10", Options{}); err == nil {
+			t.Fatalf("%s: the start was let past a lane stopped with its ship on its branch", name)
+		}
+	}
+	t.Run("a rebase stopped on a conflict", func(t *testing.T) {
+		stopped(t, "rebase", func(repo *gittest.Repo, dir string) {
+			repo.Write("clash", "main\n")
+			repo.Commit("clash on main")
+			cmd := exec.Command("git", "-C", dir, "-c", "user.email=fixture@example.invalid", "-c", "user.name=Fixture",
+				"-c", "commit.gpgsign=false", "rebase", "main")
+			cmd.Env = repo.Env()
+			if out, err := cmd.CombinedOutput(); err == nil {
+				t.Fatalf("the rebase did not stop on its conflict:\n%s", out)
+			}
+		})
+	})
+	t.Run("a bisect", func(t *testing.T) {
+		stopped(t, "bisect", func(repo *gittest.Repo, dir string) {
+			repo.Git("-C", dir, "bisect", "start")
+			repo.Git("-C", dir, "checkout", "-q", "--detach", "HEAD~1")
+		})
 	})
 }

@@ -33,3 +33,4 @@ production_mode: hand-written
    - packages: internal/core/implement/loop/resume.go
    - tests: internal/core/implement/loop/resume_test.go
    Once itd-2611031342011261 lands, an agent is alive or lost by the process its ledger entry names rather than by the process that started it.
+   - landed: 9e665a6967db

@@ -153,6 +153,7 @@ func TestStartRefusesAPeerHoldingTheRecord(t *testing.T) {
 		repo.Write(".abcd/development/intents/shipped/itd-10-alpha.md", readyIntent("", settledQuestions))
 		repo.Commit("deliver alpha")
 		repo.Git("checkout", "-q", "main")
+		leftByGoneWorktree(t, repo, "lane-alpha")
 
 		_, err := Start(repo.Root(), "itd-10", Options{})
 		r := mustRefusal(t, err)
@@ -323,6 +324,7 @@ func TestStartRefusesAPeerItCannotRead(t *testing.T) {
 		repo.Write(".abcd/development/intents/planned/itd-20-beta.md", beta)
 		repo.Commit("split beta")
 		repo.Git("checkout", "-q", "main")
+		leftByGoneWorktree(t, repo, "lane-beta")
 
 		_, err := Start(repo.Root(), "itd-10", Options{})
 		r := mustRefusal(t, err)

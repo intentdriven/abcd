@@ -1,6 +1,7 @@
 package autonomy
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -137,7 +138,7 @@ func newSequence(t *testing.T, rec *Record, now time.Time) *sequence {
 
 func (s *sequence) stop(owed Owed, in StopInput) Verdict {
 	s.t.Helper()
-	st, err := LoadSession(s.root, s.id)
+	st, err := LoadSession(context.Background(), s.root, s.id)
 	if err != nil {
 		s.t.Fatal(err)
 	}
@@ -214,7 +215,7 @@ func TestWakeReleasesUnchangedSetTwice(t *testing.T) {
 			t.Errorf("after the capped set changed, wake %d blocked: the count did not reset", i+1)
 		}
 	}
-	st, _ := LoadSession(s.root, s.id)
+	st, _ := LoadSession(context.Background(), s.root, s.id)
 	if st.Wakes != 2 || st.WakeFingerprint != owedOf(failingPR).CappedFingerprint() {
 		t.Errorf("state file holds wakes=%d fp=%q", st.Wakes, st.WakeFingerprint)
 	}
@@ -467,7 +468,7 @@ func TestNextLookStored(t *testing.T) {
 	if v.Block || v.State.State != StateWaiting || !v.State.NextLook.Equal(at(t, "2026-10-18 21:10")) {
 		t.Fatalf("waiting verdict: %+v", v.State)
 	}
-	st, _ := LoadSession(s.root, s.id)
+	st, _ := LoadSession(context.Background(), s.root, s.id)
 	if !st.NextLook.Equal(at(t, "2026-10-18 21:10")) || st.State != StateWaiting {
 		t.Errorf("state file: next look %s state %q", st.NextLook, st.State)
 	}
@@ -526,8 +527,8 @@ func TestSessionIDShape(t *testing.T) {
 		if err := SaveSession(root, bad, SessionState{}); err == nil {
 			t.Errorf("SaveSession(%q) wrote", bad)
 		}
-		if _, err := LoadSession(root, bad); err == nil {
-			t.Errorf("LoadSession(%q) read", bad)
+		if _, err := LoadSession(context.Background(), root, bad); err == nil {
+			t.Errorf("LoadSession(context.Background(), %q) read", bad)
 		}
 	}
 	p, _ := sessionStatePath(root, "abc")

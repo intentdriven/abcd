@@ -70,6 +70,14 @@ var driveWalls = driveWallChecks{
 		if replaced {
 			lines = append(lines, "the profile directory's settings were edited, and were replaced with abcd's: a drive's agents hold abcd's settings and nothing else")
 		}
+		moved, err := runner.SetAsideSyncedSkills(p)
+		if moved != "" {
+			lines = append(lines, "the harness had synced the account's skills into the profile directory, where every launch would load them; abcd moved them to "+
+				moved+" and closed the skills folder so the harness cannot sync them back")
+		}
+		if err != nil {
+			return lines, err
+		}
 		if note := runner.StageCachesNote(p); note != "" {
 			lines = append(lines, note)
 		}

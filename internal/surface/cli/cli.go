@@ -8,6 +8,7 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1640,6 +1641,9 @@ type hookInput struct {
 	Prompt    string `json:"prompt"`
 	Source    string `json:"source"`
 	Event     string `json:"hook_event_name"`
+	// Trigger is the PreCompact payload's "manual" or "auto", read by the
+	// checklist's event sidecar (hook_checklist.go's recordCompaction).
+	Trigger string `json:"trigger"`
 	// SessionTitle is the session's custom title on the session-start and
 	// prompt payloads: a name the person gave it or one a hook set earlier,
 	// never a generated one. Read by session naming (hook_session_name.go).
@@ -1820,7 +1824,9 @@ the form the rules, notes and pages come back in:
 
 A domain, note or page comes back once a session in whatever form its
 bracket gave it, and not again in a larger or smaller form when the bracket
-changes, until a reset. An unknown fill is said on stderr once a session.
+changes, until a reset. A domain sent as its heading and command alone,
+for want of room, carried none of its rules, so it is tried again the next
+time it matches. An unknown fill is said on stderr once a session.
 error is present only when the prompt could not be evaluated, and then
 active, fill and bracket are absent: the set is unknown. A memory.json,
 page store or page that cannot be read is named on stderr and recalls
@@ -1852,7 +1858,12 @@ items handed back, and abcd mode back; once its window has lapsed unclosed
 with a queued step or a recorded stop, one line naming abcd mode back
 instead. Plain stdout is then one object carrying that line as systemMessage
 beside the additional context (and sessionTitle when owed), and the --json
-envelope carries it as system_message.`,
+envelope carries it as system_message.
+
+When a stop while the person was present found the session's checklist
+behind the work it owns (abcd hook stop), the next prompt's text carries
+that note once, under a "## CHECKLIST" heading, beside the away block and
+outside the dedup ledger.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// The hook's one deadline (C12), set before anything else runs:
@@ -1902,6 +1913,12 @@ envelope carries it as system_message.`,
 			// hook's one deadline: the status read below takes what it leaves.
 			root := rulesRoot(cwd, cmd.ErrOrStderr())
 			away := readPromptAway(cmd.ErrOrStderr(), drained, root)
+			// The checklist's behind note a present session's last stop left
+			// (spc-2610230805429429 step 4), carried once, beside the away
+			// block and outside the dedup ledger.
+			noteCtx, noteCancel := context.WithDeadline(context.Background(), deadline)
+			away.Block = joinBlocks(checklistPromptNote(noteCtx, cmd.ErrOrStderr(), cwd, in.SessionID), away.Block)
+			noteCancel()
 			rs, err := rulesForHook(root)
 			if err != nil {
 				// rules.Load errors already carry their own "rules:" prefix, so
@@ -2034,16 +2051,23 @@ envelope carries it as system_message.`,
 	})
 
 	// prompt-router-reset — SessionStart / PreCompact: clear the dedup ledger so
-	// the next prompt re-injects (the event-driven refresh, D1/B2).
+	// the next prompt re-injects (the event-driven refresh, D1/B2), and on
+	// PreCompact record the compaction in the checklist's event sidecar.
 	hookCmd.AddCommand(&cobra.Command{
 		Use:   "prompt-router-reset",
-		Short: "SessionStart/PreCompact: clear the dedup ledger and the session's fill file",
+		Short: "SessionStart/PreCompact: clear the dedup ledger and the session's fill file, and record a compaction",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable reset payload (%s)\n", termsafe.Sanitize(err.Error()))
 				return nil
+			}
+			// The checklist's event sidecar (spc-2610230805429429 step 6):
+			// PreCompact runs this verb, and the compaction is recorded
+			// first, so nothing the reset meets keeps it from the file.
+			if in.Event == "PreCompact" {
+				recordCompaction(cmd.ErrOrStderr(), in.Cwd, in.Trigger)
 			}
 			session := hookSession(in)
 			// The fill's half of the reset (spc-2610111627213138 step 5):
@@ -2146,6 +2170,12 @@ envelope carries it as system_message.`,
 		Short: "SessionStart: drain staged transcripts into the store, and warn about an unbootstrapped store or a stale binary",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// The checklist part's deadline, set before anything else runs:
+			// that part's reads, last, run under what is left of it; the
+			// hook's other reads are not yet bound to it (hook_checklist.go,
+			// sessionStartBudget).
+			ctx, cancel := context.WithTimeout(context.Background(), sessionStartBudget)
+			defer cancel()
 			in, err := readHookInput(cmd)
 			if err != nil {
 				return nil // malformed payload: not a store problem, stay silent
@@ -2160,7 +2190,7 @@ envelope carries it as system_message.`,
 			// checklist last, in what the rest leaves of the host's cap
 			// (hook_checklist.go).
 			out := new(strings.Builder)
-			defer func() { emitSessionStart(cmd, out.String(), cwd) }()
+			defer func() { emitSessionStart(ctx, cmd, out.String(), cwd) }()
 			// Naming first, before the drain's time budget: it reserves the
 			// name the first prompt sets, and writes nothing to stdout
 			// (hook_session_name.go).
@@ -2727,7 +2757,10 @@ reading it would write this checkout's status state. Notes and pages share one r
 score that decides which of them fit the budget: each shows its rank and
 score and, under it, every matched term with the fields it was found in
 (recall words, title, body) and what it added to the score. It reads
-against an empty ledger and writes nothing.
+against an empty ledger and writes nothing. On a drive's stage it reads the
+rules as the lane's base commit holds them and recalls no notes or pages, as
+the hook does there, and says so: the JSON form's stage is true there, so its
+empty notes and pages read apart from a prompt that matched none.
 
 --fill <percent-used>, with --prompt, sets how full the context window is,
 and so the bracket shown; without it the diagnostic has no session, so the
@@ -2760,7 +2793,13 @@ Read-only.`,
 				return err
 			}
 			root := rulesRoot(cwd, cmd.ErrOrStderr())
-			rs, err := rules.Load(root)
+			load := rules.Load
+			if byPrompt {
+				// The preview loads the rules as the hook does: on a drive's
+				// stage, as they stood at the lane's base commit.
+				load = rulesForHook
+			}
+			rs, err := load(root)
 			if err != nil {
 				return err
 			}

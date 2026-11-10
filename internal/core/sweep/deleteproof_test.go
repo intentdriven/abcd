@@ -10,7 +10,9 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/guard"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // proofRepo is sweepRepo with an origin that holds main, fetched, so origin's
@@ -297,4 +299,63 @@ func TestDeleteProofRefusesABranchGitFindsByAnotherCase(t *testing.T) {
 	}
 	proofRefused(t, prove(t, DeleteProofOptions{}, guard.DeleteTarget{Kind: guard.DeleteLocalBranch, Dir: repo.Root(), Branch: "Feat/X"}),
 		"spelled otherwise")
+}
+
+// TestDeleteProofRefusesABranchAStoppedRebaseOrBisectHolds: git lists a
+// worktree whose bisect or rebase stopped as detached, yet the branch it
+// started from, and each branch a rebase's --update-refs list will rewrite,
+// is still in use there (`git branch -d` refuses it), so a merged branch held
+// that way is not proven safe to delete; a state file that cannot be read
+// names no branch for certain, so no branch is.
+func TestDeleteProofRefusesABranchAStoppedRebaseOrBisectHolds(t *testing.T) {
+	repo, _ := proofRepo(t)
+	local := func(b string) guard.DeleteTarget {
+		return guard.DeleteTarget{Kind: guard.DeleteLocalBranch, Dir: repo.Root(), Branch: b}
+	}
+	o := DeleteProofOptions{}
+	for _, b := range []string{"bisected", "listed", "free"} {
+		repo.Git("branch", b)
+	}
+	// A worktree already named held makes git give the next one the id
+	// held1: the refusal names the checkout, never git's admin dir.
+	repo.Git("worktree", "add", "-q", "--detach", filepath.Join(t.TempDir(), "held"), "main")
+	held := filepath.Join(t.TempDir(), "held")
+	repo.Git("worktree", "add", "-q", held, "bisected")
+	repo.Git("-C", held, "bisect", "start")
+	repo.Git("-C", held, "checkout", "-q", "--detach", "main")
+	gitDir := repo.Git("-C", held, "rev-parse", "--path-format=absolute", "--git-dir")
+	list := filepath.Join(gitDir, "rebase-merge", "update-refs")
+	if err := os.MkdirAll(filepath.Dir(list), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tip := repo.Git("rev-parse", "main")
+	if err := os.WriteFile(list, []byte("refs/heads/listed\n"+tip+"\n"+tip+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if p := prove(t, o, local("free")); !p.Safe {
+		t.Fatalf("premise: a merged branch nothing holds is safe: %s", p.Failed)
+	}
+	wts, err := gitutil.ListWorktrees(repo.Root(), gitutil.MaxWorktreeListing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := ""
+	for _, wt := range wts {
+		if fsutil.RealExistingPath(wt.Path) == fsutil.RealExistingPath(held) {
+			at = fsutil.RedactHome(wt.Path)
+		}
+	}
+	for b, says := range map[string]string{"bisected": "checked out in " + at, "listed": "a rebase stopped in " + at + " will rewrite it"} {
+		p := prove(t, o, local(b))
+		proofRefused(t, p, says)
+		if strings.Contains(p.Failed, "held1") {
+			t.Errorf("%s: the refusal names git's admin dir, not the checkout: %s", b, p.Failed)
+		}
+	}
+
+	if err := os.WriteFile(list, []byte("refs/heads/listed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	proofRefused(t, prove(t, o, local("free")), "could not be read")
 }

@@ -39,7 +39,7 @@ import (
 func (st State) masked() State {
 	st.RunID, st.Key, st.Intent, st.Spec = line(st.RunID), line(st.Key), line(st.Intent), line(st.Spec)
 	st.Driver = Driver(line(string(st.Driver)))
-	st.Profile = line(st.Profile)
+	st.Profile, st.Frozen = line(st.Profile), line(st.Frozen)
 	st.Pace = maskPtr(st.Pace, Pace.masked)
 	st.Review = maskPtr(st.Review, ReviewSet.masked)
 	st.Pick = maskPtr(st.Pick, RunPick.masked)
@@ -151,6 +151,14 @@ func (r ValidationRound) masked() ValidationRound {
 			return a
 		})
 		v.Route = maskPtr(v.Route, maskRoute)
+		v.Findings = maskEach(v.Findings, func(f Finding) Finding {
+			f.File, f.Status = line(f.File), line(f.Status)
+			f.CitedBy = maskEach(f.CitedBy, func(c Citer) Citer {
+				c.Role = line(c.Role)
+				return c
+			})
+			return f
+		})
 		return v
 	})
 	r.Routes = maskEach(r.Routes, func(t Round) Round {

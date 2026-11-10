@@ -189,3 +189,57 @@ func TestAContextBoundReadEndsAtItsDeadlineWhileTheConfigReadHangs(t *testing.T)
 		t.Errorf("returned after %s while git's config read hung; the deadline was 500ms", took)
 	}
 }
+
+// TestTheHookReadsRunNoGitOnASpentDeadline: every context-bound read a hook
+// takes on the checklist's path answers a spent deadline before git starts,
+// so a hook whose time is gone runs no git at all.
+func TestTheHookReadsRunNoGitOnASpentDeadline(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	repo.Commit("seed")
+	root := repo.Root()
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git not on PATH")
+	}
+	bin := t.TempDir()
+	log := filepath.Join(t.TempDir(), "calls")
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\necho x >> '"+log+"'\nexec '"+real+"' \"$@\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	reads := map[string]func() error{
+		"CheckoutRootContext": func() error { _, err := gitutil.CheckoutRootContext(ctx, root, "store"); return err },
+		"ToplevelContext":     func() error { _, err := gitutil.ToplevelContext(ctx, root); return err },
+		"RootCommitContext":   func() error { _, err := gitutil.RootCommitContext(ctx, root); return err },
+		"RevParseAbsPathContext": func() error {
+			_, err := gitutil.RevParseAbsPathContext(ctx, root, "--git-common-dir")
+			return err
+		},
+		"ListWorktreesContext": func() error {
+			_, err := gitutil.ListWorktreesContext(ctx, root, gitutil.MaxWorktreeListing)
+			return err
+		},
+		"MergeDriverOverridesContext": func() error { _, err := gitutil.MergeDriverOverridesContext(ctx, root); return err },
+		"RunCappedContext":            func() error { _, err := gitutil.RunCappedContext(ctx, root, 1<<10, "rev-parse", "HEAD"); return err },
+		"RunCappedExitOneContext": func() error {
+			_, _, err := gitutil.RunCappedExitOneContext(ctx, root, 1<<10, "rev-parse", "HEAD")
+			return err
+		},
+		"DefaultRefContext": func() error {
+			if ref := gitutil.DefaultRefContext(ctx, root); ref != "" {
+				return errors.New("answered " + ref)
+			}
+			return context.Canceled
+		},
+	}
+	for name, read := range reads {
+		if err := read(); !errors.Is(err, context.Canceled) {
+			t.Errorf("%s on a spent deadline: %v, want the context's own error", name, err)
+		}
+	}
+	if calls, _ := os.ReadFile(log); len(calls) != 0 {
+		t.Errorf("a spent deadline still ran git %d time(s)", strings.Count(string(calls), "\n"))
+	}
+}

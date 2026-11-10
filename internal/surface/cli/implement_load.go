@@ -389,7 +389,10 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"opening at once can pass the limit by one. So that it cannot starve a whole run, while a\n" +
 			"whole-run waiter that started earlier has been queued " + implement.WaitNarrowYieldAfter.String() + " or more and a whole slot is free, it\n" +
 			"stands aside, spending at most " + implement.WaitNarrowYieldCap.String() + " of a wait so. Waiters queued ahead that alone keep it shut stop\n" +
-			"counting after " + implement.WaitNarrowQueueCap.String() + ".\n\n" +
+			"counting after " + implement.WaitNarrowQueueCap.String() + ". The time both caps have spent carries across retries of the same\n" +
+			"narrow wait in the same lane (the same command, worktree and drive stage), until one of the\n" +
+			"first try's timeouts has passed since the last gave up, in your account's own\n" +
+			"`" + abcdhome.Display(implement.WaitNarrowCarryFileName) + "`; a try that opens clears it.\n\n" +
 			"A wait that gives up exits 1 and ends with a line starting `LOAD GATE TIMED OUT`,\n" +
 			"naming how long it waited and that nothing ran, so a pipe that loses the exit\n" +
 			"code still shows it; with --json that line is the last on stderr.",
@@ -476,7 +479,7 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race, m
 		Read: loadReader, ReadArgs: loadArgsReader, Self: loadSelf(),
 		Now: loadNow, Sleep: loadSleep, Timeout: timeout, Command: len(command) > 0, Race: race, Jitter: loadJitter,
 		Mark: loadMark, RaceCommand: machineload.IsRaceCommand(command),
-		Narrow: narrow,
+		Narrow: narrow, Words: command,
 	}
 	// The hold names the checkout it was taken in, so a waiter behind a
 	// quiet holder can say where it runs.

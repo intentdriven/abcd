@@ -79,8 +79,9 @@ const (
 	// StatusFailed: the copy was attempted and did not pass, including a
 	// runner that failed, refused or answered unparsably inside its cell.
 	StatusFailed TrialStatus = "failed"
-	// StatusNotStarted: the copy never started (a provider down before it
-	// began, decision 6); retried on the same pin and never scored.
+	// StatusNotStarted: the copy never started (a provider down, or
+	// throttling it, before it began, decision 6); retried on the same pin and
+	// never scored.
 	StatusNotStarted TrialStatus = "not_started"
 	// StatusExcluded: the copy broke a rule and is named. One that carries a
 	// fallback receipt counts as its cell's failure, never the model's pass

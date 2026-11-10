@@ -1241,6 +1241,93 @@ the network path can move, and the person declares one the agent cannot push
 to. The checkout's refs, remotes, replacement objects and object store no
 longer choose the build.
 
+## The checklist store
+
+The checklist store holds one working copy's checklist
+([`../04-surfaces/40-checklist.md`](../04-surfaces/40-checklist.md),
+itd-2610170638184486). It lives in the working copy's local tier, so each
+worktree keeps its own, and it is **never committed**:
+
+```
+.abcd/.work.local/
+  checklist.json             the list, written only by the checklist verbs
+  checklist.last-good.json   the same checked bytes, kept as the fallback
+  checklist.lock             held across each read-change-write cycle
+  checklist.events.jsonl     one line per compaction, appended by the hook
+```
+
+`checklist.json` is one JSON document under the schema `abcd/checklist/v1`:
+`schema`, `updated_at` (RFC 3339), `updated_by` (the last writer's session id,
+or the name the away record gives it where the host exports none) and `items`. An item carries `id` (a short slug, stable once minted), `title` (one
+line of at most 200 characters), `state` (`working`, `waiting`, `done` or
+`dropped`), and optionally `waits_on`, `next_look` (RFC 3339), `promise`
+(`trigger` and `act`), `owner_refs` (the branches, pull requests and
+reservations the item is about) and `credential`, which has three fields and
+no more: `kind` and `scope`, each from a closed list, and `expiry`, a time or
+`none` (brief invariant 24). The decode is strict: a repeated key, a second
+document or a field the schema does not name refuses the file. Each line of
+`checklist.events.jsonl` is one JSON object under `abcd/checklist-events/v1`:
+`schema`, `at`, `event` (`compact`) and `trigger` (`manual`, `auto` or
+`other`).
+
+Three properties are load-bearing:
+
+- **The reader is the enforcement.** A file written past the verbs reaches the
+  reader unchecked, so the reader takes only a file a checked write in this
+  working copy could have made, validates and scans it, and falls back to the
+  last good copy judged the same way, then to nothing; it never writes, so a
+  read never promotes a file to last good.
+- **Every write is checked whole and lands atomically.** A write validates and
+  scans every field before any byte reaches the disk, writes the file 0600
+  through an atomic replace, and writes the same bytes as the last good copy; a
+  temporary file a killed writer left is never read. Whether that holds
+  across a crash or a power cut is not yet shown: the spec's crash lab
+  (spc-2610230805429429 step 7) has not run.
+- **A hook reads within its deadline.** These reads run under the hook's own
+  deadline. At a session start: finding the checkout, the checklist read's
+  tracked check and the secret scanner's identity probe, a probe the deadline
+  cut short leaving the scanner unavailable rather than blind to the person's
+  identity. At a stop: those, the session's copy, the session's identity and
+  holder, the default branch and the last-fetch stamp. The hooks' other reads,
+  among them the stop's reservations' view and landing-receipt read, are not
+  yet bound (iss-2611100548341325); the away session's state, read after the
+  deadline may be spent, runs under a two-second bound of its own. At a
+  session start, a deadline spent before or during the read leaves the list
+  out, said on the error stream. At a stop, a reading of owned work the
+  deadline cut short lets the stop through with that reading's own incomplete
+  message and reads no list; only a deadline spent at the list's own read
+  writes a line on the error stream. Either way no note is left, and a list
+  git did not answer for in time is never read as one that names nothing.
+- **The hooks' unbound git calls are counted.** A test in
+  `internal/surface/cli/hook_git_audit_test.go` walks the calls from the
+  binary's entry and each hook verb's handlers, for darwin and for linux each
+  on its own, and counts the calls it reaches in the forms it matches: a
+  plain `exec.Command`, `os.StartProcess` or `syscall.Exec`, `ForkExec` or
+  `StartProcess`; an `exec.Cmd` literal, declaration or `new(exec.Cmd)`; a
+  gitutil or localtier function or method that has a Context form, or a call
+  of one of theirs that reaches one; and any `context.Background` or `TODO`
+  passed to a context parameter of an abcd function or method, whether or
+  not it reaches git, directly, wrapped by `WithCancel`, `WithValue` or
+  `WithoutCancel`, as a cobra command's `Context`, returned by an abcd
+  function, or held in a variable or a struct field set from one, in any
+  package. A static walk cannot follow every route a value takes, and these
+  are not matched: such a context passed through a function-typed variable
+  or field, a positional struct literal, a map, slice or channel, one of
+  several results, an interface method's or a function literal's result;
+  alias types; a Run or RunE set by assignment on a verb that is not a hook
+  (a hook verb's is refused); a handler that calls on through a struct field;
+  a call the standard library makes back into abcd through an interface
+  (String, MarshalJSON, and the Error, Is, As and Unwrap callbacks); and
+  reflection. The hook scripts are read for the binary called as `"$g"`,
+  `"$x"` or `"$r/abcd"`, and a call by another spelling is not seen. The test
+  compares the counts with
+  `internal/surface/cli/testdata/hook-git-baseline.txt`: a reached call
+  missing from the file, or made more often than it lists, fails the test,
+  and so does an entry made less often or no longer reached, until the file
+  is lowered to match (dcn-2611100854404911). A line added to the file by hand
+  is caught only by review of its diff. While the file lists any call, some
+  hook git calls still run with no deadline.
+
 ## The two `.abcd/` scopes
 
 abcd keeps **one namespace pattern instantiated at two scopes**, under two names:

@@ -767,6 +767,9 @@ func writeFixBrief(c Context, lane Lane, r ValidationRound, failing []ValidatorR
 			who += " (" + ph + ")"
 		}
 		p("- %s: %s — its return: `%s`\n", who, v.Verdict, abs(c.RepoRoot, v.Return))
+		if len(v.Findings) > 0 {
+			p("  - located findings: %s\n", strings.Join(findingLocations(v.Findings), ", "))
+		}
 		if v.Audit != nil {
 			if len(v.Audit.NotMet) > 0 {
 				p("  - criteria not met: %s\n", strings.Join(v.Audit.NotMet, ", "))
@@ -781,7 +784,13 @@ func writeFixBrief(c Context, lane Lane, r ValidationRound, failing []ValidatorR
 	p("\nThe round's verdicts, as the loop recorded them: %s.\n\n", verdictsLine(r))
 	p("For every finding in those returns, either apply it with a commit on `%s` in the worktree\n", lane.Branch)
 	p("`%s`, or reject it in writing in your report, naming the finding and the reason. The next\n", lane.Worktree)
-	p("round hands the lane's head to every validator again, fresh; they read your report.\n\n")
+	p("round hands the lane's head to every validator again, fresh; they read your report.\n")
+	p("Name each located finding in your report on a line of its own: its `file:line` first, then\n")
+	p("`applied` or `rejected` and not both, so the round's record can say which you did. A word\n")
+	p("speaks of the location before it on its line, so on a line naming two, a word written\n")
+	p("before the second is read as said of the first, and the second gets none. A line naming a\n")
+	p("finding with neither word says nothing of it, and a finding no line says a word of is\n")
+	p("recorded as unknown.\n\n")
 	p("Your brief as the lane's implementer, with the record it was rendered from: `%s`\n\n", abs(c.RepoRoot, lane.Brief))
 	p("%s", routingSection(route))
 	p("## What you hand back\n\n")
@@ -818,6 +827,30 @@ func reportPathOf(c Context, lane Lane, receiptRel string) string {
 	return abs(c.RepoRoot, dir+"/"+rc.Report)
 }
 
+// fixReportText is the report a verified fix receipt names, read through the
+// guarded reader, line breaks normalised; "" when it cannot be read, so every
+// finding it was handed reads as one it does not speak of (unknown).
+func fixReportText(c Context, lane Lane, receiptRel string) string {
+	root, err := os.OpenRoot(c.RepoRoot)
+	if err != nil {
+		return ""
+	}
+	defer root.Close()
+	rc, err := readReceipt(c.RepoRoot, root, receiptRel, lane.ID)
+	if err != nil || rc.Report == "" || !fsutil.ValidRelPath(rc.Report) {
+		return ""
+	}
+	dir, err := laneRel(c.State.RunID, lane.ID, StageValidate)
+	if err != nil {
+		return ""
+	}
+	data, err := localtier.ReadInRoot(root, dir+"/"+rc.Report, maxReportBytes)
+	if err != nil {
+		return ""
+	}
+	return landing.NormalizeLineBreaks(string(data))
+}
+
 // verifyValidation is the validate stage's verifier. A validator's return is
 // read and its verdict parsed and recorded by the loop, on the validator's run;
 // a fresh implementer's receipt is verified as a lane receipt is, and closes the
@@ -843,6 +876,7 @@ func verifyValidation(c Context, lane *Lane, receiptRel string) error {
 			return err
 		}
 		cur.Fix = receiptRel
+		joinFixReport(cur, fixReportText(c, *lane, receiptRel), lane.Worktree)
 		return nil
 	}
 	for i := range cur.Validators {
@@ -878,6 +912,8 @@ func verifyValidation(c Context, lane *Lane, receiptRel string) error {
 			reported = c.Route.Model
 		}
 		v.recordModelStatus(reported)
+		v.recordFindings(landing.NormalizeLineBreaks(string(raw)), lane.Worktree)
+		markCitedBy(cur)
 		compareRole(cur, v.Role)
 		return nil
 	}
@@ -1118,7 +1154,11 @@ func validationNote(lane Lane, receipt string) string {
 	}
 	r := lane.Validation[len(lane.Validation)-1]
 	if r.Fix == receipt {
-		return fmt.Sprintf("round %d's findings were answered at %s; the next round judges the lane's head %s afresh", r.Round, shortSHA(lane.HeadSHA), shortSHA(lane.HeadSHA))
+		note := fmt.Sprintf("round %d's findings were answered at %s; the next round judges the lane's head %s afresh", r.Round, shortSHA(lane.HeadSHA), shortSHA(lane.HeadSHA))
+		if t := fixTally(r); t != "" {
+			note += "; " + t
+		}
+		return note
 	}
 	for _, v := range r.Validators {
 		if v.Return != receipt || v.Verdict == "" {
@@ -1130,6 +1170,9 @@ func validationNote(lane Lane, receipt string) string {
 		}
 		if v.Audit != nil {
 			note += fmt.Sprintf(" over the whole delivery %s..%s (receipt %s, for the close to consume)", shortSHA(v.Audit.BaseSHA), shortSHA(v.Audit.HeadSHA), v.Audit.ReceiptID)
+		}
+		if v.Located != nil {
+			note += fmt.Sprintf("; its return cites %d located finding(s)", *v.Located)
 		}
 		if v.Class != "" {
 			if cmp, ok := compareRole(&r, v.Role); ok {

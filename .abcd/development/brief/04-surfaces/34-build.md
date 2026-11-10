@@ -99,7 +99,14 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   not the default branch, so a branch cut after the default branch shipped an
   intent this checkout, being behind, still holds as planned is a holding. A
   worktree is compared off its disk, against the merge-bases of its HEAD, so an
-  uncommitted move or edit is a change. A copy that cannot be compared (an
+  uncommitted move or edit is a change. A local branch no worktree has checked
+  out, a backup or a paused branch, is no holding (iss-2611090125008163): no
+  checkout has work in progress on it, so the check passes and its row names
+  the branch and the bucket it holds the intent in. Checked out is as git
+  counts it: the branch of a worktree that is gone or that git will not answer
+  for is still a holding, and so is the branch a rebase or a bisect stopped in
+  a worktree started from, though git lists that worktree detached. The peer listing
+  still shows such a branch. A copy that cannot be compared (an
   unborn HEAD here, no merge-base, an unreadable file) counts as a holding. The
   check
   fails closed on what it cannot see into, on both sides: a peer the listing
@@ -722,7 +729,13 @@ of this run that built it, with its branch, head and pull request — or that no
 step comes before it, and
 what the implementer hands back: its report, the definition of done's output,
 and the receipt with its exact shape, each at an absolute path in the lane's
-directory. Before the record it carries, the brief states the outbound policy
+directory. The definition of done it asks for is scoped to the packages the lane
+changed, and the brief spells out the load gate's narrow form for a Go package's
+tests, so a lane's test waits behind other narrow runs and stands aside for a
+whole preflight for five minutes at most; its race tests run in the repository's
+pre-push gate, or, where that gate has none and the conventions ask for them,
+as a gated run of their own.
+Before the record it carries, the brief states the outbound policy
 in its own right, quoted from `scanner.OutboundPolicy`, the value the lint
 rules and the commit gates quote (itd-152): no live session URL and no tool
 attribution footer in a pull request, an issue, a comment, a commit message or

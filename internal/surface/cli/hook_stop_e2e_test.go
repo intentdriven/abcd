@@ -1,10 +1,14 @@
 package cli
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/occupancy"
+	"github.com/intentdriven/abcd/internal/core/sessionname"
 )
 
 // hook_stop_e2e_test.go — the away mode's stop check end to end, through the
@@ -96,4 +100,99 @@ func TestHookStopEndToEndOwnUnpushedBranch(t *testing.T) {
 			t.Errorf("present, the check reads disk only, but the forge was asked: %q", calls)
 		}
 	})
+}
+
+// hostIn is the table's reading of pid as a session's host, or false when the
+// table does not hold it.
+func hostIn(tab sessionname.Table, pid int) (sessionname.Host, bool) {
+	for _, p := range tab.Procs {
+		if p.PID == pid {
+			return sessionname.Host{PID: pid, StartUnix: tab.ReadAt.Add(-p.Age).Unix(), Slack: tab.Took}, true
+		}
+	}
+	return sessionname.Host{}, false
+}
+
+// TestHookStopEndToEndTwoSessionsOneCopy (iss-2611020719483054,
+// iss-2610311406481214, iss-2611070830056851): two live sessions on one
+// account started in one copy; one cuts a branch through the guard and leaves
+// a commit on it unpushed. Away, with a wake scheduled, the session that cut
+// it is told, its stop blocked naming the branch; the other is released, the
+// branch named to it as the holder's. Once the holder's session has ended,
+// the branch is owed to the session left. The real owed reader, the real
+// guard recorder, the real session markers and the machine's process table.
+func TestHookStopEndToEndTwoSessionsOneCopy(t *testing.T) {
+	root := awayCheckout(t)
+	gitAt(t, root, "config", "--local", "user.email", "alice@example.invalid")
+	gitAt(t, root, "config", "--local", "commit.gpgsign", "false")
+	origin := filepath.Join(t.TempDir(), "origin.git")
+	initBare(t, origin)
+	gitAt(t, root, "remote", "add", "origin", origin)
+	main := gitAt(t, root, "rev-parse", "--abbrev-ref", "HEAD")
+	gitAt(t, root, "push", "-q", "origin", main)
+	gitAt(t, root, "remote", "set-head", "origin", main)
+	bin := t.TempDir()
+	script := "#!/bin/sh\nif [ \"$1 $2\" = 'pr list' ]; then echo '[]'; exit 0; fi\necho \"gh stub: unexpected call: $*\" >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	const holder, other = "sess-holder", "sess-other"
+	tab, err := sessionname.Live().ReadTable()
+	if err != nil {
+		t.Skipf("the process table cannot be read here: %v", err)
+	}
+	holderHost, ok1 := hostIn(tab, os.Getpid())
+	otherHost, ok2 := hostIn(tab, os.Getppid())
+	if !ok1 || !ok2 {
+		t.Skip("this process or its parent is not in the process table")
+	}
+	home := os.Getenv("HOME")
+	if err := occupancy.Note(home, holder, root, holderHost, tab); err != nil {
+		t.Fatal(err)
+	}
+	if err := occupancy.Note(home, other, root, otherHost, tab); err != nil {
+		t.Fatal(err)
+	}
+
+	held := filepath.Join(t.TempDir(), "held")
+	cut := "git worktree add -b feat/held " + held
+	payload, err := json.Marshal(map[string]any{
+		"session_id": holder, "cwd": root, "hook_event_name": "PreToolUse", "tool_name": "Bash",
+		"tool_input": map[string]any{"command": cut, "description": "x"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stdout, stderr, code := runGuard(string(payload), "guard", "hook"); strings.Contains(stdout, `"deny"`) || code == 2 {
+		t.Fatalf("%q was refused: %q %q", cut, stdout, stderr)
+	}
+	gitAt(t, root, "worktree", "add", "-q", "-b", "feat/held", held)
+	// A commit that changes a file: one that changes nothing has already
+	// landed wherever its branch is merged, and is owed nowhere.
+	if err := os.WriteFile(filepath.Join(held, "held.txt"), []byte("the holder's work\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitAt(t, held, "add", "held.txt")
+	gitAt(t, held, "commit", "-q", "-m", "the holder's work, not pushed")
+	setAway(t)
+
+	wake := "*/10 * * * *"
+	out, so, se := runStop(t, stopHookPayload(t, holder, root, false, "Done for now.", wake))
+	if out.Decision != "block" || !strings.Contains(out.Reason, "feat/held") {
+		t.Fatalf("the session that cut feat/held is not told of it: %s\nstderr: %s", so, se)
+	}
+	out, so, se = runStop(t, stopHookPayload(t, other, root, false, "Done for now.", wake))
+	if out.Decision == "block" {
+		t.Fatalf("the other session is held for the holder's branch: %s\nstderr: %s", so, se)
+	}
+
+	if err := occupancy.Forget(home, holder); err != nil {
+		t.Fatal(err)
+	}
+	out, so, se = runStop(t, stopHookPayload(t, other, root, false, "Done for now.", wake))
+	if out.Decision != "block" || !strings.Contains(out.Reason, "feat/held") {
+		t.Fatalf("once the holder has ended, its branch is not owed to the session left: %s\nstderr: %s", so, se)
+	}
 }

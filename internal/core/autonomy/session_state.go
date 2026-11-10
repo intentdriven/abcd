@@ -1,6 +1,7 @@
 package autonomy
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,6 +41,16 @@ type SessionState struct {
 	// (dcn-2610181035361997).
 	Wakes           int    `json:"wakes"`
 	WakeFingerprint string `json:"wake_fingerprint,omitempty"`
+	// ChecklistBlocked is the behind set (Behind.Fingerprint) a stop was
+	// last blocked on while away, so a set blocks once per consecutive run of
+	// stops on it; "" once the
+	// checklist caught up.
+	ChecklistBlocked string `json:"checklist_blocked,omitempty"`
+	// ChecklistNoted is the behind set last left for the prompt hook while the
+	// person was present, and ChecklistNote that note, until the next prompt
+	// takes it into the session's context.
+	ChecklistNoted string `json:"checklist_noted,omitempty"`
+	ChecklistNote  string `json:"checklist_note,omitempty"`
 }
 
 // sessionStatePath is the session's state file below the working copy at
@@ -54,7 +65,10 @@ func sessionStatePath(copyRoot, sessionID string) (string, error) {
 // LoadSession reads the session's state below copyRoot, through an os.Root at
 // copyRoot so nothing outside the copy is read; an absent file is the zero
 // state. A file over MaxFileBytes, or one that does not parse, is an error.
-func LoadSession(copyRoot, sessionID string) (SessionState, error) {
+// Its one git call, the tracked check, is bound to ctx: a hook reads it under
+// its own deadline, and a ctx that ends first refuses, as git not answering
+// does.
+func LoadSession(ctx context.Context, copyRoot, sessionID string) (SessionState, error) {
 	if !ValidSessionID(sessionID) {
 		return SessionState{}, ErrSessionID
 	}
@@ -65,7 +79,7 @@ func LoadSession(copyRoot, sessionID string) (SessionState, error) {
 	defer root.Close()
 	// A state a commit carries was written by whoever made the commit, not by
 	// this copy's session, and is refused rather than read as its wake state.
-	if err := localtier.Untracked(copyRoot, path.Join(SessionsDir, sessionID+".json")); err != nil {
+	if err := localtier.UntrackedContext(ctx, copyRoot, path.Join(SessionsDir, sessionID+".json")); err != nil {
 		return SessionState{}, err
 	}
 	f, err := root.Open(path.Join(SessionsDir, sessionID+".json"))

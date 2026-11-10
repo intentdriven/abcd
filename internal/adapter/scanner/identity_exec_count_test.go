@@ -1,12 +1,15 @@
 package scanner
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // identity_exec_count_test.go (iss-2609281546130900): building a scanner
@@ -121,5 +124,25 @@ func TestParseConfigListing(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestNewContextOnASpentDeadlineRunsNoGitAndFailsClosed: a scanner built on a
+// spent deadline runs no identity probe and is unavailable, never a scanner
+// that scans as though the caller had no identity to redact.
+func TestNewContextOnASpentDeadlineRunsNoGitAndFailsClosed(t *testing.T) {
+	dir := gittest.NewRepo(t).Root()
+	calls := countingGit(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	sc, err := NewContext(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unavail, why := sc.Unavailable(); !unavail || !strings.Contains(why, "deadline") {
+		t.Errorf("a scanner built on a spent deadline is available (%v, %q)", unavail, why)
+	}
+	if n := calls(); n != 0 {
+		t.Errorf("a spent deadline still ran git %d time(s)", n)
 	}
 }

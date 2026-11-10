@@ -35,8 +35,9 @@
 #      its place;
 #   2. gitleaks at the version .github/workflows/ci.yml pins (GITLEAKS_VERSION,
 #      read from that file as data, so there is one pin), downloaded and
-#      checksum-verified exactly as the CI job does, then installed to
-#      /usr/local/bin;
+#      checked, as the CI job checks its own, against the sha256 the
+#      repository holds in scripts/gitleaks-checksums.txt (never a checksum
+#      list fetched beside the download), then installed to /usr/local/bin;
 #   3. as `abcd`: the toolchain go.mod declares, resolved through
 #      scripts/pinned-toolchain.sh (so `go run ./cmd/abcd` works), and
 #      core.hooksPath=.githooks in the checkout, so the committed hooks run;
@@ -267,7 +268,7 @@ ca_step
 # --- 2. gitleaks ----------------------------------------------------------------------
 
 gitleaks_step() {
-	local pins version arch base url tmp have rc
+	local pins version arch base url tmp have rc sums line
 	pins="$(sed -n 's/^[[:space:]]*GITLEAKS_VERSION:[[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' .github/workflows/ci.yml 2>/dev/null | sort -u)"
 	if [ -z "$pins" ] || [ "$(printf '%s\n' "$pins" | grep -c .)" -ne 1 ]; then
 		miss "gitleaks: .github/workflows/ci.yml does not pin one GITLEAKS_VERSION, so there is no version to install."
@@ -287,9 +288,18 @@ gitleaks_step() {
 		return 0
 		;;
 	esac
-	tmp="$(mktemp -d "${TMPDIR:-/tmp}/abcd-setup.XXXXXX")"
 	base="gitleaks_${version}_linux_${arch}.tar.gz"
 	url="https://github.com/gitleaks/gitleaks/releases/download/v${version}"
+	# The digest comes from the repository, the one file CI's job and
+	# make secrets-check verify against; the asset is matched as a whole
+	# field, so its dots are literal.
+	sums="$root/scripts/gitleaks-checksums.txt"
+	line="$(awk -v a="$base" 'NF == 2 && $2 == a' "$sums" 2>/dev/null)" || line=""
+	if [ -z "$line" ] || [ "$(printf '%s\n' "$line" | grep -c .)" -ne 1 ]; then
+		miss "gitleaks $version: scripts/gitleaks-checksums.txt holds no single sha256 for $base, so there is nothing to verify a download against; nothing was fetched."
+		return 0
+	fi
+	tmp="$(mktemp -d "${TMPDIR:-/tmp}/abcd-setup.XXXXXX")"
 	# The CI job's own steps (ci.yml, job gitleaks), in a directory of our own.
 	# Chained with &&, not left to set -e: errexit is off inside a subshell
 	# whose status is tested, and an unverified download must never reach
@@ -299,8 +309,7 @@ gitleaks_step() {
 		set -o pipefail
 		cd "$tmp" &&
 			curl -sSLf -o "$base" "$url/$base" &&
-			curl -sSLf -o checksums.txt "$url/gitleaks_${version}_checksums.txt" &&
-			grep " $base\$" checksums.txt | sha256sum -c - >/dev/null &&
+			printf '%s\n' "$line" | sha256sum -c - >/dev/null &&
 			tar -xzf "$base" gitleaks &&
 			install gitleaks /usr/local/bin/gitleaks
 	) >/dev/null 2>&1 || rc=$?

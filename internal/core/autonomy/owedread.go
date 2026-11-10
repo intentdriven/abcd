@@ -17,6 +17,8 @@ import (
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/occupancy"
+	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/localtier"
@@ -47,6 +49,11 @@ type ReadOptions struct {
 	Forge Forge
 	// ForgeDeadline bounds the listing; zero means ForgeDeadline.
 	ForgeDeadline time.Duration
+	// RulesetDeadline bounds each read that decides whether a merge queue
+	// keeps a behind pull request current (forge.go): the default branch's
+	// live rules, and its armed or queued pull requests; zero means
+	// RulesetDeadline.
+	RulesetDeadline time.Duration
 	// Reservations reads the reservations as last fetched, with no network;
 	// nil means claim.View.
 	Reservations func(root string, now time.Time) (claim.Snapshot, error)
@@ -58,6 +65,17 @@ type ReadOptions struct {
 	// Email is this checkout's author email, which tells its commits from
 	// another author's; "" means the email git would author a commit with.
 	Email string
+	// SessionID is the stopping session's id, as the Stop payload carries it.
+	// With one ValidSessionID accepts, an item another live session holds is
+	// left out of the owed work and named in a note (holders.go); "" leaves
+	// every item owed as this copy's, as does any item whose holder the
+	// evidence cannot tell.
+	SessionID string
+	// LiveSessions reads the sessions running on the machine, each with the
+	// checkout it started in; nil means occupancy.Live under Home with the
+	// machine's process table. It is read at most once a check, and only
+	// when an item may be another session's.
+	LiveSessions func() ([]occupancy.Session, error)
 }
 
 func (o ReadOptions) now() time.Time {
@@ -75,8 +93,11 @@ func (o ReadOptions) now() time.Time {
 // away it adds one listing of the open pull requests under ForgeDeadline,
 // for failing, behind, stacked and uncarried work; a listing that fails or
 // is late is named in Owed.Notes and the check judges from disk alone
-// (adr-2610181003541997). With --hold-pushes, an unpushed own branch a queued
-// step names, whose head contains its base's last-fetched tip and has a
+// (adr-2610181003541997). A behind pull request into the default branch is
+// judged by its merge queue, read from the forge's live rules under
+// RulesetDeadline (queueKeepsCurrent). With --hold-pushes, an unpushed own
+// branch a queued step names, whose head contains its base's last-fetched tip
+// and has a
 // preflight receipt, is handed back: moved out of Owed.Items into
 // Owed.HandedBack, for the verdict to accept and the stop hook to record.
 // Owed.NextRenewal is the earliest renewal due among the live reservations
@@ -88,7 +109,7 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 	if o.Root == "" {
 		return Owed{}, errors.New("autonomy: no working copy to read the owed work of")
 	}
-	root, err := gitutil.CheckoutRoot(o.Root, StoreName)
+	root, err := gitutil.CheckoutRootContext(ctx, o.Root, StoreName)
 	if err != nil {
 		return Owed{}, err
 	}
@@ -99,16 +120,24 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 		}
 	}
 	r := &owedReader{
-		ctx:   ctx,
-		root:  root,
-		home:  home,
-		now:   o.now(),
-		email: o.Email,
-		rec:   o.Record,
+		ctx:      ctx,
+		root:     root,
+		home:     home,
+		now:      o.now(),
+		email:    o.Email,
+		rec:      o.Record,
+		me:       o.SessionID,
+		liveRead: o.LiveSessions,
+		heldRes:  map[string]string{},
+	}
+	if r.liveRead == nil {
+		r.liveRead = func() ([]occupancy.Session, error) {
+			return occupancy.Live(home, sessionname.Live().ReadTable)
+		}
 	}
 	r.away = o.Record.Holds(r.now)
 	if r.email == "" {
-		if id, err := identity.EffectiveIdentity(root); err == nil {
+		if id, err := identity.EffectiveIdentityContext(ctx, root); err == nil {
 			r.email = id.Email
 		}
 	}
@@ -117,7 +146,7 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 	if r.away {
 		r.person = o.Person
 		if r.person == "" {
-			r.person = claim.ReaderHolder(root, claim.Options{Home: home})
+			r.person = claim.ReaderHolderContext(ctx, root, claim.Options{Home: home})
 		}
 		forge := o.Forge
 		if forge == nil {
@@ -126,6 +155,10 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 		deadline := o.ForgeDeadline
 		if deadline <= 0 {
 			deadline = ForgeDeadline
+		}
+		r.forge, r.rulesDeadline = forge, o.RulesetDeadline
+		if r.rulesDeadline <= 0 {
+			r.rulesDeadline = RulesetDeadline
 		}
 		r.list = listOpen(ctx, forge, root, r.person, deadline)
 		if !r.list.read {
@@ -140,12 +173,15 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 			r.note("the forge listed %d open pull requests, its limit, so the listing may be truncated: a reservation no listed pull request carries is not counted as uncarried", len(r.list.prs))
 		}
 	}
-	r.receiptsMinted = receiptsMinted(root)
+	r.receiptsMinted = receiptsMinted(ctx, root)
 	r.readLanes()
 	r.findOwn()
+	r.scope()
+	owned := r.ownedRefs()
 	r.branchItems()
 	r.reservationItems()
 	r.handBack()
+	r.breachNote()
 	if r.cut {
 		r.ranOut("the rest of this copy's work")
 	}
@@ -159,7 +195,35 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 		}
 		return a.Record < b.Record
 	})
-	return Owed{Items: r.items, Notes: r.notes, NextRenewal: r.nextRenewal, WakeBy: r.wakeBy, HandedBack: r.handed, Incomplete: r.incomplete}, nil
+	return Owed{Items: r.items, Notes: r.notes, NextRenewal: r.nextRenewal, WakeBy: r.wakeBy, HandedBack: r.handed, Incomplete: r.incomplete, Owned: owned}, nil
+}
+
+// ownedRefs is the work this session owns as the reading found it, after
+// another live session's share is taken out (scope): each own branch, with
+// its open pull request while the forge was read (away only), and each live
+// reservation under this copy's key that no other live session's run holds.
+// They are spelled as a checklist item's owner_refs names them.
+func (r *owedReader) ownedRefs() []OwnedRef {
+	var out []OwnedRef
+	for _, name := range r.ownNames() {
+		ref := OwnedRef{Ref: "branch:" + name}
+		if b := r.branches[name]; b != nil {
+			ref.Changed = b.committed
+		}
+		if r.list.read {
+			if p, ok := r.list.byHead(name, r.person); ok && p.Number > 0 {
+				ref.Aliases = []string{"pr:" + strconv.Itoa(p.Number)}
+			}
+		}
+		out = append(out, ref)
+	}
+	for _, res := range r.mine {
+		if r.heldRes[res.Record] != "" {
+			continue
+		}
+		out = append(out, OwnedRef{Ref: res.Record})
+	}
+	return out
 }
 
 // owedReader is one ReadOwed's state.
@@ -181,8 +245,34 @@ type owedReader struct {
 	list     listing
 	lanes    map[string]laneState
 
+	// forge and rulesDeadline make the reads that decide whether a merge
+	// queue keeps a behind pull request current, each at most once a check
+	// and only while away: the default branch's live rules (queue), and
+	// its armed or queued pull requests (armedInto).
+	forge         Forge
+	rulesDeadline time.Duration
+	queueRead     bool
+	queue         queueRule
+	armedRead     bool
+	armedInto     armedSet
+
+	// me is the stopping session (ReadOptions.SessionID), and the rest of
+	// this block what holders.go reads to tell its work from another live
+	// session's.
+	me         string
+	liveRead   func() ([]occupancy.Session, error)
+	live       map[string]string // a live session's id -> the checkout it started in
+	liveTried  bool
+	liveOK     bool
+	recordedBy map[string]string   // a recorded branch -> the session that created it, "" when none was kept
+	runDrivers map[string][]string // a live run's key -> each unfinished run's driving session, "" when none
+	elsewhere  map[string]string   // a branch -> the other worktree it is checked out in
+	heldRes    map[string]string   // a reservation -> the live session whose run it is for
+	held       map[string]*holding // by session: what another live session holds
+
 	receiptsMinted bool
 	own            map[string]bool
+	baseNames      []string          // the own branches as findOwn found them, before scope: what stackIdx indexes
 	stacks         *stackIndex       // read once, for diskStackBase
 	incomplete     bool              // the time budget ran out before everything was read
 	cut            bool              // a git read failed once the budget had run out
@@ -199,11 +289,16 @@ type localBranch struct {
 	name, head   string
 	upstream     string
 	upstreamGone bool
+	// committed is the head commit's committer time, zero when git gave none.
+	committed time.Time
 }
 
 type laneState struct {
 	key     string
 	reviews []laneReview
+	// driver is the session its run's control record names as the run's
+	// driver, "" when it names none.
+	driver string
 }
 
 type laneReview struct {
@@ -253,7 +348,7 @@ func (r *owedReader) ranOut(what string) {
 // readRefs reads the default branch as last fetched and every local branch
 // with its head and upstream.
 func (r *owedReader) readRefs() {
-	r.def = gitutil.DefaultRef(r.root)
+	r.def = gitutil.DefaultRefContext(r.ctx, r.root)
 	switch {
 	case strings.HasPrefix(r.def, "refs/remotes/"):
 		parts := strings.SplitN(strings.TrimPrefix(r.def, "refs/remotes/"), "/", 2)
@@ -268,7 +363,7 @@ func (r *owedReader) readRefs() {
 		r.defTip = strings.TrimSpace(r.defTip)
 	}
 	r.branches = map[string]*localBranch{}
-	out, err := r.git("for-each-ref", "--format=%(refname:short)%00%(objectname)%00%(upstream)%00%(upstream:track)", "refs/heads")
+	out, err := r.git("for-each-ref", "--format=%(refname:short)%00%(objectname)%00%(upstream)%00%(upstream:track)%00%(committerdate:unix)", "refs/heads")
 	if err != nil {
 		// A listing the deadline cut short is a reading not done, not a
 		// copy with no branches: the verdict must fail open and say so.
@@ -281,10 +376,14 @@ func (r *owedReader) readRefs() {
 	}
 	for _, line := range strings.Split(out, "\n") {
 		f := strings.Split(line, "\x00")
-		if len(f) != 4 || f[0] == "" {
+		if len(f) != 5 || f[0] == "" {
 			continue
 		}
-		r.branches[f[0]] = &localBranch{name: f[0], head: f[1], upstream: f[2], upstreamGone: strings.Contains(f[3], "gone")}
+		b := &localBranch{name: f[0], head: f[1], upstream: f[2], upstreamGone: strings.Contains(f[3], "gone")}
+		if sec, err := strconv.ParseInt(f[4], 10, 64); err == nil && sec > 0 {
+			b.committed = time.Unix(sec, 0)
+		}
+		r.branches[f[0]] = b
 	}
 }
 
@@ -317,8 +416,8 @@ func (r *owedReader) liveMine(id string) bool {
 
 // receiptsMinted reports whether the repository mints preflight receipts: a
 // receipt folder exists in one of its worktrees.
-func receiptsMinted(root string) bool {
-	wts, err := gitutil.ListWorktrees(root, gitutil.MaxWorktreeListing)
+func receiptsMinted(ctx context.Context, root string) bool {
+	wts, err := gitutil.ListWorktreesContext(ctx, root, gitutil.MaxWorktreeListing)
 	if err != nil {
 		return false
 	}
@@ -367,6 +466,7 @@ const runRelDir = ".abcd/.work.local/run"
 // tier whose reservation is live under this copy's key.
 func (r *owedReader) readLanes() {
 	r.lanes = map[string]laneState{}
+	r.runDrivers = map[string][]string{}
 	rt, err := os.OpenRoot(r.root)
 	if err != nil {
 		return
@@ -413,11 +513,13 @@ func (r *owedReader) readLanes() {
 		if finished {
 			continue
 		}
+		driver := runDriver(rt, runRelDir+"/"+e.Name())
+		r.runDrivers[run.Key] = append(r.runDrivers[run.Key], driver)
 		for _, l := range run.Lanes {
 			if l.Branch == "" || l.Stage == "done" || l.Stage == "discarded" || l.Stage == "handed-back" {
 				continue
 			}
-			ls := laneState{key: run.Key}
+			ls := laneState{key: run.Key, driver: driver}
 			for _, v := range l.Validation {
 				pass := len(v.Validators) > 0
 				for _, val := range v.Validators {
@@ -428,6 +530,30 @@ func (r *owedReader) readLanes() {
 			r.lanes[l.Branch] = ls
 		}
 	}
+}
+
+// maxControlBytes bounds the read of a run's control record (the loop's own
+// bound on it).
+const maxControlBytes = 1 << 20
+
+// runDriver is the session a run's control record names as its live driver
+// (the loop's ClaimDriver writes it as each step starts), read leniently: ""
+// when the record is absent, unreadable, or names no session abcd keys on,
+// which says nothing of whose the run is.
+func runDriver(rt *os.Root, runDir string) string {
+	raw, err := fsutil.ReadGuardedInRoot(rt, runDir+"/control.json", maxControlBytes)
+	if err != nil {
+		return ""
+	}
+	var c struct {
+		Driver *struct {
+			Session string `json:"session"`
+		} `json:"driver"`
+	}
+	if json.Unmarshal(raw, &c) != nil || c.Driver == nil || !ValidSessionID(c.Driver.Session) {
+		return ""
+	}
+	return c.Driver.Session
 }
 
 // reflogBranches are the branches this working copy's HEAD reflog has
@@ -456,13 +582,15 @@ func (r *owedReader) reflogBranches() []string {
 }
 
 // recordedBranches are the branches this copy's sessions created, as the
-// guard's pre-tool hook recorded them.
+// guard's pre-tool hook recorded them; r.recordedBy keeps the session that
+// created each, where the record kept one.
 func (r *owedReader) recordedBranches() []string {
+	r.recordedBy = map[string]string{}
 	key := claim.OwnCopyKey(r.root)
 	if key == "" || r.home == "" {
 		return nil
 	}
-	st, err := openStore(r.home, r.root)
+	st, err := openStoreContext(r.ctx, r.home, r.root)
 	if err != nil {
 		return nil
 	}
@@ -474,6 +602,9 @@ func (r *owedReader) recordedBranches() []string {
 	var out []string
 	for _, b := range list {
 		out = append(out, b.Name)
+		if ValidSessionID(b.Session) {
+			r.recordedBy[b.Name] = b.Session
+		}
 	}
 	return out
 }
@@ -559,7 +690,8 @@ func (r *owedReader) findOwn() {
 	for _, n := range recorded {
 		isRecorded[n] = true
 	}
-	elsewhere := r.checkedOutElsewhere()
+	r.elsewhere = r.checkedOutElsewhere()
+	elsewhere := r.elsewhere
 	candidates := append(reflog, recorded...)
 	for i, name := range candidates {
 		b, ok := r.branches[name]
@@ -571,7 +703,7 @@ func (r *owedReader) findOwn() {
 		// machine share the author email, so the email cannot tell. One
 		// this copy's sessions recorded creating, or a worktree they made
 		// for it, is still this copy's.
-		if elsewhere[name] && !isRecorded[name] && !linked[name] {
+		if elsewhere[name] != "" && !isRecorded[name] && !linked[name] {
 			continue
 		}
 		if r.expired() {
@@ -598,13 +730,14 @@ func (r *owedReader) findOwn() {
 			}
 		}
 	}
+	r.baseNames = r.ownNames()
 }
 
 // checkedOutElsewhere are the branches a worktree other than this copy has
-// checked out.
-func (r *owedReader) checkedOutElsewhere() map[string]bool {
-	out := map[string]bool{}
-	wts, err := gitutil.ListWorktrees(r.root, gitutil.MaxWorktreeListing)
+// checked out, each with that worktree's path.
+func (r *owedReader) checkedOutElsewhere() map[string]string {
+	out := map[string]string{}
+	wts, err := gitutil.ListWorktreesContext(r.ctx, r.root, gitutil.MaxWorktreeListing)
 	if err != nil {
 		return out
 	}
@@ -617,7 +750,7 @@ func (r *owedReader) checkedOutElsewhere() map[string]bool {
 		if fi, err := os.Stat(wt.Path); err == nil && here != nil && os.SameFile(fi, here) {
 			continue
 		}
-		out[name] = true
+		out[name] = wt.Path
 	}
 	return out
 }
@@ -640,7 +773,7 @@ func (r *owedReader) fetchedAt() string {
 			}
 		}
 	}
-	if t := claim.LastFetched(r.root); !t.IsZero() {
+	if t := claim.LastFetchedContext(r.ctx, r.root); !t.IsZero() {
 		return showTime(t)
 	}
 	return "an unknown time"
@@ -653,7 +786,10 @@ const stackWalk = 1000
 // stackIndex is what diskStackBase reads once a check, so finding every own
 // branch's base takes a fixed number of git calls a branch rather than one a
 // pair: the own branches by their current head, and by each tip their reflog
-// set other than by creating the branch.
+// set other than by creating the branch. It indexes the own branches as
+// findOwn found them, before scope left out what another live session holds:
+// a branch a peer holds is not owed here, but this session's branch cut from
+// it is still stacked on it, and judged by the clearing rule.
 type stackIndex struct {
 	heads map[string][]string // a commit -> the own branches whose head it is
 	tips  map[string][]string // a commit -> the own branches it was a set tip of
@@ -664,7 +800,7 @@ func (r *owedReader) stackIdx() *stackIndex {
 		return r.stacks
 	}
 	idx := &stackIndex{heads: map[string][]string{}, tips: map[string][]string{}}
-	for _, name := range r.ownNames() {
+	for _, name := range r.baseNames {
 		c, ok := r.branches[name]
 		if !ok {
 			continue
@@ -827,8 +963,14 @@ func (r *owedReader) forgeItems(name string, b *localBranch, head string, p pull
 		}
 		switch strings.ToUpper(p.MergeStateStatus) {
 		case "BEHIND":
-			r.add(OwedItem{Kind: OwedBehind, Capped: true, Branch: name, PR: p.Number, Head: head,
-				Reason: fmt.Sprintf("pull request #%d (%s) is behind its base: merge it in", p.Number, name)})
+			reason := fmt.Sprintf("pull request #%d (%s) is behind its base: merge it in", p.Number, name)
+			switch r.queueKeepsCurrent(p) {
+			case queueArmed:
+				return
+			case queueUnarmed:
+				reason = fmt.Sprintf("pull request #%d (%s) is behind its base, which a merge queue guards, and auto-merge is not armed: arm it", p.Number, name)
+			}
+			r.add(OwedItem{Kind: OwedBehind, Capped: true, Branch: name, PR: p.Number, Head: head, Reason: reason})
 		case "DIRTY":
 			r.add(OwedItem{Kind: OwedBehind, Capped: true, Branch: name, PR: p.Number, Head: head,
 				Reason: fmt.Sprintf("pull request #%d (%s) conflicts with its base: merge it in and resolve the conflicts", p.Number, name)})
@@ -844,6 +986,63 @@ func (r *owedReader) forgeItems(name string, b *localBranch, head string, p pull
 			Reason: fmt.Sprintf("%s is behind %s as last fetched (fetched %s), compared on disk because the pull requests were not read: merge it in",
 				name, gitutil.ShortRef(r.def), r.fetchedAt())})
 	}
+}
+
+// queueStanding is what a merge queue makes of a behind pull request.
+type queueStanding int
+
+const (
+	// queueNone: no queue is known to keep it current, so it is owed a merge.
+	queueNone queueStanding = iota
+	// queueArmed: the queue tests it against the latest base itself.
+	queueArmed
+	// queueUnarmed: a queue guards its base, but nobody has armed it.
+	queueUnarmed
+)
+
+// queueKeepsCurrent decides a behind pull request in a repository whose
+// default branch a merge queue guards (iss-2610311339274372,
+// dcn-2611081501502395). A queue tests every entry against the latest base, so
+// merging the base in only moves the head and voids its receipts: a pull
+// request into the default branch, not a draft, that is armed or already
+// queued is not owed a merge (queueArmed), and one nobody armed is owed its
+// arming instead (queueUnarmed). A draft, any other base, and a queue the
+// forge's live rules do not prove read as before (queueNone), each read that
+// fails, is late or cannot be read named in a note; a queued listing that
+// fails leaves the pull request unarmed, so it stays owed. A stacked base never
+// reaches here: stacked judges it, and a conflict and failing checks are owed
+// apart from it.
+func (r *owedReader) queueKeepsCurrent(p pullRequest) queueStanding {
+	if p.IsDraft || r.defName == "" || p.BaseRefName != r.defName || r.forge == nil {
+		return queueNone
+	}
+	if !r.queueRead {
+		r.queueRead = true
+		r.queue = readQueueRule(r.ctx, r.forge, r.root, r.defName, r.rulesDeadline)
+		if r.queue.unread != "" {
+			r.note("whether a merge queue guards %s was not read from the forge (%s), so a pull request behind it is owed a merge as before", r.defName, r.queue.unread)
+		}
+	}
+	if !r.queue.queue {
+		return queueNone
+	}
+	if p.armed() {
+		return queueArmed
+	}
+	if !r.armedRead {
+		r.armedRead = true
+		r.armedInto = readArmedInto(r.ctx, r.forge, r.root, r.defName, r.rulesDeadline)
+		switch {
+		case r.armedInto.unread != "":
+			r.note("which pull requests into %s are already in its merge queue was not read from the forge (%s), so each behind one not armed is owed its arming", r.defName, r.armedInto.unread)
+		case !r.armedInto.complete:
+			r.note("the forge listed a page of the pull requests into %s and more follow, so a behind one not on it and not armed is owed its arming", r.defName)
+		}
+	}
+	if r.armedInto.armed[p.Number] {
+		return queueArmed
+	}
+	return queueUnarmed
 }
 
 // stacked applies the clearing rule (dcn-2610180936571036,
@@ -965,10 +1164,10 @@ func (r *owedReader) landed(b *localBranch) landedness {
 	if r.defTip == "" || r.expired() {
 		return landedUnknown
 	}
-	if overrides, err := gitutil.MergeDriverOverrides(r.root); err == nil {
+	if overrides, err := gitutil.MergeDriverOverridesContext(r.ctx, r.root); err == nil {
 		args := append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriver(), "-c", "merge.renormalize=false",
 			"merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", r.defTip, b.head)
-		out, conflicted, err := gitutil.RunCappedExitOne(r.root, maxLandedOutput, args...)
+		out, conflicted, err := gitutil.RunCappedExitOneContext(r.ctx, r.root, maxLandedOutput, args...)
 		if err == nil && !conflicted {
 			tree, _, _ := strings.Cut(string(out), "\x00")
 			tree = strings.TrimSpace(tree)
@@ -1016,6 +1215,11 @@ func (r *owedReader) defLabel() string {
 // subject, which no pull request carries, aside).
 func (r *owedReader) reservationItems() {
 	for _, res := range r.mine {
+		// A reservation only another live session's runs are for is that
+		// session's to renew and to carry (holders.go).
+		if r.heldRes[res.Record] != "" {
+			continue
+		}
 		half := res.ClaimedAt.Add(res.EffectiveExpiry.Sub(res.ClaimedAt) / 2)
 		if r.nextRenewal.IsZero() || half.Before(r.nextRenewal) {
 			r.nextRenewal = half

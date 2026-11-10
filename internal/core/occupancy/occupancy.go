@@ -210,6 +210,49 @@ func ReadSessionOn(home string, host sessionname.Host) (string, error) {
 	return "", nil
 }
 
+// Session is one running session as its marker names it: its id and the
+// checkout it started in, symlinks resolved.
+type Session struct {
+	ID       string
+	Checkout string
+}
+
+// Live is every session whose marker names a host still running, sorted by
+// id: what a reader telling one session's work from another's needs (the
+// away mode's stop check). The process table is read, through readTable,
+// only when a marker is found, and nothing is written: a marker whose host has
+// ended is left for the next Note to prune. An absent folder is none; markers
+// that cannot be read, or a table that cannot, are an error.
+func Live(home string, readTable func() (sessionname.Table, error)) ([]Session, error) {
+	dir, err := open(home, false)
+	if err != nil {
+		return nil, fmt.Errorf("occupancy: %w", err)
+	}
+	if dir == nil {
+		return nil, nil
+	}
+	defer dir.Close()
+	all, err := readAll(dir, home)
+	if err != nil {
+		return nil, fmt.Errorf("occupancy: %w", err)
+	}
+	if len(all) == 0 {
+		return nil, nil
+	}
+	tab, err := readTable()
+	if err != nil {
+		return nil, fmt.Errorf("occupancy: %w", err)
+	}
+	var out []Session
+	for _, f := range all {
+		if tab.Alive(f.m.host()) {
+			out = append(out, Session{ID: f.m.SessionID, Checkout: f.m.Checkout})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
 // Forget removes the session's marker. A missing marker or folder is not an
 // error.
 func Forget(home, sessionID string) error {

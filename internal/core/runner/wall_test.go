@@ -288,6 +288,86 @@ func TestWritingTheSettingsReWiresANewBinaryAndSaysWhenItReplacedAnEdit(t *testi
 	}
 }
 
+// TestAStartSetsTheHarnessSyncedSkillsAside: the copy of the account's skills
+// the harness syncs into the profile directory at its login is moved into
+// abcd's home, whole, and the skills directory is left empty and closed to
+// writes, so the check passes and the harness cannot sync them back. A second
+// start finds nothing to move.
+func TestAStartSetsTheHarnessSyncedSkillsAside(t *testing.T) {
+	p := wallProfile(t)
+	skill := filepath.Join(p.Dir, "skills", "synced", "a-skill", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(skill), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(skill, []byte("a skill"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteWallSettings(p, wallBin); err != nil {
+		t.Fatal(err)
+	}
+	moved, err := SetAsideSyncedSkills(p)
+	if err != nil || moved == "" {
+		t.Fatalf("the synced copy is moved and where it went is said: %q %v", moved, err)
+	}
+	if rel, err := filepath.Rel(abcdhome.Path(p.PersonHome), moved); err != nil || strings.HasPrefix(rel, "..") {
+		t.Fatalf("the copy goes into abcd's home: %s", moved)
+	}
+	if raw, err := os.ReadFile(filepath.Join(moved, "a-skill", "SKILL.md")); err != nil || string(raw) != "a skill" {
+		t.Fatalf("the copy is kept whole: %q %v", raw, err)
+	}
+	skills := filepath.Join(p.Dir, "skills")
+	if entries, err := os.ReadDir(skills); err != nil || len(entries) != 0 {
+		t.Fatalf("the skills directory is left empty: %v %v", entries, err)
+	}
+	if fi, err := os.Stat(skills); err != nil || fi.Mode().Perm()&0o222 != 0 {
+		t.Fatalf("the skills directory is closed to writes: %v %v", fi, err)
+	}
+	if err := CheckWallSettings(p, wallBin); err != nil {
+		t.Fatalf("the check passes once the copy is out: %v", err)
+	}
+	if again, err := SetAsideSyncedSkills(p); err != nil || again != "" {
+		t.Fatalf("a second start moves nothing: %q %v", again, err)
+	}
+}
+
+// TestAStartLeavesSkillsAPersonPlacedForTheCheck: only the harness's synced
+// folder, alone, is moved. A skill a person put in the profile directory stays
+// where it is, with anything beside it, and the check refuses it as before.
+func TestAStartLeavesSkillsAPersonPlacedForTheCheck(t *testing.T) {
+	for name, entries := range map[string][]string{
+		"a skill of its own":            {"mine/SKILL.md"},
+		"a skill beside the synced one": {"synced/a/SKILL.md", "mine/SKILL.md"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := wallProfile(t)
+			for _, e := range entries {
+				path := filepath.Join(p.Dir, "skills", filepath.FromSlash(e))
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := WriteWallSettings(p, wallBin); err != nil {
+				t.Fatal(err)
+			}
+			if moved, err := SetAsideSyncedSkills(p); err != nil || moved != "" {
+				t.Fatalf("nothing is moved: %q %v", moved, err)
+			}
+			for _, e := range entries {
+				if _, err := os.Stat(filepath.Join(p.Dir, "skills", filepath.FromSlash(e))); err != nil {
+					t.Fatalf("%s stays: %v", e, err)
+				}
+			}
+			var we *WallError
+			if err := CheckWallSettings(p, wallBin); !errors.As(err, &we) || !strings.Contains(we.Detail, "holds skills") {
+				t.Fatalf("the check refuses it as before: %v", err)
+			}
+		})
+	}
+}
+
 // TestAWalledLaunchRefusesSettingsThatDiffer: nothing is launched on settings
 // other than abcd's.
 func TestAWalledLaunchRefusesSettingsThatDiffer(t *testing.T) {

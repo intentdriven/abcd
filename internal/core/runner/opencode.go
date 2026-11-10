@@ -40,6 +40,8 @@ import (
 	"errors"
 	"math"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/oracle"
 )
@@ -129,15 +131,22 @@ func (o *OpenCodeCLI) Run(ctx context.Context, req Request) (Answer, []byte, err
 	transcript := res.transcript()
 	if err != nil {
 		var fl *Failure
-		if errors.Is(err, ErrKilled) && errors.As(err, &fl) {
-			// Each finished step carries its own cost: what the killed run
-			// spent is their sum (iss-2611021751406429).
-			fl.Spent = spendOf(openCodeSpent(res.stdout))
+		if errors.As(err, &fl) {
+			if errors.Is(err, ErrKilled) {
+				// Each finished step carries its own cost: what the killed
+				// run spent is their sum (iss-2611021751406429).
+				fl.Spent = spendOf(openCodeSpent(res.stdout))
+			}
+			keepOpenCodeSeen(fl, res)
 		}
 		return Answer{}, transcript, err
 	}
 	ans, err := parseOpenCode(res.stdout)
 	if err != nil {
+		var fl *Failure
+		if errors.As(err, &fl) {
+			keepOpenCodeSeen(fl, res)
+		}
 		return Answer{}, transcript, err
 	}
 	ans.ModelAsked, ans.PromptSHA256 = req.modelOr(o.model), promptSHA256(req)
@@ -254,6 +263,79 @@ func openCodeSpent(out []byte) Answer {
 		meterOpenCode(&ans, line)
 	}
 	return ans
+}
+
+// openCodeError is the part of a run-mode error event that says what the
+// model service answered. opencode 1.18.31 emits a session's error as
+// {"type":"error",...,"error":<the error's toObject()>}, {name, data}, and an
+// APIError's data names the HTTP status as statusCode, a number, after
+// opencode's own retries of a 5xx (cli/cmd/run.ts, session/retry.ts and
+// core/v1/session.ts, read at tag v1.18.31). It is read leniently and apart
+// from openCodeEvent, so an error of another shape names no status, never an
+// unparsable run.
+type openCodeError struct {
+	Error struct {
+		Data struct {
+			StatusCode *int `json:"statusCode"`
+		} `json:"data"`
+	} `json:"error"`
+}
+
+// openCodeSeen is what a failed opencode launch showed, nil when its stream
+// carries no error event: only that event speaks of the model service. Its
+// status is the last error event's that names one, and its spend is whether
+// any finished step shows tokens or a cost above zero. Run mode reports none
+// of its own retries, so Retries stays zero.
+func openCodeSeen(res procResult) *HarnessSeen {
+	var s *HarnessSeen
+	for _, line := range bytes.Split(res.stdout, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		var ev openCodeEvent
+		if len(line) == 0 || json.Unmarshal(line, &ev) != nil || ev.Type != "error" {
+			continue
+		}
+		if s == nil {
+			first, _, _ := strings.Cut(string(bytes.TrimSpace(res.stderr)), "\n")
+			s = &HarnessSeen{ExitCode: res.exit, Shape: claudeShape(res.stdout), Stderr: first, SilentFor: res.silent}
+		}
+		var e openCodeError
+		if json.Unmarshal(line, &e) == nil {
+			if c := e.Error.Data.StatusCode; c != nil && *c >= 100 && *c <= 599 {
+				s.APIStatus = strconv.Itoa(*c)
+			}
+		}
+	}
+	if s != nil {
+		s.Spent = openCodeMeasuredSpend(openCodeSpent(res.stdout))
+	}
+	return s
+}
+
+// openCodeMeasuredSpend reports whether a run's summed steps show tokens or a
+// cost above zero.
+func openCodeMeasuredSpend(ans Answer) bool {
+	if ans.Cost != nil && ans.Cost.Amount > 0 {
+		return true
+	}
+	u := ans.Usage
+	return u != nil && (u.PromptTokens > 0 || u.CompletionTokens > 0 || u.ReasoningTokens > 0 ||
+		u.CacheReadTokens > 0 || u.CacheWriteTokens > 0)
+}
+
+// keepOpenCodeSeen puts what a failed opencode launch's error event showed on
+// its failure, naming the status in abcd's words, so a provider down or
+// throttling (5xx, 429) before the run began reads as one
+// (Failure.ProviderDown). A failure whose stream
+// carries no error event is left as it was.
+func keepOpenCodeSeen(fl *Failure, res procResult) {
+	s := openCodeSeen(res)
+	if s == nil {
+		return
+	}
+	fl.Seen = s
+	if s.APIStatus != "" {
+		fl.Detail += "; its error event names API status " + s.APIStatus
+	}
 }
 
 // parseOpenCode reads the event stream: one JSON object per line. An error

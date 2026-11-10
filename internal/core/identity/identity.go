@@ -13,6 +13,7 @@
 package identity
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -149,6 +150,13 @@ func EffectiveIdentity(root string) (Effective, error) {
 	return effective(root, RoleAuthor)
 }
 
+// EffectiveIdentityContext is EffectiveIdentity with its one git call bound
+// to ctx, for a hook on a deadline: a ctx already ended forks no git, and a
+// git still running when it ends is killed; either answers ctx's own error.
+func EffectiveIdentityContext(ctx context.Context, root string) (Effective, error) {
+	return (&identityConfig{root: root, ctx: ctx}).effective(RoleAuthor)
+}
+
 // effectiveCommitter returns the committer identity git would stamp on a commit
 // in root, resolved exactly as EffectiveIdentity resolves the author:
 // GIT_COMMITTER_NAME / GIT_COMMITTER_EMAIL first, then committer.name /
@@ -210,7 +218,9 @@ const identityConfigKeys = `^(user|author|committer)\.(name|email)$`
 // first key would have returned, named for that key. An identity wholly from the
 // environment runs no git at all.
 type identityConfig struct {
-	root   string
+	root string
+	// ctx bounds the listing's git; nil is context.Background.
+	ctx    context.Context
 	listed bool
 	values map[string]string
 	err    error
@@ -218,7 +228,11 @@ type identityConfig struct {
 
 func (c *identityConfig) get(key string) (string, error) {
 	if !c.listed {
-		c.values, c.err = listIdentityConfig(c.root)
+		ctx := c.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		c.values, c.err = listIdentityConfig(ctx, c.root)
 		c.listed = true
 	}
 	if c.err != nil {
@@ -229,10 +243,16 @@ func (c *identityConfig) get(key string) (string, error) {
 
 // listIdentityConfig reads the keys. Under -z an entry is its key, a newline and
 // its value, ending in a NUL; a key given with no value has no newline.
-func listIdentityConfig(root string) (map[string]string, error) {
-	cmd := exec.Command("git", "-C", root, "config", "-z", "--get-regexp", identityConfigKeys)
+func listIdentityConfig(ctx context.Context, root string) (map[string]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, "git", "-C", root, "config", "-z", "--get-regexp", identityConfigKeys)
 	cmd.Env = commitConfigEnv()
 	out, err := cmd.Output()
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 {
 			return nil, nil // no key set

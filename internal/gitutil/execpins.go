@@ -1,10 +1,13 @@
 package gitutil
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/procgroup"
 )
 
 // ExecPins is the one list of `git -c` overrides that keep a repository's own
@@ -131,7 +134,14 @@ func BuiltinMergeDriver() string {
 // Config is read as FilterOverrides reads it, and a name `-c` cannot carry
 // intact is refused the same way.
 func MergeDriverOverrides(root string) ([]string, error) {
-	names, err := configNames(root, "merge")
+	return MergeDriverOverridesContext(context.Background(), root)
+}
+
+// MergeDriverOverridesContext is MergeDriverOverrides with its config read
+// bound to ctx, for a hook on a deadline: git is killed when ctx ends, and the
+// read answers ctx's own error.
+func MergeDriverOverridesContext(ctx context.Context, root string) ([]string, error) {
+	names, err := configNamesContext(ctx, root, "merge")
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +161,12 @@ func MergeDriverOverrides(root string) ([]string, error) {
 // or a line break) is refused: overriding a different key would leave the
 // configured program live.
 func configNames(root, section string) ([]string, error) {
-	buf, err := getRegexp(root, section, `^`+section+`\.`, "--name-only")
+	return configNamesContext(context.Background(), root, section)
+}
+
+// configNamesContext is configNames with its read bound to ctx.
+func configNamesContext(ctx context.Context, root, section string) ([]string, error) {
+	buf, err := getRegexpContext(ctx, root, section, `^`+section+`\.`, "--name-only")
 	if err != nil {
 		return nil, err
 	}
@@ -190,12 +205,32 @@ var ErrConfigCap = errors.New("the key list exceeded its cap")
 // are not, with any extra flags before --get-regexp. No key matching is an
 // empty answer, not an error; what names the read in an error.
 func getRegexp(root, what, pattern string, extra ...string) ([]byte, error) {
+	return getRegexpContext(context.Background(), root, what, pattern, extra...)
+}
+
+// getRegexpContext is getRegexp bound to ctx: a ctx that can end kills git
+// when it does (isolatedGitContext), reads git's output to EOF before Wait
+// (procgroup.RunToEOF), and answers ctx's own error once it has ended. Under
+// context.Background it runs exactly as getRegexp always has.
+func getRegexpContext(ctx context.Context, root, what, pattern string, extra ...string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("reading the repository's %s config: %w", what, err)
+	}
 	args := append(append([]string{"config", "--null"}, extra...), "--get-regexp", pattern)
-	cmd := isolatedGit(root, args...)
+	cmd := isolatedGitContext(ctx, root, args...)
 	e := &capWriter{remaining: 4096}
 	w := &capWriter{remaining: 1 << 20}
-	cmd.Stdout, cmd.Stderr = w, e
-	if err := cmd.Run(); err != nil {
+	var err error
+	if ctx.Done() == nil {
+		cmd.Stdout, cmd.Stderr = w, e
+		err = cmd.Run()
+	} else {
+		err = procgroup.RunToEOF(ctx, cmd, w, e)
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("reading the repository's %s config: %w", what, ctxErr)
+	}
+	if err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && ee.ExitCode() == 1 && len(w.buf) == 0 {
 			return nil, nil // no key matches at all

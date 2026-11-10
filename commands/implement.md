@@ -558,7 +558,34 @@ failing verdicts, `BLOCK` and `NEEDS-INPUT`, agree), and `none` when the role
 ran one reviewer, so no comparison was made. The comparison decides nothing: any
 failing reviewer fails the round, the stricter verdict. Keyed rounds are state
 schema version 20's; an older run's rounds read as one reviewer per role, index
-0, asked for no class. Each role a round hands
+0, asked for no class. Each reviewer's record also carries its `located`
+findings: the `file:line` each finding bullet under its Findings heading leads
+with (`- **file:line** — ...`) is one finding (`file`, `line`); a location cited
+in a bullet's text or its nested Evidence lines is not one, and a line inside a
+fenced code block or an HTML comment is neither a heading nor a finding. The
+record keeps the first 256 findings, while `located` counts every one, and
+keeps them on the lane's latest round only: an earlier round keeps its count
+alone, and a run whose state would outgrow what its read accepts drops them a
+round at a time, the oldest first, keeping every count. A path under the
+lane's worktree, in its own case, through the directory its links resolve to
+or its `/private` twin, is taken relative to it, a path longer than 255 bytes
+and anything else is no location, and a return citing none records
+`located: 0` and is not refused. The fix brief lists each failing reviewer's
+located findings and asks the report to name each on a line of its own, its
+`file:line` first and then `applied` or `rejected`; a word speaks of the
+location it follows on its line, so on a line naming two, a word written before
+the second is read as said of the first and the second gets none from it, a
+line naming a location with neither word says nothing of it, and a
+word with a negation before it in its sentence (`not applied`, `no fix
+applied`, `couldn't be applied`, `unapplied`) says neither: a comma does not
+end the sentence, so `not a defect, rejected` says neither too. Once the fix
+receipt is verified, each finding of a failing reviewer carries that `status`,
+or `unknown` in either case: where no line says one of the two of it, or where
+the lines that say a word of it say both, or one says a negated word. A
+location two reviewers of the round cite carries `cited_by`, naming both.
+`implement record` (and its `--json`) shows them under each verdict, and
+`implement status --json` in the round. Located findings are state schema
+version 24's. Each role a round hands
 out is asked for the model tier its routing row names, and a round that does
 not pass moves each role one step up for the next round (`local`, `economy`,
 `frontier`; `frontier` and `host-decides` stay), from the tier it ran at, never
@@ -1316,8 +1343,9 @@ Only a `load.preflights` that is there and unusable (out of range, or not a
 whole number) refuses the wait, as an unusable `ABCD_LOAD_PREFLIGHTS` does;
 the environment is read first, and with it set the file is not read.
 
-A narrow run waits at a gate of its own, so a change's own check never queues
-behind whole preflights. It is `implement load --wait --narrow -- go test
+A narrow run waits at a gate of its own, so a change's own check does not queue
+behind whole preflights; it stands aside for an overdue one for five minutes
+at most (below). It is `implement load --wait --narrow -- go test
 -count=1 ./internal/foo`. The mark asks for the gate, and it is all any waiter goes
 by: every waiter reads the mark and the command from the waiter's own arguments,
 itself included, so the same command without the mark is a whole run, as it always
@@ -1373,6 +1401,12 @@ wait limit, costs a narrow run minutes and not its wait. It never stands aside f
 a whole run with no slot free, which no narrow run is holding up. Waiters queued
 ahead that alone keep a narrow run shut stop counting after two minutes, since one
 may be shut by its own account's stricter settings, which no other account can see.
+The time both caps have spent carries across retries of the same narrow wait in the
+same lane, until one of the first try's timeouts has passed since the last try gave
+up, so a lane that waits in short tries, each run again when the last gives up,
+still reaches them. A retry is the same command in the same worktree, and on a
+drive's stage the same stage; the carried time is your account's own, in
+`load-wait-narrow-carry.json`, and a try that opens clears it.
 
 Accounts can run different abcd versions. An abcd built before narrow runs queues
 behind a marked waiter that started earlier and counts one running against its

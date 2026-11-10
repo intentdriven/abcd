@@ -40,8 +40,17 @@ const (
 // returns stdout, git's exit code (0 on success, -1 when git did not run) and
 // an error carrying git's bounded stderr.
 func personalGit(root, stdin string, env []string, args ...string) (string, int, error) {
+	return personalGitContext(context.Background(), root, stdin, env, args...)
+}
+
+// personalGitContext is personalGit under parent as well as its own timeout,
+// for a hook on a deadline: a parent already ended forks no git.
+func personalGitContext(parent context.Context, root, stdin string, env []string, args ...string) (string, int, error) {
+	if err := parent.Err(); err != nil {
+		return "", -1, fmt.Errorf("git %s: %w", args[0], err)
+	}
 	trace(args...)
-	ctx, cancel := context.WithTimeout(context.Background(), personalTimeout)
+	ctx, cancel := context.WithTimeout(parent, personalTimeout)
 	defer cancel()
 	full := append(append(gitutil.ExecPins(), "-c", "core.quotePath=false", "-C", root), args...)
 	cmd := exec.CommandContext(ctx, "git", full...)

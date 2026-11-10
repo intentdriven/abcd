@@ -265,7 +265,11 @@ type rulesPromptPage struct {
 
 // rulesPromptView is `rules --prompt`'s --json envelope.
 type rulesPromptView struct {
-	Disabled   bool                `json:"disabled"`
+	Disabled bool `json:"disabled"`
+	// Stage is a drive's stage, where no notes or pages are recalled: the plain
+	// form says so rather than "none matched", and the JSON form says it here,
+	// so its empty notes and pages read apart from a prompt that matched none.
+	Stage      bool                `json:"stage"`
 	Bracket    rulesPromptBracket  `json:"bracket"`
 	Domains    []rulesPromptDomain `json:"domains"`
 	Notes      []rulesPromptNote   `json:"notes"`
@@ -277,16 +281,17 @@ type rulesPromptView struct {
 // the rules, read as the hook reads it. The status block the hook also reads
 // first is left out: reading it takes in the status branches, which writes the
 // local tier, and this diagnostic writes nothing. An unmanaged checkout holds no
-// away record, so the root commit is not looked up for it. A lookup git did not
-// answer reads as not away, as in the hook, and is named on stderr with that
-// consequence, as the hook names each of its own.
+// away record, and a drive's stage reads none, so the root commit is not looked
+// up for either. A lookup git did not answer leaves the away record unread, as in
+// the hook, which says nothing of it; the diagnostic names it on stderr, since a
+// fuller form than the hook sends would otherwise be shown without a word.
 func promptReserved(stderr io.Writer, root string, here recall.RootFunc) int {
-	if root == "" || !autonomy.Managed(root) {
+	if root == "" || stageActive() || !autonomy.Managed(root) {
 		return 0
 	}
 	sha, err := here()
 	if err != nil {
-		diagnosticLine(stderr, "abcd mode: this repository's root commit: %s; read as not away this turn",
+		diagnosticLine(stderr, "abcd mode: this repository's root commit: %s; the away record was not read, so nothing is reserved for it",
 			fsutil.RedactHome(err.Error()))
 	}
 	return len(readPromptAway(stderr, rootLookup{sha: sha, err: err, asked: true}, root).Block)
@@ -299,9 +304,11 @@ func promptReserved(stderr io.Writer, root string, here recall.RootFunc) int {
 // nil for an unknown fill) puts it in — and writes nothing: no session state
 // is loaded or saved. A root-commit
 // lookup git did not answer in time leaves the tied notes out of the view,
-// and is named on stderr, once, as the hook names it.
+// and is named on stderr, once for the recall when a tied note matched, as the
+// hook names it, and once more for the away record in a managed checkout. On a
+// drive's stage, where the hook reads neither, neither is looked up.
 func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *float64) rulesPromptView {
-	v := rulesPromptView{Disabled: rs.Disabled, Bracket: promptBracket(used), Domains: []rulesPromptDomain{}, Notes: []rulesPromptNote{},
+	v := rulesPromptView{Disabled: rs.Disabled, Stage: stageActive(), Bracket: promptBracket(used), Domains: []rulesPromptDomain{}, Notes: []rulesPromptNote{},
 		Pages: []rulesPromptPage{}, Unreadable: []recall.Refusal{}}
 	if rs.Disabled {
 		return v
@@ -309,8 +316,15 @@ func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *
 	bracket := v.Bracket.bracket
 	// The hook's own cap, so a word past it matches here no more than there.
 	prompt = rules.CapPrompt(prompt)
-	items, refused := recall.ReadItems(rules.UserHome(), root)
-	v.Unreadable = append(v.Unreadable, refused...)
+	// On a drive's stage the hook recalls no notes or pages (recallMemory), so
+	// nothing is read for them here either: the view shows only what that agent
+	// gets, and no root-commit lookup is made for a tied note.
+	var items []recall.Item
+	if !v.Stage {
+		var refused []recall.Refusal
+		items, refused = recall.ReadItems(rules.UserHome(), root)
+		v.Unreadable = append(v.Unreadable, refused...)
+	}
 	here := promptRoot(rootLookup{}, root)
 	res, mem := injectWithRecall(rs, prompt, rules.SessionState{}, 0, bracket, promptReserved(stderr, root, here), func(_ map[string]string, budget int) recall.Result {
 		return recall.Recall(recall.Request{Items: items, Prompt: prompt, Budget: budget, Root: here, Bracket: bracket})
@@ -400,7 +414,9 @@ func renderRulesPrompt(w io.Writer, rs rules.RuleSet, v rulesPromptView) {
 			fmt.Fprintf(w, "  %s — hit by %s — %s\n", d.Label, termsafe.Sanitize(strings.Join(d.Hits, ", ")), promptFormWords(d.Form))
 		}
 	}
-	if len(v.Notes) == 0 {
+	if v.Stage {
+		fmt.Fprintln(w, "Notes: not recalled on a drive's stage")
+	} else if len(v.Notes) == 0 {
 		fmt.Fprintln(w, "Notes: none matched")
 	} else {
 		fmt.Fprintln(w, "Notes:")
@@ -410,7 +426,9 @@ func renderRulesPrompt(w io.Writer, rs rules.RuleSet, v rulesPromptView) {
 			renderTermScores(w, n.Terms)
 		}
 	}
-	if len(v.Pages) == 0 {
+	if v.Stage {
+		fmt.Fprintln(w, "Pages: not recalled on a drive's stage")
+	} else if len(v.Pages) == 0 {
 		fmt.Fprintln(w, "Pages: none matched")
 	} else {
 		fmt.Fprintln(w, "Pages:")

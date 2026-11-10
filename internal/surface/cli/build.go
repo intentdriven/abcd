@@ -117,7 +117,8 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling\n" +
 			"worktree or local branch holds it in another bucket having changed it since its\n" +
 			"merge-base with this checkout, so a branch holding this checkout's older copy\n" +
-			"untouched does not count; no session holds a live claim on it; and no other copy holds\n" +
+			"untouched does not count, nor does a branch no worktree has checked out, which the\n" +
+			"passing row names; no session holds a live claim on it; and no other copy holds\n" +
 			"a reservation on it on origin, as this checkout last fetched the reservations; a peer,\n" +
 			"claim or view that cannot be read, or a copy that cannot be compared, counts as holding\n" +
 			"it). The check reads the reservations from disk alone, and names another copy's with\n" +
@@ -1530,7 +1531,12 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 			fmt.Fprintf(w, "    receipt %s (%s; model %s)%s\n", termsafe.Sanitize(r.Receipt), termsafe.Sanitize(r.Role), termsafe.Sanitize(model), routeSuffix(r.Route))
 		}
 		for _, v := range l.Verdicts {
-			fmt.Fprintf(w, "    round %d at %s: %s %s%s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(v.Role), termsafe.Sanitize(v.Verdict), routeSuffix(v.Route))
+			located := ""
+			if v.Located != nil {
+				located = fmt.Sprintf(", %d located finding(s)", *v.Located)
+			}
+			fmt.Fprintf(w, "    round %d at %s: %s %s%s%s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(v.Role), termsafe.Sanitize(v.Verdict), located, routeSuffix(v.Route))
+			renderFindings(w, v.Findings)
 		}
 		if len(l.Resolves) > 0 {
 			fmt.Fprintf(w, "    resolves %s\n", termsafe.Sanitize(strings.Join(l.Resolves, ", ")))
@@ -1562,6 +1568,26 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 	for _, e := range rec.Record {
 		fmt.Fprintf(w, "    %s  %-10s %s  %s\n", e.At.Format("2006-01-02T15:04:05Z"), termsafe.Sanitize(e.Stage),
 			termsafe.Sanitize(e.Lane), termsafe.Sanitize(fsutil.RedactHome(e.Note)))
+	}
+}
+
+// renderFindings renders a reviewer's located findings, one a line: its
+// location, what the fix report said of it once one answered it, and every
+// reviewer of the round citing it where more than one does.
+func renderFindings(w io.Writer, fs []loop.Finding) {
+	for _, f := range fs {
+		line := fmt.Sprintf("      %s:%d", f.File, f.Line)
+		if f.Status != "" {
+			line += "  " + f.Status
+		}
+		if len(f.CitedBy) > 1 {
+			by := make([]string, 0, len(f.CitedBy))
+			for _, c := range f.CitedBy {
+				by = append(by, fmt.Sprintf("%s %d", c.Role, c.Reviewer))
+			}
+			line += "  cited by " + strings.Join(by, ", ")
+		}
+		fmt.Fprintln(w, termsafe.Sanitize(line))
 	}
 }
 

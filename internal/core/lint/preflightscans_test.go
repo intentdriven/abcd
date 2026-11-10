@@ -1,6 +1,11 @@
 package lint_test
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"os/exec"
@@ -12,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -133,7 +139,18 @@ func (r *scanRepo) args(name string) string {
 // PATH and nothing else of the caller's but the system tools.
 func (r *scanRepo) run(mode string) (int, string) {
 	r.t.Helper()
+	return r.runHome(mode, r.t.TempDir())
+}
+
+// runHome is run with HOME set to home.
+func (r *scanRepo) runHome(mode, home string) (int, string) {
+	r.t.Helper()
 	cmd := r.command(mode)
+	for i, e := range cmd.Env {
+		if strings.HasPrefix(e, "HOME=") {
+			cmd.Env[i] = "HOME=" + home
+		}
+	}
 	out, err := cmd.CombinedOutput()
 	if ee, ok := err.(*exec.ExitError); ok {
 		return ee.ExitCode(), string(out)
@@ -419,25 +436,492 @@ func TestSecretsCheckThatCannotScanIsNotCalledAFinding(t *testing.T) {
 	}
 }
 
-func TestSecretsCheckWarnsOnAnotherVersion(t *testing.T) {
-	r := newScanRepo(t, false)
-	r.stub("gitleaks", `case "$1" in version) echo 'version is set by build process' ;; esac; exit 0`)
-	code, out := r.run("secrets")
-	if code != 0 {
-		t.Fatalf("a clean scan: exit %d\n%s", code, out)
+// The secret scan judges with the gitleaks ci.yml pins (iss-2611081341084748):
+// a gitleaks on PATH at another version passed a token fixture CI's 8.24.3
+// refused, and the skew only warned. Now a PATH copy at another version, or
+// none, is replaced by CI's release, fetched once into the abcd home and
+// checked against the digest the repository holds in
+// scripts/gitleaks-checksums.txt; what cannot be fetched or verified refuses.
+
+// pinnedRelease is a release tarball whose gitleaks reports version and logs
+// its arguments to log; it returns the tarball's path and sha256.
+func (r *scanRepo) pinnedRelease(version, log string) (string, string) {
+	r.t.Helper()
+	return r.pinnedReleaseMode(version, log, 0o755)
+}
+
+// pinnedReleaseMode is pinnedRelease with the gitleaks in it unpacked at mode:
+// one without execute bits stands in for a TMPDIR mounted noexec, where the
+// shell refuses to run the binary with exit 126.
+func (r *scanRepo) pinnedReleaseMode(version, log string, mode int64) (string, string) {
+	r.t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	body := "#!/bin/sh\nprintf '%s\\n' \"$*\" >>\"" + log + "\"\ncase \"$1\" in version) echo " + version + " ;; esac\nexit 0\n"
+	for _, f := range []struct{ name, body string }{{"LICENSE", "license\n"}, {"gitleaks", body}} {
+		if err := tw.WriteHeader(&tar.Header{Name: f.name, Mode: mode, Size: int64(len(f.body)), Typeflag: tar.TypeReg}); err != nil {
+			r.t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(f.body)); err != nil {
+			r.t.Fatal(err)
+		}
 	}
-	if !strings.Contains(out, "8.24.3") || !strings.Contains(out, "not the") {
-		t.Fatalf("another version is not warned about:\n%s", out)
+	if err := tw.Close(); err != nil {
+		r.t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		r.t.Fatal(err)
+	}
+	p := filepath.Join(r.t.TempDir(), "release.tar.gz")
+	if err := os.WriteFile(p, buf.Bytes(), 0o644); err != nil {
+		r.t.Fatal(err)
+	}
+	sum := sha256.Sum256(buf.Bytes())
+	return p, hex.EncodeToString(sum[:])
+}
+
+// pinDigest writes the repository's digest file with digest for every
+// platform the script runs on at version.
+func (r *scanRepo) pinDigest(version, digest string) {
+	r.t.Helper()
+	var b strings.Builder
+	b.WriteString("# a comment line\n")
+	for _, p := range []string{"darwin_arm64", "darwin_x64", "linux_arm64", "linux_x64"} {
+		b.WriteString(digest + "  gitleaks_" + version + "_" + p + ".tar.gz\n")
+	}
+	r.write("scripts/gitleaks-checksums.txt", b.String())
+}
+
+// serve stubs curl to write the file at path to its -o argument, or to fail
+// as curl -f does on a refused download when path is empty.
+func (r *scanRepo) serve(path string) {
+	r.t.Helper()
+	if path == "" {
+		r.stub("curl", `echo 'curl: (6) Could not resolve host' >&2; exit 6`)
+		return
+	}
+	r.stub("curl", `while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift ;; esac; shift; done
+cat '`+path+`' >"$out"`)
+}
+
+func TestSecretsCheckFetchesCIsVersionWhenPATHHoldsAnother(t *testing.T) {
+	r := newScanRepo(t, false)
+	r.stub("gitleaks", `case "$1" in version) echo 8.30.1 ;; esac; exit 0`)
+	log := filepath.Join(t.TempDir(), "pinned.args")
+	tarball, digest := r.pinnedRelease("8.24.3", log)
+	r.pinDigest("8.24.3", digest)
+	r.serve(tarball)
+	home := t.TempDir()
+	code, out := r.runHome("secrets", home)
+	if code != 0 {
+		t.Fatalf("a clean scan with CI's version fetched: exit %d\n%s", code, out)
+	}
+	if strings.Contains(r.args("gitleaks"), "git ") {
+		t.Errorf("the gitleaks on PATH (8.30.1) scanned the branch:\n%s", r.args("gitleaks"))
+	}
+	ran, _ := os.ReadFile(log)
+	base := r.git("merge-base", "HEAD", "refs/remotes/origin/main")
+	if !strings.Contains(string(ran), "git --redact --no-banner --exit-code 77 --log-opts="+base+"..HEAD .") {
+		t.Fatalf("CI's gitleaks ran %q, want the scan over %s..HEAD\n%s", ran, base, out)
+	}
+	if !strings.Contains(r.args("curl"), "/releases/download/v8.24.3/gitleaks_8.24.3_") {
+		t.Errorf("the fetch was not CI's release: %q", r.args("curl"))
+	}
+	if strings.Contains(r.args("curl"), "checksums.txt") {
+		t.Errorf("the digest was taken from the network: %q", r.args("curl"))
+	}
+	if !strings.Contains(out, "8.30.1") || !strings.Contains(out, "8.24.3") {
+		t.Errorf("the run does not say which gitleaks it set aside for which:\n%s", out)
+	}
+	cached, _ := filepath.Glob(abcdhome.Path(home, "gate-tools", "gitleaks", "8.24.3", "gitleaks_8.24.3_*.tar.gz"))
+	if len(cached) != 1 {
+		t.Fatalf("the verified release is not cached in the abcd home: %v", cached)
+	}
+	r.noCopyLeft()
+	// A second run needs no network: the cached release is verified again.
+	r.serve("")
+	if code, out := r.runHome("secrets", home); code != 0 {
+		t.Fatalf("a second run from the cache: exit %d\n%s", code, out)
+	}
+	// A cached release that no longer matches the pin is not run.
+	if err := os.WriteFile(cached[0], []byte("tampered"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, out := r.runHome("secrets", home); code != 2 || !strings.Contains(out, "REFUSING") {
+		t.Fatalf("a tampered cache with no network: exit %d, want 2 and a refusal\n%s", code, out)
 	}
 }
 
-func TestSecretsCheckWithoutGitleaksSaysWhatWasNotChecked(t *testing.T) {
+func TestSecretsCheckRefusesADownloadThatDoesNotMatchThePin(t *testing.T) {
 	r := newScanRepo(t, false)
-	code, out := r.run("secrets")
-	if code != 0 {
-		t.Fatalf("no gitleaks: exit %d, want 0\n%s", code, out)
+	r.stub("gitleaks", `case "$1" in version) echo 8.30.1 ;; esac; exit 0`)
+	log := filepath.Join(t.TempDir(), "pinned.args")
+	tarball, _ := r.pinnedRelease("8.24.3", log)
+	r.pinDigest("8.24.3", strings.Repeat("0", 64))
+	r.serve(tarball)
+	home := t.TempDir()
+	code, out := r.runHome("secrets", home)
+	if code != 2 {
+		t.Fatalf("an unverified download: exit %d, want 2\n%s", code, out)
 	}
-	if !strings.Contains(out, "SKIPPED") || !strings.Contains(out, "not scanned") {
-		t.Fatalf("the skip is not said loudly:\n%s", out)
+	if !strings.Contains(out, "REFUSING") || !strings.Contains(out, "8.30.1") || !strings.Contains(out, "8.24.3") {
+		t.Errorf("the refusal does not name the skew:\n%s", out)
+	}
+	if ran, _ := os.ReadFile(log); len(ran) != 0 {
+		t.Errorf("the unverified binary ran: %q", ran)
+	}
+	if strings.Contains(r.args("gitleaks"), "git ") {
+		t.Errorf("the scan fell back to the gitleaks on PATH:\n%s", r.args("gitleaks"))
+	}
+	if left, _ := filepath.Glob(abcdhome.Path(home, "gate-tools", "gitleaks", "8.24.3", "*")); len(left) != 0 {
+		t.Errorf("an unverified download was kept: %v", left)
+	}
+	r.noCopyLeft()
+}
+
+// A verified gitleaks the system will not execute, as from a TMPDIR mounted
+// noexec, reports no version: the refusal says the binary could not be
+// executed, names the temporary directory and the TMPDIR to set, rather than
+// calling the verified release one that reports nothing.
+func TestSecretsCheckThatCannotExecuteTheVerifiedBinarySaysSo(t *testing.T) {
+	r := newScanRepo(t, false)
+	r.stub("gitleaks", `case "$1" in version) echo 8.30.1 ;; esac; exit 0`)
+	log := filepath.Join(t.TempDir(), "pinned.args")
+	tarball, digest := r.pinnedReleaseMode("8.24.3", log, 0o644)
+	r.pinDigest("8.24.3", digest)
+	r.serve(tarball)
+	code, out := r.run("secrets")
+	if code != 2 || !strings.Contains(out, "REFUSING") {
+		t.Fatalf("a verified binary that cannot be executed: exit %d, want 2 and a refusal\n%s", code, out)
+	}
+	if strings.Contains(out, "reports 'nothing'") {
+		t.Errorf("the refusal blames the release for reporting nothing:\n%s", out)
+	}
+	for _, want := range []string{"could not be executed", r.tmp, "TMPDIR"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the refusal does not say %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(r.args("gitleaks"), "git ") {
+		t.Errorf("the scan fell back to the gitleaks on PATH:\n%s", r.args("gitleaks"))
+	}
+	r.noCopyLeft()
+}
+
+func TestSecretsCheckRefusesWhenCIsVersionCannotBeFetched(t *testing.T) {
+	for name, path := range map[string]string{"another version": `case "$1" in version) echo 8.30.1 ;; esac; exit 0`, "none": ""} {
+		t.Run(name, func(t *testing.T) {
+			r := newScanRepo(t, false)
+			if path != "" {
+				r.stub("gitleaks", path)
+			}
+			r.pinDigest("8.24.3", strings.Repeat("a", 64))
+			r.serve("")
+			code, out := r.run("secrets")
+			if code != 2 || !strings.Contains(out, "REFUSING") || !strings.Contains(out, "8.24.3") {
+				t.Fatalf("no network: exit %d, want 2 and a refusal naming CI's version\n%s", code, out)
+			}
+			if strings.Contains(r.args("gitleaks"), "git ") {
+				t.Errorf("the scan fell back to the gitleaks on PATH:\n%s", r.args("gitleaks"))
+			}
+		})
+	}
+}
+
+func TestSecretsCheckRefusesWithoutAPinnedDigest(t *testing.T) {
+	r := newScanRepo(t, false)
+	r.stub("gitleaks", `case "$1" in version) echo 8.30.1 ;; esac; exit 0`)
+	r.pinDigest("8.20.0", strings.Repeat("a", 64))
+	tarball, _ := r.pinnedRelease("8.24.3", filepath.Join(t.TempDir(), "pinned.args"))
+	r.serve(tarball)
+	code, out := r.run("secrets")
+	if code != 2 || !strings.Contains(out, "REFUSING") || !strings.Contains(out, "scripts/gitleaks-checksums.txt") {
+		t.Fatalf("no digest for CI's version: exit %d, want 2 and a refusal naming the digest file\n%s", code, out)
+	}
+	if r.args("curl") != "" {
+		t.Errorf("a release with no pinned digest was fetched: %q", r.args("curl"))
+	}
+}
+
+// TestGitleaksDigestsCoverCIsPin: the digest file holds a digest for every
+// platform the script fetches for, at the version ci.yml pins, and CI's own
+// install checks its download against that file rather than against a
+// checksum list fetched beside it, so a version bump that leaves the digests
+// behind fails here and in CI's install, not first on a developer's machine.
+func TestGitleaksDigestsCoverCIsPin(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ci := readRepoFile(t, root, ".github/workflows/ci.yml")
+	pin := regexp.MustCompile(`(?m)^\s*GITLEAKS_VERSION:\s*([0-9][0-9.]*)\s*$`).FindStringSubmatch(ci)
+	if pin == nil {
+		t.Fatal("ci.yml pins no gitleaks version")
+	}
+	sums := readRepoFile(t, root, "scripts/gitleaks-checksums.txt")
+	for _, p := range []string{"darwin_arm64", "darwin_x64", "linux_arm64", "linux_x64"} {
+		asset := "gitleaks_" + pin[1] + "_" + p + ".tar.gz"
+		if !regexp.MustCompile(`(?m)^[0-9a-f]{64}  ` + regexp.QuoteMeta(asset) + `$`).MatchString(sums) {
+			t.Errorf("scripts/gitleaks-checksums.txt holds no sha256 for %s, the release ci.yml pins", asset)
+		}
+	}
+	if !strings.Contains(ci, "scripts/gitleaks-checksums.txt") || strings.Contains(ci, "_checksums.txt\"") {
+		t.Error("ci.yml's gitleaks install does not verify against scripts/gitleaks-checksums.txt alone")
+	}
+}
+
+// keptRelease runs one clean scan that fetches CI's release into home's abcd
+// home, then takes the network away, so a later run can only use what was
+// kept. It returns the kept directory and the pinned binary's argument log.
+func (r *scanRepo) keptRelease(home string) (string, string) {
+	r.t.Helper()
+	r.stub("gitleaks", `case "$1" in version) echo 8.30.1 ;; esac; exit 0`)
+	log := filepath.Join(r.t.TempDir(), "pinned.args")
+	tarball, digest := r.pinnedRelease("8.24.3", log)
+	r.pinDigest("8.24.3", digest)
+	r.serve(tarball)
+	if code, out := r.runHome("secrets", home); code != 0 {
+		r.t.Fatalf("the first scan, which keeps CI's release: exit %d\n%s", code, out)
+	}
+	r.serve("")
+	if err := os.Remove(log); err != nil {
+		r.t.Fatal(err)
+	}
+	return abcdhome.Path(home, "gate-tools", "gitleaks", "8.24.3"), log
+}
+
+// keptArchive is the one tarball in the kept directory.
+func keptArchive(t *testing.T, cache string) string {
+	t.Helper()
+	kept, _ := filepath.Glob(filepath.Join(cache, "gitleaks_8.24.3_*.tar.gz"))
+	if len(kept) != 1 {
+		t.Fatalf("the kept directory holds %v, want one release", kept)
+	}
+	return kept[0]
+}
+
+// refusedKept asserts a run refused naming path, and ran no pinned gitleaks.
+func (r *scanRepo) refusedKept(home, log, path string) {
+	r.t.Helper()
+	code, out := r.runHome("secrets", home)
+	if code != 2 || !strings.Contains(out, "REFUSING") || !strings.Contains(out, path) {
+		r.t.Fatalf("exit %d, want 2 and a refusal naming %s\n%s", code, path, out)
+	}
+	if ran, _ := os.ReadFile(log); len(ran) != 0 {
+		r.t.Errorf("CI's gitleaks ran from a kept copy that was refused: %q", ran)
+	}
+	if strings.Contains(r.args("gitleaks"), "git ") {
+		r.t.Errorf("the scan fell back to the gitleaks on PATH:\n%s", r.args("gitleaks"))
+	}
+	r.noCopyLeft()
+}
+
+// TestSecretsCheckKeepsCIsReleasePrivate: the kept directory is made 0700,
+// and a kept directory or tarball another user owns, or anyone else can write,
+// or that is a symlink, is refused by name rather than verified and run.
+func TestSecretsCheckKeepsCIsReleasePrivate(t *testing.T) {
+	t.Run("the kept directory is made 0700", func(t *testing.T) {
+		r := newScanRepo(t, false)
+		cache, _ := r.keptRelease(t.TempDir())
+		st, err := os.Stat(cache)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Mode().Perm() != 0o700 {
+			t.Errorf("the kept directory is %o, want 700", st.Mode().Perm())
+		}
+	})
+	t.Run("a group-writable directory", func(t *testing.T) {
+		r := newScanRepo(t, false)
+		home := t.TempDir()
+		cache, log := r.keptRelease(home)
+		if err := os.Chmod(cache, 0o770); err != nil {
+			t.Fatal(err)
+		}
+		r.refusedKept(home, log, cache)
+	})
+	t.Run("an others-writable tarball", func(t *testing.T) {
+		r := newScanRepo(t, false)
+		home := t.TempDir()
+		cache, log := r.keptRelease(home)
+		archive := keptArchive(t, cache)
+		if err := os.Chmod(archive, 0o602); err != nil {
+			t.Fatal(err)
+		}
+		r.refusedKept(home, log, archive)
+	})
+	t.Run("another user's directory", func(t *testing.T) {
+		r := newScanRepo(t, false)
+		home := t.TempDir()
+		cache, log := r.keptRelease(home)
+		// The script asks id who it runs as; an answer that is not the
+		// directory's owner makes the kept copy another user's.
+		r.stub("id", `case "$1" in -u) echo 4242424 ;; *) exec /usr/bin/id "$@" ;; esac`)
+		r.refusedKept(home, log, cache)
+	})
+	t.Run("a symlinked directory", func(t *testing.T) {
+		r := newScanRepo(t, false)
+		home := t.TempDir()
+		cache, log := r.keptRelease(home)
+		elsewhere := filepath.Join(t.TempDir(), "elsewhere")
+		if err := os.Rename(cache, elsewhere); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(elsewhere, cache); err != nil {
+			t.Fatal(err)
+		}
+		r.refusedKept(home, log, cache)
+	})
+	t.Run("a symlinked tarball", func(t *testing.T) {
+		r := newScanRepo(t, false)
+		home := t.TempDir()
+		cache, log := r.keptRelease(home)
+		archive := keptArchive(t, cache)
+		elsewhere := filepath.Join(t.TempDir(), "release.tar.gz")
+		if err := os.Rename(archive, elsewhere); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(elsewhere, archive); err != nil {
+			t.Fatal(err)
+		}
+		r.refusedKept(home, log, archive)
+	})
+}
+
+// TestSecretsCheckVerifiesAndUnpacksOnePrivateCopy: the tarball that is
+// hashed and the one unpacked are the same copy, in the script's own
+// temporary directory, never the kept file in the abcd home.
+func TestSecretsCheckVerifiesAndUnpacksOnePrivateCopy(t *testing.T) {
+	r := newScanRepo(t, false)
+	home := t.TempDir()
+	r.keptRelease(home)
+	tarPath, err := exec.LookPath("tar")
+	if err != nil {
+		t.Skip("tar unavailable")
+	}
+	r.stub("tar", `exec '`+tarPath+`' "$@"`)
+	r.stub("sha256sum", `if command -v shasum >/dev/null 2>&1; then exec shasum -a 256 "$@"; fi; exec /usr/bin/sha256sum "$@"`)
+	if code, out := r.runHome("secrets", home); code != 0 {
+		t.Fatalf("a scan from the kept release: exit %d\n%s", code, out)
+	}
+	hashed, unpacked := strings.TrimSpace(r.args("sha256sum")), r.args("tar")
+	if !strings.HasPrefix(hashed, r.tmp+"/") {
+		t.Errorf("the hash was taken of %q, not of a copy in the script's TMPDIR %s", hashed, r.tmp)
+	}
+	if !strings.Contains(unpacked, "-xzf "+hashed+" ") {
+		t.Errorf("tar unpacked %q, not the copy that was hashed, %s", unpacked, hashed)
+	}
+	r.noCopyLeft()
+}
+
+// TestSecretsCheckRefusesWithNoHasher: with neither sha256sum nor shasum
+// there is no way to verify CI's release, so the scan refuses with exit 2 and
+// says so, before fetching anything.
+func TestSecretsCheckRefusesWithNoHasher(t *testing.T) {
+	r := newScanRepo(t, false)
+	r.stub("gitleaks", `case "$1" in version) echo 8.30.1 ;; esac; exit 0`)
+	tarball, digest := r.pinnedRelease("8.24.3", filepath.Join(t.TempDir(), "pinned.args"))
+	r.pinDigest("8.24.3", digest)
+	r.serve(tarball)
+	// The system's tools, every one but the two hashers.
+	sys := t.TempDir()
+	for _, d := range []string{"/usr/bin", "/bin"} {
+		entries, _ := os.ReadDir(d)
+		for _, e := range entries {
+			name := e.Name()
+			if name == "sha256sum" || name == "shasum" {
+				continue
+			}
+			if _, err := os.Lstat(filepath.Join(sys, name)); err == nil {
+				continue
+			}
+			if err := os.Symlink(filepath.Join(d, name), filepath.Join(sys, name)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	cmd := r.command("secrets")
+	for i, e := range cmd.Env {
+		if strings.HasPrefix(e, "PATH=") {
+			cmd.Env[i] = strings.Replace(e, ":/usr/bin:/bin", ":"+sys, 1)
+		}
+	}
+	out, err := cmd.CombinedOutput()
+	code := 0
+	if ee, ok := err.(*exec.ExitError); ok {
+		code = ee.ExitCode()
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	if code != 2 || !strings.Contains(string(out), "REFUSING") || !strings.Contains(string(out), "sha256sum") {
+		t.Fatalf("no hasher: exit %d, want 2 and a refusal naming the missing tool\n%s", code, out)
+	}
+	if r.args("curl") != "" {
+		t.Errorf("a release was fetched with no way to verify it: %q", r.args("curl"))
+	}
+}
+
+// TestSecretsCheckRefusesWhenTheCheckCannotRun: a hasher that is on PATH but
+// fails, or a digest file that cannot be read, is a fault in the check, not a
+// finding: the scan refuses with exit 2 and names it, never exit 1 in silence.
+func TestSecretsCheckRefusesWhenTheCheckCannotRun(t *testing.T) {
+	for name, want := range map[string]string{"a failing hasher": "could not hash", "an unreadable digest file": "could not be read"} {
+		t.Run(name, func(t *testing.T) {
+			r := newScanRepo(t, false)
+			r.stub("gitleaks", `case "$1" in version) echo 8.30.1 ;; esac; exit 0`)
+			tarball, digest := r.pinnedRelease("8.24.3", filepath.Join(t.TempDir(), "pinned.args"))
+			r.pinDigest("8.24.3", digest)
+			r.serve(tarball)
+			if want == "could not hash" {
+				r.stub("sha256sum", `echo 'sha256sum: read error' >&2; exit 1`)
+				r.stub("shasum", `echo 'shasum: read error' >&2; exit 1`)
+			} else {
+				sums := filepath.Join(r.dir, "scripts", "gitleaks-checksums.txt")
+				if err := os.Chmod(sums, 0); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(sums, 0o644) })
+			}
+			code, out := r.runHome("secrets", t.TempDir())
+			if code != 2 || !strings.Contains(out, "REFUSING") || !strings.Contains(out, want) {
+				t.Fatalf("%s: exit %d, want 2 and a refusal saying %q\n%s", name, code, want, out)
+			}
+		})
+	}
+}
+
+// TestSecretsCheckMatchesTheAssetNameLiterally: a digest line for a name that
+// differs from the asset only where the asset has a dot is not its digest.
+func TestSecretsCheckMatchesTheAssetNameLiterally(t *testing.T) {
+	r := newScanRepo(t, false)
+	r.stub("gitleaks", `case "$1" in version) echo 8.30.1 ;; esac; exit 0`)
+	tarball, digest := r.pinnedRelease("8.24.3", filepath.Join(t.TempDir(), "pinned.args"))
+	var b strings.Builder
+	for _, p := range []string{"darwin_arm64", "darwin_x64", "linux_arm64", "linux_x64"} {
+		b.WriteString(digest + "  gitleaks_8x24x3_" + p + "xtarxgz\n")
+	}
+	r.write("scripts/gitleaks-checksums.txt", b.String())
+	r.serve(tarball)
+	code, out := r.run("secrets")
+	if code != 2 || !strings.Contains(out, "holds no single sha256") {
+		t.Fatalf("a near-miss name: exit %d, want 2 and a refusal for no digest\n%s", code, out)
+	}
+	if r.args("curl") != "" {
+		t.Errorf("a near-miss line was taken as the asset's digest, and the release fetched: %q", r.args("curl"))
+	}
+}
+
+// TestCIsGitleaksInstallMatchesTheAssetNameLiterally: ci.yml picks the
+// digest line by the whole asset name, never by a pattern whose dots match
+// any character.
+func TestCIsGitleaksInstallMatchesTheAssetNameLiterally(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ci := readRepoFile(t, root, ".github/workflows/ci.yml")
+	if strings.Contains(ci, `grep "  $base\$"`) || !strings.Contains(ci, `awk -v a="$base" 'NF == 2 && $2 == a'`) {
+		t.Error("ci.yml's gitleaks install does not pick its digest line by the whole asset name")
 	}
 }

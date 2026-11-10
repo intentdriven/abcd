@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -260,7 +261,16 @@ const maxScannerConfigBytes = 256 * 1024
 // repository's own opt-in. Its findings are appended to ScanText's and
 // ScanBundle's.
 func New(repoRoot string, opts ...Option) (*Scanner, error) {
-	s := newBase(repoRoot)
+	return NewContext(context.Background(), repoRoot, opts...)
+}
+
+// NewContext is New with the identity probe's git calls bound to ctx, for a
+// hook that builds a scanner on its deadline. A ctx that ends before the probe
+// has read the caller's identity leaves the identity floors without it, so the
+// scanner is marked unavailable (fail-closed) rather than scanning as though
+// the caller had no identity to redact.
+func NewContext(ctx context.Context, repoRoot string, opts ...Option) (*Scanner, error) {
+	s := newBase(ctx, repoRoot)
 	for _, o := range opts {
 		o(s)
 	}
@@ -270,10 +280,10 @@ func New(repoRoot string, opts ...Option) (*Scanner, error) {
 
 // newBase is New without the augmenter: the built-in set, the per-repo
 // override, and the identity probe.
-func newBase(repoRoot string) *Scanner {
+func newBase(ctx context.Context, repoRoot string) *Scanner {
 	s := &Scanner{
 		patterns:       DefaultPatterns(),
-		identity:       ProbeIdentity(repoRoot),
+		identity:       probeIdentity(ctx, repoRoot),
 		identSev:       DefaultIdentitySeverities(),
 		skipExtensions: toSet(defaultSkipExtensions),
 		skipFilenames:  toSet(defaultSkipFilenames),
@@ -296,6 +306,11 @@ func newBase(repoRoot string) *Scanner {
 	// os.Root resolves every component inside the root and refuses the escape
 	// wherever it sits — guard.Load's single ancestor check is complete for its
 	// one-deep .abcd/guard.json, but copying it here covered half the path.
+	if ctx.Err() != nil {
+		s.unavailable = true
+		s.unavailReason = "identity probe cut short by its deadline: the caller's git identity was not read"
+		return s
+	}
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
 		s.unavailable = true

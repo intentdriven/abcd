@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"math/bits"
 	"os"
 	"os/exec"
@@ -81,7 +82,13 @@ func DefaultIdentitySeverities() map[string]Severity {
 // built by every verb and hook that scans, and four processes per build were
 // four reads of the same configuration. A second process runs only when the
 // parent carries `git -c` configuration, for the reason given below.
-func ProbeIdentity(repoRoot string) Identity {
+func ProbeIdentity(repoRoot string) Identity { return probeIdentity(context.Background(), repoRoot) }
+
+// probeIdentity is ProbeIdentity with its git calls bound to ctx, for a
+// scanner a hook builds on its deadline (NewContext): a listing still running
+// when ctx ends is killed and read as no entries, and NewContext then marks
+// the scanner unavailable rather than scanning without the caller's identity.
+func probeIdentity(ctx context.Context, repoRoot string) Identity {
 	var id Identity
 	// Scrub repo-selection and config-injection env vars, but keep global
 	// config: this probe reads the caller's OWN user.name/user.email to redact
@@ -99,7 +106,7 @@ func ProbeIdentity(repoRoot string) Identity {
 	// persona for what it is (the former misses it, the latter hides it behind
 	// the unconditional value), which is why the union comes from ONE unscoped
 	// listing rather than a scope-by-scope reassembly.
-	entries := configListing(repoRoot, gitutil.ScrubbedEnv(), identityKeys)
+	entries := configListing(ctx, repoRoot, gitutil.ScrubbedEnv(), identityKeys)
 	var names, emails []string
 	var remote string
 	for _, e := range entries {
@@ -147,7 +154,7 @@ func ProbeIdentity(repoRoot string) Identity {
 	// listing would let it move or blind the effective identity and the remote.
 	persona := entries
 	if cmdline := gitutil.CommandLineConfig(); len(cmdline) > 0 {
-		persona = configListing(repoRoot, append(gitutil.ScrubbedEnv(), cmdline...), personaKeys)
+		persona = configListing(ctx, repoRoot, append(gitutil.ScrubbedEnv(), cmdline...), personaKeys)
 	}
 	for _, e := range persona {
 		switch e.key {
@@ -189,9 +196,13 @@ type configEntry struct{ key, value string }
 // git absent, a malformed or unreadable repository config, a malformed -c
 // entry, no key matching — is no entries: the probe is best-effort, and a
 // failed read leaves its fields empty. Output from a command that exits
-// non-zero is discarded whole, never half-read.
-func configListing(repoRoot string, env []string, pattern string) []configEntry {
-	cmd := exec.Command("git", "-C", repoRoot, "config", "-z", "--get-regexp", pattern)
+// non-zero is discarded whole, never half-read. git runs under ctx and is
+// killed when it ends; a listing ctx ended is no entries too.
+func configListing(ctx context.Context, repoRoot string, env []string, pattern string) []configEntry {
+	if ctx.Err() != nil {
+		return nil
+	}
+	cmd := exec.CommandContext(ctx, "git", "-C", repoRoot, "config", "-z", "--get-regexp", pattern)
 	cmd.Env = env
 	out, err := cmd.Output()
 	if err != nil {

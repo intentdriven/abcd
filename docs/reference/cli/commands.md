@@ -465,7 +465,8 @@ open question, has no unanswered claim section, is not held, names no unsettled 
 in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling
 worktree or local branch holds it in another bucket having changed it since its
 merge-base with this checkout, so a branch holding this checkout's older copy
-untouched does not count; no session holds a live claim on it; and no other copy holds
+untouched does not count, nor does a branch no worktree has checked out, which the
+passing row names; no session holds a live claim on it; and no other copy holds
 a reservation on it on origin, as this checkout last fetched the reservations; a peer,
 claim or view that cannot be read, or a copy that cannot be compared, counts as holding
 it). The check reads the reservations from disk alone, and names another copy's with
@@ -3082,7 +3083,10 @@ place. Its jitter is 1s to 5s, and it takes no open look, so across accounts two
 opening at once can pass the limit by one. So that it cannot starve a whole run, while a
 whole-run waiter that started earlier has been queued 5m0s or more and a whole slot is free, it
 stands aside, spending at most 5m0s of a wait so. Waiters queued ahead that alone keep it shut stop
-counting after 2m0s.
+counting after 2m0s. The time both caps have spent carries across retries of the same
+narrow wait in the same lane (the same command, worktree and drive stage), until one of the
+first try's timeouts has passed since the last gave up, in your account's own
+`~/.abcd.noindex/load-wait-narrow-carry.json`; a try that opens clears it.
 
 A wait that gives up exits 1 and ends with a line starting `LOAD GATE TIMED OUT`,
 naming how long it waited and that nothing ran, so a pipe that loses the exit
@@ -5738,7 +5742,10 @@ reading it would write this checkout's status state. Notes and pages share one r
 score that decides which of them fit the budget: each shows its rank and
 score and, under it, every matched term with the fields it was found in
 (recall words, title, body) and what it added to the score. It reads
-against an empty ledger and writes nothing.
+against an empty ledger and writes nothing. On a drive's stage it reads the
+rules as the lane's base commit holds them and recalls no notes or pages, as
+the hook does there, and says so: the JSON form's stage is true there, so its
+empty notes and pages read apart from a prompt that matched none.
 
 --fill <percent-used>, with --prompt, sets how full the context window is,
 and so the bracket shown; without it the diagnostic has no session, so the

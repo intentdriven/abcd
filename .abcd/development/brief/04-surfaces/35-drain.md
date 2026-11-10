@@ -345,7 +345,11 @@ goes on taking the answers; the newest twenty of a kind are kept.
 
 Before the first move the drive writes the profile directory's settings, abcd's hooks
 as commands naming its own binary and the harness's own attribution, off, and nothing
-else; resolves the harness to one file, which every launch of the run runs, the proof
+else; moves the copy of the account's skills that the harness synced into the profile
+directory at its login, when that copy stands alone in the skills folder, out to a folder of its
+own in abcd's home, leaves the skills folder empty and closed to writes so the copy cannot be
+synced back, and says where it went, while any other skill there is still refused under the
+settings wall; resolves the harness to one file, which every launch of the run runs, the proof
 and each stage alike, so a link moved after the start changes nothing that runs until a release check finds it and the new file carries the run's signing team and passes the run's proof; and
 checks each wall, refusing and naming the one that fails: the login state, the settings, a git identity for the
 checkout, and in one short live launch the tools the launch named, the approver as the
@@ -982,7 +986,7 @@ itd-2609201916151817). Its checks are the budget check every start runs, the rul
 peers check; the key is an issue id by shape before any path is built from it.
 Its brief is the issue's record, read at the lane's base, with its remedy as the
 work and the repository's definition of done: a detector watched to fail before
-the fix and pass after. Its validators run without the fidelity audit, since an
+the fix and pass after, its tests gated as an intent lane's brief spells. Its validators run without the fidelity audit, since an
 issue has no criteria. Its implementer's receipt must name the issue in
 `resolves`, and the landing resolves the issue with the commit named there in
 the lane's own change, opens one pull request and pushes nothing while it is armed, its sync withdrawing an armed merge first.

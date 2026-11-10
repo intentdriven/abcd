@@ -29,9 +29,10 @@ func awayCopyRoot(cwd, sessionID string) (string, bool) {
 // recordCreatedBranches is the created-branch recorder of the away mode
 // (spc-2610180914469489 step 3): before the guard judges command, the
 // branches it creates, checks out into a new worktree or renames are recorded
-// under the session copy's key (awayCopyRoot) in the away store, whether or not the person
-// is away. It refuses nothing: a store it cannot write leaves one line on w
-// and the command goes on to the guard's own judgement.
+// under the session copy's key (awayCopyRoot) in the away store, with the
+// session that creates them, whether or not the person is away. It refuses
+// nothing: a store it cannot write leaves one line on w and the command goes
+// on to the guard's own judgement.
 func recordCreatedBranches(w io.Writer, cwd, sessionID string, workdir json.RawMessage, command string) {
 	acts := guard.BranchActs(command)
 	if len(acts) == 0 {
@@ -62,7 +63,7 @@ func recordCreatedBranches(w io.Writer, cwd, sessionID string, workdir json.RawM
 		changes = append(changes, c)
 		names = append(names, a.Name)
 	}
-	if err := autonomy.RecordCreated(copyRoot, runDir, changes, autonomy.Options{}); err != nil {
+	if err := autonomy.RecordCreated(copyRoot, runDir, changes, autonomy.Options{SessionID: sessionID}); err != nil {
 		diagnosticLine(w, "abcd guard: the created branch %s was not recorded for the away mode (%s); the command is not refused for it",
 			strings.Join(names, ", "), scrubPaths(err))
 	}

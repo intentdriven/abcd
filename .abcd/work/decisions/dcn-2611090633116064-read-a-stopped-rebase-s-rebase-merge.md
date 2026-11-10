@@ -1,0 +1,6 @@
+---
+id: dcn-2611090633116064
+slug: read-a-stopped-rebase-s-rebase-merge
+date: 2026-11-09
+---
+2026-11-09 — Read a stopped rebase's rebase-merge/update-refs list as part of the held-branch rule (gitutil.HeldBranches). git documents --update-refs but not the file; its shape, records of three lines (the ref, then the object names before and after), is what sequencer.c writes and reads, as git 2.52 writes it (checked against that release; earlier releases were not checked), and branch.c reads it so that git branch -d and git branch -f refuse those branches. A test stops a real rebase with --update-refs and reads the file git wrote, so a format change fails a test rather than passing silently, and a list git itself would call invalid fails closed. The checkout recorder in autonomy counts only the branches a rebase or bisect started from, because git switch and git worktree add do not refuse an update-refs branch. The owed-work reader's checkedOutElsewhere is left on the worktree listing: it attributes branches for a report rather than deleting or starting anything, it needs the holding worktree's path to name its sessions, and a held branch it misses is counted as this copy's, which asks more of the session, not less. Refs: iss-2611090624077505

@@ -173,7 +173,9 @@ func TestBuildRefusalNamesStepReasonAndRemedy(t *testing.T) {
 }
 
 // TestBuildRefusesAPeerHoldingTheIntentAtExit3 is criterion 2 at the surface:
-// contention, so exit 3, naming the peer.
+// contention, so exit 3, naming the peer. The lane's worktree is gone and git
+// still lists it, so its branch is one a worktree has: a branch checked out
+// nowhere holds nothing (iss-2611090125008163).
 func TestBuildRefusesAPeerHoldingTheIntentAtExit3(t *testing.T) {
 	repo := buildRepo(t)
 	repo.Git("checkout", "-q", "-b", "lane-alpha")
@@ -181,6 +183,11 @@ func TestBuildRefusesAPeerHoldingTheIntentAtExit3(t *testing.T) {
 	repo.Write(".abcd/development/intents/shipped/itd-10-alpha.md", buildIntent())
 	repo.Commit("deliver alpha")
 	repo.Git("checkout", "-q", "main")
+	gone := filepath.Join(t.TempDir(), "gone")
+	repo.Git("worktree", "add", "-q", gone, "lane-alpha")
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
 
 	ref := refusalDocs(t, 3, "build", "itd-10", "--json")
 	if ref["check"] != "peers" || !strings.Contains(ref["reason"].(string), "lane-alpha") {

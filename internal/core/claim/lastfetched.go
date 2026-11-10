@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"context"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/localtier"
@@ -11,9 +12,13 @@ import (
 // without fetching (the drain's dry run, spc-2610161044461448 step 1). Zero
 // when nothing here stamped a fetch, and when the stamp is one git tracks,
 // which came with a commit and says nothing of this checkout's fetches.
-func LastFetched(root string) time.Time {
+func LastFetched(root string) time.Time { return LastFetchedContext(context.Background(), root) }
+
+// LastFetchedContext is LastFetched with its one git call, the tracked check,
+// bound to ctx, for a hook on a deadline: a ctx that ends first answers zero.
+func LastFetchedContext(ctx context.Context, root string) time.Time {
 	at := lastFetched(root, reservations)
-	if at.IsZero() || localtier.Untracked(root, reservations.stampRel()) != nil {
+	if at.IsZero() || localtier.UntrackedContext(ctx, root, reservations.stampRel()) != nil {
 		return time.Time{}
 	}
 	return at
