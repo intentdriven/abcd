@@ -134,31 +134,45 @@ that name with none at this head, since the proof may lie past the bound.
    open or queued pull request's body is read for its lines; a merged or closed
    one's is not. A body with no such line goes on as before, unless it is over
    the bound. One not yet merged (open or queued) leaves the step `stopped`,
-   nothing armed, naming it and when the wait is refused: 24 hours after the
-   pull request was opened, by the forge's creation time, which no agent can
-   move. A reopened pull request keeps that time; closing it and opening a new
-   one for the same branch starts a fresh 24 hours. Relay it: run `abcd land`
-   again once it has merged. A dependency the forge reports merged counts
-   however it merged; a later revert of it is not read. These refuse at once,
-   exit 2, nothing armed, each naming the numbers and what to reword or settle:
-   a dependency closed unmerged; a number the forge has no pull request for, or
-   one into another branch than the default branch, merged there or not; a
-   dependency on a cycle, or the pull request itself; a wait at or past its 24
-   hours, which includes a `Depends-On:` line added to a pull request opened
-   more than 24 hours earlier; a creation time later than the local clock, or
-   one land cannot read; a line that looks like a `Depends-On:` line in
-   another shape (lower case, indented, quoted, with another separator), named
-   by its line number, never quoted; a body over the bound; more than 25 pull
-   requests; and a forge answer land cannot read whole, an offline or
-   rate-limited forge included. This account's arming already in place is
-   withdrawn on a wait or a refusal, and the step says so; if land cannot
-   withdraw it, it refuses with the command to withdraw it by hand. Another
-   account's arming is never touched. One limit of the check: a pull request
-   already in the merge queue, or armed by another account, is reported as
-   before with its dependencies unread. Only `abcd land` makes the check: a
-   pull request the build loop or a re-arm of a withdrawn merge arms is not
-   held by its `Depends-On:` lines. Rebuilding a dependant on the default
-   branch once its dependency merges is not done yet. Where a merge queue
+   no new arming made, naming it and when the wait is refused: 24 hours after
+   the pull request was opened, by the forge's creation time, which no agent
+   can move. A reopened pull request keeps that time, as the forge reports it;
+   closing it and opening a new one for the same branch starts a fresh 24
+   hours. Relay it: run `abcd land` again once it has merged. A dependency
+   counts once the forge reports it merged, however it merged. These refuse at
+   once, exit 2, with no new arming made, each naming the numbers and what to
+   reword or settle: a dependency closed unmerged; a number the forge has no
+   pull request for, or one into another branch than the default branch,
+   merged there or not; a dependency on a cycle, or the pull request itself; a
+   wait at or past its 24 hours, which includes a `Depends-On:` line added to
+   a pull request opened more than 24 hours earlier; a creation time later
+   than the local clock, or one land cannot read; a line that looks like a
+   `Depends-On:` line in another shape (lower case, indented, quoted, with
+   another separator), named by its line number, never quoted; a body over the
+   bound; more than 25 pull requests; and a forge answer land cannot read
+   whole (one missing a field included), an offline or rate-limited forge
+   included. This account's arming already in place is withdrawn on a wait or
+   a refusal, and the step says so. That includes a forge that could not be
+   asked: a forge error on a re-run takes this account's arming off, and the
+   next `abcd land` run arms it again. A pull request the forge has queued
+   meanwhile is taken out of the merge queue. If land cannot withdraw it, it
+   refuses with the step to take it off by hand: the command for an arming,
+   the pull request's page for a queue entry. A pull request the forge reports
+   merged or closed since land read it is refused as such, with nothing
+   withdrawn. Another account's arming, as the forge reported it when land
+   read it, is not withdrawn; one the forge shows after land's withdrawal is
+   refused as another account's. The check also runs, with the withdrawal,
+   where this account's arming stands at the gated head and the merge gate
+   cannot be read or does not arm, or the pull request conflicts. It is not
+   made, and an arming already in place is left with its dependencies unread,
+   where: the pull request is already in the merge queue; another account
+   armed it; `land.enqueue` is off; a stop holds; the forge lists a head other
+   than the local one; it merges into a base other than the default branch; or
+   this account's arming is at a head land did not gate, which is refused with
+   the command that withdraws it. Only `abcd land` makes the check: a pull
+   request the build loop or a re-arm of a withdrawn merge arms is not held by
+   its `Depends-On:` lines. Rebuilding a dependant on the default branch once
+   its dependency merges is not done yet. Where a merge queue
    gates the default branch, land lists before arming the open pull requests
    into it that are queued or armed, and a branch that shares a commit not on
    the default branch with one of them (a branch cut from that one's branch)
