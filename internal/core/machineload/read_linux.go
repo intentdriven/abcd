@@ -3,6 +3,7 @@
 package machineload
 
 import (
+	"context"
 	"encoding/binary"
 	"os"
 	"runtime"
@@ -16,7 +17,15 @@ import (
 // and can be smaller), and every numeric /proc/<pid>. A load average that reads
 // while the process table does not is returned with the error, so the extreme
 // trigger can still apply.
-func Read() (Snapshot, error) {
+func Read() (Snapshot, error) { return ReadContext(context.Background()) }
+
+// ReadContext is Read for a reader on a deadline: a ctx already ended reads
+// nothing and answers ctx's error. Linux's reader starts no program, so a ctx
+// that ends during the read does not stop it; /proc answers in milliseconds.
+func ReadContext(ctx context.Context) (Snapshot, error) {
+	if err := ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
 	snap, err := readProcFS(os.DirFS("/proc"), os.DirFS("/sys/devices/system/cpu"), strconv.IntSize/8, binary.NativeEndian)
 	if snap.HasLoad && snap.Cores == 0 {
 		snap.Cores, snap.CoresFallback = runtime.NumCPU(), true
