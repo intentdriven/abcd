@@ -208,7 +208,7 @@ func TestTwoReviewersOfOneRoleAreKeyedByIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, w := range []string{"ruthless-reviewer (reviewer 1 at default (" + BundledClasses[ClassDefault] + ")): FIX FIRST", r1,
+	for _, w := range []string{"ruthless-reviewer (reviewer 1 at default (" + BundledClasses[ClassDefault] + ", effort high)): FIX FIRST", r1,
 		"security-reviewer (reviewer 0 at research", "security-reviewer (reviewer 1 at default"} {
 		if !strings.Contains(string(fb), w) {
 			t.Fatalf("the fix brief names %q:\n%s", w, fb)

@@ -71,6 +71,7 @@ repository names only which classes review.
    - packages: internal/core/runner, internal/core/implement/loop
    - tests: the harness runner's arguments carry the effort flag for a request at a class and none for a request with no class or for the runner's own configured model; the launch record's asked effort is the level, and `not configured` with no class; a runner with no way to pass an effort launches and records that it was not passed; a launch the harness fails naming the effort surfaces the effort and class in the failure; a host-run reviewer's await names the class's effort as asked, not confirmed
    - needs: 4
+   - landed: 8fa474766
 6. Every surface shows a class with its model and effort
    - packages: internal/surface/cli, internal/core/implement/loop
    - tests: `abcd build`'s and `abcd implement`'s text and JSON renders of a review set carry name, model and effort for each reviewer and the judge with its status; a drive's start text names the pair and their efforts before the question; no render shows a class name alone

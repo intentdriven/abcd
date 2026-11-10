@@ -1542,7 +1542,11 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 			if v.Located != nil {
 				located = fmt.Sprintf(", %d located finding(s)", *v.Located)
 			}
-			fmt.Fprintf(w, "    round %d at %s: %s %s%s%s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(v.Role), termsafe.Sanitize(v.Verdict), located, routeSuffix(v.Route))
+			role := v.Role
+			if p := v.ReviewerPhrase(); p != "" {
+				role += " (" + p + ")"
+			}
+			fmt.Fprintf(w, "    round %d at %s: %s %s%s%s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(role), termsafe.Sanitize(v.Verdict), located, routeSuffix(v.Route))
 			renderFindings(w, v.Findings)
 		}
 		if len(l.Resolves) > 0 {

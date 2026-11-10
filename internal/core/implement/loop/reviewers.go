@@ -89,15 +89,15 @@ func (v ValidatorRun) await() Await {
 // reviewerPhrase names a review set's reviewer as the record and the text
 // surfaces show it, its class with the model the class holds (decision 2);
 // "" for a validator no review set asked for a class.
-func reviewerPhrase(index int, class, model string) string {
+func reviewerPhrase(index int, class, model, effort string) string {
 	if class == "" {
 		return ""
 	}
-	return fmt.Sprintf("reviewer %d at %s", index, classPhrase(class, model))
+	return fmt.Sprintf("reviewer %d at %s", index, classPhrase(class, model, effort))
 }
 
 // phrase is reviewerPhrase for the validator.
-func (v ValidatorRun) phrase() string { return reviewerPhrase(v.Reviewer, v.Class, v.Model) }
+func (v ValidatorRun) phrase() string { return reviewerPhrase(v.Reviewer, v.Class, v.Model, v.Effort) }
 
 // recordModelStatus records, on a review set's reviewer whose verdict the
 // loop has just recorded, how far its model is known: unsent when the

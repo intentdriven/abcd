@@ -210,10 +210,85 @@ func (rs ReviewSet) Role(role string) (RoleReviewers, bool) {
 	return RoleReviewers{}, false
 }
 
-// classPhrase is a class as every surface shows it: with the model it holds,
-// so the class vocabulary and a vendor's names are never confused unseen
-// (decision 2).
-func classPhrase(class, model string) string { return class + " (" + model + ")" }
+// classPhrase is a class as every surface shows it: with the model it holds
+// and the effort it runs at, so the class vocabulary and a vendor's names are
+// never confused unseen (decision 2), and a class name is never shown alone
+// (itd-2611101419006280). A class of a run started before efforts names its
+// model alone.
+func classPhrase(class, model, effort string) string {
+	if effort == "" {
+		return class + " (" + model + ")"
+	}
+	return class + " (" + model + ", effort " + effort + ")"
+}
+
+// phrase is classPhrase for the class.
+func (c ReviewClass) phrase() string { return classPhrase(c.Class, c.Model, c.Effort) }
+
+// phrase is classPhrase for the judge.
+func (j ReviewJudge) phrase() string { return classPhrase(j.Class, j.Model, j.Effort) }
+
+// effortOrigins names the layers that set the set's efforts, each once, in
+// the order the classes are shown; "" for a run started before efforts.
+func (rs ReviewSet) effortOrigins() string {
+	var seen []string
+	add := func(layer, origin string) {
+		if layer == "" {
+			return
+		}
+		if d := describeLayer(layer, origin); !slices.Contains(seen, d) {
+			seen = append(seen, d)
+		}
+	}
+	for _, r := range rs.Roles {
+		for _, c := range r.Reviewers {
+			add(c.EffortLayer, c.EffortOrigin)
+		}
+	}
+	if j := rs.Judge; j != nil {
+		add(j.EffortLayer, j.EffortOrigin)
+	}
+	return strings.Join(seen, " and ")
+}
+
+// judgePhrase is the judge as the surfaces show it, with its status.
+func (j ReviewJudge) judgePhrase() string {
+	status := j.Status
+	if status == JudgeWaiting {
+		status = "waiting on itd-81's calibration gate"
+	}
+	return "judge " + j.phrase() + ", " + status
+}
+
+// Pair is the set as a drive's start names it before it asks: each role's
+// reviewers, the two roles together where they run the same classes, and the
+// judge with its status.
+func (rs ReviewSet) Pair() string {
+	lists := make([]string, 0, len(rs.Roles))
+	var roles [][]string
+	for _, r := range rs.Roles {
+		cs := make([]string, 0, len(r.Reviewers))
+		for _, c := range r.Reviewers {
+			cs = append(cs, c.phrase())
+		}
+		l := strings.Join(cs, " and ")
+		if i := slices.Index(lists, l); i >= 0 {
+			roles[i] = append(roles[i], r.Role)
+			continue
+		}
+		lists, roles = append(lists, l), append(roles, []string{r.Role})
+	}
+	parts := make([]string, 0, len(lists)+1)
+	for i, l := range lists {
+		parts = append(parts, strings.Join(roles[i], " and ")+": "+l)
+	}
+	if rs.Judge == nil {
+		parts = append(parts, "no judge")
+	} else {
+		parts = append(parts, rs.Judge.judgePhrase())
+	}
+	return strings.Join(parts, "; ")
+}
 
 // String renders the set and where each value came from, as the run record
 // and the text surfaces name it.
@@ -222,7 +297,7 @@ func (rs ReviewSet) String() string {
 	for _, r := range rs.Roles {
 		cs := make([]string, 0, len(r.Reviewers))
 		for _, c := range r.Reviewers {
-			cs = append(cs, classPhrase(c.Class, c.Model))
+			cs = append(cs, c.phrase())
 		}
 		p := fmt.Sprintf("%s %s (%s)", r.Role, strings.Join(cs, " and "), describeLayer(r.Layer, r.Origin))
 		if r.Clamped > 0 {
@@ -234,8 +309,11 @@ func (rs ReviewSet) String() string {
 	if rs.Judge == nil {
 		parts = append(parts, "no judge")
 	} else {
-		parts = append(parts, fmt.Sprintf("judge %s (%s), %s", classPhrase(rs.Judge.Class, rs.Judge.Model),
+		parts = append(parts, fmt.Sprintf("judge %s (%s), %s", rs.Judge.phrase(),
 			describeLayer(rs.Judge.Layer, rs.Judge.Origin), rs.Judge.Status))
+	}
+	if o := rs.effortOrigins(); o != "" {
+		parts = append(parts, "efforts from "+o)
 	}
 	return strings.Join(parts, "; ")
 }
@@ -243,10 +321,10 @@ func (rs ReviewSet) String() string {
 // note is the run record's one line about the judge the run started with.
 func (j ReviewJudge) note() string {
 	if j.Active() {
-		return fmt.Sprintf("the judge, %s, is active: a judge will run where a role's two reviewers disagree", classPhrase(j.Class, j.Model))
+		return fmt.Sprintf("the judge, %s, is active: a judge will run where a role's two reviewers disagree", j.phrase())
 	}
 	return fmt.Sprintf("the judge, %s, waits for the whole run: no judge agent has cleared itd-81's calibration gate, "+
-		"so where a role's two reviewers disagree the stricter verdict decides, and no judge is launched, awaited or counted", classPhrase(j.Class, j.Model))
+		"so where a role's two reviewers disagree the stricter verdict decides, and no judge is launched, awaited or counted", j.phrase())
 }
 
 func describeLayer(layer, origin string) string {

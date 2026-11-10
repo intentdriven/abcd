@@ -180,6 +180,13 @@ type RecordVerdict struct {
 	Findings []Finding `json:"findings,omitempty"`
 }
 
+// ReviewerPhrase names the verdict's reviewer as the text surfaces show it:
+// its index and its class with the model and effort the class held; "" for a
+// validator no review set asked for a class.
+func (v RecordVerdict) ReviewerPhrase() string {
+	return reviewerPhrase(v.Reviewer, v.Class, v.Model, v.Effort)
+}
+
 // RecordComparison is how one role's reviewers compared in one round
 // (reviewers.go).
 type RecordComparison struct {

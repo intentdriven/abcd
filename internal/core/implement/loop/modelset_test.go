@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -525,5 +526,62 @@ func TestAHostRunReviewerIsAskedForItsClassEffort(t *testing.T) {
 	}
 	if v := st.Lanes[0].Validation[0].Validators[0]; v.Effort != "max" || st.Lanes[0].Awaits[0].Effort != "max" {
 		t.Fatalf("the state keeps the reviewer's effort: %+v %+v", v, st.Lanes[0].Awaits[0])
+	}
+}
+
+// classAlone matches a class name not followed by the model it holds.
+var classAlone = regexp.MustCompile(`\b(research|top|default|small)\b(?: \(|[^ (]*)`)
+
+// aloneIn is each class name in text that is not followed by its model.
+func aloneIn(text string) []string {
+	var out []string
+	for _, m := range classAlone.FindAllString(text, -1) {
+		if !strings.HasSuffix(m, " (") {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// TestEveryRenderOfAClassNamesItsModelAndEffort: the review set as the run
+// record, a resume's text and the drive's start show it names each class
+// with its model and its effort, the layer that set the efforts and the
+// judge's status, and never a class name alone.
+func TestEveryRenderOfAClassNamesItsModelAndEffort(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	res, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := res.Review.String()
+	for _, w := range []string{"research (" + BundledClasses[ClassResearch] + ", effort high)",
+		"default (" + BundledClasses[ClassDefault] + ", effort high)",
+		"judge top (" + BundledClasses[ClassTop] + ", effort high) (bundled), waiting", "efforts from bundled"} {
+		if !strings.Contains(text, w) {
+			t.Fatalf("the set names %q: %s", w, text)
+		}
+	}
+	if a := aloneIn(text); len(a) != 0 {
+		t.Fatalf("a class is shown alone %q: %s", a, text)
+	}
+	pair := res.Review.Pair()
+	for _, w := range []string{RoleRuthless, RoleSecurity, "research (" + BundledClasses[ClassResearch] + ", effort high)",
+		"default (" + BundledClasses[ClassDefault] + ", effort high)", "judge top (" + BundledClasses[ClassTop] + ", effort high), waiting"} {
+		if !strings.Contains(pair, w) {
+			t.Fatalf("the pair names %q: %s", w, pair)
+		}
+	}
+	if a := aloneIn(pair); len(a) != 0 {
+		t.Fatalf("a class is shown alone %q: %s", a, pair)
+	}
+	if got, err := ReviewSetFor(Options{}, repo.Root()); err != nil || got.Pair() != pair {
+		t.Fatalf("the drive's start reads the set a run would start on: %v %q", err, got.Pair())
+	}
+	if p := reviewerPhrase(1, ClassDefault, BundledClasses[ClassDefault], "low"); p != "reviewer 1 at default ("+BundledClasses[ClassDefault]+", effort low)" {
+		t.Fatalf("a reviewer names its class's model and effort: %q", p)
+	}
+	v := RecordVerdict{Role: RoleRuthless, Reviewer: 1, Class: ClassDefault, Model: BundledClasses[ClassDefault], Effort: "low"}
+	if p := v.ReviewerPhrase(); p != "reviewer 1 at default ("+BundledClasses[ClassDefault]+", effort low)" {
+		t.Fatalf("a recorded verdict names its reviewer's class, model and effort: %q", p)
 	}
 }

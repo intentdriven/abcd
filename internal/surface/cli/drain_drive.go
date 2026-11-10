@@ -366,7 +366,7 @@ func driveBeforeStage(sig *driveSignals, repoRoot string, p runner.Profile, o lo
 
 // driveConsent shows what the drive will do and asks once; --yes is the
 // scripted answer, and with no terminal nothing else answers.
-func driveConsent(cmd *cobra.Command, w io.Writer, f driveFlags, lanes, runs int, p runner.Profile) (bool, error) {
+func driveConsent(cmd *cobra.Command, w io.Writer, f driveFlags, lanes, runs int, review string, p runner.Profile) (bool, error) {
 	if !f.yes && !connectIsTerminal(cmd.InOrStdin()) {
 		return false, driveRefusal("there is no terminal to ask at; `abcd drain --drive --yes` is the scripted yes")
 	}
@@ -379,6 +379,9 @@ func driveConsent(cmd *cobra.Command, w io.Writer, f driveFlags, lanes, runs int
 		fmt.Fprintf(w, "  estimate: about %d agent run(s) if nothing fails; retries through failures and short probes of a limit add to it\n", runs)
 		fmt.Fprintf(w, "  bound:    ends at %s, and waits through limits and outages until then; a time, not a limit on what it spends\n", f.until.UTC().Format(time.RFC3339))
 	}
+	// The pair each review runs, with each class's model and effort, so what
+	// a review round costs is named before the yes (itd-2611101419006280).
+	fmt.Fprintf(w, "  review:   %s\n", termsafe.Sanitize(review))
 	fmt.Fprintf(w, "  runner: claude\n")
 	name := termsafe.Sanitize(p.Name())
 	fmt.Fprintf(w, "  route:    the subscription logged in there, on the separate login %s\n", abcdhome.Display("profiles", name))
@@ -571,11 +574,15 @@ func runDriveLocked(starting context.Context, cmd *cobra.Command, asJSON bool, r
 		if err != nil {
 			return driveFail(cmd, asJSON, f, nil, err)
 		}
+		review, err := loop.ReviewSetFor(o, repoRoot)
+		if err != nil {
+			return driveFail(cmd, asJSON, f, nil, err)
+		}
 		asked := cmd.OutOrStdout()
 		if asJSON {
 			asked = cmd.ErrOrStderr()
 		}
-		yes, err := driveConsent(cmd, asked, f, lanes, runs, p)
+		yes, err := driveConsent(cmd, asked, f, lanes, runs, review.Pair(), p)
 		if err != nil {
 			return err
 		}
