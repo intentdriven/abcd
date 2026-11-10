@@ -18,8 +18,10 @@
 // waits until its recorded start plus the stated wait limit; a wait at or past
 // that deadline, one with no recorded start, or one whose recorded start is
 // later than the records' time is refused with a reason naming what it waited
-// on (adr-2610222026262980, rule 1). Claims and the record version are later
-// steps of the spec.
+// on (adr-2610222026262980, rule 1). Only open changes are decided: a queued,
+// merged or closed change gets no decision, and so a queued change with a
+// closed or missing dependency, or on a cycle, gets none either. Claims and
+// the record version are later steps of the spec.
 //
 // Reading the dependency line is parseDependsOn's, in depends.go.
 //
@@ -47,6 +49,9 @@ const (
 	maxNamed = 20
 	// maxStateRunes is the most of an unknown state the error quotes.
 	maxStateRunes = 32
+	// maxChanges is the most changes one snapshot may hold; with maxDepends,
+	// it bounds the pass's work (cyclesReached).
+	maxChanges = 500
 )
 
 // State is where a change stands in the records.
@@ -93,9 +98,10 @@ type Change struct {
 
 // Records is the snapshot one pass reads. The records are written by other
 // agents, so the pass judges these fields before deciding anything: the time,
-// the wait limit, each change's number, a number read twice, the state against
-// the set of known states, each dependency's number, and each start against
-// Now. A field it cannot judge refuses the change or the whole snapshot, never
+// the wait limit, how many changes there are, each change's number, a number
+// read twice, the state against the set of known states, how many distinct
+// dependencies each change carries and each one's number, and each start
+// against Now. A field it cannot judge refuses the change or the whole snapshot, never
 // queues. That a change is merged or queued is taken as the caller's verified
 // fact, not judged: land takes it from the forge's answer, never from a pull
 // request body.
@@ -149,12 +155,15 @@ type Decision struct {
 // pass reads the records and returns one decision for each open change,
 // ordered by change number; queued, merged and closed changes need none. A
 // snapshot it cannot judge is refused whole: no time, a wait limit that is not
-// positive or is above MaxWaitLimit, a change with a number of zero or less,
-// one read twice, an unknown state, or a dependency numbered zero or less. The
-// one error names every defect found, sorted, so it is the same whatever
-// order the records were read in. It names at most maxNamed defects, then how
-// many more there are, and quotes an unknown state cut to maxStateRunes. pass
-// does not change the records it reads.
+// positive or is above MaxWaitLimit, more than maxChanges changes, a change
+// with a number of zero or less, one read twice, an unknown state, more than
+// maxDepends distinct dependencies, or a dependency numbered zero or less. A
+// snapshot over maxChanges is refused on its count, its changes unread, and a
+// change over maxDepends on its count, its dependencies' numbers unjudged. The
+// one error names the defects found, sorted and once each, at most maxNamed,
+// then how many more, so it is the same whatever order the records were read
+// in, and it quotes an unknown state cut to maxStateRunes. pass does not
+// change the records it reads.
 //
 // A caller whose whole pass is refused refuses its own act, arms nothing, and
 // names the defect. It never sets the defective record aside and goes on,
@@ -175,23 +184,38 @@ func pass(r Records) ([]Decision, error) {
 	case r.WaitLimit > MaxWaitLimit:
 		defects = append(defects, fmt.Sprintf("the records state a wait limit of %s, above the most of %s", r.WaitLimit, MaxWaitLimit))
 	}
-	states := make(map[int]State, len(r.Changes))
-	seen := make(map[int]int, len(r.Changes))
-	for _, c := range r.Changes {
-		if c.Number <= 0 {
-			defects = append(defects, fmt.Sprintf("a change carries number %d", c.Number))
-		} else if seen[c.Number]++; seen[c.Number] == 2 {
-			defects = append(defects, fmt.Sprintf("change #%d is in the records more than once", c.Number))
-		}
-		if !c.State.known() {
-			defects = append(defects, unknownState(c))
-		}
-		for _, n := range c.DependsOn {
-			if n <= 0 {
-				defects = append(defects, fmt.Sprintf("change #%d depends on number %d", c.Number, n))
+	// changes is the snapshot's changes, each a copy whose DependsOn is
+	// ascending and once each; the records themselves are left as read.
+	var changes []Change
+	var states map[int]State
+	if len(r.Changes) > maxChanges {
+		defects = append(defects, fmt.Sprintf("the records hold %d changes, above the most of %d", len(r.Changes), maxChanges))
+	} else {
+		changes = make([]Change, 0, len(r.Changes))
+		states = make(map[int]State, len(r.Changes))
+		seen := make(map[int]int, len(r.Changes))
+		for _, c := range r.Changes {
+			if c.Number <= 0 {
+				defects = append(defects, fmt.Sprintf("a change carries number %d", c.Number))
+			} else if seen[c.Number]++; seen[c.Number] == 2 {
+				defects = append(defects, fmt.Sprintf("change #%d is in the records more than once", c.Number))
 			}
+			if !c.State.known() {
+				defects = append(defects, unknownState(c))
+			}
+			deps, ok := distinct(c.DependsOn)
+			if !ok {
+				defects = append(defects, fmt.Sprintf("change #%d depends on more than %d distinct numbers", c.Number, maxDepends))
+			}
+			for _, n := range deps {
+				if n <= 0 {
+					defects = append(defects, fmt.Sprintf("change #%d depends on number %d", c.Number, n))
+				}
+			}
+			states[c.Number] = c.State
+			c.DependsOn = deps
+			changes = append(changes, c)
 		}
-		states[c.Number] = c.State
 	}
 	if len(defects) > 0 {
 		slices.Sort(defects)
@@ -202,15 +226,15 @@ func pass(r Records) ([]Decision, error) {
 		return nil, fmt.Errorf("coord: the records cannot be judged: %s", strings.Join(defects, "; "))
 	}
 
-	open := make([]Change, 0, len(r.Changes))
-	for _, c := range r.Changes {
+	open := make([]Change, 0, len(changes))
+	for _, c := range changes {
 		if c.State == StateOpen {
 			open = append(open, c)
 		}
 	}
 	slices.SortFunc(open, func(a, b Change) int { return a.Number - b.Number })
 
-	cycles := cyclesReached(r.Changes, states)
+	cycles := cyclesReached(changes, states)
 	decisions := make([]Decision, 0, len(open))
 	for _, c := range open {
 		decisions = append(decisions, decide(r, states, cycles[c.Number], c))
@@ -222,8 +246,9 @@ func pass(r Records) ([]Decision, error) {
 // with no record, or a cycle the change is on or reaches, refuses it at once,
 // before its start or deadline is judged: no wait can release it. A change
 // depending on an open change that is itself refused is not refused at once;
-// it waits to its own deadline.
-func decide(r Records, states map[int]State, cycle []int, c Change) Decision {
+// it waits to its own deadline. c.DependsOn is ascending and once each, so
+// every list built from it is too.
+func decide(r Records, states map[int]State, cycle cycleReach, c Change) Decision {
 	var waits, closed, missing []int
 	for _, n := range c.DependsOn {
 		switch st, ok := states[n]; {
@@ -239,19 +264,19 @@ func decide(r Records, states map[int]State, cycle []int, c Change) Decision {
 	if len(waits) == 0 {
 		return Decision{Change: c.Number, Action: ActionQueue}
 	}
-	slices.Sort(waits)
-	waits = slices.Compact(waits)
 	var causes []string
 	if len(closed) > 0 {
-		slices.Sort(closed)
-		causes = append(causes, fmt.Sprintf("depends on %s, closed unmerged", names(slices.Compact(closed))))
+		causes = append(causes, fmt.Sprintf("depends on %s, closed unmerged", names(closed)))
 	}
-	if len(missing) > 0 {
-		slices.Sort(missing)
-		causes = append(causes, fmt.Sprintf("depends on %s, with no record", names(slices.Compact(missing))))
+	switch len(missing) {
+	case 0:
+	case 1:
+		causes = append(causes, fmt.Sprintf("depends on %s, which has no record", names(missing)))
+	default:
+		causes = append(causes, fmt.Sprintf("depends on %s, each of which has no record", names(missing)))
 	}
-	if len(cycle) > 0 {
-		causes = append(causes, "is on or reaches a cycle of unmerged changes among "+names(cycle))
+	if cycle.total > 0 {
+		causes = append(causes, "is on or reaches a cycle of unmerged changes among "+listed(cycle.shown, cycle.total))
 	}
 	if len(causes) > 0 {
 		return Decision{Change: c.Number, Action: ActionRefuse, WaitsOn: waits,
@@ -276,15 +301,30 @@ func decide(r Records, states map[int]State, cycle []int, c Change) Decision {
 	return Decision{Change: c.Number, Action: ActionWait, WaitsOn: waits, Until: until}
 }
 
+// cycleReach is the cycle members a change is on or reaches: the smallest
+// maxNamed of them, ascending, and how many there are in all.
+type cycleReach struct {
+	shown []int
+	total int
+}
+
 // cyclesReached maps each open or queued change that is on or reaches a cycle
-// to the cycle members it reaches, ascending and once each. Edges run from an
-// open or queued change to each dependency that is open or queued; a merged or
-// closed change, or a number with no record, ends the walk. A cycle is a
-// self-edge or a strongly connected group of two or more, so a diamond is
-// none. The groups are found by one iterative walk (Tarjan's), linear in
-// changes plus edges; a group's reached members are then joined from the
-// groups it depends on, each finished before it.
-func cyclesReached(changes []Change, states map[int]State) map[int][]int {
+// to the cycle members it reaches. Edges run from an open or queued change to
+// each dependency that is open or queued; a merged or closed change, or a
+// number with no record, ends the walk. A cycle is a self-edge or a strongly
+// connected group of two or more, so a diamond is none. Each change's
+// DependsOn is ascending and once each (pass), so no edge is read twice.
+//
+// Its cost, with N changes, E edges and C cycle groups: the groups are found
+// by one iterative walk (Tarjan's), with no recursion, in about N + E steps.
+// Each group then joins the ids of the cycle groups it reaches from the groups
+// it depends on, each finished before it, in at most E * C steps. Each cycle
+// group's member numbers are listed once; a group reaching one cycle group
+// shares that list, and one reaching several sorts their members together, at
+// most N numbers, once per group. pass holds N to maxChanges and E to
+// maxChanges * maxDepends, so the whole is a few million steps at most and
+// keeps at most N * C ids.
+func cyclesReached(changes []Change, states map[int]State) map[int]cycleReach {
 	unmerged := func(st State) bool { return st == StateOpen || st == StateQueued }
 	var nodes []Change
 	for _, c := range changes {
@@ -366,28 +406,53 @@ func cyclesReached(changes []Change, states map[int]State) map[int][]int {
 		}
 	}
 
-	reached := make([][]int, len(groups))
-	out := make(map[int][]int)
-	for g, members := range groups {
-		var nums []int
-		if len(members) > 1 || self[members[0]] {
-			for _, m := range members {
-				nums = append(nums, nodes[m].Number)
+	// members[g] is cycle group g's member numbers, ascending; nil for a
+	// group that is no cycle.
+	members := make([][]int, len(groups))
+	for g, ms := range groups {
+		if len(ms) > 1 || self[ms[0]] {
+			nums := make([]int, len(ms))
+			for i, m := range ms {
+				nums[i] = nodes[m].Number
 			}
+			slices.Sort(nums)
+			members[g] = nums
 		}
-		for _, m := range members {
+	}
+	// reach[g] is the ids of the cycle groups g reaches, itself included when
+	// it is one, ascending and once each.
+	reach := make([][]int, len(groups))
+	out := make(map[int]cycleReach)
+	for g, ms := range groups {
+		var ids []int
+		if members[g] != nil {
+			ids = append(ids, g)
+		}
+		for _, m := range ms {
 			for _, w := range adj[m] {
-				if group[w] != g {
-					nums = append(nums, reached[group[w]]...)
+				if h := group[w]; h != g {
+					ids = append(ids, reach[h]...)
 				}
 			}
 		}
-		slices.Sort(nums)
-		reached[g] = slices.Compact(nums)
-		if len(reached[g]) > 0 {
-			for _, m := range members {
-				out[nodes[m].Number] = reached[g]
+		slices.Sort(ids)
+		reach[g] = slices.Compact(ids)
+		var all []int
+		switch len(reach[g]) {
+		case 0:
+			continue
+		case 1:
+			all = members[reach[g][0]]
+		default:
+			for _, h := range reach[g] {
+				all = append(all, members[h]...)
 			}
+			slices.Sort(all)
+		}
+		k := min(len(all), maxNamed)
+		cr := cycleReach{shown: all[:k:k], total: len(all)}
+		for _, m := range ms {
+			out[nodes[m].Number] = cr
 		}
 	}
 	return out
@@ -409,15 +474,36 @@ func unknownState(c Change) string {
 }
 
 // names lists the numbers, at most maxNamed of them, then how many more.
-func names(nums []int) string {
-	shown := nums[:min(len(nums), maxNamed)]
+func names(nums []int) string { return listed(nums[:min(len(nums), maxNamed)], len(nums)) }
+
+// listed names the shown numbers, then how many of total it leaves out.
+func listed(shown []int, total int) string {
 	parts := make([]string, len(shown))
 	for i, n := range shown {
 		parts[i] = fmt.Sprintf("#%d", n)
 	}
 	out := strings.Join(parts, ", ")
-	if more := len(nums) - len(shown); more > 0 {
+	if more := total - len(shown); more > 0 {
 		out += fmt.Sprintf(" and %d more", more)
 	}
 	return out
+}
+
+// distinct is nums ascending and once each, and false, with no list, when
+// they hold more than maxDepends distinct numbers. Its work is at most
+// len(nums) * maxDepends steps, however often a number repeats, and the false
+// does not depend on the order nums was read in.
+func distinct(nums []int) ([]int, bool) {
+	var out []int
+	for _, n := range nums {
+		if slices.Contains(out, n) {
+			continue
+		}
+		if len(out) == maxDepends {
+			return nil, false
+		}
+		out = append(out, n)
+	}
+	slices.Sort(out)
+	return out, true
 }

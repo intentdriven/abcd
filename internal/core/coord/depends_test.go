@@ -28,6 +28,9 @@ func TestParseDependsOnAccepts(t *testing.T) {
 		{"ten numbers", ten, []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}},
 		{"eleven read, ten distinct", ten + "\nDepends-On: #10", []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}},
 		{"a body of exactly the most bytes", padTo("Depends-On: #7\n", maxBodyBytes), []int{7}},
+		{"a space before a comma and a tab after it", "Depends-On: #1 ,\t#2", []int{1, 2}},
+		{"a well-formed line inside a code fence of several lines", "```\nDepends-On: #3\n```", []int{3}},
+		{"a well-formed line inside an HTML comment of several lines", "<!--\nDepends-On: #3\n-->", []int{3}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -79,6 +82,32 @@ func TestParseDependsOnRefuses(t *testing.T) {
 		{"two numbers with no comma", "Depends-On: #1 #2", line("1")},
 		{"a trailing comma", "Depends-On: #1,", line("1")},
 		{"two carriage returns", "Depends-On: #1\r\r\n", line("1")},
+		{"a lone carriage return between two lines", "Depends-On: #1\rDepends-On: #2", line("1")},
+		{"a byte-order mark before the line", "\ufeffDepends-On: #5", line("1")},
+		{"a NUL at the end of the line", "Depends-On: #5\x00", line("1")},
+		{"a no-break space after the colon", "Depends-On:\u00a0#5", line("1")},
+		{"a template's placeholder", "<!-- Depends-On: #N -->", line("1")},
+		{"a space for the hyphen", "Depends On: #5", line("1")},
+		{"a space for the hyphen, lower-case on", "Depends on: #5", line("1")},
+		{"spaces and a tab before the colon", "Depends on \t : #5", line("1")},
+		{"an underscore for the hyphen", "Depends_On: #5", line("1")},
+		{"no hyphen", "DependsOn: #5", line("1")},
+		{"no hyphen, lower-case on", "Dependson: #5", line("1")},
+		{"depend, with no s", "depend-on: #5", line("1")},
+		{"depend on, with no s", "Depend on: #5", line("1")},
+		{"a Unicode hyphen", "Depends\u2010On: #5", line("1")},
+		{"a non-breaking hyphen", "Depends\u2011On: #5", line("1")},
+		{"an en dash", "Depends\u2013On: #5", line("1")},
+		{"an em dash and spaces", "Depends \u2014 On: #5", line("1")},
+		{"a zero-width space inside the word", "Depen\u200bds-On: #5", line("1")},
+		{"a zero-width joiner after the hyphen", "Depends-\u200dOn: #5", line("1")},
+		{"a word joiner inside the word", "Depends-O\u2060n: #5", line("1")},
+		{"a soft hyphen for the hyphen", "Depends\u00adOn: #5", line("1")},
+		{"a soft hyphen inside the word", "De\u00adpends-On: #5", line("1")},
+		{"a byte-order mark inside the word", "Depends\ufeff-On: #5", line("1")},
+		{"a NUL inside the word", "Depe\x00nds-On: #5", line("1")},
+		{"a markdown escape of the hyphen", "Depends\\-On: #5", line("1")},
+		{"a markdown escape of the hash", "Depends-On: \\#5", line("1")},
 		{"the line number is the first bad line's, counted from one",
 			"Title\n\nDepends-On: #2\nmore\n  depends-on #3\ndepends-on #4", line("5")},
 		{"eleven distinct numbers", "Depends-On: #1, #2, #3, #4, #5, #6, #7, #8, #9, #10\nDepends-On: #11",
@@ -100,6 +129,31 @@ func TestParseDependsOnRefuses(t *testing.T) {
 				t.Fatalf("a refusal also gave %#v", got)
 			}
 		})
+	}
+}
+
+// TestParseDependsOnReadsPast: what the scan does not decode is read past,
+// with no dependency and no error, as parseDependsOn's comment says: an HTML
+// entity, letters from other scripts that look like Latin ones, fullwidth
+// letters, a form with no colon, a bare "Depends:", a space other than an ASCII
+// space or tab between the words, and a word split across two lines. Each is
+// pinned so that widening the scan changes this table with the comment.
+func TestParseDependsOnReadsPast(t *testing.T) {
+	t.Parallel()
+	for name, body := range map[string]string{
+		"an HTML entity for the hyphen":    "Depends&#45;On: #5",
+		"a Cyrillic e":                     "D\u0435pends-On: #5",
+		"fullwidth letters":                "\uff24\uff45\uff50\uff45\uff4e\uff44\uff53-\uff2f\uff4e: #5",
+		"no colon":                         "Depends on #5",
+		"Depends with no on":               "Depends: #5",
+		"a no-break space between words":   "Depends\u00a0On: #5",
+		"the word split across two lines":  "Depends-\nOn: #5",
+		"depend-on in prose with no colon": "this does not depend-on #5",
+	} {
+		got, err := parseDependsOn(body)
+		if err != nil || got != nil {
+			t.Fatalf("%s: parseDependsOn = %#v, %v; want nil, nil", name, got, err)
+		}
 	}
 }
 

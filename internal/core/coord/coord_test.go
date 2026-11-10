@@ -3,6 +3,7 @@ package coord
 import (
 	"math/rand"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -150,13 +151,29 @@ func TestPassDecides(t *testing.T) {
 			records(t0,
 				Change{Number: 2, State: StateOpen, DependsOn: []int{41, 40}, WaitingSince: start}),
 			[]Decision{{Change: 2, Action: ActionRefuse, WaitsOn: []int{40, 41},
-				Reason: atOnce + "depends on #40, #41, with no record"}}},
+				Reason: atOnce + "depends on #40, #41, each of which has no record"}}},
+		{"closed dependencies read twice and out of order are named sorted and once each",
+			records(t0,
+				Change{Number: 91, State: StateClosed},
+				Change{Number: 92, State: StateClosed},
+				Change{Number: 2, State: StateOpen, DependsOn: []int{92, 91, 92, 91}, WaitingSince: start}),
+			[]Decision{{Change: 2, Action: ActionRefuse, WaitsOn: []int{91, 92},
+				Reason: atOnce + "depends on #91, #92, closed unmerged"}}},
+		{"dependencies with no record read twice and out of order are named sorted and once each",
+			records(t0,
+				Change{Number: 2, State: StateOpen, DependsOn: []int{92, 91, 92, 91}, WaitingSince: start}),
+			[]Decision{{Change: 2, Action: ActionRefuse, WaitsOn: []int{91, 92},
+				Reason: atOnce + "depends on #91, #92, each of which has no record"}}},
+		{"ten distinct dependencies read many times over are judged",
+			records(t0, append(merged(1, 10),
+				Change{Number: 11, State: StateOpen, DependsOn: repeated(10, 1000), WaitingSince: start})...),
+			[]Decision{{Change: 11, Action: ActionQueue}}},
 		{"a change on an open change that is itself refused waits to its own deadline",
 			records(t0,
 				Change{Number: 1, State: StateOpen, DependsOn: []int{99}, WaitingSince: start},
 				Change{Number: 2, State: StateOpen, DependsOn: []int{1}, WaitingSince: start}),
 			[]Decision{
-				{Change: 1, Action: ActionRefuse, WaitsOn: []int{99}, Reason: atOnce + "depends on #99, with no record"},
+				{Change: 1, Action: ActionRefuse, WaitsOn: []int{99}, Reason: atOnce + "depends on #99, which has no record"},
 				{Change: 2, Action: ActionWait, WaitsOn: []int{1}, Until: deadline},
 			}},
 		{"a change depending on itself is refused at once",
@@ -168,6 +185,22 @@ func TestPassDecides(t *testing.T) {
 			records(t0,
 				Change{Number: 6, State: StateOpen, DependsOn: []int{7}, WaitingSince: start},
 				Change{Number: 7, State: StateOpen, DependsOn: []int{6}, WaitingSince: at(7, 0)}),
+			[]Decision{
+				{Change: 6, Action: ActionRefuse, WaitsOn: []int{7}, Reason: atOnce + "is on or reaches a cycle of unmerged changes among #6, #7"},
+				{Change: 7, Action: ActionRefuse, WaitsOn: []int{6}, Reason: atOnce + "is on or reaches a cycle of unmerged changes among #6, #7"},
+			}},
+		{"a cycle member with no recorded start is refused at once for the cycle",
+			records(t0,
+				Change{Number: 6, State: StateOpen, DependsOn: []int{7}},
+				Change{Number: 7, State: StateOpen, DependsOn: []int{6}, WaitingSince: start}),
+			[]Decision{
+				{Change: 6, Action: ActionRefuse, WaitsOn: []int{7}, Reason: atOnce + "is on or reaches a cycle of unmerged changes among #6, #7"},
+				{Change: 7, Action: ActionRefuse, WaitsOn: []int{6}, Reason: atOnce + "is on or reaches a cycle of unmerged changes among #6, #7"},
+			}},
+		{"a cycle member with a start in the future is refused at once for the cycle",
+			records(t0,
+				Change{Number: 6, State: StateOpen, DependsOn: []int{7}, WaitingSince: at(12, 0)},
+				Change{Number: 7, State: StateOpen, DependsOn: []int{6}, WaitingSince: start}),
 			[]Decision{
 				{Change: 6, Action: ActionRefuse, WaitsOn: []int{7}, Reason: atOnce + "is on or reaches a cycle of unmerged changes among #6, #7"},
 				{Change: 7, Action: ActionRefuse, WaitsOn: []int{6}, Reason: atOnce + "is on or reaches a cycle of unmerged changes among #6, #7"},
@@ -242,7 +275,7 @@ func TestPassDecides(t *testing.T) {
 				Change{Number: 93, State: StateOpen, DependsOn: []int{90}}),
 			[]Decision{
 				{Change: 90, Action: ActionRefuse, WaitsOn: []int{91, 92, 93},
-					Reason: atOnce + "depends on #91, closed unmerged; depends on #92, with no record; is on or reaches a cycle of unmerged changes among #90, #93"},
+					Reason: atOnce + "depends on #91, closed unmerged; depends on #92, which has no record; is on or reaches a cycle of unmerged changes among #90, #93"},
 				{Change: 93, Action: ActionRefuse, WaitsOn: []int{90},
 					Reason: atOnce + "is on or reaches a cycle of unmerged changes among #90, #93"},
 			}},
@@ -324,7 +357,7 @@ func samples() []sample {
 			{Change: 4, Action: ActionWait, WaitsOn: []int{2, 3}, Until: at(10, 20)},
 			{Change: 6, Action: ActionRefuse, WaitsOn: []int{5}, Until: at(8, 0),
 				Reason: "waited on #5 for the 2h0m0s limit since 2026-11-10T06:00:00Z; deadline 2026-11-10T08:00:00Z reached"},
-			{Change: 7, Action: ActionRefuse, WaitsOn: []int{40}, Reason: atOnce + "depends on #40, with no record"},
+			{Change: 7, Action: ActionRefuse, WaitsOn: []int{40}, Reason: atOnce + "depends on #40, which has no record"},
 			{Change: 9, Action: ActionQueue},
 		}},
 		{"self and cycles", func() []Change {
@@ -371,7 +404,7 @@ func samples() []sample {
 			}
 		}, []Decision{
 			{Change: 100, Action: ActionRefuse, WaitsOn: []int{101}, Reason: atOnce + "depends on #101, closed unmerged"},
-			{Change: 102, Action: ActionRefuse, WaitsOn: []int{103}, Reason: atOnce + "depends on #103, with no record"},
+			{Change: 102, Action: ActionRefuse, WaitsOn: []int{103}, Reason: atOnce + "depends on #103, which has no record"},
 			{Change: 104, Action: ActionRefuse, WaitsOn: []int{105}, Reason: atOnce + cycle + "#104, #105"},
 			{Change: 105, Action: ActionRefuse, WaitsOn: []int{104}, Reason: atOnce + cycle + "#104, #105"},
 			{Change: 106, Action: ActionRefuse, WaitsOn: []int{104}, Reason: atOnce + cycle + "#104, #105"},
@@ -583,6 +616,16 @@ func TestPassRefusesRecordsItCannotRead(t *testing.T) {
 			"change #4 depends on number 0"},
 		{"a dependency numbered below zero", records(t0, Change{Number: 4, State: StateMerged, DependsOn: []int{-5}}),
 			"change #4 depends on number -5"},
+		{"a closed dependency beside a dependency numbered zero is refused whole, not at once",
+			records(t0, Change{Number: 1, State: StateClosed}, Change{Number: 2, State: StateOpen, DependsOn: []int{1, 0}, WaitingSince: t0}),
+			"change #2 depends on number 0"},
+		{"eleven distinct dependencies", records(t0, Change{Number: 4, State: StateOpen, DependsOn: repeated(11, 1)}),
+			"change #4 depends on more than 10 distinct numbers"},
+		{"eleven distinct dependencies, below zero, are named for their count alone",
+			records(t0, Change{Number: 4, State: StateOpen, DependsOn: []int{-1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11}}),
+			"change #4 depends on more than 10 distinct numbers"},
+		{"one change more than the most", records(t0, merged(1, maxChanges+1)...),
+			"the records hold 501 changes, above the most of 500"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -601,6 +644,12 @@ func TestPassRefusesRecordsItCannotRead(t *testing.T) {
 	}
 	if MaxWaitLimit != 24*time.Hour {
 		t.Fatalf("MaxWaitLimit is %s, want 24h0m0s", MaxWaitLimit)
+	}
+	if maxChanges != 500 {
+		t.Fatalf("maxChanges is %d, want 500", maxChanges)
+	}
+	if _, err := pass(records(t0, merged(1, maxChanges)...)); err != nil {
+		t.Fatalf("exactly %d changes were refused: %v", maxChanges, err)
 	}
 }
 
@@ -643,17 +692,27 @@ func TestPassRefusalNamesEveryDefectInAnyOrder(t *testing.T) {
 	}
 }
 
-// depsBelowZero is a change #2 depending on -1 to -n, which is n defects.
-func depsBelowZero(n int) Change {
-	c := Change{Number: 2, State: StateOpen}
+// belowZero is change c depending on -1 to -n, which is n defects.
+func belowZero(c, n int) Change {
+	ch := Change{Number: c, State: StateOpen}
 	for i := 1; i <= n; i++ {
-		c.DependsOn = append(c.DependsOn, -i)
+		ch.DependsOn = append(ch.DependsOn, -i)
 	}
-	return c
+	return ch
 }
 
-// TestPassRefusalIsCapped: the one error names at most maxNamed defects,
-// sorted and once each, then how many more there are, and an unknown state is
+// tenBelowZero is the ten defects of belowZero(c, 10), in the order the
+// error sorts them, the first k of them.
+func tenBelowZero(c string, k int) []string {
+	var out []string
+	for _, n := range []string{"-1", "-10", "-2", "-3", "-4", "-5", "-6", "-7", "-8", "-9"}[:k] {
+		out = append(out, "change #"+c+" depends on number "+n)
+	}
+	return out
+}
+
+// TestPassRefusalIsCapped: the one error names the defects found, sorted and
+// once each, at most maxNamed, then how many more, and an unknown state is
 // quoted cut to maxStateRunes, so no snapshot makes the error unbounded.
 func TestPassRefusalIsCapped(t *testing.T) {
 	t.Parallel()
@@ -661,26 +720,22 @@ func TestPassRefusalIsCapped(t *testing.T) {
 		t.Fatalf("maxNamed %d, maxStateRunes %d; want 20 and 32", maxNamed, maxStateRunes)
 	}
 	const prefix = "coord: the records cannot be judged: "
-	const d = "change #2 depends on number "
-	const first13 = d + "-1; " +
-		d + "-10; " + d + "-11; " + d + "-12; " + d + "-13; " + d + "-14; " +
-		d + "-15; " + d + "-16; " + d + "-17; " + d + "-18; " + d + "-19; " +
-		d + "-2; " + d + "-20"
-	many := depsBelowZero(24)
-	many.DependsOn = append(many.DependsOn, -1)
+	join := func(parts ...[]string) string { return strings.Join(slices.Concat(parts...), "; ") }
+	twice := belowZero(3, 10)
+	twice.DependsOn = append(twice.DependsOn, -1)
 	cases := []struct {
 		name    string
 		changes []Change
 		want    string
 	}{
-		{"20 defects are all named", []Change{depsBelowZero(20)},
-			first13 + "; " + d + "-3; " + d + "-4; " + d + "-5; " + d + "-6; " + d + "-7; " + d + "-8; " + d + "-9"},
-		{"21 defects name 20, then one more", []Change{depsBelowZero(21)},
-			first13 + "; " + d + "-21; " + d + "-3; " + d + "-4; " + d + "-5; " + d + "-6; " + d + "-7; " + d + "-8; and 1 more"},
+		{"20 defects are all named", []Change{belowZero(2, 10), belowZero(3, 10)},
+			join(tenBelowZero("2", 10), tenBelowZero("3", 10))},
+		{"21 defects name 20, then one more", []Change{belowZero(2, 10), belowZero(3, 10), belowZero(4, 1)},
+			join(tenBelowZero("2", 10), tenBelowZero("3", 10), []string{"and 1 more"})},
 		{"25 defects, one read twice, and a long state name 20, then five more",
-			[]Change{{Number: 1, State: State(strings.Repeat("Z", 100))}, many},
-			`change #1 has unknown state "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", cut to its first 32 runes; ` +
-				first13 + "; " + d + "-21; " + d + "-22; " + d + "-23; " + d + "-24; " + d + "-3; " + d + "-4; and 5 more"},
+			[]Change{{Number: 1, State: State(strings.Repeat("Z", 100))}, belowZero(2, 10), twice, belowZero(4, 4)},
+			join([]string{`change #1 has unknown state "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", cut to its first 32 runes`},
+				tenBelowZero("2", 10), tenBelowZero("3", 9), []string{"and 5 more"})},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -696,31 +751,97 @@ func TestPassRefusalIsCapped(t *testing.T) {
 	}
 }
 
-// TestPassReasonNamesAtMostTwenty: a reason lists at most maxNamed numbers,
-// then how many more, while WaitsOn keeps every one.
+// ring is the open changes first to last, each depending on the next and the
+// last on the first, every one with a recorded start.
+func ring(first, last int) []Change {
+	var ch []Change
+	for n := first; n <= last; n++ {
+		next := n + 1
+		if n == last {
+			next = first
+		}
+		ch = append(ch, Change{Number: n, State: StateOpen, DependsOn: []int{next}, WaitingSince: at(8, 30)})
+	}
+	return ch
+}
+
+// merged is the merged changes first to last.
+func merged(first, last int) []Change {
+	var ch []Change
+	for n := first; n <= last; n++ {
+		ch = append(ch, Change{Number: n, State: StateMerged})
+	}
+	return ch
+}
+
+// repeated is the numbers 1 to n, the whole run read times times.
+func repeated(n, times int) []int {
+	var out []int
+	for range times {
+		for i := 1; i <= n; i++ {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// TestPassReasonNamesAtMostTwenty: a cycle's reason lists at most maxNamed of
+// its members, then how many more.
 func TestPassReasonNamesAtMostTwenty(t *testing.T) {
 	t.Parallel()
 	const twenty = "#101, #102, #103, #104, #105, #106, #107, #108, #109, #110, " +
 		"#111, #112, #113, #114, #115, #116, #117, #118, #119, #120"
 	for _, tc := range []struct {
-		deps int
-		on   string
+		members int
+		on      string
 	}{{20, twenty}, {21, twenty + " and 1 more"}} {
-		ch := []Change{{Number: 200, State: StateOpen}}
-		var waits []int
-		for n := 101; n < 101+tc.deps; n++ {
-			ch = append(ch, Change{Number: n, State: StateOpen})
-			ch[0].DependsOn = append(ch[0].DependsOn, n)
-			waits = append(waits, n)
-		}
-		got, err := pass(records(t0, ch...))
+		got, err := pass(records(t0, ring(101, 100+tc.members)...))
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := Decision{Change: 200, Action: ActionRefuse, WaitsOn: waits,
-			Reason: "waits on " + tc.on + " with no recorded start, so no deadline can be derived from the 2h0m0s limit"}
-		if last := got[len(got)-1]; !reflect.DeepEqual(last, want) {
-			t.Fatalf("%d dependencies:\n got  %+v\n want %+v", tc.deps, last, want)
+		want := Decision{Change: 101, Action: ActionRefuse, WaitsOn: []int{102}, Reason: atOnce + cycle + tc.on}
+		if len(got) != tc.members || !reflect.DeepEqual(got[0], want) {
+			t.Fatalf("a cycle of %d:\n got  %+v\n want %+v first of %d", tc.members, got[0], want, tc.members)
+		}
+	}
+}
+
+// TestPassLongChainIntoLargeCycle: at the bound of maxChanges, a chain of 300
+// open changes running into a cycle of 200 is judged whole: every member of
+// both is refused at once, naming the cycle's first twenty members and how
+// many more.
+func TestPassLongChainIntoLargeCycle(t *testing.T) {
+	t.Parallel()
+	var ch []Change
+	for n := 1; n <= 300; n++ {
+		ch = append(ch, Change{Number: n, State: StateOpen, DependsOn: []int{n + 1}, WaitingSince: at(8, 30)})
+	}
+	ch = append(ch, ring(301, 500)...)
+	if len(ch) != maxChanges {
+		t.Fatalf("the snapshot holds %d changes, want %d", len(ch), maxChanges)
+	}
+	got, err := pass(records(t0, ch...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const reason = atOnce + cycle + "#301, #302, #303, #304, #305, #306, #307, #308, #309, #310, " +
+		"#311, #312, #313, #314, #315, #316, #317, #318, #319, #320 and 180 more"
+	if len(got) != 500 {
+		t.Fatalf("pass gave %d decisions, want 500", len(got))
+	}
+	for _, want := range []Decision{
+		{Change: 1, Action: ActionRefuse, WaitsOn: []int{2}, Reason: reason},
+		{Change: 300, Action: ActionRefuse, WaitsOn: []int{301}, Reason: reason},
+		{Change: 301, Action: ActionRefuse, WaitsOn: []int{302}, Reason: reason},
+		{Change: 500, Action: ActionRefuse, WaitsOn: []int{301}, Reason: reason},
+	} {
+		if d := got[want.Change-1]; !reflect.DeepEqual(d, want) {
+			t.Fatalf("change #%d:\n got  %+v\n want %+v", want.Change, d, want)
+		}
+	}
+	for _, d := range got {
+		if d.Action != ActionRefuse || d.Reason != reason {
+			t.Fatalf("change #%d: %+v, want a refusal for the cycle", d.Change, d)
 		}
 	}
 }
