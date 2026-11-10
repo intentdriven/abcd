@@ -58,8 +58,9 @@ func (g viewGit) originDefault(root string) string {
 }
 
 // recordsAt is peers.RecordsAt, bound to g's context when it holds one.
-// Both arms trace the listing, as every git this package's readers start is
-// traced, though peers runs it.
+// Both arms trace the listing without its paths (the record folders peers
+// names after "--"), as every git this package's readers start is traced,
+// though peers runs it.
 func (g viewGit) recordsAt(root, ref string) (map[string][]peers.RecordAt, error) {
 	trace("ls-tree", "-r", "-z", "--full-tree", ref, "--")
 	if !g.bound() {

@@ -11,9 +11,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The reservations' view a hook reads on a deadline (iss-2611100548341325):
@@ -377,28 +380,23 @@ func TestATipReadItsDeadlineEndsIsNoObjectTooBig(t *testing.T) {
 	p, refs, tree := boundTipOnItsOwn(t)
 	calls, _ := gitOnPath(t, 0, nil)
 	calls()
-	start := time.Now()
 	live, cancel := context.WithTimeout(context.Background(), time.Hour)
 	readSeenTipsWithin(viewGit{ctx: live}, p.dir, refs, tree, t0, false, 0)
 	cancel()
-	took := time.Since(start)
 	log := calls()
 	n := slices.IndexFunc(log, argvHas(" cat-file commit ")) + 1
 	if n == 0 {
 		t.Fatalf("the bound reader never read the tip's commit; the test proves nothing:\n  %s", strings.Join(log, "\n  "))
 	}
-	// The deadline must fall while the commit read hangs: well after the
-	// reads before it, which took less than the whole read did, and well
-	// before the hung git would have answered.
-	wait := min(max(5*time.Second, 20*took), stallFor-15*time.Second)
-	ctx, stop := context.WithDeadline(context.Background(), time.Now().Add(wait))
-	defer stop()
-	_, stalled := gitOnPath(t, n, func() {})
-	start = time.Now()
+	// The deadline falls when the hung commit read signals, so it falls
+	// while that read hangs however long the reads before it took.
+	ctx := deadlineAtSignal{context.Background(), make(chan struct{})}
+	_, stalled := gitOnPath(t, n, sync.OnceFunc(func() { close(ctx.done) }))
+	start := time.Now()
 	got := readSeenTipsWithin(viewGit{ctx: ctx}, p.dir, refs, tree, t0, false, 0)
-	took = time.Since(start)
+	took := time.Since(start)
 	if !stalled() {
-		t.Fatalf("the commit read (call %d) never came before the deadline (%s); the test proves nothing", n, wait)
+		t.Fatalf("the commit read (call %d) never came; the test proves nothing", n)
 	}
 	if took >= stallFor {
 		t.Errorf("the read waited out the hung git (%s)", took)
@@ -408,12 +406,44 @@ func TestATipReadItsDeadlineEndsIsNoObjectTooBig(t *testing.T) {
 	}
 }
 
-// TestACapRefusalIsNotAContextsEnd: overCap reads the cap's own words, and a
-// context's end, whose error also says "exceeded", is never one.
+// deadlineAtSignal is a ctx that ends as a deadline does, its error
+// context.DeadlineExceeded, when done is closed: the stall's own signal, not a
+// time guessed before the read began.
+type deadlineAtSignal struct {
+	context.Context
+	done chan struct{}
+}
+
+func (c deadlineAtSignal) Done() <-chan struct{} { return c.done }
+
+func (c deadlineAtSignal) Err() error {
+	select {
+	case <-c.done:
+		return context.DeadlineExceeded
+	default:
+		return nil
+	}
+}
+
+// TestACapRefusalIsNotAContextsEnd: overCap reads the refusal of each capped
+// runner this package's readers fold into an object too big, both as stored
+// reads and the bound one, from a real git past a tiny cap, so gitutil
+// rewording it fails here; and a context's end, whose error also says
+// "exceeded", is never one.
 func TestACapRefusalIsNotAContextsEnd(t *testing.T) {
-	capped := errors.New("git cat-file commit x: output exceeded the 8192-byte cap; the answer would be truncated")
-	if !overCap(capped) {
-		t.Errorf("overCap(%v) = false; want the cap's refusal read as one", capped)
+	r := gittest.NewRepo(t)
+	r.Write("README.md", "a project\n")
+	r.Commit("a")
+	live, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for name, read := range map[string]func() (string, error){
+		"storedGit":    func() (string, error) { return storedGit(r.Root(), 8, "cat-file", "commit", "HEAD") },
+		"storedGitCtx": func() (string, error) { return storedGitCtx(live, r.Root(), 8, "cat-file", "commit", "HEAD") },
+	} {
+		_, capped := read()
+		if capped == nil || !overCap(capped) {
+			t.Errorf("%s past its cap: overCap(%v) = false; want the cap's refusal read as one", name, capped)
+		}
 	}
 	for _, err := range []error{
 		fmt.Errorf("git cat-file commit x: %w", context.DeadlineExceeded),

@@ -14,6 +14,8 @@ import (
 // branch share: the peers reader judges a branch merged into it, and the
 // reviews board counts the commits it has moved since a review's pin. Two
 // readers of one repository asking the same question must get one answer.
+// A listing past its 64 KiB cap is refused whole, and the branch is then asked
+// ref by ref: the same answer, for a few more git processes.
 func DefaultRef(root string) string {
 	return defaultRef(askCapped(root))
 }
@@ -81,7 +83,9 @@ var defaultNames = []string{"main", "master", "trunk", "develop"}
 // last fetch) or guessed (no HEAD recorded, so the first conventional name
 // present wins). It serves readers that measure against the default branch;
 // it must never decide an act on the remote, such as which branch a push may
-// target, which asks the remote itself.
+// target, which asks the remote itself. A listing past its 64 KiB cap is
+// refused whole, and the branch is then asked ref by ref: the same answer, for
+// a few more git processes.
 func TrackedDefaultBranch(root, remote string) string {
 	return trackedDefaultBranch(askCapped(root), remote)
 }
@@ -89,8 +93,9 @@ func TrackedDefaultBranch(root, remote string) string {
 // TrackedDefaultBranchContext is TrackedDefaultBranch with every git question
 // bounded by ctx, as DefaultRefContext bounds its own: a ctx already ended
 // starts no git, a git still running when it ends is killed, and the answer
-// is "". Its answers are capped as TrackedDefaultBranch's are. A caller that must tell "no default branch" from "git did not answer
-// in time" checks ctx.Err() after it.
+// is "". Its answers are capped as TrackedDefaultBranch's are. A caller that
+// must tell "no default branch" from "git did not answer in time" checks
+// ctx.Err() after it.
 func TrackedDefaultBranchContext(ctx context.Context, root, remote string) string {
 	return trackedDefaultBranch(askContext(ctx, root), remote)
 }
