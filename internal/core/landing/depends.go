@@ -11,15 +11,18 @@ package landing
 // account's arming already in place is withdrawn on a wait or a refusal
 // (withdrawOwn), since it could merge the pull request before what it depends
 // on: a forge error in the dependency read takes it off, and the next run arms
-// it again. The withdrawal acts on what the forge shows of the pull request's
-// state, read whole, three times at most, the next read deciding after each
-// act: this account's queue entry is taken out by its node id, its arming is
-// turned off, and the note or refusal says which was done. An arming or queue
+// it again. The withdrawal runs only after the check waits or refuses. It
+// reads the pull request's state whole again before its first act, acts on
+// what the last read shows, and reads again after each act, three acts at
+// most: inside the withdrawal, this account's queue entry is taken out by its
+// node id, its arming is turned off (also beside another account's queue
+// entry), and the note or refusal says which was done. An arming or queue
 // entry these reads show by another account, or one the forge does not
 // attribute, is left and refused, saying so. One still in place after three
 // tries, or a state not read whole, refuses with the step that withdraws it by
-// hand: the pull request's page for a queue entry, the command for an arming.
-// A pull request whose own read shows it merged or closed is refused as such,
+// hand: the pull request's page for a queue entry, the command for an arming,
+// both where both stand; after three tries, with the last act's failure. A
+// pull request whose own read shows it merged or closed is refused as such,
 // nothing withdrawn.
 //
 // The check runs once land has read the pull request's state on the route
@@ -27,16 +30,23 @@ package landing
 // arming stands at the gated head: the merge gate unread, the gate not
 // arming, and a conflict. The stop is read again after the gate arms and
 // before that state read, so the first two run before it and the conflict's
-// after. Every refusal before that point (a forge read that fails, the merge
-// rule or the default branch's tip unread, a listing land cannot use, any
-// step before enqueue) leaves an arming as it is with its dependencies unread.
+// after. Three returns after that read make no check: a pull request already
+// in the merge queue is reported done with its dependencies unread, this
+// account's own queue entry included; one another account armed, or one the
+// forge does not attribute, is reported as before; and this account's arming
+// at a head land did not gate is refused before the check. Every refusal
+// before that point (a forge read that fails, the merge rule or the default
+// branch's tip unread, a listing land cannot use, any step before enqueue)
+// leaves an arming as it is with its dependencies unread.
 //
 // Every body and every forge answer is untrusted. A body is required of the
 // pull request's own read and of each dependency still open or queued, and is
 // read by coord.ParseDependsOn, which fails closed and quotes no body text; a
-// merged or closed dependency's body is not read. Only
-// numbers, the forge's times as UTC and a state cut to maxForgeStateRunes,
-// sanitised, reach a note or a refusal. What only the forge can know, why a
+// merged or closed dependency's body is not read. Only numbers, the forge's
+// times as UTC, a state cut to maxForgeStateRunes and sanitised, a login held
+// to the forge's login alphabet and bound (shownLogin), and a forge reason
+// redacted, sanitised and bounded (forgeWhy, or a refusal land composed)
+// reach a note or a refusal. What only the forge can know, why a
 // number has no record, is refused here before the pass: a number the forge
 // answers with no pull request, a pull request into another base than the
 // default branch (merged there or not), a state land cannot map, a creation
@@ -63,7 +73,6 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/coord"
-	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -159,7 +168,7 @@ func (c *dependsCheck) readPR(n int) (dependsPR, bool, error) {
 		return dependsPR{}, false, nil
 	}
 	if err != nil {
-		return dependsPR{}, false, refuse(fmt.Sprintf("the forge could not be asked for pull request #%d, so land cannot judge #%d's dependencies, and %s: %s", n, c.self, c.none, termsafe.Sanitize(fsutil.RedactHome(err.Error()))), c.cannot(n))
+		return dependsPR{}, false, refuse(fmt.Sprintf("the forge could not be asked for pull request #%d, so land cannot judge #%d's dependencies, and %s: %s", n, c.self, c.none, forgeWhy(err)), c.cannot(n))
 	}
 	var a dependsAnswer
 	if json.Unmarshal([]byte(raw), &a) != nil {
@@ -454,30 +463,65 @@ func unconfirmedFix(n string, s prState) string {
 	return "check #" + n + " (gh pr view " + n + "): withdraw an arming by this account (gh pr merge " + n + " --disable-auto) and take a queue entry by this account out of the merge queue on its page, then run abcd land again, which says what holds it"
 }
 
+// sofar is what w says was done, as a clause after the lead of a refusal,
+// "" where nothing was.
+func (w withdrawn) sofar(n string) string {
+	if !w.disarmed && !w.dequeued {
+		return ""
+	}
+	return "; " + w.text(n)
+}
+
 // queuePageFix is the hand step for pull request n in the merge queue.
 func queuePageFix(n string) string {
 	return "take #" + n + " out of the merge queue on its page, then run abcd land again, which says what holds it"
 }
 
-// maxLoginRunes bounds a login the forge gives, in a refusal.
+// maxLoginRunes bounds a login the forge gives, in a refusal: the forge's
+// own bound.
 const maxLoginRunes = 39
 
+// shownLogin is how a refusal names the account login: as it is where it is
+// a forge login (ownerName, within maxLoginRunes), and as one the forge names
+// in a form land does not show otherwise.
+func shownLogin(login string) string {
+	switch {
+	case login == "":
+		return "an account the forge does not name"
+	case ownerName(login) && len(login) <= maxLoginRunes:
+		return "another account (" + login + ")"
+	}
+	return "an account the forge names in a form land does not show"
+}
+
 // withdrawOwn takes this account's arming and queue entry of pull request n
-// off, from s, the state land read, and says what it did. Each pass acts only
-// on what the last read shows, and the next read decides, whatever the act
-// returned: queued by this account, it is taken out by its node id first (the
-// forge may refuse to turn auto-merge off on a queued pull request; unconfirmed),
-// then its auto-merge off if this account armed it; armed by this account and
-// not queued, its auto-merge off; neither, done. One queued by another
-// account, or by one the forge does not name, or armed so and not queued, is
-// left and refused, saying so. A state not read whole, a read that fails, or
-// this account's arming or queue entry still there after maxWithdrawPasses acts
-// refuses with the step that withdraws it by hand: the queue page for a queued
-// pull request, never the command that only turns auto-merge off.
+// off and says what it did. s, the state land read before the dependency
+// check, gives the hand step only if the read before the first act fails:
+// every act follows a fresh whole read (view). Each pass acts only on what the
+// last read shows, and the next read decides, whatever the act returned:
+// queued by this account, it is taken out by its node id first (the forge may
+// refuse to turn auto-merge off on a queued pull request; unconfirmed), then
+// its auto-merge off if this account armed it; armed by this account, its
+// auto-merge off, also beside another account's queue entry; neither, done.
+// One queued by another account, or by one the forge does not name, or armed
+// so and not queued, is left and refused, saying what land did. A state not
+// read whole, a read that fails, or this account's arming or queue entry
+// still there after maxWithdrawPasses acts refuses with the step that
+// withdraws it by hand: the queue page for a queued pull request, never the
+// command that only turns auto-merge off, and both where both stand; after
+// the passes, with the last act's failure (forgeWhy).
 func withdrawOwn(o Options, dir, n string, s prState, view func() (prState, error)) (string, error) {
 	ask := func(args ...string) (string, error) { return o.Forge(dir, args...) }
 	const lead = "land's dependency check does not let pull request #%s queue%s, but "
 	var did withdrawn
+	// unreadAgain refuses a read that fails, giving the step for state s.
+	unreadAgain := func(err error, s prState) (string, error) {
+		why := forgeWhy(err)
+		if r := (*Refusal)(nil); errors.As(err, &r) {
+			why = r.Reason
+		}
+		return "", refuse(fmt.Sprintf(lead, n, did.sofar(n))+"the forge could not be read again for #"+n+"'s state ("+why+"), so land cannot confirm that this account's arming and queue entry are off", unconfirmedFix(n, s))
+	}
 	// fail refuses, saying what land did first: where the last read is whole
 	// (shown), only what it shows done.
 	fail := func(shown bool, why, fix string) (string, error) {
@@ -486,52 +530,67 @@ func withdrawOwn(o Options, dir, n string, s prState, view func() (prState, erro
 			w.disarmed = w.disarmed && !s.ownArming()
 			w.dequeued = w.dequeued && !s.ownQueue()
 		}
-		sofar := ""
-		if w.disarmed || w.dequeued {
-			sofar = "; " + w.text(n)
-		}
-		return "", refuse(fmt.Sprintf(lead, n, sofar)+why, fix)
+		return "", refuse(fmt.Sprintf(lead, n, w.sofar(n))+why, fix)
 	}
+	// The state land read came before the dependency check's reads: it is
+	// read again before the first act.
+	first, err := view()
+	if err != nil {
+		return unreadAgain(err, s)
+	}
+	s = first
+	// lastErr is the failure of the last pass's acts, nil where they did not
+	// fail.
+	var lastErr error
 	for pass := 0; ; pass++ {
 		if why := s.unread(); why != "" {
 			return fail(false, "the forge's answer for #"+n+"'s state gives no "+why+", so land cannot confirm that this account's arming and queue entry are off", unconfirmedFix(n, s))
 		}
 		ownQ, ownA := s.ownQueue(), s.ownArming()
 		switch {
-		case s.queued() && !ownQ:
-			who := "an account the forge does not name"
-			if login := []rune(strings.TrimSpace(termsafe.Sanitize(s.enqueuer()))); len(login) > 0 {
-				who = fmt.Sprintf("another account (%s)", string(login[:min(len(login), maxLoginRunes)]))
-			}
-			return fail(true, "the forge reports #"+n+" in the merge queue, queued by "+who+", while land has not found what it depends on merged; land does not take out a queue entry it did not make",
+		case s.queued() && !ownQ && !ownA:
+			return fail(true, "the forge reports #"+n+" in the merge queue, queued by "+shownLogin(s.enqueuer())+", while land has not found what it depends on merged; land does not take out a queue entry it did not make",
 				"ask whoever queued it to take it out of the merge queue, or take it out yourself on its page, then run abcd land again, which says what holds it")
 		case s.armed() && !ownA && !s.queued():
 			return fail(true, "the forge now reports #"+n+" armed by another account (or one it does not attribute), which can merge #"+n+" before what it depends on and which land does not withdraw",
 				"ask whoever armed it to withdraw it, or withdraw it yourself (gh pr merge "+n+" --disable-auto), then run abcd land again")
 		case !ownQ && !ownA:
 			return did.text(n), nil
-		case pass == maxWithdrawPasses && ownQ:
-			return fail(true, fmt.Sprintf("after %d tries the forge still reports #%s in the merge queue from this account, where it can merge before what it depends on", maxWithdrawPasses, n),
-				queuePageFix(n))
 		case pass == maxWithdrawPasses:
-			return fail(true, fmt.Sprintf("after %d tries the forge still reports #%s armed by this account, which can merge it before what it depends on", maxWithdrawPasses, n),
+			still := fmt.Sprintf("after %d tries the forge still reports #%s ", maxWithdrawPasses, n)
+			last := ""
+			if lastErr != nil {
+				last = ", the last try failing: " + forgeWhy(lastErr)
+			}
+			disarm := "withdraw the arming (gh pr merge " + n + " --disable-auto)"
+			switch {
+			case ownQ && ownA:
+				return fail(true, still+"in the merge queue from this account and armed by this account, where it can merge before what it depends on"+last,
+					"take #"+n+" out of the merge queue on its page and "+disarm+", then run abcd land again, which says what holds it")
+			case ownQ:
+				return fail(true, still+"in the merge queue from this account, where it can merge before what it depends on"+last, queuePageFix(n))
+			}
+			return fail(true, still+"armed by this account, which can merge it before what it depends on"+last,
 				"withdraw it yourself (gh pr merge "+n+" --disable-auto), then run abcd land again, which says what holds it")
 		}
-		if ownQ && dequeue(ask, s.ID) == nil {
-			did.dequeued = true
+		lastErr = nil
+		if ownQ {
+			if err := dequeue(ask, s.ID); err != nil {
+				lastErr = err
+			} else {
+				did.dequeued = true
+			}
 		}
 		if ownA {
-			if _, err := ask("pr", "merge", n, "--disable-auto"); err == nil {
+			if _, err := ask("pr", "merge", n, "--disable-auto"); err != nil {
+				lastErr = err
+			} else {
 				did.disarmed = true
 			}
 		}
 		next, err := view()
 		if err != nil {
-			why := fsutil.RedactHome(err.Error())
-			if r := (*Refusal)(nil); errors.As(err, &r) {
-				why = r.Reason
-			}
-			return fail(false, "the forge could not be read again for #"+n+"'s state ("+why+"), so land cannot confirm that this account's arming and queue entry are off", unconfirmedFix(n, s))
+			return unreadAgain(err, s)
 		}
 		s = next
 	}

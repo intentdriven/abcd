@@ -957,7 +957,8 @@ type prState struct {
 	Mergeable        string `json:"mergeable"`
 	MergeStateStatus string `json:"mergeStateStatus"`
 	// IsInMergeQueue is nil, and AutoMergeRequest and MergeQueueEntry empty,
-	// when the answer has no such field (unread); null is off.
+	// when the answer has no such field (unread). A null is off for the two
+	// object fields only: a null isInMergeQueue leaves it nil, unread.
 	IsInMergeQueue    *bool           `json:"isInMergeQueue"`
 	MergeQueueEntry   json.RawMessage `json:"mergeQueueEntry"`
 	AutoMergeRequest  json.RawMessage `json:"autoMergeRequest"`
@@ -1122,7 +1123,8 @@ func (s prState) ownQueue() bool {
 
 // unread names the first field the dependency check and its withdrawal read
 // that the answer lacks, or that does not parse, "" when the answer is whole:
-// autoMergeRequest, isInMergeQueue and mergeQueueEntry always (null is off),
+// autoMergeRequest, isInMergeQueue and mergeQueueEntry always (null is off
+// for the two object fields, and a null isInMergeQueue is unread),
 // the viewer's login where the pull request is armed or queued, and the node id
 // where it is queued.
 func (s prState) unread() string {
@@ -1524,6 +1526,12 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 	// below as before. This account's arming already in place comes off on a
 	// wait or a refusal (withdrawOwn).
 	if why := s.unread(); why != "" {
+		// With no viewer login the pull request is armed (a queued one was
+		// reported above): land cannot say by whom.
+		if why == "viewer login" {
+			return refuse("the forge's answer for pull request #"+n+"'s state gives no viewer login, so land cannot say by whom #"+n+" is armed, or judge its dependencies: land arms nothing, and the arming is left as it is",
+				"check who armed #"+n+" (gh pr view "+n+"): withdraw it if this account made it (gh pr merge "+n+" --disable-auto), then run abcd land again, which says what holds it")
+		}
 		return refuse("the forge's answer for pull request #"+n+"'s state gives no "+why+", so land cannot confirm whether it is armed or queued, or judge its dependencies: land arms nothing, and any arming already in place is left as it is",
 			unconfirmedFix(n, s))
 	}

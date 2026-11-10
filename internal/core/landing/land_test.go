@@ -133,7 +133,13 @@ type fakeForge struct {
 //   - from the forge's documented mutation: the dequeue (dequeuePullRequest,
 //     by node id) takes a queued pull request out of the queue;
 //   - a guess, unconfirmed: with rule on, `gh pr merge --disable-auto` on a
-//     queued pull request fails, and its message here is made up.
+//     queued pull request fails, and its message here is made up;
+//   - a guess, unconfirmed against a live forge: a queue entry the forge
+//     makes from this account's arming names this account as its enqueuer
+//     (queuer the arming's login). The recorded answer has no enqueuer, since
+//     its query did not ask for one.
+//
+// A test resting on a guess says "model guess" in a comment where it uses it.
 type forgeModel struct {
 	// armedBy and queuedBy are the logins the arming and the queue entry are
 	// by: "" is none, and "?" one the forge does not name.
@@ -144,6 +150,10 @@ type forgeModel struct {
 	// arming, by queuer, once that many state reads are answered.
 	queueAfter int
 	queuer     string
+	// handAfter, when above 0, has the arming change hands to handTo once
+	// that many state reads are answered.
+	handAfter int
+	handTo    string
 	// failReadAt fails the state read with this ordinal (1 is the first).
 	failReadAt int
 	// failDisarms fails the first that many disarms.
@@ -179,6 +189,9 @@ func (m *forgeModel) answer() (string, error) {
 		if m.rule {
 			m.armedBy = ""
 		}
+	}
+	if m.reads == m.handAfter {
+		m.armedBy = m.handTo
 	}
 	return a, nil
 }
