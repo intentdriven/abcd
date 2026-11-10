@@ -74,14 +74,14 @@ editing that file in a reviewed change, the same way a note gets there.
 abcd rules --prompt "why do the tests fail under load?"
 ```
 
-It shows, for that one prompt in a session that has sent nothing yet, the rule domains it matches
-with the words that hit, then each note and page it would recall with its
-rank, its score and the terms that scored it, and the form each would take:
-in full, as one line, or left out of that turn for want of room. Without
-`--fill` it does not know how full a session is, so it shows the forms used
-when nothing tells: rules in full where the turn has room, and notes and pages
-as one line each, best-ranked first within a small bound, at least the top
-one. To see a session that is 65% full:
+It shows, for that one prompt in a session that has sent nothing yet, the
+rule domains it matches with the words that hit, then each note and page it
+would recall with its rank, its score and the terms that scored it, and the
+form each would take: in full, as one line, or left out of that turn for want
+of room. Without `--fill` it does not know how full a session is, so it shows
+the forms used when nothing tells: rules in full where the turn has room, and
+notes and pages as one line each, best-ranked first within a small bound, at
+least the top one where the turn has room. To see a session that is 65% full:
 
 ```bash
 abcd rules --prompt "why do the tests fail under load?" --fill 65

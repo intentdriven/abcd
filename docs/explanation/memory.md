@@ -42,7 +42,8 @@ change the project reviews.
 Pages live in the project's `.abcd/memory/`, and personal pages in
 `~/.abcd.noindex/memory/`. When both hold a page of the same name, the
 project's page is the page of that name: the personal one is not recalled,
-even when the project's page carries no recall words or could not be read.
+including when the project's page carries no recall words or is too large to
+be read for recall.
 
 When abcd recalls memory it reads its own notes and pages, not your agent
 host's own memory files. To move a lesson from them into a note, point the
@@ -61,10 +62,10 @@ than a common one, so the most telling item comes first.
 
 An item that has come back is not sent again unchanged within the session.
 It can come back again after the session is compacted, in a new session, or
-on the loader's refresh backstop, a prompt that sends the matched rules and
-memory again: every fifteenth prompt by default, or the interval
-`rules.force_refresh_every_n` sets in `.abcd/config.json`. An item whose words
-have changed since it was sent counts as new.
+on a periodic refresh, a prompt that sends the matched rules and memory
+again: every fifteenth prompt by default, or at the interval the project's
+configuration sets. An item whose words have changed since it was sent counts
+as new.
 
 ## Memory shrinks as the session fills
 
@@ -74,20 +75,20 @@ window is free, matched notes and pages come back in full, best-ranked first,
 as far as the turn has room, and the next few as one line each. As it fills,
 the best-ranked come back in full within a smaller bound and the rest as one
 line each as far as the turn has room, and the rules shrink to each domain's
-first rule and a pointer to the rest. Near the end of the window the
-best-ranked come back as one line each, within a small bound, and at least
-the top one does. A match a turn
-leaves out is not counted as sent, so a later prompt that matches it can
-bring it back.
+first rule and a pointer to the rest. Once less than about two fifths of the
+window is free, the best-ranked come back as one line each, within a small
+bound, and at least the top one does where the turn has room. A match a turn
+leaves out is not counted as sent, so a later prompt that matches it can bring
+it back.
 
 abcd learns how full the session is from its status line, where you accepted
 it at install, or else from the end of the session's transcript. When neither
 tells, the rules come back in full where the turn has room, and notes and
-pages as near the end of the window: the best-ranked as one line each, at
-least the top one.
+pages as when little of the window is free: the best-ranked as one line each,
+at least the top one where the turn has room.
 
-To see everything one prompt matches, why each item ranks where it does, and
-the form each would take, run `abcd rules --prompt "<the prompt>"`. It
-changes nothing.
+To see each note and page one prompt would recall, with the form each would
+take and why each ranks where it does, run `abcd rules --prompt "<the
+prompt>"`. It changes nothing.
 
 For the steps, see [Keep memory notes](../how-to/keep-memory-notes.md).
