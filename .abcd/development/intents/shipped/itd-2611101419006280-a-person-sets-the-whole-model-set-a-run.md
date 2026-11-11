@@ -260,7 +260,9 @@ itd-2609170822093401 is where a per-invocation effort was first recorded.
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-0bb4426c4246 -->
+Fidelity review OWED (receipt rcp-0bb4426c4246).
+<!-- abcd-review-end receipt=rcp-0bb4426c4246 -->
 
 ## Grounds
 
