@@ -103,9 +103,12 @@ scan_tree=""
 leaks_tmp=""
 vuln_bin=""
 trap '[ -z "$scan_tree" ] || rm -rf "$scan_tree"; [ -z "$leaks_tmp" ] || rm -rf "$leaks_tmp"; [ -z "$vuln_bin" ] || rm -rf "$vuln_bin"' EXIT
-trap 'exit 129' HUP
-trap 'exit 130' INT
-trap 'exit 143' TERM
+# Each signal trap ignores the three signals before it exits: a second signal
+# while the EXIT trap's removals run would take the same trap, exit at once with
+# the first one's code, and leave whatever was not yet removed.
+trap 'trap "" HUP INT TERM; exit 129' HUP
+trap 'trap "" HUP INT TERM; exit 130' INT
+trap 'trap "" HUP INT TERM; exit 143' TERM
 
 # set_tmp_root sets tmp_root to the temporary directory every private directory
 # here is made in, as an absolute path: TMPDIR, or /tmp. A relative TMPDIR is
