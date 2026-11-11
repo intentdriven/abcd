@@ -999,11 +999,17 @@ driver's check. Its claim is still renewed, with a line in its record and its fi
 version, while an agent may be in its call or while that check has left work a save could not take;
 otherwise it is neither renewed nor let go, and lapses at its lease with the lane's work on its branch
 and in its worktree, none of it saved aside. A drain's move leaves a run that is not one of its
-lanes the same way: under a stop it does not halt one whose file states another version, and it leaves
-such a parked run's unsettled mark to its own driver. A step under a stop, and a drain's move over its
-own lanes, must leave another version's run to its driver too, and nothing enforces that yet: each
-settles the run at the stepping abcd's version, because nothing the run records tells its own driver
-resumed by a newer abcd from a second session or drain started in its checkout. With no agent left in its
+lanes the same way: under a stop it does not halt one whose file states another version, its refusal
+naming each run it leaves and that the run's own driver's next check takes the stop, and it leaves
+such a parked run's unsettled mark to its own driver. Two limits stand, and nothing enforces either
+yet. A step under a stop, and a drain's move over its own lanes, must leave another version's run to
+its driver too, and each settles the run at the stepping abcd's version. A drain's move must also leave
+alone a parked run another version's driver writes that carries no stop's mark, one of its own lanes or
+not, and it needs no stop to reach one: finishing a merged lane, entering a conflicting lane's sync
+again, watching an armed pull request in the merge queue and handing back a closed one each save the
+run at the drain's abcd's version. Neither is closed because nothing the run records tells its own
+driver resumed by a newer abcd from a second session or drain started in its checkout, and a new drain
+finishing the merged lanes an earlier drain left is the ordinary path after an upgrade. With no agent left in its
 call and its work saved it no longer renews. Work a save could not take stays uncommitted in its
 worktree and nowhere else, and its claim lapses at its lease unless a gated waiter, `abcd implement status` or a drive still
 in an agent's call or a preflight renews it; only that drive renews a run parked at land. A
