@@ -27,8 +27,8 @@ const schemaVersionPrevious = SchemaVersion - 1
 // migrates from name that earlier version as schemaVersionPrevious, never a
 // fixed older version a later bump leaves behind (iss-2610142134346602).
 func TestTheStoredTextTestsReadTheVersionJustBeforeTheCurrent(t *testing.T) {
-	if schemaVersionPrevious != schemaVersionUnrenamed {
-		t.Fatalf("the version before %d is the newest version read but never written: %d, %d", SchemaVersion, schemaVersionPrevious, schemaVersionUnrenamed)
+	if schemaVersionPrevious != schemaVersionUnadmitted {
+		t.Fatalf("the version before %d is the newest version read but never written: %d, %d", SchemaVersion, schemaVersionPrevious, schemaVersionUnadmitted)
 	}
 	// The needles are joined at run time so this file's own source matches
 	// only where a test passes the version, not where this test names it.
@@ -114,7 +114,9 @@ func withHandBack(t *testing.T, state []byte, hb map[string]any, field, bad stri
 
 // TestARunStateRefusesHandBackTextItNeverWrites: a hand-back a lane's
 // receipt wrote, and one shaped as the fix-round cap writes it, read back at
-// the current version and at the version just before it; each with one text
+// three versions: the current one, the one just before it (schemaVersionPrevious)
+// and the last that names the classes the old way (schemaVersionUnrenamed), which
+// the read migrates; each with one text
 // forged with U+202E or U+009B is refused as the run's state by the read, the record and the
 // drain's call that routes the lane's hand-back, none echoing the rune.
 func TestARunStateRefusesHandBackTextItNeverWrites(t *testing.T) {
@@ -140,7 +142,7 @@ func TestARunStateRefusesHandBackTextItNeverWrites(t *testing.T) {
 	}()
 	forged := 0
 	for name, hb := range map[string]map[string]any{"the receipt's": receiptHandBack, "the cap's": capHandBack} {
-		for _, version := range []int{SchemaVersion, schemaVersionPrevious} {
+		for _, version := range []int{SchemaVersion, schemaVersionUnrenamed, schemaVersionPrevious} {
 			if err := os.WriteFile(path, withHandBack(t, good, hb, "", "", version), 0o600); err != nil {
 				t.Fatal(err)
 			}

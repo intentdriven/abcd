@@ -338,10 +338,12 @@ func stopMarkNote(repoRoot, runID string) string {
 
 // parkedStopNote is stopMarkNote for a drain's move over a parked run. A mark that has not
 // settled first takes the check every move makes, so one from a stop lifted since goes, and
-// the run is then as any other.
-func parkedStopNote(repoRoot, runID string, o Options) (string, error) {
+// the run is then as any other. That check saves the run, so a run that is not one of the
+// drain's lanes (ours false) and whose file states another version keeps its mark for its
+// own driver (leftToItsDriver).
+func parkedStopNote(repoRoot, runID string, ours bool, o Options) (string, error) {
 	c, err := runControl(repoRoot, runID)
-	if err == nil && c.Stop != nil && c.Stop.HaltedAt == nil {
+	if err == nil && c.Stop != nil && c.Stop.HaltedAt == nil && (ours || !leftToItsDriver(repoRoot, runID)) {
 		if _, err := stopCheck(repoRoot, runID, DefaultStages(), o); err != nil {
 			if _, refused := AsRefusal(err); !refused {
 				return "", err
@@ -820,10 +822,43 @@ func stopEndsRenewal(repoRoot string, st State, now time.Time) bool {
 	return !heldBySave(c.Stop)
 }
 
-// settlesHere reports whether this binary may settle st: it writes the state at its
-// own schema, so a run at another stays with its driver's own check, and its lease
-// lapses if that check does not come first.
-func settlesHere(st State) bool { return st.SchemaVersion == SchemaVersion }
+// settlesHere reports whether this binary may settle a run whose state file states
+// the version stated: a settle writes the state at this binary's own version, so a
+// run whose file states another is left to its own driver's check. The renewal that
+// follows still renews its claim, at the version the file states, while an agent may
+// be in its call or while that check has left work a save could not take; otherwise
+// the claim lapses at its lease unless that check comes first. The version is the file's, as
+// readListedStated returns it, never a read State's, which an older version reaches
+// already raised to this binary's. A file listed at this version was written by no
+// older driver, which refuses it, so the settle's own read under the lock finds the
+// same driver's file.
+func settlesHere(stated int) bool { return stated == SchemaVersion }
+
+// leftToItsDriver reports whether a drain that does not drive the run leaves its stop
+// to the run's own driver: its state file, read as renewalRuns reads it
+// (readListedStated), states another version than this binary's (settlesHere). A file
+// that cannot be read is not left: the save that follows refuses it as it always has.
+func leftToItsDriver(repoRoot, runID string) bool {
+	_, left := statedElsewhere(repoRoot, runID)
+	return left
+}
+
+// statedElsewhere is leftToItsDriver with the version the run's file states, which a
+// drain's move names when it leaves the run's stop to its driver.
+func statedElsewhere(repoRoot, runID string) (int, bool) {
+	dir, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return 0, false
+	}
+	defer dir.Close()
+	_, stated, err := readListedStated(dir, runID)
+	return stated, err == nil && !settlesHere(stated)
+}
+
+// drainsRun reports whether runID is one of a drain's lanes.
+func drainsRun(lanes []DrainLane, runID string) bool {
+	return slices.ContainsFunc(lanes, func(l DrainLane) bool { return l.RunID == runID })
+}
 
 // notStartedUnderStop answers an await this very call handed out or re-told, which a
 // stop refused before it began: no agent can have it yet, so it is marked as not
@@ -1018,10 +1053,12 @@ func machineCheckouts(repoRoot, home string) []string {
 	return out
 }
 
-// drainStop is a drain's move under a stop: every lane's run takes the stop, and
+// drainStop is a drain's move under a stop: every lane's run takes the stop, as does
+// each other run in the checkout at this binary's version, and
 // a judgement the drain awaits is let go with its hold, so the issue is a peer's
-// to take. It refuses the move; the drain keeps its state and goes on when the
-// stop lifts. The caller's deferred settle releases the hold st no longer names.
+// to take. It refuses the move, the refusal naming each other run it left to its own
+// driver; the drain keeps its state and goes on when the stop lifts. The caller's
+// deferred settle releases the hold st no longer names.
 func drainStop(repoRoot string, st *DrainState, o Options) (string, error) {
 	r := o.stopRead(nil)
 	notes := []string{}
@@ -1061,12 +1098,28 @@ func drainStop(repoRoot string, st *DrainState, o Options) (string, error) {
 		}
 		return said, nil
 	}
+	var leftRuns []string
 	for _, run := range runs {
 		if run.Complete() {
 			continue
 		}
 		if driveStopped(run.RunID) {
 			continue
+		}
+		// A run that is not one of the drain's lanes is another driver's, and one
+		// whose file states another version is left to that driver's check
+		// (settlesHere). The drain's own lanes it halts as their driver, whatever
+		// their files state: a newer abcd's drain in this checkout reads the same
+		// drain state, so nothing tells a drain resumed by an upgrade from a
+		// second one (reservation_save.go). A run left is named in what the refusal
+		// says it did, as a parked run a stop's mark holds is named (parkedNote).
+		if !drainsRun(st.Lanes, run.RunID) {
+			if stated, left := statedElsewhere(repoRoot, run.RunID); left {
+				id := termsafe.Sanitize(run.RunID)
+				leftRuns = append(leftRuns, fmt.Sprintf("run %s, whose file states schema version %d and is not one of the drain's lanes, so its own driver's next check takes the stop: `abcd implement step --run %s` from that driver's abcd",
+					id, stated, id))
+				continue
+			}
 		}
 		if _, err := haltRun(repoRoot, run.RunID, *r.Stop, DefaultStages(), o); err != nil {
 			if _, ok := AsRefusal(err); ok {
@@ -1081,7 +1134,11 @@ func drainStop(repoRoot string, st *DrainState, o Options) (string, error) {
 			return said, err
 		}
 	}
-	return said, contend(StageStop, "", "", fmt.Sprintf("a stop set by %s at %s holds, so the drain opens no lane and asks for no judgement",
+	refusal := contend(StageStop, "", "", fmt.Sprintf("a stop set by %s at %s holds, so the drain opens no lane and asks for no judgement",
 		termsafe.Sanitize(r.Stop.SetBy), r.Stop.SetAt.UTC().Format(time.RFC3339)),
 		"the person's own `abcd implement stop --lift` lifts it")
+	if len(leftRuns) > 0 {
+		refusal.Wrote = fmt.Sprintf("left %d run(s) unhalted for their own drivers: %s", len(leftRuns), strings.Join(leftRuns, "; "))
+	}
+	return said, refusal
 }

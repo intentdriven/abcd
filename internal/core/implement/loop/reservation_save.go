@@ -24,6 +24,31 @@ package loop
 // cannot name is dropped. A driver stepping a run takes the file up to its own
 // version as it always has (mutate), since a driver is the file's owner and may
 // write the fields that version adds.
+//
+// Every renewal saves this way, a parked lane's included (drain_finish.go,
+// drain_lease.go). A settle under a stop cannot: it saves the lanes, so a process
+// that is not the run's driver leaves the stop's halt and a stop's unsettled mark
+// on a run whose file states another version to that driver (settlesHere): the
+// renewal does, and so does a drain's move over a run not among its lanes, which
+// neither halts it (drainStop) nor takes up its mark (parkedStopNote).
+//
+// Two limits stand, and nothing enforces either yet. First, a step under a stop
+// (ClaimDriver, then the move's own check) and a drain's move over its own lanes
+// must not raise a run another version's driver writes, and both settle it at
+// this binary's version. Second, a drain's move over a parked run with no stop's
+// mark must not raise one another version's driver writes, among its lanes or
+// not, and four saves in it take the whole state to this binary's version with
+// no stop in force: the landing's last step on a merged lane (finishMerged),
+// the sync entered again over a conflict (resyncParked), the merge-queue watch
+// (watchParked) and the hand-back of a closed pull request (handBackClosed).
+// A step from a newer abcd is how a driver resumes after an upgrade, a newer
+// drain in the checkout reads the same drain state as the drain it resumes, and
+// a new drain, which starts with no lanes, finishing the merged lanes an earlier
+// drain left is the ordinary path after one; under a stop ClaimDriver records no
+// driver, and the driver it recorded before names a process a driver's own new
+// session does not match, so nothing the run holds tells its driver from a
+// second session or drain. Closing either needs the run to name its driver in a
+// form a new session of it can prove.
 
 import (
 	"bytes"

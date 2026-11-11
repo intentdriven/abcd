@@ -21,7 +21,9 @@ import (
 // receipt without echoing it, and the lane does not move; one with a
 // multi-line, tabbed note verifies and round-trips; a run state forged in any
 // of those fields, or in a resolution's issue, commit or impact, is refused
-// as the run's state by the read and the record.
+// as the run's state by the read and the record, at three versions: the current
+// one, the one just before it (schemaVersionPrevious) and the last that names the
+// classes the old way (schemaVersionUnrenamed), which the read migrates.
 func TestAReceiptsStoredTextIsHeldToWhatTheLoopStores(t *testing.T) {
 	repo, runID, l, dir := issueAwaiting(t)
 	sha := laneCommit(t, repo, l, "fix.txt")
@@ -72,7 +74,7 @@ func TestAReceiptsStoredTextIsHeldToWhatTheLoopStores(t *testing.T) {
 		{"receipts", "model"},
 		{"resolves", "note"}, {"resolves", "grounds"}, {"resolves", "issue"}, {"resolves", "commit"}, {"resolves", "impact"},
 	} {
-		for _, version := range []int{SchemaVersion, schemaVersionPrevious} {
+		for _, version := range []int{SchemaVersion, schemaVersionUnrenamed, schemaVersionPrevious} {
 			for _, bad := range []string{"‮", "\u009b"} {
 				var doc map[string]any
 				if err := json.Unmarshal(stored, &doc); err != nil {

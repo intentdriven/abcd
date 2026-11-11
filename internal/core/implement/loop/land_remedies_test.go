@@ -542,8 +542,9 @@ func TestALandingWithNoRecordsCommitsTheSpecTheFirstStepTook(t *testing.T) {
 }
 
 // A resolution written on this call that leaves nothing staged means the branch
-// already holds what the landing would write, so the step finishes with no commit.
-func TestAResolutionIdenticalToTheBranchsFinishesWithNoCommit(t *testing.T) {
+// already holds what the landing would write, so the step makes its records commit
+// changing no file, which carries the admission (itd-2610301850454860).
+func TestAResolutionIdenticalToTheBranchsCommitsNoFile(t *testing.T) {
 	f := syncFixture(t)
 	l := f.passToLandOnce(t, "fix.txt")
 	if len(l.Resolves) != 1 {
@@ -576,8 +577,14 @@ func TestAResolutionIdenticalToTheBranchsFinishesWithNoCommit(t *testing.T) {
 	}
 
 	l = f.wantsRecordsCommit(t)
-	if l.HeadSHA != judged || l.Landing.Records != "" {
-		t.Fatalf("the step finishes with no commit: head %s, judged %s, %+v", l.HeadSHA, judged, l.Landing)
+	if l.HeadSHA == judged || l.Landing.Records != l.HeadSHA {
+		t.Fatalf("the step makes its records commit: head %s, judged %s, %+v", l.HeadSHA, judged, l.Landing)
+	}
+	if changed := f.repo.Git("-C", l.Worktree, "diff-tree", "--no-commit-id", "-r", "--name-only", l.HeadSHA); strings.TrimSpace(changed) != "" {
+		t.Fatalf("the records commit changes no file: %q", changed)
+	}
+	if msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA); !strings.Contains(msg, "Resolves: "+r.Issue) || !strings.Contains(msg, "Admitted-by: ") {
+		t.Fatalf("the commit carries the resolution and the admission:\n%s", msg)
 	}
 }
 

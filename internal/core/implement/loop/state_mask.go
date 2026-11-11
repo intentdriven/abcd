@@ -43,6 +43,10 @@ func (st State) masked() State {
 	st.Pace = maskPtr(st.Pace, Pace.masked)
 	st.Review = maskPtr(st.Review, ReviewSet.masked)
 	st.Pick = maskPtr(st.Pick, RunPick.masked)
+	st.Admitted = maskPtr(st.Admitted, func(a Admitted) Admitted {
+		a.Kind, a.Record, a.Path = line(a.Kind), line(a.Record), line(a.Path)
+		return a
+	})
 	st.Lanes = maskEach(st.Lanes, Lane.masked)
 	st.Waiting = maskEach(st.Waiting, func(w Waiting) Waiting {
 		w.Lane, w.Role = line(w.Lane), line(w.Role)

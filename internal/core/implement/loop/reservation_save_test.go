@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -38,6 +39,11 @@ func stateAtVersion(t *testing.T, root, runID string, version int) []byte {
 		t.Fatalf("the state file is not at version %d:\n%s", SchemaVersion, data)
 	}
 	data = bytes.Replace(data, []byte(from), []byte(fmt.Sprintf(`"schema_version": %d,`, version)), 1)
+	if version <= schemaVersionUnadmitted {
+		// The admission joined at version 26, so an older driver's file carries
+		// none. It is cut while the file is laid out as writeState lays it.
+		data = admittedField.ReplaceAll(data, nil)
+	}
 	if version <= schemaVersionUnrenamed {
 		// The classes that version stored are named as it named them.
 		var doc map[string]any
@@ -54,6 +60,9 @@ func stateAtVersion(t *testing.T, root, runID string, version int) []byte {
 	}
 	return data
 }
+
+// admittedField is a state file's top-level `admitted`, as writeState lays it out.
+var admittedField = regexp.MustCompile(`\n  "admitted": \{[^{}]*\},`)
 
 // topLevelFields is a state file's top-level fields, undecoded.
 func topLevelFields(t *testing.T, data []byte) map[string]json.RawMessage {

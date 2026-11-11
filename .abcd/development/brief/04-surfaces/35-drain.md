@@ -1027,6 +1027,9 @@ the fix and pass after, its tests gated as an intent lane's brief spells. Its va
 issue has no criteria. Its implementer's receipt must name the issue in
 `resolves`, and the landing resolves the issue with the commit named there in
 the lane's own change, opens one pull request and pushes nothing while it is armed, its sync withdrawing an armed merge first.
+Its records commit carries `Admitted-by: drain <adr-N>`, the rule record the
+drain loaded for the move that opened the lane, which the lane's state records
+with its path at the start (itd-2610301850454860).
 
 ### The hand-back, by kind
 
