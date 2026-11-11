@@ -1273,8 +1273,13 @@ too, and the check never fails for either. It reads the memory pressure too
 `make preflight` gates itself: it waits at `implement load --wait` once, as one
 whole run, before any of its stages (a records-only change takes a shorter
 rule that waits at no gate), so run it plain, with no wrapper and no
-waiter loop of your own. Gate every other `go test -race` on a shared machine
-with `--wait` too, and never write a waiter loop: a hand-written
+waiter loop of your own. While it waits and runs, that waiter records
+itself in a marker under abcd's home, naming its checkout, the commit that
+checkout's HEAD was at when it was written, and that its command is the
+preflight's stages; the away mode's stop check reads it to count an owed item
+as waiting, and a marker it cannot write is said on standard error. Gate
+every other `go test -race` on a shared machine with `--wait` too, and never
+write a waiter loop: a hand-written
 `pgrep -f "go test -race"` loop matched its own shell, whose command line
 carries that string, and never opened. `--wait` blocks until the one-minute
 load average is below the wait limit (`wait-load`, by default twice the online

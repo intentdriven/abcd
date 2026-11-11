@@ -2,12 +2,17 @@
 
 package machineload
 
+import "context"
+
 // Read reports ErrUnsupported: abcd reads the load and the process table on
 // macOS and Linux only. itd-2609231434459890's first scope condition confines
 // the load check to macOS and Linux developer machines, and its out-of-scope
 // list names every other platform, so on this one the check says it could not
 // check and carries on (spc-2609231542463113, section 8).
 func Read() (Snapshot, error) { return Snapshot{}, ErrUnsupported }
+
+// ReadContext reports ErrUnsupported, as Read does, and starts nothing.
+func ReadContext(context.Context) (Snapshot, error) { return Snapshot{}, ErrUnsupported }
 
 // ReadArgs reports ErrUnsupported, as Read does.
 func ReadArgs([]int) (map[int][]string, error) { return nil, ErrUnsupported }

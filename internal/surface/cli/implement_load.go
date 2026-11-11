@@ -40,6 +40,9 @@ var (
 	loadJitter func() time.Duration
 	// loadMark is the command form's mark; nil is the core's /bin/sleep.
 	loadMark func() (func(), error)
+	// loadReadHead reads a checkout's HEAD for a whole run's marker; nil is
+	// the core's git read under its own bound.
+	loadReadHead func(dir string) (string, error)
 	// loadRenew renews the caller's own reservations half through their
 	// lease, run every loadRenewEvery while the waiter waits and while its
 	// command runs; loadRenewRound, when set, is called after each round has
@@ -479,7 +482,7 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race, m
 		Read: loadReader, ReadArgs: loadArgsReader, Self: loadSelf(),
 		Now: loadNow, Sleep: loadSleep, Timeout: timeout, Command: len(command) > 0, Race: race, Jitter: loadJitter,
 		Mark: loadMark, RaceCommand: machineload.IsRaceCommand(command),
-		Narrow: narrow, Words: command,
+		Narrow: narrow, Words: command, ReadHead: loadReadHead,
 	}
 	// The hold names the checkout it was taken in, so a waiter behind a
 	// quiet holder can say where it runs.
@@ -513,6 +516,9 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race, m
 	errOut := sharedStderr(cmd.ErrOrStderr())
 	stopRenewal := startHoldRenewal(errOut)
 	defer stopRenewal()
+	// The marker's note is said at the look that could not write it, not when
+	// the wait returns: a preflight can stay queued for hours.
+	req.OnMarkNote = func(note string) { fmt.Fprintf(errOut, "abcd implement load %s: %s\n", flag, note) }
 	res, err := implement.WaitLoad(req)
 	if err != nil {
 		return &exitError{Code: 1, Msg: "abcd implement load " + flag + ": " + err.Error()}
@@ -566,6 +572,11 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race, m
 	}
 	code, runErr := runGated(cmd, command, env, errOut, unmark)
 	unmark()
+	// The whole run's marker goes with its command, whatever the hold's form:
+	// above one slot the hold is a settle hold, never released here.
+	if res.EndMark != nil {
+		res.EndMark()
+	}
 	if res.Hold != nil && res.Hold.Form == implement.HoldCommand {
 		home, _ := abcdhome.MachineHome()
 		if err := implement.ReleaseWaitHold(home, *res.Hold); err != nil {

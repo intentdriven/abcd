@@ -52,7 +52,8 @@ func kindRank(k OwedKind) int {
 type OwedItem struct {
 	Kind OwedKind `json:"kind"`
 	// Capped marks an item the session can act on itself, which a qualifying
-	// wake releases at most twice in a row (dcn-2610181035361997).
+	// wake releases at most twice in a row (dcn-2610181035361997) unless live
+	// work stands for it (Live).
 	Capped bool `json:"capped"`
 	// Branch is the branch the item is about, when it is about one.
 	Branch string `json:"branch,omitempty"`
@@ -65,6 +66,19 @@ type OwedItem struct {
 	// Reason says, in plain words, why the item is owed and what to do. It is
 	// not part of the item's identity.
 	Reason string `json:"reason,omitempty"`
+	// Live is the live work standing for the item, when the reading found
+	// some (livework.go): the preflight's whole test run of this account,
+	// its marker written at the item's head, in the worktree its branch is
+	// checked out in, while no receipt names the head. Nor is it part of the item's identity, so the fingerprints do not
+	// change as the run ages or ends.
+	Live *LiveWork `json:"live,omitempty"`
+}
+
+// LiveWork is what is running for an owed item, in plain words, and since
+// when.
+type LiveWork struct {
+	What  string    `json:"what"`
+	Since time.Time `json:"since"`
 }
 
 func (i OwedItem) key() string {
@@ -125,6 +139,36 @@ func (o Owed) HasCapped() bool {
 		}
 	}
 	return false
+}
+
+// CappedAllLive reports whether some item is capped and every capped item
+// has live work standing for it: the set is waiting on that work, not stuck.
+func (o Owed) CappedAllLive() bool {
+	capped := false
+	for _, i := range o.Items {
+		if i.Capped {
+			if i.Live == nil {
+				return false
+			}
+			capped = true
+		}
+	}
+	return capped
+}
+
+// liveNamed is the capped item with live work a waiting reason names: the
+// next item (Next), the one the reason hands on, when it is one, and
+// otherwise the first such item. Called only when CappedAllLive holds.
+func (o Owed) liveNamed() OwedItem {
+	if n, ok := o.Next(); ok && n.Capped && n.Live != nil {
+		return n
+	}
+	for _, i := range o.Items {
+		if i.Capped && i.Live != nil {
+			return i
+		}
+	}
+	return OwedItem{Live: &LiveWork{}}
 }
 
 // Next is the item the session is handed: the first by owedKinds' order, the
