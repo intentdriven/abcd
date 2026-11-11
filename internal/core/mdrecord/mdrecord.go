@@ -332,7 +332,7 @@ func OpensComment(ln string) bool { return opensCommentFrom(ln, 0) }
 // markdown again.
 func opensCommentFrom(ln string, start int) bool { return commentWalk(ln, start, nil) }
 
-// commentWalk is the one left-to-right walk OpensComment and LiveText share:
+// commentWalk is the one left-to-right walk OpensComment and ReadPage share:
 // from start, a matched code span is skipped whole and an unmatched backtick
 // run is literal, and at `<!--` the walk skips to the `-->` closing it. It
 // reports whether a comment is still open at the end of the line, and hands
@@ -517,21 +517,117 @@ func headingDepth(ln string) int {
 	return len(ln) - len(strings.TrimLeft(ln, "#"))
 }
 
-// LiveText returns each line as a reader of the rendered page sees it: a line
-// inside a fenced block under the rule, its delimiters included, is "", and
-// every HTML comment span on a line — one that opens and closes there, the
-// tail of one opened above, the head of one that closes below — is replaced by
-// spaces of the same length. So the text before a comment's opener and after
-// its closer is read where it sits, at its own offsets. Fences and comments
-// are read exactly as Read reads them under the rule: the first raw `-->`
+// Page is a body as a reader of what the page SAYS reads it (ReadPage).
+type Page struct {
+	// Text is each line as a reader of the rendered page sees it: a line
+	// inside a fenced block, its delimiters included, is "", and every HTML
+	// comment span on a line (one that opens and closes there, the tail of one
+	// opened above, the head of one that closes below) is replaced by spaces of
+	// the same length, so the text before a comment's opener and after its
+	// closer is read where it sits, at its own offsets.
+	Text []string
+	// Mask is the per-line mask of the same reading, for a section's bounds.
+	Mask []uint8
+
+	unsure   int
+	openLine int
+	openFlag uint8
+}
+
+// Unsure reports the first line from which the page's fences cannot be read
+// one way, and whether there is one: see ReadPage.
+func (p Page) Unsure() (line int, ok bool) { return p.unsure, p.unsure >= 0 }
+
+// Unclosed reports the line that opened a span nothing closes, and which
+// construct it is, under the page's reading.
+func (p Page) Unclosed() (line int, flag uint8, ok bool) {
+	return p.openLine, p.openFlag, p.openLine >= 0
+}
+
+// ReadPage is the one reading for a reader of what a page says that must not
+// read less than the page shows: a gate that refuses on what the text states.
+// Its fences are ListNested's and its comments are Read's: the first raw `-->`
 // closes a comment, a code span outside one is skipped whole (a `<!--` quoted
 // in backticks opens nothing), and inside a fence a comment opener is literal.
-//
 // Mask leaves a comment that opens and closes on one line live, because a
-// writer may touch that line; a reader of what the page SAYS cannot, and this
-// is that reader's view.
-func LiveText(lines []string, rule Rule) []string {
-	mask := Read(lines, rule).Mask
+// writer may touch that line; Text blanks it.
+//
+// Where a fence turns on the list around it, which this package does not
+// parse, the reading is checked against the top level and the result says when
+// they part (Unsure, on the first line they part on). The readings agree
+// except in two places, each taken as ListNested takes it only when the
+// line above the opener, past blank and deeper-indented lines, is a list
+// item's marker line: a run at four columns or more, which the top level reads
+// as text; and a run at one to three columns, which a list item ends at its
+// first line at column 0, where neither exported rule ends it. Anywhere else
+// that the two rules read a line differently, and at a line at column 0 inside
+// such a list-item fence, the page is Unsure.
+func ReadPage(lines []string) Page {
+	tl, nl := Read(lines, TopLevel), Read(lines, ListNested)
+	p := Page{Text: liveText(lines, nl.Mask), Mask: nl.Mask, unsure: -1, openLine: nl.openLine, openFlag: nl.openFlag}
+	inItemSpan := make([]bool, len(lines))
+	for _, s := range nl.Fences {
+		indent := indentWidth(strings.TrimRight(lines[s.Start], "\r"))
+		if indent == 0 || !underListItem(lines, nl.Mask, s.Start, indent) {
+			continue
+		}
+		if indent >= 4 {
+			for j := s.Start; j < s.End; j++ {
+				inItemSpan[j] = true
+			}
+			continue
+		}
+		for j := s.Start + 1; j < s.End; j++ {
+			if ln := strings.TrimRight(lines[j], "\r"); strings.TrimSpace(ln) != "" && indentWidth(ln) == 0 {
+				p.unsureAt(j)
+				break
+			}
+		}
+	}
+	for i := range lines {
+		if tl.Mask[i] != nl.Mask[i] && !(inItemSpan[i] && tl.Mask[i] == 0) {
+			p.unsureAt(i)
+			break
+		}
+	}
+	return p
+}
+
+// unsureAt records line i as a line the page cannot be read one way from,
+// keeping the earliest.
+func (p *Page) unsureAt(i int) {
+	if p.unsure < 0 || i < p.unsure {
+		p.unsure = i
+	}
+}
+
+// listItemRe is a list item's marker line at any indent: a bullet or a number,
+// then a space or the end of the line.
+var listItemRe = regexp.MustCompile(`^[ \t]*(?:[-*+]|[0-9]{1,9}[.)])(?:[ \t]|$)`)
+
+// underListItem reports whether the line at `at`, indented `indent` columns,
+// sits in a list item: walking up past blank lines, masked lines and indented
+// lines, a list item's marker line indented less than `indent` comes before
+// any other line at column 0.
+func underListItem(lines []string, mask []uint8, at, indent int) bool {
+	for j := at - 1; j >= 0; j-- {
+		ln := strings.TrimRight(lines[j], "\r")
+		if strings.TrimSpace(ln) == "" || mask[j] != 0 {
+			continue
+		}
+		w := indentWidth(ln)
+		if w < indent && listItemRe.MatchString(ln) {
+			return true
+		}
+		if w == 0 {
+			return false
+		}
+	}
+	return false
+}
+
+// liveText is Page.Text over a fence mask Read computed.
+func liveText(lines []string, mask []uint8) []string {
 	out := make([]string, len(lines))
 	in := false
 	for i, raw := range lines {
@@ -543,7 +639,7 @@ func LiveText(lines []string, rule Rule) []string {
 	return out
 }
 
-// blankComments is one line of LiveText: in is whether a comment is open as
+// blankComments is one line of Page.Text: in is whether a comment is open as
 // the line begins, and the second result whether one is open as it ends.
 // Inside a comment the first raw `-->` closes it, as Read reads it; the rest
 // of the line is commentWalk's.

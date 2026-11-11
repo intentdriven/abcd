@@ -624,11 +624,11 @@ func TestMaskCodeSpansHidesEachSpanFromRewrites(t *testing.T) {
 	}
 }
 
-// TestLiveTextReadsWhatThePageSays: a comment that opens and closes on one line
+// TestReadPageReadsWhatThePageSays: a comment that opens and closes on one line
 // is blanked (Mask leaves it live), the text before an opener and after a
 // closer is read at its own offsets, a fenced line is empty, and a comment
 // opener quoted in a code span opens nothing.
-func TestLiveTextReadsWhatThePageSays(t *testing.T) {
+func TestReadPageReadsWhatThePageSays(t *testing.T) {
 	in := []string{
 		"before <!-- one line --> after",
 		"head <!-- opens",
@@ -649,17 +649,54 @@ func TestLiveTextReadsWhatThePageSays(t *testing.T) {
 		"",
 		"`<!--` quoted, still live",
 	}
-	if got := LiveText(in, TopLevel); !reflect.DeepEqual(got, want) {
-		t.Fatalf("LiveText =\n%q\nwant\n%q", got, want)
+	p := ReadPage(in)
+	if !reflect.DeepEqual(p.Text, want) {
+		t.Fatalf("Text =\n%q\nwant\n%q", p.Text, want)
 	}
-	// Under ListNested a fence indented under a list item is a fence; at the
-	// top level it is not.
+	if _, ok := p.Unsure(); ok {
+		t.Fatalf("a page of column-0 fences reads one way")
+	}
+	// A fence indented under a list item is a fence, and the page reads one way.
 	nested := []string{"- item", "", "    ```", "    inside", "    ```", "after"}
-	if got := LiveText(nested, ListNested); got[3] != "" || got[5] != "after" {
-		t.Fatalf("ListNested LiveText = %q, want the nested fence's body empty and the line after it live", got)
+	p = ReadPage(nested)
+	if p.Text[3] != "" || p.Text[5] != "after" {
+		t.Fatalf("Text = %q, want the nested fence's body empty and the line after it live", p.Text)
 	}
-	if got := LiveText(nested, TopLevel); got[3] != "    inside" {
-		t.Fatalf("TopLevel LiveText = %q, want the indented run read as text", got)
+	if l, ok := p.Unsure(); ok {
+		t.Fatalf("a fence under a list item reads one way, got unsure at %d", l)
+	}
+}
+
+// TestReadPageIsUnsureWhereTheListDecidesTheFence: each layout whose fences
+// turn on a list this package does not parse names the first line the
+// readings part on.
+func TestReadPageIsUnsureWhereTheListDecidesTheFence(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want int
+	}{
+		{"an indented run continuing a paragraph", "The design is written\n    ```\n    Said here.\nNext paragraph.\n", 1},
+		{"an indented run after a paragraph", "Text.\n\n    ```\n    Said here.\n    ```\n", 2},
+		{"a list-item fence a column-0 line ends", "- item\n  ```\n  code\nSaid here.\n\n```\nlater\n```\n", 3},
+		{"a nested opener closed nearer the margin", "- item\n\n    ```\n    code\n  ```\n\n## Heading\n- q\n", 5},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			l, ok := ReadPage(lines(c.in)).Unsure()
+			if !ok || l != c.want {
+				t.Fatalf("Unsure = (%d, %v), want (%d, true)", l, ok, c.want)
+			}
+		})
+	}
+	for _, in := range []string{
+		"- item\n  ```\n  code\n  ```\nafter\n",
+		"1. step\n\n   ```\n   code\n   ```\n",
+		"Text.\n\n```\n    indented inside\n```\n",
+	} {
+		if l, ok := ReadPage(lines(in)).Unsure(); ok {
+			t.Fatalf("%q reads one way, got unsure at %d", in, l)
+		}
 	}
 }
 
