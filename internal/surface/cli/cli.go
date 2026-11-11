@@ -1860,6 +1860,18 @@ instead. Plain stdout is then one object carrying that line as systemMessage
 beside the additional context (and sessionTitle when owed), and the --json
 envelope carries it as system_message.
 
+Beside that work, once the root commit is known, one staged session
+transcript is redacted into the store per prompt, on stderr only. It is
+redacted in parts of whole transcript records, and a transcript begun is
+finished at that prompt, part after part: a later part starts until
+` + promptTranscriptBound.String() + ` after abcd's start, under the host's ` + promptHookLimit.String() + `, and none
+starts after that; the parts finished are kept, and the next prompt
+continues where it stopped. The first part always runs, whatever its size,
+and a part has no upper size, so a part that outlasts the host's limit still
+ends the hook without its output, as redacting the whole transcript did, and
+the next prompt starts from that part. One stderr line says what was left, and abcd
+history drain finishes it at once. The hook exits when both are done.
+
 When a stop while the person was present found the session's checklist
 behind the work it owns (abcd hook stop), the next prompt's text carries
 that note once, under a "## CHECKLIST" heading, beside the away block and
@@ -1867,9 +1879,10 @@ outside the dedup ledger.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// The hook's one deadline (C12), set before anything else runs:
-			// the status block is read, rendered and kept shown inside what
-			// the drain leaves of it, and the rules and the memory notes follow.
-			deadline := time.Now().Add(hookBudget)
+			// the status block is read, rendered and kept shown inside it,
+			// and the rules and the memory notes follow.
+			start := time.Now()
+			deadline := start.Add(hookBudget)
 			in, err := readHookInput(cmd)
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable hook payload (%s); injecting nothing\n", termsafe.Sanitize(err.Error()))
@@ -1883,24 +1896,47 @@ outside the dedup ledger.`,
 			}
 			// The LIVE drain (iss-2609090722466403). Everything else in this
 			// verb is the rules loader; this is transcript capture, and it runs
-			// HERE because UserPromptSubmit is the only hook that fires while a
-			// session is still going. Before it, the drain ran at session start
-			// alone, which meant a repository nobody opened again kept its raw
-			// transcripts for as long as the disk lasted — and sub-agent
-			// capture stages DURING a session, so the raw text of a session now
-			// sits on disk while that same session is still running.
+			// from this hook because UserPromptSubmit is the only hook that
+			// fires while a session is still going. Before it, the drain ran at
+			// session start alone, which meant a repository nobody opened again
+			// kept its raw transcripts for as long as the disk lasted — and
+			// sub-agent capture stages DURING a session, so the raw text of a
+			// session now sits on disk while that same session is still running.
 			//
-			// It is placed before the rules work, not after, so that a
-			// rules.json this repository cannot load — the error path below,
-			// which returns early — does not also switch off transcript
-			// redaction. Two unrelated subsystems share this hook; neither may
-			// disable the other.
+			// It starts HERE, right after the root-commit lookup, as it did
+			// when it ran first, but beside the rest of the hook rather than
+			// ahead of it (iss-2611101302324425), and the hook waits for it on
+			// every return after this point, so a rules.json this repository
+			// cannot load (the error path below, which returns early) still
+			// does not switch off transcript redaction. Run ahead of the rest,
+			// a slow drain took the status block's one-second deadline and,
+			// past the host's limit, the whole output, which the host discards
+			// when it ends a hook. Beside it, the drain no longer takes the
+			// status block's deadline: it finishes the transcript it begins,
+			// part after part, starting a later part until
+			// promptTranscriptBound after the binary's start, which sits under
+			// the host's limit, and none after; what it finished is kept for
+			// the next prompt. So a transcript whose drain ended at least the
+			// margin before the host's limit is finished at the same prompt as
+			// when the drain ran first, and the hook's output is delivered when
+			// the part in progress at the bound ends inside the margin. A part
+			// has no upper size and the first runs whatever the time, so a
+			// part that outlasts the host's limit still ends the hook without
+			// its output, as the whole transcript did, and the next prompt
+			// starts from that part.
 			//
 			// Nothing it produces goes to stdout. A UserPromptSubmit hook's
 			// stdout is injected into the session's context, and this drain's
 			// strings are transcript paths and capture errors, which are the
-			// least appropriate text in the program to hand to a model.
-			drained := drainWhileLive(cmd, cwd)
+			// least appropriate text in the program to hand to a model. Its
+			// stderr lines are held until it ends and written after the
+			// hook's own.
+			//
+			// The root-commit lookup it needs is made here, once, and shared
+			// with the away block, the status and the recall (promptRoot).
+			drained := promptRootLookup(cwd)
+			transcripts := startPromptTranscripts(cwd, drained, start)
+			defer transcripts(cmd.ErrOrStderr())
 			// The badge's reset (itd-2609212130146198): a human message after
 			// an admitted question is its answer. Before the rules work, for
 			// the drain's reason: a rules.json that will not load must not
@@ -2170,6 +2206,10 @@ outside the dedup ledger.`,
 		Short: "SessionStart: drain staged transcripts into the store, and warn about an unbootstrapped store or a stale binary",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// The hook's start, as the binary sees it, from which the
+			// drain's bound is counted; the host counts its limit from the
+			// wrapper's start (see promptHookLimit).
+			hookStart := sessionStartNow()
 			// The checklist part's deadline, set before anything else runs:
 			// that part's reads, last, run under what is left of it; the
 			// hook's other reads are not yet bound to it (hook_checklist.go,
@@ -2257,7 +2297,21 @@ outside the dedup ledger.`,
 						"abcd: the transcript store could not be opened (%s); this session will not be captured.",
 						termsafe.Sanitize(fsutil.RedactHome(err.Error()))))
 				}
-				if dr, err := history.Drain(captureRoot(cwd), det.RootSHA, sessionStartDrainBudget); err == nil {
+				// The drain finishes the entries it begins, and starts no part
+				// and no entry once sessionStartTranscriptBound has passed
+				// since the binary started in this hook, under the host's
+				// limit for it.
+				// A panic in it ends the drain alone, as the prompt's step
+				// does: recovered, named by its type, and the hook goes on.
+				dr, fault, err := drainRecovering(hookStart.Add(sessionStartTranscriptBound), captureRoot(cwd), det.RootSHA, sessionStartDrainBudget)
+				if fault != "" {
+					notices = append(notices, fmt.Sprintf(
+						"abcd history: the transcript drain stopped on an internal fault (%s); staged transcripts wait for the next prompt or session start, and `abcd history drain` finishes them.", fault))
+				} else if err == nil {
+					notices = append(notices, drainLeftLines(dr, "this session start's "+sessionStartTranscriptBound.String()+" transcript bound", "the next prompt or session start")...)
+					if l := keepFaultLine(dr, true); l != "" {
+						notices = append(notices, l)
+					}
 					for _, f := range dr.Failed {
 						// Rendered by the shared helper so the permanent and
 						// the retryable failure keep saying different things
@@ -2470,10 +2524,11 @@ const maxTranscriptBytes = 64 << 20 // 64 MiB
 var sessionStartDrainBudget = history.DrainBudget{MaxEntries: 32, MaxBytes: 4 << 20}
 
 // livePromptDrainBudget bounds the drain that runs on every prompt of a live
-// session. It is deliberately TINY: one entry and half a megabyte, which is
-// roughly a third of a second of redaction in the worst case and nothing at all
-// in the ordinary one, because the staging directory is usually empty and the
-// pass then costs a directory listing.
+// session. It is deliberately TINY: one entry, and nothing at all in the
+// ordinary case, because the staging directory is usually empty and the pass
+// then costs a directory listing. A pass always attempts its first entry
+// whatever its size, so the half megabyte bounds nothing at one entry; it is
+// kept so a pass given more entries stays small.
 //
 // One entry, not four, because the cost here is paid by a human waiting to be
 // answered, and it is paid on EVERY prompt rather than once at a session start.
@@ -2485,70 +2540,209 @@ var sessionStartDrainBudget = history.DrainBudget{MaxEntries: 32, MaxBytes: 4 <<
 // to bound a stall, not to clear a backlog in one go.
 var livePromptDrainBudget = history.DrainBudget{MaxEntries: 1, MaxBytes: 512 << 10}
 
-// drainWhileLive runs one small drain pass from the UserPromptSubmit hook and
-// reports it out of band.
+// The host's limits on the two hooks that drain staged transcripts, as
+// hooks/hooks.json declares them (a test reads that file, so the two cannot
+// drift), and the margin each drain leaves under its hook's limit
+// (iss-2611101302324425).
 //
-// It resolves the repository's key with gitutil.RootCommit rather than
-// ahoy.Detect. Detect is the right call at a session start, where it also
-// answers install-state questions and its cost is paid once; on a per-prompt
-// hook it would run a dozen gap probes to obtain one field. RootCommit is the
-// single git call that field actually needs.
-//
-// EVERY output goes to stderr and nothing to stdout — see the call site. A
-// failure to drain is never a failure of the prompt: the hook exits 0
-// whatever happened here, because a transcript backlog must not be able to
-// wedge a session. What it returns is only the root-commit lookup it made,
-// for the memory recall and the status block to reuse (promptRoot), so one prompt
-// spawns that full-history rev-list once. That lookup is bounded (boundedRootCommit): a
-// git that does not answer in time drains nothing this turn, says so on
-// stderr, and leaves the recall's tied notes out.
-func drainWhileLive(cmd *cobra.Command, cwd string) rootLookup {
+// A drain finishes the entry it begins, part after part, and starts no part
+// and no entry once its bound, the limit less the margin, has passed since
+// the binary's start; what it finished is kept for the next pass. The first
+// part of an entry runs whatever the time, and a part has no upper size (one
+// long transcript record is one part), so a part that outlasts the host's
+// limit still ends the hook without its output, as the whole transcript did,
+// and the next pass starts from that part. The margin is what must still fit
+// after the bound: the end of the part in progress, the records lock and the
+// record write, the hook's own output, and the time the host's clock ran
+// before the binary started. The bound counts from the binary's start, while
+// the host counts from the wrapper's (hooks/user-prompt-submit.sh and its
+// session-start sibling), so the margin assumes the wrapper started the
+// binary well inside it; a first run that downloads the binary, or the
+// dogfood route's build check, is outside that assumption, and a drain that
+// uses its whole bound then can still lose the hook's output. The session
+// start's margin also covers the work that follows its drain (the backlog
+// survey and the notices). A margin larger than this would leave unfinished,
+// at that prompt, a transcript the drain finished in its last seconds when it
+// had no bound; a smaller one would let the host end the hook and discard its
+// output.
+const (
+	promptHookLimit              = 120 * time.Second
+	promptTranscriptMargin       = 10 * time.Second
+	sessionStartHookLimit        = 240 * time.Second
+	sessionStartTranscriptMargin = 20 * time.Second
+)
+
+// promptTranscriptBound and sessionStartTranscriptBound are how long after
+// the binary's start in its hook each drain may still start a part or an
+// entry. Vars only so a test can shorten them.
+var (
+	promptTranscriptBound       = promptHookLimit - promptTranscriptMargin
+	sessionStartTranscriptBound = sessionStartHookLimit - sessionStartTranscriptMargin
+)
+
+// sessionStartNow reads the session-start hook's start; a test replaces it.
+var sessionStartNow = time.Now
+
+// drainStaged is the drain the hooks run; a test replaces it to stand in for
+// a slow one, or one that panics or meets a fault.
+var drainStaged = history.DrainContext
+
+// drainRecovering runs drainStaged under a deadline, recovering a panic in
+// it: fault is then the panic's type, never its value, which could quote the
+// text being redacted.
+func drainRecovering(deadline time.Time, repoRoot, rootSHA string, budget history.DrainBudget) (dr history.DrainResult, fault string, err error) {
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	defer func() {
+		if r := recover(); r != nil {
+			dr, fault, err = history.DrainResult{}, fmt.Sprintf("%T", r), nil
+		}
+	}()
+	dr, err = drainStaged(ctx, repoRoot, rootSHA, budget)
+	return dr, "", err
+}
+
+// promptRootLookup resolves the repository's key with gitutil.RootCommit
+// rather than ahoy.Detect. Detect is the right call at a session start, where
+// it also answers install-state questions and its cost is paid once; on a
+// per-prompt hook it would run a dozen gap probes to obtain one field.
+// RootCommit is the single git call that field actually needs, and its result
+// is shared by the away block, the status, the recall and the drain, so one
+// prompt spawns that full-history rev-list once. The lookup is bounded
+// (boundedRootCommit): a git that does not answer in time drains nothing this
+// turn and leaves the recall's tied notes out.
+func promptRootLookup(cwd string) rootLookup {
 	if cwd == "" {
 		return rootLookup{}
 	}
 	rootSHA, rootErr := boundedRootCommit(cwd)
-	looked := rootLookup{sha: rootSHA, err: rootErr, asked: true}
-	if rootErr != nil {
+	return rootLookup{sha: rootSHA, err: rootErr, asked: true}
+}
+
+// startPromptTranscripts starts the prompt's transcript step (drainWhileLive)
+// beside the rest of the hook, under a deadline promptTranscriptBound after
+// start, the binary's start in this hook. It returns the wait: it blocks until
+// the step has ended, then writes what the step said to w. A panic in the step ends the
+// step alone: it is recovered, named in one line, and the hook goes on to exit
+// 0 with its own output, as it does whatever else the step meets.
+func startPromptTranscripts(cwd string, looked rootLookup, start time.Time) (wait func(w io.Writer)) {
+	var said bytes.Buffer
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() {
+			if r := recover(); r != nil {
+				// The fault's type only: its value could quote the text
+				// being redacted.
+				diagnosticLine(&said, "abcd history: the transcript step stopped on an internal fault (%T); staged transcripts wait for the next prompt, and `abcd history drain` finishes them", r)
+			}
+		}()
+		ctx, cancel := context.WithDeadline(context.Background(), start.Add(promptTranscriptBound))
+		defer cancel()
+		drainWhileLive(ctx, &said, cwd, looked)
+	}()
+	return func(w io.Writer) {
+		<-done
+		_, _ = w.Write(said.Bytes())
+	}
+}
+
+// drainWhileLive runs one small drain pass from the UserPromptSubmit hook,
+// under ctx, and reports it on w.
+//
+// EVERY output goes to stderr and nothing to stdout — see the call site. A
+// failure to drain is never a failure of the prompt: the hook exits 0
+// whatever happened here, because a transcript backlog must not be able to
+// wedge a session.
+//
+// It runs whenever the repository has a store, staged transcripts or not: a
+// pass with nothing staged costs a listing and the sweep of parts whose staged
+// file is gone, and builds no scanner.
+func drainWhileLive(ctx context.Context, w io.Writer, cwd string, looked rootLookup) {
+	if cwd == "" || !looked.asked {
+		return
+	}
+	if looked.err != nil {
 		// git did not answer, in time or at all: nothing is drained this
 		// turn, and the staged transcripts wait for the next one.
-		diagnosticLine(cmd.ErrOrStderr(), "abcd history: this repository's root commit: %s; draining no staged transcripts this turn",
-			fsutil.RedactHome(rootErr.Error()))
-		return looked
+		diagnosticLine(w, "abcd history: this repository's root commit: %s; draining no staged transcripts this turn",
+			fsutil.RedactHome(looked.err.Error()))
+		return
 	}
+	rootSHA := looked.sha
 	if rootSHA == "" {
-		return looked // not a git repo with commits: nothing here has a store
+		return // not a git repo with commits: nothing here has a store
 	}
-	// Look before spending: the ordinary prompt has nothing staged, and this
-	// listing is one readdir of a usually-empty directory, so the redaction
-	// pass and its scanner construction are never entered on a turn with
-	// nothing to drain. The repo root is resolved once and shared with the
-	// drain below, because every store verb now takes it.
-	repoRoot := captureRoot(cwd)
-	if staged, lerr := history.ListStaged(repoRoot, rootSHA); lerr == nil && len(staged) == 0 {
-		return looked
-	}
-	dr, err := history.Drain(repoRoot, rootSHA, livePromptDrainBudget)
+	dr, err := drainStaged(ctx, captureRoot(cwd), rootSHA, livePromptDrainBudget)
 	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(),
+		fmt.Fprintf(w,
 			"abcd history: could not drain staged transcripts this turn (%s); they hold UNREDACTED text until one succeeds.\n",
 			termsafe.Sanitize(fsutil.RedactHome(err.Error())))
-		return looked
+		return
 	}
 	for _, f := range dr.Failed {
-		fmt.Fprintln(cmd.ErrOrStderr(), drainFailureNotice(f))
+		fmt.Fprintln(w, drainFailureNotice(f))
 	}
 	if dr.Overdue > 0 {
-		fmt.Fprintf(cmd.ErrOrStderr(),
+		fmt.Fprintf(w,
 			"abcd history: %d staged transcript(s) here are older than %s and still hold UNREDACTED text; run `abcd history drain`.\n",
 			dr.Overdue, history.StagedTTL)
 	}
 	if len(dr.Captured) > 0 {
-		fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: redacted and stored %d staged transcript(s) mid-session.\n", len(dr.Captured))
+		fmt.Fprintf(w, "abcd history: redacted and stored %d staged transcript(s) mid-session.\n", len(dr.Captured))
+	}
+	for _, l := range drainLeftLines(dr, "the prompt's "+promptTranscriptBound.String()+" transcript bound", "the next prompt") {
+		fmt.Fprintln(w, l)
+	}
+	if l := keepFaultLine(dr, true); l != "" {
+		fmt.Fprintln(w, l)
 	}
 	for _, l := range scanGapLines(dr.ScanGap) {
-		fmt.Fprintln(cmd.ErrOrStderr(), "abcd history: "+l)
+		fmt.Fprintln(w, "abcd history: "+l)
 	}
-	return looked
+}
+
+// drainLeftLines says what a drain pass under a deadline left part-redacted:
+// one line naming each transcript and how much of it is done, and the verb
+// that finishes the work outside the hook. Nothing when nothing was left.
+func drainLeftLines(dr history.DrainResult, budget, next string) []string {
+	if len(dr.Unfinished) == 0 {
+		return nil
+	}
+	var left []string
+	for _, u := range dr.Unfinished {
+		who := termsafe.Sanitize(u.SessionID)
+		if u.AgentID != "" {
+			who += " (agent " + termsafe.Sanitize(u.AgentID) + ")"
+		}
+		left = append(left, fmt.Sprintf("session %s with %s of %s redacted and kept", who, mib(u.Done), mib(u.Total)))
+	}
+	return []string{fmt.Sprintf(
+		"abcd history: %s left %s; %s continues from there, and `abcd history drain` finishes now.",
+		budget, strings.Join(left, ", "), next)}
+}
+
+// keepFaultLine says, once, that a drain pass could not keep a redacted part
+// and finished that transcript in memory; empty when it met no such fault.
+// bounded is whether the pass ran under a hook's bound, which it then went
+// past when it had to, since a later pass could have used none of it; the
+// drain verb has no bound, so its line names none.
+func keepFaultLine(dr history.DrainResult, bounded bool) string {
+	if dr.KeepFault == "" {
+		return ""
+	}
+	tail := "; a drain a hook stops could not continue it later."
+	if bounded {
+		tail = ", past the bound when it had to be, since a later pass could not continue it."
+	}
+	return fmt.Sprintf(
+		"abcd history: a redacted transcript part could not be kept (%s); the transcript that met it was finished in memory instead%s",
+		termsafe.Sanitize(fsutil.RedactHome(dr.KeepFault)), tail)
+}
+
+// mib renders a byte count in MiB to one decimal.
+func mib(n int64) string {
+	return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
 }
 
 // drainFailureNotice renders one DrainFailure as the operator-facing sentence,

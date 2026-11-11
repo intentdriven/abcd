@@ -23,6 +23,7 @@
 package history
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -189,18 +190,35 @@ type Redacted struct {
 // refusal on a residual is a *RedactionResidualError. label names the text in
 // the scanner's findings.
 func Redact(repoRoot, text, label string) (Redacted, error) {
-	// Stage one — sanitise on write, using the per-repo merged scanner.
-	sc, err := scanner.New(repoRoot)
+	sc, err := redactionScanner(context.Background(), repoRoot)
 	if err != nil {
-		return Redacted{}, fmt.Errorf("history: scanner init: %w", err)
+		return Redacted{}, err
+	}
+	return redactWith(sc, text, label)
+}
+
+// redactionScanner builds the per-repo merged scanner Redact runs, once, so a
+// caller that redacts a transcript in parts (resumable.go) builds it once per
+// pass rather than once per part. ctx bounds the identity probe's git calls; a
+// probe cut short leaves the scanner unavailable, which refuses below.
+func redactionScanner(ctx context.Context, repoRoot string) (*scanner.Scanner, error) {
+	// Stage one — sanitise on write, using the per-repo merged scanner.
+	sc, err := scanner.NewContext(ctx, repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("history: scanner init: %w", err)
 	}
 	// Fail closed on a degraded scanner. ScanText/Redact cannot signal the
 	// unavailable state in-band (only ScanBundle does), so without this guard a
 	// broken per-repo pii.json would silently redact with a weakened pattern set
 	// and still report the write as clean — the exact fail-open this store forbids.
 	if unavail, reason := sc.Unavailable(); unavail {
-		return Redacted{}, fmt.Errorf("history: refusing to redact with a degraded scanner: %s", reason)
+		return nil, fmt.Errorf("history: refusing to redact with a degraded scanner: %s", reason)
 	}
+	return sc, nil
+}
+
+// redactWith is Redact's two stages over text with a scanner already built.
+func redactWith(sc *scanner.Scanner, text, label string) (Redacted, error) {
 	// The scanner carries the repository's opt-in gitleaks augmenter (wired at
 	// the composition root), so findings are the native ones plus gitleaks',
 	// deduplicated. A run that failed degrades the scanner, and the pass
@@ -261,9 +279,26 @@ func Redact(repoRoot, text, label string) (Redacted, error) {
 // and refuses anything on the path that is not a real directory. It never
 // touches ahoy's index or meta.
 func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureResult, error) {
+	meta, tdir, err := prepareCapture(repoRoot, rootSHA, meta)
+	if err != nil {
+		return CaptureResult{}, err
+	}
+	var res CaptureResult
+	err = withRepoLock(tdir, func() error {
+		var err error
+		res, err = captureLocked(repoRoot, rootSHA, tdir, raw, meta, meta.SessionID, meta.Kind)
+		return err
+	})
+	return res, err
+}
+
+// prepareCapture is the boundary validation every capture runs before it
+// redacts anything, Capture's and the resumable drain's alike: the root SHA,
+// the settled labels, the lineage, and the store's records directory.
+func prepareCapture(repoRoot, rootSHA string, meta CaptureMeta) (CaptureMeta, string, error) {
 	// Boundary validation — external inputs.
 	if !rootSHARe.MatchString(rootSHA) {
-		return CaptureResult{}, errors.New(rootSHAErrMsg)
+		return meta, "", errors.New(rootSHAErrMsg)
 	}
 	// The labels are settled before they are judged: a pre-split fused kind is
 	// recorded under the two labels it meant, and a native capture that names
@@ -271,57 +306,53 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 	var err error
 	meta.Kind, meta.Tool, err = sourceLabels(meta.Kind, meta.Tool)
 	if err != nil {
-		return CaptureResult{}, err
+		return meta, "", err
 	}
 	if err := meta.validate(); err != nil {
-		return CaptureResult{}, err
+		return meta, "", err
 	}
-	sessionID, kind := meta.SessionID, meta.Kind
-
 	store, err := Resolve(repoRoot, rootSHA)
 	if err != nil {
-		return CaptureResult{}, err
+		return meta, "", err
 	}
-	tdir := store.Records
+	return meta, store.Records, nil
+}
 
-	var res CaptureResult
-	err = withRepoLock(tdir, func() error {
-		var err error
-		res, err = captureLocked(repoRoot, rootSHA, tdir, raw, meta, sessionID, kind)
-		return err
-	})
-	return res, err
+// sourceDigest is the source SHA a record is keyed on.
+func sourceDigest(raw []byte) string {
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+// alreadyStored is the idempotency check: re-capturing the SAME source for
+// the SAME session, agent and kind is a no-op. Keying on the source SHA alone
+// would silently attribute a second, distinct session that happens to produce
+// byte-identical bytes to the first session's record — the second session
+// would then have no record at all while Capture reports success. The agent id
+// is in the key for exactly the same reason one directory down: two sub-agents
+// of ONE session can produce byte-identical transcripts (two reviewers handed
+// the same file, both answering "no findings"), and without it the second
+// collapses into the first's record and is lost.
+func alreadyStored(existing []Record, sourceSHA string, meta CaptureMeta) (Record, bool) {
+	for _, r := range existing {
+		if r.SourceSHA256 == sourceSHA && r.SessionID == meta.SessionID &&
+			r.AgentID == meta.AgentID && r.SourceKind == meta.Kind && r.SourceTool == meta.Tool {
+			return r, true
+		}
+	}
+	return Record{}, false
 }
 
 // captureLocked is Capture's work under the records lock: the idempotency
 // check, the two-stage redaction and the write.
 func captureLocked(repoRoot, rootSHA, tdir string, raw []byte, meta CaptureMeta, sessionID, kind string) (CaptureResult, error) {
-	sum := sha256.Sum256(raw)
-	sourceSHA := hex.EncodeToString(sum[:])
-	// The per-run context stamps are read off the RAW transcript, before
-	// redaction: a stamp carries no secret, and scanning what the store keeps
-	// would make the record's metadata depend on what a redactor happened to
-	// touch (adr-2609021016275803).
-	stamps := sessionkind.Find(raw)
-
-	// Idempotency: re-capturing the SAME source for the SAME session, agent and
-	// kind is a no-op. Keying on the source SHA alone would silently attribute a
-	// second, distinct session that happens to produce byte-identical bytes to the
-	// first session's record — the second session would then have no record at all
-	// while Capture reports success. The agent id is in the key for exactly the
-	// same reason one directory down: two sub-agents of ONE session can produce
-	// byte-identical transcripts (two reviewers handed the same file, both
-	// answering "no findings"), and without it the second collapses into the
-	// first's record and is lost.
+	sourceSHA := sourceDigest(raw)
 	existing, err := listRecords(tdir)
 	if err != nil {
 		return CaptureResult{}, err
 	}
-	for _, r := range existing {
-		if r.SourceSHA256 == sourceSHA && r.SessionID == sessionID &&
-			r.AgentID == meta.AgentID && r.SourceKind == kind && r.SourceTool == meta.Tool {
-			return CaptureResult{Record: r, Wrote: false}, nil
-		}
+	if r, ok := alreadyStored(existing, sourceSHA, meta); ok {
+		return CaptureResult{Record: r, Wrote: false}, nil
 	}
 
 	// The lineage scalars are scanned WITH the body. Every one of them is
@@ -346,7 +377,31 @@ func captureLocked(repoRoot, rootSHA, tdir string, raw []byte, meta CaptureMeta,
 	if err != nil {
 		return CaptureResult{}, err
 	}
-	findings, redacted, scanGap := red.Findings, red.Text, red.ScanGap
+	secrets, homePaths := countBuckets(red.Findings)
+	// The per-run context stamps are read off the RAW transcript, before
+	// redaction: a stamp carries no secret, and scanning what the store keeps
+	// would make the record's metadata depend on what a redactor happened to
+	// touch (adr-2609021016275803).
+	return commitRedacted(rootSHA, tdir, existing, meta, sourceSHA, sessionkind.Find(raw),
+		redactedText{Text: red.Text, Secrets: secrets, HomePaths: homePaths, ScanGap: red.ScanGap})
+}
+
+// redactedText is a framed transcript after both redaction stages passed, with
+// the audit counts its findings rolled into: what commitRedacted turns into a
+// record, whether it was redacted in one pass or assembled from parts.
+type redactedText struct {
+	Text               string
+	Secrets, HomePaths int
+	ScanGap            string
+}
+
+// commitRedacted is the half of a capture after redaction, run under the
+// records lock: split the lineage frame back off, settle supersession against
+// the records already stored, and write the record atomically. existing is the
+// listing taken under the same lock.
+func commitRedacted(rootSHA, tdir string, existing []Record, meta CaptureMeta, sourceSHA string, stamps []string, red redactedText) (CaptureResult, error) {
+	sessionID, kind := meta.SessionID, meta.Kind
+	redacted, scanGap, secrets, homePaths := red.Text, red.ScanGap, red.Secrets, red.HomePaths
 
 	// Split the redacted scalars back off the redacted body. A frame that did not
 	// survive intact is refused rather than guessed at: what would land otherwise
@@ -393,7 +448,6 @@ func captureLocked(repoRoot, rootSHA, tdir string, raw []byte, meta CaptureMeta,
 		return CaptureResult{Record: *prior, Wrote: false, ScanGap: scanGap}, nil
 	}
 
-	secrets, homePaths := countBuckets(findings)
 	capturedAt := time.Now().UTC()
 	name := recordFilename(capturedAt, sessionID, meta.AgentID)
 	path := filepath.Join(tdir, name)

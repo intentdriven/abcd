@@ -157,6 +157,12 @@ func (s *Scanner) augDegraded() string {
 // receipt; launch fails closed on it through ScanBundle.
 func (s *Scanner) AugmenterGap() string { return s.augState.gap }
 
+// Augmented reports whether an augmenter runs inside ScanText. An augmenter
+// reads the whole text it is handed and may match across lines, so a caller
+// that would scan a text in parts asks this first: with an augmenter, a part
+// boundary could hide a match that the whole text shows.
+func (s *Scanner) Augmented() bool { return s.aug != nil }
+
 // augment runs the augmenter over text and returns its findings, sanitised,
 // or nil when there is no augmenter or the scanner is already degraded by it.
 // A run that fails, or a report the scanner cannot place, degrades the

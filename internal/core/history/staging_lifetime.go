@@ -323,7 +323,7 @@ type DiscardResult struct {
 
 // Discard permanently deletes ONE staged or quarantined raw transcript, named
 // by its bare filename, together with the sidecar and reason file describing
-// it.
+// it and the redacted parts a drain kept of it (resumable.go).
 //
 // This is the only code path in abcd that destroys a transcript nothing has
 // stored, and it exists because quarantine without an exit is a room with no
@@ -389,6 +389,9 @@ func Discard(repoRoot, rootSHA, name string) (DiscardResult, error) {
 					if err := remove(); err != nil {
 						return err
 					}
+					// The parts a drain kept of this file go with it, under
+					// the same lock, so a discard leaves nothing of it.
+					removeProgress(sdir, filepath.Join(sdir, name))
 					retireStagingLock(sdir, key)
 					return nil
 				})
