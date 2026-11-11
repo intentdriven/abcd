@@ -519,12 +519,23 @@ checks; the judgement is yours, as the host.
     from it, and reads a spec without it as carrying no footprint.
     A question the spec leaves open goes under its own `## Open Questions`,
     as an intent's does: `abcd intent ready` reports the intent not ready
-    (`spec_body`) while an item there is not marked `resolved:` or
-    `**Deferred**`, and while the spec has a sentence opening "Not READY" or
-    a bold "Open:" label outside that section, which record-lint's
-    `spec_unsettled` rule refuses in an open spec. An intent the design waits
-    on goes in the spec's own `blocked_by`, the field an intent carries, and
-    the build refuses the run until it ships.
+    (`spec_body`) while the section, a sub-heading of it included, holds an
+    item that is not settled (marked `resolved:` or `**Deferred**`, or under
+    a section opening `_All resolved …_`), and while the spec has a sentence
+    opening "Not READY" or "NOT READY" (at a line's start after any
+    blockquote, heading `#`, list marker, task box `[ ]`, emphasis or opening
+    bracket, after a ".", "!", "?" or ":", after an opening bracket, or with a
+    line break between the two words), a bold "Open:" label outside that
+    section (`**Open:**`, `**Open**:`, `__Open:__`, or the same with
+    "question(s)", "point(s)" or "design question(s)" after the word, in any letter case), or a
+    fence or HTML comment that never closes; record-lint's `spec_unsettled`
+    rule refuses those three in an open spec. The frontmatter, code, fences
+    (one indented under a list item included) and comments are not read, so
+    a phrase quoted rather than said goes in a code span. A closed spec, and
+    an intent in `shipped/`, `superseded/` or `disciplines/`, is not judged.
+    An intent the design waits on goes in the spec's own `blocked_by`;
+    `abcd intent ready` does not report it, and the build refuses the run
+    until that intent is settled.
 12. Re-run `abcd intent ready <itd-N>` and report READY to the user.
 
 ### In a plain Terminal
@@ -891,7 +902,8 @@ cannot ship before them) and `builds_on` (it is cheaper or better if they exist
 first). The build's pre-start check refuses an intent whose `blocked_by`, or whose
 open spec's `blocked_by`, names one not yet settled: a blocker is settled when it is shipped or a discipline,
 or when its supersession chain ends at a shipped intent, a discipline or an
-accepted decision. Record-lint's edge rules read both lists. `edge` is the verb
+accepted decision. Record-lint's edge rules read both of an intent's lists; a
+spec's `blocked_by` is read by the build's check alone. `edge` is the verb
 that writes them, the intent counterpart of `capture link`:
 
 ```bash

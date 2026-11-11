@@ -150,9 +150,17 @@ pass:
   above.
 - `ready` — the intent is READY: planned, its criteria written, its spec linked
   and written (the same gate `/abcd:intent` reports). A spec saying it is not
-  ready is not written: an open item under its own `## Open Questions`, a
-  sentence opening "Not READY", or a bold "Open:" label outside that section
-  refuses the run, naming the line.
+  ready fails this check: an open item under its own `## Open Questions` or a
+  sub-heading of it (named by its text); a sentence opening "Not READY" or
+  "NOT READY" anywhere in its body, at a line's start after any blockquote,
+  heading `#`, list marker, task box `[ ]`, emphasis or opening bracket, after
+  a ".", "!", "?" or ":", after an opening bracket, or with a line break
+  between the two words; a bold "Open:" label outside that section
+  (`**Open:**`, `**Open**:`, `__Open:__`, or the same with "question(s)",
+  "point(s)" or "design question(s)" after the word, in any letter case); or a fence or HTML
+  comment that never closes (each named by its line). The frontmatter, code,
+  fences (one indented under a list item included) and comments are not read,
+  so a phrase quoted rather than said goes in a code span.
 - `open_questions` — no open question under `## Open Questions`: every list
   item there counts unless the section opens with an italic `_All resolved …_`
   line or the item is explicitly marked resolved or deferred (`**Deferred**`,

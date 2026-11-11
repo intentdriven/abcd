@@ -109,7 +109,7 @@ const maxIntentBytes = 256 * 1024
 //     repository's own rule takes the issue, as `abcd drain` reads it) and
 //     peers (no peer holds it out of open/, and no session claims it).
 //   - ready: the implement-readiness gate (intent.Ready) — planned, criteria,
-//     the spec linked and written, a spec saying it is not ready being unwritten
+//     the spec linked and written, and the spec not saying it is not ready
 //     (spec.Unsettled, iss-2611101318042398). Its advisory rows stay advisory
 //     here.
 //   - open_questions: no open question under `## Open Questions`

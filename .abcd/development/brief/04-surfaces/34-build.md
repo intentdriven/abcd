@@ -48,10 +48,22 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   brief is the issue with its remedy as the work.
 - **ready** — the implement-readiness gate the intent verb reports: planned,
   criteria written, the spec linked both ways and written past its stub. Its
-  advisory rows stay advisory. A spec that says it is not ready is not
-  written: an open item under its own `## Open Questions`, a sentence opening
-  "Not READY", or a bold "Open:" label outside that section refuses, naming
-  the line (iss-2611101318042398).
+  advisory rows stay advisory. A spec saying it is not ready fails this
+  check (iss-2611101318042398): an open item under its own `## Open Questions`
+  or a sub-heading of it (named by its text); a sentence opening "Not READY"
+  or "NOT READY" anywhere in its body, at a line's start after any
+  blockquote, heading `#`, list marker, task box `[ ]`, emphasis or opening
+  bracket, after a ".", "!", "?" or ":", after an opening bracket, or with a
+  line break between the two words; a bold "Open:" label outside that
+  section (`**Open:**`, `**Open**:`, `__Open:__`, or the same with
+  "question(s)", "point(s)" or "design question(s)" after the word, in any letter case); or a
+  fence or HTML comment that never closes (each named by its line). The
+  frontmatter, code, fences (one indented under a list item included) and
+  comments are not read, so a phrase quoted rather than said goes in a code
+  span. A closed spec, and a record in `shipped/`, `superseded/` or
+  `disciplines/`, is not judged. The check is read when a run starts and not
+  again for a run in flight: a spec that gains an open question later does
+  not stop a run already started.
 - **open questions** — no open question under the record's `## Open Questions`.
   The reader fails closed and knows the record's two settled markers: a section
   that opens with an italic `_All resolved …_` line (or `_All four resolved …_`)
