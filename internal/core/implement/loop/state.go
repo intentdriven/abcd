@@ -1332,17 +1332,26 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 // readListedState is readStateIn for a run runIDs listed: the listing asked
 // git once for every run beneath it, so a loop over many runs asks no more.
 func readListedState(root *os.Root, runID string) (State, error) {
+	st, _, err := readListedStated(root, runID)
+	return st, err
+}
+
+// readListedStated is readListedState with the version the file states, as
+// decodeState returns it and before an older version is read as this abcd's:
+// the returned State always says SchemaVersion, so a caller that must know
+// whose file it holds (settlesHere) asks this.
+func readListedStated(root *os.Root, runID string) (State, int, error) {
 	rel := StateRelPath(runID)
 	data, err := fsutil.ReadGuardedInRoot(root, rel, maxStateBytes)
 	if errors.Is(err, fs.ErrNotExist) {
-		return State{}, refuse("state", "", "", "no run "+runID+" in this checkout",
+		return State{}, 0, refuse("state", "", "", "no run "+runID+" in this checkout",
 			"name a run `abcd implement status` lists, or start one with `abcd build <itd-N>`")
 	}
 	if err != nil {
 		// A symlinked file or run directory, or one the filesystem will not
 		// hand over, fails closed in the refusal shape: it is not a file the
 		// loop wrote.
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s cannot be read as the run's state: %v", rel, err),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s cannot be read as the run's state: %v", rel, err),
 			"the loop writes a regular file in a real directory; restore that, or remove the run directory "+runRel(runID))
 	}
 	// One strict decode, the lane receipt's: a repeated key, a field State
@@ -1358,93 +1367,94 @@ func readListedState(root *os.Root, runID string) (State, error) {
 			if sr.Remedy == "" {
 				sr.Remedy = "the loop is the file's only writer; restore it or remove the run directory " + runRel(runID)
 			}
-			return State{}, sr
+			return State{}, 0, sr
 		}
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s does not parse as a run state: %v", rel, err),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s does not parse as a run state: %v", rel, err),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
+	stated := st.SchemaVersion
 	switch {
 	case st.SchemaVersion == schemaVersionUnpaced && st.Pace != nil:
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a pace, which version %d never wrote", rel, st.SchemaVersion, schemaVersionUnpaced),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a pace, which version %d never wrote", rel, st.SchemaVersion, schemaVersionUnpaced),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case (st.SchemaVersion == schemaVersionUnpaced || st.SchemaVersion == schemaVersionUnpicked) && st.picked():
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a pick, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a pick, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnvalidated && st.validated():
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a validation, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a validation, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUncapped && st.capped():
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a fix-round cap or a hand-back, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a fix-round cap or a hand-back, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnlanded && st.landed():
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a landing, a verified receipt or a captured transcript, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a landing, a verified receipt or a captured transcript, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnrouted && st.routed():
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a fallback or a runner's route, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a fallback or a runner's route, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnkept && st.kept() != "":
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.kept(), st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.kept(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnreserved && st.ReservedAt != nil:
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a reservation, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a reservation, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnanswered && st.answered() != "":
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.answered(), st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.answered(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnrefused && st.refused() != "":
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.refused(), st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.refused(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnmetered && st.metered() != "":
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries both sides of %s, which version %d never wrote", rel, st.SchemaVersion, st.metered(), st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries both sides of %s, which version %d never wrote", rel, st.SchemaVersion, st.metered(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnreviewed && st.Review != nil:
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a review set, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a review set, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnpinned && st.overridden() != "":
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.overridden(), st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.overridden(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnpinned && st.rounded() != "":
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.rounded(), st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.rounded(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnpinned && st.pinned() != "":
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.pinned(), st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.pinned(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnplanned && st.autoPlanned() != "":
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.autoPlanned(), st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.autoPlanned(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnpaused && st.pausedOnRunner() != "":
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.pausedOnRunner(), st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.pausedOnRunner(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnspent && st.spent() != "":
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.spent(), st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.spent(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnkeyed && st.keyed() != "":
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.keyed(), st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.keyed(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnshown && st.shown() != "":
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.shown(), st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.shown(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnprofiled && st.Profile != "":
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a profile, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a profile, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnsettled && st.settledSpec() != "":
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.settledSpec(), st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.settledSpec(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnlocated && st.located() != "":
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.located(), st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.located(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnrenamed && st.renamed() != "":
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.renamed(), st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.renamed(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnadmitted && st.Admitted != nil:
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries an admission, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries an admission, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnrenamed:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step` and its class labels renamed
 		// here; the next write carries it, and this read writes nothing.
 		if !st.renameClasses() {
-			return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a class label other than top, middle, below and smallest, "+
+			return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a class label other than top, middle, below and smallest, "+
 				"the names version %d wrote (the value is not repeated here)", rel, st.SchemaVersion, st.SchemaVersion),
 				"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 		}
@@ -1455,11 +1465,11 @@ func readListedState(root *os.Root, runID string) (State, error) {
 		// writes nothing.
 		st.SchemaVersion = SchemaVersion
 	case st.SchemaVersion != SchemaVersion:
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d to %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d to %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),
 			"run the abcd that wrote it")
 	}
 	if st.Profile != "" && !runner.PlainProfileName(st.Profile) {
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s carries a profile that is no plain name (the value is not repeated here)", rel),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s carries a profile that is no plain name (the value is not repeated here)", rel),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	// The admission reaches a commit message as its trailer, so a hand edit
@@ -1467,19 +1477,19 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	// refusal does not echo it.
 	if st.Admitted != nil {
 		if why := st.Admitted.Check(); why != "" {
-			return State{}, refuse("state", "", "", rel+" carries an admission the loop never writes: "+why,
+			return State{}, 0, refuse("state", "", "", rel+" carries an admission the loop never writes: "+why,
 				"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 		}
 	}
 	if st.RunID != runID {
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s names run %q, not the run it is stored under", rel, st.RunID),
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s names run %q, not the run it is stored under", rel, st.RunID),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	// The stored pace names the layers and origins the resolver writes, so no
 	// other text reaches `implement record --json`, a start's payload or a
 	// resume's refusal; the refusal does not echo it (iss-2610121206163414).
 	if st.Pace != nil && !st.Pace.written() {
-		return State{}, refuse("state", "", "", rel+" carries a pace the loop never writes: a setting whose layer is not "+
+		return State{}, 0, refuse("state", "", "", rel+" carries a pace the loop never writes: a setting whose layer is not "+
 			strings.Join(paceLayers, ", ")+", or whose origin carries a control, bidi or zero-width rune",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
@@ -1487,7 +1497,7 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	// classes are ones the map carries and its layers the resolver's, so a
 	// hand edit never reaches a reviewer's model or a --json stream.
 	if st.Review != nil && !st.Review.written() {
-		return State{}, refuse("state", "", "", rel+" carries a review set the loop never writes: a role, class or layer it does not name, "+
+		return State{}, 0, refuse("state", "", "", rel+" carries a review set the loop never writes: a role, class or layer it does not name, "+
 			"a list past its ceiling, or a model or origin carrying a control, bidi or zero-width rune",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
@@ -1499,7 +1509,7 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	// runner's request or an awaiting payload with a model the run did not
 	// resolve for that class.
 	if !st.reviewersWritten() {
-		return State{}, refuse("state", "", "", rel+" carries a reviewer the loop never writes: an index past its role's reviewers, "+
+		return State{}, 0, refuse("state", "", "", rel+" carries a reviewer the loop never writes: an index past its role's reviewers, "+
 			"a class or model other than the one the run's review set names for that reviewer, "+
 			"or a model status other than asked, reported, or unsent on a review the reviewer route answered",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
@@ -1508,25 +1518,25 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	// return: a plain repository path and a line each, so a hand edit never
 	// reaches a --json stream with text the loop did not read as a location.
 	if !st.findingsWritten() {
-		return State{}, refuse("state", "", "", rel+" carries located findings the loop never writes: on a validator with no recorded reviewer verdict, "+
+		return State{}, 0, refuse("state", "", "", rel+" carries located findings the loop never writes: on a validator with no recorded reviewer verdict, "+
 			"more or fewer than its count, a file that is no plain repository path, a status where no fix report answered it, or reviewers citing it other than the round's",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	if !st.handBacksWritten() {
-		return State{}, refuse("state", "", "", rel+" carries a hand-back the loop never writes: a control, bidi or zero-width character in its text",
+		return State{}, 0, refuse("state", "", "", rel+" carries a hand-back the loop never writes: a control, bidi or zero-width character in its text",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	if !st.autoPlansWritten() {
-		return State{}, refuse("state", "", "", rel+" carries an auto-plan record the loop never writes: a draft, digest, spec, lens, path or verdict outside what the loop stores",
+		return State{}, 0, refuse("state", "", "", rel+" carries an auto-plan record the loop never writes: a draft, digest, spec, lens, path or verdict outside what the loop stores",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	if !st.receiptsWritten() {
-		return State{}, refuse("state", "", "", rel+" carries a receipt's model or resolution the loop never writes: a control, bidi or zero-width character in its text",
+		return State{}, 0, refuse("state", "", "", rel+" carries a receipt's model or resolution the loop never writes: a control, bidi or zero-width character in its text",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	// The repository and tool text it stores is shown masked, never refused,
 	// so a run abcd wrote stays readable (iss-2610121542240257).
-	return st.masked(), nil
+	return st.masked(), stated, nil
 }
 
 // stateStepNamed is a state file of versions 1 to 3, which named the lane's

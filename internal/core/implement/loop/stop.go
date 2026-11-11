@@ -820,10 +820,15 @@ func stopEndsRenewal(repoRoot string, st State, now time.Time) bool {
 	return !heldBySave(c.Stop)
 }
 
-// settlesHere reports whether this binary may settle st: it writes the state at its
-// own schema, so a run at another stays with its driver's own check, and its lease
-// lapses if that check does not come first.
-func settlesHere(st State) bool { return st.SchemaVersion == SchemaVersion }
+// settlesHere reports whether this binary may settle a run whose state file states
+// the version stated: a settle writes the state at this binary's own version, so a
+// run whose file states another is left to its own driver's check, and its lease
+// lapses if that check does not come first. The version is the file's, as
+// readListedStated returns it, never a read State's, which an older version reaches
+// already raised to this binary's. A file listed at this version was written by no
+// older driver, which refuses it, so the settle's own read under the lock finds the
+// same driver's file.
+func settlesHere(stated int) bool { return stated == SchemaVersion }
 
 // notStartedUnderStop answers an await this very call handed out or re-told, which a
 // stop refused before it began: no agent can have it yet, so it is marked as not

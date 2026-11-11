@@ -2,6 +2,7 @@ package loop
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1049,16 +1050,47 @@ func TestAReceiptTakenIsNotAnsweredAsAFailure(t *testing.T) {
 	}
 }
 
-// TestASettleLeavesARunAtAnotherSchemaToItsDriver: a binary at another schema does not
-// rewrite a run's state to settle it.
+// TestASettleLeavesARunAtAnotherSchemaToItsDriver: a renewal under a stop, made by a
+// binary newer than the driver of the run it renews, leaves the run's file as that
+// driver wrote it. The file on disk states the older version; the read raises it to
+// this binary's in memory, which is why the version judged is the one the file states.
+// The claim is neither let go nor renewed: the stop is left to the driver's own check,
+// and the claim lapses at its lease if that check does not come first. TestAStatusSettlesARunNoAgentHolds is the
+// same run at this binary's version, which the renewal settles.
 func TestASettleLeavesARunAtAnotherSchemaToItsDriver(t *testing.T) {
-	st := State{SchemaVersion: SchemaVersion - 1}
-	if settlesHere(st) {
-		t.Fatal("an older state settled here")
-	}
-	st.SchemaVersion = SchemaVersion
-	if !settlesHere(st) {
-		t.Fatal("this binary's own state did not settle")
+	for _, version := range []int{schemaVersionPrevious, schemaVersionUnrenamed} {
+		t.Run(fmt.Sprintf("version %d", version), func(t *testing.T) {
+			repo, runID, _, dir, _ := deadLane(t)
+			bare := onOriginAccepted(t, repo, runID)
+			now := time.Now().UTC().Truncate(time.Second)
+			reserveRun(t, repo, runID, "itd-10", now, "commands/x.md")
+			claimed := originReservation(t, bare, reservedRef).commit
+			gonePastItsLease(t, repo, runID, now)
+			home, _ := stopWorld(t, true)
+			if _, err := runstop.Set(home, now); err != nil {
+				t.Fatal(err)
+			}
+			stopHomeIs(t, home)
+			before := stateAtVersion(t, repo.Root(), runID, version)
+
+			renewRunsAt(repo.Root(), runID, nil, now.Add(90*time.Minute))
+
+			after, err := os.ReadFile(runStatePath(repo.Root(), runID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			olderDriverRead(t, before, after)
+			if v := string(topLevelFields(t, after)["schema_version"]); v != fmt.Sprint(version) {
+				t.Fatalf("the renewal saved the run at version %s; its driver wrote %d", v, version)
+			}
+			if c := controlOf(t, repo.Root(), runID); c.Stop != nil {
+				t.Fatalf("the renewal settled an older driver's run: %+v", c.Stop)
+			}
+			noAside(t, dir)
+			if got := originReservation(t, bare, reservedRef); got.released || got.commit != claimed {
+				t.Fatalf("the renewal moved the claim the driver's own check settles: %+v", got)
+			}
+		})
 	}
 }
 

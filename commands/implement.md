@@ -993,8 +993,10 @@ platform's shared folder for the account it expects. A setting that cannot be re
 should read whose stop cannot be looked at,
 holds the run at the stage `stop`, exit 3, with nothing let go: tell the person, who puts it back.
 A home that cannot be found holds it the same way. A take-over needs a read that saw clearly.
-A renewal that falls due under a stop settles the run first; with no agent left in its call
-and its work saved it no longer renews. Work a save could not take stays uncommitted in its
+A renewal that falls due under a stop settles the run first, unless the run's state file
+states another version than the renewing abcd's: that run is left to its own driver's check,
+and its claim lapses at its lease if that check does not come first. With no agent left in its
+call and its work saved it no longer renews. Work a save could not take stays uncommitted in its
 worktree and nowhere else, and its claim lapses at its lease unless a gated waiter, `abcd implement status` or a drive still
 in an agent's call or a preflight renews it; only that drive renews a run parked at land. A
 lift names any stop it cannot reach. A stop another account left is not honoured, and each

@@ -100,7 +100,8 @@ var runsView = claim.View
 func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []RunRenewal {
 	runs, out := renewalRuns(root, runID)
 	var view *claim.Snapshot
-	for _, st := range runs {
+	for _, run := range runs {
+		st := run.State
 		if (runID != "" && st.RunID != runID) || !renewsWhereItWaits(st) || (serves != nil && !serves(st)) {
 			continue
 		}
@@ -115,8 +116,10 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 			continue
 		}
 		// A renewal due under a stop settles the run first: what a stop lets go
-		// is let go, and what it cannot save keeps its lease below.
-		if settlesHere(st) {
+		// is let go, and what it cannot save keeps its lease below. A run whose
+		// file states another version is left to its own driver, and keeps its
+		// lease below too.
+		if settlesHere(run.stated) {
 			settleDueStop(root, st.RunID)
 		}
 		r := RunRenewal{Root: root, RunID: st.RunID, Key: st.Key}
@@ -147,13 +150,21 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 	return out
 }
 
+// renewalRun is a run a renewal may look at, with the version its file states:
+// the read takes an older version to this abcd's in memory, and only the file
+// says whose driver wrote it (settlesHere).
+type renewalRun struct {
+	State
+	stated int
+}
+
 // renewalRuns reads the runs in root that a renewal may look at (the one runID
 // names, or every one for ""), oldest first as Runs orders them, and a note for
 // each it cannot read. One a newer abcd wrote is the case that matters: it is
 // not this abcd's to rewrite, so it is said rather than passed over in silence,
 // and it holds no other run's renewal back. A checkout whose runs cannot even
 // be listed gives nothing, as it always has.
-func renewalRuns(root, runID string) ([]State, []RunRenewal) {
+func renewalRuns(root, runID string) ([]renewalRun, []RunRenewal) {
 	dir, err := os.OpenRoot(root)
 	if err != nil {
 		return nil, nil
@@ -163,20 +174,20 @@ func renewalRuns(root, runID string) ([]State, []RunRenewal) {
 	if err != nil {
 		return nil, nil
 	}
-	var runs []State
+	var runs []renewalRun
 	var notes []RunRenewal
 	for _, id := range ids {
 		if runID != "" && id != runID {
 			continue
 		}
-		st, err := readListedState(dir, id)
+		st, stated, err := readListedStated(dir, id)
 		if err != nil {
 			notes = append(notes, RunRenewal{Root: root, RunID: id, Note: "could not read the run to renew its reservation: " + err.Error()})
 			continue
 		}
-		runs = append(runs, st)
+		runs = append(runs, renewalRun{State: st, stated: stated})
 	}
-	slices.SortStableFunc(runs, func(a, b State) int { return a.CreatedAt.Compare(b.CreatedAt) })
+	slices.SortStableFunc(runs, func(a, b renewalRun) int { return a.CreatedAt.Compare(b.CreatedAt) })
 	return runs, notes
 }
 
