@@ -1115,8 +1115,9 @@ judges it again before any add. It removes it only where a real directory,
 not a symlink, stands at the lane's path and git lists a worktree there on the
 lane's branch. If that check or git's removal fails, the step is refused
 saying so, and what stands at the path is left: look at it and at what moved
-the branch, and if git lists it as the lane's worktree, remove it (`git
-worktree remove --force` on the lane's path) before you run the step again. A
+the branch, and if a real directory, not a link, stands there and git lists
+it on the lane's branch, remove it (`git worktree remove --force` on the
+lane's path) before you run the step again. A
 step taken again while that worktree stands adopts it, and an adopted lane is
 judged by its hooks only, as below. The standing-branch check is
 defensive: a lane whose hooks differ is refused before a worktree is made

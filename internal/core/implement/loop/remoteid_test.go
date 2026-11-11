@@ -341,6 +341,9 @@ func TestACheckoutHookChangedBetweenTwoLanesOfADriveRefusesTheSecond(t *testing.
 		"a hooks path set only globally":   {committed: true, change: true, global: true},
 	} {
 		t.Run(name, func(t *testing.T) {
+			if tc.unreadable && os.Geteuid() == 0 {
+				t.Skip("root reads what a mode denies")
+			}
 			repo, _, _ := hookedOrigin(t)
 			if tc.committed {
 				writeHook(t, repo, "post-checkout", "#!/bin/sh\nexit 0\n")

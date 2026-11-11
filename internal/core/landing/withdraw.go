@@ -239,7 +239,7 @@ func withdrawBeforePush(res *Result, o Options, dir, tracking, nameWithOwner str
 			}
 			if !tipRead {
 				if tip, err = RemoteTip(o.Git, dir, res.Branch); err != nil {
-					return atHead, refuse("land could not ask "+Remote+" where "+res.Branch+" is ("+fsutil.RedactHome(err.Error())+"), so it cannot say its push would move pull request #"+n+"'s head; its arming is left as it is",
+					return atHead, refuse("land could not ask "+Remote+" where "+res.Branch+" is ("+forgeWhy(err)+"), so it cannot say its push would move pull request #"+n+"'s head; its arming is left as it is",
 						"settle what git reports, then run abcd land again; nothing was pushed")
 				}
 				tipRead = true
@@ -251,7 +251,7 @@ func withdrawBeforePush(res *Result, o Options, dir, tracking, nameWithOwner str
 				if !a.own(viewer) {
 					vouched, err := headVouched(dir, a.HeadRefOid)
 					if err != nil {
-						return atHead, refuse("the receipts for "+short(a.HeadRefOid)+" cannot be read ("+fsutil.RedactHome(err.Error())+"), so land leaves pull request #"+n+"'s arming by another account as it is",
+						return atHead, refuse("the receipts for "+short(a.HeadRefOid)+" cannot be read ("+forgeWhy(err)+"), so land leaves pull request #"+n+"'s arming by another account as it is",
 							"settle it, then run abcd land again; nothing was pushed")
 					}
 					if !vouched {

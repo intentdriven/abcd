@@ -95,6 +95,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -352,7 +353,7 @@ func Land(cwd string, o Options) (Result, error) {
 		return res, refuse(full.Error()+", so land cannot prove a push would not recreate merged work",
 			"if "+branch+" has not merged, push it yourself (git push "+Remote+" "+shellQuote("refs/heads/"+branch+":refs/heads/"+branch)+") or land it under a less common name; nothing was gated or pushed")
 	case err != nil:
-		return res, refuse("the forge client could not say whether a pull request for "+branch+" already merged at "+short(head)+" (a squash or rebase merge leaves it off "+Remote+"/"+def+"), so land cannot prove a push would not recreate merged work: "+fsutil.RedactHome(err.Error()),
+		return res, refuse("the forge client could not say whether a pull request for "+branch+" already merged at "+short(head)+" (a squash or rebase merge leaves it off "+Remote+"/"+def+"), so land cannot prove a push would not recreate merged work: "+forgeWhy(err),
 			"settle what the forge client reports (gh auth status), then run abcd land again; nothing was gated or pushed")
 	case pr > 0:
 		res.Landed, res.PR, res.PRURL = true, pr, prURL
@@ -621,7 +622,7 @@ func checkOrigin(o Options, dir, branch string) (originURLs, string, error) {
 		if errors.Is(err, ErrNoForgeClient) {
 			return originURLs{}, "", noForgeClient()
 		}
-		return originURLs{}, "", refuse("the forge client could not say which repository origin is and which branch is its default, so land cannot prove the push is safe: "+fsutil.RedactHome(err.Error()),
+		return originURLs{}, "", refuse("the forge client could not say which repository origin is and which branch is its default, so land cannot prove the push is safe: "+forgeWhy(err),
 			"settle what the forge client reports (gh auth status), then run abcd land again; nothing was gated or pushed")
 	}
 	var repo forgeRepo
@@ -872,14 +873,15 @@ func noForgeClient() error {
 		"install gh and sign in with your own identity (gh auth login), or turn land.push and land.enqueue off")
 }
 
-// forge runs the forge client through the seam, its failures as refusals.
+// forge runs the forge client through the seam, its failures as refusals
+// whose reason is the client's text cleaned and bounded (forgeWhy).
 func forge(o Options, dir string, args ...string) (string, error) {
 	out, err := o.Forge(dir, args...)
 	if errors.Is(err, ErrNoForgeClient) {
 		return "", noForgeClient()
 	}
 	if err != nil {
-		return "", refuse(fsutil.RedactHome(err.Error()), "settle what the forge client reports, then run abcd land again")
+		return "", refuse(forgeWhy(err), "settle what the forge client reports, then run abcd land again")
 	}
 	return out, nil
 }
@@ -1263,11 +1265,25 @@ func forgeErrorText(errs []json.RawMessage) string {
 		}
 		msgs = append(msgs, e.Message)
 	}
-	t := termsafe.Sanitize(fsutil.RedactHome(gitutil.ScrubURLCredentials(strings.Join(msgs, "; "))))
-	if len(t) > maxForgeErrorText {
-		t = t[:maxForgeErrorText]
+	return boundForgeText(termsafe.Sanitize(fsutil.RedactHome(gitutil.ScrubURLCredentials(strings.Join(msgs, "; ")))))
+}
+
+// forgeCutMark ends a forge text boundForgeText cut, so a reader can tell
+// the forge said more.
+const forgeCutMark = " [cut]"
+
+// boundForgeText is t cut to at most maxForgeErrorText bytes, forgeCutMark
+// included, at a character's start, so a character that crosses the cut is
+// dropped whole; a text within the bound is left as it is.
+func boundForgeText(t string) string {
+	if len(t) <= maxForgeErrorText {
+		return t
 	}
-	return t
+	i := maxForgeErrorText - len(forgeCutMark)
+	for i > 0 && !utf8.RuneStart(t[i]) {
+		i--
+	}
+	return t[:i] + forgeCutMark
 }
 
 // openPRArgs is the listing of branch's open pull requests: the one forge
@@ -1438,9 +1454,12 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 		var r *Refusal
 		switch {
 		case errors.As(err, &r):
-			return false, r.Reason, nil
+			// A refusal from the read is land's own, its forge text already
+			// cleaned and bounded where land read it (forge, forgeErrorText),
+			// so it is cleaned again and not cut a second time.
+			return false, termsafe.Sanitize(r.Reason), nil
 		case err != nil:
-			return false, fsutil.RedactHome(err.Error()), nil
+			return false, forgeWhy(err), nil
 		}
 		if why := s.unread(); why != "" {
 			return false, "the forge's answer for pull request #" + n + "'s state gives no " + why, nil

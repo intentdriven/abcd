@@ -12,47 +12,62 @@ package landing
 // (withdrawOwn), since it could merge the pull request before what it depends
 // on: a forge error in the dependency read takes it off, and the next run arms
 // it again. The withdrawal runs only after the check waits or refuses. It
-// reads the pull request's state whole again before its first act, acts on
-// what the last read shows, and reads again after each act, three acts at
-// most: inside the withdrawal, this account's queue entry is taken out by its
+// reads the pull request's state whole again before its first act and makes
+// at most three tries, each acting on what one read shows and followed by one
+// read: inside the withdrawal, this account's queue entry is taken out by its
 // node id, its arming is turned off (also beside another account's queue
 // entry), and the note or refusal says which was done. An arming or queue
 // entry these reads show by another account, or one the forge does not
-// attribute, is left and refused, saying so. One still in place after three
-// tries, or a state not read whole, refuses with the step that withdraws it by
-// hand: the pull request's page for a queue entry, the command for an arming,
-// both where both stand; after three tries, with the last act's failure. A
-// pull request whose own read shows it merged or closed is refused as such,
-// nothing withdrawn.
+// attribute, is left and refused, saying so and naming who the forge says
+// queued it, where that is a login in the forge's own alphabet, and otherwise
+// saying the forge does not name the account or names it in a form land does
+// not show. One still in place after three tries, or a state not read whole,
+// refuses with the step that withdraws it by hand: the pull request's page for
+// a queue entry, the command for an arming, both where both stand; after three
+// tries, where an act failed, with each failure of the last try. A pull
+// request whose own read shows it merged or closed is refused as such, nothing
+// withdrawn.
 //
 // The check runs once land has read the pull request's state on the route
 // that would arm it, and on the three early returns where this account's
 // arming stands at the gated head: the merge gate unread, the gate not
 // arming, and a conflict. The stop is read again after the gate arms and
 // before that state read, so the first two run before it and the conflict's
-// after. Three returns after that read make no check: a pull request already
+// after. Four returns after that read make no check: a pull request already
 // in the merge queue is reported done with its dependencies unread, this
 // account's own queue entry included; one another account armed, or one the
-// forge does not attribute, is reported as before; and this account's arming
-// at a head land did not gate is refused before the check. Every refusal
-// before that point (a forge read that fails, the merge rule or the default
-// branch's tip unread, a listing land cannot use, any step before enqueue)
-// leaves an arming as it is with its dependencies unread.
+// forge does not attribute, is reported as before; this account's arming at a
+// head land did not gate is refused before the check; and a state not read
+// whole (no viewer login among them) is refused before the check, any arming
+// left as it is. Every refusal before that point (a forge read that fails,
+// the merge rule or the default branch's tip unread, a listing land cannot
+// use, any step before enqueue) leaves an arming as it is with its
+// dependencies unread.
 //
 // Every body and every forge answer is untrusted. A body is required of the
 // pull request's own read and of each dependency still open or queued, and is
 // read by coord.ParseDependsOn, which fails closed and quotes no body text; a
 // merged or closed dependency's body is not read. Only numbers, the forge's
 // times as UTC, a state cut to maxForgeStateRunes and sanitised, a login held
-// to the forge's login alphabet and bound (shownLogin), and a forge reason
-// redacted, sanitised and bounded (forgeWhy, or a refusal land composed)
-// reach a note or a refusal. What only the forge can know, why a
-// number has no record, is refused here before the pass: a number the forge
-// answers with no pull request, a pull request into another base than the
-// default branch (merged there or not), a state land cannot map, a creation
-// time it cannot read or that is the zero time, and a walk past
-// maxDependsReads pull requests. A dependency is satisfied once the forge
-// reports it MERGED into the default branch, however it merged.
+// to the forge's login alphabet and bound (shownLogin), a forge reason
+// redacted, sanitised and bounded (forgeWhy), and a refusal land composed,
+// which is sanitised whole and of which only the forge part is bounded,
+// reach a note or a refusal. In the withdrawal before the push (withdraw.go),
+// git's answer when origin is asked for the branch's tip, and the failure of
+// the receipt read for another account's arming, are cleaned and bounded by
+// forgeWhy, since a remote, git or a worktree's path wrote them. A test holds
+// the first; the second (withdrawBeforePush's receipt read) is routed so by
+// reading alone and held by no test, since that read's failure comes from git
+// and the worktrees' files, not from a call a test can replace, so no test
+// chooses its bytes. The withdrawal's note on a merge gate it could not read
+// carries DecideMerge's error, the facilitator.mode reader's text, which
+// DecideMerge sanitises and which is not bounded here. What only the forge can
+// know, why a number has no record, is refused here before the pass: a number
+// the forge answers with no pull request, a pull request into another base than
+// the default branch (merged there or not), a state land cannot map, a creation
+// time it cannot read or that is the zero time, and a walk past maxDependsReads
+// pull requests. A dependency is satisfied once the forge reports it MERGED
+// into the default branch, however it merged.
 //
 // The wait's start is the dependant's createdAt as the forge reports it: set
 // when the pull request is opened, and no agent can move it. A reopened pull
@@ -432,7 +447,8 @@ func numbered(nums []int) string {
 	return strings.Join(parts, ", ")
 }
 
-// maxWithdrawPasses bounds withdrawOwn: three acts, each followed by a read.
+// maxWithdrawPasses bounds withdrawOwn: three tries, each acting on what one
+// read shows and followed by one read.
 const maxWithdrawPasses = 3
 
 // withdrawn is what withdrawOwn did.
@@ -497,8 +513,9 @@ func shownLogin(login string) string {
 // withdrawOwn takes this account's arming and queue entry of pull request n
 // off and says what it did. s, the state land read before the dependency
 // check, gives the hand step only if the read before the first act fails:
-// every act follows a fresh whole read (view). Each pass acts only on what the
-// last read shows, and the next read decides, whatever the act returned:
+// each try acts on a fresh whole read (view), one or two acts on one read.
+// Each try acts only on what the last read shows, and the next read decides,
+// whatever the acts returned:
 // queued by this account, it is taken out by its node id first (the forge may
 // refuse to turn auto-merge off on a queued pull request; unconfirmed), then
 // its auto-merge off if this account armed it; armed by this account, its
@@ -506,10 +523,12 @@ func shownLogin(login string) string {
 // One queued by another account, or by one the forge does not name, or armed
 // so and not queued, is left and refused, saying what land did. A state not
 // read whole, a read that fails, or this account's arming or queue entry
-// still there after maxWithdrawPasses acts refuses with the step that
+// still there after maxWithdrawPasses tries refuses with the step that
 // withdraws it by hand: the queue page for a queued pull request, never the
-// command that only turns auto-merge off, and both where both stand; after
-// the passes, with the last act's failure (forgeWhy).
+// command that only turns auto-merge off, and both where both stand, naming
+// beside this account's arming a queue entry another account made; after the
+// tries, where an act of the last one failed, with each such failure, cleaned
+// and bounded (forgeWhy), as is the reason of a read that fails.
 func withdrawOwn(o Options, dir, n string, s prState, view func() (prState, error)) (string, error) {
 	ask := func(args ...string) (string, error) { return o.Forge(dir, args...) }
 	const lead = "land's dependency check does not let pull request #%s queue%s, but "
@@ -518,7 +537,10 @@ func withdrawOwn(o Options, dir, n string, s prState, view func() (prState, erro
 	unreadAgain := func(err error, s prState) (string, error) {
 		why := forgeWhy(err)
 		if r := (*Refusal)(nil); errors.As(err, &r) {
-			why = r.Reason
+			// A refusal from the read is land's own, its forge text already
+			// cleaned and bounded where land read it (forge, forgeErrorText),
+			// so it is cleaned again and not cut a second time.
+			why = termsafe.Sanitize(r.Reason)
 		}
 		return "", refuse(fmt.Sprintf(lead, n, did.sofar(n))+"the forge could not be read again for #"+n+"'s state ("+why+"), so land cannot confirm that this account's arming and queue entry are off", unconfirmedFix(n, s))
 	}
@@ -539,9 +561,13 @@ func withdrawOwn(o Options, dir, n string, s prState, view func() (prState, erro
 		return unreadAgain(err, s)
 	}
 	s = first
-	// lastErr is the failure of the last pass's acts, nil where they did not
-	// fail.
-	var lastErr error
+	// lastErrs are the failures of the last pass's acts, each with the act
+	// it failed, none where they did not fail.
+	type actErr struct {
+		act string
+		err error
+	}
+	var lastErrs []actErr
 	for pass := 0; ; pass++ {
 		if why := s.unread(); why != "" {
 			return fail(false, "the forge's answer for #"+n+"'s state gives no "+why+", so land cannot confirm that this account's arming and queue entry are off", unconfirmedFix(n, s))
@@ -559,8 +585,11 @@ func withdrawOwn(o Options, dir, n string, s prState, view func() (prState, erro
 		case pass == maxWithdrawPasses:
 			still := fmt.Sprintf("after %d tries the forge still reports #%s ", maxWithdrawPasses, n)
 			last := ""
-			if lastErr != nil {
-				last = ", the last try failing: " + forgeWhy(lastErr)
+			switch len(lastErrs) {
+			case 1:
+				last = ", the last try failing: " + forgeWhy(lastErrs[0].err)
+			case 2:
+				last = ", the last try failing: " + forgeWhy(lastErrs[0].err) + " (" + lastErrs[0].act + "), and " + forgeWhy(lastErrs[1].err) + " (" + lastErrs[1].act + ")"
 			}
 			disarm := "withdraw the arming (gh pr merge " + n + " --disable-auto)"
 			switch {
@@ -570,20 +599,26 @@ func withdrawOwn(o Options, dir, n string, s prState, view func() (prState, erro
 			case ownQ:
 				return fail(true, still+"in the merge queue from this account, where it can merge before what it depends on"+last, queuePageFix(n))
 			}
+			if s.queued() {
+				// Beside another account's queue entry (or one the forge does
+				// not name), which land does not take out.
+				return fail(true, still+"armed by this account, which can merge it before what it depends on, beside a queue entry by "+shownLogin(s.enqueuer())+", which land does not take out"+last,
+					disarm+", and ask whoever queued it to take it out of the merge queue, or take it out yourself on its page, then run abcd land again, which says what holds it")
+			}
 			return fail(true, still+"armed by this account, which can merge it before what it depends on"+last,
 				"withdraw it yourself (gh pr merge "+n+" --disable-auto), then run abcd land again, which says what holds it")
 		}
-		lastErr = nil
+		lastErrs = nil
 		if ownQ {
 			if err := dequeue(ask, s.ID); err != nil {
-				lastErr = err
+				lastErrs = append(lastErrs, actErr{"taking it out of the merge queue", err})
 			} else {
 				did.dequeued = true
 			}
 		}
 		if ownA {
 			if _, err := ask("pr", "merge", n, "--disable-auto"); err != nil {
-				lastErr = err
+				lastErrs = append(lastErrs, actErr{"withdrawing the arming", err})
 			} else {
 				did.disarmed = true
 			}
