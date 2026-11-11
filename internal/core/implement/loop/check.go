@@ -109,13 +109,16 @@ const maxIntentBytes = 256 * 1024
 //     repository's own rule takes the issue, as `abcd drain` reads it) and
 //     peers (no peer holds it out of open/, and no session claims it).
 //   - ready: the implement-readiness gate (intent.Ready) — planned, criteria,
-//     the spec linked and written. Its advisory rows stay advisory here.
+//     the spec linked and written, a spec saying it is not ready being unwritten
+//     (spec.Unsettled, iss-2611101318042398). Its advisory rows stay advisory
+//     here.
 //   - open_questions: no open question under `## Open Questions`
 //     (intent.StartChecksIn: every list item, less the settled markers).
 //   - claim_sections: no unanswered claim section — the mechanism prompt
 //     answered or the section absent, the scope conditions recorded.
 //   - hold: no `held:` on the record (iss-2609200830076665).
-//   - blocked: nothing the record names in `blocked_by` is unshipped
+//   - blocked: nothing the record or its open spec names in `blocked_by` is
+//     unshipped
 //     (itd-2609211116005482: an intent with an unshipped blocker is not one
 //     a run may take); a superseded blocker is followed along
 //     `superseded_by` to its replacement, transitively (ruling BZ2 of
