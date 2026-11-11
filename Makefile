@@ -182,9 +182,12 @@ check-attribution:
 # read from ci.yml. A gitleaks on PATH at another version, or none, is replaced
 # by CI's release, sha256-checked against scripts/gitleaks-checksums.txt, and
 # the scan refuses when that cannot be fetched or verified
-# (iss-2611081341084748). A govulncheck with no network for its database is
-# skipped loudly, never passed in silence, and CI's scan still runs. A govulncheck finding on a branch that
-# changes neither go.mod nor go.sum, when the fork point's own tree reports
+# (iss-2611081341084748). govulncheck is built at CI's version and run as its
+# own binary, not through go run, which reports a finding's exit 3 as exit 1
+# (iss-2611110905076301). A govulncheck with no network for its database, or
+# none to build, is skipped loudly, never passed in silence, and CI's scan still
+# runs; one whose build fails its checksum verification refuses. A govulncheck
+# finding on a branch that changes neither go.mod nor go.sum, when the fork point's own tree reports
 # every vulnerability it names, was not brought in by the branch
 # (iss-2610261151481013, iss-2610262259078996), and govulncheck is not a
 # required check, so it warns and does not stop the run; any other finding
