@@ -84,7 +84,24 @@
 // Owed is the stop check's input: the owed items, each an OwedItem with its
 // OwedKind, whether it is capped (an item the session can act on itself, which
 // a wake releases at most twice in a row), and its branch or record id (plus
-// its pull request and head where it has them). The kinds, in the order the
+// its pull request and head where it has them). While away, a capped item on
+// a branch carries Live, the live work standing for it, when the preflight's
+// whole test run of this account (a full preflight at the load gate or
+// running past it, whose waiter records itself: implement.WholeRunMarker; a
+// records-only preflight writes no marker) has a marker that says its command
+// is the preflight's stages and names the item's head as the commit it was
+// queued or started at, runs in the worktree the item's branch is checked out
+// in, and no receipt names that head (livework.go); Owed.CappedAllLive reports
+// that every capped item has it. The commit the stages test is not known: a
+// run queued or started before a commit does not count for it. A checkout whose abcd
+// predates the marker's present shape writes none that counts. A process of
+// this account can write a marker and run under abcd's name, so the proof
+// holds against other accounts and stale state, not against this account's
+// own agent: that a counted marker is a real preflight is a must nothing
+// enforces. A build run's lane agent and a host's background agent abcd did
+// not start are not live work, and must not be counted as such until
+// something proves them; nothing enforces that beyond the reader reading
+// neither. The kinds, in the order the
 // next item is chosen (owedKinds): a renewal due, a failing pull request, a
 // behind one, a stacked branch, an unpushed branch, and a reservation whose
 // work no pull request carries. Owed.Fingerprint and Owed.CappedFingerprint
@@ -102,7 +119,15 @@
 // present, it allows (with a SystemMessage naming owed work); away, the seven
 // rows of the plan decide, from the owed set, the host's payload (StopInput:
 // stop_hook_active, the last message, session_crons, background_tasks, the
-// host's cap) and the session's SessionState. A wake qualifies
+// host's cap) and the session's SessionState. A set whose every capped item
+// has live work is waiting, not stuck: a qualifying wake releases it however
+// many wakes have passed, and the wake count does not advance, for
+// LiveWorkBound (one preflight's bound, 18 hours) from the first check that
+// found it (SessionState.WaitingSince, reset with the capped set, so the
+// bound does not hold against a set that keeps changing, as the wake count
+// does not); past it the two-wake rule holds again, and its block says the
+// wait on the named branch is past the bound. Without a wake, the block names
+// the branch, the live work and since when. A wake qualifies
 // (qualifyingWake) when a session cron's latest fire time (latestFire: its
 // next match, by abcd's own five-field cron parser, parseCron, plus the
 // host's lateness) is no later than wakeDeadline, which is never sooner than

@@ -3,6 +3,7 @@
 package machineload
 
 import (
+	"context"
 	"encoding/binary"
 	"os"
 	"runtime"
@@ -28,4 +29,14 @@ func Read() (Snapshot, error) {
 // /proc/<pid>/cmdline. A pid that has exited is absent from the result.
 func ReadArgs(pids []int) (map[int][]string, error) {
 	return readCmdlines(os.DirFS("/proc"), pids), nil
+}
+
+// ReadContext is Read for a reader on a deadline: a ctx already ended reads
+// nothing and answers ctx's error. Linux's reader starts no program, so a ctx
+// that ends during the read does not stop it; /proc answers in milliseconds.
+func ReadContext(ctx context.Context) (Snapshot, error) {
+	if err := ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
+	return Read()
 }

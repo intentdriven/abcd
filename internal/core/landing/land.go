@@ -151,7 +151,10 @@ const preflightRunBound = 4 * time.Hour
 // whole run it admits and its race stage's wait at the race gate inside that
 // run, so land never kills a preflight still waiting its turn or partway
 // through its run. A var so a test can shorten it.
-var gateTimeout = preflightGateWait + preflightRaceGateWait + preflightRunBound
+var gateTimeout = PreflightBound
+
+// PreflightBound is gateTimeout's value, for a reader outside landing.
+const PreflightBound = preflightGateWait + preflightRaceGateWait + preflightRunBound
 
 // gateWaitDelay bounds the wait for the preflight's output once it has exited
 // or been killed (procgroup.Bound).

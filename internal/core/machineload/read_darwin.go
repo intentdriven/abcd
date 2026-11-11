@@ -23,13 +23,29 @@ const psPath = "/bin/ps"
 // thousand processes.
 const psTimeout = 20 * time.Second
 
+// runPS runs one ps command; a var only so a test can count the runs.
+var runPS = func(cmd *exec.Cmd) error { return cmd.Run() }
+
 // Read reads this macOS machine: the load averages from the vm.loadavg sysctl,
 // the online core count from hw.activecpu (the value
 // sysconf(_SC_NPROCESSORS_ONLN) reports), and the process table from one ps run.
 // A load average that reads while the process table does not is returned with
 // the error, so the extreme trigger can still apply.
 func Read() (Snapshot, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), psTimeout)
+	defer cancel()
+	return ReadContext(ctx)
+}
+
+// ReadContext is Read bound to ctx as well as to ps's own psTimeout: a ctx
+// already ended reads nothing and starts no ps, answering ctx's error, and one
+// that ends while ps runs kills it. A reader on a deadline (the away mode's
+// stop check) reads the machine through it.
+func ReadContext(ctx context.Context) (Snapshot, error) {
 	var snap Snapshot
+	if err := ctx.Err(); err != nil {
+		return snap, err
+	}
 	raw, err := syscall.Sysctl("vm.loadavg")
 	if err != nil {
 		return snap, fmt.Errorf("could not read the load average (sysctl vm.loadavg: %w)", err)
@@ -44,13 +60,16 @@ func Read() (Snapshot, error) {
 		snap.Cores, snap.CoresFallback = runtime.NumCPU(), true
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), psTimeout)
+	ctx, cancel := context.WithTimeout(ctx, psTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, psPath, "-axo", "pid=,ppid=,pgid=,uid=,etime=,time=,comm=")
 	cmd.Env = append(os.Environ(), "LC_ALL=C")
 	var out bytes.Buffer
 	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
+	if err := ctx.Err(); err != nil {
+		return snap, err
+	}
+	if err := runPS(cmd); err != nil {
 		return snap, fmt.Errorf("could not read the process table (%s: %w)", psPath, err)
 	}
 	procs, err := parseDarwinPS(out.Bytes())
