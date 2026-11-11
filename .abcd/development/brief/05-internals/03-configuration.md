@@ -45,8 +45,9 @@ every repository shares by the figures it read;
 cap `matrix.spend_cap` (an amount in usd for a run with a metered cell, set
 in the machine layer alone, a repository's refused, and with no default: a
 run's own `spend_cap` overrides it, and a metered run with neither is refused;
-`internal/core/matrix/cap.go`), the build's review set under `review` and
-`models.classes` (`internal/core/implement/loop/reviewset.go`), the question limits
+`internal/core/matrix/cap.go`), the build's review set under `review`, the
+class map `models.classes` and each class's effort `models.effort`
+(`internal/core/implement/loop/reviewset.go`), the question limits
 under `question` (below), and the runner routes under `roles` and
 `runner` (`internal/core/runner/config.go`). Everything else on this page is either a
 store abcd lays out for itself, a policy that follows from one of those four
@@ -608,6 +609,47 @@ passed over for the default:
 
 Unconfigured, nothing changes: every review runs on the host, and abcd never
 starts, installs or configures RepoPrompt, and never writes either key.
+
+### The model classes and their effort
+
+The build loop's review set (itd-2610240922461281, itd-2611101419006280) names
+reviewers and a judge by model class, never by model. The four classes are
+`research`, `top`, `default` and `small`, strongest first, and two keys under
+`models` say what each stands for on this machine. Both are read from
+`~/.abcd.noindex/config.json` over the bundled default alone: which model runs
+and how hard it works spend the person's budget, so a repository's value is
+skipped with one line naming the machine's file.
+
+- `models.classes`: each class a `<provider>/<model>` route. The bundled map is
+  one vendor's models; abcd bundles none for a vendor it does not launch in its
+  own tests, so the person points the classes at another provider's models.
+- `models.effort`: one of `low`, `medium`, `high`, `xhigh` and `max` for every
+  class, or an object naming a level per class; a class nothing names runs at
+  `high`. The effort follows the class: a reviewer or a judge launched at a
+  class through the claude runner is passed it as the harness's effort flag,
+  the opencode runner records it as not passed, and a role launched with no
+  class keeps the harness's own effort.
+
+The classes were renamed one for one (`top` is now `research`, `middle` is
+`top`, `below` is `default`, `smallest` is `small`). A file naming an old class
+is refused with that mapping, and a machine class map that sets `top` without
+`research` is refused, since `top` once named the strongest class. A worked map
+for a second provider, whose block under `oracle.api` lists the models it
+serves (the ids are an example; use the ones the provider lists):
+
+```json
+{
+  "models": {
+    "classes": {
+      "research": "openrouter/qwen/qwen3-235b-a22b",
+      "top": "openrouter/mistralai/devstral-medium",
+      "default": "openrouter/qwen/qwen3-coder",
+      "small": "openrouter/mistralai/devstral-small"
+    },
+    "effort": {"research": "xhigh", "small": "low"}
+  }
+}
+```
 
 ### The interview key
 
@@ -1381,7 +1423,7 @@ where the machine's file may only lower a limit; the
 provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
 `runner` namespace (`runner.fallback_host` and every `runner.<name>`),
 `interview.list`, `matrix.spend_cap` (a repository's figure refused),
-`review.max_reviewers` and `models.classes` (a repository's skipped with a warning),
+`review.max_reviewers`, `models.classes` and `models.effort` (a repository's skipped with a warning),
 `reservation.github_username`, `reservation.max_live` (1 to
 100, 10 by default, read past to 10 when the file cannot be read, which the
 refusal at the cap says), `load.preflights` (how many preflights the first

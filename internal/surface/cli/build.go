@@ -166,13 +166,20 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"handed back: it stops as unachievable with the last round's findings, the run starts nothing\n" +
 			"further for it, and `abcd implement step` refuses naming the hand-back.\n\n" +
 			"A new run reads its review set once, too: review.reviewers (one or two model classes per\n" +
-			"code-review role, for both roles or per role; bundled: middle and below), review.judge (a\n" +
-			"class; refused until a judge agent clears itd-81's calibration gate) and, from\n" +
+			"code-review role, for both roles or per role; bundled: research and default), review.judge\n" +
+			"(a class; bundled: top, which waits until a judge agent clears itd-81's calibration gate,\n" +
+			"fixed at the run's start, and a judge a file names is refused until then) and, from\n" +
 			abcdhome.Display("config.json") + " alone, review.max_reviewers (1 or 2, bundled 2) and the class map\n" +
-			"models.classes (top, middle, below, smallest, each a <provider>/<model> route over the\n" +
-			"bundled map). A repository list above the machine's ceiling is clamped with one line on\n" +
-			"stderr naming both files; a repository's ceiling or class map is skipped with a warning.\n" +
-			"An unknown class or a malformed set is refused at the review stage and writes nothing.\n" +
+			"models.classes (research, top, default, small, strongest first, each a <provider>/<model>\n" +
+			"route over the bundled map) and each class's effort, models.effort (one of low, medium, high,\n" +
+			"xhigh and max for every class, or an object naming one per class; bundled: high). A repository\n" +
+			"list above the machine's ceiling is clamped with one line on stderr naming both files; a\n" +
+			"repository's ceiling, class map or effort is skipped with a warning. An unknown class or\n" +
+			"level, or a malformed set, is refused at the review stage and writes nothing.\n" +
+			"The classes were renamed: top is now research, middle is top, below is default and smallest\n" +
+			"is small. A file naming middle, below or smallest is refused with that mapping, and so is a\n" +
+			"machine class map that sets top without research; a review list or judge naming top, while\n" +
+			"no file names research, default or small, runs and says on stderr what top now stands for.\n" +
 			"The result's review and the run record name each class with its model and each layer.\n\n" +
 			"The run then moves one step per `abcd implement step`, driven by the host session.\n\n" +
 			"While the away mode holds (`abcd mode autonomous`), or its record cannot be read, starting or resuming a\n" +
@@ -1535,7 +1542,11 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 			if v.Located != nil {
 				located = fmt.Sprintf(", %d located finding(s)", *v.Located)
 			}
-			fmt.Fprintf(w, "    round %d at %s: %s %s%s%s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(v.Role), termsafe.Sanitize(v.Verdict), located, routeSuffix(v.Route))
+			role := v.Role
+			if p := v.ReviewerPhrase(); p != "" {
+				role += " (" + p + ")"
+			}
+			fmt.Fprintf(w, "    round %d at %s: %s %s%s%s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(role), termsafe.Sanitize(v.Verdict), located, routeSuffix(v.Route))
 			renderFindings(w, v.Findings)
 		}
 		if len(l.Resolves) > 0 {

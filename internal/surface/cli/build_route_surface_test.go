@@ -239,11 +239,12 @@ func TestAStepsRouteHandsAReviewerToTheRunnerItNames(t *testing.T) {
 	repo := buildRepo(t)
 	repo.Write("AGENTS.md", "# AGENTS.md\n\n- Run make check.\n")
 	repo.Commit("conventions")
-	// The run's first ruthless reviewer is asked for the middle class, which
-	// this machine maps to the model the --route names: a --route naming
+	// The run's first ruthless reviewer is asked for the top class, which
+	// this machine maps to the model the --route names (a map that sets top
+	// sets research too, itd-2611101419006280): a --route naming
 	// another model than the reviewer's class is refused before anything
 	// launches (dcn-2610292236161673 (b), internal/core/runner).
-	writeMachineConfig(t, `{"models":{"classes":{"middle":"local/devstral","below":"local/qwen3-coder"}}}`)
+	writeMachineConfig(t, `{"models":{"classes":{"research":"local/devstral","top":"local/devstral","default":"local/qwen3-coder"}}}`)
 	laneAtValidate(t, repo)
 	writeMachineConfig(t, routeStepMachine)
 	onlyGitOnPath(t)

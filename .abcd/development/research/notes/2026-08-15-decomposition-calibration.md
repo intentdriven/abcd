@@ -2927,3 +2927,18 @@ Verdict at filing: SPLIT, two intents and an ADR, the product thinker having cho
 Grade: the routing survived two reviewers, while the design did not: a drain spent before the check, a host session passed falsely, and a Go that can switch was refused. The `scripts/abcd.sh` criterion left for an issue. The interview then changed the capability: a list the technical facilitator authorises and registers replaced inference from files and a table of places, so the routing's first row was right in home and wrong in content. Pending sign-off.
 
 Second grade, the same day: the security review then refuted the approval step and the product thinker ruled that a person always says where a tool lives. The routing changed again, to three stages of one capability plus the install: itd-2611041815429986 (list, registration, test), itd-2611042148411751 (an agent's request as a pull request, and the wrapper), itd-2611042148424105 (other languages' versions and a stage's exit 127). Typed links: itd-2611042148411751 refines itd-2611041815429986. No reversal is flagged. The first decomposition was too large and carried a trust rule inside a capability, which the two reviewers caught and the hand-run table did not. The product thinker confirmed the routing at sign-off on 2026-11-04, with invariant 2 read as covering abcd's own adapters and pointing to the new invariant 26.
+
+## 2026-11-10: the model set is the person's (technical facilitator on delegation, routing not confirmed by a person)
+
+The proposal: a fully customisable model set, the classes renamed for their use (research, top, default, small), the research and default classes as the default review pair with the top class as judge, and high effort by default.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| the renamed classes, the new default pair and judge, and a settable effort per class | capability | itd-2611101419006280 |
+| which model a class holds and how hard it works are the machine's alone to set | trust rule | already held by decision 3 of itd-2610240922461281 and the runner's machine-only rule; the intent extends it to effort in its decision 6, with no new ADR |
+| no judge runs before a judge agent is calibrated | trust rule | itd-81, unchanged; the intent's decision 5 keeps it |
+| the state's schema version, the migration of stored labels, the refusal texts | plumbing | the spec, carried into the brief's build and configuration pages |
+
+Verdict at filing: FILE-AS-IS, one intent. Typed links: builds on itd-2610240922461281, and reverses its decision 1 (the bundled pair), a reversal flagged for the product thinker to confirm at review, since they asked for the new pair and were not there to confirm the link. No person confirmed this routing: the product thinker asked for the intent to be filed and built within an unattended run and its decisions recorded for review.
+
+Grade: the routing survived two reviewers; the design did not. Both said fix first: a reused class name could change meaning unseen, the claim that stored run state needed no version was false against the state check, and a waiting judge had no stored shape. All three were settled in the intent before planning.

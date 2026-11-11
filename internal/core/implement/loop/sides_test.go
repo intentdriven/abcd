@@ -55,9 +55,9 @@ func sidedRun(t *testing.T) (string, string, string) {
 // killed launch's spend, 20 a round keyed by reviewer, 21 what a round was shown,
 // 22 a run's profile, 23 a landing's settled spec and 24 a reviewer's located findings.
 func TestASidedRouteRoundTrips(t *testing.T) {
-	if SchemaVersion != 24 || schemaVersionUnlocated != 23 || schemaVersionUnsettled != 22 || schemaVersionUnprofiled != 21 || schemaVersionUnshown != 20 || schemaVersionUnkeyed != 19 || schemaVersionUnspent != 18 || schemaVersionUnpaused != 17 || schemaVersionUnplanned != 16 || schemaVersionUnpinned != 15 || schemaVersionUnreviewed != 14 || schemaVersionUnmetered != 13 || schemaVersionUnrefused != 12 {
-		t.Fatalf("both sides are version 14's, after a lane's refusal's 13, the review set 15's, a route's pins 16's, an auto-plan 17's, a pause 18's, a spend 19's, a keyed round 20's, what a round was shown 21's, a run's profile 22's, a settled spec 23's and located findings 24's: %d %d %d %d %d %d %d %d %d %d %d %d %d",
-			SchemaVersion, schemaVersionUnlocated, schemaVersionUnsettled, schemaVersionUnprofiled, schemaVersionUnshown, schemaVersionUnkeyed, schemaVersionUnspent, schemaVersionUnpaused, schemaVersionUnplanned, schemaVersionUnpinned, schemaVersionUnreviewed, schemaVersionUnmetered, schemaVersionUnrefused)
+	if SchemaVersion != 25 || schemaVersionUnrenamed != 24 || schemaVersionUnlocated != 23 || schemaVersionUnsettled != 22 || schemaVersionUnprofiled != 21 || schemaVersionUnshown != 20 || schemaVersionUnkeyed != 19 || schemaVersionUnspent != 18 || schemaVersionUnpaused != 17 || schemaVersionUnplanned != 16 || schemaVersionUnpinned != 15 || schemaVersionUnreviewed != 14 || schemaVersionUnmetered != 13 || schemaVersionUnrefused != 12 {
+		t.Fatalf("both sides are version 14's, after a lane's refusal's 13, the review set 15's, a route's pins 16's, an auto-plan 17's, a pause 18's, a spend 19's, a keyed round 20's, what a round was shown 21's, a run's profile 22's, a settled spec 23's, located findings 24's and the renamed classes 25's: %d %d %d %d %d %d %d %d %d %d %d %d %d %d",
+			SchemaVersion, schemaVersionUnrenamed, schemaVersionUnlocated, schemaVersionUnsettled, schemaVersionUnprofiled, schemaVersionUnshown, schemaVersionUnkeyed, schemaVersionUnspent, schemaVersionUnpaused, schemaVersionUnplanned, schemaVersionUnpinned, schemaVersionUnreviewed, schemaVersionUnmetered, schemaVersionUnrefused)
 	}
 	root, id, _ := sidedRun(t)
 	st, err := ReadState(root, id)

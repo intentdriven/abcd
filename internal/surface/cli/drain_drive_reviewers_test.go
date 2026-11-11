@@ -19,7 +19,7 @@ func TestADriveWhoseReviewersCannotLaunchIsRefusedAtItsStart(t *testing.T) {
 	w.passWalls(t)
 	w.machineConfig(t, `{"oracle":{"denylist":["anthropic/*"]},"runner":{"claude":{}}}`)
 	text := refusedDrive(t, "drain", "--drive", "--yes")
-	for _, want := range []string{loop.BundledClasses[loop.ClassMiddle], loop.RoleRuthless, "oracle.denylist", "models.classes", "nothing started"} {
+	for _, want := range []string{loop.BundledClasses[loop.ClassResearch], loop.RoleRuthless, "oracle.denylist", "models.classes", "nothing started"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the refusal %q does not name %q", text, want)
 		}
@@ -57,7 +57,7 @@ func TestASubscriptionOnlyDriveIsNotRefusedForItsReviewers(t *testing.T) {
 		t.Fatalf("the loop ran %d times, want once", w.terminalCalls)
 	}
 	cfg := w.terminal.Options.Runners
-	if cfg == nil || cfg.CanLaunch(loop.RoleRuthless, loop.BundledClasses[loop.ClassMiddle], false) != nil {
+	if cfg == nil || cfg.CanLaunch(loop.RoleRuthless, loop.BundledClasses[loop.ClassResearch], false) != nil {
 		t.Fatal("the lanes' configuration does not hold the class map's routes")
 	}
 	if w.terminal.Runners.Config != cfg {

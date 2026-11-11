@@ -73,7 +73,7 @@ func TestAReviewSetNoRouteCanLaunchIsRefusedAtTheStart(t *testing.T) {
 			if ref.Stage != StageReview {
 				t.Fatalf("want the review stage's refusal: %+v", ref)
 			}
-			for _, w := range append(tc.want, RoleRuthless, BundledClasses[ClassMiddle], "nothing was written") {
+			for _, w := range append(tc.want, RoleRuthless, BundledClasses[ClassResearch], "nothing was written") {
 				if !strings.Contains(err.Error(), w) {
 					t.Errorf("the refusal %q does not name %q", err, w)
 				}
@@ -96,20 +96,20 @@ func TestAReviewSetNoRouteCanLaunchIsRefusedAtTheStart(t *testing.T) {
 // route it replaced is no longer one it takes.
 func TestTheMachinesClassMapBoundsWhatADriveTakesByName(t *testing.T) {
 	const override = "anthropic/claude-opus-6"
-	r := launchRoots(t, `{"models":{"classes":{"middle":"`+override+`"}},"runner":{"claude":{}}}`)
+	r := launchRoots(t, `{"models":{"classes":{"research":"`+override+`"}},"runner":{"claude":{}}}`)
 	routes, err := ClassRoutes(r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(routes, override) || slices.Contains(routes, BundledClasses[ClassMiddle]) ||
-		!slices.Contains(routes, BundledClasses[ClassBelow]) {
-		t.Fatalf("class routes = %q, want the machine's middle over the bundled one, and the bundled rest", routes)
+	if !slices.Contains(routes, override) || slices.Contains(routes, BundledClasses[ClassResearch]) ||
+		!slices.Contains(routes, BundledClasses[ClassDefault]) {
+		t.Fatalf("class routes = %q, want the machine's research class over the bundled one, and the bundled rest", routes)
 	}
 	cfg := walledFor(t, r)
 	if err := CheckReviewersLaunch(Options{Roots: &r, Runners: cfg}, r.Repo); err != nil {
 		t.Fatalf("the machine's class map cannot launch: %v", err)
 	}
-	if err := cfg.CanLaunch(RoleRuthless, BundledClasses[ClassMiddle], false); err == nil {
+	if err := cfg.CanLaunch(RoleRuthless, BundledClasses[ClassResearch], false); err == nil {
 		t.Fatal("the bundled route the machine replaced is still taken by name")
 	}
 }
@@ -128,7 +128,7 @@ func TestARunStartedAfterTheClassMapChangedLaunchesItsReviewers(t *testing.T) {
 	if err := cfg.CanLaunch(RoleRuthless, changed, false); err == nil {
 		t.Fatal("a route no map has named yet is taken by name")
 	}
-	machineConfig(t, `{"models":{"classes":{"middle":"`+changed+`"}},"runner":{"claude":{}}}`)
+	machineConfig(t, `{"models":{"classes":{"research":"`+changed+`"}},"runner":{"claude":{}}}`)
 	if _, err := Start(repo.Root(), "itd-10", Options{Runners: cfg, ClassMapRead: cfg.AddClassRoutes}); err != nil {
 		t.Fatal(err)
 	}

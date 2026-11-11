@@ -11,24 +11,25 @@ production_mode: hand-written
 
 The build loop's validate stage stops running one fixed reviewer per code-review role
 and runs a **review set** instead: a list of reviewers per role, each at a model class,
-and an optional judge. The bundled default is two reviewers per role, the middle class
-and the class below it, with the stricter verdict deciding (the product thinker,
-2026-10-24). Every round records, per reviewer, its class, the model asked for and the
+and a judge. The bundled default is two reviewers per role, the `research` class and
+the `default` class, with the stricter verdict deciding (the product thinker,
+2026-10-24; amended 2026-11-10 by itd-2611101419006280, which renamed the classes and
+moved the pair from the class then called middle and the class below it). Every round records, per reviewer, its class, the model asked for and the
 model reported, its verdict and its located findings, with whether the fix round
 applied or rejected each, so a later choice of review set is made from counts.
 
 Approach, by acceptance criterion:
 
 - **Configuration.** `review.reviewers` (a list of classes, one or two entries, per role
-  or for both) and `review.judge` (a class or absent) resolve through the layers the
+  or for both) and `review.judge` (a class, else the bundled `top`) resolve through the layers the
   pace uses (flag, repository, machine, bundled), read once when the run starts and kept
   for the run. The repository's list is clamped to `review.max_reviewers` from the
   machine's config (two when unset), with one stderr line naming both files. The class
-  map `models.classes` (`top`, `middle`, `below`, `smallest`, each an admitted
+  map `models.classes` (`research`, `top`, `default`, `small` since itd-2611101419006280, each an admitted
   `<provider>/<model>` route) is read from the machine's config or the bundled default
   alone; a repository value there is skipped with a warning, as a repository runner
-  route is. A class the map lacks, or a judge whose agent has no passing calibration
-  record under itd-81, is refused at the existing `review` stage
+  route is. A class the map lacks, or a judge a configuration file names whose agent has
+  no passing calibration record under itd-81, is refused at the existing `review` stage
   (`internal/core/implement/loop/validate.go`, `StageReview`) before anything is
   written. The run's `pace` payload gains a `review` sibling naming each value's layer.
 - **Per-request model.** `runner.Request` gains a model, admitted against the provider
@@ -54,8 +55,13 @@ Approach, by acceptance criterion:
 - **Judge.** On a disagreement with a judge set, the judge is handed both returns and
   the head and may only strike findings it rules false from the fix brief, each with its
   reason; it never passes a round, and a round whose failing findings are all struck
-  goes to a fix round with an empty brief. Until a judge agent clears itd-81's gate the
-  judge cannot be enabled, so the default runs without one.
+  goes to a fix round with an empty brief. The judge is launched only where the run's
+  stored judge status is `active`: the bundled `top` judge is stored `waiting` until a
+  judge agent clears itd-81's gate, fixed at the run's start, and a waiting judge is never
+  launched, awaited or counted (amended 2026-11-10 by itd-2611101419006280). A judge
+  launch checks the calibration gate again when it launches and never rests on the stored
+  status alone: the stored status words the run record's line, and a judge whose agent
+  no longer clears the gate is not launched.
 
 Out of scope, recorded: the other top-class consult cases and the writer-class ruling
 (iss-2610240946046901); reviews started by hand outside the loop (itd-83's seam); the
@@ -70,7 +76,7 @@ intent-auditor's fan-out.
 
 1. The review set and the class map
    - packages: internal/core/implement/loop, internal/core/layered, internal/surface/cli, commands
-   - tests: the bundled default resolves to two reviewers per role (middle, below); a repository list above the machine's ceiling is clamped with one stderr line naming both files; a repository class map is skipped with a warning; an unknown class and an uncalibrated judge are each refused at the `review` stage with nothing written; a running run keeps the set it started with; the payload names each value's layer
+   - tests: the bundled default resolves to two reviewers per role (then middle and below; research and default since amended 2026-11-10 by itd-2611101419006280); a repository list above the machine's ceiling is clamped with one stderr line naming both files; a repository class map is skipped with a warning; an unknown class and an uncalibrated judge are each refused at the `review` stage with nothing written; a running run keeps the set it started with; the payload names each value's layer
    - needs: none
    - landed: a7ab8927bf0b
 2. A runner takes a model per request
@@ -91,5 +97,5 @@ intent-auditor's fan-out.
    - landed: 904e2a8f59c9
 5. The judge strikes false findings only
    - packages: internal/core/implement/loop, commands
-   - tests: with a calibrated judge fixture, a disagreement hands the judge both returns and the head; a struck finding leaves the fix brief with its reason recorded; the judge never passes a round; a round whose failing findings are all struck still opens a fix round with an empty brief; agreeing reviewers start no judge
+   - tests: with a calibrated judge fixture, a disagreement hands the judge both returns and the head, and only a judge whose stored status is `active` is launched, a `waiting` one never; a struck finding leaves the fix brief with its reason recorded; the judge never passes a round; a round whose failing findings are all struck still opens a fix round with an empty brief; agreeing reviewers start no judge
    - needs: 3

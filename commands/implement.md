@@ -565,14 +565,17 @@ a slot: the role's reviewer 0 at `validate/round-<n>/<role>/` and reviewer 1 at
 `validate/round-<n>/<role>.1/`, each with its own brief and return, the two
 briefs differing only in their return path, and a return recorded on the
 reviewer whose path it is, whichever comes back first. The result's
-`awaiting` names a reviewer's `reviewer` index, its `class` and the `model` the
-class resolves to (`next` says "on <model>, the model of the <class> class"):
-start that agent on that model. A role routed to a runner is started at that
-model over the runner's own; a `--route` for the role naming another model, or
+`awaiting` names a reviewer's `reviewer` index, its `class`, the `model` the
+class resolves to and the class's `effort` (`next` says "on <model>, the model
+of the <class> class", and the effort, asked, not confirmed): start that agent
+on that model at that effort. A role routed to a runner is started at that
+model over the runner's own, and at the class's effort where the runner can
+pass one: the claude runner passes its effort flag and its route records the
+effort asked, and the opencode runner records it as not passed; a `--route` for the role naming another model, or
 claude asked for a model the machine pins, is refused before anything launches,
 naming both models or the pin, and nothing falls back. Each reviewer's record
-in the round carries its `reviewer`, `class`, `model` and, once its verdict is
-in, `model_status`: `reported` when the runner that ran it reported a model
+in the round carries its `reviewer`, `class`, `model`, `effort` and, once its
+verdict is in, `model_status`: `reported` when the runner that ran it reported a model
 (beside it on its `route`), `asked` when only the asking is known, as for every
 reviewer the host runs, whose model nothing confirms, and `unsent` when the
 reviewer route (`oracle.review` set to the RP route) answered it: that route's
@@ -611,7 +614,10 @@ the lines that say a word of it say both, or one says a negated word. A
 location two reviewers of the round cite carries `cited_by`, naming both.
 `implement record` (and its `--json`) shows them under each verdict, and
 `implement status --json` in the round. Located findings are state schema
-version 24's. Each role a round hands
+version 24's. Version 25 renamed the stored classes (`top` is now `research`,
+`middle` is `top`, `below` is `default`, `smallest` is `small`), gave a stored
+judge its `status` and each class its `effort`; an older run's state is
+migrated on read, each reviewer keeping the model it was resolved to. Each role a round hands
 out is asked for the model tier its routing row names, and a round that does
 not pass moves each role one step up for the next round (`local`, `economy`,
 `frontier`; `frontier` and `host-decides` stay), from the tier it ran at, never

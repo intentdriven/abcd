@@ -636,7 +636,7 @@
     {
       "chapter": "34-build.md",
       "sentence": "under a run id it does not name. The state is schema version 16. Version 16",
-      "replacement": "under a run id it does not name. The state is schema version 20. Version 20 keyed a validation round by reviewer (a validator's `reviewer`, `class`, `model` and `model_status`, an await's `reviewer`, `class` and `model`, and a round's `comparisons`), version 19 added a fallback receipt's `spent`, version 18 an await's `paused` and `running`, and version 17 a lane's `auto_plan`; each version before them reads as the next one's strict subset, and a file of an earlier version carrying what only a later one writes is refused. Version 16",
+      "replacement": "Version 20 keyed a validation round by reviewer (a validator's `reviewer`, `class`, `model` and `model_status`, an await's `reviewer`, `class` and `model`, and a round's `comparisons`), version 19 added a fallback receipt's `spent`, version 18 an await's `paused` and `running`, and version 17 a lane's `auto_plan`; each version before them reads as the next one's strict subset, and a file of an earlier version carrying what only a later one writes is refused. Version 16",
       "evidence": "internal/core/implement/loop/state.go:270 (`const SchemaVersion = 20`; versions 17 to 20 at state.go:228-269; commands/implement.md:531 already names version 20)",
       "commit": "49301ccb097cd61b6e8bff9d64eb7c9dd5fa923f",
       "applied": "2026-11-04T03:52:40Z"

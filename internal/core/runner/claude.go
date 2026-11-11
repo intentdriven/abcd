@@ -187,7 +187,24 @@ func (c *ClaudeCLI) args(req Request) []string {
 	if m := c.askedModel(req); m != "" {
 		a = append(a, "--model="+m)
 	}
-	return append(a, "--", prompt(req))
+	return append(effortFlag(a, req), "--", prompt(req))
+}
+
+// effortFlag is a with the harness's effort flag for a request at a class
+// (itd-2611101419006280); a request with no class carries no effort.
+func effortFlag(a []string, req Request) []string {
+	if req.Effort == "" {
+		return a
+	}
+	return append(a, "--effort="+req.Effort)
+}
+
+// effortNamed adds to a failed launch at a class the effort and the class it
+// was launched at, so a harness that refused the effort is named with it.
+func effortNamed(fl *Failure, req Request) {
+	if req.Effort != "" {
+		fl.Detail += fmt.Sprintf("; it was launched at effort %s, the %s class's", req.Effort, req.Class)
+	}
 }
 
 // walledDirRule is the harness's rule for everything below dir, in the rule's own form for
@@ -229,7 +246,7 @@ func (c *ClaudeCLI) walledFlags(req Request) []string {
 	if m := c.askedModel(req); m != "" {
 		a = append(a, "--model="+m)
 	}
-	return a
+	return effortFlag(a, req)
 }
 
 // stageWriteDirs are where a walled launch's file tools write: its working tree
@@ -327,6 +344,7 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 		var fl *Failure
 		if errors.As(err, &fl) {
 			keepSeen(fl, res, req.modelOr(c.model))
+			effortNamed(fl, req)
 			if errors.Is(err, ErrKilled) {
 				// Killed, it wrote no result event: what it spent is read
 				// from the stream it did write (iss-2611021751406429).
@@ -340,10 +358,12 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 		var fl *Failure
 		if errors.As(err, &fl) {
 			keepSeen(fl, res, req.modelOr(c.model))
+			effortNamed(fl, req)
 		}
 		return ans, transcript, err
 	}
 	ans.ModelAsked, ans.PromptSHA256 = c.askedModel(req), promptSHA256(req)
+	ans.EffortAsked = req.Effort
 	ans.Local = c.local
 	ans.Unpinned = claudeUnpinned(ans)
 	return ans, transcript, nil
@@ -685,7 +705,7 @@ func claudeSpent(out []byte) Answer {
 // the harness's own computation, from its price table.
 func claudeUnpinned(ans Answer) []oracle.Unpinned {
 	var un oracle.Unpin
-	askedUnpinned(&un, ans.Sides)
+	askedUnpinned(&un, ans.Sides, false)
 	servedUnpinned(&un, ans.Model, ans.Sides, ans.counted)
 	return un.List()
 }

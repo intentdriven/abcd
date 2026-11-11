@@ -89,7 +89,8 @@ func TestAPinnedRouteIsVersion16s(t *testing.T) {
 // TestAVersion15FileReadsAsVersion16s is the clean version-15 rule: a file
 // as the version before pins writes it, both sides and no pin, is version
 // 16's strict subset. It reads as the current version, decodes and re-encodes
-// losslessly apart from its version, and the run's next mutation writes it
+// losslessly apart from its version and the names of its classes (version
+// 25 renamed them), and the run's next mutation writes it
 // back at the current version (16 when pins joined; the auto-plan made it 17).
 func TestAVersion15FileReadsAsVersion16s(t *testing.T) {
 	if schemaVersionUnplanned != 16 {
@@ -121,6 +122,7 @@ func TestAVersion15FileReadsAsVersion16s(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldDoc["schema_version"] = float64(SchemaVersion)
+	renameNewer(oldDoc)
 	if !reflect.DeepEqual(oldDoc, newDoc) {
 		t.Fatalf("re-encoding the version-15 file changed more than its version:\nread:    %s\nwritten: %s", old, encoded)
 	}

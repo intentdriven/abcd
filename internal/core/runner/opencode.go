@@ -150,6 +150,10 @@ func (o *OpenCodeCLI) Run(ctx context.Context, req Request) (Answer, []byte, err
 		return Answer{}, transcript, err
 	}
 	ans.ModelAsked, ans.PromptSHA256 = req.modelOr(o.model), promptSHA256(req)
+	// opencode's --variant selects a provider's own reasoning variant, whose
+	// names differ by provider, so no effort level is passed through it
+	// (itd-2611101419006280 criterion 12): the record says it was not passed.
+	unpassed := req.Effort != ""
 	ans.Local = o.local
 	if o.pin != nil {
 		pin := *o.pin
@@ -160,7 +164,7 @@ func (o *OpenCodeCLI) Run(ctx context.Context, req Request) (Answer, []byte, err
 		ans.LocalPin, ans.LocalServed, ans.PinConfigSHA256, ans.HarnessVersion = &pin, served, sealed.sha256, version
 	}
 	var un oracle.Unpin
-	askedUnpinned(&un, ans.Sides)
+	askedUnpinned(&un, ans.Sides, unpassed)
 	servedUnpinned(&un, ans.Model, ans.Sides, ans.counted)
 	ans.Unpinned = un.List()
 	return ans, transcript, nil

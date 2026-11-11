@@ -2416,6 +2416,13 @@ func CapDrainInProgress(repoRoot string, lanes int) error {
 	})
 }
 
+// ReviewSetFor is the review set a run started now would run on, as a drive's
+// start names it before it asks (itd-2611101419006280 decision 8).
+func ReviewSetFor(o Options, repoRoot string) (ReviewSet, error) {
+	review, _, err := resolveReviewSet(o.roots(repoRoot), o)
+	return review, err
+}
+
 // EstimateRuns is the agent runs a drive of lanes lanes may start, by the
 // budget check's estimate.
 func EstimateRuns(o Options, repoRoot string, lanes int) (int, error) {

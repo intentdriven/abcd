@@ -486,6 +486,8 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		// of the harness's own vendor, by membership of the machine's class
 		// map, the denylist still refusing it. "" keeps the route's.
 		Model:     aw.Model,
+		Class:     aw.Class,
+		Effort:    aw.Effort,
 		SessionID: session,
 		Timeout:   timeout,
 		Work:      runner.LaunchWork{Run: runID, Lane: laneID, Await: aw.Receipt},

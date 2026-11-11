@@ -26,6 +26,10 @@ package loop
 // which is the stricter verdict. A role that ran one reviewer records that no
 // comparison was made.
 //
+// A reviewer is asked for its class's effort as it is for the model: a runner
+// that can pass an effort is handed it, and its route records it as asked; a
+// host-run reviewer is asked for it and never confirms it.
+//
 // A host-run reviewer is asked for its class and model and never confirms it,
 // so its record says the model was asked (ModelAsked); one a runner ran and
 // that reported its model says so (ModelReported), with the reported model on
@@ -51,7 +55,7 @@ func roundReviewers(st State, role string) []ValidatorRun {
 		if r, ok := st.Review.Role(role); ok && len(r.Reviewers) > 0 {
 			out := make([]ValidatorRun, 0, len(r.Reviewers))
 			for i, c := range r.Reviewers {
-				out = append(out, ValidatorRun{Role: role, Reviewer: i, Class: c.Class, Model: c.Model})
+				out = append(out, ValidatorRun{Role: role, Reviewer: i, Class: c.Class, Model: c.Model, Effort: c.Effort})
 			}
 			return out
 		}
@@ -71,12 +75,13 @@ func reviewerDir(runID, laneID string, n int, role string, index int) (string, e
 }
 
 // await is what the round hands the validator out as: its role, brief and
-// return, and, for a review set's reviewer, its index, class and model.
+// return, and, for a review set's reviewer, its index, class, model and the
+// class's effort.
 func (v ValidatorRun) await() Await {
 	a := Await{Role: v.Role, Brief: v.Brief, Receipt: v.Return}
 	if v.Class != "" {
 		i := v.Reviewer
-		a.Reviewer, a.Class, a.Model = &i, v.Class, v.Model
+		a.Reviewer, a.Class, a.Model, a.Effort = &i, v.Class, v.Model, v.Effort
 	}
 	return a
 }
@@ -84,15 +89,15 @@ func (v ValidatorRun) await() Await {
 // reviewerPhrase names a review set's reviewer as the record and the text
 // surfaces show it, its class with the model the class holds (decision 2);
 // "" for a validator no review set asked for a class.
-func reviewerPhrase(index int, class, model string) string {
+func reviewerPhrase(index int, class, model, effort string) string {
 	if class == "" {
 		return ""
 	}
-	return fmt.Sprintf("reviewer %d at %s", index, classPhrase(class, model))
+	return fmt.Sprintf("reviewer %d at %s", index, classPhrase(class, model, effort))
 }
 
 // phrase is reviewerPhrase for the validator.
-func (v ValidatorRun) phrase() string { return reviewerPhrase(v.Reviewer, v.Class, v.Model) }
+func (v ValidatorRun) phrase() string { return reviewerPhrase(v.Reviewer, v.Class, v.Model, v.Effort) }
 
 // recordModelStatus records, on a review set's reviewer whose verdict the
 // loop has just recorded, how far its model is known: unsent when the
@@ -215,9 +220,9 @@ func (s State) keyed() string {
 // outcomes over one or two reviewers. A validator with no class carries no
 // index and no model.
 func (s State) reviewersWritten() bool {
-	reviewer := func(role string, index int, class, model string) bool {
+	reviewer := func(role string, index int, class, model, effort string) bool {
 		if class == "" {
-			return index == 0 && model == ""
+			return index == 0 && model == "" && effort == ""
 		}
 		if s.Review == nil || !slices.Contains(reviewRoles, role) || index < 0 || index >= maxReviewers {
 			return false
@@ -227,24 +232,24 @@ func (s State) reviewersWritten() bool {
 			return false
 		}
 		want := set.Reviewers[index]
-		return class == want.Class && model == want.Model &&
+		return class == want.Class && model == want.Model && effort == want.Effort &&
 			slices.Contains(Classes, class) && validRoute(model)
 	}
 	for _, l := range s.Lanes {
 		for _, a := range l.Awaits {
 			if a.Reviewer == nil {
-				if a.Class != "" || a.Model != "" {
+				if a.Class != "" || a.Model != "" || a.Effort != "" {
 					return false
 				}
 				continue
 			}
-			if a.Class == "" || !reviewer(a.Role, *a.Reviewer, a.Class, a.Model) {
+			if a.Class == "" || !reviewer(a.Role, *a.Reviewer, a.Class, a.Model, a.Effort) {
 				return false
 			}
 		}
 		for _, r := range l.Validation {
 			for _, v := range r.Validators {
-				if !reviewer(v.Role, v.Reviewer, v.Class, v.Model) {
+				if !reviewer(v.Role, v.Reviewer, v.Class, v.Model, v.Effort) {
 					return false
 				}
 				switch v.ModelStatus {

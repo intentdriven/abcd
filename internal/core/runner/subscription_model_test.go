@@ -15,7 +15,7 @@ import (
 // launch, a route outside the class map, another vendor's route, opencode,
 // the host, and a vendor the machine does configure.
 
-// bundledReviewModel is the bundled class map's middle class (the loop's
+// bundledReviewModel is the bundled class map's top class (the loop's
 // BundledClasses, which this package cannot import).
 const bundledReviewModel = "anthropic/claude-opus-5-5"
 

@@ -111,7 +111,7 @@ func TestAQuotaOverTheEstimateStartsTheRun(t *testing.T) {
 
 	// A review set of one reviewer per role estimates one per round.
 	repo = loopRepo(t, readyIntent("", settledQuestions), specWithSteps(threeSteps))
-	machineConfig(t, `{"review":{"reviewers":["middle"]}}`)
+	machineConfig(t, `{"review":{"reviewers":["top"]}}`)
 	res, err = Start(repo.Root(), "itd-10", Options{Runners: cfg, Quota: quotaOf(map[string]int{runner.Claude: 40})})
 	if err != nil {
 		t.Fatal(err)

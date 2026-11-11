@@ -399,9 +399,19 @@ func TestStartCreatesOneLaneAndAStartAgainResumesIt(t *testing.T) {
 	if len(st.Pending) != 1 || st.Pending[0].Number != 3 {
 		t.Fatalf("the unlanded steps after the first wait as pending: %+v", st.Pending)
 	}
-	if len(st.Record) != 4 || st.Record[0].Stage != "start" || st.Record[1].Stage != StagePace || st.Record[2].Stage != StageReview ||
-		st.Record[3].Stage != CheckBudget {
-		t.Fatalf("the record opens with the start, then names the pace, the review set and the budget check: %+v", st.Record)
+	// The record opens with the start, the pace and the review set, then the
+	// one line saying the bundled judge waits (itd-2611101419006280's judge
+	// criterion), beside the set it belongs to and before the budget check,
+	// whose estimate counts no waiting judge.
+	if len(st.Record) != 5 || st.Record[0].Stage != "start" || st.Record[1].Stage != StagePace || st.Record[2].Stage != StageReview ||
+		st.Record[3].Stage != StageReview || st.Record[4].Stage != CheckBudget {
+		t.Fatalf("the record opens with the start, then names the pace, the review set, the judge and the budget check: %+v", st.Record)
+	}
+	if set := st.Record[2].Note; !strings.Contains(set, "effort "+BundledEffort) || !strings.Contains(set, "efforts from ") {
+		t.Fatalf("the review set's line names each class's effort and where it came from: %q", set)
+	}
+	if judge := st.Record[3].Note; !strings.Contains(judge, "waits for the whole run") {
+		t.Fatalf("the judge's line says the bundled judge waits: %q", judge)
 	}
 	fi, err := os.Stat(filepath.Join(repo.Root(), filepath.FromSlash(res.State)))
 	if err != nil || fi.Mode().Perm() != filePerm {
