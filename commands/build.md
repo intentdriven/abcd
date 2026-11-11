@@ -216,26 +216,40 @@ run as its own peer.
 **A lane whose pull request has merged is closed before the run resumes.** Once
 the resume's own checks pass, a lane parked at its landing with its head pushed
 is closed when what it pushed is on origin's default branch as the build fetches
-it, and the lane's branch is gone or its tip is on that branch: its worktree is
-removed, its branch deleted, its landing records the merge, and the run goes on
-in a new lane, on a new branch cut from origin's default branch tip. The result
-lists each lane closed in `closed` (`lane`, `pr`, `merged`) and the text prints
-a `closed:` line for each. When no step is left to build, the run's state is
-written, its reservation released after it, the result carries `finished: true`,
-the text reads `finished`, and nothing more is started. A fetch that fails or
-does not finish in time closes nothing and says so on stderr. A squash or rebase
-merge, which leaves the pushed head off the default branch, is not closed this
-way, and a lane whose branch holds a commit past the default branch is resumed
-as before. A lane whose worktree holds an uncommitted or untracked file, or an
-ignored one outside its own `.abcd/.work.local/`, is refused at the `resume`
-stage, naming the lane, its worktree and the files, and nothing is removed; the
-worktree's own local tier goes with it, as with the land step. A run whose
-state file states another version than this abcd's, one a drive stopped on, one
-whose control record holds a stop, and one the stop read for its shared folder
-finds stopped or cannot trust are left as they stand, with a line saying why.
-The fetch, the ref reads, the worktree reads and the branch's deletion share one
-deadline; the worktree's removal is never cut off part-way, and the
-reservation's release keeps its own network bound.
+it (resolved to a commit straight after the fetch, and that commit is the proof
+throughout), and the lane's branch is gone or its tip is on that branch: its
+worktree is removed, its branch deleted, its landing records the merge, and the
+run goes on in a new lane, on a new branch cut from origin's default branch tip.
+A resume the checks refuse removes nothing, with one exception: a resume whose
+reservation is refused because the record is finished on origin's default branch
+still closes its merged lanes when that finishes the run; any other refusal of
+the reservation (another holder, origin unreachable, a lock error, an unreadable
+record) stands and removes nothing. The result lists each lane closed in
+`closed` (`lane`, `pr`, `merged`) and the text prints a `closed:` line for each.
+When no step is left to build, the run's state is written, its reservation
+released after it, the result carries `finished: true`, the text reads
+`finished`, no late admission is recorded, and nothing more is started. A fetch
+that fails or does not finish in time closes nothing and says so on stderr. A
+squash or rebase merge, which leaves the pushed head off the default branch, is
+not closed this way, and a lane whose branch holds a commit past the default
+branch is resumed as before. A lane whose worktree holds an uncommitted or
+untracked file, or an ignored one other than its own `.abcd/.work.local/` and
+abcd's own artefacts, is refused at the `resume` stage, naming the lane, its worktree
+and the files, and nothing is removed. abcd's artefacts are matched by exact path
+from the worktree's root: `.abcd/work/issues/.iss-alloc.lock` (the issue
+ledger's allocator lock a landing that resolves an issue leaves), and the plugin
+bootstrap's `abcd`, `.binary-meta`, `.bootstrap.lock/`, `.bootstrap.attempt` and
+`.bootstrap.tmp.<pid>/`; they and the local tier go with the worktree, as with the
+land step. A run whose state file states another version than this abcd's, one a
+drive stopped on, one whose control record holds a stop, and one the stop read
+for its shared folder finds stopped or cannot trust are left as they stand, with
+a line saying why. One deadline bounds the closing's own git: the fetch, the ref
+reads and ancestry checks it makes, the worktree listing and the worktree reads.
+A closing already out of time when it takes the run's lock is refused with
+nothing removed; one that runs out later keeps the lanes it has closed, says it
+ran out of time, and the next build closes the rest. Once a lane's worktree
+removal has begun, neither it nor the branch's deletion after it is cut off, and
+the reservation's release keeps its own network bound.
 
 **A session whose setting reads as off a profile is warned while the away mode
 holds.** While `abcd mode autonomous` holds, or its record cannot be read, every
