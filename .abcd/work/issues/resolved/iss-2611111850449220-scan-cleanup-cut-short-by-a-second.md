@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "scripts/preflight-scans.sh"
 remedy: "Each signal trap ignores HUP, INT and TERM before it exits, so the removals run to their end; a test sends a second hangup from inside the first removal and requires nothing left behind."
+resolution: "Each of the script's HUP, INT and TERM traps ignores those three signals before it exits, so the EXIT trap's removals run to their end. TestVulncheckInterruptedLeavesNoCopyBehind gained a case that sends a second hangup from inside the first removal; it fails without the change with the queue's own message and passes with it. Where the second hangup comes from on Linux was not established."
+impact: fix
+resolved_by:
+  commit: "157741d772065a0584852d9cc5a054915a78c913"
 ---
 
 The preflight scan script's cleanup can be cut short by a second signal. Its HUP, INT and TERM traps exit with the signal's code and the EXIT trap then removes the fork point's copy, the gitleaks directory and the directory govulncheck was built in, one after another. A second signal that arrives while those removals run takes the same trap, which exits at once: the exit code is still the first trap's, and whatever was not yet removed stays in TMPDIR. Seen in the merge queue's Linux test job three times on 11 Nov 2026: TestVulncheckInterruptedLeavesNoCopyBehind/HUP reported the build directory left behind twice and the fork point's copy with it once, with the exit code as expected each time, and two pull requests were removed from the queue. Not reproduced on macOS by repeating the test; where the second hangup comes from on Linux is not established (a shell in a command substitution passing a hangup on to its process group is the likely source, read from how bash behaves, not observed).
