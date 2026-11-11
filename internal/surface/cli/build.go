@@ -281,16 +281,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			}
 			warnOffProfileWhileAway(cmd, prefix, root)
 			if err := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
-				verb := "started"
-				if res.Resumed {
-					verb = "resumed"
-				}
-				if res.Finished {
-					verb = "finished"
-				}
-				fmt.Fprintf(w, "build %s: %s run %s\n", termsafe.Sanitize(args[0]), verb, res.RunID)
-				fmt.Fprintf(w, "  state:   %s\n", res.State)
-				renderClosed(w, res.Closed)
+				renderStartHead(w, args[0], res)
 				renderPace(w, res.Pace)
 				renderReview(w, res.Review)
 				renderBudget(w, res.Checks)
@@ -592,9 +583,22 @@ func renderReview(w io.Writer, rs *loop.ReviewSet) {
 	fmt.Fprintf(w, "  review:  %s\n", termsafe.Sanitize(rs.String()))
 }
 
-// printReviewDiagnostics says the review set's non-fatal reports (a list
-// clamped to the machine's ceiling, a repository's class map or ceiling
-// skipped) on stderr, one line each.
+// renderStartHead renders a build's first lines: what it did with the run
+// (started, resumed, or finished, when closing its merged lanes left nothing
+// to build), the run's state, and each lane it closed.
+func renderStartHead(w io.Writer, key string, res loop.StartResult) {
+	verb := "started"
+	if res.Resumed {
+		verb = "resumed"
+	}
+	if res.Finished {
+		verb = "finished"
+	}
+	fmt.Fprintf(w, "build %s: %s run %s\n", termsafe.Sanitize(key), verb, res.RunID)
+	fmt.Fprintf(w, "  state:   %s\n", res.State)
+	renderClosed(w, res.Closed)
+}
+
 // renderClosed renders each lane a resumed build closed because its pull
 // request had merged, one line each.
 func renderClosed(w io.Writer, closed []loop.ClosedLane) {
@@ -604,6 +608,9 @@ func renderClosed(w io.Writer, closed []loop.ClosedLane) {
 	}
 }
 
+// printReviewDiagnostics says the review set's non-fatal reports (a list
+// clamped to the machine's ceiling, a repository's class map or ceiling
+// skipped) on stderr, one line each.
 func printReviewDiagnostics(w io.Writer, diagnostics []string) {
 	for _, d := range diagnostics {
 		fmt.Fprintln(w, termsafe.Sanitize(fsutil.RedactHome(d)))

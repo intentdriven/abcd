@@ -684,13 +684,17 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		if err == nil && flags.set {
 			err = resumeWithFlags(res, flags)
 		}
-		// A record finished on origin's default branch has nothing to reserve: a
-		// build whose closing of merged lanes then finishes the run says so, and
-		// any other resume of it is refused as before (closeOnResume).
+		// A reservation refused because the record sits finished on origin's
+		// default branch (claim.ErrFinished, and that refusal alone) has nothing
+		// to reserve: a build whose closing of merged lanes then finishes the run
+		// says so, and any other resume of it is refused as before
+		// (closeOnResume). Every other refusal of the reservation stands.
 		var unreserved error
 		if err == nil {
-			if err = reserveResumed(repoRoot, &res, o); err != nil && recordFinished(repoRoot, res.RunID, o) {
-				unreserved, err = err, nil
+			if err = reserveResumed(repoRoot, &res, o); err != nil {
+				if rf, ok := AsRefusal(err); ok && rf.recordFinished {
+					unreserved, err = err, nil
+				}
 			}
 		}
 		if err == nil {
@@ -699,7 +703,8 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 				err = unreserved
 			}
 		}
-		if err == nil {
+		// A run the closing finished admits nothing late: it is complete.
+		if err == nil && !res.Finished {
 			err = admitResumed(repoRoot, res.RunID, o)
 		}
 		if err != nil {

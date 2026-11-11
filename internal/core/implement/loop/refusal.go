@@ -95,6 +95,11 @@ type Refusal struct {
 	// the run let it go: the caller drops the lane (dropMovedRun), since asking again
 	// meets the same record.
 	recordMoved bool
+	// recordFinished marks a reservation refused because its record sits finished
+	// on origin's default branch as claim just fetched it (claim.ErrFinished), the
+	// one reservation refusal a build's resume goes past to close its merged lanes
+	// (startChecked, closeOnResume).
+	recordFinished bool
 	// capped is the holder's live reservations when the refusal is the cap's
 	// (claim.CapError): the drain waits on it rather than refusing its move
 	// (drain_wait.go).

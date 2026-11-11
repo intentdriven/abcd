@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -735,4 +736,307 @@ func TestABuildRefusesAMergedLaneWhoseBranchIsCheckedOutElsewhere(t *testing.T) 
 	if string(f.stateBytes(t)) != string(before) {
 		t.Fatal("the refusal writes nothing to the run's state")
 	}
+}
+
+// runIDs lists the runs the checkout holds.
+func (f *landFixture) runIDs(t *testing.T) []string {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(f.repo.Root(), filepath.FromSlash(RunRelDir)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, e := range entries {
+		ids = append(ids, e.Name())
+	}
+	return ids
+}
+
+// TestABuildOfARecordFinishedOnOriginClosesItsLastLane: a one-lane run whose
+// pull request merged and whose intent sits shipped on origin's default branch
+// has its reservation refused for that reason alone (claim.ErrFinished), and the
+// build goes on to close the lane, since closing it finishes the run: the result
+// is finished, one lane closed, no other run made, and a reservation this copy
+// held is released once, after the state. A run so finished records no late
+// admission.
+func TestABuildOfARecordFinishedOnOriginClosesItsLastLane(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		held bool
+	}{
+		{"this copy's live reservation", true},
+		{"no reservation held", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newLandFixture(t, queueRuleset("MERGE"))
+			l := f.landedToArmedOnce(t)
+			specHasFootprint(t, f.repo)
+			if tc.held {
+				reserveRun(t, f.repo, f.runID, "itd-10", time.Now().UTC().Truncate(time.Second), "commands/x.md")
+			} else {
+				asPat(t, f.repo)
+			}
+			m := f.mergeCommit(t, l.Landing.Pushed)
+			f.intentShippedOnOrigin(t)
+			// A state that names no admission, as a run begun before runs
+			// recorded theirs: a resume would record one late.
+			editState(t, f.repo.Root(), f.runID, func(doc map[string]any) { delete(doc, "admitted") })
+			was := claimReserve
+			t.Cleanup(func() { claimReserve = was })
+			released := 0
+			claimReserve = func(dir string, req claim.Request, o claim.Options) (claim.Result, error) {
+				if req.Release {
+					released++
+				}
+				return was(dir, req, o)
+			}
+			before := f.runIDs(t)
+
+			res, err := Start(f.repo.Root(), "itd-10", Options{})
+			if err != nil {
+				t.Fatalf("the build closes the lane of a record finished on origin: %v", err)
+			}
+			if !res.Resumed || !res.Finished || len(res.Closed) != 1 || res.Closed[0].Lane != l.ID || res.Closed[0].Merged != m {
+				t.Fatalf("the result says the lane was closed and the run finished: %+v", res)
+			}
+			if _, err := os.Stat(l.Worktree); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("the lane's worktree is removed: %v", err)
+			}
+			if tc.held && (released != 1 || !strings.Contains(res.Reservation, "released the reservation on itd-10")) {
+				t.Fatalf("the reservation is released once: %d %q", released, res.Reservation)
+			}
+			if after := f.runIDs(t); !slices.Equal(after, before) {
+				t.Fatalf("no other run is made: %v, was %v", after, before)
+			}
+			st, err := ReadState(f.repo.Root(), f.runID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !st.Complete() {
+				t.Fatalf("the run is complete: %+v", st.Lanes)
+			}
+			if st.Admitted != nil || slices.ContainsFunc(st.Record, func(e Entry) bool {
+				return e.Stage == StageAdmitted && strings.Contains(e.Note, "recorded as the run resumed")
+			}) {
+				t.Fatalf("a run the closing finished admits nothing late: %+v %+v", st.Admitted, st.Record)
+			}
+		})
+	}
+}
+
+// TestARecordFinishedOnOriginWithAnotherRefusalClosesNothing: a resume whose
+// reservation is refused for any reason but the record's being finished, here
+// another person's hold, is refused, though the record sits finished on origin
+// and closing the lane would finish the run: nothing is removed.
+func TestARecordFinishedOnOriginWithAnotherRefusalClosesNothing(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.landedToArmedOnce(t)
+	specHasFootprint(t, f.repo)
+	reserveRun(t, f.repo, f.runID, "itd-10", time.Now().UTC().Truncate(time.Second), "commands/x.md")
+	f.mergeCommit(t, l.Landing.Pushed)
+	f.intentShippedOnOrigin(t)
+	if !claim.Finished(f.repo.Root(), "itd-10") {
+		t.Fatal("premise: the record is finished on origin's default branch")
+	}
+	was := reserveFresh
+	t.Cleanup(func() { reserveFresh = was })
+	asked := 0
+	reserveFresh = func(string, claim.Request, claim.Options) (claim.Result, error) {
+		asked++
+		return claim.Result{}, fmt.Errorf("itd-10 is reserved by quinn; back off and take other work: %w", claim.ErrBackOff)
+	}
+
+	_, err := Start(f.repo.Root(), "itd-10", Options{})
+	if rf, ok := AsRefusal(err); !ok || !rf.Contention || asked != 1 {
+		t.Fatalf("premise: the resume's reservation is refused by another's hold: %v (asked %d)", err, asked)
+	}
+	f.leftAsItStands(t, l)
+}
+
+// TestABuildClosesALaneWhoseLandingLeftAbcdsOwnFiles: a lane whose landing
+// resolved an issue leaves the issue ledger's allocator lock in its worktree,
+// ignored by the repository's .gitignore as this repository ignores it; the
+// lock is abcd's own, so the lane is closed with its worktree.
+func TestABuildClosesALaneWhoseLandingLeftAbcdsOwnFiles(t *testing.T) {
+	f := newLandFixtureWith(t, map[string]string{
+		".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
+		".gitignore": ".abcd/.work.local/\n.abcd/work/issues/.iss-alloc.lock\n",
+	})
+	l := f.landedToArmedOnce(t)
+	lock := filepath.Join(l.Worktree, ".abcd", "work", "issues", ".iss-alloc.lock")
+	if _, err := os.Stat(lock); err != nil || len(l.Resolves) == 0 {
+		t.Fatalf("premise: the landing resolved an issue and left the allocator lock: %v %+v", err, l.Resolves)
+	}
+	if out := gitIn(t, l.Worktree, "check-ignore", ".abcd/work/issues/.iss-alloc.lock"); strings.TrimSpace(out) == "" {
+		t.Fatal("premise: the lock is ignored")
+	}
+	m := f.mergeCommit(t, l.Landing.Pushed)
+
+	res, err := Start(f.repo.Root(), "itd-10", Options{noReserve: true})
+	if err != nil {
+		t.Fatalf("the build closes the lane: %v", err)
+	}
+	if len(res.Closed) != 1 || res.Closed[0].Merged != m {
+		t.Fatalf("the lane is closed: %+v", res.Closed)
+	}
+	if _, err := os.Stat(l.Worktree); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the worktree goes, with abcd's lock in it: %v", err)
+	}
+}
+
+// TestAbcdsOwnArtefactsAreMatchedByExactPath: the files a lane's worktree may
+// lose with it are its local tier and abcd's own artefacts, matched by their
+// exact paths from the root and the bootstrap's one pattern, nothing else.
+func TestAbcdsOwnArtefactsAreMatchedByExactPath(t *testing.T) {
+	for p, want := range map[string]bool{
+		".abcd/.work.local/":                    true,
+		".abcd/.work.local/receipts/x.json":     true,
+		".abcd/work/issues/.iss-alloc.lock":     true,
+		"abcd":                                  true,
+		".binary-meta":                          true,
+		".bootstrap.lock/":                      true,
+		".bootstrap.attempt":                    true,
+		".bootstrap.tmp.4242/":                  true,
+		".bootstrap.tmp.4242/artefact":          true,
+		".abcd/work/issues/other.lock":          false,
+		".abcd/work/issues/.iss-alloc.lock.bak": false,
+		"sub/.binary-meta":                      false,
+		"abcd/":                                 false,
+		".bootstrap.tmp./":                      false,
+		".bootstrap.tmp.x1/":                    false,
+		"notes.env":                             false,
+		".abcd/.work.localx":                    false,
+	} {
+		if got := abcdArtefact(p); got != want {
+			t.Errorf("abcdArtefact(%q) = %v, want %v", p, got, want)
+		}
+	}
+}
+
+// TestTheClosingHoldsToTheCommitItFetched: the proof of a merge is the commit
+// the fetch brought, resolved straight after it, never the remote-tracking ref
+// read again under the lock. A ref moved back after the fetch still closes the
+// lane on the fetched commit; a ref moved forward to take in a commit the lane's
+// branch gained after its push closes nothing.
+func TestTheClosingHoldsToTheCommitItFetched(t *testing.T) {
+	t.Run("the ref moved back", func(t *testing.T) {
+		f, l := mergedLaneFixture(t)
+		base := strings.TrimSpace(f.repo.Git("rev-parse", "refs/remotes/origin/main"))
+		m := f.mergeCommit(t, l.Landing.Pushed)
+		onSeen(t, func(context.Context) { f.repo.Git("update-ref", "refs/remotes/origin/main", base) })
+
+		res, err := Start(f.repo.Root(), "itd-10", Options{noReserve: true})
+		if err != nil {
+			t.Fatalf("the build closes the lane on the fetched commit: %v", err)
+		}
+		if len(res.Closed) != 1 || res.Closed[0].Merged != m {
+			t.Fatalf("the lane is closed on the fetched commit %s: %+v", m, res.Closed)
+		}
+		if out := f.repo.Git("branch", "--list", l.Branch); strings.TrimSpace(out) != "" {
+			t.Fatalf("the lane's branch is deleted: %q", out)
+		}
+	})
+	t.Run("the ref moved forward over a later commit", func(t *testing.T) {
+		f, l := mergedLaneFixture(t)
+		f.mergeCommit(t, l.Landing.Pushed)
+		var late string
+		onSeen(t, func(context.Context) {
+			late = laneCommit(t, f.repo, l, "late.txt")
+			f.repo.Git("update-ref", "refs/remotes/origin/main", late)
+		})
+
+		_, err := Start(f.repo.Root(), "itd-10", Options{noReserve: true})
+		rf, ok := AsRefusal(err)
+		if !ok || rf.Stage != StageResume || rf.Lane != l.ID || !strings.Contains(rf.Reason, "past what landed") {
+			t.Fatalf("the lane's branch past the fetched commit is refused: %v", err)
+		}
+		f.leftAsItStands(t, l)
+		if tip := strings.TrimSpace(f.repo.Git("rev-parse", "refs/heads/"+l.Branch)); tip != late {
+			t.Fatalf("the branch keeps its later commit %s: %s", late, tip)
+		}
+	})
+}
+
+// endClosingAfterRemoval makes the closing's context end once a lane's worktree
+// has been removed, before its branch is deleted.
+func endClosingAfterRemoval(t *testing.T) {
+	t.Helper()
+	wasCtx, wasHook := closingContext, afterLaneRemoved
+	t.Cleanup(func() { closingContext, afterLaneRemoved = wasCtx, wasHook })
+	var end context.CancelFunc
+	closingContext = func() (context.Context, context.CancelFunc) {
+		ctx, cancel := context.WithCancel(context.Background())
+		end = cancel
+		return ctx, cancel
+	}
+	afterLaneRemoved = func(context.Context) {
+		if end != nil {
+			end()
+		}
+	}
+}
+
+// TestAClosingOutOfTimeAfterARemovalFinishesThatLane: once a lane's worktree
+// removal has begun, the closing's deadline does not cut its branch's deletion
+// off, so the lane is closed whole; a later lane the deadline then reaches is
+// refused as out of time, never as a branch past what landed, nothing of it
+// removed, and the earlier lane stays closed.
+func TestAClosingOutOfTimeAfterARemovalFinishesThatLane(t *testing.T) {
+	t.Run("one lane", func(t *testing.T) {
+		f, l := mergedLaneFixture(t)
+		f.mergeCommit(t, l.Landing.Pushed)
+		endClosingAfterRemoval(t)
+
+		res, err := Start(f.repo.Root(), "itd-10", Options{noReserve: true})
+		if err != nil {
+			t.Fatalf("the lane whose removal began is closed whole: %v", err)
+		}
+		if len(res.Closed) != 1 {
+			t.Fatalf("the lane is closed: %+v", res.Closed)
+		}
+		if out := f.repo.Git("branch", "--list", l.Branch); strings.TrimSpace(out) != "" {
+			t.Fatalf("the branch is deleted though the deadline ended after the removal: %q", out)
+		}
+	})
+	t.Run("a later lane", func(t *testing.T) {
+		f, l := mergedLaneFixture(t)
+		f.mergeCommit(t, l.Landing.Pushed)
+		lw, err := laneWorktree(f.repo.Root(), f.runID, "lane-2")
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.repo.Git("worktree", "add", "-q", "-b", lw.Branch, lw.Path, l.Landing.Pushed)
+		editState(t, f.repo.Root(), f.runID, func(doc map[string]any) {
+			lanes := doc["lanes"].([]any)
+			second := map[string]any{}
+			for k, v := range lanes[0].(map[string]any) {
+				second[k] = v
+			}
+			second["id"], second["spec_step"], second["pr"] = "lane-2", 2, 8
+			second["branch"], second["worktree"] = lw.Branch, lw.Path
+			doc["lanes"] = append(lanes, second)
+			doc["pending"] = []any{}
+		})
+		endClosingAfterRemoval(t)
+
+		_, err = Start(f.repo.Root(), "itd-10", Options{noReserve: true})
+		rf, ok := AsRefusal(err)
+		if !ok || rf.Stage != StageResume || rf.Lane != "lane-2" || !strings.Contains(rf.Reason, "did not finish within") ||
+			strings.Contains(rf.Reason, "past what landed") || !strings.Contains(rf.Remedy, "abcd build itd-10") {
+			t.Fatalf("the later lane is refused as out of time: %v", err)
+		}
+		st, err := ReadState(f.repo.Root(), f.runID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Lanes[0].Stage != StageDone || st.Lanes[1].Stage != StageLand {
+			t.Fatalf("the first lane stays closed and the second is as it was: %+v", st.Lanes)
+		}
+		if _, err := os.Stat(lw.Path); err != nil {
+			t.Fatalf("the second lane keeps its worktree: %v", err)
+		}
+		if out := f.repo.Git("branch", "--list", lw.Branch); strings.TrimSpace(out) == "" {
+			t.Fatal("the second lane keeps its branch")
+		}
+	})
 }

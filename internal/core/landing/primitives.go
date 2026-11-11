@@ -244,23 +244,11 @@ func FetchDefault(git GitFunc, dir, def string) (string, error) {
 // the forge's half of the proof for it. A refused fetch is a *FetchError; any
 // other error is git unable to answer, which is not a no.
 func Landed(git GitFunc, dir, def, sha string) (tracking string, on bool, err error) {
-	return LandedContext(context.Background(), git, dir, def, sha)
-}
-
-// LandedContext is Landed with its ancestry check bound to ctx; git, which
-// makes the fetch, is the caller's, so a caller on a deadline passes a fetch
-// bound to the same ctx (gitutil.NetContext). A check ctx ended answers ctx's
-// error, never a no.
-func LandedContext(ctx context.Context, git GitFunc, dir, def, sha string) (tracking string, on bool, err error) {
 	if tracking, err = FetchDefault(git, dir, def); err != nil {
 		return tracking, false, err
 	}
-	if ctx.Done() == nil {
-		on, err = gitutil.IsAncestor(dir, sha, tracking)
-		return tracking, on, err
-	}
-	_, notOn, err := gitutil.RunCappedExitOneContext(ctx, dir, 4096, "merge-base", "--is-ancestor", sha, tracking)
-	return tracking, err == nil && !notOn, err
+	on, err = gitutil.IsAncestor(dir, sha, tracking)
+	return tracking, on, err
 }
 
 // maxMergedListed bounds the forge's listing of a branch's merged pull
