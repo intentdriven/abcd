@@ -645,11 +645,14 @@ on origin's default branch backs off, with a tip or without one
    fence reads it, the reservation now another person's, or its sync's merge
    conflicting in a file not declared generated. A wait by design
    is no refusal and is never counted: the landing's wait for its preflight
-   receipt, every outage wait, a land fence that cannot read origin, a
-   release being cut that holds merges (dcn-2610170116582725), and a lane
-   whose hold the loop could not widen to a path its branch changes because
-   another copy holds that path live, which waits before its validators or at
-   the fence until the hold ends (iss-2611110638266241). The drain hands a stuck lane back as
+   receipt, every outage wait, a land fence that cannot read origin, and a
+   release being cut that holds merges (dcn-2610170116582725). A lane whose
+   hold the loop could not widen to a path its branch changes because another
+   copy holds that path live waits before its validators or at the fence until
+   the hold ends (iss-2611110638266241); that wait is never counted toward the
+   bound of identical refusals, but is counted toward the bound of minutes, so
+   two lanes each waiting on a path the other holds are handed back as stuck,
+   the reason naming the path and the record whose hold it is. The drain hands a stuck lane back as
    `stuck`, naming the refusal, releases its reservation with the hand-back's
    tombstone, and goes on to the next issue in the same move. The lane keeps
    its worktree and branch until the person discards it through the step verb,

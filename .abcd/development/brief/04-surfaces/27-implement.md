@@ -596,12 +596,20 @@ fence reads a reservation made by hand for a run that recorded none as well.
 Another copy's live hold on one of the paths is contention and a wait by
 design: nothing is pushed, the receipt is taken all the same with a record
 line naming the path and the hold, and the lane waits before its validators,
-or at the fence, until that hold ends, a step a drain never counts toward its
-stuck bounds, so it is never a failed launch and never a stuck hand-back. An
+or at the fence, until that hold ends. It is never a failed launch, and a
+drain never counts it toward its bound of identical refusals; it counts it
+toward its bound of minutes alone, so two lanes each waiting on a path the
+other holds, each renewing its own hold, are handed back as stuck once that
+bound passes, the reason naming the path and the record whose hold it is. An
 origin the widening cannot reach is a wait too, as at the fence's other reads.
-A receipt is refused on the hold only when the widening could not be made for
-a reason the implementer can act on, a path no reservation may carry, naming
-it. The lane's brief tells the implementer that the loop reserves what its
+Paths too many for one reservation message are coarsened: each goes up to its
+directory, one level at a time, until they fit, never to the repository's root
+and never to a gate file, and the coarsened paths are judged for overlap like
+any other. A receipt is refused on the hold only when the widening could not
+be made: a path no reservation may carry, naming it, or paths still too many
+for the message's cap, naming the cap. A footprint path carries no leading or
+trailing space, and the writer reads each message it composes back before it
+writes it, writing nothing when the footprint does not read back as composed. The lane's brief tells the implementer that the loop reserves what its
 commits change, and what is still refused or waited for; it names no widen
 step. The landing's narrowing keeps a path the lane widened to and changed, a
 resume at land renews that narrowing as it stands, a resume that reserves

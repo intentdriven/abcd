@@ -296,11 +296,16 @@ to reserve a file, and a stage `abcd drain --drive` walls off from origin needs
 no credential for it. Another copy's live hold on one of the paths is a wait,
 not a refusal: nothing is pushed, the receipt is taken all the same, the
 record names the path and its holder, and the lane waits before its validators
-(or at the fence) until that hold ends, exit 3 naming it, a step that a drain
-never counts toward handing the lane back as stuck. An origin the widening
-cannot reach waits the same way. A receipt is refused on the hold only when
-the widening could not be made for a reason the implementer can act on, a path
-no reservation may carry, and the refusal names it. A drive lands no lane that
+(or at the fence) until that hold ends, exit 3 naming it. A drain never counts
+that wait toward its bound of identical refusals, but does count it toward its
+bound of minutes, so two lanes each waiting on a path the other holds are
+handed back as stuck once that bound passes, the reason naming the path and
+the record whose hold it is. An origin the widening cannot reach waits the
+same way. More paths than one reservation message can name are held by their
+directories instead, one level up at a time, never the repository's root or a
+gate file. A receipt is refused on the hold only when the widening could not
+be made: a path no reservation may carry, which the refusal names, or paths
+still too many for the message's cap, which it says. A drive lands no lane that
 changes a gate file, whatever its hold names (`commands/drain.md`). A
 reservation made again names every path widened to, even when the reservation
 branch was deleted.

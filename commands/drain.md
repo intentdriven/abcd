@@ -674,7 +674,9 @@ what it did in `next`:
   changes that the reservation does not cover, judged for overlap: once the
   lane's implementer hands a receipt back, before each step at its validators,
   and at each fence. Another's live hold on one makes the lane wait there,
-  naming that hold, and the wait is never counted toward the stuck bounds. Every drain move that neither waits on origin nor stops at a given-up outage also renews the lane in
+  naming that hold. The wait is never counted toward the bound of identical
+  refusals, but it is counted toward the bound of minutes, so two lanes each
+  waiting on a path the other holds go back as stuck once it passes. Every drain move that neither waits on origin nor stops at a given-up outage also renews the lane in
   progress at half its lease, waiting on the pace or a judgement or not, though no step of the lane ran,
   so a lane the host paused past its lease is not taken over (a lane handed
   back is renewed by no move). Once the lane's validators have passed and it
@@ -737,8 +739,10 @@ what it did in `next`:
   another person's, or its sync's merge conflicting in a file not declared
   generated. A wait is not a refusal and is never counted: the landing's wait
   for its preflight receipt, the wait through an outage, a land fence that
-  cannot read `origin`, a release being cut that holds merges, and a lane
-  waiting for another copy's live hold on a path its branch changes to end.
+  cannot read `origin`, and a release being cut that holds merges. A lane
+  waiting for another copy's live hold on a path its branch changes to end
+  counts toward the bound of minutes alone, and the hand-back names the path
+  and the record whose hold it is.
   The bounds are `pace.stuck_refusals` and `pace.stuck_minutes` in
   `.abcd/config.json` or `~/.abcd.noindex/config.json`, read at every move that reads a lane in progress. A
   stuck lane keeps its worktree and branch:
