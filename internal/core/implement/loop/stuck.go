@@ -31,6 +31,7 @@ package loop
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -143,9 +144,9 @@ func waitByDesign(r *Refusal) bool {
 // A wait on another holder's path (Refusal.pathHeld) is logged with a count
 // of 0 that never grows, so it never reaches the refusals bound, but keeps
 // the time the lane began waiting at its stage, as any refusal there does,
-// so the minutes bound hands back a lane whose wait does not end, however far
-// apart the looks at it come. The record gains a line only as such a wait
-// begins.
+// so the minutes bound hands back a lane whose wait does not end, while it
+// waits on the same hold with looks no more than twice stuckGap apart. The
+// record gains a line only as such a wait begins.
 func noteRefusal(st *State, err error, now time.Time) bool {
 	r, ok := AsRefusal(err)
 	if !ok || st.Issue() == "" || r.Lane == "" || (waitByDesign(r) && !r.pathHeld) {
@@ -171,12 +172,18 @@ func noteRefusal(st *State, err error, now time.Time) bool {
 	next := LaneRefused{Stage: r.Stage, Check: r.Check, Reason: reason, Count: 1, Since: now, Last: now, Final: r.final}
 	logged := true
 	p := lane.Refused
-	// A wait on another holder's path that goes on keeps the time it began
-	// however long the looks between came apart: a drive's look-again time
-	// can reach stuckGap itself, and a wait that started its time afresh at
-	// every look would never reach the minutes bound.
-	keep := p != nil && r.pathHeld && p.Count == 0
-	if p != nil && p.Stage == r.Stage && (now.Sub(p.Last) <= stuckGap || keep) {
+	switch {
+	case p != nil && p.Stage == r.Stage && r.pathHeld && p.Count == 0:
+		// A wait on another holder's path that goes on keeps the time it
+		// began while it waits on the same hold and the looks come no more
+		// than twice stuckGap apart: a drive's look-again time can reach
+		// stuckGap itself, and a wait that started its time afresh at every
+		// look would never reach the minutes bound. A wait on another hold,
+		// or after a longer quiet, starts afresh.
+		if sameHold(p.Reason, reason) && now.Sub(p.Last) <= 2*stuckGap {
+			next.Since = p.Since
+		}
+	case p != nil && p.Stage == r.Stage && now.Sub(p.Last) <= stuckGap:
 		next.Since = p.Since
 	}
 	switch {
@@ -206,6 +213,16 @@ func noteRefusal(st *State, err error, now time.Time) bool {
 	}
 	st.UpdatedAt = now
 	return true
+}
+
+// holdUntil is the end of a hold as a back-off over it names it, which a
+// renewal of the hold moves.
+var holdUntil = regexp.MustCompile(` until \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`)
+
+// sameHold reports whether a and b, two waits' reasons, name the same paths
+// and the same hold, whatever end each gives the hold.
+func sameHold(a, b string) bool {
+	return holdUntil.ReplaceAllString(a, "") == holdUntil.ReplaceAllString(b, "")
 }
 
 // refusedAt names a refusal's stage and check.

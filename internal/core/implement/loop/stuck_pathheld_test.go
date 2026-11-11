@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/claim"
 )
 
 // TestTwoLanesWaitingOnEachOthersHoldAreHandedBackPastTheMinutesBound: the
@@ -91,5 +93,47 @@ func TestAWaitOnAnotherHoldKeepsItsStartAcrossLooksFarApart(t *testing.T) {
 	}
 	if why == "" || !strings.Contains(why, "README.txt") {
 		t.Fatalf("looks %s apart still reach the minutes bound: %q", apart, why)
+	}
+}
+
+// TestAWaitOnAnotherHoldAfterALongQuietStartsAfresh: the lane waits on one
+// copy's hold for fifty minutes; then nothing looks at it for longer than
+// twice the gap that starts a refusal's time afresh, and the next look finds
+// it waiting on a different hold. That wait starts at that look, so the lane
+// is not handed back at once.
+func TestAWaitOnAnotherHoldAfterALongQuietStartsAfresh(t *testing.T) {
+	f := newNarrowFixture(t)
+	f.reserveAs(t, "iss-99", "quinn", "README.txt", time.Now().Add(-time.Minute))
+	path := f.walledStage(t, "docs/page.md", "README.txt")
+	if _, err := Receipt(f.repo.Root(), f.runID, path, f.stages, Options{}); err != nil {
+		t.Fatalf("the receipt is taken: %v", err)
+	}
+	b := stuckBounds{refusals: PaceValue{Value: BundledStuckRefusals}, minutes: PaceValue{Value: BundledStuckMinutes}}
+	base := time.Now()
+	step := func(at time.Time) State {
+		t.Helper()
+		if _, err := advance(f.repo.Root(), f.runID, f.stages, Options{Now: func() time.Time { return at }}); err == nil {
+			t.Fatalf("the lane waits on a hold at %s", stamp(at))
+		}
+		run, err := ReadState(f.repo.Root(), f.runID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return run
+	}
+	for i := range 6 {
+		step(base.Add(time.Duration(i) * 10 * time.Minute))
+	}
+	// The first hold ends and another copy's takes its place.
+	gitIn(t, f.bare, "update-ref", "-d", claim.RefPrefix+"iss-99")
+	f.reserveAs(t, "iss-98", "rowan", "README.txt", time.Now().Add(-time.Minute))
+	at := base.Add(50*time.Minute + 2*stuckGap + time.Minute)
+	run := step(at)
+	l := run.Lanes[run.current()]
+	if l.Refused == nil || l.Refused.Since.Sub(at).Abs() > time.Second || !strings.Contains(l.Refused.Reason, "iss-98") {
+		t.Fatalf("the wait on the other hold starts at the look that found it: %+v", l.Refused)
+	}
+	if why := stuckReason(run, b); why != "" {
+		t.Fatalf("the lane is not handed back at the first look at the new wait: %s", why)
 	}
 }
