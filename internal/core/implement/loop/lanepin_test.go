@@ -539,6 +539,54 @@ func TestAStandingBranchMovedAfterItWasJudgedIsRefused(t *testing.T) {
 	}
 }
 
+// TestAStandingBranchMovedWhoseWorktreeCannotBeRemovedIsAdoptedNext: when
+// the branch moved during the add and git refuses to remove the worktree the
+// add made (here one locked as git made it), the step is refused naming the
+// failed removal and the worktree stands. The next step adopts it, and an
+// adopted lane is judged by its hooks only: one moved to the tip's hooks opens
+// on the moved commit. A regression guard: it passes without this round's
+// production change, and holds what the docs now say of a failed removal.
+func TestAStandingBranchMovedWhoseWorktreeCannotBeRemovedIsAdoptedNext(t *testing.T) {
+	repo, _, tip := hookedOrigin(t)
+	repo.Write("notes.txt", "moved\n")
+	repo.Commit("moved")
+	moved := repo.Git("rev-parse", "HEAD")
+	repo.Git("reset", "-q", "--hard", tip)
+	start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lw, err := laneWorktree(repo.Root(), start.RunID, "lane-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo.Git("branch", lw.Branch, tip)
+	was := addWorktree
+	t.Cleanup(func() { addWorktree = was })
+	addWorktree = func(root string, o worktree.AddOptions) (worktree.Added, error) {
+		repo.Git("update-ref", "refs/heads/"+lw.Branch, moved)
+		added, err := was(root, o)
+		if err == nil {
+			repo.Git("worktree", "lock", "--", added.Path)
+		}
+		return added, err
+	}
+	_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+	worktreeRefused(t, err, "could not be removed")
+	if fi, err := os.Lstat(lw.Path); err != nil || !fi.IsDir() {
+		t.Fatalf("the worktree git would not remove stands: %v", err)
+	}
+
+	addWorktree = was
+	repo.Git("worktree", "unlock", "--", lw.Path)
+	if _, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{}); err != nil {
+		t.Fatalf("the standing worktree is adopted and opens on the tip's hooks: %v", err)
+	}
+	if l := laneAt(t, repo, start.RunID); l.Worktree != lw.Path || l.HeadSHA != moved {
+		t.Fatalf("the lane opens on the moved commit: %+v", l)
+	}
+}
+
 // TestAStandingBranchWhoseHooksCannotBeReadIsRefused: a standing branch head
 // whose hooks directory git cannot read (here no commit the repository
 // holds) is refused, never read as one that records no hooks directory, even

@@ -358,18 +358,43 @@ func Add(repoRoot string, opts AddOptions) (Added, error) {
 	return finish(repoRoot, lane, opts.Name, path, branch)
 }
 
-// RemoveAdded removes the worktree at added.Path, which the caller's own Add
-// returned in the same call, through git's own removal. It is forced: the
-// tree is the one Add just made, so what git's checkout and the repository's
-// post-checkout hook wrote there is the caller's alone, and a branch moved
-// under it reads as changed files. The branch stays; nothing committed is
-// lost. git refuses a path it does not list as a worktree, and never removes
-// the main working tree.
+// RemoveAdded removes the worktree at added.Path through git's own forced
+// removal, for a caller that holds the Added its own Add returned. Before it
+// removes anything it requires that a real directory, not a symlink, stands
+// at added.Path (os.Lstat) and that git's own listing reports a worktree at
+// that path, its parent directories resolved and the path itself not
+// followed, on added.Branch; otherwise it refuses and removes nothing. It is
+// forced because a branch moved under a tree Add just made reads there as
+// changed files. The branch stays. Whether added is the caller's own Add's
+// result is the caller's to hold: nothing here checks it. Between these checks
+// and git's removal, a link put at the path is not seen, and git resolves the
+// path it is given.
 func RemoveAdded(repoRoot string, added Added) error {
 	if added.Path == "" {
 		return errors.New("worktree: RemoveAdded needs the worktree Add made")
 	}
-	_, err := gitutil.Run(repoRoot, "worktree", "remove", "--force", "--", added.Path)
+	fi, err := os.Lstat(added.Path)
+	if err != nil || !fi.IsDir() {
+		return refuse(fmt.Sprintf("no real directory stands at %s, so the worktree there is not the one added", fsutil.RedactHome(added.Path)),
+			"look at what stands there; nothing was removed")
+	}
+	wts, err := gitutil.ListWorktrees(repoRoot, gitutil.MaxWorktreeListing)
+	if err != nil {
+		return fmt.Errorf("listing the repository's worktrees: %w", err)
+	}
+	want := filepath.Join(fsutil.RealExistingPath(filepath.Dir(added.Path)), filepath.Base(added.Path))
+	found := false
+	for _, wt := range wts {
+		if fsutil.RealExistingPath(wt.Path) == want && wt.Branch == "refs/heads/"+added.Branch {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return refuse(fmt.Sprintf("git lists no worktree at %s on the branch %s, so the worktree there is not the one added", fsutil.RedactHome(added.Path), added.Branch),
+			"look at what stands there (`git worktree list`); nothing was removed")
+	}
+	_, err = gitutil.Run(repoRoot, "worktree", "remove", "--force", "--", added.Path)
 	return err
 }
 

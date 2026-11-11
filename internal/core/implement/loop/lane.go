@@ -423,8 +423,13 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		//
 		// Just before it, a drive's lane has the checkout's hooks directory
 		// compared with what the drive read as it started
-		// (checkoutHooksUnchanged), so a post-checkout hook changed there
-		// between two lanes is refused before any add runs it.
+		// (checkoutHooksUnchanged), so a top-level hook file changed there
+		// between two lanes and still changed at this read is refused before
+		// this add. Its limits are checkoutHooksUnchanged's: a change made
+		// after this read and before git runs the hook is not seen, since
+		// nothing holds the directory through the add; the directory read is
+		// the one the repository's own settings name; and only its top-level
+		// entries are compared.
 		if err := checkoutHooksUnchanged(c, lane.ID); err != nil {
 			return Outcome{}, err
 		}
@@ -463,9 +468,14 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, fmt.Errorf("resolving the lane branch %s: %v", lw.Branch, err)
 	}
 	if judged != "" && head != judged {
-		// The worktree this call added, at the path it made, is removed
-		// (worktree.RemoveAdded), and the branch left, so the next step meets
-		// the standing branch and judges it again before any add.
+		// The worktree this call added is removed (worktree.RemoveAdded, which
+		// requires a real directory at the lane's path that git lists there on
+		// the lane's branch), and the branch left, so the next step meets the
+		// standing branch and judges it again before any add. If the removal
+		// is refused or fails, the step is refused and what stands at the path
+		// is left; a step taken again while the lane's own worktree stands
+		// there adopts it, and an adopted lane is judged by its hooks only
+		// (pinLaneHooks; TestAStandingBranchMovedWhoseWorktreeCannotBeRemovedIsAdoptedNext).
 		why := fmt.Sprintf("the branch %s moved from %s, the commit judged, to %s while git added the lane's worktree, so what was checked out is not what was judged; nothing is pinned", lw.Branch, judged[:12], head[:12])
 		if added.Path != filepath.Clean(lw.Path) {
 			return Outcome{}, fmt.Errorf("%s, and the worktree made is not at the lane's path", why)
@@ -473,7 +483,7 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		if err := worktree.RemoveAdded(c.RepoRoot, added); err != nil {
 			return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
 				why+"; the worktree the step added could not be removed: "+fsutil.RedactHome(gitutil.ScrubURLCredentials(err.Error())),
-				"look at what moved the branch; remove the lane's worktree (`git worktree remove --force "+fsutil.RedactHome(lw.Path)+"`) so the next step judges the branch again, then run `abcd implement step` again; nothing was committed in the lane")
+				"look at what moved the branch and at what stands at "+fsutil.RedactHome(lw.Path)+"; if git lists it as the lane's worktree (`git worktree list`), remove it (`git worktree remove --force "+fsutil.RedactHome(lw.Path)+"`) so the next step judges the branch again, then run `abcd implement step` again; a step taken while that worktree stands adopts it, judged by its hooks only; nothing was committed in the lane")
 		}
 		return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
 			why+"; the worktree the step added was removed and the branch left, so the next step judges the branch again before any add",
@@ -490,7 +500,10 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 	// settings name the hooks directory, the run's fingerprint records that
 	// copy at the run's first check, normally this very step, and within a run
 	// a later change to it is refused at the next step. Across the lanes of one
-	// drive the drive holds it (checkoutHooksUnchanged, just before the add).
+	// drive the drive holds it, within limits (checkoutHooksUnchanged, just
+	// before the add): a change after that read and before git runs the hook
+	// is not seen, the directory read is the one the repository's own settings
+	// name, and only its top-level entries are compared.
 	// Elsewhere (a step the host runs, a single build, a drive started again)
 	// nothing does: a copy changed before the run's first check is that run's
 	// starting point and runs in the add, so it must not change between runs,
