@@ -1,0 +1,6 @@
+---
+id: dcn-2611102203415224
+slug: a-lane-s-git-worktree-add-for-a-new
+date: 2026-11-10
+---
+2026-11-10 — A lane's git worktree add, for a new branch and an already-standing one alike, reads objects as stored, with no replace ref or graft file honoured, so the lane holds the tree the vouched-for commit stores and the post-checkout hook that runs is that tree's; a replace ref on the tip or its hooks tree no longer refuses the lane, which opens on the stored hooks, and no hook of a replaced object runs at any point of the worktree stage. Where origin was asked, the add is also given on its command line the core.hooksPath git takes at the checkout from every settings scope, and the standing-branch check of dcn-2611102104588687 now judges a branch by that same effective value rather than by the repository's own scopes alone, so a hooks directory named only in the global settings is covered. Grounds: the add runs a hook with the drive's rights before the proof, so what it checks out and runs must come from stored objects and the hooks directory the check judged. To reverse: run the add through the plain bounded runner again and drop the command-line hooks path. Refs: iss-2611071820538335, dcn-2611102104588687

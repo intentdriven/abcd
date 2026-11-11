@@ -831,7 +831,7 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 		return ArmedMerges{}, errors.New("this checkout names no default branch of " + Remote + ", so the merges armed into it cannot be listed")
 	}
 	now := o.now()
-	snap, err := viewOf(root, now, true, isRelease)
+	snap, err := viewOf(viewGit{}, root, now, true, isRelease)
 	if err != nil {
 		return ArmedMerges{}, err
 	}

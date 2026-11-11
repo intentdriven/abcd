@@ -570,7 +570,39 @@ then exited badly. One from a runner that exited badly and that does not verify
 is set aside as the role is retried. One the verifier refused after its runner
 ended starts no second runner over the work: the step says what the receipt
 lacks and how to correct it or restart, and counts the stop so a drain hands the
-lane back as stuck at its bounds. What stands at an agent's path when it is handed out, or when a
+lane back as stuck at its bounds. That stop is a host-stepped run's. A drive, which
+steps the run itself, consumes a receipt refused for the work it reports, one that
+names this run, lane and branch in the schema this abcd reads (iss-2611071242184002).
+Under the run's lock it first checks that the file still holds the bytes it judged
+and that no runner has claimed the role since; if either fails, the file is left
+standing for the next step to read and nothing is counted. Otherwise, in the same
+write as the refusal, the receipt is set aside into a new directory under the lane's
+aside directory, kept and never deleted. The receipt's text never chooses what else
+moves, and the run's state decides whether anything does. At the implement stage's own
+receipt, only the report and the definition of done's output at the names the loop
+assigned that attempt, directly in the lane's directory, each a regular file and no
+link, go with it, moved through that directory opened as its own root. A path the
+receipt names for either that is anything else, the brief, a validate, sync or land
+round's file, or anything under the aside directory in any letter case, is left in
+place, and the record's line says so beside the refusal and the digest of the bytes
+judged. At a fix or sync round's receipt nothing else moves: the round's report and
+output, and the lane's own report and output, which later rounds read, are left where
+they are, and the record's line says only the receipt was set aside at that round. Below the
+bound the next step starts the implementer again on its runner. Each consumed receipt
+counts as a refused step under one check, whatever it lacked, so at the stuck bound of
+identical refusals, three by default, the lane is handed back as stuck, with a bound or
+without, and a fresh drive on the same state carries the count on; the time between
+them does not matter. The receipt that brings the lane to that bound is followed by no
+further launch, whether the runner handed it in or a step found it standing: the drive
+gives the lane back on its next turn. The count is kept on the drain's issue runs, the
+only runs a drive steps this way; an intent's run keeps the stop. A step of the lane
+that succeeds clears the count, and a refusal of another kind restarts it, so such a
+lane is ended instead by three failed launches in a row under a bound, and by the
+outage limit without one. The runner's own hand-in is also a failed launch, so under a
+bound the third such launch in a row hands the lane back too; a receipt found standing
+and consumed is a refused step and no launch. A set-aside that fails is the record's line and leaves the receipt
+standing, the step counted and the pause written all the same. A receipt refused for
+anything else stays and stops the lane in a drive too. What stands at an agent's path when it is handed out, or when a
 runner is claimed for it, is set aside unread. A paused role whose route the person has since
 moved to the host is handed to the host by the next step, its pause cleared
 and the person's route, not a fallback, recorded. The

@@ -148,6 +148,77 @@ bound: the refusal says so and gives the push to run by hand.
    person's way on: wait for the forge, or withdraw and re-arm it with the
    exact `gh pr merge` commands the note gives. A toggle whose re-arming fails
    says the pull request is now disarmed and gives the command that arms it.
+   Before it arms or toggles, the step reads its own pull request again, and
+   the pull requests its body's `Depends-On: #N` lines name, and theirs while
+   those are open, at most 25 in all, through one GraphQL query of each
+   pull request's number, state, `isInMergeQueue`, base, `createdAt` and body
+   (dcn-2610180720362692, spc-2610230758581403 step 2a). The body of the
+   pull request itself and of each one still open or queued is read by
+   `coord.ParseDependsOn`, which fails closed and quotes no body text; a
+   merged or closed one's body is not read. A body over 65536 bytes is
+   refused even with no such line. The records go to the coordination
+   pass, `coord.Pass`, whose decision for the verb's own pull request alone
+   is acted on: queue goes on as before, and a body with no such line is
+   that case; wait leaves the step stopped, with no new arming made, naming
+   the dependencies and the deadline; refuse refuses, with no new arming
+   made, with the pass's reason and what to reword. A dependency counts as
+   satisfied once the forge reports it merged into the default branch,
+   however it merged. The wait's start is the pull request's `createdAt`,
+   which no agent can move: a reopened pull request keeps it, as the forge
+   reports it, while closing it and opening a new one for the same branch
+   starts a fresh 24 hours. Its limit is 24 hours (`coord.MaxWaitLimit`),
+   its clock the local one, and a start later than that clock is refused,
+   with no allowance for skew. A `Depends-On` line added to a pull request
+   opened more than 24 hours earlier is refused at once, as a wait past its
+   deadline, with the pull request's opening time and the deadline it
+   passed. What only the forge can know is refused before the pass: a number
+   the forge has no pull request for, a dependency into another base than
+   the default branch, merged there or not, a state outside OPEN, MERGED and
+   CLOSED, an answer it cannot read whole, a creation time it cannot read,
+   and a walk past 25 pull requests. A body is required of the pull
+   request's own read and of a dependency still open or queued, where an
+   empty body is no line. Offline or rate-limited, the extra read
+   refuses, exit 2. This account's arming already in place is withdrawn on a
+   wait or a refusal, since it could merge the pull request before what it
+   depends on, and the note or refusal says what was done: the arming
+   withdrawn, the pull request taken out of the merge queue, both, or
+   nothing left to take off. A forge error in the dependency read takes
+   this account's arming off, and the next land run arms it again. The
+   withdrawal runs only after the check waits or refuses. It reads the pull
+   request's state whole (`autoMergeRequest`, `isInMergeQueue`, the queue
+   entry and who queued it, the viewer's login and the node id) again before
+   its first act, acts only on what the last read shows, and reads again
+   after each act, three acts at most. Inside the withdrawal, a queue entry
+   this account made is taken out by its node id, and this account's arming
+   is turned off, also where another account's queue entry stands beside
+   it. A queue entry counts as queued whatever the flag says. An arming or
+   queue entry another account made, or one the forge does not attribute,
+   is left and refused, saying what land did and naming who the forge says
+   queued it, by a login in the forge's own alphabet only. A state not read
+   whole, a read that fails, or this account's arming or queue entry still
+   there after three tries refuses with the step that withdraws it by hand:
+   the pull request's page for a queue entry, the command for an arming,
+   and both where both stand or land cannot say which. After three tries
+   the refusal also gives the last act's failure. A pull request whose own
+   read shows it merged or closed is refused as such, with nothing withdrawn. The check runs once
+   land has read the pull request's state on the route that would arm it,
+   and on the three early returns where this account's arming stands at
+   the gated head: the merge gate unread, the gate not arming, and a
+   conflict. The stop is read again after the merge gate arms and before
+   that state read, so the check on the first two early returns runs before
+   it and the conflict's after it. Three returns after that read make no
+   check: a pull request already in the merge queue is reported done with
+   its dependencies unread, this account's own queue entry included; one
+   another account armed, or one the forge does not attribute, is reported
+   as before; and this account's arming at a head land did not gate is
+   refused before the check. Every refusal before that point (a forge
+   read that fails, the merge rule or the default branch's tip unread, a
+   listing land cannot use, any step before enqueue) leaves an arming as it
+   is with its dependencies unread. The other routes that arm a pull request
+   (the build loop's land and queue steps, and the re-arm of a withdrawn
+   merge) make no dependency check: a dependant one of them arms is not
+   held. Rebuilding a dependant on the default branch once its dependency
+   merges is the spec's step 9 and is not done yet.
    With no
    pull request the step stops with the `gh pr create` command; the verb never opens one (ruling R2), and the next run
    queues it. The command names a body land composed from the branch's commits (iss-220): each subject, then their

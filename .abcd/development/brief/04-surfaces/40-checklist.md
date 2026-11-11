@@ -156,11 +156,12 @@ once, under a CHECKLIST heading, and a set is noted once per consecutive
 set, on the same terms. These reads of the stop check run within its one
 deadline: finding the checkout and the session's copy, the checklist read,
 the secret scanner's identity probe, the session's identity and holder, the
-default branch and the last-fetch stamp. The stop check's other reads, among
-them the reservations' view and the landing-receipt read, are not yet bound
-to it (iss-2611100548341325). The away session's state, read once that
-deadline may be spent, runs under a two-second bound of its own. How a spent deadline shows depends on where it is
-spent. When the reading of
+default branch, the last-fetch stamp, the landing-receipt read, this copy's
+key and the reservations' view as last fetched, which the deadline cut short
+reads as not read, never as no reservation. The stop check's other reads are
+not yet bound to it (iss-2611100548341325). The away session's state, read
+once that deadline may be spent, runs under a two-second bound of its own. How
+a spent deadline shows depends on where it is spent. When the reading of
 owned work is cut short, the list is not read: the stop goes through with that
 reading's own message to the person, saying what was not read, adds no block
 for the list, leaves no note and writes no line about the list. Only a

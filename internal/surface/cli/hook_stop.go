@@ -164,9 +164,9 @@ nothing.`,
 			}
 			// Naming the checkout and the session's copy run under the one
 			// deadline too. So, in the owed read, do the identity and holder,
-			// the default branch and the last-fetch stamp; its other reads,
-			// the reservations' view and the landing receipt among them, are
-			// not yet bound (iss-2611100548341325).
+			// the default branch, the last-fetch stamp, the landing receipt,
+			// this copy's key and the reservations' view as last fetched;
+			// its other reads are not yet bound (iss-2611100548341325).
 			root, ok := managedRootContext(ctx, p.Cwd)
 			if !ok {
 				if ctx.Err() != nil && looksManaged(p.Cwd) {

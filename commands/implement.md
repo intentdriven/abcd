@@ -380,7 +380,33 @@ After a runner that exited badly the role is retried and the file set aside. Aft
 a runner whose answer was refused the lane is stopped: no runner is started over
 the work, `next` names the ways out (correct the receipt and run `receipt`, which a
 plain `step` also reads, or `step --restart`), and a drain hands the lane back as
-stuck at its bounds. A `--route` for that role is refused.
+stuck at its bounds. A `--route` for that role is refused. That stop is a host-stepped
+run's: under `abcd drain --drive`, which steps the run itself, a receipt refused for the
+work it reports (it names this run, lane and branch in the schema abcd reads) is set
+aside in a new directory under the lane's `aside/`, kept, in the same write as the
+refusal. The receipt's text never chooses what else moves, and the run's state decides
+whether anything does. At the implement stage's own receipt, only the report and the
+definition of done's output at the names the loop assigned that attempt (`report.md` and
+`dod.log`, directly in the lane's directory, each a regular file and no link) go with
+it; a path it names for either that is anything else (the brief, a round's file,
+anything under `aside/` in any letter case) is left where it is and the record says so.
+At a fix or sync round's receipt nothing else moves: the round's report and output, and
+the lane's own `report.md` and `dod.log`, which later rounds read, are left where they
+are, and the record says only the receipt was set aside at that round.
+Only the bytes judged are moved: a file replaced since, or a role a runner has claimed
+since, is left for the next step to read and not counted. The run record's line names
+the refusal and the digest of the bytes judged, and below the bound the next step starts
+the implementer again on its runner. Each consumed receipt, found standing or handed in
+by its runner, counts as a refused step under one check, whatever it lacked, so the
+third in a row hands the lane back at the drain's stuck bound of identical refusals,
+three by default; the runner's hand-in is also a failed launch of the drive's. The
+receipt that brings the lane to the bound is followed by no further launch on either
+route: the drive gives the lane back on its next turn. The count is kept on the drain's
+issue runs, the only runs a drive steps; an intent's run keeps the stop. A refusal of
+another kind restarts the count; such a lane is still ended by three failed launches in
+a row under `--until`, and by the outage limit without it. If it cannot be set aside,
+the record says so, the receipt stands, the step is counted and the pause is written as
+ever. A receipt refused for anything else stops the lane under a drive too.
 What stands at an agent's path when it is handed out, or when a runner is claimed
 for it, is set aside unread under the lane's `aside/`. A `--route`
 for a held role retries it at once on that route, as the step's one move; a
@@ -1020,9 +1046,140 @@ hooks directory and `info/attributes`. For each lane worktree it also covers
 every such setting git reads there, whether from the shared settings, a
 conditional include that applies only there or the worktree's own settings,
 and the hooks directory git runs there: a relative `core.hooksPath` such as
-`.githooks` names the lane's own copy. A lane made after the fingerprint was
-recorded is compared with the checkout as recorded, for any setting or hook it
-adds or holds differently. Your global and system
+`.githooks` names the lane's own copy.
+
+Where the checkout has an `origin`, the worktree stage pins a lane's own hooks
+as the lane opens, so a reviewed hook change merged on the default branch
+during a run is no change in the lanes cut after it. Before it makes the lane,
+the stage asks `origin` itself, within a minute, for its default branch's tip,
+and cuts the lane from that tip. It refuses, making nothing, when `origin`'s
+default branch is not the one read here as the default (the refusal names
+both), when the default branch read here is neither that tip nor an ancestor of
+it, when the tip has not been fetched here, or when `origin` cannot be asked: a
+lost network is a wait, and any other failure a refusal. These reads take
+git's objects as they are stored, with no replace ref and no graft file
+honoured: the default branch's commit, whether the tip is here and what it
+descends from, where a standing branch left the tip, the hooks directory's
+tree and its listing, git's add itself, and the lane's head after it.
+
+One hook runs before the proof: git's add runs the post-checkout hook, with the
+new lane as its directory. The add runs in the checkout, so git takes the hooks
+directory there: with a relative `core.hooksPath` such as `.githooks`, it runs
+the checkout's own working-tree copy, never the copy held by the commit being
+checked out, for a lane the stage cuts and a branch that already stands alike.
+Where your repository's own settings name the hooks directory, the run's
+fingerprint records that copy at the run's first check, which is normally the
+step that makes the lane, and within a run a later change to it is refused at
+the next step. Across the lanes of one drive the drive holds it: as it starts
+it reads the checkout's hooks directory through the fingerprint's own reader
+and keeps hashes of it in its own memory; just before each lane's add the
+worktree stage reads the directory again, and a hook file added, removed or
+changed since the drive started, and still so at that read, refuses the lane,
+naming the file, before that lane's add. The hold has three limits, and
+nothing else checks them for you. The directory is read just before the add:
+a change made after that read and before git runs the hook is not seen, and
+nothing holds the directory through the add. The directory read is the one
+your repository's own settings name (else the git directory's `hooks`): with
+a relative `core.hooksPath` set only in your global settings, the copy the
+add runs is not the one read. What is compared is each top-level entry of the
+directory, a file by its bytes and mode, a subdirectory by its kind only and a
+symlink by its target text, up to 1024 entries (past that, their count and the
+first 1024): nothing a hook sources or runs from a subdirectory or from
+elsewhere is held. Elsewhere nothing holds the copy: a step the host runs, a
+single build and a drive started again take it as it stands at the run's
+first check, so it must not change between runs, and nothing enforces it.
+
+As it starts, the drive reads your settings and the checkout's hooks
+directory, and it refuses to start when the settings cannot be listed or the
+common git directory cannot be resolved, naming what git reported; look at
+your repository's own settings (`git config --local --list --show-origin`),
+then start it again. A hooks directory it cannot read is recorded as such,
+not refused, and compared like the rest: one made unreadable after the drive
+started refuses the next lane.
+
+A branch that already stands under the lane's name (a step stopped between git
+making the branch and the worktree) has its head resolved once. That commit's
+hooks directory, read as stored, must be the tip's, judged by the hooks
+directory git takes at the checkout from all your settings, global ones
+included. A head whose hooks directory cannot be read is refused too. If the
+branch holds another commit once git has added the worktree, the lane is
+refused, nothing is pinned, and the stage removes the worktree it has just
+added, leaving the branch, so the next step meets the standing branch and
+judges it again before any add. It removes it only where a real directory,
+not a symlink, stands at the lane's path and git lists a worktree there on the
+lane's branch. If that check or git's removal fails, the step is refused
+saying so, and what stands at the path is left: look at it and at what moved
+the branch, and if git lists it as the lane's worktree, remove it (`git
+worktree remove --force` on the lane's path) before you run the step again. A
+step taken again while that worktree stands adopts it, and an adopted lane is
+judged by its hooks only, as below. The standing-branch check is
+defensive: a lane whose hooks differ is refused before a worktree is made
+rather than at the proof after it. The add is also told on its command line the
+hooks directory read at the checkout; that refuses nothing, and only pins the
+directory the check judged. Neither stops the post-checkout hook from running.
+A standing branch's content outside the hooks directory is its own and is not
+vouched for.
+
+Then, before any commit in the lane, a lane whose hooks directory is its own
+copy has that directory proved against the commit it opens on: the same
+entries, each file's size, bytes and exec bit, each symlink's target text and
+each subdirectory as a directory. A lane abcd finds again (a step stopped
+before its state was written) must also hold the same hooks as the tip.
+Anything else is refused at the worktree stage. What was proved is pinned for
+the lane, and the lane is compared with it from then on: a hook changed in the
+lane stops the next step, even one put back to the checkout's older copy.
+
+The proof covers less than the whole directory, and nothing else checks these
+for you. A subdirectory is proved and pinned only as a directory: the files in
+it, which a hook may run or read, are outside the pin. A symlink is proved by
+the text of its target only, not by the file it points to. A lane on a file
+system that keeps no exec bit is always refused, and so is one where a content
+filter rewrites the hook files as they are checked out (an end-of-line or
+smudge filter), since either leaves them other than the commit's. A lane that
+later merges in a reviewed hook change from the default branch is refused
+against its pin, which is the commit the lane opened on. A lane abcd finds
+again after the tip's hooks changed stays refused until you remove its
+worktree and its branch by hand. Between the proof and the lane's first git
+step another process of your account can still write in the lane; the pin
+holds what was proved, so that step's check names the change.
+
+A drive reads these settings once as it starts, before its first lane, and
+keeps hashes of their values in its own memory, never in a file: `origin`'s
+`url`, `pushurl`, `uploadpack`, `proxy` and `vcs`; every URL rewrite
+(`url.*.insteadOf` and `pushInsteadOf`); `core.sshCommand`, `core.gitProxy`,
+`core.hooksPath` and `core.askPass`; every `credential.*` key; `protocol.allow`
+and every `protocol.*.allow`; and `http.proxy` and `http.sslVerify`. It reads
+them through the same runner the ask of `origin` uses, so it sees the values
+the ask sees, from your repository, global and system settings alike. Each lane's
+worktree stage reads them again before it asks `origin` anything and once more
+after `origin` has answered, and refuses the lane on any difference, naming
+the key (a URL in a key's name hidden, as below). A change made between the
+two reads and put back before the second is not seen. Not held: any other
+`http.*` key, a per-URL one included; an `origin` defined only by a legacy
+remotes or branches file in the git directory, which has no key to compare;
+the run fingerprint's other watched settings (content filters, diff and merge
+drivers, signing programs, includes and the rest), which each run records
+afresh at its first check; and anything changed while no drive runs. A drive started again reads them
+afresh, so such a change is the new drive's starting point. A step the host
+runs and a single build carry no such record: there these settings must not
+change between one lane's run and the next, and nothing enforces it.
+
+With no `origin`, in a trial, or where the lane's hooks directory is not its
+own copy, nothing is pinned: a lane made after the fingerprint was recorded is
+compared with the checkout as recorded, for any setting or hook it adds or
+holds differently. The pin leaves these out, and nothing checks them for you:
+an absolute `core.hooksPath` or a hook dispatcher your global settings name
+gets no pin of its own, and is compared with the checkout as recorded; a
+relative `core.hooksPath` set only in your global settings is neither proved
+nor pinned in the lane, and the checkout's copy it names, which the add's
+post-checkout hook runs from, is not watched, since the fingerprint and the
+drive read the hooks directory from the repository's own settings; the
+checkout's own hooks and settings changing when you pull it during a run are a
+change like any other, which stops the next step until you accept it; and each
+run records the watched settings afresh when it first checks them, so a
+setting changed before a run's first check is that run's starting point (each
+lane of a drain is a run of its own, and a drive holds across its lanes only
+the settings and the checkout's hooks directory named above), and you must look at what changes between runs yourself. Your global and system
 settings are your own and are not watched. The file holds salted hashes, never
 a value: a credential helper's value may carry a secret, so only key names and
 file paths are ever stored or reported. A key's name can carry a secret too (a

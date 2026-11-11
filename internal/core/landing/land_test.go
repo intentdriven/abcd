@@ -1,6 +1,7 @@
 package landing
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -66,6 +67,7 @@ type fakeForge struct {
 	answer string
 	// answers are whole answers to the state query, one a call, the last
 	// repeated, each @HEAD@ replaced as a view's is; they come before views.
+	// One beginning "!" fails the query with the rest as its message.
 	answers []string
 	calls   [][]string
 	// onRepoView runs when the repository is viewed, before the answer.
@@ -98,9 +100,11 @@ type fakeForge struct {
 	// armingsErrAt fails the arming read with this ordinal (1 is the first).
 	armingsErrAt int
 	armingReads  int
-	// failDisarm fails `pr merge --disable-auto`; dequeueErr fails the
-	// dequeue, and dequeueAnswer replaces its answer.
+	// failDisarm fails `pr merge --disable-auto`, and disarmErr fails it
+	// with that error; dequeueErr fails the dequeue, and dequeueAnswer
+	// replaces its answer.
 	failDisarm    bool
+	disarmErr     error
 	failDisarmOf  string
 	dequeueErr    error
 	dequeueAnswer string
@@ -108,6 +112,143 @@ type fakeForge struct {
 	// of its reviews.
 	pullErr    error
 	reviewsErr error
+	// depends answers the dependency check's read of pull request N
+	// (dependsQuery) with depends[N], a whole answer; a number it lacks is
+	// answered open into main, created at dependsCreated, with an empty body;
+	// one beginning "!" fails the read with the rest as its message.
+	// dependsErr fails every such read.
+	depends    map[int]string
+	dependsErr error
+	// model, when set, answers the state query and takes the withdrawal's
+	// calls (forgeModel), before answer, answers and views.
+	model *forgeModel
+}
+
+// forgeModel is the forge's state of the pull request land reads, for the
+// tests of the withdrawal. Which shapes come from where:
+//   - from a recorded forge answer (testdata/pr-state-1018-queued.json): a
+//     pull request the forge queued from an arming shows autoMergeRequest
+//     null while it is queued, so with rule on, entering the queue clears
+//     the arming;
+//   - from the forge's documented mutation: the dequeue (dequeuePullRequest,
+//     by node id) takes a queued pull request out of the queue;
+//   - a guess, unconfirmed: with rule on, `gh pr merge --disable-auto` on a
+//     queued pull request fails, and its message here is made up;
+//   - a guess, unconfirmed against a live forge: a queue entry the forge
+//     makes from this account's arming names this account as its enqueuer
+//     (queuer the arming's login). The recorded answer has no enqueuer, since
+//     its query did not ask for one.
+//
+// A test resting on a guess says "model guess" in a comment where it uses it.
+type forgeModel struct {
+	// armedBy and queuedBy are the logins the arming and the queue entry are
+	// by: "" is none, and "?" one the forge does not name.
+	armedBy, queuedBy string
+	// rule is the forge's rule above, switched on.
+	rule bool
+	// queueAfter, when above 0, has the forge queue the pull request from its
+	// arming, by queuer, once that many state reads are answered.
+	queueAfter int
+	queuer     string
+	// handAfter, when above 0, has the arming change hands to handTo once
+	// that many state reads are answered.
+	handAfter int
+	handTo    string
+	// failReadAt fails the state read with this ordinal (1 is the first).
+	failReadAt int
+	// failDisarms fails the first that many disarms.
+	failDisarms int
+	// stuck answers the disarm and the dequeue and changes nothing.
+	stuck bool
+	reads int
+}
+
+// answer is the state query's answer for the model's state.
+func (m *forgeModel) answer() (string, error) {
+	m.reads++
+	if m.reads == m.failReadAt {
+		return "", errors.New("fake forge: the state read failed")
+	}
+	actor := func(login string) string {
+		if login == "?" {
+			return "null"
+		}
+		return `{"login":"` + login + `"}`
+	}
+	arm, entry := "null", "null"
+	if m.armedBy != "" {
+		arm = `{"mergeMethod":"MERGE","enabledAt":"2026-11-10T08:30:00Z","enabledBy":` + actor(m.armedBy) + `}`
+	}
+	if m.queuedBy != "" {
+		entry = `{"state":"QUEUED","position":1,"enqueuer":` + actor(m.queuedBy) + `}`
+	}
+	a := fmt.Sprintf(`{"data":{"viewer":{"login":"alice"},"repository":{"pullRequest":{"id":"PR_7","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":%t,"mergeQueueEntry":%s,"autoMergeRequest":%s,"headRefOid":"@HEAD@"}}}}`,
+		m.queuedBy != "", entry, arm)
+	if m.reads == m.queueAfter {
+		m.queuedBy = m.queuer
+		if m.rule {
+			m.armedBy = ""
+		}
+	}
+	if m.reads == m.handAfter {
+		m.armedBy = m.handTo
+	}
+	return a, nil
+}
+
+// disarm is `gh pr merge --disable-auto` on the model.
+func (m *forgeModel) disarm() error {
+	switch {
+	case m.failDisarms > 0:
+		m.failDisarms--
+		return errors.New("fake forge: the disarm failed")
+	case m.rule && m.queuedBy != "":
+		return errors.New("fake forge: the pull request is in the merge queue")
+	case !m.stuck:
+		m.armedBy = ""
+	}
+	return nil
+}
+
+// dequeue is the dequeue mutation on the model.
+func (m *forgeModel) dequeue() {
+	if !m.stuck {
+		m.queuedBy = ""
+	}
+}
+
+// dependsCreated is the creation time the fake forge gives a pull request
+// the dependency check reads, when a test sets none.
+const dependsCreated = "2026-11-10T08:00:00Z"
+
+// dependsAnswered answers dependsQuery on owner/name, as the forge does. It
+// refuses any other arguments, and a query the pinned schema does not have.
+func (f *fakeForge) dependsAnswered(args []string) (string, error) {
+	owner, name, _ := strings.Cut(f.owner(), "/")
+	var n int
+	if _, err := fmt.Sscanf(args[len(args)-1], "n=%d", &n); err != nil || !slices.Equal(args, dependsArgs(owner, name, n)) {
+		return "", fmt.Errorf("fake forge: unexpected dependency read %v", args)
+	}
+	if err := ghcontract.CheckGraphQL(dependsQuery); err != nil {
+		return "", err
+	}
+	if f.dependsErr != nil {
+		return "", f.dependsErr
+	}
+	if a, ok := f.depends[n]; ok {
+		if msg, failed := strings.CutPrefix(a, "!"); failed {
+			return "", errors.New(msg)
+		}
+		return a, nil
+	}
+	return dependsPRAnswer(n, "OPEN", false, "main", dependsCreated, ""), nil
+}
+
+// dependsPRAnswer is the forge's answer to dependsQuery for one pull request.
+func dependsPRAnswer(n int, state string, queued bool, base, created, body string) string {
+	b, _ := json.Marshal(body)
+	return fmt.Sprintf(`{"data":{"repository":{"pullRequest":{"number":%d,"state":%q,"isInMergeQueue":%t,"baseRefName":%q,"createdAt":%q,"body":%s}}}}`,
+		n, state, queued, base, created, b)
 }
 
 // armedListing answers the listing of the open pull requests into main on
@@ -251,9 +392,15 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		if slices.Contains(args, "query="+ArmingsQuery) {
 			return f.armingsAnswered(args)
 		}
+		if slices.Contains(args, "query="+dependsQuery) {
+			return f.dependsAnswered(args)
+		}
 		if slices.Contains(args, "query="+claim.DequeueMutation) {
 			if f.dequeueErr != nil {
 				return "", f.dequeueErr
+			}
+			if f.model != nil {
+				f.model.dequeue()
 			}
 			if f.dequeueAnswer != "" {
 				return f.dequeueAnswer, nil
@@ -272,6 +419,10 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		if err := ghcontract.CheckGraphQL(PRStateQuery); err != nil {
 			return "", err
 		}
+		if f.model != nil {
+			a, err := f.model.answer()
+			return strings.ReplaceAll(a, "@HEAD@", f.head), err
+		}
 		if f.answer != "" {
 			return strings.ReplaceAll(f.answer, "@HEAD@", f.head), nil
 		}
@@ -279,6 +430,9 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 			a := f.answers[0]
 			if len(f.answers) > 1 {
 				f.answers = f.answers[1:]
+			}
+			if msg, failed := strings.CutPrefix(a, "!"); failed {
+				return "", errors.New(msg)
 			}
 			return strings.ReplaceAll(a, "@HEAD@", f.head), nil
 		}
@@ -289,8 +443,14 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		if len(f.views) > 1 {
 			f.views = f.views[1:]
 		}
-		return `{"data":{"repository":{"pullRequest":` + strings.ReplaceAll(v, "@HEAD@", f.head) + `}}}`, nil
+		return `{"data":{"viewer":{"login":"alice"},"repository":{"pullRequest":` + strings.ReplaceAll(v, "@HEAD@", f.head) + `}}}`, nil
 	case "pr merge":
+		if slices.Contains(args, "--disable-auto") && f.model != nil {
+			return "", f.model.disarm()
+		}
+		if slices.Contains(args, "--disable-auto") && f.disarmErr != nil {
+			return "", f.disarmErr
+		}
 		if slices.Contains(args, "--disable-auto") && (f.failDisarm || (f.failDisarmOf != "" && slices.Contains(args, f.failDisarmOf))) {
 			return "", errors.New("fake forge: the disarm failed")
 		}
@@ -703,13 +863,13 @@ func TestAPullRequestAtAnotherHeadIsNotArmed(t *testing.T) {
 }
 
 const (
-	viewBlocked = `{"mergeable":"MERGEABLE","mergeStateStatus":"BLOCKED","isInMergeQueue":false,"autoMergeRequest":null,"headRefOid":"@HEAD@"}`
+	viewBlocked = `{"mergeable":"MERGEABLE","mergeStateStatus":"BLOCKED","isInMergeQueue":false,"mergeQueueEntry":null,"autoMergeRequest":null,"headRefOid":"@HEAD@"}`
 	viewQueued  = `{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":true,"autoMergeRequest":{"mergeMethod":"MERGE"},"headRefOid":"@HEAD@"}`
-	viewCleanUn = `{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":false,"autoMergeRequest":{"mergeMethod":"MERGE"},"headRefOid":"@HEAD@"}`
-	viewDirty   = `{"mergeable":"CONFLICTING","mergeStateStatus":"DIRTY","isInMergeQueue":false,"autoMergeRequest":null,"headRefOid":"@HEAD@"}`
+	viewCleanUn = `{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":false,"mergeQueueEntry":null,"autoMergeRequest":{"mergeMethod":"MERGE"},"headRefOid":"@HEAD@"}`
+	viewDirty   = `{"mergeable":"CONFLICTING","mergeStateStatus":"DIRTY","isInMergeQueue":false,"mergeQueueEntry":null,"autoMergeRequest":null,"headRefOid":"@HEAD@"}`
 	// viewArmedByOther is a pull request someone else armed (squash), CLEAN
 	// and outside the queue.
-	viewArmedByOther = `{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":false,"autoMergeRequest":{"mergeMethod":"SQUASH"},"headRefOid":"@HEAD@"}`
+	viewArmedByOther = `{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isInMergeQueue":false,"mergeQueueEntry":null,"autoMergeRequest":{"mergeMethod":"SQUASH"},"headRefOid":"@HEAD@"}`
 )
 
 func TestAQueueBehindApprovalIsArmedAndConfirmed(t *testing.T) {
@@ -1009,7 +1169,7 @@ func TestAForgeThatCannotBeAskedGetsNoPush(t *testing.T) {
 func TestAHeadThatMovesOnTheForgeAfterArmingIsRefused(t *testing.T) {
 	f := newFixture(t, queueRuleset)
 	f.forge.prs = f.prFor(f.head())
-	moved := `{"mergeable":"MERGEABLE","mergeStateStatus":"BLOCKED","isInMergeQueue":false,"autoMergeRequest":{"mergeMethod":"MERGE"},"headRefOid":"` + strings.Repeat("b", 40) + `"}`
+	moved := `{"mergeable":"MERGEABLE","mergeStateStatus":"BLOCKED","isInMergeQueue":false,"mergeQueueEntry":null,"autoMergeRequest":{"mergeMethod":"MERGE"},"headRefOid":"` + strings.Repeat("b", 40) + `"}`
 	f.forge.views = []string{viewBlocked, moved}
 	_, err := f.land(f.options())
 	wantRefusal(t, err, "--disable-auto")

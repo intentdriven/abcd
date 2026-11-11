@@ -1533,7 +1533,8 @@ before anything is reserved when the claude runner is not enabled or admitted, w
 it has no profile directory under ~/.abcd.noindex/profiles/ to run on, logged in, when a
 wall does not hold or no git identity resolves, when a credential variable the harness would bill through is set
 (a drive runs on a subscription alone, for now), when the judge is routed
-to opencode, when a role is pinned to the host, and when it is started from inside an
+to opencode, when a role is pinned to the host, when a reviewer's model in the review set is
+one no route on this machine can launch (naming the role, the model and what to set), and when it is started from inside an
 agent's own session. It shows the cap (eight unless --max says otherwise), an estimate
 of the agent runs, the runner and the route, and asks once; --yes is the scripted
 answer, and with no terminal nothing else answers. A profile is a separate login and
@@ -4408,8 +4409,18 @@ credentials, so run it only on a branch whose content you trust.
      gate allows it, pinned to the head: into the merge queue by its method where
      one gates the default branch (then confirmed in the queue), otherwise as the
      forge's auto-merge (a merge commit; a forge that refuses it is said). An
-     arming someone else made at a head the gate arms is left as it is. Where a merge
-     queue gates the
+     arming someone else made at a head the gate arms is left as it is. Before it
+     arms, a pull request whose body has a line Depends-On: #N (or #N, #N) is read
+     with the pull requests it names, and theirs while open, at most 25 in all: one
+     not yet merged stops the step, no new arming made, naming it and when the
+     wait is refused (24 hours after the pull request was opened); one closed
+     unmerged, one that is no pull request or merges into another branch, a
+     cycle, a wait at or past its 24 hours, a line that looks like one in another
+     shape, and a forge answer land cannot read whole refuse, exit 2, no new
+     arming made, saying what to reword or settle. This account's arming
+     already in place is withdrawn on such a stop or refusal. Rebuilding it on
+     the default branch once they merge is not done yet: run abcd land again.
+     Where a merge queue gates the
      default branch, a branch that shares a commit not on it with another pull
      request queued or armed into it (a branch cut from that one's) is not armed:
      the step stops naming it, since the queue would remove this one; run abcd land

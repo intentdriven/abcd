@@ -39,6 +39,12 @@ type Options struct {
 	// RunStateWatch has a walled launch compare what the driver wrote with what
 	// stands after the launch.
 	RunStateWatch bool
+	// ClassMapRead, on a drive, is handed the routes of every class map a
+	// review set is resolved from (the machine's models.classes over the
+	// bundled map, never a repository's or a run's stored state), as each
+	// run starts; the drive adds them to the routes its walled launch takes
+	// by name (runner.Config.AddClassRoutes). nil does nothing.
+	ClassMapRead func(routes []string)
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 	// driverIsSelf has a claim on the run name this process, where a drive runs the
@@ -157,6 +163,15 @@ type Options struct {
 	// text that put it there; "" for the host. Drive sets it from the runner
 	// configuration, so a round's route names the runner it ran on.
 	runnerRoute func(role string) (name, override string)
+	// remote is origin's identity and the checkout's hooks directory as a
+	// drive read them when it started (remoteid.go): the worktree stage of
+	// each lane the drive opens reads the identity again before it asks origin
+	// anything, and the hooks directory just before its add, and refuses the
+	// lane when a held key, or a top-level entry of the hooks directory the
+	// repository's own settings name, differs at that read, within the limits
+	// remoteid.go states. Nil (a step the host runs, a single build) checks
+	// nothing.
+	remote *remoteIdentity
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
@@ -232,6 +247,8 @@ type Context struct {
 	router *roundRouter
 	// planGuard is Options.PlanGuard, for the plan stage; nil guards nothing.
 	planGuard func() error
+	// remote is Options.remote, for the worktree stage; nil checks nothing.
+	remote *remoteIdentity
 }
 
 // Outcome is what a stage's body returns. A body that hands its work to an agent
@@ -468,6 +485,10 @@ type StepResult struct {
 	// carried to whatever answer a later move of the same call gives
 	// (carryStanding).
 	standing string
+	// consumed says the step consumed and counted a receipt it found standing
+	// (consumeStopped), so a drive checks the drain's stuck bounds before it
+	// retries the role in the same call (stuckAfterConsumed).
+	consumed bool
 	// RouteUnused is each `implement step --route` the step did not use: a
 	// landing ahead of its role moved first (route_use.go). Every other
 	// --route the step would not use is refused before anything is written.
@@ -1060,6 +1081,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	}
 	var res StepResult
 	var wait error
+	counted := false
 	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		// A stop may have come since the check: under the lock nothing acts on a
 		// run that took one.
@@ -1097,6 +1119,23 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 			openWindow(st, now)
 			changed = true
 		}
+		// A drive's receipt refused for the work is consumed in this write, before
+		// the window is read, so the step whose window closes here still sets it
+		// aside and counts it, and the role starts again in the next window
+		// (receipt_standing.go). A receipt left standing would be read again by
+		// the next step, so placing this later would delay the consuming, not
+		// lose the relaunch.
+		//
+		// Invariant: once consumeStopped reports a change it may have moved a file
+		// and counted it, so every return below writes the state (returns true):
+		// one that did not would drop the record's line and the count while the
+		// file stays moved. The window's return does, the refusal's path does
+		// through consumed, and the success path does through changed.
+		consumed, n := consumeStopped(repoRoot, root, st, stopped, now)
+		counted = n
+		if consumed {
+			changed = true
+		}
 		if until, ok := windowElapsed(*st, now); ok {
 			closeWindow(st, now, until)
 			res = idleResult(*st)
@@ -1114,7 +1153,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		if noteStopped(st, stopped, now) {
 			renewed = true
 		}
-		r, moved, err := move(repoRoot, st, steps.takingReceipts(o.ReceiptOwn), now, g, newRoundRouter(o), o.PlanGuard)
+		r, moved, err := move(repoRoot, st, steps.takingReceipts(o.ReceiptOwn), now, g, newRoundRouter(o), o.PlanGuard, o.remote)
 		if err != nil {
 			if rf, ok := AsRefusal(err); ok && renewNote != "" {
 				rf.Remedy += "; " + renewNote
@@ -1124,7 +1163,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 			if noteRefusal(st, err, now) {
 				moved = true
 			}
-			if moved || renewed {
+			if moved || renewed || consumed {
 				// The wait, or a later lane's refusal, is the call's answer,
 				// and the time a lane began waiting for its full check, or
 				// the reservation's renewal, is written with it (ruling
@@ -1143,6 +1182,13 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	})
 	if err == nil && wait != nil {
 		err = wait
+	}
+	if err == nil {
+		res.consumed = counted
+	}
+	if len(stopped) > 0 {
+		// What a consumed receipt became is said in its own words.
+		standing = stoppedText(stopped)
 	}
 	if standing != "" {
 		if r, ok := AsRefusal(err); ok {

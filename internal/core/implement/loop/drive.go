@@ -152,6 +152,13 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		if r, took, err := releaseToHost(repoRoot, runID, o, rs, res); took || err != nil {
 			return carryStanding(r, res), err
 		}
+		// A receipt the step found standing and consumed that brings the lane
+		// to the drain's stuck bounds is followed by no launch: the drain hands
+		// the lane back (iss-2611071242184002).
+		if why := stuckAfterConsumed(repoRoot, runID, o, res); why != "" {
+			res.Next += fmt.Sprintf("; the %s is not started again: the receipt consumed brings %s to the drain's stuck bounds (%s), which hand it back", RoleImplementer, res.Lane, why)
+			return res, nil
+		}
 		r, err := retryHeld(ctx, repoRoot, runID, steps, o, rs, res)
 		return carryStanding(r, res), err
 	}
@@ -169,6 +176,31 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		return res, nil
 	}
 	return carryStanding(r, res), err
+}
+
+// stuckAfterConsumed is why the lane of a step that consumed a receipt it found
+// standing is now at the drain's stuck bounds (stuck.go), "" when the step
+// consumed none or the lane is below them. Only an issue run keeps the count, so
+// a run whose state reads as an intent's is not held here, whatever its bounds.
+// On an issue run, bounds that cannot be read count as at them, as the drive's
+// own check gives the lane back on them (stuckBack); so does a state that cannot
+// be read, since whether the run is an issue's is then unknown.
+func stuckAfterConsumed(repoRoot, runID string, o Options, res StepResult) string {
+	if !res.consumed {
+		return ""
+	}
+	st, err := ReadState(repoRoot, runID)
+	if err != nil {
+		return "the run's state cannot be read: " + refusalReason(err)
+	}
+	if st.Issue() == "" {
+		return ""
+	}
+	b, err := resolveStuckBounds(o.roots(repoRoot))
+	if err != nil {
+		return "the bounds cannot be read: " + refusalReason(err)
+	}
+	return stuckReason(st, b)
 }
 
 // ListHostRole writes the launch ledger's placeholder for the role res leaves

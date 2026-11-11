@@ -43,13 +43,14 @@ type batchWant struct {
 // ref, tree, fetchedAt, keep) reads it: the same tip, the same ok and the
 // same error.
 func readSeenTips(root string, refs []string, tree string, fetchedAt time.Time, keep bool) []tipRead {
-	return readSeenTipsWithin(root, refs, tree, fetchedAt, keep, batchBudget)
+	return readSeenTipsWithin(viewGit{}, root, refs, tree, fetchedAt, keep, batchBudget)
 }
 
-// readSeenTipsWithin is readSeenTips with the batch's budget named: a test
-// holds a small one to prove what falls past it is read on its own.
-func readSeenTipsWithin(root string, refs []string, tree string, fetchedAt time.Time, keep bool, budget int) []tipRead {
-	bodies := batchedTipBodies(root, refs, budget)
+// readSeenTipsWithin is readSeenTips with its git run through g and the
+// batch's budget named: a test holds a small one to prove what falls past it
+// is read on its own.
+func readSeenTipsWithin(g viewGit, root string, refs []string, tree string, fetchedAt time.Time, keep bool, budget int) []tipRead {
+	bodies := batchedTipBodies(g, root, refs, budget)
 	out := make([]tipRead, len(refs))
 	for i, ref := range refs {
 		id := strings.TrimPrefix(ref, TrackingPrefix)
@@ -59,11 +60,11 @@ func readSeenTipsWithin(root string, refs []string, tree string, fetchedAt time.
 			// parsed and dated. An untrimmed body would read a message at the
 			// cap as past it, and the view would disagree with the act.
 			h, m := parseTip(b.name, []byte(strings.TrimRight(b.body, " \t\r\n")), tree, reservationParser(id))
-			t := tip{head: dated(root, h, fetchedAt, keep), message: m}
-			out[i] = tipRead{t: seen(root, t, fetchedAt, keep), ok: true}
+			t := tip{head: dated(g, root, h, fetchedAt, keep), message: m}
+			out[i] = tipRead{t: seen(g, root, t, fetchedAt, keep), ok: true}
 			continue
 		}
-		t, ok, err := readSeen(root, id, ref, tree, fetchedAt, keep)
+		t, ok, err := readSeenIn(g, root, id, ref, tree, fetchedAt, keep)
 		out[i] = tipRead{t: t, ok: ok, err: err}
 	}
 	return out
@@ -89,7 +90,7 @@ type tipBody struct {
 // to read on its own, as is one past budget, which bounds the bodies the
 // batch reads; a command that fails leaves out every ref it would have read,
 // never refuses the read.
-func batchedTipBodies(root string, refs []string, budget int) map[string]tipBody {
+func batchedTipBodies(g viewGit, root string, refs []string, budget int) map[string]tipBody {
 	if len(refs) == 0 {
 		return nil
 	}
@@ -97,7 +98,7 @@ func batchedTipBodies(root string, refs []string, budget int) map[string]tipBody
 	for _, r := range refs {
 		asked[r] = true
 	}
-	listing, err := storedGit(root, 1<<20, "for-each-ref", "--format=%(refname) %(objectname) %(objecttype)", TrackingPrefix)
+	listing, err := g.stored(root, 1<<20, "for-each-ref", "--format=%(refname) %(objectname) %(objecttype)", TrackingPrefix)
 	if err != nil {
 		return nil
 	}
@@ -117,7 +118,7 @@ func batchedTipBodies(root string, refs []string, budget int) map[string]tipBody
 			shas = append(shas, f[1])
 		}
 	}
-	bodies := commitBodies(root, shas, budget)
+	bodies := commitBodies(g, root, shas, budget)
 	out := make(map[string]tipBody, len(bodies))
 	for ref, sha := range commitOf {
 		if b, ok := bodies[sha]; ok {
@@ -132,8 +133,8 @@ func batchedTipBodies(root string, refs []string, budget int) map[string]tipBody
 // commands: the commits' types and sizes from their headers (`cat-file
 // --batch-check`), then their bodies (`cat-file --batch`), each capped. A
 // commit it reads no body for is left out, as is one past budget; a command
-// that fails leaves out every one it would have read.
-func commitBodies(root string, shas []string, budget int) map[string]string {
+// that fails leaves out every one it would have read. Its git runs through g.
+func commitBodies(g viewGit, root string, shas []string, budget int) map[string]string {
 	if len(shas) == 0 {
 		return nil
 	}
@@ -141,7 +142,11 @@ func commitBodies(root string, shas []string, budget int) map[string]string {
 	for _, s := range shas {
 		inBatch[s] = true
 	}
+	// The context is chosen once, so both commands run under the same one.
 	ctx := context.Background()
+	if g.bound() {
+		ctx = g.ctx
+	}
 	check, err := storedGitInput(ctx, root, strings.Join(shas, "\n")+"\n", len(shas)*(len(shas[0])+32)+64,
 		"cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)")
 	if err != nil {

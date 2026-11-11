@@ -2,6 +2,7 @@ package peers
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -754,6 +755,20 @@ type RecordAt struct {
 // reader.
 func RecordsAt(root, ref string) (map[string][]RecordAt, error) {
 	h, _, err := scanTree(root, ref)
+	return recordsOf(h, err)
+}
+
+// RecordsAtContext is RecordsAt with its tree read bound to ctx: a ctx already
+// ended starts no git, and a git still running when it ends is killed,
+// answering ctx's error.
+func RecordsAtContext(ctx context.Context, root, ref string) (map[string][]RecordAt, error) {
+	out, err := gitutil.RunCappedContext(ctx, root, maxListing, treeArgs(ref)...)
+	h, _, err := holdingsOf(out, err)
+	return recordsOf(h, err)
+}
+
+// recordsOf is RecordsAt's answer from the holdings scanTree read.
+func recordsOf(h holdings, err error) (map[string][]RecordAt, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -768,11 +783,22 @@ func RecordsAt(root, ref string) (map[string][]RecordAt, error) {
 
 // scanTree reads a ref's holdings from the object store by filename.
 func scanTree(root, ref string) (holdings, bool, error) {
+	return holdingsOf(gitutil.RunCapped(root, maxListing, treeArgs(ref)...))
+}
+
+// treeArgs is the listing scanTree asks git for: every record family's
+// folder on ref.
+func treeArgs(ref string) []string {
 	args := []string{"ls-tree", "-r", "-z", "--full-tree", ref, "--"}
 	for _, fam := range families {
 		args = append(args, fam.rel)
 	}
-	out, err := gitutil.RunCapped(root, maxListing, args...)
+	return args
+}
+
+// holdingsOf reads the holdings out of scanTree's listing, git's error
+// passed on.
+func holdingsOf(out string, err error) (holdings, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}

@@ -302,7 +302,7 @@ func (f *fx) opts() ReadOptions {
 		Forge:  f.forge.run,
 		Person: "alice",
 		Email:  f.email,
-		Reservations: func(string, time.Time) (claim.Snapshot, error) {
+		Reservations: func(context.Context, string, time.Time) (claim.Snapshot, error) {
 			return claim.Snapshot{Reservations: f.res}, nil
 		},
 	}

@@ -236,6 +236,8 @@ func (r *owedReader) liveSessions() (map[string]string, bool) {
 		a.err = r.ctx.Err()
 	}
 	if a.err != nil {
+		// Unread, every item stays owed, another session's included.
+		r.cutShort(true)
 		r.note("the live sessions could not be read (%s), so no item was left out as another session's", fsutil.RedactHome(a.err.Error()))
 		return nil, false
 	}

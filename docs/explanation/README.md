@@ -10,3 +10,4 @@ design rationale for a *decision* lives in an ADR under
 - [`roles.md`](roles.md): The product thinker and the technical facilitator.
 - [`artefacts.md`](artefacts.md): The brief, intents, and automated audits, and who owns what.
 - [`process.md`](process.md): From the first brief to a graded verdict, capturing intents, issues and thoughts along the way.
+- [`memory.md`](memory.md): The library and memory: what each holds, who adds to it, how it comes back, and where it can go.

@@ -23,18 +23,23 @@ package loop
 // a salted-hash token wherever the key is stored or named.
 
 import (
+	"context"
 	"crypto/rand"
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -168,21 +173,11 @@ func takeFingerprint(repoRoot string, lanes []laneDir, salt string, now time.Tim
 	fp := configFingerprint{SchemaVersion: configFingerprintVersion, RecordedAt: now, Salt: salt,
 		Keys: map[string]string{}, Worktrees: map[string]worktreeFingerprint{}, Files: map[string]string{},
 		live: map[string]bool{}}
-	entries, err := gitutil.RepoConfig(repoRoot, watchedConfig)
-	if err != nil {
-		return fp, err
-	}
-	hooksPath := hashEntries(fp.Keys, salt, entries)
-	common, err := gitutil.RevParseAbsPath(repoRoot, "--git-common-dir")
+	hooks, common, err := checkoutHooks(repoRoot, salt, fp.Keys, fp.Files)
 	if err != nil {
 		return fp, err
 	}
 	defaultHooks := filepath.Join(common, "hooks")
-	hooks := defaultHooks
-	if hooksPath != "" {
-		hooks = expandHooksPath(repoRoot, hooksPath)
-	}
-	hashDir(fp.Files, salt, hooks)
 	hashFile(fp.Files, salt, filepath.Join(common, "info", "attributes"))
 	for _, ld := range lanes {
 		lane := ld.Path
@@ -214,6 +209,33 @@ func takeFingerprint(repoRoot string, lanes []laneDir, salt string, now time.Tim
 		fp.Worktrees[lane] = wt
 	}
 	return fp, nil
+}
+
+// checkoutHooks is how the fingerprint reads the checkout's hooks: each
+// watched key the repository's own settings set is hashed into keys
+// (hashEntries), and each top-level entry of the hooks directory those
+// settings name (the last core.hooksPath among them, else the common git
+// directory's hooks) into files (hashDir), all under salt. A core.hooksPath
+// set only in global or system settings is not read here, so with one the
+// directory hashed can be other than the one git runs at the checkout. It
+// returns that directory and the common git directory. A drive holds the same
+// hashes of the checkout's hooks across its lanes (remoteid.go), read through
+// this one function.
+func checkoutHooks(repoRoot, salt string, keys, files map[string]string) (hooks, common string, err error) {
+	entries, err := gitutil.RepoConfig(repoRoot, watchedConfig)
+	if err != nil {
+		return "", "", err
+	}
+	hooksPath := hashEntries(keys, salt, entries)
+	if common, err = gitutil.RevParseAbsPath(repoRoot, "--git-common-dir"); err != nil {
+		return "", "", err
+	}
+	hooks = filepath.Join(common, "hooks")
+	if hooksPath != "" {
+		hooks = expandHooksPath(repoRoot, hooksPath)
+	}
+	hashDir(files, salt, hooks)
+	return hooks, common, nil
 }
 
 // hashEntries hashes each key's values, in the order git reads them, into
@@ -352,7 +374,7 @@ func hashFile(into map[string]string, salt, path string) {
 	switch {
 	case fi.Mode()&fs.ModeSymlink != 0:
 		target, _ := os.Readlink(path)
-		into[path] = saltedHash(salt, "symlink", target)
+		into[path] = symlinkHash(salt, target)
 	case fi.Mode().IsRegular():
 		f, err := os.Open(path)
 		if err != nil {
@@ -360,17 +382,33 @@ func hashFile(into map[string]string, salt, path string) {
 			return
 		}
 		defer f.Close()
-		h := sha256.New()
-		writePart(h, salt)
-		writePart(h, "file "+fi.Mode().Perm().String())
+		h := regularHasher(salt, fi.Mode().Perm())
 		if _, err := io.Copy(h, f); err != nil {
 			into[path] = saltedHash(salt, "unreadable")
 			return
 		}
 		into[path] = hex.EncodeToString(h.Sum(nil))
 	default:
-		into[path] = saltedHash(salt, "kind", fi.Mode().Type().String())
+		into[path] = kindHash(salt, fi.Mode())
 	}
+}
+
+// symlinkHash, regularHasher and kindHash are how hashFile records an entry:
+// a symlink by its target, a regular file by its mode and then its bytes
+// (written to the hasher), anything else by its kind. The lane's hooks pin
+// (pinLaneHooks) records the entries it proves the same way, so a later check
+// reads them as unchanged.
+func symlinkHash(salt, target string) string { return saltedHash(salt, "symlink", target) }
+
+func regularHasher(salt string, perm fs.FileMode) hash.Hash {
+	h := sha256.New()
+	writePart(h, salt)
+	writePart(h, "file "+perm.String())
+	return h
+}
+
+func kindHash(salt string, mode fs.FileMode) string {
+	return saltedHash(salt, "kind", mode.Type().String())
 }
 
 // changes names, in order, each key, each lane worktree's key and hook and
@@ -458,7 +496,8 @@ func (was configFingerprint) changes(repoRoot string, now configFingerprint) []s
 }
 
 // laneBaseline is what a lane worktree the fingerprint does not hold (one
-// made after it was recorded) is compared against: the checkout as recorded.
+// made after it was recorded, and not pinned as it opened: pinLaneHooks) is
+// compared against: the checkout as recorded.
 // A lane reads the repository's shared config as the checkout does, so its
 // keys are compared with the checkout's; a hook in its own copy of a relative
 // hooks directory is compared with the checkout's file at the same relative
@@ -671,4 +710,393 @@ func ConfigTripwire(repoRoot string) error {
 		}
 	}
 	return nil
+}
+
+// maxHookTreeBytes caps git's listing of a lane's hooks directory as a commit
+// records it; a listing past it is refused whole.
+const maxHookTreeBytes = 1 << 20
+
+// hookTreeEntry is one entry of a hooks directory as a commit records it:
+// its mode, its object and, for a blob, the size git stores for it (-1 for a
+// tree).
+type hookTreeEntry struct {
+	mode, oid string
+	size      int64
+}
+
+// pinLaneHooks is the lane's hooks pin (iss-2611071820538335), made by the
+// worktree stage under the run tier's lock, before any commit in the lane.
+// base is the commit the lane opens on and tip the default branch's tip as
+// origin reported it: base is tip, or, where the lane's branch already stood
+// (a worktree adopted, or a branch a killed step left), where that branch
+// left tip's history, an ancestor of tip.
+//
+// A lane whose hooks directory is its own copy (the last core.hooksPath the
+// lane reads is relative, so git takes it under the lane's working tree) is
+// pinned from git's objects as stored (no replace ref or graft file stands in
+// for them: hooksTreeAt, hookTreeEntries), never from what anything wrote in
+// the lane: the directory's tree in base must be its tree in tip, and what
+// stands on disk must be base's entries exactly, each name, each file's size
+// and bytes (its blob id recomputed from them), its exec bit, each symlink's
+// target and each subdirectory's kind. A subdirectory's contents are neither
+// proved nor pinned, and a symlink is proved by its target's text, not by the
+// file it points to. Any difference is refused at the worktree stage and
+// nothing is pinned. The entries proved are recorded, hashed from the bytes
+// that were proved, as the run's fingerprint holds the lane, with each watched
+// key the lane reads at the hash the fingerprint recorded for the checkout, so
+// from then on the lane's hooks are compared with its own commit and never
+// with the checkout's copy, and a key the lane reads otherwise than the
+// checkout as recorded, or that the checkout lacks, is still named at the next
+// check.
+//
+// A lane whose hooks directory is not its own copy (the checkout's, or an
+// absolute or home path) is not pinned and is compared with the checkout as
+// recorded (laneBaseline). With no fingerprint yet the hooks are still proved
+// but nothing is recorded: the run's first record takes the lane as it then
+// stands. A lane whose config git cannot read is passed over, as
+// takeFingerprint passes it over: git cannot run there either.
+func pinLaneHooks(c Context, laneID, lanePath, base, tip string) error {
+	lane := filepath.Clean(lanePath)
+	entries, err := gitutil.RepoConfig(lane, watchedConfig)
+	if errors.Is(err, gitutil.ErrConfigCap) {
+		return refuse(string(StageWorktree), "", laneID, "the lane's git configuration is too large to read whole, so the hooks git runs there cannot be told: "+scanner.RedactRefusal(c.RepoRoot, fsutil.RedactHome(err.Error())),
+			"look at the repository's git configuration (`git config --local --list --show-origin`); nothing was committed in the lane")
+	}
+	if err != nil {
+		return nil
+	}
+	root, err := os.OpenRoot(c.RepoRoot)
+	if err != nil {
+		return fmt.Errorf("opening the checkout: %w", err)
+	}
+	defer root.Close()
+	fp, recorded, err := readFingerprint(root, c.State.RunID)
+	if err != nil {
+		return err
+	}
+	read := map[string]string{}
+	hooksPath := hashEntries(read, fp.Salt, entries)
+	if hooksPath == "" {
+		return nil
+	}
+	rel := ownHooksDir(lane, hooksPath)
+	if rel == "" {
+		return nil
+	}
+	dir := filepath.Join(lane, filepath.FromSlash(rel))
+	again := ", then run `abcd implement step` again; nothing was committed in the lane"
+	tree, err := hooksTreeAt(c.RepoRoot, base, rel)
+	tipTree := tree
+	if err == nil && base != tip {
+		tipTree, err = hooksTreeAt(c.RepoRoot, tip, rel)
+	}
+	if err != nil {
+		return refuse(string(StageWorktree), "", laneID,
+			"the hooks directory "+rel+" of the lane's commit or of "+Remote+"'s tip cannot be read, so the lane's hooks cannot be proved: "+scanner.RedactRefusal(c.RepoRoot, fsutil.RedactHome(err.Error())),
+			"settle what git reports (`git ls-tree "+tip[:12]+" -- "+rel+"`)"+again)
+	}
+	if tipTree != tree {
+		return refuse(string(StageWorktree), "", laneID,
+			fmt.Sprintf("the lane's commit %s holds other hooks in %s than %s's tip %s, so they are not the default branch's reviewed hooks", base[:12], rel, Remote, tip[:12]),
+			"remove the lane's worktree and branch (`git worktree remove --force "+fsutil.RedactHome(lane)+"`, `git branch -D "+lanesBranch(c, laneID)+"`) so the stage cuts the lane afresh from the tip"+again)
+	}
+	want, err := hookTreeEntries(c.RepoRoot, tree)
+	if err == nil {
+		var hooks map[string]string
+		if hooks, err = provenHooks(fp.Salt, dir, want); err == nil {
+			// Between this proof and the lane's first git step another
+			// process of the account can still write in the lane; the pin
+			// holds the hashes proved here, so that step's check names it.
+			if !recorded {
+				return nil
+			}
+			keys := map[string]string{}
+			for k := range read {
+				if h, ok := fp.Keys[k]; ok {
+					keys[k] = h
+				}
+			}
+			fp.Worktrees[lane] = worktreeFingerprint{Keys: keys, Hooks: hooks}
+			return writeFingerprint(root, c.State.RunID, fp)
+		}
+	}
+	return refuse(string(StageWorktree), "", laneID,
+		"the lane's hooks are not those of the commit it opens on, "+base[:12]+": "+scanner.RedactRefusal(c.RepoRoot, fsutil.RedactHome(err.Error())),
+		"look at what wrote in the lane's hooks directory once git made it (the repository's post-checkout hook runs there); remove the lane's worktree (`git worktree remove --force "+fsutil.RedactHome(lane)+"`) so the stage makes it afresh"+again)
+}
+
+// ownHooksDir is the hooks directory, relative and slash-separated, that git
+// runs in a working tree at dir when hooksPath (the last core.hooksPath the
+// repository's own settings give) names the tree's own copy; "" when it names
+// none or a directory outside the tree.
+func ownHooksDir(dir, hooksPath string) string {
+	if hooksPath == "" {
+		return ""
+	}
+	rel, err := filepath.Rel(dir, expandHooksPath(dir, hooksPath))
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	return filepath.ToSlash(rel)
+}
+
+// checkoutHooksPath is the core.hooksPath git takes at the checkout, from
+// the settings scopes the lane's add reads (gitutil.WorkingTreeCommitCommand,
+// the person's global and system settings included), "" when none sets it.
+func checkoutHooksPath(repoRoot string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), originAskTimeout)
+	defer cancel()
+	cmd := gitutil.WorkingTreeCommitCommand(ctx, repoRoot, "config", "--get", "core.hooksPath")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	var ee *exec.ExitError
+	switch {
+	case errors.As(err, &ee) && ee.ExitCode() == 1 && len(out) == 0:
+		return "", nil
+	case err != nil:
+		return "", fmt.Errorf("git config --get core.hooksPath: %v (%s)", err, strings.TrimSpace(stderr.String()))
+	case len(out) > 4096:
+		return "", errors.New("git config --get core.hooksPath answered past 4096 bytes")
+	}
+	return strings.TrimSuffix(string(out), "\n"), nil
+}
+
+// standingBranchHooks is the worktree stage's check, before the add, of a
+// branch already standing under the lane's name where origin reported tip.
+// head is the branch's head, resolved once by the stage, which refuses the
+// lane after the add if the branch then holds another commit, removing the
+// worktree it added so the next step judges the branch again. Where hooksPath
+// (checkoutHooksPath, which the add is also told) names a working tree's own
+// copy, head's hooks directory, as stored (hooksTreeAt), must be the tip's;
+// either one that cannot be read is refused, never read as one that records
+// nothing. The check is defensive: it stops nothing from running, since git's
+// add runs the post-checkout hook of the checkout's own copy whatever the
+// branch holds, and the proof after the add (pinLaneHooks) would refuse such
+// a lane too; it refuses it before a worktree is made rather than after. The
+// branch's content outside the hooks directory is its own and is not vouched
+// for. A hooks directory outside the working tree passes.
+func standingBranchHooks(c Context, laneID, head, branch, tip, hooksPath string) error {
+	rel := ownHooksDir(c.RepoRoot, hooksPath)
+	if rel == "" {
+		return nil
+	}
+	mine, err := hooksTreeAt(c.RepoRoot, head, rel)
+	if err == nil {
+		var theirs string
+		if theirs, err = hooksTreeAt(c.RepoRoot, tip, rel); err == nil {
+			if mine == theirs {
+				return nil
+			}
+			return refuse(string(StageWorktree), "", laneID,
+				fmt.Sprintf("the branch %s already stands, and its hooks in %s are not those of %s's tip %s, so it is not checked out", branch, rel, Remote, tip[:12]),
+				"look at what made the branch; remove it (`git branch -D "+branch+"`) so the stage cuts the lane afresh from the tip, then run `abcd implement step` again; nothing was made")
+		}
+	}
+	return refuse(string(StageWorktree), "", laneID,
+		fmt.Sprintf("the hooks in %s of the branch %s, which already stands, or of %s's tip %s cannot be read, so the branch is not checked out: %s", rel, branch, Remote, tip[:12], scanner.RedactRefusal(c.RepoRoot, fsutil.RedactHome(err.Error()))),
+		"settle what git reports (`git ls-tree "+branch+" -- "+rel+"`), or remove the branch (`git branch -D "+branch+"`) so the stage cuts the lane afresh from the tip, then run `abcd implement step` again; nothing was made")
+}
+
+// lanesBranch is the branch the worktree stage cuts for laneID.
+func lanesBranch(c Context, laneID string) string {
+	if lw, err := laneWorktree(c.RepoRoot, c.State.RunID, laneID); err == nil {
+		return lw.Branch
+	}
+	return BranchPrefix + c.State.RunID + "-" + laneID
+}
+
+// hooksTreeAt is the object a commit records at rel, "" when it records
+// nothing there. It is read as stored (gitutil.RunCappedAsStored): a replace
+// ref or a graft file cannot stand another commit or tree in for the one the
+// commit stores. It lists rel from the commit's root (`ls-tree --full-tree`,
+// whose paths git matches literally), so git listing nothing is nothing
+// recorded, and git failing to answer (no such commit, an object it cannot
+// read) is an error, never read as nothing recorded.
+func hooksTreeAt(repoRoot, commit, rel string) (string, error) {
+	out, err := gitutil.RunCappedAsStored(repoRoot, maxHookTreeBytes, "ls-tree", "-z", "--full-tree", commit, "--", rel)
+	if err != nil {
+		return "", fmt.Errorf("git ls-tree %s -- %s: %v", commit, rel, err)
+	}
+	for _, rec := range strings.Split(out, "\x00") {
+		meta, name, ok := strings.Cut(rec, "\t")
+		if !ok || name != rel {
+			continue
+		}
+		if f := strings.Fields(meta); len(f) == 3 && gitutil.IsFullSHA(f[2]) {
+			return f[2], nil
+		}
+		return "", errors.New("git ls-tree listed the hooks directory in a form it does not document")
+	}
+	return "", nil
+}
+
+// hookTreeEntries lists the tree tree by entry name (none for ""), as stored
+// (gitutil.RunCappedAsStored): its mode, its object and a blob's stored size.
+// An object that is not a tree, a listing past its cap or past maxHookEntries
+// entries, or a record git does not document is an error.
+func hookTreeEntries(repoRoot, tree string) (map[string]hookTreeEntry, error) {
+	want := map[string]hookTreeEntry{}
+	if tree == "" {
+		return want, nil
+	}
+	out, err := gitutil.RunCappedAsStored(repoRoot, maxHookTreeBytes, "ls-tree", "-z", "-l", tree)
+	if err != nil {
+		return nil, fmt.Errorf("the commit's hooks directory is not a directory git can list: %v", err)
+	}
+	for _, rec := range strings.Split(out, "\x00") {
+		if rec == "" {
+			continue
+		}
+		meta, name, ok := strings.Cut(rec, "\t")
+		f := strings.Fields(meta)
+		if !ok || len(f) != 4 || name == "" || !gitutil.IsFullSHA(f[2]) {
+			return nil, errors.New("git ls-tree listed the hooks directory in a form it does not document")
+		}
+		size := int64(-1)
+		if f[1] == "blob" {
+			n, err := strconv.ParseInt(f[3], 10, 64)
+			if err != nil || n < 0 {
+				return nil, errors.New("git ls-tree listed a hook's size in a form it does not document")
+			}
+			size = n
+		}
+		want[name] = hookTreeEntry{mode: f[0], oid: f[2], size: size}
+	}
+	if len(want) > maxHookEntries {
+		return nil, fmt.Errorf("the commit's hooks directory holds more than %d entries", maxHookEntries)
+	}
+	return want, nil
+}
+
+// provenHooks proves what stands in dir is want exactly and returns each
+// entry's record, as hashDir keys and hashes it, from what was proved. A
+// directory that is not there holds nothing.
+func provenHooks(salt, dir string, want map[string]hookTreeEntry) (map[string]string, error) {
+	des, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		des, err = nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%s cannot be read: %v", dir, err)
+	}
+	if len(des) > maxHookEntries {
+		return nil, fmt.Errorf("%s holds more than %d entries", dir, maxHookEntries)
+	}
+	out := map[string]string{}
+	for _, de := range des {
+		path := filepath.Join(dir, de.Name())
+		e, ok := want[de.Name()]
+		if !ok {
+			return nil, fmt.Errorf("%s stands there, and the commit holds no such entry", path)
+		}
+		h, err := provenEntry(salt, path, e)
+		if err != nil {
+			return nil, fmt.Errorf("%s %v", path, err)
+		}
+		out[path] = h
+	}
+	if len(out) != len(want) {
+		var missing []string
+		for name := range want {
+			if _, ok := out[filepath.Join(dir, name)]; !ok {
+				missing = append(missing, filepath.Join(dir, name))
+			}
+		}
+		slices.Sort(missing)
+		return nil, fmt.Errorf("%s, which the commit holds, is not there", strings.Join(missing, ", "))
+	}
+	return out, nil
+}
+
+// provenEntry proves the entry at path is e and returns its record: a
+// symlink whose target is e's blob, a regular file whose bytes are e's blob
+// and whose owner exec bit is set exactly when e is 100755, a directory where
+// e is a tree. A file is read once, through the descriptor its record and its
+// blob id are both taken from.
+func provenEntry(salt, path string, e hookTreeEntry) (string, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return "", fmt.Errorf("cannot be examined: %v", err)
+	}
+	switch e.mode {
+	case "120000":
+		if fi.Mode()&fs.ModeSymlink == 0 {
+			return "", errors.New("is not the symlink the commit holds")
+		}
+		target, err := os.Readlink(path)
+		if err != nil {
+			return "", fmt.Errorf("cannot be read: %v", err)
+		}
+		if int64(len(target)) != e.size {
+			return "", errors.New("points elsewhere than the commit's symlink")
+		}
+		blob, ok := blobHasher(e.oid, int64(len(target)))
+		if !ok {
+			return "", errors.New("is recorded under an object name of no known length")
+		}
+		_, _ = io.WriteString(blob, target)
+		if hex.EncodeToString(blob.Sum(nil)) != e.oid {
+			return "", errors.New("points elsewhere than the commit's symlink")
+		}
+		return symlinkHash(salt, target), nil
+	case "100644", "100755":
+		if !fi.Mode().IsRegular() {
+			return "", errors.New("is not the regular file the commit holds")
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return "", fmt.Errorf("cannot be read: %v", err)
+		}
+		defer f.Close()
+		held, err := f.Stat()
+		if err != nil || !os.SameFile(fi, held) || !held.Mode().IsRegular() {
+			return "", errors.New("changed while it was read")
+		}
+		if exec := held.Mode().Perm()&0o100 != 0; exec != (e.mode == "100755") {
+			return "", fmt.Errorf("has its exec bit %s, unlike the commit's mode %s", map[bool]string{true: "set", false: "clear"}[exec], e.mode)
+		}
+		// The size is judged before a byte is read, so a file of any size at
+		// a hook's name costs one stat, and the read below is bounded by the
+		// size git stores for the blob.
+		if held.Size() != e.size {
+			return "", fmt.Errorf("is %d bytes, and the commit's file %d", held.Size(), e.size)
+		}
+		blob, ok := blobHasher(e.oid, held.Size())
+		if !ok {
+			return "", errors.New("is recorded under an object name of no known length")
+		}
+		rec := regularHasher(salt, held.Mode().Perm())
+		n, err := io.Copy(io.MultiWriter(blob, rec), io.LimitReader(f, held.Size()+1))
+		if err != nil || n != held.Size() {
+			return "", errors.New("changed while it was read")
+		}
+		if hex.EncodeToString(blob.Sum(nil)) != e.oid {
+			return "", errors.New("differs from the commit's file")
+		}
+		return hex.EncodeToString(rec.Sum(nil)), nil
+	case "040000":
+		if !fi.IsDir() {
+			return "", errors.New("is not the directory the commit holds")
+		}
+		return kindHash(salt, fi.Mode()), nil
+	}
+	return "", fmt.Errorf("is an entry of mode %s, which the pin does not prove", e.mode)
+}
+
+// blobHasher is the hash git names a blob of size bytes by, in the object
+// format oid's length says (SHA-1 for 40 hex digits, SHA-256 for 64), its
+// header written.
+func blobHasher(oid string, size int64) (hash.Hash, bool) {
+	var h hash.Hash
+	switch len(oid) {
+	case 40:
+		h = sha1.New()
+	case 64:
+		h = sha256.New()
+	default:
+		return nil, false
+	}
+	fmt.Fprintf(h, "blob %d\x00", size)
+	return h, true
 }

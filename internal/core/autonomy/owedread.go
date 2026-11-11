@@ -54,9 +54,9 @@ type ReadOptions struct {
 	// live rules, and its armed or queued pull requests; zero means
 	// RulesetDeadline.
 	RulesetDeadline time.Duration
-	// Reservations reads the reservations as last fetched, with no network;
-	// nil means claim.View.
-	Reservations func(root string, now time.Time) (claim.Snapshot, error)
+	// Reservations reads the reservations as last fetched, with no network,
+	// under the check's ctx; nil means claim.ViewContext.
+	Reservations func(ctx context.Context, root string, now time.Time) (claim.Snapshot, error)
 	// Person is the person's forge name, which tells their pull requests
 	// from another person's; "" means the holder name reservations resolve
 	// without a network read (claim.ReaderHolder), and when that is unknown
@@ -137,16 +137,14 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 	}
 	r.away = o.Record.Holds(r.now)
 	if r.email == "" {
-		if id, err := identity.EffectiveIdentityContext(ctx, root); err == nil {
-			r.email = id.Email
-		}
+		r.readEmail()
 	}
 	r.readRefs()
 	r.readReservations(o)
 	if r.away {
 		r.person = o.Person
 		if r.person == "" {
-			r.person = claim.ReaderHolderContext(ctx, root, claim.Options{Home: home})
+			r.readPerson()
 		}
 		forge := o.Forge
 		if forge == nil {
@@ -173,7 +171,7 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 			r.note("the forge listed %d open pull requests, its limit, so the listing may be truncated: a reservation no listed pull request carries is not counted as uncarried", len(r.list.prs))
 		}
 	}
-	r.receiptsMinted = receiptsMinted(ctx, root)
+	r.readReceiptsMinted()
 	r.readLanes()
 	r.findOwn()
 	r.scope()
@@ -255,6 +253,9 @@ type owedReader struct {
 	queue         queueRule
 	armedRead     bool
 	armedInto     armedSet
+	// queueCut is a queue read, the rules or the armed set, the check's
+	// deadline ended: a behind pull request then owes nothing on its account.
+	queueCut bool
 
 	// me is the stopping session (ReadOptions.SessionID), and the rest of
 	// this block what holders.go reads to tell its work from another live
@@ -316,9 +317,7 @@ func (r *owedReader) note(format string, a ...any) {
 // a failed read as "nothing there" cannot pass a cut-short reading as whole.
 func (r *owedReader) git(args ...string) (string, error) {
 	out, err := gitutil.RunLimitedContext(r.ctx, r.root, 1<<20, args...)
-	if err != nil && r.expired() {
-		r.cut = true
-	}
+	r.cutShort(err != nil)
 	return out, err
 }
 
@@ -332,8 +331,62 @@ func (r *owedReader) ancestor(a, b string) bool {
 	return err == nil
 }
 
+// notAncestor reports whether git said a is not an ancestor of b, with the
+// check's deadline still live: what owes a merge. Once the deadline has ended
+// it cannot say, so it owes none, and the reading is marked cut short. One
+// look both marks and decides, so what marks and what owes cannot disagree.
+func (r *owedReader) notAncestor(a, b string) bool {
+	if r.ancestor(a, b) {
+		return false
+	}
+	return !r.cutShort(true)
+}
+
 // expired reports whether the check's time budget has run out.
 func (r *owedReader) expired() bool { return r.ctx.Err() != nil }
+
+// cutShort marks the reading cut short when a read under the check's ctx
+// failed, or came back empty, once that ctx has ended, and reports whether it
+// did, looking at the deadline once: a caller that leaves an item out on its
+// answer leaves it out only when the reading is marked. These reads pass
+// through it: the author email, the holder, the default branch, the receipt
+// folder, the landing receipt, the runs' tracked check, this copy's key and
+// the created-branch list's store, the other worktrees, the fetch stamp, the
+// stack index, the reservations as last fetched, the live sessions, the merge
+// queue's rules and its armed set, and each call made through `r.git`.
+// TestEachOwedReadMarksASpentDeadline holds each of these but `r.git`. The
+// pull-request listing and landed's merge-driver, merge-tree and cherry reads
+// are marked by ranOut instead, and finding the checkout returns its error.
+func (r *owedReader) cutShort(failed bool) bool {
+	if failed && r.expired() {
+		r.cut = true
+		return true
+	}
+	return false
+}
+
+// readEmail reads the checkout's author email, by which own branches are
+// told, under the check's ctx.
+func (r *owedReader) readEmail() {
+	id, err := identity.EffectiveIdentityContext(r.ctx, r.root)
+	if err == nil {
+		r.email = id.Email
+	}
+	r.cutShort(err != nil)
+}
+
+// readPerson reads the person reservations are held by, the reader's holder,
+// under the check's ctx.
+func (r *owedReader) readPerson() {
+	r.person = claim.ReaderHolderContext(r.ctx, r.root, claim.Options{Home: r.home})
+	r.cutShort(r.person == "")
+}
+
+// readReceiptsMinted reads whether the repository mints preflight receipts.
+func (r *owedReader) readReceiptsMinted() {
+	r.receiptsMinted = receiptsMinted(r.ctx, r.root)
+	r.cutShort(!r.receiptsMinted)
+}
 
 // ranOut marks the reading incomplete, once noting what was not read: the
 // verdict then allows the stop, naming it (spc-2610180914469489, "Diff review
@@ -345,10 +398,17 @@ func (r *owedReader) ranOut(what string) {
 	r.incomplete = true
 }
 
+// readDefault reads the default branch's ref as last fetched, under the
+// check's ctx.
+func (r *owedReader) readDefault() {
+	r.def = gitutil.DefaultRefContext(r.ctx, r.root)
+	r.cutShort(r.def == "")
+}
+
 // readRefs reads the default branch as last fetched and every local branch
 // with its head and upstream.
 func (r *owedReader) readRefs() {
-	r.def = gitutil.DefaultRefContext(r.ctx, r.root)
+	r.readDefault()
 	switch {
 	case strings.HasPrefix(r.def, "refs/remotes/"):
 		parts := strings.SplitN(strings.TrimPrefix(r.def, "refs/remotes/"), "/", 2)
@@ -387,13 +447,21 @@ func (r *owedReader) readRefs() {
 	}
 }
 
-// readReservations keeps the live reservations under this copy's key.
+// readReservations keeps the live reservations under this copy's key, read
+// under the check's ctx. A read the deadline ended uses none of what it read
+// (claim.ViewContext answers ctx's error then), so a reservation is neither
+// read as live from it nor lost from this copy's own without a mark: the
+// reading is marked cut short, one look both marking and deciding.
 func (r *owedReader) readReservations(o ReadOptions) {
 	view := o.Reservations
 	if view == nil {
-		view = claim.View
+		view = claim.ViewContext
 	}
-	snap, err := view(r.root, r.now)
+	snap, err := view(r.ctx, r.root, r.now)
+	if r.cutShort(err != nil) {
+		r.note("the reservations as last fetched were not read before the check's deadline, so none is counted as this copy's")
+		return
+	}
 	if err != nil {
 		r.note("the reservations as last fetched could not be read")
 		return
@@ -436,8 +504,22 @@ func (r *owedReader) hasReceipt(head string) bool {
 	if head == "" {
 		return false
 	}
-	p, err := landing.Receipt(r.root, head)
+	p, err := landing.ReceiptContext(r.ctx, r.root, head)
+	// A read the deadline ended is not "no receipt names it": marked, so
+	// the stop fails open rather than owing a preflight the receipt shows.
+	r.cutShort(err != nil)
 	return err == nil && p != ""
+}
+
+// owesPreflight reports whether the read found no receipt naming head, with
+// the check's deadline still live. A read the deadline ended cannot say, so
+// it owes none, and the reading is marked cut short. One look both marks and
+// decides, so what marks and what owes cannot disagree.
+func (r *owedReader) owesPreflight(head string) bool {
+	if r.hasReceipt(head) {
+		return false
+	}
+	return !r.cutShort(true)
 }
 
 // runIDRe is a run's directory name (loop.ValidRunID's shape).
@@ -486,9 +568,7 @@ func (r *owedReader) readLanes() {
 		}
 	}
 	if err := localtier.UntrackedEach(r.ctx, r.root, runs...); err != nil {
-		if r.expired() {
-			r.cut = true
-		}
+		r.cutShort(true)
 		r.note("the runs' lanes were not read: %v", err)
 		return
 	}
@@ -586,12 +666,13 @@ func (r *owedReader) reflogBranches() []string {
 // created each, where the record kept one.
 func (r *owedReader) recordedBranches() []string {
 	r.recordedBy = map[string]string{}
-	key := claim.OwnCopyKey(r.root)
-	if key == "" || r.home == "" {
+	key := claim.OwnCopyKeyContext(r.ctx, r.root)
+	if r.cutShort(key == "") || key == "" || r.home == "" {
 		return nil
 	}
 	st, err := openStoreContext(r.ctx, r.home, r.root)
 	if err != nil {
+		r.cutShort(true)
 		return nil
 	}
 	list, err := st.CreatedBranches(key)
@@ -739,6 +820,7 @@ func (r *owedReader) checkedOutElsewhere() map[string]string {
 	out := map[string]string{}
 	wts, err := gitutil.ListWorktreesContext(r.ctx, r.root, gitutil.MaxWorktreeListing)
 	if err != nil {
+		r.cutShort(true)
 		return out
 	}
 	here, _ := os.Stat(r.root)
@@ -773,9 +855,11 @@ func (r *owedReader) fetchedAt() string {
 			}
 		}
 	}
-	if t := claim.LastFetchedContext(r.ctx, r.root); !t.IsZero() {
+	t := claim.LastFetchedContext(r.ctx, r.root)
+	if !t.IsZero() {
 		return showTime(t)
 	}
+	r.cutShort(true)
 	return "an unknown time"
 }
 
@@ -805,9 +889,8 @@ func (r *owedReader) stackIdx() *stackIndex {
 		if !ok {
 			continue
 		}
-		if r.expired() {
+		if r.cutShort(true) {
 			// An index cut short can miss a base, which reads as none.
-			r.cut = true
 			continue
 		}
 		idx.heads[c.head] = append(idx.heads[c.head], name)
@@ -965,7 +1048,7 @@ func (r *owedReader) forgeItems(name string, b *localBranch, head string, p pull
 		case "BEHIND":
 			reason := fmt.Sprintf("pull request #%d (%s) is behind its base: merge it in", p.Number, name)
 			switch r.queueKeepsCurrent(p) {
-			case queueArmed:
+			case queueArmed, queueCutShort:
 				return
 			case queueUnarmed:
 				reason = fmt.Sprintf("pull request #%d (%s) is behind its base, which a merge queue guards, and auto-merge is not armed: arm it", p.Number, name)
@@ -981,7 +1064,7 @@ func (r *owedReader) forgeItems(name string, b *localBranch, head string, p pull
 	}
 	// The listing failed: a pushed branch is compared on disk with the
 	// last-fetched default branch, naming when it was fetched.
-	if !r.list.read && b != nil && b.upstream != "" && !b.upstreamGone && r.defTip != "" && !r.ancestor(r.defTip, b.head) {
+	if !r.list.read && b != nil && b.upstream != "" && !b.upstreamGone && r.defTip != "" && r.notAncestor(r.defTip, b.head) {
 		r.add(OwedItem{Kind: OwedBehind, Capped: true, Branch: name, Head: head,
 			Reason: fmt.Sprintf("%s is behind %s as last fetched (fetched %s), compared on disk because the pull requests were not read: merge it in",
 				name, gitutil.ShortRef(r.def), r.fetchedAt())})
@@ -998,6 +1081,9 @@ const (
 	queueArmed
 	// queueUnarmed: a queue guards its base, but nobody has armed it.
 	queueUnarmed
+	// queueCutShort: a queue read the check's deadline ended cannot say, so
+	// it owes nothing, and the reading is marked cut short.
+	queueCutShort
 )
 
 // queueKeepsCurrent decides a behind pull request in a repository whose
@@ -1009,7 +1095,9 @@ const (
 // arming instead (queueUnarmed). A draft, any other base, and a queue the
 // forge's live rules do not prove read as before (queueNone), each read that
 // fails, is late or cannot be read named in a note; a queued listing that
-// fails leaves the pull request unarmed, so it stays owed. A stacked base never
+// fails leaves the pull request unarmed, so it stays owed. Either read the
+// check's own deadline ended owes nothing (queueCutShort), as the receipt
+// and ancestry reads do, and marks the reading cut short. A stacked base never
 // reaches here: stacked judges it, and a conflict and failing checks are owed
 // apart from it.
 func (r *owedReader) queueKeepsCurrent(p pullRequest) queueStanding {
@@ -1019,9 +1107,16 @@ func (r *owedReader) queueKeepsCurrent(p pullRequest) queueStanding {
 	if !r.queueRead {
 		r.queueRead = true
 		r.queue = readQueueRule(r.ctx, r.forge, r.root, r.defName, r.rulesDeadline)
-		if r.queue.unread != "" {
+		switch {
+		case r.cutShort(r.queue.unread != ""):
+			r.queueCut = true
+			r.note("whether a merge queue guards %s was not read from the forge: the check's deadline ended; the read's last answer: %s; so a pull request behind it is owed nothing on that account", r.defName, r.queue.unread)
+		case r.queue.unread != "":
 			r.note("whether a merge queue guards %s was not read from the forge (%s), so a pull request behind it is owed a merge as before", r.defName, r.queue.unread)
 		}
+	}
+	if r.queueCut {
+		return queueCutShort
 	}
 	if !r.queue.queue {
 		return queueNone
@@ -1033,11 +1128,17 @@ func (r *owedReader) queueKeepsCurrent(p pullRequest) queueStanding {
 		r.armedRead = true
 		r.armedInto = readArmedInto(r.ctx, r.forge, r.root, r.defName, r.rulesDeadline)
 		switch {
+		case r.cutShort(r.armedInto.unread != ""):
+			r.queueCut = true
+			r.note("which pull requests into %s are already in its merge queue was not read from the forge: the check's deadline ended; the read's last answer: %s; so a behind one not armed is owed nothing on that account", r.defName, r.armedInto.unread)
 		case r.armedInto.unread != "":
 			r.note("which pull requests into %s are already in its merge queue was not read from the forge (%s), so each behind one not armed is owed its arming", r.defName, r.armedInto.unread)
 		case !r.armedInto.complete:
 			r.note("the forge listed a page of the pull requests into %s and more follow, so a behind one not on it and not armed is owed its arming", r.defName)
 		}
+	}
+	if r.queueCut {
+		return queueCutShort
 	}
 	if r.armedInto.armed[p.Number] {
 		return queueArmed
@@ -1072,7 +1173,7 @@ func (r *owedReader) stacked(name, head, base, baseTip string, p pullRequest, ha
 		if strings.EqualFold(p.ReviewDecision, "CHANGES_REQUESTED") {
 			need("the review (changes are requested)", false)
 		}
-	} else if baseTip != "" && !r.ancestor(baseTip, head) {
+	} else if baseTip != "" && r.notAncestor(baseTip, head) {
 		need(fmt.Sprintf("the merge from its base (%s as it stands on disk)", base), false)
 	}
 	if isLane, passed := r.lanePassed(name, head); isLane && !passed {
@@ -1080,7 +1181,7 @@ func (r *owedReader) stacked(name, head, base, baseTip string, p pullRequest, ha
 	}
 	switch {
 	case r.receiptsMinted:
-		if !r.hasReceipt(head) {
+		if r.owesPreflight(head) {
 			need("the preflight (no receipt names its head)", false)
 		}
 	case hasPR && checks == checksPending:

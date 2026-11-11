@@ -212,8 +212,10 @@ func TestTheFixReportSaysAppliedOrRejectedOfEachFinding(t *testing.T) {
 // growth test's two inputs takes; the larger takes four times as many, a
 // quarter of the limit. A quadratic cost is refused once it outweighs the
 // linear cost at the smaller size, so the larger the inputs, the smaller a
-// quadratic cost the test catches; a quarter of the limit keeps the race
-// stage's time at what the fixed-bound tests took at the full limit.
+// quadratic cost the test catches. On a quiet machine, where the judge reads
+// three rounds and a warm-up read of the smaller input, a quarter of the limit
+// keeps the race stage's time near what the fixed-bound tests took at the full
+// limit; on a noisy one the judge reads five rounds, about five thirds of that.
 const growthUnits = 4
 
 // quadraticGrowth is the time ratio a growth test refuses: an input four
@@ -221,28 +223,226 @@ const growthUnits = 4
 // about sixteen times as long in quadratic time.
 const quadraticGrowth = 10
 
-// readGrowth reads an input of units and one of four times as many units,
-// each timed as the fastest of three tries, and returns how many times
-// longer the larger took. build makes the input outside the timing and
-// returns the read. The ratio is judged, never a time, so a slow or loaded
-// machine, or the race detector, which slows both reads alike, cannot fail
-// a linear read (a fixed bound of 15s failed one under CI's race stage).
+// growthRounds is the most rounds a growth judge times; each round times one
+// read of the smaller input and then one of the larger. The time between
+// reads, where the next input is built and the garbage collected, is not
+// timed.
+const growthRounds = 5
+
+// readGrowth reads an input of units and one of four times as many units in
+// rounds of one read of each, and returns the median of the rounds' ratios:
+// how many times longer the larger read took. build makes the input outside
+// the timing and returns the read. The ratio is judged, never a time, so a
+// slow or loaded machine, or the race detector, which slows both reads alike,
+// cannot fail a linear read (a fixed bound of 15s failed one under CI's race
+// stage).
+//
+// The median of the rounds' ratios holds against one or two bursts of noise,
+// where the fastest read of each size does not. The argument: a burst has
+// one start and one end, whatever its length, position or strength. A round
+// it covers whole slows both reads alike and keeps its ratio; only a round
+// the burst starts or ends in is skewed, so one burst skews at most one round
+// upwards and one downwards, or one round alone when it falls inside a single
+// read, and two bursts skew at most two rounds the same way. Then at most two
+// of five rounds lie on the wrong side of quadraticGrowth, and the median of
+// five falls on a clean round's side of it. The noise tests check this
+// argument on the bursts they sample; the argument, not the tests, covers
+// every burst. The ratio of the fastest reads fails whenever noise covers
+// every read of one size and spares one of the other. A quadratic read once
+// gave 9.1 under CI's race stage, against about sixteen, when the judge took
+// the fastest of three small reads timed one after another and then of three
+// large ones: that is consistent with a burst over the three small reads (a
+// one-time cost only they met would read the same). With the sizes
+// interleaved, a load that rises just after the first small read and
+// outlasts the rest can still triple a linear read's ratio.
+//
+// The judge is not robust to everything. It can give the wrong verdict under
+// three or more bursts; under noise in step with the rounds, which skews
+// every round the same way; under a machine that keeps speeding up or
+// slowing down inside every round, since the larger read always follows the
+// smaller (a speed-up of 1.6 times from each small read to its large one
+// passes a quadratic read, a slow-down of more than 2.5 times fails a linear
+// one);
+// under a cost only the larger input meets, such as heap growth, when it
+// recurs in every round; and under independent short stalls on the smaller
+// read, the shorter one. The fastest-of-three judge failed the control only
+// when all three small reads stalled; this one fails it when three of five
+// rounds do, about ten times as often. If the control flakes again, the
+// remedy is a longer small read, not more rounds.
+//
+// An untimed read of the smaller input first pays the one-time costs a small
+// read meets, a cold cache among them; a one-time cost only the larger input
+// meets still lands in the first round, and the median absorbs it. Once three
+// rounds fall on one side of quadraticGrowth, three of five lie there
+// whatever the last two say, so the median of five falls on that side too and
+// the judge stops. The verdict is the one five rounds would give, but the
+// growth returned may then be a skewed round's, on the right side of the
+// bound. A quiet machine pays three rounds and the warm-up, a little more
+// than the fastest of three tries of each size took; a noisy one pays five
+// rounds, about five thirds of that.
 func readGrowth(units int, build func(units int) func()) float64 {
-	fastest := func(units int) time.Duration {
-		best := time.Duration(math.MaxInt64)
-		for range 3 {
-			read := build(units)
-			runtime.GC()
-			start := time.Now()
-			read()
-			if d := time.Since(start); d < best {
-				best = d
+	timeRead(build(units))
+	var ratios []float64
+	for len(ratios) < growthRounds {
+		small := max(timeRead(build(units)), time.Nanosecond)
+		large := max(timeRead(build(4*units)), time.Nanosecond)
+		ratios = append(ratios, float64(large)/float64(small))
+		if len(ratios) == growthRounds/2+1 && (slices.Min(ratios) > quadraticGrowth || slices.Max(ratios) <= quadraticGrowth) {
+			break
+		}
+	}
+	slices.Sort(ratios)
+	return ratios[len(ratios)/2]
+}
+
+// timeRead collects the garbage the input's making left, then times one read.
+// The noise tests replace it with a simulated machine through growthOn.
+var timeRead = func(read func()) time.Duration {
+	runtime.GC()
+	start := time.Now()
+	read()
+	return time.Since(start)
+}
+
+// noisyMachine is a simulated machine that delivers one unit of work per
+// unit of time, and 1/slow of that during each of its bursts of noise, as
+// when other processes take the rest of the processor. Its reads follow one
+// another with no time between them: the real judge builds each input and
+// collects the garbage between reads, untimed, and the simulation leaves
+// those gaps out. A burst in a gap slows no read, and one that spans a gap
+// still has one start and one end, so the argument in readGrowth's comment
+// holds with the gaps.
+type noisyMachine struct {
+	now, slow float64
+	bursts    []burst // in order of from
+}
+
+// burst is a span of a noisyMachine's time, from from to to, in which it is
+// slowed.
+type burst struct{ from, to float64 }
+
+// run advances the machine's clock by the time work takes on it, and returns
+// that time.
+func (m *noisyMachine) run(work float64) float64 {
+	start := m.now
+	for work > 0 {
+		rate, until := 1.0, math.Inf(1)
+		for _, b := range m.bursts {
+			if m.now < b.from {
+				until = b.from
+				break
+			}
+			if m.now < b.to {
+				rate, until = 1/m.slow, b.to
+				break
 			}
 		}
-		return max(best, time.Nanosecond)
+		if span := until - m.now; span*rate < work {
+			work -= span * rate
+			m.now = until
+		} else {
+			m.now += work / rate
+			work = 0
+		}
 	}
-	small := fastest(units)
-	return float64(fastest(4*units)) / float64(small)
+	return m.now - start
+}
+
+// growthCases are the reads the noise tests judge, at one unit: a linear
+// read, whose smaller input takes one unit of work and larger four, and a
+// quadratic one, whose larger takes sixteen.
+var growthCases = []struct {
+	name      string
+	work      func(units int) float64
+	quadratic bool
+}{
+	{"linear", func(units int) float64 { return float64(units) }, false},
+	{"quadratic", func(units int) float64 { return float64(units * units) }, true},
+}
+
+// growthOn returns the growth readGrowth judges, at one unit, on m for a read
+// whose work at a size is work(size). It replaces timeRead for the call,
+// which is safe while no test that reads growth runs in parallel.
+func growthOn(m *noisyMachine, work func(units int) float64) float64 {
+	saved := timeRead
+	defer func() { timeRead = saved }()
+	var w float64
+	timeRead = func(read func()) time.Duration {
+		read()
+		return time.Duration(m.run(w) * float64(time.Millisecond))
+	}
+	return readGrowth(1, func(units int) func() {
+		return func() { w = work(units) }
+	})
+}
+
+// TestASampledBurstOfNoiseLeavesTheGrowthVerdict: one burst of noise on the
+// simulated machine neither lets a quadratic read pass nor fails a linear
+// one, for every burst the test samples: slowing the machine twofold,
+// threefold or tenfold; lasting 0.5, 1, 2, 3, 6, 12, 24, 48, 96 or 200 units
+// of time, where a small read takes one unit; and starting at each multiple
+// of a quarter unit from 0 to 119.75. That every burst leaves the verdict
+// rests on the argument in readGrowth's comment, which these samples check.
+// The fastest read of each size fails this test both ways: a burst over the
+// small reads deflates a quadratic read's ratio, and one over the large
+// reads inflates a linear one's.
+func TestASampledBurstOfNoiseLeavesTheGrowthVerdict(t *testing.T) {
+	for _, c := range growthCases {
+	bursts:
+		for _, slow := range []float64{2, 3, 10} {
+			for _, length := range []float64{0.5, 1, 2, 3, 6, 12, 24, 48, 96, 200} {
+				for from := 0.0; from < 120; from += 0.25 {
+					m := noisyMachine{slow: slow, bursts: []burst{{from, from + length}}}
+					growth := growthOn(&m, c.work)
+					if c.quadratic && growth <= quadraticGrowth || !c.quadratic && growth > quadraticGrowth {
+						t.Errorf("%s: a %vfold burst from %v to %v made the growth %.1f", c.name, slow, from, from+length, growth)
+						break bursts
+					}
+				}
+			}
+		}
+	}
+}
+
+// TestTwoBurstsOverTwoOfTheFirstThreeRoundsLeaveTheGrowthVerdict: two
+// threefold bursts, each covering one read of a different round among the
+// first three whole, neither fail a linear read nor pass a quadratic one. A
+// burst over a linear case's larger read raises its round from four to
+// twelve, and one over a quadratic case's smaller read lowers its round from
+// sixteen to about 5.3, so two of the first three rounds lie on the wrong
+// side of quadraticGrowth: a judge that stopped after three rounds whatever
+// they said, or read only three, gives the wrong verdict here.
+func TestTwoBurstsOverTwoOfTheFirstThreeRoundsLeaveTheGrowthVerdict(t *testing.T) {
+	for _, c := range growthCases {
+		for _, rounds := range [][2]int{{1, 2}, {1, 3}, {2, 3}} {
+			// Read 0 is the warm-up and round r reads 2r-1, the smaller
+			// input, then 2r, the larger.
+			covered := func(i int) bool {
+				for _, r := range rounds {
+					if c.quadratic && i == 2*r-1 || !c.quadratic && i == 2*r {
+						return true
+					}
+				}
+				return false
+			}
+			m := noisyMachine{slow: 3}
+			var now float64
+			for i := range 2*growthRounds + 1 {
+				took := c.work(1)
+				if i > 0 && i%2 == 0 {
+					took = c.work(4)
+				}
+				if covered(i) {
+					took *= m.slow
+					m.bursts = append(m.bursts, burst{now, now + took})
+				}
+				now += took
+			}
+			if growth := growthOn(&m, c.work); c.quadratic && growth <= quadraticGrowth || !c.quadratic && growth > quadraticGrowth {
+				t.Errorf("%s: bursts over rounds %d and %d made the growth %.1f", c.name, rounds[0], rounds[1], growth)
+			}
+		}
+	}
 }
 
 // TestAReturnAndFixReportAreReadInLinearTime: a return whose every line is a

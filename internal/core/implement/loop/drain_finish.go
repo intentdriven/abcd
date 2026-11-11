@@ -397,7 +397,9 @@ func finishMerged(repoRoot string, now time.Time, o Options) ([]DrainFinished, [
 			if w.kind != wantBinary || w.hold {
 				return false, nil
 			}
-			res, err := performMove(repoRoot, st, DefaultStages(), w, now, nil, nil)
+			// No remote identity: a lane parked at its landing (parkedAtLand) moves
+			// only through the land stage, never the worktree stage that checks it.
+			res, err := performMove(repoRoot, st, DefaultStages(), w, now, nil, nil, nil)
 			if err != nil {
 				return false, err
 			}
@@ -454,7 +456,9 @@ func resyncParked(repoRoot, runID string, now time.Time) (note string, moved boo
 		if w.kind != wantBinary || w.hold {
 			return false, nil
 		}
-		res, err := performMove(repoRoot, st, DefaultStages(), w, now, nil, nil)
+		// No remote identity: a lane parked at its landing (parkedAtLand) moves
+		// only through the land stage, never the worktree stage that checks it.
+		res, err := performMove(repoRoot, st, DefaultStages(), w, now, nil, nil, nil)
 		if err != nil {
 			return false, err
 		}
@@ -500,7 +504,9 @@ func watchParked(repoRoot, runID string, now time.Time) (note string, dropped, f
 			return false, nil
 		}
 		logged := len(st.Record)
-		if _, err := performMove(repoRoot, st, DefaultStages(), w, now, nil, nil); err != nil {
+		// No remote identity: a lane parked at its landing (parkedAtLand) moves
+		// only through the land stage, never the worktree stage that checks it.
+		if _, err := performMove(repoRoot, st, DefaultStages(), w, now, nil, nil, nil); err != nil {
 			return false, err
 		}
 		if n := len(st.Record); n > logged {

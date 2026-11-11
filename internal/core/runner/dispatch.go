@@ -101,16 +101,6 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 		// (roles.<role>.timeout, iss-2611012202511008).
 		req.Timeout = d.Config.TimeoutFor(req.Role)
 	}
-	if req.Model != "" {
-		// A request's model is admitted here, against the provider's
-		// allowlist, as a configured route is when it is read: whoever stored
-		// it, it is never trusted for that. One refused ends the dispatch with
-		// nothing started and no fallback, since a role run on another model,
-		// the host's included, is a run nobody asked for.
-		if err := d.Config.admitModel(req.Model); err != nil {
-			return Outcome{}, fmt.Errorf("runner: the model %q asked for %s, %w", req.Model, req.Role, err)
-		}
-	}
 	route := d.Config.RouteFor(req.Role)
 	landing := Host
 	if d.Cell && route.Runner == Host && !d.HostSession {
@@ -126,11 +116,20 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 		}
 	}
 	if req.Model != "" {
+		// A request's model is admitted here, once the runner that will run it
+		// is known, as a configured route is when it is read: whoever stored
+		// it, it is never trusted for that. The provider's allowlist decides,
+		// except on a drive's walled launch of the claude harness, which takes
+		// a model of its own vendor by name with no provider block when the
+		// machine's class map resolved it during the drive (admitModelFor).
+		// One refused ends the dispatch with
+		// nothing started and no fallback, since a role run on another model,
+		// the host's included, is a run nobody asked for.
 		target := route.Runner
 		if target == Host && !d.HostSession && !d.Cell {
 			target = landing
 		}
-		if err := d.Config.holdRequestModel(route, target, req); err != nil {
+		if err := d.Config.admitRequest(route, target, req); err != nil {
 			return Outcome{}, err
 		}
 	}
@@ -233,8 +232,10 @@ func (d *Dispatcher) runOn(ctx context.Context, name string, req Request) (Answe
 	}
 	if req.Model != "" {
 		// Admitted when the dispatch began; consulted again at the launch, as
-		// the route's model is, so a runner never launches on a stale answer.
-		if err := d.Config.admitModel(req.Model); err != nil {
+		// the route's model is, so a runner never launches on a stale answer,
+		// and for the runner launching, so a fallback host is held to its own
+		// admission: opencode standing in for claude needs the provider block.
+		if err := d.Config.admitModelFor(name, req.Model); err != nil {
 			return Answer{}, fmt.Errorf("runner: the model %q asked for %s, %w", req.Model, req.Role, err)
 		}
 		// The runner asks for the request's model with that model's pins, as

@@ -1438,7 +1438,7 @@ func asCut(root string, r Reservation, now time.Time, reader Self) (cut Reservat
 // refuses: without it no other release can be ruled out. self is the person
 // reserving, whose own holder ids the reading holds to their login (asCut).
 func otherLiveRelease(root, id string, now time.Time, self Self) error {
-	snap, err := viewOf(root, now, true, isRelease)
+	snap, err := viewOf(viewGit{}, root, now, true, isRelease)
 	if err != nil {
 		return refuse("could not tell whether another release is being cut: %s; %s", err.Error(), nothingPushed)
 	}
