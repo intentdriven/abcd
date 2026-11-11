@@ -683,7 +683,20 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 				"use an abcd that carries the stage; the run is unchanged and resumes here",
 				"the %s stage is not built in this abcd%s", lane.Stage, piece)
 		}
+		// An issue lane's hold is widened to what its branch changes before
+		// each step at its validators (widen.go): a path a receipt's widening
+		// could not reserve yet, or a fix round changed since, is held before a
+		// validator judges it, and another holder's live hold on one waits.
+		var widened []Entry
+		if lane.Stage == StageValidate {
+			if widened, err = holdBeforeValidators(c, lane); err != nil {
+				return StepResult{}, err
+			}
+		}
 		out, err = def.Run(c, &lane)
+		if err == nil {
+			st.Record = append(st.Record, widened...)
+		}
 	}
 	if err != nil {
 		return StepResult{}, err

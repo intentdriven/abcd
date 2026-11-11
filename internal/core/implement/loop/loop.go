@@ -246,6 +246,10 @@ type Context struct {
 	// the receipt's model and the runner's: the runner's taken for a receipt
 	// that names none, or the receipt's kept over a runner's that differs.
 	modelNote *string
+	// widened, when set, receives the run record's lines of the loop's own
+	// widening of the lane's hold that an implementer's receipt verifier made
+	// (receiptHoldGaps), which the hand-in writes with the receipt it takes.
+	widened *[]Entry
 	// standingReceipt is the bytes of a receipt a step read itself, which the
 	// verifier decodes in place of reading the file again; nil for a hand-in.
 	standingReceipt []byte
@@ -1477,8 +1481,9 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 				"the %s stage's receipt verifier is not built in this abcd (piece %d of %s delivers it)", lane.Stage, def.Piece, specOf(*st))
 		}
 		modelNote := ""
+		var widened []Entry
 		c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now, Await: &await,
-			Route: route, modelNote: &modelNote}
+			Route: route, modelNote: &modelNote, widened: &widened}
 		took := ""
 		if stood {
 			// One read: the check here and the verifier work from these bytes,
@@ -1523,6 +1528,9 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 		// the receipt renews the run's reservation as a step would
 		// (reservation.go), and every path below writes the state.
 		renewNote = renewReservation(repoRoot, st, now, nil)
+		// The loop's own widening of the lane's hold, made before the receipt
+		// was judged (receiptHoldGaps), is recorded with it.
+		st.Record = append(st.Record, widened...)
 		if route != nil {
 			stampRoute(&lane, await.Receipt, route)
 			note := routeNote(await.Role, *route)

@@ -427,9 +427,6 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 	if strings.TrimSpace(rc.Model) == "" {
 		missing = append(missing, "the model your harness runs (\"model\"), which the landing's Assisted-by: trailer names")
 	}
-	// The backstop to the widening before an edit (widen.go): a branch that
-	// changes a path the issue's reservation does not cover is refused.
-	missing = append(missing, unheldGaps(c, *lane, c.Now)...)
 	if iss := c.State.Issue(); iss != "" && !resolvesIssue(*lane, rc, iss) {
 		missing = append(missing, "a resolution of "+iss+", the lane's issue, in resolves (the landing resolves it with the commit named there)")
 	}
@@ -452,6 +449,14 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 	}
 	if gap := laneFileGap(c.RepoRoot, dir, rc.Report, "the report"); gap != "" {
 		missing = append(missing, gap)
+	}
+	// The loop widens the issue's hold to what the lane's branch changes beyond
+	// it (widen.go), from this process, which a drive's wall leaves the
+	// credential for origin, and only then judges the branch against it: a
+	// receipt is refused on the hold only when that widening could not be made.
+	// It is made last, so a receipt refused on anything else pushes nothing.
+	if len(missing) == 0 {
+		missing = append(missing, receiptHoldGaps(c, *lane)...)
 	}
 	if len(missing) > 0 {
 		rf := refuse("receipt", "", lane.ID, receiptRel+" is missing "+strings.Join(missing, "; "),

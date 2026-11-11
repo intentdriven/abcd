@@ -282,24 +282,41 @@ advances the lane it belongs to; a path no await names is refused, naming the
 awaits there are, and frees nothing. A path a step already collected (below) is
 answered while the file is what the step took, and refused once it has changed.
 
-`widen` is an issue lane implementer's, run from the checkout the run lives in
-before its first edit of a path beyond the lane's reservation; the lane's brief
-names the command in full. It reserves the issue again with the footprint its
-reservation holds and each path named that it does not cover yet, judged for
-overlap like any reservation, and the run record says what was widened; a path
-already covered adds nothing. Only the run's current lane widens, at its
-implement or validate stage; an intent's run holds its spec's footprint and is
-refused. Exit 3 means another copy holds a live reservation on one of the paths
-and nothing was pushed: the implementer edits none of them and stops without a
-receipt, and the lane is handed to an implementer again on a later step. An
-implementer's receipt is refused while the lane's branch changes a path the
-reservation does not cover, naming the paths and this command. A lane past its
-last receipt meets the same check at the fence before its push and its arming:
-a path the reservation does not cover is reserved there, judged for overlap,
-and exit 3 names a hold on it, with nothing pushed or armed. Only the records the
-landing moves are left out, so anything else its records commit holds is judged,
-and so is a reservation made by hand for a run that recorded none. A reservation made
-again names every path widened to, even when the reservation branch was deleted.
+An issue lane's hold follows what its branch changes. Once an implementer hands
+its receipt back, the loop itself, from the process driving the run, reserves
+the issue again with the footprint its reservation holds and every path the
+lane's branch changes that the footprint does not cover, judged for overlap and
+against the cap like any reservation, and only then judges the receipt; the
+run record names each path widened to. The run's own records are among them: a
+decision record the implementer wrote, and the issue's record the landing
+moves. The same widening is made before each step at the lane's validators,
+so a path a fix round changed is held before a validator judges it, and at the
+fence before the landing's push and its arming. So an implementer runs nothing
+to reserve a file, and a stage `abcd drain --drive` walls off from origin needs
+no credential for it. Another copy's live hold on one of the paths is a wait,
+not a refusal: nothing is pushed, the receipt is taken all the same, the
+record names the path and its holder, and the lane waits before its validators
+(or at the fence) until that hold ends, exit 3 naming it. A drain never counts
+that wait toward its bound of identical refusals, but does count it toward its
+bound of minutes, so two lanes each waiting on a path the other holds are
+handed back as stuck once that bound passes, the reason naming the path and
+the record whose hold it is. An origin the widening cannot reach waits the
+same way. Each path is reserved by its own name. A receipt is refused on the
+hold only when the widening could not be made: a path no reservation may
+carry, which the refusal names, or paths too many for one reservation message,
+which it says, naming the message's cap. A drive lands no lane that
+changes a gate file, whatever its hold names (`commands/drain.md`). A
+reservation made again names every path widened to, even when the reservation
+branch was deleted.
+
+`widen` is for a session of your own that wants a path held before its
+edit, run from the checkout the run lives in. It reserves the issue again with
+the footprint its reservation holds and each path named that it does not cover
+yet, and the run record says what was widened; a path already covered adds
+nothing. Only the run's current lane widens, at its implement or validate
+stage; an intent's run holds its spec's footprint and is refused. Exit 3 means
+another copy holds a live reservation on one of the paths and nothing was
+pushed.
 
 When the stage hands the lane to a role that `roles.<role>.runner` in
 `~/.abcd.noindex/config.json` routes to a command-line runner (`claude` or `opencode`,
@@ -860,8 +877,9 @@ base with `origin`'s default branch, so files a sync merged in are left out),
 and the record's line names both; during the validate stage nothing narrows,
 since a fix round may still change another file. A narrowing never widens the
 reservation, and one that would name a file no reservation can carry is not
-made, the renewal made all the same, its record line saying `reservation kept
-at its full footprint` and why. When the landing's sync sends the lane back to
+made, nor one whose footprint would leave the reservation message no room for
+the records the landing adds at the fence, the renewal made all the same, its
+record line saying `reservation kept at its full footprint` and why. When the landing's sync sends the lane back to
 a fresh round, the step reserves the issue's whole `found_at` again before it
 merges, judged for overlap, since a fix round may follow; a refusal of that
 (another's reservation, or the cap) refuses the step for a person, naming it,

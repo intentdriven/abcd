@@ -19,6 +19,7 @@ package loop
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"path"
 	"slices"
 	"strconv"
@@ -39,7 +40,10 @@ import (
 // branch or default branch git cannot read, no changed file within the
 // footprint, a footprint already that narrow, or a changed file within it
 // that no reservation may carry (claim.ValidFootprintPath), since a
-// narrowing that left it out would free a file the lane still changes.
+// narrowing that left it out would free a file the lane still changes. A
+// narrowing whose footprint fails claim.FootprintFits is declined too, the
+// hold left as it stands: that measure keeps room in the message for the
+// record paths the land fence adds before the push (holdLaneChanges).
 // declined, set only when a narrowing was due and could not be made (the
 // default branch, the merge base or the diff git could not read, or such a
 // path), says why in plain, terminal-safe words, for the renewal's note.
@@ -74,6 +78,9 @@ func narrowedFootprint(repoRoot string, st State, own claim.Reservation) (fp []s
 	slices.Sort(held)
 	if len(fp) == 0 || slices.Equal(fp, held) {
 		return nil, false, ""
+	}
+	if !claim.FootprintFits(fp) {
+		return nil, false, fmt.Sprintf("a narrowing to the %d files the lane changed would leave the reservation message no room for the records its landing adds, so the hold stays as it stands", len(fp))
 	}
 	return fp, true, ""
 }

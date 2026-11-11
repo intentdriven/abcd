@@ -29,7 +29,7 @@ func TestEveryBriefSpellsTheNarrowTestForm(t *testing.T) {
 		"intent": string(renderBrief(st, lane, "lane-dir", briefSources{
 			intentPath: "intent.md", specPath: "spec.md", conventionsFrom: "the whole file",
 		})),
-		"issue": string(renderIssueBrief(State{RunID: "run-1", Key: "iss-2609300000000101"}, lane, "repo-root", "lane-dir", issueBriefSources{
+		"issue": string(renderIssueBrief(State{RunID: "run-1", Key: "iss-2609300000000101"}, lane, "lane-dir", issueBriefSources{
 			issuePath: "issue.md", conventionsFrom: "the whole file",
 		})),
 	}
@@ -70,7 +70,7 @@ func briefsForTest() map[string]string {
 		"intent": string(renderBrief(st, lane, "lane-dir", briefSources{
 			intentPath: "intent.md", specPath: "spec.md", conventionsFrom: "the whole file",
 		})),
-		"issue": string(renderIssueBrief(State{RunID: "run-1", Key: "iss-2609300000000101"}, lane, "repo-root", "lane-dir", issueBriefSources{
+		"issue": string(renderIssueBrief(State{RunID: "run-1", Key: "iss-2609300000000101"}, lane, "lane-dir", issueBriefSources{
 			issuePath: "issue.md", conventionsFrom: "the whole file",
 		})),
 	}
