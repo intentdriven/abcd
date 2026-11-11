@@ -456,9 +456,10 @@ func ValidFootprintPath(p string) bool { return validFootprint(p) }
 // C1 control, bidi mark or zero-width rune among them. The writer refuses any
 // other and the reader reads a tip carrying one as unreadable, so a footprint
 // that reaches a refusal or a listing cannot reorder or hide the text around
-// it.
+// it. A path must also read back exactly as written, so it carries no
+// leading or trailing space.
 func validFootprint(p string) bool {
-	if !fsutil.ValidRelPath(p) || termsafe.Sanitize(p) != p {
+	if !fsutil.ValidRelPath(p) || termsafe.Sanitize(p) != p || strings.TrimSpace(p) != p {
 		return false
 	}
 	for _, r := range p {
