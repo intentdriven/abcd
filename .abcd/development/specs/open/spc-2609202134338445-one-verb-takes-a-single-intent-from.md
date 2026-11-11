@@ -125,14 +125,8 @@ other builds share.
    once itd-2610222215485265 ships; the spec's `blocked_by` holds the whole
    spec on that wait, and nothing marks it on this step alone yet
    (iss-2609260932372448). It uses nothing step 11 builds; it needs 11 so
-   that it comes after it. Until that intent ships, a run of this spec ends
-   when step 11 lands: the loop opens a lane on this step in the same move,
-   and an intent lane has no hand-back that releases its reservation, so the
-   person driving the run stops stepping and runs `abcd build
-   itd-2609201916151817 --release`, and the lane opened here is left for
-   `abcd build itd-2609201916151817` to resume once the drain's intent has
-   shipped: that verb reserves the key again, and a bare `implement step`
-   would resume the lane with no reservation on origin.
+   that it comes after it. While that intent is unshipped, a new run of this
+   spec is refused at the build's blocked check.
    - needs: 3, 11
 
 ## Out of scope
