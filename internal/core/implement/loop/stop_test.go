@@ -493,14 +493,27 @@ func TestADrainUnderAStopLeavesAnotherDriversRunAtItsVersion(t *testing.T) {
 			o, _, _ := stopped(t)
 
 			_, err = drainStop(repo.Root(), &st, o)
-			wantStopRefusal(t, err)
+			r := wantStopRefusal(t, err)
 
 			c := controlOf(t, repo.Root(), runID)
 			if halted := c.Stop != nil; halted != tc.halts {
 				t.Fatalf("the drain's move halted the run: %v, want %v: %+v", halted, tc.halts, c.Stop)
 			}
+			// What the move prints names a run it left, as the parked route names
+			// its run, and the check that takes the stop; a run it halted is not named.
 			if tc.halts {
+				if strings.Contains(r.Wrote, runID) {
+					t.Fatalf("the move's refusal names a run it halted as left: %q", r.Wrote)
+				}
 				return
+			}
+			for _, want := range []string{"run " + runID, fmt.Sprintf("schema version %d", tc.version), "its own driver's next check takes the stop"} {
+				if !strings.Contains(r.Wrote, want) {
+					t.Fatalf("the move's refusal does not say %q of the run it left: wrote %q", want, r.Wrote)
+				}
+			}
+			if line := r.Error(); strings.Contains(line, runID) {
+				t.Fatalf("the run left is named in the refusal's reason rather than what it wrote: %q", line)
 			}
 			after, err := os.ReadFile(runStatePath(repo.Root(), runID))
 			if err != nil {
