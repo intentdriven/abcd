@@ -140,7 +140,11 @@ func TestARunStateRefusesAPaceItNeverWrites(t *testing.T) {
 	for _, version := range []struct {
 		name string
 		good []byte
-	}{{"current", good}, {fmt.Sprintf("version %d", schemaVersionPrevious), previous}} {
+	}{
+		{"current", good},
+		{fmt.Sprintf("version %d", schemaVersionUnrenamed), olderState(t, good, schemaVersionUnrenamed)},
+		{fmt.Sprintf("version %d", schemaVersionPrevious), previous},
+	} {
 		if err := os.WriteFile(path, version.good, 0o600); err != nil {
 			t.Fatal(err)
 		}

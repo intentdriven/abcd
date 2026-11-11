@@ -140,7 +140,7 @@ func TestARunStateRefusesHandBackTextItNeverWrites(t *testing.T) {
 	}()
 	forged := 0
 	for name, hb := range map[string]map[string]any{"the receipt's": receiptHandBack, "the cap's": capHandBack} {
-		for _, version := range []int{SchemaVersion, schemaVersionPrevious} {
+		for _, version := range []int{SchemaVersion, schemaVersionUnrenamed, schemaVersionPrevious} {
 			if err := os.WriteFile(path, withHandBack(t, good, hb, "", "", version), 0o600); err != nil {
 				t.Fatal(err)
 			}
