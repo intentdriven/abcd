@@ -47,6 +47,7 @@ package history
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -246,7 +247,7 @@ type DrainFailure struct {
 type DrainResult struct {
 	Captured  []Record       `json:"captured"`
 	Failed    []DrainFailure `json:"failed"`
-	Remaining int            `json:"remaining"` // staged entries not attempted, budget exhausted
+	Remaining int            `json:"remaining"` // staged entries not attempted: budget exhausted, or the pass's context ended
 	// Extended counts the entries whose recorded source file had grown into a
 	// strict superset of the staged bytes by the time the drain read it — a
 	// transcript that was staged before the harness finished writing it, caught
@@ -266,6 +267,15 @@ type DrainResult struct {
 	// pass stored was masked by the native scanner alone. Carried here so an
 	// automatic drain says so rather than dropping it (iss-2608291814575788).
 	ScanGap string `json:"scan_gap,omitempty"`
+	// Unfinished names each entry the pass left part-redacted because its
+	// context ended: the parts it kept stay, and the next pass continues from
+	// them.
+	Unfinished []DrainProgress `json:"unfinished,omitempty"`
+	// KeepFault is the first fault the pass met keeping a redacted part (its
+	// directory refused or unwritable, the disk full), said once. The pass
+	// carried on in memory past it, so it costs a later pass the work it
+	// could not keep and never the record.
+	KeepFault string `json:"keep_fault,omitempty"`
 }
 
 // stagingDirReal resolves the store (creating it when absent, and refusing any
@@ -724,6 +734,22 @@ func ListStaged(repoRoot, rootSHA string) ([]Staged, error) {
 // pass, and the fresher transcript is never lost. Any failure leaves the file
 // where it is.
 func Drain(repoRoot, rootSHA string, budget DrainBudget) (DrainResult, error) {
+	return DrainContext(context.Background(), repoRoot, rootSHA, budget)
+}
+
+// DrainContext is Drain under ctx, the bound of the hook it runs in, which
+// sits under the host's limit for that hook. An entry the pass begins is
+// finished in this pass, part after part, while ctx lasts, and the first
+// redaction part of each entry runs whatever its size and whatever ctx says
+// (resumable.go). Once ctx has ended the pass starts no further entry and no
+// later part: it keeps the parts it finished, names the entry in
+// Unfinished, and the next pass continues from them. An entry whose parts no
+// later pass could use runs to its record whatever ctx says. The budget
+// decides which entries the pass may reach, as it did before ctx existed.
+// Before the entries, it removes the kept parts of every staged file that is
+// gone (sweepProgress), whether or not anything is staged, short of a file
+// whose lock is held or a ctx that has ended.
+func DrainContext(ctx context.Context, repoRoot, rootSHA string, budget DrainBudget) (DrainResult, error) {
 	store, err := Resolve(repoRoot, rootSHA)
 	if err != nil {
 		return DrainResult{}, err
@@ -744,10 +770,11 @@ func Drain(repoRoot, rootSHA string, budget DrainBudget) (DrainResult, error) {
 			res.Overdue++
 		}
 	}
+	sweepProgress(ctx, sdir)
 	var consumed int64
 	attempted := 0
 	for i, s := range ordered {
-		if budget.exhausted(attempted, consumed, s.Bytes) {
+		if budget.exhausted(attempted, consumed, s.Bytes) || (attempted > 0 && ctx.Err() != nil) {
 			res.Remaining = len(ordered) - i
 			break
 		}
@@ -764,14 +791,22 @@ func Drain(repoRoot, rootSHA string, budget DrainBudget) (DrainResult, error) {
 			continue
 		}
 		body, extended := refreshedFromSource(s, stagedBytes)
+		out, err := captureStaged(ctx, repoRoot, rootSHA, sdir, s, body)
 		if extended {
 			res.Extended++
 		}
-		cr, err := Capture(repoRoot, rootSHA, body, s.captureMeta())
+		if out.keepFault != nil && res.KeepFault == "" {
+			res.KeepFault = out.keepFault.Error()
+		}
 		if err != nil {
 			res.Failed = append(res.Failed, classifyDrainFailure(sdir, repoRoot, rootSHA, s, stagedBytes, err))
 			continue
 		}
+		if !out.done {
+			res.Unfinished = append(res.Unfinished, out.progress)
+			continue
+		}
+		cr := out.result
 		// Stored (or already stored): the staged copy has done its job, and it is
 		// unredacted, so it goes now rather than lingering — unless a concurrent
 		// Stage replaced it while Capture ran, in which case the newer bytes stay
@@ -784,6 +819,11 @@ func Drain(repoRoot, rootSHA string, budget DrainBudget) (DrainResult, error) {
 				Err: fmt.Sprintf("captured but could not remove staged copy: %v", err)})
 			continue
 		}
+		// The parts have done their job once the record is on disk; a copy
+		// re-staged meanwhile is judged on its own bytes by the next pass,
+		// which proves any part against them before it reuses it.
+		drainStep(stepStagedRemoved, 0)
+		removeProgress(sdir, s.Path)
 		if cr.Wrote {
 			res.Captured = append(res.Captured, cr.Record)
 		}
