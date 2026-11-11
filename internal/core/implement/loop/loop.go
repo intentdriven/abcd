@@ -157,10 +157,12 @@ type Options struct {
 	// text that put it there; "" for the host. Drive sets it from the runner
 	// configuration, so a round's route names the runner it ran on.
 	runnerRoute func(role string) (name, override string)
-	// remote is origin's identity as a drive read it when it started
-	// (remoteid.go): the worktree stage of each lane the drive opens reads it
-	// again before it asks origin anything, and refuses the lane on any
-	// difference. Nil (a step the host runs, a single build) checks nothing.
+	// remote is origin's identity and the checkout's hooks directory as a
+	// drive read them when it started (remoteid.go): the worktree stage of
+	// each lane the drive opens reads the identity again before it asks origin
+	// anything, and the hooks directory just before its add, and refuses the
+	// lane on any difference. Nil (a step the host runs, a single build)
+	// checks nothing.
 	remote *remoteIdentity
 }
 

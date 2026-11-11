@@ -358,6 +358,21 @@ func Add(repoRoot string, opts AddOptions) (Added, error) {
 	return finish(repoRoot, lane, opts.Name, path, branch)
 }
 
+// RemoveAdded removes the worktree at added.Path, which the caller's own Add
+// returned in the same call, through git's own removal. It is forced: the
+// tree is the one Add just made, so what git's checkout and the repository's
+// post-checkout hook wrote there is the caller's alone, and a branch moved
+// under it reads as changed files. The branch stays; nothing committed is
+// lost. git refuses a path it does not list as a worktree, and never removes
+// the main working tree.
+func RemoveAdded(repoRoot string, added Added) error {
+	if added.Path == "" {
+		return errors.New("worktree: RemoveAdded needs the worktree Add made")
+	}
+	_, err := gitutil.Run(repoRoot, "worktree", "remove", "--force", "--", added.Path)
+	return err
+}
+
 // finish completes a worktree git has made at path on branch: narrowed to the
 // caller, its branch's start recorded, its local tier laid. A failure is a
 // refusal returned with the Added, since the worktree stands.

@@ -378,7 +378,9 @@ func plantedCommit(t *testing.T, repo *gittest.Repo, parent, name, body string) 
 // every read the proof rests on take git's objects as stored, so a replace ref
 // standing a planted tree in for the tip's hooks directory, or a planted
 // commit in for the tip itself, changes nothing: the lane opens holding the
-// hooks the tip stores, and the planted post-checkout hook never runs.
+// hooks the tip stores, and is pinned from them. Which post-checkout hook the
+// add runs is not this test's: the add runs the checkout's own copy
+// (TestTheAddRunsTheCheckoutsOwnCopyOfThePostCheckoutHook).
 func TestAReplacedObjectDoesNotChooseTheLanesHooks(t *testing.T) {
 	for name, plant := range map[string]func(t *testing.T, repo *gittest.Repo, tip, planted string){
 		"on the hooks tree": func(t *testing.T, repo *gittest.Repo, tip, planted string) {
@@ -391,14 +393,12 @@ func TestAReplacedObjectDoesNotChooseTheLanesHooks(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			repo, _, tip := hookedOrigin(t)
-			marker := filepath.Join(t.TempDir(), "post-checkout-ran")
-			planted := plantedCommit(t, repo, tip, "post-checkout", "#!/bin/sh\ntouch '"+marker+"'\n")
+			planted := plantedCommit(t, repo, tip, "post-checkout", "#!/bin/sh\nexit 0\n")
 			plant(t, repo, tip, planted)
 			runID, path, err := openHookedLane(t, repo)
 			if err != nil {
 				t.Fatalf("the lane opens on the stored tip: %v", err)
 			}
-			absent(t, marker, "the planted post-checkout hook does not run")
 			var names []string
 			des, err := os.ReadDir(filepath.Join(path, ".githooks"))
 			if err != nil {
@@ -430,6 +430,8 @@ func TestAReplacedObjectDoesNotChooseTheLanesHooks(t *testing.T) {
 // standing branch's, which holds the tip's hooks) writes the word the
 // commit's own hook-word file holds, TIP on the tip and BRANCH on the branch;
 // the checkout's working-tree copy, an edit not committed, writes CHECKOUT.
+// A regression guard: it records what git does, and passes without any
+// production change.
 func TestTheAddRunsTheCheckoutsOwnCopyOfThePostCheckoutHook(t *testing.T) {
 	for name, standing := range map[string]bool{"a lane the stage cuts": false, "a branch that already stands": true} {
 		t.Run(name, func(t *testing.T) {
@@ -475,45 +477,103 @@ func TestTheAddRunsTheCheckoutsOwnCopyOfThePostCheckoutHook(t *testing.T) {
 
 // TestAStandingBranchMovedAfterItWasJudgedIsRefused: the stage resolves a
 // standing branch's head once and judges that commit, so a branch moved to
-// another commit before git checks it out (here one holding the tip's hooks
-// and other content) is refused once the add has made the worktree, and
-// nothing is pinned.
+// another commit before git checks it out is refused once the add has made
+// the worktree, and nothing is pinned. The stage removes the worktree it has
+// just added and leaves the branch, so the next step meets the standing
+// branch and judges it again before any add: one moved to a commit holding
+// other hooks is refused there, with no worktree made; one moved to a commit
+// holding the tip's hooks and other content opens, since a standing branch's
+// content outside the hooks directory is its own.
 func TestAStandingBranchMovedAfterItWasJudgedIsRefused(t *testing.T) {
-	repo, _, tip := hookedOrigin(t)
-	repo.Write("notes.txt", "moved\n")
-	repo.Commit("moved")
-	moved := repo.Git("rev-parse", "HEAD")
-	repo.Git("reset", "-q", "--hard", tip)
-	start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	lw, err := laneWorktree(repo.Root(), start.RunID, "lane-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	repo.Git("branch", lw.Branch, tip)
-	was := addWorktree
-	t.Cleanup(func() { addWorktree = was })
-	addWorktree = func(root string, o worktree.AddOptions) (worktree.Added, error) {
-		repo.Git("update-ref", "refs/heads/"+lw.Branch, moved)
-		return was(root, o)
-	}
-	_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
-	worktreeRefused(t, err, "moved")
-	if _, ok := pinned(t, repo, start.RunID, lw.Path); ok {
-		t.Fatal("nothing is pinned for a branch that moved after it was judged")
+	for name, otherHooks := range map[string]bool{"to other hooks": true, "to the tip's hooks and other content": false} {
+		t.Run(name, func(t *testing.T) {
+			repo, _, tip := hookedOrigin(t)
+			var moved string
+			if otherHooks {
+				moved = plantedCommit(t, repo, tip, "post-checkout", "#!/bin/sh\nexit 0\n")
+			} else {
+				repo.Write("notes.txt", "moved\n")
+				repo.Commit("moved")
+				moved = repo.Git("rev-parse", "HEAD")
+				repo.Git("reset", "-q", "--hard", tip)
+			}
+			start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			lw, err := laneWorktree(repo.Root(), start.RunID, "lane-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			repo.Git("branch", lw.Branch, tip)
+			was := addWorktree
+			t.Cleanup(func() { addWorktree = was })
+			addWorktree = func(root string, o worktree.AddOptions) (worktree.Added, error) {
+				repo.Git("update-ref", "refs/heads/"+lw.Branch, moved)
+				return was(root, o)
+			}
+			_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+			worktreeRefused(t, err, "moved")
+			if _, ok := pinned(t, repo, start.RunID, lw.Path); ok {
+				t.Fatal("nothing is pinned for a branch that moved after it was judged")
+			}
+			absent(t, lw.Path, "the worktree the stage added is removed")
+			if got := repo.Git("rev-parse", lw.Branch); got != moved {
+				t.Fatalf("the branch stays where it was moved to, %s: %s", moved, got)
+			}
+
+			addWorktree = was
+			_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+			if otherHooks {
+				worktreeRefused(t, err, "already stands")
+				absent(t, lw.Path, "no lane worktree is made")
+				return
+			}
+			if err != nil {
+				t.Fatalf("the branch holding the tip's hooks is judged again and opens: %v", err)
+			}
+			if l := laneAt(t, repo, start.RunID); l.Worktree != lw.Path || l.HeadSHA != moved {
+				t.Fatalf("the lane opens on the branch as judged again: %+v", l)
+			}
+		})
 	}
 }
 
 // TestAStandingBranchWhoseHooksCannotBeReadIsRefused: a standing branch head
 // whose hooks directory git cannot read (here no commit the repository
 // holds) is refused, never read as one that records no hooks directory, even
-// where the tip records none there either.
+// where the tip records none there either. So is a tip whose hooks directory
+// cannot be read; that case is a regression guard, passing without a
+// production change in this round.
 func TestAStandingBranchWhoseHooksCannotBeReadIsRefused(t *testing.T) {
 	repo, _, tip := hookedOrigin(t)
-	err := standingBranchHooks(Context{RepoRoot: repo.Root()}, "lane-1", strings.Repeat("1", 40), "the-branch", tip, "no-hooks-here")
-	worktreeRefused(t, err, "cannot be read")
+	c := Context{RepoRoot: repo.Root()}
+	worktreeRefused(t, standingBranchHooks(c, "lane-1", strings.Repeat("1", 40), "the-branch", tip, "no-hooks-here"), "cannot be read")
+	worktreeRefused(t, standingBranchHooks(c, "lane-1", tip, "the-branch", strings.Repeat("2", 40), "no-hooks-here"), "cannot be read")
+}
+
+// TestALaneWhoseCommitsHooksCannotBeReadIsRefused: the proof after the add
+// reads the hooks directory of the lane's commit and of origin's tip as
+// stored; either one git cannot read (here a commit the repository does not
+// hold) is refused, never read as one that records nothing. A regression
+// guard: it passes without a production change in this round.
+func TestALaneWhoseCommitsHooksCannotBeReadIsRefused(t *testing.T) {
+	repo, _, tip := hookedOrigin(t)
+	start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := ReadState(repo.Root(), start.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Context{RepoRoot: repo.Root(), RunDir: runRel(st.RunID), State: st}
+	missing := strings.Repeat("3", 40)
+	for name, at := range map[string][2]string{"the lane's commit": {missing, tip}, "origin's tip": {tip, missing}} {
+		t.Run(name, func(t *testing.T) {
+			worktreeRefused(t, pinLaneHooks(c, "lane-1", repo.Root(), at[0], at[1]), "cannot be read")
+		})
+	}
 }
 
 // TestAPathConditionalIncludeDoesNotChooseTheAddsHooks: an include that
@@ -546,10 +606,13 @@ func TestAPathConditionalIncludeDoesNotChooseTheAddsHooks(t *testing.T) {
 }
 
 // TestABranchStandingUnderTheLanesNameIsCheckedOutOnlyWithTheTipsHooks: a
-// branch already standing under the lane's name is checked out (and its
-// post-checkout hook run) only once its head's hooks directory, as stored, is
-// the tip's: one holding other hooks is refused before the worktree is added,
-// so none of its hooks runs. One holding the tip's hooks is the lane's.
+// branch already standing under the lane's name is checked out only once its
+// head's hooks directory, as stored, is the tip's: one holding other hooks is
+// refused before a worktree is made, and none is made. One holding the tip's
+// hooks is the lane's. The check is defensive: the add runs the checkout's own
+// copy of the post-checkout hook whatever the branch holds
+// (TestTheAddRunsTheCheckoutsOwnCopyOfThePostCheckoutHook), so the test holds
+// the refusal and the worktree not made, not which hook runs.
 func TestABranchStandingUnderTheLanesNameIsCheckedOutOnlyWithTheTipsHooks(t *testing.T) {
 	for name, tc := range map[string]struct {
 		plant, global bool
@@ -569,10 +632,9 @@ func TestABranchStandingUnderTheLanesNameIsCheckedOutOnlyWithTheTipsHooks(t *tes
 				t.Setenv("GIT_CONFIG_GLOBAL", global)
 				repo.Git("config", "--unset", "core.hooksPath")
 			}
-			marker := filepath.Join(t.TempDir(), "post-checkout-ran")
 			head := tip
 			if tc.plant {
-				head = plantedCommit(t, repo, tip, "post-checkout", "#!/bin/sh\ntouch '"+marker+"'\n")
+				head = plantedCommit(t, repo, tip, "post-checkout", "#!/bin/sh\nexit 0\n")
 			}
 			start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
 			if err != nil {
@@ -592,7 +654,6 @@ func TestABranchStandingUnderTheLanesNameIsCheckedOutOnlyWithTheTipsHooks(t *tes
 			}
 			worktreeRefused(t, err, lw.Branch)
 			absent(t, lw.Path, "no lane worktree is made")
-			absent(t, marker, "the branch's post-checkout hook does not run")
 		})
 	}
 }

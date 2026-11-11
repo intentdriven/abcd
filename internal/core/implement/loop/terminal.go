@@ -628,10 +628,11 @@ func (t *terminal) failed(ctx context.Context, judge bool, what string) bool {
 func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 	t.ctx = ctx
 	t.joinSharedRun()
-	// origin's identity is read once, before the drive's first move, and held
-	// here for every lane it opens (remoteid.go): a lane's agent can rewrite
-	// the checkout's settings, and each lane's run records its own afresh. A
-	// restarted drive reads it afresh.
+	// origin's identity and the checkout's hooks directory are read once,
+	// before the drive's first move, and held here for every lane it opens
+	// (remoteid.go): a lane's agent can rewrite the checkout's settings and
+	// hooks, and each lane's run records its own afresh. A restarted drive
+	// reads them afresh.
 	id, err := readRemoteIdentity(t.repoRoot)
 	if err != nil {
 		t.leaveSharedRun()

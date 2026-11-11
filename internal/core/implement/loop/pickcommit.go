@@ -133,7 +133,10 @@ func commitGit(dir string, args ...string) (string, error) {
 // stands in the repository (iss-2611071820538335). The post-checkout hook it
 // runs is not that tree's: the add runs in the checkout, so git takes the
 // hooks directory there, and a relative core.hooksPath names the checkout's
-// own working-tree copy, which the run's fingerprint watches.
+// own working-tree copy. The run's fingerprint records that copy at the run's
+// first check, and within a run a later change to it is refused; across the
+// lanes of one drive the drive holds it (checkoutHooksUnchanged); elsewhere
+// nothing does, so it must not change between runs, and nothing enforces it.
 func worktreeAddGit(dir string, args ...string) (string, error) {
 	return gitutil.RunCommitCommandBoundedAsStored(dir, worktreeAddTimeout, errCheckoutStalled, args...)
 }

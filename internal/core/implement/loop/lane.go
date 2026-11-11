@@ -359,12 +359,16 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 	branchRef := "refs/heads/" + lw.Branch
 	// Where origin reported the tip, the hooks directory git takes at the
 	// checkout is read once: a standing branch is judged by it and the add
-	// is told it (laneAddGit). Both are defensive. git's add runs in the
-	// checkout, so it takes the hooks directory there and, for a relative
-	// core.hooksPath, runs the checkout's own working-tree copy of the
-	// post-checkout hook, never the copy of the commit it checks out; neither
+	// is told it (laneAddGit). git's add runs in the checkout, so it takes
+	// the hooks directory there and, for a relative core.hooksPath, runs the
+	// checkout's own working-tree copy of the post-checkout hook, never the
+	// copy of the commit it checks out. The standing-branch check is
+	// defensive: it refuses a branch whose hooks differ before a worktree is
+	// made rather than at the proof after it. The value on the add's command
+	// line refuses nothing: it pins the directory the check judged. Neither
 	// stops that hook from running.
 	hooksPath, judged := "", ""
+	var added worktree.Added
 	if tip != "" && !adopted {
 		if hooksPath, err = checkoutHooksPath(c.RepoRoot); err != nil {
 			return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
@@ -388,8 +392,10 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 			// Where origin reported the tip, its head is resolved once, as
 			// stored, and that commit is judged: its hooks must be the tip's
 			// (standingBranchHooks), so a lane whose hooks differ is refused
-			// before a worktree is made rather than after, and the lane is
-			// refused after the add if the branch then holds another commit.
+			// before a worktree is made rather than after. If the branch holds
+			// another commit after the add, the lane is refused and the
+			// worktree this call added removed, so the next step judges the
+			// branch again.
 			opts.Existing = true
 			at := branchRef
 			if tip != "" {
@@ -414,7 +420,15 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		// with the tree, so it has its own bound (worktreeAddGit). The
 		// store's Add refuses what stands at the path, and sets the
 		// worktree to 0700 once git has made it.
-		_, err := addWorktree(c.RepoRoot, opts)
+		//
+		// Just before it, a drive's lane has the checkout's hooks directory
+		// compared with what the drive read as it started
+		// (checkoutHooksUnchanged), so a post-checkout hook changed there
+		// between two lanes is refused before any add runs it.
+		if err := checkoutHooksUnchanged(c, lane.ID); err != nil {
+			return Outcome{}, err
+		}
+		added, err = addWorktree(c.RepoRoot, opts)
 		var gitFailed *worktree.Refusal
 		if errors.As(err, &gitFailed) && gitFailed.Err != nil {
 			err = gitFailed.Err
@@ -449,9 +463,21 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, fmt.Errorf("resolving the lane branch %s: %v", lw.Branch, err)
 	}
 	if judged != "" && head != judged {
+		// The worktree this call added, at the path it made, is removed
+		// (worktree.RemoveAdded), and the branch left, so the next step meets
+		// the standing branch and judges it again before any add.
+		why := fmt.Sprintf("the branch %s moved from %s, the commit judged, to %s while git added the lane's worktree, so what was checked out is not what was judged; nothing is pinned", lw.Branch, judged[:12], head[:12])
+		if added.Path != filepath.Clean(lw.Path) {
+			return Outcome{}, fmt.Errorf("%s, and the worktree made is not at the lane's path", why)
+		}
+		if err := worktree.RemoveAdded(c.RepoRoot, added); err != nil {
+			return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
+				why+"; the worktree the step added could not be removed: "+fsutil.RedactHome(gitutil.ScrubURLCredentials(err.Error())),
+				"look at what moved the branch; remove the lane's worktree (`git worktree remove --force "+fsutil.RedactHome(lw.Path)+"`) so the next step judges the branch again, then run `abcd implement step` again; nothing was committed in the lane")
+		}
 		return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
-			fmt.Sprintf("the branch %s moved from %s, the commit judged, to %s while git added the lane's worktree, so what was checked out is not what was judged; nothing is pinned", lw.Branch, judged[:12], head[:12]),
-			"look at what moved the branch; remove the lane's worktree and branch (`git worktree remove --force "+fsutil.RedactHome(lw.Path)+"`, `git branch -D "+lw.Branch+"`) so the stage cuts the lane afresh from the tip, then run `abcd implement step` again; nothing was committed in the lane")
+			why+"; the worktree the step added was removed and the branch left, so the next step judges the branch again before any add",
+			"look at what moved the branch; remove it (`git branch -D "+lw.Branch+"`) so the stage cuts the lane afresh from the tip, or leave it to be judged again, then run `abcd implement step` again; nothing was committed in the lane")
 	}
 	// The lane's hooks are pinned before any commit in it (pinLaneHooks),
 	// made or adopted alike, from the commit it opens on. One hook has run
@@ -460,10 +486,16 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 	// is from the hooks directory git takes at the checkout: for a relative
 	// core.hooksPath, the checkout's own working-tree copy, never the copy of
 	// the commit checked out (TestTheAddRunsTheCheckoutsOwnCopyOfThePostCheckoutHook);
-	// otherwise the directory the setting names. That copy is the one the
-	// run's fingerprint already watches, checked at the start of the step,
-	// where the repository's own settings name the hooks directory; one named
-	// only in the person's global settings is not watched. The add reads
+	// otherwise the directory the setting names. Where the repository's own
+	// settings name the hooks directory, the run's fingerprint records that
+	// copy at the run's first check, normally this very step, and within a run
+	// a later change to it is refused at the next step. Across the lanes of one
+	// drive the drive holds it (checkoutHooksUnchanged, just before the add).
+	// Elsewhere (a step the host runs, a single build, a drive started again)
+	// nothing does: a copy changed before the run's first check is that run's
+	// starting point and runs in the add, so it must not change between runs,
+	// and nothing enforces it. One named only in the person's global settings
+	// is not watched at all. The add reads
 	// objects as stored, so the lane holds the tree its commit stores. An
 	// adopted worktree ran its hook when it was made. With no origin, or in a
 	// trial, nothing is pinned and the lane is compared with the checkout as

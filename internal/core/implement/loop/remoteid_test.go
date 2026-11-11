@@ -21,7 +21,9 @@ import (
 // naming the key and before origin is asked (the remote it now names is not
 // there, so an ask would be refused as one that cannot be answered), and a
 // rewrite's base, which can carry a URL, appears in neither the reason nor
-// the remedy. Unchanged, the second lane opens.
+// the remedy. Unchanged, the second lane opens. The hidden-base assertion is
+// a regression guard: the refusal named keys through hiddenKey before it was
+// written, and it passes without a production change.
 func TestARemoteChangedBetweenTwoLanesOfADriveRefusesTheSecond(t *testing.T) {
 	gone := func(t *testing.T) string { return filepath.Join(t.TempDir(), "gone.git") }
 	for name, tc := range map[string]struct {
@@ -121,6 +123,7 @@ func TestARemoteChangedBetweenTwoLanesOfADriveRefusesTheSecond(t *testing.T) {
 			if strings.Contains(r.Reason, "could not ask") {
 				t.Fatalf("the lane is refused before origin is asked: %+v", r)
 			}
+			// A regression guard (above).
 			if hidden != "" && strings.Contains(r.Reason+r.Remedy, hidden) {
 				t.Fatalf("the refusal hides the rewrite's base %s: %+v", hidden, r)
 			}
@@ -228,5 +231,163 @@ func TestADriveReadsTheRemotesIdentityAsItStarts(t *testing.T) {
 	}
 	if tm.o.Options.remote == nil || len(tm.o.Options.remote.changed(want)) != 0 || len(want.keys) == 0 {
 		t.Fatalf("the drive holds origin's settings as it started: %+v, want %+v", tm.o.Options.remote, want)
+	}
+	// The checkout's hooks directory, .githooks here: pre-commit, the
+	// pre-merge-commit symlink and the lib subdirectory.
+	if got := len(tm.o.Options.remote.hooks); got != 3 {
+		t.Fatalf("the drive holds the checkout's three hook entries as it started: %d", got)
+	}
+}
+
+// TestEachKeyFamilyTheDriveHoldsIsReadAgain: one key of each family the drive
+// holds (remoteIdentityHeld), set after the drive read origin's identity,
+// refuses the lane's worktree stage naming it; in the repository's settings,
+// and one in the system settings. The families held before this round
+// (origin's keys, the rewrites, core.sshCommand, core.gitProxy,
+// core.hooksPath, http.proxy and http.sslVerify) and the system-scope case
+// are regression guards: they pass without this round's production change.
+// The credential, core.askPass and protocol cases are new.
+func TestEachKeyFamilyTheDriveHoldsIsReadAgain(t *testing.T) {
+	for _, tc := range []struct {
+		key, value, want string
+		system           bool
+	}{
+		{key: "remote.origin.url", value: "/elsewhere.git", want: "remote.origin.url"},
+		{key: "remote.origin.pushurl", value: "/elsewhere.git", want: "remote.origin.pushurl"},
+		{key: "remote.origin.uploadpack", value: "git-upload-pack", want: "remote.origin.uploadpack"},
+		{key: "remote.origin.proxy", value: "http://127.0.0.1:9", want: "remote.origin.proxy"},
+		{key: "remote.origin.vcs", value: "other", want: "remote.origin.vcs"},
+		{key: "url./elsewhere.insteadOf", value: "/here", want: ".insteadof"},
+		{key: "url./elsewhere.pushInsteadOf", value: "/here", want: ".pushinsteadof"},
+		{key: "core.sshCommand", value: "ssh -o BatchMode=yes", want: "core.sshcommand"},
+		{key: "core.gitProxy", value: "/bin/true", want: "core.gitproxy"},
+		{key: "core.hooksPath", value: "other-hooks", want: "core.hookspath"},
+		{key: "http.proxy", value: "http://127.0.0.1:9", want: "http.proxy"},
+		{key: "http.sslVerify", value: "false", want: "http.sslverify"},
+		{key: "credential.helper", value: "store", want: "credential.helper"},
+		{key: "credential.https://example.invalid.username", value: "someone", want: "credential.<hidden-"},
+		{key: "core.askPass", value: "/bin/true", want: "core.askpass"},
+		{key: "protocol.allow", value: "always", want: "protocol.allow"},
+		{key: "protocol.ext.allow", value: "always", want: "protocol.ext.allow"},
+		{key: "http.proxy", value: "http://127.0.0.1:9", want: "http.proxy", system: true},
+	} {
+		name := tc.key
+		if tc.system {
+			name += " in the system settings"
+		}
+		t.Run(name, func(t *testing.T) {
+			system := filepath.Join(t.TempDir(), "system.gitconfig")
+			writeMode(t, system, "", 0o644)
+			t.Setenv("GIT_CONFIG_SYSTEM", system)
+			t.Setenv("GIT_CONFIG_NOSYSTEM", "0")
+			repo, _, _ := hookedOrigin(t)
+			id, err := readRemoteIdentity(repo.Root())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.system {
+				section, variable, _ := strings.Cut(tc.key, ".")
+				writeMode(t, system, "["+section+"]\n\t"+variable+" = "+tc.value+"\n", 0o644)
+			} else {
+				repo.Git("config", tc.key, tc.value)
+			}
+			r := worktreeRefused(t, remoteUnchanged(Context{RepoRoot: repo.Root(), remote: id}, "lane-1"), tc.want)
+			if strings.Contains(r.Reason+r.Remedy, "example.invalid") {
+				t.Fatalf("the refusal hides a URL in a key's name: %+v", r)
+			}
+		})
+	}
+}
+
+// TestACheckoutHookChangedBetweenTwoLanesOfADriveRefusesTheSecond: git's add
+// runs the checkout's own working-tree copy of the post-checkout hook, and
+// each lane of a drain is a run of its own, whose fingerprint records that
+// copy at its first check. The drive holds the checkout's hooks directory as
+// it started, so a post-checkout hook changed, or added, in the checkout
+// between two lanes refuses the second at its worktree stage, naming the
+// hook, before any add: no worktree is made and the changed hook writes no
+// marker. Unchanged, the second lane opens.
+func TestACheckoutHookChangedBetweenTwoLanesOfADriveRefusesTheSecond(t *testing.T) {
+	for name, tc := range map[string]struct{ committed, change bool }{
+		"a post-checkout hook changed": {committed: true, change: true},
+		"a post-checkout hook added":   {change: true},
+		"unchanged":                    {committed: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo, _, _ := hookedOrigin(t)
+			if tc.committed {
+				writeHook(t, repo, "post-checkout", "#!/bin/sh\nexit 0\n")
+				repo.Commit("a reviewed post-checkout hook")
+				repo.Git("push", "-q", "origin", "main")
+				repo.Git("fetch", "-q", "origin")
+			}
+			id, err := readRemoteIdentity(repo.Root())
+			if err != nil {
+				t.Fatal(err)
+			}
+			start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			st, err := ReadState(repo.Root(), start.RunID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c := Context{RepoRoot: repo.Root(), RunDir: runRel(st.RunID), State: st, remote: id}
+			first := st.Lanes[0]
+			if _, err := worktreeStage(c, &first); err != nil {
+				t.Fatalf("the drive's first lane opens: %v", err)
+			}
+
+			marker := filepath.Join(t.TempDir(), "post-checkout-ran")
+			if tc.change {
+				writeHook(t, repo, "post-checkout", "#!/bin/sh\ntouch '"+marker+"'\n")
+			}
+			second := st.Lanes[0]
+			second.ID = "lane-2"
+			lw, err := laneWorktree(repo.Root(), st.RunID, second.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = worktreeStage(c, &second)
+			if !tc.change {
+				if err != nil {
+					t.Fatalf("the second lane opens with the checkout's hooks unchanged: %v", err)
+				}
+				return
+			}
+			worktreeRefused(t, err, "post-checkout")
+			absent(t, lw.Path, "no second lane worktree is made")
+			absent(t, marker, "no add ran, so the changed hook wrote nothing")
+		})
+	}
+}
+
+// TestADrivesHeldHooksReachANewRunsWorktreeStage: what the drive read of the
+// checkout's hooks as it started is carried in the step's options to the
+// worktree stage of a run started after the checkout's post-checkout hook
+// changed, whose own fingerprint records the changed copy as its starting
+// point, so the lane is refused before any add. Without it (a step the host
+// runs, a single build) the stage is as before: the lane opens and the add
+// runs the changed copy, the limit the docs state.
+func TestADrivesHeldHooksReachANewRunsWorktreeStage(t *testing.T) {
+	repo, _, _ := hookedOrigin(t)
+	id, err := readRemoteIdentity(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(t.TempDir(), "post-checkout-ran")
+	writeHook(t, repo, "post-checkout", "#!/bin/sh\ntouch '"+marker+"'\n")
+	start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{remote: id})
+	worktreeRefused(t, err, "post-checkout")
+	absent(t, marker, "no add ran")
+
+	res, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+	if err != nil || res.PerformedStage != StageWorktree {
+		t.Fatalf("with nothing carried the lane opens as before: %+v %v", res, err)
 	}
 }

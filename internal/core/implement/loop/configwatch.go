@@ -173,21 +173,11 @@ func takeFingerprint(repoRoot string, lanes []laneDir, salt string, now time.Tim
 	fp := configFingerprint{SchemaVersion: configFingerprintVersion, RecordedAt: now, Salt: salt,
 		Keys: map[string]string{}, Worktrees: map[string]worktreeFingerprint{}, Files: map[string]string{},
 		live: map[string]bool{}}
-	entries, err := gitutil.RepoConfig(repoRoot, watchedConfig)
-	if err != nil {
-		return fp, err
-	}
-	hooksPath := hashEntries(fp.Keys, salt, entries)
-	common, err := gitutil.RevParseAbsPath(repoRoot, "--git-common-dir")
+	hooks, common, err := checkoutHooks(repoRoot, salt, fp.Keys, fp.Files)
 	if err != nil {
 		return fp, err
 	}
 	defaultHooks := filepath.Join(common, "hooks")
-	hooks := defaultHooks
-	if hooksPath != "" {
-		hooks = expandHooksPath(repoRoot, hooksPath)
-	}
-	hashDir(fp.Files, salt, hooks)
 	hashFile(fp.Files, salt, filepath.Join(common, "info", "attributes"))
 	for _, ld := range lanes {
 		lane := ld.Path
@@ -219,6 +209,31 @@ func takeFingerprint(repoRoot string, lanes []laneDir, salt string, now time.Tim
 		fp.Worktrees[lane] = wt
 	}
 	return fp, nil
+}
+
+// checkoutHooks is how the fingerprint reads the checkout's hooks: every
+// watched key the repository's own settings set is hashed into keys
+// (hashEntries), and each entry of the hooks directory git runs at the
+// checkout (the last core.hooksPath among them, else the common git
+// directory's hooks) into files (hashDir), all under salt. It returns that
+// directory and the common git directory. A drive holds the same hashes of
+// the checkout's hooks across its lanes (remoteid.go), read through this one
+// function.
+func checkoutHooks(repoRoot, salt string, keys, files map[string]string) (hooks, common string, err error) {
+	entries, err := gitutil.RepoConfig(repoRoot, watchedConfig)
+	if err != nil {
+		return "", "", err
+	}
+	hooksPath := hashEntries(keys, salt, entries)
+	if common, err = gitutil.RevParseAbsPath(repoRoot, "--git-common-dir"); err != nil {
+		return "", "", err
+	}
+	hooks = filepath.Join(common, "hooks")
+	if hooksPath != "" {
+		hooks = expandHooksPath(repoRoot, hooksPath)
+	}
+	hashDir(files, salt, hooks)
+	return hooks, common, nil
 }
 
 // hashEntries hashes each key's values, in the order git reads them, into
@@ -848,7 +863,8 @@ func checkoutHooksPath(repoRoot string) (string, error) {
 // standingBranchHooks is the worktree stage's check, before the add, of a
 // branch already standing under the lane's name where origin reported tip.
 // head is the branch's head, resolved once by the stage, which refuses the
-// lane after the add if the branch then holds another commit. Where hooksPath
+// lane after the add if the branch then holds another commit, removing the
+// worktree it added so the next step judges the branch again. Where hooksPath
 // (checkoutHooksPath, which the add is also told) names a working tree's own
 // copy, head's hooks directory, as stored (hooksTreeAt), must be the tip's;
 // either one that cannot be read is refused, never read as one that records
