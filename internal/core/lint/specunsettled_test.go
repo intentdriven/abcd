@@ -8,8 +8,8 @@ import (
 
 // spec_unsettled is iss-2611101318042398's record-lint half: an open spec that
 // says in its own text that it is not ready — a sentence opening "Not READY",
-// or a bold "Open:" label on a line that is not an open question's item — is refused,
-// one finding per statement on its line. It reads through spec.Unsettled, the
+// or a bold "Open:" label on any line but the one an open question's item
+// opens on — is refused, one finding per statement on its line. It reads through spec.Unsettled, the
 // reader the readiness gate's spec_body row asks, so the two never disagree. A
 // question asked under the section is the place a spec asks one, and passes; a
 // closed spec is never built again and is out of reach.

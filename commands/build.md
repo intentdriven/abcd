@@ -160,13 +160,15 @@ pass:
   or with a line break between the two words; a bold "Open:" label
   (`**Open:**`, `**Open**:`, `__Open:__`, or the same with "question(s)",
   "point(s)" or "design question(s)" after the word, in any letter case) on
-  any line that is not an open question's item, a paragraph or a table row
-  under `## Open Questions` included; a fence or HTML comment that never
-  closes; and fences whose extent turns on the list around them, such as a
-  fence indented four columns with no list item above it (each named by its
-  line). Lower-case "not READY", "Not ready", and the phrase elsewhere in a
-  sentence are not matched. The frontmatter, inline code spans, fenced blocks
-  (one indented under a list item included) and HTML comments are not read;
+  any line but the one an open question's item opens on, a paragraph or a
+  table row under `## Open Questions` included; a fence or HTML comment that
+  never closes; and fences or comments whose extent turns on the layout around
+  them, such as a fence indented four columns or more, or a line inside a list
+  item's fence nearer the margin than the item's text (each named by its line,
+  and the text from there on is read). Lower-case "not READY", "Not ready",
+  and the phrase elsewhere in a sentence are not matched. The frontmatter,
+  inline code spans, fenced blocks (one at up to three columns under a list
+  item included) and HTML comments are not read;
   an indented code block is read. So a phrase quoted rather than said goes in
   an inline code span.
 - `open_questions` — no open question under `## Open Questions` or a
@@ -174,8 +176,8 @@ pass:
   with an italic `_All resolved …_` line or the item is explicitly marked
   resolved or deferred (`**Deferred**`, `resolved:`, `**explicitly
   deferred**`). The record's text must read whole: a fence or HTML comment
-  that never closes, or fences whose extent turns on the list around them,
-  fails this check too (named by its line).
+  that never closes, or fences or comments whose extent turns on the layout
+  around them, fails this check too (named by its line).
 - `claim_sections` — the `## Mechanism` prompt is answered (or the section
   absent) and the scope conditions are recorded.
 - `hold` — the intent carries no `held:`.

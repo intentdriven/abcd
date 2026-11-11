@@ -529,19 +529,20 @@ checks; the judgement is yours, as the host.
     bracket, or with a line break between the two words), a bold "Open:"
     label (`**Open:**`, `**Open**:`, `__Open:__`, or the same with
     "question(s)", "point(s)" or "design question(s)" after the word, in any
-    letter case) on any line that is not an open question's item, a
+    letter case) on any line but the one an open question's item opens on, a
     paragraph or a table row under that section included, a fence or HTML
-    comment that never closes, or fences whose extent turns on the list
-    around them; record-lint's `spec_unsettled` rule refuses those four in an
-    open spec. The phrase match is a filter for a mistake, not a way to hold
-    a spec: lower-case "not READY", "Not ready", and the phrase elsewhere in
-    a sentence are not matched, and the declared holds are the spec's
-    `blocked_by` and its open questions. The frontmatter, inline code spans,
-    fenced blocks (one indented under a list item included) and HTML
-    comments are not read; an indented code block is read. So a phrase
-    quoted rather than said goes in an inline code span. A closed spec, and
-    an intent in `shipped/`, `superseded/` or `disciplines/`, is not judged.
-    An intent the design waits on goes in the spec's own `blocked_by`;
+    comment that never closes, or fences or comments whose extent turns on
+    the layout around them; record-lint's `spec_unsettled` rule refuses those
+    four in an open spec. The phrase match is a filter for a mistake, not a
+    way to hold a spec: lower-case "not READY", "Not ready", and the phrase
+    elsewhere in a sentence are not matched, and the declared holds are the
+    spec's `blocked_by` and its open questions. The frontmatter, inline code
+    spans, fenced blocks (one at up to three columns under a list item
+    included) and HTML comments are not read; an indented code block is read.
+    So a phrase quoted rather than said goes in an inline code span. A closed
+    spec, and an intent in `shipped/`, `superseded/` or `disciplines/`, is
+    not judged. An intent the design waits on goes in the spec's own
+    `blocked_by`;
     `abcd intent ready` does not report it, and the build refuses the run
     until that intent is settled.
 12. Re-run `abcd intent ready <itd-N>` and report READY to the user.
