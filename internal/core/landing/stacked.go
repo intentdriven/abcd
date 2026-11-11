@@ -91,7 +91,7 @@ func armedInto(o Options, dir, owner, name, base string) ([]armedNode, error) {
 			return nil, noForgeClient()
 		}
 		if err != nil {
-			return nil, cannot(fsutil.RedactHome(err.Error()))
+			return nil, cannot(forgeWhy(err))
 		}
 		var a armedPage
 		if json.Unmarshal([]byte(raw), &a) != nil {

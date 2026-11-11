@@ -676,7 +676,9 @@ func TestAddFinishesAWorktreeGitMadeWhenTheCheckoutHookFails(t *testing.T) {
 // directory git lists at its path on its branch, is removed and its branch
 // kept. A symlink standing at that path (here to another worktree of the
 // repository), an Added naming a branch git does not list there, and an empty
-// Added are refused, and nothing is removed.
+// Added are refused, and nothing is removed. The link's row was watched fail
+// with the real-directory check dropped, the listing's check refusing it in
+// its place.
 func TestRemoveAddedRemovesOnlyTheWorktreeAddMade(t *testing.T) {
 	repo, _ := repoWithCommit(t)
 	base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
@@ -708,7 +710,11 @@ func TestRemoveAddedRemovesOnlyTheWorktreeAddMade(t *testing.T) {
 	if err := os.Symlink(peer.Path, linked.Path); err != nil {
 		t.Fatal(err)
 	}
-	mustRefusal(t, worktree.RemoveAdded(repo.Root(), linked))
+	// RemoveAdded's own real-directory check refuses the link, before git's
+	// listing is read.
+	if r := mustRefusal(t, worktree.RemoveAdded(repo.Root(), linked)); !strings.Contains(r.Reason, "no real directory stands at") {
+		t.Fatalf("the link is refused by RemoveAdded's own check: %+v", r)
+	}
 	standing(peer.Path, "the worktree the link points at stands")
 	standing(aside, "the worktree moved aside stands")
 	if fi, err := os.Lstat(linked.Path); err != nil || fi.Mode()&os.ModeSymlink == 0 {

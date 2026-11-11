@@ -4424,9 +4424,10 @@ credentials, so run it only on a branch whose content you trust.
      unmerged, one that is no pull request or merges into another branch, a
      cycle, a wait at or past its 24 hours, a line that looks like one in another
      shape, and a forge answer land cannot read whole refuse, exit 2, no new
-     arming made, saying what to reword or settle. This account's arming
-     already in place is withdrawn on such a stop or refusal. Rebuilding it on
-     the default branch once they merge is not done yet: run abcd land again.
+     arming made, saying what to reword or settle; a line in other wording
+     declares no dependency. This account's arming already in place is
+     withdrawn on such a stop or refusal. Rebuilding it on the default branch
+     once they merge is not done yet: run abcd land again.
      Where a merge queue gates the
      default branch, a branch that shares a commit not on it with another pull
      request queued or armed into it (a branch cut from that one's) is not armed:

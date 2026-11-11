@@ -146,20 +146,40 @@ that name with none at this head, since the proof may lie past the bound.
    merged there or not; a dependency on a cycle, or the pull request itself; a
    wait at or past its 24 hours, which includes a `Depends-On:` line added to
    a pull request opened more than 24 hours earlier; a creation time later
-   than the local clock, or one land cannot read; a line that looks like a
-   `Depends-On:` line in another shape (lower case, indented, quoted, with
-   another separator), named by its line number, never quoted; a body over the
-   bound; more than 25 pull requests; and a forge answer land cannot read
-   whole (one missing a field included), an offline or rate-limited forge
-   included. A body is required of the pull request's own read and of a
-   dependency still open or queued. This account's arming already in place is
-   withdrawn on a wait or a refusal, and the step says what was done: the
-   arming withdrawn, the pull request taken out of the merge queue, both, or
-   nothing left to take off. A forge error in the dependency read takes this
-   account's arming off, and the next `abcd land` run arms it again. The
+   than the local clock, or one land cannot read; a line in the shape the
+   scan refuses, as below (lower case, indented, quoted, with another
+   separator, after other text, or in prose), named by its line number, never
+   quoted, the refusal saying the accepted shape is `Depends-On: #<number>`
+   alone on a line and that prose in the body must not use those words, so
+   the sentence is reworded; a body over the bound; more than 25 pull
+   requests; and a forge answer land cannot read whole (one missing a field
+   included), an offline or rate-limited forge included. A line that is not an
+   accepted line is refused when, with the characters the scan drops removed
+   (format characters, non-spacing and enclosing marks, three Hangul fillers,
+   NUL and backslash), it holds, in any case (the long s, U+017F, counts as
+   s), depends-on with an ASCII hyphen anywhere, or depend or depends, then
+   any run, or none, of hyphens, underscores, ASCII spaces, tabs, Unicode
+   dashes (category Pd), minus signs (U+2212) or hyphen bullets (U+2043), then
+   on, then any run, or none, of ASCII spaces or tabs and nothing else, then a
+   colon. Any other line is read as declaring none, among them: a line with
+   anything else between the words, such as another word or a no-break space
+   (It depends heavily on: the queue), or between on and the colon, such as a
+   number (This depends on #5: it needs the schema); a line with a spacing
+   mark (category Mc), such as U+0903, inside a word; a line with no colon
+   whose words are not depends-on with an ASCII hyphen, such as words joined
+   by a space, a spaced hyphen, an underscore or another kind of hyphen or
+   dash, U+2011 and the en dash among them (Depends on #5, Depends - On #5,
+   depends_on #5); and a line with other wording for a dependency (Blocked
+   by #5, Requires #5). A dependency is declared only by an accepted line, so
+   write the accepted line. A body is required of the pull request's own read
+   and of a dependency still open or queued. This account's arming already in
+   place is withdrawn on a wait or a refusal, and the step says what was done:
+   the arming withdrawn, the pull request taken out of the merge queue, both,
+   or nothing left to take off. A forge error in the dependency read takes
+   this account's arming off, and the next `abcd land` run arms it again. The
    withdrawal runs only after the check waits or refuses: land reads the
-   pull request's state again before its first act, acts only on what its
-   last read shows, and reads again after each act, three acts at most.
+   pull request's state again before its first act and makes at most three
+   tries, each acting on what one read shows and followed by one read.
    Inside the withdrawal, this account's queue entry is taken out and its
    arming turned off, the arming also where another account's queue entry
    stands beside it. A queue entry or arming another account made, or one
@@ -168,7 +188,11 @@ that name with none at this head, since the proof may lie past the bound.
    alphabet only. If land cannot confirm the withdrawal, it refuses with
    the step to take it off by hand: the pull request's page for a queue
    entry, the command for an arming, both where both stand or it cannot say
-   which, and after three tries the last act's failure. A pull
+   which, and after three tries, where an act failed, each failure of the
+   last try; this account's arming left beside another account's queue entry
+   is refused naming who the forge says queued it, where that is a login in
+   the forge's own alphabet, and otherwise saying the forge does not name the
+   account or names it in a form land does not show. A pull
    request the forge reports merged or closed since land read it is refused
    as such, with nothing withdrawn. The check runs once land has read the
    pull request's state on the route that would arm it, and on the three
@@ -176,11 +200,13 @@ that name with none at this head, since the proof may lie past the bound.
    merge gate unread, the gate not arming, and a conflict. The stop is read
    again after the merge gate arms and before that state read, so the check
    on the first two early returns runs before it and the conflict's after it.
-   Three returns after that read make no check: a pull request already in
+   Four returns after that read make no check: a pull request already in
    the merge queue is reported done with its dependencies unread, this
    account's own queue entry included; one another account armed, or one
-   the forge does not attribute, is reported as before; and this account's
-   arming at a head land did not gate is refused before the check.
+   the forge does not attribute, is reported as before; this account's
+   arming at a head land did not gate is refused before the check; and a
+   state not read whole, one with no viewer login among them, is refused
+   before the check, any arming left as it is.
    Every refusal before that point (a forge read that fails, the merge rule or
    the default branch's tip unread, a listing land cannot use, any step
    before enqueue) leaves an arming as it is with its dependencies unread.

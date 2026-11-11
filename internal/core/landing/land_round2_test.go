@@ -84,6 +84,85 @@ func TestAMergedListingTheForgeCannotAnswerRefusesThePush(t *testing.T) {
 	}
 }
 
+// rawForgeText is a failing client's text with an escape byte, a URL
+// credential and more than maxForgeErrorText bytes.
+var rawForgeText = errors.New("gh: \x1b[2Jboom https://user:s3cret@example.invalid/x " + strings.Repeat("y", 600))
+
+// wantCleanedForgeText fails unless err is a refusal whose reason carries
+// rawForgeText as forgeWhy renders it, after prefix: no escape byte, no
+// credential, and cut at the bound with its mark.
+func wantCleanedForgeText(t *testing.T, err error, prefix string) {
+	t.Helper()
+	var r *Refusal
+	if !errors.As(err, &r) {
+		t.Fatalf("err = %v, want a refusal", err)
+	}
+	why := forgeWhy(rawForgeText)
+	if !strings.Contains(r.Reason, prefix+why) || !strings.HasSuffix(why, forgeCutMark) || strings.Contains(r.Reason, "\x1b") ||
+		strings.Contains(r.Reason, "s3cret") || strings.Contains(r.Reason, strings.Repeat("y", 600)) {
+		t.Fatalf("reason %q: want the client's text cleaned and bounded (forgeWhy) after %q", r.Reason, prefix)
+	}
+}
+
+// The forge client's text in that refusal is cleaned of control characters
+// and credentials and bounded (forgeWhy), as it is in the refusals of the
+// repository view (checkOrigin), the listing of the pull requests armed into
+// the default branch (armedInto) and the read of origin's tip before a
+// withdrawal, each pinned below.
+func TestAMergedListingFailureCleansAndBoundsTheForgeText(t *testing.T) {
+	f := newFixture(t, "")
+	f.forge.mergedErr = rawForgeText
+	_, err := f.land(f.options())
+	wantCleanedForgeText(t, err, "so land cannot prove a push would not recreate merged work: ")
+}
+
+// The repository view's failure (checkOrigin) is cleaned and bounded.
+func TestARepositoryViewFailureCleansAndBoundsTheForgeText(t *testing.T) {
+	f := newFixture(t, "")
+	f.forge.repoViewErr = rawForgeText
+	_, err := f.land(f.options())
+	wantCleanedForgeText(t, err, "so land cannot prove the push is safe: ")
+	if len(f.pushes()) != 0 || len(f.gates) != 0 {
+		t.Fatalf("pushed %v, gated %v: want neither", f.pushes(), f.gates)
+	}
+}
+
+// The armed listing's failure (armedInto) is cleaned and bounded.
+func TestAnArmedListingFailureCleansAndBoundsTheForgeText(t *testing.T) {
+	f := newFixture(t, queueRuleset)
+	f.forge.prs = f.prFor(f.head())
+	f.forge.views = []string{viewBlocked}
+	f.forge.armedErr = rawForgeText
+	_, err := f.land(f.options())
+	wantCleanedForgeText(t, err, "and nothing was armed: ")
+	if f.forge.called("pr", "merge") != 0 {
+		t.Fatalf("armed: %v", f.forge.calls)
+	}
+}
+
+// Git's answer when land asks origin for the branch's tip before a withdrawal
+// (RemoteTip) is cleaned and bounded the same way: it is text a remote and
+// git wrote, not land.
+func TestARemoteTipFailureBeforeAWithdrawalCleansAndBoundsGitsText(t *testing.T) {
+	f, old := moving(t)
+	f.reviewed(t)
+	f.forge.armings = []string{armingBy(old, true, false, "alice")}
+	o := f.options()
+	git := o.Git
+	o.Git = func(dir string, args ...string) (string, error) {
+		if strings.Join(args, " ") == "ls-remote "+Remote+" refs/heads/feat/x" {
+			return "", rawForgeText
+		}
+		return git(dir, args...)
+	}
+	_, err := f.land(o)
+	wantCleanedForgeText(t, err, "where feat/x is (")
+	noWithdrawal(t, f)
+	if len(f.pushes()) != 0 {
+		t.Fatalf("pushes %v", f.pushes())
+	}
+}
+
 // r2: the suggested insteadOf rule matches the URL form origin is written in.
 func TestTheInsteadOfAdviceMatchesTheURLForm(t *testing.T) {
 	for _, c := range []struct{ origin, from string }{

@@ -34,7 +34,7 @@ type driveWorld struct {
 
 func newDriveWorld(t *testing.T) *driveWorld {
 	t.Helper()
-	w := &driveWorld{repo: drainRuleRepo(t, drainrule.ProposalFrontmatter()), home: t.TempDir()}
+	w := &driveWorld{repo: drainRuleRepo(t, drainrule.ProposalFrontmatter()), home: driveHome(t)}
 	t.Setenv("HOME", w.home)
 	for _, k := range driveSessionMarkers {
 		t.Setenv(k, "")
@@ -60,6 +60,25 @@ func newDriveWorld(t *testing.T) *driveWorld {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return w
+}
+
+// driveHome is a home whose path carries a fixed label and never the test's name:
+// t.TempDir keeps a comma from a subtest's name, the walled directory lies under the
+// home, and a path with a comma is one the drive refuses at its profile, so a subtest
+// named with one would meet that refusal in place of what it set out to exercise
+// (iss-2611070737163284).
+func driveHome(t *testing.T) string {
+	t.Helper()
+	home, err := os.MkdirTemp("", "abcd-drive-home-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(home); err != nil {
+			t.Errorf("removing the drive world's home: %v", err)
+		}
+	})
+	return home
 }
 
 func (w *driveWorld) machineConfig(t *testing.T, body string) {
@@ -556,4 +575,24 @@ func TestADriveEndHaltedSaysWhatHolds(t *testing.T) {
 	if strings.Contains(driveEndWords(res.Ended), "elsewhere") {
 		t.Fatalf("the words claim what may not be so: %q", driveEndWords(res.Ended))
 	}
+}
+
+// TestADriveWorldsHomeDoesNotCarryTheSubtestsName (iss-2611070737163284): a comma in a
+// subtest's name reached the walled directory's path, which a harness deny rule cannot
+// hold, so the drive refused at its profile whatever the subtest set out to exercise.
+func TestADriveWorldsHomeDoesNotCarryTheSubtestsName(t *testing.T) {
+	t.Run("a name, with a comma", func(t *testing.T) {
+		w := newDriveWorld(t)
+		w.passWalls(t)
+		if strings.Contains(w.home, "comma") || strings.ContainsAny(w.home, ",[]\n") {
+			t.Errorf("the home %q is named after the subtest", w.home)
+		}
+		var out, errb strings.Builder
+		if code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb); code != 0 {
+			t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
+		}
+		if w.terminalCalls != 1 {
+			t.Fatalf("the loop ran %d times", w.terminalCalls)
+		}
+	})
 }

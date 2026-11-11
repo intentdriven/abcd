@@ -197,9 +197,12 @@ with no provider block, when it is one the machine's class map resolves
 (iss-2611080057001367); everything else keeps the provider allowlist. The map is
 read at the drive's start and again as each run starts; a run in progress whose
 model no map read during the drive names is refused at its next reviewer, naming
-the model and the class map. The start refuses, before anything is reserved, a review set
-with a reviewer no route on the machine can launch, naming the role, the model
-and the configuration to set (`runner.Config.CanLaunch`, the admission the
+the model and the class map. The runner settings, the provider blocks and the
+denylist are read once, at the start, and hold until the drive ends; the review
+set is read again as each run starts, as the class map is; the start's text says
+so (iss-2611110527425474). The start refuses, before anything is reserved, a
+review set with a reviewer no route on the machine can launch, naming the role,
+the model and the configuration to set (`runner.Config.CanLaunch`, the admission the
 dispatch makes, asked of the configuration the drive's lanes launch on).
 Each iteration is one move under the drain's lock for that move alone; a
 lane is driven in-process through `loop.Drive` and `DriveReview`, every role on the

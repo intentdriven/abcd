@@ -369,3 +369,91 @@ func TestImplementLoadRefusesAnUnknownSite(t *testing.T) {
 		}
 	}
 }
+
+// stubPreflightMake is an executable named make that runs body as a shell
+// script, so a test gates the preflight's stages without running them, and
+// loadReadHead set to report a fixed commit, so no test needs a git checkout
+// around the package. It returns the command words the Makefile's
+// PREFLIGHT_STAGES_MAKE would give, and how many times the HEAD was read.
+func stubPreflightMake(t *testing.T, body string) ([]string, *int) {
+	t.Helper()
+	mk := filepath.Join(t.TempDir(), "make")
+	if err := os.WriteFile(mk, []byte("#!/bin/sh\n"+body+"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	prev, reads := loadReadHead, 0
+	loadReadHead = func(string) (string, error) { reads++; return "0123456789abcdef0123456789abcdef01234567", nil }
+	t.Cleanup(func() { loadReadHead = prev })
+	return []string{mk, "--no-print-directory", "preflight-stages"}, &reads
+}
+
+// TestImplementLoadWaitSaysTheMarkNoteOnce: a preflight whose marker cannot
+// be written (a symlink stands at the markers' folder) says why once on
+// standard error, naming the folder, and its command still runs.
+func TestImplementLoadWaitSaysTheMarkNoteOnce(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3))
+	home, _ := os.UserHomeDir()
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), abcdhome.Path(home, implement.WholeRunsLeaf)); err != nil {
+		t.Fatal(err)
+	}
+	words, reads := stubPreflightMake(t, "echo gated-command-ran")
+	code, out, errOut := implementCLI(t, append([]string{"implement", "load", "--wait", "--"}, words...)...)
+	if code != 0 || !strings.Contains(out, "gated-command-ran") {
+		t.Fatalf("exit %d, want the command run\n%s%s", code, out, errOut)
+	}
+	if n := strings.Count(errOut, "whole run's marker"); n != 1 || !strings.Contains(errOut, "could not be written") {
+		t.Fatalf("the marker's note said %d times, want once:\n%s", n, errOut)
+	}
+	if *reads != 1 || strings.Contains(errOut, "HEAD") || !strings.Contains(errOut, implement.WholeRunsLeaf+" is a symlink") {
+		t.Fatalf("the HEAD seam read %d times, and the note does not name the folder it could not write:\n%s", *reads, errOut)
+	}
+}
+
+// TestImplementLoadWaitSaysNothingOfAMarkerForAnotherCommand: a whole-form
+// command that is not the preflight's stages writes no marker and says
+// nothing of one.
+func TestImplementLoadWaitSaysNothingOfAMarkerForAnotherCommand(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3))
+	home, _ := os.UserHomeDir()
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), abcdhome.Path(home, implement.WholeRunsLeaf)); err != nil {
+		t.Fatal(err)
+	}
+	stubPreflightMake(t, "")
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--", "sh", "-c", "echo gated-command-ran")
+	if code != 0 || !strings.Contains(out, "gated-command-ran") {
+		t.Fatalf("exit %d, want the command run\n%s%s", code, out, errOut)
+	}
+	if strings.Contains(errOut, "whole run's marker") {
+		t.Fatalf("a command that is not the preflight spoke of a marker:\n%s", errOut)
+	}
+}
+
+// TestImplementLoadWaitEndsTheMarkerOnTheSettleHold: above one slot a whole
+// run takes the settle hold, which is not released when its command exits;
+// its marker stands while the command runs and goes when it exits.
+func TestImplementLoadWaitEndsTheMarkerOnTheSettleHold(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3))
+	t.Setenv(implement.PreflightSlotsEnv, "2")
+	home, _ := os.UserHomeDir()
+	marker := abcdhome.Path(home, implement.WholeRunsLeaf, "50000.json")
+	words, reads := stubPreflightMake(t, "test -f '"+marker+"' && echo marker-present")
+	code, out, errOut := implementCLI(t, append([]string{"implement", "load", "--wait", "--"}, words...)...)
+	if code != 0 || !strings.Contains(out, "marker-present") {
+		t.Fatalf("exit %d, want the marker present while the command ran\n%s%s", code, out, errOut)
+	}
+	if *reads != 1 {
+		t.Fatalf("the HEAD seam read %d times, want once: the test reads no git checkout", *reads)
+	}
+	if _, err := os.Stat(abcdhome.Path(home, implement.WaitHoldFileName)); err != nil {
+		t.Fatalf("no settle hold stands after the command (%v): this is not the settle route", err)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("the marker outlived its command on the settle hold: %v", err)
+	}
+}

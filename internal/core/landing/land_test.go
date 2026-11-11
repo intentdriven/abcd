@@ -53,9 +53,10 @@ type fakeForge struct {
 	prs  string
 	// prsSeq, when set, answers the open listing one a call, the last
 	// repeated, in place of prs; prsErrAt fails the open listing with this
-	// ordinal (1 is the first), 0 none.
+	// ordinal (1 is the first), 0 none, with listErr where it is set.
 	prsSeq   []string
 	prsErrAt int
+	listErr  error
 	opens    int
 	// merged answers the listing of the branch's merged pull requests; ""
 	// is none. mergedErr fails that listing alone.
@@ -70,10 +71,14 @@ type fakeForge struct {
 	// One beginning "!" fails the query with the rest as its message.
 	answers []string
 	calls   [][]string
-	// onRepoView runs when the repository is viewed, before the answer.
-	onRepoView func()
-	// failArm fails the arm call with this ordinal (1 is the first), 0 none.
+	// onRepoView runs when the repository is viewed, before the answer;
+	// repoViewErr fails that view alone.
+	onRepoView  func()
+	repoViewErr error
+	// failArm fails the arm call with this ordinal (1 is the first), 0 none,
+	// with armErr where it is set.
 	failArm int
+	armErr  error
 	arms    int
 	// err fails every call.
 	err error
@@ -137,7 +142,10 @@ type fakeForge struct {
 //   - a guess, unconfirmed against a live forge: a queue entry the forge
 //     makes from this account's arming names this account as its enqueuer
 //     (queuer the arming's login). The recorded answer has no enqueuer, since
-//     its query did not ask for one.
+//     its query did not ask for one;
+//   - a guess, unconfirmed: with rule off, this account's arming can stand
+//     beside a queue entry, and `gh pr merge --disable-auto` there turns the
+//     arming off and leaves the entry in the queue.
 //
 // A test resting on a guess says "model guess" in a comment where it uses it.
 type forgeModel struct {
@@ -353,6 +361,9 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		if f.onRepoView != nil {
 			f.onRepoView()
 		}
+		if f.repoViewErr != nil {
+			return "", f.repoViewErr
+		}
 		ssh, def := f.sshURL, f.def
 		if ssh == "" {
 			ssh = "git@example.com:o/r.git"
@@ -372,6 +383,9 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 			return f.merged, nil
 		}
 		if f.opens++; f.opens == f.prsErrAt {
+			if f.listErr != nil {
+				return "", f.listErr
+			}
 			return "", errors.New("fake forge: the listing failed")
 		}
 		if len(f.prsSeq) > 0 {
@@ -456,6 +470,9 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		}
 		if slices.Contains(args, "--auto") {
 			if f.arms++; f.arms == f.failArm {
+				if f.armErr != nil {
+					return "", f.armErr
+				}
 				return "", errors.New("fake forge: the arm failed")
 			}
 		}
@@ -948,6 +965,45 @@ func TestNoQueueAndAutoMergeRefusedIsSaid(t *testing.T) {
 	if s := step(t, res, "enqueue"); s.Status != StatusLeft || !strings.Contains(s.Note, "refused to arm its auto-merge") {
 		t.Fatalf("enqueue step %+v: want the forge's refusal said", s)
 	}
+}
+
+// The forge client's own text in a refusal is cleaned and bounded where land
+// reads it (forge), on the listing of the branch's pull requests and on the
+// arming: no control character, no URL credential, at most
+// maxForgeErrorText bytes.
+func TestTheForgeClientsTextIsCleanedAndBounded(t *testing.T) {
+	raw := errors.New("gh: \x1b[2Jboom https://user:s3cret@example.invalid/x " + strings.Repeat("y", 600))
+	check := func(t *testing.T, err error) {
+		t.Helper()
+		var r *Refusal
+		if !errors.As(err, &r) {
+			t.Fatalf("err = %v, want a refusal", err)
+		}
+		if !strings.HasPrefix(r.Reason, "gh: ?[2Jboom https://") || strings.ContainsAny(r.Reason, "\x1b") ||
+			strings.Contains(r.Reason, "s3cret") || len(r.Reason) > maxForgeErrorText {
+			t.Fatalf("reason %d bytes: %q", len(r.Reason), r.Reason)
+		}
+	}
+	t.Run("the listing", func(t *testing.T) {
+		f := newFixture(t, queueRuleset)
+		f.forge.prs = f.prFor(f.head())
+		f.forge.prsErrAt = 1
+		f.forge.listErr = raw
+		_, err := f.land(f.options())
+		check(t, err)
+	})
+	t.Run("the arming", func(t *testing.T) {
+		f := newFixture(t, queueRuleset)
+		f.forge.prs = f.prFor(f.head())
+		f.forge.views = []string{viewBlocked}
+		f.forge.failArm = 1
+		f.forge.armErr = raw
+		_, err := f.land(f.options())
+		check(t, err)
+		if f.forge.called("pr", "merge", "7", "--auto") != 1 {
+			t.Fatalf("calls %v: want the one arming that failed", f.forge.calls)
+		}
+	})
 }
 
 // Ruling AM1 is retired: a ruleset's approval rule no longer decides the
