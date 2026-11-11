@@ -352,7 +352,7 @@ func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, s
 
 // laneChangesHeld ends the fence with holdLaneChanges, its clause beside notice.
 func laneChangesHeld(c Context, lane Lane, act fenceAct, holds time.Time, notice string) (time.Time, string, error) {
-	reserved, err := holdLaneChanges(c, lane, act)
+	reserved, _, err := holdLaneChanges(c, lane, StageLand, act)
 	if err != nil {
 		return holds, notice, err
 	}
@@ -904,7 +904,7 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 // with the tip's term, so a widening resume never cuts the fence's day either.
 // An issue's tip, while its lane is at its landing (landing), is the
 // narrowing of that landing (narrow.go) to the files the lane changed, a
-// path it widened to beyond its found_at before an edit (widen.go) among
+// path the lane widened to beyond its found_at (widen.go) among
 // them, renewed as it stands, never read as a widening: no implementer edits
 // at the landing, and a lane leaving it for a fresh round reserves its
 // found_at again (reserveOnLeavingLand). Anywhere short of the landing
@@ -931,7 +931,7 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver, drain, landing bo
 	r, ok := snap.Lookup(key)
 	// An issue's tip this copy holds, live or lapsed, or released with a tombstone
 	// that keeps its footprint, as a drive lets a lane go for a limit, names the
-	// paths its lane widened to beyond the found_at before an edit (widen.go), and
+	// paths its lane widened to beyond the found_at (widen.go), and
 	// the lane's branch changes them: a reservation made again keeps them beside
 	// the found_at rather than dropping them.
 	if validIssueKey(key) && ok && r.Copy == claim.CopyThis &&

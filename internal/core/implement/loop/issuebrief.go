@@ -20,7 +20,6 @@ import (
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/gitutil"
-	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 // issueBriefSources is what an issue brief is rendered from.
@@ -107,10 +106,9 @@ func readIssueBriefSources(repoRoot string, st State, lane *Lane) (issueBriefSou
 	return src, nil
 }
 
-// renderIssueBrief writes an issue lane's brief. repoRoot is the checkout the
-// run lives in and laneDir the lane's directory, each as the implementer,
-// working in another checkout, must address it.
-func renderIssueBrief(st State, lane Lane, repoRoot, laneDir string, src issueBriefSources) []byte {
+// renderIssueBrief writes an issue lane's brief. laneDir is the lane's
+// directory as the implementer, working in another checkout, must address it.
+func renderIssueBrief(st State, lane Lane, laneDir string, src issueBriefSources) []byte {
 	var b bytes.Buffer
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	at := func(name string) string { return filepath.Join(laneDir, name) }
@@ -134,17 +132,19 @@ func renderIssueBrief(st State, lane Lane, repoRoot, laneDir string, src issueBr
 
 	p("## Files beyond the issue's place\n\n")
 	p("The run reserves %s on the shared remote with the path its found_at names, so no other copy\n", id)
-	p("edits it while you work. Before your first edit of any other file, widen the hold to it, from the\n")
-	p("checkout the run lives in:\n\n")
-	p("```sh\n(cd %s && %s)\n```\n\n", shellquote.Single(repoRoot), widenCommand(st.RunID, lane.ID, "<path>..."))
-	p("- Exit 0: the paths are held; edit them.\n")
-	p("- Exit 3 naming a reservation: another copy holds one of them. Edit none of them. If the fix cannot\n")
-	p("  be made without it, stop: write no receipt, and end by naming the path and the hold. The lane is\n")
-	p("  handed to an implementer again on a later step. Exit 3 naming a locked run state: run it again.\n")
-	p("- Exit 2: settle what it names.\n")
-	p("- The command not found, or an abcd with no `widen` sub-verb: edit nothing beyond the hold; stop without\n")
-	p("  a receipt and say so in your reply.\n\n")
-	p("Your receipt is refused while your branch changes a path the hold does not cover.\n\n")
+	p("edits it while you work. You may change any other file the fix needs, and you run nothing to\n")
+	p("reserve it: once you hand your receipt back, the loop reserves every path your commits change\n")
+	p("beyond that hold, before it judges the receipt and before the validators start, and again before\n")
+	p("each later round and before the landing's push. The decision records you write and the issue's\n")
+	p("own record are reserved the same way.\n\n")
+	p("- A path another copy holds: the loop does not take it from them. Your receipt is taken all the\n")
+	p("  same, the run's record names the path and its holder, and the lane waits before its validators\n")
+	p("  until that hold ends. You are not started again for it.\n")
+	p("- A path no reservation may carry (one with `..`, a leading `/` or a control character in its name):\n")
+	p("  your receipt is refused, naming it. Take the change out of the branch.\n")
+	p("- A gate file (a Makefile, anything under `scripts/` or `.githooks/`, or the hooks the repository\n")
+	p("  configures): an unattended drive does not land a lane that changes one, and hands it to a\n")
+	p("  person's own session. Change one only when the remedy names it.\n\n")
 
 	p("## The work: %s's remedy\n\n", id)
 	p("%s", fenceQuoteNote)

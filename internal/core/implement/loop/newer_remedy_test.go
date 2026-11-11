@@ -104,23 +104,3 @@ func TestANewerDrainStatesRemedyFitsTheBuildThatRefusedIt(t *testing.T) {
 		})
 	}
 }
-
-// TestAnAgentsCommandNamesTheBinaryReadAtTheStart: after a refused re-execution the name a
-// process reports can be a kept copy that has since gone.
-func TestAnAgentsCommandNamesTheBinaryReadAtTheStart(t *testing.T) {
-	was, build := selfName, sourceBuild
-	t.Cleanup(func() { selfName, sourceBuild = was, build })
-	sourceBuild = func() bool { return false }
-	selfName = func() string { return "/installed/abcd" }
-	if got := abcdCommand(); got != "'/installed/abcd'" && got != "/installed/abcd" {
-		t.Fatalf("named %s", got)
-	}
-	selfName = func() string { return "" }
-	if got := abcdCommand(); got != "abcd" {
-		t.Fatalf("with no name: %s", got)
-	}
-	sourceBuild = func() bool { return true }
-	if got := abcdCommand(); got != "go run ./cmd/abcd" {
-		t.Fatalf("a source build: %s", got)
-	}
-}

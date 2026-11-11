@@ -14,8 +14,10 @@ package loop
 // receive count (Amazon SQS's maxReceiveCount).
 //
 // A wait by design is no refusal and is never logged: the landing's wait for
-// its preflight receipt (checkWait), every outage wait, and a land fence,
-// at the push or the arming, that could not read origin. A refusal that
+// its preflight receipt (checkWait), every outage wait, a land fence,
+// at the push or the arming, that could not read origin, and a lane whose
+// hold the loop could not widen to a path another holder holds live
+// (pathHeld, widen.go), which waits for that hold to end. A refusal that
 // cannot change makes the lane stuck at once: the issue finished at the
 // lane's base, or on origin's default branch as the land fence reads it, or
 // the reservation the fence or the push checks now another person's. Only an
@@ -114,10 +116,11 @@ func resolveStuckBounds(roots layered.Roots) (stuckBounds, error) {
 
 // waitByDesign reports whether r is a wait the loop makes on purpose rather
 // than a refusal: the landing's wait for its preflight receipt, an outage's,
-// a land fence's that could not read origin, and a merge gate's that could not
-// read what it asks at the arming.
+// a land fence's that could not read origin, a merge gate's that could not
+// read what it asks at the arming, and a lane whose hold could not be widened
+// to a path another holder holds live (widen.go).
 func waitByDesign(r *Refusal) bool {
-	return !r.checkWait.IsZero() || r.Outage != nil || r.outage != nil || r.Stage == StageOutage || r.originUnread || r.releaseHeld || r.gateUnread
+	return !r.checkWait.IsZero() || r.Outage != nil || r.outage != nil || r.Stage == StageOutage || r.originUnread || r.releaseHeld || r.gateUnread || r.pathHeld
 }
 
 // noteRefusal logs err on the lane it names, in an issue run (stuck.go's

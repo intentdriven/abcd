@@ -86,6 +86,12 @@ type Refusal struct {
 	// pause someone chose, so a wait by design, never logged on a drain's
 	// lane (stuck.go).
 	releaseHeld bool
+	// pathHeld marks the loop's widening of a lane's hold that backed off
+	// another holder's live hold on a path the lane's branch changes
+	// (holdLaneChanges): a wait by design until that hold ends, never logged
+	// on a drain's lane (stuck.go), so it is never a failed step and never
+	// hands the lane back as stuck.
+	pathHeld bool
 	// final is why the refusal cannot change, "" when it can: an issue
 	// finished at the lane's base or on origin's default branch, or the
 	// reservation now another person's. A drain hands a lane refused so back
