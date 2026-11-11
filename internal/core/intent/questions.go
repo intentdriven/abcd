@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
+	"github.com/intentdriven/abcd/internal/core/spec"
 )
 
 // questions.go reads what an intent's `## Open Questions` section still asks —
@@ -12,8 +13,10 @@ import (
 // criterion 1: a READY intent with an open question does not start).
 
 var (
-	// openQuestionsHeadingRe matches the `## Open Questions` heading (any depth).
-	openQuestionsHeadingRe = regexp.MustCompile(`^#{1,6}\s+Open Questions\s*$`)
+	// openQuestionsHeadingRe matches the `## Open Questions` heading (any depth),
+	// the spec store's statement of it, so an intent's section and a spec's are
+	// the same section (iss-2611101318042398).
+	openQuestionsHeadingRe = spec.OpenQuestionsHeadingRe
 	// numberedItemRe is a column-0 numbered list item, `1. text` or `1) text` —
 	// the other spelling of a list a question is written in.
 	numberedItemRe = regexp.MustCompile(`^[0-9]{1,4}[.)][ \t]+(\S.*)$`)

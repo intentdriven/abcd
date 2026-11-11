@@ -11,6 +11,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Check names, in the fixed order Ready always reports them.
@@ -559,14 +560,55 @@ func specBodyCheck(repoRoot string, it Intent, sp spec.Spec, linkOK bool) (Ready
 	if err != nil {
 		return ReadyCheck{}, err
 	}
-	if spec.BodyIsStub(string(data)) {
+	content := string(data)
+	if spec.BodyIsStub(content) {
 		c.Detail = fmt.Sprintf("%s still carries the minted _Draft: placeholder — the design record is unwritten", sp.ID)
 		c.Remedy = fmt.Sprintf("write the spec body at %s, then re-run `abcd intent ready %s`", sp.Path, it.ID)
+		return c, nil
+	}
+	if why := specUnsettled(content); why != "" {
+		c.Detail = sp.ID + " says it is not ready to build: " + why
+		c.Remedy = "settle it in " + sp.Path + ": " + spec.UnsettledRemedy
 		return c, nil
 	}
 	c.OK = true
 	c.Detail = fmt.Sprintf("spec body at %s is written", sp.Path)
 	return c, nil
+}
+
+// maxUnsettledShown caps how many of a spec's unsettled statements a row
+// names; the rest are counted.
+const maxUnsettledShown = 3
+
+// specUnsettled is what a written spec's own text says against its being built
+// (iss-2611101318042398), or "" when it says nothing: each open item under its
+// `## Open Questions`, read as an intent's are (openQuestions), then each
+// statement spec.Unsettled finds outside them — a sentence opening "Not READY",
+// a bold "Open:" label outside that section. The spec is the design record a
+// lane builds from, so a question it still asks holds the build as one the
+// intent asks does.
+func specUnsettled(content string) string {
+	var parts []string
+	if qs := openQuestions(content); len(qs) > 0 {
+		shown := qs
+		if len(shown) > maxUnsettledShown {
+			shown = shown[:maxUnsettledShown]
+		}
+		clipped := make([]string, len(shown))
+		for i, q := range shown {
+			clipped[i] = clip(strings.Join(strings.Fields(termsafe.Sanitize(q)), " "), 160)
+		}
+		parts = append(parts, fmt.Sprintf("it asks %d open question(s) under ## Open Questions: %s", len(qs), strings.Join(clipped, " | ")))
+	}
+	stmts := spec.Unsettled(content)
+	for i, st := range stmts {
+		if i == maxUnsettledShown {
+			parts = append(parts, fmt.Sprintf("and %d more", len(stmts)-i))
+			break
+		}
+		parts = append(parts, st.Describe())
+	}
+	return strings.Join(parts, "; ")
 }
 
 // stepsCheck reports the shape of the linked spec's `## Steps` section

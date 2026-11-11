@@ -19,6 +19,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The record-only pre-start check names, in the order StartChecksIn reports
@@ -74,7 +75,11 @@ func StartChecksIn(repoRoot string, corpus Corpus, store spec.Store, r ReadyResu
 	res.Rows = append(res.Rows, startClaimSectionsRow(r, content))
 	it, _ := corpus.Lookup(r.IntentID)
 	res.Rows = append(res.Rows, startHoldRow(it))
-	blockedRow, err := startBlockedRow(repoRoot, corpus, r.IntentID, content)
+	sp, specContent, err := linkedSpecContent(repoRoot, store, r)
+	if err != nil {
+		return res, err
+	}
+	blockedRow, err := startBlockedRowWithSpec(repoRoot, corpus, r.IntentID, content, sp.ID, specContent)
 	if err != nil {
 		return res, err
 	}
@@ -146,8 +151,23 @@ func startHoldRow(it Intent) StartRow {
 	return row
 }
 
+// linkedSpecContent reads the spec the readiness gate judged for r, or nothing
+// when the gate linked none (the steps row names that case).
+func linkedSpecContent(repoRoot string, store spec.Store, r ReadyResult) (spec.Spec, string, error) {
+	sp, ok := store.Lookup(r.SpecID)
+	if !ok {
+		return spec.Spec{}, "", nil
+	}
+	data, err := readRepoFile(filepath.Join(repoRoot, filepath.FromSlash(sp.Path)), sp.Path)
+	if err != nil {
+		return spec.Spec{}, "", err
+	}
+	return sp, string(data), nil
+}
+
 // startBlockedRow refuses a record that names, in `blocked_by`, a blocker that
-// is not settled. An intent is settled when it has shipped or sits in
+// is not settled. It is startBlockedRowWithSpec for a record with no spec (a
+// draft the auto-plan judges). An intent is settled when it has shipped or sits in
 // disciplines/ (ruling CF2 of 2026-09-30: a blocker reclassified as a
 // discipline is a standing rule, not work that will ever ship, so it counts as
 // settled). A blocker the corpus does not hold is unsettled as far as this
@@ -165,14 +185,37 @@ func startHoldRow(it Intent) StartRow {
 // row says which record settled the edge. An error is a fault in reading the
 // checkout.
 func startBlockedRow(repoRoot string, corpus Corpus, id, content string) (StartRow, error) {
+	return startBlockedRowWithSpec(repoRoot, corpus, id, content, "", "")
+}
+
+// startBlockedRowWithSpec is the blocked row over the intent's own
+// `blocked_by`, then its spec's: a spec names an intent its design waits on in
+// the same field, read by the same reader, and each of its blockers is judged
+// exactly as the intent's are, named with the spec (iss-2611101318042398).
+// specID is "" when no spec is linked.
+func startBlockedRowWithSpec(repoRoot string, corpus Corpus, id, content, specID, specContent string) (StartRow, error) {
 	row := StartRow{Name: StartCheckBlocked}
 	var open, followed []string
+	type edge struct{ blocker, via string }
+	var edges []edge
 	for _, b := range blockedBy(content) {
-		end, err := followBlocker(repoRoot, corpus, b)
+		edges = append(edges, edge{blocker: b})
+	}
+	if specID != "" {
+		for _, b := range blockedBy(specContent) {
+			edges = append(edges, edge{blocker: b, via: specID})
+		}
+	}
+	for _, e := range edges {
+		end, err := followBlocker(repoRoot, corpus, e.blocker)
 		if err != nil {
 			return row, err
 		}
-		path := strings.Join(end.chain, " → ")
+		b := termsafe.Sanitize(e.blocker)
+		if e.via != "" {
+			b += " (named by " + e.via + ")"
+		}
+		path := termsafe.Sanitize(strings.Join(end.chain, " → "))
 		switch {
 		case end.problem != "" && len(end.chain) == 1:
 			open = append(open, b+" ("+end.problem+")")
@@ -189,13 +232,16 @@ func startBlockedRow(repoRoot string, corpus Corpus, id, content string) (StartR
 	if len(open) == 0 {
 		row.OK = true
 		row.Detail = id + " names no unsettled blocker"
+		if specID != "" {
+			row.Detail = id + " and " + specID + " name no unsettled blocker"
+		}
 		if len(followed) > 0 {
 			row.Detail += "; a superseded blocker is settled by the record that replaced it: " + strings.Join(followed, ", ")
 		}
 		return row, nil
 	}
 	row.Detail = id + " is blocked by " + strings.Join(open, ", ")
-	row.Remedy = "ship the blocker first, or settle the record its supersession chain ends at: ship that intent, or accept that decision (`status: accepted`); each superseded record names its successor in `superseded_by`, so repair a chain that loops or ends nowhere; or drop the edge from `blocked_by` if it no longer holds"
+	row.Remedy = "ship the blocker first, or settle the record its supersession chain ends at: ship that intent, or accept that decision (`status: accepted`); each superseded record names its successor in `superseded_by`, so repair a chain that loops or ends nowhere; or drop the edge from the intent's or the spec's `blocked_by` if it no longer holds"
 	return row, nil
 }
 
