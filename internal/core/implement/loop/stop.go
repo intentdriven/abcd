@@ -832,6 +832,18 @@ func stopEndsRenewal(repoRoot string, st State, now time.Time) bool {
 // same driver's file.
 func settlesHere(stated int) bool { return stated == SchemaVersion }
 
+// statedVersion is the version run's state file states, read as renewalRuns reads
+// it (readListedStated), for a caller that holds only the raised State.
+func statedVersion(repoRoot, runID string) (int, error) {
+	dir, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return 0, err
+	}
+	defer dir.Close()
+	_, stated, err := readListedStated(dir, runID)
+	return stated, err
+}
+
 // notStartedUnderStop answers an await this very call handed out or re-told, which a
 // stop refused before it began: no agent can have it yet, so it is marked as not
 // started and takes the stop as one that was lost, which a take-over re-tells. It
@@ -1025,7 +1037,8 @@ func machineCheckouts(repoRoot, home string) []string {
 	return out
 }
 
-// drainStop is a drain's move under a stop: every lane's run takes the stop, and
+// drainStop is a drain's move under a stop: every lane's run takes the stop, as does
+// each other run in the checkout at this binary's version, and
 // a judgement the drain awaits is let go with its hold, so the issue is a peer's
 // to take. It refuses the move; the drain keeps its state and goes on when the
 // stop lifts. The caller's deferred settle releases the hold st no longer names.
@@ -1074,6 +1087,17 @@ func drainStop(repoRoot string, st *DrainState, o Options) (string, error) {
 		}
 		if driveStopped(run.RunID) {
 			continue
+		}
+		// A run that is not one of the drain's lanes is another driver's, and one
+		// whose file states another version is left to that driver's check
+		// (settlesHere). The drain's own lanes it halts as their driver, whatever
+		// their files state: a newer abcd's drain in this checkout reads the same
+		// drain state, so nothing tells a drain resumed by an upgrade from a
+		// second one (reservation_save.go).
+		if !slices.ContainsFunc(st.Lanes, func(l DrainLane) bool { return l.RunID == run.RunID }) {
+			if stated, err := statedVersion(repoRoot, run.RunID); err == nil && !settlesHere(stated) {
+				continue
+			}
 		}
 		if _, err := haltRun(repoRoot, run.RunID, *r.Stop, DefaultStages(), o); err != nil {
 			if _, ok := AsRefusal(err); ok {

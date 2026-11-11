@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -457,6 +458,59 @@ func TestADrainUnderAStopOpensNothing(t *testing.T) {
 		t.Fatalf("the judgement still awaited: %+v", st.Judging)
 	}
 	releasedOver(t, bare, secondIssue, taken)
+}
+
+// TestADrainUnderAStopLeavesAnotherDriversRunAtItsVersion: a drain's move under a stop
+// halts every run in the checkout. One that is not among the drain's lanes is another
+// driver's: where its file states another version it is left to that driver's check,
+// its file as the driver wrote it. At this binary's version it is halted, and a run
+// that is one of the drain's lanes is the drain's to halt whatever its file states.
+func TestADrainUnderAStopLeavesAnotherDriversRunAtItsVersion(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		version int
+		lane    bool
+		halts   bool
+	}{
+		{name: "another driver's run at the previous version", version: schemaVersionPrevious},
+		{name: "another driver's run at version 24", version: schemaVersionUnrenamed},
+		{name: "another driver's run at this version", version: SchemaVersion, halts: true},
+		{name: "the drain's lane at the previous version", version: schemaVersionPrevious, lane: true, halts: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo, runID, _, _, _ := deadLane(t)
+			before, err := os.ReadFile(runStatePath(repo.Root(), runID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.version != SchemaVersion {
+				before = stateAtVersion(t, repo.Root(), runID, tc.version)
+			}
+			st := DrainState{}
+			if tc.lane {
+				st.Lanes = []DrainLane{{Issue: secondIssue, RunID: runID, Outcome: DrainLaneInProgress}}
+			}
+			o, _, _ := stopped(t)
+
+			_, err = drainStop(repo.Root(), &st, o)
+			wantStopRefusal(t, err)
+
+			c := controlOf(t, repo.Root(), runID)
+			if halted := c.Stop != nil; halted != tc.halts {
+				t.Fatalf("the drain's move halted the run: %v, want %v: %+v", halted, tc.halts, c.Stop)
+			}
+			if tc.halts {
+				return
+			}
+			after, err := os.ReadFile(runStatePath(repo.Root(), runID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, after) {
+				t.Fatalf("the drain's move rewrote another driver's run:\n%s", after)
+			}
+		})
+	}
 }
 
 // TestAFailedSaveHoldsTheClaims: uncommitted work that cannot be proved stays
