@@ -2606,9 +2606,7 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 			"pull request #"+n+" is not merged yet: "+shortSHA(ld.Pushed)+" is not on "+Remote+"/"+def+" ("+m.note()+")"+queued,
 			"run `abcd implement step` again once it has merged; "+ld.Merge)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), retireTimeout)
-	defer cancel()
-	merged, err := retireLanded(ctx, c, *lane, tracking, string(StageLand), "run `abcd implement step` again")
+	merged, err := retireLanded(context.Background(), c, *lane, tracking, string(StageLand), "run `abcd implement step` again")
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -2623,37 +2621,36 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 	return Outcome{Note: note}, nil
 }
 
-// retireTimeout bounds the git a lane's retirement runs once its head is proved
-// landed (retireLanded): each ref read, the worktree listing, the worktree's
-// removal and the branch's deletion. It is a variable only so a test can
-// shorten it.
-var retireTimeout = 5 * time.Minute
-
-// retireLanded removes a landed lane's worktree and branch, every git call bound
-// to ctx, once tracking, the default branch's remote-tracking ref, holds what the
-// lane pushed; it returns tracking's commit. The branch is deleted only at a tip
-// tracking holds: a commit added after the push is work that did not land, and
-// is refused, as a branch another checkout or a stopped rebase or bisect holds
-// is, and a worktree git will not remove (it refuses one with changes). Nothing
-// is removed before every refusal has been asked. The land stage's last step
-// retires a lane this way (landMerged), and so does a build that resumes a run
-// whose lane merged (closeMergedLanes); stage labels the refusal and again says
-// what to run once it is settled.
+// retireLanded removes a landed lane's worktree and branch once tracking, the
+// default branch's remote-tracking ref, holds what the lane pushed; it returns
+// tracking's commit. The branch is deleted only at a tip tracking holds: a
+// commit added after the push is work that did not land, and is refused, as a
+// branch another checkout or a stopped rebase or bisect holds is, and a
+// worktree git will not remove (it refuses one with changes). Nothing is
+// removed before every refusal has been asked. The land stage's last step
+// retires a lane this way (landMerged), with no deadline, and so does a build
+// that resumes a run whose lane merged (closeMergedLanes), whose ctx bounds each
+// ref read, the worktree listing, the derivation of the lane's worktree and the
+// branch's deletion. The worktree's removal is never bound to ctx: git killed
+// part-way through deleting a worktree leaves it half removed, which no rerun
+// settles. stage labels each refusal and again says what to run once it is
+// settled.
 func retireLanded(ctx context.Context, c Context, lane Lane, tracking, stage, again string) (string, error) {
 	merged, err := gitutil.RunCappedContext(ctx, c.RepoRoot, 4096, "rev-parse", "--verify", "--quiet", tracking+"^{commit}", "--")
 	if merged = strings.TrimSpace(merged); err != nil || !gitutil.IsFullSHA(merged) {
 		return "", fmt.Errorf("resolving %s: %v", tracking, err)
 	}
 	ref := "refs/heads/" + lane.Branch
-	out, gone, err := gitutil.RunCappedExitOneContext(ctx, c.RepoRoot, 4096, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
-	if err != nil {
-		return "", fmt.Errorf("resolving the lane branch %s: %v", lane.Branch, err)
-	}
-	tip := ""
-	if !gone {
-		if tip = strings.TrimSpace(string(out)); !gitutil.IsFullSHA(tip) {
-			return "", fmt.Errorf("resolving the lane branch %s: git named %q", lane.Branch, tip)
+	// A branch git does not name a commit for is gone, as the land step has
+	// always read it: there is nothing of it to delete.
+	tip, tipErr := gitutil.RunCappedContext(ctx, c.RepoRoot, 4096, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
+	if tip = strings.TrimSpace(tip); tipErr != nil || !gitutil.IsFullSHA(tip) {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", fmt.Errorf("resolving the lane branch %s: %w", lane.Branch, ctxErr)
 		}
+		tip = ""
+	}
+	if tip != "" {
 		_, notOn, err := gitutil.RunCappedExitOneContext(ctx, c.RepoRoot, 4096, "merge-base", "--is-ancestor", tip, tracking)
 		if err != nil || notOn {
 			pushed := ""
@@ -2668,7 +2665,7 @@ func retireLanded(ctx context.Context, c Context, lane Lane, tracking, stage, ag
 			return "", err
 		}
 	}
-	if err := removeLaneWorktreeContext(ctx, c, lane, again); err != nil {
+	if err := removeLaneWorktreeAt(ctx, c, lane, stage, again); err != nil {
 		return "", err
 	}
 	if tip != "" {
@@ -2775,12 +2772,16 @@ func branchCheckedOutElsewhereContext(ctx context.Context, c Context, lane Lane,
 // (pickGit), through the filters and ignore files their global config names
 // (iss-2610111729375108).
 func removeLaneWorktree(c Context, lane Lane, again string) error {
-	return removeLaneWorktreeContext(context.Background(), c, lane, again)
+	return removeLaneWorktreeAt(context.Background(), c, lane, string(StageLand), again)
 }
 
-// removeLaneWorktreeContext is removeLaneWorktree with its git bound to ctx.
-func removeLaneWorktreeContext(ctx context.Context, c Context, lane Lane, again string) error {
-	if err := loopWorktree(c, lane, string(StageLand)); err != nil {
+// removeLaneWorktreeAt is removeLaneWorktree with each refusal labelled stage
+// and the derivation of the lane's worktree and the worktree listing bound to
+// ctx. The removal itself is not: it runs as the land stage has always run it,
+// to its end, since git killed part-way through deleting a worktree leaves a
+// half-removed one that reads as one with changes.
+func removeLaneWorktreeAt(ctx context.Context, c Context, lane Lane, stage, again string) error {
+	if err := loopWorktreeContext(ctx, c, lane, stage); err != nil {
 		return err
 	}
 	wts, err := gitutil.ListWorktreesContext(ctx, c.RepoRoot, gitutil.MaxWorktreeListing)
@@ -2793,19 +2794,18 @@ func removeLaneWorktreeContext(ctx context.Context, c Context, lane Lane, again 
 			continue
 		}
 		if wt.Branch != "refs/heads/"+lane.Branch {
-			return refuse(string(StageLand), "", lane.ID, "git lists a worktree at the lane's path on another branch, and the loop removes only what it made",
-				"remove it yourself, then run `abcd implement step` again")
+			return refuse(stage, "", lane.ID, "git lists a worktree at the lane's path on another branch, and the loop removes only what it made",
+				"remove it yourself, then "+again)
 		}
-		args := []string{"worktree", "remove", "--", wt.Path}
-		if _, err := gitutil.RunTreeCommand(gitutil.WorkingTreeCommandContext(ctx, c.RepoRoot, args...), args); err != nil {
-			return refuse(string(StageLand), "", lane.ID, "git could not remove the lane's worktree: "+fsutil.RedactHome(err.Error()),
+		if _, err := pickGit(c.RepoRoot, "worktree", "remove", "--", wt.Path); err != nil {
+			return refuse(stage, "", lane.ID, "git could not remove the lane's worktree: "+fsutil.RedactHome(err.Error()),
 				"settle what git reports (it refuses a worktree with changes), then "+again)
 		}
 		return nil
 	}
 	if _, err := os.Lstat(lane.Worktree); err == nil {
-		return refuse(string(StageLand), "", lane.ID, fsutil.RedactHome(lane.Worktree)+" stands where git lists no worktree, and the loop removes only what it made",
-			"move it aside, then run `abcd implement step` again")
+		return refuse(stage, "", lane.ID, fsutil.RedactHome(lane.Worktree)+" stands where git lists no worktree, and the loop removes only what it made",
+			"move it aside, then "+again)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("checking the lane's worktree: %w", err)
 	}

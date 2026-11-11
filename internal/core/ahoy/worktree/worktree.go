@@ -16,6 +16,7 @@
 package worktree
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -75,7 +76,14 @@ func (l Lane) Path(name string) string { return filepath.Join(l.Dir, name) }
 // is refused; git failing to answer is an error, since that is no evidence
 // the repository has none.
 func LaneFor(repoRoot string) (Lane, error) {
-	sha, err := gitutil.RootCommit(repoRoot)
+	return LaneForContext(context.Background(), repoRoot)
+}
+
+// LaneForContext is LaneFor with its root-commit lookup bound to ctx
+// (gitutil.RootCommitContext): a git still running when ctx ends is killed, and
+// the lookup's answer is ctx's error, never a repository with no root commit.
+func LaneForContext(ctx context.Context, repoRoot string) (Lane, error) {
+	sha, err := gitutil.RootCommitContext(ctx, repoRoot)
 	if err != nil {
 		return Lane{}, fmt.Errorf("reading the repository's root commit to key the worktree store on: %w", err)
 	}

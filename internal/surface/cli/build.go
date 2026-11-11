@@ -285,8 +285,12 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 				if res.Resumed {
 					verb = "resumed"
 				}
+				if res.Finished {
+					verb = "finished"
+				}
 				fmt.Fprintf(w, "build %s: %s run %s\n", termsafe.Sanitize(args[0]), verb, res.RunID)
 				fmt.Fprintf(w, "  state:   %s\n", res.State)
+				renderClosed(w, res.Closed)
 				renderPace(w, res.Pace)
 				renderReview(w, res.Review)
 				renderBudget(w, res.Checks)
@@ -591,6 +595,15 @@ func renderReview(w io.Writer, rs *loop.ReviewSet) {
 // printReviewDiagnostics says the review set's non-fatal reports (a list
 // clamped to the machine's ceiling, a repository's class map or ceiling
 // skipped) on stderr, one line each.
+// renderClosed renders each lane a resumed build closed because its pull
+// request had merged, one line each.
+func renderClosed(w io.Writer, closed []loop.ClosedLane) {
+	for _, c := range closed {
+		fmt.Fprintf(w, "  closed:  %s, its pull request #%d merged at %s; its worktree and branch were removed\n",
+			termsafe.Sanitize(c.Lane), c.PR, shortSHA(c.Merged))
+	}
+}
+
 func printReviewDiagnostics(w io.Writer, diagnostics []string) {
 	for _, d := range diagnostics {
 		fmt.Fprintln(w, termsafe.Sanitize(fsutil.RedactHome(d)))
