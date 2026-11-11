@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -276,6 +277,65 @@ func TestAParkedRenewalKeepsTheVersionItRead(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestADrainLeavesAnotherDriversMarkedParkedRunAtItsVersion: a drain's move takes up a
+// parked run's unsettled stop mark with the check every move makes, which saves the run.
+// A person's own build parked in the checkout is not the drain's: where its file states
+// another version the mark is left to its own driver and the file stays as it was. At
+// this binary's version the mark from a stop since lifted goes, as before.
+func TestADrainLeavesAnotherDriversMarkedParkedRunAtItsVersion(t *testing.T) {
+	for _, version := range []int{schemaVersionPrevious, schemaVersionUnrenamed, SchemaVersion} {
+		t.Run("version "+strconv.Itoa(version), func(t *testing.T) {
+			f, drained := parkDrainLane(t)
+			for _, name := range []string{"pr.json", "body.md"} {
+				_ = os.Remove(filepath.Join(f.gh, name))
+			}
+			start, err := Start(f.repo.Root(), eligibleIssue, Options{noReserve: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.runID, f.issue = start.RunID, eligibleIssue
+			own := f.parkIssueLane(t)
+			f.listPRs(t,
+				stubPR{Number: 7, HeadRefName: drained.Branch, State: "OPEN", Mergeable: "MERGEABLE", MergeStateStatus: "BLOCKED"},
+				stubPR{Number: 8, HeadRefName: own.Branch, State: "OPEN", Mergeable: "MERGEABLE", MergeStateStatus: "BLOCKED"})
+			markUnsettled(t, f.repo.Root(), start.RunID)
+			before, err := os.ReadFile(runStatePath(f.repo.Root(), start.RunID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if version != SchemaVersion {
+				before = stateAtVersion(t, f.repo.Root(), start.RunID, version)
+			}
+
+			res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			c := controlOf(t, f.repo.Root(), start.RunID)
+			if version == SchemaVersion {
+				if c.Stop != nil {
+					t.Fatalf("the mark of a stop since lifted stays on a run at this version: %+v", c.Stop)
+				}
+				return
+			}
+			if c.Stop == nil {
+				t.Fatal("the drain's move took up another driver's mark")
+			}
+			after, err := os.ReadFile(runStatePath(f.repo.Root(), start.RunID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, after) {
+				t.Fatalf("the drain's move rewrote another driver's run:\n%s", after)
+			}
+			if p := parkedOf(t, res, start.RunID); p.State != ParkedStopHolds {
+				t.Fatalf("the run is named as its mark holding it: %+v", p)
+			}
+		})
 	}
 }
 

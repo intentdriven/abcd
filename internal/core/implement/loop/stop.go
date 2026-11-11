@@ -338,10 +338,12 @@ func stopMarkNote(repoRoot, runID string) string {
 
 // parkedStopNote is stopMarkNote for a drain's move over a parked run. A mark that has not
 // settled first takes the check every move makes, so one from a stop lifted since goes, and
-// the run is then as any other.
-func parkedStopNote(repoRoot, runID string, o Options) (string, error) {
+// the run is then as any other. That check saves the run, so a run that is not one of the
+// drain's lanes (ours false) and whose file states another version keeps its mark for its
+// own driver (leftToItsDriver).
+func parkedStopNote(repoRoot, runID string, ours bool, o Options) (string, error) {
 	c, err := runControl(repoRoot, runID)
-	if err == nil && c.Stop != nil && c.Stop.HaltedAt == nil {
+	if err == nil && c.Stop != nil && c.Stop.HaltedAt == nil && (ours || !leftToItsDriver(repoRoot, runID)) {
 		if _, err := stopCheck(repoRoot, runID, DefaultStages(), o); err != nil {
 			if _, refused := AsRefusal(err); !refused {
 				return "", err
@@ -832,16 +834,23 @@ func stopEndsRenewal(repoRoot string, st State, now time.Time) bool {
 // same driver's file.
 func settlesHere(stated int) bool { return stated == SchemaVersion }
 
-// statedVersion is the version run's state file states, read as renewalRuns reads
-// it (readListedStated), for a caller that holds only the raised State.
-func statedVersion(repoRoot, runID string) (int, error) {
+// leftToItsDriver reports whether a drain that does not drive the run leaves its stop
+// to the run's own driver: its state file, read as renewalRuns reads it
+// (readListedStated), states another version than this binary's (settlesHere). A file
+// that cannot be read is not left: the save that follows refuses it as it always has.
+func leftToItsDriver(repoRoot, runID string) bool {
 	dir, err := os.OpenRoot(repoRoot)
 	if err != nil {
-		return 0, err
+		return false
 	}
 	defer dir.Close()
 	_, stated, err := readListedStated(dir, runID)
-	return stated, err
+	return err == nil && !settlesHere(stated)
+}
+
+// drainsRun reports whether runID is one of a drain's lanes.
+func drainsRun(lanes []DrainLane, runID string) bool {
+	return slices.ContainsFunc(lanes, func(l DrainLane) bool { return l.RunID == runID })
 }
 
 // notStartedUnderStop answers an await this very call handed out or re-told, which a
@@ -1094,10 +1103,8 @@ func drainStop(repoRoot string, st *DrainState, o Options) (string, error) {
 		// their files state: a newer abcd's drain in this checkout reads the same
 		// drain state, so nothing tells a drain resumed by an upgrade from a
 		// second one (reservation_save.go).
-		if !slices.ContainsFunc(st.Lanes, func(l DrainLane) bool { return l.RunID == run.RunID }) {
-			if stated, err := statedVersion(repoRoot, run.RunID); err == nil && !settlesHere(stated) {
-				continue
-			}
+		if !drainsRun(st.Lanes, run.RunID) && leftToItsDriver(repoRoot, run.RunID) {
+			continue
 		}
 		if _, err := haltRun(repoRoot, run.RunID, *r.Stop, DefaultStages(), o); err != nil {
 			if _, ok := AsRefusal(err); ok {

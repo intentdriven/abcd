@@ -201,11 +201,12 @@ var afterParkedFetch = func() {}
 // to finish (a branch moved past what landed, a worktree with changes) is
 // named, not fatal: the drain's own move goes on. A run a stop's mark stands on
 // is not among them, whatever the forge says of it: it is named as what the mark
-// waits for. Only its renewal stands, which decides for itself (stopEndsRenewal), and only
+// waits for; lanes are the drain's own, and a parked run not among them is taken up only
+// where its file states this version (parkedStopNote). Only its renewal stands, which decides for itself (stopEndsRenewal), and only
 // where this code is reached: under a stop in force the move refuses first (drainStop), so
 // only a drive still in an agent's call or a preflight renews the claim of a run with work a
 // save could not take, and otherwise it lapses at its lease with the lane's work still on its branch and in its worktree.
-func finishMerged(repoRoot string, now time.Time, o Options) ([]DrainFinished, []DrainParked, error) {
+func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options) ([]DrainFinished, []DrainParked, error) {
 	runs, err := Runs(repoRoot)
 	if err != nil {
 		return nil, nil, err
@@ -226,7 +227,7 @@ func finishMerged(repoRoot string, now time.Time, o Options) ([]DrainFinished, [
 		if i < 0 {
 			continue
 		}
-		note, err := parkedStopNote(repoRoot, run.RunID, o)
+		note, err := parkedStopNote(repoRoot, run.RunID, drainsRun(lanes, run.RunID), o)
 		if err != nil {
 			return nil, nil, err
 		}
