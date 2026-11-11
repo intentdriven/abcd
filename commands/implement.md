@@ -1041,8 +1041,17 @@ new lane as its directory. The add runs in the checkout, so git takes the hooks
 directory there: with a relative `core.hooksPath` such as `.githooks`, it runs
 the checkout's own working-tree copy, never the copy held by the commit being
 checked out, for a lane the stage cuts and a branch that already stands alike.
-That copy is the one the run's fingerprint already watches, checked at the
-start of the step, before the add.
+Where your repository's own settings name the hooks directory, the run's
+fingerprint records that copy at the run's first check, which is normally the
+step that makes the lane, and within a run a later change to it is refused at
+the next step. Across the lanes of one drive the drive holds it: as it starts
+it reads the checkout's hooks directory, hashing each entry as the fingerprint
+does, and keeps the hashes in its own memory; just before each lane's add the
+worktree stage reads the directory again and refuses the lane on any
+difference, naming the hook file, before any add and so before any hook runs.
+Elsewhere nothing does: a step the host runs, a single build and a drive
+started again take the copy as it stands at the run's first check, so it must
+not change between runs, and nothing enforces it.
 
 A branch that already stands under the lane's name (a step stopped between git
 making the branch and the worktree) has its head resolved once. That commit's
@@ -1050,11 +1059,15 @@ hooks directory, read as stored, must be the tip's, judged by the hooks
 directory git takes at the checkout from all your settings, global ones
 included. A head whose hooks directory cannot be read is refused too. If the
 branch holds another commit once git has added the worktree, the lane is
-refused and nothing is pinned. The add is also told on its command line the
-hooks directory read at the checkout. Both are defensive: a lane whose hooks
-differ is refused before a worktree is made rather than after, and neither
-stops the post-checkout hook from running. A standing branch's content outside
-the hooks directory is its own and is not vouched for.
+refused, nothing is pinned, and the stage removes the worktree it has just
+added (that one only, never the branch), so the next step meets the standing
+branch and judges it again before any add. The standing-branch check is
+defensive: a lane whose hooks differ is refused before a worktree is made
+rather than at the proof after it. The add is also told on its command line the
+hooks directory read at the checkout; that refuses nothing, and only pins the
+directory the check judged. Neither stops the post-checkout hook from running.
+A standing branch's content outside the hooks directory is its own and is not
+vouched for.
 
 Then, before any commit in the lane, a lane whose hooks directory is its own
 copy has that directory proved against the commit it opens on: the same
@@ -1082,17 +1095,20 @@ holds what was proved, so that step's check names the change.
 A drive reads these settings once as it starts, before its first lane, and
 keeps hashes of their values in its own memory, never in a file: `origin`'s
 `url`, `pushurl`, `uploadpack`, `proxy` and `vcs`; every URL rewrite
-(`url.*.insteadOf` and `pushInsteadOf`); `core.sshCommand`, `core.gitProxy`
-and `core.hooksPath`; and `http.proxy` and `http.sslVerify`. It reads them
-with the same git command the ask of `origin` uses, so it sees the values the
-ask sees, from your repository, global and system settings alike. Each lane's
+(`url.*.insteadOf` and `pushInsteadOf`); `core.sshCommand`, `core.gitProxy`,
+`core.hooksPath` and `core.askPass`; every `credential.*` key; `protocol.allow`
+and every `protocol.*.allow`; and `http.proxy` and `http.sslVerify`. It reads
+them through the same runner the ask of `origin` uses, so it sees the values
+the ask sees, from your repository, global and system settings alike. Each lane's
 worktree stage reads them again before it asks `origin` anything and once more
 after `origin` has answered, and refuses the lane on any difference, naming
 the key (a URL in a key's name hidden, as below). A change made between the
 two reads and put back before the second is not seen. Not held: any other
 `http.*` key, a per-URL one included; an `origin` defined only by a legacy
 remotes or branches file in the git directory, which has no key to compare;
-and anything changed while no drive runs. A drive started again reads them
+the run fingerprint's other watched settings (content filters, diff and merge
+drivers, signing programs, includes and the rest), which each run records
+afresh at its first check; and anything changed while no drive runs. A drive started again reads them
 afresh, so such a change is the new drive's starting point. A step the host
 runs and a single build carry no such record: there these settings must not
 change between one lane's run and the next, and nothing enforces it.
@@ -1112,7 +1128,7 @@ change like any other, which stops the next step until you accept it; and each
 run records the watched settings afresh when it first checks them, so a
 setting changed before a run's first check is that run's starting point (each
 lane of a drain is a run of its own, and a drive holds across its lanes only
-the settings named above), and you must look at what changes between runs yourself. Your global and system
+the settings and the checkout's hooks directory named above), and you must look at what changes between runs yourself. Your global and system
 settings are your own and are not watched. The file holds salted hashes, never
 a value: a credential helper's value may carry a secret, so only key names and
 file paths are ever stored or reported. A key's name can carry a secret too (a
