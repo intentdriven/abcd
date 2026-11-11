@@ -260,6 +260,10 @@ type StatusView struct {
 	ScheduledDoubt      *ScheduledDoubt
 	ScheduledRefreshDue bool
 	scheduledPaths      *scheduledPathSet
+	// index is the prompt hook's read of the index of unshown announcements,
+	// which Announcements then holds alone; nil when every kept announcement
+	// was read.
+	index *unshownRead
 }
 
 // StatusFetch is what `abcd status`'s fetch could not read: Gap is why
@@ -422,6 +426,15 @@ func statusName(name string) bool {
 // was read before it: the view's origin, its fetch's date and its failed
 // fetches always, and the holds when they were read.
 func ReadStatus(ctx context.Context, root string, now time.Time, o Options) (StatusView, error) {
+	return readStatus(ctx, root, now, o, false)
+}
+
+// readStatus is ReadStatus. For the prompt hook (prompt true) it reads, of
+// the kept announcements, only those the index of unshown ones names
+// (unshownAnnouncements), and AnnouncementsNotRead then counts what the index
+// names past the cap; every kept announcement is read when the index cannot
+// be, and by `abcd status` always.
+func readStatus(ctx context.Context, root string, now time.Time, o Options, prompt bool) (StatusView, error) {
 	now = now.UTC().Truncate(time.Second)
 	ok, err := HasOrigin(root)
 	if err != nil {
@@ -449,7 +462,14 @@ func ReadStatus(ctx context.Context, root string, now time.Time, o Options) (Sta
 	if err != nil {
 		return v, errors.Join(holdsErr, err)
 	}
-	v.Announcements, v.AnnouncementsNotRead = keptAnnouncementsCounted(root, now, in.held)
+	if prompt {
+		if v.Announcements, v.AnnouncementsNotRead, v.index, err = unshownAnnouncements(ctx, root, now, in.held); err != nil {
+			return v, errors.Join(holdsErr, err)
+		}
+	}
+	if v.index == nil {
+		v.Announcements, v.AnnouncementsNotRead = keptAnnouncementsCounted(root, now, in.held)
+	}
 	v.BranchesLeft, v.leftKey = len(in.left), in.leftKey()
 	for _, d := range keptDoubts(root, now) {
 		// A doubt of a branch this checkout no longer holds is not shown.
@@ -995,7 +1015,10 @@ func seenKeptIn(r *os.Root, commit string) bool {
 // keepSeen keeps each of commits, read on branch, as first fetched at now,
 // through one open of the root, unflushed and best effort: one not kept is
 // read again by the next intake. commits is newest first, and the newest
-// takes the largest order, from base.
+// takes the largest order, from base. Each commit kept is named in the index
+// of unshown announcements, in one file for them all, so the prompt hook
+// reads it without reading every announcement kept; when the index cannot be
+// written it is marked as not whole, and the next reader builds it again.
 func keepSeen(root, branch string, commits []string, read map[string]readAnnouncement, now time.Time, base int64) {
 	r, err := os.OpenRoot(root)
 	if err != nil {
@@ -1006,6 +1029,15 @@ func keepSeen(root, branch string, commits []string, read map[string]readAnnounc
 	if err := mkStateDir(r, dir); err != nil {
 		return
 	}
+	// Before anything new is kept: an index first built here names what was
+	// kept until now.
+	indexed := unshownIndexReady(r, root)
+	var kept []string
+	defer func() {
+		if indexed && len(kept) > 0 && !indexCommits(r, kept) {
+			unindex(r)
+		}
+	}()
 	for i, c := range commits {
 		e := seenEntry{Branch: branch, FirstFetched: stamp(now), Order: base + int64(len(commits)-1-i)}
 		if a := read[c]; a.h.Unreadable != "" {
@@ -1017,7 +1049,9 @@ func keepSeen(root, branch string, commits []string, read map[string]readAnnounc
 		if err != nil {
 			continue
 		}
-		_ = writeUnflushedAt(r, dir, c, data)
+		if writeUnflushedAt(r, dir, c, data) == nil {
+			kept = append(kept, c)
+		}
 	}
 }
 
@@ -1137,13 +1171,36 @@ func keptAnnouncements(root string, now time.Time, held map[string]bool) []Annou
 // written), and how many more were kept past that cap, which it does not read.
 func keptAnnouncementsCounted(root string, now time.Time, held map[string]bool) ([]Announcement, int) {
 	var out []Announcement
+	names, past := keptNames(root)
+	for _, c := range names {
+		a, ok := keptAnnouncement(root, c)
+		if !ok || held != nil && !held[a.Branch] {
+			continue
+		}
+		if a.Unreadable != "" {
+			if now.Sub(a.FirstFetched) < MaxAnnouncementLife {
+				out = append(out, a)
+			}
+			continue
+		}
+		if a.Standing(now) {
+			out = append(out, a)
+		}
+	}
+	sortAnnouncements(out)
+	return out, past
+}
+
+// keptNames is the commits of at most maxKeptAnnouncements kept
+// announcements, the newest kept (by when each file was written), and how
+// many more are kept past that cap.
+func keptNames(root string) (names []string, past int) {
 	var entries []fs.DirEntry
 	for _, e := range statusEntries(root, seenDir) {
 		if gitutil.IsFullSHA(e.Name()) && e.Type().IsRegular() {
 			entries = append(entries, e)
 		}
 	}
-	past := 0
 	if len(entries) > maxKeptAnnouncements {
 		at := make(map[string]time.Time, len(entries))
 		for _, e := range entries {
@@ -1161,21 +1218,13 @@ func keptAnnouncementsCounted(root string, now time.Time, held map[string]bool) 
 		entries = entries[:maxKeptAnnouncements]
 	}
 	for _, e := range entries {
-		c := e.Name()
-		a, ok := keptAnnouncement(root, c)
-		if !ok || held != nil && !held[a.Branch] {
-			continue
-		}
-		if a.Unreadable != "" {
-			if now.Sub(a.FirstFetched) < MaxAnnouncementLife {
-				out = append(out, a)
-			}
-			continue
-		}
-		if a.Standing(now) {
-			out = append(out, a)
-		}
+		names = append(names, e.Name())
 	}
+	return names, past
+}
+
+// sortAnnouncements sorts out as keptAnnouncements orders it.
+func sortAnnouncements(out []Announcement) {
 	sort.SliceStable(out, func(i, j int) bool {
 		if !out[i].FirstFetched.Equal(out[j].FirstFetched) {
 			return out[i].FirstFetched.After(out[j].FirstFetched)
@@ -1193,14 +1242,18 @@ func keptAnnouncementsCounted(root string, now time.Time, held map[string]bool) 
 		}
 		return out[i].Commit < out[j].Commit
 	})
-	return out, past
 }
+
+// keptReads counts every read of a kept announcement (keptAnnouncement), so
+// a test can tell how many one prompt made.
+var keptReads atomic.Int64
 
 // keptAnnouncement is commit's kept entry as a reader shows it, its sender
 // judged: doubtful when its sender trailer names someone other than the
 // branch's owner (C11) or the forge's record names another pusher (C17),
 // verified when the forge's record names the owner, claimed otherwise.
 func keptAnnouncement(root, commit string) (Announcement, bool) {
+	keptReads.Add(1)
 	data := readStatusFile(root, seenDir+"/"+commit, 4096)
 	if data == nil {
 		return Announcement{}, false
@@ -1729,6 +1782,7 @@ const tmpKeep = time.Minute
 // behind (older than tmpKeep, by the wall clock), in the state directory
 // itself or any directory under it; every kept announcement whose life
 // ended more than seenKeep ago, with its shown marker and its pusher; every
+// file of the index of unshown announcements written longer ago than that; every
 // other shown marker older than shownKeep (a block's file of the lines one
 // prompt showed, a line's own marker an earlier build kept, or an
 // announcement's whose announcement is no longer kept); every doubt the reader no longer shows (found more than a day ago, or
@@ -1741,7 +1795,7 @@ func pruneStatus(ctx context.Context, root string, now time.Time, refs []statusR
 		return
 	}
 	defer r.Close()
-	for _, sub := range []string{"", seenDir, shownDir, doubtDir, pusherDir, path.Base(statusBranches.readDir())} {
+	for _, sub := range []string{"", seenDir, shownDir, unshownDir, doubtDir, pusherDir, path.Base(statusBranches.readDir())} {
 		for _, e := range statusEntries(root, sub) {
 			if ctx.Err() != nil {
 				return
@@ -1787,6 +1841,19 @@ func pruneStatus(ctx context.Context, root string, now time.Time, refs []statusR
 		}
 		if info, err := e.Info(); err == nil && now.Sub(info.ModTime()) > shownKeep {
 			_ = r.Remove(statusFile(shownDir + "/" + e.Name()))
+		}
+	}
+	for _, e := range statusEntries(root, unshownDir) {
+		if ctx.Err() != nil {
+			return
+		}
+		if !strings.HasPrefix(e.Name(), unshownPrefix) {
+			continue
+		}
+		// By the wall clock, as the file was written: every announcement it
+		// names was first fetched no later, so each is past its keep.
+		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > MaxAnnouncementLife+seenKeep {
+			_ = r.Remove(statusFile(unshownDir + "/" + e.Name()))
 		}
 	}
 	for _, e := range statusEntries(root, doubtDir) {
