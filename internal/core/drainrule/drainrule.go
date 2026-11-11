@@ -215,13 +215,15 @@ func Load(repoRoot string) (Rule, error) {
 		}
 		// Every surface names the rule by its record's id, so a record whose
 		// frontmatter claims another record's id would put that record's name
-		// on its own rule. The file name is the id the store allocated.
+		// on its own rule. The file name is the id the store allocated, and the
+		// rule names it in that one spelling: a frontmatter id written with its
+		// ordinal zeros or in capitals is the same record, and a surface that
+		// holds an id to its canonical form (a lane's admission) refuses any other.
 		if fmID, _ := frontmatter.ScalarString(fields["id"].Value); fmID != "" {
 			if recordid.CanonADRID(fmID) != fileID {
 				return Rule{}, fmt.Errorf("%w: %s says its id is %s, but its file name makes it %s; a record states its own id",
 					ErrMalformed, rel, fmID, fileID)
 			}
-			c.id = fmID
 		}
 		c.status, _ = frontmatter.ScalarString(fields["status"].Value)
 		if c.status == "accepted" {

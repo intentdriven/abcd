@@ -76,6 +76,7 @@ Out of scope, recorded elsewhere: Freezing a cycle's rows at `launch ship`, and 
 1. The admission in the run's state and the `Admitted-by:` trailer on every lane's records commit
    - packages: internal/core/implement/loop/state.go, internal/core/implement/loop/loop.go, internal/core/implement/loop/drain.go, internal/core/implement/loop/land.go, internal/core/landings/admitted.go, commands/implement.md, .abcd/development/brief/04-surfaces/34-build.md, .abcd/development/brief/04-surfaces/35-drain.md
    - tests: internal/core/implement/loop/land_admitted_test.go, internal/core/implement/loop/state_admitted_test.go, internal/core/implement/loop/drain_admitted_test.go, internal/core/implement/loop/land_attribution_test.go, internal/core/landing/land_test.go, internal/core/landings/admitted_test.go
+   - landed: 6317d5570caa
 2. The reader: rows, the four classes, the forge read with its cache, and the range
    - needs: 1
    - packages: internal/core/landings/landings.go, internal/core/landings/forge.go, internal/core/landings/since.go, internal/core/landing/facilitator.go, internal/core/landing/config.go, internal/ghcontract

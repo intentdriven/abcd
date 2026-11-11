@@ -299,7 +299,11 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 25. Version 25
+under a run id it does not name. The state is schema version 26. Version 26
+added the run's `admitted`, the rule its lanes were admitted under, which each
+records commit carries as its `Admitted-by:` trailer (itd-2610301850454860): a
+file of version 25 or lower reads as a run that recorded none, and one carrying
+it is refused. Version 25
 renamed the stored model classes for what each is for (itd-2611101419006280):
 a stored class label is one of `research`, `top`, `default` and `small`, where
 earlier versions stored `top`, `middle`, `below` and `smallest` for the same
@@ -1005,8 +1009,19 @@ mode is `auto`, back at `validate`, and a sync.
    the lane's step under another title, is refused at the landing's first
    step, before anything is written. A records commit that only marks the step
    carries abcd's text alone, so it declares `Assisted-by: abcd:<version>`
-   rather than the lane's models. A lane that marks no step, neither closes
-   the spec nor fixed a capture records nothing.
+   rather than the lane's models. Every records commit also carries
+   `Admitted-by:`, the rule the run's state says its lanes were admitted under
+   (itd-2610301850454860), after `Delivers:` and `Resolves:` and before
+   `Assisted-by:`: `build <spc-N>` for an intent's run, `build <iss-N>` for an
+   issue's, and `drain <adr-N>`, the drain's rule record, for a lane the drain
+   opened; an issue it names that no `Resolves:` line declares takes a `Refs:`
+   line. The run's state records that admission at its start (`admitted`, with
+   the rule record's path for a drain's lane), and a records step over a state
+   without it is refused naming the field, before anything is written. A lane
+   that marks no step, neither closes the spec nor fixed a capture still makes
+   the commit, changing no file, as the record of its admission alone, under
+   abcd's label; so does one whose resolutions the branch already holds, under
+   the lane's models.
 3. It pushes the lane's branch to `origin` only once the repository's
    preflight receipt (`.abcd/.work.local/preflight-receipts/<head>`, in any
    worktree git lists) names the lane's head, the gate the pre-push hook
@@ -1017,8 +1032,8 @@ mode is `auto`, back at `validate`, and a sync.
 4. It opens the pull request through the forge client the repository already
    uses (`gh`), with a title and a body written from the run's records (the
    step, the spec, the intent, the passing round's verdicts, the close, each
-   resolved capture, and the `Delivers:` and `Resolves:` lines) and passed
-   through the outbound scrub. The body ends with `Assisted-by: abcd:<version>`,
+   resolved capture, and the `Delivers:`, `Resolves:` and `Admitted-by:` lines)
+   and passed through the outbound scrub. The body ends with `Assisted-by: abcd:<version>`,
    abcd having composed it from record facts (the version as the pick commit
    names it), then one `Assisted-by:` per distinct model the lane's receipts
    reported, in the order first reported, since the change it describes carries

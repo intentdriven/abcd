@@ -1399,3 +1399,30 @@ func TestABranchTrackingTheDefaultBranchPushesOnlyToItsOwnName(t *testing.T) {
 		}
 	}
 }
+
+// TestLandMovesNoHeadAndWritesNoTrailer (itd-2610301850454860, decision 5): abcd
+// adds nothing to a person's branch. The gate, the push and the arming all name
+// the head the person made, so the branch's tip is the same before and after
+// Land, and no commit on it carries an `Admitted-by:` line.
+func TestLandMovesNoHeadAndWritesNoTrailer(t *testing.T) {
+	f := newFixture(t, queueRuleset)
+	before := f.head()
+	f.forge.prs = f.prFor(before)
+	f.forge.views = []string{viewBlocked, viewQueued}
+	if _, err := f.land(f.options()); err != nil {
+		t.Fatal(err)
+	}
+	if after := f.head(); after != before {
+		t.Fatalf("Land moved the branch from %s to %s", before, after)
+	}
+	if got := f.repo.Git("rev-parse", "refs/heads/feat/x"); got != before {
+		t.Fatalf("the branch is at %s, not the head the person made, %s", got, before)
+	}
+	if got := f.onOrigin("feat/x"); got != before {
+		t.Fatalf("origin holds %s, not the head the person made, %s", got, before)
+	}
+	msgs := f.repo.Git("log", "--format=%B", "origin/main.."+before)
+	if strings.Contains(strings.ToLower(msgs), "admitted-by") {
+		t.Fatalf("a commit on the person's branch carries an Admitted-by: line:\n%s", msgs)
+	}
+}

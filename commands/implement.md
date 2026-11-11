@@ -617,7 +617,9 @@ location two reviewers of the round cite carries `cited_by`, naming both.
 version 24's. Version 25 renamed the stored classes (`top` is now `research`,
 `middle` is `top`, `below` is `default`, `smallest` is `small`), gave a stored
 judge its `status` and each class its `effort`; an older run's state is
-migrated on read, each reviewer keeping the model it was resolved to. Each role a round hands
+migrated on read, each reviewer keeping the model it was resolved to. Version
+26 added the run's `admitted`; an older run's state reads as one that recorded
+none. Each role a round hands
 out is asked for the model tier its routing row names, and a round that does
 not pass moves each role one step up for the next round (`local`, `economy`,
 `frontier`; `frontier` and `host-decides` stay), from the tier it ran at, never
@@ -728,8 +730,18 @@ over each of the run's lanes' own diff.
    and ingests the verdict of the audit that lane took, and for each capture the
    lane's receipts declared fixed it runs `capture resolve` with that commit. It
    commits them on the lane's branch with `Delivers:` (when the close ships the
-   intent) and `Resolves:` trailers, and an `Assisted-by:` naming the model the
-   lane's receipts reported, since the records carry that model's prose. A
+   intent) and `Resolves:` trailers, an `Admitted-by:` naming the rule the run
+   was admitted under (`build <spc-N>`, `build <iss-N>`, or `drain <adr-N>` for
+   a drain's lane, from the `admitted` its state records at the start), and an
+   `Assisted-by:` naming the model the lane's receipts reported, since the
+   records carry that model's prose. A lane with nothing to record still makes
+   this commit, changing no file, under `Assisted-by: abcd:<version>`, so the
+   admission reaches the default branch with the merge; a run whose state names
+   no admission (one started before runs recorded it) is refused here. Such a
+   run is resumed, never started afresh, so resuming it with this abcd records
+   the admission its start would have: `abcd build <key>` for a run `abcd
+   build` started, and the next `abcd drain` for a drain's lane, under the rule
+   the drain began under; the step then goes on. A
    receipt that verified without a model the trailer can name (none, as one
    written before it was required, or one in another form) takes the model the
    runner that ran it reported, or else its file's model, read again, so a corrected receipt file lands without anyone editing the
@@ -753,7 +765,8 @@ over each of the run's lanes' own diff.
 4. It opens the pull request through `gh`, with a body written from the run's
    records and passed through the outbound scrub, then re-reads the body the
    forge holds and strips a session URL or tool footer the harness appended.
-   The body ends with `Assisted-by: abcd:<version>` (abcd wrote its text) and
+   Its trailers carry the records commit's `Admitted-by:` line, and it ends
+   with `Assisted-by: abcd:<version>` (abcd wrote its text) and
    then one `Assisted-by:` per model the lane's receipts reported (the change
    carries their work); a lane whose receipt reports no model is refused before
    the pull request is opened.
@@ -980,8 +993,24 @@ platform's shared folder for the account it expects. A setting that cannot be re
 should read whose stop cannot be looked at,
 holds the run at the stage `stop`, exit 3, with nothing let go: tell the person, who puts it back.
 A home that cannot be found holds it the same way. A take-over needs a read that saw clearly.
-A renewal that falls due under a stop settles the run first; with no agent left in its call
-and its work saved it no longer renews. Work a save could not take stays uncommitted in its
+A renewal that falls due under a stop settles the run first, unless the run's state file
+states another version than the renewing abcd's: that run is not settled, and is left to its own
+driver's check. Its claim is still renewed, with a line in its record and its file left at its own
+version, while an agent may be in its call or while that check has left work a save could not take;
+otherwise it is neither renewed nor let go, and lapses at its lease with the lane's work on its branch
+and in its worktree, none of it saved aside. A drain's move leaves a run that is not one of its
+lanes the same way: under a stop it does not halt one whose file states another version, its refusal
+naming each run it leaves and that the run's own driver's next check takes the stop, and it leaves
+such a parked run's unsettled mark to its own driver. Two limits stand, and nothing enforces either
+yet. A step under a stop, and a drain's move over its own lanes, must leave another version's run to
+its driver too, and each settles the run at the stepping abcd's version. A drain's move must also leave
+alone a parked run another version's driver writes that carries no stop's mark, one of its own lanes or
+not, and it needs no stop to reach one: finishing a merged lane, entering a conflicting lane's sync
+again, watching an armed pull request in the merge queue and handing back a closed one each save the
+run at the drain's abcd's version. Neither is closed because nothing the run records tells its own
+driver resumed by a newer abcd from a second session or drain started in its checkout, and a new drain
+finishing the merged lanes an earlier drain left is the ordinary path after an upgrade. With no agent left in its
+call and its work saved it no longer renews. Work a save could not take stays uncommitted in its
 worktree and nowhere else, and its claim lapses at its lease unless a gated waiter, `abcd implement status` or a drive still
 in an agent's call or a preflight renews it; only that drive renews a run parked at land. A
 lift names any stop it cannot reach. A stop another account left is not honoured, and each

@@ -190,6 +190,24 @@ func TestTheLandedRangePassesTheAttributionGate(t *testing.T) {
 	if out, err := gate("commits", implHead, l.HeadSHA); err != nil {
 		t.Fatalf("the attribution gate passes the landed range %s..%s: %v\n%s", shortSHA(implHead), shortSHA(l.HeadSHA), err, out)
 	}
+	// The records commit carries the run's admission (itd-2610301850454860), and
+	// RS004's message half, which the commit-msg hook runs, accepts its message
+	// for both an admission naming the spec and one naming an issue it declares.
+	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
+	if !strings.Contains(msg, "\nAdmitted-by: build spc-1\n") {
+		t.Fatalf("the records commit carries the admission:\n%s", msg)
+	}
+	for _, m := range []string{msg, strings.Replace(msg, "Admitted-by: build spc-1", strings.Join(admittedTrailers(Admitted{Kind: "build", Record: "iss-2609300000000999"}, nil), "\n"), 1)} {
+		file := filepath.Join(t.TempDir(), "msg")
+		if err := os.WriteFile(file, []byte(m), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command("bash", filepath.Join(root, "scripts", "check-issue-resolution.sh"), "message", file)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("RS004's message half passes the records commit's message: %v\n%s\n%s", err, out, m)
+		}
+	}
 
 	// The pull request's body, as the forge received it, passes the gate's
 	// body check (iss-2610020727177336), and so does a body naming two models.
@@ -262,7 +280,7 @@ func TestThePullRequestBodyEndsWithTheLabelAndTheModels(t *testing.T) {
 // commit's is, so a receipt that names no model, or names abcd, refuses the step
 // and no pull request is opened. The records commit settles this first on a
 // lane that records something; the pull request settles it for itself, because
-// a lane that records nothing makes no records commit.
+// a lane that moves no record makes a records commit under abcd's label alone.
 func TestAPullRequestWhoseReceiptsNameNoModelIsNotOpened(t *testing.T) {
 	for _, model := range []string{"", "abcd:dev"} {
 		f := newLandFixture(t, queueRuleset("MERGE"))
