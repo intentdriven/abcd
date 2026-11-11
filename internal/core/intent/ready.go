@@ -566,7 +566,15 @@ func specBodyCheck(repoRoot string, it Intent, sp spec.Spec, linkOK bool) (Ready
 		c.Remedy = fmt.Sprintf("write the spec body at %s, then re-run `abcd intent ready %s`", sp.Path, it.ID)
 		return c, nil
 	}
-	if why := specUnsettled(content); why != "" {
+	// A record that is never built again, or a spec already closed, is
+	// history: what it says about its readiness binds nothing, and a remedy to
+	// edit it could not run (as openQuestionsCheck and claimCheckExemption).
+	exempt := sp.Status == spec.StatusClosed
+	switch it.Bucket {
+	case BucketShipped, BucketSuperseded, BucketDisciplines:
+		exempt = true
+	}
+	if why := specUnsettled(content); why != "" && !exempt {
 		c.Detail = sp.ID + " says it is not ready to build: " + why
 		c.Remedy = "settle it in " + sp.Path + ": " + spec.UnsettledRemedy
 		return c, nil
@@ -576,29 +584,24 @@ func specBodyCheck(repoRoot string, it Intent, sp spec.Spec, linkOK bool) (Ready
 	return c, nil
 }
 
-// maxUnsettledShown caps how many of a spec's unsettled statements a row
-// names; the rest are counted.
+// maxUnsettledShown caps how many of a spec's unsettled statements, or of a
+// record's open questions, a row names; the rest are counted.
 const maxUnsettledShown = 3
+
+// maxQuestionRunes caps the text one open question quotes.
+const maxQuestionRunes = 160
 
 // specUnsettled is what a written spec's own text says against its being built
 // (iss-2611101318042398), or "" when it says nothing: each open item under its
 // `## Open Questions`, read as an intent's are (openQuestions), then each
-// statement spec.Unsettled finds outside them — a sentence opening "Not READY",
-// a bold "Open:" label outside that section. The spec is the design record a
-// lane builds from, so a question it still asks holds the build as one the
-// intent asks does.
+// statement spec.Unsettled finds — a sentence opening "Not READY", a bold
+// "Open:" label outside that section, a fence or comment left open. The spec
+// is the design record a lane builds from, so a question it still asks holds
+// the build as one the intent asks does.
 func specUnsettled(content string) string {
 	var parts []string
 	if qs := openQuestions(content); len(qs) > 0 {
-		shown := qs
-		if len(shown) > maxUnsettledShown {
-			shown = shown[:maxUnsettledShown]
-		}
-		clipped := make([]string, len(shown))
-		for i, q := range shown {
-			clipped[i] = clip(strings.Join(strings.Fields(termsafe.Sanitize(q)), " "), 160)
-		}
-		parts = append(parts, fmt.Sprintf("it asks %d open question(s) under ## Open Questions: %s", len(qs), strings.Join(clipped, " | ")))
+		parts = append(parts, fmt.Sprintf("it asks %d open question(s) under ## Open Questions: %s", len(qs), questionList(qs)))
 	}
 	stmts := spec.Unsettled(content)
 	for i, st := range stmts {
@@ -609,6 +612,32 @@ func specUnsettled(content string) string {
 		parts = append(parts, st.Describe())
 	}
 	return strings.Join(parts, "; ")
+}
+
+// questionList renders a record's open questions for a row: each sanitised for
+// a terminal, its whitespace collapsed and clipped, at most maxUnsettledShown
+// of them and the rest counted. The questions are record text agents and
+// people write, so none reaches a surface raw.
+func questionList(qs []string) string {
+	shown := qs
+	if len(shown) > maxUnsettledShown {
+		shown = shown[:maxUnsettledShown]
+	}
+	out := make([]string, len(shown))
+	for i, q := range shown {
+		out[i] = shownText(q, maxQuestionRunes)
+	}
+	list := strings.Join(out, " | ")
+	if n := len(qs) - len(shown); n > 0 {
+		list += fmt.Sprintf(" | and %d more", n)
+	}
+	return list
+}
+
+// shownText is record text as a row quotes it: terminal controls masked,
+// whitespace collapsed, clipped to n runes.
+func shownText(s string, n int) string {
+	return clip(strings.Join(strings.Fields(termsafe.Sanitize(s)), " "), n)
 }
 
 // stepsCheck reports the shape of the linked spec's `## Steps` section

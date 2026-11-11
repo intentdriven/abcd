@@ -45,7 +45,8 @@ var (
 
 // openQuestions returns the questions an intent's `## Open Questions` section
 // still asks: one per top-level list item, bulleted or numbered, in document
-// order, each as its first line's text. A settled record says so in prose — the
+// order, each as its first line's text, under a sub-heading of the section as
+// well as directly under it. A settled record says so in prose — the
 // minted `_None recorded yet._`, or `_None open; …_` naming the decisions that
 // answered them — and prose, a blockquote and an indented continuation are not
 // questions. A record with no such section asks none.
@@ -82,7 +83,7 @@ func openQuestions(content string) []string {
 		item = nil
 	}
 	first := true
-	for _, ln := range strings.Split(sectionBody(content, openQuestionsHeadingRe), "\n") {
+	for _, ln := range strings.Split(openQuestionsBody(content), "\n") {
 		ln = strings.TrimRight(ln, "\r")
 		trimmed := strings.TrimSpace(ln)
 		if first && trimmed != "" {
@@ -109,6 +110,19 @@ func openQuestions(content string) []string {
 	}
 	flush()
 	return out
+}
+
+// openQuestionsBody is the `## Open Questions` section's body, its
+// sub-sections included: the section runs to the next live heading of its own
+// depth or shallower, so a question asked under `### Relay` inside it is read
+// (iss-2611101318042398). Every other section reader stops at any heading.
+func openQuestionsBody(content string) string {
+	lines := strings.Split(content, "\n")
+	start, end, ok := mdrecord.SectionLineRangeNestedIn(lines, mdrecord.Mask(lines), openQuestionsHeadingRe)
+	if !ok {
+		return ""
+	}
+	return strings.Join(lines[start:end], "\n")
 }
 
 // settledItem reports whether an item — its first line's text, then its

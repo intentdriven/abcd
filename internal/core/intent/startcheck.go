@@ -19,7 +19,6 @@ import (
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
-	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The record-only pre-start check names, in the order StartChecksIn reports
@@ -102,7 +101,7 @@ func startOpenQuestionsRow(id, content string) StartRow {
 		row.Detail = "no open question"
 		return row
 	}
-	row.Detail = fmt.Sprintf("%s asks %d open question(s): %s", id, len(qs), strings.Join(qs, " | "))
+	row.Detail = fmt.Sprintf("%s asks %d open question(s): %s", id, len(qs), questionList(qs))
 	row.Remedy = "answer each in the record's `## Decisions` and mark it settled (an item marked `resolved:` or `**Deferred**`, or a section opening `_All resolved …_`), through the planning interview (/abcd:intent)"
 	return row
 }
@@ -152,10 +151,12 @@ func startHoldRow(it Intent) StartRow {
 }
 
 // linkedSpecContent reads the spec the readiness gate judged for r, or nothing
-// when the gate linked none (the steps row names that case).
+// when the gate linked none (the steps row names that case) or the spec is
+// closed: a closed spec is never built again, so its `blocked_by` holds
+// nothing, as record-lint reads only open specs.
 func linkedSpecContent(repoRoot string, store spec.Store, r ReadyResult) (spec.Spec, string, error) {
 	sp, ok := store.Lookup(r.SpecID)
-	if !ok {
+	if !ok || sp.Status == spec.StatusClosed {
 		return spec.Spec{}, "", nil
 	}
 	data, err := readRepoFile(filepath.Join(repoRoot, filepath.FromSlash(sp.Path)), sp.Path)
@@ -211,11 +212,15 @@ func startBlockedRowWithSpec(repoRoot string, corpus Corpus, id, content, specID
 		if err != nil {
 			return row, err
 		}
-		b := termsafe.Sanitize(e.blocker)
+		b := shownText(e.blocker, maxEdgeRunes)
 		if e.via != "" {
 			b += " (named by " + e.via + ")"
 		}
-		path := termsafe.Sanitize(strings.Join(end.chain, " → "))
+		chain := make([]string, len(end.chain))
+		for i, c := range end.chain {
+			chain[i] = shownText(c, maxEdgeRunes)
+		}
+		path := strings.Join(chain, " → ")
 		switch {
 		case end.problem != "" && len(end.chain) == 1:
 			open = append(open, b+" ("+end.problem+")")
@@ -236,13 +241,31 @@ func startBlockedRowWithSpec(repoRoot string, corpus Corpus, id, content, specID
 			row.Detail = id + " and " + specID + " name no unsettled blocker"
 		}
 		if len(followed) > 0 {
-			row.Detail += "; a superseded blocker is settled by the record that replaced it: " + strings.Join(followed, ", ")
+			row.Detail += "; a superseded blocker is settled by the record that replaced it: " + edgeList(followed)
 		}
 		return row, nil
 	}
-	row.Detail = id + " is blocked by " + strings.Join(open, ", ")
+	row.Detail = id + " is blocked by " + edgeList(open)
 	row.Remedy = "ship the blocker first, or settle the record its supersession chain ends at: ship that intent, or accept that decision (`status: accepted`); each superseded record names its successor in `superseded_by`, so repair a chain that loops or ends nowhere; or drop the edge from the intent's or the spec's `blocked_by` if it no longer holds"
 	return row, nil
+}
+
+// maxEdgeRunes caps one record id, or one `superseded_by` or status value, as
+// the blocked row quotes it; maxEdgesShown caps how many edges it names. The
+// values are frontmatter agents and people write, so a long or numerous one
+// reaches a refusal clipped and counted, never whole.
+const (
+	maxEdgeRunes  = 80
+	maxEdgesShown = 5
+)
+
+// edgeList joins the blocked row's edges, at most maxEdgesShown of them, and
+// counts the rest.
+func edgeList(edges []string) string {
+	if len(edges) <= maxEdgesShown {
+		return strings.Join(edges, ", ")
+	}
+	return strings.Join(edges[:maxEdgesShown], ", ") + fmt.Sprintf(", and %d more", len(edges)-maxEdgesShown)
 }
 
 // blockerEnd is where one blocker's supersession chain ends. chain names every
@@ -294,7 +317,7 @@ func followBlocker(repoRoot string, corpus Corpus, blocker string) (blockerEnd, 
 		adr := recordid.CanonADRID(next)
 		if adr == "" {
 			end.chain = append(end.chain, next)
-			end.problem = next + " names neither an intent nor a decision"
+			end.problem = shownText(next, maxEdgeRunes) + " names neither an intent nor a decision"
 			return end, nil
 		}
 		end.chain = append(end.chain, adr)
@@ -307,7 +330,7 @@ func followBlocker(repoRoot string, corpus Corpus, blocker string) (blockerEnd, 
 		case status == "":
 			end.problem = adr + " carries no status: a decision settles the edge once its status is accepted"
 		case status != adrStatusAccepted:
-			end.problem = adr + " is " + status + ": a decision settles the edge once its status is accepted"
+			end.problem = adr + " is " + shownText(status, maxEdgeRunes) + ": a decision settles the edge once its status is accepted"
 		default:
 			end.state = status
 			end.settled = true
