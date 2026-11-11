@@ -49,11 +49,17 @@ package loop
 // (consumeRefused): set aside into a new directory under the lane's aside
 // directory, kept and never deleted, with the refusal and the digest of the bytes
 // judged in the record's line. The receipt's text never chooses what else goes
-// with it: only the report and the definition of done's output at the names the
-// loop assigned them (ReportFileName, DoDFileName), directly in the lane's own
+// with it, and the run's state decides whether anything does
+// (implementStageAwait). At the implement stage's own await, the report and the
+// definition of done's output go with it, only at the names the loop assigned
+// that attempt (ReportFileName, DoDFileName), directly in the lane's own
 // directory, each a regular file and no link, moved through that directory opened
-// as its own root (moveNamed). A path the receipt names for either that is
-// anything else is left, and the record's line says so. Only the bytes judged are
+// as its own root (moveNamed); a path the receipt names for either that is
+// anything else is left, and the record's line says so. At a fix or sync round's
+// await nothing but the receipt goes: the round's own report and output are left
+// where they are, and so are the bare names in the lane's directory, which are
+// the implement stage's and which later rounds read; the record's line says only
+// the receipt was set aside at that round. Only the bytes judged are
 // moved: a file replaced since it was judged, or an await a runner has claimed
 // since, is left standing for the next step to read, uncounted. The digest check
 // guards against the run's own steps and a file replaced between the judging and
@@ -308,8 +314,9 @@ const (
 // the path still has the digest of the bytes the verifier judged (Refusal.judged).
 // Either failing, the file is left standing for the next step to read, and nothing
 // is counted. Otherwise the receipt is set aside into a new directory under the
-// lane's aside directory, with the report and the definition of done's output
-// only at the names the loop assigned them (moveNamed), the record's line names the
+// lane's aside directory, at the implement stage's own await with the report and
+// the definition of done's output only at the names the loop assigned them
+// (moveNamed), and at a fix or sync round's alone, the record's line names the
 // refusal, the digest and what went with it, and the step is counted under the one
 // identity every consumed receipt shares (consumedRefusal), whatever it lacked, so
 // the drain's stuck bound of identical refusals is a bound of consumed receipts in a
@@ -353,7 +360,14 @@ func consumeRefused(repoRoot string, root *os.Root, st *State, i, k int, session
 	note := fmt.Sprintf("the receipt at %s was refused for the work (%s), so it is set aside at %s, kept (sha256 %s)", rel, why, dir, judged)
 	laneDir, lerr := laneRel(st.RunID, lane.ID, "aside")
 	var moved, kept []string
-	if lerr == nil {
+	switch {
+	case lerr != nil:
+	case !implementStageAwait(lane, rel, laneDir):
+		// A fix or sync round's report and output are the round's, and the bare
+		// names in the lane's directory are the implement stage's, which later
+		// rounds read: nothing but the receipt goes.
+		note += "; only the receipt is set aside at this round, and the round's report and the definition of done's output are left where they are"
+	default:
 		moved, kept = moveNamed(root, laneDir, dir, named)
 	}
 	if len(moved) > 0 {
@@ -366,6 +380,17 @@ func consumeRefused(repoRoot string, root *os.Root, st *State, i, k int, session
 	st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner, Note: note})
 	noteRefusal(st, consumedRefusal(lane.ID), now)
 	return consumedAside
+}
+
+// implementStageAwait reports whether the receipt at rel, relative to the
+// checkout, is the implement stage's own, read from the run's state alone: the
+// lane is at the implement stage and the receipt stands directly in the lane's
+// directory laneDir, where the loop assigned that attempt its report and output
+// (ReportFileName, DoDFileName). A fix or sync round's receipt stands in the
+// round's own directory, and the bare names beside the lane's receipt are the
+// implement stage's, not that round's.
+func implementStageAwait(lane Lane, rel, laneDir string) bool {
+	return lane.Stage == StageImplement && path.Dir(rel) == laneDir
 }
 
 // judgedOrNone is a judged digest, or says there is none.
@@ -390,11 +415,14 @@ const consumedReason = "an implementer's receipt was refused for the work it rep
 // moveNamed moves into dir, the consumed receipt's new directory under the lane's
 // aside directory, each file the receipt names that is the one the loop assigned
 // it: the receipt's path, cleaned, is exactly the name the loop gave that file
-// (laneNamed.assigned), directly in the lane's own directory laneDir. The
-// receipt's text never chooses what moves: a path naming anything else, the
-// brief, a receipt, a validate, sync or land round's file, anything under the
-// aside directory in any letter case, is left where it is. The one it may name is
-// moved only as a regular file, no link, with no file of its name already in dir.
+// (laneNamed.assigned), directly in the lane's own directory laneDir. It is called
+// only for the implement stage's own await (implementStageAwait), the one whose
+// assigned names those are; at a fix or sync round's nothing but the receipt
+// moves. The receipt's text never chooses what moves: a path naming anything
+// else, the brief, a receipt, a validate, sync or land round's file, anything
+// under the aside directory in any letter case, is left where it is. The one it
+// may name is moved only as a regular file, no link, with nothing of its name
+// already in dir and that name there checked.
 // The check and the rename go through laneDir opened as its own root, so a
 // directory swapped for a link cannot reach outside it. It reports what moved and
 // what was left in place, and why, each in the record's words. The caller holds
@@ -439,8 +467,12 @@ func moveNamed(root *os.Root, laneDir, dir string, named []laneNamed) (moved, ke
 			continue
 		}
 		dest := into + "/" + n.assigned
-		if _, err := lane.Lstat(dest); !errors.Is(err, fs.ErrNotExist) {
+		switch _, err := lane.Lstat(dest); {
+		case err == nil:
 			kept = append(kept, fmt.Sprintf("%s %s (a file of its name is already set aside there)", n.what, shown))
+			continue
+		case !errors.Is(err, fs.ErrNotExist):
+			kept = append(kept, fmt.Sprintf("%s %s (where it would be set aside cannot be checked: %s)", n.what, shown, fsutil.RedactHome(err.Error())))
 			continue
 		}
 		if err := lane.Rename(n.assigned, dest); err != nil {

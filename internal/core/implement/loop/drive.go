@@ -180,10 +180,11 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 
 // stuckAfterConsumed is why the lane of a step that consumed a receipt it found
 // standing is now at the drain's stuck bounds (stuck.go), "" when the step
-// consumed none or the lane is below them. Bounds or a state that cannot be read
-// count as at them, as the drive's own check gives the lane back on them
-// (stuckBack). Only an issue run keeps the count, so an intent's run is never
-// held here.
+// consumed none or the lane is below them. Only an issue run keeps the count, so
+// a run whose state reads as an intent's is not held here, whatever its bounds.
+// On an issue run, bounds that cannot be read count as at them, as the drive's
+// own check gives the lane back on them (stuckBack); so does a state that cannot
+// be read, since whether the run is an issue's is then unknown.
 func stuckAfterConsumed(repoRoot, runID string, o Options, res StepResult) string {
 	if !res.consumed {
 		return ""
@@ -191,6 +192,9 @@ func stuckAfterConsumed(repoRoot, runID string, o Options, res StepResult) strin
 	st, err := ReadState(repoRoot, runID)
 	if err != nil {
 		return "the run's state cannot be read: " + refusalReason(err)
+	}
+	if st.Issue() == "" {
+		return ""
 	}
 	b, err := resolveStuckBounds(o.roots(repoRoot))
 	if err != nil {
