@@ -25,17 +25,22 @@
 # was enforced. Only the release this script fetches is checked against
 # scripts/gitleaks-checksums.txt.
 #
-# A govulncheck that cannot reach its vulnerability database offline is
-# SKIPPED LOUDLY, never passed in silence: govulncheck is not a required check
-# and CI's scan still runs; the line says what was not checked.
+# A govulncheck that cannot be built at CI's version, cannot run, or runs and
+# cannot reach its vulnerability database offline is SKIPPED LOUDLY, never
+# passed in silence: govulncheck is not a required check and CI's scan still
+# runs; the lines say what was not checked and why. A build the module system
+# refuses on a checksum that fails verification REFUSES (exit 2) instead, as a
+# gitleaks release that fails its check does. It runs as its own binary, so its
+# finding exit (3) is told apart from a run that failed (see vulncheck).
 #
 # Usage:
 #   preflight-scans.sh vulncheck   # govulncheck over ./... (exit 1 on a finding)
 #   preflight-scans.sh secrets     # gitleaks over <merge-base>..HEAD (exit 1 on a finding)
 #   preflight-scans.sh pins        # print the two versions ci.yml pins
 # Exit 0 clean, skipped or warned, 1 a finding, 2 a usage or environment fault
-# (a gitleaks that ran and could not scan among them: CI's would fail too; and
-# CI's gitleaks that could not be fetched or verified).
+# (a gitleaks that ran and could not scan among them: CI's would fail too;
+# CI's gitleaks that could not be fetched or verified; and a govulncheck whose
+# build failed its checksum verification).
 set -euo pipefail
 export LC_ALL=C
 
@@ -96,17 +101,42 @@ vuln_ids() {
 # interrupt ends the subshell before its own cleanup runs.
 scan_tree=""
 leaks_tmp=""
-trap '[ -z "$scan_tree" ] || rm -rf "$scan_tree"; [ -z "$leaks_tmp" ] || rm -rf "$leaks_tmp"' EXIT
+vuln_bin=""
+trap '[ -z "$scan_tree" ] || rm -rf "$scan_tree"; [ -z "$leaks_tmp" ] || rm -rf "$leaks_tmp"; [ -z "$vuln_bin" ] || rm -rf "$vuln_bin"' EXIT
+trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+# set_tmp_root sets tmp_root to the temporary directory every private directory
+# here is made in, as an absolute path: TMPDIR, or /tmp. A relative TMPDIR is
+# made absolute against the working directory, since go install refuses a
+# relative GOBIN; one that names no directory refuses, naming it. TMPDIR is
+# exported as that absolute path, so a tool this script starts sees it too:
+# the fork point's scan runs inside the extracted tree, where the relative one
+# names nothing.
+tmp_root=""
+set_tmp_root() {
+	local d="${TMPDIR:-/tmp}"
+	case "$d" in
+	/*) tmp_root="$d" ;;
+	*)
+		tmp_root="$(CDPATH='' cd -- "$d" 2>/dev/null && pwd -P)" || {
+			echo "preflight-scans: TMPDIR is $d, a relative path that names no directory here; set it to an absolute path" >&2
+			exit 2
+		}
+		;;
+	esac
+	export TMPDIR="$tmp_root"
+}
+
 # ids_not_at prints the ids report $3 names that the same scan of commit $1's
-# tree, extracted into the empty directory $4, at govulncheck $2, does not; it
-# fails when that scan cannot run, with the scan's last lines on stderr.
+# tree, extracted into the empty directory $4, by the govulncheck binary $2,
+# does not; it fails when that scan cannot run, with the scan's last lines on
+# stderr.
 ids_not_at() {
-	local commit="$1" version="$2" report="$3" tree="$4" rc=0 out
+	local commit="$1" tool="$2" report="$3" tree="$4" rc=0 out
 	git archive "$commit" | tar -x -C "$tree" || return 1
-	out="$(cd "$tree" && go run "golang.org/x/vuln/cmd/govulncheck@$version" ./... 2>&1)" || rc=$?
+	out="$(cd "$tree" && "$tool" ./... 2>&1)" || rc=$?
 	case "$rc" in
 	0 | 3) ;;
 	*)
@@ -117,21 +147,91 @@ ids_not_at() {
 	comm -23 <(vuln_ids "$report") <(vuln_ids "$out")
 }
 
+# vuln_skipped says, loudly, that the module was not checked: $1 is the lines
+# that say why, $2 what failed, and $3 what those lines are, which differs by
+# caller: go's own when the tool could not be built, the system's when the
+# built binary could not run or was ended, the tool's when it ran and stopped.
+vuln_skipped() {
+	printf '%s\n' "$1" | tail -n 5 | sed 's/^/  /'
+	say "SKIPPED — $2, so the module was not checked for known vulnerabilities."
+	say "  $3"
+	say "  CI's govulncheck job still runs."
+}
+
 vulncheck() {
-	local version rc=0 out def base fixes
+	local version rc=0 out def base fixes tool
 	version="$(vuln_pin)"
-	out="$(go run "golang.org/x/vuln/cmd/govulncheck@$version" ./... 2>&1)" || rc=$?
+	# govulncheck runs as its own binary, never through `go run`: go run
+	# reports any non-zero exit of the program it ran as its own exit 1, with
+	# an "exit status N" line, so a finding (govulncheck's exit 3) arrived as
+	# the same exit 1 an offline run gives, and every finding was reported as
+	# a skip while CI's scan failed. Reading that line back would judge go's
+	# wording, not the tool's exit; `go install <pkg>@<version>` builds the
+	# very program `go run <pkg>@<version>` builds (same module, version and
+	# toolchain choice, from the same directory) into a private directory the
+	# EXIT trap removes, and the tool's exit then arrives unchanged.
+	set_tmp_root
+	vuln_bin="$(mktemp -d "$tmp_root/preflight-govulncheck.XXXXXX")" || {
+		echo "preflight-scans: no temporary directory to build govulncheck $version into" >&2
+		exit 2
+	}
+	out="$(GOBIN="$vuln_bin" go install "golang.org/x/vuln/cmd/govulncheck@$version" 2>&1)" || rc=$?
+	if [ "$rc" -ne 0 ]; then
+		# A download that does not match the checksum database (go prints
+		# "SECURITY ERROR"), a checksum database that fails its own proofs
+		# ("security error: misbehaving server"), or a module the module cache
+		# holds altered ("checksum mismatch") is not a machine that is
+		# offline: what would run is not what CI runs, and something changed
+		# it. Skipping would pass the preflight over a tool supply that failed
+		# its verification, so it refuses, as a gitleaks release that fails its
+		# sha256 check does. Exactly two strings are matched, ignoring case,
+		# in a lower-cased copy of go's lines: "security error" and "checksum
+		# mismatch". A verification failure go words otherwise is not matched
+		# and takes the loud skip below; either way no binary is run. A
+		# checksum database go cannot reach (no network, a 404 or 410) is
+		# neither, and skips.
+		local lc
+		lc="$(printf '%s' "$out" | tr '[:upper:]' '[:lower:]')"
+		case "$lc" in
+		*"security error"* | *"checksum mismatch"*)
+			# go's report of a mismatch runs to about ten lines, the
+			# module and both hashes first: all of it is shown.
+			printf '%s\n' "$out" | tail -n 15 | sed 's/^/  /'
+			say "REFUSING to scan for known vulnerabilities: go would not build govulncheck $version, because a module it fetched failed its checksum verification (the lines above are go's)."
+			say "  NOT skipping: what would run is not what CI runs. If the module cache's copy was altered, removing it (go clean -modcache) clears it; if it repeats, the download itself does not match, and the scan waits until it does."
+			exit 2
+			;;
+		esac
+		vuln_skipped "$out" "govulncheck $version could not be built (go install exit $rc)" \
+			"The lines above are go's: it could not fetch or build the tool (with no network for its module proxy, for one)."
+		return 0
+	fi
+	if [ ! -x "$vuln_bin/govulncheck" ]; then
+		vuln_skipped "$out" "govulncheck $version could not be built (go install exited 0 and left no govulncheck in $vuln_bin)" \
+			"go reported success but wrote no binary there, so there is nothing to run."
+		return 0
+	fi
+	tool="$vuln_bin/govulncheck"
+	out="$("$tool" ./... 2>&1)" || rc=$?
 	case "$rc" in
 	0)
 		say "govulncheck $version: no known vulnerability the module's code reaches"
 		return 0
 		;;
 	3) ;;
+	126 | 127)
+		vuln_skipped "$out" "the govulncheck $version built in $vuln_bin could not be executed (exit $rc)" \
+			"The lines above are the system's; a temporary directory mounted noexec, or a binary built for another system, does this. Set TMPDIR to a directory that allows execution (here it is $tmp_root)."
+		return 0
+		;;
 	*)
-		printf '%s\n' "$out" | tail -n 5 | sed 's/^/  /'
-		say "SKIPPED — govulncheck $version could not run (exit $rc), so the module was not checked for known vulnerabilities."
-		say "  The lines above say why: offline it cannot fetch its vulnerability database, and a module it cannot load stops it too."
-		say "  CI's govulncheck job still runs."
+		if [ "$rc" -gt 128 ]; then
+			vuln_skipped "$out" "govulncheck $version was ended by signal $((rc - 128)) (exit $rc) before it finished" \
+				"Nothing it printed is a result; a signal from outside, or the system ending it for memory, does this."
+		else
+			vuln_skipped "$out" "govulncheck $version ran and stopped with exit $rc" \
+				"The lines above are its own: offline it cannot fetch its vulnerability database, and a module it cannot load stops it too."
+		fi
 		return 0
 		;;
 	esac
@@ -149,8 +249,8 @@ vulncheck() {
 		git diff --quiet "$base" HEAD -- go.mod go.sum; then
 		local added="" scanned=0
 		if [ -n "$(vuln_ids "$out")" ] &&
-			scan_tree="$(mktemp -d "${TMPDIR:-/tmp}/preflight-scans.XXXXXX")"; then
-			added="$(ids_not_at "$base" "$version" "$out" "$scan_tree")" && scanned=1
+			scan_tree="$(mktemp -d "$tmp_root/preflight-scans.XXXXXX")"; then
+			added="$(ids_not_at "$base" "$tool" "$out" "$scan_tree")" && scanned=1
 			rm -rf "$scan_tree"
 			scan_tree=""
 		fi
@@ -241,7 +341,8 @@ pinned_gitleaks() {
 	cache="$HOME/.abcd.noindex/gate-tools/gitleaks/$version"
 	(umask 077 && mkdir -p "$cache") || refuse "$cache could not be made."
 	private_to_me "$cache" d directory
-	leaks_tmp="$(mktemp -d "${TMPDIR:-/tmp}/preflight-gitleaks.XXXXXX")" || refuse "no temporary directory to unpack $asset into."
+	set_tmp_root
+	leaks_tmp="$(mktemp -d "$tmp_root/preflight-gitleaks.XXXXXX")" || refuse "no temporary directory to unpack $asset into."
 	local copy="$leaks_tmp/$asset" fetched=0
 	if [ -e "$cache/$asset" ] || [ -L "$cache/$asset" ]; then
 		private_to_me "$cache/$asset" f file
@@ -279,7 +380,7 @@ pinned_gitleaks() {
 	case "$ran:$why" in
 	0:*) ;;
 	126:* | *"Permission denied"* | *"Operation not permitted"*)
-		refuse "The verified $asset unpacked a gitleaks into $leaks_tmp that could not be executed (${why:-exit $ran}); a temporary directory mounted noexec does this. Set TMPDIR to a directory that allows execution (the temporary directory here is ${TMPDIR:-/tmp}) and run again."
+		refuse "The verified $asset unpacked a gitleaks into $leaks_tmp that could not be executed (${why:-exit $ran}); a temporary directory mounted noexec does this. Set TMPDIR to a directory that allows execution (the temporary directory here is $tmp_root) and run again."
 		;;
 	esac
 	raw="$(printf '%s\n' "$raw" | head -n 1 | tr -d '[:space:]')"

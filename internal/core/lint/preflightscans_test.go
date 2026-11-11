@@ -130,6 +130,49 @@ func (r *scanRepo) stub(name, body string) {
 	}
 }
 
+// stubGovulncheck makes govulncheck a tool that runs body, behind a go stub
+// that treats it as the real go does: `go install <pkg>@<version>` writes the
+// tool into $GOBIN, and `go run <pkg>@<version> <args>` runs it and turns any
+// exit but 0 into exit 1 with an "exit status N" line, so a finding (exit 3)
+// reaches a `go run` caller as the same exit 1 an offline run gives. A stub
+// that passed the tool's exit straight through hid that the script read every
+// finding as a skip. The tool logs its arguments as "govulncheck.args".
+//
+// The install arm also holds where the binary is built: only in a private
+// directory of the script's own, under TMPDIR, a directory, mode 0700, which is
+// what mktemp -d makes. A fixed path, one outside TMPDIR or one others can
+// write is a place another account could put a binary first; the stub refuses
+// each, so the scan is skipped and every test expecting a result fails.
+func (r *scanRepo) stubGovulncheck(body string) {
+	r.t.Helper()
+	tool := filepath.Join(r.stubs, "govulncheck.tool")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >>\"" + filepath.Join(r.stubs, "govulncheck.args") + "\"\n" + body + "\n"
+	if err := os.WriteFile(tool, []byte(script), 0o755); err != nil {
+		r.t.Fatal(err)
+	}
+	r.stub("go", `case "$1" in
+install)
+	case "$GOBIN" in /*) ;; *) echo 'go: GOBIN is not an absolute path' >&2; exit 1 ;; esac
+	g="$(cd "$GOBIN" 2>/dev/null && pwd -P)" && t="$(cd "${TMPDIR:?}" 2>/dev/null && pwd -P)" ||
+		{ echo "go stub: GOBIN $GOBIN or TMPDIR $TMPDIR names no directory" >&2; exit 2; }
+	case "$g" in "$t"/*) ;; *) echo "go stub: GOBIN $GOBIN is not under TMPDIR $TMPDIR" >&2; exit 2 ;; esac
+	[ -n "$(find "$GOBIN" -prune -type d -perm 700 -print)" ] ||
+		{ echo "go stub: GOBIN $GOBIN is not a directory of mode 0700" >&2; exit 2; }
+	cat "`+tool+`" >"$GOBIN/govulncheck" && chmod 755 "$GOBIN/govulncheck"
+	;;
+# The script no longer calls go run. This arm stays because it is what makes
+# TestVulncheckFindingIsJudgedNotSkipped fail against a script that goes back
+# to go run: like the real go run, it turns the finding's exit 3 into exit 1.
+run)
+	shift 2
+	"`+tool+`" "$@"
+	rc=$?
+	[ "$rc" -eq 0 ] || { echo "exit status $rc" >&2; exit 1; }
+	;;
+*) echo "go stub: unexpected $*" >&2; exit 2 ;;
+esac`)
+}
+
 func (r *scanRepo) args(name string) string {
 	b, _ := os.ReadFile(filepath.Join(r.stubs, name+".args"))
 	return string(b)
@@ -188,6 +231,25 @@ func (r *scanRepo) command(mode string) *exec.Cmd {
 	return cmd
 }
 
+// runTMPDIR is run with TMPDIR set to tmpdir, which may be relative to the
+// repository.
+func (r *scanRepo) runTMPDIR(mode, tmpdir string) (int, string) {
+	r.t.Helper()
+	cmd := r.command(mode)
+	for i, e := range cmd.Env {
+		if strings.HasPrefix(e, "TMPDIR=") {
+			cmd.Env[i] = "TMPDIR=" + tmpdir
+		}
+	}
+	out, err := cmd.CombinedOutput()
+	if ee, ok := err.(*exec.ExitError); ok {
+		return ee.ExitCode(), string(out)
+	} else if err != nil {
+		r.t.Fatal(err)
+	}
+	return 0, string(out)
+}
+
 // noCopyLeft fails the test when the script left a copy of a tree in its
 // TMPDIR.
 func (r *scanRepo) noCopyLeft() {
@@ -211,13 +273,218 @@ exit 3`
 
 func TestVulncheckRunsCIsVersionAndPassesAClearModule(t *testing.T) {
 	r := newScanRepo(t, false)
-	r.stub("go", "echo 'No vulnerabilities found.'; exit 0")
+	r.stubGovulncheck("echo 'No vulnerabilities found.'; exit 0")
 	code, out := r.run("vulncheck")
 	if code != 0 {
 		t.Fatalf("a clear module: exit %d\n%s", code, out)
 	}
-	if got := r.args("go"); got != "run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...\n" {
-		t.Fatalf("the scan ran %q, want CI's command", got)
+	if got := r.args("go"); got != "install golang.org/x/vuln/cmd/govulncheck@v1.7.0\n" {
+		t.Fatalf("go ran %q, want CI's govulncheck version built", got)
+	}
+	if got := r.args("govulncheck"); got != "./...\n" {
+		t.Fatalf("the scan ran %q, want CI's scan of ./...", got)
+	}
+	r.noCopyLeft()
+}
+
+// TestVulncheckFindingIsJudgedNotSkipped: govulncheck exits 3 on a finding,
+// and `go run` turns that into exit 1, the same exit an offline run gives, so a
+// scan run through `go run` reported every real finding as SKIPPED and the
+// preflight passed while CI's scan failed. The tool runs as its own binary, so
+// its finding exit reaches the judgement.
+func TestVulncheckFindingIsJudgedNotSkipped(t *testing.T) {
+	r := newScanRepo(t, true)
+	r.stubGovulncheck(govulncheckFinding)
+	code, out := r.run("vulncheck")
+	if code != 1 {
+		t.Fatalf("a finding: exit %d, want 1\n%s", code, out)
+	}
+	if strings.Contains(out, "SKIPPED") || strings.Contains(out, "could not run") {
+		t.Errorf("a finding is reported as a scan that could not run:\n%s", out)
+	}
+	if !strings.Contains(out, "found a known vulnerability") || !strings.Contains(out, "GO-2026-0001") {
+		t.Errorf("the finding is not reported:\n%s", out)
+	}
+	r.noCopyLeft()
+}
+
+// TestVulncheckThatCannotBeBuiltIsSkippedLoudly: offline on a machine that
+// has never built CI's govulncheck, go cannot fetch its module; that is a
+// scan that could not run, said loudly, not a finding.
+func TestVulncheckThatCannotBeBuiltIsSkippedLoudly(t *testing.T) {
+	r := newScanRepo(t, false)
+	r.stub("go", "echo 'go: golang.org/x/vuln/cmd/govulncheck@v1.7.0: dial tcp: lookup proxy.golang.org: no such host' >&2; exit 1")
+	code, out := r.run("vulncheck")
+	if code != 0 {
+		t.Fatalf("a govulncheck that could not be built: exit %d, want 0\n%s", code, out)
+	}
+	if !strings.Contains(out, "SKIPPED") || !strings.Contains(out, "not checked") || !strings.Contains(out, "proxy.golang.org") {
+		t.Fatalf("the skip is not said loudly, with go's reason:\n%s", out)
+	}
+	// The cause is the build, not a database the tool never reached.
+	if !strings.Contains(out, "could not be built (go install exit 1)") || strings.Contains(out, "vulnerability database") {
+		t.Errorf("the skip does not say the build failed, or blames the database:\n%s", out)
+	}
+	r.noCopyLeft()
+}
+
+// TestVulncheckBuildThatLeavesNoBinaryIsSkippedLoudly: a go install that
+// exits 0 and writes nothing leaves no tool to run; that is said as a build
+// that failed, not as a binary that could not run.
+func TestVulncheckBuildThatLeavesNoBinaryIsSkippedLoudly(t *testing.T) {
+	r := newScanRepo(t, false)
+	r.stub("go", "exit 0")
+	code, out := r.run("vulncheck")
+	if code != 0 {
+		t.Fatalf("a build that left no binary: exit %d, want 0\n%s", code, out)
+	}
+	if !strings.Contains(out, "SKIPPED") || !strings.Contains(out, "go install exited 0 and left no govulncheck") {
+		t.Fatalf("the skip does not say the build left no binary:\n%s", out)
+	}
+	if strings.Contains(out, "could not be executed") || strings.Contains(out, "no known vulnerability") {
+		t.Errorf("a missing binary is reported as one that ran, or as clean:\n%s", out)
+	}
+	r.noCopyLeft()
+}
+
+// TestVulncheckBuildThatFailsItsChecksumRefuses: a module go fetched for the
+// tool that does not match the checksum database, or an altered copy in the
+// module cache, is not a machine that is offline. What would run is not what
+// CI runs, so the scan refuses (exit 2), as a gitleaks release that fails its
+// sha256 check does, and never reads as a skip. The match ignores case: the
+// checksum database's client words a server that fails its own proofs in
+// lower case ("security error: misbehaving server").
+func TestVulncheckBuildThatFailsItsChecksumRefuses(t *testing.T) {
+	for name, said := range map[string]string{
+		"the checksum database":          "verifying golang.org/x/vuln@v1.7.0/go.mod: checksum mismatch\n\tdownloaded: h1:AAAA\n\tsum.golang.org: h1:BBBB\n\nSECURITY ERROR\nThis download does NOT match the one reported by the checksum server.",
+		"the module cache":               "verifying golang.org/x/vuln@v1.7.0: checksum mismatch",
+		"the checksum database's proofs": "verifying golang.org/x/vuln@v1.7.0/go.mod: security error: misbehaving server",
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newScanRepo(t, false)
+			r.stub("go", "printf '"+said+"\\n' >&2; exit 1")
+			code, out := r.run("vulncheck")
+			if code != 2 {
+				t.Fatalf("a build that failed its checksum: exit %d, want 2\n%s", code, out)
+			}
+			if !strings.Contains(out, "REFUSING") || !strings.Contains(out, "checksum verification") || !strings.Contains(out, strings.SplitN(said, "\n", 2)[0]) {
+				t.Errorf("the refusal does not say the checksum failed, with go's lines:\n%s", out)
+			}
+			if strings.Contains(out, "SKIPPED") {
+				t.Errorf("a failed checksum reads as a skip:\n%s", out)
+			}
+			r.noCopyLeft()
+		})
+	}
+}
+
+// TestVulncheckChecksumDatabaseUnreachableIsSkipped: offline, or with the
+// checksum database answering a lookup with 404 or 410, go cannot verify a
+// download, but nothing failed a verification: that is a build that could not
+// be done, skipped loudly, and never the refusal a failed checksum earns.
+func TestVulncheckChecksumDatabaseUnreachableIsSkipped(t *testing.T) {
+	for name, said := range map[string]string{
+		"no such host": `verifying golang.org/x/vuln@v1.7.0: golang.org/x/vuln@v1.7.0: Get "https://sum.golang.org/lookup/golang.org/x/vuln@v1.7.0": dial tcp: lookup sum.golang.org: no such host`,
+		"404":          "verifying golang.org/x/vuln@v1.7.0: golang.org/x/vuln@v1.7.0: reading https://sum.golang.org/lookup/golang.org/x/vuln@v1.7.0: 404 Not Found",
+		"410":          "verifying golang.org/x/vuln@v1.7.0/go.mod: golang.org/x/vuln@v1.7.0/go.mod: reading https://sum.golang.org/tile/8/0/x123/456: 410 Gone",
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newScanRepo(t, false)
+			r.stub("go", "printf '%s\\n' '"+said+"' >&2; exit 1")
+			code, out := r.run("vulncheck")
+			if code != 0 {
+				t.Fatalf("a checksum database go could not reach: exit %d, want 0\n%s", code, out)
+			}
+			if !strings.Contains(out, "SKIPPED") || !strings.Contains(out, "could not be built (go install exit 1)") || !strings.Contains(out, "sum.golang.org") {
+				t.Errorf("the skip is not said loudly, with go's lines:\n%s", out)
+			}
+			if strings.Contains(out, "REFUSING") {
+				t.Errorf("an unreachable checksum database reads as a failed checksum:\n%s", out)
+			}
+			r.noCopyLeft()
+		})
+	}
+}
+
+// TestVulncheckThatCannotFinishSaysWhy: a built binary the system would not
+// execute, or one a signal ended, gave no result; each is skipped loudly with
+// its own cause and its exit, and never read as clean.
+func TestVulncheckThatCannotFinishSaysWhy(t *testing.T) {
+	for _, c := range []struct {
+		name, body string
+		want       []string
+	}{
+		{"ended by a signal", "echo 'Scanning your code'; kill -KILL $$", []string{"ended by signal 9 (exit 137)", "Nothing it printed is a result"}},
+		{"not executable", "echo 'permission denied' >&2; exit 126", []string{"could not be executed (exit 126)", "noexec"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := newScanRepo(t, false)
+			r.stubGovulncheck(c.body)
+			code, out := r.run("vulncheck")
+			if code != 0 {
+				t.Fatalf("%s: exit %d, want 0\n%s", c.name, code, out)
+			}
+			if !strings.Contains(out, "SKIPPED") || !strings.Contains(out, "not checked") {
+				t.Errorf("%s is not skipped loudly:\n%s", c.name, out)
+			}
+			for _, w := range c.want {
+				if !strings.Contains(out, w) {
+					t.Errorf("%s: the skip does not say %q:\n%s", c.name, w, out)
+				}
+			}
+			if strings.Contains(out, "no known vulnerability") || strings.Contains(out, "vulnerability database") {
+				t.Errorf("%s is read as clean, or blamed on the database:\n%s", c.name, out)
+			}
+			r.noCopyLeft()
+		})
+	}
+}
+
+// TestVulncheckWithARelativeTMPDIRStillScans: go install refuses a relative
+// GOBIN, so a relative TMPDIR is made absolute rather than skipping the scan
+// on every run; a TMPDIR that names no directory refuses, naming it.
+func TestVulncheckWithARelativeTMPDIRStillScans(t *testing.T) {
+	r := newScanRepo(t, false)
+	r.stubGovulncheck("echo 'No vulnerabilities found.'; exit 0")
+	rel := filepath.Join(r.dir, "scratch-tmp")
+	if err := os.Mkdir(rel, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	code, out := r.runTMPDIR("vulncheck", "scratch-tmp")
+	if code != 0 || !strings.Contains(out, "no known vulnerability") {
+		t.Fatalf("a relative TMPDIR: exit %d, want a clean scan\n%s", code, out)
+	}
+	if left, err := os.ReadDir(rel); err != nil || len(left) != 0 {
+		t.Errorf("the scan left %v behind in its relative TMPDIR (%v)", left, err)
+	}
+	code, out = r.runTMPDIR("vulncheck", "no-such-dir")
+	if code != 2 || !strings.Contains(out, "TMPDIR is no-such-dir") {
+		t.Errorf("a relative TMPDIR naming no directory: exit %d, want 2 naming it\n%s", code, out)
+	}
+}
+
+// TestVulncheckWithARelativeTMPDIRScansTheForkPoint: the fork point's scan
+// runs the tool from inside the extracted tree, where a relative TMPDIR names
+// no directory. The absolute one is what the tool is handed, so a tool that
+// needs a temporary file there still scans the fork point, and a finding the
+// default branch carries too warns rather than stops.
+func TestVulncheckWithARelativeTMPDIRScansTheForkPoint(t *testing.T) {
+	r := newScanRepo(t, false)
+	r.stubGovulncheck(`[ -d "${TMPDIR:?}" ] || { echo "govulncheck: TMPDIR $TMPDIR names no directory" >&2; exit 1; }
+` + govulncheckFinding)
+	rel := filepath.Join(r.dir, "scratch-tmp")
+	if err := os.Mkdir(rel, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	code, out := r.runTMPDIR("vulncheck", "scratch-tmp")
+	if code != 0 || !strings.Contains(out, "WARNING") {
+		t.Fatalf("a finding the fork point carries, under a relative TMPDIR: exit %d, want 0 and a warning\n%s", code, out)
+	}
+	if n := strings.Count(r.args("govulncheck"), "./..."); n != 2 {
+		t.Errorf("the scan ran %d time(s), want twice, the head and the fork point", n)
+	}
+	if left, err := os.ReadDir(rel); err != nil || len(left) != 0 {
+		t.Errorf("the scan left %v behind in its relative TMPDIR (%v)", left, err)
 	}
 }
 
@@ -229,7 +496,7 @@ func TestVulncheckRunsCIsVersionAndPassesAClearModule(t *testing.T) {
 // preflight no branch cut from there could pass.
 func TestVulncheckWarnsOfAFindingTheForkPointCarries(t *testing.T) {
 	r := newScanRepo(t, false)
-	r.stub("go", govulncheckFinding)
+	r.stubGovulncheck(govulncheckFinding)
 	code, out := r.run("vulncheck")
 	if code != 0 {
 		t.Fatalf("a finding the branch did not bring in: exit %d, want 0\n%s", code, out)
@@ -239,8 +506,11 @@ func TestVulncheckWarnsOfAFindingTheForkPointCarries(t *testing.T) {
 			t.Errorf("the refusal does not say %q:\n%s", want, out)
 		}
 	}
-	if n := strings.Count(r.args("go"), "govulncheck@v1.7.0 ./..."); n != 2 {
-		t.Errorf("the scan ran %d time(s), want twice, the head and the fork point:\n%s", n, r.args("go"))
+	if n := strings.Count(r.args("govulncheck"), "./..."); n != 2 {
+		t.Errorf("the scan ran %d time(s), want twice, the head and the fork point:\n%s", n, r.args("govulncheck"))
+	}
+	if n := strings.Count(r.args("go"), "install golang.org/x/vuln/cmd/govulncheck@v1.7.0"); n != 1 {
+		t.Errorf("CI's govulncheck was built %d time(s), want once for both scans:\n%s", n, r.args("go"))
 	}
 	r.noCopyLeft()
 }
@@ -255,7 +525,7 @@ func TestVulncheckStopsAFindingTheBranchsOwnCodeBringsIn(t *testing.T) {
 	r := newScanRepo(t, false)
 	// The stub runs where the scan runs: the branch's own tree holds
 	// feature.txt, the fork point's does not.
-	r.stub("go", `echo 'Vulnerability #1: GO-2026-0001'
+	r.stubGovulncheck(`echo 'Vulnerability #1: GO-2026-0001'
 if [ -f feature.txt ]; then echo 'Vulnerability #2: GO-2026-0002'; echo '    Fixed in: example.com/dep@v1.2.4'; fi
 exit 3`)
 	code, out := r.run("vulncheck")
@@ -279,7 +549,7 @@ exit 3`)
 // finding, so it stops as any finding does.
 func TestVulncheckStopsWhenTheForkPointCannotBeScanned(t *testing.T) {
 	r := newScanRepo(t, false)
-	r.stub("go", `if [ -f feature.txt ]; then echo 'Vulnerability #1: GO-2026-0001'; exit 3; fi
+	r.stubGovulncheck(`if [ -f feature.txt ]; then echo 'Vulnerability #1: GO-2026-0001'; exit 3; fi
 echo 'go: cannot load the module' >&2; exit 1`)
 	code, out := r.run("vulncheck")
 	if code != 1 {
@@ -312,14 +582,31 @@ const interruptHangGuard = 5 * time.Minute
 // run on, orphaned, holding the pipe of the script's command substitution, whose
 // read defers the INT trap. The likely cause, read from how shells work rather
 // than observed, is a signal landing between that shell's fork and its exec.
+//
+// A hangup (a closed terminal) takes the same route through the HUP trap: a
+// signal with no trap ends the script without its EXIT trap, leaving the copy
+// and the private directory the tool was built in.
 func TestVulncheckInterruptedLeavesNoCopyBehind(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		sig  syscall.Signal
+		want int
+	}{
+		{"INT", syscall.SIGINT, 130},
+		{"HUP", syscall.SIGHUP, 129},
+	} {
+		t.Run(c.name, func(t *testing.T) { interruptedScanLeavesNoCopy(t, c.sig, c.want) })
+	}
+}
+
+func interruptedScanLeavesNoCopy(t *testing.T, sig syscall.Signal, want int) {
 	r := newScanRepo(t, false)
 	blocker := filepath.Join(r.stubs, "fork-scan-blocks-here")
 	if err := syscall.Mkfifo(blocker, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	r.stub("go", `if [ -f feature.txt ]; then echo 'Vulnerability #1: GO-2026-0001'; exit 3; fi
-exec cat "`+blocker+`"`)
+	r.stubGovulncheck(`if [ -f feature.txt ]; then echo 'Vulnerability #1: GO-2026-0001'; exit 3; fi
+exec cat "` + blocker + `"`)
 	cmd := r.command("vulncheck")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
@@ -352,7 +639,7 @@ exec cat "`+blocker+`"`)
 		}
 	}
 	defer held.Close()
-	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGINT); err != nil {
+	if err := syscall.Kill(-cmd.Process.Pid, sig); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -361,15 +648,15 @@ exec cat "`+blocker+`"`)
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		t.Fatal("the interrupted scan did not end")
 	}
-	if code := cmd.ProcessState.ExitCode(); code != 130 {
-		t.Errorf("the interrupted scan exited %d, want 130, its INT trap's", code)
+	if code := cmd.ProcessState.ExitCode(); code != want {
+		t.Errorf("the scan sent %v exited %d, want %d, its trap's", sig, code, want)
 	}
 	r.noCopyLeft()
 }
 
 func TestVulncheckOnABranchThatMovesADependencyBlamesNoOne(t *testing.T) {
 	r := newScanRepo(t, true)
-	r.stub("go", govulncheckFinding)
+	r.stubGovulncheck(govulncheckFinding)
 	code, out := r.run("vulncheck")
 	if code != 1 {
 		t.Fatalf("a finding: exit %d, want 1\n%s", code, out)
@@ -380,6 +667,7 @@ func TestVulncheckOnABranchThatMovesADependencyBlamesNoOne(t *testing.T) {
 	if !strings.Contains(out, "net/http@go1.26.10") {
 		t.Errorf("the refusal does not name the fix:\n%s", out)
 	}
+	r.noCopyLeft()
 }
 
 // TestVulncheckThatCannotRunSaysWhatWasNotChecked: offline, the scan cannot
@@ -387,7 +675,7 @@ func TestVulncheckOnABranchThatMovesADependencyBlamesNoOne(t *testing.T) {
 // the preflight, because CI's scan still runs.
 func TestVulncheckThatCannotRunSaysWhatWasNotChecked(t *testing.T) {
 	r := newScanRepo(t, false)
-	r.stub("go", "echo 'govulncheck: fetching vulnerabilities: dial tcp: lookup vuln.go.dev: no such host' >&2; exit 1")
+	r.stubGovulncheck("echo 'govulncheck: fetching vulnerabilities: dial tcp: lookup vuln.go.dev: no such host' >&2; exit 1")
 	code, out := r.run("vulncheck")
 	if code != 0 {
 		t.Fatalf("a scan that could not run: exit %d, want 0\n%s", code, out)
@@ -395,6 +683,10 @@ func TestVulncheckThatCannotRunSaysWhatWasNotChecked(t *testing.T) {
 	if !strings.Contains(out, "SKIPPED") || !strings.Contains(out, "not checked") {
 		t.Fatalf("the skip is not said loudly:\n%s", out)
 	}
+	if !strings.Contains(out, "ran and stopped with exit 1") || !strings.Contains(out, "vulnerability database") {
+		t.Errorf("the skip does not say the tool ran and could not reach its database:\n%s", out)
+	}
+	r.noCopyLeft()
 }
 
 func TestSecretsCheckScansTheBranchsOwnCommits(t *testing.T) {

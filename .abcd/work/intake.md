@@ -42,7 +42,7 @@ surface, and S1 says so explicitly.
 # blocks the GOTOOLCHAIN auto rescue). Bump the tag with go.mod (a test holds it there).
 go mod download
 docker run --rm --network=none -v "$PWD:/src" \
-  -v "$(go env GOMODCACHE):/go/pkg/mod:ro" -w /src golang:1.26.10
+  -v "$(go env GOMODCACHE):/go/pkg/mod:ro" -w /src golang:1.26.11
 ```
 
 `go test` executes contributor Go via `init()` and `TestMain`; a bare run on a
