@@ -114,7 +114,9 @@ func withHandBack(t *testing.T, state []byte, hb map[string]any, field, bad stri
 
 // TestARunStateRefusesHandBackTextItNeverWrites: a hand-back a lane's
 // receipt wrote, and one shaped as the fix-round cap writes it, read back at
-// the current version and at the version just before it; each with one text
+// three versions: the current one, the one just before it (schemaVersionPrevious)
+// and the last that names the classes the old way (schemaVersionUnrenamed), which
+// the read migrates; each with one text
 // forged with U+202E or U+009B is refused as the run's state by the read, the record and the
 // drain's call that routes the lane's hand-back, none echoing the rune.
 func TestARunStateRefusesHandBackTextItNeverWrites(t *testing.T) {

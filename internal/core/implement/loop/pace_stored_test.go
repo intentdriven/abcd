@@ -112,8 +112,9 @@ func TestASeriesRefusesAPaceItNeverWrites(t *testing.T) {
 }
 
 // TestARunStateRefusesAPaceItNeverWrites: a run whose pace comes from all four
-// layers reads back unchanged, at the current version and at the version just
-// before it; one whose stored pace names a layer the loop never writes or an
+// layers reads back unchanged at three versions: the current one, the one just
+// before it (schemaVersionPrevious) and the last that names the classes the old way
+// (schemaVersionUnrenamed), which the read migrates; one whose stored pace names a layer the loop never writes or an
 // origin with a control or bidi rune is refused as the run's state, with the
 // remedy every state refusal names, by the direct read, the record and a
 // resume typed with another pace.
