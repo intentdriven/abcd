@@ -705,7 +705,7 @@ func claudeSpent(out []byte) Answer {
 // the harness's own computation, from its price table.
 func claudeUnpinned(ans Answer) []oracle.Unpinned {
 	var un oracle.Unpin
-	askedUnpinned(&un, ans.Sides)
+	askedUnpinned(&un, ans.Sides, false)
 	servedUnpinned(&un, ans.Model, ans.Sides, ans.counted)
 	return un.List()
 }

@@ -84,6 +84,6 @@ repository names only which classes review.
    - landed: f30035816
 8. A live check that each bundled class launches at its effort
    - packages: internal/core/runner
-   - tests: behind the existing live build tag, one short launch per bundled class through the harness runner at `high` returns an answer and reports a model; the check is skipped, saying so, where no harness is logged in
+   - tests: behind a `live` build tag of its own, which nothing runs by default, one short launch per bundled class through the harness runner at `high` returns an answer and reports a model; the check is skipped, saying so, where no harness is logged in
    - needs: 5
    - landed: 14917d053

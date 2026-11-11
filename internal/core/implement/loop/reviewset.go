@@ -10,8 +10,8 @@ package loop
 //
 //   - review.reviewers is a list of one or two classes, for both roles, or an
 //     object naming a list per role ({"security-reviewer": [...]}); each role
-//     takes the highest layer that sets it, else the bundled pair (top and
-//     default, the product thinker's ruling of 2026-10-24).
+//     takes the highest layer that sets it, else the bundled pair (research
+//     and default, itd-2611101419006280 decision 4).
 //   - review.judge is one class, else the bundled top. A judge runs only once
 //     its agent has cleared itd-81's calibration gate, so the bundled judge is
 //     stored waiting, or active once the gate has cleared, decided once when
@@ -59,6 +59,7 @@ import (
 	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -136,8 +137,9 @@ const (
 )
 
 // EffortLevels are the levels models.effort takes, lowest first: the five the
-// harness takes (decision 6).
-var EffortLevels = []string{"low", "medium", "high", "xhigh", "max"}
+// harness takes (decision 6), the runner's own list, which refuses a request
+// at any other.
+var EffortLevels = runner.EffortLevels
 
 // BundledEffort is every class's effort when the machine names none.
 const BundledEffort = "high"
@@ -435,30 +437,44 @@ func (o Options) judgeGate() (bool, string) {
 // classMap is the resolved class map: each class's route, layer and origin.
 type classMap map[string]ReviewClass
 
-// resolveReviewSet reads the review set and the class map through the layered
-// configuration. diagnostics are its non-fatal reports, one line each, for the
-// front door to print on stderr.
-func resolveReviewSet(roots layered.Roots, o Options) (ReviewSet, []string, error) {
+// loadClassNames loads the configuration the review set reads, claims its
+// keys, and refuses a file that names a class by its old name or a machine map
+// that sets top without research (oldClassFault). It is the one reading every
+// reader of the class map starts from, the review set's and a drive's
+// (ClassRoutes), so each refuses the same files in the same words. named is
+// every class the files name.
+func loadClassNames(roots layered.Roots) (*layered.Stack, []namedClass, error) {
 	s, err := layered.Load(layered.Config, roots)
 	if err != nil {
-		return ReviewSet{}, nil, reviewRefusal(err.Error())
+		return nil, nil, reviewRefusal(err.Error())
 	}
 	if err := s.Claim(reviewNamespace, keyReviewers, keyJudge, keyMaxReviewers); err != nil {
-		return ReviewSet{}, nil, reviewRefusal(err.Error())
+		return nil, nil, reviewRefusal(err.Error())
 	}
 	if err := s.Claim(modelsNamespace, keyClasses, keyEffort); err != nil {
-		return ReviewSet{}, nil, reviewRefusal(err.Error())
+		return nil, nil, reviewRefusal(err.Error())
 	}
 	// The retired names are claimed too, so a file naming one is refused below
 	// with the whole mapping rather than as a key nothing reads.
 	if err := s.Claim(classNamespace, append(slices.Clone(Classes), retiredClasses...)...); err != nil {
-		return ReviewSet{}, nil, reviewRefusal(err.Error())
+		return nil, nil, reviewRefusal(err.Error())
 	}
 	named, err := classNamesIn(s)
 	if err != nil {
-		return ReviewSet{}, nil, err
+		return nil, nil, err
 	}
 	if err := oldClassFault(named); err != nil {
+		return nil, nil, err
+	}
+	return s, named, nil
+}
+
+// resolveReviewSet reads the review set and the class map through the layered
+// configuration. diagnostics are its non-fatal reports, one line each, for the
+// front door to print on stderr.
+func resolveReviewSet(roots layered.Roots, o Options) (ReviewSet, []string, error) {
+	s, named, err := loadClassNames(roots)
+	if err != nil {
 		return ReviewSet{}, nil, err
 	}
 	var diags []string
@@ -671,7 +687,13 @@ func classNamesIn(s *layered.Stack) ([]namedClass, error) {
 	}
 	for _, f := range found {
 		if per, err := layered.Decode[map[string][]string](f.Raw); err == nil {
+			// Only a role the set governs makes a key: any other is refused
+			// by reviewersFor, naming it bounded, so a file cannot lengthen
+			// a refusal here by the role it writes.
 			for _, role := range slices.Sorted(maps.Keys(per)) {
+				if !slices.Contains(reviewRoles, role) {
+					continue
+				}
 				for _, c := range per[role] {
 					add(key+"."+role, c, f)
 				}
@@ -733,14 +755,16 @@ func oldClassFault(named []namedClass) error {
 // with while no configuration file names research, default or small (decision
 // 2): a list cannot show which names it was written for, so it is read as the
 // new top and the person is told what that now stands for. "" once a file
-// names a new class, or where no list or judge in a file names top.
+// names a new class, or where no list or judge in a file names top. An effort
+// object is new with the rename, so a file holding one, under any class name,
+// top included, was written for the new names.
 func topNote(named []namedClass, cm classMap) string {
 	at := ""
 	for _, n := range named {
-		if n.name != ClassTop && slices.Contains(Classes, n.name) {
+		if strings.HasPrefix(n.key, effortKey+".") || (n.name != ClassTop && slices.Contains(Classes, n.name)) {
 			return ""
 		}
-		if at == "" && n.name == ClassTop && !strings.HasPrefix(n.key, classNamespace+".") {
+		if at == "" && n.name == ClassTop && strings.HasPrefix(n.key, reviewNamespace+".") {
 			at = fmt.Sprintf("%s in %s", n.key, n.origin)
 		}
 	}
@@ -948,7 +972,7 @@ func CheckReviewersLaunch(o Options, repoRoot string) error {
 		for _, c := range r.Reviewers {
 			if err := o.Runners.CanLaunch(r.Role, c.Model, false); err != nil {
 				return refuse(StageReview, "", "", fmt.Sprintf("the review set's %s reviewer for %s cannot be launched on this machine: %v",
-					c.Class, r.Role, err), "set what the reason names in "+layered.Config.MachineOrigin()+
+					c.phrase(), r.Role, err), "set what the reason names in "+layered.Config.MachineOrigin()+
 					", or a class map (models.classes) whose models a route here can launch; nothing was written")
 			}
 		}
@@ -962,12 +986,9 @@ func CheckReviewersLaunch(o Options, repoRoot string) error {
 // (runner.Config.WithClassRoutes). A map that does not resolve is refused in
 // the review stage's own words.
 func ClassRoutes(roots layered.Roots) ([]string, error) {
-	s, err := layered.Load(layered.Config, roots)
+	s, _, err := loadClassNames(roots)
 	if err != nil {
-		return nil, reviewRefusal(err.Error())
-	}
-	if err := s.Claim(classNamespace, Classes...); err != nil {
-		return nil, reviewRefusal(err.Error())
+		return nil, err
 	}
 	cm, _, err := resolveClassMap(s)
 	if err != nil {

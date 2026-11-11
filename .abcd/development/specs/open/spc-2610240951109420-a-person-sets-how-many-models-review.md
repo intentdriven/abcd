@@ -58,7 +58,10 @@ Approach, by acceptance criterion:
   goes to a fix round with an empty brief. The judge is launched only where the run's
   stored judge status is `active`: the bundled `top` judge is stored `waiting` until a
   judge agent clears itd-81's gate, fixed at the run's start, and a waiting judge is never
-  launched, awaited or counted (amended 2026-11-10 by itd-2611101419006280).
+  launched, awaited or counted (amended 2026-11-10 by itd-2611101419006280). A judge
+  launch checks the calibration gate again when it launches and never rests on the stored
+  status alone: the stored status words the run record's line, and a judge whose agent
+  no longer clears the gate is not launched.
 
 Out of scope, recorded: the other top-class consult cases and the writer-class ruling
 (iss-2610240946046901); reviews started by hand outside the loop (itd-83's seam); the

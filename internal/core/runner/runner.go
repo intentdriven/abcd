@@ -35,6 +35,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -67,6 +68,11 @@ const (
 	MinTimeout = 5 * time.Minute
 	MaxTimeout = 12 * time.Hour
 )
+
+// EffortLevels are the efforts a request may run at, least first
+// (itd-2611101419006280): the levels the claude harness's effort flag takes,
+// and the only ones a request carries, whoever built it.
+var EffortLevels = []string{"low", "medium", "high", "xhigh", "max"}
 
 // Request is what a role is handed: the same the host sub-agent is handed.
 type Request struct {
@@ -439,6 +445,10 @@ func (r Request) check() error {
 			return fmt.Errorf("runner: the request's model %q is not a <provider>/<model> route of at most 128 plain characters",
 				termsafe.Sanitize(r.Model))
 		}
+	}
+	if r.Effort != "" && !slices.Contains(EffortLevels, r.Effort) {
+		return fmt.Errorf("runner: the request's effort %q is not one of %s", termsafe.Sanitize(layered.BoundKey(r.Effort)),
+			strings.Join(EffortLevels, ", "))
 	}
 	if !sessionRe.MatchString(r.SessionID) {
 		return errors.New("runner: the request names no session id for its transcript")

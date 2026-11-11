@@ -494,7 +494,7 @@ func TestARunnerRunReviewerIsHandedItsClassModel(t *testing.T) {
 	const model = "local/qwen3-small"
 	review := func(t *testing.T, routed bool) (ValidatorRun, driveEnv) {
 		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-		// The run's review set holds the below class at the model the
+		// The run's review set holds the default class at the model the
 		// reviewer below is cut with, as every round's reviewers are.
 		machineConfig(t, `{"models":{"classes":{"default":"`+model+`"}}}`)
 		start, err := Start(repo.Root(), "itd-10", Options{})

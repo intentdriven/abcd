@@ -255,7 +255,7 @@ func maskRoute(r runner.RouteRecord) runner.RouteRecord {
 	r.Asked, r.Ran, r.Model, r.Override = line(r.Asked), line(r.Ran), line(r.Model), line(r.Override)
 	s := &r.Sides
 	s.ModelAsked, s.ServedProvider, s.FinishReason = line(s.ModelAsked), line(s.ServedProvider), line(s.FinishReason)
-	s.HarnessVersion, s.PromptSHA256 = line(s.HarnessVersion), line(s.PromptSHA256)
+	s.HarnessVersion, s.PromptSHA256, s.EffortAsked = line(s.HarnessVersion), line(s.PromptSHA256), line(s.EffortAsked)
 	s.ServedModels = maskEach(s.ServedModels, line)
 	s.PinConfigSHA256 = line(s.PinConfigSHA256)
 	s.ProviderPin = maskPtr(s.ProviderPin, func(p oracle.Pin) oracle.Pin {

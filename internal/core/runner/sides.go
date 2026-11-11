@@ -77,9 +77,6 @@ type Sides struct {
 	// record lists the local fields (iss-2610171545099084). A harness's
 	// output cannot say so; the configuration does.
 	Local bool `json:"local,omitempty"`
-	// effortUnpassed says the request asked for an effort this runner has no
-	// way to pass (askedUnpinned lists it as not passed).
-	effortUnpassed bool
 }
 
 // StoppedShort reports whether the harness says the run's last turn ended before its
@@ -135,7 +132,10 @@ func cleanHarness(s string) string {
 // provider. A route to a model on this machine lists the local fields too:
 // not configured without a local pin, and with one, each the server did not
 // confirm not verified; the pin's context is then the context asked for.
-func askedUnpinned(un *oracle.Unpin, s Sides) {
+// unpassed says the request asked for an effort this runner has no way to
+// pass; it is a fact of the launch, not of the record, so the record keeps
+// only the not passed it lists.
+func askedUnpinned(un *oracle.Unpin, s Sides, unpassed bool) {
 	un.Unless(s.ModelAsked != "", oracle.AskedModel, oracle.NotConfigured)
 	if s.ProviderPin != nil {
 		un.Add(oracle.AskedProviderPin, oracle.NotVerified)
@@ -148,7 +148,7 @@ func askedUnpinned(un *oracle.Unpin, s Sides) {
 	switch {
 	case s.EffortAsked != "":
 		un.Add(oracle.AskedEffort, oracle.NotVerified)
-	case s.effortUnpassed:
+	case unpassed:
 		un.Add(oracle.AskedEffort, oracle.NotPassed)
 	default:
 		un.Add(oracle.AskedEffort, oracle.NotConfigured)
