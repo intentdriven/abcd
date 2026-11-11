@@ -217,7 +217,16 @@ every failure path in the entrypoint is a diagnostic and an exit 0. The session-
 drains staging into the store through the same fail-closed capture path, where
 there is a real time budget; it takes main-thread transcripts before sub-agent
 ones and bounds the pass by bytes as well as count, so a truncated pass stores
-the part that makes the rest legible. Whatever the budget leaves is reported
+the part that makes the rest legible. It finishes each entry it begins, part
+after part, and starts no part and no entry once 220 seconds have passed since
+the binary started, twenty under the host's 240-second limit for that hook, so
+a backlog it could clear before that point is cleared at that start, and one
+entry it would have finished in the last twenty seconds waits for the next
+prompt or session start. A part has no upper size and an entry's first part
+runs whatever the time, so a part that runs past the host's limit ends the
+hook there without its output, as redacting the transcript whole did; the
+hook's output is delivered when the part in progress at 220 seconds ends
+inside the twenty seconds left. Whatever the budget leaves is reported
 rather than dropped, because a repo with a dozen missed sessions must not stall
 the user's first prompt.
 
@@ -264,10 +273,44 @@ Three mechanisms now bound it, and a fourth names the case none of them can
 clear:
 
 - **A drain runs while a session is LIVE**, not only at its start:
-  the prompt-router entrypoint (`UserPromptSubmit`) drains one entry and at most
-  half a megabyte per prompt, so a session that spawns sub-agents redacts its own
-  branches as it goes. Everything it says goes to stderr, never to the hook's
-  stdout, which is model context.
+  the prompt-router entrypoint (`UserPromptSubmit`) drains one entry per prompt,
+  so a session that spawns sub-agents redacts its own branches as it goes. It
+  starts once the prompt's root commit is known and runs beside the rest of
+  the hook, and the hook ends when both are done. It redacts a transcript in
+  parts of whole transcript records, so one long record (a pasted file, an
+  image) is one part: a part has no upper size. It keeps each part it
+  finishes. A transcript it begins is finished at that prompt, part after
+  part: a part after the transcript's first starts until 110 seconds after the
+  binary started, ten under the host's 120-second limit for the hook, and none
+  starts after that; the next prompt continues from the parts kept. The first part of the transcript it reaches
+  always runs, whatever its size and whatever the time, so a transcript that
+  cannot be split (one that is not line-delimited records, or any transcript
+  in a repository with gitleaks armed) is redacted whole at that prompt. A
+  part, the first or a later one started before the bound, that runs past the
+  host's limit ends the hook there without its output, as redacting the
+  transcript whole did; nothing of that part is kept, and at the next prompt
+  it is the first part. So the hook's output is delivered when the part in
+  progress at the bound ends inside the margin. A transcript whose drain would
+  have ended before the bound is stored at the same prompt as when it was
+  redacted whole; one whose drain would have ended in the last ten seconds
+  before the host's limit is stored at the next prompt; and one that needs
+  longer is finished over several prompts. Redacted whole, one that outlasted
+  the host's limit lost the hook's output at every prompt and was never
+  finished.
+  The bound counts from the binary's start and the host's limit from the
+  wrapper's, so the margin assumes the wrapper started the binary well inside
+  it; a first run that downloads the binary is outside that assumption. When a
+  part cannot be kept (its folder refused or unwritable, the disk full), abcd
+  cannot read its own binary to name it, or gitleaks is armed, a later prompt
+  could not continue from that point, so the drain finishes that transcript in
+  memory past the bound and waits for the store's lock as long as a capture
+  does, as it did before parts; a hook that then outlasts the host's limit
+  loses its output, as it did then. It says once when a part could not be
+  kept. Two builds draining in turn redo each other's parts, so a
+  transcript neither could finish within one prompt waits for a session start
+  that can, a drain run outside the hook, or the builds to stop alternating. Everything it says
+  goes to stderr, one line for what it left, never to the hook's stdout, which
+  is model context.
 - **`StagedTTL` (seven days) is the maximum staged age.** Past it an entry is
   OVERDUE: it sorts to the front of every drain and is named in every notice. Age
   buys priority and volume, and nothing else — an overdue transcript is never
@@ -391,7 +434,32 @@ would a freshly staged one. Relocating a corpus is not the moment to rewrite it.
 
 Staging does not weaken the boundary. Staged bytes are raw, but staging is
 **not the store**: nothing reads it but a drain, and what reaches the records
-directory is still redacted or absent. A refused drain keeps the staged copy
+directory is still redacted or absent. A drain that stops part-way keeps the
+parts it redacted beside the staging lane, each only after both redaction stages
+passed, and writes the record once, whole, from parts covering the whole
+transcript; the staged copy stays until that record is on disk, so a drain
+killed after a part is kept, after its parts are done, after the record is
+written or after the staged copy is removed leaves the staged copy or the whole
+record. A part that cannot be kept (its folder refused or unwritable, the disk
+full) does not stop the transcript: the drain carries on in memory to the
+record, past its bound if it must, and names the fault once. A kept part is used again only while
+everything that decided it is unchanged: the exact bytes it covers, the scanner
+it was redacted with (its patterns, the identity it redacts, whether gitleaks
+is armed, the home path, and the running binary, by a digest of its bytes, or
+by a stamp unique to the process when those cannot be read), and, for a part
+that ended where the text then ended, the text's length, since a line added
+after it could close a block its last line opened. Otherwise that part and
+every part after it are redacted again, so parts kept under another
+configuration, as by a session on another build or with other settings, are
+redone and the transcript is still stored as one record. A part ends only between two
+transcript records, and a part whose last line holds a private-key header runs
+on to the next cut, so the record is the one a single pass writes; with gitleaks
+armed a transcript is not split and no kept part is used. Every directory on the
+way to a part is proved a real directory before anything in it is read, written
+or removed; a drain, with or without anything staged, removes the parts
+whose staged file is gone and nothing else, unless that file's lock is held or
+the pass's bound has passed, when a later drain does, and a discard removes its
+file's parts with it. A refused drain keeps the staged copy
 rather than deleting it, because discarding the only copy abcd holds would
 convert a reported refusal into exactly the silent permanent loss staging exists
 to end, and the refusal names the kept file as unredacted so it is never left
