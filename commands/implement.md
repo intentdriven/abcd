@@ -1045,13 +1045,31 @@ Where your repository's own settings name the hooks directory, the run's
 fingerprint records that copy at the run's first check, which is normally the
 step that makes the lane, and within a run a later change to it is refused at
 the next step. Across the lanes of one drive the drive holds it: as it starts
-it reads the checkout's hooks directory, hashing each entry as the fingerprint
-does, and keeps the hashes in its own memory; just before each lane's add the
-worktree stage reads the directory again and refuses the lane on any
-difference, naming the hook file, before any add and so before any hook runs.
-Elsewhere nothing does: a step the host runs, a single build and a drive
-started again take the copy as it stands at the run's first check, so it must
-not change between runs, and nothing enforces it.
+it reads the checkout's hooks directory through the fingerprint's own reader
+and keeps hashes of it in its own memory; just before each lane's add the
+worktree stage reads the directory again, and a hook file added, removed or
+changed since the drive started, and still so at that read, refuses the lane,
+naming the file, before that lane's add. The hold has three limits, and
+nothing else checks them for you. The directory is read just before the add:
+a change made after that read and before git runs the hook is not seen, and
+nothing holds the directory through the add. The directory read is the one
+your repository's own settings name (else the git directory's `hooks`): with
+a relative `core.hooksPath` set only in your global settings, the copy the
+add runs is not the one read. What is compared is each top-level entry of the
+directory, a file by its bytes and mode, a subdirectory by its kind only and a
+symlink by its target text, up to 1024 entries (past that, their count and the
+first 1024): nothing a hook sources or runs from a subdirectory or from
+elsewhere is held. Elsewhere nothing holds the copy: a step the host runs, a
+single build and a drive started again take it as it stands at the run's
+first check, so it must not change between runs, and nothing enforces it.
+
+As it starts, the drive reads your settings and the checkout's hooks
+directory, and it refuses to start when the settings cannot be listed or the
+common git directory cannot be resolved, naming what git reported; look at
+your repository's own settings (`git config --local --list --show-origin`),
+then start it again. A hooks directory it cannot read is recorded as such,
+not refused, and compared like the rest: one made unreadable after the drive
+started refuses the next lane.
 
 A branch that already stands under the lane's name (a step stopped between git
 making the branch and the worktree) has its head resolved once. That commit's
@@ -1060,8 +1078,15 @@ directory git takes at the checkout from all your settings, global ones
 included. A head whose hooks directory cannot be read is refused too. If the
 branch holds another commit once git has added the worktree, the lane is
 refused, nothing is pinned, and the stage removes the worktree it has just
-added (that one only, never the branch), so the next step meets the standing
-branch and judges it again before any add. The standing-branch check is
+added, leaving the branch, so the next step meets the standing branch and
+judges it again before any add. It removes it only where a real directory,
+not a symlink, stands at the lane's path and git lists a worktree there on the
+lane's branch. If that check or git's removal fails, the step is refused
+saying so, and what stands at the path is left: look at it and at what moved
+the branch, and if git lists it as the lane's worktree, remove it (`git
+worktree remove --force` on the lane's path) before you run the step again. A
+step taken again while that worktree stands adopts it, and an adopted lane is
+judged by its hooks only, as below. The standing-branch check is
 defensive: a lane whose hooks differ is refused before a worktree is made
 rather than at the proof after it. The add is also told on its command line the
 hooks directory read at the checkout; that refuses nothing, and only pins the
@@ -1121,8 +1146,8 @@ an absolute `core.hooksPath` or a hook dispatcher your global settings name
 gets no pin of its own, and is compared with the checkout as recorded; a
 relative `core.hooksPath` set only in your global settings is neither proved
 nor pinned in the lane, and the checkout's copy it names, which the add's
-post-checkout hook runs from, is not watched, since the fingerprint reads the
-hooks directory from the repository's own settings; the
+post-checkout hook runs from, is not watched, since the fingerprint and the
+drive read the hooks directory from the repository's own settings; the
 checkout's own hooks and settings changing when you pull it during a run are a
 change like any other, which stops the next step until you accept it; and each
 run records the watched settings afresh when it first checks them, so a

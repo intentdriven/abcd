@@ -11,9 +11,24 @@ package loop
 // checkout's hooks afresh at its first check, so a lane's agent that changed
 // origin's URL would otherwise choose the remote that vouches for the next
 // lane's pin, and one that changed the checkout's post-checkout hook would
-// have it run in the next lane's add. Not held: any other http.* key (a
-// per-URL http.<url>.* among them), an origin defined only by a legacy remotes
-// or branches file in the git directory, which has no key to compare, and
+// have it run in the next lane's add.
+//
+// The hold on the checkout's hooks has three limits. The directory is read
+// just before the add; a change made after that read and before git runs the
+// hook is not seen, and nothing holds the directory through the add. The
+// directory read is the one the repository's own settings name (checkoutHooks);
+// with a relative core.hooksPath set only in global settings, the copy the add
+// runs is not the one read. What is compared is each top-level entry, a file by
+// its bytes and mode, a subdirectory by its kind only and a symlink by its
+// target text, up to maxHookEntries (past it, the count and the first
+// entries); nothing a hook sources or runs from a subdirectory or from
+// elsewhere is held.
+//
+// Not held: any other http.* key (a per-URL http.<url>.* among them); an
+// origin defined only by a legacy remotes or branches file in the git
+// directory, which has no key to compare; the run fingerprint's other watched
+// settings (content filters, diff and merge drivers, signing programs, includes
+// and the rest), which each run records afresh at its first check; and
 // anything changed while no drive runs.
 
 import (
@@ -71,7 +86,11 @@ func remoteIdentityKey(key string) bool {
 
 // readRemoteIdentity is what a drive holds as it starts: origin's identity
 // (readRemoteSettings) and the checkout's hooks directory, hashed under the
-// identity's salt exactly as the run's fingerprint hashes it (checkoutHooks).
+// identity's salt through the run's fingerprint's own reader (checkoutHooks).
+// It fails when the settings cannot be listed, no salt can be drawn, the
+// repository's own settings cannot be read or the common git directory cannot
+// be resolved; an unreadable hooks directory is recorded as such (hashDir),
+// not a failure, and compared as an entry is.
 func readRemoteIdentity(repoRoot string) (*remoteIdentity, error) {
 	id, err := readRemoteSettings(repoRoot)
 	if err != nil {
@@ -83,8 +102,9 @@ func readRemoteIdentity(repoRoot string) (*remoteIdentity, error) {
 	return id, nil
 }
 
-// readCheckoutHooks hashes, under salt, each entry of the hooks directory git
-// runs at the checkout, through the fingerprint's own reader (checkoutHooks).
+// readCheckoutHooks hashes, under salt, each top-level entry of the hooks
+// directory the repository's own settings name (else the common git
+// directory's hooks), through the fingerprint's own reader (checkoutHooks).
 func readCheckoutHooks(repoRoot, salt string) (map[string]string, error) {
 	hooks := map[string]string{}
 	if _, _, err := checkoutHooks(repoRoot, salt, map[string]string{}, hooks); err != nil {
@@ -95,9 +115,12 @@ func readCheckoutHooks(repoRoot, salt string) (map[string]string, error) {
 
 // readRemoteSettings reads origin's identity at repoRoot as the worktree
 // stage's ask of origin reads it: `git config --null --list` through the same
-// runner (gitutil.NetContext), so the person's global and system settings, a
-// conditional include and the environment's own settings are read as the ask
-// reads them. It is bounded by originAskTimeout.
+// runner (gitutil.NetContext), so the person's repository, global and system
+// settings and a conditional include are read as the ask reads them
+// (TestEachKeyFamilyTheDriveHoldsIsReadAgain has a system-scope and an
+// included case). The environment is the one that runner gives the ask; no
+// test sets a setting through the environment. It is bounded by
+// originAskTimeout.
 func readRemoteSettings(repoRoot string) (*remoteIdentity, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), originAskTimeout)
 	defer cancel()
@@ -172,15 +195,21 @@ func remoteUnchanged(c Context, laneID string) error {
 }
 
 // checkoutHooksUnchanged refuses the lane's worktree stage when the
-// checkout's hooks directory differs from what the drive read as it started
-// (Context.remote). git's add runs in the checkout, so it runs the post-checkout
-// hook of the hooks directory git takes there (for a relative core.hooksPath,
-// the checkout's own working-tree copy) with the drive's rights; each lane of
-// a drain is a run of its own, whose fingerprint takes that copy as it stands
-// at its first check, so without this a copy an earlier lane changed would
-// be the new run's starting point. The stage calls it just before the add,
-// so a difference is refused before any add and before any hook runs. With
-// nothing carried (a step the host runs, a single build) it checks nothing.
+// checkout's hooks directory, as read now, differs from what the drive read
+// as it started (Context.remote): an entry added, removed or changed, named.
+// git's add runs in the checkout, so it runs the post-checkout hook of the
+// hooks directory git takes there (for a relative core.hooksPath, the
+// checkout's own working-tree copy) with the drive's rights; each lane of a
+// drain is a run of its own, whose fingerprint takes that copy as it stands
+// at its first check, so without this a copy an earlier lane changed would be
+// the new run's starting point. The stage calls it just before the add, so a
+// difference present at this read is refused before that add. It holds the
+// three limits the file's header states: a change made after this read and
+// before git runs the hook is not seen, and nothing holds the directory
+// through the add; the directory read is the one the repository's own
+// settings name; and only top-level entries are compared, a subdirectory by
+// its kind and a symlink by its target text. With nothing carried (a step the
+// host runs, a single build) it checks nothing.
 func checkoutHooksUnchanged(c Context, laneID string) error {
 	if c.remote == nil {
 		return nil

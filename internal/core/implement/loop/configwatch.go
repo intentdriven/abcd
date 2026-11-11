@@ -211,14 +211,16 @@ func takeFingerprint(repoRoot string, lanes []laneDir, salt string, now time.Tim
 	return fp, nil
 }
 
-// checkoutHooks is how the fingerprint reads the checkout's hooks: every
+// checkoutHooks is how the fingerprint reads the checkout's hooks: each
 // watched key the repository's own settings set is hashed into keys
-// (hashEntries), and each entry of the hooks directory git runs at the
-// checkout (the last core.hooksPath among them, else the common git
-// directory's hooks) into files (hashDir), all under salt. It returns that
-// directory and the common git directory. A drive holds the same hashes of
-// the checkout's hooks across its lanes (remoteid.go), read through this one
-// function.
+// (hashEntries), and each top-level entry of the hooks directory those
+// settings name (the last core.hooksPath among them, else the common git
+// directory's hooks) into files (hashDir), all under salt. A core.hooksPath
+// set only in global or system settings is not read here, so with one the
+// directory hashed can be other than the one git runs at the checkout. It
+// returns that directory and the common git directory. A drive holds the same
+// hashes of the checkout's hooks across its lanes (remoteid.go), read through
+// this one function.
 func checkoutHooks(repoRoot, salt string, keys, files map[string]string) (hooks, common string, err error) {
 	entries, err := gitutil.RepoConfig(repoRoot, watchedConfig)
 	if err != nil {
@@ -839,7 +841,7 @@ func ownHooksDir(dir, hooksPath string) string {
 }
 
 // checkoutHooksPath is the core.hooksPath git takes at the checkout, from
-// every settings scope the lane's add reads (gitutil.WorkingTreeCommitCommand,
+// the settings scopes the lane's add reads (gitutil.WorkingTreeCommitCommand,
 // the person's global and system settings included), "" when none sets it.
 func checkoutHooksPath(repoRoot string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), originAskTimeout)
