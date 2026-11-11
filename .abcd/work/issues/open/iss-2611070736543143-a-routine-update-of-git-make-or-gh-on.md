@@ -13,3 +13,5 @@ remedy: "Treat a change to those tools' binaries the way a harness update is tre
 ---
 
 A routine update of git, make or gh on the machine ends a running drive with 'binary changed while the drive ran'. The behaviour is documented and sits outside the re-prove, but a drive meant to run for weeks with no stops cannot survive an ordinary package update of a tool it merely calls.
+
+2026-11-07: met at 14:25 in the autonomous run of 7 Nov: a lane working this issue stopped at the check, as it should, and the fix is queued for a ruling.

@@ -13,3 +13,5 @@ remedy: "Reserve per lane: at each step the run reserves the open lanes' own pac
 ---
 
 An intent build re-widens its reservation to the spec's whole footprint at every step, instead of reserving only the packages of the lanes it has open. A spec footprint that names whole packages (or the whole of commands/) then overlaps peers' narrow file reservations, so the build's renewal at land is refused until the peer releases by hand, and a hand-narrowed reservation is widened again at the next step. Seen 26-28 Oct on run-2610252354599453: a peer's commands/land.md and commands/guard.md reservations blocked lane 1's renewal.
+
+2026-11-09: seen again in the autonomous run of 7 Nov: two lanes of the same run blocked each other through the spec-wide footprint, the checklist spec naming the whole internal/surface/cli package while one lane held one file in it, and build could not tell a holder from the same run from a peer's; the second lane was narrowed to its step under a hand reservation. iss-2610230839002949 lists the other sightings.

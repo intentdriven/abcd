@@ -13,3 +13,5 @@ remedy: "Reserve each lane by its own step's paths rather than the whole spec's 
 ---
 
 A spec footprint naming a whole directory collides with a peer holding one file in it: run-2611031640393520's footprint has internal/core/lint, a cloud session holds internal/core/lint/prosecitations.go, and the run's renewal is refused although the lane changes none of that session's files.
+
+2026-11-09: seen again on 9 Nov at 08:27 and 12:27 in the autonomous run of 7 Nov: a spec footprint naming the whole internal/core/implement/loop package was refused because another holder had reserved one test file in it, and the step's own files were reserved by hand instead; on 10 Nov at 12:23 the same collision stopped a one-package step. iss-2610230839002949 lists the other sightings.
