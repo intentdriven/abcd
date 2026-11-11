@@ -445,6 +445,26 @@ func namesSubject(id, subject string) bool {
 	return recordid.CitedIDRe.MatchString(id) && recordid.CanonCitedID(id) == subject
 }
 
+// footprintReserve is the room a reservation message keeps for every line
+// besides its footprint (FootprintFits): its subject, record, holder and
+// copy, the lease's times, a lane stage and the Assisted-by label, which
+// together take well under it.
+const footprintReserve = 1024
+
+// FootprintFits reports whether a reservation message naming fp, one
+// Abcd-Footprint line for each path, stays within MaxMessageBytes with
+// footprintReserve kept for its other lines: for a caller composing a
+// footprint it must be able to write, as the implement loop's widening
+// does, coarsening one that does not fit. The writer still measures the
+// whole message it composes against the cap (checkText).
+func FootprintFits(fp []string) bool {
+	n := 0
+	for _, p := range fp {
+		n += len(keyFootprint) + len(": ") + len(p) + len("\n")
+	}
+	return n <= MaxMessageBytes-footprintReserve
+}
+
 // ValidFootprintPath reports whether p is a footprint path a reservation may
 // carry (validFootprint), for a caller composing a renewal's Narrow: a path
 // it holds false for is never written, and a renewal naming one in Narrow

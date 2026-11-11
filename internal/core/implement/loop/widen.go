@@ -169,19 +169,26 @@ type widened struct {
 // and each path of want that footprint does not cover, keeping own's term
 // (widenReservation), judged for overlap and against the cap like any
 // reservation. Nothing is pushed when own covers every path, and the result
-// names none added. A refusal is the reservation act's (reservedNote), with
-// the paths it would have added.
+// names none added. Paths too many for one reservation message are
+// coarsened first (coarsened). A refusal is the reservation act's
+// (reservedNote), with the paths it would have added.
 func widenHold(repoRoot, key string, own claim.Reservation, want []string, now time.Time) (widened, error) {
 	var w widened
-	for _, p := range want {
-		if !covers(own.Footprint, []string{p}) {
-			w.added = append(w.added, p)
-		}
-	}
+	w.added = unheldBy(own.Footprint, want)
 	if len(w.added) == 0 {
 		w.footprint = slices.Clone(own.Footprint)
 		return w, nil
 	}
+	added, ok := coarsened(own.Footprint, w.added, DriveHooksPath(repoRoot))
+	if !ok {
+		r := refuse(StageReservation, CheckReservation, "", fmt.Sprintf(
+			"the reservation on %s cannot carry that many paths: the %d its hold would name, coarsened to their directories as far as they may be, pass what a reservation message holds within its %d-byte cap",
+			key, len(heldWith(own.Footprint, added)), claim.MaxMessageBytes),
+			"take up fewer paths beyond the issue's place in one lane, or hold a directory that covers them")
+		r.overCap = true
+		return w, r
+	}
+	w.added = added
 	fp := heldWith(own.Footprint, w.added)
 	r, err := widenReservation(repoRoot, key, fp, false, false, own, now)
 	if err != nil {
@@ -189,6 +196,53 @@ func widenHold(repoRoot, key string, own claim.Reservation, want []string, now t
 	}
 	w.footprint, w.r = fp, r
 	return w, nil
+}
+
+// unheldBy is each path of want that held does not cover, in want's order.
+func unheldBy(held, want []string) []string {
+	var out []string
+	for _, p := range want {
+		if !covers(held, []string{p}) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// coarsened is added, the paths a widening adds to own, made few enough that
+// a reservation naming own beside them fits its message (claim.FootprintFits):
+// while they do not fit, every path goes up one level to its parent directory
+// at a time, the paths then covered by another dropped, and none ever goes up
+// to the repository's root or to a gate file (DriveGate, with hooksPath, the
+// hooks path the repository configures), which keeps its path as it is. A
+// coarsened path is judged for overlap like any other. ok is false when no
+// path can go up further and they still do not fit.
+func coarsened(own, added []string, hooksPath string) (_ []string, ok bool) {
+	cur := added
+	for !claim.FootprintFits(heldWith(own, cur)) {
+		var next []string
+		up := false
+		for _, p := range cur {
+			if d := path.Dir(p); d != "." && d != "/" && !DriveGate(d, hooksPath) {
+				p, up = d, true
+			}
+			if !slices.Contains(next, p) {
+				next = append(next, p)
+			}
+		}
+		if !up {
+			return cur, false
+		}
+		var kept []string
+		for _, p := range next {
+			if !slices.ContainsFunc(next, func(q string) bool { return q != p && covers([]string{q}, []string{p}) }) {
+				kept = append(kept, p)
+			}
+		}
+		slices.Sort(kept)
+		cur = unheldBy(own, kept)
+	}
+	return cur, true
 }
 
 // widenedLines are the run record's lines for a widening made: one
@@ -351,6 +405,10 @@ func receiptHoldGaps(c Context, lane Lane) []string {
 	reason := fsutil.RedactHome(h.err.Error())
 	if ok {
 		reason = rf.Reason
+	}
+	if ok && rf.overCap {
+		return []string{fmt.Sprintf("a hold on %s, which the lane's branch changes beyond its reservation on %s (%s): %s",
+			h.shown(), st.Key, strings.Join(h.own.Footprint, ", "), reason)}
 	}
 	if ok && (rf.Contention || rf.originUnread || len(rf.capped) > 0) {
 		then := "the receipt is taken, and the widening is made again before the lane's validators, which wait for it"

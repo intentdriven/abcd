@@ -94,6 +94,11 @@ type Refusal struct {
 	// minutes bound alone (stuck.go), so two lanes each waiting on a path
 	// the other holds do not wait on each other for ever.
 	pathHeld bool
+	// overCap marks the loop's widening of a lane's hold refused because
+	// the paths it would hold cannot fit a reservation message, coarsened as
+	// far as they may be (widen.go): no relaunch changes it, so a receipt
+	// names it as a gap of its own.
+	overCap bool
 	// final is why the refusal cannot change, "" when it can: an issue
 	// finished at the lane's base or on origin's default branch, or the
 	// reservation now another person's. A drain hands a lane refused so back
