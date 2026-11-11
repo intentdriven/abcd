@@ -656,14 +656,26 @@ func TestReadPageReadsWhatThePageSays(t *testing.T) {
 	if _, ok := p.Unsure(); ok {
 		t.Fatalf("a page of column-0 fences reads one way")
 	}
-	// A fence indented under a list item is a fence, and the page reads one way.
+	// A fence indented four columns under a list item is a fence to one
+	// reading and text to another: from its opener every line is read as text,
+	// and the page says so.
 	nested := []string{"- item", "", "    ```", "    inside", "    ```", "after"}
 	p = ReadPage(nested)
-	if p.Text[3] != "" || p.Text[5] != "after" {
-		t.Fatalf("Text = %q, want the nested fence's body empty and the line after it live", p.Text)
+	if p.Text[3] != "    inside" || p.Text[5] != "after" || p.Mask[3] != 0 {
+		t.Fatalf("Text = %q, want every line from the opener read", p.Text)
+	}
+	if l, ok := p.Unsure(); !ok || l != 2 {
+		t.Fatalf("Unsure = (%d, %v), want (2, true)", l, ok)
+	}
+	// A fence at the item's content column, every line inside it at that
+	// column or further in, reads one way and is not read.
+	shallow := []string{"- item", "  ```", "  inside", "  ```", "after"}
+	p = ReadPage(shallow)
+	if p.Text[2] != "" || p.Text[4] != "after" {
+		t.Fatalf("Text = %q, want the item fence's body empty", p.Text)
 	}
 	if l, ok := p.Unsure(); ok {
-		t.Fatalf("a fence under a list item reads one way, got unsure at %d", l)
+		t.Fatalf("a fence at the item's content column reads one way, got unsure at %d", l)
 	}
 }
 
@@ -679,7 +691,7 @@ func TestReadPageIsUnsureWhereTheListDecidesTheFence(t *testing.T) {
 		{"an indented run continuing a paragraph", "The design is written\n    ```\n    Said here.\nNext paragraph.\n", 1},
 		{"an indented run after a paragraph", "Text.\n\n    ```\n    Said here.\n    ```\n", 2},
 		{"a list-item fence a column-0 line ends", "- item\n  ```\n  code\nSaid here.\n\n```\nlater\n```\n", 3},
-		{"a nested opener closed nearer the margin", "- item\n\n    ```\n    code\n  ```\n\n## Heading\n- q\n", 5},
+		{"a nested opener closed nearer the margin", "- item\n\n    ```\n    code\n  ```\n\n## Heading\n- q\n", 2},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -716,5 +728,120 @@ func TestSectionLineRangeNestedInHoldsItsSubsections(t *testing.T) {
 	fenced := lines("## Open Questions\n```\n## not a heading\n```\n- a?\n")
 	if _, end, _ := SectionLineRangeNestedIn(fenced, Mask(fenced), head); end != len(fenced) {
 		t.Fatalf("a fenced heading ends nothing: end = %d, want %d", end, len(fenced))
+	}
+}
+
+// TestReadPageReadsEveryLineThePageShows walks layouts whose fences and
+// comments a page may end elsewhere than a plain reading does. In each, a
+// line holding "Not READY: shown" is one the rendered page shows as text, and
+// it must be in Text. Every other line is either in Text or masked by every
+// reading, and a line the readings mask differently is at or below the line
+// Unsure names.
+func TestReadPageReadsEveryLineThePageShows(t *testing.T) {
+	const shown = "Not READY: shown"
+	cases := []struct{ name, in string }{
+		{"an opener four columns past the item's content", "- item\n\n      ```\n  Not READY: shown\n\nNext paragraph.\n"},
+		{"a line left of the item inside a nested fence", "- item\n\n    ```\n Not READY: shown\n    ```\n"},
+		{"two list levels, an opener past the inner content", "- a\n  - b\n\n        ```\n    Not READY: shown\n"},
+		{"two list levels, a line left of the inner content", "- a\n  - b\n\n    ```\n   Not READY: shown\n    ```\n"},
+		{"a tab-indented fence under an item", "- item\n\n\t```\n Not READY: shown\n\t```\n"},
+		{"a tab after the marker", "-\titem\n\n\t```\n\tcode\n\t```\nNot READY: shown\n"},
+		{"mixed markers, a line left of the second item", "* item\n+ other\n  ```\n Not READY: shown\n  ```\n"},
+		{"a numbered item, a line left of its content", "1. item\n   ```\n  Not READY: shown\n   ```\n"},
+		{"an empty item holding a fence", "-\n  ```\n Not READY: shown\n  ```\n"},
+		{"a lazy line, then a fence in the item", "- item\nlazy\n  ```\n Not READY: shown\n  ```\n"},
+		{"a column-0 line ends an item's fence", "- item\n  ```\n  code\nNot READY: shown\n\n```\nlater\n```\n"},
+		{"an item's closer four columns in", "- item\n\n  ```\n  code\n     ```\n  Not READY: shown\n  ```\n"},
+		{"a fence opener on a bullet's line", "- ```\n  code\n  ```\nNot READY: shown\n```\n"},
+		{"a fence opener on a numbered item's line", "1. ~~~\n   x\n   ~~~\nNot READY: shown\n~~~\n"},
+		{"a fence opener after two markers", "- - ```\n    x\n    ```\nNot READY: shown\n```\n"},
+		{"a comment opened after text runs past a blank line", "Text <!-- note\n\n## Open Questions\n\n- Not READY: shown\n\n-->\n"},
+		{"the text after an inline opener", "Status <!-- Not READY: shown\n\n-->\n"},
+		{"an inline comment a heading interrupts", "Text <!-- note\n## Open Questions\n- Not READY: shown\n-->\n"},
+		{"an inline comment a list item interrupts", "Text <!-- note\n- Not READY: shown\n-->\n"},
+		{"an inline comment in a heading", "## Title <!-- note\nNot READY: shown\n-->\n"},
+		{"an inline comment no closer ends", "Status <!-- Not READY: shown\n"},
+		{"a comment opened on a list marker's line", "- <!-- note\nNot READY: shown\n-->\n"},
+		{"a comment opener in an indented code block", "Text.\n\n    <!--\nNot READY: shown\n-->\n"},
+		{"an item's comment a column-0 line ends", "- item\n  <!--\nNot READY: shown\n  -->\n"},
+		{"an empty comment", "<!--> Not READY: shown\n-->\n"},
+		{"an empty comment of three dashes", "<!---> Not READY: shown\n-->\n"},
+		{"a comment opener in a script element", "<script>\n<!--\n</script>\nNot READY: shown\n-->\n"},
+		{"a fence in an HTML block", "<div>\n```\nNot READY: shown\n```\n</div>\n"},
+		{"a fence in a pre element", "<pre>\n\n```\nNot READY: shown\n```\n</pre>\n"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			in := lines(c.in)
+			p := ReadPage(in)
+			u, unsure := p.Unsure()
+			readings := []Reading{Read(in, TopLevel), Read(in, ListNested), Read(in, listItem)}
+			seen := false
+			for i, ln := range in {
+				if strings.Contains(ln, shown) {
+					seen = true
+					if !strings.Contains(p.Text[i], shown) {
+						t.Errorf("line %d %q is shown on the page and not read: Text = %q", i, ln, p.Text[i])
+					}
+				}
+				agree := true
+				for _, r := range readings {
+					agree = agree && r.Mask[i] == readings[0].Mask[i]
+				}
+				if !agree && (!unsure || u > i) {
+					t.Errorf("line %d is masked differently by the readings and no line at or above it is reported (Unsure = %d, %v)", i, u, unsure)
+				}
+				if p.Mask[i] != 0 && (!agree || readings[0].Mask[i] == 0) {
+					t.Errorf("line %d is masked where the readings do not all mask it", i)
+				}
+			}
+			if !seen {
+				t.Fatalf("the case holds no line marked shown")
+			}
+		})
+	}
+	// A span every reading agrees on, its lines kept in, is not read and not
+	// reported.
+	for _, in := range []string{
+		"```\nNot READY: code\n```\n",
+		"- item\n  ```\n  Not READY: code\n  ```\n",
+		"<!--\nNot READY: code\n-->\n",
+		"- item\n  <!--\n  Not READY: code\n  -->\n",
+		"<div>\n\n```\nNot READY: code\n```\n",
+		"Text <!-- note\nNot READY: code\n--> after\n",
+	} {
+		p := ReadPage(lines(in))
+		if l, ok := p.Unsure(); ok {
+			t.Errorf("%q reads one way, got unsure at %d", in, l)
+		}
+		for i, txt := range p.Text {
+			if strings.Contains(txt, "Not READY") {
+				t.Errorf("%q: line %d is in a span every reading agrees on, and is read: %q", in, i, txt)
+			}
+		}
+	}
+}
+
+// TestOpensCommentReadsAnEmptyCommentWhole: `<!-->` and `<!--->` open and
+// close on their own, so the text after them is live.
+func TestOpensCommentReadsAnEmptyCommentWhole(t *testing.T) {
+	for _, ln := range []string{"<!--> text", "<!---> text", "a <!----> b"} {
+		if OpensComment(ln) {
+			t.Errorf("OpensComment(%q) = true, want false", ln)
+		}
+	}
+	if !OpensComment("<!-- text") {
+		t.Errorf("an opener with no closer still opens a comment")
+	}
+}
+
+// TestSectionLineRangeNestedInReadsAnIndentedHeadingsDepth: a heading
+// indented up to three columns has its depth, so a sub-heading under it stays
+// inside its section.
+func TestSectionLineRangeNestedInReadsAnIndentedHeadingsDepth(t *testing.T) {
+	head := regexp.MustCompile(`^ {0,3}#{1,6}\s+Open Questions\s*$`)
+	body := lines("  ## Open Questions\n### Relay\n- how?\n## Decisions\n")
+	if start, end, ok := SectionLineRangeNestedIn(body, Mask(body), head); !ok || start != 1 || end != 3 {
+		t.Fatalf("SectionLineRangeNestedIn = (%d, %d, %v), want (1, 3, true)", start, end, ok)
 	}
 }

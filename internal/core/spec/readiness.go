@@ -6,10 +6,10 @@ package spec
 // what a spec states. A spec says it is not ready in one place, its
 // `## Open Questions` section, which the readiness gate reads as it reads an
 // intent's; Unsettled names the other ways a spec has said it, which no reader
-// saw: a sentence opening "Not READY", a bold "Open:" label on a line that
-// section's reader does not count as a question, a fence or comment left open,
-// which hides everything below it from both readers, and fences whose extent
-// turns on the list around them.
+// saw: a sentence opening "Not READY", a bold "Open:" label on any line but
+// the one an open question's item opens on, a fence or comment left open,
+// which hides everything below it from both readers, and fences or comments
+// whose extent turns on the layout around them.
 //
 // The spec is text written by agents and people, so it is read as untrusted
 // input: the caller's read is bounded, every pattern is RE2 (linear in the
@@ -28,25 +28,26 @@ import (
 
 // OpenQuestionsHeadingRe matches the `## Open Questions` heading at any depth:
 // the one section a record asks its open questions in, for an intent and a
-// spec alike.
-var OpenQuestionsHeadingRe = regexp.MustCompile(`^#{1,6}\s+Open Questions\s*$`)
+// spec alike. It matches the heading as a page shows it: indented up to three
+// columns, in any letter case, with or without a closing run of `#`.
+var OpenQuestionsHeadingRe = regexp.MustCompile(`(?i)^ {0,3}#{1,6}[ \t]+Open[ \t]+Questions(?:[ \t]+#+)?[ \t]*$`)
 
 // The kinds of statement Unsettled reports.
 const (
 	// UnsettledNotReady is a sentence that opens "Not READY" (or "NOT READY").
 	UnsettledNotReady = "not_ready"
 	// UnsettledOpenLabel is a bold "Open:" label (`**Open:**`, `**Open**:`,
-	// `**Open question:**`, `__Open:__`, …) on a line OpenQuestions does not
-	// count as a question.
+	// `**Open question:**`, `__Open:__`, …) on any line but the one an open
+	// question's item opens on.
 	UnsettledOpenLabel = "open_label"
 	// UnsettledUnclosed is a fenced block or an HTML comment that nothing
 	// closes: every line below its opener is hidden from the readers, the
 	// `## Open Questions` heading included, so the spec is read as saying
 	// nothing it does not say.
 	UnsettledUnclosed = "unclosed"
-	// UnsettledLayout is the first line from which the spec's fences cannot be
-	// read one way (mdrecord.ReadPage's Unsure): what lies below it is not
-	// read with confidence by either reader.
+	// UnsettledLayout is the first line from which the spec's fences and
+	// comments can be read more than one way (mdrecord.ReadPage's Unsure):
+	// that line and every line below it are read as their own text.
 	UnsettledLayout = "layout"
 )
 
@@ -101,23 +102,23 @@ var (
 //     at the end of one line and "READY" at the start of the next (reported on
 //     the first). "Not" is matched capitalised or in capitals and READY in
 //     capitals alone, so "not READY" and "Not ready" are not reported;
-//   - a bold "Open:" label, in any letter case, on any line OpenQuestions does
-//     not count as a question, the lines of `## Open Questions` it does not
-//     count included: `**Open:**`, `**Open**:`, `__Open:__`, and the same with
+//   - a bold "Open:" label, in any letter case, on any line but the one an
+//     open question's item opens on, the other lines of `## Open Questions`
+//     included: `**Open:**`, `**Open**:`, `__Open:__`, and the same with
 //     "question(s)", "point(s)" or "design question(s)" after the word;
 //   - a fenced block or an HTML comment nothing closes, on its opener's line,
 //     because everything below it is hidden from this reader and from the
 //     one that reads the section's questions;
-//   - the first line from which the fences cannot be read one way
+//   - the first line from which the fences and comments can be read more than
+//     one way, from where every line is read as its own text
 //     (LayoutStatements).
 //
 // It reads what a person reading the page reads, through mdrecord.ReadPage,
 // the reading OpenQuestions takes. The frontmatter, inline code spans, fenced
 // blocks and HTML comments are not read, a comment that opens and closes on
 // one line included; the text before a comment's opener and after its closer,
-// on the same line, is, and so is an indented code block. A fence indented
-// under a list item is a fence too. A line carrying a sentence and a label is
-// reported once, as not ready.
+// on the same line, is, and so is an indented code block. A line carrying a
+// sentence and a label is reported once, as not ready.
 func Unsettled(content string) []Statement {
 	lines := strings.Split(content, "\n")
 	body := 0
@@ -128,7 +129,7 @@ func Unsettled(content string) []Statement {
 	page := mdrecord.ReadPage(lines)
 	// A label is exempt only on the line a counted question opens on.
 	asked := map[int]bool{}
-	for _, q := range openQuestionsIn(lines, page.Mask) {
+	for _, q := range openQuestionsIn(page) {
 		asked[q.Line] = true
 	}
 	live := page.Text
@@ -155,7 +156,8 @@ func Unsettled(content string) []Statement {
 
 // LayoutStatements returns what a record's layout alone says against reading
 // it whole, in line order: an opener nothing closes, on its own line, and the
-// first line from which its fences cannot be read one way (mdrecord.ReadPage).
+// first line from which its fences and comments can be read more than one way
+// (mdrecord.ReadPage).
 // Unsettled reports both for a spec, and an intent's open-questions row
 // withholds readiness on both, since each reads the record through the same
 // reading.
@@ -169,8 +171,8 @@ func layoutStatements(p mdrecord.Page) []Statement {
 	if open {
 		out = append(out, Statement{Line: line + 1, Kind: UnsettledUnclosed, Text: unclosedText(flag)})
 	}
-	if l, ok := p.Unsure(); ok && !(open && l == line) {
-		out = insertStatement(out, Statement{Line: l + 1, Kind: UnsettledLayout, Text: "a fenced block's extent here turns on the list around it"})
+	if l, ok := p.Unsure(); ok {
+		out = insertStatement(out, Statement{Line: l + 1, Kind: UnsettledLayout, Text: "where a fence or a comment ends from here turns on the layout around it"})
 	}
 	return out
 }
@@ -243,15 +245,15 @@ func (s Statement) Describe() string {
 	what := "a sentence opens \"Not READY\""
 	switch s.Kind {
 	case UnsettledOpenLabel:
-		what = "a bold \"Open:\" label that is not an open question's item"
+		what = "a bold \"Open:\" label on a line that does not open an open question"
 	case UnsettledUnclosed:
 		what = "nothing below this line is read"
 	case UnsettledLayout:
-		what = "the text from this line on is not read one way"
+		what = "the text from this line on is not read one way, so every line from here is read as text"
 	}
 	return "line " + strconv.Itoa(s.Line) + ": " + what + " (" + s.Text + ")"
 }
 
 // UnsettledRemedy is the one remedy for a spec Unsettled reports on, which
 // the readiness gate and record-lint both name.
-const UnsettledRemedy = "ask the spec's open questions as items under its `## Open Questions` section, where the build reads them, and mark each `resolved:` once it is answered; drop the \"Not READY\" sentence and the bold \"Open:\" label once the question is there, or put the phrase in a code span when it is quoted, not said; close a fence or an HTML comment left open, and write a fence at column 0, or under a list item at the item's indent with no line at column 0 inside it"
+const UnsettledRemedy = "ask the spec's open questions as items under its `## Open Questions` section, where the build reads them, and mark each `resolved:` once it is answered; drop the \"Not READY\" sentence and the bold \"Open:\" label once the question is there, or put the phrase in a code span when it is quoted, not said; close a fence or an HTML comment left open; write a fence at column 0, or at up to three columns with no line inside it nearer the margin than the fence, and not on a list marker's line; and open a comment that runs over several lines at the start of its line, at up to three columns"

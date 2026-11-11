@@ -147,8 +147,19 @@ type Reading struct {
 	Mask   []uint8
 	Fences []Span
 
+	// comments is every HTML comment left open at the end of the line it opens
+	// on, with the byte offset of its opener there.
+	comments []commentSpan
+
 	openLine int
 	openFlag uint8
+}
+
+// commentSpan is one HTML comment over more than one line: its lines as a
+// Span, and the byte offset its `<!--` sits at on line Start.
+type commentSpan struct {
+	Span
+	col int
 }
 
 // Unclosed reports the line that opened the span still open at the end of the
@@ -262,6 +273,13 @@ func Read(lines []string, rule Rule) Reading {
 		fenceOpen = ""
 		r.openLine, r.openFlag = -1, 0
 	}
+	openComment := func(i int, ln string, from int) {
+		r.comments = append(r.comments, commentSpan{Span: Span{Start: i, End: len(lines)}, col: openCommentCol(ln, from)})
+	}
+	closeComment := func(i int) {
+		c := &r.comments[len(r.comments)-1]
+		c.End, c.Closed = i+1, true
+	}
 	for i, raw := range lines {
 		ln := strings.TrimRight(raw, "\r")
 		// A list item ends at a non-blank line at column 0, and a fence it held
@@ -276,8 +294,10 @@ func Read(lines []string, rule Rule) Reading {
 			// closer; the remainder of the line is live markdown again and may open
 			// a fresh span.
 			if k := strings.Index(ln, "-->"); k >= 0 {
+				closeComment(i)
 				if inComment = opensCommentFrom(ln, k+len("-->")); inComment {
 					r.openLine, r.openFlag = i, MaskComment
+					openComment(i, ln, k+len("-->"))
 				} else {
 					r.openLine, r.openFlag = -1, 0
 				}
@@ -303,6 +323,7 @@ func Read(lines []string, rule Rule) Reading {
 				inComment = true
 				r.Mask[i] |= MaskComment
 				r.openLine, r.openFlag = i, MaskComment
+				openComment(i, ln, 0)
 			}
 		}
 	}
@@ -332,6 +353,16 @@ func OpensComment(ln string) bool { return opensCommentFrom(ln, 0) }
 // markdown again.
 func opensCommentFrom(ln string, start int) bool { return commentWalk(ln, start, nil) }
 
+// openCommentCol is the byte offset of the `<!--` a line leaves open, the walk
+// starting at start, or -1 when it leaves none open.
+func openCommentCol(ln string, start int) int {
+	col := -1
+	if !commentWalk(ln, start, func(from, _ int) { col = from }) {
+		return -1
+	}
+	return col
+}
+
 // commentWalk is the one left-to-right walk OpensComment and ReadPage share:
 // from start, a matched code span is skipped whole and an unmatched backtick
 // run is literal, and at `<!--` the walk skips to the `-->` closing it. It
@@ -348,7 +379,10 @@ func commentWalk(ln string, start int, blank func(from, to int)) bool {
 				i = runEnd(ln, i)
 			}
 		case strings.HasPrefix(ln[i:], "<!--"):
-			rest := ln[i+len("<!--"):]
+			// The closer may share the opener's dashes: `<!-->` and `<!--->`
+			// are whole, empty comments (CommonMark 0.31, and HTML's own
+			// reading), so the search starts two bytes in.
+			rest := ln[i+len("<!"):]
 			k := strings.Index(rest, "-->")
 			if k < 0 {
 				if blank != nil {
@@ -356,7 +390,7 @@ func commentWalk(ln string, start int, blank func(from, to int)) bool {
 				}
 				return true
 			}
-			end := i + len("<!--") + k + len("-->")
+			end := i + len("<!") + k + len("-->")
 			if blank != nil {
 				blank(i, end)
 			}
@@ -508,13 +542,15 @@ func SectionLineRangeNestedIn(lines []string, mask []uint8, headRe *regexp.Regex
 	return 0, 0, false
 }
 
-// headingDepth is the number of `#` opening an ATX heading line, or 7 for a
-// line that is not one, which no heading's depth reaches.
+// headingDepth is the number of `#` opening an ATX heading line, indented up
+// to three columns, or 7 for a line that is not one, which no heading's depth
+// reaches.
 func headingDepth(ln string) int {
-	if !headingRe.MatchString(ln) {
+	t := strings.TrimLeft(ln, " ")
+	if len(ln)-len(t) > 3 || !headingRe.MatchString(t) {
 		return 7
 	}
-	return len(ln) - len(strings.TrimLeft(ln, "#"))
+	return len(t) - len(strings.TrimLeft(t, "#"))
 }
 
 // Page is a body as a reader of what the page SAYS reads it (ReadPage).
@@ -524,9 +560,11 @@ type Page struct {
 	// comment span on a line (one that opens and closes there, the tail of one
 	// opened above, the head of one that closes below) is replaced by spaces of
 	// the same length, so the text before a comment's opener and after its
-	// closer is read where it sits, at its own offsets.
+	// closer is read where it sits, at its own offsets. From the line Unsure
+	// names on, every line is its own text, nothing blanked.
 	Text []string
-	// Mask is the per-line mask of the same reading, for a section's bounds.
+	// Mask is the per-line mask of the same reading, for a section's bounds:
+	// a line is masked only where Text does not read it.
 	Mask []uint8
 
 	unsure   int
@@ -534,12 +572,13 @@ type Page struct {
 	openFlag uint8
 }
 
-// Unsure reports the first line from which the page's fences cannot be read
-// one way, and whether there is one: see ReadPage.
+// Unsure reports the first line from which the page's fences and comments
+// can be read more than one way, and whether there is one: see ReadPage.
 func (p Page) Unsure() (line int, ok bool) { return p.unsure, p.unsure >= 0 }
 
 // Unclosed reports the line that opened a span nothing closes, and which
-// construct it is, under the page's reading.
+// construct it is, under the page's reading. An opener on or below the line
+// Unsure names is not reported, since every line from there is read.
 func (p Page) Unclosed() (line int, flag uint8, ok bool) {
 	return p.openLine, p.openFlag, p.openLine >= 0
 }
@@ -552,78 +591,243 @@ func (p Page) Unclosed() (line int, flag uint8, ok bool) {
 // Mask leaves a comment that opens and closes on one line live, because a
 // writer may touch that line; Text blanks it.
 //
-// Where a fence turns on the list around it, which this package does not
-// parse, the reading is checked against the top level and the result says when
-// they part (Unsure, on the first line they part on). The readings agree
-// except in two places, each taken as ListNested takes it only when the
-// line above the opener, past blank and deeper-indented lines, is a list
-// item's marker line: a run at four columns or more, which the top level reads
-// as text; and a run at one to three columns, which a list item ends at its
-// first line at column 0, where neither exported rule ends it. Anywhere else
-// that the two rules read a line differently, and at a line at column 0 inside
-// such a list-item fence, the page is Unsure.
+// Every line is either returned as text or lies in a fenced block or an HTML
+// comment that every reading here agrees on. This package does not parse
+// lists, blockquotes or HTML blocks, so where the extent of a fence or a
+// comment can turn on one of them the page is Unsure from the first such line,
+// and that line and every line below it are returned as their own text. That
+// first line is the first where:
+//
+//   - TopLevel, ListNested and the list-item reading mask the line
+//     differently, as each reads a fence indented four columns or more;
+//   - a non-blank line inside a fence or a comment whose opener is indented
+//     and sits in a list item is indented less than the opener, or less than
+//     the item's content column;
+//   - an HTML comment that runs past its line opens at four columns or more,
+//     or after other text on that line and is not closed inside the same
+//     paragraph (inParagraph; the opener's line is named);
+//   - a list marker and a fence delimiter share a line;
+//   - a fence delimiter sits in an HTML block (a line opening with a tag, to
+//     the next blank line, or for pre, script, style and textarea to the
+//     element's closing tag), or a comment opener sits in one of those four.
 func ReadPage(lines []string) Page {
-	tl, nl := Read(lines, TopLevel), Read(lines, ListNested)
-	p := Page{Text: liveText(lines, nl.Mask), Mask: nl.Mask, unsure: -1, openLine: nl.openLine, openFlag: nl.openFlag}
-	inItemSpan := make([]bool, len(lines))
-	for _, s := range nl.Fences {
-		indent := indentWidth(strings.TrimRight(lines[s.Start], "\r"))
-		if indent == 0 || !underListItem(lines, nl.Mask, s.Start, indent) {
-			continue
-		}
-		if indent >= 4 {
-			for j := s.Start; j < s.End; j++ {
-				inItemSpan[j] = true
-			}
-			continue
-		}
-		for j := s.Start + 1; j < s.End; j++ {
-			if ln := strings.TrimRight(lines[j], "\r"); strings.TrimSpace(ln) != "" && indentWidth(ln) == 0 {
-				p.unsureAt(j)
-				break
-			}
+	rs := [...]Reading{Read(lines, TopLevel), Read(lines, ListNested), Read(lines, listItem)}
+	nl := rs[1]
+	u := len(lines)
+	at := func(i int) {
+		if i < u {
+			u = i
 		}
 	}
 	for i := range lines {
-		if tl.Mask[i] != nl.Mask[i] && !(inItemSpan[i] && tl.Mask[i] == 0) {
-			p.unsureAt(i)
+		if rs[0].Mask[i] != nl.Mask[i] || rs[2].Mask[i] != nl.Mask[i] {
+			at(i)
 			break
+		}
+	}
+	for _, r := range rs {
+		for _, s := range r.Fences {
+			leftOfSpan(lines, r.Mask, s, indentWidth(strings.TrimRight(lines[s.Start], "\r")), at)
+		}
+		for _, c := range r.comments {
+			lead := strings.TrimRight(lines[c.Start], "\r")[:c.col]
+			switch {
+			case strings.TrimSpace(lead) == "" && indentWidth(lead) < 4:
+				leftOfSpan(lines, r.Mask, c.Span, indentWidth(lead), at)
+			case !inParagraph(lines, c):
+				at(c.Start)
+			}
+		}
+	}
+	for i, raw := range lines {
+		if nl.Mask[i] == 0 && markerFence(strings.TrimRight(raw, "\r")) {
+			at(i)
+			break
+		}
+	}
+	htmlBlocks(lines, nl.Mask, at)
+
+	p := Page{Text: liveText(lines, nl.Mask), Mask: nl.Mask, unsure: -1, openLine: nl.openLine, openFlag: nl.openFlag}
+	if u < len(lines) {
+		p.unsure = u
+		p.Mask = append([]uint8(nil), nl.Mask...)
+		for j := u; j < len(lines); j++ {
+			p.Text[j], p.Mask[j] = strings.TrimRight(lines[j], "\r"), 0
+		}
+		if p.openLine >= u {
+			p.openLine, p.openFlag = -1, 0
 		}
 	}
 	return p
 }
 
-// unsureAt records line i as a line the page cannot be read one way from,
-// keeping the earliest.
-func (p *Page) unsureAt(i int) {
-	if p.unsure < 0 || i < p.unsure {
-		p.unsure = i
+// leftOfSpan names, through at, the first non-blank line of s indented less
+// than its lines must be to stay in the block, when its opener is indented
+// `indent` columns and sits in a list item: the opener's indent, or the item's
+// content column when that is nearer the margin. A list item ends at such a
+// line, and the block with it.
+func leftOfSpan(lines []string, mask []uint8, s Span, indent int, at func(int)) {
+	if indent == 0 {
+		return
+	}
+	keep, ok := itemContentCol(lines, mask, s.Start, indent)
+	if !ok {
+		return
+	}
+	keep = min(keep, indent)
+	for j := s.Start + 1; j < s.End; j++ {
+		if ln := strings.TrimRight(lines[j], "\r"); strings.TrimSpace(ln) != "" && indentWidth(ln) < keep {
+			at(j)
+			return
+		}
 	}
 }
 
-// listItemRe is a list item's marker line at any indent: a bullet or a number,
-// then a space or the end of the line.
-var listItemRe = regexp.MustCompile(`^[ \t]*(?:[-*+]|[0-9]{1,9}[.)])(?:[ \t]|$)`)
+// paragraphBreakRe is a line that ends a paragraph or starts a block that
+// interrupts one, or a table's: a heading, a blockquote, a fence delimiter, a
+// list item, an HTML tag, a thematic break or setext underline, or a line
+// holding a `|`.
+var paragraphBreakRe = regexp.MustCompile("^ {0,3}(?:#{1,6}(?:[ \t]|$)|>|`{3,}|~{3,}|[-*+](?:[ \t]|$)|[0-9]{1,9}[.)](?:[ \t]|$)|<[A-Za-z/!?]|(?:[-*_=][ \t]*)+$)|\\|")
 
-// underListItem reports whether the line at `at`, indented `indent` columns,
-// sits in a list item: walking up past blank lines, masked lines and indented
-// lines, a list item's marker line indented less than `indent` comes before
-// any other line at column 0.
-func underListItem(lines []string, mask []uint8, at, indent int) bool {
-	for j := at - 1; j >= 0; j-- {
-		ln := strings.TrimRight(lines[j], "\r")
-		if strings.TrimSpace(ln) == "" || mask[j] != 0 {
-			continue
-		}
-		w := indentWidth(ln)
-		if w < indent && listItemRe.MatchString(ln) {
-			return true
-		}
-		if w == 0 {
+// inParagraph reports whether a comment opened after other text on its line
+// closes inside the paragraph that line is in, where the page reads it as a
+// comment: the opener's line is indented less than four columns and is not a
+// heading, its text before the opener is more than list markers and `>`, and
+// every line after it up to the closer's is neither blank nor a
+// paragraphBreakRe line. A comment the page does not close there is text on
+// the page.
+func inParagraph(lines []string, c commentSpan) bool {
+	ln := strings.TrimRight(lines[c.Start], "\r")
+	lead := ln[:c.col]
+	if !c.Closed || indentWidth(ln) >= 4 || headingRe.MatchString(strings.TrimLeft(ln, " ")) ||
+		strings.Contains(ln, "|") || markersOnlyRe.MatchString(lead) {
+		return false
+	}
+	for j := c.Start + 1; j < c.End; j++ {
+		l := strings.TrimRight(lines[j], "\r")
+		if strings.TrimSpace(l) == "" || paragraphBreakRe.MatchString(l) {
 			return false
 		}
 	}
-	return false
+	return true
+}
+
+// markersOnlyRe is the text before a comment opener that is nothing but list
+// markers, blockquote markers and blanks.
+var markersOnlyRe = regexp.MustCompile(`^[ \t>]*(?:(?:[-*+]|[0-9]{1,9}[.)])[ \t]+[ \t>]*)*$`)
+
+// itemContentCol is the content column of the list item the line at `at`,
+// indented `indent` columns, sits in, and whether it sits in one: walking up,
+// a list marker line indented less than `indent` comes before a blank line
+// that has a line at column 0 below it. A line at column 0 with no blank line
+// above it may continue an item's paragraph, so the walk goes on past it.
+func itemContentCol(lines []string, mask []uint8, at, indent int) (int, bool) {
+	col0 := false
+	for j := at - 1; j >= 0; j-- {
+		ln := strings.TrimRight(lines[j], "\r")
+		if strings.TrimSpace(ln) == "" {
+			if col0 {
+				return 0, false
+			}
+			continue
+		}
+		if mask[j] != 0 {
+			col0 = false
+			continue
+		}
+		w := indentWidth(ln)
+		if w < indent {
+			if c, ok := listContentCol(ln); ok {
+				return c, true
+			}
+		}
+		col0 = w == 0
+	}
+	return 0, false
+}
+
+// listMarkerRe is a list item's marker line at any indent: a bullet or a
+// number, the blanks after it, and the item's text.
+var listMarkerRe = regexp.MustCompile(`^([ \t]*)([-*+]|[0-9]{1,9}[.)])([ \t]*)(.*)$`)
+
+// listContentCol is the column a list item's content starts at, for its
+// marker line, and whether the line is one (CommonMark 5.2): one past the
+// marker for an empty item or one whose text is indented five columns or more
+// past it, else where the text starts.
+func listContentCol(ln string) (int, bool) {
+	m := listMarkerRe.FindStringSubmatch(ln)
+	if m == nil || (m[3] == "" && m[4] != "") {
+		return 0, false
+	}
+	end := indentWidth(m[1]) + len(m[2])
+	col := end
+	for _, c := range m[3] {
+		if c == '\t' {
+			col += 4 - col%4
+		} else {
+			col++
+		}
+	}
+	if m[4] == "" || col-end >= 5 {
+		return end + 1, true
+	}
+	return col, true
+}
+
+// markerFenceRe is one or more list markers (a blockquote's `>` among them)
+// and then a fence delimiter on the same line.
+var markerFenceRe = regexp.MustCompile("^[ \t>]*(?:(?:[-*+]|[0-9]{1,9}[.)])[ \t]+[ \t>]*)+(`{3,}|~{3,})(.*)$")
+
+// markerFence reports whether a line opens a list item with a fenced block,
+// which neither reading here opens, so every delimiter below it may pair with
+// another than the one the page pairs it with.
+func markerFence(ln string) bool {
+	m := markerFenceRe.FindStringSubmatch(ln)
+	return m != nil && !(m[1][0] == '`' && strings.Contains(m[2], "`"))
+}
+
+// htmlStartRe is a line that opens with an HTML tag, at up to three columns.
+var htmlStartRe = regexp.MustCompile(`^ {0,3}</?([A-Za-z][A-Za-z0-9-]*)(?:[ \t>/]|$)`)
+
+// rawTextTags are the elements whose block runs to their closing tag and
+// holds no markdown, a comment opener included.
+var rawTextTags = map[string]bool{"pre": true, "script": true, "style": true, "textarea": true}
+
+// htmlBlocks names, through at, the first fence delimiter in an HTML block,
+// where the page reads it as HTML, and the first comment opener in a block of
+// one of rawTextTags, where the page reads it as text. A block opens at a
+// line htmlStartRe matches, outside a fence or comment, and runs to the line
+// before the next blank line, or for rawTextTags to the line holding the
+// element's closing tag.
+func htmlBlocks(lines []string, mask []uint8, at func(int)) {
+	for i := 0; i < len(lines); i++ {
+		ln := strings.TrimRight(lines[i], "\r")
+		m := htmlStartRe.FindStringSubmatch(ln)
+		if mask[i] != 0 || m == nil {
+			continue
+		}
+		tag := strings.ToLower(m[1])
+		rawText := rawTextTags[tag] && !strings.HasPrefix(strings.TrimLeft(ln, " "), "</")
+		j := i
+		for ; j < len(lines); j++ {
+			l := strings.TrimRight(lines[j], "\r")
+			if !rawText && strings.TrimSpace(l) == "" {
+				break
+			}
+			if j > i && mask[j]&MaskComment == 0 && nestedFenceRe.MatchString(l) {
+				at(j)
+				return
+			}
+			if rawText && strings.Contains(l, "<!--") {
+				at(j)
+				return
+			}
+			if rawText && strings.Contains(strings.ToLower(l), "</"+tag+">") {
+				break
+			}
+		}
+		i = j
+	}
 }
 
 // liveText is Page.Text over a fence mask Read computed.

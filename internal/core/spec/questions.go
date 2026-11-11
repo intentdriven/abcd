@@ -15,9 +15,10 @@ import (
 // line this reader counts as a question.
 
 var (
-	// numberedItemRe is a column-0 numbered list item, `1. text` or `1) text` —
-	// the other spelling of a list a question is written in.
-	numberedItemRe = regexp.MustCompile(`^[0-9]{1,4}[.)][ \t]+(\S.*)$`)
+	// questionItemRe is a list item's marker line at up to three columns: a
+	// bullet (`-`, `*`, `+`) or a number (`1.`, `1)`), then blanks and the
+	// item's text, or nothing for an item whose text starts on the next line.
+	questionItemRe = regexp.MustCompile(`^( {0,3})([-*+]|[0-9]{1,9}[.)])(?:([ \t]+)(.*))?$`)
 	// allSettledRe is the italic line that opens a settled section and says
 	// every item below it is settled: `_All resolved …_`, or with one count
 	// word, `_All four resolved …_`. "All but one resolved" does not match.
@@ -50,13 +51,16 @@ type Question struct {
 }
 
 // OpenQuestions returns the questions a record's `## Open Questions` section
-// still asks: one per top-level list item, bulleted or numbered, in document
-// order, each as its first line's text, under a sub-heading of the section as
-// well as directly under it. A settled record says so in prose — the minted
-// `_None recorded yet._`, or `_None open; …_` naming the decisions that
-// answered them — and prose, a blockquote and an indented continuation are not
-// questions. A record with no such section asks none. The section's bounds are
-// taken from mdrecord.ReadPage, the reading Unsettled takes.
+// still asks: one per list item opening at up to three columns, bulleted or
+// numbered, in document order, each as its first line's text, under a
+// sub-heading of the section as well as directly under it. A settled record
+// says so in prose — the minted `_None recorded yet._`, or `_None open; …_`
+// naming the decisions that answered them — and prose, a blockquote and an
+// indented continuation are not questions. A record with no such section asks
+// none. It reads the page as mdrecord.ReadPage reads it, the reading Unsettled
+// takes: the section's bounds, its items and their settled markers are what
+// the page shows, so a line in a fenced block or an HTML comment neither opens
+// an item nor settles one.
 //
 // It reads fail-closed, recognising only the two settled markers the record
 // uses (the 2026-09-25 decision dcn-2609250000000028):
@@ -78,19 +82,22 @@ type Question struct {
 // record's own convention — the answer moves to `## Decisions` and the item or
 // the section says it is settled.
 func OpenQuestions(content string) []Question {
-	lines := strings.Split(content, "\n")
-	return openQuestionsIn(lines, mdrecord.ReadPage(lines).Mask)
+	return openQuestionsIn(mdrecord.ReadPage(strings.Split(content, "\n")))
 }
 
-// openQuestionsIn is OpenQuestions over a page mask the caller already read.
-func openQuestionsIn(lines []string, mask []uint8) []Question {
-	start, end, ok := mdrecord.SectionLineRangeNestedIn(lines, mask, OpenQuestionsHeadingRe)
+// openQuestionsIn is OpenQuestions over a page already read. An item runs
+// from its marker line over the lines indented to its content column, and,
+// with no blank line between, over any indented line; a marker nearer the
+// margin than the content column opens the next item.
+func openQuestionsIn(page mdrecord.Page) []Question {
+	text := page.Text
+	start, end, ok := mdrecord.SectionLineRangeNestedIn(text, page.Mask, OpenQuestionsHeadingRe)
 	if !ok {
 		return nil
 	}
 	var out []Question
-	var item []string // the current item's first line, then its continuation lines
-	itemLine := 0
+	var item []string // the item's text lines, its first line's marker dropped
+	itemLine, content, blank := 0, 0, false
 	flush := func() {
 		if item == nil {
 			return
@@ -102,7 +109,7 @@ func openQuestionsIn(lines []string, mask []uint8) []Question {
 	}
 	first := true
 	for i := start; i < end; i++ {
-		ln := strings.TrimRight(lines[i], "\r")
+		ln := text[i]
 		trimmed := strings.TrimSpace(ln)
 		if first && trimmed != "" {
 			first = false
@@ -110,24 +117,63 @@ func openQuestionsIn(lines []string, mask []uint8) []Question {
 				return nil
 			}
 		}
+		w := indentCols(ln)
+		m := questionItemRe.FindStringSubmatch(ln)
 		switch {
-		case mdrecord.IsTopLevelBullet(ln):
-			flush()
-			item, itemLine = []string{strings.TrimSpace(mdrecord.TrimBulletPrefix(ln))}, i+1
-		case numberedItemRe.MatchString(ln):
-			flush()
-			item, itemLine = []string{strings.TrimSpace(numberedItemRe.FindStringSubmatch(ln)[1])}, i+1
 		case trimmed == "":
-		case ln[0] == ' ' || ln[0] == '\t':
-			if item != nil {
+			blank = item != nil
+		case m != nil && (item == nil || w < content):
+			flush()
+			item, itemLine, content, blank = []string{strings.TrimSpace(m[4])}, i+1, itemContent(m), false
+		case item != nil && (w >= content || (w > 0 && !blank)):
+			if len(item) == 1 && item[0] == "" {
+				item[0] = trimmed // an item whose text starts on the line after its marker
+			} else {
 				item = append(item, trimmed)
 			}
+			blank = false
 		default:
 			flush()
 		}
 	}
 	flush()
 	return out
+}
+
+// itemContent is the content column of a question item's marker line
+// (questionItemRe's match): where its text starts, or one past the marker
+// when the text is indented five columns or more or there is none.
+func itemContent(m []string) int {
+	end := len(m[1]) + len(m[2])
+	col := end
+	for _, c := range m[3] {
+		if c == '\t' {
+			col += 4 - col%4
+		} else {
+			col++
+		}
+	}
+	if m[4] == "" || col-end >= 5 {
+		return end + 1
+	}
+	return col
+}
+
+// indentCols is the column a line's first non-blank character sits at, a tab
+// advancing to the next multiple of four.
+func indentCols(ln string) int {
+	w := 0
+	for _, c := range ln {
+		switch c {
+		case ' ':
+			w++
+		case '\t':
+			w += 4 - w%4
+		default:
+			return w
+		}
+	}
+	return w
 }
 
 // settledItem reports whether an item — its first line's text, then its

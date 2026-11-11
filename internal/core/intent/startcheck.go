@@ -117,7 +117,7 @@ func startOpenQuestionsRow(id, content string) StartRow {
 			parts[i] = st.Describe()
 		}
 		why = append(why, id+"'s text is not read whole, so its open questions are not known: "+strings.Join(parts, "; "))
-		remedy = append(remedy, "close the fence or HTML comment opened on that line, and write a fence at column 0, or under a list item at the item's indent with no line at column 0 inside it")
+		remedy = append(remedy, "close the fence or HTML comment opened on that line; write a fence at column 0, or at up to three columns with no line inside it nearer the margin than the fence, and not on a list marker's line; and open a comment that runs over several lines at the start of its line, at up to three columns")
 	}
 	row.Detail = strings.Join(why, "; ")
 	row.Remedy = strings.Join(remedy, "; ")

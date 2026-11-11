@@ -119,7 +119,8 @@ func TestStartOpenQuestionsRowWithholdsOnAnUnreadLayout(t *testing.T) {
 	cases := []struct{ name, body, want string }{
 		{"an unclosed comment above the section", "<!-- \x1b[31m parked\n\n## Open Questions\n\n- which cache?\n", "line 6: nothing below this line is read (an HTML comment"},
 		{"an unclosed fence below the section", "## Open Questions\n\n_None recorded yet._\n\n```\nsecret\n", "line 10: nothing below this line is read (a fenced block"},
-		{"fences not read one way", "- item\n\n    ```\n    code\n  ```\n\n## Open Questions\n\n- which cache?\n\n```go\nx\n```\n", "line 11: the text from this line on is not read one way"},
+		{"fences not read one way", "- item\n\n    ```\n    code\n  ```\n\n## Open Questions\n\n- which cache?\n\n```go\nx\n```\n", "line 8: the text from this line on is not read one way"},
+		{"a comment opened after text runs over the section", "Text <!-- parked\n\n## Open Questions\n\n- which cache?\n\n-->\n", "line 6: the text from this line on is not read one way"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
