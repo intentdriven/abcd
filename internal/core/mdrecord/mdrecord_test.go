@@ -623,3 +623,61 @@ func TestMaskCodeSpansHidesEachSpanFromRewrites(t *testing.T) {
 		t.Errorf("a token the rewrite dropped came back: %q", got)
 	}
 }
+
+// TestLiveTextReadsWhatThePageSays: a comment that opens and closes on one line
+// is blanked (Mask leaves it live), the text before an opener and after a
+// closer is read at its own offsets, a fenced line is empty, and a comment
+// opener quoted in a code span opens nothing.
+func TestLiveTextReadsWhatThePageSays(t *testing.T) {
+	in := []string{
+		"before <!-- one line --> after",
+		"head <!-- opens",
+		"inside",
+		"closes --> tail",
+		"```",
+		"<!-- literal in a fence",
+		"```",
+		"`<!--` quoted, still live",
+	}
+	want := []string{
+		"before " + strings.Repeat(" ", len("<!-- one line -->")) + " after",
+		"head " + strings.Repeat(" ", len("<!-- opens")),
+		"      ",
+		"           tail",
+		"",
+		"",
+		"",
+		"`<!--` quoted, still live",
+	}
+	if got := LiveText(in, TopLevel); !reflect.DeepEqual(got, want) {
+		t.Fatalf("LiveText =\n%q\nwant\n%q", got, want)
+	}
+	// Under ListNested a fence indented under a list item is a fence; at the
+	// top level it is not.
+	nested := []string{"- item", "", "    ```", "    inside", "    ```", "after"}
+	if got := LiveText(nested, ListNested); got[3] != "" || got[5] != "after" {
+		t.Fatalf("ListNested LiveText = %q, want the nested fence's body empty and the line after it live", got)
+	}
+	if got := LiveText(nested, TopLevel); got[3] != "    inside" {
+		t.Fatalf("TopLevel LiveText = %q, want the indented run read as text", got)
+	}
+}
+
+// TestSectionLineRangeNestedInHoldsItsSubsections: a deeper heading is inside
+// the section, a heading of the same depth or shallower ends it.
+func TestSectionLineRangeNestedInHoldsItsSubsections(t *testing.T) {
+	head := regexp.MustCompile(`^#{1,6}\s+Open Questions\s*$`)
+	body := lines("# T\n## Open Questions\n### Relay\n- how?\n#### deeper\n- and?\n## Decisions\n- d\n")
+	start, end, ok := SectionLineRangeNestedIn(body, Mask(body), head)
+	if !ok || start != 2 || end != 6 {
+		t.Fatalf("SectionLineRangeNestedIn = (%d, %d, %v), want (2, 6, true)", start, end, ok)
+	}
+	shallower := lines("## Open Questions\n- a?\n# Next\n- b\n")
+	if _, end, _ := SectionLineRangeNestedIn(shallower, Mask(shallower), head); end != 2 {
+		t.Fatalf("a shallower heading ends the section: end = %d, want 2", end)
+	}
+	fenced := lines("## Open Questions\n```\n## not a heading\n```\n- a?\n")
+	if _, end, _ := SectionLineRangeNestedIn(fenced, Mask(fenced), head); end != len(fenced) {
+		t.Fatalf("a fenced heading ends nothing: end = %d, want %d", end, len(fenced))
+	}
+}

@@ -469,6 +469,109 @@ func SectionLineRangeIn(lines []string, mask []uint8, headRe *regexp.Regexp) (st
 	return 0, 0, false
 }
 
+// SectionLineRangeNestedIn is SectionLineRangeIn for a section that holds
+// sub-sections of its own: its body runs to the next live heading of the same
+// depth or shallower, so a `### Relay` under `## Open Questions` is inside it
+// and a `## Decisions` after it is not.
+func SectionLineRangeNestedIn(lines []string, mask []uint8, headRe *regexp.Regexp) (start, end int, ok bool) {
+	for i, ln := range lines {
+		ln = strings.TrimRight(ln, "\r")
+		if masked(mask, i) || !headRe.MatchString(ln) {
+			continue
+		}
+		depth := headingDepth(ln)
+		end = len(lines)
+		for j := i + 1; j < len(lines); j++ {
+			next := strings.TrimRight(lines[j], "\r")
+			if !masked(mask, j) && headingRe.MatchString(next) && headingDepth(next) <= depth {
+				end = j
+				break
+			}
+		}
+		return i + 1, end, true
+	}
+	return 0, 0, false
+}
+
+// headingDepth is the number of `#` opening an ATX heading line, or 7 for a
+// line that is not one, which no heading's depth reaches.
+func headingDepth(ln string) int {
+	if !headingRe.MatchString(ln) {
+		return 7
+	}
+	return len(ln) - len(strings.TrimLeft(ln, "#"))
+}
+
+// LiveText returns each line as a reader of the rendered page sees it: a line
+// inside a fenced block under the rule, its delimiters included, is "", and
+// every HTML comment span on a line — one that opens and closes there, the
+// tail of one opened above, the head of one that closes below — is replaced by
+// spaces of the same length. So the text before a comment's opener and after
+// its closer is read where it sits, at its own offsets. Fences and comments
+// are read exactly as Read reads them under the rule: the first raw `-->`
+// closes a comment, a code span outside one is skipped whole (a `<!--` quoted
+// in backticks opens nothing), and inside a fence a comment opener is literal.
+//
+// Mask leaves a comment that opens and closes on one line live, because a
+// writer may touch that line; a reader of what the page SAYS cannot, and this
+// is that reader's view.
+func LiveText(lines []string, rule Rule) []string {
+	mask := Read(lines, rule).Mask
+	out := make([]string, len(lines))
+	in := false
+	for i, raw := range lines {
+		if mask[i]&MaskFence != 0 {
+			continue
+		}
+		out[i], in = blankComments(strings.TrimRight(raw, "\r"), in)
+	}
+	return out
+}
+
+// blankComments is one line of LiveText: in is whether a comment is open as
+// the line begins, and the second result whether one is open as it ends. The
+// walk is opensCommentFrom's, blanking what it skips over.
+func blankComments(ln string, in bool) (string, bool) {
+	b := []byte(ln)
+	blank := func(from, to int) {
+		for j := from; j < to; j++ {
+			b[j] = ' '
+		}
+	}
+	i := 0
+	if in {
+		k := strings.Index(ln, "-->")
+		if k < 0 {
+			blank(0, len(b))
+			return string(b), true
+		}
+		i = k + len("-->")
+		blank(0, i)
+	}
+	for i < len(ln) {
+		switch {
+		case ln[i] == '`':
+			if sp, ok := termsafe.PairCodeSpan(ln, i); ok {
+				i = sp.End
+			} else {
+				i = runEnd(ln, i)
+			}
+		case strings.HasPrefix(ln[i:], "<!--"):
+			k := strings.Index(ln[i+len("<!--"):], "-->")
+			if k < 0 {
+				blank(i, len(b))
+				return string(b), true
+			}
+			end := i + len("<!--") + k + len("-->")
+			blank(i, end)
+			i = end
+		default:
+			i++
+		}
+	}
+	return string(b), false
+}
+
 // BulletBlock is one top-level bullet and the continuation lines folded into
 // it, as the half-open line range [Start, End).
 type BulletBlock struct{ Start, End int }

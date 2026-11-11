@@ -37,6 +37,18 @@ func TestSpecUnsettled(t *testing.T) {
 			fm + "A record that was READY before is NOT READY after it. `Not READY` in code says nothing.\n" +
 				"**Open pull requests a crash left drifting** are listed; **Open, and not gating** too.\n" +
 				"```\nNot READY: inside a fence.\n**Open:** inside a fence.\n```\n", nil, ""},
+		{"a one-line comment passes", base + "/open/spc-7-thing.md",
+			fm + "<!-- Done. Not READY: parked -->\n<!-- - **Open:** which cache? -->\n", nil, ""},
+		{"text after a comment's closer is refused", base + "/open/spc-7-thing.md",
+			fm + "<!--\nparked\n--> Status: Not READY\n", []int{12}, "Not READY"},
+		{"an unclosed comment is refused on its opener", base + "/open/spc-7-thing.md",
+			fm + "<!-- parked\nNot READY: hidden\n", []int{10}, "never closed"},
+		{"an unclosed fence is refused on its opener", base + "/open/spc-7-thing.md",
+			fm + "```\n## Open Questions\n- hidden?\n", []int{10}, "never closed"},
+		{"a heading form is refused", base + "/open/spc-7-thing.md",
+			fm + "## Not READY\n", []int{10}, "Not READY"},
+		{"a quoted phrase is told to go in a code span", base + "/open/spc-7-thing.md",
+			fm + "- NOT READY rows are listed last.\n", []int{10}, "code span"},
 		{"a closed spec is out of reach", base + "/closed/spc-7-thing.md",
 			fm + "Not READY: once.\n", nil, ""},
 	}
