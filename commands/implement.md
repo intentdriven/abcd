@@ -301,11 +301,10 @@ that wait toward its bound of identical refusals, but does count it toward its
 bound of minutes, so two lanes each waiting on a path the other holds are
 handed back as stuck once that bound passes, the reason naming the path and
 the record whose hold it is. An origin the widening cannot reach waits the
-same way. More paths than one reservation message can name are held by their
-directories instead, one level up at a time, never the repository's root or a
-gate file. A receipt is refused on the hold only when the widening could not
-be made: a path no reservation may carry, which the refusal names, or paths
-still too many for the message's cap, which it says. A drive lands no lane that
+same way. Each path is reserved by its own name. A receipt is refused on the
+hold only when the widening could not be made: a path no reservation may
+carry, which the refusal names, or paths too many for one reservation message,
+which it says, naming the message's cap. A drive lands no lane that
 changes a gate file, whatever its hold names (`commands/drain.md`). A
 reservation made again names every path widened to, even when the reservation
 branch was deleted.

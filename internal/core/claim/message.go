@@ -455,7 +455,7 @@ const footprintReserve = 1024
 // Abcd-Footprint line for each path, stays within MaxMessageBytes with
 // footprintReserve kept for its other lines: for a caller composing a
 // footprint it must be able to write, as the implement loop's widening
-// does, coarsening one that does not fit. The writer still measures the
+// does, refusing one that does not fit. The writer still measures the
 // whole message it composes against the cap (checkText).
 func FootprintFits(fp []string) bool {
 	n := 0

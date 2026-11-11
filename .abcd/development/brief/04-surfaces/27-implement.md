@@ -602,12 +602,9 @@ toward its bound of minutes alone, so two lanes each waiting on a path the
 other holds, each renewing its own hold, are handed back as stuck once that
 bound passes, the reason naming the path and the record whose hold it is. An
 origin the widening cannot reach is a wait too, as at the fence's other reads.
-Paths too many for one reservation message are coarsened: each goes up to its
-directory, one level at a time, until they fit, never to the repository's root
-and never to a gate file, and the coarsened paths are judged for overlap like
-any other. A receipt is refused on the hold only when the widening could not
-be made: a path no reservation may carry, naming it, or paths still too many
-for the message's cap, naming the cap. A footprint path carries no leading or
+Each path is reserved by its own name. A receipt is refused on the hold only
+when the widening could not be made: a path no reservation may carry, naming
+it, or paths too many for one reservation message, naming the message's cap. A footprint path carries no leading or
 trailing space, and the writer reads each message it composes back before it
 writes it, writing nothing when the footprint does not read back as composed. The lane's brief tells the implementer that the loop reserves what its
 commits change, and what is still refused or waited for; it names no widen

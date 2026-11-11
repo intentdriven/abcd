@@ -10,9 +10,8 @@ import (
 // DriveGates are what a lane's preflight and the driver's own git run, as paths: a
 // change to one is a change to what judges the lane. They are kept in this one
 // place for everything that names them: `abcd drain --drive`, which lands no lane
-// that changes one and passes over an issue on one; the issue brief, which names
-// them to the implementer; and the loop's widening, which never coarsens a path
-// to one (widen.go). A directory ends in a slash.
+// that changes one and passes over an issue on one; and the issue brief, which
+// names them to the implementer. A directory ends in a slash.
 var DriveGates = []string{"Makefile", "GNUmakefile", "makefile", "scripts/", ".githooks/", "hooks/"}
 
 // DriveGate reports whether path, relative to the checkout, is one of DriveGates,
