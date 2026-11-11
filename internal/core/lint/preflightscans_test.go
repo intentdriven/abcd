@@ -611,18 +611,7 @@ func TestVulncheckInterruptedLeavesNoCopyBehind(t *testing.T) {
 func interruptedScanLeavesNoCopy(t *testing.T, sig syscall.Signal, want int, again bool) {
 	r := newScanRepo(t, false)
 	if again {
-		rmPath, err := exec.LookPath("rm")
-		if err != nil {
-			t.Skip("rm unavailable")
-		}
-		sent := filepath.Join(r.stubs, "rm-signalled-its-parent")
-		r.stub("rm", `if [ ! -e "`+sent+`" ]; then : >"`+sent+`"; kill -HUP "$PPID"; fi
-exec '`+rmPath+`' "$@"`)
-		t.Cleanup(func() {
-			if _, err := os.Stat(sent); err != nil {
-				t.Errorf("the removals never ran through the rm stub, so no second signal was sent: %v", err)
-			}
-		})
+		r.stubRmThatHangsUpItsParent()
 	}
 	blocker := filepath.Join(r.stubs, "fork-scan-blocks-here")
 	if err := syscall.Mkfifo(blocker, 0o600); err != nil {
@@ -673,6 +662,42 @@ exec cat "` + blocker + `"`)
 	}
 	if code := cmd.ProcessState.ExitCode(); code != want {
 		t.Errorf("the scan sent %v exited %d, want %d, its trap's", sig, code, want)
+	}
+	r.noCopyLeft()
+}
+
+// stubRmThatHangsUpItsParent makes rm a stub that sends one hangup to its
+// parent, the script, the first time it runs and then removes as asked: a
+// signal that arrives while the script's removals run. The test fails when the
+// stub never ran, since no signal was then sent.
+func (r *scanRepo) stubRmThatHangsUpItsParent() {
+	r.t.Helper()
+	rmPath, err := exec.LookPath("rm")
+	if err != nil {
+		r.t.Skip("rm unavailable")
+	}
+	sent := filepath.Join(r.stubs, "rm-signalled-its-parent")
+	r.stub("rm", `if [ ! -e "`+sent+`" ]; then : >"`+sent+`"; kill -HUP "$PPID"; fi
+exec '`+rmPath+`' "$@"`)
+	r.t.Cleanup(func() {
+		if _, err := os.Stat(sent); err != nil {
+			r.t.Errorf("the removals never ran through the rm stub, so no signal was sent: %v", err)
+		}
+	})
+}
+
+// TestVulncheckFinishedIsNotEndedByASignalInItsCleanup: a scan that ended by
+// itself keeps its own exit code and leaves nothing behind when a hangup
+// arrives during its removals (iss-2611111850449220). The EXIT trap ignores the
+// signal before its first removal; without that the hangup's trap ran inside
+// it and the clear scan exited 129.
+func TestVulncheckFinishedIsNotEndedByASignalInItsCleanup(t *testing.T) {
+	r := newScanRepo(t, false)
+	r.stubGovulncheck("echo 'No vulnerabilities found.'; exit 0")
+	r.stubRmThatHangsUpItsParent()
+	code, out := r.run("vulncheck")
+	if code != 0 {
+		t.Errorf("a clear scan sent a hangup in its cleanup exited %d, want 0\n%s", code, out)
 	}
 	r.noCopyLeft()
 }
