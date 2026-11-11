@@ -444,8 +444,11 @@ func TestABuildDoesNotTakeALaneOffTheDefaultBranchAsMerged(t *testing.T) {
 		}, false},
 		{"origin's default branch reset after the merge", func(t *testing.T, f *landFixture, l Lane) {
 			before := strings.TrimSpace(f.repo.Git("rev-parse", "refs/remotes/origin/main"))
-			f.mergeCommit(t, l.Landing.Pushed)
+			m := f.mergeCommit(t, l.Landing.Pushed)
 			f.repo.Git("push", "-q", "--force", "origin", before+":refs/heads/main")
+			// The push moved the tracking ref back too; this checkout last
+			// fetched the merge.
+			f.repo.Git("update-ref", "refs/remotes/origin/main", m)
 		}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
