@@ -309,6 +309,12 @@
       "specs_dir": "specs",
       "intents_dir": "intents"
     },
+    "spec_unsettled": {
+      "enabled": true,
+      "severity": "blocker",
+      "specs_dir": "specs",
+      "intents_dir": "intents"
+    },
     "record_schema": {
       "enabled": true,
       "severity": "blocker",
