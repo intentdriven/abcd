@@ -161,8 +161,10 @@ type Options struct {
 	// drive read them when it started (remoteid.go): the worktree stage of
 	// each lane the drive opens reads the identity again before it asks origin
 	// anything, and the hooks directory just before its add, and refuses the
-	// lane on any difference. Nil (a step the host runs, a single build)
-	// checks nothing.
+	// lane when a held key, or a top-level entry of the hooks directory the
+	// repository's own settings name, differs at that read, within the limits
+	// remoteid.go states. Nil (a step the host runs, a single build) checks
+	// nothing.
 	remote *remoteIdentity
 }
 

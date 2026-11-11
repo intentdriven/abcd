@@ -445,7 +445,8 @@ func TestADrivesHeldHooksReachANewRunsWorktreeStage(t *testing.T) {
 // TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly: the key match itself, on
 // canonical keys: each held name and a member of each held family is held,
 // and a key that only shares a prefix or a suffix with one, another remote's
-// key, protocol.version and a per-URL http key are not.
+// key, protocol.version and a per-URL http key are not. A regression guard:
+// it passes without a production change.
 func TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly(t *testing.T) {
 	for key, want := range map[string]bool{
 		"remote.origin.url":                           true,
