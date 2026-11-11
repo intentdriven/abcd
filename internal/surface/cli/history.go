@@ -392,7 +392,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			for _, n := range placePendingNotices() {
 				fmt.Fprintln(cmd.ErrOrStderr(), n)
 			}
-			res, err := history.Drain(repoRoot, rootSHA, history.DrainBudget{})
+			res, err := drainEverything(repoRoot, rootSHA, history.DrainBudget{})
 			if err != nil {
 				return err
 			}
@@ -405,9 +405,15 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			for k := range res.Failed {
 				res.Failed[k].Path = fsutil.RedactHome(res.Failed[k].Path)
 			}
+			res.KeepFault = fsutil.RedactHome(res.KeepFault)
 			renderErr := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				if len(res.Captured) == 0 && len(res.Failed) == 0 {
 					fmt.Fprintln(w, "abcd history — nothing staged; nothing to drain")
+					// A fault keeping a part is said even then: the
+					// entry it met may have been stored meanwhile.
+					if l := keepFaultLine(res, false); l != "" {
+						fmt.Fprintln(w, l)
+					}
 					return
 				}
 				for _, r := range res.Captured {
@@ -419,6 +425,9 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 						termsafe.Sanitize(f.SessionID), termsafe.Sanitize(f.Err), termsafe.Sanitize(f.Path))
 				}
 				for _, l := range scanGapLines(res.ScanGap) {
+					fmt.Fprintln(w, l)
+				}
+				if l := keepFaultLine(res, false); l != "" {
 					fmt.Fprintln(w, l)
 				}
 			})
@@ -838,3 +847,7 @@ func captureTranscriptSource(cmd *cobra.Command, repoRoot, rootSHA, src, session
 	}
 	return res, nil
 }
+
+// drainEverything is the drain verb's unbounded drain; a test replaces it to
+// stand in for one that meets a fault.
+var drainEverything = history.Drain
