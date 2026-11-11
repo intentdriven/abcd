@@ -576,7 +576,7 @@ func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 		// A record finished on origin's default branch is not reserved, with
 		// a tip or without one: the work it names is done (iss-2610160957404827).
 		return Result{}, message{}, "", &refusal{msg: fmt.Sprintf("%s, so there is nothing to reserve; take other work; %s",
-			derivedWhy(p.id), nothingPushed), kind: ErrBackOff, finished: !isRelease(p.id)}
+			derivedWhy(p.id), nothingPushed), kind: ErrBackOff, also: finishedMark(p.id)}
 	case !j.present:
 		res.Act = ActReserved
 		return res, m, "", nil
@@ -1245,4 +1245,13 @@ func stampFetch(root string, ns namespace, at time.Time) error {
 		return err
 	}
 	return fsutil.WriteFileAtomicInRoot(r, ns.stampRel(), []byte(stamp(at)+"\n"), stateMode)
+}
+
+// finishedMark is ErrFinished for an issue or an intent and nil for a release,
+// which has no finished state on the default branch.
+func finishedMark(id string) error {
+	if isRelease(id) {
+		return nil
+	}
+	return ErrFinished
 }

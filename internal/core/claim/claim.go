@@ -64,6 +64,11 @@ const (
 // ErrBackOff marks a refusal whose remedy is to take other work: the record is
 // held, and the front door exits 3, as `implement claim` does for contention.
 // ErrRefused marks every other refusal and failure, exit 2.
+//
+// ErrOverCap marks, beside ErrRefused, a refusal of a message the writer
+// composed past MaxMessageBytes, so a caller can tell a footprint too large
+// for one reservation from any other refusal.
+//
 // ErrFinished marks, beside ErrBackOff, the one back-off whose record sits
 // finished on origin's default branch as the act just fetched it (an issue
 // resolved or wontfix, an intent shipped or superseded), so a caller tells that
@@ -71,25 +76,32 @@ const (
 var (
 	ErrBackOff  = errors.New("the record is reserved")
 	ErrRefused  = errors.New("the reservation was refused")
+	ErrOverCap  = errors.New("the message passes its cap")
 	ErrFinished = errors.New("the record is finished on origin's default branch")
 )
 
 // refusal is a refusal carrying its class (ErrBackOff or ErrRefused), and
-// ErrFinished for a record finished on origin's default branch.
+// also, when set, a mark beside it (ErrOverCap or ErrFinished).
 type refusal struct {
-	msg      string
-	kind     error
-	finished bool
+	msg  string
+	kind error
+	also error
 }
 
 func (e *refusal) Error() string { return e.msg }
 func (e *refusal) Is(target error) bool {
-	return target == e.kind || (e.finished && target == ErrFinished)
+	return target == e.kind || (e.also != nil && target == e.also)
 }
 
 // refuse is an ErrRefused refusal; every message ends saying what was not done.
 func refuse(format string, args ...any) error {
 	return &refusal{msg: fmt.Sprintf(format, args...), kind: ErrRefused}
+}
+
+// refuseOverCap is an ErrRefused refusal of a message past its cap, marked
+// ErrOverCap.
+func refuseOverCap(format string, args ...any) error {
+	return &refusal{msg: fmt.Sprintf(format, args...), kind: ErrRefused, also: ErrOverCap}
 }
 
 // backOff is an ErrBackOff refusal.

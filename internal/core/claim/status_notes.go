@@ -45,6 +45,13 @@ type Notes struct {
 	// background; the block itself never touches the network.
 	RefreshDue bool
 	refresh    *scheduledPathSet
+	// index is the read of the index of unshown announcements the block was
+	// built from (nil when it was built from every kept announcement), spent
+	// the index files whose last unshown announcements this block shows, and
+	// mark the first fetch the index's mark must reach before they go.
+	index *unshownRead
+	spent []string
+	mark  time.Time
 	// by is when MarkShown may last start a write: the hook's deadline less
 	// promptWriteReserve. Zero when the hook set no deadline.
 	by time.Time
@@ -88,13 +95,19 @@ const blockPrefix = "block-"
 // file whatever their number, best effort: a line not kept is shown again at
 // the next prompt, which is all a lost marker costs, so the file is not
 // flushed to stable storage, and nothing is written once the hook's deadline
-// is near.
+// is near. Once the file is kept, the index files whose announcements the
+// block was the last to show are removed, so no later prompt reads them.
 func (n Notes) MarkShown() {
 	if len(n.keys) == 0 || !n.by.IsZero() && time.Now().After(n.by) {
 		return
 	}
 	data := []byte(strings.Join(n.keys, "\n") + "\n")
-	writeUnflushed(n.root, shownDir, blockPrefix+hashName(string(data)), data)
+	if writeUnflushedIn(n.root, statusBranches.stateDir+"/"+shownDir, blockPrefix+hashName(string(data)), data) != nil {
+		return
+	}
+	if n.index != nil {
+		n.index.remove(n.spent, n.mark)
+	}
 }
 
 // writeUnflushed writes name under the status state directory's sub, made
@@ -183,7 +196,7 @@ func PromptNotes(ctx context.Context, root string, now time.Time, o Options) (No
 	go func() {
 		defer promptReads.Done()
 		read := func() {
-			v, err := ReadStatus(rctx, root, now, o)
+			v, err := readStatus(rctx, root, now, o, true)
 			if _, only := err.(*holdsUnreadError); only {
 				// Only the holds failed: the rest is shown, and the
 				// block says the holds were not read.
@@ -313,10 +326,20 @@ func notesFor(ctx context.Context, root string, v StatusView, now time.Time) (No
 		// later read has read on and something is still left.
 		doubts = append(doubts, noteLine{key: hashedKey("left\x00" + v.leftKey), text: BranchesLeftLine(v.BranchesLeft), weight: v.BranchesLeft})
 	}
-	// The newest announcement per item; the rest are counted.
+	shown, err := shownSet(ctx, root)
+	if err != nil {
+		return Notes{}, err
+	}
+	// The newest announcement per item; the rest are counted. Read from the
+	// index of unshown ones, they are joined by every kept announcement when
+	// the index alone does not order them.
+	announcements := v.Announcements
+	if v.index != nil {
+		announcements = v.index.widen(now, shown, announcements)
+	}
 	seenItem := map[string]bool{}
 	var superseded []noteLine
-	for _, a := range v.Announcements {
+	for _, a := range announcements {
 		l := noteLine{key: a.Commit, text: a.Line(now)}
 		if a.Unreadable != "" {
 			l.weight = 1
@@ -329,10 +352,6 @@ func notesFor(ctx context.Context, root string, v StatusView, now time.Time) (No
 		}
 		seenItem[a.Item] = true
 		news = append(news, l)
-	}
-	shown, err := shownSet(ctx, root)
-	if err != nil {
-		return Notes{}, err
 	}
 	doubts = unshown(shown, doubts)
 	if len(doubts) > maxDoubtLines {
@@ -356,6 +375,10 @@ func notesFor(ctx context.Context, root string, v StatusView, now time.Time) (No
 	lines = append(lines, doubts...)
 	counted = append(counted, unshown(shown, superseded)...)
 	if len(lines) == 0 && len(counted) == 0 {
+		if v.index != nil {
+			// Nothing to show: the index files with nothing left to show go.
+			v.index.settle(shown, nil, announcements)
+		}
 		return Notes{}, nil
 	}
 	var b strings.Builder
@@ -373,7 +396,11 @@ func notesFor(ctx context.Context, root string, v StatusView, now time.Time) (No
 		fmt.Fprintf(&b, "- and %d more: `abcd status` lists them all\n", len(counted))
 	}
 	b.WriteString(GrantsNothing + "\n")
-	return Notes{Text: b.String(), keys: keys, root: root}, nil
+	n := Notes{Text: b.String(), keys: keys, root: root, index: v.index}
+	if v.index != nil {
+		n.spent, n.mark = v.index.settle(shown, keys, announcements)
+	}
+	return n, nil
 }
 
 // unshown is the lines of ls not in shown; a summing-up line is always

@@ -15,7 +15,13 @@ package loop
 //
 // A wait by design is no refusal and is never logged: the landing's wait for
 // its preflight receipt (checkWait), every outage wait, and a land fence,
-// at the push or the arming, that could not read origin. A refusal that
+// at the push or the arming, that could not read origin. A lane whose hold
+// the loop could not widen to a path another holder holds live (pathHeld,
+// widen.go) waits for that hold to end too, and is never counted toward the
+// refusals bound; but it is logged with a count of 0, so it counts toward
+// the minutes bound, and two lanes each waiting on a path the other holds,
+// each renewing its own hold as it steps, are handed back once that bound
+// passes rather than wait on each other for ever. A refusal that
 // cannot change makes the lane stuck at once: the issue finished at the
 // lane's base, or on origin's default branch as the land fence reads it, or
 // the reservation the fence or the push checks now another person's. Only an
@@ -25,6 +31,7 @@ package loop
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -62,7 +69,9 @@ const stuckGap = drainWaitMinutes * time.Minute
 // of the last refusal, how many in a row were that same refusal, since when
 // the lane has refused at that stage with no quiet longer than stuckGap, and
 // when it last refused. Final names
-// why the refusal cannot change, "" when it can.
+// why the refusal cannot change, "" when it can. Count is 0 on a wait on
+// another holder's path (Refusal.pathHeld), which counts toward the minutes
+// bound alone.
 type LaneRefused struct {
 	Stage  string    `json:"stage"`
 	Check  string    `json:"check,omitempty"`
@@ -114,10 +123,12 @@ func resolveStuckBounds(roots layered.Roots) (stuckBounds, error) {
 
 // waitByDesign reports whether r is a wait the loop makes on purpose rather
 // than a refusal: the landing's wait for its preflight receipt, an outage's,
-// a land fence's that could not read origin, and a merge gate's that could not
-// read what it asks at the arming.
+// a land fence's that could not read origin, a merge gate's that could not
+// read what it asks at the arming, and a lane whose hold could not be widened
+// to a path another holder holds live (widen.go), which noteRefusal alone
+// still logs, against the minutes bound.
 func waitByDesign(r *Refusal) bool {
-	return !r.checkWait.IsZero() || r.Outage != nil || r.outage != nil || r.Stage == StageOutage || r.originUnread || r.releaseHeld || r.gateUnread
+	return !r.checkWait.IsZero() || r.Outage != nil || r.outage != nil || r.Stage == StageOutage || r.originUnread || r.releaseHeld || r.gateUnread || r.pathHeld
 }
 
 // noteRefusal logs err on the lane it names, in an issue run (stuck.go's
@@ -129,9 +140,16 @@ func waitByDesign(r *Refusal) bool {
 // line whenever a new count starts or the refusal turns final, so a host that
 // polls a refusing lane does not grow the record. It reports whether it
 // changed the state, which the step then writes beside its refusal.
+//
+// A wait on another holder's path (Refusal.pathHeld) is logged with a count
+// of 0 that never grows, so it never reaches the refusals bound, but keeps
+// the time the lane began waiting at its stage, as any refusal there does,
+// so the minutes bound hands back a lane whose wait does not end, while it
+// waits on the same hold with looks no more than twice stuckGap apart. The
+// record gains a line only as such a wait begins.
 func noteRefusal(st *State, err error, now time.Time) bool {
 	r, ok := AsRefusal(err)
-	if !ok || st.Issue() == "" || r.Lane == "" || waitByDesign(r) {
+	if !ok || st.Issue() == "" || r.Lane == "" || (waitByDesign(r) && !r.pathHeld) {
 		return false
 	}
 	i := -1
@@ -153,10 +171,26 @@ func noteRefusal(st *State, err error, now time.Time) bool {
 	reason := termsafe.Sanitize(fsutil.RedactHome(r.Reason))
 	next := LaneRefused{Stage: r.Stage, Check: r.Check, Reason: reason, Count: 1, Since: now, Last: now, Final: r.final}
 	logged := true
-	if p := lane.Refused; p != nil && p.Stage == r.Stage {
-		if now.Sub(p.Last) <= stuckGap {
+	p := lane.Refused
+	switch {
+	case p != nil && p.Stage == r.Stage && r.pathHeld && p.Count == 0:
+		// A wait on another holder's path that goes on keeps the time it
+		// began while it waits on the same hold and the looks come no more
+		// than twice stuckGap apart: a drive's look-again time can reach
+		// stuckGap itself, and a wait that started its time afresh at every
+		// look would never reach the minutes bound. A wait on another hold,
+		// or after a longer quiet, starts afresh.
+		if sameHold(p.Reason, reason) && now.Sub(p.Last) <= 2*stuckGap {
 			next.Since = p.Since
 		}
+	case p != nil && p.Stage == r.Stage && now.Sub(p.Last) <= stuckGap:
+		next.Since = p.Since
+	}
+	switch {
+	case r.pathHeld:
+		next.Count = 0
+		logged = p == nil || p.Stage != r.Stage || p.Count != 0 || next.Since != p.Since
+	case p != nil && p.Stage == r.Stage:
 		if p.Check == r.Check && p.Reason == reason {
 			next.Count = p.Count + 1
 			logged = p.Final == "" && r.final != ""
@@ -169,6 +203,9 @@ func noteRefusal(st *State, err error, now time.Time) bool {
 	st.Lanes[i] = lane
 	if logged {
 		note := fmt.Sprintf("%s refused at %s: %s", lane.ID, refusedAt(next), reason)
+		if next.Count == 0 {
+			note = fmt.Sprintf("%s waits at %s on another holder's hold, counted toward the minutes bound alone: %s", lane.ID, refusedAt(next), reason)
+		}
 		if next.Final != "" {
 			note += "; it cannot change: " + next.Final
 		}
@@ -176,6 +213,16 @@ func noteRefusal(st *State, err error, now time.Time) bool {
 	}
 	st.UpdatedAt = now
 	return true
+}
+
+// holdUntil is the end of a hold as a back-off over it names it, which a
+// renewal of the hold moves.
+var holdUntil = regexp.MustCompile(` until \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`)
+
+// sameHold reports whether a and b, two waits' reasons, name the same paths
+// and the same hold, whatever end each gives the hold.
+func sameHold(a, b string) bool {
+	return holdUntil.ReplaceAllString(a, "") == holdUntil.ReplaceAllString(b, "")
 }
 
 // refusedAt names a refusal's stage and check.
@@ -203,6 +250,9 @@ func stuckReason(run State, b stuckBounds) string {
 	switch mins := int(r.Last.Sub(r.Since) / time.Minute); {
 	case r.Final != "":
 		return fmt.Sprintf("its step was refused at %s in a way that cannot change (%s): %s", at, r.Final, r.Reason)
+	case r.Count == 0 && mins >= b.minutes.Value:
+		return fmt.Sprintf("it has waited at %s for %d minutes on another holder's hold on a path its branch changes, past the bound of %d (%s): %s",
+			at, mins, b.minutes.Value, describeOrigin(b.minutes), r.Reason)
 	case r.Count >= b.refusals.Value:
 		return fmt.Sprintf("its step was refused the same way %s in a row at %s, the bound (%s): %s",
 			times(r.Count), at, describeOrigin(b.refusals), r.Reason)
@@ -222,6 +272,10 @@ func refusingNote(run State, b stuckBounds) string {
 		return ""
 	}
 	r := run.Lanes[i].Refused
+	if r.Count == 0 {
+		return fmt.Sprintf("it has waited at %s since %s on another holder's hold on a path its branch changes; the drain hands it back as stuck at %d minutes",
+			refusedAt(*r), stamp(r.Since), b.minutes.Value)
+	}
 	return fmt.Sprintf("its step has been refused the same way %s in a row at %s, refusing there since %s; the drain hands it back as stuck at %s or %d minutes",
 		times(r.Count), refusedAt(*r), stamp(r.Since), times(b.refusals.Value), b.minutes.Value)
 }
