@@ -161,33 +161,61 @@ type widened struct {
 	r         reserved
 }
 
+// maxWidenPaths bounds the paths one widening compares: comfortably above
+// any number a reservation message can name within its cap
+// (claim.MaxMessageBytes), so a set of paths past it is refused as over the
+// cap at once, before any comparison is made.
+const maxWidenPaths = 512
+
+// overCapRefusal is the refusal of a widening of key's hold whose footprint
+// cannot fit a reservation message: n paths, or more than n when more is
+// set. It is marked overCap, which no relaunch changes, so a receipt names it
+// as a gap of its own (receiptHoldGaps).
+func overCapRefusal(key string, n int, more bool) *Refusal {
+	count := fmt.Sprintf("the %d", n)
+	if more {
+		count = fmt.Sprintf("more than %d", n)
+	}
+	r := refuse(StageReservation, CheckReservation, "", fmt.Sprintf(
+		"the reservation on %s cannot carry that many paths: %s its hold would name pass what a reservation message holds within its %d-byte cap",
+		key, count, claim.MaxMessageBytes),
+		"take up fewer paths beyond the issue's place in one lane")
+	r.overCap = true
+	return r
+}
+
 // widenHold is the one widening of an issue run's hold, whoever asks for it:
 // Widen, for a host session's implementer that names the paths before its
 // edit, and the loop's own (widenLaneChanges), once a lane hands its receipt
 // back, before each step at its validators and at the fence before its
 // landing's push and its arming. It reserves key again with own's footprint
-// and each path of want that footprint does not cover, keeping own's term
-// (widenReservation), judged for overlap and against the cap like any
+// and each path of want that footprint does not cover, each by its own name,
+// keeping own's term (widenReservation), judged for overlap like any
 // reservation. Nothing is pushed when own covers every path, and the result
-// names none added. Each path is held by its own name; paths too many for the
-// message's cap (claim.FootprintFits) are refused, marked overCap, which no
-// relaunch changes. Any other refusal is the reservation act's
-// (reservedNote), with the paths it would have added.
+// names none added. Paths past maxWidenPaths, or too many for the message's
+// cap (claim.FootprintFits), are refused at once (overCapRefusal). Any other
+// refusal is the reservation act's (reservedNote), with the paths it would
+// have added.
 func widenHold(repoRoot, key string, own claim.Reservation, want []string, now time.Time) (widened, error) {
 	var w widened
-	w.added = unheldBy(own.Footprint, want)
+	held := newPathSet(own.Footprint)
+	for _, p := range want {
+		if held.covers(p) {
+			continue
+		}
+		if len(w.added) == maxWidenPaths {
+			return widened{}, overCapRefusal(key, len(own.Footprint)+maxWidenPaths, true)
+		}
+		held.add(p)
+		w.added = append(w.added, p)
+	}
 	if len(w.added) == 0 {
 		w.footprint = slices.Clone(own.Footprint)
 		return w, nil
 	}
-	fp := heldWith(own.Footprint, w.added)
+	fp := append(slices.Clone(own.Footprint), w.added...)
 	if !claim.FootprintFits(fp) {
-		r := refuse(StageReservation, CheckReservation, "", fmt.Sprintf(
-			"the reservation on %s cannot carry that many paths: the %d its hold would name pass what a reservation message holds within its %d-byte cap",
-			key, len(fp), claim.MaxMessageBytes),
-			"take up fewer paths beyond the issue's place in one lane")
-		r.overCap = true
-		return w, r
+		return w, overCapRefusal(key, len(fp), false)
 	}
 	r, err := widenReservation(repoRoot, key, fp, false, false, own, now)
 	if err != nil {
@@ -197,15 +225,35 @@ func widenHold(repoRoot, key string, own claim.Reservation, want []string, now t
 	return w, nil
 }
 
-// unheldBy is each path of want that held does not cover, in want's order.
-func unheldBy(held, want []string) []string {
-	var out []string
-	for _, p := range want {
-		if !covers(held, []string{p}) {
-			out = append(out, p)
-		}
+// pathSet is a set of clean paths that answers whether one of them covers a
+// path (covers) in time linear in the path's depth, whatever its size.
+type pathSet map[string]bool
+
+// newPathSet is a pathSet holding each of paths, cleaned.
+func newPathSet(paths []string) pathSet {
+	s := make(pathSet, len(paths))
+	for _, p := range paths {
+		s.add(p)
 	}
-	return out
+	return s
+}
+
+// add puts p, cleaned, in the set.
+func (s pathSet) add(p string) { s[path.Clean(p)] = true }
+
+// covers reports whether the set holds p or a directory above it, as covers
+// (reservation.go) reads a footprint.
+func (s pathSet) covers(p string) bool {
+	for p = path.Clean(p); ; {
+		if s[p] {
+			return true
+		}
+		i := strings.LastIndexByte(p, '/')
+		if i < 0 {
+			return false
+		}
+		p = p[:i]
+	}
 }
 
 // widenedLines are the run record's lines for a widening made: one
@@ -236,13 +284,15 @@ func widenPaths(laneID string, paths []string) ([]string, error) {
 		return nil, refuse(StageReservation, "", laneID, "no path was named to widen the hold to",
 			"name each repository-relative path the lane is about to edit")
 	}
-	var out []string
+	seen := make(map[string]bool, len(paths))
+	out := make([]string, 0, len(paths))
 	for _, p := range paths {
 		if !claim.ValidFootprintPath(p) {
 			return nil, refuse(StageReservation, "", laneID, termsafe.DescribeRefused(p)+" is a path no reservation may carry",
 				"name each path relative to the repository root, without `..`, a leading `/` or a control character")
 		}
-		if p = path.Clean(p); !slices.Contains(out, p) {
+		if p = path.Clean(p); !seen[p] {
+			seen[p] = true
 			out = append(out, p)
 		}
 	}
@@ -293,11 +343,17 @@ type laneHold struct {
 }
 
 // shown is the paths the lane's branch changes beyond its hold, each made
-// safe for a terminal, joined for a line of text.
+// safe for a terminal, joined for a line of text: the first ten, and how
+// many more there are.
 func (h laneHold) shown() string {
-	out := make([]string, len(h.paths))
-	for i, p := range h.paths {
+	const most = 10
+	n := min(len(h.paths), most)
+	out := make([]string, n, n+1)
+	for i, p := range h.paths[:n] {
 		out[i] = termsafe.Sanitize(p)
+	}
+	if rest := len(h.paths) - n; rest > 0 {
+		out = append(out, fmt.Sprintf("and %d more", rest))
 	}
 	return strings.Join(out, ", ")
 }
@@ -314,6 +370,10 @@ func widenLaneChanges(c Context, lane Lane) laneHold {
 	var h laneHold
 	h.own, h.paths, h.gap = unheldPaths(c, lane, c.Now)
 	if h.gap != "" || len(h.paths) == 0 {
+		return h
+	}
+	if len(h.paths) > maxWidenPaths {
+		h.err = overCapRefusal(c.State.Key, len(h.own.Footprint)+maxWidenPaths, true)
 		return h
 	}
 	want, err := widenPaths(lane.ID, h.paths)
@@ -436,8 +496,9 @@ func unheldPaths(c Context, lane Lane, now time.Time) (own claim.Reservation, un
 	if declined != "" {
 		return own, nil, "the files the lane changed, to check them against its reservation (" + declined + ")"
 	}
+	held := newPathSet(own.Footprint)
 	for _, p := range changed {
-		if !covers(own.Footprint, []string{p}) {
+		if !held.covers(p) {
 			unheld = append(unheld, p)
 		}
 	}
@@ -503,8 +564,10 @@ func holdLaneChanges(c Context, lane Lane, stage Stage, act fenceAct) (note stri
 // heldWith is fp with every path of held that fp does not cover appended.
 func heldWith(fp, held []string) []string {
 	out := slices.Clone(fp)
+	set := newPathSet(fp)
 	for _, p := range held {
-		if !covers(out, []string{p}) {
+		if !set.covers(p) {
+			set.add(p)
 			out = append(out, p)
 		}
 	}

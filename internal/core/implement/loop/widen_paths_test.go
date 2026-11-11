@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 )
@@ -29,5 +30,35 @@ func TestPathsTooManyForAReservationAreAGapNamingTheCap(t *testing.T) {
 	}
 	if after := f.tip(t); after.commit != before.commit {
 		t.Fatalf("nothing is pushed: the tip moved from %s to %s", before.commit, after.commit)
+	}
+}
+
+// TestAWideningOfVeryManyPathsIsRefusedAtOnce: a widening over 200,000
+// paths, far past what any reservation message can name, is refused as over
+// the cap at once, having compared no more than maxWidenPaths of them, and
+// pushes nothing.
+func TestAWideningOfVeryManyPathsIsRefusedAtOnce(t *testing.T) {
+	want := make([]string, 200_000)
+	for i := range want {
+		want[i] = fmt.Sprintf("root-file-%06d.txt", i)
+	}
+	start := time.Now()
+	w, err := widenHold(t.TempDir(), "iss-5", claim.Reservation{Footprint: []string{"docs"}}, want, time.Now())
+	took := time.Since(start)
+	rf, ok := AsRefusal(err)
+	if !ok || !rf.overCap || !strings.Contains(rf.Reason, fmt.Sprintf("more than %d", 1+maxWidenPaths)) {
+		t.Fatalf("the widening is refused as over the cap: %v", err)
+	}
+	if len(w.added) != 0 || w.footprint != nil {
+		t.Fatalf("nothing is added or held: %+v", w)
+	}
+	if took > 2*time.Second {
+		t.Fatalf("the refusal comes at once, not after comparing every path: %s", took)
+	}
+	if paths, err := widenPaths("lane-1", want); err != nil || len(paths) != len(want) {
+		t.Fatalf("the paths are deduplicated in one pass: %d, %v", len(paths), err)
+	}
+	if took := time.Since(start); took > 4*time.Second {
+		t.Fatalf("checking and deduplicating the paths takes no more than a pass over them: %s", took)
 	}
 }
