@@ -330,7 +330,15 @@ func OpensComment(ln string) bool { return opensCommentFrom(ln, 0) }
 // opensCommentFrom is OpensComment beginning at an offset — the form Mask needs
 // when a line closes the span it was already inside and the remainder is live
 // markdown again.
-func opensCommentFrom(ln string, start int) bool {
+func opensCommentFrom(ln string, start int) bool { return commentWalk(ln, start, nil) }
+
+// commentWalk is the one left-to-right walk OpensComment and LiveText share:
+// from start, a matched code span is skipped whole and an unmatched backtick
+// run is literal, and at `<!--` the walk skips to the `-->` closing it. It
+// reports whether a comment is still open at the end of the line, and hands
+// each comment span it skips, the open one included, to blank when blank is
+// not nil.
+func commentWalk(ln string, start int, blank func(from, to int)) bool {
 	for i := start; i < len(ln); {
 		switch {
 		case ln[i] == '`':
@@ -343,9 +351,16 @@ func opensCommentFrom(ln string, start int) bool {
 			rest := ln[i+len("<!--"):]
 			k := strings.Index(rest, "-->")
 			if k < 0 {
+				if blank != nil {
+					blank(i, len(ln))
+				}
 				return true
 			}
-			i += len("<!--") + k + len("-->")
+			end := i + len("<!--") + k + len("-->")
+			if blank != nil {
+				blank(i, end)
+			}
+			i = end
 		default:
 			i++
 		}
@@ -529,8 +544,9 @@ func LiveText(lines []string, rule Rule) []string {
 }
 
 // blankComments is one line of LiveText: in is whether a comment is open as
-// the line begins, and the second result whether one is open as it ends. The
-// walk is opensCommentFrom's, blanking what it skips over.
+// the line begins, and the second result whether one is open as it ends.
+// Inside a comment the first raw `-->` closes it, as Read reads it; the rest
+// of the line is commentWalk's.
 func blankComments(ln string, in bool) (string, bool) {
 	b := []byte(ln)
 	blank := func(from, to int) {
@@ -538,38 +554,18 @@ func blankComments(ln string, in bool) (string, bool) {
 			b[j] = ' '
 		}
 	}
-	i := 0
+	start := 0
 	if in {
 		k := strings.Index(ln, "-->")
 		if k < 0 {
 			blank(0, len(b))
 			return string(b), true
 		}
-		i = k + len("-->")
-		blank(0, i)
+		start = k + len("-->")
+		blank(0, start)
 	}
-	for i < len(ln) {
-		switch {
-		case ln[i] == '`':
-			if sp, ok := termsafe.PairCodeSpan(ln, i); ok {
-				i = sp.End
-			} else {
-				i = runEnd(ln, i)
-			}
-		case strings.HasPrefix(ln[i:], "<!--"):
-			k := strings.Index(ln[i+len("<!--"):], "-->")
-			if k < 0 {
-				blank(i, len(b))
-				return string(b), true
-			}
-			end := i + len("<!--") + k + len("-->")
-			blank(i, end)
-			i = end
-		default:
-			i++
-		}
-	}
-	return string(b), false
+	open := commentWalk(ln, start, blank)
+	return string(b), open
 }
 
 // BulletBlock is one top-level bullet and the continuation lines folded into
