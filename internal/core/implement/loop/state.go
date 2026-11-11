@@ -540,8 +540,9 @@ type State struct {
 	// the drain opened, else the spec the run builds against or the issue it
 	// fixes. Written at the start; every records commit carries it as its
 	// `Admitted-by:` trailer, and a records step over a state without it is
-	// refused. Nil in a run a state file before version 26 holds, and in an
-	// auto-plan run, which plans a draft and lands nothing.
+	// refused. Nil in a run a state file before version 26 holds, and in the
+	// two runs that land nothing: an auto-plan run, which plans a draft, and a
+	// trial run.
 	Admitted *Admitted `json:"admitted,omitempty"`
 	// Lanes are the lanes opened so far, in the order they opened; several may
 	// be open at once, up to the ceiling (ruling DR6). A lane lands one step of

@@ -565,10 +565,13 @@ const StageAdmitted = "admitted"
 
 // admission is the rule a new run's lanes are admitted under: the drain's rule
 // record for a lane the drain opens, else the issue an issue-keyed run fixes or
-// the spec an intent's run builds against. An auto-plan run plans a draft that
-// has no spec yet and lands nothing, so it records none.
+// the spec an intent's run builds against. Two runs land nothing, so they record
+// none: an auto-plan run, which plans a draft that has no spec yet, and a trial
+// run, whose land stage lands nothing (trial.go).
 func admission(chk CheckResult, o Options) *Admitted {
 	switch {
+	case o.Trial:
+		return nil
 	case o.drain:
 		a := *o.admitted
 		return &a
@@ -603,10 +606,11 @@ func drainAdmission(o Options) string {
 // what it knows. A drain's start gives the drain's rule; `abcd build` gives the
 // spec an intent's run builds against, or the issue an issue-keyed run fixes
 // unless the drain's state lists the run as its lane, which the drain's next
-// move admits instead (admitDrainLane). An auto-plan run lands nothing.
+// move admits instead (admitDrainLane). An auto-plan run and a trial run land
+// nothing, so neither is admitted.
 func admitResumed(repoRoot, runID string, o Options) error {
 	st, err := ReadState(repoRoot, runID)
-	if err != nil || st.Admitted != nil || st.autoPlanning() {
+	if err != nil || st.Admitted != nil || st.autoPlanning() || st.Trial {
 		return err
 	}
 	var a Admitted

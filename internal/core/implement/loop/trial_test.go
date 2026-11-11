@@ -19,7 +19,8 @@ import (
 
 // TestATrialRunTakesNoReservation: a run started in trial mode on a checkout
 // with an origin pushes no reservation, records none in its state, and says
-// in its record that it is a trial; resumed, it reserves nothing either.
+// in its record that it is a trial; resumed, it reserves nothing either. It
+// lands nothing, so it records no admission, at its start or as it resumes.
 func TestATrialRunTakesNoReservation(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), footprintedSpec)
 	bare := onOrigin(t, repo)
@@ -45,6 +46,20 @@ func TestATrialRunTakesNoReservation(t *testing.T) {
 	if note := recordNote(t, repo, res.RunID, StageTrial); !strings.Contains(note, "takes no reservation and lands nothing") {
 		t.Fatalf("the record says the run is a trial: %q", note)
 	}
+	noAdmission := func(when string) {
+		t.Helper()
+		st, err := ReadState(repo.Root(), res.RunID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Admitted != nil {
+			t.Fatalf("a trial run records an admission %s: %+v", when, st.Admitted)
+		}
+		if note := recordNote(t, repo, res.RunID, StageAdmitted); note != "" {
+			t.Fatalf("a trial run's record names an admission %s: %q", when, note)
+		}
+	}
+	noAdmission("at its start")
 
 	again, err := Start(repo.Root(), "itd-10", Options{Trial: true, Frozen: frozen})
 	if err != nil || !again.Resumed || again.RunID != res.RunID {
@@ -53,6 +68,7 @@ func TestATrialRunTakesNoReservation(t *testing.T) {
 	if tip := originReservation(t, bare, reservedRef); tip.commit != "" {
 		t.Fatalf("a resumed trial reserves nothing either: %+v", tip)
 	}
+	noAdmission("as it resumes")
 }
 
 // TestATrialRunIsNeverResumedAsABuildNorABuildAsATrial: a trial and a build of
