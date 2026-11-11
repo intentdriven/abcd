@@ -199,7 +199,7 @@ func TestTheLoopReservesWhatAWalledStageChangesBeforeItsValidators(t *testing.T)
 // README.txt live, and the walled implementer changes it; the receipt is taken
 // all the same, with nothing pushed and the record naming the hold, and the
 // lane waits before its validators, every step a wait by design that is never
-// counted toward the stuck bounds, until the hold lapses, when the next step
+// counted toward the refusals bound, until the hold lapses, when the next step
 // reserves the path and hands the lane to its first validator.
 func TestAPeersHoldOnAChangedPathIsAWaitNotAFailedLaunch(t *testing.T) {
 	f := newNarrowFixture(t)
@@ -236,8 +236,8 @@ func TestAPeersHoldOnAChangedPathIsAWaitNotAFailedLaunch(t *testing.T) {
 			t.Fatal(err)
 		}
 		l := run.Lanes[run.current()]
-		if l.Refused != nil || stuckReason(run, b) != "" || l.HandBack != nil || l.Stage != StageValidate || len(l.Awaits) != 0 {
-			t.Fatalf("step %d: the wait is no refused step, the lane neither stuck nor handed back, and no validator starts: %+v", i, l)
+		if l.Refused == nil || l.Refused.Count != 0 || stuckReason(run, b) != "" || l.HandBack != nil || l.Stage != StageValidate || len(l.Awaits) != 0 {
+			t.Fatalf("step %d: the wait is counted toward no refusals bound, the lane neither stuck nor handed back, and no validator starts: %+v", i, l)
 		}
 	}
 	// The other account's hold lapses: it is reserved again an hour past its end.
