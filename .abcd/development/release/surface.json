@@ -467,7 +467,7 @@
     {
       "path": "abcd ahoy worktree prune",
       "hidden": false,
-      "sentence": "Reclaim this lane's merged, clean worktrees and stale Go cache entries: Writes the notes archive and removes both; refuses a store it cannot trust.",
+      "sentence": "Reclaim this lane's merged, clean worktrees and trim the Go cache to its limit: Writes the notes archive and removes both; refuses a store it cannot trust.",
       "flags": [
         {
           "name": "dry-run",
@@ -480,6 +480,20 @@
           "name": "yes",
           "shorthand": "",
           "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd ahoy worktree trim-cache",
+      "hidden": false,
+      "sentence": "Delete the Go build cache's oldest entries down to its size limit: Writes its answer for the next lane; refuses a cache it cannot prove is Go's.",
+      "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         }

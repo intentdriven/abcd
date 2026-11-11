@@ -18,7 +18,9 @@ package loop
 //     this change move too. A role whose receipt is written is the host's to
 //     hand back, and is never retried; nor is a routed implementer whose runner
 //     was started and whose receipt stands (receipt_standing.go), since a step
-//     collects it or says why it cannot.
+//     collects it or says why it cannot. A drive sets aside a receipt refused
+//     for the work as it is refused, so that role is retried
+//     (iss-2611071242184002).
 //   - `--route` for a held role retries it at once on that route, and a
 //     restart while a route is in force starts the fresh agent on its runner
 //     rather than re-telling it to the host.
@@ -229,7 +231,9 @@ func releaseToHost(repoRoot, runID string, o Options, rs Runners, res StepResult
 	var out StepResult
 	released := false
 	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
-		if st.autoPlanning() {
+		// A trial's role is the cell's route under test (trial.go): the host
+		// never takes it, whatever the person's route says now.
+		if st.autoPlanning() || st.Trial {
 			return false, nil
 		}
 		now := o.now()
@@ -407,6 +411,9 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	}
 	session := fmt.Sprintf("%s-%s-%s-%d", runID, laneID, aw.Role, o.now().Unix())
 	var worktree, base string
+	// trial is the run's trial mode, read under the lock: its dispatch runs in
+	// the runners' cell mode, so nothing stands in for the cell's route.
+	var trial bool
 	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		// A stop may have come since the check: under the lock it starts nothing.
 		if c, err := readControl(root, runID); err != nil {
@@ -433,7 +440,7 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		lane.Awaits = slices.Clone(lane.Awaits)
 		lane.Awaits[k] = a
 		st.Lanes[i] = lane
-		worktree, base = lane.Worktree, lane.BaseSHA
+		worktree, base, trial = lane.Worktree, lane.BaseSHA, st.Trial
 		recordLaunch(root, st, Launch{Lane: laneID, Role: aw.Role, Runner: route.Runner, Route: route.Override(), Session: session, At: now})
 		if why != "" {
 			st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: StageRetry,
@@ -474,9 +481,13 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		// lane was cut from, never one the lane has since changed.
 		Base: base,
 		// A review set's reviewer runs at its class's model, over the
-		// runner's own (reviewers.go); the runner admits it against the
-		// provider's allowlist whoever stored it. "" keeps the route's.
+		// runner's own (reviewers.go); the runner admits it whoever stored
+		// it, against the provider's allowlist, or on a drive's walled launch
+		// of the harness's own vendor, by membership of the machine's class
+		// map, the denylist still refusing it. "" keeps the route's.
 		Model:     aw.Model,
+		Class:     aw.Class,
+		Effort:    aw.Effort,
 		SessionID: session,
 		Timeout:   timeout,
 		Work:      runner.LaunchWork{Run: runID, Lane: laneID, Await: aw.Receipt},
@@ -516,6 +527,9 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	d := &runner.Dispatcher{
 		Config:      rs.Config,
 		HostSession: true,
+		// A trial's route is the cell under test (trial.go): a runner's
+		// failure is the cell's, with no fallback receipt and no handoff.
+		Cell:        trial,
 		Transcripts: transcripts,
 		Validate: func(ran string, _ runner.Request, ans runner.Answer) error {
 			if err := changed(); err != nil {
@@ -567,10 +581,30 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		return on, refuse(StageRunner, "", laneID, err.Error(),
 			"the lane still awaits its receipt: correct what the reason names and step again")
 	}
-	if out.Handoff {
+	// stopped is a trial's launch ended by the run's own stop: the run's
+	// context ended while it ran (Ctrl-C, SIGTERM), so the runner killed it.
+	// That says nothing of the cell, so it is never scored as the cell's
+	// failure: the role is paused, or its standing work kept, as a build's is.
+	stopped := trial && out.Failure != nil && !out.Handoff && ctx.Err() != nil
+	if trial && out.Failure != nil && !out.Handoff && !stopped {
+		stderr := ""
+		if tap != nil {
+			stderr = redactStderr(repoRoot, tap.first)
+		}
+		r, p, err := cellFailed(repoRoot, runID, laneID, aw, session, route.Runner, *out.Failure, stderr, refusedHandIn, o)
+		return retry(r, p), err
+	}
+	if out.Handoff || stopped {
 		fb := runner.FallbackReceipt{Role: aw.Role, Asked: route.Runner, Reason: runner.ReasonFailed, Detail: "the runner did not run it"}
-		if fell != nil {
+		switch {
+		case fell != nil:
 			fb = *fell
+		case stopped:
+			// A cell's dispatch records no receipt: the pause names the
+			// launch's own failure, and pauseAwait writes no fallback for a
+			// trial.
+			fl := out.Failure
+			fb = runner.FallbackReceipt{Role: aw.Role, Asked: route.Runner, Reason: fl.Reason, Detail: fl.Detail, Spent: fl.Spent}
 		}
 		if out.Failure != nil && errors.Is(out.Failure, runner.ErrKilled) && aw.Role == RoleImplementer {
 			// With its receipt written too there is nothing to keep the lane
@@ -609,7 +643,7 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 func pauseAwait(repoRoot, runID, laneID string, aw Await, session string, fb runner.FallbackReceipt, stderr string, handIn error, o Options) (StepResult, *RunnerPause, error) {
 	var res StepResult
 	var paused *RunnerPause
-	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
 		i, k := st.findAwait(repoRoot, aw.Receipt)
 		if i < 0 || st.Lanes[i].ID != laneID {
@@ -621,8 +655,19 @@ func pauseAwait(repoRoot, runID, laneID string, aw Await, session string, fb run
 				return false, err
 			}
 		}
+		// A drive consumes its implementer's receipt refused for the work, so
+		// the next step starts the role again rather than read the same receipt
+		// (receipt_standing.go). A set-aside that fails is the record's line and
+		// the pause is still written.
+		if rf, ok := AsRefusal(handIn); ok && rf.work && o.driverIsSelf && aw.Role == RoleImplementer {
+			consumeRefused(repoRoot, root, st, i, k, session, handIn, now)
+		}
 		fb.At, fb.Ran = now, ranNone
-		st.Fallbacks = append(st.Fallbacks, fb)
+		if !st.Trial {
+			// A trial's pause is an outage its own runner retries
+			// (cellFailed): nothing fell back, so no receipt says one did.
+			st.Fallbacks = append(st.Fallbacks, fb)
+		}
 		p := RunnerPause{Runner: fb.Asked, Reason: fb.Reason, Detail: fsutil.RedactHome(fb.Detail), Stderr: stderr, Since: now, At: now, Tries: 1}
 		lane := st.Lanes[i]
 		a := lane.Awaits[k]

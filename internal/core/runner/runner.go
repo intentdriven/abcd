@@ -35,6 +35,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -67,6 +68,11 @@ const (
 	MinTimeout = 5 * time.Minute
 	MaxTimeout = 12 * time.Hour
 )
+
+// EffortLevels are the efforts a request may run at, least first
+// (itd-2611101419006280): the levels the claude harness's effort flag takes,
+// and the only ones a request carries, whoever built it.
+var EffortLevels = []string{"low", "medium", "high", "xhigh", "max"}
 
 // Request is what a role is handed: the same the host sub-agent is handed.
 type Request struct {
@@ -102,10 +108,20 @@ type Request struct {
 	// Model is the <provider>/<model> route this request runs at, over the
 	// model the runner's own route names, so one runner serves two reviewers
 	// at two classes (itd-2610240922461281 decision 4); "" keeps the route's.
-	// It is admitted against the provider's allowlist when the request is
-	// dispatched, as a configured route is when it is read, never trusted
-	// because a caller stored it.
+	// It is admitted when the request is dispatched, never trusted because a
+	// caller stored it: against the provider's allowlist, as a configured
+	// route is when it is read, or, on a drive's walled launch of the claude
+	// harness for a route of the harness's own vendor, by its being one the
+	// machine's class map resolves, with the denylist still refusing it
+	// (Config.admitModelFor).
 	Model string
+	// Class is the model class the request runs at, and Effort that class's
+	// effort (itd-2611101419006280 decision 7): a runner that can pass an
+	// effort passes it, and its record says what was asked. Both are "" for a
+	// role launched with no class, the implementer among them, which keeps the
+	// harness's default effort, as a runner's own configured model does.
+	Class  string
+	Effort string
 	// SessionID names the run's transcript record when the harness reports no
 	// session of its own.
 	SessionID string
@@ -343,6 +359,22 @@ func (f *Failure) Outage() bool {
 	return s != nil && (s.Retrying || (s.Retries > 0 && !s.Spent))
 }
 
+// ProviderDown reports whether the launch met the model service down, or
+// throttling it, before it spent anything: it was retrying the service, ran
+// out of retries, or its result named a 5xx status or the provider's
+// throttling answer (429), with nothing spent. A model-matrix copy that ends
+// so never started (decision 6 of itd-2610161733316518): it is retried on the
+// same pin and never scored as the model's failure, since a rate limit is the
+// window's and not the model's. One that spent had begun, and an account's
+// refusal (401, 403) is no outage.
+func (f *Failure) ProviderDown() bool {
+	s := f.Seen
+	if s == nil || s.Spent {
+		return false
+	}
+	return f.Outage() || s.APIStatus == "429" || (len(s.APIStatus) == 3 && s.APIStatus[0] == '5')
+}
+
 // serviceStatus reports whether an API status is the account's or the service's,
 // never the work's: 401, 403, 429 and any 5xx.
 func serviceStatus(status string) bool {
@@ -413,6 +445,10 @@ func (r Request) check() error {
 			return fmt.Errorf("runner: the request's model %q is not a <provider>/<model> route of at most 128 plain characters",
 				termsafe.Sanitize(r.Model))
 		}
+	}
+	if r.Effort != "" && !slices.Contains(EffortLevels, r.Effort) {
+		return fmt.Errorf("runner: the request's effort %q is not one of %s", termsafe.Sanitize(layered.BoundKey(r.Effort)),
+			strings.Join(EffortLevels, ", "))
 	}
 	if !sessionRe.MatchString(r.SessionID) {
 		return errors.New("runner: the request names no session id for its transcript")

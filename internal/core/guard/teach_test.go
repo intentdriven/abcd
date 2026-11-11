@@ -284,3 +284,67 @@ func TestLessonsUnderADisabledRegistrySayTheGuardIsOff(t *testing.T) {
 		t.Errorf("a disabled registry taught %d lessons for %d entries: the hazards are still taught", n, len(off.Entries))
 	}
 }
+
+// TestARepositorysWordsOnADeleteAreSentAheadOfTime: a refused delete shows the
+// proof's words and not the entry's, so a repository's own words on a delete
+// would reach no agent if they waited for the refusal.
+func TestARepositorysWordsOnADeleteAreSentAheadOfTime(t *testing.T) {
+	reg := Defaults()
+	e := reg.Entries["git-worktree-remove"]
+	e.Successor = "Run scripts/wt-retire.sh <path>; it archives the local tier first."
+	reg.Entries["git-worktree-remove"] = e
+	warned, refused := reg.SplitLessons(Defaults())
+	has := func(lessons []string) bool {
+		return slices.ContainsFunc(lessons, func(l string) bool { return strings.Contains(l, "wt-retire.sh") })
+	}
+	if !has(warned) || has(refused) {
+		t.Fatalf("the repository's words: sent ahead of time %v, held for the refusal %v", has(warned), has(refused))
+	}
+}
+
+// TestLessonsSplitByWhatTheGuardDoes: each entry falls in exactly one half by
+// what the guard does with its command, in id order, with the repository mark
+// kept. A delete entry sits in the warn tier and in the refused half, since the
+// guard refuses it unless it proves the target safe.
+func TestLessonsSplitByWhatTheGuardDoes(t *testing.T) {
+	reg := Defaults()
+	warned, refused := reg.SplitLessons(reg)
+	if len(warned)+len(refused) != len(reg.Entries) {
+		t.Fatalf("%d warned + %d refused, for %d entries", len(warned), len(refused), len(reg.Entries))
+	}
+	for _, l := range warned {
+		if !strings.HasPrefix(l, "Warned by the guard") {
+			t.Errorf("in the warned half: %q", l)
+		}
+	}
+	deletes := 0
+	for _, l := range refused {
+		if strings.HasPrefix(l, "Refused by the guard") {
+			continue
+		}
+		id, _, _ := strings.Cut(strings.TrimPrefix(l, "Warned by the guard ("), ")")
+		if !deleteEntryIDs[id] {
+			t.Errorf("in the refused half: %q", l)
+		}
+		deletes++
+	}
+	if deletes != len(deleteEntryIDs) {
+		t.Errorf("%d delete entries in the refused half, want %d", deletes, len(deleteEntryIDs))
+	}
+	if len(warned) == 0 || len(refused) == 0 {
+		t.Fatalf("a half is empty: %d warned, %d refused", len(warned), len(refused))
+	}
+}
+
+// TestEveryBundledEntryCorrectsWithWhyAndWhatInstead: a refusal or warning is
+// only worth carrying a rule if it says why and what to run.
+func TestEveryBundledEntryCorrectsWithWhyAndWhatInstead(t *testing.T) {
+	for id, e := range Defaults().Entries {
+		if strings.TrimSpace(e.Why) == "" {
+			t.Errorf("%s says no why", id)
+		}
+		if strings.TrimSpace(e.Successor) == "" {
+			t.Errorf("%s says nothing to run instead", id)
+		}
+	}
+}

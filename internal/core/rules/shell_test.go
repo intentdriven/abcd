@@ -35,8 +35,12 @@ func TestShellDomainIsGeneratedFromTheGuardRegistry(t *testing.T) {
 		t.Fatalf("the %s domain ships dormant: it would teach only on *%s", ShellDomain, ShellDomain)
 	}
 	reg := guard.Defaults()
-	if want := append(reg.Lessons(), reg.ScriptLesson(), reg.ShellCLesson(), reg.DeleteLesson()); !reflect.DeepEqual(d.Rules, want) {
+	warned, refused := reg.SplitLessons(reg)
+	if want := append([]string{guard.SteeringLine}, warned...); !reflect.DeepEqual(d.Rules, want) {
 		t.Errorf("%s rules drifted from the guard registry:\n got %q\nwant %q", ShellDomain, d.Rules, want)
+	}
+	if want := append(refused, reg.ScriptLesson(), reg.ShellCLesson(), reg.DeleteLesson()); !reflect.DeepEqual(d.Checked, want) {
+		t.Errorf("%s checked rules drifted from the guard registry:\n got %q\nwant %q", ShellDomain, d.Checked, want)
 	}
 	if want := reg.RecallTerms(); !reflect.DeepEqual(d.Recall, want) {
 		t.Errorf("%s recall drifted from the guard registry:\n got %q\nwant %q", ShellDomain, d.Recall, want)
@@ -80,12 +84,15 @@ func TestShellDomainFollowsRegistryEdits(t *testing.T) {
 		Why:       "Shredding cannot be undone.",
 	}
 	grown, _ := shellDomain(added, added)
-	if len(grown.Rules) != len(base.Rules)+1 {
-		t.Fatalf("adding an entry gave %d rules, want %d", len(grown.Rules), len(base.Rules)+1)
+	if len(grown.Checked) != len(base.Checked)+1 {
+		t.Fatalf("adding a refused entry gave %d carried rules, want %d", len(grown.Checked), len(base.Checked)+1)
+	}
+	if len(grown.Rules) != len(base.Rules) {
+		t.Fatalf("adding a refused entry changed what is sent: %d rules, want %d", len(grown.Rules), len(base.Rules))
 	}
 	// The entries' lessons come first, in id order; the guard's script rule,
 	// its -c script rule and its delete-proof rule close the list.
-	if last := grown.Rules[len(grown.Rules)-4]; !strings.Contains(last, "(zz-shred-disk)") || !strings.Contains(last, "Shredding cannot be undone.") {
+	if last := grown.Checked[len(grown.Checked)-4]; !strings.Contains(last, "(zz-shred-disk)") || !strings.Contains(last, "Shredding cannot be undone.") {
 		t.Errorf("the added entry's lesson is missing or out of id order: %q", last)
 	}
 	if !holds(grown.Recall, "shred") {
@@ -184,7 +191,7 @@ func TestShellDomainObeysTheLoaderContracts(t *testing.T) {
 		if !ok || d.Source != SourceBundled {
 			t.Fatalf("Lookup(%s) = %+v, %v; want a bundled domain", ShellDomain, d, ok)
 		}
-		if !strings.HasPrefix(Render([]ResolvedDomain{d}), "# abcd rules — 1 domain(s) active\n## SHELL\n- Refused by the guard") {
+		if !strings.HasPrefix(Render([]ResolvedDomain{d}), "# abcd rules — 1 domain(s) active\n## SHELL\n- "+sanitizeRuleBody(guard.SteeringLine)) {
 			t.Fatalf("the bundled domain does not render bare:\n%s", Render([]ResolvedDomain{d}))
 		}
 	})
@@ -232,7 +239,7 @@ func TestShellDomainObeysTheLoaderContracts(t *testing.T) {
 				note = n
 			}
 		}
-		if note == "" || !strings.Contains(note, "(git-push-force)") {
+		if note == "" || !strings.Contains(note, "(git-reset-hard)") {
 			t.Fatalf("replacing the SHELL lessons withheld them silently; notes: %q", rs.Notes())
 		}
 	})
@@ -296,16 +303,19 @@ func TestShellDomainTeachesTheRepositorysOwnGuardEntries(t *testing.T) {
 		if !ok {
 			t.Fatalf("rules.json=%v: no %s domain", withRules, ShellDomain)
 		}
-		if !holds(d.Rules, repoGuardLesson) {
-			t.Errorf("rules.json=%v: the repository's own entry is not taught as\n %q\namong the %d rules", withRules, repoGuardLesson, len(d.Rules))
+		if !holds(d.Checked, repoGuardLesson) {
+			t.Errorf("rules.json=%v: the repository's own entry is not carried as\n %q\namong the %d checked rules", withRules, repoGuardLesson, len(d.Checked))
 		}
-		if len(d.Rules) != len(bundled.Rules)+1 {
-			t.Errorf("rules.json=%v: %d lessons, want the %d bundled ones plus the repository's", withRules, len(d.Rules), len(bundled.Rules))
+		if len(d.Checked) != len(bundled.Checked)+1 {
+			t.Errorf("rules.json=%v: %d carried lessons, want the %d bundled ones plus the repository's", withRules, len(d.Checked), len(bundled.Checked))
 		}
-		for _, l := range bundled.Rules {
-			if !holds(d.Rules, l) {
+		for _, l := range bundled.Checked {
+			if !holds(d.Checked, l) {
 				t.Errorf("rules.json=%v: a bundled lesson is missing or marked: %q", withRules, l)
 			}
+		}
+		if !reflect.DeepEqual(d.Rules, bundled.Rules) {
+			t.Errorf("rules.json=%v: a refused repository entry changed what is sent", withRules)
 		}
 		if !holds(d.Recall, "make deploy") {
 			t.Errorf("rules.json=%v: the entry's command head is not a recall term: %q", withRules, d.Recall)
@@ -404,37 +414,47 @@ func TestShellDomainRefusesAnOverlongRepoLesson(t *testing.T) {
 	}
 }
 
-// TestInjectionBudgetNamesTheFileThatOverflowedIt: when the injection budget
-// drops a domain, the trailer names the file whose words filled it — the
-// repository's guard.json when SHELL's own lessons did, its rules.json when a
-// domain it declared did — never always .abcd/rules.json.
+// TestInjectionBudgetNamesTheFileThatOverflowedIt: when the budget leaves a
+// domain out, the trailer names the file whose words filled it: the
+// repository's guard.json when SHELL's warned lessons did, its rules.json when
+// a domain it declared did, never always .abcd/rules.json. A guard.json that
+// only adds refused entries sends nothing, so it is not named.
 func TestInjectionBudgetNamesTheFileThatOverflowedIt(t *testing.T) {
-	const prompt = "commit this in the shell and keep the pii out"
+	const prompt = "*COMMITTING *DOCUMENTATION *GRILL *INTENTS *ISSUES *LIFEBOAT *LOAD *OPINIONS *PII *ROADMAP *SCRATCH *SHELL"
+	const tight = 700
+	trailerOf := func(t *testing.T, text string) string {
+		t.Helper()
+		i := strings.LastIndex(text, "\n# abcd rules")
+		if i < 0 || !strings.Contains(text[i:], injectionTruncatedMarker) {
+			t.Fatalf("nothing was left out at %d bytes:\n%.300s", tight, text)
+		}
+		return text[i:]
+	}
 	t.Run("guard.json", func(t *testing.T) {
 		dir := t.TempDir()
-		writeRepoGuard(t, dir, guardEntries(40, 1000))
+		writeRepoGuard(t, dir, strings.ReplaceAll(guardEntries(40, 1000), `"tier":"blocker"`, `"tier":"warn"`))
 		rs := mustLoad(t, dir)
 		if n := rs.Notes(); len(n) != 0 {
 			t.Fatalf("a guard.json within every bound produced notes: %q", n)
 		}
-		res := Inject(rs, prompt, SessionState{}, 0, BracketUnknown)
-		trailer := res.Text[strings.LastIndex(res.Text, "\n# abcd rules"):]
-		if !strings.Contains(trailer, injectionTruncatedMarker) {
-			t.Fatalf("40 long repository lessons did not overflow the budget:\n%.300s", res.Text)
-		}
+		trailer := trailerOf(t, InjectWithin(rs, prompt, SessionState{}, 0, BracketUnknown, tight).Text)
 		if !strings.Contains(trailer, guard.RepoRelPath) || strings.Contains(trailer, RepoRelPath) {
 			t.Errorf("the trailer does not blame the repository's guard.json alone:\n%s", trailer)
+		}
+	})
+	t.Run("guard.json of refused entries", func(t *testing.T) {
+		dir := t.TempDir()
+		writeRepoGuard(t, dir, guardEntries(40, 1000))
+		trailer := trailerOf(t, InjectWithin(mustLoad(t, dir), prompt, SessionState{}, 0, BracketUnknown, tight).Text)
+		if strings.Contains(trailer, guard.RepoRelPath) {
+			t.Errorf("the trailer blames words that were not sent:\n%s", trailer)
 		}
 	})
 	t.Run("rules.json", func(t *testing.T) {
 		dir := t.TempDir()
 		big := strings.Repeat("x", 20*1024)
 		writeRepoRules(t, dir, fmt.Sprintf(`{"schema_version":1,"domains":{"FLOOD":{"recall":["shell"],"rules":[%q,%q,%q,%q]}}}`, big, big, big, big))
-		res := Inject(mustLoad(t, dir), prompt, SessionState{}, 0, BracketUnknown)
-		trailer := res.Text[strings.LastIndex(res.Text, "\n# abcd rules"):]
-		if !strings.Contains(trailer, injectionTruncatedMarker) {
-			t.Fatalf("an 80 KiB domain did not overflow the budget:\n%.300s", res.Text)
-		}
+		trailer := trailerOf(t, InjectWithin(mustLoad(t, dir), prompt, SessionState{}, 0, BracketUnknown, tight).Text)
 		if !strings.Contains(trailer, RepoRelPath) || strings.Contains(trailer, guard.RepoRelPath) {
 			t.Errorf("the trailer does not blame the repository's rules.json alone:\n%s", trailer)
 		}
@@ -467,7 +487,10 @@ func TestShellLessonsUnderACommittedDisabledGuardSayItIsOff(t *testing.T) {
 			if len(d.Rules) < len(Defaults().Domains[ShellDomain].Rules) {
 				t.Fatalf("a disabled guard stopped SHELL teaching: %d rules", len(d.Rules))
 			}
-			for _, r := range d.Rules {
+			if d.Rules[0] != guard.OffLine {
+				t.Errorf("a disabled guard's first rule = %q, want the line saying it is off", d.Rules[0])
+			}
+			for _, r := range d.Rules[1:] {
 				if !strings.HasPrefix(r, "Hazard (guard off) (") {
 					t.Errorf("a lesson under a disabled guard does not say the guard is off: %q", r)
 				}
@@ -480,12 +503,13 @@ func TestShellLessonsUnderACommittedDisabledGuardSayItIsOff(t *testing.T) {
 }
 
 // TestWithheldNoteNamesTheRepositorysOwnLessons: a rules.json SHELL override
-// that replaces the rules list withholds every lesson SHELL was built with,
-// the repository's own guard entries included, and the note names them. It
-// compares against the base this load built, not only the bundled list.
+// that replaces the rules list withholds every lesson sent for SHELL, the
+// repository's own warned entries included, and the note names them. It
+// compares against the base this load built, not only the bundled list. A
+// refused entry cannot be withheld: no file reaches the list that carries it.
 func TestWithheldNoteNamesTheRepositorysOwnLessons(t *testing.T) {
 	dir := t.TempDir()
-	writeRepoGuard(t, dir, repoGuardEntry)
+	writeRepoGuard(t, dir, strings.Replace(repoGuardEntry, `"tier":"blocker"`, `"tier":"warn"`, 1))
 	writeRepoRules(t, dir, `{"schema_version":1,"domains":{"SHELL":{"rules":["Ask before deleting anything."]}}}`)
 	rs := mustLoad(t, dir)
 	var note string
@@ -509,22 +533,25 @@ func TestWithheldNoteNamesTheRepositorysOwnLessons(t *testing.T) {
 	}
 }
 
-// TestShellDomainTeachesTheCheckableShellCForms: the rule for a `bash -c` or
-// `sh -c` script built from variables that deletes (iss-2610161612200864) is in
-// the rendered rules and is injected for a prompt about such a script, so an
-// agent is taught the forms a checker can read before it writes one a host
-// would stop to ask a person about.
-func TestShellDomainTeachesTheCheckableShellCForms(t *testing.T) {
+// TestShellDomainListsTheCheckableShellCForms: the rule for a `bash -c` or
+// `sh -c` script built from variables that deletes (iss-2610161612200864) is
+// listed by abcd rules and not sent ahead of the prompt. The refusal teaches
+// it, and comes before the host's own prompt, so no person is asked
+// (dcn-2610161612269647 as narrowed by itd-2611041636196213).
+func TestShellDomainListsTheCheckableShellCForms(t *testing.T) {
 	lesson := guard.Defaults().ShellCLesson()
 	if !strings.Contains(lesson, "Write the script to a file in one command and run it in the next") {
 		t.Fatalf("the guard's -c script rule does not teach the split into a file: %q", lesson)
 	}
 	rs := Defaults()
-	if rendered := Render(rs.Active()); !strings.Contains(rendered, lesson) {
-		t.Errorf("the rendered rules do not carry the -c script rule %q", lesson)
+	if listed := RenderListing(rs.Active()); !strings.Contains(listed, lesson) {
+		t.Errorf("the listing does not carry the -c script rule %q", lesson)
 	}
 	res := Inject(rs, "run a bash -c script that removes the old screenshots", SessionState{}, 0, BracketUnknown)
-	if !strings.Contains(res.Text, lesson) {
-		t.Errorf("a prompt about a bash -c script that removes files was not taught the -c script rule; injected:\n%.400s", res.Text)
+	if strings.Contains(res.Text, lesson) {
+		t.Errorf("the -c script rule was sent ahead of time:\n%.400s", res.Text)
+	}
+	if !strings.Contains(res.Text, sanitizeRuleBody(guard.SteeringLine)) {
+		t.Errorf("a prompt about a bash -c script has no steering line:\n%.400s", res.Text)
 	}
 }

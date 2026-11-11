@@ -671,3 +671,67 @@ func TestAddFinishesAWorktreeGitMadeWhenTheCheckoutHookFails(t *testing.T) {
 		t.Fatalf("a second add is refused as a taken name: %+v", r)
 	}
 }
+
+// TestRemoveAddedRemovesOnlyTheWorktreeAddMade: the worktree Add made, a real
+// directory git lists at its path on its branch, is removed and its branch
+// kept. A symlink standing at that path (here to another worktree of the
+// repository), an Added naming a branch git does not list there, and an empty
+// Added are refused, and nothing is removed.
+func TestRemoveAddedRemovesOnlyTheWorktreeAddMade(t *testing.T) {
+	repo, _ := repoWithCommit(t)
+	base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	add := func(name string) worktree.Added {
+		t.Helper()
+		got, err := worktree.Add(repo.Root(), worktree.AddOptions{Name: name, Base: base, Git: git})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	standing := func(path, what string) {
+		t.Helper()
+		if fi, err := os.Lstat(path); err != nil || !fi.IsDir() {
+			t.Fatalf("%s: %v", what, err)
+		}
+	}
+
+	if err := worktree.RemoveAdded(repo.Root(), worktree.Added{}); err == nil {
+		t.Fatal("an empty Added is refused")
+	}
+
+	peer := add("peer")
+	linked := add("linked")
+	aside := linked.Path + ".aside"
+	if err := os.Rename(linked.Path, aside); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(peer.Path, linked.Path); err != nil {
+		t.Fatal(err)
+	}
+	mustRefusal(t, worktree.RemoveAdded(repo.Root(), linked))
+	standing(peer.Path, "the worktree the link points at stands")
+	standing(aside, "the worktree moved aside stands")
+	if fi, err := os.Lstat(linked.Path); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the link stands: %v", err)
+	}
+	if !strings.Contains(repo.Git("worktree", "list", "--porcelain"), "/peer\nHEAD ") {
+		t.Fatal("git still lists the worktree the link points at")
+	}
+
+	other := add("other")
+	mustRefusal(t, worktree.RemoveAdded(repo.Root(), worktree.Added{Lane: other.Lane, Path: other.Path, Branch: "peer"}))
+	standing(other.Path, "a worktree git lists on another branch stands")
+
+	if err := worktree.RemoveAdded(repo.Root(), other); err != nil {
+		t.Fatalf("the worktree Add made is removed: %v", err)
+	}
+	if _, err := os.Lstat(other.Path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("its directory is gone: %v", err)
+	}
+	if strings.Contains(repo.Git("worktree", "list", "--porcelain"), "/other\nHEAD ") {
+		t.Fatal("git no longer lists it")
+	}
+	if h := strings.TrimSpace(repo.Git("rev-parse", "--verify", "refs/heads/other")); h != base {
+		t.Fatalf("its branch stays: %q", h)
+	}
+}

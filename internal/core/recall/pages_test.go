@@ -117,7 +117,7 @@ func TestRepeatedPromptInjectsMemoryOnce(t *testing.T) {
 	var state rules.SessionState
 	var sent []int
 	for turn := 1; turn <= backstop; turn++ {
-		inj := rules.Inject(rs, prompt, state, backstop, rules.BracketUnknown)
+		inj := rules.InjectWithin(rs, prompt, state, backstop, rules.BracketUnknown, rules.RulesBudget(0))
 		res := readAndRecall(t, home, repo, prompt, inj.State.Recalled)
 		inj.State.Recalled = res.Ledger
 		state = inj.State

@@ -16,6 +16,12 @@ const (
 	// MaxLateness is the most the host runs a recurring task late: half the
 	// gap to its following run, at most this.
 	MaxLateness = 30 * time.Minute
+	// MinWakeLead is the least time from now a deadline is given: a few
+	// minutes, the lead a wake set now needs to fire within, the host's
+	// lateness for a task due in the next minute or two included
+	// (iss-2611011332417169). A deadline any sooner is one no wake scheduled
+	// now can meet.
+	MinWakeLead = 3 * time.Minute
 )
 
 // SessionCron is one of the host's scheduled tasks for the session, as the
@@ -42,7 +48,10 @@ type BackgroundTask struct {
 // earlier of Owed.WakeBy (the earliest renewal not yet due among the live
 // reservations under this copy's key, or the lapse of one already due; else
 // Owed.NextRenewal) less lease.Skew, and now plus a ceiling, OwedCeiling while work
-// is owed and IdleCeiling when none is (dcn-2610181003455731).
+// is owed and IdleCeiling when none is (dcn-2610181003455731); and never
+// before now plus MinWakeLead: once now is within lease.Skew of WakeBy, WakeBy
+// less the skew has passed, and a deadline already past is one no wake can
+// meet (iss-2611011332417169).
 func wakeDeadline(owed Owed, now time.Time) time.Time {
 	ceiling := IdleCeiling
 	if !owed.Empty() {
@@ -57,6 +66,9 @@ func wakeDeadline(owed Owed, now time.Time) time.Time {
 		if r := by.Add(-lease.Skew); r.Before(d) {
 			d = r
 		}
+	}
+	if least := now.Add(MinWakeLead); d.Before(least) {
+		d = least
 	}
 	return d
 }

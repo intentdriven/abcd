@@ -1727,6 +1727,38 @@ working tree (the keychain and an external home stay open
 there), and a platform with no keychain tool refuses the keychain home and
 names the other two.
 
+## `worktree trim-cache` — keep the Go build cache under its limit
+
+Deletes the oldest entries of the Go build cache until the rest fit its limit:
+`load.go_cache_limit_gib` in `~/.abcd.noindex/config.json`, a whole number of GiB
+from 1 to 1048576, 100 by default, and never read from a repository. A value it
+cannot use, a file it cannot read, or a key under `load` that nothing reads (a
+misspelt one among them) deletes nothing and says why.
+
+Every entry used in the last 3 hours stays whatever the limit: Go refreshes an
+entry's time at most hourly, so an entry whose time is under 4 hours old stays. If
+those alone exceed the limit they stay and the line says so. A cache under its limit
+loses nothing, however old its entries. The limit counts entries alone, so the fuzz
+corpora are neither removed nor counted.
+
+It acts only on the directory `go env GOCACHE` reports, and only when that is a real
+directory this account owns, has a Go build cache's shape and is not the home or
+above it; inside, only regular files named `<hex>-a` or `<hex>-d` in a subdirectory
+named by two hex digits. A build that looks up an entry already gone finds a miss
+and rebuilds, and an entry a build used since the walk stays, since each one is read
+again just before it goes; a build that looks one up in the instant between that
+read and the unlink can still fail to open it, and a rerun rebuilds it. Judge
+it by the cache's size, never by free disk: a local snapshot can hold what it deleted.
+
+`ahoy worktree prune` runs the same trim when it removes a worktree. The build loop
+runs this verb detached whenever it makes a lane, for a build and a drain alike, at
+most once an hour across the account (`~/.abcd.noindex/go-cache-trim.json`), and the
+lane does not wait for it. What a detached run could not do (skipped, an entry it
+could not remove, still over the limit, or never finished) is said on stderr by the
+next lane that starts one; nothing stops the lane. `--dry-run` deletes and records
+nothing. It exits 0 when the cache was walked with nothing refused, and 1 when it was
+skipped or an entry could not be read or removed.
+
 ## `--dry-run` — the canonical detection envelope
 
 ```bash
@@ -1750,13 +1782,22 @@ prompt in a fresh session, and writes nothing. `bracket` names the context
 bracket it renders in and how it was chosen: the loader sends less as a
 session's context window fills, from one table read as the share of the
 window still free — `fresh` (70% or more free) sends rules and notes and
-pages in full; `moderate` (40% to 70%) sends each rule domain as its heading
+pages in full, with one line each within 2 KiB for notes and pages that do not
+fit; `moderate` (40% to 70%) sends each rule domain as its heading
 and first rule with a line naming `abcd rules <DOMAIN>` for the rest, and the
 top-ranked notes and pages in full within 8 KiB and the rest as one line
 each; `depleted` (below 40%) shrinks rules the same way and sends notes and
 pages as one line each, the top-ranked within 2 KiB and always at least the
 top-ranked one; and `unknown`, when nothing tells how full the session is,
-keeps rules in full and sends notes and pages as one line each. Without
+keeps rules in full and sends notes and pages as one line each. Whatever the
+bracket, the turn's budget holds: a domain that does not fit goes `shrunk` or,
+with no room for its first rule, `pointer`. The away block the hook reads
+first takes its share of that budget here too; the status block it also
+reads first is not counted, since reading it would write this checkout's
+status state. On a drive's stage it reads the rules as the lane's base commit
+holds them and recalls no notes or pages, as the hook does there, and `stage`
+is `true`: there an empty `notes` and `pages` mean nothing was recalled, not
+that nothing matched; elsewhere `stage` is `false`. Without
 `--fill` the diagnostic has no session, so its `bracket` is `unknown` (its
 `source` too) and it renders that form; `--fill <percent-used>` (0 to 100)
 renders the bracket that fill falls in, with `source` `flag`. `describe` is
@@ -1775,11 +1816,11 @@ its `rank` (1 first), its BM25F relevance `score`, and `terms`, each matched
 term with how often it was found in the item's `recall` words, `title` and
 `body` and its `contribution` to the score; the ranking decides which items
 fit the budget. Each domain, note and page carries a `form`: `full`;
-`shrunk` for a domain sent as its heading and first rule; `one-line` for a
-note or page sent as its key and title alone; `over-budget` when
-it would not fit the per-turn budget and would come back on a later prompt
-instead; or `too-large` when it is larger than the whole per-turn budget and
-no prompt brings it back in full. `disabled` is true under the kill switch, and then nothing comes
+`shrunk` for a domain sent as its heading and first rule; `pointer` for one
+sent as its heading and the command that renders it, its first rule not fitting;
+`one-line` for a note or page sent as its key and title alone; `over-budget`
+when it would not fit the per-turn budget and would come back on a later prompt
+instead; or `too-large` when not even its one line fits any turn. `disabled` is true under the kill switch, and then nothing comes
 back; `unreadable` names a `memory.json`, page store or page that could not
 be read, why, and its `kind` (`note` or `page`). Use it when someone asks why
 a rule, a note or a page did, or did not, come back on a prompt. A

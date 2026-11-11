@@ -23,6 +23,18 @@ func trace(args ...string) {
 	}
 }
 
+// overCap reports whether err is a capped read refusing an answer past its
+// cap, matched on the cap's own words ("output exceeded the"). A read a
+// context ended is never one, though its error ends "context deadline
+// exceeded": a reader that folds an answer too big into an unreadable tip must
+// not fold the hook's deadline into one.
+func overCap(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	return strings.Contains(err.Error(), "output exceeded the")
+}
+
 // Bounds on a git command run under the developer's own configuration.
 const (
 	personalTimeout = 2 * time.Minute
@@ -40,8 +52,17 @@ const (
 // returns stdout, git's exit code (0 on success, -1 when git did not run) and
 // an error carrying git's bounded stderr.
 func personalGit(root, stdin string, env []string, args ...string) (string, int, error) {
+	return personalGitContext(context.Background(), root, stdin, env, args...)
+}
+
+// personalGitContext is personalGit under parent as well as its own timeout,
+// for a hook on a deadline: a parent already ended forks no git.
+func personalGitContext(parent context.Context, root, stdin string, env []string, args ...string) (string, int, error) {
+	if err := parent.Err(); err != nil {
+		return "", -1, fmt.Errorf("git %s: %w", args[0], err)
+	}
 	trace(args...)
-	ctx, cancel := context.WithTimeout(context.Background(), personalTimeout)
+	ctx, cancel := context.WithTimeout(parent, personalTimeout)
 	defer cancel()
 	full := append(append(gitutil.ExecPins(), "-c", "core.quotePath=false", "-C", root), args...)
 	cmd := exec.CommandContext(ctx, "git", full...)

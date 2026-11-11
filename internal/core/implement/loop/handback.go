@@ -30,7 +30,7 @@ func handBackLane(st *State, lane *Lane, hb HandBack, note string, now time.Time
 		note = handBackSummary(st.Intent, hb)
 	}
 	st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: string(StageHandedBack), Note: note})
-	if st.Pick != nil && hb.Kind == "" {
+	if st.Pick != nil && hb.Kind == "" && hb.Verdict != VerdictCellFailed {
 		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "pick",
 			Note: fmt.Sprintf("the pick of %s is falsified: %s was handed back as %s after %s; the intent's grounds entry is left as it was written",
 				keyOf(*st), lane.ID, hb.Verdict, fixRoundsPhrase(hb.FixRounds))})
@@ -49,6 +49,10 @@ func keyOf(st State) string {
 // with: the intent, the verdict, the cap, and what the last round found.
 func handBackSummary(key string, hb HandBack) string {
 	var b strings.Builder
+	if hb.Verdict == VerdictCellFailed {
+		fmt.Fprintf(&b, "%s's trial copy is handed back as %s: %s; nothing else ran the role, so the copy counts as the cell's failure", key, hb.Verdict, hb.Reason)
+		return b.String()
+	}
 	if hb.Kind == HandBackStuck || hb.Kind == HandBackClosed {
 		fmt.Fprintf(&b, "%s is handed back as %s: %s; its home: %s", key, hb.Kind, hb.Reason, hb.Home)
 		return b.String()
@@ -94,6 +98,10 @@ func handBackSummary(key string, hb HandBack) string {
 
 // handBackMove is what the caller is told once a lane is handed back.
 func handBackMove(st State, lane Lane) string {
+	if lane.HandBack.Verdict == VerdictCellFailed {
+		return "stop: " + handBackSummary(keyOf(st), *lane.HandBack) + ". The loop starts nothing further for " + lane.ID +
+			": a trial's failed copy is never retried, on its runner or on the host"
+	}
 	return "stop: " + handBackSummary(keyOf(st), *lane.HandBack) + ". The loop starts nothing further for " + lane.ID +
 		"; " + keyOf(st) + " is the person's to replan from those findings"
 }

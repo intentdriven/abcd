@@ -17,9 +17,11 @@ reading any file loaded this file as its instructions (itd-2610030814013772).
 This repository uses the abcd modular rules loader. On `UserPromptSubmit`, a hook
 recall-matches the prompt against keyword triggers declared in the plugin-bundled
 default domains, the machine's `~/.abcd.noindex/rules.json` and `<repo>/.abcd/rules.json`,
-and injects only the matched domain rules into context — instead of
-force-loading the full ruleset every turn.
-A prompt that matches no domain injects nothing (zero added tokens).
+and injects only the matched domain rules, then the memory it recalls —
+instead of the full ruleset every turn.
+A prompt that matches no domain injects no rules. Output stays under the host's
+10,000-character cap: a domain that does not fit shrinks to its first rule or the
+command alone, or waits a turn.
 
 - Inspect rules: `abcd rules` renders the active set; `abcd rules <DOMAIN>`
   (case-insensitive) scopes to one domain.
@@ -84,17 +86,15 @@ explicit consent with a cap below the core count on a live development machine;
 and the load gate a preflight waits at: as many whole runs at once as the
 person's own `load.preflights` in `~/.abcd.noindex/config.json` allows (one by
 default, four at most, never a repository's), a test of a few named
-packages on its own limit behind no whole run, race stages kept apart among
+packages on its own limit, giving an overdue whole run five minutes at most, race stages kept apart among
 checkouts with the race gate (one at a time within an account, and across accounts
 all but the window the domain names), and no test stage started under memory
 pressure at or above the person's own floor.
-`SHELL` is the teaching half of the shell-hazard guard: it is generated from the
-same hazard registry `abcd guard` enforces in the repository, one rule per entry
-(the command, why it is dangerous, and what to run instead; a rule from the
-repository's own `.abcd/guard.json` is marked `(repo)`), and recalls on the
-commands the registry names (`rm`, `git push`, `pkill`, …) and on shell work in
-general, so an agent is taught the safe form before a host with hooks would
-refuse the command and a host without hooks still teaches it.
+`SHELL` is generated from the hazard registry `abcd guard` enforces, and recalls on
+the commands it names (`rm`, `git push`, `pkill`, …) and on shell work. Ahead of time
+it sends a line about the guard and the rules that only warn; what the guard refuses,
+an unprovable delete included, reaches the agent at the refusal, and `abcd rules
+SHELL` lists every rule. With the guard off, it sends what fits.
 `GRILL` carries the asking rules every abcd interview follows (one thing at a
 time, the thing being decided quoted in full before the question, options that
 widen rather than recommend); it is generated from the same limits the question
@@ -117,8 +117,8 @@ job.
 
 `SessionStart` and `PreCompact` clear the per-session dedup ledger, so a matched
 domain re-injects on the next prompt (the event-driven refresh that recovers
-after compaction). Within a session a domain that stays in force is never
-re-injected unchanged; one that leaves the active set (deleted, renamed, made
+after compaction). Within a session a domain still in force whose rules were sent is not
+re-injected unchanged, short of the backstop; one that leaves the active set (deleted, renamed, made
 dormant, or a `*<DOMAIN>` activation the next prompt does not repeat) is
 injected again when it returns.
 
@@ -144,12 +144,7 @@ Start with the plan and the design record:
 Run from the repo root.
 
 ```bash
-make preflight      # the pre-push gate: load-check (a warning, never a
-                    # failure), then fmt-check + lint-reviews + lint-issues +
-                    # record-lint + issue-drift + docs-lint + check-attribution
-                    # + secrets-check + vulncheck + site-render + smoke +
-                    # evals-cold-reading, then build + vet + test + race
-                    # (internal), all on the go.mod toolchain
+make preflight      # the pre-push gate: all the Definition of done lists
 make precheck       # minutes, no queue: preflight's gates, build, vet, the
                     # record, page and agent audit packages, and the audit
                     # tests of the rest; no unit or race stage. Run it before
@@ -358,11 +353,16 @@ with `*CONCURRENCY` to force it).
   `go test -race -timeout 40m ./internal/...`, under `ABCD_TEST_SHARDS=3`,
   which runs the three longest packages as three test processes each
   (`internal/testshard`). The load
-  check runs first (`load-check`, a warning, never a failure) and is not a gate:
-  it exits 0 whatever it finds. The eval
-  lanes are named separately because their files carry a build tag, so
-  `go test ./...` compiles none of them; each takes under a minute in CI and
-  runs under `-timeout $(EVAL_TIMEOUT)`, 20m by default.
+  check (`load-check`) runs first and only warns. The eval
+  lanes carry a build tag, so `go test ./...` compiles neither; each runs
+  under `-timeout $(EVAL_TIMEOUT)`, 20m by default.
+- **A lane of `abcd drain --drive` has a shorter definition of done**: its
+  harness ends each command after about ten minutes, and the drive runs `make
+  preflight` itself before landing. A lane runs `make precheck`, then
+  `scripts/abcd.sh implement load --wait --narrow --timeout 2m -- go test
+  -trimpath -count=1 -timeout 7m` on up to three changed packages,
+  `-run` on the changed tests in `claim`, `implement/loop` and `surface/cli`.
+  A command cut off has failed.
 - **Preflight judges with CI's toolchain.** `make fmt-check`, the format gate
   CI's check job runs, is preflight's first gate, straight after the load
   check. It resolves gofmt from the toolchain `go.mod` declares rather than from

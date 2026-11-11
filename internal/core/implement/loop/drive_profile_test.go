@@ -211,30 +211,31 @@ func TestLanesOnAnotherProfileAreTheLaneInProgress(t *testing.T) {
 func TestALaterVersionAloneCarriesAProfile(t *testing.T) {
 	repo, runID, _, _ := issueAwaiting(t)
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(runID)))
-	// The admission joined at version 24, so a file of version 21 carries none.
 	good := stateBytes(t, repo.Root(), runID)
-	var doc map[string]any
-	if err := json.Unmarshal(good, &doc); err != nil {
-		t.Fatal(err)
-	}
-	delete(doc, "admitted")
-	good, err := json.MarshalIndent(doc, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
 	cur := fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)
-	const old = `"schema_version": 21,`
 	write := func(s string) {
 		t.Helper()
 		if err := os.WriteFile(path, []byte(s), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	write(strings.Replace(string(good), cur, old+` "profile": "alpha",`, 1))
+	// The file is version 21 as that version wrote it: nothing a later
+	// version added, so the profile is the one field it never wrote.
+	older := olderState(t, good, 21)
+	var doc map[string]any
+	if err := json.Unmarshal(older, &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc["profile"] = "alpha"
+	profiled, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(string(profiled))
 	if _, err := ReadState(repo.Root(), runID); err == nil || !strings.Contains(err.Error(), "profile") {
 		t.Fatalf("version 21 never wrote a profile: %v", err)
 	}
-	write(strings.Replace(string(good), cur, old, 1))
+	write(string(older))
 	st, err := ReadState(repo.Root(), runID)
 	if err != nil {
 		t.Fatalf("version 21 with none reads: %v", err)

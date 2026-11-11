@@ -2,6 +2,7 @@ package peers
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -76,7 +77,13 @@ type Location struct {
 	// the commit the peer's merge-base with this checkout is taken from
 	// (Peer.base): what Holders judges a stale copy by.
 	rel, blob, base string
+	// checkedOut is the peer's Peer.CheckedOut.
+	checkedOut bool
 }
+
+// CheckedOut is the holding peer's Peer.CheckedOut: whether a worktree git
+// lists has it checked out.
+func (l Location) CheckedOut() bool { return l.checkedOut }
 
 // worktree is one entry of `git worktree list --porcelain`.
 type worktree struct {
@@ -177,6 +184,22 @@ func read(root string, titles bool) (Report, error) {
 		return rep, fmt.Errorf("peers: listing this repository's worktrees: %w", err)
 	}
 	checkedOut := map[string]bool{}
+	// worktreeBranch is every branch a listed worktree other than this
+	// checkout has: one whose worktree is gone or refused is read below as a
+	// branch, and is still a branch a worktree has (Peer.CheckedOut). So is a
+	// branch a rebase or a bisect stopped in any worktree, this one included,
+	// started from or will rewrite (gitutil.HeldBranches): git lists that
+	// worktree detached, and its disk is not the branch, so the branch is read
+	// below; allHeld is a state file that is there and could not be read,
+	// which names no branch, so every branch is one a worktree may have.
+	held := gitutil.HeldBranches(common)
+	worktreeBranch := map[string]bool{}
+	for _, in := range []map[string]string{held.Branches, held.Rewrites} {
+		for b := range in {
+			worktreeBranch[b] = true
+		}
+	}
+	allHeld := held.Unreadable != ""
 	self := realPath(root)
 	home, _ := abcdhome.MachineHome()
 	for _, wt := range wts {
@@ -196,6 +219,9 @@ func read(root string, titles bool) (Report, error) {
 			continue
 		}
 		p, skip, viaBranch := readWorktree(root, common, wt, merged, defaultRef)
+		if wt.branch != "" {
+			worktreeBranch[wt.branch] = true
+		}
 		// A worktree that is gone, or that git will not read, still leaves its
 		// branch in this repository's object store; the branch source reads it
 		// there rather than letting the dead worktree hide an unmerged commit.
@@ -223,7 +249,9 @@ func read(root string, titles bool) (Report, error) {
 			rep.Skipped = append(rep.Skipped, Skipped{Source: SourceBranch, Branch: b, Reason: SkipMerged})
 			continue
 		}
-		rep.Peers = append(rep.Peers, readBranch(root, b))
+		p := readBranch(root, b)
+		p.checkedOut = allHeld || worktreeBranch[b]
+		rep.Peers = append(rep.Peers, p)
 	}
 
 	for i := range rep.Peers {
@@ -245,7 +273,7 @@ func embargoStore(home, p string) bool {
 // reports that its disk could not be read at all (gone, or refused by git), so
 // its branch, if any, is left to the branch source.
 func readWorktree(root, common string, wt worktree, merged map[string]bool, defaultRef string) (_ Peer, _ *Skipped, viaBranch bool) {
-	p := Peer{Source: SourceWorktree, Branch: wt.branch, Path: wt.path, Rows: []Row{}, base: wt.head}
+	p := Peer{Source: SourceWorktree, Branch: wt.branch, Path: wt.path, Rows: []Row{}, base: wt.head, checkedOut: true}
 	if _, err := os.Lstat(wt.path); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return p, &Skipped{Source: SourceWorktree, Branch: wt.branch, Path: wt.path, Reason: SkipGone}, true
@@ -398,7 +426,7 @@ func (r Report) Locate(id string) []Location {
 		}
 		for _, h := range p.holdings[id] {
 			out = append(out, Location{Source: p.Source, Branch: p.Branch, Path: p.Path, Folder: h.folder,
-				rel: h.rel, blob: h.blob, base: p.base})
+				rel: h.rel, blob: h.blob, base: p.base, checkedOut: p.checkedOut})
 		}
 	}
 	return out
@@ -727,6 +755,20 @@ type RecordAt struct {
 // reader.
 func RecordsAt(root, ref string) (map[string][]RecordAt, error) {
 	h, _, err := scanTree(root, ref)
+	return recordsOf(h, err)
+}
+
+// RecordsAtContext is RecordsAt with its tree read bound to ctx: a ctx already
+// ended starts no git, and a git still running when it ends is killed,
+// answering ctx's error.
+func RecordsAtContext(ctx context.Context, root, ref string) (map[string][]RecordAt, error) {
+	out, err := gitutil.RunCappedContext(ctx, root, maxListing, treeArgs(ref)...)
+	h, _, err := holdingsOf(out, err)
+	return recordsOf(h, err)
+}
+
+// recordsOf is RecordsAt's answer from the holdings scanTree read.
+func recordsOf(h holdings, err error) (map[string][]RecordAt, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -741,11 +783,22 @@ func RecordsAt(root, ref string) (map[string][]RecordAt, error) {
 
 // scanTree reads a ref's holdings from the object store by filename.
 func scanTree(root, ref string) (holdings, bool, error) {
+	return holdingsOf(gitutil.RunCapped(root, maxListing, treeArgs(ref)...))
+}
+
+// treeArgs is the listing scanTree asks git for: every record family's
+// folder on ref.
+func treeArgs(ref string) []string {
 	args := []string{"ls-tree", "-r", "-z", "--full-tree", ref, "--"}
 	for _, fam := range families {
 		args = append(args, fam.rel)
 	}
-	out, err := gitutil.RunCapped(root, maxListing, args...)
+	return args
+}
+
+// holdingsOf reads the holdings out of scanTree's listing, git's error
+// passed on.
+func holdingsOf(out string, err error) (holdings, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}

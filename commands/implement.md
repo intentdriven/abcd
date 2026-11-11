@@ -380,7 +380,33 @@ After a runner that exited badly the role is retried and the file set aside. Aft
 a runner whose answer was refused the lane is stopped: no runner is started over
 the work, `next` names the ways out (correct the receipt and run `receipt`, which a
 plain `step` also reads, or `step --restart`), and a drain hands the lane back as
-stuck at its bounds. A `--route` for that role is refused.
+stuck at its bounds. A `--route` for that role is refused. That stop is a host-stepped
+run's: under `abcd drain --drive`, which steps the run itself, a receipt refused for the
+work it reports (it names this run, lane and branch in the schema abcd reads) is set
+aside in a new directory under the lane's `aside/`, kept, in the same write as the
+refusal. The receipt's text never chooses what else moves, and the run's state decides
+whether anything does. At the implement stage's own receipt, only the report and the
+definition of done's output at the names the loop assigned that attempt (`report.md` and
+`dod.log`, directly in the lane's directory, each a regular file and no link) go with
+it; a path it names for either that is anything else (the brief, a round's file,
+anything under `aside/` in any letter case) is left where it is and the record says so.
+At a fix or sync round's receipt nothing else moves: the round's report and output, and
+the lane's own `report.md` and `dod.log`, which later rounds read, are left where they
+are, and the record says only the receipt was set aside at that round.
+Only the bytes judged are moved: a file replaced since, or a role a runner has claimed
+since, is left for the next step to read and not counted. The run record's line names
+the refusal and the digest of the bytes judged, and below the bound the next step starts
+the implementer again on its runner. Each consumed receipt, found standing or handed in
+by its runner, counts as a refused step under one check, whatever it lacked, so the
+third in a row hands the lane back at the drain's stuck bound of identical refusals,
+three by default; the runner's hand-in is also a failed launch of the drive's. The
+receipt that brings the lane to the bound is followed by no further launch on either
+route: the drive gives the lane back on its next turn. The count is kept on the drain's
+issue runs, the only runs a drive steps; an intent's run keeps the stop. A refusal of
+another kind restarts the count; such a lane is still ended by three failed launches in
+a row under `--until`, and by the outage limit without it. If it cannot be set aside,
+the record says so, the receipt stands, the step is counted and the pause is written as
+ever. A receipt refused for anything else stops the lane under a drive too.
 What stands at an agent's path when it is handed out, or when a runner is claimed
 for it, is set aside unread under the lane's `aside/`. A `--route`
 for a held role retries it at once on that route, as the step's one move; a
@@ -539,14 +565,17 @@ a slot: the role's reviewer 0 at `validate/round-<n>/<role>/` and reviewer 1 at
 `validate/round-<n>/<role>.1/`, each with its own brief and return, the two
 briefs differing only in their return path, and a return recorded on the
 reviewer whose path it is, whichever comes back first. The result's
-`awaiting` names a reviewer's `reviewer` index, its `class` and the `model` the
-class resolves to (`next` says "on <model>, the model of the <class> class"):
-start that agent on that model. A role routed to a runner is started at that
-model over the runner's own; a `--route` for the role naming another model, or
+`awaiting` names a reviewer's `reviewer` index, its `class`, the `model` the
+class resolves to and the class's `effort` (`next` says "on <model>, the model
+of the <class> class", and the effort, asked, not confirmed): start that agent
+on that model at that effort. A role routed to a runner is started at that
+model over the runner's own, and at the class's effort where the runner can
+pass one: the claude runner passes its effort flag and its route records the
+effort asked, and the opencode runner records it as not passed; a `--route` for the role naming another model, or
 claude asked for a model the machine pins, is refused before anything launches,
 naming both models or the pin, and nothing falls back. Each reviewer's record
-in the round carries its `reviewer`, `class`, `model` and, once its verdict is
-in, `model_status`: `reported` when the runner that ran it reported a model
+in the round carries its `reviewer`, `class`, `model`, `effort` and, once its
+verdict is in, `model_status`: `reported` when the runner that ran it reported a model
 (beside it on its `route`), `asked` when only the asking is known, as for every
 reviewer the host runs, whose model nothing confirms, and `unsent` when the
 reviewer route (`oracle.review` set to the RP route) answered it: that route's
@@ -558,7 +587,37 @@ failing verdicts, `BLOCK` and `NEEDS-INPUT`, agree), and `none` when the role
 ran one reviewer, so no comparison was made. The comparison decides nothing: any
 failing reviewer fails the round, the stricter verdict. Keyed rounds are state
 schema version 20's; an older run's rounds read as one reviewer per role, index
-0, asked for no class. Each role a round hands
+0, asked for no class. Each reviewer's record also carries its `located`
+findings: the `file:line` each finding bullet under its Findings heading leads
+with (`- **file:line** — ...`) is one finding (`file`, `line`); a location cited
+in a bullet's text or its nested Evidence lines is not one, and a line inside a
+fenced code block or an HTML comment is neither a heading nor a finding. The
+record keeps the first 256 findings, while `located` counts every one, and
+keeps them on the lane's latest round only: an earlier round keeps its count
+alone, and a run whose state would outgrow what its read accepts drops them a
+round at a time, the oldest first, keeping every count. A path under the
+lane's worktree, in its own case, through the directory its links resolve to
+or its `/private` twin, is taken relative to it, a path longer than 255 bytes
+and anything else is no location, and a return citing none records
+`located: 0` and is not refused. The fix brief lists each failing reviewer's
+located findings and asks the report to name each on a line of its own, its
+`file:line` first and then `applied` or `rejected`; a word speaks of the
+location it follows on its line, so on a line naming two, a word written before
+the second is read as said of the first and the second gets none from it, a
+line naming a location with neither word says nothing of it, and a
+word with a negation before it in its sentence (`not applied`, `no fix
+applied`, `couldn't be applied`, `unapplied`) says neither: a comma does not
+end the sentence, so `not a defect, rejected` says neither too. Once the fix
+receipt is verified, each finding of a failing reviewer carries that `status`,
+or `unknown` in either case: where no line says one of the two of it, or where
+the lines that say a word of it say both, or one says a negated word. A
+location two reviewers of the round cite carries `cited_by`, naming both.
+`implement record` (and its `--json`) shows them under each verdict, and
+`implement status --json` in the round. Located findings are state schema
+version 24's. Version 25 renamed the stored classes (`top` is now `research`,
+`middle` is `top`, `below` is `default`, `smallest` is `small`), gave a stored
+judge its `status` and each class its `effort`; an older run's state is
+migrated on read, each reviewer keeping the model it was resolved to. Each role a round hands
 out is asked for the model tier its routing row names, and a round that does
 not pass moves each role one step up for the next round (`local`, `economy`,
 `frontier`; `frontier` and `host-decides` stay), from the tier it ran at, never
@@ -965,7 +1024,11 @@ every receipt that has arrived before anything else, reserves again what a stop
 released, saves aside and names the uncommitted work a gone agent left, and re-tells
 its await under `restarted`; a fresh agent takes each, started by the next
 `implement step`, and `collected` names what needs none. An agent that may still be
-in its call is named under `left` and not restarted. Work it could not save is a
+in its call is named under `left` and not restarted. Where a lane names a pull request,
+the take-over reads the forge once and gives each lane's `forge` state (open, armed,
+conflicting, merged, closed or unread); one that conflicts with the default branch, was
+closed or merged, or could not be read is named under `left` too, since a pull request a
+crash left open drifts while nobody looks. Work it could not save is a
 refusal, exit 2: settle it and take again, never step over it. Exit 3 while a stop holds, while
 another driver's process is alive or a recorded driver cannot be judged, or when a peer has
 taken the work a stop released: back off. A run a person's stop halted waits for this take-over,
@@ -1000,9 +1063,140 @@ hooks directory and `info/attributes`. For each lane worktree it also covers
 every such setting git reads there, whether from the shared settings, a
 conditional include that applies only there or the worktree's own settings,
 and the hooks directory git runs there: a relative `core.hooksPath` such as
-`.githooks` names the lane's own copy. A lane made after the fingerprint was
-recorded is compared with the checkout as recorded, for any setting or hook it
-adds or holds differently. Your global and system
+`.githooks` names the lane's own copy.
+
+Where the checkout has an `origin`, the worktree stage pins a lane's own hooks
+as the lane opens, so a reviewed hook change merged on the default branch
+during a run is no change in the lanes cut after it. Before it makes the lane,
+the stage asks `origin` itself, within a minute, for its default branch's tip,
+and cuts the lane from that tip. It refuses, making nothing, when `origin`'s
+default branch is not the one read here as the default (the refusal names
+both), when the default branch read here is neither that tip nor an ancestor of
+it, when the tip has not been fetched here, or when `origin` cannot be asked: a
+lost network is a wait, and any other failure a refusal. These reads take
+git's objects as they are stored, with no replace ref and no graft file
+honoured: the default branch's commit, whether the tip is here and what it
+descends from, where a standing branch left the tip, the hooks directory's
+tree and its listing, git's add itself, and the lane's head after it.
+
+One hook runs before the proof: git's add runs the post-checkout hook, with the
+new lane as its directory. The add runs in the checkout, so git takes the hooks
+directory there: with a relative `core.hooksPath` such as `.githooks`, it runs
+the checkout's own working-tree copy, never the copy held by the commit being
+checked out, for a lane the stage cuts and a branch that already stands alike.
+Where your repository's own settings name the hooks directory, the run's
+fingerprint records that copy at the run's first check, which is normally the
+step that makes the lane, and within a run a later change to it is refused at
+the next step. Across the lanes of one drive the drive holds it: as it starts
+it reads the checkout's hooks directory through the fingerprint's own reader
+and keeps hashes of it in its own memory; just before each lane's add the
+worktree stage reads the directory again, and a hook file added, removed or
+changed since the drive started, and still so at that read, refuses the lane,
+naming the file, before that lane's add. The hold has three limits, and
+nothing else checks them for you. The directory is read just before the add:
+a change made after that read and before git runs the hook is not seen, and
+nothing holds the directory through the add. The directory read is the one
+your repository's own settings name (else the git directory's `hooks`): with
+a relative `core.hooksPath` set only in your global settings, the copy the
+add runs is not the one read. What is compared is each top-level entry of the
+directory, a file by its bytes and mode, a subdirectory by its kind only and a
+symlink by its target text, up to 1024 entries (past that, their count and the
+first 1024): nothing a hook sources or runs from a subdirectory or from
+elsewhere is held. Elsewhere nothing holds the copy: a step the host runs, a
+single build and a drive started again take it as it stands at the run's
+first check, so it must not change between runs, and nothing enforces it.
+
+As it starts, the drive reads your settings and the checkout's hooks
+directory, and it refuses to start when the settings cannot be listed or the
+common git directory cannot be resolved, naming what git reported; look at
+your repository's own settings (`git config --local --list --show-origin`),
+then start it again. A hooks directory it cannot read is recorded as such,
+not refused, and compared like the rest: one made unreadable after the drive
+started refuses the next lane.
+
+A branch that already stands under the lane's name (a step stopped between git
+making the branch and the worktree) has its head resolved once. That commit's
+hooks directory, read as stored, must be the tip's, judged by the hooks
+directory git takes at the checkout from all your settings, global ones
+included. A head whose hooks directory cannot be read is refused too. If the
+branch holds another commit once git has added the worktree, the lane is
+refused, nothing is pinned, and the stage removes the worktree it has just
+added, leaving the branch, so the next step meets the standing branch and
+judges it again before any add. It removes it only where a real directory,
+not a symlink, stands at the lane's path and git lists a worktree there on the
+lane's branch. If that check or git's removal fails, the step is refused
+saying so, and what stands at the path is left: look at it and at what moved
+the branch, and if git lists it as the lane's worktree, remove it (`git
+worktree remove --force` on the lane's path) before you run the step again. A
+step taken again while that worktree stands adopts it, and an adopted lane is
+judged by its hooks only, as below. The standing-branch check is
+defensive: a lane whose hooks differ is refused before a worktree is made
+rather than at the proof after it. The add is also told on its command line the
+hooks directory read at the checkout; that refuses nothing, and only pins the
+directory the check judged. Neither stops the post-checkout hook from running.
+A standing branch's content outside the hooks directory is its own and is not
+vouched for.
+
+Then, before any commit in the lane, a lane whose hooks directory is its own
+copy has that directory proved against the commit it opens on: the same
+entries, each file's size, bytes and exec bit, each symlink's target text and
+each subdirectory as a directory. A lane abcd finds again (a step stopped
+before its state was written) must also hold the same hooks as the tip.
+Anything else is refused at the worktree stage. What was proved is pinned for
+the lane, and the lane is compared with it from then on: a hook changed in the
+lane stops the next step, even one put back to the checkout's older copy.
+
+The proof covers less than the whole directory, and nothing else checks these
+for you. A subdirectory is proved and pinned only as a directory: the files in
+it, which a hook may run or read, are outside the pin. A symlink is proved by
+the text of its target only, not by the file it points to. A lane on a file
+system that keeps no exec bit is always refused, and so is one where a content
+filter rewrites the hook files as they are checked out (an end-of-line or
+smudge filter), since either leaves them other than the commit's. A lane that
+later merges in a reviewed hook change from the default branch is refused
+against its pin, which is the commit the lane opened on. A lane abcd finds
+again after the tip's hooks changed stays refused until you remove its
+worktree and its branch by hand. Between the proof and the lane's first git
+step another process of your account can still write in the lane; the pin
+holds what was proved, so that step's check names the change.
+
+A drive reads these settings once as it starts, before its first lane, and
+keeps hashes of their values in its own memory, never in a file: `origin`'s
+`url`, `pushurl`, `uploadpack`, `proxy` and `vcs`; every URL rewrite
+(`url.*.insteadOf` and `pushInsteadOf`); `core.sshCommand`, `core.gitProxy`,
+`core.hooksPath` and `core.askPass`; every `credential.*` key; `protocol.allow`
+and every `protocol.*.allow`; and `http.proxy` and `http.sslVerify`. It reads
+them through the same runner the ask of `origin` uses, so it sees the values
+the ask sees, from your repository, global and system settings alike. Each lane's
+worktree stage reads them again before it asks `origin` anything and once more
+after `origin` has answered, and refuses the lane on any difference, naming
+the key (a URL in a key's name hidden, as below). A change made between the
+two reads and put back before the second is not seen. Not held: any other
+`http.*` key, a per-URL one included; an `origin` defined only by a legacy
+remotes or branches file in the git directory, which has no key to compare;
+the run fingerprint's other watched settings (content filters, diff and merge
+drivers, signing programs, includes and the rest), which each run records
+afresh at its first check; and anything changed while no drive runs. A drive started again reads them
+afresh, so such a change is the new drive's starting point. A step the host
+runs and a single build carry no such record: there these settings must not
+change between one lane's run and the next, and nothing enforces it.
+
+With no `origin`, in a trial, or where the lane's hooks directory is not its
+own copy, nothing is pinned: a lane made after the fingerprint was recorded is
+compared with the checkout as recorded, for any setting or hook it adds or
+holds differently. The pin leaves these out, and nothing checks them for you:
+an absolute `core.hooksPath` or a hook dispatcher your global settings name
+gets no pin of its own, and is compared with the checkout as recorded; a
+relative `core.hooksPath` set only in your global settings is neither proved
+nor pinned in the lane, and the checkout's copy it names, which the add's
+post-checkout hook runs from, is not watched, since the fingerprint and the
+drive read the hooks directory from the repository's own settings; the
+checkout's own hooks and settings changing when you pull it during a run are a
+change like any other, which stops the next step until you accept it; and each
+run records the watched settings afresh when it first checks them, so a
+setting changed before a run's first check is that run's starting point (each
+lane of a drain is a run of its own, and a drive holds across its lanes only
+the settings and the checkout's hooks directory named above), and you must look at what changes between runs yourself. Your global and system
 settings are your own and are not watched. The file holds salted hashes, never
 a value: a credential helper's value may carry a secret, so only key names and
 file paths are ever stored or reported. A key's name can carry a secret too (a
@@ -1169,11 +1363,12 @@ a time reads it as it starts and at each look while memory holds it), since
 other work fills the disk while it waits, and refuses at any such look rather than wait, since nothing
 frees disk while it sleeps. The refusal names each low volume, its free space
 and the floor, and, when the cache's own volume is low, the cache's path and
-size and two ways to free it: a `find` line deleting the build entries unused
-for two days (offered only for a directory with a Go build cache's shape, and
-keeping the fuzz corpora) and `go clean -cache`. The gate never deletes anything
-itself; `ahoy worktree prune` trims the cache's unused entries when it removes a
-worktree. A disk it cannot read, on a platform other than macOS and Linux or
+size and three ways to free it: `abcd ahoy worktree trim-cache` and a `find` line
+deleting the build entries unused for two days (each offered only for a directory
+with a Go build cache's shape, and keeping the fuzz corpora) and `go clean -cache`.
+The gate never deletes anything itself; abcd keeps the cache to its size limit
+when `ahoy worktree prune` removes a worktree and, detached and at most hourly,
+when the build loop makes a lane (`commands/ahoy.md`). A disk it cannot read, on a platform other than macOS and Linux or
 through a read that fails, is never refused, in whole or in part: one line on
 stderr says it was not checked and why (`disk_note` in `--json`). CI runners
 skip the check with the rest of the gate.
@@ -1322,8 +1517,9 @@ Only a `load.preflights` that is there and unusable (out of range, or not a
 whole number) refuses the wait, as an unusable `ABCD_LOAD_PREFLIGHTS` does;
 the environment is read first, and with it set the file is not read.
 
-A narrow run waits at a gate of its own, so a change's own check never queues
-behind whole preflights. It is `implement load --wait --narrow -- go test
+A narrow run waits at a gate of its own, so a change's own check does not queue
+behind whole preflights; it stands aside for an overdue one for five minutes
+at most (below). It is `implement load --wait --narrow -- go test
 -count=1 ./internal/foo`. The mark asks for the gate, and it is all any waiter goes
 by: every waiter reads the mark and the command from the waiter's own arguments,
 itself included, so the same command without the mark is a whole run, as it always
@@ -1379,6 +1575,12 @@ wait limit, costs a narrow run minutes and not its wait. It never stands aside f
 a whole run with no slot free, which no narrow run is holding up. Waiters queued
 ahead that alone keep a narrow run shut stop counting after two minutes, since one
 may be shut by its own account's stricter settings, which no other account can see.
+The time both caps have spent carries across retries of the same narrow wait in the
+same lane, until one of the first try's timeouts has passed since the last try gave
+up, so a lane that waits in short tries, each run again when the last gives up,
+still reaches them. A retry is the same command in the same worktree, and on a
+drive's stage the same stage; the carried time is your account's own, in
+`load-wait-narrow-carry.json`, and a try that opens clears it.
 
 Accounts can run different abcd versions. An abcd built before narrow runs queues
 behind a marked waiter that started earlier and counts one running against its

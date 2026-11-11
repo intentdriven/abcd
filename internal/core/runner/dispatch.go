@@ -37,6 +37,19 @@ type Dispatcher struct {
 	// none as the route that ran, rather than leaving the role nowhere to land.
 	// A role on the host still needs a host session or a configured host.
 	Attended bool
+	// Cell is true inside a model-matrix cell (itd-2610161733316518 decision
+	// 4): the route is the one under test, so nothing stands in for it. A
+	// runner that fails, refuses, answers unparsably or fails the validator
+	// returns its failure in the outcome as the cell's, with no fallback
+	// receipt, since nothing fell back, and neither the host session nor the
+	// configured host runs the role: an answer from either would measure the
+	// wrong model. A role on the host runs only in a host session. A rate
+	// limit still reaches the caller as an error, since it is the window's and
+	// not the model's; a runner that names its provider's throttling only as
+	// an API status (opencode's 429 error event) returns a failure whose
+	// ProviderDown holds when nothing was spent, which the caller retries as
+	// not started rather than scoring.
+	Cell bool
 	// Validate is the contract's validator: the same check the host sub-agent's
 	// answer passes. It is handed the runner that ran the role, so a caller
 	// whose validator also records the answer (the loop's receipt verifier)
@@ -88,19 +101,13 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 		// (roles.<role>.timeout, iss-2611012202511008).
 		req.Timeout = d.Config.TimeoutFor(req.Role)
 	}
-	if req.Model != "" {
-		// A request's model is admitted here, against the provider's
-		// allowlist, as a configured route is when it is read: whoever stored
-		// it, it is never trusted for that. One refused ends the dispatch with
-		// nothing started and no fallback, since a role run on another model,
-		// the host's included, is a run nobody asked for.
-		if err := d.Config.admitModel(req.Model); err != nil {
-			return Outcome{}, fmt.Errorf("runner: the model %q asked for %s, %w", req.Model, req.Role, err)
-		}
-	}
 	route := d.Config.RouteFor(req.Role)
 	landing := Host
-	if !d.HostSession {
+	if d.Cell && route.Runner == Host && !d.HostSession {
+		return Outcome{}, fmt.Errorf("runner: %s is a cell on the host and no host session drives it; inside a "+
+			"model-matrix cell nothing else stands in for the host", req.Role)
+	}
+	if !d.HostSession && !d.Cell {
 		landing = d.Config.FallbackHost()
 		if landing == "" && !(d.Attended && route.Runner != Host) {
 			return Outcome{}, fmt.Errorf("runner: there is no host session and no %s.%s is configured, so a role "+
@@ -109,11 +116,20 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 		}
 	}
 	if req.Model != "" {
+		// A request's model is admitted here, once the runner that will run it
+		// is known, as a configured route is when it is read: whoever stored
+		// it, it is never trusted for that. The provider's allowlist decides,
+		// except on a drive's walled launch of the claude harness, which takes
+		// a model of its own vendor by name with no provider block when the
+		// machine's class map resolved it during the drive (admitModelFor).
+		// One refused ends the dispatch with
+		// nothing started and no fallback, since a role run on another model,
+		// the host's included, is a run nobody asked for.
 		target := route.Runner
-		if target == Host && !d.HostSession {
+		if target == Host && !d.HostSession && !d.Cell {
 			target = landing
 		}
-		if err := d.Config.holdRequestModel(route, target, req); err != nil {
+		if err := d.Config.admitRequest(route, target, req); err != nil {
 			return Outcome{}, err
 		}
 	}
@@ -150,6 +166,12 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 		// window (itd-2609201925079472 criterion 8). No receipt is written,
 		// since nothing fell back.
 		return Outcome{}, err
+	}
+	if d.Cell {
+		// The cell's failure: scored as such by the caller, and run nowhere else.
+		out.Failure = fl
+		out.Receipt.Route.Ran = none
+		return out, nil
 	}
 	// A killed launch's spend rides on its receipt (iss-2611021751406429).
 	fb := FallbackReceipt{At: d.now(), Role: req.Role, Asked: route.Runner, Reason: fl.Reason, Detail: fl.Detail, Ran: landing,
@@ -210,8 +232,10 @@ func (d *Dispatcher) runOn(ctx context.Context, name string, req Request) (Answe
 	}
 	if req.Model != "" {
 		// Admitted when the dispatch began; consulted again at the launch, as
-		// the route's model is, so a runner never launches on a stale answer.
-		if err := d.Config.admitModel(req.Model); err != nil {
+		// the route's model is, so a runner never launches on a stale answer,
+		// and for the runner launching, so a fallback host is held to its own
+		// admission: opencode standing in for claude needs the provider block.
+		if err := d.Config.admitModelFor(name, req.Model); err != nil {
 			return Answer{}, fmt.Errorf("runner: the model %q asked for %s, %w", req.Model, req.Role, err)
 		}
 		// The runner asks for the request's model with that model's pins, as

@@ -99,7 +99,14 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   not the default branch, so a branch cut after the default branch shipped an
   intent this checkout, being behind, still holds as planned is a holding. A
   worktree is compared off its disk, against the merge-bases of its HEAD, so an
-  uncommitted move or edit is a change. A copy that cannot be compared (an
+  uncommitted move or edit is a change. A local branch no worktree has checked
+  out, a backup or a paused branch, is no holding (iss-2611090125008163): no
+  checkout has work in progress on it, so the check passes and its row names
+  the branch and the bucket it holds the intent in. Checked out is as git
+  counts it: the branch of a worktree that is gone or that git will not answer
+  for is still a holding, and so is the branch a rebase or a bisect stopped in
+  a worktree started from, though git lists that worktree detached. The peer listing
+  still shows such a branch. A copy that cannot be compared (an
   unborn HEAD here, no merge-base, an unreadable file) counts as a holding. The
   check
   fails closed on what it cannot see into, on both sides: a peer the listing
@@ -292,7 +299,15 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 20. Version 20 keyed a validation round by reviewer (a validator's `reviewer`, `class`, `model` and `model_status`, an await's `reviewer`, `class` and `model`, and a round's `comparisons`), version 19 added a fallback receipt's `spent`, version 18 an await's `paused` and `running`, and version 17 a lane's `auto_plan`; each version before them reads as the next one's strict subset, and a file of an earlier version carrying what only a later one writes is refused. Version 16
+under a run id it does not name. The state is schema version 25. Version 25
+renamed the stored model classes for what each is for (itd-2611101419006280):
+a stored class label is one of `research`, `top`, `default` and `small`, where
+earlier versions stored `top`, `middle`, `below` and `smallest` for the same
+classes; a stored judge carries its `status`, `waiting` or `active`, fixed when
+the run starts; and each class, await and validator carries its `effort`. A
+file of version 24 or lower is migrated on read, each label taking its new name
+and each reviewer keeping its model, and one carrying a label outside the old
+four, a judge's status or an effort is refused. Version 20 keyed a validation round by reviewer (a validator's `reviewer`, `class`, `model` and `model_status`, an await's `reviewer`, `class` and `model`, and a round's `comparisons`), version 19 added a fallback receipt's `spent`, version 18 an await's `paused` and `running`, and version 17 a lane's `auto_plan`; each version before them reads as the next one's strict subset, and a file of an earlier version carrying what only a later one writes is refused. Version 16
 added a route's pins: a pinned opencode run's `route` carries its pin and the
 SHA-256 of the sealed configuration that held it (`provider_pin`,
 `pin_config_sha256`, iss-2610161734413178), and a route to a model on this
@@ -563,7 +578,39 @@ then exited badly. One from a runner that exited badly and that does not verify
 is set aside as the role is retried. One the verifier refused after its runner
 ended starts no second runner over the work: the step says what the receipt
 lacks and how to correct it or restart, and counts the stop so a drain hands the
-lane back as stuck at its bounds. What stands at an agent's path when it is handed out, or when a
+lane back as stuck at its bounds. That stop is a host-stepped run's. A drive, which
+steps the run itself, consumes a receipt refused for the work it reports, one that
+names this run, lane and branch in the schema this abcd reads (iss-2611071242184002).
+Under the run's lock it first checks that the file still holds the bytes it judged
+and that no runner has claimed the role since; if either fails, the file is left
+standing for the next step to read and nothing is counted. Otherwise, in the same
+write as the refusal, the receipt is set aside into a new directory under the lane's
+aside directory, kept and never deleted. The receipt's text never chooses what else
+moves, and the run's state decides whether anything does. At the implement stage's own
+receipt, only the report and the definition of done's output at the names the loop
+assigned that attempt, directly in the lane's directory, each a regular file and no
+link, go with it, moved through that directory opened as its own root. A path the
+receipt names for either that is anything else, the brief, a validate, sync or land
+round's file, or anything under the aside directory in any letter case, is left in
+place, and the record's line says so beside the refusal and the digest of the bytes
+judged. At a fix or sync round's receipt nothing else moves: the round's report and
+output, and the lane's own report and output, which later rounds read, are left where
+they are, and the record's line says only the receipt was set aside at that round. Below the
+bound the next step starts the implementer again on its runner. Each consumed receipt
+counts as a refused step under one check, whatever it lacked, so at the stuck bound of
+identical refusals, three by default, the lane is handed back as stuck, with a bound or
+without, and a fresh drive on the same state carries the count on; the time between
+them does not matter. The receipt that brings the lane to that bound is followed by no
+further launch, whether the runner handed it in or a step found it standing: the drive
+gives the lane back on its next turn. The count is kept on the drain's issue runs, the
+only runs a drive steps this way; an intent's run keeps the stop. A step of the lane
+that succeeds clears the count, and a refusal of another kind restarts it, so such a
+lane is ended instead by three failed launches in a row under a bound, and by the
+outage limit without one. The runner's own hand-in is also a failed launch, so under a
+bound the third such launch in a row hands the lane back too; a receipt found standing
+and consumed is a refused step and no launch. A set-aside that fails is the record's line and leaves the receipt
+standing, the step counted and the pause written all the same. A receipt refused for
+anything else stays and stops the lane in a drive too. What stands at an agent's path when it is handed out, or when a
 runner is claimed for it, is set aside unread. A paused role whose route the person has since
 moved to the host is handed to the host by the next step, its pause cleared
 and the person's route, not a fallback, recorded. The
@@ -722,7 +769,13 @@ of this run that built it, with its branch, head and pull request — or that no
 step comes before it, and
 what the implementer hands back: its report, the definition of done's output,
 and the receipt with its exact shape, each at an absolute path in the lane's
-directory. Before the record it carries, the brief states the outbound policy
+directory. The definition of done it asks for is scoped to the packages the lane
+changed, and the brief spells out the load gate's narrow form for a Go package's
+tests, so a lane's test waits behind other narrow runs and stands aside for a
+whole preflight for five minutes at most; its race tests run in the repository's
+pre-push gate, or, where that gate has none and the conventions ask for them,
+as a gated run of their own.
+Before the record it carries, the brief states the outbound policy
 in its own right, quoted from `scanner.OutboundPolicy`, the value the lint
 rules and the commit gates quote (itd-152): no live session URL and no tool
 attribution footer in a pull request, an issue, a comment, a commit message or
@@ -809,22 +862,36 @@ and one that does not pass takes no fix round, the lane going on to its pull req
 to park, named for a person. The state records every round with the head
 it judged, each verdict, and the audit's receipt and range.
 
-**The review set** (itd-2610240922461281, spc-2610240951109420). A new run reads
-once, through the layered reader, how many reviewers each code-review role runs
-and at which model class, and keeps what it read whatever the files say later:
-`review.reviewers`, one or two classes for both roles or a list per role, each
-role taking the highest layer that sets it, else the bundled `middle` and `below`;
-`review.max_reviewers`, the machine's ceiling, 1 or 2 and 2 when unset, which
-clamps a longer list with one line on stderr; and `models.classes`, the class
-map, read from the machine's file over the bundled map, a repository's map being
-skipped with a warning. `review.judge` names one class, and a set naming one is
-refused at the `review` stage until a judge's agent has cleared itd-81's
-calibration gate, as is any fault in the others, before anything is written. The
-`intent-auditor` keeps its single run. A round hands a role's reviewers out in
-consecutive steps on its one head, each taking a slot, and once they have all
-returned its `comparisons` records whether they disagree, one verdict passing
-and another failing. The comparison decides nothing: any reviewer that fails
-fails the round. A run started before review sets runs one reviewer per role.
+**The review set** (itd-2610240922461281, spc-2610240951109420;
+itd-2611101419006280, spc-2611101423523725). A new run reads once, through the
+layered reader, how many reviewers each code-review role runs, at which model
+class and at which effort, and keeps what it read whatever the files say later.
+The four classes are `research`, `top`, `default` and `small`, strongest first.
+`review.reviewers` is one or two classes for both roles or a list per role,
+each role taking the highest layer that sets it, else the bundled `research`
+and `default`; `review.max_reviewers` is the machine's ceiling, 1 or 2 and 2
+when unset, which clamps a longer list with one line on stderr;
+`models.classes` is the class map and `models.effort` each class's effort (one
+of `low`, `medium`, `high`, `xhigh` and `max` for every class, or one per class,
+`high` unless named), both read from the machine's file over the bundled
+default, a repository's value being skipped with a warning. `review.judge`
+names one class, else the bundled `top`, which is stored `waiting` until a
+judge's agent has cleared itd-81's calibration gate and `active` from then on,
+fixed at the run's start; a waiting judge is never launched, awaited or
+counted. A judge a configuration file names is refused at the `review` stage
+until an agent has cleared the gate, as is any fault in the others, before
+anything is written. A file naming an old class (`middle`, `below`,
+`smallest`) is refused with the mapping, and a machine class map that sets
+`top` without `research` is refused. The effort rides with each class into the
+request a runner is handed, which the claude runner passes as its effort flag
+and the opencode runner records as not passed; a role launched with no class
+keeps the harness's own effort. Every surface shows a class with its model and
+its effort. The `intent-auditor` keeps its single run. A round hands a role's
+reviewers out in consecutive steps on its one head, each taking a slot, and
+once they have all returned its `comparisons` records whether they disagree,
+one verdict passing and another failing. The comparison decides nothing: any
+reviewer that fails fails the round. A run started before review sets runs one
+reviewer per role.
 
 The audit passes a round only when it judges every criterion met: a criterion
 it could not decide (`INCONCLUSIVE`) fails the round exactly as a `NOT_MET` one

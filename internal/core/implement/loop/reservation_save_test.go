@@ -40,8 +40,20 @@ func stateAtVersion(t *testing.T, root, runID string, version int) []byte {
 	}
 	data = bytes.Replace(data, []byte(from), []byte(fmt.Sprintf(`"schema_version": %d,`, version)), 1)
 	if version <= schemaVersionUnadmitted {
-		// The admission joined at version 24, so an older driver's file carries none.
+		// The admission joined at version 26, so an older driver's file carries
+		// none. It is cut while the file is laid out as writeState lays it.
 		data = admittedField.ReplaceAll(data, nil)
+	}
+	if version <= schemaVersionUnrenamed {
+		// The classes that version stored are named as it named them.
+		var doc map[string]any
+		if err := json.Unmarshal(data, &doc); err != nil {
+			t.Fatal(err)
+		}
+		unreviewOlder(doc)
+		if data, err = json.MarshalIndent(doc, "", "  "); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)

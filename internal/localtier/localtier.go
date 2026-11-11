@@ -249,6 +249,20 @@ func ReadInRoot(root *os.Root, rel string, limit int64) ([]byte, error) {
 	return data, nil
 }
 
+// ReadInRootContext is ReadInRoot with its tracked check bound to ctx
+// (UntrackedContext), for a reader that holds a budget: a ctx already ended
+// starts no git and refuses, as git not answering does.
+func ReadInRootContext(ctx context.Context, root *os.Root, rel string, limit int64) ([]byte, error) {
+	data, err := fsutil.ReadGuardedInRoot(root, rel, limit)
+	if err != nil {
+		return nil, err
+	}
+	if err := UntrackedContext(ctx, root.Name(), rel); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
 // LstatInRoot is root.Lstat for local-tier state a reader judges by its
 // presence alone (a receipt that lets a step pass), refused as ReadInRoot
 // refuses once there is something to refuse.

@@ -608,7 +608,7 @@ func TestADrainResumingALaneLetGoComparesTheRecord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, live := liveRun(runs, run.Key, true); live {
+	if _, live := liveRun(runs, run.Key, true, false); live {
 		t.Fatal("the dropped run is no drain's to resume")
 	}
 }

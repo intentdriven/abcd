@@ -176,7 +176,11 @@ pass:
   checkout's older copy, not the intent, and does not count; a branch cut after
   the default branch shipped what this checkout, being behind, still holds as
   planned does count. A worktree is judged off its disk, so an uncommitted move
-  or edit counts. A peer that
+  or edit counts. A local branch no worktree has checked out (a backup or a
+  paused branch) holds nothing, as no checkout has work in progress on it, and
+  the passing row names what it holds; a branch whose worktree is gone or
+  refused still counts, and so does a branch a rebase or a bisect stopped in a
+  worktree started from, which git counts checked out there. A peer that
   cannot be read (a worktree git will not answer for, a ledger holding one id
   twice) and an unreadable claim count as holding it: what they hold is unknown,
   and so does a copy that cannot be compared with every merge-base.
@@ -513,40 +517,110 @@ refused, and one naming the same pace resumes.
 
 A new run also reads its review set once, when it starts: how many reviewers
 each of the two code-review roles (`ruthless-reviewer`, `security-reviewer`)
-runs, and at which model class. The `intent-auditor` keeps its single run.
+runs, at which model class, how hard each class works, and which class judges.
+The `intent-auditor` keeps its single run.
+
+The four classes are named for what each is for, strongest first: `research`,
+`top`, `default` and `small`.
 
 - `review.reviewers`: a list of one or two classes for both roles, or an object
-  naming a list per role (`{"security-reviewer": ["middle"]}`); each role takes
+  naming a list per role (`{"security-reviewer": ["default"]}`); each role takes
   the highest layer that sets it (the repository's `.abcd/config.json`, then
-  `~/.abcd.noindex/config.json`), else the bundled pair, `middle` and `below`.
-- `review.judge`: one class, or absent. A judge runs only once its agent has
-  cleared itd-81's calibration gate, and none has yet, so a set naming one is
-  refused at the `review` stage; without one the stricter verdict decides.
+  `~/.abcd.noindex/config.json`), else the bundled pair, `research` and
+  `default`.
+- `review.judge`: one class, else the bundled `top`. A judge runs only once its
+  agent has cleared itd-81's calibration gate, and none has yet. The bundled
+  judge is stored with a status fixed when the run starts: `waiting` until an
+  agent clears the gate, `active` from then on. A waiting judge is never
+  launched, awaited or counted in an estimate, the stricter verdict decides, and
+  the run record says so in one line; a run never gains a judge part-way. A
+  judge a configuration file names while no agent has cleared the gate is
+  refused at the `review` stage, since the run cannot give it.
 - `review.max_reviewers`: the machine's ceiling on reviewers per role, 1 or 2
   (2 when unset), read from `~/.abcd.noindex/config.json` alone. A repository
   list longer than the ceiling is clamped, with one line on stderr naming both
   files; a repository's own `max_reviewers` is skipped with a warning.
-- `models.classes`: the class map, `top`, `middle`, `below` and `smallest`, each
-  a `<provider>/<model>` route. It is read from `~/.abcd.noindex/config.json`
-  over the bundled map alone, which spends the person's key and so is theirs to
-  say: a repository's map is skipped with a warning. The bundled map is one
-  vendor's models, a default and not part of the rule.
+- `models.classes`: the class map, `research`, `top`, `default` and `small`,
+  each a `<provider>/<model>` route. It is read from
+  `~/.abcd.noindex/config.json` over the bundled map alone, which spends the
+  person's key and so is theirs to say: a repository's map is skipped with a
+  warning. The bundled map is one vendor's models, a default and not part of
+  the rule.
+- `models.effort`: how hard each class works, one of `low`, `medium`, `high`,
+  `xhigh` and `max` for every class (`"effort": "medium"`), or an object naming
+  a level per class (`{"research": "max", "small": "low"}`); a class nothing
+  names runs at `high`. A higher effort spends more of the person's budget, so
+  it is read from `~/.abcd.noindex/config.json` or the bundled `high` alone, and
+  a repository's value is skipped with one line naming the machine's file. The
+  effort reaches a model where abcd launches a role at a class through a runner
+  that can pass it: the claude runner passes its effort flag, and the opencode
+  runner, which has no flag verified to take these levels, runs the role and
+  records the effort as not passed. A host-run reviewer is asked for the class's
+  model and effort, and its record says asked, not confirmed. A role launched
+  with no class, the implementer among them, keeps the harness's own effort, as
+  a runner's own configured model does.
+
+The classes were renamed one for one: `top` is now `research`, `middle` is
+`top`, `below` is `default` and `smallest` is `small`. A file that names
+`middle`, `below` or `smallest` in a class map, a review list, a judge or an
+effort object is refused at the `review` stage with that mapping, and nothing
+is written. A machine class map that sets `top` and not `research` is refused
+too: `top` once named the strongest class and now names the second, so a map
+that sets `top` sets `research` as well. A review list or a judge naming `top`,
+while no configuration file names `research`, `default` or `small`, resolves,
+with one line on stderr saying which model `top` now stands for.
+
+Every review round of every lane asks the strongest class once per review role,
+at `high` effort, so the bundled pair costs more than a pair of smaller
+classes. On a subscription the classes share one usage window, and an
+unattended run reaches its limit sooner and waits there. The one line that sets
+a cheaper review, in `~/.abcd.noindex/config.json` or the repository's
+`.abcd/config.json`:
+
+```json
+{"review": {"reviewers": ["default", "small"]}}
+```
+
+A class map for a second provider points each class at that provider's models
+in `~/.abcd.noindex/config.json`. The provider's block under `oracle.api` lists
+the models it serves, and a runner admits a class's model against that list.
+abcd bundles no model names for another vendor, so the ids below are an
+example: use the ones your provider lists.
+
+```json
+{
+  "models": {
+    "classes": {
+      "research": "openrouter/qwen/qwen3-235b-a22b",
+      "top": "openrouter/mistralai/devstral-medium",
+      "default": "openrouter/qwen/qwen3-coder",
+      "small": "openrouter/mistralai/devstral-small"
+    },
+    "effort": {"research": "xhigh", "small": "low"}
+  }
+}
+```
 
 The payload's `review`, beside `pace`, carries each role's `reviewers` (each
-`class` with the `model` the map resolves it to and the map's `map_layer` and
-`map_origin`), the list's `layer` and `origin`, `clamped` when the ceiling cut
-it, the `judge` (null for none) and `max_reviewers`; the run record's `review`
-line and the text output's `review:` line name each class with its model. A
-class the map does not carry, a list of none or more than two, a misspelt key
-under `review` or `models.classes`, and a route that is not
+`class` with the `model` the map resolves it to, the map's `map_layer` and
+`map_origin`, its `effort` and the `effort_layer` and `effort_origin` that set
+it), the list's `layer` and `origin`, `clamped` when the ceiling cut it, the
+`judge` with its `status` and `effort`, and `max_reviewers`. The run record's
+`review` line, the text output's `review:` line and each verdict line name
+each class with its model and its effort, so a class name is never shown
+alone, and a drive's start names the pair it will run before it asks. A class
+the map does not carry, an effort outside the five levels or an effort object
+keyed by anything but the four classes, a list of none or more than two, a
+misspelt key under `review` or `models`, and a route that is not
 `<provider>/<model>` are refused at the `review` stage with exit 2 before
-anything is written. Starting again keeps the run's review set, whatever the
-files say by then. A run started before review sets carries `review: null`,
-and its rounds run one reviewer per role. Each round of a run with a review
-set hands every reviewer role to each of its reviewers, in consecutive steps
-on the same head, and the stricter verdict decides: any reviewer that fails
-fails the round (`commands/implement.md` says how a round records each
-reviewer and how they compared).
+anything is written, naming the key, the value and what is accepted. Starting
+again keeps the run's review set, whatever the files say by then. A run
+started before review sets carries `review: null`, and its rounds run one
+reviewer per role. Each round of a run with a review set hands every reviewer
+role to each of its reviewers, in consecutive steps on the same head, and the
+stricter verdict decides: any reviewer that fails fails the round
+(`commands/implement.md` says how a round records each reviewer and how they
+compared).
 
 Last, once every other check passes, the budget check asks each runner a role
 of the run is routed to (below) for its remaining quota, in agent runs, and
@@ -647,7 +721,32 @@ One the verifier refused after its runner ended stops the lane: no runner is
 started over that work, `next` names the ways out, correcting the receipt (then
 `implement receipt`, or a plain `implement step` reads it) or
 `implement step --restart <lane>`, and a drain hands the lane back as stuck at
-its bounds. A role already with you, from a step before its route existed,
+its bounds. Under `abcd drain --drive`, which steps the run itself, a receipt refused
+for the work it reports (it names this run, lane and branch) is set aside instead, in
+the same write, kept in a new directory under the lane's `aside/`, and the refusal and
+the digest of the bytes judged go in the run record. The receipt's text never chooses
+what else moves, and the run's state decides whether anything does. At the implement
+stage's own receipt, only the report and the definition of done's output at the names
+the loop assigned that attempt (`report.md` and `dod.log`, directly in the lane's
+directory, each a regular file and no link) go with it. A path the receipt names for
+either that is anything else (the brief, a validate, sync or land round's file, anything
+under `aside/` in any letter case) is left where it is, and the run record says so. At a
+fix or sync round's receipt nothing else moves: the round's report and output, and the
+lane's own `report.md` and `dod.log`, which later rounds read, are left where they are,
+and the run record says only the receipt was set aside at that round. A receipt
+replaced since it was judged, or a role a runner has claimed since, is left for the next
+step to read and not counted. Below the bound the next step starts the implementer
+again. Each consumed receipt counts as a refused step under one check, whatever it
+lacked, so the third in a row (the drain's stuck bound of identical refusals, three by
+default) hands the lane back as stuck, with or without `--until`, and a fresh drive on
+the same state carries the count on. The receipt that brings the lane to the bound is
+followed by no further launch, whether the runner handed it in or a step found it
+standing: the drive gives the lane back on its next turn. The count is kept on the
+drain's issue runs, the only runs a drive steps this way; an intent's run keeps the
+stop. A step of the lane that succeeds clears the count, and a refusal of another kind
+restarts it; such a lane is still ended by three failed launches in a row under
+`--until`, and by the outage limit without it. A receipt refused for anything else
+stops the lane there too. A role already with you, from a step before its route existed,
 whose receipt you have not written is retried the same way, so do not start an
 agent for it once its role is routed. A paused role whose route has since
 moved to the host is handed to you by the next step that hands no other agent

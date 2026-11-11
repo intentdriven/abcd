@@ -1,10 +1,13 @@
 package gitutil_test
 
 import (
+	"context"
 	"io/fs"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,4 +103,33 @@ func objectStore(t *testing.T, dir string) map[string]time.Time {
 		t.Fatal(err)
 	}
 	return files
+}
+
+// TestBothEmptyTreeNameFormsRefuseAnAnswerPastTheCap: a git that answers the
+// empty tree's name with more than one object name could hold is refused
+// whole, in the same words, by EmptyTreeName and EmptyTreeNameContext: the
+// two forms share one cap and one body, and differ in the context alone.
+func TestBothEmptyTreeNameFormsRefuseAnAnswerPastTheCap(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Commit("c0")
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip(err)
+	}
+	dir := t.TempDir()
+	long := strings.Repeat("a", 300)
+	shim := "#!/bin/sh\nfor a in \"$@\"; do\n  if [ \"$a\" = hash-object ]; then printf '%s\\n' '" + long + "'; exit 0; fi\ndone\n" +
+		"exec '" + real + "' \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(shim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	free, ferr := gitutil.EmptyTreeName(r.Root())
+	bound, berr := gitutil.EmptyTreeNameContext(context.Background(), r.Root())
+	if ferr == nil || berr == nil || free != "" || bound != "" {
+		t.Fatalf("an answer past the cap: EmptyTreeName = %q, %v; EmptyTreeNameContext = %q, %v; want both refused", free, ferr, bound, berr)
+	}
+	if ferr.Error() != berr.Error() || !strings.Contains(ferr.Error(), "output exceeded the") {
+		t.Errorf("the two forms refused an answer past the cap differently:\n  EmptyTreeName: %v\n  EmptyTreeNameContext: %v", ferr, berr)
+	}
 }

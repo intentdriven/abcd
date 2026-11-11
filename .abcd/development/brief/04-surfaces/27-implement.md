@@ -503,6 +503,19 @@ counting after two minutes, flat whatever their number: a waiter free to go take
 place in under one, and each that leaves starts the count again, so a queue that is
 moving never reaches it.
 
+Both caps' spent time carries across retries of the same narrow wait in the same lane
+(`internal/core/implement/load_narrow_carry.go`). A drive's harness
+ends each command after about ten minutes, so a lane waits in short tries, each a new
+waiter, and a try of two minutes never spends the five minutes of the stand-aside cap.
+A try that gives up records what it has spent, under a digest of the gated command's
+words, the lane's worktree and, on a drive's stage, the stage's write root, which names
+the lane's directory under its run; the next try with the same key starts from it. The
+record is the account's own `load-wait-narrow-carry.json`, owner-only and written
+atomically, and no other account's waiter reads it; one that is not a regular file the
+account owns, or does not parse, carries nothing and stops no wait. An entry lapses one
+of its first try's timeouts after the last try gave up, a try that opens drops it, and
+a whole-run waiter carries nothing, since its place is its start in the process table.
+
 A wait gives up after six hours by default, the figure sessions came to
 pass by hand once thirty minutes ended every gated test on a busy machine. It exits
 1 as ever, and its last line starts `LOAD GATE TIMED OUT`, naming how long it waited

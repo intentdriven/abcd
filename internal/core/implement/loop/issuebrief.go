@@ -155,6 +155,7 @@ func renderIssueBrief(st State, lane Lane, repoRoot, laneDir string, src issueBr
 	p("watch it fail before you change the code. Then run the repository's definition of done, as the\n")
 	p("conventions below state it, in your worktree. The validators judge the fix with the detector as\n")
 	p("evidence; they, not the detector, are the oracle.\n\n")
+	p("%s\n", narrowTestText(""))
 
 	p("## Handing the issue back\n\n")
 	p("An issue reaches you because its fields say it needs no decision. If you find one in it, stop:\n")

@@ -277,7 +277,7 @@ List this repository's worktrees and its lane, or every lane with --all: Writes 
 
 ##### `abcd ahoy worktree prune`
 
-Reclaim this lane's merged, clean worktrees and stale Go cache entries: Writes the notes archive and removes both; refuses a store it cannot trust.
+Reclaim this lane's merged, clean worktrees and trim the Go cache to its limit: Writes the notes archive and removes both; refuses a store it cannot trust.
 
 **Usage:** `abcd ahoy worktree prune [flags]`
 
@@ -286,6 +286,39 @@ Reclaim this lane's merged, clean worktrees and stale Go cache entries: Writes t
 ```
       --dry-run           archive, remove and trim nothing; report what a real run would
       --yes stringArray   reclaim this quiet candidate too (repeatable); a name not in the lane refuses the run
+```
+
+##### `abcd ahoy worktree trim-cache`
+
+Delete the Go build cache's oldest entries down to its size limit: Writes its answer for the next lane; refuses a cache it cannot prove is Go's.
+
+**Usage:** `abcd ahoy worktree trim-cache [flags]`
+
+Delete the oldest entries of the Go build cache until the rest fit its limit, keeping
+every entry used in the last 3 hours whatever the limit; if those alone exceed it,
+they stay and the line says so. The limit is `load.go_cache_limit_gib` in
+`~/.abcd.noindex/config.json`, a whole number of GiB, 100 by default, and is never read from a
+repository; a value it cannot use, a file it cannot read, or a key under `load`
+that nothing reads (a misspelt one among them) deletes nothing.
+
+It acts only on the directory `go env GOCACHE` reports, and only when that is a real
+directory this account owns, has a Go build cache's shape and is not the home or above
+it, and there only on the entries Go's own layout defines. A build running beside it
+finds a miss and rebuilds, and an entry a build used since the walk stays, since each
+one is read again just before it goes; a build that looks one up in the instant
+between that read and the unlink can still fail to open it, and a rerun rebuilds it.
+Judge it by the cache's size: a local snapshot can hold
+what it deleted, so free disk can lag.
+
+The build loop runs this detached when it makes a lane, at most once an hour
+(`~/.abcd.noindex/go-cache-trim.json`), and the next lane says on stderr what it could not do.
+A dry run deletes nothing and records nothing. Exits 0 when the cache was walked and
+nothing refused, 1 when it was skipped or an entry could not be read or removed.
+
+**Flags:**
+
+```
+      --dry-run   delete nothing; report what a real run would
 ```
 
 ### `abcd announce`
@@ -432,7 +465,8 @@ open question, has no unanswered claim section, is not held, names no unsettled 
 in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling
 worktree or local branch holds it in another bucket having changed it since its
 merge-base with this checkout, so a branch holding this checkout's older copy
-untouched does not count; no session holds a live claim on it; and no other copy holds
+untouched does not count, nor does a branch no worktree has checked out, which the
+passing row names; no session holds a live claim on it; and no other copy holds
 a reservation on it on origin, as this checkout last fetched the reservations; a peer,
 claim or view that cannot be read, or a copy that cannot be compared, counts as holding
 it). The check reads the reservations from disk alone, and names another copy's with
@@ -485,13 +519,20 @@ handed back: it stops as unachievable with the last round's findings, the run st
 further for it, and `abcd implement step` refuses naming the hand-back.
 
 A new run reads its review set once, too: review.reviewers (one or two model classes per
-code-review role, for both roles or per role; bundled: middle and below), review.judge (a
-class; refused until a judge agent clears itd-81's calibration gate) and, from
+code-review role, for both roles or per role; bundled: research and default), review.judge
+(a class; bundled: top, which waits until a judge agent clears itd-81's calibration gate,
+fixed at the run's start, and a judge a file names is refused until then) and, from
 ~/.abcd.noindex/config.json alone, review.max_reviewers (1 or 2, bundled 2) and the class map
-models.classes (top, middle, below, smallest, each a <provider>/<model> route over the
-bundled map). A repository list above the machine's ceiling is clamped with one line on
-stderr naming both files; a repository's ceiling or class map is skipped with a warning.
-An unknown class or a malformed set is refused at the review stage and writes nothing.
+models.classes (research, top, default, small, strongest first, each a <provider>/<model>
+route over the bundled map) and each class's effort, models.effort (one of low, medium, high,
+xhigh and max for every class, or an object naming one per class; bundled: high). A repository
+list above the machine's ceiling is clamped with one line on stderr naming both files; a
+repository's ceiling, class map or effort is skipped with a warning. An unknown class or
+level, or a malformed set, is refused at the review stage and writes nothing.
+The classes were renamed: top is now research, middle is top, below is default and smallest
+is small. A file naming middle, below or smallest is refused with that mapping, and so is a
+machine class map that sets top without research; a review list or judge naming top, while
+no file names research, default or small, runs and says on stderr what top now stands for.
 The result's review and the run record name each class with its model and each layer.
 
 The run then moves one step per `abcd implement step`, driven by the host session.
@@ -1499,7 +1540,8 @@ before anything is reserved when the claude runner is not enabled or admitted, w
 it has no profile directory under ~/.abcd.noindex/profiles/ to run on, logged in, when a
 wall does not hold or no git identity resolves, when a credential variable the harness would bill through is set
 (a drive runs on a subscription alone, for now), when the judge is routed
-to opencode, when a role is pinned to the host, and when it is started from inside an
+to opencode, when a role is pinned to the host, when a reviewer's model in the review set is
+one no route on this machine can launch (naming the role, the model and what to set), and when it is started from inside an
 agent's own session. It shows the cap (eight unless --max says otherwise), an estimate
 of the agent runs, the runner and the route, and asks once; --yes is the scripted
 answer, and with no terminal nothing else answers. A profile is a separate login and
@@ -2925,8 +2967,9 @@ and again just before it opens (the race gate at one preflight at a time reads
 it as it starts and at each look while memory holds it), and refuses at any such
 look. The refusal names
 each low volume, its free space and the floor, and, when the cache's own volume
-is low, the cache's size and a command that deletes its build entries unused for
-two days. A disk it cannot read, in whole or in part, is never refused: one line
+is low, the cache's size, `abcd ahoy worktree trim-cache`, which takes it down to
+its size limit, and a command that deletes its build entries unused for two
+days. A disk it cannot read, in whole or in part, is never refused: one line
 on stderr says it was not checked, and why. The load check (`--site`) prints the
 same finding as a warning and never fails for it.
 
@@ -3048,7 +3091,10 @@ place. Its jitter is 1s to 5s, and it takes no open look, so across accounts two
 opening at once can pass the limit by one. So that it cannot starve a whole run, while a
 whole-run waiter that started earlier has been queued 5m0s or more and a whole slot is free, it
 stands aside, spending at most 5m0s of a wait so. Waiters queued ahead that alone keep it shut stop
-counting after 2m0s.
+counting after 2m0s. The time both caps have spent carries across retries of the same
+narrow wait in the same lane (the same command, worktree and drive stage), until one of the
+first try's timeouts has passed since the last gave up, in your account's own
+`~/.abcd.noindex/load-wait-narrow-carry.json`; a try that opens clears it.
 
 A wait that gives up exits 1 and ends with a line starting `LOAD GATE TIMED OUT`,
 naming how long it waited and that nothing ran, so a pipe that loses the exit
@@ -3401,7 +3447,9 @@ all a session that lost its context needs. It writes nothing and uses no network
 the driver, collects every receipt that has arrived before anything else, reserves
 again what a stop released, saves aside and names the uncommitted work a gone agent
 left, and re-tells its await. It starts no agent: `abcd implement step` does that
-next. An agent that may still be in its call is left alone and named. A run a drive
+next. An agent that may still be in its call is left alone and named. Where a lane
+names a pull request, it reads the forge once and names each that conflicts with
+the default branch, was closed or merged, or could not be read. A run a drive
 started names the profile it started on, in the listing and here, since what this
 session starts runs on this session's own login, whichever that is.
 
@@ -4368,8 +4416,18 @@ credentials, so run it only on a branch whose content you trust.
      gate allows it, pinned to the head: into the merge queue by its method where
      one gates the default branch (then confirmed in the queue), otherwise as the
      forge's auto-merge (a merge commit; a forge that refuses it is said). An
-     arming someone else made at a head the gate arms is left as it is. Where a merge
-     queue gates the
+     arming someone else made at a head the gate arms is left as it is. Before it
+     arms, a pull request whose body has a line Depends-On: #N (or #N, #N) is read
+     with the pull requests it names, and theirs while open, at most 25 in all: one
+     not yet merged stops the step, no new arming made, naming it and when the
+     wait is refused (24 hours after the pull request was opened); one closed
+     unmerged, one that is no pull request or merges into another branch, a
+     cycle, a wait at or past its 24 hours, a line that looks like one in another
+     shape, and a forge answer land cannot read whole refuse, exit 2, no new
+     arming made, saying what to reword or settle. This account's arming
+     already in place is withdrawn on such a stop or refusal. Rebuilding it on
+     the default branch once they merge is not done yet: run abcd land again.
+     Where a merge queue gates the
      default branch, a branch that shares a commit not on it with another pull
      request queued or armed into it (a branch cut from that one's) is not armed:
      the step stops naming it, since the queue would remove this one; run abcd land
@@ -5657,7 +5715,7 @@ renders bare and carries "source": "bundled".
 
 A list an override sets replaces the one it would inherit, so an override can
 hold back an entry abcd ships or, in SHELL, one the repository's
-.abcd/guard.json teaches. For the guardrail domains (COMMITTING, LOAD, PII,
+.abcd/guard.json only warns about. For the guardrail domains (COMMITTING, LOAD, PII,
 SHELL), every such recall keyword, alias or rule that an override's list leaves
 out is named on stderr, with the file that set the list, here and on every hook
 prompt. To keep an entry, restate it in the list, or leave the field out to
@@ -5665,12 +5723,18 @@ inherit the list.
 
 SHELL is generated from the shell-hazard registry that "abcd guard" enforces
 in this repository, the bundled entries and the repository's own
-.abcd/guard.json entries alike: one rule per registry entry, naming the
-command, why it is dangerous and what to run instead, recalled by the commands
-the registry names. A rule in the repository's words is marked "(repo)" after
-its entry id. A guard.json the guard refuses is named on stderr and not taught;
-SHELL then teaches the registry the guard enforces in its place. It teaches
-before shell work what the guard refuses at the moment a command runs.
+.abcd/guard.json entries alike, recalled by the commands the registry names.
+Only part of it is sent as shell work starts: a line saying a guard judges each
+command, and the rules of the entries that only warn, since a warned command
+still runs. What it refuses, a delete it cannot prove safe included, is
+explained at the refusal, and this command lists those rules after the rest; --json carries them as
+"checked", with each list's size in "rules_bytes" and "checked_bytes". With the
+guard switched off, every rule is steering, more than one turn holds, so a line
+saying the guard is off is sent and this command lists the rest. A rule in the
+repository's words is marked "(repo)" after its entry id. A guard.json the guard
+refuses is named on stderr and left out; SHELL then lists the registry the guard
+enforces in its place. A new rule a machine can catch in a shell command goes in
+.abcd/guard.json, and any other in .abcd/rules.json.
 
 GRILL is generated from the asking rules every abcd interview follows, every
 limit they state (the header chip's width, the options per question, the words
@@ -5685,14 +5749,21 @@ session: each rule domain it matches, with the recall words that hit, and
 each memory note it recalls from ~/.abcd.noindex/memory.json and .abcd/memory.json,
 and each memory page from .abcd/memory/ and ~/.abcd.noindex/memory/, with its
 layer and the recall words that hit. Each comes back in the form the
-context bracket gives it — a domain in full or as its heading and first
-rule, a note or page in full or as one line — or as not fitting the
-per-turn budget, or as larger than the whole budget, which no turn can
-carry in full. Notes and pages share one ranked order, a BM25F relevance
+context bracket and the per-turn budget give it — a domain in full, as its
+heading and first rule, or as its heading and the command that renders it,
+a note or page in full or as one line — or as not fitting the per-turn
+budget, or as too long for any turn even as one line. The budget sits just under
+what the host keeps of one hook's output, so a domain that does not fit is sent
+short and never cut, and the away block the hook reads first takes its share
+of it here too. The status block it also reads first is not counted, since
+reading it would write this checkout's status state. Notes and pages share one ranked order, a BM25F relevance
 score that decides which of them fit the budget: each shows its rank and
 score and, under it, every matched term with the fields it was found in
 (recall words, title, body) and what it added to the score. It reads
-against an empty ledger and writes nothing.
+against an empty ledger and writes nothing. On a drive's stage it reads the
+rules as the lane's base commit holds them and recalls no notes or pages, as
+the hook does there, and says so: the JSON form's stage is true there, so its
+empty notes and pages read apart from a prompt that matched none.
 
 --fill <percent-used>, with --prompt, sets how full the context window is,
 and so the bracket shown; without it the diagnostic has no session, so the
@@ -5700,7 +5771,8 @@ fill is unknown and it renders the unknown-fill form. The brackets, read as
 the share of the window still free, are the loader's one table:
 
 - fresh (70% or more of the window free): Rules in full; notes and pages in
-  full, in ranked order, within the per-turn budget.
+  full, in ranked order, within the per-turn budget, and one line each
+  within 2 KiB for those that do not fit.
 - moderate (40% to 70% of the window free): Each rule domain as its heading
   and first rule, with a line naming the command that renders the rest; the
   top-ranked notes and pages in full within 8 KiB, the rest as one line

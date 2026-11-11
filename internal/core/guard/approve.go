@@ -585,13 +585,14 @@ func criticalTarget(op string, globbed bool, st *shellState, f approveFacts, cri
 	dir, home := f.dir, f.home
 	p := op
 	switch {
-	case p == "~" || strings.HasPrefix(p, "~/"):
-		if home == "" {
+	case strings.HasPrefix(p, "~"):
+		// A tilde for the account's own home is expanded; one for another
+		// account (~user), or with the home unknown, may be any path.
+		e, ok := fsutil.TildeHome(p, home)
+		if !ok {
 			return true, false
 		}
-		p = home + strings.TrimPrefix(p, "~")
-	case strings.HasPrefix(p, "~"):
-		return true, false
+		p = e
 	case !filepath.IsAbs(p):
 		if st == nil || !st.dirOK || st.dir == "" {
 			return false, true

@@ -15,7 +15,7 @@ production_mode: hand-written
 
 ## Press Release
 
-> An abcd run works out how many sub-agents it may keep alive from the models they run on. The repository's own config sets the budget, eight of the middle model class by default as abcd ships it, and each class above or below it counts double or half: four of the top class, sixteen of the class below, thirty-two of the smallest, and classes mix by share, so four of the top class and eight of the middle use the whole budget. The class names are vendor-neutral, with each vendor's models mapped onto them; Anthropic's are Fable, Opus, Sonnet and Haiku.
+> An abcd run works out how many sub-agents it may keep alive from the models they run on. The repository's own config sets the budget, eight of the `top` model class by default as abcd ships it, and each class above or below it counts double or half: four of the `research` class, sixteen of the `default` class, thirty-two of the `small` class, and classes mix by share, so four of the `research` class and eight of the `top` class use the whole budget. The class names are vendor-neutral, with each vendor's models mapped onto them; Anthropic's are Fable, Opus, Sonnet and Haiku. (Amended 2026-11-10 by itd-2611101419006280: the classes were renamed for what each is for, so the old `top`, `middle`, `below` and `smallest` are now `research`, `top`, `default` and `small`.)
 
 ## Why This Matters
 
@@ -41,9 +41,9 @@ the [autonomous-loops SOTA note](../../research/notes/2026-10-23-autonomous-loop
 - **The vendor limits by model class, and the API's buckets are not shared
   weights.** API rate limits are set "for each model class" and "Each row in
   the following tables has its own RPM, ITPM, and OTPM limits": the classes
-  are separate token buckets, so running a top-class agent consumes none of
+  are separate token buckets, so running a `research`-class agent consumes none of
   another class's capacity, and no cross-class weight follows from the
-  bucket sizes. Those sizes also vary by tier: the top class's input and
+  bucket sizes. Those sizes also vary by tier: the `research` class's input and
   output buckets are a quarter of the others' at Start, about 0.3 at Build
   and 0.4 at Scale, with the three lower classes identical at every tier,
   and a bucket measures throughput, not price or sub-agent weight (Claude
@@ -67,12 +67,12 @@ the [autonomous-loops SOTA note](../../research/notes/2026-10-23-autonomous-loop
 - **Weighted slot pools** (Airflow pools, the make jobserver) and sizing from
   rate-limit headers are in the 2026-10-17 note.
 
-**Path 2**: a weighted slot pool, budget in middle-class units and a weight per
+**Path 2**: a weighted slot pool, budget in `top`-class units and a weight per
 class, mixed by share as ruled, with the double-per-class ladder as the bundled
 default in a table the repository may override, since no vendor publishes a
 shared-pool ratio (the API's per-class buckets are separate and tier-dependent,
 and the subscription ordering is "several times" with no number); an agent at
-`host-decides` counts at the top class until the host reports what ran, then is
+`host-decides` counts at the `research` class until the host reports what ran, then is
 re-counted from `modelUsage`; the pool sits beside the pacing ceiling with the
 lower winning, and the host's concurrent-sub-agent cap is a third ceiling. The
 glossary word is "slots", keeping "budget" for the pacing lane's quota check.
@@ -86,13 +86,14 @@ independent fit-challenge runs at plan time.
 - Does the budget replace the pacing intent's `pace.sub_agents` ceiling (itd-2609201925079472, two by default), or sit beside it with the lower of the two winning?
 - Does the machine's own config (`~/.abcd.noindex/config.json`), which the pace settings already read between the repository's and the bundled layer, apply here too, or only the repository's config over abcd's default?
 - What is this called? The rebuilt pacing lane adds a budget check that compares an estimate of agent runs with a runner's reported quota (abcd-a5, 2026-10-10), so calling this a sub-agent "budget" would give one word two meanings; the glossary entry is settled at planning.
-- (SOTA 2026-10-23) Whether the class weights are a table the repository may override (with the ruled double-per-class ladder as the bundled default), given that no vendor publishes a shared-pool ratio: the API's classes are separate buckets whose sizes vary by tier (the top class a quarter, 0.3 or 0.4 of the others), and the subscription ordering is "several times" with no number.
-- (SOTA 2026-10-23) Whether an agent at `host-decides` is counted at the top class until the host's result names the model that ran, and re-counted then.
+- (SOTA 2026-10-23) Whether the class weights are a table the repository may override (with the ruled double-per-class ladder as the bundled default), given that no vendor publishes a shared-pool ratio: the API's classes are separate buckets whose sizes vary by tier (the `research` class a quarter, 0.3 or 0.4 of the others), and the subscription ordering is "several times" with no number.
+- (SOTA 2026-10-23) Whether an agent at `host-decides` is counted at the `research` class until the host's result names the model that ran, and re-counted then.
 
 ## Decisions
 
 - 2026-10-10: the product thinker filed this as one intent ("File as proposed"), after the facilitator pointed out that their rough rule, "times 2 minus 1", gives 15 of the class below eight but 4.5, not 3, of the class above. Asked whose sub-agents the budget covers, they chose "Each abcd run": only the agents a build or a drain starts count, not a session's hand-started agents or another session's. Asked how the classes trade, they chose "Double per class": each class up counts double and each class down half, four, eight, sixteen and thirty-two from the top, mixed by share. They added that the setting is the repository's, with abcd's bundled default, and is never kept in an agent's memory or anywhere like it.
 - 2026-10-22: the product thinker reversed the answer "Each abcd run" above: the budget is one pool shared across sessions, and one busy session can slow the others (dcn-2610222025116937, a typed reversal recorded on the coordination intent itd-2610170634394993, which also reverses dcn-2610180720379757). The class weights and the repository's setting stand.
+- 2026-11-10: itd-2611101419006280 renamed the model classes, so the dated entries above keep the words used at the time: their top, middle, below and smallest are now `research`, `top`, `default` and `small`, and the bundled unit of eight is the `top` class. (Amended 2026-11-10 by itd-2611101419006280.)
 
 ## Audit Notes
 

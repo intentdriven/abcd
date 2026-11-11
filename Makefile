@@ -179,9 +179,11 @@ check-attribution:
 # preflight prerequisites so a finding stops the run before its build and test
 # stages: gitleaks over the branch's own commits (origin's default
 # branch..HEAD) and govulncheck over the module, each at the version ci.yml pins,
-# read from ci.yml. A scan that cannot run here (no gitleaks on PATH, or no
-# network for govulncheck's database) is skipped loudly, never passed in
-# silence, and CI's scan still runs. A govulncheck finding on a branch that
+# read from ci.yml. A gitleaks on PATH at another version, or none, is replaced
+# by CI's release, sha256-checked against scripts/gitleaks-checksums.txt, and
+# the scan refuses when that cannot be fetched or verified
+# (iss-2611081341084748). A govulncheck with no network for its database is
+# skipped loudly, never passed in silence, and CI's scan still runs. A govulncheck finding on a branch that
 # changes neither go.mod nor go.sum, when the fork point's own tree reports
 # every vulnerability it names, was not brought in by the branch
 # (iss-2610261151481013, iss-2610262259078996), and govulncheck is not a

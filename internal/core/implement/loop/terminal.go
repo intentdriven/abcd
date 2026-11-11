@@ -275,6 +275,9 @@ type terminal struct {
 	// lane's base as the run first read it.
 	minted map[string]bool
 	bases  map[string]string
+	// stuckGiven is the run whose lane the drive last gave back to the next move as
+	// stuck (stuckBack), "" once a lane it steps is not stuck.
+	stuckGiven string
 }
 
 // launchBlame is what one failed launch said of its work.
@@ -628,6 +631,22 @@ func (t *terminal) failed(ctx context.Context, judge bool, what string) bool {
 func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 	t.ctx = ctx
 	t.joinSharedRun()
+	// origin's identity and the checkout's hooks directory are read once,
+	// before the drive's first move, and held here for the lanes it opens
+	// (remoteid.go, with its limits): a lane's agent can rewrite the
+	// checkout's settings and hooks, and each lane's run records its own
+	// afresh. A restarted drive reads them afresh. The drive refuses to
+	// start when the settings cannot be listed, the repository's own
+	// settings cannot be read or the common git directory cannot be
+	// resolved (readRemoteIdentity); an unreadable hooks directory is held
+	// as such and does not stop it.
+	id, err := readRemoteIdentity(t.repoRoot)
+	if err != nil {
+		t.leaveSharedRun()
+		return TerminalResult{}, refuse(StageDrain, "", "", "the drive cannot start: "+err.Error(),
+			"settle what git reports for the repository's own settings (`git config --local --list --show-origin`) and for the settings the drive holds (`git config --list --show-origin`), then start the drive again")
+	}
+	t.o.Options.remote = id
 	if t.o.Resumed {
 		t.reportHeldBack()
 	}
@@ -967,6 +986,9 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 		if outcome, _, _ := laneOutcome(run); outcome != DrainLaneInProgress {
 			return "", nil
 		}
+		if back, ended := t.stuckBack(ctx, runID, run); back {
+			return ended, nil
+		}
 		if i := run.current(); i >= 0 {
 			lane := run.Lanes[i]
 			key := runID + " " + lane.ID
@@ -1062,6 +1084,39 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 			}
 		}
 	}
+}
+
+// stuckBack reports whether the lane in progress of run is stuck by the drain's
+// stuck bounds (stuck.go), so the drive gives it back to the next move, which hands
+// it back and takes up the next issue, rather than wait on it here; and why the run
+// ends, "" to go on. A drive holding the lane was the one place the drain's stuck
+// check did not reach (iss-2611071242184002). Bounds that cannot be read give it
+// back too: the move reads them again and refuses in its own frame. The same run
+// given back again with no other lane stepped between, the move having not handed
+// it back, first waits at the floor, as an idle drive does, so the drive and the
+// move never turn between them with no wait.
+func (t *terminal) stuckBack(ctx context.Context, runID string, run State) (bool, string) {
+	why := ""
+	b, err := resolveStuckBounds(t.o.Options.roots(t.repoRoot))
+	switch {
+	case err != nil:
+		why = refusalReason(err)
+	default:
+		why = stuckReason(run, b)
+	}
+	if why == "" {
+		t.stuckGiven = ""
+		return false, ""
+	}
+	if t.stuckGiven == runID {
+		if t.idle(ctx, TerminalWaitFloor, runID+" is stuck and the last move did not hand it back: "+why) {
+			return true, TerminalWaited
+		}
+		return true, ""
+	}
+	t.stuckGiven = runID
+	t.say("%s is stuck, so the next move hands it back: %s", runID, why)
+	return true, ""
 }
 
 // moved ends the counts a wait keeps: the outage's and the limit's. It is the moment
@@ -2359,6 +2414,13 @@ func CapDrainInProgress(repoRoot string, lanes int) error {
 		st.Max = len(st.Lanes) + lanes
 		return writeDrain(repoRoot, st)
 	})
+}
+
+// ReviewSetFor is the review set a run started now would run on, as a drive's
+// start names it before it asks (itd-2611101419006280 decision 8).
+func ReviewSetFor(o Options, repoRoot string) (ReviewSet, error) {
+	review, _, err := resolveReviewSet(o.roots(repoRoot), o)
+	return review, err
 }
 
 // EstimateRuns is the agent runs a drive of lanes lanes may start, by the

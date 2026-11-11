@@ -70,8 +70,9 @@ const (
 
 // loadKeys are every key the machine configuration's `load` object takes, each
 // claimed by every reader of it, so a key under `load` that nothing reads is
-// still named and none of these is.
-var loadKeys = []string{"preflights", "narrow_runs", "memory_floor_macos", "memory_floor_linux"}
+// still named and none of these is. The list is shared with the Go build
+// cache's trim, which reads go_cache_limit_gib (machineload.LoadConfigKeys).
+var loadKeys = machineload.LoadConfigKeys
 
 // WaitOnMemory: the system reports memory pressure at or above the floor, or,
 // after pressure was last seen, another waiter opened within the settle.

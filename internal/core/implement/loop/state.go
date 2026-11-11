@@ -293,22 +293,52 @@ const lockFileName = ".lock"
 // that write version 22 refuse a version-23 file as a newer abcd's before any strict
 // decode.
 //
-// Version 24 added the run's `admitted` (itd-2610301850454860): the rule its
+// Version 24 kept each reviewer's located findings (itd-2610240922461281,
+// spc-2610240951109420 step 4): a validator's `located` count and its
+// `findings`, each a file and line with the fix report's `status` and the
+// reviewers of the round citing it (`cited_by`). Version 23 is its strict
+// subset, read as a run whose verdicts were recorded with no findings read; a
+// file of version 23 or lower carrying them is not one its version wrote, and
+// is refused naming them. Releases that write version 23 refuse a version-24
+// file as a newer abcd's before any strict decode.
+//
+// Version 25 renamed the model classes for what each is for
+// (itd-2611101419006280, spc-2611101423523725): a stored class label is one of
+// research, top, default and small, where version 24 and earlier stored top,
+// middle, below and smallest for the same classes; and a stored judge carries
+// its `status`, waiting or active, fixed when the run started. A file of
+// version 24 or lower is migrated on read: each label takes its new name
+// (renamedClasses), each reviewer keeps the model it was resolved to, and a
+// stored judge, which those versions kept only once its calibration had
+// cleared, is active. Such a file carrying a label outside the four old names,
+// or a judge's status, is not one its version wrote, and is refused. Releases
+// that write version 24 refuse a version-25 file as a newer abcd's before any
+// strict decode.
+//
+// Version 26 added the run's `admitted` (itd-2610301850454860): the rule its
 // lanes were admitted under, which each records commit carries as its
-// `Admitted-by:` trailer. Version 23 is its strict subset, read as a run that
+// `Admitted-by:` trailer. Version 25 is its strict subset, read as a run that
 // recorded no admission, whose records step is refused naming the field; a file
-// of version 23 or lower carrying one is not one its version wrote, and is
-// refused naming it. Releases that write version 23 refuse a version-24 file as
+// of version 25 or lower carrying one is not one its version wrote, and is
+// refused naming it. Releases that write version 25 refuse a version-26 file as
 // a newer abcd's before any strict decode.
 //
 // A version raises when the abcd driving the run writes it. A lane's own abcd
 // may be a version ahead of its driver, and what it saves leaves the version
 // where it was (mutateReservation, iss-2611020719494343).
-const SchemaVersion = 24
+const SchemaVersion = 26
 
 // schemaVersionUnadmitted is the last version before a run kept the rule its lanes
 // were admitted under: read, never written.
-const schemaVersionUnadmitted = 23
+const schemaVersionUnadmitted = 25
+
+// schemaVersionUnrenamed is the last version before the classes took their new
+// names and a judge its status: read and migrated, never written.
+const schemaVersionUnrenamed = 24
+
+// schemaVersionUnlocated is the last version before a reviewer's located
+// findings: read, never written.
+const schemaVersionUnlocated = 23
 
 // schemaVersionUnsettled is the last version before a landing kept that it took a
 // change to the lane's spec: read, never written.
@@ -406,9 +436,17 @@ const (
 	filePerm fs.FileMode = 0o600
 )
 
-// maxStateBytes caps a state file read. A run's record grows by one entry per
-// stage; a file past this is not one the loop wrote.
+// maxStateBytes caps a state file, read and written. A run's record grows by
+// one entry per stage, and a reviewer's located findings, which grow with its
+// return, are kept on each lane's latest round only and dropped from a state
+// that would pass stateRoomBytes (stateData); writeState and a reservation
+// save write no file past this, so a file past it is not one the loop wrote.
 const maxStateBytes = 4 << 20
+
+// stateRoomBytes is the size past which writeState drops located findings,
+// below maxStateBytes by the room a reservation save, which grows the record
+// without writeState, takes between two writes.
+const stateRoomBytes = maxStateBytes - 256<<10
 
 // lockTimeout bounds how long a mutation waits for another invocation's
 // mutation to finish before it reports contention. It is a variable so a test
@@ -529,6 +567,12 @@ type State struct {
 	// (itd-2609091034175565): the reservation `implement step` renews, fences
 	// and tombstones. Nil for a run that holds none.
 	ReservedAt *time.Time `json:"reserved_at,omitempty"`
+	// Trial is set on a run started in the loop's trial mode (trial.go): a
+	// model-matrix copy, which holds no reservation and lands nothing.
+	Trial bool `json:"trial,omitempty"`
+	// Frozen is a trial's frozen commit (Options.Frozen), which its lanes are
+	// cut from; "" on every other run.
+	Frozen string `json:"frozen,omitempty"`
 }
 
 // Transcript is one transcript the run record captured into the history store.
@@ -785,6 +829,11 @@ type ValidatorRun struct {
 	// intent-auditor, which keeps its single run.
 	Class string `json:"class,omitempty"`
 	Model string `json:"model,omitempty"`
+	// Effort is the class's effort the reviewer was asked to run at
+	// (itd-2611101419006280): handed to a runner that can pass it, asked of
+	// the host, and never confirmed. Empty wherever Class is, and for a run
+	// started before efforts.
+	Effort string `json:"effort,omitempty"`
 	// ModelStatus says how far Model is known to be the model that ran, once
 	// the verdict is recorded: ModelReported when the runner that ran the
 	// reviewer reported a model (Route.Model, beside it), ModelAsked when
@@ -794,6 +843,14 @@ type ValidatorRun struct {
 	// model, so Model was never asked of what ran. Empty while the reviewer
 	// is out and wherever Model is.
 	ModelStatus string `json:"model_status,omitempty"`
+	// Located is how many located findings (findings.go) the loop read from a
+	// reviewer's return when it recorded the verdict, 0 included, and
+	// Findings the first maxLocatedFindings of them, kept on the lane's
+	// latest round only and dropped from it too when the state would outgrow
+	// its read (stateData); both absent on the intent-auditor, while the
+	// reviewer is out, and on a verdict recorded before version 24.
+	Located  *int      `json:"located,omitempty"`
+	Findings []Finding `json:"findings,omitempty"`
 }
 
 // The statuses of a reviewer's model.
@@ -878,6 +935,10 @@ type Await struct {
 	Reviewer *int   `json:"reviewer,omitempty"`
 	Class    string `json:"class,omitempty"`
 	Model    string `json:"model,omitempty"`
+	// Effort is the class's effort the reviewer is asked to run at, which a
+	// runner that can pass it is handed and a host is asked for; empty for
+	// every other await and for a run started before efforts.
+	Effort string `json:"effort,omitempty"`
 }
 
 // RouteAnswer is the answer a reviewer route placed at an await's return path:
@@ -1369,13 +1430,29 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnsettled && st.settledSpec() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.settledSpec(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion <= schemaVersionUnlocated && st.located() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.located(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion <= schemaVersionUnrenamed && st.renamed() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.renamed(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnadmitted && st.Admitted != nil:
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries an admission, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnadmitted:
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnrenamed:
 		// Read as the current version, its stages already carried over by
-		// decodeState when it named them `step`; the next write carries it, and
-		// this read writes nothing.
+		// decodeState when it named them `step` and its class labels renamed
+		// here; the next write carries it, and this read writes nothing.
+		if !st.renameClasses() {
+			return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a class label other than top, middle, below and smallest, "+
+				"the names version %d wrote (the value is not repeated here)", rel, st.SchemaVersion, st.SchemaVersion),
+				"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+		}
+		st.SchemaVersion = SchemaVersion
+	case st.SchemaVersion == schemaVersionUnadmitted:
+		// Read as the current version with no admission, its class labels
+		// already the names it wrote; the next write carries it, and this read
+		// writes nothing.
 		st.SchemaVersion = SchemaVersion
 	case st.SchemaVersion != SchemaVersion:
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d to %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),
@@ -1425,6 +1502,14 @@ func readListedState(root *os.Root, runID string) (State, error) {
 		return State{}, refuse("state", "", "", rel+" carries a reviewer the loop never writes: an index past its role's reviewers, "+
 			"a class or model other than the one the run's review set names for that reviewer, "+
 			"or a model status other than asked, reported, or unsent on a review the reviewer route answered",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	// A reviewer's located findings are the ones the loop reads from its
+	// return: a plain repository path and a line each, so a hand edit never
+	// reaches a --json stream with text the loop did not read as a location.
+	if !st.findingsWritten() {
+		return State{}, refuse("state", "", "", rel+" carries located findings the loop never writes: on a validator with no recorded reviewer verdict, "+
+			"more or fewer than its count, a file that is no plain repository path, a status where no fix report answered it, or reviewers citing it other than the round's",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	if !st.handBacksWritten() {
@@ -1594,18 +1679,49 @@ func serialCarries(st State, version int) error {
 // never half of either. The caller holds the lock.
 //
 // The repository and tool text the state carries is stored masked
-// (State.masked, iss-2610121542240257).
+// (State.masked, iss-2610121542240257), and no larger than its read accepts
+// (stateData).
 func writeState(root *os.Root, st State) error {
-	data, err := json.MarshalIndent(st.masked(), "", "  ")
+	data, err := stateData(st)
 	if err != nil {
 		return err
 	}
-	data = append(data, '\n')
 	rel := StateRelPath(st.RunID)
 	if err := fsutil.WriteFileAtomicInRoot(root, rel, data, filePerm); err != nil {
 		return fmt.Errorf("writing %s: %w", rel, err)
 	}
 	return nil
+}
+
+// stateData is the file writeState stores for st: masked, with located
+// findings kept on each lane's latest round only (keepLatestFindings) and
+// dropped a round at a time, the oldest first, their counts kept, while the
+// file would pass stateRoomBytes (trimOldestFindings). A state still past
+// maxStateBytes is refused, so nothing is written and the file already there
+// stands: the loop never writes a state its own read refuses.
+func stateData(st State) ([]byte, error) {
+	m := st.masked()
+	m.keepLatestFindings()
+	for {
+		data, err := json.MarshalIndent(m, "", "  ")
+		if err != nil {
+			return nil, err
+		}
+		data = append(data, '\n')
+		if len(data) <= stateRoomBytes || !m.trimOldestFindings() {
+			return data, stateFits(st.RunID, data)
+		}
+	}
+}
+
+// stateFits refuses a state file past maxStateBytes, the most its read
+// accepts.
+func stateFits(runID string, data []byte) error {
+	if len(data) <= maxStateBytes {
+		return nil
+	}
+	return refuse("state", "", "", fmt.Sprintf("%s would be %d bytes with no located finding left to drop, past the %d its read accepts; nothing was written, and the file already there stands",
+		StateRelPath(runID), len(data), maxStateBytes), "this is a fault in abcd, so report it")
 }
 
 // runIDs lists the run directories under the run tier, in name order: mint

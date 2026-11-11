@@ -145,6 +145,20 @@ func splitRecord(t *testing.T, dir, id string) {
 	}
 }
 
+// TestASplitBranchCheckedOutNowhereRefusesNoMove is iss-2611090125008163: a
+// branch no worktree has checked out holds nothing, so its split ledger stops
+// no drain.
+func TestASplitBranchCheckedOutNowhereRefusesNoMove(t *testing.T) {
+	repo, _ := reservingDrainRepo(t, "commands/drain.md")
+	repo.Git("checkout", "-q", "-b", "backup/split")
+	splitRecord(t, repo.Root(), eligibleIssue)
+	repo.Commit("split the record")
+	repo.Git("checkout", "-q", "main")
+	if err := unreadablePeers(repo.Root()); err != nil {
+		t.Fatalf("a split branch checked out nowhere refuses the move: %v", err)
+	}
+}
+
 // TestASplitLedgerPeerIsToldToSettleItsLedger: a worktree or a branch whose
 // ledger holds one id in two folders is told the reason's own advice, to move
 // or remove one of each, and never to repair or remove the peer.
@@ -163,6 +177,7 @@ func TestASplitLedgerPeerIsToldToSettleItsLedger(t *testing.T) {
 				splitRecord(t, repo.Root(), eligibleIssue)
 				repo.Commit("split the record")
 				repo.Git("checkout", "-q", "main")
+				leftByGoneWorktree(t, repo, "lane-split")
 			}
 			_, err := Drain(repo.Root(), Options{}, DrainOptions{})
 			r := mustRefusal(t, err)

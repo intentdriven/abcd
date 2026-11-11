@@ -105,7 +105,8 @@
 // host's cap) and the session's SessionState. A wake qualifies
 // (qualifyingWake) when a session cron's latest fire time (latestFire: its
 // next match, by abcd's own five-field cron parser, parseCron, plus the
-// host's lateness) is no later than wakeDeadline. The session's state lives in
+// host's lateness) is no later than wakeDeadline, which is never sooner than
+// now plus MinWakeLead. The session's state lives in
 // the copy's local tier (SessionsDir, LoadSession, SaveSession), keyed by a
 // session id ValidSessionID accepts. The session-start hook notes each
 // session's start copy in the store (Store.NoteSessionCopy); ResolveCopy
@@ -119,7 +120,9 @@
 // only when no branch of that name exists yet, a BranchCheckedOut one (`git
 // worktree add <path> [<branch>]`) when it is a branch no worktree has
 // checked out (git refuses that command, which runs after the recorder) or
-// names nothing git resolves, and a BranchMoved rename carrying a record by whole name. The list
+// names nothing git resolves, and a BranchMoved rename carrying a record by
+// whole name, its creator with it. Each name added keeps the session that
+// created it (Options.SessionID), when the hook had one. The list
 // is createdFile(copyKey) in the away store, keyed on the working copy's
 // reservation copy key (claim.CopyKey), written under the store's lock
 // (Store.RecordBranches) and capped at MaxCreatedBranches, the oldest
@@ -145,6 +148,22 @@
 // default branch, naming the fetch, and no reservation is reported uncarried
 // (adr-2610181003541997).
 //
+// A pull request into the default branch that is BEHIND, and not a draft, is
+// judged by the merge queue where one guards that branch
+// (iss-2610311339274372, dcn-2611081501502395): the queue tests every entry
+// against the latest base, so merging the base in would only move the head
+// and void its receipts. The forge's live rules for the branch are read once
+// (`gh api repos/{owner}/{repo}/rules/branches/<branch>`, never the in-tree
+// mirror under .abcd/work/rulesets/), and where they declare a merge queue a
+// pull request armed, or already queued (claim.ArmedPullRequestsQuery, read
+// once and only for one the listing shows unarmed), is not owed; one nobody
+// armed is owed with "arm it" as its next move. Each read runs under
+// RulesetDeadline (three seconds, o.RulesetDeadline in a test); one that
+// fails, is late or cannot be read whole is a note, and the pull request is
+// owed its merge as before, unless the check's own deadline ended it: then
+// it owes nothing on that account and the reading is marked cut short. A
+// conflict (DIRTY), failing checks and a stacked base are owed as they were.
+//
 // A branch is the session's own when this copy's HEAD reflog has checked it
 // out or the copy's created-branch list holds it, either only while it holds
 // a commit of this checkout's author email made within StaleWindow (14 days)
@@ -156,6 +175,26 @@
 // request carries a reservation's work when the record id is in its head
 // branch's name or on a Resolves: or Delivers: line of its body, on word
 // boundaries; a Refs: line carries it only for a head already own.
+//
+// Several sessions can work from one copy, or from the worktrees beside it.
+// With o.SessionID set, what another live session holds is left out of the
+// owed work and named once in a note, holder by holder (holders.go): the
+// lanes of a run whose control record names that session as its driver, a
+// branch the guard recorded it creating (CreatedBranch.Session, which
+// RecordCreated keeps from Options.SessionID), a branch checked out in the
+// worktree it started in (its occupancy marker), and a reservation only its
+// runs are for. The session's own evidence wins over another's: a branch it
+// recorded creating, or a lane of a run it drives, stays its own. An item
+// whose holder cannot be told stays owed: a record with no session kept, a
+// lane of a run no session drives (unless a live session started in the
+// worktree it is checked out in), a reservation made by hand, a holder that
+// has ended (its work returns to the sessions left), and every item when the
+// session has no id or the live sessions (ReadOptions.LiveSessions,
+// occupancy.Live by default) cannot be read. A branch created again under a
+// name the guard recorded is its new creator's. A branch a peer holds still
+// serves as the base of the session's own branch stacked on it. Whenever owed
+// work remains, a copy another live session started in is named, once, as a
+// breach of one session per checkout.
 //
 // A stacked branch (its pull request's base is not the default branch, or,
 // with none, its nearest own ancestor branch is not in the default branch) is
@@ -174,15 +213,35 @@
 // error is a root that is not a working copy; anything else ReadOwed could
 // not read is a note in Owed.Notes.
 //
-// Every git call ReadOwed makes is bound to ctx, and the stack-base search
-// reads each own branch's reflog once a check and walks each branch's own
-// history once, so its cost grows with the branches, not their pairs. A
-// context that ends before everything is read stops the reading where it
-// is: Owed.Incomplete is set, a note says what was not read, and Judge
-// allows the stop with a line naming it, recording a StopCheckIncomplete
-// while away. A branch with no upstream and no commit in any remote branch
-// is owed only when merging it into the last-fetched default branch would
-// change it; one squash- or rebase-merged already is not, and one that
-// cannot be told is a note. A listing at its limit of 200 may be truncated:
-// a note says so, and no reservation is reported uncarried from it.
+// These reads of ReadOwed are bound to ctx: finding the checkout, the
+// author's identity and the reservations' holder, the default branch and
+// the local branches, the fetch stamp, the receipt folder and the landing
+// receipt, the runs' tracked check, the created-branch list's store key and
+// this copy's key, the other worktrees, each branch's own history, reflog,
+// ancestry and landing, the reservations as last fetched (claim.ViewContext),
+// the forge reads and the live sessions' wait. The stack-base search reads
+// each own branch's reflog once a check and walks each branch's own history
+// once, so its cost grows with the branches, not their pairs. A context
+// that ends before everything is read stops the reading where it is:
+// Owed.Incomplete is set, a note says what was not read, and Judge allows
+// the stop with a line naming it, recording a StopCheckIncomplete while
+// away. These reads mark the reading cut short, which sets Owed.Incomplete,
+// when the context ended them: the author's identity, the holder, the
+// default branch, the receipt folder, the landing receipt, the runs' tracked
+// check, this copy's key and the created-branch list's store, the other
+// worktrees, the fetch stamp, the stack index, the reservations as last
+// fetched, the live sessions' wait, the merge queue's rules and its armed
+// set, and each call made through `r.git`. A reservations read the context
+// ended uses none of what it read: no reservation reads as live from it, and
+// none counts as this copy's. The pull-request listing and the landing
+// check's merge-driver, merge-tree and cherry reads are marked when the
+// reading runs out. Four of the reads owe nothing on their own account once
+// the context has ended: no preflight for a receipt it could not read, no
+// merge for an ancestry it could not ask, and no merge or arming for a merge
+// queue's rules or armed set it could not read. A branch with no upstream
+// and no commit in any remote branch is owed only when merging it into the
+// last-fetched default branch would change it; one squash- or rebase-merged
+// already is not, and one that cannot be told is a note. A listing at its
+// limit of 200 may be truncated: a note says so, and no reservation is
+// reported uncarried from it.
 package autonomy

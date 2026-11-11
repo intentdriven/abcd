@@ -92,6 +92,55 @@ func TestAStateFileGitCannotAnswerForIsRefused(t *testing.T) {
 	}
 }
 
+// TestAStateFileGitRefusesOverItsOwnerIsRefused: a repository git will not
+// answer for is never read as nothing tracked, so a file a commit carries is
+// not taken for this checkout's own.
+func TestAStateFileGitRefusesOverItsOwnerIsRefused(t *testing.T) {
+	dir := checkout(t)
+	t.Setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
+	err := localtier.Untracked(dir, ".abcd/.work.local/run/drain.json")
+	var r *localtier.Refused
+	if !errors.As(err, &r) || r.Cause == nil || r.Paths != nil || !strings.Contains(r.Reason(), "could not ask git") {
+		t.Fatalf("Untracked in a repository git refuses = %v; want a refusal saying git could not answer", err)
+	}
+}
+
+// TestAStateFileOutsideAnyRepositoryIsRead: no commit can carry a file where
+// there is no repository, so a directory git has never seen refuses nothing.
+func TestAStateFileOutsideAnyRepositoryIsRead(t *testing.T) {
+	if err := localtier.Untracked(t.TempDir(), ".abcd/.work.local/run/drain.json"); err != nil {
+		t.Fatalf("Untracked outside a repository = %v; want nil", err)
+	}
+}
+
+// TestAStateFileInALinkedWorktreeIsJudgedByThatTree: a linked worktree answers
+// for its own index: what a commit on its branch carries is refused there and
+// not in the checkout it was added from, and its own file reads.
+func TestAStateFileInALinkedWorktreeIsJudgedByThatTree(t *testing.T) {
+	main := checkout(t)
+	linked := filepath.Join(t.TempDir(), "linked")
+	git(t, main, "worktree", "add", "-q", "-b", "lane", linked)
+	const rel = ".abcd/.work.local/run/carried.json"
+	if err := os.MkdirAll(filepath.Join(linked, filepath.Dir(rel)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(linked, rel), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := localtier.Untracked(linked, rel); err != nil {
+		t.Fatalf("before a commit carries it, Untracked = %v; want nil", err)
+	}
+	git(t, linked, "add", "-f", rel)
+	git(t, linked, "commit", "-q", "-m", "carry it")
+	var r *localtier.Refused
+	if err := localtier.Untracked(linked, rel); !errors.As(err, &r) || !slices.Contains(r.Paths, rel) {
+		t.Fatalf("once a commit carries it, Untracked = %v; want a refusal naming %s", err, rel)
+	}
+	if err := localtier.Untracked(main, rel); err != nil {
+		t.Fatalf("in the checkout the commit has not reached, Untracked = %v; want nil", err)
+	}
+}
+
 // TestAReaderHoldingARootOnTheTierIsGuardedToo: a reader with an os.Root
 // opened on a directory inside the tier, its path relative to that root, reads
 // what this checkout wrote and is refused what a commit carries, by a refusal

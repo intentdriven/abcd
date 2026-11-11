@@ -7,33 +7,33 @@ import (
 	"github.com/intentdriven/abcd/internal/core/guard"
 )
 
-// ShellDomain is the bundled domain that carries itd-103's teaching plane
-// (spc-16, "Two planes, one registry"; iss-151, ruling J10): the shell-hazard
-// registry's lessons, injected before shell-heavy work so an agent is taught
-// the safe form up front. A host without hook support gets this plane alone; a
-// host with hooks gets it and the guard.
+// ShellDomain is the bundled domain generated from the shell-hazard registry
+// the guard reads (itd-103, as narrowed by itd-2611041636196213). It has two
+// lists. Rules is what is sent as shell work starts: one line saying a guard
+// judges each command, then the lessons of the commands it only warns about,
+// since a warned command still runs. Checked is what the guard carries: the
+// lessons of what it refuses, the delete entries' among them (SplitLessons), which
+// the refusal answers for in the main session and in a sub-agent alike, and
+// `abcd rules SHELL` lists. With the guard switched off nothing refuses, so every
+// lesson stays in Rules, under a first line saying the guard is off.
 //
-// The domain is GENERATED from the bundled registry the guard reads, never
-// written in defaults/rules.json: one rule per registry entry (the entry's
-// Lesson, in id order), then the guard's rule for the scripts it reads
-// (guard.Registry.ScriptLesson) and its rule for a variable-built `-c` script
-// that deletes (guard.Registry.ShellCLesson) and for a delete it cannot prove safe
-// (guard.Registry.DeleteLesson), and one recall term per command head the
-// registry matches. An entry added to or removed from the registry changes the domain
-// with no second edit, and TestShellDomainIsGeneratedFromTheGuardRegistry fails
-// if the two ever part. It is an ordinary bundled domain to every loader
-// contract — per-field user and repo overrides, dormant, the kill switch, the
-// *SHELL star command, dedup and provenance — and a guardrail domain to
-// noteWithheld.
+// The domain is GENERATED, never written in defaults/rules.json: an entry added
+// to or removed from the registry changes the domain with no second edit, and
+// TestEveryLessonIsInExactlyOneList fails if a hazard falls out of both lists.
+// The script reading, a variable-built `-c` script that deletes and a delete
+// the guard cannot prove safe have no entry of their own, so their lessons are
+// the guard's (guard.Registry.ScriptLesson, ShellCLesson, DeleteLesson). One
+// recall term stands for each command head the registry matches. To every
+// loader contract (per-field overrides, dormant, the kill switch, the *SHELL
+// star command, dedup, provenance) it is an ordinary bundled domain, and a
+// guardrail domain to noteWithheld.
 //
 // The bundled defaults carry the domain generated from the bundled registry.
 // Load regenerates it, by the same generator, from the registry the guard
-// enforces in the repository — the bundled entries merged with the
-// repository's own .abcd/guard.json (ruling CK1) — so a repository's own
-// hazards are taught as the bundled ones are, each such lesson marked
-// guard.RepoMark. The switches stay independent (spc-16, "Config home"): the
-// guard file decides what is refused, and rules.json overrides, silences or
-// kills the teaching of it like any bundled domain's.
+// enforces in the repository, the bundled entries merged with the repository's
+// own .abcd/guard.json (ruling CK1), each such lesson marked guard.RepoMark. The
+// switches stay independent (spc-16, "Config home"): the guard file decides what
+// is refused, and rules.json overrides, silences or kills what is sent.
 const ShellDomain = "SHELL"
 
 // shellAliases is the fixed half of the domain's recall: words that name
@@ -45,30 +45,31 @@ const ShellDomain = "SHELL"
 // the domain alone.
 var shellAliases = []string{"bash", "command line", "force push", "shell", "zsh"}
 
-// shellDomain generates the teaching-plane domain from reg, marking every
-// lesson bundled does not teach word for word as the repository's. ok is false
-// when the registry has no entries: a domain with no rules would render as a
-// heading with nothing under it, the shape Validate refuses.
+// shellDomain generates the domain from reg, marking every lesson bundled does
+// not hold word for word as the repository's. ok is false when the registry has
+// no entries: a domain with no rules would render as a heading with nothing
+// under it, the shape Validate refuses.
 func shellDomain(reg, bundled guard.Registry) (Domain, bool) {
-	lessons := reg.LessonsOver(bundled)
-	if len(lessons) == 0 {
+	if len(reg.Entries) == 0 {
 		return Domain{}, false
 	}
-	// The script reading has no registry entry of its own, so its rule is
-	// the guard's, generated beside the reading (guard.ScriptLesson), and so
-	// is the refusal of a variable-built `-c` script that deletes
-	// (guard.ShellCLesson), and the refusal of a delete the guard cannot prove
-	// safe (guard.DeleteLesson).
-	lessons = append(lessons, reg.ScriptLesson(), reg.ShellCLesson(), reg.DeleteLesson())
-	return Domain{
+	warned, refused := reg.SplitLessons(bundled)
+	own := []string{reg.ScriptLesson(), reg.ShellCLesson(), reg.DeleteLesson()}
+	d := Domain{
 		State:   StateActive,
 		Recall:  reg.RecallTerms(),
 		Aliases: append([]string(nil), shellAliases...),
-		Rules:   lessons,
-	}, true
+	}
+	if reg.Disabled {
+		d.Rules = append(append([]string{guard.OffLine}, warned...), own...)
+		return d, true
+	}
+	d.Rules = append([]string{guard.SteeringLine}, warned...)
+	d.Checked = append(refused, own...)
+	return d, true
 }
 
-// withShellDomain adds the generated teaching-plane domain to the parsed
+// withShellDomain adds the generated domain to the parsed
 // bundled defaults. A rules.json that declares the domain by hand is a build
 // error: it would be a second copy of the registry's words, free to drift from
 // the first.

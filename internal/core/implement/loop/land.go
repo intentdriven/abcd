@@ -212,6 +212,10 @@ func admittedTrailers(a Admitted, resolves []Resolution) []string {
 
 // landStage is the land stage's body: it performs the landing's next step.
 func landStage(c Context, lane *Lane) (Outcome, error) {
+	if c.State.Trial {
+		// A trial lands nothing (trial.go), whatever its lane holds.
+		return Outcome{Note: trialLandNote}, nil
+	}
 	if !gitutil.IsFullSHA(lane.BaseSHA) || !gitutil.IsFullSHA(lane.HeadSHA) || lane.Worktree == "" || lane.Branch == "" {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the lane records no branch, worktree, base and head to land",
 			"the earlier stages record them; restore the run's state file")
@@ -2666,7 +2670,10 @@ func fetchRefusal(lane Lane, def string, err error) error {
 // branch -d` does, whether a checkout stands on it: deleting it there would
 // leave that checkout's HEAD naming nothing (the main checkout after a person
 // removed the clean lane worktree and checked the branch out, or a second
-// worktree a person added on it). The landing, the held discard and the
+// worktree a person added on it), or under a rebase or bisect stopped in any
+// worktree, the lane's own included, which git lists detached
+// (gitutil.HeldBranches; a state file it cannot read refuses too, since the
+// branch it names is unknown). The landing, the held discard and the
 // hand-back discard each delete the branch that way, so each asks first; stage
 // names the refusing stage and again what to run once the checkout is moved.
 func branchCheckedOutElsewhere(c Context, lane Lane, stage, again string) error {
@@ -2679,10 +2686,43 @@ func branchCheckedOutElsewhere(c Context, lane Lane, stage, again string) error 
 		if !sameBranchRef(wt.Branch, lane.Branch) || fsutil.RealExistingPath(wt.Path) == own {
 			continue
 		}
-		at := fsutil.RedactHome(wt.Path)
+		at := termsafe.Sanitize(fsutil.RedactHome(wt.Path))
 		return refuse(stage, "", lane.ID,
 			lane.Branch+" is checked out in "+at+", a checkout the loop did not make for this lane, and deleting the branch would leave its HEAD naming nothing",
 			"check out another branch in "+at+" (or remove that worktree), then "+again)
+	}
+	// git lists a worktree whose rebase or bisect stopped as detached, yet
+	// counts the branch it started from, and each branch a rebase's
+	// --update-refs will rewrite, as in use there: deleted under it, the
+	// person's `rebase --continue` cannot write the branch back.
+	common, err := gitutil.CommonDir(c.RepoRoot)
+	if err != nil {
+		return fmt.Errorf("naming the repository's common dir: %w", err)
+	}
+	held := gitutil.HeldBranches(common)
+	if held.Unreadable != "" {
+		at := termsafe.Sanitize(fsutil.RedactHome(held.Unreadable))
+		return refuse(stage, "", lane.ID,
+			"a rebase or bisect state file at "+at+" could not be read, so whether "+lane.Branch+" is checked out under a stopped rebase or bisect is unknown",
+			"finish or abort that rebase or bisect (or remove the file if git did not write it), then "+again)
+	}
+	// Each names the checkout (gitutil.Held.Checkout), never git's admin dir
+	// for it, whose id need not be the checkout's folder name.
+	for b, dir := range held.Branches {
+		if sameBranchRef("refs/heads/"+b, lane.Branch) {
+			at := fsutil.RedactHome(held.Checkout(dir, wts))
+			return refuse(stage, "", lane.ID,
+				lane.Branch+" is checked out in "+at+", where a rebase or bisect stopped on it, and deleting the branch would leave that rebase or bisect unable to write it back",
+				"finish or abort the rebase or bisect in that checkout, then "+again)
+		}
+	}
+	for b, dir := range held.Rewrites {
+		if sameBranchRef("refs/heads/"+b, lane.Branch) {
+			at := fsutil.RedactHome(held.Checkout(dir, wts))
+			return refuse(stage, "", lane.ID,
+				"a rebase stopped in "+at+" will rewrite "+lane.Branch+" (its --update-refs list names the branch), and deleting the branch would leave that rebase unable to write it back",
+				"finish or abort the rebase in that checkout, then "+again)
+		}
 	}
 	return nil
 }

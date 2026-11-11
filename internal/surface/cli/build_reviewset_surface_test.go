@@ -15,7 +15,9 @@ import (
 
 // TestBuildNamesTheBundledReviewSet: with no configuration the payload's
 // review, a sibling of pace, carries two reviewers per role from the bundled
-// layer, and the text and the status name each class with its model.
+// layer, each with its effort, and the judge with its status; the text, the
+// status and the record name each class with its model and its effort, and
+// never a class name alone (itd-2611101419006280).
 func TestBuildNamesTheBundledReviewSet(t *testing.T) {
 	buildRepo(t)
 	out := mustImplement(t, "build", "itd-10", "--json")
@@ -24,8 +26,12 @@ func TestBuildNamesTheBundledReviewSet(t *testing.T) {
 			Roles []struct {
 				Role      string
 				Layer     string
-				Reviewers []struct{ Class, Model string }
+				Reviewers []struct {
+					Class, Model, Effort string
+					EffortLayer          string `json:"effort_layer"`
+				}
 			}
+			Judge *struct{ Class, Model, Effort, Status string }
 		}
 		Diagnostics any
 	}
@@ -36,13 +42,36 @@ func TestBuildNamesTheBundledReviewSet(t *testing.T) {
 		t.Fatalf("the payload carries the review set and no diagnostics: %s", out)
 	}
 	for _, r := range res.Review.Roles {
-		if len(r.Reviewers) != 2 || r.Reviewers[0].Class != "middle" || r.Reviewers[1].Class != "below" || r.Layer != "bundled" {
-			t.Fatalf("%s runs middle and below from the bundled layer: %s", r.Role, out)
+		if len(r.Reviewers) != 2 || r.Reviewers[0].Class != "research" || r.Reviewers[1].Class != "default" || r.Layer != "bundled" {
+			t.Fatalf("%s runs research and default from the bundled layer: %s", r.Role, out)
+		}
+		for _, c := range r.Reviewers {
+			if c.Model == "" || c.Effort != "high" || c.EffortLayer != "bundled" {
+				t.Fatalf("each reviewer carries its model and effort: %s", out)
+			}
 		}
 	}
+	if j := res.Review.Judge; j == nil || j.Class != "top" || j.Model != "anthropic/claude-opus-5-5" || j.Effort != "high" || j.Status != "waiting" {
+		t.Fatalf("the judge carries its model, effort and status: %s", out)
+	}
+	want := "ruthless-reviewer research (anthropic/claude-fable-5, effort high) and default (anthropic/claude-sonnet-5-5, effort high) (bundled)"
+	judge := "judge top (anthropic/claude-opus-5-5, effort high) (bundled), waiting"
 	status := mustImplement(t, "implement", "status")
-	if !strings.Contains(status, "review:  ruthless-reviewer middle (anthropic/claude-opus-5-5) and below (anthropic/claude-sonnet-5-5) (bundled)") {
-		t.Fatalf("the status names each class with its model:\n%s", status)
+	record := mustImplement(t, "implement", "record")
+	for name, text := range map[string]string{"status": status, "record": record} {
+		if !strings.Contains(text, want) || !strings.Contains(text, judge) || !strings.Contains(text, "efforts from bundled") {
+			t.Fatalf("the %s names each class with its model and effort, and the judge waiting:\n%s", name, text)
+		}
+		for _, l := range strings.Split(text, "\n") {
+			if !strings.Contains(l, "review:  ") {
+				continue
+			}
+			for _, c := range []string{"research", "top", "default"} {
+				if strings.Count(l, c+" (") != strings.Count(l, c) {
+					t.Fatalf("the %s shows %s alone: %s", name, c, l)
+				}
+			}
+		}
 	}
 }
 
@@ -57,7 +86,7 @@ func TestBuildSaysAClampedReviewSetOnStderr(t *testing.T) {
 	if err := os.WriteFile(abcdhome.Path(home, "config.json"), []byte(`{"review": {"max_reviewers": 1}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	repo.Write(".abcd/config.json", `{"review": {"reviewers": ["middle", "below"]}}`)
+	repo.Write(".abcd/config.json", `{"review": {"reviewers": ["top", "default"]}}`)
 	repo.Commit("review set")
 	code, out, errOut := implementCLI(t, "build", "itd-10")
 	if code != 0 {

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -20,13 +21,24 @@ const (
 	cacheREADME = "This directory holds cached build artifacts from the Go build system.\n"
 )
 
-// The ages the tests give a file: old is past the trim's age and the hour Go
-// may have left the time unrefreshed, and fresh is inside the age.
+// The ages the tests give a file: old is past the keep and the hour Go may have
+// left the time unrefreshed, and fresh is inside the keep.
 var (
 	trimNow = time.Now()
-	oldTime = trimNow.Add(-worktree.CacheTrimAge - 2*time.Hour)
+	oldTime = trimNow.Add(-worktree.CacheTrimKeep - 2*time.Hour)
 	newTime = trimNow.Add(-time.Hour)
 )
+
+// trimTo is the trim with the limit given rather than read from the person's
+// configuration, so these small caches can stand over one and no test reads the
+// machine's own file.
+func trimTo(limit uint64, dryRun bool) worktree.CacheTrim {
+	return worktree.TrimGoCacheToForTest(limit, dryRun, trimNow)
+}
+
+// trimAll is trimTo with a limit nothing fits under, so every entry past the
+// keep goes: what the guards below keep, they keep whatever the size.
+func trimAll(dryRun bool) worktree.CacheTrim { return trimTo(0, dryRun) }
 
 // tempCache makes a directory and has `go env GOCACHE` report it, so no test
 // here reads or trims the machine's own cache.
@@ -80,53 +92,189 @@ func oldLink(t *testing.T, target, p string) {
 	}
 }
 
-// TestTrimGoCacheRemovesOldEntriesAndKeepsFreshOnes: both kinds of entry go
-// past the age, the fresh ones and the subdirectories stay, and the answer
-// counts what went.
-func TestTrimGoCacheRemovesOldEntriesAndKeepsFreshOnes(t *testing.T) {
-	dir := tempCache(t)
-	oldA := cacheFile(t, dir, "ab/"+entryA, "12345", oldTime)
-	oldD := cacheFile(t, dir, "cd/"+entryD, "1234567", oldTime)
-	freshA := cacheFile(t, dir, "ab/fedcba-a", "fresh", newTime)
-	freshD := cacheFile(t, dir, "ef/fedcba-d", "fresh", newTime)
+// aged writes an entry of size bytes in ab, used age ago.
+func aged(t *testing.T, dir, hex string, size int, age time.Duration) string {
+	t.Helper()
+	return cacheFile(t, dir, "ab/"+hex+"-d", strings.Repeat("x", size), trimNow.Add(-age))
+}
 
-	got := worktree.TrimGoCache(false, trimNow)
+// TestTrimGoCacheRemovesOldestFirstDownToTheLimit: the oldest go until the rest
+// fits, and an entry the limit no longer needs stays however old, so a cache
+// under its limit loses nothing to age. Both kinds of entry count and no
+// directory is removed.
+func TestTrimGoCacheRemovesOldestFirstDownToTheLimit(t *testing.T) {
+	dir := tempCache(t)
+	oldest := aged(t, dir, "01", 10, 72*time.Hour)
+	older := cacheFile(t, dir, "cd/02-a", strings.Repeat("x", 10), trimNow.Add(-48*time.Hour))
+	old := aged(t, dir, "03", 10, 24*time.Hour)
+	fresh := aged(t, dir, "04", 10, time.Hour)
+
+	got := trimTo(20, false)
 
 	if got.Skipped != "" || got.Failed != 0 {
 		t.Fatalf("the trim ran: %+v", got)
 	}
-	if got.EntriesRemoved != 2 || got.BytesFreed != 12 {
-		t.Fatalf("two entries of twelve bytes went: %+v", got)
+	if got.EntriesRemoved != 2 || got.BytesFreed != 20 || got.SizeBytes != 40 || got.LeftBytes != 20 || got.OverLimit {
+		t.Fatalf("two entries went, leaving the limit: %+v", got)
 	}
-	if exists(oldA) || exists(oldD) {
-		t.Fatal("the old entries go")
+	if exists(oldest) || exists(older) {
+		t.Fatal("the two oldest go")
 	}
-	if !exists(freshA) || !exists(freshD) {
-		t.Fatal("the fresh entries stay")
+	if !exists(old) || !exists(fresh) {
+		t.Fatal("what the limit does not need gone stays, however old")
 	}
-	for _, sub := range []string{"ab", "cd", "ef"} {
+	for _, sub := range []string{"ab", "cd"} {
 		if !exists(filepath.Join(dir, sub)) {
 			t.Fatalf("no directory is removed: %s", sub)
 		}
 	}
-	if got.Path != dir {
-		t.Fatalf("the answer names the cache: %q", got.Path)
+	if got.Path != dir || got.LimitBytes != 20 || got.KeepHours != 3 {
+		t.Fatalf("the answer names the cache, the limit and the keep: %+v", got)
 	}
-	if got.UnusedDays != 2 {
-		t.Fatalf("the answer names the age: %+v", got)
+}
+
+// TestTrimGoCacheUnderItsLimitRemovesNothing: age alone removes nothing.
+func TestTrimGoCacheUnderItsLimitRemovesNothing(t *testing.T) {
+	dir := tempCache(t)
+	ancient := aged(t, dir, "01", 10, 30*24*time.Hour)
+
+	got := trimTo(10, false)
+
+	if got.EntriesRemoved != 0 || got.OverLimit || !exists(ancient) || got.LeftBytes != 10 {
+		t.Fatalf("exactly at the limit nothing goes: %+v", got)
+	}
+}
+
+// TestTrimGoCacheKeepsWhatARunningBuildNeedsAndSaysSo: the recent entries alone
+// exceed the limit, so they stay, the old one goes, and the answer says it is
+// still over.
+func TestTrimGoCacheKeepsWhatARunningBuildNeedsAndSaysSo(t *testing.T) {
+	dir := tempCache(t)
+	old := aged(t, dir, "01", 10, 24*time.Hour)
+	recentA := aged(t, dir, "02", 10, 2*time.Hour)
+	recentB := aged(t, dir, "03", 10, time.Minute)
+
+	got := trimTo(5, false)
+
+	if exists(old) {
+		t.Fatal("the old entry goes")
+	}
+	if !exists(recentA) || !exists(recentB) {
+		t.Fatal("what was used in the last three hours stays over the limit")
+	}
+	if !got.OverLimit || got.EntriesRemoved != 1 || got.LeftBytes != 20 {
+		t.Fatalf("still over, and it says so: %+v", got)
 	}
 }
 
 // TestTrimGoCacheAllowsForGosHourOfSlack: Go refreshes a time only when it is
-// more than an hour old, so an entry just past the age may have been used
-// inside it and stays.
+// more than an hour old, so an entry just past the keep may have been used
+// inside it and stays; one past the hour as well goes.
 func TestTrimGoCacheAllowsForGosHourOfSlack(t *testing.T) {
 	dir := tempCache(t)
-	inHour := cacheFile(t, dir, "ab/"+entryA, "x", trimNow.Add(-worktree.CacheTrimAge-30*time.Minute))
+	inHour := aged(t, dir, "01", 1, worktree.CacheTrimKeep+30*time.Minute)
+	pastHour := aged(t, dir, "02", 1, worktree.CacheTrimKeep+61*time.Minute)
 
-	if got := worktree.TrimGoCache(false, trimNow); got.EntriesRemoved != 0 || !exists(inHour) {
-		t.Fatalf("an entry inside the hour stays: %+v", got)
+	got := trimAll(false)
+
+	if !exists(inHour) || exists(pastHour) || got.EntriesRemoved != 1 {
+		t.Fatalf("an entry inside the hour stays and one past it goes: %+v", got)
 	}
+}
+
+// TestTrimGoCacheCountsOnlyEntriesAgainstTheLimit: a file that is no entry, the
+// README and fuzz corpora among them, is neither removed nor counted, since the
+// trim could never bring it down.
+func TestTrimGoCacheCountsOnlyEntriesAgainstTheLimit(t *testing.T) {
+	dir := tempCache(t)
+	entry := aged(t, dir, "01", 10, 24*time.Hour)
+	corpus := cacheFile(t, dir, "fuzz/seed", strings.Repeat("x", 1000), oldTime)
+
+	got := trimTo(10, false)
+
+	if got.SizeBytes != 10 || got.EntriesRemoved != 0 || !exists(entry) || !exists(corpus) {
+		t.Fatalf("only entries count: %+v", got)
+	}
+}
+
+// TestTrimGoCacheLimit: the limit comes from the person's own configuration
+// alone, 100 GiB when it says nothing, and a value it cannot use, or a file it
+// cannot read, deletes nothing rather than guess.
+func TestTrimGoCacheLimit(t *testing.T) {
+	config := func(t *testing.T, body string, mode os.FileMode) {
+		t.Helper()
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		gittest.Env(t)
+		if body == "" {
+			return
+		}
+		dir := abcdhome.Path(home)
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		p := filepath.Join(dir, "config.json")
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(p, mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Run("the default", func(t *testing.T) {
+		config(t, "", 0)
+		dir := tempCache(t)
+		aged(t, dir, "01", 10, 24*time.Hour)
+		got := worktree.TrimGoCache(false, trimNow)
+		if got.Skipped != "" || got.LimitBytes != 100<<30 || got.EntriesRemoved != 0 {
+			t.Fatalf("100 GiB by default: %+v", got)
+		}
+	})
+	t.Run("the person's own", func(t *testing.T) {
+		config(t, `{"load":{"go_cache_limit_gib":7}}`, 0o600)
+		dir := tempCache(t)
+		aged(t, dir, "01", 10, 24*time.Hour)
+		if got := worktree.TrimGoCache(false, trimNow); got.Skipped != "" || got.LimitBytes != 7<<30 {
+			t.Fatalf("seven GiB: %+v", got)
+		}
+	})
+	for name, c := range map[string]struct {
+		body string
+		mode os.FileMode
+		says string
+	}{
+		"zero":               {`{"load":{"go_cache_limit_gib":0}}`, 0o600, worktree.CacheLimitKey},
+		"too large":          {`{"load":{"go_cache_limit_gib":1048577}}`, 0o600, worktree.CacheLimitKey},
+		"not a number":       {`{"load":{"go_cache_limit_gib":"lots"}}`, 0o600, worktree.CacheLimitKey},
+		"a broken file":      {`{`, 0o600, worktree.CacheLimitKey},
+		"writable by others": {`{"load":{"go_cache_limit_gib":7}}`, 0o666, worktree.CacheLimitKey},
+		"a misspelt key":     {`{"load":{"go_cache_limit_gb":300}}`, 0o600, "go_cache_limit_gb"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			config(t, c.body, c.mode)
+			dir := tempCache(t)
+			old := aged(t, dir, "01", 10, 24*time.Hour)
+			got := worktree.TrimGoCache(false, trimNow)
+			if !strings.Contains(got.Skipped, c.says) || got.EntriesRemoved != 0 || !exists(old) {
+				t.Fatalf("skipped, naming the key: %+v", got)
+			}
+		})
+	}
+	t.Run("a repository's key is not read", func(t *testing.T) {
+		config(t, `{"load":{"go_cache_limit_gib":7}}`, 0o600)
+		repo := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(repo, ".abcd"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, ".abcd", "config.json"), []byte(`{"load":{"go_cache_limit_gib":1}}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Chdir(repo)
+		tempCache(t)
+		if got := worktree.TrimGoCache(false, trimNow); got.LimitBytes != 7<<30 {
+			t.Fatalf("the person's seven, never the repository's one: %+v", got)
+		}
+	})
 }
 
 // TestTrimGoCacheLeavesWhatIsNotAnEntry: however old, only <hex>-a and
@@ -166,7 +314,7 @@ func TestTrimGoCacheLeavesWhatIsNotAnEntry(t *testing.T) {
 	}
 	kept = append(kept, aDir)
 
-	got := worktree.TrimGoCache(false, trimNow)
+	got := trimAll(false)
 
 	if got.Skipped != "" || got.EntriesRemoved != 0 || got.BytesFreed != 0 || got.Failed != 0 {
 		t.Fatalf("nothing here is an entry: %+v", got)
@@ -190,7 +338,7 @@ func TestTrimGoCacheNeverFollowsASymlink(t *testing.T) {
 	subLink := filepath.Join(dir, "cd")
 	oldLink(t, filepath.Join(outside, "elsewhere"), subLink)
 
-	got := worktree.TrimGoCache(false, trimNow)
+	got := trimAll(false)
 
 	if got.EntriesRemoved != 0 || got.BytesFreed != 0 {
 		t.Fatalf("a symlink is not an entry: %+v", got)
@@ -227,7 +375,7 @@ func TestTrimGoCacheDryRunDeletesNothing(t *testing.T) {
 	old := cacheFile(t, dir, "ab/"+entryA, "12345", oldTime)
 	fresh := cacheFile(t, dir, "ab/fedcba-a", "fresh", newTime)
 
-	got := worktree.TrimGoCache(true, trimNow)
+	got := trimAll(true)
 
 	if got.EntriesRemoved != 1 || got.BytesFreed != 5 {
 		t.Fatalf("a dry run counts what a real run would: %+v", got)
@@ -330,7 +478,7 @@ func TestTrimGoCacheTrimsAllTheSubdirectoriesShape(t *testing.T) {
 	old := cacheFile(t, dir, "ab/"+entryA, "x", oldTime)
 	t.Setenv("GOCACHE", dir)
 
-	got := worktree.TrimGoCache(false, trimNow)
+	got := trimAll(false)
 
 	if got.Skipped != "" || got.EntriesRemoved != 1 || exists(old) {
 		t.Fatalf("trimmed: %+v", got)
@@ -401,7 +549,7 @@ func TestTrimGoCacheRefusesTheHomeOrAbove(t *testing.T) {
 		t.Setenv("HOME", home)
 		gittest.Env(t)
 		t.Setenv("GOCACHE", dir)
-		if got := worktree.TrimGoCache(false, trimNow); got.Skipped != "" || got.EntriesRemoved != 1 || exists(old) {
+		if got := trimAll(false); got.Skipped != "" || got.EntriesRemoved != 1 || exists(old) {
 			t.Fatalf("trimmed: %+v", got)
 		}
 	})
@@ -463,7 +611,7 @@ func TestTrimGoCacheCountsWhatItCouldNotRemove(t *testing.T) {
 		t.Cleanup(func() { _ = os.Chmod(p, 0o755) })
 	}
 
-	got := worktree.TrimGoCache(false, trimNow)
+	got := trimAll(false)
 
 	if got.Failed != 2 || got.EntriesRemoved != 1 {
 		t.Fatalf("one unlink refused, one read refused, one removed: %+v", got)
@@ -566,5 +714,134 @@ func TestCacheTrimMasksThePath(t *testing.T) {
 	got := worktree.TrimGoCache(false, trimNow)
 	if strings.ContainsRune(got.Skipped+got.Path, 0x1b) {
 		t.Fatalf("an escape reached the answer: %q %q", got.Skipped, got.Path)
+	}
+}
+
+// TestClaimCacheTrimIsDueOnceAnHour: the first claim is due and writes the time,
+// the next inside the hour is not, and one an hour on is; it hands back what the
+// last run saved, and makes the marker the account's alone.
+func TestClaimCacheTrimIsDueOnceAnHour(t *testing.T) {
+	home := t.TempDir()
+
+	if _, due, err := worktree.ClaimCacheTrim(home, trimNow); err != nil || !due {
+		t.Fatalf("the first claim is due: %v %v", due, err)
+	}
+	if _, due, err := worktree.ClaimCacheTrim(home, trimNow.Add(59*time.Minute)); err != nil || due {
+		t.Fatalf("not again inside the hour: %v %v", due, err)
+	}
+	last, due, err := worktree.ClaimCacheTrim(home, trimNow.Add(time.Hour))
+	if err != nil || !due {
+		t.Fatalf("due an hour on: %v %v", due, err)
+	}
+	if !last.StartedAt.Equal(trimNow) || last.Trim != nil {
+		t.Fatalf("a run that saved nothing did not finish: %+v", last)
+	}
+
+	want := worktree.CacheTrim{Skipped: "no go command"}
+	if err := worktree.SaveCacheTrim(home, trimNow.Add(time.Hour), want); err != nil {
+		t.Fatal(err)
+	}
+	last, due, err = worktree.ClaimCacheTrim(home, trimNow.Add(2*time.Hour))
+	if err != nil || !due || last.Trim == nil || last.Trim.Skipped != want.Skipped {
+		t.Fatalf("the saved answer comes back: %+v %v %v", last, due, err)
+	}
+	fi, err := os.Stat(abcdhome.Path(home, "go-cache-trim.json"))
+	if err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("the account's alone: %v %v", fi, err)
+	}
+}
+
+// TestClaimCacheTrimReadsPastWhatItCannotUse: the marker only paces the trim, so
+// a broken one, or a time ahead of the clock, is due rather than silence for good.
+func TestClaimCacheTrimReadsPastWhatItCannotUse(t *testing.T) {
+	marker := func(t *testing.T, body string) string {
+		t.Helper()
+		home := t.TempDir()
+		dir := abcdhome.Path(home)
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "go-cache-trim.json"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return home
+	}
+	t.Run("broken", func(t *testing.T) {
+		if _, due, err := worktree.ClaimCacheTrim(marker(t, "{"), trimNow); err != nil || !due {
+			t.Fatalf("due: %v %v", due, err)
+		}
+	})
+	t.Run("ahead of the clock", func(t *testing.T) {
+		body := `{"started_at":"` + trimNow.Add(24*time.Hour).Format(time.RFC3339) + `"}`
+		if _, due, err := worktree.ClaimCacheTrim(marker(t, body), trimNow); err != nil || !due {
+			t.Fatalf("due: %v %v", due, err)
+		}
+	})
+}
+
+// TestClaimCacheTrimRefusesASymlinkedHome: nothing is written through a link at
+// ~/.abcd.noindex, and the caller is told.
+func TestClaimCacheTrimRefusesASymlinkedHome(t *testing.T) {
+	home, target := t.TempDir(), t.TempDir()
+	if err := os.Symlink(target, abcdhome.Path(home)); err != nil {
+		t.Fatal(err)
+	}
+	if _, due, err := worktree.ClaimCacheTrim(home, trimNow); err == nil || due {
+		t.Fatalf("refused: %v %v", due, err)
+	}
+	if ents, _ := os.ReadDir(target); len(ents) != 0 {
+		t.Fatalf("nothing written through the link: %v", ents)
+	}
+}
+
+// TestSaveCacheTrimNeverRewindsTheMarker: a run that outlasts the hour finds a
+// later claim in the marker, and its save leaves that claim, so the next lane
+// does not start a third run early.
+func TestSaveCacheTrimNeverRewindsTheMarker(t *testing.T) {
+	home := t.TempDir()
+	if _, due, err := worktree.ClaimCacheTrim(home, trimNow); err != nil || !due {
+		t.Fatalf("the first claim: %v %v", due, err)
+	}
+	later := trimNow.Add(2 * time.Hour)
+	if _, due, err := worktree.ClaimCacheTrim(home, later); err != nil || !due {
+		t.Fatalf("the later claim: %v %v", due, err)
+	}
+	if err := worktree.SaveCacheTrim(home, trimNow, worktree.CacheTrim{EntriesRemoved: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, due, err := worktree.ClaimCacheTrim(home, later.Add(30*time.Minute)); err != nil || due {
+		t.Fatalf("the later claim still paces the trim: %v %v", due, err)
+	}
+}
+
+// TestTrimGoCacheKeepsAnEntryUsedDuringTheWalk: Go refreshes an entry's time when
+// a build uses it, and the walk takes minutes on a large cache, so each entry is
+// checked again just before it goes; one used since the walk stays and counts as
+// left, and one replaced by something that is no file stays too.
+func TestTrimGoCacheKeepsAnEntryUsedDuringTheWalk(t *testing.T) {
+	dir := tempCache(t)
+	used := aged(t, dir, "01", 10, 72*time.Hour)
+	swapped := aged(t, dir, "02", 10, 60*time.Hour)
+	stale := aged(t, dir, "03", 10, 48*time.Hour)
+	restore := worktree.SwapAfterWalkForTest(func() {
+		if err := os.Chtimes(used, trimNow, trimNow); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(swapped); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(swapped, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	})
+	defer restore()
+
+	got := trimAll(false)
+
+	if !exists(used) || !exists(swapped) || exists(stale) {
+		t.Fatal("the entry used during the walk stays, the swapped name stays, the stale one goes")
+	}
+	if got.EntriesRemoved != 1 || got.LeftBytes != 10 || got.Failed != 0 {
+		t.Fatalf("one removal, the used entry left, the swapped one gone by itself: %+v", got)
 	}
 }

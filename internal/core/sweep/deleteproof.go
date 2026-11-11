@@ -170,11 +170,19 @@ func (p deleteProver) prove(t guard.DeleteTarget) guard.DeleteProof {
 	if err != nil {
 		return unproven("the repository's worktrees could not be listed ("+err.Error()+")", "")
 	}
+	var held gitutil.Held
+	if t.Kind == guard.DeleteRemoteBranch || t.Kind == guard.DeleteLocalBranch {
+		common, err := gitutil.CommonDir(root)
+		if err != nil {
+			return unproven("the repository's common dir could not be named ("+err.Error()+")", "")
+		}
+		held = gitutil.HeldBranches(common)
+	}
 	switch t.Kind {
 	case guard.DeleteRemoteBranch:
-		return p.remoteBranch(root, def, wts, t)
+		return p.remoteBranch(root, def, wts, held, t)
 	case guard.DeleteLocalBranch:
-		return p.localBranch(root, def, wts, t)
+		return p.localBranch(root, def, wts, held, t)
 	case guard.DeleteWorktree:
 		return p.worktree(root, def, wts, t)
 	}
@@ -183,8 +191,10 @@ func (p deleteProver) prove(t guard.DeleteTarget) guard.DeleteProof {
 
 // branchHazard is the check every branch delete passes first: not the default
 // branch, not one of abcd's coordination branches, and checked out in no
-// worktree.
-func branchHazard(def string, wts []gitutil.Worktree, branch string) (guard.DeleteProof, bool) {
+// worktree, a rebase or bisect stopped in one included (held, which git lists
+// detached and `git branch -d` still refuses); a state file held could not
+// read names no branch for certain, so no branch is proven free.
+func branchHazard(def string, wts []gitutil.Worktree, held gitutil.Held, branch string) (guard.DeleteProof, bool) {
 	switch {
 	case branch == strings.TrimPrefix(def, "refs/remotes/"+claim.Remote+"/"):
 		return unproven("it is the default branch", "Leave the default branch in place."), true
@@ -201,17 +211,31 @@ func branchHazard(def string, wts []gitutil.Worktree, branch string) (guard.Dele
 				"Remove that worktree, or switch it to another branch, first."), true
 		}
 	}
+	if held.Unreadable != "" {
+		return unproven("a rebase or bisect state file at "+fsutil.RedactHome(held.Unreadable)+" could not be read, so whether a stopped rebase or bisect holds it is unknown",
+			"Finish or abort that rebase or bisect, then run the delete again."), true
+	}
+	// Each names the checkout (gitutil.Held.Checkout), never git's admin dir
+	// for it, whose id need not be the checkout's folder name.
+	if dir := held.Branches[branch]; dir != "" {
+		return unproven("it is checked out in "+fsutil.RedactHome(held.Checkout(dir, wts))+", where a rebase or bisect stopped on it",
+			"Finish or abort that rebase or bisect, then run the delete again."), true
+	}
+	if dir := held.Rewrites[branch]; dir != "" {
+		return unproven("a rebase stopped in "+fsutil.RedactHome(held.Checkout(dir, wts))+" will rewrite it (its --update-refs list names the branch)",
+			"Finish or abort that rebase, then run the delete again."), true
+	}
 	return guard.DeleteProof{}, false
 }
 
 // remoteBranch proves a branch delete on origin: at the tip origin holds
 // now, merged, with no open pull request.
-func (p deleteProver) remoteBranch(root, def string, wts []gitutil.Worktree, t guard.DeleteTarget) guard.DeleteProof {
+func (p deleteProver) remoteBranch(root, def string, wts []gitutil.Worktree, held gitutil.Held, t guard.DeleteTarget) guard.DeleteProof {
 	if t.Remote != claim.Remote {
 		return unproven("the delete is on the remote "+t.Remote+", and only a delete on "+claim.Remote+" can be proven",
 			"Delete it on "+claim.Remote+", or keep it.")
 	}
-	if pr, bad := branchHazard(def, wts, t.Branch); bad {
+	if pr, bad := branchHazard(def, wts, held, t.Branch); bad {
 		return pr
 	}
 	tip, found, err := p.o.RemoteTip(root, t.Remote, t.Branch)
@@ -256,8 +280,8 @@ func (p deleteProver) remoteBranch(root, def string, wts []gitutil.Worktree, t g
 
 // localBranch proves a forced local branch delete, offline: merged into
 // origin's default branch as last fetched.
-func (p deleteProver) localBranch(root, def string, wts []gitutil.Worktree, t guard.DeleteTarget) guard.DeleteProof {
-	if pr, bad := branchHazard(def, wts, t.Branch); bad {
+func (p deleteProver) localBranch(root, def string, wts []gitutil.Worktree, held gitutil.Held, t guard.DeleteTarget) guard.DeleteProof {
+	if pr, bad := branchHazard(def, wts, held, t.Branch); bad {
 		return pr
 	}
 	ref := "refs/heads/" + t.Branch

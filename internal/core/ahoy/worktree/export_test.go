@@ -53,3 +53,11 @@ func SwapRootOwnerForTest(fn func(os.FileInfo) (uint32, error)) (restore func())
 	rootOwnerOf = fn
 	return func() { rootOwnerOf = prev }
 }
+
+// SwapAfterWalkForTest has fn run between the trim's walk and its removals, so a
+// test can stand in for a build using an entry while the walk ran.
+func SwapAfterWalkForTest(fn func()) (restore func()) {
+	prev := afterWalk
+	afterWalk = fn
+	return func() { afterWalk = prev }
+}

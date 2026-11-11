@@ -98,7 +98,7 @@ rather than taking the figure on trust.
 
 ## Parked
 
-Parked 2026-11-04 behind itd-2611041636196213. Two reviews of this draft asked for <!-- record-lint: forward-looking -->
+Parked 2026-11-04 behind itd-2611041636196213. Two reviews of this draft asked for
 changes before planning, and it is not ready as written:
 
 - Logs show the larger cost is repeat reloads inside one wait: of 121.7M tokens

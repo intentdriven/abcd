@@ -27,7 +27,10 @@ the online cores divided by 2, never from a repository, with no environment vari
 `load.memory_floor_macos` (`warn` by default, or `critical`) and
 `load.memory_floor_linux` (a whole percentage from 1 to 100, 10 by default),
 each read from the machine layer alone, a repository's key named as ignored
-(`internal/core/implement/load_memory.go`), the quiet window of `ahoy worktree
+(`internal/core/implement/load_memory.go`), the Go build cache's
+`load.go_cache_limit_gib`, read from the machine layer alone, 1 to 1048576 and 100
+by default, never from a repository, with no environment variable
+(`internal/core/ahoy/worktree/cachetrim.go`), the quiet window of `ahoy worktree
 prune`, `worktrees.quiet_days` (how many days without activity make an
 unmerged worktree with no open pull request quiet: 1 to 36500 and 14 by
 default; `internal/core/ahoy/worktree/quiet.go`), the record slug cap
@@ -42,8 +45,9 @@ every repository shares by the figures it read;
 cap `matrix.spend_cap` (an amount in usd for a run with a metered cell, set
 in the machine layer alone, a repository's refused, and with no default: a
 run's own `spend_cap` overrides it, and a metered run with neither is refused;
-`internal/core/matrix/cap.go`), the build's review set under `review` and
-`models.classes` (`internal/core/implement/loop/reviewset.go`), the question limits
+`internal/core/matrix/cap.go`), the build's review set under `review`, the
+class map `models.classes` and each class's effort `models.effort`
+(`internal/core/implement/loop/reviewset.go`), the question limits
 under `question` (below), and the runner routes under `roles` and
 `runner` (`internal/core/runner/config.go`). Everything else on this page is either a
 store abcd lays out for itself, a policy that follows from one of those four
@@ -394,9 +398,26 @@ rather than skipped:
   bundles no vendor denylist (adr-2609300107513982), so a model a provider lists
   is served whichever vendor made it. `oracle.denylist` is the configuration's
   own: each layer's entries apply, an entry is a vendor prefix (`vendor/*`) or
-  one model, and matching ignores case, OpenRouter's `~` alias prefix and a
-  `:variant` suffix. No layer removes another's entry, and a block listing a
+  one model, and matching ignores case, OpenRouter's `~` alias prefix, a
+  `:variant` suffix and a bracketed suffix (`[1m]`). No layer removes another's entry, and a block listing a
   model an entry matches is refused, naming the entry, whatever else it lists.
+- **A drive's launch takes its vendor's models by name**
+  (iss-2611080057001367). A model a runner request asks for, such as a review
+  set's class, is admitted against its provider's list, except on a drive's
+  launch of the claude harness on its separate login, for a route naming the
+  harness's own vendor that the machine's class map resolves (`models.classes`
+  over the bundled map, handed to the walled configuration as the drive
+  starts) and that this machine configures no block for: the harness is
+  handed the model's name alone and runs it on that login's subscription, so
+  the route is admitted without a block. An `oracle.denylist` entry matching
+  the route as written, or the model, still refuses it, and a vendor the
+  machine does configure still holds the launch to its list. The denylist
+  matches model names as written, so an entry for a full model id does not
+  refuse a shorter alias a person maps a class to; a person who denies a
+  model maps no class to an alias of it. Everything else keeps the provider
+  allowlist: a launch outside a drive, a route outside the class map, another
+  vendor's route, opencode and the host. `runner.<name>.model` and a `--route`'s model are admitted against a
+  configured provider when they are read, as before.
 - **A route is `<provider>/<model>`.** A role or a judgement type the
   machine's file points at a model its provider does not list is refused naming
   the list. The same route in a repository's `.abcd/config.json`, to a provider
@@ -588,6 +609,47 @@ passed over for the default:
 
 Unconfigured, nothing changes: every review runs on the host, and abcd never
 starts, installs or configures RepoPrompt, and never writes either key.
+
+### The model classes and their effort
+
+The build loop's review set (itd-2610240922461281, itd-2611101419006280) names
+reviewers and a judge by model class, never by model. The four classes are
+`research`, `top`, `default` and `small`, strongest first, and two keys under
+`models` say what each stands for on this machine. Both are read from
+`~/.abcd.noindex/config.json` over the bundled default alone: which model runs
+and how hard it works spend the person's budget, so a repository's value is
+skipped with one line naming the machine's file.
+
+- `models.classes`: each class a `<provider>/<model>` route. The bundled map is
+  one vendor's models; abcd bundles none for a vendor it does not launch in its
+  own tests, so the person points the classes at another provider's models.
+- `models.effort`: one of `low`, `medium`, `high`, `xhigh` and `max` for every
+  class, or an object naming a level per class; a class nothing names runs at
+  `high`. The effort follows the class: a reviewer or a judge launched at a
+  class through the claude runner is passed it as the harness's effort flag,
+  the opencode runner records it as not passed, and a role launched with no
+  class keeps the harness's own effort.
+
+The classes were renamed one for one (`top` is now `research`, `middle` is
+`top`, `below` is `default`, `smallest` is `small`). A file naming an old class
+is refused with that mapping, and a machine class map that sets `top` without
+`research` is refused, since `top` once named the strongest class. A worked map
+for a second provider, whose block under `oracle.api` lists the models it
+serves (the ids are an example; use the ones the provider lists):
+
+```json
+{
+  "models": {
+    "classes": {
+      "research": "openrouter/qwen/qwen3-235b-a22b",
+      "top": "openrouter/mistralai/devstral-medium",
+      "default": "openrouter/qwen/qwen3-coder",
+      "small": "openrouter/mistralai/devstral-small"
+    },
+    "effort": {"research": "xhigh", "small": "low"}
+  }
+}
+```
 
 ### The interview key
 
@@ -947,23 +1009,49 @@ loop's lanes are made through it, so a worktree enters the store one way. Before
 beside a manifest, redacted on write by the transcript store's pass; nothing
 reclaims the archive.
 
-**Removing a worktree also trims the Go build cache.** Go trims only entries
-unused for five days, and every store worktree adds entries, so a machine running
-many of them fills its disk until the load gate stands everything still. So when
-`prune` removes at least one worktree it deletes the entries of the cache unused
-for two days, a fixed age (`CacheTrimAge`, `internal/core/ahoy/worktree/cachetrim.go`),
-and reports the entries removed and the bytes freed; a dry run reports the same
-and deletes nothing. Since these are another tool's files, the trim acts only on
-the directory `go env GOCACHE` reports, and only when that is a real directory
-the caller owns, has a Go build cache's shape and is not the home directory or
-above it, the guards the load gate holds to before it offers a trim. The owner,
-the directory and the shape are read from the directory as opened, which must be
-the one the path named. Otherwise one line says why it was skipped. Inside it, it touches
-only regular files named `<hex>-a` or `<hex>-d` in a subdirectory named by two hex
-digits, and follows no symbolic link. It unlinks each file and removes no
-directory, so a build running beside it finds a miss and rebuilds. A trim that
-fails never fails the prune, and the one-at-a-time removal the sweep uses does
-not trim.
+**The Go build cache is kept under a size limit.** Go trims only entries unused
+for five days, and every store worktree adds entries, so a machine running many of
+them fills its disk until the load gate stands everything still. An age does not
+bound it: a cache of 324 GB in 951,386 entries, all used within five days, would
+have given up 87 GB to a two-day age. So the trim works to a limit,
+`load.go_cache_limit_gib`, 100 GiB by default, read from the machine layer alone: it
+deletes the oldest entries until the rest fit, and an entry the limit does not need
+gone stays however old (`internal/core/ahoy/worktree/cachetrim.go`). Every entry used
+in the last 3 hours stays whatever the limit, allowing the hour Go may leave an
+entry's time unrefreshed; when those alone exceed it they stay and the answer says
+so, since a running build needs them. It reports the size found, the size left, the
+entries removed and the bytes freed; a dry run reports the same and deletes nothing.
+A limit it cannot read or use deletes nothing, and so does a key under `load` that
+nothing reads, which may be this one misspelt, since a guessed size could remove
+what the person's own value would have kept.
+
+Since these are another tool's files, the trim acts only on the directory `go env
+GOCACHE` reports, and only when that is a real directory the caller owns, has a Go
+build cache's shape and is not the home directory or above it, the guards the load
+gate holds to before it offers a trim. The owner, the directory and the shape are
+read from the directory as opened, which must be the one the path named. Otherwise
+one line says why it was skipped. Inside it, it touches only regular files named
+`<hex>-a` or `<hex>-d` in a subdirectory named by two hex digits, and follows no
+symbolic link. It unlinks each file and removes no directory, so a build running
+beside it that looks up an entry already gone finds a miss and rebuilds. The walk
+takes minutes and Go refreshes an entry's time when a build uses it, so each entry
+is read again just before it is unlinked, and one used since the walk stays; a
+build that looks one up in the instant between that read and the unlink can still
+fail to open it, a window one system call wide, and a rerun rebuilds it. It is judged by the cache's size and never by
+free space, since a local snapshot can hold what it deleted.
+
+Three things run it. `prune` runs it when it removes at least one worktree, and a
+trim that fails never fails the prune; the one-at-a-time removal the sweep uses does
+not trim. `ahoy worktree trim-cache` runs it on demand. And the build loop asks for
+it whenever its worktree stage makes a lane, for a build and a drain alike, since a
+lane is what fills the cache and a drive that runs for weeks makes them throughout,
+where prune may not run for days. The walk takes minutes on a large cache, so a
+lane's start claims it under a marker in the abcd home that holds it to once an hour
+across the account, and starts the verb detached, in its own session and holding
+nothing of the caller's; the lane does not wait. A detached run has no terminal, so
+it saves its answer in the marker, and the next lane to claim says on stderr what it
+could not do: a skip, an entry it could not remove, a cache still over its limit, or
+a run that never finished. Nothing it meets stops the lane.
 
 **Invariant: the store deletes only what passes its proof of belonging.** A
 directory leaves the lane only when git lists it as a worktree of this
@@ -1212,6 +1300,98 @@ the network path can move, and the person declares one the agent cannot push
 to. The checkout's refs, remotes, replacement objects and object store no
 longer choose the build.
 
+## The checklist store
+
+The checklist store holds one working copy's checklist
+([`../04-surfaces/40-checklist.md`](../04-surfaces/40-checklist.md),
+itd-2610170638184486). It lives in the working copy's local tier, so each
+worktree keeps its own, and it is **never committed**:
+
+```
+.abcd/.work.local/
+  checklist.json             the list, written only by the checklist verbs
+  checklist.last-good.json   the same checked bytes, kept as the fallback
+  checklist.lock             held across each read-change-write cycle
+  checklist.events.jsonl     one line per compaction, appended by the hook
+```
+
+`checklist.json` is one JSON document under the schema `abcd/checklist/v1`:
+`schema`, `updated_at` (RFC 3339), `updated_by` (the last writer's session id,
+or the name the away record gives it where the host exports none) and `items`. An item carries `id` (a short slug, stable once minted), `title` (one
+line of at most 200 characters), `state` (`working`, `waiting`, `done` or
+`dropped`), and optionally `waits_on`, `next_look` (RFC 3339), `promise`
+(`trigger` and `act`), `owner_refs` (the branches, pull requests and
+reservations the item is about) and `credential`, which has three fields and
+no more: `kind` and `scope`, each from a closed list, and `expiry`, a time or
+`none` (brief invariant 24). The decode is strict: a repeated key, a second
+document or a field the schema does not name refuses the file. Each line of
+`checklist.events.jsonl` is one JSON object under `abcd/checklist-events/v1`:
+`schema`, `at`, `event` (`compact`) and `trigger` (`manual`, `auto` or
+`other`).
+
+Three properties are load-bearing:
+
+- **The reader is the enforcement.** A file written past the verbs reaches the
+  reader unchecked, so the reader takes only a file a checked write in this
+  working copy could have made, validates and scans it, and falls back to the
+  last good copy judged the same way, then to nothing; it never writes, so a
+  read never promotes a file to last good.
+- **Every write is checked whole and lands atomically.** A write validates and
+  scans every field before any byte reaches the disk, writes the file 0600
+  through an atomic replace, and writes the same bytes as the last good copy; a
+  temporary file a killed writer left is never read. Whether that holds
+  across a crash or a power cut is not yet shown: the spec's crash lab
+  (spc-2610230805429429 step 7) has not run.
+- **A hook reads within its deadline.** These reads run under the hook's own
+  deadline. At a session start: finding the checkout, the checklist read's
+  tracked check and the secret scanner's identity probe, a probe the deadline
+  cut short leaving the scanner unavailable rather than blind to the person's
+  identity. At a stop: those, the session's copy, the session's identity and
+  holder, the default branch, the last-fetch stamp, the landing-receipt read,
+  this copy's key and the reservations' view as last fetched. The hooks' other
+  reads, among them the guard's reservations' view in its delete check, are
+  not yet bound (iss-2611100548341325); the away session's state, read after the
+  deadline may be spent, runs under a two-second bound of its own. At a
+  session start, a deadline spent before or during the read leaves the list
+  out, said on the error stream. At a stop, a reading of owned work the
+  deadline cut short lets the stop through with that reading's own incomplete
+  message and reads no list; only a deadline spent at the list's own read
+  writes a line on the error stream. Either way no note is left, and a list
+  git did not answer for in time is never read as one that names nothing.
+- **The hooks' unbound git calls are counted.** A test in
+  `internal/surface/cli/hook_git_audit_test.go` walks the calls from the
+  binary's entry and each hook verb's handlers, for darwin and for linux each
+  on its own, and counts the calls it reaches in the forms it matches: a
+  plain `exec.Command`, `os.StartProcess` or `syscall.Exec`, `ForkExec` or
+  `StartProcess`; an `exec.Cmd` literal, declaration or `new(exec.Cmd)`; a
+  gitutil or localtier function or method that has a Context form, or a call
+  of one of theirs that reaches one; and any `context.Background` or `TODO`
+  passed to a context parameter of an abcd function or method (a variadic
+  one included, and one called as a method expression, after its receiver),
+  whether or not it reaches git, directly, wrapped by `WithCancel`, `WithValue` or
+  `WithoutCancel`, as a cobra command's `Context`, returned by an abcd
+  function, or held in a variable or a struct field set from one, in any
+  package. A static walk cannot follow every route a value takes, and these
+  are not matched: such a context passed through a function-typed variable
+  or field, a positional struct literal, a map, slice or channel, one of
+  several results, an interface method's or a function literal's result;
+  a method expression on an instantiated generic type; alias types; an
+  `exec.Cmd` held as a struct field or a slice or map element; a Run or RunE
+  set by assignment on a verb that is not a hook (a hook verb's is refused);
+  a handler that calls on through a struct field; a call the standard
+  library or a dependency makes back into abcd through an interface (String,
+  MarshalJSON, the Error, Is, As and Unwrap callbacks, and an abcd type
+  implementing a dependency's interface whose method takes a context); and
+  reflection. The hook scripts are read for the binary called as `"$g"`,
+  `"$x"` or `"$r/abcd"`, and a call by another spelling is not seen. The test
+  compares the counts with
+  `internal/surface/cli/testdata/hook-git-baseline.txt`: a reached call
+  missing from the file, or made more often than it lists, fails the test,
+  and so does an entry made less often or no longer reached, until the file
+  is lowered to match (dcn-2611100854404911). A line added to the file by hand
+  is caught only by review of its diff. While the file lists any call, some
+  hook git calls still run with no deadline.
+
 ## The two `.abcd/` scopes
 
 abcd keeps **one namespace pattern instantiated at two scopes**, under two names:
@@ -1243,7 +1423,7 @@ where the machine's file may only lower a limit; the
 provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
 `runner` namespace (`runner.fallback_host` and every `runner.<name>`),
 `interview.list`, `matrix.spend_cap` (a repository's figure refused),
-`review.max_reviewers` and `models.classes` (a repository's skipped with a warning),
+`review.max_reviewers`, `models.classes` and `models.effort` (a repository's skipped with a warning),
 `reservation.github_username`, `reservation.max_live` (1 to
 100, 10 by default, read past to 10 when the file cannot be read, which the
 refusal at the cap says), `load.preflights` (how many preflights the first
@@ -1256,7 +1436,10 @@ divided by 2, never read from a repository, with no environment variable, read p
 file cannot be read for it, and a value out of range refusing a narrow run's wait) and `load.memory_floor_macos` and
 `load.memory_floor_linux` (the default floors applied, with a note, on stderr at a
 gate and on stdout at the load check, when the file cannot be read for them, and a value outside its set refusing the wait,
-since the gate does not guess a floor) are honoured from the machine layer alone,
+since the gate does not guess a floor) and `load.go_cache_limit_gib` (the size the
+Go build cache's trim works to: 1 to 1048576 GiB, 100 by default, never read from a
+repository, and a file it cannot read or a value out of range deleting nothing, with
+the reason in the trim's answer) are honoured from the machine layer alone,
 and only from a home outside every git working tree but the account's own
 (`layered.MachineRoots`, the rule `RootsFor` applies): under a home inside
 one the machine layer reads as absent, so no holder is named from it and the
@@ -1555,23 +1738,56 @@ override written before a release added an entry keeps withholding that entry.
 For the four guardrail domains — `PII`, `COMMITTING`, `LOAD` and `SHELL` — the
 load compares every recall, alias and rule list an override set against the list
 the load built before any `rules.json` layer: the running binary's bundled list,
-and for `SHELL` the lessons of the repository's own `.abcd/guard.json` entries
-too. It names each entry left out, and the file whose list is in force, on
+and for `SHELL` the line about the guard and the warned lessons, the repository's own `.abcd/guard.json` entries among them; a refused entry's lesson is in the second list, which no override replaces.
+It names each entry left out, and the file whose list is in force, on
 stderr from `abcd rules` and from the hook on every prompt. The effective set is
 unchanged. Restating the entry keeps it; leaving the field out inherits the
 list. The other bundled domains are conventions a
 repository restates in its own words, so a replacement there is not reported.
 
+**The hook's whole output fits the host's cap.** The status and away blocks are read first and are not trimmed; the status block shows at most ten lines and a count of the rest, between its heading and date line and its closing line, and the rules and notes share what the two leave. The host keeps 10,000 characters
+of one hook's output; above that it saves a file, shows a short preview and does not
+ask the agent to read the rest. So the rules, the memory notes and pages, the status
+block and the away block share one budget, 500 under the cap (iss-2611041419354106).
+The status and away blocks are read first, the rules leave at least 2,500 bytes for
+memory, memory takes what the rules actually left, and whatever of those bytes the
+notes leave unused goes back to the rules. When the matched domains do not all fit, room
+goes up a ladder, the cheapest first at each step: every domain gets its heading and
+a line naming the command that renders it, then its first rule, then all of its rules,
+so one long domain never holds back the next. Every form that carries a rule is recorded as sent,
+and never one the host cut; a heading and its command alone carry no rule, so that domain is tried again next turn. Where the context bracket keeps rules in full, they come
+back in full whenever they fit what the turn leaves them; a bracket that shrinks rules
+sends each domain at most as its heading and first rule, however much room is left
+(spc-2610111627213138). A note or page that does not fit comes back as one line where that line fits; a page over 128 KiB is never read for recall and is named on stderr. A
+domain with no room even for that line is left out and tried again next turn, with a
+notice where the notice itself fits.
+
+**A rule says which job it does.** A rule exists to correct an agent that has gone
+wrong or to steer it where no check reaches (itd-2611041636196213). The two lists
+follow from that: a hazard a machine can catch in a shell command is declared in
+`.abcd/guard.json`, and corrects at the refusal; anything else is a rule in
+`rules.json`, and steers as the work starts. No format changes for this. A domain's
+second list, the rules a check carries, is generated, so no file can declare it; only
+`SHELL` has one. Both lists and their sizes are in the rules verb's machine output,
+so the review of the rule set can be run again as rules change.
+
 **Two bundled domains are generated.** `SHELL` is the teaching plane of the
-shell-hazard guard (itd-103, spc-16 "Two planes, one registry"): its rules and
-recall keywords are built from the same hazard registry `abcd guard` enforces,
+shell-hazard guard (itd-103, spc-16 "Two planes, one registry", narrowed by
+itd-2611041636196213): its rules and recall keywords are built from the same hazard registry `abcd guard` enforces,
 never written in the bundled `rules.json`. The bundled set carries it built from
 the bundled registry; every load rebuilds it, by the same generator, from the
 registry the guard enforces in the repository, which is the bundled entries
 merged with the repository's own `.abcd/guard.json` (ruling CK1). Each registry
 entry becomes one rule — whether the guard refuses or warns, the entry id, the
 command it matches, the plain-language why, and the safe successor — in entry-id
-order. The recall keywords are the command heads the registry matches (`rm`,
+order. What is sent is a line saying a guard judges each command, then the rules of
+the entries that only warn, since a warned command still runs. The refused
+entries' rules are the second list, with the rules for the scripts the guard reads,
+the variable-built `-c` script and the delete it cannot prove safe; the refusal answers
+for them. The delete entries' rules are there too, since a delete warns only once its
+target is proven safe: a refused delete shows the proof's reason and a proven one the
+entry's words, and a delete entry a repository rewords goes in the first list, since no
+refusal shows it. The recall keywords are the command heads the registry matches (`rm`,
 `git push`, `gh repo delete`, `pkill`, …), which carry their subcommands so
 the bare words "push" or "reset" never recall the domain. A head that is an
 everyday English verb is marked so in the registry itself (`everyday_verb` on
@@ -1581,35 +1797,37 @@ its pids from, `pgrep` or `pidof`, bare), so "kill the feature flag" does not
 recall the domain while `kill -9 $(pgrep make)` does (iss-2609300123431381). The keywords end with
 a short fixed list for shell work in general (`shell`, `bash`, `zsh`,
 `command line`, `force push`). An entry added to or removed from the registry changes the
-domain with no second edit, and a test fails the build if the domain and the
-registry ever part. To every other contract it is an ordinary bundled domain:
+domain with no second edit, and a test fails the build if an entry falls out of both
+lists. To every other contract it is an ordinary bundled domain:
 a user or repo layer overrides it per field, `dormant` silences it, `*SHELL`
 activates it, the kill switch suppresses it, and dedup and provenance treat it
-like any other. Its injected block costs about 2k tokens for the bundled
-registry, one rule per registry entry, and each entry a repository adds or
-rewords in its `.abcd/guard.json` adds its own rule. An entry's why and its
+like any other. Its injected block is about 1,400 bytes for the bundled registry,
+and each warned entry a repository adds or rewords in its `.abcd/guard.json`, a delete
+entry among them, adds its own rule; a refused one adds nothing to it. An entry's why and its
 successor are each capped at 1,024 bytes, over three times the longest bundled
 one, so one rule is a few hundred tokens at most; a guard file carrying a longer
-one is refused like any invalid entry. When the matched rules still overflow
-the 64 KiB injection budget, the truncation notice names the file whose words
-filled it, `.abcd/guard.json` for these lessons and the layer's `rules.json`
-for a list an override set. The block is paid once per session per
-signature, so dedup never injects it again while its rules are unchanged, and
-an edit to the guard file re-injects it once. A rule whose words are the
+one is refused like any invalid entry. When a domain is left out for want of
+room, the truncation notice names the file whose words took it, `.abcd/guard.json`
+for these lessons and the layer's `rules.json` for a list an override set. The block is paid once per signature between refreshes:
+dedup does not inject it again while what is sent is unchanged, until a reset or the
+refresh backstop clears the ledger, and an edit to the guard file that changes what is
+sent re-injects it once. A rule whose words are the
 repository's — an entry the file adds, or a bundled entry whose tier, pattern,
 why or successor it changes — carries `(repo)` after its entry id, so whose
 words an agent is taught is never invisible; a fixture-only change teaches
 the bundled words and is not marked. Under a committed `"disabled": true`
-the guard refuses nothing, so every rule opens `Hazard (guard off)` in place of
-`Refused by the guard` or `Warned by the guard`: the hazard is still taught, and
-the sentence stays true. A `.abcd/guard.json` the guard refuses
+the guard refuses nothing, so nothing corrects the agent later: every rule is steering,
+each opening `Hazard (guard off)` in place of `Refused by the guard` or `Warned by
+the guard`, under a first line saying the guard is off in place of the line saying a
+guard judges each command. That is more than one turn holds, so the hook sends the
+first line and the command for the rest. A `.abcd/guard.json` the guard refuses
 (unreadable, invalid, or an uncommitted edit that weakens it) is refused here
-too and never skipped in silence: `SHELL` teaches the registry the guard falls
+too and never skipped in silence: `SHELL` is built from the registry the guard falls
 back to, none of the refused entries, and the load names the file and the
 reason on stderr, from `abcd rules` and from the hook on every prompt, while
 every other domain loads as usual. The switches stay independent: the guard
-file decides what is refused, and `rules.json` overrides, silences or kills the
-teaching of it.
+file decides what is refused, and `rules.json` overrides, silences or kills what is
+sent ahead of time; it never reaches the refusal.
 
 `GRILL` is the second (itd-201, spc-2610030944505997 "GRILL generated from one
 Go source"): the asking rules every abcd interview follows. Its rules are
@@ -1634,7 +1852,7 @@ session. It writes to two streams:
 
 | Stream | What it carries | Who reads it |
 |---|---|---|
-| **stdout** | the rendered block of the domains new this turn, followed by a `## MEMORY` block of the memory notes the prompt recalls that this session has not yet been given (from `.abcd/memory.json` and `~/.abcd.noindex/memory.json`, within what the rules leave of the turn's injection budget), then the status block, and nothing else. A prompt that matches no domain and recalls no note, or matches only domains and notes already injected unchanged this session, with no status to show, writes zero bytes. The one exception is the prompt that owes the session its name (itd-2610111707085098, usually its first): stdout is then one JSON object, `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":<the block>,"sessionTitle":<the name>}}`, which the host reads as the same context plus the title, the status block included | the host, which adds it to the model's context |
+| **stdout** | the rendered block of the domains new this turn, followed by a `## MEMORY` block of the memory notes the prompt recalls that this session has not yet been given (from `.abcd/memory.json` and `~/.abcd.noindex/memory.json`, within what the rules leave of the turn's injection budget), then the status block and, while the away mode holds, the away block. A prompt that matches no domain and recalls no note, or matches only domains and notes already injected unchanged this session, with no status and no away block to show, writes zero bytes. The exceptions are the prompt that owes the session its name (itd-2610111707085098, usually its first) and a prompt carrying the away line: stdout is then one JSON object, `{"systemMessage":<the away line>,"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":<the block>,"sessionTitle":<the name>}}`, with `systemMessage` only for an away line and `sessionTitle` only when a title is owed, which the host reads as the same context plus the line and the title, the status block included | the host, which adds it to the model's context |
 | **stderr** | one diagnostic line per prompt — the turn, the labels of the injected domains, the byte count — and, on a turn that recalls or has to leave out a note, one line naming the notes recalled and any that did not fit the budget, plus the load's notes and refusals, a `memory.json` that cannot be read among them (it recalls nothing, and the rules still inject) | the operator, out of band |
 
 **The machine reader's envelope.** With `--json`, the flag every verb takes for
@@ -1698,7 +1916,9 @@ turn it leaves the active set, so if it comes back its text is injected again
 the next time a prompt matches it, even when its rules are unchanged. A client
 that pruned it gets it back, and a host that appends to a transcript pays one
 re-render of that domain for the round trip; a domain that stays in force is
-still never re-injected unchanged within a session. The plain path meets this
+not re-injected unchanged within a session, short of a reset or the refresh backstop,
+unless no turn has had room for one of its rules: its heading and command, which
+carry none, come back each turn it matches until one does. The plain path meets this
 in two cases:
 
 - a domain whose `rules.json` entry is deleted, renamed or made dormant and

@@ -40,6 +40,12 @@ type Options struct {
 	// RunStateWatch has a walled launch compare what the driver wrote with what
 	// stands after the launch.
 	RunStateWatch bool
+	// ClassMapRead, on a drive, is handed the routes of every class map a
+	// review set is resolved from (the machine's models.classes over the
+	// bundled map, never a repository's or a run's stored state), as each
+	// run starts; the drive adds them to the routes its walled launch takes
+	// by name (runner.Config.AddClassRoutes). nil does nothing.
+	ClassMapRead func(routes []string)
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 	// driverIsSelf has a claim on the run name this process, where a drive runs the
@@ -109,6 +115,15 @@ type Options struct {
 	// (drive_profile.go); "" for anything but a drive.
 	Profile string
 
+	// Trial starts the run in the loop's trial mode (trial.go): a model-matrix
+	// copy, which takes no reservation and no shared-run claim and lands
+	// nothing. A trial resumes only a trial, and a build never resumes one.
+	Trial bool
+	// Frozen is a trial's frozen commit, the one every lane of the run is cut
+	// from: the full id of the checkout's head, its copy's clone. Only a trial
+	// names one.
+	Frozen string
+
 	// TakeOver is `abcd build --take-over`: the start's reservation moves
 	// this person's own live reservation from another copy to this one. It
 	// never moves another person's.
@@ -155,6 +170,15 @@ type Options struct {
 	// text that put it there; "" for the host. Drive sets it from the runner
 	// configuration, so a round's route names the runner it ran on.
 	runnerRoute func(role string) (name, override string)
+	// remote is origin's identity and the checkout's hooks directory as a
+	// drive read them when it started (remoteid.go): the worktree stage of
+	// each lane the drive opens reads the identity again before it asks origin
+	// anything, and the hooks directory just before its add, and refuses the
+	// lane when a held key, or a top-level entry of the hooks directory the
+	// repository's own settings name, differs at that read, within the limits
+	// remoteid.go states. Nil (a step the host runs, a single build) checks
+	// nothing.
+	remote *remoteIdentity
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
@@ -230,6 +254,8 @@ type Context struct {
 	router *roundRouter
 	// planGuard is Options.PlanGuard, for the plan stage; nil guards nothing.
 	planGuard func() error
+	// remote is Options.remote, for the worktree stage; nil checks nothing.
+	remote *remoteIdentity
 }
 
 // Outcome is what a stage's body returns. A body that hands its work to an agent
@@ -466,6 +492,10 @@ type StepResult struct {
 	// carried to whatever answer a later move of the same call gives
 	// (carryStanding).
 	standing string
+	// consumed says the step consumed and counted a receipt it found standing
+	// (consumeStopped), so a drive checks the drain's stuck bounds before it
+	// retries the role in the same call (stuckAfterConsumed).
+	consumed bool
 	// RouteUnused is each `implement step --route` the step did not use: a
 	// landing ahead of its role moved first (route_use.go). Every other
 	// --route the step would not use is refused before anything is written.
@@ -634,7 +664,10 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 	if err != nil {
 		return StartResult{}, err
 	}
-	if res, ok, err := resumeLive(repoRoot, key, o.drain); err != nil || ok {
+	if err := trialFrozen(repoRoot, o); err != nil {
+		return StartResult{}, err
+	}
+	if res, ok, err := resumeLive(repoRoot, key, o.drain, o.Trial); err != nil || ok {
 		if err == nil && pick != nil {
 			err = pickedLive(res)
 		}
@@ -674,7 +707,7 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		return StartResult{}, err
 	}
 	var shared *implement.Run
-	if o.Session != "" {
+	if o.Session != "" && !o.Trial {
 		run, err := sharedRunFor(repoRoot, o.Session)
 		if err != nil {
 			return StartResult{}, err
@@ -702,6 +735,9 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 	}
 	if !chk.OK {
 		return StartResult{}, chk.refusal()
+	}
+	if o.Trial && len(chk.steps) > 1 {
+		return StartResult{}, trialSteps(chk)
 	}
 	if chk.autoPlan != nil && o.reserve == nil {
 		o.reserve = autoPlanFootprint(*chk.autoPlan)
@@ -740,7 +776,7 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		}
 		// A start that raced this one past the lookup above created the run
 		// while the checks ran: it is resumed, not duplicated.
-		if st, ok := liveRun(runs, chk.Key, o.drain); ok {
+		if st, ok := liveRun(runs, chk.Key, o.drain, o.Trial); ok {
 			res = startResult(st, nil, true)
 			keep = true
 			if pick != nil {
@@ -786,6 +822,8 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 			Pace:            &pace,
 			Review:          &review,
 			ReservedAt:      rsv.at,
+			Trial:           o.Trial,
+			Frozen:          o.Frozen,
 			Admitted:        admission(chk, o),
 		}
 		if chk.autoPlan != nil {
@@ -798,6 +836,9 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		}
 		st.Record = append(st.Record, Entry{At: now, Lane: st.Lanes[0].ID, Stage: "start",
 			Note: "checks passed; " + st.Lanes[0].ID + " opened for " + laneWork(st, st.Lanes[0])})
+		if o.Trial {
+			st.Record = append(st.Record, Entry{At: now, Stage: StageTrial, Note: trialNote})
+		}
 		if o.AutoPlan && chk.autoPlan == nil {
 			st.Record = append(st.Record, Entry{At: now, Stage: "start",
 				Note: "--auto-plan: " + st.Intent + " is already planned, so there is nothing to plan; the run builds it"})
@@ -805,6 +846,9 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		st.Record = append(st.Record, Entry{At: now, Stage: StagePace,
 			Note: "pace " + pace.String() + "; the first window opens now"})
 		st.Record = append(st.Record, Entry{At: now, Stage: StageReview, Note: "review set " + review.String()})
+		if review.Judge != nil {
+			st.Record = append(st.Record, Entry{At: now, Stage: StageReview, Note: review.Judge.note()})
+		}
 		st.Record = append(st.Record, Entry{At: now, Stage: CheckBudget, Note: budget.Detail})
 		if st.Admitted != nil {
 			st.Record = append(st.Record, Entry{At: now, Stage: StageAdmitted, Note: "admitted under " + st.Admitted.String()})
@@ -966,7 +1010,7 @@ func claimRefusal(session, record string, err error) error {
 // has one. A checkout with no run directory has none, and the lookup creates
 // nothing; a run directory that is not a real directory is left to the create
 // path, which refuses it.
-func resumeLive(repoRoot, key string, drain bool) (StartResult, bool, error) {
+func resumeLive(repoRoot, key string, drain, trial bool) (StartResult, bool, error) {
 	if !fsutil.IsRealDir(filepath.Join(repoRoot, filepath.FromSlash(RunRelDir))) {
 		return StartResult{}, false, nil
 	}
@@ -977,7 +1021,7 @@ func resumeLive(repoRoot, key string, drain bool) (StartResult, bool, error) {
 		if err != nil {
 			return err
 		}
-		if st, ok := liveRun(runs, key, drain); ok {
+		if st, ok := liveRun(runs, key, drain, trial); ok {
 			res, found = startResult(st, nil, true), true
 		}
 		return nil
@@ -1024,9 +1068,9 @@ func resumeWithFlags(res StartResult, f paceFlags) error {
 // liveRun returns the run for key that is not complete. For a drain's lane
 // (drain), an issue run whose lane was handed back is over too; for any
 // caller, one a newer run of the issue has followed is (superseded).
-func liveRun(runs []State, key string, drain bool) (State, bool) {
+func liveRun(runs []State, key string, drain, trial bool) (State, bool) {
 	for i, st := range runs {
-		if recordid.SameID(st.Key, key) && !st.Complete() && !(drain && st.issueHandedBack()) && !superseded(runs, i) {
+		if recordid.SameID(st.Key, key) && st.Trial == trial && !st.Complete() && !(drain && st.issueHandedBack()) && !superseded(runs, i) {
 			return st, true
 		}
 	}
@@ -1153,6 +1197,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	}
 	var res StepResult
 	var wait error
+	counted := false
 	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		// A stop may have come since the check: under the lock nothing acts on a
 		// run that took one.
@@ -1190,6 +1235,23 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 			openWindow(st, now)
 			changed = true
 		}
+		// A drive's receipt refused for the work is consumed in this write, before
+		// the window is read, so the step whose window closes here still sets it
+		// aside and counts it, and the role starts again in the next window
+		// (receipt_standing.go). A receipt left standing would be read again by
+		// the next step, so placing this later would delay the consuming, not
+		// lose the relaunch.
+		//
+		// Invariant: once consumeStopped reports a change it may have moved a file
+		// and counted it, so every return below writes the state (returns true):
+		// one that did not would drop the record's line and the count while the
+		// file stays moved. The window's return does, the refusal's path does
+		// through consumed, and the success path does through changed.
+		consumed, n := consumeStopped(repoRoot, root, st, stopped, now)
+		counted = n
+		if consumed {
+			changed = true
+		}
 		if until, ok := windowElapsed(*st, now); ok {
 			closeWindow(st, now, until)
 			res = idleResult(*st)
@@ -1207,7 +1269,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		if noteStopped(st, stopped, now) {
 			renewed = true
 		}
-		r, moved, err := move(repoRoot, st, steps.takingReceipts(o.ReceiptOwn), now, g, newRoundRouter(o), o.PlanGuard)
+		r, moved, err := move(repoRoot, st, steps.takingReceipts(o.ReceiptOwn), now, g, newRoundRouter(o), o.PlanGuard, o.remote)
 		if err != nil {
 			if rf, ok := AsRefusal(err); ok && renewNote != "" {
 				rf.Remedy += "; " + renewNote
@@ -1217,7 +1279,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 			if noteRefusal(st, err, now) {
 				moved = true
 			}
-			if moved || renewed {
+			if moved || renewed || consumed {
 				// The wait, or a later lane's refusal, is the call's answer,
 				// and the time a lane began waiting for its full check, or
 				// the reservation's renewal, is written with it (ruling
@@ -1236,6 +1298,13 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	})
 	if err == nil && wait != nil {
 		err = wait
+	}
+	if err == nil {
+		res.consumed = counted
+	}
+	if len(stopped) > 0 {
+		// What a consumed receipt became is said in its own words.
+		standing = stoppedText(stopped)
 	}
 	if standing != "" {
 		if r, ok := AsRefusal(err); ok {
@@ -1558,6 +1627,9 @@ func handedMove(a Await, tier oracle.Tier) string {
 		// A review set's reviewer: the host is asked for the class's model,
 		// which nothing confirms (reviewers.go).
 		at += fmt.Sprintf(" on %s, the model of the %s class (reviewer %d of its role)", a.Model, a.Class, *a.Reviewer)
+		if a.Effort != "" {
+			at += fmt.Sprintf(", at effort %s, the class's, asked, not confirmed", a.Effort)
+		}
 	}
 	return fmt.Sprintf("start a fresh %s agent%s with the brief %s; when it has written its receipt, run `abcd implement receipt %s`",
 		a.Role, at, a.Brief, a.Receipt)

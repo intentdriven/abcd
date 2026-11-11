@@ -117,7 +117,8 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling\n" +
 			"worktree or local branch holds it in another bucket having changed it since its\n" +
 			"merge-base with this checkout, so a branch holding this checkout's older copy\n" +
-			"untouched does not count; no session holds a live claim on it; and no other copy holds\n" +
+			"untouched does not count, nor does a branch no worktree has checked out, which the\n" +
+			"passing row names; no session holds a live claim on it; and no other copy holds\n" +
 			"a reservation on it on origin, as this checkout last fetched the reservations; a peer,\n" +
 			"claim or view that cannot be read, or a copy that cannot be compared, counts as holding\n" +
 			"it). The check reads the reservations from disk alone, and names another copy's with\n" +
@@ -165,13 +166,20 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"handed back: it stops as unachievable with the last round's findings, the run starts nothing\n" +
 			"further for it, and `abcd implement step` refuses naming the hand-back.\n\n" +
 			"A new run reads its review set once, too: review.reviewers (one or two model classes per\n" +
-			"code-review role, for both roles or per role; bundled: middle and below), review.judge (a\n" +
-			"class; refused until a judge agent clears itd-81's calibration gate) and, from\n" +
+			"code-review role, for both roles or per role; bundled: research and default), review.judge\n" +
+			"(a class; bundled: top, which waits until a judge agent clears itd-81's calibration gate,\n" +
+			"fixed at the run's start, and a judge a file names is refused until then) and, from\n" +
 			abcdhome.Display("config.json") + " alone, review.max_reviewers (1 or 2, bundled 2) and the class map\n" +
-			"models.classes (top, middle, below, smallest, each a <provider>/<model> route over the\n" +
-			"bundled map). A repository list above the machine's ceiling is clamped with one line on\n" +
-			"stderr naming both files; a repository's ceiling or class map is skipped with a warning.\n" +
-			"An unknown class or a malformed set is refused at the review stage and writes nothing.\n" +
+			"models.classes (research, top, default, small, strongest first, each a <provider>/<model>\n" +
+			"route over the bundled map) and each class's effort, models.effort (one of low, medium, high,\n" +
+			"xhigh and max for every class, or an object naming one per class; bundled: high). A repository\n" +
+			"list above the machine's ceiling is clamped with one line on stderr naming both files; a\n" +
+			"repository's ceiling, class map or effort is skipped with a warning. An unknown class or\n" +
+			"level, or a malformed set, is refused at the review stage and writes nothing.\n" +
+			"The classes were renamed: top is now research, middle is top, below is default and smallest\n" +
+			"is small. A file naming middle, below or smallest is refused with that mapping, and so is a\n" +
+			"machine class map that sets top without research; a review list or judge naming top, while\n" +
+			"no file names research, default or small, runs and says on stderr what top now stands for.\n" +
 			"The result's review and the run record name each class with its model and each layer.\n\n" +
 			"The run then moves one step per `abcd implement step`, driven by the host session.\n\n" +
 			"While the away mode holds (`abcd mode autonomous`), or its record cannot be read, starting or resuming a\n" +
@@ -1530,7 +1538,16 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 			fmt.Fprintf(w, "    receipt %s (%s; model %s)%s\n", termsafe.Sanitize(r.Receipt), termsafe.Sanitize(r.Role), termsafe.Sanitize(model), routeSuffix(r.Route))
 		}
 		for _, v := range l.Verdicts {
-			fmt.Fprintf(w, "    round %d at %s: %s %s%s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(v.Role), termsafe.Sanitize(v.Verdict), routeSuffix(v.Route))
+			located := ""
+			if v.Located != nil {
+				located = fmt.Sprintf(", %d located finding(s)", *v.Located)
+			}
+			role := v.Role
+			if p := v.ReviewerPhrase(); p != "" {
+				role += " (" + p + ")"
+			}
+			fmt.Fprintf(w, "    round %d at %s: %s %s%s%s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(role), termsafe.Sanitize(v.Verdict), located, routeSuffix(v.Route))
+			renderFindings(w, v.Findings)
 		}
 		if len(l.Resolves) > 0 {
 			fmt.Fprintf(w, "    resolves %s\n", termsafe.Sanitize(strings.Join(l.Resolves, ", ")))
@@ -1562,6 +1579,26 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 	for _, e := range rec.Record {
 		fmt.Fprintf(w, "    %s  %-10s %s  %s\n", e.At.Format("2006-01-02T15:04:05Z"), termsafe.Sanitize(e.Stage),
 			termsafe.Sanitize(e.Lane), termsafe.Sanitize(fsutil.RedactHome(e.Note)))
+	}
+}
+
+// renderFindings renders a reviewer's located findings, one a line: its
+// location, what the fix report said of it once one answered it, and every
+// reviewer of the round citing it where more than one does.
+func renderFindings(w io.Writer, fs []loop.Finding) {
+	for _, f := range fs {
+		line := fmt.Sprintf("      %s:%d", f.File, f.Line)
+		if f.Status != "" {
+			line += "  " + f.Status
+		}
+		if len(f.CitedBy) > 1 {
+			by := make([]string, 0, len(f.CitedBy))
+			for _, c := range f.CitedBy {
+				by = append(by, fmt.Sprintf("%s %d", c.Role, c.Reviewer))
+			}
+			line += "  cited by " + strings.Join(by, ", ")
+		}
+		fmt.Fprintln(w, termsafe.Sanitize(line))
 	}
 }
 

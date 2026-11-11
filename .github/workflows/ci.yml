@@ -499,7 +499,7 @@ jobs:
         shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
-        run: go test -count=1 -run '^(TestAHereDocBodyFeedStaysLinear|TestAPatternPastTheStepBudgetIsNotGenerated|TestAVeryDeepPathIsJudgedQuickly|TestAdjacencyProbeStaysLinearOnLongLines|TestAdjacencyProbeWindowIsBounded|TestBacktickPrePassStaysLinear|TestBraceScanStaysLinear|TestClosedOverDocumentsStayLinear|TestClosingScansAreLinear|TestDoubleQuotedBraceExpansionStaysLinear|TestExpandedHeredocBodyStaysLinear|TestForgeTextWorkIsLinear|TestGallopingProbeCostIsLinearInLineLength|TestGallopingProbeStaysBoundedOnLongLines|TestGluedFixedOutputStaysLinear|TestGluedSweepWorkIsLinear|TestHereDocumentPayloadStaysLinear|TestHistoryCaptureAcceptsWhatTheHooksAccept|TestHomeSpellingsStayLinear|TestIFSSplitCheckStaysLinear|TestJunctionBacktrackIsBounded|TestKillFeedGroupsAndStringsStayLinear|TestKillFeedReadingStaysLinear|TestMakerNoteWorkIsLinear|TestMetadataViewsWorkIsLinear|TestNestedHereDocumentPayloadStaysLinear|TestParameterExpansionReadingStaysLinear|TestPatternShapesStayLinear|TestQuotedSubstitutionStaysLinear|TestRawHeadingScanStaysLinearInTheOpenerCount|TestScanLineWorkIsLinear|TestScriptReadingStaysLinearOnAdversarialLines|TestSpeculationIsBoundedAtTheStdinCap|TestSpellingSetsStayLinear|TestSurfaceChapterProseStatesNoShape|TestSweepCallerHomeWorkIsLinear|TestSynopsisScanIsLinearInThePage|TestTheBudgetBoundsWallTimeOverLongLiterals|TestTheBudgetBoundsWallTimeOverManyLines|TestTheHiddenHTMLReadersStayLinear|TestTheTagWalksStayLinear|TestUTF16ViewWorkIsLinear|TestUnknownWordWalksStayLinear)$' ./internal/adapter/scanner ./internal/core/claim ./internal/core/guard ./internal/core/reading ./internal/surface/cli
+        run: go test -count=1 -run '^(TestAHereDocBodyFeedStaysLinear|TestAPatternPastTheStepBudgetIsNotGenerated|TestAVeryDeepPathIsJudgedQuickly|TestAdjacencyProbeStaysLinearOnLongLines|TestAdjacencyProbeWindowIsBounded|TestBacktickPrePassStaysLinear|TestBraceScanStaysLinear|TestClosedOverDocumentsStayLinear|TestClosingScansAreLinear|TestDoubleQuotedBraceExpansionStaysLinear|TestExpandedHeredocBodyStaysLinear|TestForgeTextWorkIsLinear|TestGallopingProbeCostIsLinearInLineLength|TestGallopingProbeStaysBoundedOnLongLines|TestGluedFixedOutputStaysLinear|TestGluedSweepWorkIsLinear|TestHereDocumentPayloadStaysLinear|TestHistoryCaptureAcceptsWhatTheHooksAccept|TestHomeSpellingsStayLinear|TestHookGitCallsMatchBaseline|TestIFSSplitCheckStaysLinear|TestJunctionBacktrackIsBounded|TestKillFeedGroupsAndStringsStayLinear|TestKillFeedReadingStaysLinear|TestMakerNoteWorkIsLinear|TestMetadataViewsWorkIsLinear|TestNestedHereDocumentPayloadStaysLinear|TestParameterExpansionReadingStaysLinear|TestPatternShapesStayLinear|TestQuotedSubstitutionStaysLinear|TestRawHeadingScanStaysLinearInTheOpenerCount|TestScanLineWorkIsLinear|TestScriptReadingStaysLinearOnAdversarialLines|TestSpeculationIsBoundedAtTheStdinCap|TestSpellingSetsStayLinear|TestSurfaceChapterProseStatesNoShape|TestSweepCallerHomeWorkIsLinear|TestSynopsisScanIsLinearInThePage|TestTheBudgetBoundsWallTimeOverLongLiterals|TestTheBudgetBoundsWallTimeOverManyLines|TestTheHiddenHTMLReadersStayLinear|TestTheTagWalksStayLinear|TestUTF16ViewWorkIsLinear|TestUnknownWordWalksStayLinear)$' ./internal/adapter/scanner ./internal/core/claim ./internal/core/guard ./internal/core/reading ./internal/surface/cli
 
       # Only a source change can introduce a data race. On an inert change the
       # plain pass above runs the whole module in this lane's place.
@@ -758,8 +758,11 @@ jobs:
           base="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
           curl -sSLf -o "$base" "$url/$base"
-          curl -sSLf -o checksums.txt "$url/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
-          grep " $base\$" checksums.txt | sha256sum -c -
+          # Checked against the digest the repository holds, never a checksum
+          # list fetched beside the download (iss-2611081341084748);
+          # make secrets-check verifies its copy against the same file. The
+          # asset is matched as a whole field, so its dots are literal.
+          awk -v a="$base" 'NF == 2 && $2 == a' "$GITHUB_WORKSPACE/scripts/gitleaks-checksums.txt" | sha256sum -c -
           tar -xzf "$base" gitleaks
           sudo install gitleaks /usr/local/bin/gitleaks
           gitleaks version

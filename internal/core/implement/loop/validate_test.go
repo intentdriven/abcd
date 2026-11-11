@@ -678,6 +678,28 @@ func downgraded(t *testing.T, data []byte, v int) []byte {
 	if v <= schemaVersionUnprofiled {
 		delete(m, "profile")
 	}
+	if v <= schemaVersionUnlocated {
+		for _, l := range m["lanes"].([]any) {
+			lm, ok := l.(map[string]any)
+			if !ok {
+				continue
+			}
+			rounds, _ := lm["validation"].([]any)
+			for _, r := range rounds {
+				rm, ok := r.(map[string]any)
+				if !ok {
+					continue
+				}
+				vs, _ := rm["validators"].([]any)
+				for _, v := range vs {
+					if vm, ok := v.(map[string]any); ok {
+						delete(vm, "located")
+						delete(vm, "findings")
+					}
+				}
+			}
+		}
+	}
 	if v <= schemaVersionUnsettled {
 		for _, l := range m["lanes"].([]any) {
 			if lm, ok := l.(map[string]any); ok {

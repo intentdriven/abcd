@@ -59,10 +59,13 @@ alone, which would mean the second reviewer adds cost and no catch.
 ## Acceptance Criteria
 
 - **Given** no review set in any config layer, **when** a lane reaches validation,
-  **then** each reviewer role runs twice, once at the middle class and once at the class
-  below it, the stricter verdict decides, and the round's record names for each reviewer
-  the class, the model asked for and, where the runner reported one, the model it ran,
-  with the bundled layer that set the pair.
+  **then** each reviewer role runs twice, once at the `research` class and once at the
+  `default` class, the stricter verdict decides, and the round's record names for each
+  reviewer the class, the model asked for and, where the runner reported one, the model
+  it ran, with the bundled layer that set the pair. (Amended 2026-11-10 by
+  itd-2611101419006280: the pair was the class then called middle and the class below
+  it, now `top` and `default`; the classes were renamed and the bundled pair moved to
+  `research` and `default`.)
 - **Given** a review set of one reviewer, **when** a lane reaches validation, **then**
   each role runs once at the class it names, and the record says no comparison was made.
 - **Given** a review set of two reviewers at two classes, **when** a lane reaches
@@ -123,11 +126,16 @@ every finding applied here); the two open questions above are the product thinke
    Opus and Sonnet are the middle class and the class below it on the issue's four-class
    scale; the person's word "Frontier" for Opus is the oracle tiers' word for the
    strongest model, a clash of the two vocabularies recorded in decision 2.
+   Amended 2026-11-10 by itd-2611101419006280: the classes were renamed (`top` is now
+   `research`, `middle` is `top`, `below` is `default`, `smallest` is `small`), and the
+   bundled pair became `research` and `default`, with `top` as a judge that waits on
+   itd-81's calibration gate, on the product thinker's instruction.
 2. **Classes beside tiers, read by one map.** The oracle tier (`internal/core/oracle/
    tier.go`) is "a class of model that survives model churn", but its vocabulary
    (`local`, `economy`, `frontier`, `host-decides`) mixes locality, cost and rank, and
    has no name for the middle class the rulings turn on. The four classes of the
-   2026-10-14 ruling (top, middle, the class below, smallest) are one machine-layer class
+   2026-10-14 ruling (top, middle, the class below, smallest; since amended 2026-11-10 by
+   itd-2611101419006280 to `research`, `top`, `default` and `small`) are one machine-layer class
    map, the same one itd-2610100704270254 reads for its sub-agent count, so there is one
    class vocabulary, not a third reading of tiers. The product thinker's own answer called
    Opus "Frontier": the class names the person sees must say which model each holds
@@ -164,6 +172,8 @@ every finding applied here); the two open questions above are the product thinke
   oracle rows and wins only for a configured review set.
 - **refines `itd-81`** (judge calibration): the judge inherits its gate.
 - **keeps both with `itd-2610100704270254`**, **`itd-2610161733316518`** and **`itd-83`**.
+- **built on by `itd-2611101419006280`** (the model set): it renames the four classes,
+  changes the bundled pair and names a default judge that waits on the same gate.
 
 ## Audit Notes
 

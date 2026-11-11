@@ -1,16 +1,21 @@
 package loop
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/core/occupancy"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -415,6 +420,44 @@ func TestATakeOverRefusedAtTheEndSaysWhatItDid(t *testing.T) {
 	r, ok := AsRefusal(err)
 	if !ok || !strings.Contains(r.Wrote, "driver") {
 		t.Fatalf("the refusal: %+v, %v", r, err)
+	}
+}
+
+// TestTheListingSaysHowFarALanesBaseHasMoved: the listing counts the commits
+// origin's default branch, as this checkout last fetched it, holds past a lane's
+// base (iss-2611040337228910), so a successor sees the drift before it steps; a
+// default branch still at the base has moved none.
+func TestTheListingSaysHowFarALanesBaseHasMoved(t *testing.T) {
+	repo, runID, l, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	procsOf(t, hostOne, hostOne)
+	if len(l.BaseSHA) != 40 {
+		t.Fatalf("the lane names no base: %+v", l)
+	}
+	moved := func() *int {
+		t.Helper()
+		got, err := ListRuns(repo.Root(), runID, Options{stopHome: home})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := theRun(t, got, runID)
+		if len(r.Lanes) != 1 {
+			t.Fatalf("the lanes: %+v", r.Lanes)
+		}
+		return r.Lanes[0].BaseMoved
+	}
+
+	repo.Git("update-ref", "refs/remotes/origin/main", l.BaseSHA)
+	if n := moved(); n == nil || *n != 0 {
+		t.Fatalf("a default branch at the lane's base moved %v commit(s)", n)
+	}
+	tip, tree := l.BaseSHA, strings.TrimSpace(repo.Git("rev-parse", l.BaseSHA+"^{tree}"))
+	for i := range 3 {
+		tip = strings.TrimSpace(repo.Git("commit-tree", tree, "-p", tip, "-m", "landed "+strconv.Itoa(i)))
+	}
+	repo.Git("update-ref", "refs/remotes/origin/main", tip)
+	if n := moved(); n == nil || *n != 3 {
+		t.Fatalf("three commits past the base read as %v", n)
 	}
 }
 
@@ -925,5 +968,335 @@ func TestWhatARunFileNamesIsMadeSafe(t *testing.T) {
 		if strings.ContainsRune(got, 0x1b) {
 			t.Fatalf("%q went out as it was read", got)
 		}
+	}
+}
+
+// The launch ledger's word on an agent (spc-2611050505250705 step 2): an agent a
+// step started through a runner is alive or lost by the process its ledger entry
+// names, not by the step that started it.
+
+// harnessPID is the fixture's harness: the agent's own process.
+const harnessPID = 5200
+
+// runnerClaimed gives the lane's await a runner's claim, inside its term, with the
+// launch the run recorded for it: started at at by a step whose process, hostOne,
+// leads its own group apart from the agent's. stepPID 0 is a launch whose step's
+// process could not be read.
+func runnerClaimed(t *testing.T, repoRoot, runID, receipt string, at time.Time, stepPID int) {
+	t.Helper()
+	if err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+		i, k := st.findAwait(repoRoot, receipt)
+		if i < 0 {
+			t.Fatalf("no await at %s", receipt)
+		}
+		st.Lanes[i].Awaits[k].Running = &RunnerClaim{Runner: runner.Claude, Session: "the-claim", Until: at.Add(time.Hour)}
+		c, err := readControl(root, runID)
+		if err != nil {
+			return false, err
+		}
+		l := Launch{Lane: st.Lanes[i].ID, Role: st.Lanes[i].Awaits[k].Role, Runner: runner.Claude, Session: "the-claim", At: at}
+		if stepPID > 0 {
+			l.PID, l.StartUnix = stepPID, at.Add(-time.Duration(stepPID)*time.Second).Unix()
+		}
+		c.Launches = append(c.Launches, l)
+		return true, writeControl(root, runID, c)
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// ledgerHolds writes one launch's entry into home's ledger, as the runner's
+// launch does: e's run, lane and await name the work, and its id says when it
+// started.
+func ledgerHolds(t *testing.T, home string, e runner.LedgerEntry) string {
+	t.Helper()
+	e.Schema = runner.LedgerSchema
+	e.ID = fmt.Sprintf("lch-%s%06d-%08x", e.StartedAt.UTC().Format("060102150405"), e.StartedAt.Nanosecond()/1000, e.PID)
+	if e.Role == "" {
+		e.Role, e.Runner, e.Route = RoleImplementer, runner.Claude, runner.RouteUnknown
+	}
+	line, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := abcdhome.Path(home, "agents")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, e.ID+".json"), append(line, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return e.ID
+}
+
+// harnessRunning adds the agent's own process, started at started, to the table
+// procsOf stood in.
+func harnessRunning(t *testing.T, started time.Time) {
+	t.Helper()
+	prev := readProcs
+	readProcs = func() (sessionname.Table, error) {
+		tab, err := prev()
+		tab.Procs = append(slices.Clone(tab.Procs), machineload.Proc{PID: harnessPID, PPID: 1, Name: "claude", Age: tab.ReadAt.Sub(started)})
+		return tab, err
+	}
+	t.Cleanup(func() { readProcs = prev })
+}
+
+// TestTheListingJudgesARunnersAgentByItsOwnProcess: the step that started the agent
+// is gone and the claim's term runs, which the run's own record can only call
+// unknown; the ledger's entry for the launch names the agent's own process, alive
+// while that process runs and lost once it has gone. An entry an earlier attempt
+// left speaks for that attempt alone.
+func TestTheListingJudgesARunnersAgentByItsOwnProcess(t *testing.T) {
+	repo, runID, l, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	at := time.Now().Add(-time.Minute)
+	receipt := l.awaiting().Receipt
+	runnerClaimed(t, repo.Root(), runID, receipt, at, hostOne)
+	procsOf(t, hostTwo, hostTwo)
+	agent := func() ListedAgent {
+		t.Helper()
+		got, err := ListRuns(repo.Root(), runID, Options{stopHome: home})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := theRun(t, got, runID)
+		if len(r.Lanes) != 1 || len(r.Lanes[0].Agents) != 1 {
+			t.Fatalf("the lanes: %+v", r.Lanes)
+		}
+		return r.Lanes[0].Agents[0]
+	}
+	if a := agent(); a.State != AgentUnknown || a.Process != 0 || a.Launch != "" {
+		t.Fatalf("with no entry in the ledger, the run's record judges it: %+v", a)
+	}
+
+	started := at.Add(2 * time.Second)
+	work := runner.LedgerEntry{Repo: repo.Root(), Run: runID, Lane: l.ID, Await: receipt, Outcome: runner.OutcomeRunning}
+	earlier := work
+	earlier.StartedAt, earlier.PID, earlier.PIDStartUnix = at.Add(-time.Hour), harnessPID, started.Unix()
+	ledgerHolds(t, home, earlier)
+	harnessRunning(t, started)
+	if a := agent(); a.State != AgentUnknown || a.Launch != "" {
+		t.Fatalf("an earlier attempt's entry judged this one's agent: %+v", a)
+	}
+
+	work.StartedAt, work.PID, work.PIDStartUnix = at.Add(time.Second), harnessPID, started.Unix()
+	id := ledgerHolds(t, home, work)
+	if a := agent(); a.State != AgentAlive || a.Process != harnessPID || a.Launch != id {
+		t.Fatalf("its own process runs: %+v", a)
+	}
+	procsOf(t, hostTwo, hostTwo)
+	if a := agent(); a.State != AgentLost || a.Launch != id {
+		t.Fatalf("its own process has gone: %+v", a)
+	}
+}
+
+// TestATakeOverRestartsAnAgentWhoseOwnProcessIsGone: with the step gone inside the
+// claim's term, a take-over restarts the lane once the ledger says the agent's own
+// process has gone, saving its work aside first, and leaves the lane exactly as it
+// is while that process runs.
+func TestATakeOverRestartsAnAgentWhoseOwnProcessIsGone(t *testing.T) {
+	for _, alive := range []bool{false, true} {
+		t.Run(map[bool]string{false: "gone", true: "running"}[alive], func(t *testing.T) {
+			repo, runID, l, dir, head := deadLane(t)
+			home, _ := stopWorld(t, false)
+			at := time.Now().Add(-time.Minute)
+			runnerClaimed(t, repo.Root(), runID, l.awaiting().Receipt, at, hostOne)
+			driverGone(t, repo.Root(), runID, home)
+			started := at.Add(2 * time.Second)
+			ledgerHolds(t, home, runner.LedgerEntry{Repo: repo.Root(), Run: runID, Lane: l.ID, Await: l.awaiting().Receipt,
+				Outcome: runner.OutcomeRunning, StartedAt: at.Add(time.Second), PID: harnessPID, PIDStartUnix: started.Unix()})
+			if alive {
+				harnessRunning(t, started)
+			}
+
+			res, err := TakeRun(repo.Root(), runID, Options{stopHome: home})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if alive {
+				if len(res.Restarted) != 0 || len(res.Left) != 0 {
+					t.Fatalf("an agent whose own process runs was touched: %+v", res)
+				}
+				noAside(t, dir)
+				editsIntact(t, repo, l)
+				return
+			}
+			if len(res.Restarted) != 1 || res.Restarted[0].Aside.Head != head || len(res.Restarted[0].Aside.Files) != 3 {
+				t.Fatalf("the restart: %+v (left %v)", res.Restarted, res.Left)
+			}
+			asideOf(t, dir)
+		})
+	}
+}
+
+// TestATakeOverCollectsWhatTheLedgerSaysHasEnded: the step's process was never
+// read, so the run's own record takes the agent to be running for its claim's
+// term; the ledger says its launch ended, so its receipt is collected and no fresh
+// agent is told for it.
+func TestATakeOverCollectsWhatTheLedgerSaysHasEnded(t *testing.T) {
+	repo, runID, l, dir := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	writeReceipt(t, dir, goodReceipt(t, runID, l, dir, laneCommit(t, repo, l, "one.txt")))
+	at := time.Now().Add(-time.Minute)
+	runnerClaimed(t, repo.Root(), runID, l.awaiting().Receipt, at, 0)
+	driverGone(t, repo.Root(), runID, home)
+	ended := time.Now().Add(-time.Second)
+	ledgerHolds(t, home, runner.LedgerEntry{Repo: repo.Root(), Run: runID, Lane: l.ID, Await: l.awaiting().Receipt,
+		Outcome: runner.OutcomeFinished, StartedAt: at.Add(time.Second), EndedAt: &ended, PID: harnessPID})
+
+	res, err := TakeRun(repo.Root(), runID, Options{stopHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.Collected[l.ID], "collected") || len(res.Restarted) != 0 {
+		t.Fatalf("the take-over: %+v", res)
+	}
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Lanes[0].Stage != StageValidate {
+		t.Fatalf("the lane: %+v", st.Lanes[0])
+	}
+	noAside(t, dir)
+}
+
+// forgeLists stands the forge's one listing of pull requests in, counting each
+// read, so a test sees what the take-over read and how often.
+func forgeLists(t *testing.T, listed map[int]listedPR, unread string) *int {
+	t.Helper()
+	calls := 0
+	old := takeForgePRs
+	takeForgePRs = func(string) (map[int]listedPR, string) {
+		calls++
+		return listed, unread
+	}
+	t.Cleanup(func() { takeForgePRs = old })
+	return &calls
+}
+
+// prLane gives the run's one lane pull request #7 on its branch, as a landing
+// that opened it and then lost its driver leaves it.
+func prLane(t *testing.T, repoRoot, runID string) string {
+	t.Helper()
+	branch := ""
+	if err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		st.Lanes[0].PR = 7
+		branch = st.Lanes[0].Branch
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return branch
+}
+
+// TestATakeOverReadsEachPullRequestFromTheForge: a pull request a crash left
+// open drifts while nobody looks (iss-2610241414414823), so the take-over reads
+// its state from the forge once and names one that conflicts with the default
+// branch, where the bare listing reads nothing over the network.
+func TestATakeOverReadsEachPullRequestFromTheForge(t *testing.T) {
+	repo, runID, l, dir := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	writeReceipt(t, dir, goodReceipt(t, runID, l, dir, laneCommit(t, repo, l, "one.txt")))
+	branch := prLane(t, repo.Root(), runID)
+	driverGone(t, repo.Root(), runID, home)
+	calls := forgeLists(t, map[int]listedPR{7: {Number: 7, HeadRefName: branch, State: "OPEN", Mergeable: MergeableConflicting, MergeStateStatus: "DIRTY"}}, "")
+
+	listed, err := ListRuns(repo.Root(), "", Options{stopHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *calls != 0 || theRun(t, listed, runID).Lanes[0].Forge != nil {
+		t.Fatalf("the bare listing read the forge: %d call(s), %+v", *calls, theRun(t, listed, runID).Lanes[0])
+	}
+
+	res, err := TakeRun(repo.Root(), runID, Options{stopHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *calls != 1 {
+		t.Fatalf("the forge was listed %d time(s), not once", *calls)
+	}
+	if res.Run == nil || len(res.Run.Lanes) != 1 {
+		t.Fatalf("the run as it stands: %+v", res.Run)
+	}
+	f := res.Run.Lanes[0].Forge
+	if f == nil || f.State != ForgeConflicting || !strings.Contains(f.Note, "pull request #7 conflicts with the default branch") {
+		t.Fatalf("the lane's pull request: %+v", f)
+	}
+	if !slices.ContainsFunc(res.Left, func(s string) bool { return strings.Contains(s, "lane-1's pull request #7 conflicts") }) {
+		t.Fatalf("the take-over does not name the drifting pull request: %+v", res.Left)
+	}
+}
+
+// TestATakeOverThatCannotReadTheForgeSaysSo: a forge that cannot be read takes
+// nothing over less: the lane says why its pull request is unread, the take-over
+// names it among what it left, and goes on.
+func TestATakeOverThatCannotReadTheForgeSaysSo(t *testing.T) {
+	repo, runID, l, dir := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	writeReceipt(t, dir, goodReceipt(t, runID, l, dir, laneCommit(t, repo, l, "one.txt")))
+	prLane(t, repo.Root(), runID)
+	driverGone(t, repo.Root(), runID, home)
+	forgeLists(t, nil, "the forge client `gh` is not installed")
+
+	res, err := TakeRun(repo.Root(), runID, Options{stopHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := res.Run.Lanes[0].Forge
+	if f == nil || f.State != ForgeUnread || !strings.Contains(f.Note, "`gh` is not installed") {
+		t.Fatalf("the lane's pull request: %+v", f)
+	}
+	if !slices.ContainsFunc(res.Left, func(s string) bool { return strings.Contains(s, "lane-1's pull request #7 could not be read") }) {
+		t.Fatalf("the take-over does not name the unread pull request: %+v", res.Left)
+	}
+	if !strings.Contains(res.Next, "abcd implement step") {
+		t.Fatalf("the move: %q", res.Next)
+	}
+}
+
+// TestATakeOverWithNoPullRequestReadsNoForge: a run whose lanes name no pull
+// request costs no forge read.
+func TestATakeOverWithNoPullRequestReadsNoForge(t *testing.T) {
+	repo, runID, l, dir := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	writeReceipt(t, dir, goodReceipt(t, runID, l, dir, laneCommit(t, repo, l, "one.txt")))
+	driverGone(t, repo.Root(), runID, home)
+	calls := forgeLists(t, nil, "")
+
+	if _, err := TakeRun(repo.Root(), runID, Options{stopHome: home}); err != nil {
+		t.Fatal(err)
+	}
+	if *calls != 0 {
+		t.Fatalf("the forge was read %d time(s) for no pull request", *calls)
+	}
+}
+
+// TestEachForgeStateIsNamed: what the forge says of a lane's pull request, by
+// the listing's one reading, with a pull request the listing does not show, or
+// shows on another branch, read as unread.
+func TestEachForgeStateIsNamed(t *testing.T) {
+	lane := Lane{ID: "lane-1", Branch: "build/b", PR: 7}
+	for _, c := range []struct {
+		pr   listedPR
+		want ForgeState
+		note string
+	}{
+		{listedPR{Number: 7, HeadRefName: "build/b", State: "OPEN", Mergeable: "MERGEABLE", MergeStateStatus: "CLEAN"}, ForgeOpen, "waiting on a person's merge"},
+		{listedPR{Number: 7, HeadRefName: "build/b", State: "OPEN", Mergeable: "MERGEABLE", MergeStateStatus: "CLEAN", AutoMergeRequest: []byte(`{"mergeMethod":"MERGE"}`)}, ForgeArmed, "armed"},
+		{listedPR{Number: 7, HeadRefName: "build/b", State: "MERGED"}, ForgeMerged, "merged"},
+		{listedPR{Number: 7, HeadRefName: "build/b", State: "CLOSED"}, ForgeClosed, "closed without merging"},
+		{listedPR{Number: 7, HeadRefName: "build/other", State: "OPEN"}, ForgeUnread, "not among"},
+		{listedPR{Number: 8, HeadRefName: "build/b", State: "OPEN"}, ForgeUnread, "not among"},
+	} {
+		got := laneForge(lane, map[int]listedPR{c.pr.Number: c.pr}, "")
+		if got == nil || got.State != c.want || !strings.Contains(got.Note, c.note) {
+			t.Errorf("%+v: %+v, want %s naming %q", c.pr, got, c.want, c.note)
+		}
+	}
+	if got := laneForge(Lane{ID: "lane-1"}, nil, ""); got != nil {
+		t.Errorf("a lane with no pull request: %+v", got)
 	}
 }

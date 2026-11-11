@@ -93,6 +93,11 @@ const (
 	// nothing on the route shows it reached the provider: a harness was
 	// handed it and its answer does not say what the provider was sent.
 	NotVerified UnpinnedReason = "not_verified"
+	// NotPassed: abcd configured the value, and the route that ran the call
+	// has no way abcd has verified to pass it, so it was not passed and the
+	// harness's own default applied (an effort on a runner with no effort
+	// flag, itd-2611101419006280).
+	NotPassed UnpinnedReason = "not_passed"
 )
 
 // Unpinned is one field a record could not pin, and why.

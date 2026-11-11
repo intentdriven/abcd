@@ -129,6 +129,7 @@ func TestWaitRefusesAtOnceOnALowDisk(t *testing.T) {
 		"The floor is 4.0 GiB for each preflight the gate admits at once (load.preflights",
 		"about 177.0 GiB (estimated from 12 of its 256 subdirectories)",
 		"find -H ~/Library/Caches/go-build -type f ! -path ~/'Library/Caches/go-build/fuzz/*' -mmin +2880 -delete",
+		"abcd ahoy worktree trim-cache",
 		"go clean -cache",
 		"nothing was waited for",
 	} {

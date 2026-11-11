@@ -28,23 +28,36 @@ const maxPromptBytes = 64 * 1024
 // maxStateFileBytes caps a session-state ledger file on read.
 const maxStateFileBytes = 256 * 1024
 
-// injectionBudgetBytes caps the TOTAL rendered rule text injected per turn,
-// summed across every matched domain (iss-2608261551077971). The 256 KiB
-// per-file read cap bounds one rules.json on disk, not the injected total — and
-// the payload re-lands at least every DefaultRefreshBackstop prompts and after
-// each compaction, so an unbounded set is a recurring context-flood vector.
-//
-// 64 KiB is a quarter of the per-file read cap and equal to maxPromptBytes (the
-// per-turn prompt ceiling the loader already scans against), so it is a
-// consistent per-turn text budget. The entire bundled default set renders to a
-// few KiB, so a legitimate multi-domain match sits an order of magnitude under
-// this; only a bloated or hostile rules.json can reach it.
-const injectionBudgetBytes = 64 * 1024
+// HostOutputCap is the host's cap on one hook's output, in characters (the hooks
+// reference, read 2026-11-04): above it the host saves the output to a file,
+// shows a short preview and does not ask the agent to read the rest. Another host
+// may differ, and this is the one place the figure sits.
+const HostOutputCap = 10_000
 
-// InjectionBudgetBytes is the per-turn budget, exported because the memory
-// recall shares it (spc-2610111627213138, "Budget"): the rules render first,
-// and the recall takes what they leave, never a budget of its own.
-const InjectionBudgetBytes = injectionBudgetBytes
+// hostOutputMargin is kept free under the cap, the margin the session-start hook
+// keeps too. Bytes never undercount characters, so the margin covers only the
+// blank lines that join the blocks.
+const hostOutputMargin = 500
+
+// InjectionBudgetBytes bounds everything the prompt hook adds on one turn: the
+// rules, the memory notes and pages, the status block and the away block
+// (iss-2611041419354106). The status and away blocks are read first and the rest
+// share what they leave; the memory recall takes what the rules actually left
+// (spc-2610111627213138, "Budget"), never a budget of its own.
+const InjectionBudgetBytes = HostOutputCap - hostOutputMargin
+
+// MemoryFloorBytes is what the rules leave for memory notes and pages however
+// many domains match, so a long rule set never silences what was learned. It
+// holds a note at the longest body a note may have, on lines of ordinary length,
+// with its header and line.
+// What the notes leave of it goes back to the rules (cli.injectWithRecall).
+const MemoryFloorBytes = 2_500
+
+// RulesBudget is what the rules may take of the turn once reserved bytes have
+// gone to the blocks read first and the floor to memory. It is never below 0.
+func RulesBudget(reserved int) int {
+	return max(0, InjectionBudgetBytes-reserved-MemoryFloorBytes)
+}
 
 // injectionTruncatedMarker is the unmistakable substring the loud truncation
 // notice carries when the budget bites — searchable in the injected output and
@@ -77,9 +90,12 @@ type InjectResult struct {
 	Active   []string
 	Sources  map[string]string
 	// Shrunk names, in order, each injected domain sent as its heading and
-	// first rule rather than in full (renderShrunk); empty in a bracket that
-	// keeps rules in full.
+	// first rule rather than in full (renderShrunk), because of its bracket or
+	// because the turn could not hold it.
 	Shrunk []string
+	// Pointed names, in order, each injected domain sent as its heading and the
+	// command alone, because even its first rule did not fit (renderPointer).
+	Pointed []string
 	// Bracket is the bracket the rules were injected in.
 	Bracket Bracket
 	State   SessionState
@@ -102,8 +118,8 @@ func (r InjectResult) Labels() []string {
 //
 // Recalled is the memory recall's own ledger (internal/core/recall,
 // spc-2610111627213138): item key to a signature of the item's content. It is
-// a second map because Inject prunes every Ledger name that is not an active
-// domain, which would forget every recalled item each turn; Inject carries it
+// a second map because InjectWithin prunes every Ledger name that is not an active
+// domain, which would forget every recalled item each turn; InjectWithin carries it
 // through untouched, and the same resets clear both — ResetState removes the
 // file, and the backstop prompt clears the two together.
 type SessionState struct {
@@ -133,10 +149,10 @@ func UnknownFillNotice(st *SessionState, f Fill) string {
 	if reason == "" {
 		reason = "no source told"
 	}
-	return "rules: how full this session is, is unknown (" + reason + "); rules come back in full and memory notes and pages as one line each while it stays unknown, and `abcd rules --prompt` shows any of them in full"
+	return "rules: how full this session is, is unknown (" + reason + "); rules come back in full where they fit and memory notes and pages as one line each while it stays unknown, and `abcd rules --prompt` shows any of them in full"
 }
 
-// Inject is the pure heart of the prompt-router hook: it recall-matches prompt,
+// InjectWithin is the pure heart of the prompt-router hook: it recall-matches prompt,
 // drops any matched domain already injected this session with an unchanged
 // signature, renders the remainder, and returns the updated session state. It
 // performs no I/O and never reflects prompt bytes into the output — the rendered
@@ -157,7 +173,14 @@ func UnknownFillNotice(st *SessionState, f Fill) string {
 // hashes the full block), so a domain sent shrunk is not sent again in full
 // when the bracket changes, nor the other way round, until a reset clears
 // the ledger.
-func Inject(rs RuleSet, prompt string, prev SessionState, backstop int, bracket Bracket) InjectResult {
+//
+// budget is the bytes the rules may take. A domain that does not fit in full but
+// has room for its first rule goes in its short form and is recorded as sent, the
+// same form and the same record as
+// in a bracket that shrinks, since the form names the command that renders the
+// rest. One with room only for its heading and the command carries no rule, so it
+// is not recorded, and the next turn tries it again.
+func InjectWithin(rs RuleSet, prompt string, prev SessionState, backstop int, bracket Bracket, budget int) InjectResult {
 	if backstop <= 0 {
 		backstop = DefaultRefreshBackstop
 	}
@@ -194,27 +217,30 @@ func Inject(rs RuleSet, prompt string, prev SessionState, backstop int, bracket 
 		fresh = append(fresh, d)
 	}
 
-	// Enforce the per-repo injection budget across ALL matched domains, not just
-	// the per-file read cap (iss-2608261551077971). A domain that is truncated
-	// away is deliberately NOT recorded in the ledger, so it is retried next turn
-	// rather than silently dropped for the session.
-	// The bracket's row decides each domain's form; the ledger records the
-	// domain's content signature whatever the form (Signature hashes the full
-	// block), so a change of bracket never sends a domain again.
-	text, kept := renderWithinBudget(fresh, rs.rulesFrom, domainRenderer(bracket))
-	shrinks := bracket.Row().ShrinkRules
-	var injected, shrunk []string
+	// The budget holds across ALL matched domains. A domain that carried a rule
+	// is recorded by its content (Signature hashes the full block), so a change
+	// of form never sends it again. A pointer carries none and says there was no
+	// room this turn, so it is left out of the ledger with a domain that got
+	// nothing, and both are tried again next turn.
+	text, kept := renderWithinBudget(fresh, rs.rulesFrom, bracket.Row().ShrinkRules, budget)
+	var injected, shrunk, pointed []string
 	sources := make(map[string]string, len(kept))
-	for _, d := range kept {
-		ledger[d.Name] = Signature(d)
-		injected = append(injected, d.Name)
-		sources[d.Name] = d.Source
-		if _, ok := renderShrunk(d); shrinks && ok {
-			shrunk = append(shrunk, d.Name)
+	for _, k := range kept {
+		if k.form != formPointer {
+			ledger[k.domain.Name] = Signature(k.domain)
+		}
+		injected = append(injected, k.domain.Name)
+		sources[k.domain.Name] = k.domain.Source
+		switch k.form {
+		case formShrunk:
+			shrunk = append(shrunk, k.domain.Name)
+		case formPointer:
+			pointed = append(pointed, k.domain.Name)
 		}
 	}
 	sort.Strings(injected)
 	sort.Strings(shrunk)
+	sort.Strings(pointed)
 
 	names := make([]string, 0, len(active))
 	for name := range active {
@@ -228,13 +254,14 @@ func Inject(rs RuleSet, prompt string, prev SessionState, backstop int, bracket 
 		Active:   names,
 		Sources:  sources,
 		Shrunk:   shrunk,
+		Pointed:  pointed,
 		Bracket:  bracket,
 		State:    SessionState{Count: count, Ledger: ledger, Recalled: recalled, FillUnknownSaid: prev.FillUnknownSaid},
 	}
 }
 
 // copyLedger copies the memory recall's ledger, nil for an empty one, so the
-// state Inject hands back never shares a map with the caller's.
+// state InjectWithin hands back never shares a map with the caller's.
 func copyLedger(m map[string]string) map[string]string {
 	if len(m) == 0 {
 		return nil
@@ -261,82 +288,160 @@ func activeNames(rs RuleSet, matched []ResolvedDomain) map[string]struct{} {
 	return out
 }
 
-// renderWithinBudget renders fresh under the per-repo injection budget, each
-// domain through render (renderDomain in full, or a bracket's shrunk form,
-// domainRenderer). When the whole render fits it is returned — for the full
-// form byte-identical to Render (the common path is untouched). When it
-// overflows, whole domain blocks are kept greedily in order until the next
-// would exceed the budget, and a loud, unmistakable truncation notice is
-// appended — whole-block granularity keeps the "## NAME" injection contract
-// intact (never a half-rendered rule). It returns the text and the domains
-// actually kept, so the caller records only those in the dedup ledger.
-// rulesFrom maps a domain to the file its rules came from (RuleSet.rulesFrom);
-// the notice names those files as the likely cause.
-func renderWithinBudget(fresh []ResolvedDomain, rulesFrom map[string]string, render func(ResolvedDomain) string) (string, []ResolvedDomain) {
+// The forms a domain can be sent in, and none: left out this turn.
+type sentForm int
+
+const (
+	formNone sentForm = iota
+	formPointer
+	formShrunk
+	formFull
+)
+
+// sentDomain is one domain and the form it goes in.
+type sentDomain struct {
+	domain ResolvedDomain
+	form   sentForm
+	block  string
+}
+
+// noticeReserve is kept for the truncation notice when a domain is left out.
+const noticeReserve = 512
+
+// renderWithinBudget renders fresh within budget bytes. When every domain fits in
+// its row's form that is the whole answer, each domain in full in the row that
+// keeps rules full. Otherwise the room goes up a ladder: every domain first
+// gets its pointer, then what room is left widens domains to their first rule, then
+// to full, the cheapest first at each step, so one long domain never holds back the
+// next and as many as possible arrive whole; a row that shrinks rules stops at the
+// first rule. Whole blocks only, which keeps the "## NAME" contract: never half a
+// rule. A domain with no room even for a pointer is left out, and a notice says so
+// where the notice itself fits. It returns the text and the domains sent with their
+// forms, so the caller records those that carried a rule. rulesFrom maps a domain to the file
+// its rules came from (RuleSet.rulesFrom), which the notice names.
+func renderWithinBudget(fresh []ResolvedDomain, rulesFrom map[string]string, shrinks bool, budget int) (string, []sentDomain) {
 	if len(fresh) == 0 {
 		return "", nil
 	}
-	var whole strings.Builder
-	fmt.Fprintf(&whole, "# abcd rules — %d domain(s) active\n", len(fresh))
-	for _, d := range fresh {
-		whole.WriteString(render(d))
+	whole := make([]sentDomain, len(fresh))
+	size := len(domainsHeader(len(fresh)))
+	for i, d := range fresh {
+		whole[i] = rowForm(d, shrinks)
+		size += len(whole[i].block)
 	}
-	if whole.Len() <= injectionBudgetBytes {
-		return whole.String(), fresh
+	if size <= budget {
+		return compose(whole, ""), whole
 	}
 
-	var kept []ResolvedDomain
-	size := 0
-	// Reserve room for the header line and the truncation notice so the composed
-	// output is provably within the budget regardless of how many blocks fit.
-	const reserve = 512
-	for _, d := range fresh {
-		block := render(d)
-		if size+len(block) > injectionBudgetBytes-reserve {
-			break
+	left := budget - len(domainsHeader(len(fresh)))
+	sent, omitted, room := packPointers(fresh, left)
+	if omitted > 0 {
+		// Room for the notice, unless keeping it would send nothing at all.
+		if s, o, r := packPointers(fresh, left-noticeReserve); o < len(fresh) {
+			sent, omitted, room = s, o, r
 		}
-		kept = append(kept, d)
-		size += len(block)
 	}
+	widen(sent, &room, func(d ResolvedDomain) sentDomain { return rowForm(d, true) })
+	if !shrinks {
+		widen(sent, &room, func(d ResolvedDomain) sentDomain { return rowForm(d, false) })
+	}
+	var kept []sentDomain
+	for _, s := range sent {
+		if s.form != formNone {
+			kept = append(kept, s)
+		}
+	}
+	if len(kept) == 0 {
+		return "", nil
+	}
+	notice := ""
+	if omitted > 0 {
+		notice = fmt.Sprintf("\n# abcd rules — %s: %d of %d matched domain(s) did not fit the %d bytes left for rules this turn and are tried again on the next. %s\n",
+			injectionTruncatedMarker, omitted, len(fresh), budget, budgetCause(fresh, rulesFrom))
+	}
+	text := compose(kept, notice)
+	if len(text) > budget {
+		text = compose(kept, "")
+	}
+	return text, kept
+}
 
+// domainsHeader is the line every rules block opens with.
+func domainsHeader(n int) string { return fmt.Sprintf("# abcd rules — %d domain(s) active\n", n) }
+
+// compose joins the header, the blocks and the notice.
+func compose(sent []sentDomain, notice string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# abcd rules — %d domain(s) active\n", len(kept))
-	for _, d := range kept {
-		b.WriteString(render(d))
+	b.WriteString(domainsHeader(len(sent)))
+	for _, s := range sent {
+		b.WriteString(s.block)
 	}
-	fmt.Fprintf(&b,
-		"\n# abcd rules — %s: rendered rule set exceeds the %d-byte per-repo budget; %d of %d matched domain(s) omitted this turn. %s\n",
-		injectionTruncatedMarker, injectionBudgetBytes, len(fresh)-len(kept), len(fresh), budgetCause(fresh, rulesFrom, render))
-	return b.String(), kept
+	b.WriteString(notice)
+	return b.String()
 }
 
-// domainRenderer is the form a bracket gives each domain: shrunk to its
-// heading and first rule (renderShrunk) where the bracket's row shrinks
-// rules, in full (renderDomain) otherwise.
-func domainRenderer(bracket Bracket) func(ResolvedDomain) string {
-	if !bracket.Row().ShrinkRules {
-		return renderDomain
+// rowForm is d in the form its bracket's row gives it, room allowing.
+func rowForm(d ResolvedDomain, shrinks bool) sentDomain {
+	if shrinks {
+		if block, ok := renderShrunk(d); ok {
+			return sentDomain{d, formShrunk, block}
+		}
 	}
-	return func(d ResolvedDomain) string {
-		block, _ := renderShrunk(d)
-		return block
+	return sentDomain{d, formFull, renderDomain(d)}
+}
+
+// packPointers gives each domain, in order, its pointer while one fits. It returns
+// the forms, how many got nothing and the room left over.
+func packPointers(fresh []ResolvedDomain, room int) (sent []sentDomain, omitted, left int) {
+	sent = make([]sentDomain, len(fresh))
+	for i, d := range fresh {
+		block := renderPointer(d)
+		if len(block) > room {
+			sent[i] = sentDomain{domain: d, form: formNone}
+			omitted++
+			continue
+		}
+		room -= len(block)
+		sent[i] = sentDomain{d, formPointer, block}
+	}
+	return sent, omitted, room
+}
+
+// widen spends room moving domains up to the form target gives them, the cheapest
+// first. A domain left out stays out, since a later turn sends it.
+func widen(sent []sentDomain, room *int, target func(ResolvedDomain) sentDomain) {
+	next := make([]sentDomain, len(sent))
+	order := make([]int, 0, len(sent))
+	for i, s := range sent {
+		next[i] = target(s.domain)
+		if s.form != formNone && next[i].form > s.form {
+			order = append(order, i)
+		}
+	}
+	extra := func(i int) int { return len(next[i].block) - len(sent[i].block) }
+	sort.SliceStable(order, func(a, b int) bool { return extra(order[a]) < extra(order[b]) })
+	for _, i := range order {
+		if e := extra(i); e <= *room {
+			*room -= e
+			sent[i] = next[i]
+		}
 	}
 }
 
-// budgetCause names the files whose words filled the budget, largest share
-// first: each matched domain's rendered block is charged to the file its rules
-// came from, and the bundled words are charged to no file. Naming one file
-// always — .abcd/rules.json — sent a reader to the wrong file when the
-// repository's guard.json or the user's rules.json held the bulk.
-func budgetCause(fresh []ResolvedDomain, rulesFrom map[string]string, render func(ResolvedDomain) string) string {
+// budgetCause names the files whose words matched this turn, largest share
+// first, charging each domain's full block to the file its rules came from and
+// the bundled words to no file. Naming one file always, .abcd/rules.json, sent a
+// reader to the wrong file when the repository's guard.json or the user's
+// rules.json held the bulk.
+func budgetCause(fresh []ResolvedDomain, rulesFrom map[string]string) string {
 	cost := map[string]int{}
 	for _, d := range fresh {
 		if file := rulesFrom[d.Name]; file != "" {
-			cost[file] += len(render(d))
+			cost[file] += len(renderDomain(d))
 		}
 	}
 	if len(cost) == 0 {
-		return "No override file wrote these rules; inspect them with `abcd rules`."
+		return "`abcd rules` lists them."
 	}
 	files := make([]string, 0, len(cost))
 	for f := range cost {
@@ -348,7 +453,7 @@ func budgetCause(fresh []ResolvedDomain, rulesFrom map[string]string, render fun
 		}
 		return files[i] < files[j]
 	})
-	return "A bloated or hostile " + strings.Join(files, " or ") + " is the likely cause — inspect it with `abcd rules`."
+	return "Most of the words come from " + strings.Join(files, " or ") + "; `abcd rules` lists them."
 }
 
 // ErrNoStateHome is SaveState's answer when the account has no home folder:

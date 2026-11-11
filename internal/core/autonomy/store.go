@@ -1,6 +1,7 @@
 package autonomy
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -53,7 +54,12 @@ type Store struct {
 // repoRoot, below home: keyed on the repository's root commit, so every
 // working copy of it opens the same store. Nothing is created.
 func openStore(home, repoRoot string) (Store, error) {
-	sha, err := gitutil.RootCommit(repoRoot)
+	return openStoreContext(context.Background(), home, repoRoot)
+}
+
+// openStoreContext is openStore with its root-commit lookup bound to ctx.
+func openStoreContext(ctx context.Context, home, repoRoot string) (Store, error) {
+	sha, err := gitutil.RootCommitContext(ctx, repoRoot)
 	if err != nil {
 		// Not ErrNoRootCommit: git did not answer, and the store is neither
 		// keyed nor read on a guess.

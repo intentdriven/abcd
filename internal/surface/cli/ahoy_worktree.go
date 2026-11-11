@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/landing"
@@ -34,8 +35,9 @@ var worktreeForge worktree.GH = landing.GH
 // and the notes archive is stamped with it. A test moves it on.
 var worktreeNow = time.Now
 
-// worktreeTrimCache is prune's trim of the Go build cache. TestMain stands in
-// for it across this package's tests, so none trims the machine's own cache.
+// worktreeTrimCache is the trim of the Go build cache prune and trim-cache run.
+// TestMain stands in for it across this package's tests, so none trims the
+// machine's own cache.
 var worktreeTrimCache = worktree.TrimGoCache
 
 // worktreeAddTimeout bounds add's `git worktree add`: gitutil.CheckoutBound,
@@ -117,6 +119,7 @@ func newAhoyWorktreeCommand(asJSON *bool) *cobra.Command {
 	cmd.AddCommand(newAhoyWorktreeAddCommand(asJSON))
 	cmd.AddCommand(listCmd)
 	cmd.AddCommand(newAhoyWorktreePruneCommand(asJSON))
+	cmd.AddCommand(newAhoyWorktreeTrimCacheCommand(asJSON))
 	return cmd
 }
 
@@ -282,6 +285,61 @@ func renderPruned(w io.Writer, got worktree.Pruned) {
 	}
 }
 
+// newAhoyWorktreeTrimCacheCommand builds `ahoy worktree trim-cache [--dry-run]`:
+// the same trim prune runs, with no worktree to remove first. It is what a lane's
+// start runs detached (kickCacheTrim), so a real run saves its answer for the next
+// lane to read. It exits 0 when the cache was walked with nothing refused, a cache
+// left over its limit by what it must keep among them, and 1 when it was skipped
+// or an entry could not be read or removed.
+func newAhoyWorktreeTrimCacheCommand(asJSON *bool) *cobra.Command {
+	var dryRun bool
+	cmd := &cobra.Command{
+		Use:   "trim-cache",
+		Short: "Keep the Go build cache under its limit, oldest entries first",
+		Long: "Delete the oldest entries of the Go build cache until the rest fit its limit, keeping\n" +
+			"every entry used in the last 3 hours whatever the limit; if those alone exceed it,\n" +
+			"they stay and the line says so. The limit is `" + worktree.CacheLimitKey + "` in\n" +
+			"`" + abcdhome.Display("config.json") + "`, a whole number of GiB, 100 by default, and is never read from a\n" +
+			"repository; a value it cannot use, a file it cannot read, or a key under `load`\n" +
+			"that nothing reads (a misspelt one among them) deletes nothing.\n\n" +
+			"It acts only on the directory `go env GOCACHE` reports, and only when that is a real\n" +
+			"directory this account owns, has a Go build cache's shape and is not the home or above\n" +
+			"it, and there only on the entries Go's own layout defines. A build running beside it\n" +
+			"finds a miss and rebuilds, and an entry a build used since the walk stays, since each\n" +
+			"one is read again just before it goes; a build that looks one up in the instant\n" +
+			"between that read and the unlink can still fail to open it, and a rerun rebuilds it.\n" +
+			"Judge it by the cache's size: a local snapshot can hold\n" +
+			"what it deleted, so free disk can lag.\n\n" +
+			"The build loop runs this detached when it makes a lane, at most once an hour\n" +
+			"(`" + abcdhome.Display("go-cache-trim.json") + "`), and the next lane says on stderr what it could not do.\n" +
+			"A dry run deletes nothing and records nothing. Exits 0 when the cache was walked and\n" +
+			"nothing refused, 1 when it was skipped or an entry could not be read or removed.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			started := worktreeNow()
+			got := worktreeTrimCache(dryRun, started)
+			if !dryRun {
+				home, err := abcdhome.MachineHome()
+				if err == nil {
+					err = worktree.SaveCacheTrim(home, started, got)
+				}
+				if err != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "abcd: the Go build cache's trim could not be recorded: %s\n", shownCacheTrimText(err.Error()))
+				}
+			}
+			if err := render(cmd.OutOrStdout(), *asJSON, got, func(w io.Writer) { fmt.Fprintln(w, cacheTrimLine(got, dryRun)) }); err != nil {
+				return err
+			}
+			if got.Skipped != "" || got.Failed > 0 {
+				return &exitError{Code: 1}
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "delete nothing; report what a real run would")
+	return cmd
+}
+
 // cacheTrimLine is the one line saying what the Go build cache's trim did, or
 // would do under a dry run, or why it was skipped.
 func cacheTrimLine(t worktree.CacheTrim, dryRun bool) string {
@@ -292,15 +350,31 @@ func cacheTrimLine(t worktree.CacheTrim, dryRun bool) string {
 	if t.EntriesRemoved == 1 {
 		entries = "1 entry"
 	}
-	line := fmt.Sprintf("go build cache %s: removed %s unused for %d days, %s freed", t.Path, entries, t.UnusedDays, humanBytes(int(t.BytesFreed)))
+	freed, left, limit := cacheSizeText(t.BytesFreed), cacheSizeText(t.LeftBytes), cacheSizeText(t.LimitBytes)
+	line := fmt.Sprintf("go build cache %s: removed %s, %s freed, %s left of a limit of %s", t.Path, entries, freed, left, limit)
 	if dryRun {
-		line = fmt.Sprintf("go build cache %s: would remove %s unused for %d days, freeing %s", t.Path, entries, t.UnusedDays, humanBytes(int(t.BytesFreed)))
+		line = fmt.Sprintf("go build cache %s: would remove %s, freeing %s, leaving %s of a limit of %s", t.Path, entries, freed, left, limit)
+	}
+	if t.OverLimit {
+		line += fmt.Sprintf("; still over the limit, since entries used in the last %d hours stay", t.KeepHours)
 	}
 	if t.Failed > 0 {
 		line += fmt.Sprintf("; %d could not be read or removed", t.Failed)
 	}
 	return line
 }
+
+// cacheSizeText renders a size in GiB, as the limit is set, or small ones as they
+// are.
+func cacheSizeText(n uint64) string {
+	if n < 1<<30 {
+		return humanBytes(int(n))
+	}
+	return fmt.Sprintf("%.1f GiB", float64(n)/(1<<30))
+}
+
+// shownCacheTrimText is text bound for the terminal: home-redacted and masked.
+func shownCacheTrimText(s string) string { return termsafe.Sanitize(fsutil.RedactHome(s)) }
 
 // renderDossier lays out a quiet candidate's dossier under its row, in the
 // spec's order: dirty state first, so uncommitted work is the first thing

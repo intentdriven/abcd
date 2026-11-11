@@ -50,7 +50,7 @@ func releaseChain(root, id, tip, tree string) (links []chainLink, complete bool,
 	if !complete {
 		line = line[:maxChain]
 	}
-	bodies := commitBodies(root, line, batchBudget)
+	bodies := commitBodies(viewGit{}, root, line, batchBudget)
 	for _, c := range line {
 		b, ok := bodies[c]
 		if !ok {

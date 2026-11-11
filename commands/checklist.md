@@ -11,7 +11,8 @@ user-invocable: false
 The working copy's checklist: what this session is working on, what it waits
 on and what it has promised. It lives in `.abcd/.work.local/checklist.json`,
 one file per working copy, so a resumed or a fresh session in the same copy
-reads the same list, and it survives compaction and a crash. Keep it current
+reads the same list, and every session start, after a compaction too, adds it
+back to the session's context. Keep it current
 as you work, through these verbs only: the file is checked when it is read,
 and a hand edit the reader cannot vouch for is passed over.
 
@@ -78,6 +79,43 @@ as they were. Never paste a credential into the checklist: an item that needs
 one names its kind, scope and expiry only. An unknown id, an unknown state, a
 `--promise` without `=>`, no local tier and no checkout are refused the same
 way. Relay the refusal to the user as it is.
+
+Write the checklist only through these verbs. The host's own file tools are
+refused `checklist.json` and `checklist.last-good.json`, and the refusal names
+the verb to run instead; a path beginning with `~/` is judged with the home
+directory in its place too. They are also refused a path the guard cannot finish
+reading, since it cannot tell whether the write reaches the checklist: a path,
+a link target or any reading of them longer than a fixed 4096-byte limit, a
+chain of more than 40 links, a path whose readings would look up too many path
+parts, and a path the guard cannot read, because a lookup fails for any reason
+but a part that does not exist yet. Name such a file by a shorter, plainer
+path. A path whose readings take longer than twenty seconds is refused too:
+the machine is slow or busy, so try the call again. A file changed any other way is judged when it is read: one that fails
+its checks is set aside for the last good copy.
+
+Before each compaction the host's hook appends the compaction's time and
+trigger to `.abcd/.work.local/checklist.events.jsonl`, beside the list; leave
+that file to the hook. It never holds up the compaction: a compaction it could
+not record goes ahead, with one line on stderr saying so.
+
+Name the work an item is about in its owner_refs: a branch as
+`branch:<name>`, a pull request as `pr:<number>`, a reservation by its record
+id. When a turn ends with a branch or reservation of this session's that no
+item names, or one that moved after the list was last written, the list is
+behind: while the person is away the stop is blocked once per consecutive
+set naming them, and
+while they are present the next prompt carries the same note. Bring the list
+up to date with `add` or `set` when it does.
+
+The hooks read the list within their own deadlines: finding the checkout, the
+read's check that git does not track the list, and the secret scanner's
+reading of your git identity.
+A session start that runs out of time before the list is read shows no list
+and says so in one line on stderr. A stop whose reading of owned work runs out
+of time does not read the list: it goes through with that reading's own
+message saying what was not read, and leaves no note. A stop that runs out of
+time at the list's own read says so in one line on stderr, adds no block for
+the list and leaves no note. Run the bare verb to see the list then.
 
 A write starts from what the reader returns: when checklist.json fails its
 checks it builds on the last good copy, and when both fail it starts a new

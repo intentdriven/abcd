@@ -39,7 +39,7 @@ import (
 func (st State) masked() State {
 	st.RunID, st.Key, st.Intent, st.Spec = line(st.RunID), line(st.Key), line(st.Intent), line(st.Spec)
 	st.Driver = Driver(line(string(st.Driver)))
-	st.Profile = line(st.Profile)
+	st.Profile, st.Frozen = line(st.Profile), line(st.Frozen)
 	st.Pace = maskPtr(st.Pace, Pace.masked)
 	st.Review = maskPtr(st.Review, ReviewSet.masked)
 	st.Pick = maskPtr(st.Pick, RunPick.masked)
@@ -82,7 +82,7 @@ func (l Lane) masked() Lane {
 	l.Stage = Stage(line(string(l.Stage)))
 	l.Awaits = maskEach(l.Awaits, func(a Await) Await {
 		a.Role, a.Brief, a.Receipt, a.Kept = line(a.Role), line(a.Brief), line(a.Receipt), free(a.Kept)
-		a.Class, a.Model = line(a.Class), line(a.Model)
+		a.Class, a.Model, a.Effort = line(a.Class), line(a.Model), line(a.Effort)
 		a.Answered = maskPtr(a.Answered, func(r RouteAnswer) RouteAnswer {
 			r.Route, r.SHA256 = line(r.Route), line(r.SHA256)
 			return r
@@ -148,13 +148,21 @@ func (r ValidationRound) masked() ValidationRound {
 	r.ResolvesShown = maskEach(r.ResolvesShown, line)
 	r.Validators = maskEach(r.Validators, func(v ValidatorRun) ValidatorRun {
 		v.Role, v.Brief, v.Return, v.Verdict = line(v.Role), line(v.Brief), line(v.Return), line(v.Verdict)
-		v.Class, v.Model, v.ModelStatus = line(v.Class), line(v.Model), line(v.ModelStatus)
+		v.Class, v.Model, v.ModelStatus, v.Effort = line(v.Class), line(v.Model), line(v.ModelStatus), line(v.Effort)
 		v.Audit = maskPtr(v.Audit, func(a AuditRun) AuditRun {
 			a.ReceiptID, a.Request, a.BaseSHA, a.HeadSHA, a.Worst = line(a.ReceiptID), line(a.Request), line(a.BaseSHA), line(a.HeadSHA), line(a.Worst)
 			a.NotMet, a.Inconclusive = maskEach(a.NotMet, line), maskEach(a.Inconclusive, line)
 			return a
 		})
 		v.Route = maskPtr(v.Route, maskRoute)
+		v.Findings = maskEach(v.Findings, func(f Finding) Finding {
+			f.File, f.Status = line(f.File), line(f.Status)
+			f.CitedBy = maskEach(f.CitedBy, func(c Citer) Citer {
+				c.Role = line(c.Role)
+				return c
+			})
+			return f
+		})
 		return v
 	})
 	r.Routes = maskEach(r.Routes, func(t Round) Round {
@@ -195,13 +203,15 @@ func (rs ReviewSet) masked() ReviewSet {
 		r.Role, r.Layer, r.Origin = line(r.Role), line(r.Layer), line(r.Origin)
 		r.Reviewers = maskEach(r.Reviewers, func(c ReviewClass) ReviewClass {
 			c.Class, c.Model, c.MapLayer, c.MapOrigin = line(c.Class), line(c.Model), line(c.MapLayer), line(c.MapOrigin)
+			c.Effort, c.EffortLayer, c.EffortOrigin = line(c.Effort), line(c.EffortLayer), line(c.EffortOrigin)
 			return c
 		})
 		return r
 	})
 	rs.Judge = maskPtr(rs.Judge, func(j ReviewJudge) ReviewJudge {
 		j.Class, j.Model, j.MapLayer, j.MapOrigin = line(j.Class), line(j.Model), line(j.MapLayer), line(j.MapOrigin)
-		j.Layer, j.Origin = line(j.Layer), line(j.Origin)
+		j.Layer, j.Origin, j.Status = line(j.Layer), line(j.Origin), line(j.Status)
+		j.Effort, j.EffortLayer, j.EffortOrigin = line(j.Effort), line(j.EffortLayer), line(j.EffortOrigin)
 		return j
 	})
 	return rs
@@ -249,7 +259,7 @@ func maskRoute(r runner.RouteRecord) runner.RouteRecord {
 	r.Asked, r.Ran, r.Model, r.Override = line(r.Asked), line(r.Ran), line(r.Model), line(r.Override)
 	s := &r.Sides
 	s.ModelAsked, s.ServedProvider, s.FinishReason = line(s.ModelAsked), line(s.ServedProvider), line(s.FinishReason)
-	s.HarnessVersion, s.PromptSHA256 = line(s.HarnessVersion), line(s.PromptSHA256)
+	s.HarnessVersion, s.PromptSHA256, s.EffortAsked = line(s.HarnessVersion), line(s.PromptSHA256), line(s.EffortAsked)
 	s.ServedModels = maskEach(s.ServedModels, line)
 	s.PinConfigSHA256 = line(s.PinConfigSHA256)
 	s.ProviderPin = maskPtr(s.ProviderPin, func(p oracle.Pin) oracle.Pin {

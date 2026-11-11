@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/autonomy"
 	"github.com/intentdriven/abcd/internal/core/recall"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -23,6 +24,23 @@ import (
 // (spc-2610111627213138 steps 2 to 4): the prompt router's recall after the
 // rules, and the `rules --prompt "<text>"` diagnostic that shows what one
 // prompt brings back.
+
+// injectWithRecall is the turn's one use of the budget, the hook's and the
+// diagnostic's alike: the rules within what reserved leaves less the memory floor,
+// then the recall within what the rules left. Whatever of the floor the notes
+// leave unused goes back: the rules are rendered again within what the notes
+// really took, since Inject writes nothing and rules that fit are sent in full
+// (spc-2610111627213138).
+func injectWithRecall(rs rules.RuleSet, prompt string, prev rules.SessionState, backstop int, bracket rules.Bracket, reserved int,
+	recallWithin func(ledger map[string]string, budget int) recall.Result) (rules.InjectResult, recall.Result) {
+	res := rules.InjectWithin(rs, prompt, prev, backstop, bracket, rules.RulesBudget(reserved))
+	// The ledger Inject hands back, which its backstop may have cleared.
+	mem := recallWithin(res.State.Recalled, max(0, rules.InjectionBudgetBytes-reserved-len(res.Text)))
+	if len(mem.Text) < rules.MemoryFloorBytes {
+		res = rules.InjectWithin(rs, prompt, prev, backstop, bracket, max(0, rules.InjectionBudgetBytes-reserved-len(mem.Text)))
+	}
+	return res, mem
+}
 
 // recallMemory is the prompt router's recall: the notes both memory layers
 // hold and the pages both page scopes hold, matched against prompt and taken
@@ -92,7 +110,8 @@ type rootLookup struct {
 // reuses the lookup the live drain already made for this prompt, so the
 // router spawns that full-history rev-list once; only when the drain made
 // none does it ask git itself, about root, and then only when a tied note
-// matched. The drain asked about cwd and the recall needs root, the
+// matched or, in `rules --prompt`, a managed checkout's away record is read.
+// The drain asked about cwd and the recall needs root, the
 // repository the loader resolved from that same cwd: the two are one
 // repository, so they share one root commit — and where git cannot answer
 // for cwd (a refused foreign-uid root, which leaves cwd as root), it cannot
@@ -147,12 +166,14 @@ func refusalLoss(r recall.Refusal) string {
 }
 
 // The forms the diagnostic gives a matched domain, note or page: in full,
-// shrunk to its heading and first rule (a domain, in a bracket that shrinks
-// rules), as one line (a note or page, in a bracket that has lines), not
-// fitting this turn's budget, or larger than the whole budget.
+// shrunk to its heading and first rule (a domain, by its bracket or the
+// budget), as its heading and the command alone (a domain whose first rule
+// does not fit), as one line (a note or page), not fitting this turn's budget,
+// or larger than the whole budget.
 const (
 	promptFormFull       = "full"
 	promptFormShrunk     = "shrunk"
+	promptFormPointer    = "pointer"
 	promptFormLine       = "one-line"
 	promptFormOverBudget = "over-budget"
 	promptFormTooLarge   = "too-large"
@@ -244,7 +265,11 @@ type rulesPromptPage struct {
 
 // rulesPromptView is `rules --prompt`'s --json envelope.
 type rulesPromptView struct {
-	Disabled   bool                `json:"disabled"`
+	Disabled bool `json:"disabled"`
+	// Stage is a drive's stage, where no notes or pages are recalled: the plain
+	// form says so rather than "none matched", and the JSON form says it here,
+	// so its empty notes and pages read apart from a prompt that matched none.
+	Stage      bool                `json:"stage"`
 	Bracket    rulesPromptBracket  `json:"bracket"`
 	Domains    []rulesPromptDomain `json:"domains"`
 	Notes      []rulesPromptNote   `json:"notes"`
@@ -252,15 +277,38 @@ type rulesPromptView struct {
 	Unreadable []recall.Refusal    `json:"unreadable"`
 }
 
+// promptReserved is the bytes the away block takes off the turn's budget before
+// the rules, read as the hook reads it. The status block the hook also reads
+// first is left out: reading it takes in the status branches, which writes the
+// local tier, and this diagnostic writes nothing. An unmanaged checkout holds no
+// away record, and a drive's stage reads none, so the root commit is not looked
+// up for either. A lookup git did not answer leaves the away record unread, as in
+// the hook, which says nothing of it; the diagnostic names it on stderr, since a
+// fuller form than the hook sends would otherwise be shown without a word.
+func promptReserved(stderr io.Writer, root string, here recall.RootFunc) int {
+	if root == "" || stageActive() || !autonomy.Managed(root) {
+		return 0
+	}
+	sha, err := here()
+	if err != nil {
+		diagnosticLine(stderr, "abcd mode: this repository's root commit: %s; the away record was not read, so nothing is reserved for it",
+			fsutil.RedactHome(err.Error()))
+	}
+	return len(readPromptAway(stderr, rootLookup{sha: sha, err: err, asked: true}, root).Block)
+}
+
 // rulesPrompt answers `rules --prompt "<text>"`: what that one prompt brings
-// back to a fresh session. It runs the router's own path — rules.Inject on an
-// empty ledger, then the recall within what the rules left, both in the
-// bracket used (the --fill value, or nil for an unknown fill) puts it in —
-// and writes nothing: no session state is loaded or saved. A root-commit
+// back to a fresh session. It runs the router's own path — the rules on an
+// empty ledger within what the away block leaves, then the recall
+// within what the rules left, both in the bracket used (the --fill value, or
+// nil for an unknown fill) puts it in — and writes nothing: no session state
+// is loaded or saved. A root-commit
 // lookup git did not answer in time leaves the tied notes out of the view,
-// and is named on stderr, once, as the hook names it.
+// and is named on stderr, once for the recall when a tied note matched, as the
+// hook names it, and once more for the away record in a managed checkout. On a
+// drive's stage, where the hook reads neither, neither is looked up.
 func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *float64) rulesPromptView {
-	v := rulesPromptView{Disabled: rs.Disabled, Bracket: promptBracket(used), Domains: []rulesPromptDomain{}, Notes: []rulesPromptNote{},
+	v := rulesPromptView{Disabled: rs.Disabled, Stage: stageActive(), Bracket: promptBracket(used), Domains: []rulesPromptDomain{}, Notes: []rulesPromptNote{},
 		Pages: []rulesPromptPage{}, Unreadable: []recall.Refusal{}}
 	if rs.Disabled {
 		return v
@@ -268,7 +316,19 @@ func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *
 	bracket := v.Bracket.bracket
 	// The hook's own cap, so a word past it matches here no more than there.
 	prompt = rules.CapPrompt(prompt)
-	res := rules.Inject(rs, prompt, rules.SessionState{}, 0, bracket)
+	// On a drive's stage the hook recalls no notes or pages (recallMemory), so
+	// nothing is read for them here either: the view shows only what that agent
+	// gets, and no root-commit lookup is made for a tied note.
+	var items []recall.Item
+	if !v.Stage {
+		var refused []recall.Refusal
+		items, refused = recall.ReadItems(rules.UserHome(), root)
+		v.Unreadable = append(v.Unreadable, refused...)
+	}
+	here := promptRoot(rootLookup{}, root)
+	res, mem := injectWithRecall(rs, prompt, rules.SessionState{}, 0, bracket, promptReserved(stderr, root, here), func(_ map[string]string, budget int) recall.Result {
+		return recall.Recall(recall.Request{Items: items, Prompt: prompt, Budget: budget, Root: here, Bracket: bracket})
+	})
 	injected := map[string]bool{}
 	for _, name := range res.Injected {
 		injected[name] = true
@@ -277,9 +337,15 @@ func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *
 	for _, name := range res.Shrunk {
 		shrunk[name] = true
 	}
+	pointed := map[string]bool{}
+	for _, name := range res.Pointed {
+		pointed[name] = true
+	}
 	for _, d := range rs.Match(prompt) {
 		form := promptFormOverBudget
 		switch {
+		case pointed[d.Name]:
+			form = promptFormPointer
 		case shrunk[d.Name]:
 			form = promptFormShrunk
 		case injected[d.Name]:
@@ -288,10 +354,6 @@ func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *
 		v.Domains = append(v.Domains, rulesPromptDomain{Name: d.Name, Label: rules.Label(d.Name, d.Source), Source: d.Source,
 			Hits: rules.Hits(d, prompt), Form: form})
 	}
-	items, refused := recall.ReadItems(rules.UserHome(), root)
-	v.Unreadable = append(v.Unreadable, refused...)
-	here := promptRoot(rootLookup{}, root)
-	mem := recall.Recall(recall.Request{Items: items, Prompt: prompt, Budget: rules.InjectionBudgetBytes - len(res.Text), Root: here, Bracket: bracket})
 	tooLarge := map[string]bool{}
 	for _, key := range mem.TooLarge {
 		tooLarge[key] = true
@@ -352,7 +414,9 @@ func renderRulesPrompt(w io.Writer, rs rules.RuleSet, v rulesPromptView) {
 			fmt.Fprintf(w, "  %s — hit by %s — %s\n", d.Label, termsafe.Sanitize(strings.Join(d.Hits, ", ")), promptFormWords(d.Form))
 		}
 	}
-	if len(v.Notes) == 0 {
+	if v.Stage {
+		fmt.Fprintln(w, "Notes: not recalled on a drive's stage")
+	} else if len(v.Notes) == 0 {
 		fmt.Fprintln(w, "Notes: none matched")
 	} else {
 		fmt.Fprintln(w, "Notes:")
@@ -362,7 +426,9 @@ func renderRulesPrompt(w io.Writer, rs rules.RuleSet, v rulesPromptView) {
 			renderTermScores(w, n.Terms)
 		}
 	}
-	if len(v.Pages) == 0 {
+	if v.Stage {
+		fmt.Fprintln(w, "Pages: not recalled on a drive's stage")
+	} else if len(v.Pages) == 0 {
 		fmt.Fprintln(w, "Pages: none matched")
 	} else {
 		fmt.Fprintln(w, "Pages:")
@@ -407,10 +473,12 @@ func promptFormWords(form string) string {
 		return "in full"
 	case promptFormShrunk:
 		return "as its heading and first rule, with the line naming the command that renders the rest"
+	case promptFormPointer:
+		return "as its heading and the command that renders it, no room for a rule"
 	case promptFormLine:
 		return "as one line: its key and title, without its body"
 	case promptFormTooLarge:
-		return "larger than the whole per-turn budget, so it does not come back in full"
+		return "too long for any turn even as one line, so it does not come back"
 	}
 	return "does not fit this turn's budget"
 }

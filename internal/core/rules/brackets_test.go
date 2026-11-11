@@ -117,15 +117,6 @@ func TestShrunkDomainNamesTheRulesCommand(t *testing.T) {
 // entry in id order and a shrunk GRILL the first rule question.AskingRules
 // returns.
 func TestGeneratedDomainsShrinkToTheirFirstGeneratedRule(t *testing.T) {
-	reg := guard.Defaults()
-	ids := make([]string, 0, len(reg.Entries))
-	for id := range reg.Entries {
-		ids = append(ids, id)
-	}
-	slices.Sort(ids)
-	first := reg.Entries[ids[0]]
-	first.ID = ids[0]
-	shellFirst := sanitizeRuleBody(first.Lesson())
 	grillRules := question.AskingRules(question.Default)
 	grillFirst := sanitizeRuleBody(grillRules[0])
 
@@ -134,7 +125,7 @@ func TestGeneratedDomainsShrinkToTheirFirstGeneratedRule(t *testing.T) {
 		name, first, second string
 		count               int
 	}{
-		{ShellDomain, shellFirst, Defaults().Domains[ShellDomain].Rules[1], len(Defaults().Domains[ShellDomain].Rules)},
+		{ShellDomain, sanitizeRuleBody(guard.SteeringLine), Defaults().Domains[ShellDomain].Rules[1], len(Defaults().Domains[ShellDomain].Rules)},
 		{GrillDomain, grillFirst, grillRules[1], len(grillRules)},
 	} {
 		i := strings.Index(res.Text, "## "+tc.name+"\n")

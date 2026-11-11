@@ -1,6 +1,9 @@
 package recordid
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestHandleInTextFindsGenealogy pins what counts as a citation inside a
 // principle's statement (spc-2609020626042471): any numbered record family or a
@@ -32,5 +35,44 @@ func TestHandleInTextFindsGenealogy(t *testing.T) {
 		if got, ok := HandleInText(s); ok {
 			t.Errorf("HandleInText(%q) found %q", s, got)
 		}
+	}
+}
+
+// TestIDNumberAtReadsOnlyARecordIDsDigits pins the digits that are a numbered
+// id's own: all digits, directly after a family HandleInText finds or run, the
+// family opening a word, nothing alphanumeric after them.
+func TestIDNumberAtReadsOnlyARecordIDsDigits(t *testing.T) {
+	at := func(text, num string) bool {
+		i := strings.LastIndex(text, num)
+		return IDNumberAt(text, i, i+len(num))
+	}
+	for text, num := range map[string]string{
+		"fixes iss-2611060835372141.":    "2611060835372141",
+		"run-2611100851356293":           "2611100851356293",
+		"(ITD-79)":                       "79",
+		"the file spc-12-a-slug.md":      "12",
+		"by mem-2610111200001234, which": "2610111200001234",
+		"iss-12345678901234567890":       "12345678901234567890",
+	} {
+		if !at(text, num) {
+			t.Errorf("IDNumberAt(%q, %q) = false; want true", text, num)
+		}
+	}
+	for text, num := range map[string]string{
+		"a bare 2611060835372141":      "2611060835372141",
+		"iss-2611060835372141abc":      "2611060835372141abc",
+		"iss-12345678abcdef":           "12345678abcdef",
+		"xiss-2611060835372141":        "2611060835372141",
+		"a-iss-2611060835372141":       "2611060835372141",
+		"lane-2611060835372141":        "2611060835372141",
+		"iss-123456789012345678901":    "123456789012345678901",
+		"iss-2611060835372141 runs on": "261106083537214",
+	} {
+		if at(text, num) {
+			t.Errorf("IDNumberAt(%q, %q) = true; want false", text, num)
+		}
+	}
+	if IDNumberAt("iss-1", 4, 9) || IDNumberAt("iss-1", -1, 2) {
+		t.Error("IDNumberAt read outside its text")
 	}
 }

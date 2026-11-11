@@ -1,9 +1,18 @@
 package cli
 
 import (
+	"context"
+	"fmt"
 	"io"
+	"os"
+	"strings"
+	"time"
 
+	"github.com/intentdriven/abcd/internal/core/autonomy"
 	"github.com/intentdriven/abcd/internal/core/checklist"
+	"github.com/intentdriven/abcd/internal/core/rules"
+	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
 
@@ -21,9 +30,8 @@ import (
 
 const (
 	// sessionStartOutputCap is the host's cap on a hook's whole output, in
-	// characters (the hooks reference, read 2026-10-22). The hook measures in
-	// bytes, which never undercounts characters.
-	sessionStartOutputCap = 10_000
+	// characters. The hook measures in bytes, which never undercounts characters.
+	sessionStartOutputCap = rules.HostOutputCap
 	// sessionStartMargin is kept free under the cap (the spec's margin).
 	sessionStartMargin = 500
 	// checklistRenderBudget is the checklist's budget when nothing else is
@@ -32,12 +40,26 @@ const (
 	checklistRenderBudget = sessionStartOutputCap - sessionStartMargin
 )
 
+// sessionStartBudget is the deadline the session-start hook sets at its start
+// for its checklist part. These reads run under it: the checkout root's
+// lookup, the read's tracked check and the scanner's identity probe. A
+// deadline spent before or during them leaves the checklist out of this
+// start, said on stderr in a checkout abcd manages. The hook's other reads are
+// not yet bound to it (iss-2611100548341325).
+// The host gives the hook's shell 240 seconds, a first run's download of the
+// binary among them, so a minute keeps the read well inside what the host
+// allows.
+//
+// A var only so a test can spend it.
+var sessionStartBudget = time.Minute
+
 // emitSessionStart writes the session-start hook's one output: composed, the
 // text the hook gathered, then the checklist within what composed leaves of
-// the cap. The rest is never cut; a checklist that cannot be read becomes the
-// reader's one line, never an error or a non-zero exit.
-func emitSessionStart(cmd *cobra.Command, composed, cwd string) {
-	text := composed + sessionStartChecklist(cwd, checklistRenderBudget-len(composed))
+// the cap, read under the hook's deadline (ctx). The rest is never cut; a
+// checklist that cannot be read becomes the reader's one line, never an error
+// or a non-zero exit.
+func emitSessionStart(ctx context.Context, cmd *cobra.Command, composed, cwd string) {
+	text := composed + sessionStartChecklist(ctx, cmd.ErrOrStderr(), cwd, checklistRenderBudget-len(composed))
 	if text != "" {
 		io.WriteString(cmd.OutOrStdout(), text)
 	}
@@ -48,8 +70,13 @@ func emitSessionStart(cmd *cobra.Command, composed, cwd string) {
 // working copy that has never had a checklist (the intent re-injects "a
 // session with a checklist"), and otherwise checklist.Render of what the
 // reader returns, which carries its own line when it fell back or found
-// nothing usable. It reads no network and writes nothing.
-func sessionStartChecklist(cwd string, budget int) (text string) {
+// nothing usable. It reads no network and writes nothing. Its git calls, the
+// root's lookup and the read's (the tracked check and the scanner's identity
+// probe), run under the hook's deadline (ctx): a
+// deadline spent before or during them leaves the checklist out and says so on
+// stderr, so a checklist git did not answer for in time is never shown as one
+// git could not judge, and a spent deadline runs no git at all.
+func sessionStartChecklist(ctx context.Context, stderr io.Writer, cwd string, budget int) (text string) {
 	// A start is never failed for the checklist: a panic in the read or the
 	// render is the line, not a crash of the hook.
 	defer func() {
@@ -61,9 +88,100 @@ func sessionStartChecklist(cwd string, budget int) (text string) {
 	if stageActive() {
 		return ""
 	}
-	root, ok := managedRoot(cwd)
-	if !ok || !checklistFilesExist(root) {
+	// A spent deadline is named only where abcd manages the checkout, asked
+	// with no git (looksManaged): any other checkout hears nothing.
+	spent := func() bool {
+		if ctx.Err() == nil {
+			return false
+		}
+		if looksManaged(cwd) {
+			diagnosticLine(stderr, "abcd checklist: the checklist was not read at this start, the hook's time being spent; `abcd checklist` shows it")
+		}
+		return true
+	}
+	// A deadline already spent runs no git at all, not even the root's.
+	if spent() {
 		return ""
 	}
-	return checklist.Render(checklist.Read(root), budget)
+	root, ok := managedRootContext(ctx, cwd)
+	if !ok {
+		spent()
+		return ""
+	}
+	if !checklistFilesExist(root) {
+		return ""
+	}
+	res := checklist.ReadContext(ctx, root)
+	if spent() {
+		return ""
+	}
+	return checklist.Render(res, budget)
+}
+
+// recordCompaction is the PreCompact event sidecar (spc-2610230805429429
+// step 6): the compaction's time and trigger are appended to the managed
+// checkout's checklist.events.jsonl. It never blocks the compaction: the
+// hook's exit and its stdout are the reset's alone, and a compaction that
+// could not be recorded is one line on stderr saying so. Outside a managed
+// checkout, and on a walled stage, it records nothing and says nothing, as the
+// other checklist hooks stand aside there.
+func recordCompaction(w io.Writer, cwd, trigger string) {
+	defer func() {
+		if recover() != nil {
+			fmt.Fprintln(w, "abcd checklist: the compaction was not recorded in "+checklist.EventsRelPath+" (the record failed); the compaction goes ahead")
+		}
+	}()
+	if stageActive() {
+		return
+	}
+	if cwd == "" {
+		if wd, err := os.Getwd(); err == nil {
+			cwd = wd
+		}
+	}
+	root, ok := managedRoot(cwd)
+	if !ok {
+		return
+	}
+	if err := checklist.RecordCompaction(root, trigger, time.Now()); err != nil {
+		fmt.Fprintf(w, "abcd checklist: the compaction was not recorded in %s (%s); the compaction goes ahead\n",
+			checklist.EventsRelPath, termsafe.Sanitize(fsutil.RedactHome(strings.ReplaceAll(err.Error(), root, "<checkout>"))))
+	}
+}
+
+// checklistPromptNote is the behind note a present session's last stop left
+// for this prompt (spc-2610230805429429 step 4): the stop hook's message
+// reaches the person, not the model, so the next prompt carries the same note
+// into the session's context, once, outside the rules loader's dedup ledger.
+// It reads the session's state in the working copy the session acts from, and
+// nothing else: no owed reading, no network. Outside a managed checkout, on a
+// drive's stage, or with a session id the store cannot key, it adds nothing;
+// a state that cannot be read adds nothing and is named on stderr. Its git
+// calls, naming the checkout and the session's copy, run under the prompt
+// hook's one deadline (ctx); a deadline spent first leaves the note waiting in
+// the state for a later prompt.
+func checklistPromptNote(ctx context.Context, stderr io.Writer, cwd, sessionID string) string {
+	if stageActive() || !autonomy.ValidSessionID(sessionID) || ctx.Err() != nil {
+		return ""
+	}
+	if _, ok := managedRootContext(ctx, cwd); !ok {
+		return ""
+	}
+	copyRoot, _, err := autonomy.ResolveCopyContext(ctx, cwd, sessionID, autonomy.Options{})
+	if err != nil {
+		return ""
+	}
+	note, err := autonomy.TakeChecklistNote(ctx, copyRoot, sessionID)
+	if err != nil {
+		// A deadline spent leaves the note waiting, and is no fault to name.
+		if ctx.Err() != nil {
+			return ""
+		}
+		diagnosticLine(stderr, "abcd checklist: no behind note is shown (%s)", fsutil.RedactHome(err.Error()))
+		return ""
+	}
+	if note == "" {
+		return ""
+	}
+	return "## CHECKLIST\n\n" + note + "\n"
 }

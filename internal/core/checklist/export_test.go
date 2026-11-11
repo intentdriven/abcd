@@ -1,6 +1,10 @@
 package checklist
 
-import "time"
+import (
+	"context"
+	"os"
+	"time"
+)
 
 // SetLockTimeout shortens Update's wait for the lock in a test and returns
 // the restore.
@@ -12,7 +16,7 @@ func SetLockTimeout(d time.Duration) (restore func()) {
 
 // SwapOwnerForTest substitutes the owner lookup Read applies to each file,
 // since a test process can make only its own files, and returns the restore.
-func SwapOwnerForTest(fn func(string) (uint32, error)) (restore func()) {
+func SwapOwnerForTest(fn func(os.FileInfo) (uint32, error)) (restore func()) {
 	was := ownerOf
 	ownerOf = fn
 	return func() { ownerOf = was }
@@ -22,7 +26,7 @@ func SwapOwnerForTest(fn func(string) (uint32, error)) (restore func()) {
 // that fails inside a checkout can be provoked, and returns the restore.
 func SwapGitForTest(fn func(string, ...string) (string, error)) (restore func()) {
 	was := gitRun
-	gitRun = fn
+	gitRun = func(_ context.Context, root string, args ...string) (string, error) { return fn(root, args...) }
 	return func() { gitRun = was }
 }
 

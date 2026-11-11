@@ -818,6 +818,24 @@ func (c *APIConfig) Admit(provider, model string) error {
 		provider, listNames(p.Models))
 }
 
+// Refuses is the denylist's part of Admit alone, for a model a harness takes
+// by name with no provider block (a drive's walled launch of the claude
+// harness, iss-2611080057001367): the denylist's refusal when an
+// oracle.denylist entry matches the route as written, <provider>/<model>, so
+// a vendor entry (vendor/*) refuses it, or the model alone, as Admit matches
+// it; nil otherwise. It reads no provider block and admits nothing on its own.
+func (c *APIConfig) Refuses(provider, model string) error {
+	if c == nil {
+		return nil
+	}
+	for _, m := range []string{model, provider + "/" + model} {
+		if e, denied := Denied(c.denylist, m); denied {
+			return errors.New(denial(e))
+		}
+	}
+	return nil
+}
+
 // listNames renders a list for a refusal, bounded.
 func listNames(ms []string) string {
 	const shown = 10
@@ -828,8 +846,10 @@ func listNames(ms []string) string {
 }
 
 // Denied reports the first denylist entry that matches model. Matching ignores
-// case, OpenRouter's ~ alias prefix, and for an exact entry a :variant suffix,
-// so a spelling cannot slip a denied model past its entry.
+// case, OpenRouter's ~ alias prefix, and for an exact entry a :variant suffix
+// and a bracketed suffix ([1m]), so a spelling cannot slip a denied model past
+// its entry. It decides refusals alone: a provider's list still admits only
+// the model exactly as it is listed.
 func Denied(denylist []DenyEntry, model string) (DenyEntry, bool) {
 	m := normalizeModel(model)
 	for _, e := range denylist {
@@ -847,12 +867,13 @@ func Denied(denylist []DenyEntry, model string) (DenyEntry, bool) {
 	return DenyEntry{}, false
 }
 
-// normalizeModel lower-cases a model identifier, drops a leading ~ and a
-// :variant suffix on its last segment.
+// normalizeModel lower-cases a model identifier, drops a leading ~, and drops
+// a :variant suffix and a bracketed suffix ([1m]) on its last segment,
+// whichever comes first.
 func normalizeModel(m string) string {
 	m = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(m)), "~")
 	slash := strings.LastIndexByte(m, '/')
-	if i := strings.IndexByte(m[slash+1:], ':'); i >= 0 {
+	if i := strings.IndexAny(m[slash+1:], ":["); i >= 0 {
 		m = m[:slash+1+i]
 	}
 	return m

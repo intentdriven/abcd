@@ -33,8 +33,9 @@ import (
 // each low volume, its free space and the floor, and, when the cache's own
 // volume is low, the cache's path and size and the age-based trim a person
 // can run. The gate never trims the cache itself: deleting another tool's
-// files is not its call. The one place abcd does is `ahoy worktree prune`,
-// after it removes a worktree (worktree.TrimGoCache).
+// files is not its call. abcd does so to a size limit in `ahoy worktree prune`,
+// after it removes a worktree, in `ahoy worktree trim-cache`, and, detached and
+// at most hourly, when the build loop makes a lane (worktree.TrimGoCache).
 //
 // A platform whose free space abcd cannot read (other than macOS and Linux),
 // or a read that fails, is reported and never refused.
@@ -373,7 +374,8 @@ func (d DiskCheck) describe() string {
 			// -H follows a symlinked cache; the fuzz corpora, which go clean
 			// -cache keeps, are skipped by path, since -delete turns on
 			// depth-first order, in which -prune does nothing.
-			b.WriteString(" To delete the entries unused for two days, keeping the fuzz corpora:\n")
+			b.WriteString(" To delete the oldest entries down to the size limit (a trim abcd also runs by itself as lanes start):\n    abcd ahoy worktree trim-cache\n")
+			b.WriteString("  or, to delete the entries unused for two days, keeping the fuzz corpora:\n")
 			fmt.Fprintf(&b, "    find -H %s -type f ! -path %s -mmin +2880 -delete\n", d.goCacheShell, d.goCacheFuzz)
 			b.WriteString("  or, all or nothing, to empty the cache, so the next build rebuilds everything:\n    go clean -cache\n")
 		} else {
