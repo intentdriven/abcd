@@ -652,9 +652,9 @@ func (c fenceCase) hook(t *testing.T, f *narrowFixture) func(Lane) {
 
 // TestALaneDoesNotLandAPathAPeerHolds: the lane's landing would carry a path no
 // reservation of its covers, and another account holds that path live; the
-// lane waits at the fence before its push, by design and never counted as a
-// refused step, naming the hold, with nothing pushed and its reservation as it
-// was.
+// lane waits at the fence before its push, by design and never counted toward
+// the refusals bound, naming the hold, with nothing pushed and its reservation
+// as it was.
 func TestALaneDoesNotLandAPathAPeerHolds(t *testing.T) {
 	for _, c := range fenceCases() {
 		t.Run(c.name, func(t *testing.T) {
@@ -666,8 +666,8 @@ func TestALaneDoesNotLandAPathAPeerHolds(t *testing.T) {
 			if !ok || !rf.Contention || !waitByDesign(rf) {
 				t.Fatalf("the lane waits by design: %v (%+v)", err, l.Landing)
 			}
-			if l.Refused != nil {
-				t.Fatalf("the wait is no refused step: %+v", l.Refused)
+			if l.Refused == nil || l.Refused.Count != 0 {
+				t.Fatalf("the wait is counted toward the minutes bound alone, never the refusals bound: %+v", l.Refused)
 			}
 			if !strings.Contains(rf.Reason, "iss-99") || !strings.Contains(rf.Reason, "quinn") || !strings.Contains(rf.Reason, c.path) {
 				t.Fatalf("the stop names the hold it met and its holder: %s", rf.Reason)
