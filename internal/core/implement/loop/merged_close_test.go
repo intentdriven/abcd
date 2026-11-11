@@ -705,3 +705,31 @@ func TestARefusalAfterAnEarlierLaneClosedKeepsThatClosing(t *testing.T) {
 		t.Fatalf("the second lane's path keeps what stands there: %v", err)
 	}
 }
+
+// TestABuildRefusesAMergedLaneWhoseBranchIsCheckedOutElsewhere: a merged lane
+// whose branch a person has checked out in another worktree is refused at the
+// resume stage, naming that checkout and the build to run again, and its
+// branch and that checkout are kept.
+func TestABuildRefusesAMergedLaneWhoseBranchIsCheckedOutElsewhere(t *testing.T) {
+	f, l := mergedLaneFixture(t)
+	f.mergeCommit(t, l.Landing.Pushed)
+	f.repo.Git("worktree", "remove", "--force", l.Worktree)
+	other := filepath.Join(t.TempDir(), "other")
+	f.repo.Git("worktree", "add", "-q", other, l.Branch)
+	before := f.stateBytes(t)
+
+	_, err := Start(f.repo.Root(), "itd-10", Options{noReserve: true})
+	rf, ok := AsRefusal(err)
+	if !ok || rf.Stage != StageResume || rf.Lane != l.ID || !strings.Contains(rf.Reason, "is checked out in") || !strings.Contains(rf.Reason, "other") || !strings.Contains(rf.Remedy, "abcd build itd-10") {
+		t.Fatalf("the build refuses the lane, naming the other checkout: %v", err)
+	}
+	if out := f.repo.Git("branch", "--list", l.Branch); strings.TrimSpace(out) == "" {
+		t.Fatal("the lane's branch is kept")
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Fatalf("the other checkout is kept: %v", err)
+	}
+	if string(f.stateBytes(t)) != string(before) {
+		t.Fatal("the refusal writes nothing to the run's state")
+	}
+}
