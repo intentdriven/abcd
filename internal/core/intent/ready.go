@@ -595,7 +595,8 @@ const maxQuestionRunes = 160
 // (iss-2611101318042398), or "" when it says nothing: each open item under its
 // `## Open Questions`, read as an intent's are (openQuestions), then each
 // statement spec.Unsettled finds — a sentence opening "Not READY", a bold
-// "Open:" label outside that section, a fence or comment left open. The spec
+// "Open:" label on a line that is not an open question's item, a fence or
+// comment left open, fences whose extent turns on the list around them. The spec
 // is the design record a lane builds from, so a question it still asks holds
 // the build as one the intent asks does.
 func specUnsettled(content string) string {

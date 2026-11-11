@@ -48,24 +48,29 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   brief is the issue with its remedy as the work.
 - **ready** — the implement-readiness gate the intent verb reports: planned,
   criteria written, the spec linked both ways and written past its stub. Its
-  advisory rows stay advisory. A spec saying it is not ready fails this
-  check (iss-2611101318042398): an open item under its own `## Open Questions`
-  or a sub-heading of it (named by its text); a sentence opening "Not READY"
-  or "NOT READY" anywhere in its body, at a line's start after any
-  blockquote, heading `#`, list marker, task box `[ ]`, emphasis or opening
-  bracket, after a ".", "!", "?" or ":", after an opening bracket, or with a
-  line break between the two words; a bold "Open:" label outside that
-  section (`**Open:**`, `**Open**:`, `__Open:__`, or the same with
-  "question(s)", "point(s)" or "design question(s)" after the word, in any letter case); or a
-  fence or HTML comment that never closes (each named by its line). The
-  frontmatter, code, fences (one indented under a list item included) and
-  comments are not read, so a phrase quoted rather than said goes in a code
-  span. A closed spec, and a record in `shipped/`, `superseded/` or
-  `disciplines/`, is not judged. The check is read when a run starts and not
-  again for a run in flight: a spec that gains an open question later does
-  not stop a run already started.
-- **open questions** — no open question under the record's `## Open Questions`.
-  The reader fails closed and knows the record's two settled markers: a section
+  advisory rows stay advisory. A spec is held by its own `blocked_by` or by
+  an open item under its `## Open Questions` or a sub-heading of it (named by
+  its text) (iss-2611101318042398). A spec that says it is not ready in prose
+  fails this check too, as a filter for that mistake, on exactly these forms:
+  "Not READY" or "NOT READY", READY in capitals, at a line's or a table cell's
+  start (after any blockquote, heading `#`, list marker, task box `[ ]`,
+  emphasis or opening bracket), after a ".", "!", "?", ":" or ";" and a
+  space, after a dash with a space on each side, after an opening bracket, or
+  with a line break between the two words; a bold "Open:" label
+  (`**Open:**`, `**Open**:`, `__Open:__`, or the same with "question(s)",
+  "point(s)" or "design question(s)" after the word, in any letter case) on
+  any line that is not an open question's item, a paragraph or a table row
+  under `## Open Questions` included; a fence or HTML comment that never
+  closes; and fences whose extent turns on the list around them, such as a
+  fence indented four columns with no list item above it (each named by its
+  line). Lower-case "not READY", "Not ready", and the phrase elsewhere in a
+  sentence are not matched. The frontmatter, inline code spans, fenced blocks
+  (one indented under a list item included) and HTML comments are not read;
+  an indented code block is read. So a phrase quoted rather than said goes in
+  an inline code span. A closed spec, and a record in `shipped/`,
+  `superseded/` or `disciplines/`, is not judged.
+- **open questions** — no open question under the record's `## Open Questions`
+  or a sub-heading of it. The reader fails closed and knows the record's two settled markers: a section
   that opens with an italic `_All resolved …_` line (or `_All four resolved …_`)
   is settled whole, and an item explicitly marked resolved or deferred — a bold
   span opening with the word (`**Resolved — …**`, `**Deferred**`, `**explicitly
@@ -77,6 +82,9 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   that only points to another record, and one that merely mentions deferral
   all count (the 2026-09-25 decision [dcn-2609250000000028](../../../work/decisions/dcn-2609250000000028-the-build-s-open-question-check-reads.md), and its
   2026-09-28 correction [dcn-2609280000000008](../../../work/decisions/dcn-2609280000000008-correction-to-the-2026-09-25-entry-on.md)).
+  The record's text must read whole: a fence or HTML comment that never
+  closes, or fences whose extent turns on the list around them, fails this
+  check too (named by its line).
 - **claim sections** — the mechanism prompt is answered or the section absent,
   and the scope conditions are recorded. The readiness gate reports both as
   advisory; a run is where they bind, because an autonomous lane has nobody to

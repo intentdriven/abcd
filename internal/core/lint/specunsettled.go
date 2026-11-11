@@ -9,8 +9,9 @@ import (
 
 // ruleSpecUnsettled is the record-lint half of iss-2611101318042398: an open
 // spec that says in its own text that it is not ready to build — a sentence
-// opening "Not READY", or a bold "Open:" label outside its `## Open Questions`
-// section — is refused where it is written. The readiness gate's spec_body
+// opening "Not READY", a bold "Open:" label on a line that is not an open
+// question's item, a fence or comment left open, or fences whose extent turns
+// on the list around them — is refused where it is written. The readiness gate's spec_body
 // row reads the same statements through the same reader (spec.Unsettled), and
 // the open items under the section besides, so a spec this rule passes asks
 // its questions where the build reads them.

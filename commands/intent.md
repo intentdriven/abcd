@@ -522,16 +522,24 @@ checks; the judgement is yours, as the host.
     (`spec_body`) while the section, a sub-heading of it included, holds an
     item that is not settled (marked `resolved:` or `**Deferred**`, or under
     a section opening `_All resolved …_`), and while the spec has a sentence
-    opening "Not READY" or "NOT READY" (at a line's start after any
-    blockquote, heading `#`, list marker, task box `[ ]`, emphasis or opening
-    bracket, after a ".", "!", "?" or ":", after an opening bracket, or with a
-    line break between the two words), a bold "Open:" label outside that
-    section (`**Open:**`, `**Open**:`, `__Open:__`, or the same with
-    "question(s)", "point(s)" or "design question(s)" after the word, in any letter case), or a
-    fence or HTML comment that never closes; record-lint's `spec_unsettled`
-    rule refuses those three in an open spec. The frontmatter, code, fences
-    (one indented under a list item included) and comments are not read, so
-    a phrase quoted rather than said goes in a code span. A closed spec, and
+    opening "Not READY" or "NOT READY", READY in capitals (at a line's or a
+    table cell's start after any blockquote, heading `#`, list marker, task
+    box `[ ]`, emphasis or opening bracket, after a ".", "!", "?", ":" or ";"
+    and a space, after a dash with a space on each side, after an opening
+    bracket, or with a line break between the two words), a bold "Open:"
+    label (`**Open:**`, `**Open**:`, `__Open:__`, or the same with
+    "question(s)", "point(s)" or "design question(s)" after the word, in any
+    letter case) on any line that is not an open question's item, a
+    paragraph or a table row under that section included, a fence or HTML
+    comment that never closes, or fences whose extent turns on the list
+    around them; record-lint's `spec_unsettled` rule refuses those four in an
+    open spec. The phrase match is a filter for a mistake, not a way to hold
+    a spec: lower-case "not READY", "Not ready", and the phrase elsewhere in
+    a sentence are not matched, and the declared holds are the spec's
+    `blocked_by` and its open questions. The frontmatter, inline code spans,
+    fenced blocks (one indented under a list item included) and HTML
+    comments are not read; an indented code block is read. So a phrase
+    quoted rather than said goes in an inline code span. A closed spec, and
     an intent in `shipped/`, `superseded/` or `disciplines/`, is not judged.
     An intent the design waits on goes in the spec's own `blocked_by`;
     `abcd intent ready` does not report it, and the build refuses the run
@@ -903,7 +911,9 @@ first). The build's pre-start check refuses an intent whose `blocked_by`, or who
 open spec's `blocked_by`, names one not yet settled: a blocker is settled when it is shipped or a discipline,
 or when its supersession chain ends at a shipped intent, a discipline or an
 accepted decision. Record-lint's edge rules read both of an intent's lists; a
-spec's `blocked_by` is read by the build's check alone. `edge` is the verb
+spec's `blocked_by` is read by the build's pre-start check, which the status
+board also runs to mark an intent startable, and record-lint checks only that
+each record it names exists. `edge` is the verb
 that writes them, the intent counterpart of `capture link`:
 
 ```bash

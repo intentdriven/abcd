@@ -149,22 +149,33 @@ pass:
   anything else is refused; an issue id is checked as the issue-keyed lane
   above.
 - `ready` — the intent is READY: planned, its criteria written, its spec linked
-  and written (the same gate `/abcd:intent` reports). A spec saying it is not
-  ready fails this check: an open item under its own `## Open Questions` or a
-  sub-heading of it (named by its text); a sentence opening "Not READY" or
-  "NOT READY" anywhere in its body, at a line's start after any blockquote,
-  heading `#`, list marker, task box `[ ]`, emphasis or opening bracket, after
-  a ".", "!", "?" or ":", after an opening bracket, or with a line break
-  between the two words; a bold "Open:" label outside that section
+  and written (the same gate `/abcd:intent` reports). A spec is held by its
+  own `blocked_by` or by an open item under its `## Open Questions` or a
+  sub-heading of it (named by its text). A spec that says it is not ready in
+  prose fails this check too, as a filter for that mistake, on exactly these
+  forms: "Not READY" or "NOT READY", READY in capitals, at a line's or a table
+  cell's start (after any blockquote, heading `#`, list marker, task box
+  `[ ]`, emphasis or opening bracket), after a ".", "!", "?", ":" or ";" and
+  a space, after a dash with a space on each side, after an opening bracket,
+  or with a line break between the two words; a bold "Open:" label
   (`**Open:**`, `**Open**:`, `__Open:__`, or the same with "question(s)",
-  "point(s)" or "design question(s)" after the word, in any letter case); or a fence or HTML
-  comment that never closes (each named by its line). The frontmatter, code,
-  fences (one indented under a list item included) and comments are not read,
-  so a phrase quoted rather than said goes in a code span.
-- `open_questions` — no open question under `## Open Questions`: every list
-  item there counts unless the section opens with an italic `_All resolved …_`
-  line or the item is explicitly marked resolved or deferred (`**Deferred**`,
-  `resolved:`, `**explicitly deferred**`).
+  "point(s)" or "design question(s)" after the word, in any letter case) on
+  any line that is not an open question's item, a paragraph or a table row
+  under `## Open Questions` included; a fence or HTML comment that never
+  closes; and fences whose extent turns on the list around them, such as a
+  fence indented four columns with no list item above it (each named by its
+  line). Lower-case "not READY", "Not ready", and the phrase elsewhere in a
+  sentence are not matched. The frontmatter, inline code spans, fenced blocks
+  (one indented under a list item included) and HTML comments are not read;
+  an indented code block is read. So a phrase quoted rather than said goes in
+  an inline code span.
+- `open_questions` — no open question under `## Open Questions` or a
+  sub-heading of it: every list item there counts unless the section opens
+  with an italic `_All resolved …_` line or the item is explicitly marked
+  resolved or deferred (`**Deferred**`, `resolved:`, `**explicitly
+  deferred**`). The record's text must read whole: a fence or HTML comment
+  that never closes, or fences whose extent turns on the list around them,
+  fails this check too (named by its line).
 - `claim_sections` — the `## Mechanism` prompt is answered (or the section
   absent) and the scope conditions are recorded.
 - `hold` — the intent carries no `held:`.
