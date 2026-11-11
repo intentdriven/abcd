@@ -774,16 +774,21 @@ func listContentCol(ln string) (int, bool) {
 	return col, true
 }
 
-// markerFenceRe is one or more list markers (a blockquote's `>` among them)
-// and then a fence delimiter on the same line.
-var markerFenceRe = regexp.MustCompile("^[ \t>]*(?:(?:[-*+]|[0-9]{1,9}[.)])[ \t]+[ \t>]*)+(`{3,}|~{3,})(.*)$")
+// markersRe is one or more list markers (a blockquote's `>` among them) and
+// the blanks after them, opening a line.
+var markersRe = regexp.MustCompile(`^[ \t>]*(?:(?:[-*+]|[0-9]{1,9}[.)])[ \t]+[ \t>]*)+`)
 
 // markerFence reports whether a line opens a list item with a fenced block,
 // which neither reading here opens, so every delimiter below it may pair with
-// another than the one the page pairs it with.
+// another than the one the page pairs it with. What follows the markers is
+// judged by opensFence, the one opener predicate.
 func markerFence(ln string) bool {
-	m := markerFenceRe.FindStringSubmatch(ln)
-	return m != nil && !(m[1][0] == '`' && strings.Contains(m[2], "`"))
+	k := len(markersRe.FindString(ln))
+	if k == 0 {
+		return false
+	}
+	_, _, ok := opensFence(ln[k:], TopLevel)
+	return ok
 }
 
 // htmlStartRe is a line that opens with an HTML tag, at up to three columns.
