@@ -752,8 +752,10 @@ nothing and lets nothing go until the setting is put back, and only a read that 
 clearly and found no stop counts as a lift, or lets a run be taken over. A home that
 cannot be found holds the run the same way. The chosen folder does not move while a stop
 stands in it. A renewal that falls due under a stop settles the run first, unless the run's state
-file states another version than the renewing abcd's, which leaves the run to its own driver's check;
-its claim lapses at its lease if that check does not come first. With no agent left in its
+file states another version than the renewing abcd's, which leaves the run unsettled to its own driver's
+check. Its claim is still renewed, at the version its file states, while an agent may be in its call or
+while that check has left work a save could not take; otherwise it is neither renewed nor let go, and
+lapses at its lease with the lane's work on its branch and in its worktree, none of it saved aside. With no agent left in its
 call and its work saved, a run under a stop no longer renews its reservation; a run with work a save
 could not take keeps it only while a gated waiter, a reading of the run's status or a drive still in an
 agent's call or a preflight renews it, lapses at its lease otherwise, and the move's refusal says so. A take-over over a

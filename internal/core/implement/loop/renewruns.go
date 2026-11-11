@@ -117,8 +117,12 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 		}
 		// A renewal due under a stop settles the run first: what a stop lets go
 		// is let go, and what it cannot save keeps its lease below. A run whose
-		// file states another version is left to its own driver, and keeps its
-		// lease below too.
+		// file states another version is not settled: it is left to its own
+		// driver's check. Below, its claim is renewed at the version its file
+		// states while an agent may still be in its call, or while that check has
+		// left work a save could not take (stopEndsRenewal). Otherwise it is
+		// neither renewed nor let go, and lapses at its lease with its work on
+		// its branch and in its worktree, none of it saved aside.
 		if settlesHere(run.stated) {
 			settleDueStop(root, st.RunID)
 		}

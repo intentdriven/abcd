@@ -822,8 +822,10 @@ func stopEndsRenewal(repoRoot string, st State, now time.Time) bool {
 
 // settlesHere reports whether this binary may settle a run whose state file states
 // the version stated: a settle writes the state at this binary's own version, so a
-// run whose file states another is left to its own driver's check, and its lease
-// lapses if that check does not come first. The version is the file's, as
+// run whose file states another is left to its own driver's check. The renewal that
+// follows still renews its claim, at the version the file states, while an agent may
+// be in its call or while that check has left work a save could not take; otherwise
+// the claim lapses at its lease unless that check comes first. The version is the file's, as
 // readListedStated returns it, never a read State's, which an older version reaches
 // already raised to this binary's. A file listed at this version was written by no
 // older driver, which refuses it, so the settle's own read under the lock finds the

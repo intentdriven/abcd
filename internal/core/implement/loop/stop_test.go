@@ -1054,8 +1054,10 @@ func TestAReceiptTakenIsNotAnsweredAsAFailure(t *testing.T) {
 // binary newer than the driver of the run it renews, leaves the run's file as that
 // driver wrote it. The file on disk states the older version; the read raises it to
 // this binary's in memory, which is why the version judged is the one the file states.
-// The claim is neither let go nor renewed: the stop is left to the driver's own check,
-// and the claim lapses at its lease if that check does not come first. TestAStatusSettlesARunNoAgentHolds is the
+// With no agent left in its call, the claim is neither let go nor renewed: the stop is
+// left to the driver's own check, and the claim lapses at its lease if that check does
+// not come first. The two tests after it are the cases whose claim is renewed.
+// TestAStatusSettlesARunNoAgentHolds is the
 // same run at this binary's version, which the renewal settles.
 func TestASettleLeavesARunAtAnotherSchemaToItsDriver(t *testing.T) {
 	for _, version := range []int{schemaVersionPrevious, schemaVersionUnrenamed} {
@@ -1089,6 +1091,95 @@ func TestASettleLeavesARunAtAnotherSchemaToItsDriver(t *testing.T) {
 			noAside(t, dir)
 			if got := originReservation(t, bare, reservedRef); got.released || got.commit != claimed {
 				t.Fatalf("the renewal moved the claim the driver's own check settles: %+v", got)
+			}
+		})
+	}
+}
+
+// TestARenewalKeepsTheClaimOfAnotherSchemasRunWhileItsAgentIsInItsCall: the other case
+// of TestASettleLeavesARunAtAnotherSchemaToItsDriver. The lane's agent is still within
+// its lease, so it may be in its call: the run is not settled, its claim is renewed
+// through the record-only save, and the file keeps the version its driver wrote.
+func TestARenewalKeepsTheClaimOfAnotherSchemasRunWhileItsAgentIsInItsCall(t *testing.T) {
+	for _, version := range []int{schemaVersionPrevious, schemaVersionUnrenamed} {
+		t.Run(fmt.Sprintf("version %d", version), func(t *testing.T) {
+			repo, runID, _, dir, _ := deadLane(t)
+			bare := onOriginAccepted(t, repo, runID)
+			now := time.Now().UTC().Truncate(time.Second)
+			reserveRun(t, repo, runID, "itd-10", now, "commands/x.md")
+			claimed := originReservation(t, bare, reservedRef).commit
+			home, _ := stopWorld(t, true)
+			if _, err := runstop.Set(home, now); err != nil {
+				t.Fatal(err)
+			}
+			stopHomeIs(t, home)
+			before := stateAtVersion(t, repo.Root(), runID, version)
+
+			renewRunsAt(repo.Root(), runID, nil, now.Add(90*time.Minute))
+
+			after, err := os.ReadFile(runStatePath(repo.Root(), runID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			olderDriverRead(t, before, after)
+			if v := string(topLevelFields(t, after)["schema_version"]); v != fmt.Sprint(version) {
+				t.Fatalf("the renewal saved the run at version %s; its driver wrote %d", v, version)
+			}
+			if c := controlOf(t, repo.Root(), runID); c.Stop != nil {
+				t.Fatalf("the renewal settled an older driver's run: %+v", c.Stop)
+			}
+			noAside(t, dir)
+			if got := originReservation(t, bare, reservedRef); got.released || got.commit == claimed {
+				t.Fatalf("the claim of a run whose agent may be in its call was not renewed: %+v", got)
+			}
+			if note := recordNote(t, repo, runID, StageReservationRenewed); !strings.Contains(note, "renewed the reservation") {
+				t.Fatalf("the run record logs the renewal: %q", note)
+			}
+		})
+	}
+}
+
+// TestARenewalKeepsTheClaimOfAnotherSchemasRunOverWorkItsDriverCouldNotSave: the third
+// case. No agent is left in its call, but the driver's own check left work a save could
+// not take in the run's stop mark: the claim is renewed, at the version the file states.
+func TestARenewalKeepsTheClaimOfAnotherSchemasRunOverWorkItsDriverCouldNotSave(t *testing.T) {
+	for _, version := range []int{schemaVersionPrevious, schemaVersionUnrenamed} {
+		t.Run(fmt.Sprintf("version %d", version), func(t *testing.T) {
+			repo, runID, l, dir, _ := deadLane(t)
+			bare := onOriginAccepted(t, repo, runID)
+			now := time.Now().UTC().Truncate(time.Second)
+			reserveRun(t, repo, runID, "itd-10", now, "commands/x.md")
+			gonePastItsLease(t, repo, runID, now)
+			old := checkAsidePatch
+			checkAsidePatch = func(string, string) error { return errors.New("will not apply") }
+			t.Cleanup(func() { checkAsidePatch = old })
+			home, _ := stopWorld(t, true)
+			if _, err := runstop.Set(home, now); err != nil {
+				t.Fatal(err)
+			}
+			stopHomeIs(t, home)
+			// The driver's own check, which could not save the lane's work.
+			wantStopRefusal(t, checkOnce(repo.Root(), runID, Options{}))
+			if c := controlOf(t, repo.Root(), runID); !heldBySave(c.Stop) {
+				t.Fatalf("the driver's check left no work a save could not take: %+v", c.Stop)
+			}
+			claimed := originReservation(t, bare, reservedRef).commit
+			before := stateAtVersion(t, repo.Root(), runID, version)
+
+			renewRunsAt(repo.Root(), runID, nil, now.Add(90*time.Minute))
+
+			after, err := os.ReadFile(runStatePath(repo.Root(), runID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			olderDriverRead(t, before, after)
+			if v := string(topLevelFields(t, after)["schema_version"]); v != fmt.Sprint(version) {
+				t.Fatalf("the renewal saved the run at version %s; its driver wrote %d", v, version)
+			}
+			noAside(t, dir)
+			editsIntact(t, repo, l)
+			if got := originReservation(t, bare, reservedRef); got.released || got.commit == claimed {
+				t.Fatalf("the claim over work its driver could not save was not renewed: %+v", got)
 			}
 		})
 	}
