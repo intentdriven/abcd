@@ -576,9 +576,9 @@ taken from the persistent plugin data directory a session's hooks provision.
 Before writing it, install verifies that binary's signed build provenance with
 the same in-process check `abcd update` makes, bound to the commit of the
 release the cache attestation names; when the check fails or cannot
-reach GitHub's attestations API or the Sigstore TUF repository, install writes
-no entry and its note names what failed and how to check the release by hand
-with `gh attestation verify`. Relay that note verbatim.
+reach GitHub's attestations or git API or the Sigstore TUF repository, install
+writes no entry and its note names what failed and how to check the release by
+hand with `gh attestation verify`. Relay that note verbatim.
 When no verified copy is there, install writes no symlink into the plugin root,
 which stops working at the next plugin update: where nothing is at the `PATH`
 target it asks the download question above instead, and on a no (or under
