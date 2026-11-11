@@ -13,6 +13,7 @@ package loop
 // step that started it (spc-2611050505250705 step 2).
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path"
@@ -27,6 +28,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
+	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -831,4 +833,183 @@ func (p *agentProcs) judge(checkout, runID, laneID string, a Await, c control, t
 		return AgentAlive, &e, true
 	}
 	return AgentLost, &e, true
+}
+
+// resumeClosingMerged is resumeLive for `abcd build`: before a live run of key is
+// resumed, each of its lanes whose pull request has merged is closed
+// (closeMergedLanes), so the build goes on in a new lane, on a new branch cut
+// from origin's default branch, and never on the merged lane's worktree, branch
+// and range (iss-2611101317510356). A run the closing leaves with nothing to do
+// is complete, so the lookup that follows finds no live run and the build starts
+// as a new run would. A drain's start and a trial's are resumeLive's alone: the
+// drain finishes its merged lanes on its own move (finishMerged), and a trial
+// lands nothing.
+func resumeClosingMerged(repoRoot, key string, o Options) (StartResult, bool, error) {
+	res, ok, err := resumeLive(repoRoot, key, o.drain, o.Trial)
+	if err != nil || !ok || o.drain || o.Trial {
+		return res, ok, err
+	}
+	closed, err := closeMergedLanes(repoRoot, res.RunID, o)
+	if err != nil {
+		return StartResult{}, false, err
+	}
+	if !closed {
+		return res, ok, nil
+	}
+	return resumeLive(repoRoot, key, o.drain, o.Trial)
+}
+
+// closeMergedLanes closes each lane of run whose pull request has merged, and
+// reports whether it closed any. A lane is merged here when it is parked at its
+// land stage with no agent awaited and no hold, its pull request opened and its
+// head pushed, the board reads it as landed (statusblock.LandedContext: its
+// branch is gone, or its branch's tip is on the default branch as last
+// fetched), and what it pushed is on origin's default branch as last fetched. It
+// reads local refs only, never the forge, and fetches nothing: a merge this
+// checkout has not fetched is not seen, and the run resumes as it did before. A
+// squash or rebase merge leaves the pushed head off the default branch, so such
+// a lane is not closed here (iss-2610150827113191 holds that half).
+//
+// Closing is the land stage's own cleanup (retireLanded): the worktree is
+// removed and the branch deleted, the landing records the default branch's
+// commit as merged, the lane is done and the run's next lane opens, and a run
+// left with nothing to build tidies its reservation as a landing does. Every
+// lane's worktree is read for uncommitted work before anything is removed: one
+// that holds any is refused by name and nothing is closed. A branch holding a
+// commit past the default branch is not read as merged, and its lane resumes as
+// it did. A refusal met after an earlier lane closed keeps what that lane's
+// closing wrote.
+//
+// A run is left exactly as it stands where another driver has the say: its state
+// file states another version than this binary's (settlesHere), a drive stopped
+// on it, or its control records a stop. Every git call is bound to one deadline
+// (retireTimeout).
+func closeMergedLanes(repoRoot, runID string, o Options) (bool, error) {
+	if driveStopped(runID) {
+		return false, nil
+	}
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return false, nil
+	}
+	_, stated, err := readListedStated(root, runID)
+	if err != nil || !settlesHere(stated) {
+		root.Close()
+		return false, nil
+	}
+	c, err := readControl(root, runID)
+	root.Close()
+	if err != nil || c.Stop != nil {
+		return false, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), retireTimeout)
+	defer cancel()
+	tracking := gitutil.DefaultRefContext(ctx, repoRoot)
+	if !strings.HasPrefix(tracking, "refs/remotes/"+Remote+"/") {
+		return false, nil
+	}
+	st, err := ReadState(repoRoot, runID)
+	if err != nil || len(mergedLanes(ctx, repoRoot, st, tracking)) == 0 {
+		return false, nil
+	}
+	now := o.now()
+	closed := false
+	var refused error
+	err = mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		merged := mergedLanes(ctx, repoRoot, *st, tracking)
+		for _, i := range merged {
+			if err := laneWorkSaved(ctx, repoRoot, *st, st.Lanes[i]); err != nil {
+				return false, err
+			}
+		}
+		for _, i := range merged {
+			lane := st.Lanes[i]
+			cx := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now}
+			at, err := retireLanded(ctx, cx, lane, tracking, StageResume, "run `abcd build "+termsafe.Sanitize(st.Key)+"` again")
+			if err != nil {
+				refused = err
+				break
+			}
+			ld := *lane.Landing
+			ld.Merged = at
+			lane.Landing = &ld
+			note := fmt.Sprintf("pull request #%d merged: %s is on %s as last fetched, at %s; the build closed the lane, removing its worktree and branch %s, so nothing of it is built again",
+				lane.PR, shortSHA(ld.Pushed), gitutil.ShortRef(tracking), shortSHA(at), lane.Branch)
+			if tidy := tidyReservation(cx, lane); tidy != "" {
+				note += "; " + tidy
+			}
+			lane.Stage = StageDone
+			st.Lanes[i] = lane
+			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageResume, Note: note})
+			openNext(st, now)
+			closed = true
+		}
+		if closed {
+			st.UpdatedAt = now
+		}
+		return closed, nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return closed, refused
+}
+
+// mergedLanes are the indices of st's lanes closeMergedLanes reads as merged,
+// against tracking, the default branch's remote-tracking ref.
+func mergedLanes(ctx context.Context, repoRoot string, st State, tracking string) []int {
+	var out []int
+	for i, l := range st.Lanes {
+		if l.Stage != StageLand || len(l.Awaits) > 0 || l.Hold != nil || l.PR <= 0 || l.Landing == nil ||
+			l.Landing.Merged != "" || !gitutil.IsFullSHA(l.Landing.Pushed) || !strings.HasPrefix(l.Branch, BranchPrefix) {
+			continue
+		}
+		if !statusblock.LandedContext(ctx, repoRoot, l.Branch, true) {
+			continue
+		}
+		// A branch gone says nothing of where its head went: what was pushed must
+		// be on the default branch itself.
+		_, notOn, err := gitutil.RunCappedExitOneContext(ctx, repoRoot, 4096, "merge-base", "--is-ancestor", l.Landing.Pushed, tracking)
+		if err != nil || notOn {
+			continue
+		}
+		out = append(out, i)
+	}
+	return out
+}
+
+// laneWorkSaved refuses, naming the lane and its worktree, a merged lane whose
+// worktree holds uncommitted work, which closing it would lose; a lane whose
+// worktree is gone holds none. The worktree is read as the person's own git
+// reads it (gitutil.WorkingTreeCommandContext), as its removal judges it.
+func laneWorkSaved(ctx context.Context, repoRoot string, st State, lane Lane) error {
+	lw, err := derivedLaneWorktree(repoRoot, st.RunID, lane, StageResume)
+	if err != nil {
+		return err
+	}
+	if !fsutil.IsRealDir(lw.Path) {
+		return nil
+	}
+	args := []string{"--no-optional-locks", "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all"}
+	out, err := gitutil.RunTreeCommand(gitutil.WorkingTreeCommandContext(ctx, lw.Path, args...), args)
+	at := termsafe.Sanitize(fsutil.RedactHome(lw.Path))
+	if err != nil {
+		return refuse(StageResume, "", lane.ID,
+			fmt.Sprintf("pull request #%d merged, and git could not read the lane's worktree %s, so whether it holds uncommitted work cannot be told: %s; the lane is not closed and nothing was removed",
+				lane.PR, at, termsafe.Sanitize(fsutil.RedactHome(err.Error()))),
+			"settle what git reports, then run `abcd build "+termsafe.Sanitize(st.Key)+"` again")
+	}
+	n := 0
+	for _, rec := range strings.Split(out, "\x00") {
+		if rec != "" {
+			n++
+		}
+	}
+	if n == 0 {
+		return nil
+	}
+	return refuse(StageResume, "", lane.ID,
+		fmt.Sprintf("pull request #%d merged, and the lane's worktree %s holds %d uncommitted file(s), so the lane is not closed and nothing was removed",
+			lane.PR, at, n),
+		"commit those changes to another branch or move them aside, then run `abcd build "+termsafe.Sanitize(st.Key)+"` again")
 }

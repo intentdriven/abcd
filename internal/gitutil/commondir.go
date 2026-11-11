@@ -1,6 +1,7 @@
 package gitutil
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -23,6 +24,21 @@ func CommonDir(dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return commonDirAnswer(dir, out)
+}
+
+// CommonDirContext is CommonDir bound to ctx: a git still running when ctx ends
+// is killed, and its answer is ctx's error.
+func CommonDirContext(ctx context.Context, dir string) (string, error) {
+	out, err := RunCappedContext(ctx, dir, 4096, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return "", err
+	}
+	return commonDirAnswer(dir, strings.TrimSpace(out))
+}
+
+// commonDirAnswer is CommonDir's reading of git's one-line answer out.
+func commonDirAnswer(dir, out string) (string, error) {
 	if out == "" || strings.ContainsAny(out, "\r\n") {
 		first, _, _ := strings.Cut(out, "\n")
 		first, _, _ = strings.Cut(first, "\r")

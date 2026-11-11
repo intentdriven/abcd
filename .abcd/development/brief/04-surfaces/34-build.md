@@ -435,6 +435,28 @@ start, and the run's own lanes then change what they read (a lane's worktree
 moves the intent to `shipped/`, a lane claims it), so judging again would refuse
 the run as its own peer. Only the key's shape is checked before the lookup.
 
+A build that finds the live run closes each of its lanes whose pull request has
+merged before it resumes the run (iss-2611101317510356), so the work goes on in
+a new lane on a new branch cut from origin's default branch tip, never on the
+merged lane's worktree, branch and range. A lane is read as merged when it is
+parked at its landing with no agent awaited and no hold, its pull request
+opened and its head pushed, the status board reads it as landed (its branch is
+gone, or its branch's tip is on the default branch as last fetched: the one
+local reading both share), and its pushed head is on origin's default branch as
+last fetched. Nothing is fetched and the forge is not asked, so a merge not yet
+fetched is not seen, and a squash or rebase merge, which leaves the pushed head
+off the default branch, is not read as merged here (iss-2610150827113191). The
+closing is the land stage's own cleanup, every git call under one deadline: the
+worktree is removed, the branch deleted, the landing records the merged commit,
+the lane is done and the run's next lane opens. Each merged lane's worktree is read for
+uncommitted work before anything is removed: one that holds any is refused at
+the `resume` stage, naming the lane and its worktree, and nothing is closed. A
+lane whose branch holds a commit past the default branch is not read as merged
+and resumes as before. A run whose state file states another version than this
+binary's, one a drive stopped on, and one a stop's record stands on are left
+as they stand, their own driver's to settle. A drain's start and a trial's
+close nothing here: the drain finishes its merged lanes on its own move.
+
 ## The step interface
 
 A spec's steps and a lane's stages are two words for two things (BU1,

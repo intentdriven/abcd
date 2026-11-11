@@ -213,6 +213,20 @@ check, and reports `resumed: true` with the same run and an empty `checks`: the
 run's own lanes move and claim the intent, so judging it again would refuse the
 run as its own peer.
 
+**A lane whose pull request has merged is closed before the run resumes.** A
+lane parked at its landing, its head pushed, whose branch's tip is on origin's
+default branch as this checkout last fetched it (or whose branch is gone), and
+whose pushed head is on that branch, is closed by the build: its worktree is
+removed, its branch deleted, its landing records the merge, and the run goes on
+in a new lane, on a new branch cut from origin's default branch tip. The read uses local refs only and fetches nothing, so a merge not yet fetched
+is not seen, and a squash or rebase merge, which leaves the pushed head off the
+default branch, is not closed this way. A lane whose branch holds a commit past
+the default branch is resumed as before; one whose worktree holds uncommitted
+work is refused at the `resume` stage, naming the lane and its worktree, and
+nothing is removed. A run whose state file states another version than this
+abcd's, one a drive stopped on, and one a stop's record stands on are left as
+they stand.
+
 **A session whose setting reads as off a profile is warned while the away mode
 holds.** While `abcd mode autonomous` holds, or its record cannot be read, every
 `build` and `build next` that starts or resumes a run prints, after the move, one

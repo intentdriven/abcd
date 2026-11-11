@@ -671,7 +671,7 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 	if err := trialFrozen(repoRoot, o); err != nil {
 		return StartResult{}, err
 	}
-	if res, ok, err := resumeLive(repoRoot, key, o.drain, o.Trial); err != nil || ok {
+	if res, ok, err := resumeClosingMerged(repoRoot, key, o); err != nil || ok {
 		if err == nil && pick != nil {
 			err = pickedLive(res)
 		}

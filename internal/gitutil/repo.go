@@ -209,6 +209,14 @@ func WorkingTreeCommand(root string, args ...string) *exec.Cmd {
 	return workingTreeCommand(context.Background(), root, ExecPins(), args)
 }
 
+// WorkingTreeCommandContext is WorkingTreeCommand bound to ctx, for a caller on
+// a deadline: git is killed when ctx ends (exec.CommandContext's default), so
+// it is for a command whose interruption leaves nothing a person must repair
+// beyond running it again.
+func WorkingTreeCommandContext(ctx context.Context, root string, args ...string) *exec.Cmd {
+	return workingTreeCommand(ctx, root, ExecPins(), args)
+}
+
 // WorkingTreeCommitCommand is WorkingTreeCommand for a git command that runs
 // the repository's hooks on a working tree abcd makes for the work, so a
 // lane's record commit, a merge into a lane, a lane's reset --hard and the
