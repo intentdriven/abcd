@@ -575,8 +575,8 @@ func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 	case j.derived:
 		// A record finished on origin's default branch is not reserved, with
 		// a tip or without one: the work it names is done (iss-2610160957404827).
-		return Result{}, message{}, "", backOff("%s, so there is nothing to reserve; take other work; %s",
-			derivedWhy(p.id), nothingPushed)
+		return Result{}, message{}, "", &refusal{msg: fmt.Sprintf("%s, so there is nothing to reserve; take other work; %s",
+			derivedWhy(p.id), nothingPushed), kind: ErrBackOff, finished: !isRelease(p.id)}
 	case !j.present:
 		res.Act = ActReserved
 		return res, m, "", nil

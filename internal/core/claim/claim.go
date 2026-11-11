@@ -64,19 +64,28 @@ const (
 // ErrBackOff marks a refusal whose remedy is to take other work: the record is
 // held, and the front door exits 3, as `implement claim` does for contention.
 // ErrRefused marks every other refusal and failure, exit 2.
+// ErrFinished marks, beside ErrBackOff, the one back-off whose record sits
+// finished on origin's default branch as the act just fetched it (an issue
+// resolved or wontfix, an intent shipped or superseded), so a caller tells that
+// refusal from every other without reading its message.
 var (
-	ErrBackOff = errors.New("the record is reserved")
-	ErrRefused = errors.New("the reservation was refused")
+	ErrBackOff  = errors.New("the record is reserved")
+	ErrRefused  = errors.New("the reservation was refused")
+	ErrFinished = errors.New("the record is finished on origin's default branch")
 )
 
-// refusal is a refusal carrying its class (ErrBackOff or ErrRefused).
+// refusal is a refusal carrying its class (ErrBackOff or ErrRefused), and
+// ErrFinished for a record finished on origin's default branch.
 type refusal struct {
-	msg  string
-	kind error
+	msg      string
+	kind     error
+	finished bool
 }
 
-func (e *refusal) Error() string        { return e.msg }
-func (e *refusal) Is(target error) bool { return target == e.kind }
+func (e *refusal) Error() string { return e.msg }
+func (e *refusal) Is(target error) bool {
+	return target == e.kind || (e.finished && target == ErrFinished)
+}
 
 // refuse is an ErrRefused refusal; every message ends saying what was not done.
 func refuse(format string, args ...any) error {
@@ -182,5 +191,10 @@ type NotHeld struct {
 	kind error
 }
 
-func (e *NotHeld) Error() string        { return e.msg }
-func (e *NotHeld) Is(target error) bool { return target == e.kind }
+func (e *NotHeld) Error() string { return e.msg }
+
+// Is matches the NotHeld's class, and ErrFinished when Derived names a record,
+// not a release, finished on origin's default branch.
+func (e *NotHeld) Is(target error) bool {
+	return target == e.kind || (target == ErrFinished && e.Derived && !isRelease(e.Record))
+}
