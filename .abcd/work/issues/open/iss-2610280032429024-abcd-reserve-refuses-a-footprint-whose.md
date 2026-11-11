@@ -13,3 +13,5 @@ remedy: "Let reserve derive the footprint from a branch diff and compact it to f
 ---
 
 abcd reserve refuses a footprint whose reservation message passes the 4096-byte cap, and takes only an explicit list of paths, so a large stacked build cannot name its whole diff: renewing the worktree store's reservation after a rebase with its 83 changed paths was refused at 4740 bytes, and the renewal had to fall back by hand to the store's original 50 paths, leaving the rebased-in paths unreserved.
+
+2026-11-08: seen again at 12:14 in the autonomous run of 7 Nov: reserve refused a lane's 65-path footprint because the reservation message came to 4160 bytes, and the lane collapsed internal/core/matrix to a directory, which the verb warned holds peers off 17 files the lane did not change.

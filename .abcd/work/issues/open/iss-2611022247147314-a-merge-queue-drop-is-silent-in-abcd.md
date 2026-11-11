@@ -13,3 +13,5 @@ remedy: "Have land (bare, on the branch) and peers name a pull request that left
 ---
 
 A merge-queue drop is silent in abcd: #1347 left the queue twice on 2026-11-02, once when its merge-group macOS job was cancelled and once on a flaky test, and neither land, peers nor status said the entry had left or why; the coordinator learned it only by polling the forge and reading the run's jobs.
+
+2026-11-08: seen again at 09:56 in the autonomous run of 7 Nov: when #1465 merged ahead of it, the merge queue dropped #1466 once as unmergeable, though the two share no file, and nothing in abcd said so; it was re-armed by hand.

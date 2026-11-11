@@ -14,3 +14,5 @@ remedy: "Read more runs to find why the package ran slower on its own leg, cut t
 ---
 
 The implement loop package takes 2189 s and then 2137 s on its own macOS leg against a 2400 s limit, slower than the 1173 s and 1504 s it took on a shared leg. The cause is not yet found, and runners vary about twofold, so the own leg itself is not shown to be the reason. Its ten slowest tests spend about 600 s in real-time waits. Every drive test added to the package eats the same margin, and a slow runner fails the release gate with no failing test.
+
+2026-11-09: seen again at 04:25 on the narrow gate, in the autonomous run of 7 Nov: the implement loop package's test took 2001 s against a 40-minute timeout at a load of about 7, one more loaded machine away from a timeout failure that says nothing about the code.
