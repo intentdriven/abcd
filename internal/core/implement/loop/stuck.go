@@ -143,8 +143,9 @@ func waitByDesign(r *Refusal) bool {
 // A wait on another holder's path (Refusal.pathHeld) is logged with a count
 // of 0 that never grows, so it never reaches the refusals bound, but keeps
 // the time the lane began waiting at its stage, as any refusal there does,
-// so the minutes bound hands back a lane whose wait does not end. The record
-// gains a line only as such a wait begins.
+// so the minutes bound hands back a lane whose wait does not end, however far
+// apart the looks at it come. The record gains a line only as such a wait
+// begins.
 func noteRefusal(st *State, err error, now time.Time) bool {
 	r, ok := AsRefusal(err)
 	if !ok || st.Issue() == "" || r.Lane == "" || (waitByDesign(r) && !r.pathHeld) {
@@ -170,7 +171,12 @@ func noteRefusal(st *State, err error, now time.Time) bool {
 	next := LaneRefused{Stage: r.Stage, Check: r.Check, Reason: reason, Count: 1, Since: now, Last: now, Final: r.final}
 	logged := true
 	p := lane.Refused
-	if p != nil && p.Stage == r.Stage && now.Sub(p.Last) <= stuckGap {
+	// A wait on another holder's path that goes on keeps the time it began
+	// however long the looks between came apart: a drive's look-again time
+	// can reach stuckGap itself, and a wait that started its time afresh at
+	// every look would never reach the minutes bound.
+	keep := p != nil && r.pathHeld && p.Count == 0
+	if p != nil && p.Stage == r.Stage && (now.Sub(p.Last) <= stuckGap || keep) {
 		next.Since = p.Since
 	}
 	switch {

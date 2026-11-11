@@ -59,3 +59,37 @@ func TestTwoLanesWaitingOnEachOthersHoldAreHandedBackPastTheMinutesBound(t *test
 		t.Fatalf("the hand-back releases the lane's reservation, ending the other lane's wait: %+v", tip)
 	}
 }
+
+// TestAWaitOnAnotherHoldKeepsItsStartAcrossLooksFarApart: a drive's looks at
+// a lane waiting on another copy's hold may come further apart than the gap
+// that starts a refusal's time afresh; the wait keeps the time it began, so
+// it still reaches the minutes bound.
+func TestAWaitOnAnotherHoldKeepsItsStartAcrossLooksFarApart(t *testing.T) {
+	f := newNarrowFixture(t)
+	f.reserveAs(t, "iss-99", "quinn", "README.txt", time.Now().Add(-time.Minute))
+	path := f.walledStage(t, "docs/page.md", "README.txt")
+	if _, err := Receipt(f.repo.Root(), f.runID, path, f.stages, Options{}); err != nil {
+		t.Fatalf("the receipt is taken: %v", err)
+	}
+	b := stuckBounds{refusals: PaceValue{Value: BundledStuckRefusals}, minutes: PaceValue{Value: BundledStuckMinutes}}
+	base := time.Now()
+	apart := stuckGap + 5*time.Minute
+	var why string
+	for i := range 4 {
+		at := base.Add(time.Duration(i) * apart)
+		if _, err := advance(f.repo.Root(), f.runID, f.stages, Options{Now: func() time.Time { return at }}); err == nil {
+			t.Fatalf("step %d: the lane waits on the other hold", i)
+		}
+		run, err := ReadState(f.repo.Root(), f.runID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if l := run.Lanes[run.current()]; l.Refused == nil || l.Refused.Since.Sub(base).Abs() > time.Second {
+			t.Fatalf("step %d: the wait keeps the time it began: %+v", i, l.Refused)
+		}
+		why = stuckReason(run, b)
+	}
+	if why == "" || !strings.Contains(why, "README.txt") {
+		t.Fatalf("looks %s apart still reach the minutes bound: %q", apart, why)
+	}
+}
