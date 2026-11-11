@@ -61,7 +61,11 @@ other vendor's model, and every launch outside a drive keep the provider allowli
 reads the class map at its start and again as each run starts, so a run started after the
 map changed runs at the new routes. A run keeps the models it started with: one already in
 progress whose model no map read during the drive names is refused at its next reviewer,
-naming the model. Map a class to it in `models.classes` and start the drive again. A review set with a reviewer
+naming the model. Map a class to it in `models.classes` and start the drive again. The
+runner settings, each `oracle.api.<provider>` block and the `oracle.denylist` are read once, at
+the drive's start, and hold until the drive ends: a change to one of those takes effect at the
+next start, and the start says so. The review set (`review.*` and `models.effort`) is read
+again as each run starts, as the class map is. A review set with a reviewer
 no route on this machine can launch refuses the start, before anything is reserved, naming
 the role, the model and what to set: the denylist entry or `models.classes` for a model an
 entry refuses, `oracle.api.<provider>` otherwise.
