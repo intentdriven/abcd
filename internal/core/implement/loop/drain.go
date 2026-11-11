@@ -37,6 +37,8 @@ import (
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
+	"github.com/intentdriven/abcd/internal/core/landings"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -779,7 +781,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 
 	// Merged lanes are finished before the window clock is read: the cleanup
 	// does no new work, so the pace does not hold it (iss-2610090936460789).
-	if res.Finished, res.Parked, err = finishMerged(repoRoot, now, o); err != nil {
+	if res.Finished, res.Parked, err = finishMerged(repoRoot, st.Lanes, now, o); err != nil {
 		return refuseMoved(err)
 	}
 	// The lane in progress is renewed at half its lease on every move,
@@ -887,6 +889,11 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		run, err := ReadState(repoRoot, l.RunID)
 		if err != nil {
 			return refuseMoved(err)
+		}
+		if run.Admitted == nil {
+			if run, err = admitDrainLane(repoRoot, st, run, rule, now); err != nil {
+				return refuseMoved(err)
+			}
 		}
 		outcome, pr, hb := laneOutcome(run)
 		if outcome == DrainLaneInProgress {
@@ -1210,6 +1217,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		lane.reserve = footprint
 		lane.plan = &plan
 		lane.drain = true
+		// The lane is admitted under the rule this move loaded and judged the
+		// issue by, which its records commit names (itd-2610301850454860).
+		lane.admitted = &Admitted{Kind: landings.KindDrain, Record: rule.Record, Path: rule.Path}
 		if owned {
 			lane.held = &heldReservation{at: hold.ClaimedAt, note: fmt.Sprintf("reserved %s on %s for this copy until %s before its judgement, footprint: %s",
 				v.ID, claim.Remote, stamp(hold.EffectiveExpiry), strings.Join(hold.Footprint, ", "))}
@@ -1302,6 +1312,21 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	st.Stopped, st.EndedAt = DrainStoppedEmpty, &now
 	res.Next = fmt.Sprintf("nothing eligible is left: the drain opened %d lane(s) and ends here", len(st.Lanes))
 	return finish(true)
+}
+
+// admitDrainLane records the drain's rule on its lane in progress whose run
+// names no admission, as a lane opened before runs recorded theirs does, so the
+// records step that refused it goes on (admitResumed). Only the rule the drain
+// began under is the one that admitted the lane: a move whose rule is another
+// record leaves the run as it is, and its records step stays refused.
+func admitDrainLane(repoRoot string, st DrainState, run State, rule drainrule.Rule, now time.Time) (State, error) {
+	if rule.Record == "" || recordid.CanonADRID(st.Rule) != rule.Record {
+		return run, nil
+	}
+	if err := admitLate(repoRoot, run.RunID, Admitted{Kind: landings.KindDrain, Record: rule.Record, Path: rule.Path}, now); err != nil {
+		return run, err
+	}
+	return ReadState(repoRoot, run.RunID)
 }
 
 // joinNext joins the clauses of a move's next step that are not empty with

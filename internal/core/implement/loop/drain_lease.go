@@ -12,7 +12,6 @@ package loop
 // that moved anyway pushes nothing.
 
 import (
-	"os"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -73,7 +72,9 @@ func renewInProgress(repoRoot string, st DrainState, view *claim.Snapshot, now t
 // long enough that no move comes: otherwise a peer could redo work that only awaits
 // its merge, and the land fence would not arm. The forge is read first, and only
 // when one is due, so a closed or conflicting pull request's lane is left to lapse.
-// It returns what a renewal that did not go through said.
+// It returns what a renewal that did not go through said. The save is the
+// reservation's alone, as every renewal's is, so a run another driver wrote at
+// another version stays at it.
 func renewParkedDue(repoRoot string, now time.Time) []string {
 	runs, err := Runs(repoRoot)
 	if err != nil {
@@ -106,7 +107,7 @@ func renewParkedDue(repoRoot string, now time.Time) []string {
 			continue
 		}
 		note := ""
-		if err := mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+		if err := mutateReservation(repoRoot, run.RunID, func(st *State) (bool, error) {
 			if parkedAtLand(*st) < 0 {
 				return false, nil
 			}

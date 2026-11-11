@@ -79,6 +79,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/landings"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/relink"
@@ -153,6 +154,60 @@ const (
 // landSubject is the records commit's subject.
 func landSubject(st State, lane Lane) string {
 	return "chore(record): land " + lane.ID + " of " + st.RunID
+}
+
+// recordsMessage is the records commit's message: its subject, one line saying
+// what the landing did, and its trailers, one to a line.
+func recordsMessage(st State, lane Lane, done, trailers []string) string {
+	what := fmt.Sprintf("%s (%s, step %d)", st.Intent, st.Spec, lane.SpecStep)
+	if iss := st.Issue(); iss != "" {
+		what = iss
+	}
+	return landSubject(st, lane) + "\n\n" +
+		fmt.Sprintf("The implement loop's landing for %s: %s.\n\n", what, strings.Join(done, "; ")) +
+		strings.Join(trailers, "\n") + "\n"
+}
+
+// composedRecordsMessage is the whole message of a records commit under abcd's
+// own label, which the run's state alone decides: the step's mark, or the
+// admission alone when the landing moves no record.
+func composedRecordsMessage(st State, lane Lane) string {
+	var done []string
+	if ld := lane.Landing; ld != nil {
+		if ld.MarkStep > 0 {
+			done = append(done, fmt.Sprintf("marked step %d landed at %s", ld.MarkStep, shortSHA(lane.HeadSHA)))
+		}
+		if recordsOnlyAdmission(*ld, lane) {
+			done = append(done, recordsOnlyTheAdmission)
+		}
+	}
+	var trailers []string
+	if st.Admitted != nil {
+		trailers = admittedTrailers(*st.Admitted, lane.Resolves)
+	}
+	return recordsMessage(st, lane, done, append(trailers, composedAssistedBy()))
+}
+
+// recordsOnlyTheAdmission is the records commit's prose when the landing moves no
+// record: the commit is made to carry the admission alone.
+const recordsOnlyTheAdmission = "records only the admission"
+
+// recordsOnlyAdmission reports whether the landing moves no record: it marks no
+// step, closes nothing, resolves no capture and carries no change to the spec.
+func recordsOnlyAdmission(ld Landing, lane Lane) bool {
+	return !ld.Closes && ld.MarkStep == 0 && len(lane.Resolves) == 0 && !ld.SpecSettled
+}
+
+// admittedTrailers are the records commit's and the pull request's lines for the
+// admission: its `Admitted-by:` trailer, and, when it names an issue the
+// resolutions do not, a `Refs:` line declaring it, since RS004 refuses a message
+// naming an issue no `Resolves:` or `Refs:` line declares.
+func admittedTrailers(a Admitted, resolves []Resolution) []string {
+	out := []string{a.Trailer()}
+	if strings.HasPrefix(a.Record, "iss-") && !slices.ContainsFunc(resolves, func(r Resolution) bool { return r.Issue == a.Record }) {
+		out = append(out, "Refs: "+a.Record)
+	}
+	return out
 }
 
 // landStage is the land stage's body: it performs the landing's next step.
@@ -300,8 +355,9 @@ func landPrepare(c Context, lane *Lane) (Outcome, error) {
 		does = append(does, "resolves "+r.Issue)
 	}
 	if len(does) == 0 {
-		ld.RecordsDone = true
-		does = append(does, "records nothing (the lane marks no step, neither closes the spec nor fixed a capture)")
+		// The records commit is made on every lane, so the rule the lane was
+		// admitted under rides it into history (itd-2610301850454860).
+		does = append(does, recordsOnlyTheAdmission+" (the lane marks no step, neither closes the spec nor fixed a capture)")
 	}
 	lane.Landing = ld
 	return Outcome{Stay: true, Note: "landing prepared at " + shortSHA(lane.HeadSHA) + ": it " + strings.Join(does, ", ")}, nil
@@ -351,6 +407,12 @@ func stepToMark(c Context, lane Lane) (int, error) {
 func landRecords(c Context, lane *Lane) (Outcome, error) {
 	st := c.State
 	ld := lane.Landing
+	// The trailer is written from the run's state and never guessed, so a run that
+	// recorded no admission is refused before anything is read or written.
+	if st.Admitted == nil {
+		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the run's state names no `admitted`, the rule its lanes were admitted under, so its records commit cannot carry its "+landings.TrailerKey+": trailer",
+			"resume the run with this abcd, which records the admission its start would have: `abcd build "+st.Key+"` for a run `abcd build` started, or `abcd drain` for a drain's lane (under the rule the drain began under); then run `abcd implement step` again")
+	}
 	if st.Issue() == "" {
 		if why, err := ownSpecTwice(c, *lane); err != nil {
 			return Outcome{}, err
@@ -565,6 +627,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		}
 		trailers = append(trailers, "Resolves: "+r.Issue)
 	}
+	trailers = append(trailers, admittedTrailers(*st.Admitted, lane.Resolves)...)
 	if beforeLandingStage != nil {
 		beforeLandingStage(wt)
 	}
@@ -592,24 +655,32 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, fmt.Errorf("reading the landing's staged records: %w", err)
 	}
+	commit := []string{"commit", "-q"}
 	if staged == "" {
 		// A resolution written on this call that stages nothing is one the branch
-		// already holds byte for byte: the step has nothing left to commit.
-		if wrote {
-			ld.RecordsDone = true
-			return Outcome{Stay: true, Note: "the branch already holds the landing's records, so there is nothing to commit: " + strings.Join(done, "; ")}, nil
+		// already holds byte for byte, and a landing with nothing to move has nothing
+		// to stage: either still makes the records commit, changing no file, so the
+		// admission rides it.
+		switch {
+		case recordsOnlyAdmission(*ld, *lane):
+			done = append(done, recordsOnlyTheAdmission)
+		case wrote:
+			done = append(done, "the branch already held the records, so the commit changes no file")
+		default:
+			return Outcome{}, refuse(string(StageLand), "", lane.ID, "the landing's records changed nothing on the lane's branch",
+				"the close and the resolutions should move records; put back anything the branch already moved, or the spec left for the landing to carry, in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
 		}
-		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the landing's records changed nothing on the lane's branch",
-			"the close and the resolutions should move records; put back anything the branch already moved, or the spec left for the landing to carry, in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
+		commit = append(commit, "--allow-empty")
 	}
 	// abcd's label covers the mark it computed and nothing else, so it is chosen from
 	// what is staged: anything beside the mark names the lane's model.
-	if composed {
+	if composed && staged != "" {
 		only, err := stagedOnlyTheMark(wt, st.Spec, staged, lane.HeadSHA, shortSHA(lane.HeadSHA))
 		if err != nil {
 			return Outcome{}, fmt.Errorf("reading the landing's staged records: %w", err)
 		}
-		if !only {
+		// A mark is abcd's only when this landing writes it.
+		if !only || ld.MarkStep == 0 {
 			var gap string
 			if assisted, gap = assistedByTrailers(lane.Receipts); gap != "" {
 				return Outcome{}, modelGap(*lane, "the landing's records commit carries text abcd did not compose", gap)
@@ -623,17 +694,11 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	// audit's verdict ingested into the intent. So it names that model, and
 	// it is made with the repository's hooks running (never through pickGit's
 	// hooks-off configuration), so the commit-msg outbound gate judges it.
-	what := fmt.Sprintf("%s (%s, step %d)", st.Intent, st.Spec, lane.SpecStep)
-	if iss := st.Issue(); iss != "" {
-		what = iss
-	}
-	msg := landSubject(st, *lane) + "\n\n" +
-		fmt.Sprintf("The implement loop's landing for %s: %s.\n\n", what, strings.Join(done, "; ")) +
-		strings.Join(append(trailers, assisted...), "\n") + "\n"
+	msg := recordsMessage(st, *lane, done, append(trailers, assisted...))
 	// gitutil.LocalGit runs a local git command under the developer's own
 	// configuration with the repository's hooks running, and none of the
 	// networked runner's settings.
-	if _, err := gitutil.LocalGit(wt, "commit", "-q", "-m", msg); err != nil {
+	if _, err := gitutil.LocalGit(wt, append(commit, "-m", msg)...); err != nil {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID,
 			"git could not commit the landing's records (a repository hook refused it, or no git identity is configured): "+fsutil.RedactHome(err.Error()),
 			"settle what git or the hook reports (the records stay staged in the lane's worktree), then run `abcd implement step` again; the loop never skips a hook")
@@ -1446,7 +1511,9 @@ func judgeLandingDiff(repo string, st State, lane Lane, raw string) (string, err
 // it changes.
 func foundCommitLacks(c Context, lane Lane, tip, raw string) (string, error) {
 	st, ld := c.State, lane.Landing
-	if raw == "" {
+	// Only a landing that moves no spec record may change no file: one with nothing to
+	// move, or one whose resolutions the branch already held, each checked below.
+	if raw == "" && (ld.Closes || ld.MarkStep > 0 || ld.SpecSettled) {
 		return "any change", nil
 	}
 	at := baseTree{root: c.RepoRoot, sha: tip}
@@ -1535,13 +1602,17 @@ func foundTrailersLack(c Context, lane Lane, tip, raw string, delivers bool) (st
 	for _, r := range lane.Resolves {
 		want = append(want, "Resolves: "+r.Issue)
 	}
+	if st.Admitted != nil {
+		want = append(want, admittedTrailers(*st.Admitted, lane.Resolves)...)
+	}
 	composed := !ld.Closes && len(lane.Resolves) == 0 && !ld.SpecSettled
-	if composed {
+	if composed && raw != "" {
 		only, err := rawOnlyTheMark(c.RepoRoot, st.Spec, raw, shortSHA(lane.HeadSHA))
 		if err != nil {
 			return "", err
 		}
-		composed = only
+		// As landRecords judges it: a mark is abcd's only when the landing writes it.
+		composed = only && ld.MarkStep > 0
 	}
 	if composed {
 		want = append(want, composedAssistedBy())
@@ -1561,12 +1632,27 @@ func foundTrailersLack(c Context, lane Lane, tip, raw string, delivers bool) (st
 	if !slices.Equal(landingTrailers(msg), want) {
 		return "the landing's trailers (" + termsafe.Sanitize(strings.Join(want, ", ")) + ")", nil
 	}
+	// landingTrailers reads a line wherever it stands; the admission counts only
+	// in the trailer block, read through the grammar that wrote it.
+	if a := st.Admitted; a != nil {
+		if got, ok := landings.ParseAdmitted(msg); !ok || got.Kind != a.Kind || got.Record != a.Record {
+			return "its admission (" + termsafe.Sanitize(a.Trailer()) + ") in its trailer block", nil
+		}
+	}
+	// A commit under abcd's label carries text abcd composed and nothing else, so
+	// its whole message is the one the run's state decides, not its trailers alone.
+	if composed {
+		norm := func(s string) string { return strings.TrimRight(strings.ReplaceAll(s, "\r\n", "\n"), "\n") }
+		if norm(msg) != norm(composedRecordsMessage(st, lane)) {
+			return "the message abcd composes for it under its own label", nil
+		}
+	}
 	return "", nil
 }
 
 // landingTrailerRe is a line git or a gate could read as one of the trailers the landing
 // writes.
-var landingTrailerRe = regexp.MustCompile(`(?i)^(assisted-by|delivers|resolves)\s*:`)
+var landingTrailerRe = regexp.MustCompile(`(?i)^(admitted-by|assisted-by|delivers|refs|resolves)\s*:`)
 
 // landingTrailers lists a commit message's lines of those trailers, wherever in it they
 // stand and with a folded value unfolded, sorted and without repeats.
@@ -2045,6 +2131,9 @@ func prBodyParked(st State, lane Lane, assisted []string, parked bool) string {
 	for _, r := range lane.Resolves {
 		p("- It resolves %s, fixed by %s.\n", r.Issue, shortSHA(r.Commit))
 		trailers = append(trailers, "Resolves: "+r.Issue)
+	}
+	if st.Admitted != nil {
+		trailers = append(trailers, admittedTrailers(*st.Admitted, lane.Resolves)...)
 	}
 	trailers = append(append(trailers, composedAssistedBy()), assisted...)
 	p("\n%s\n", strings.Join(trailers, "\n"))
