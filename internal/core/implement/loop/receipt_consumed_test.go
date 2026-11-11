@@ -12,6 +12,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -835,6 +836,8 @@ func TestAStandingReceiptBelowTheBoundIsFollowedByOneRelaunch(t *testing.T) {
 		held     bool
 	}{
 		{"an issue run below the bound", true, false, 1, false},
+		// A regression guard: this row passes without the production change
+		// that brought it, pinning what already held.
 		{"an issue run whose bounds cannot be read", true, true, 0, true},
 		{"an intent's run whose bounds cannot be read", false, true, 1, false},
 	} {
@@ -894,5 +897,69 @@ func TestADestinationThatCannotBeCheckedIsSaidSo(t *testing.T) {
 	}
 	if raw, err := os.ReadFile(filepath.Join(repo, laneDir, ReportFileName)); err != nil || string(raw) != "built it\n" {
 		t.Fatalf("the report stands: %v", err)
+	}
+}
+
+// TestImplementStageAwaitNeedsBothTheStageAndTheDirectory: the implement
+// stage's own await is told from the run's state by both halves together: the
+// lane at the implement stage and the receipt directly in the lane's
+// directory. A lane at the validate stage with a receipt directly there, and
+// a lane at the implement stage with a receipt in a sub-directory, are not
+// it; the loop's own writes make neither, so only an edited state reaches
+// them. Coverage of what already held: it passes without a production change.
+func TestImplementStageAwaitNeedsBothTheStageAndTheDirectory(t *testing.T) {
+	const laneDir = "run/lane-1"
+	for _, tc := range []struct {
+		name  string
+		stage Stage
+		rel   string
+		want  bool
+	}{
+		{"the implement stage's receipt in the lane's directory", StageImplement, laneDir + "/" + ReceiptFileName, true},
+		{"a validate-stage lane's receipt in the lane's directory", StageValidate, laneDir + "/" + ReceiptFileName, false},
+		{"an implement-stage lane's receipt in a sub-directory", StageImplement, laneDir + "/validate/fix-1/" + ReceiptFileName, false},
+		{"a validate-stage lane's receipt in a sub-directory", StageValidate, laneDir + "/validate/fix-1/" + ReceiptFileName, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := implementStageAwait(Lane{ID: "lane-1", Stage: tc.stage}, tc.rel, laneDir); got != tc.want {
+				t.Fatalf("implementStageAwait = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestAStateThatCannotBeReadCountsAsAtTheBound: a step that consumed a
+// standing receipt, on a run whose state cannot then be read, is held as at
+// the drain's stuck bounds, since whether the run is an issue's is unknown,
+// so the drive starts no implementer after it; a step that consumed none is
+// not held. Coverage of what already held: it passes without a production
+// change.
+func TestAStateThatCannotBeReadCountsAsAtTheBound(t *testing.T) {
+	repo := t.TempDir()
+	why := stuckAfterConsumed(repo, "run-2611110000000001", Options{}, StepResult{consumed: true})
+	if !strings.HasPrefix(why, "the run's state cannot be read") {
+		t.Fatalf("a state that cannot be read holds the lane: %q", why)
+	}
+	if why := stuckAfterConsumed(repo, "run-2611110000000001", Options{}, StepResult{}); why != "" {
+		t.Fatalf("a step that consumed nothing is not held: %q", why)
+	}
+}
+
+// TestStartedRunnerAdmitsAnImplementerAtImplementAndValidateOnly holds what
+// the set-aside's words for a fix or sync round rest on (receipt_standing.go):
+// startedRunner admits an implementer's await at the implement and validate
+// stages and at none of the lane's other stages. The working stages come from
+// the package's own lists (Sequence, PlanSequence), so a stage added to either
+// is judged; the stages a lane ends or waits at have no such list and are
+// named here by hand.
+func TestStartedRunnerAdmitsAnImplementerAtImplementAndValidateOnly(t *testing.T) {
+	t.Parallel()
+	a := Await{Role: RoleImplementer, Running: &RunnerClaim{Runner: "r"}}
+	stages := append(append(slices.Clone(Sequence), PlanSequence...), StageDone, StageHandedBack, StageHeld, StageDiscarded)
+	for _, s := range stages {
+		_, ok := startedRunner(Lane{Stage: s}, a)
+		if want := s == StageImplement || s == StageValidate; ok != want {
+			t.Errorf("startedRunner at %s = %t, want %t", s, ok, want)
+		}
 	}
 }

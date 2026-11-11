@@ -483,7 +483,7 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		if err := worktree.RemoveAdded(c.RepoRoot, added); err != nil {
 			return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
 				why+"; the worktree the step added could not be removed: "+fsutil.RedactHome(gitutil.ScrubURLCredentials(err.Error())),
-				"look at what moved the branch and at what stands at "+fsutil.RedactHome(lw.Path)+"; if git lists it as the lane's worktree (`git worktree list`), remove it (`git worktree remove --force "+fsutil.RedactHome(lw.Path)+"`) so the next step judges the branch again, then run `abcd implement step` again; a step taken while that worktree stands adopts it, judged by its hooks only; nothing was committed in the lane")
+				"look at what moved the branch and at what stands at "+fsutil.RedactHome(lw.Path)+"; if a real directory, not a link, stands there and git lists it on the lane's branch (`git worktree list`), remove it (`git worktree remove --force "+fsutil.RedactHome(lw.Path)+"`) so the next step judges the branch again, then run `abcd implement step` again; a step taken while that worktree stands adopts it, judged by its hooks only; nothing was committed in the lane")
 		}
 		return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
 			why+"; the worktree the step added was removed and the branch left, so the next step judges the branch again before any add",

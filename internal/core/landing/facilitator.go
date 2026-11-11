@@ -114,13 +114,9 @@ type reviewAnswer struct {
 func notFound(err error) bool { return err != nil && strings.Contains(err.Error(), "(HTTP 404)") }
 
 // forgeWhy is a forge failure as a gate's reason clause: home-redacted,
-// credential-free, sanitised and bounded.
+// credential-free, sanitised and bounded at a character (boundForgeText).
 func forgeWhy(err error) string {
-	t := termsafe.Sanitize(fsutil.RedactHome(gitutil.ScrubURLCredentials(err.Error())))
-	if len(t) > maxForgeErrorText {
-		t = t[:maxForgeErrorText]
-	}
-	return t
+	return boundForgeText(termsafe.Sanitize(fsutil.RedactHome(gitutil.ScrubURLCredentials(err.Error()))))
 }
 
 // readRole is the one seam that says who is a maintainer: login's permission

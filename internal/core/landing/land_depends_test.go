@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // The enqueue step's dependency check (depends.go): a pull request whose body
@@ -167,7 +168,7 @@ func TestLandRefusesWhatNoWaitCanRelease(t *testing.T) {
 		return "; settle what the forge reports for #" + n + " (gh pr view " + n + "), then run abcd land again"
 	}
 	const prefix = "pull request #7's dependencies refuse it, so nothing was armed: "
-	const bad = `looks like a Depends-On line but is not in the accepted form "Depends-On: #N, #N"; reword that line, or write it in that form`
+	const bad = `holds the words of a dependency line but is not one in the accepted shape, which is "Depends-On: #<number>" alone on a line, more numbers separated by commas; prose in the body must not use those words, so reword that sentence, or write the line in that shape`
 	notFound := `{"data":{"repository":{"pullRequest":null}},"errors":[{"type":"NOT_FOUND","path":["repository","pullRequest"],"message":"Could not resolve to a PullRequest with the number of 5."}]}`
 	for _, c := range []struct {
 		name  string
@@ -625,6 +626,10 @@ func TestLandWithdrawsNothingFromAPullRequestMergedOrClosedSinceItsState(t *test
 // carrying errors, and no forge client to withdraw with; and a check the forge
 // could not be asked for takes this account's arming off all the same.
 func TestLandRefusesWhenTheWithdrawalCannotBeConfirmed(t *testing.T) {
+	rawWhy := "gh: \x1b[2Jboom " + strings.Repeat("y", 600)
+	if w := forgeWhy(errors.New(rawWhy)); strings.Contains(w, "\x1b") || len(w) > maxForgeErrorText {
+		t.Fatalf("forgeWhy cleans and cuts: %q", w)
+	}
 	const could = "land's dependency check does not let pull request #7 queue; land withdrew this account's earlier arming, but the forge could not be read again for #7's state ("
 	fix := "), so land cannot confirm that this account's arming and queue entry are off; " + bothSteps
 	for _, c := range []struct {
@@ -640,6 +645,17 @@ func TestLandRefusesWhenTheWithdrawalCannotBeConfirmed(t *testing.T) {
 		{"the read before the first act fails", []string{ownArmed, "!gh: HTTP 502: Bad Gateway"}, nil, 0, "land's dependency check does not let pull request #7 queue, but the forge could not be read again for #7's state (gh: HTTP 502: Bad Gateway), so land cannot confirm that this account's arming and queue entry are off; " + bothSteps},
 		// An act's own error returns nothing early: the next read decides,
 		// and the last act's error is given with the refusal.
+		// A forge reason with a control character and over the bound is
+		// cleaned and cut (forgeWhy), on a read-back and on an act. The
+		// read-back row is the one watched fail: before the withdrawal's
+		// read put its reason through forgeWhy, it came back raw. The
+		// disarm row is coverage of what already held.
+		{"the read-back fails with a long reason", []string{ownArmed, ownArmed, "!" + rawWhy}, nil, 1, could + forgeWhy(errors.New(rawWhy)) + fix},
+		// A reason land composed from a forge answer with errors: the forge's
+		// text is cut once, where land reads it (forgeErrorText), with the cut
+		// marked, and the composed reason is not cut a second time.
+		{"the read-back's composed reason is cut once", []string{ownArmed, ownArmed, `{"data":null,"errors":[{"message":"` + strings.Repeat("y", 600) + `"}]}`}, nil, 1, could + answeredWith + strings.Repeat("y", maxForgeErrorText-len(" [cut]")) + " [cut]" + fix},
+		{"the disarm fails with a long reason", []string{ownArmed}, errors.New(rawWhy), 3, "land's dependency check does not let pull request #7 queue, but after 3 tries the forge still reports #7 armed by this account, which can merge it before what it depends on, the last try failing: " + forgeWhy(errors.New(rawWhy)) + "; withdraw it yourself (gh pr merge 7 --disable-auto), then run abcd land again, which says what holds it"},
 		{"the disarm finds no forge client", []string{ownArmed}, ErrNoForgeClient, 3, "land's dependency check does not let pull request #7 queue, but after 3 tries the forge still reports #7 armed by this account, which can merge it before what it depends on, the last try failing: the forge client `gh` is not installed; withdraw it yourself (gh pr merge 7 --disable-auto), then run abcd land again, which says what holds it"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -651,6 +667,9 @@ func TestLandRefusesWhenTheWithdrawalCannotBeConfirmed(t *testing.T) {
 			var r *Refusal
 			if !errors.As(err, &r) || r.Held || r.Error() != c.want {
 				t.Fatalf("err = %v\n want %q", err, c.want)
+			}
+			if strings.Contains(r.Error(), "\x1b") || strings.Contains(r.Error(), strings.Repeat("y", 600)) {
+				t.Fatalf("the refusal carries the forge's raw reason: %q", r.Error())
 			}
 			if f.forge.called("pr", "merge", "7", "--auto") != 0 || f.forge.called("pr", "merge", "7", "--disable-auto") != c.disarms {
 				t.Fatalf("forge calls %v: want %d withdrawals and nothing armed", f.forge.calls, c.disarms)
@@ -671,6 +690,31 @@ func TestLandRefusesWhenTheWithdrawalCannotBeConfirmed(t *testing.T) {
 		}
 		withdrewOnly(t, f)
 	})
+}
+
+// answeredWith is the reason land composes for #7's state read answered with
+// errors, before the forge's text.
+const answeredWith = "the forge answered the query for pull request #7's state with errors: "
+
+// TestForgeWhyCutsAtACharacter: forgeWhy's bound drops a character that
+// crosses it whole, so the text it gives is valid UTF-8, and a text it cuts
+// ends with a cut marker inside the bound; a text at the bound is not cut.
+func TestForgeWhyCutsAtACharacter(t *testing.T) {
+	t.Parallel()
+	const mark = " [cut]"
+	head := strings.Repeat("a", maxForgeErrorText-len(mark)-1)
+	for _, c := range []string{"\u00e9", "\u20ac", "\U0001f517"} {
+		w := forgeWhy(errors.New(head + c + strings.Repeat("t", 16)))
+		if w != head+mark || !utf8.ValidString(w) || len(w) > maxForgeErrorText {
+			t.Fatalf("forgeWhy cut %q: %d bytes ending %q, want the %d bytes before it and the marker", c, len(w), w[len(w)-8:], len(head))
+		}
+	}
+	if w := forgeWhy(errors.New(strings.Repeat("b", maxForgeErrorText) + "\u00e9")); w != strings.Repeat("b", maxForgeErrorText-len(mark))+mark {
+		t.Fatalf("forgeWhy past the bound: %d bytes ending %q", len(w), w[len(w)-8:])
+	}
+	if at := strings.Repeat("c", maxForgeErrorText); forgeWhy(errors.New(at)) != at {
+		t.Fatal("forgeWhy cut a text at the bound")
+	}
 }
 
 // bothSteps is the hand steps where land cannot say whether #7 is armed or
@@ -759,6 +803,10 @@ func TestLandLeavesAnotherAccountsQueueEntry(t *testing.T) {
 		// forge allows, is not shown.
 		{"a long login with control characters", `bob\u001b[2J\r` + strings.Repeat("x", 60), "an account the forge names in a form land does not show"},
 		{"a login too long", strings.Repeat("b", 40), "an account the forge names in a form land does not show"},
+		// Short, so the length bound alone does not refuse them: the
+		// alphabet check does. Coverage of what already held.
+		{"a short login with a space", "bob smith", "an account the forge names in a form land does not show"},
+		{"a short login with a control character", `bob\u0007`, "an account the forge names in a form land does not show"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			// With rule on, entering the queue clears the arming (recorded):
@@ -861,6 +909,63 @@ func TestLandRefusesAfterThreeTries(t *testing.T) {
 		}
 		withdrawalCalls(t, f, 3, 3)
 	})
+	t.Run("still armed beside another account's queue entry", func(t *testing.T) {
+		// Model guess: with rule off, this account's arming stands beside
+		// the queue entry another account made, and here neither moves.
+		f, o := modelFixture(t, &forgeModel{armedBy: "alice", queueAfter: 1, queuer: "bob", stuck: true})
+		_, err := f.land(o)
+		want := "land's dependency check does not let pull request #7 queue, but after 3 tries the forge still reports #7 armed by this account, which can merge it before what it depends on, beside a queue entry by another account (bob), which land does not take out; withdraw the arming (gh pr merge 7 --disable-auto), and ask whoever queued it to take it out of the merge queue, or take it out yourself on its page, then run abcd land again, which says what holds it"
+		var r *Refusal
+		if !errors.As(err, &r) || r.Error() != want {
+			t.Fatalf("err = %v\n want %q", err, want)
+		}
+		withdrawalCalls(t, f, 3, 0)
+	})
+	// The queue entry beside this account's arming by an enqueuer the forge
+	// does not name, and by one in a form land does not show (shownLogin).
+	// Coverage: watched fail with the login put in raw on this branch.
+	for _, c := range []struct{ name, queuer, shown string }{
+		{"still armed beside a queue entry the forge does not attribute", "?", "an account the forge does not name"},
+		{"still armed beside a queue entry by a malformed login", "bad login", "an account the forge names in a form land does not show"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			// Model guess: with rule off, this account's arming stands beside
+			// the queue entry, and here neither moves.
+			f, o := modelFixture(t, &forgeModel{armedBy: "alice", queueAfter: 1, queuer: c.queuer, stuck: true})
+			_, err := f.land(o)
+			want := "land's dependency check does not let pull request #7 queue, but after 3 tries the forge still reports #7 armed by this account, which can merge it before what it depends on, beside a queue entry by " + c.shown + ", which land does not take out; withdraw the arming (gh pr merge 7 --disable-auto), and ask whoever queued it to take it out of the merge queue, or take it out yourself on its page, then run abcd land again, which says what holds it"
+			var r *Refusal
+			if !errors.As(err, &r) || r.Error() != want {
+				t.Fatalf("err = %v\n want %q", err, want)
+			}
+			withdrawalCalls(t, f, 3, 0)
+		})
+	}
+	t.Run("both acts failing", func(t *testing.T) {
+		// Model guess: the queue entry made from this account's arming names
+		// this account; with rule off the arming stands beside it.
+		f, o := modelFixture(t, &forgeModel{armedBy: "alice", queueAfter: 1, queuer: "alice", failDisarms: 3})
+		f.forge.dequeueErr = errors.New("fake forge: the dequeue failed")
+		_, err := f.land(o)
+		want := "land's dependency check does not let pull request #7 queue, but after 3 tries the forge still reports #7 in the merge queue from this account and armed by this account, where it can merge before what it depends on, the last try failing: fake forge: the dequeue failed (taking it out of the merge queue), and fake forge: the disarm failed (withdrawing the arming); take #7 out of the merge queue on its page and withdraw the arming (gh pr merge 7 --disable-auto), then run abcd land again, which says what holds it"
+		var r *Refusal
+		if !errors.As(err, &r) || r.Error() != want {
+			t.Fatalf("err = %v\n want %q", err, want)
+		}
+	})
+}
+
+// A refusal land composed that a read inside the withdrawal returns is shown
+// cleaned of control characters, as a forge reason is.
+func TestWithdrawOwnCleansARefusalFromTheRead(t *testing.T) {
+	o := Options{Forge: func(string, ...string) (string, error) { return "", nil }}
+	_, err := withdrawOwn(o, t.TempDir(), "7", prState{}, func() (prState, error) {
+		return prState{}, refuse("the state \x1b[2Jdoes not parse", "")
+	})
+	var r *Refusal
+	if !errors.As(err, &r) || strings.Contains(r.Reason, "\x1b") || !strings.Contains(r.Reason, "does not parse") {
+		t.Fatalf("err = %v\n want the read's reason, cleaned", err)
+	}
 }
 
 // A read that fails after the dequeue refuses, saying what land did and
@@ -942,41 +1047,52 @@ func TestLandRefusesADependencyWithNoBody(t *testing.T) {
 // Where the push step left an arming at the gated head and the state read
 // fails, the early return keeps its meaning: the arming is left as it is,
 // said plainly with its dependencies unread, and nothing is refused for it.
+// A long reason with a control character from that read is said cleaned and
+// bounded (forgeWhy).
 func TestLandLeavesTheArmingAtTheHeadWhenItsStateCannotBeRead(t *testing.T) {
+	const badGateway = "gh: HTTP 502: Bad Gateway"
+	rawWhy := "gh: \x1b[2Jboom " + strings.Repeat("y", 600)
 	for _, c := range []struct {
 		name   string
 		config string
 		set    func(f *fixture)
+		why    string
 	}{
-		{"the merge gate cannot be read", `{"facilitator":{"mode":"sometimes"}}` + "\n", nil},
+		{"the merge gate cannot be read", `{"facilitator":{"mode":"sometimes"}}` + "\n", nil, badGateway},
 		{"the merge gate does not arm", autoConfig, func(f *fixture) {
 			f.forge.roles = map[string]string{"author-a": "!gh: HTTP 502: Bad Gateway"}
-		}},
+		}, badGateway},
+		{"the merge gate cannot be read, a long reason with a control character", `{"facilitator":{"mode":"sometimes"}}` + "\n", nil, rawWhy},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": c.config})
 			f.forge.prs = f.prFor(f.head())
 			f.forge.armings = []string{armingBy(f.head(), true, false, "alice")}
-			f.forge.answers = []string{"!gh: HTTP 502: Bad Gateway"}
+			f.forge.answers = []string{"!" + c.why}
 			if c.set != nil {
 				c.set(f)
 			}
 			o := f.options()
 			o.Now = func() time.Time { return dependsAt }
 			res, err := f.land(o)
-			left := "the arming already at " + short(f.head()) + " is left as it is, its dependencies unread, since gh: HTTP 502: Bad Gateway"
+			left := "the arming already at " + short(f.head()) + " is left as it is, its dependencies unread, since " + forgeWhy(errors.New(c.why))
+			var said string
 			var r *Refusal
 			switch {
 			case errors.As(err, &r):
-				if !strings.Contains(r.Reason, ", and "+left) {
+				if said = r.Reason; !strings.Contains(r.Reason, ", and "+left) {
 					t.Fatalf("refusal %q\n want it to say %q", r.Reason, left)
 				}
 			case err != nil:
 				t.Fatal(err)
 			default:
-				if s := step(t, res, "enqueue"); s.Status != StatusLeft || !strings.HasSuffix(s.Note, "; "+left) {
+				s := step(t, res, "enqueue")
+				if said = s.Note; s.Status != StatusLeft || !strings.HasSuffix(s.Note, "; "+left) {
 					t.Fatalf("enqueue step %+v\n want left, saying %q", s, left)
 				}
+			}
+			if strings.Contains(said, "\x1b") || strings.Contains(said, strings.Repeat("y", 600)) {
+				t.Fatalf("the read's raw reason is said: %q", said)
 			}
 			if got := f.forge.dependsReads(); len(got) != 0 {
 				t.Fatalf("dependency reads %v, want none", got)

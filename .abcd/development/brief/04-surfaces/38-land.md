@@ -154,29 +154,50 @@ bound: the refusal says so and gives the push to run by hand.
    pull request's number, state, `isInMergeQueue`, base, `createdAt` and body
    (dcn-2610180720362692, spc-2610230758581403 step 2a). The body of the
    pull request itself and of each one still open or queued is read by
-   `coord.ParseDependsOn`, which fails closed and quotes no body text; a
-   merged or closed one's body is not read. A body over 65536 bytes is
-   refused even with no such line. The records go to the coordination
-   pass, `coord.Pass`, whose decision for the verb's own pull request alone
-   is acted on: queue goes on as before, and a body with no such line is
-   that case; wait leaves the step stopped, with no new arming made, naming
-   the dependencies and the deadline; refuse refuses, with no new arming
-   made, with the pass's reason and what to reword. A dependency counts as
-   satisfied once the forge reports it merged into the default branch,
-   however it merged. The wait's start is the pull request's `createdAt`,
-   which no agent can move: a reopened pull request keeps it, as the forge
-   reports it, while closing it and opening a new one for the same branch
-   starts a fresh 24 hours. Its limit is 24 hours (`coord.MaxWaitLimit`),
-   its clock the local one, and a start later than that clock is refused,
-   with no allowance for skew. A `Depends-On` line added to a pull request
-   opened more than 24 hours earlier is refused at once, as a wait past its
-   deadline, with the pull request's opening time and the deadline it
-   passed. What only the forge can know is refused before the pass: a number
-   the forge has no pull request for, a dependency into another base than
-   the default branch, merged there or not, a state outside OPEN, MERGED and
-   CLOSED, an answer it cannot read whole, a creation time it cannot read,
-   and a walk past 25 pull requests. A body is required of the pull
-   request's own read and of a dependency still open or queued, where an
+   `coord.ParseDependsOn`, which fails closed and quotes no body text: a
+   line it refuses is named by its number, prose included, and the refusal
+   says the line is not in the accepted shape, a `Depends-On:` line naming
+   its pull requests by number alone on a line, and that prose in the body
+   must not use those words, so the sentence is reworded. A line that is not
+   an accepted line is refused when, with the characters the scan drops
+   removed (format characters, non-spacing and enclosing marks, three Hangul
+   fillers, NUL and backslash), it holds, in any case (the long s, U+017F,
+   counts as s), depends-on with an ASCII hyphen anywhere, or depend or
+   depends, then any run, or none, of hyphens, underscores, ASCII spaces,
+   tabs, Unicode dashes (category Pd), minus signs (U+2212) or hyphen bullets
+   (U+2043), then on, then any run, or none, of ASCII spaces or tabs and
+   nothing else, then a colon. Any other line is read as declaring none, among
+   them: a line with anything else between the words, such as another word or
+   a no-break space (It depends heavily on: the queue), or between on and the
+   colon, such as a number (This depends on #5: it needs the schema); a line
+   with a spacing mark (category Mc), such as U+0903, inside a word; a line
+   with no colon whose words are not depends-on with an ASCII hyphen, such as
+   words joined by a space, a spaced hyphen, an underscore or another kind of
+   hyphen or dash, U+2011 and the en dash among them (Depends on #5,
+   Depends - On #5, depends_on #5); and a line with other wording for a
+   dependency (Blocked by #5, Requires #5). A dependency is declared only by
+   an accepted line, so write the accepted line. A merged or closed one's body
+   is not read. A body over 65536 bytes is refused even with no such line. The
+   records go to the coordination pass, `coord.Pass`, whose decision for the
+   verb's own pull request alone is acted on: queue goes on as before, and a
+   body with no such line is that case; wait leaves the step stopped, with no
+   new arming made, naming the dependencies and the deadline; refuse refuses,
+   with no new arming made, with the pass's reason and what to reword. A
+   dependency counts as satisfied once the forge reports it merged into the
+   default branch, however it merged. The wait's start is the pull request's
+   `createdAt`, which no agent can move: a reopened pull request keeps it, as
+   the forge reports it, while closing it and opening a new one for the same
+   branch starts a fresh 24 hours. Its limit is 24 hours
+   (`coord.MaxWaitLimit`), its clock the local one, and a start later than
+   that clock is refused, with no allowance for skew. A `Depends-On` line
+   added to a pull request opened more than 24 hours earlier is refused at
+   once, as a wait past its deadline, with the pull request's opening time and
+   the deadline it passed. What only the forge can know is refused before the
+   pass: a number the forge has no pull request for, a dependency into another
+   base than the default branch, merged there or not, a state outside OPEN,
+   MERGED and CLOSED, an answer it cannot read whole, a creation time it
+   cannot read, and a walk past 25 pull requests. A body is required of the
+   pull request's own read and of a dependency still open or queued, where an
    empty body is no line. Offline or rate-limited, the extra read
    refuses, exit 2. This account's arming already in place is withdrawn on a
    wait or a refusal, since it could merge the pull request before what it
@@ -187,8 +208,8 @@ bound: the refusal says so and gives the push to run by hand.
    withdrawal runs only after the check waits or refuses. It reads the pull
    request's state whole (`autoMergeRequest`, `isInMergeQueue`, the queue
    entry and who queued it, the viewer's login and the node id) again before
-   its first act, acts only on what the last read shows, and reads again
-   after each act, three acts at most. Inside the withdrawal, a queue entry
+   its first act and makes at most three tries, each acting on what one read
+   shows and followed by one read. Inside the withdrawal, a queue entry
    this account made is taken out by its node id, and this account's arming
    is turned off, also where another account's queue entry stands beside
    it. A queue entry counts as queued whatever the flag says. An arming or
@@ -198,20 +219,26 @@ bound: the refusal says so and gives the push to run by hand.
    whole, a read that fails, or this account's arming or queue entry still
    there after three tries refuses with the step that withdraws it by hand:
    the pull request's page for a queue entry, the command for an arming,
-   and both where both stand or land cannot say which. After three tries
-   the refusal also gives the last act's failure. A pull request whose own
-   read shows it merged or closed is refused as such, with nothing withdrawn. The check runs once
-   land has read the pull request's state on the route that would arm it,
-   and on the three early returns where this account's arming stands at
-   the gated head: the merge gate unread, the gate not arming, and a
-   conflict. The stop is read again after the merge gate arms and before
+   and both where both stand or land cannot say which. After three tries,
+   where an act failed, the refusal also gives each failure of the last
+   try, and this account's arming left beside another account's queue
+   entry is refused naming who the forge says queued it, where that is a
+   login in the forge's own alphabet, and otherwise saying the forge does
+   not name the account or names it in a form land does not show. A pull
+   request whose own read
+   shows it merged or closed is refused as such, with nothing withdrawn.
+   The check runs once land has read the pull request's state on the route
+   that would arm it, and on the three early returns where this account's
+   arming stands at the gated head: the merge gate unread, the gate not
+   arming, and a conflict. The stop is read again after the merge gate arms and before
    that state read, so the check on the first two early returns runs before
-   it and the conflict's after it. Three returns after that read make no
+   it and the conflict's after it. Four returns after that read make no
    check: a pull request already in the merge queue is reported done with
    its dependencies unread, this account's own queue entry included; one
    another account armed, or one the forge does not attribute, is reported
-   as before; and this account's arming at a head land did not gate is
-   refused before the check. Every refusal before that point (a forge
+   as before; this account's arming at a head land did not gate is refused
+   before the check; and a state not read whole, one with no viewer login
+   among them, is refused before the check, any arming left as it is. Every refusal before that point (a forge
    read that fails, the merge rule or the default branch's tip unread, a
    listing land cannot use, any step before enqueue) leaves an arming as it
    is with its dependencies unread. The other routes that arm a pull request

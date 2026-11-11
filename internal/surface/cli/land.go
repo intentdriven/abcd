@@ -79,9 +79,10 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"     unmerged, one that is no pull request or merges into another branch, a\n" +
 			"     cycle, a wait at or past its 24 hours, a line that looks like one in another\n" +
 			"     shape, and a forge answer land cannot read whole refuse, exit 2, no new\n" +
-			"     arming made, saying what to reword or settle. This account's arming\n" +
-			"     already in place is withdrawn on such a stop or refusal. Rebuilding it on\n" +
-			"     the default branch once they merge is not done yet: run abcd land again.\n" +
+			"     arming made, saying what to reword or settle; a line in other wording\n" +
+			"     declares no dependency. This account's arming already in place is\n" +
+			"     withdrawn on such a stop or refusal. Rebuilding it on the default branch\n" +
+			"     once they merge is not done yet: run abcd land again.\n" +
 			"     Where a merge queue gates the\n" +
 			"     default branch, a branch that shares a commit not on it with another pull\n" +
 			"     request queued or armed into it (a branch cut from that one's) is not armed:\n" +

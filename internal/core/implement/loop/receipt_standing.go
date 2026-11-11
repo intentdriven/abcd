@@ -365,7 +365,15 @@ func consumeRefused(repoRoot string, root *os.Root, st *State, i, k int, session
 	case !implementStageAwait(lane, rel, laneDir):
 		// A fix or sync round's report and output are the round's, and the bare
 		// names in the lane's directory are the implement stage's, which later
-		// rounds read: nothing but the receipt goes.
+		// rounds read: nothing but the receipt goes. The line's words are for a
+		// fix or sync round. That rests on startedRunner admitting an
+		// implementer at the implement and validate stages alone
+		// (TestStartedRunnerAdmitsAnImplementerAtImplementAndValidateOnly), and
+		// on the validate stage's implementer awaits being a fix or sync
+		// round's, which nothing here checks; where the round's directory holds
+		// no report or output, nothing else stands to be left. Another
+		// implementer await added later at either stage needs its own words
+		// here.
 		note += "; only the receipt is set aside at this round, and the round's report and the definition of done's output are left where they are"
 	default:
 		moved, kept = moveNamed(root, laneDir, dir, named)
@@ -421,8 +429,8 @@ const consumedReason = "an implementer's receipt was refused for the work it rep
 // moves. The receipt's text never chooses what moves: a path naming anything
 // else, the brief, a receipt, a validate, sync or land round's file, anything
 // under the aside directory in any letter case, is left where it is. The one it
-// may name is moved only as a regular file, no link, with nothing of its name
-// already in dir and that name there checked.
+// may name is moved only as a regular file, no link, and only when its
+// destination in dir can be checked and nothing stands there.
 // The check and the rename go through laneDir opened as its own root, so a
 // directory swapped for a link cannot reach outside it. It reports what moved and
 // what was left in place, and why, each in the record's words. The caller holds
