@@ -245,9 +245,10 @@ same state, and the receipt that brings it there is followed by no further launc
 gives the lane back on its next turn. The count is kept on the drain's issue runs, the only
 runs a drive steps this way; an intent's run keeps its stop. A refusal of another kind
 restarts the count, so such a lane is ended instead by three failed launches in a row under a
-bound, and by the outage limit without one. Only the report and the definition of done's
-output at the names the loop assigned them go aside with the receipt; anything else it names
-is left in place. The runner's own hand-in of one is also a failed launch that is the work's, one of
+bound, and by the outage limit without one. Only at the implement stage's own receipt do the
+report and the definition of done's output go aside with it, at the names the loop assigned
+them; at a fix or sync round's, only the receipt goes; anything else a receipt names is left
+in place. The runner's own hand-in of one is also a failed launch that is the work's, one of
 the three in a row below; one found standing and consumed is a refused step and no launch. One
 refused for anything else stays and stops the lane until the stuck bounds hand it back. A lane stuck by those bounds goes back from the drive to the
 next move, which hands it back; given the same lane again, the drive first waits as an idle drive does,

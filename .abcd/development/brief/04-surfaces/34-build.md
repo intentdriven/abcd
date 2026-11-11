@@ -578,12 +578,16 @@ and that no runner has claimed the role since; if either fails, the file is left
 standing for the next step to read and nothing is counted. Otherwise, in the same
 write as the refusal, the receipt is set aside into a new directory under the lane's
 aside directory, kept and never deleted. The receipt's text never chooses what else
-moves: only the report and the definition of done's output at the names the loop
-assigned them, directly in the lane's directory, each a regular file and no link, go
-with it, moved through that directory opened as its own root. A path the receipt names
-for either that is anything else, the brief, a validate, sync or land round's file, or
-anything under the aside directory in any letter case, is left in place, and the
-record's line says so beside the refusal and the digest of the bytes judged. Below the
+moves, and the run's state decides whether anything does. At the implement stage's own
+receipt, only the report and the definition of done's output at the names the loop
+assigned that attempt, directly in the lane's directory, each a regular file and no
+link, go with it, moved through that directory opened as its own root. A path the
+receipt names for either that is anything else, the brief, a validate, sync or land
+round's file, or anything under the aside directory in any letter case, is left in
+place, and the record's line says so beside the refusal and the digest of the bytes
+judged. At a fix or sync round's receipt nothing else moves: the round's report and
+output, and the lane's own report and output, which later rounds read, are left where
+they are, and the record's line says only the receipt was set aside at that round. Below the
 bound the next step starts the implementer again on its runner. Each consumed receipt
 counts as a refused step under one check, whatever it lacked, so at the stuck bound of
 identical refusals, three by default, the lane is handed back as stuck, with a bound or

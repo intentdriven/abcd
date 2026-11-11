@@ -384,11 +384,15 @@ stuck at its bounds. A `--route` for that role is refused. That stop is a host-s
 run's: under `abcd drain --drive`, which steps the run itself, a receipt refused for the
 work it reports (it names this run, lane and branch in the schema abcd reads) is set
 aside in a new directory under the lane's `aside/`, kept, in the same write as the
-refusal. The receipt's text never chooses what else moves: only the report and the
-definition of done's output at the names the loop assigned them (`report.md` and
+refusal. The receipt's text never chooses what else moves, and the run's state decides
+whether anything does. At the implement stage's own receipt, only the report and the
+definition of done's output at the names the loop assigned that attempt (`report.md` and
 `dod.log`, directly in the lane's directory, each a regular file and no link) go with
 it; a path it names for either that is anything else (the brief, a round's file,
 anything under `aside/` in any letter case) is left where it is and the record says so.
+At a fix or sync round's receipt nothing else moves: the round's report and output, and
+the lane's own `report.md` and `dod.log`, which later rounds read, are left where they
+are, and the record says only the receipt was set aside at that round.
 Only the bytes judged are moved: a file replaced since, or a role a runner has claimed
 since, is left for the next step to read and not counted. The run record's line names
 the refusal and the digest of the bytes judged, and below the bound the next step starts

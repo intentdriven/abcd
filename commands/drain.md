@@ -270,9 +270,10 @@ nothing but the bound, the cap, an empty ledger or a stop ends the run:
   run keeps its stop. A refusal of another kind restarts the count; such a lane is still
   ended by three failed launches in a row under `--until`, and by the outage limit
   without it. Under `--until` the runner's hand-in of one is also one of the three
-  failures; one found standing and consumed is a refused step and no launch. Only the
-  report and the definition of done's output at the names the loop assigned them go
-  aside with a receipt; anything else it names is left where it is. A receipt refused for anything else stays at its path and stops the
+  failures; one found standing and consumed is a refused step and no launch. Only at the
+  implement stage's own receipt do the report and the definition of done's output go
+  aside with it, at the names the loop assigned them; at a fix or sync round's, only the
+  receipt goes; anything else a receipt names is left where it is. A receipt refused for anything else stays at its path and stops the
   lane until the stuck bounds below hand it back. A lane stuck by those bounds goes back from the drive to the next
   move, which hands it back; given the same lane again, the drive first waits as an idle
   drive does, thirty seconds at least. A judge is judged
