@@ -92,17 +92,35 @@ func StartChecksIn(repoRoot string, corpus Corpus, store spec.Store, r ReadyResu
 	return res, nil
 }
 
-// startOpenQuestionsRow refuses a record that still asks a question.
+// startOpenQuestionsRow refuses a record that still asks a question, and a
+// record whose text cannot be read whole (spec.LayoutStatements): an opener
+// nothing closes, or fences that cannot be read one way, withhold readiness as
+// they do for a spec, since the questions are read through the same reading.
+// The statements name a line and the construct, never the record's text.
 func startOpenQuestionsRow(id, content string) StartRow {
 	row := StartRow{Name: StartCheckOpenQuestions}
 	qs := openQuestions(content)
-	if len(qs) == 0 {
+	layout := spec.LayoutStatements(content)
+	if len(qs) == 0 && len(layout) == 0 {
 		row.OK = true
 		row.Detail = "no open question"
 		return row
 	}
-	row.Detail = fmt.Sprintf("%s asks %d open question(s): %s", id, len(qs), questionList(qs))
-	row.Remedy = "answer each in the record's `## Decisions` and mark it settled (an item marked `resolved:` or `**Deferred**`, or a section opening `_All resolved …_`), through the planning interview (/abcd:intent)"
+	var why, remedy []string
+	if len(qs) > 0 {
+		why = append(why, fmt.Sprintf("%s asks %d open question(s): %s", id, len(qs), questionList(qs)))
+		remedy = append(remedy, "answer each in the record's `## Decisions` and mark it settled (an item marked `resolved:` or `**Deferred**`, or a section opening `_All resolved …_`), through the planning interview (/abcd:intent)")
+	}
+	if len(layout) > 0 {
+		parts := make([]string, len(layout))
+		for i, st := range layout {
+			parts[i] = st.Describe()
+		}
+		why = append(why, id+"'s text is not read whole, so its open questions are not known: "+strings.Join(parts, "; "))
+		remedy = append(remedy, "close the fence or HTML comment opened on that line, and write a fence at column 0, or under a list item at the item's indent with no line at column 0 inside it")
+	}
+	row.Detail = strings.Join(why, "; ")
+	row.Remedy = strings.Join(remedy, "; ")
 	return row
 }
 

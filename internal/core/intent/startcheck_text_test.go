@@ -109,3 +109,31 @@ func TestStartOpenQuestionsRowMasksAndCapsTheQuestions(t *testing.T) {
 		t.Fatalf("the row counts every question and names three: %q", row.Detail)
 	}
 }
+
+// TestStartOpenQuestionsRowWithholdsOnAnUnreadLayout: an intent whose text is
+// not read whole asks questions nobody can count, so the row withholds
+// readiness, as a spec's spec_body row does, and names the line and the
+// construct, never the text there.
+func TestStartOpenQuestionsRowWithholdsOnAnUnreadLayout(t *testing.T) {
+	const head = "---\nid: itd-10\n---\n# T\n\n"
+	cases := []struct{ name, body, want string }{
+		{"an unclosed comment above the section", "<!-- \x1b[31m parked\n\n## Open Questions\n\n- which cache?\n", "line 6: nothing below this line is read (an HTML comment"},
+		{"an unclosed fence below the section", "## Open Questions\n\n_None recorded yet._\n\n```\nsecret\n", "line 10: nothing below this line is read (a fenced block"},
+		{"fences not read one way", "- item\n\n    ```\n    code\n  ```\n\n## Open Questions\n\n- which cache?\n\n```go\nx\n```\n", "line 11: the text from this line on is not read one way"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			row := startOpenQuestionsRow("itd-10", head+c.body)
+			if row.OK {
+				t.Fatalf("the row reads ready: %+v", row)
+			}
+			if !strings.Contains(row.Detail, c.want) || strings.Contains(row.Detail, "parked") || strings.Contains(row.Detail, "secret") {
+				t.Fatalf("Detail = %q, want it to name %q and quote no record text", row.Detail, c.want)
+			}
+			noRawControl(t, "the open-questions row", row.Detail)
+			if !strings.Contains(row.Remedy, "close the fence or HTML comment") {
+				t.Fatalf("Remedy = %q", row.Remedy)
+			}
+		})
+	}
+}
