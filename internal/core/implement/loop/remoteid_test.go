@@ -7,6 +7,7 @@ package loop
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -242,15 +243,16 @@ func TestADriveReadsTheRemotesIdentityAsItStarts(t *testing.T) {
 // TestEachKeyFamilyTheDriveHoldsIsReadAgain: one key of each family the drive
 // holds (remoteIdentityHeld), set after the drive read origin's identity,
 // refuses the lane's worktree stage naming it; in the repository's settings,
-// and one in the system settings. The families held before this round
-// (origin's keys, the rewrites, core.sshCommand, core.gitProxy,
-// core.hooksPath, http.proxy and http.sslVerify) and the system-scope case
-// are regression guards: they pass without this round's production change.
-// The credential, core.askPass and protocol cases are new.
+// one in the system settings and one in a file a conditional include names.
+// The families held before the last round (origin's keys, the rewrites,
+// core.sshCommand, core.gitProxy, core.hooksPath, http.proxy and
+// http.sslVerify), the system-scope case and the included case are regression
+// guards: they pass without a production change. The credential,
+// core.askPass and protocol cases were new in the last round.
 func TestEachKeyFamilyTheDriveHoldsIsReadAgain(t *testing.T) {
 	for _, tc := range []struct {
 		key, value, want string
-		system           bool
+		system, included bool
 	}{
 		{key: "remote.origin.url", value: "/elsewhere.git", want: "remote.origin.url"},
 		{key: "remote.origin.pushurl", value: "/elsewhere.git", want: "remote.origin.pushurl"},
@@ -270,10 +272,14 @@ func TestEachKeyFamilyTheDriveHoldsIsReadAgain(t *testing.T) {
 		{key: "protocol.allow", value: "always", want: "protocol.allow"},
 		{key: "protocol.ext.allow", value: "always", want: "protocol.ext.allow"},
 		{key: "http.proxy", value: "http://127.0.0.1:9", want: "http.proxy", system: true},
+		{key: "http.proxy", value: "http://127.0.0.1:9", want: "http.proxy", included: true},
 	} {
 		name := tc.key
 		if tc.system {
 			name += " in the system settings"
+		}
+		if tc.included {
+			name += " in a conditionally included file"
 		}
 		t.Run(name, func(t *testing.T) {
 			system := filepath.Join(t.TempDir(), "system.gitconfig")
@@ -281,14 +287,20 @@ func TestEachKeyFamilyTheDriveHoldsIsReadAgain(t *testing.T) {
 			t.Setenv("GIT_CONFIG_SYSTEM", system)
 			t.Setenv("GIT_CONFIG_NOSYSTEM", "0")
 			repo, _, _ := hookedOrigin(t)
+			included := filepath.Join(t.TempDir(), "included.gitconfig")
+			writeMode(t, included, "", 0o644)
+			repo.Git("config", "includeIf.onbranch:main.path", included)
 			id, err := readRemoteIdentity(repo.Root())
 			if err != nil {
 				t.Fatal(err)
 			}
-			if tc.system {
-				section, variable, _ := strings.Cut(tc.key, ".")
+			section, variable, _ := strings.Cut(tc.key, ".")
+			switch {
+			case tc.system:
 				writeMode(t, system, "["+section+"]\n\t"+variable+" = "+tc.value+"\n", 0o644)
-			} else {
+			case tc.included:
+				writeMode(t, included, "["+section+"]\n\t"+variable+" = "+tc.value+"\n", 0o644)
+			default:
 				repo.Git("config", tc.key, tc.value)
 			}
 			r := worktreeRefused(t, remoteUnchanged(Context{RepoRoot: repo.Root(), remote: id}, "lane-1"), tc.want)
@@ -303,15 +315,30 @@ func TestEachKeyFamilyTheDriveHoldsIsReadAgain(t *testing.T) {
 // runs the checkout's own working-tree copy of the post-checkout hook, and
 // each lane of a drain is a run of its own, whose fingerprint records that
 // copy at its first check. The drive holds the checkout's hooks directory as
-// it started, so a post-checkout hook changed, or added, in the checkout
-// between two lanes refuses the second at its worktree stage, naming the
-// hook, before any add: no worktree is made and the changed hook writes no
-// marker. Unchanged, the second lane opens.
+// it started, so a post-checkout hook changed, added or removed in the
+// checkout between two lanes, or the directory made unreadable, refuses the
+// second at its worktree stage, naming what changed, before its add: no
+// worktree is made and the changed hook writes no marker. Unchanged, the
+// second lane opens. Two cases hold the limits the docs state, and open: a
+// file changed in a subdirectory of the hooks directory, which is compared by
+// its kind only, and a post-checkout hook changed where the relative
+// core.hooksPath is set only in global settings, which the drive does not
+// read; there the add runs the changed copy. The removed, unreadable,
+// subdirectory and global cases are new this round and are regression
+// guards: each passes without a production change, holding what the
+// comparison already did.
 func TestACheckoutHookChangedBetweenTwoLanesOfADriveRefusesTheSecond(t *testing.T) {
-	for name, tc := range map[string]struct{ committed, change bool }{
-		"a post-checkout hook changed": {committed: true, change: true},
-		"a post-checkout hook added":   {change: true},
-		"unchanged":                    {committed: true},
+	for name, tc := range map[string]struct {
+		committed, change, remove, unreadable, sub, global bool
+		want                                               string
+	}{
+		"a post-checkout hook changed":     {committed: true, change: true, want: "post-checkout"},
+		"a post-checkout hook added":       {change: true, want: "post-checkout"},
+		"a post-checkout hook removed":     {committed: true, remove: true, want: "post-checkout (removed)"},
+		"the hooks directory unreadable":   {committed: true, unreadable: true, want: ".githooks (added)"},
+		"unchanged":                        {committed: true},
+		"a file in a subdirectory changed": {committed: true, sub: true},
+		"a hooks path set only globally":   {committed: true, change: true, global: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			repo, _, _ := hookedOrigin(t)
@@ -320,6 +347,12 @@ func TestACheckoutHookChangedBetweenTwoLanesOfADriveRefusesTheSecond(t *testing.
 				repo.Commit("a reviewed post-checkout hook")
 				repo.Git("push", "-q", "origin", "main")
 				repo.Git("fetch", "-q", "origin")
+			}
+			if tc.global {
+				global := filepath.Join(t.TempDir(), "global.gitconfig")
+				writeMode(t, global, "[core]\n\thooksPath = .githooks\n", 0o644)
+				t.Setenv("GIT_CONFIG_GLOBAL", global)
+				repo.Git("config", "--unset", "core.hooksPath")
 			}
 			id, err := readRemoteIdentity(repo.Root())
 			if err != nil {
@@ -339,9 +372,18 @@ func TestACheckoutHookChangedBetweenTwoLanesOfADriveRefusesTheSecond(t *testing.
 				t.Fatalf("the drive's first lane opens: %v", err)
 			}
 
+			hooks := filepath.Join(repo.Root(), ".githooks")
 			marker := filepath.Join(t.TempDir(), "post-checkout-ran")
-			if tc.change {
+			switch {
+			case tc.change:
 				writeHook(t, repo, "post-checkout", "#!/bin/sh\ntouch '"+marker+"'\n")
+			case tc.remove:
+				removeAll(t, filepath.Join(hooks, "post-checkout"))
+			case tc.unreadable:
+				chmod(t, hooks, 0)
+				t.Cleanup(func() { _ = os.Chmod(hooks, 0o755) })
+			case tc.sub:
+				repo.Write(".githooks/lib/common.sh", "shared=2\n")
 			}
 			second := st.Lanes[0]
 			second.ID = "lane-2"
@@ -350,13 +392,18 @@ func TestACheckoutHookChangedBetweenTwoLanesOfADriveRefusesTheSecond(t *testing.
 				t.Fatal(err)
 			}
 			_, err = worktreeStage(c, &second)
-			if !tc.change {
+			if tc.want == "" {
 				if err != nil {
-					t.Fatalf("the second lane opens with the checkout's hooks unchanged: %v", err)
+					t.Fatalf("the second lane opens: %v", err)
+				}
+				if tc.global {
+					if _, err := os.Stat(marker); err != nil {
+						t.Fatalf("the add ran the changed copy the drive did not read: %v", err)
+					}
 				}
 				return
 			}
-			worktreeRefused(t, err, "post-checkout")
+			worktreeRefused(t, err, tc.want)
 			absent(t, lw.Path, "no second lane worktree is made")
 			absent(t, marker, "no add ran, so the changed hook wrote nothing")
 		})
@@ -389,5 +436,57 @@ func TestADrivesHeldHooksReachANewRunsWorktreeStage(t *testing.T) {
 	res, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 	if err != nil || res.PerformedStage != StageWorktree {
 		t.Fatalf("with nothing carried the lane opens as before: %+v %v", res, err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("with nothing carried the add runs the changed copy: %v", err)
+	}
+}
+
+// TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly: the key match itself, on
+// canonical keys: each held name and a member of each held family is held,
+// and a key that only shares a prefix or a suffix with one, another remote's
+// key, protocol.version and a per-URL http key are not.
+func TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly(t *testing.T) {
+	for key, want := range map[string]bool{
+		"remote.origin.url":                           true,
+		"remote.origin.pushurl":                       true,
+		"remote.origin.uploadpack":                    true,
+		"remote.origin.proxy":                         true,
+		"remote.origin.vcs":                           true,
+		"url.https://example.invalid/.insteadof":      true,
+		"url./x.pushinsteadof":                        true,
+		"core.sshcommand":                             true,
+		"core.gitproxy":                               true,
+		"core.hookspath":                              true,
+		"core.askpass":                                true,
+		"credential.helper":                           true,
+		"credential.https://example.invalid.username": true,
+		"protocol.allow":                              true,
+		"protocol.ext.allow":                          true,
+		"http.proxy":                                  true,
+		"http.sslverify":                              true,
+
+		"remote.upstream.url":  false,
+		"remote.originx.url":   false,
+		"remote.origin.urlx":   false,
+		"remote.origin.fetch":  false,
+		"url.insteadof":        false,
+		"url./x.insteadofx":    false,
+		"urlx./x.insteadof":    false,
+		"core.hookspathx":      false,
+		"core.editor":          false,
+		"credentialfoo":        false,
+		"credentialfoo.helper": false,
+		"protocol.version":     false,
+		"protocol.ext.allowx":  false,
+		"protocolx.ext.allow":  false,
+		"http.proxyx":          false,
+		"http.https://x.proxy": false,
+		"http.postbuffer":      false,
+		"":                     false,
+	} {
+		if got := remoteIdentityKey(key); got != want {
+			t.Errorf("remoteIdentityKey(%q) = %v, want %v", key, got, want)
+		}
 	}
 }
