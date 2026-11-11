@@ -48,7 +48,10 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   brief is the issue with its remedy as the work.
 - **ready** — the implement-readiness gate the intent verb reports: planned,
   criteria written, the spec linked both ways and written past its stub. Its
-  advisory rows stay advisory.
+  advisory rows stay advisory. A spec that says it is not ready is not
+  written: an open item under its own `## Open Questions`, a sentence opening
+  "Not READY", or a bold "Open:" label outside that section refuses, naming
+  the line (iss-2611101318042398).
 - **open questions** — no open question under the record's `## Open Questions`.
   The reader fails closed and knows the record's two settled markers: a section
   that opens with an italic `_All resolved …_` line (or `_All four resolved …_`)
@@ -68,7 +71,8 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   ask what the record meant.
 - **hold** — the record carries no `held:`, well formed or not
   (iss-2609200830076665).
-- **blocked** — nothing the record names in `blocked_by` is unsettled: an
+- **blocked** — nothing the record, or its open spec, names in `blocked_by`
+  is unsettled (an edge the spec names is reported with the spec's id): an
   intent in `shipped/` or `disciplines/` is settled (ruling CF2 of 2026-09-30:
   a discipline is a standing rule, not work that ships), and an intent anywhere
   else, or one this checkout's store does not hold, blocks it

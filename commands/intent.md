@@ -517,6 +517,14 @@ checks; the judgement is yours, as the host.
     spec expects to touch, comma-separated, and `- tests:` the tests that will
     show it works. `abcd build next` scores a spec's test path and footprint
     from it, and reads a spec without it as carrying no footprint.
+    A question the spec leaves open goes under its own `## Open Questions`,
+    as an intent's does: `abcd intent ready` reports the intent not ready
+    (`spec_body`) while an item there is not marked `resolved:` or
+    `**Deferred**`, and while the spec has a sentence opening "Not READY" or
+    a bold "Open:" label outside that section, which record-lint's
+    `spec_unsettled` rule refuses in an open spec. An intent the design waits
+    on goes in the spec's own `blocked_by`, the field an intent carries, and
+    the build refuses the run until it ships.
 12. Re-run `abcd intent ready <itd-N>` and report READY to the user.
 
 ### In a plain Terminal
@@ -880,8 +888,8 @@ something the verb decides.
 
 An intent names the intents it depends on in two lists: `blocked_by` (it
 cannot ship before them) and `builds_on` (it is cheaper or better if they exist
-first). The build's pre-start check refuses an intent whose `blocked_by` names
-one not yet settled: a blocker is settled when it is shipped or a discipline,
+first). The build's pre-start check refuses an intent whose `blocked_by`, or whose
+open spec's `blocked_by`, names one not yet settled: a blocker is settled when it is shipped or a discipline,
 or when its supersession chain ends at a shipped intent, a discipline or an
 accepted decision. Record-lint's edge rules read both lists. `edge` is the verb
 that writes them, the intent counterpart of `capture link`:

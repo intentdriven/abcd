@@ -149,7 +149,10 @@ pass:
   anything else is refused; an issue id is checked as the issue-keyed lane
   above.
 - `ready` — the intent is READY: planned, its criteria written, its spec linked
-  and written (the same gate `/abcd:intent` reports).
+  and written (the same gate `/abcd:intent` reports). A spec saying it is not
+  ready is not written: an open item under its own `## Open Questions`, a
+  sentence opening "Not READY", or a bold "Open:" label outside that section
+  refuses the run, naming the line.
 - `open_questions` — no open question under `## Open Questions`: every list
   item there counts unless the section opens with an italic `_All resolved …_`
   line or the item is explicitly marked resolved or deferred (`**Deferred**`,
@@ -157,7 +160,8 @@ pass:
 - `claim_sections` — the `## Mechanism` prompt is answered (or the section
   absent) and the scope conditions are recorded.
 - `hold` — the intent carries no `held:`.
-- `blocked` — nothing the intent names in `blocked_by` is unsettled. An intent
+- `blocked` — nothing the intent or its open spec names in `blocked_by` is
+  unsettled; an edge the spec names is reported with the spec's id. An intent
   in `shipped/` or `disciplines/` is settled; one anywhere else, or one this
   checkout does not hold, blocks it. A superseded blocker is followed along
   `superseded_by` to the record that replaced it, transitively, and blocks only
