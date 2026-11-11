@@ -79,8 +79,9 @@ func RunCommitCommandBounded(dir string, limit time.Duration, stalled error, arg
 // as stored (asStored): no replace ref or graft file stands another object in
 // for one the repository stores, for git itself or for any git a hook it runs
 // starts, since the environment is inherited. For a checkout that must write
-// exactly the stored tree of a commit and run that tree's own hooks: a lane's
-// `git worktree add`.
+// exactly the stored tree of a commit: a lane's `git worktree add`. Which
+// hooks it runs is not the stored tree's to say: git takes the hooks
+// directory at dir, the directory the command runs in.
 func RunCommitCommandBoundedAsStored(dir string, limit time.Duration, stalled error, args ...string) (string, error) {
 	return runCommitBounded(dir, limit, stalled, true, args)
 }

@@ -15,39 +15,75 @@ import (
 )
 
 // TestARemoteChangedBetweenTwoLanesOfADriveRefusesTheSecond: the first lane
-// opens; a change to origin's URL, or a URL rewrite added, before the second
-// lane refuses the second at its worktree stage, naming the key and before
-// origin is asked (the remote it now names is not there, so an ask would be
-// refused as one that cannot be answered). Unchanged, the second lane opens.
+// opens; a change to origin's URL, a URL rewrite added, or another key the
+// identity holds set, in the repository's settings or the person's global
+// ones, before the second lane refuses the second at its worktree stage,
+// naming the key and before origin is asked (the remote it now names is not
+// there, so an ask would be refused as one that cannot be answered), and a
+// rewrite's base, which can carry a URL, appears in neither the reason nor
+// the remedy. Unchanged, the second lane opens.
 func TestARemoteChangedBetweenTwoLanesOfADriveRefusesTheSecond(t *testing.T) {
 	gone := func(t *testing.T) string { return filepath.Join(t.TempDir(), "gone.git") }
 	for name, tc := range map[string]struct {
-		change func(t *testing.T, repo *gittest.Repo, bare string)
+		global bool
+		// change returns what must appear in neither the reason nor the
+		// remedy, "" for nothing.
+		change func(t *testing.T, repo *gittest.Repo, bare, global string) string
 		want   string
 	}{
 		"the URL changed": {
-			change: func(t *testing.T, repo *gittest.Repo, _ string) { repo.Git("remote", "set-url", "origin", gone(t)) },
-			want:   "remote.origin.url",
+			change: func(t *testing.T, repo *gittest.Repo, _, _ string) string {
+				repo.Git("remote", "set-url", "origin", gone(t))
+				return ""
+			},
+			want: "remote.origin.url",
 		},
 		"a push URL added": {
-			change: func(t *testing.T, repo *gittest.Repo, _ string) {
+			change: func(t *testing.T, repo *gittest.Repo, _, _ string) string {
 				repo.Git("remote", "set-url", "--push", "origin", gone(t))
+				return ""
 			},
 			want: "remote.origin.pushurl",
 		},
 		"a URL rewrite added": {
-			change: func(t *testing.T, repo *gittest.Repo, bare string) {
-				repo.Git("config", "url."+gone(t)+".insteadOf", bare)
+			change: func(t *testing.T, repo *gittest.Repo, bare, _ string) string {
+				base := gone(t)
+				repo.Git("config", "url."+base+".insteadOf", bare)
+				return base
 			},
 			want: ".insteadof",
 		},
-		"origin removed": {
-			change: func(t *testing.T, repo *gittest.Repo, _ string) { repo.Git("remote", "remove", "origin") },
-			want:   "remote.origin.url",
+		"an ssh command set": {
+			change: func(t *testing.T, repo *gittest.Repo, _, _ string) string {
+				repo.Git("config", "core.sshCommand", "ssh -o BatchMode=yes")
+				return ""
+			},
+			want: "core.sshcommand",
 		},
-		"unchanged": {change: func(*testing.T, *gittest.Repo, string) {}},
+		"a proxy set in the person's global settings": {
+			global: true,
+			change: func(t *testing.T, _ *gittest.Repo, _, global string) string {
+				writeMode(t, global, "[http]\n\tproxy = http://127.0.0.1:9\n", 0o644)
+				return ""
+			},
+			want: "http.proxy",
+		},
+		"origin removed": {
+			change: func(t *testing.T, repo *gittest.Repo, _, _ string) string {
+				repo.Git("remote", "remove", "origin")
+				return ""
+			},
+			want: "remote.origin.url",
+		},
+		"unchanged": {change: func(*testing.T, *gittest.Repo, string, string) string { return "" }},
 	} {
 		t.Run(name, func(t *testing.T) {
+			global := ""
+			if tc.global {
+				global = filepath.Join(t.TempDir(), "global.gitconfig")
+				writeMode(t, global, "", 0o644)
+				t.Setenv("GIT_CONFIG_GLOBAL", global)
+			}
 			repo, bare, _ := hookedOrigin(t)
 			id, err := readRemoteIdentity(repo.Root())
 			if err != nil {
@@ -67,7 +103,7 @@ func TestARemoteChangedBetweenTwoLanesOfADriveRefusesTheSecond(t *testing.T) {
 				t.Fatalf("the drive's first lane opens: %v", err)
 			}
 
-			tc.change(t, repo, bare)
+			hidden := tc.change(t, repo, bare, global)
 			second := st.Lanes[0]
 			second.ID = "lane-2"
 			lw, err := laneWorktree(repo.Root(), st.RunID, second.ID)
@@ -85,8 +121,67 @@ func TestARemoteChangedBetweenTwoLanesOfADriveRefusesTheSecond(t *testing.T) {
 			if strings.Contains(r.Reason, "could not ask") {
 				t.Fatalf("the lane is refused before origin is asked: %+v", r)
 			}
+			if hidden != "" && strings.Contains(r.Reason+r.Remedy, hidden) {
+				t.Fatalf("the refusal hides the rewrite's base %s: %+v", hidden, r)
+			}
 			absent(t, lw.Path, "no second lane worktree is made")
 		})
+	}
+}
+
+// TestARemoteChangedDuringTheAskRefusesTheLane: the stage reads origin's
+// identity again once origin has answered, so a change made while the ask
+// ran, and not put back, refuses the lane before anything is made.
+func TestARemoteChangedDuringTheAskRefusesTheLane(t *testing.T) {
+	repo, _, _ := hookedOrigin(t)
+	id, err := readRemoteIdentity(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := ReadState(repo.Root(), start.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	was := remoteHeadTip
+	t.Cleanup(func() { remoteHeadTip = was })
+	remoteHeadTip = func(ctx context.Context, git func(context.Context, string, ...string) (string, error), root, remote string) (string, string, error) {
+		branch, tip, err := was(ctx, git, root, remote)
+		repo.Git("config", "remote.origin.pushurl", filepath.Join(t.TempDir(), "gone.git"))
+		return branch, tip, err
+	}
+	lane := st.Lanes[0]
+	lw, err := laneWorktree(repo.Root(), st.RunID, lane.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = worktreeStage(Context{RepoRoot: repo.Root(), RunDir: runRel(st.RunID), State: st, remote: id}, &lane)
+	worktreeRefused(t, err, "remote.origin.pushurl")
+	absent(t, lw.Path, "no lane worktree is made")
+}
+
+// TestARemoteIdentityReadFailureHidesTheHome: git's own error, when the
+// settings cannot be read again, reaches the refusal with the home directory
+// written as ~, as the stage's other refusals write it.
+func TestARemoteIdentityReadFailureHidesTheHome(t *testing.T) {
+	repo, _, _ := hookedOrigin(t)
+	id, err := readRemoteIdentity(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	bad := filepath.Join(home, "broken.gitconfig")
+	writeMode(t, bad, "[[[\n", 0o644)
+	t.Setenv("GIT_CONFIG_GLOBAL", bad)
+	err = remoteUnchanged(Context{RepoRoot: repo.Root(), remote: id}, "lane-1")
+	r := worktreeRefused(t, err, "broken.gitconfig")
+	real, _ := filepath.EvalSymlinks(home)
+	if strings.Contains(r.Reason, home) || strings.Contains(r.Reason, real) || !strings.Contains(r.Reason, "~") {
+		t.Fatalf("the refusal writes the home as ~: %+v", r)
 	}
 }
 

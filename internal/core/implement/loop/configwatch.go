@@ -768,8 +768,17 @@ func pinLaneHooks(c Context, laneID, lanePath, base, tip string) error {
 	}
 	dir := filepath.Join(lane, filepath.FromSlash(rel))
 	again := ", then run `abcd implement step` again; nothing was committed in the lane"
-	tree := hooksTreeAt(c.RepoRoot, base, rel)
-	if base != tip && hooksTreeAt(c.RepoRoot, tip, rel) != tree {
+	tree, err := hooksTreeAt(c.RepoRoot, base, rel)
+	tipTree := tree
+	if err == nil && base != tip {
+		tipTree, err = hooksTreeAt(c.RepoRoot, tip, rel)
+	}
+	if err != nil {
+		return refuse(string(StageWorktree), "", laneID,
+			"the hooks directory "+rel+" of the lane's commit or of "+Remote+"'s tip cannot be read, so the lane's hooks cannot be proved: "+scanner.RedactRefusal(c.RepoRoot, fsutil.RedactHome(err.Error())),
+			"settle what git reports (`git ls-tree "+tip[:12]+" -- "+rel+"`)"+again)
+	}
+	if tipTree != tree {
 		return refuse(string(StageWorktree), "", laneID,
 			fmt.Sprintf("the lane's commit %s holds other hooks in %s than %s's tip %s, so they are not the default branch's reviewed hooks", base[:12], rel, Remote, tip[:12]),
 			"remove the lane's worktree and branch (`git worktree remove --force "+fsutil.RedactHome(lane)+"`, `git branch -D "+lanesBranch(c, laneID)+"`) so the stage cuts the lane afresh from the tip"+again)
@@ -837,21 +846,38 @@ func checkoutHooksPath(repoRoot string) (string, error) {
 }
 
 // standingBranchHooks is the worktree stage's check, before the add, of a
-// branch already standing under the lane's name where origin reported tip:
-// the add checks the branch's head out and runs the post-checkout hook it
-// holds, so where hooksPath (checkoutHooksPath, which the add is also told)
-// names a working tree's own copy, the head's hooks directory, as stored
-// (hooksTreeAt), must be the tip's. Otherwise the branch is refused and
-// nothing of it is checked out. A hooks directory outside the working tree
-// runs none of the branch's files as a hook, and passes.
-func standingBranchHooks(c Context, laneID, branchRef, branch, tip, hooksPath string) error {
+// branch already standing under the lane's name where origin reported tip.
+// head is the branch's head, resolved once by the stage, which refuses the
+// lane after the add if the branch then holds another commit. Where hooksPath
+// (checkoutHooksPath, which the add is also told) names a working tree's own
+// copy, head's hooks directory, as stored (hooksTreeAt), must be the tip's;
+// either one that cannot be read is refused, never read as one that records
+// nothing. The check is defensive: it stops nothing from running, since git's
+// add runs the post-checkout hook of the checkout's own copy whatever the
+// branch holds, and the proof after the add (pinLaneHooks) would refuse such
+// a lane too; it refuses it before a worktree is made rather than after. The
+// branch's content outside the hooks directory is its own and is not vouched
+// for. A hooks directory outside the working tree passes.
+func standingBranchHooks(c Context, laneID, head, branch, tip, hooksPath string) error {
 	rel := ownHooksDir(c.RepoRoot, hooksPath)
-	if rel == "" || hooksTreeAt(c.RepoRoot, branchRef, rel) == hooksTreeAt(c.RepoRoot, tip, rel) {
+	if rel == "" {
 		return nil
 	}
+	mine, err := hooksTreeAt(c.RepoRoot, head, rel)
+	if err == nil {
+		var theirs string
+		if theirs, err = hooksTreeAt(c.RepoRoot, tip, rel); err == nil {
+			if mine == theirs {
+				return nil
+			}
+			return refuse(string(StageWorktree), "", laneID,
+				fmt.Sprintf("the branch %s already stands, and its hooks in %s are not those of %s's tip %s, so it is not checked out", branch, rel, Remote, tip[:12]),
+				"look at what made the branch; remove it (`git branch -D "+branch+"`) so the stage cuts the lane afresh from the tip, then run `abcd implement step` again; nothing was made")
+		}
+	}
 	return refuse(string(StageWorktree), "", laneID,
-		fmt.Sprintf("the branch %s already stands, and its hooks in %s are not those of %s's tip %s, so it is not checked out and none of its hooks runs", branch, rel, Remote, tip[:12]),
-		"look at what made the branch; remove it (`git branch -D "+branch+"`) so the stage cuts the lane afresh from the tip, then run `abcd implement step` again; nothing was made")
+		fmt.Sprintf("the hooks in %s of the branch %s, which already stands, or of %s's tip %s cannot be read, so the branch is not checked out: %s", rel, branch, Remote, tip[:12], scanner.RedactRefusal(c.RepoRoot, fsutil.RedactHome(err.Error()))),
+		"settle what git reports (`git ls-tree "+branch+" -- "+rel+"`), or remove the branch (`git branch -D "+branch+"`) so the stage cuts the lane afresh from the tip, then run `abcd implement step` again; nothing was made")
 }
 
 // lanesBranch is the branch the worktree stage cuts for laneID.
@@ -865,14 +891,26 @@ func lanesBranch(c Context, laneID string) string {
 // hooksTreeAt is the object a commit records at rel, "" when it records
 // nothing there. It is read as stored (gitutil.RunCappedAsStored): a replace
 // ref or a graft file cannot stand another commit or tree in for the one the
-// commit stores. git failing to answer reads as nothing recorded, which can
-// only refuse more: a lane is then held to an empty hooks directory.
-func hooksTreeAt(repoRoot, commit, rel string) string {
-	out, err := gitutil.RunCappedAsStored(repoRoot, 4096, "rev-parse", "--verify", "--quiet", commit+":"+rel)
-	if err != nil || !gitutil.IsFullSHA(out) {
-		return ""
+// commit stores. It lists rel from the commit's root (`ls-tree --full-tree`,
+// whose paths git matches literally), so git listing nothing is nothing
+// recorded, and git failing to answer (no such commit, an object it cannot
+// read) is an error, never read as nothing recorded.
+func hooksTreeAt(repoRoot, commit, rel string) (string, error) {
+	out, err := gitutil.RunCappedAsStored(repoRoot, maxHookTreeBytes, "ls-tree", "-z", "--full-tree", commit, "--", rel)
+	if err != nil {
+		return "", fmt.Errorf("git ls-tree %s -- %s: %v", commit, rel, err)
 	}
-	return out
+	for _, rec := range strings.Split(out, "\x00") {
+		meta, name, ok := strings.Cut(rec, "\t")
+		if !ok || name != rel {
+			continue
+		}
+		if f := strings.Fields(meta); len(f) == 3 && gitutil.IsFullSHA(f[2]) {
+			return f[2], nil
+		}
+		return "", errors.New("git ls-tree listed the hooks directory in a form it does not document")
+	}
+	return "", nil
 }
 
 // hookTreeEntries lists the tree tree by entry name (none for ""), as stored

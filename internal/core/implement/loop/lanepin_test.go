@@ -337,6 +337,17 @@ func TestALaneCannotChooseWhatItOpensOn(t *testing.T) {
 			},
 			want: "origin's default branch is develop, and the default branch here is main",
 		},
+		// A regression guard: the ancestry read was as stored before.
+		"a local main a graft file makes the tip descend from": {
+			move: func(t *testing.T, repo *gittest.Repo, _ string) {
+				tip := repo.Git("rev-parse", "main")
+				side := repo.Git("commit-tree", tip+"^{tree}", "-p", tip+"^", "-m", "never reviewed")
+				repo.Git("update-ref", "refs/heads/main", side)
+				repo.Git("update-ref", "-d", "refs/remotes/origin/main")
+				writeMode(t, filepath.Join(repo.Root(), ".git", "info", "grafts"), tip+" "+side+"\n", 0o644)
+			},
+			want: "not the remote's",
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			repo, bare, _ := hookedOrigin(t)
@@ -410,10 +421,107 @@ func TestAReplacedObjectDoesNotChooseTheLanesHooks(t *testing.T) {
 	}
 }
 
-// TestAPathConditionalIncludeDoesNotChooseTheAddsHooks: the lane's add runs
-// with the hooks directory the checkout's settings give named on its command
-// line, so an include that applies only in a lane's git directory and names
-// another hooks directory does not choose the post-checkout hook the add runs.
+// TestTheAddRunsTheCheckoutsOwnCopyOfThePostCheckoutHook holds which
+// post-checkout hook git's add runs where core.hooksPath is relative. The add
+// runs in the checkout, so git takes the hooks directory there and runs the
+// checkout's working-tree copy, with the new worktree as its directory, never
+// the copy the commit being checked out holds, for a lane the stage cuts and
+// a branch that already stands alike. The committed hook (the tip's, and the
+// standing branch's, which holds the tip's hooks) writes the word the
+// commit's own hook-word file holds, TIP on the tip and BRANCH on the branch;
+// the checkout's working-tree copy, an edit not committed, writes CHECKOUT.
+func TestTheAddRunsTheCheckoutsOwnCopyOfThePostCheckoutHook(t *testing.T) {
+	for name, standing := range map[string]bool{"a lane the stage cuts": false, "a branch that already stands": true} {
+		t.Run(name, func(t *testing.T) {
+			repo, _, _ := hookedOrigin(t)
+			marker := filepath.Join(t.TempDir(), "post-checkout-ran")
+			writeHook(t, repo, "post-checkout", "#!/bin/sh\ncat hook-word >> '"+marker+"'\n")
+			repo.Write("hook-word", "TIP\n")
+			repo.Commit("a post-checkout hook")
+			tip := repo.Git("rev-parse", "main")
+			repo.Git("push", "-q", "origin", "main")
+			repo.Git("fetch", "-q", "origin")
+			head := tip
+			if standing {
+				repo.Write("hook-word", "BRANCH\n")
+				repo.Commit("the branch's own word")
+				head = repo.Git("rev-parse", "HEAD")
+				repo.Git("reset", "-q", "--hard", tip)
+			}
+			writeHook(t, repo, "post-checkout", "#!/bin/sh\necho CHECKOUT >> '"+marker+"'\n")
+			start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			lw, err := laneWorktree(repo.Root(), start.RunID, "lane-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if standing {
+				repo.Git("branch", lw.Branch, head)
+			}
+			if _, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{}); err != nil {
+				t.Fatalf("the lane opens: %v", err)
+			}
+			if got, err := os.ReadFile(marker); err != nil || string(got) != "CHECKOUT\n" {
+				t.Fatalf("the add ran the checkout's working-tree copy alone: %q %v", got, err)
+			}
+			if _, ok := pinned(t, repo, start.RunID, lw.Path); !ok {
+				t.Fatal("the lane is pinned")
+			}
+		})
+	}
+}
+
+// TestAStandingBranchMovedAfterItWasJudgedIsRefused: the stage resolves a
+// standing branch's head once and judges that commit, so a branch moved to
+// another commit before git checks it out (here one holding the tip's hooks
+// and other content) is refused once the add has made the worktree, and
+// nothing is pinned.
+func TestAStandingBranchMovedAfterItWasJudgedIsRefused(t *testing.T) {
+	repo, _, tip := hookedOrigin(t)
+	repo.Write("notes.txt", "moved\n")
+	repo.Commit("moved")
+	moved := repo.Git("rev-parse", "HEAD")
+	repo.Git("reset", "-q", "--hard", tip)
+	start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lw, err := laneWorktree(repo.Root(), start.RunID, "lane-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo.Git("branch", lw.Branch, tip)
+	was := addWorktree
+	t.Cleanup(func() { addWorktree = was })
+	addWorktree = func(root string, o worktree.AddOptions) (worktree.Added, error) {
+		repo.Git("update-ref", "refs/heads/"+lw.Branch, moved)
+		return was(root, o)
+	}
+	_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+	worktreeRefused(t, err, "moved")
+	if _, ok := pinned(t, repo, start.RunID, lw.Path); ok {
+		t.Fatal("nothing is pinned for a branch that moved after it was judged")
+	}
+}
+
+// TestAStandingBranchWhoseHooksCannotBeReadIsRefused: a standing branch head
+// whose hooks directory git cannot read (here no commit the repository
+// holds) is refused, never read as one that records no hooks directory, even
+// where the tip records none there either.
+func TestAStandingBranchWhoseHooksCannotBeReadIsRefused(t *testing.T) {
+	repo, _, tip := hookedOrigin(t)
+	err := standingBranchHooks(Context{RepoRoot: repo.Root()}, "lane-1", strings.Repeat("1", 40), "the-branch", tip, "no-hooks-here")
+	worktreeRefused(t, err, "cannot be read")
+}
+
+// TestAPathConditionalIncludeDoesNotChooseTheAddsHooks: an include that
+// applies only in a lane's git directory and names another hooks directory
+// does not choose the post-checkout hook the add runs, and the lane opens. A
+// regression guard: git's add already takes its hooks directory from the
+// checkout's settings, where it runs, so the test passes without the hooks
+// directory the stage names on the add's command line (laneAddGit).
 func TestAPathConditionalIncludeDoesNotChooseTheAddsHooks(t *testing.T) {
 	repo, _, _ := hookedOrigin(t)
 	marker := filepath.Join(t.TempDir(), "post-checkout-ran")
@@ -427,7 +535,13 @@ func TestAPathConditionalIncludeDoesNotChooseTheAddsHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	repo.Git("config", "includeIf.gitdir:**/worktrees/**.path", inc)
-	_, _, _ = openHookedLane(t, repo)
+	runID, path, err := openHookedLane(t, repo)
+	if err != nil {
+		t.Fatalf("the lane opens: %v", err)
+	}
+	if l := laneAt(t, repo, runID); l.Worktree != path {
+		t.Fatalf("the lane's worktree is made: %+v", l)
+	}
 	absent(t, marker, "the include's post-checkout hook does not run in the add")
 }
 
@@ -485,7 +599,8 @@ func TestABranchStandingUnderTheLanesNameIsCheckedOutOnlyWithTheTipsHooks(t *tes
 
 // TestALaneConfigTooLargeToReadIsRefused: a lane whose git configuration is
 // past the read's cap once git has made it cannot have its hooks told, so the
-// worktree stage refuses it and pins nothing.
+// worktree stage refuses it and pins nothing. A regression guard: the refusal
+// stood before this change, and the test passes without it.
 func TestALaneConfigTooLargeToReadIsRefused(t *testing.T) {
 	repo, _, _ := hookedOrigin(t)
 	was := addWorktree
@@ -512,7 +627,8 @@ func TestALaneConfigTooLargeToReadIsRefused(t *testing.T) {
 // TestAFilterThatRewritesTheHooksOnCheckoutRefusesTheLane: a content filter
 // that rewrites the hook files as git checks them out (an end-of-line
 // conversion, a smudge filter) leaves them other than the commit's, so the
-// lane is refused as it opens.
+// lane is refused as it opens. A regression guard: the proof's refusal stood
+// before this change, and the test passes without it.
 func TestAFilterThatRewritesTheHooksOnCheckoutRefusesTheLane(t *testing.T) {
 	for name, attr := range map[string]string{
 		"an end-of-line conversion": ".githooks/pre-commit text eol=crlf\n",

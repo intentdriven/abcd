@@ -129,9 +129,11 @@ func commitGit(dir string, args ...string) (string, error) {
 // time scales with the tree, and a stop at its bound is refused as a checkout
 // that did not finish (errCheckoutStalled), never as a signing prompt. It
 // reads objects as stored (gitutil.RunCommitCommandBoundedAsStored), so the
-// lane holds the tree its commit stores and the post-checkout hook that runs
-// is that tree's, whatever replace ref or graft file stands in the
-// repository (iss-2611071820538335).
+// lane holds the tree its commit stores, whatever replace ref or graft file
+// stands in the repository (iss-2611071820538335). The post-checkout hook it
+// runs is not that tree's: the add runs in the checkout, so git takes the
+// hooks directory there, and a relative core.hooksPath names the checkout's
+// own working-tree copy, which the run's fingerprint watches.
 func worktreeAddGit(dir string, args ...string) (string, error) {
 	return gitutil.RunCommitCommandBoundedAsStored(dir, worktreeAddTimeout, errCheckoutStalled, args...)
 }
@@ -139,11 +141,15 @@ func worktreeAddGit(dir string, args ...string) (string, error) {
 // laneAddGit is worktreeAddGit with hooksPath, when it is not "", named on
 // git's command line as core.hooksPath: the hooks directory the worktree
 // stage read at the checkout and judged a standing branch by
-// (standingBranchHooks), so no setting that applies only in the lane's own
-// git directory (a path-conditional include) changes which hooks directory
-// the add runs its post-checkout hook from. A command-line value outranks
-// every settings file, and a relative one is taken as git takes it from a
-// file.
+// (standingBranchHooks). It is defensive. git's add already takes the hooks
+// directory from the checkout's settings, where it runs, so a setting that
+// applies only in the lane's own git directory (a path-conditional include)
+// does not choose it with or without the value
+// (TestAPathConditionalIncludeDoesNotChooseTheAddsHooks, a regression guard);
+// the value pins the directory the check judged, and stops no hook from
+// running. With no core.hooksPath at the checkout nothing is added. A
+// command-line value outranks every settings file, and a relative one is
+// taken as git takes it from a file.
 func laneAddGit(hooksPath string) func(dir string, args ...string) (string, error) {
 	return func(dir string, args ...string) (string, error) {
 		if hooksPath != "" {
