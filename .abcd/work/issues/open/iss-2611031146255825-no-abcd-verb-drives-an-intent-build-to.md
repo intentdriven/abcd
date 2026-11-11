@@ -14,3 +14,5 @@ related_intents: [itd-2611031342011261]
 ---
 
 No abcd verb drives an intent build to done unattended: implement step takes one stage and exits, so a build of several steps needs something outside abcd to re-run it after each stage, wait out the merge queue, step again once the lane's pull request merges, and open the next lane. On 2026-11-03 the coordinator did this with a polling helper script (drive-run.sh) and timed wake-ups; drain --drive (itd-2610222215485265) covers drain lanes only, and itd-2610240933025076 starts a build but does not carry it through.
+
+2026-11-06: met again before the autonomous run of 7 Nov: with no route that drives a build walled (drain --drive covers drain lanes only), the run's coordinating session ran under a recorded exception.

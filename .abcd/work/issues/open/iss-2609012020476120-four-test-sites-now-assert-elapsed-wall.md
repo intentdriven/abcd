@@ -32,3 +32,5 @@ Two records-only branches failed `make preflight` on wall-clock assertions alone
 - `TestTheForgeIsAskedAboutEveryBranchInTurn` and `TestPeersListsALanesStageAndItsHoldersRecentHandBacks`: running when their packages (claim, implement/loop, surface/cli) hit the 20-minute timeout.
 
 The load gate admits one preflight's test stage at a time, but tests run outside a preflight (a session's own `go test -run …`) are not gated, so an admitted stage still runs on a saturated machine.
+
+2026-11-09: met again at 19:25 in the autonomous run of 7 Nov: #1474 failed CI's race stage because two new tests bounded a linear read at 15 seconds; under sharded race on CI each took 15.0 to 15.5 seconds, against 0.14 seconds locally without race. Neither review pair nor the local preflight, whose race stage passed, caught it.

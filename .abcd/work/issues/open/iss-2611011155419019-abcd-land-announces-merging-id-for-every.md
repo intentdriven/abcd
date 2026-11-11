@@ -13,3 +13,5 @@ remedy: "Announce merging only for items named in Resolves: or Delivers: trailer
 ---
 
 abcd land announces 'merging <id>' for every issue or intent a branch's commits name in a Refs: trailer, as well as Resolves: and Delivers: (internal/core/landing/announce.go, per dcn-2610170704191129). Refs: means the change touches a record without fixing it, but the announcement reads as that record's work merging. On 2026-10-31 a peer session read a build session's records-PR announcements for Refs-only issues as competing work on those issues, and the two sessions spent a round of messages confirming nobody else was on them. A colleague reading abcd status cannot tell a fix that is merging from a record that is merely cited.
+
+2026-11-07: seen again at 21:35 in the autonomous run of 7 Nov: land announced merging for two issues that the lane's commit named only under Refs and left unbuilt, and peers read it as those issues merging.

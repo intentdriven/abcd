@@ -13,3 +13,5 @@ remedy: "Have land open the pull request from the body it composed when none is 
 ---
 
 abcd land opens no pull request for a branch made outside the build loop: it composes the body, pushes, and stops with 'no open pull request ... open it with the command, then run abcd land again'. On 2026-11-03 the coordinator opened eight pull requests that way by hand (gh pr create from the composed body, a re-read for footers, then land --record-review twice and land again to arm), in a helper script, so a CLI-only run cannot land a hand fix without a forge command of its own.
+
+2026-11-09: seen again in the autonomous run of 7 Nov: land --record-review recorded the receipt and exited, a second land pushed, and a third armed only after the pull request had been opened by hand, so one landing took three land calls and a hand-opened pull request.
