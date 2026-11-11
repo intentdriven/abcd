@@ -76,7 +76,8 @@ func (l Lane) Path(name string) string { return filepath.Join(l.Dir, name) }
 // is refused; git failing to answer is an error, since that is no evidence
 // the repository has none.
 func LaneFor(repoRoot string) (Lane, error) {
-	return LaneForContext(context.Background(), repoRoot)
+	sha, err := gitutil.RootCommit(repoRoot)
+	return laneOf(sha, err)
 }
 
 // LaneForContext is LaneFor with its root-commit lookup bound to ctx
@@ -84,6 +85,12 @@ func LaneFor(repoRoot string) (Lane, error) {
 // the lookup's answer is ctx's error, never a repository with no root commit.
 func LaneForContext(ctx context.Context, repoRoot string) (Lane, error) {
 	sha, err := gitutil.RootCommitContext(ctx, repoRoot)
+	return laneOf(sha, err)
+}
+
+// laneOf is the lane keyed on sha, the root-commit lookup's answer, err its
+// failure.
+func laneOf(sha string, err error) (Lane, error) {
 	if err != nil {
 		return Lane{}, fmt.Errorf("reading the repository's root commit to key the worktree store on: %w", err)
 	}
