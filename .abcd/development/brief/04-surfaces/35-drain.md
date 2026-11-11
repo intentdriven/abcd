@@ -245,7 +245,23 @@ nothing by itself. With nothing spent, a launch that was retrying the model serv
 result naming 401, 403, 429 or 5xx, says nothing of the work. An init event says nothing,
 since version 2.1.318 was seen to write one before any contact with the model. Any other
 failure is put to a probe, one short launch per failure: an answer shows the account is
-alive, which leaves the work, and a rejection or no answer counts nothing. Three in a row
+alive, which leaves the work, and a rejection or no answer counts nothing. An implementer's
+receipt refused for the work it reports is set aside, kept, in the same write as the refusal,
+and the implementer started again (iss-2611071242184002). Each such receipt counts as a
+refused step under one check, whatever it lacked, so at the stuck bound of identical refusals,
+three by default, the lane is stuck, with a bound or without and across a fresh drive on the
+same state, and the receipt that brings it there is followed by no further launch: the drive
+gives the lane back on its next turn. The count is kept on the drain's issue runs, the only
+runs a drive steps this way; an intent's run keeps its stop. A refusal of another kind
+restarts the count, so such a lane is ended instead by three failed launches in a row under a
+bound, and by the outage limit without one. Only at the implement stage's own receipt do the
+report and the definition of done's output go aside with it, at the names the loop assigned
+them; at a fix or sync round's, only the receipt goes; anything else a receipt names is left
+in place. The runner's own hand-in of one is also a failed launch that is the work's, one of
+the three in a row below; one found standing and consumed is a refused step and no launch. One
+refused for anything else stays and stops the lane until the stuck bounds hand it back. A lane stuck by those bounds goes back from the drive to the
+next move, which hands it back; given the same lane again, the drive first waits as an idle drive does,
+thirty seconds at least, so the two never turn with no wait. Three in a row
 that are the work's hand the lane back as stuck, the run going on to other issues, and the
 same test decides whether a failed judge counts against its issue, beside the count of
 judgements that gave no answer. Six launches in a row that spend and fail with no probe

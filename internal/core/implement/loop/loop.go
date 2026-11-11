@@ -474,6 +474,10 @@ type StepResult struct {
 	// carried to whatever answer a later move of the same call gives
 	// (carryStanding).
 	standing string
+	// consumed says the step consumed and counted a receipt it found standing
+	// (consumeStopped), so a drive checks the drain's stuck bounds before it
+	// retries the role in the same call (stuckAfterConsumed).
+	consumed bool
 	// RouteUnused is each `implement step --route` the step did not use: a
 	// landing ahead of its role moved first (route_use.go). Every other
 	// --route the step would not use is refused before anything is written.
@@ -1066,6 +1070,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	}
 	var res StepResult
 	var wait error
+	counted := false
 	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		// A stop may have come since the check: under the lock nothing acts on a
 		// run that took one.
@@ -1103,6 +1108,23 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 			openWindow(st, now)
 			changed = true
 		}
+		// A drive's receipt refused for the work is consumed in this write, before
+		// the window is read, so the step whose window closes here still sets it
+		// aside and counts it, and the role starts again in the next window
+		// (receipt_standing.go). A receipt left standing would be read again by
+		// the next step, so placing this later would delay the consuming, not
+		// lose the relaunch.
+		//
+		// Invariant: once consumeStopped reports a change it may have moved a file
+		// and counted it, so every return below writes the state (returns true):
+		// one that did not would drop the record's line and the count while the
+		// file stays moved. The window's return does, the refusal's path does
+		// through consumed, and the success path does through changed.
+		consumed, n := consumeStopped(repoRoot, root, st, stopped, now)
+		counted = n
+		if consumed {
+			changed = true
+		}
 		if until, ok := windowElapsed(*st, now); ok {
 			closeWindow(st, now, until)
 			res = idleResult(*st)
@@ -1130,7 +1152,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 			if noteRefusal(st, err, now) {
 				moved = true
 			}
-			if moved || renewed {
+			if moved || renewed || consumed {
 				// The wait, or a later lane's refusal, is the call's answer,
 				// and the time a lane began waiting for its full check, or
 				// the reservation's renewal, is written with it (ruling
@@ -1149,6 +1171,13 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	})
 	if err == nil && wait != nil {
 		err = wait
+	}
+	if err == nil {
+		res.consumed = counted
+	}
+	if len(stopped) > 0 {
+		// What a consumed receipt became is said in its own words.
+		standing = stoppedText(stopped)
 	}
 	if standing != "" {
 		if r, ok := AsRefusal(err); ok {

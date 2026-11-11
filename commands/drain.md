@@ -275,7 +275,24 @@ nothing but the bound, the cap, an empty ledger or a stop ends the run:
   401, 403, 429 or 5xx, or a launch that ran out of retries, says nothing of the work.
   Any other failure, one that spent included, since the service may have gone after
   the spending, is put to a short probe: an answer shows the account is alive, which
-  makes it the work's, and a rejection or no answer counts nothing. A judge is judged
+  makes it the work's, and a rejection or no answer counts nothing. An implementer's
+  receipt refused for the work it reports is set aside, kept under the lane's `aside/`,
+  and the implementer started again. Each such receipt counts as a refused step under one
+  check, whatever it lacked, so the third in a row (the stuck bound of identical refusals
+  below, three by default) hands the lane back as stuck, with or without `--until`, and a
+  fresh drive on the same state carries the count on. The receipt that brings the lane to
+  that bound is followed by no further launch: the drive gives the lane back on its next
+  turn. Only the drain's issue runs are stepped this way and keep the count; an intent's
+  run keeps its stop. A refusal of another kind restarts the count; such a lane is still
+  ended by three failed launches in a row under `--until`, and by the outage limit
+  without it. Under `--until` the runner's hand-in of one is also one of the three
+  failures; one found standing and consumed is a refused step and no launch. Only at the
+  implement stage's own receipt do the report and the definition of done's output go
+  aside with it, at the names the loop assigned them; at a fix or sync round's, only the
+  receipt goes; anything else a receipt names is left where it is. A receipt refused for anything else stays at its path and stops the
+  lane until the stuck bounds below hand it back. A lane stuck by those bounds goes back from the drive to the next
+  move, which hands it back; given the same lane again, the drive first waits as an idle
+  drive does, thirty seconds at least. A judge is judged
   the same way against its issue, so one at its deadline having spent is held back while
   the account answers, and an account-wide failure does not empty the drain. Six launches
   in a row that spend and fail with no probe answered hand the lane back too, or hold the
@@ -704,7 +721,7 @@ what it did in `next`:
   kept being refused at one stage for sixty minutes, counted from its first
   refusal to its last (a quiet of more than fifteen minutes starts the time
   afresh, and the quiet after the last refusal never counts), the next drain
-  hands the lane
+  hands the lane, one `abcd drain --drive` is driving included,
   back as `stuck`, naming the refusal, releases its reservation with a
   tombstone marking it `stuck`, and takes up the next issue in the same move.
   A refusal that cannot change hands the lane back at once: its issue finished

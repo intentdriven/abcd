@@ -651,7 +651,32 @@ One the verifier refused after its runner ended stops the lane: no runner is
 started over that work, `next` names the ways out, correcting the receipt (then
 `implement receipt`, or a plain `implement step` reads it) or
 `implement step --restart <lane>`, and a drain hands the lane back as stuck at
-its bounds. A role already with you, from a step before its route existed,
+its bounds. Under `abcd drain --drive`, which steps the run itself, a receipt refused
+for the work it reports (it names this run, lane and branch) is set aside instead, in
+the same write, kept in a new directory under the lane's `aside/`, and the refusal and
+the digest of the bytes judged go in the run record. The receipt's text never chooses
+what else moves, and the run's state decides whether anything does. At the implement
+stage's own receipt, only the report and the definition of done's output at the names
+the loop assigned that attempt (`report.md` and `dod.log`, directly in the lane's
+directory, each a regular file and no link) go with it. A path the receipt names for
+either that is anything else (the brief, a validate, sync or land round's file, anything
+under `aside/` in any letter case) is left where it is, and the run record says so. At a
+fix or sync round's receipt nothing else moves: the round's report and output, and the
+lane's own `report.md` and `dod.log`, which later rounds read, are left where they are,
+and the run record says only the receipt was set aside at that round. A receipt
+replaced since it was judged, or a role a runner has claimed since, is left for the next
+step to read and not counted. Below the bound the next step starts the implementer
+again. Each consumed receipt counts as a refused step under one check, whatever it
+lacked, so the third in a row (the drain's stuck bound of identical refusals, three by
+default) hands the lane back as stuck, with or without `--until`, and a fresh drive on
+the same state carries the count on. The receipt that brings the lane to the bound is
+followed by no further launch, whether the runner handed it in or a step found it
+standing: the drive gives the lane back on its next turn. The count is kept on the
+drain's issue runs, the only runs a drive steps this way; an intent's run keeps the
+stop. A step of the lane that succeeds clears the count, and a refusal of another kind
+restarts it; such a lane is still ended by three failed launches in a row under
+`--until`, and by the outage limit without it. A receipt refused for anything else
+stops the lane there too. A role already with you, from a step before its route existed,
 whose receipt you have not written is retried the same way, so do not start an
 agent for it once its role is routed. A paused role whose route has since
 moved to the host is handed to you by the next step that hands no other agent
