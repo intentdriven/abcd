@@ -817,12 +817,14 @@ func TestASilentAgentIsAHangWithRecovery(t *testing.T) {
 	// script, and the run that takes the lane up again launches under the ordinary
 	// limit, which a loaded machine cannot reach. The script's own count says the hang
 	// took its line: a hang killed before it did is launched again under the short
-	// limit, and never reaches the second run.
+	// limit, as often as it takes, and never reaches the second run. Each such kill
+	// costs the first run a wait, so its bound is one no number of them a machine
+	// produces can use up: only the count ends it.
 	turns := func() string {
 		raw, _ := os.ReadFile(filepath.Join(w.env.log, "script.n"))
 		return strings.TrimSpace(string(raw))
 	}
-	o := w.bounded(t, time.Hour)
+	o := w.bounded(t, 30*24*time.Hour)
 	o.Runners.Timeout, o.Drain.JudgeTimeout = hangLimit, ordinaryLaunchLimit
 	o.Runners.Transcripts, o.Drain.Transcripts, o.BeforeStage = limits, limits, seeWorktree
 	w.onSleep = func(time.Duration) {
