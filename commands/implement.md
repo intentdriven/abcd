@@ -617,7 +617,9 @@ location two reviewers of the round cite carries `cited_by`, naming both.
 version 24's. Version 25 renamed the stored classes (`top` is now `research`,
 `middle` is `top`, `below` is `default`, `smallest` is `small`), gave a stored
 judge its `status` and each class its `effort`; an older run's state is
-migrated on read, each reviewer keeping the model it was resolved to. Each role a round hands
+migrated on read, each reviewer keeping the model it was resolved to. Version
+26 added the run's `admitted`; an older run's state reads as one that recorded
+none. Each role a round hands
 out is asked for the model tier its routing row names, and a round that does
 not pass moves each role one step up for the next round (`local`, `economy`,
 `frontier`; `frontier` and `host-decides` stay), from the tier it ran at, never

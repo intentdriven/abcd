@@ -299,7 +299,11 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 25. Version 25
+under a run id it does not name. The state is schema version 26. Version 26
+added the run's `admitted`, the rule its lanes were admitted under, which each
+records commit carries as its `Admitted-by:` trailer (itd-2610301850454860): a
+file of version 25 or lower reads as a run that recorded none, and one carrying
+it is refused. Version 25
 renamed the stored model classes for what each is for (itd-2611101419006280):
 a stored class label is one of `research`, `top`, `default` and `small`, where
 earlier versions stored `top`, `middle`, `below` and `smallest` for the same

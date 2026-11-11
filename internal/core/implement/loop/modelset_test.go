@@ -249,12 +249,13 @@ func TestAnEarlierStateCarryingWhatItNeverWroteIsRefused(t *testing.T) {
 	}
 }
 
-// TestTheRenameMovesTheStateOneVersion: the rename is version 25's, and a
-// file of the version after it is refused as a newer abcd's, the refusal an
-// abcd before the rename gives a version-25 file.
+// TestTheRenameMovesTheStateOneVersion: the rename is version 25's, the
+// version after the last it migrates from, and a file of the version after
+// the current is refused as a newer abcd's, the refusal an abcd before the
+// rename gives a version-25 file.
 func TestTheRenameMovesTheStateOneVersion(t *testing.T) {
-	if SchemaVersion != 25 || schemaVersionUnrenamed != 24 {
-		t.Fatalf("the rename is version 25's: %d %d", SchemaVersion, schemaVersionUnrenamed)
+	if schemaVersionUnadmitted != 25 || schemaVersionUnrenamed != 24 {
+		t.Fatalf("the rename is version 25's: %d %d", schemaVersionUnadmitted, schemaVersionUnrenamed)
 	}
 	_, err := decodeState([]byte(fmt.Sprintf(`{"schema_version": %d}`, SchemaVersion+1)))
 	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "a newer abcd wrote") {

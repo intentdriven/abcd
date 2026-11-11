@@ -111,11 +111,11 @@ func TestADrainsStartWithoutItsRuleIsRefused(t *testing.T) {
 	}
 }
 
-// TestAnAdmissionIsVersion24s: a version-23 file carrying `admitted` is refused
+// TestAnAdmissionIsVersion26s: a version-25 file carrying `admitted` is refused
 // naming it, one without it reads as a run with no admission at the current
 // version, and an admission the loop never writes is refused, never copied into
 // a commit message.
-func TestAnAdmissionIsVersion24s(t *testing.T) {
+func TestAnAdmissionIsVersion26s(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 	res, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
 	if err != nil {
@@ -143,6 +143,30 @@ func TestAnAdmissionIsVersion24s(t *testing.T) {
 	st, err := ReadState(root, id)
 	if err != nil || st.SchemaVersion != SchemaVersion || st.Admitted != nil {
 		t.Fatalf("an older file without the field reads as the current version with no admission: %+v %v", st.Admitted, err)
+	}
+	// A file of the version before the renamed classes, which the read migrates,
+	// carries no admission either: one carrying it is refused naming it, and
+	// one without it reads as a run with no admission.
+	var given map[string]any
+	if err := json.Unmarshal(data, &given); err != nil {
+		t.Fatal(err)
+	}
+	var renamed map[string]any
+	if err := json.Unmarshal(downgraded(t, data, schemaVersionUnrenamed), &renamed); err != nil {
+		t.Fatal(err)
+	}
+	renamed["admitted"] = given["admitted"]
+	b, err := json.Marshal(renamed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(b)
+	if _, err := ReadState(root, id); err == nil || !strings.Contains(err.Error(), "admission") {
+		t.Fatalf("a version-%d file carrying the field is refused naming it: %v", schemaVersionUnrenamed, err)
+	}
+	write(downgraded(t, data, schemaVersionUnrenamed))
+	if st, err = ReadState(root, id); err != nil || st.SchemaVersion != SchemaVersion || st.Admitted != nil {
+		t.Fatalf("a version-%d file without the field reads as the current version with no admission: %+v %v", schemaVersionUnrenamed, st.Admitted, err)
 	}
 	for _, bad := range []map[string]any{
 		{"kind": "build", "record": "spc-1\nResolves: iss-1"},
