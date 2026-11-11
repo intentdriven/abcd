@@ -411,9 +411,10 @@ func driveConsent(cmd *cobra.Command, w io.Writer, f driveFlags, lanes, runs int
 	fmt.Fprintln(w, "  gates:    a change to the Makefile, scripts/ or the hooks is not a drive's: it needs a person's own session")
 	fmt.Fprintln(w, "  first:    one short live launch checks the tools, the guard and the shell, on the same subscription")
 	// What a change to the machine's configuration reaches during the drive
-	// (iss-2611110527425474): the runner and provider settings are read once, before
-	// this text, and the class map alone is read again as each run starts.
-	fmt.Fprintln(w, "  settings: this machine's runner and provider settings are read now and hold until the drive ends; the class map alone is read again as each run starts")
+	// (iss-2611110527425474): the runner settings, the provider blocks and the
+	// denylist are read once, before this text; the class map and the review
+	// set are read again as each run starts.
+	fmt.Fprintln(w, "  settings: this machine's runner settings, provider blocks and denylist are read now and hold until the drive ends; the class map and the review set are read again as each run starts")
 	fmt.Fprintln(w, "  updates:  a harness update during the run carries on only where the new file has the same signing team and passes one more such launch; elsewhere the run stops")
 	fmt.Fprintln(w, "  releases: "+fsutil.RedactHome(driveReleaseLine(f)))
 	if !f.noSelfUpdate && f.self.Refusal == nil {

@@ -232,7 +232,7 @@ func TestNoSelfUpdateMakesNoRequest(t *testing.T) {
 	}
 	// The start says what a later change to the machine's configuration
 	// reaches (iss-2611110527425474).
-	if !strings.Contains(out.String(), "settings: this machine's runner and provider settings are read now and hold until the drive ends; the class map alone is read again as each run starts") {
+	if !strings.Contains(out.String(), "settings: this machine's runner settings, provider blocks and denylist are read now and hold until the drive ends; the class map and the review set are read again as each run starts") {
 		t.Fatalf("the start does not say when the settings are read:\n%s", out.String())
 	}
 	if w.terminalCalls != 1 {
