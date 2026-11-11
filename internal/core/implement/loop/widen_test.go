@@ -323,7 +323,7 @@ func TestAnIssueBriefSaysTheLoopReservesWhatTheBranchChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, s := range []string{"## Files beyond the issue's place", "you run nothing to\nreserve it",
-		"the loop reserves every path your commits change", "A path another copy holds", "You are not started again for it",
+		"the loop reserves every path your commits change", "A path another copy holds", "the lane is handed back, naming the\n  path and its holder",
 		"A path no reservation may carry", "A gate file", "person's own session"} {
 		if !strings.Contains(string(brief), s) {
 			t.Fatalf("the brief carries %q:\n%s", s, brief)
