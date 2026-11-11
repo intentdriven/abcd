@@ -140,11 +140,11 @@ func renderIssueBrief(st State, lane Lane, laneDir string, src issueBriefSources
 	p("- A path another copy holds: the loop does not take it from them. Your receipt is taken all the\n")
 	p("  same, the run's record names the path and its holder, and the lane waits before its validators\n")
 	p("  until that hold ends. You are not started again for it.\n")
-	p("- A path no reservation may carry (one with `..`, a leading `/` or a control character in its name):\n")
-	p("  your receipt is refused, naming it. Take the change out of the branch.\n")
-	p("- A gate file (a Makefile, anything under `scripts/` or `.githooks/`, or the hooks the repository\n")
-	p("  configures): an unattended drive does not land a lane that changes one, and hands it to a\n")
-	p("  person's own session. Change one only when the remedy names it.\n\n")
+	p("- A path no reservation may carry: one whose name has a backslash, a control, non-printing,\n")
+	p("  bidirectional or zero-width character, or a leading or trailing space, or one with `..` or a\n")
+	p("  leading `/`. Your receipt is refused, naming it. Take the change out of the branch.\n")
+	p("- A gate file (%s): an unattended drive does not land a lane that changes one, and hands it to\n", gateFilesText())
+	p("  a person's own session. Change one only when the remedy names it.\n\n")
 
 	p("## The work: %s's remedy\n\n", id)
 	p("%s", fenceQuoteNote)
@@ -203,4 +203,27 @@ func renderIssueBrief(st State, lane Lane, laneDir string, src issueBriefSources
 	p("## The conventions: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", ConventionsFile, ConventionsFile, fenceQuote(src.conventions), ConventionsFile)
 	src.decisions.render(&b, id)
 	return b.Bytes()
+}
+
+// gateFilesText names every gate file the drive refuses to land a change to
+// (DriveGates, and the hooks path the repository configures), for the
+// brief's line on them, from the one list the drive reads.
+func gateFilesText() string {
+	var files, dirs []string
+	for _, g := range DriveGates {
+		if strings.HasSuffix(g, "/") {
+			dirs = append(dirs, "`"+g+"`")
+		} else {
+			files = append(files, "`"+g+"`")
+		}
+	}
+	return strings.Join(files, ", ") + ", anything under " + orList(dirs) + ", or under the hooks path the repository configures"
+}
+
+// orList joins items as a sentence lists them: "a", "a or b", "a, b or c".
+func orList(items []string) string {
+	if len(items) < 2 {
+		return strings.Join(items, "")
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " or " + items[len(items)-1]
 }

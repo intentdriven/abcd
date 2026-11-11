@@ -334,6 +334,20 @@ func TestAnIssueBriefSaysTheLoopReservesWhatTheBranchChanges(t *testing.T) {
 			t.Fatalf("the brief names no widen step for the implementer (%q):\n%s", s, brief)
 		}
 	}
+	flat := strings.Join(strings.Fields(string(brief)), " ")
+	for _, s := range []string{"a backslash", "a control, non-printing, bidirectional or zero-width character", "a leading or trailing space",
+		"the hooks path the repository configures"} {
+		if !strings.Contains(flat, s) {
+			t.Fatalf("the brief says which names no reservation may carry, and every gate (%q):\n%s", s, brief)
+		}
+	}
+	// The brief names every gate the drive refuses to land, from the list the
+	// drive reads (DriveGates), so the two never drift apart.
+	for _, g := range DriveGates {
+		if !strings.Contains(flat, "`"+g+"`") || !DriveGate(g, "") {
+			t.Fatalf("the brief names the gate %s the drive refuses:\n%s", g, brief)
+		}
+	}
 }
 
 // TestAResumeOverALapsedHoldKeepsThePathsTheLaneWidenedTo: the lane widened

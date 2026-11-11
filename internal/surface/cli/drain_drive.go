@@ -126,45 +126,6 @@ var drivePreflightProgram = func() (string, []string, error) {
 	return self, []string{"implement", "load", "--wait", "--", "make", "preflight"}, nil
 }
 
-// driveGates are what a lane's preflight and the driver's own git run, as paths: a
-// change to one is a change to what judges the lane.
-var driveGates = []string{"Makefile", "GNUmakefile", "makefile", "scripts/", ".githooks/", "hooks/"}
-
-// driveGate reports whether path, relative to the checkout, is one of those, or
-// under the hooks path the repository configures. A directory counts with or
-// without its trailing slash.
-func driveGate(path, hooksPath string) bool {
-	path = filepath.ToSlash(filepath.Clean(path))
-	for _, gate := range driveGates {
-		dir := strings.TrimSuffix(gate, "/")
-		if path == dir || (dir != gate && strings.HasPrefix(path, gate)) {
-			return true
-		}
-	}
-	if hooksPath = strings.Trim(hooksPath, "/"); hooksPath != "" {
-		return path == hooksPath || strings.HasPrefix(path, hooksPath+"/")
-	}
-	return false
-}
-
-// driveHooksPath is the hooks path the repository at dir configures, relative to
-// dir, "" for none or one outside it.
-func driveHooksPath(dir string) string {
-	paths, err := gitutil.HooksPaths(dir)
-	if err != nil || len(paths) == 0 {
-		return ""
-	}
-	path := paths[len(paths)-1]
-	if filepath.IsAbs(path) {
-		rel, err := filepath.Rel(dir, path)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
-			return ""
-		}
-		path = rel
-	}
-	return filepath.ToSlash(filepath.Clean(path))
-}
-
 // driveGateCheck says whether a lane's landing may go on: not over a lane that
 // changes what judges it, which a person's own session handles, and not when what
 // the lane changed cannot be read.
@@ -174,9 +135,9 @@ func driveGateCheck() func(worktree, base string) error {
 		if err != nil {
 			return &loop.PreflightRefused{Reason: "what the lane changed could not be read, so its landing does not go on"}
 		}
-		hooks := driveHooksPath(worktree)
+		hooks := loop.DriveHooksPath(worktree)
 		for _, path := range strings.Split(out, "\x00") {
-			if driveGate(path, hooks) {
+			if loop.DriveGate(path, hooks) {
 				return &loop.PreflightRefused{Reason: "the lane changes " + strconv.Quote(termsafe.Sanitize(path)) + ", a gate file, so it needs a person's own session and its landing does not go on: review the branch there"}
 			}
 		}
@@ -187,13 +148,13 @@ func driveGateCheck() func(worktree, base string) error {
 // drivePassOver says why an issue is passed over rather than opened: its own path
 // is one of the gates, so a lane on it could only be handed back.
 func drivePassOver(repoRoot string) func(id, foundAt string) string {
-	hooks := driveHooksPath(repoRoot)
+	hooks := loop.DriveHooksPath(repoRoot)
 	return func(_, foundAt string) string {
 		path, ok := capture.FoundAtPath(foundAt)
 		if !ok {
 			path, _, _ = strings.Cut(foundAt, ":")
 		}
-		if !driveGate(path, hooks) {
+		if !loop.DriveGate(path, hooks) {
 			return ""
 		}
 		return "it needs a person's own session, since it changes a gate file: " + strconv.Quote(termsafe.Sanitize(path))
