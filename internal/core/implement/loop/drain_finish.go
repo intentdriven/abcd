@@ -270,7 +270,9 @@ func finishMerged(repoRoot string, now time.Time, o Options) ([]DrainFinished, [
 			if _, due, lost := renewalDue(run, snap, now); !due && lost == "" {
 				continue
 			}
-			if err := mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+			// The save is the reservation's alone (mutateReservation): a parked run in this
+			// checkout may be another driver's, at another version, and is not raised.
+			if err := mutateReservation(repoRoot, run.RunID, func(st *State) (bool, error) {
 				if parkedAtLand(*st) < 0 {
 					return false, nil
 				}

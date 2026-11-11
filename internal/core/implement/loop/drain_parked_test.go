@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -232,6 +233,49 @@ func TestAnOpenParkedLaneIsRenewedAndNamedAsWaiting(t *testing.T) {
 	}
 	if !strings.Contains(res.Next, "#7") || !strings.Contains(res.Next, "waiting") {
 		t.Fatalf("next names the waiting pull request: %s", res.Next)
+	}
+}
+
+// TestAParkedRenewalKeepsTheVersionItRead: a drain's move and a drive's wait renew a
+// parked lane's claim with a line in its record and nothing else, so a run whose file
+// an older driver wrote stays at that driver's version, and the driver still reads it.
+func TestAParkedRenewalKeepsTheVersionItRead(t *testing.T) {
+	for name, renew := range map[string]func(t *testing.T, f *landFixture, at time.Time){
+		"a drain's move": func(t *testing.T, f *landFixture, at time.Time) {
+			if _, err := Drain(f.repo.Root(), Options{Now: func() time.Time { return at }}, DrainOptions{}); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"a drive's wait": func(t *testing.T, f *landFixture, at time.Time) {
+			if notes := renewParkedDue(f.repo.Root(), at); len(notes) != 0 {
+				t.Fatalf("the renewal says %q", notes)
+			}
+		},
+	} {
+		for _, version := range []int{schemaVersionPrevious, schemaVersionUnrenamed} {
+			t.Run(name+", version "+strconv.Itoa(version), func(t *testing.T) {
+				f, l := parkDrainLane(t)
+				f.listPRs(t, stubPR{Number: 7, HeadRefName: l.Branch, State: "OPEN", Mergeable: "MERGEABLE", MergeStateStatus: "BLOCKED"})
+				ref := claim.RefPrefix + secondIssue
+				fenced := originReservation(t, f.bare, ref)
+				at := fenced.claimed.Add(12*time.Hour + 30*time.Minute)
+				before := stateAtVersion(t, f.repo.Root(), f.runID, version)
+
+				renew(t, f, at)
+
+				if tip := originReservation(t, f.bare, ref); tip.parent != fenced.commit || tip.released {
+					t.Fatalf("the parked lane is renewed: fenced %+v, now %+v", fenced, tip)
+				}
+				after, err := os.ReadFile(runStatePath(f.repo.Root(), f.runID))
+				if err != nil {
+					t.Fatal(err)
+				}
+				olderDriverRead(t, before, after)
+				if v := string(topLevelFields(t, after)["schema_version"]); v != strconv.Itoa(version) {
+					t.Fatalf("%s saved the run at version %s; its driver wrote %d", name, v, version)
+				}
+			})
+		}
 	}
 }
 
