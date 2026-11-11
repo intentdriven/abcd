@@ -4,6 +4,7 @@ slug: one-verb-takes-a-single-intent-from
 intent: itd-2609201916151817
 origin: researcher-authored
 production_mode: hand-written
+blocked_by: [itd-2610222215485265]
 ---
 # one-verb-takes-a-single-intent-from-ready-to-delivered-witho
 
@@ -121,7 +122,8 @@ other builds share.
    person's own invocation, their own account behind a wall, a cap, and a
    hand-back of what it cannot finish), widening AGENTS.md's host-delegated
    boundary, whose one written exception is the drain, to name it. Built only
-   once itd-2610222215485265 ships; nothing marks that wait yet
+   once itd-2610222215485265 ships; the spec's `blocked_by` holds the whole
+   spec on that wait, and nothing marks it on this step alone yet
    (iss-2609260932372448). It uses nothing step 11 builds; it needs 11 so
    that it comes after it. Until that intent ships, a run of this spec ends
    when step 11 lands: the loop opens a lane on this step in the same move,
