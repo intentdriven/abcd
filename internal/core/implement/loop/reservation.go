@@ -724,6 +724,7 @@ func reservedNote(res claim.Result, err error, now time.Time) (reserved, error) 
 		}
 		r := refuse(StageReservation, "", "", err.Error(), "settle what it names, then run the verb again")
 		r.originUnread = isPushFailure(err)
+		r.overCap = errors.Is(err, claim.ErrOverCap)
 		return reserved{}, r
 	}
 	verb := map[claim.Act]string{claim.ActReserved: "reserved", claim.ActRenewed: "renewed the reservation on",

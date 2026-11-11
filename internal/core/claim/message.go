@@ -454,9 +454,10 @@ const footprintReserve = 1024
 // FootprintFits reports whether a reservation message naming fp, one
 // Abcd-Footprint line for each path, stays within MaxMessageBytes with
 // footprintReserve kept for its other lines: for a caller composing a
-// footprint it must be able to write, as the implement loop's widening
-// does, refusing one that does not fit. The writer still measures the
-// whole message it composes against the cap (checkText).
+// footprint that must leave room for more paths beside it, as the
+// implement loop's landing narrowing does for the records its landing
+// adds. The writer measures the whole message it composes against the cap
+// itself (checkText), refusing one past it as ErrOverCap.
 func FootprintFits(fp []string) bool {
 	n := 0
 	for _, p := range fp {

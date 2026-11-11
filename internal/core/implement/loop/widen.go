@@ -192,8 +192,9 @@ func overCapRefusal(key string, n int, more bool) *Refusal {
 // and each path of want that footprint does not cover, each by its own name,
 // keeping own's term (widenReservation), judged for overlap like any
 // reservation. Nothing is pushed when own covers every path, and the result
-// names none added. Paths past maxWidenPaths, or too many for the message's
-// cap (claim.FootprintFits), are refused at once (overCapRefusal). Any other
+// names none added. Paths past maxWidenPaths are refused at once, and paths
+// the writer finds too many for the message's cap (claim.ErrOverCap) as it
+// composes the reservation, both as over the cap (overCapRefusal). Any other
 // refusal is the reservation act's (reservedNote), with the paths it would
 // have added.
 func widenHold(repoRoot, key string, own claim.Reservation, want []string, now time.Time) (widened, error) {
@@ -214,10 +215,10 @@ func widenHold(repoRoot, key string, own claim.Reservation, want []string, now t
 		return w, nil
 	}
 	fp := append(slices.Clone(own.Footprint), w.added...)
-	if !claim.FootprintFits(fp) {
+	r, err := widenReservation(repoRoot, key, fp, false, false, own, now)
+	if rf, ok := AsRefusal(err); ok && rf.overCap {
 		return w, overCapRefusal(key, len(fp), false)
 	}
-	r, err := widenReservation(repoRoot, key, fp, false, false, own, now)
 	if err != nil {
 		return w, err
 	}

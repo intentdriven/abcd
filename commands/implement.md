@@ -864,8 +864,9 @@ base with `origin`'s default branch, so files a sync merged in are left out),
 and the record's line names both; during the validate stage nothing narrows,
 since a fix round may still change another file. A narrowing never widens the
 reservation, and one that would name a file no reservation can carry is not
-made, the renewal made all the same, its record line saying `reservation kept
-at its full footprint` and why. When the landing's sync sends the lane back to
+made, nor one whose footprint would leave the reservation message no room for
+the records the landing adds at the fence, the renewal made all the same, its
+record line saying `reservation kept at its full footprint` and why. When the landing's sync sends the lane back to
 a fresh round, the step reserves the issue's whole `found_at` again before it
 merges, judged for overlap, since a fix round may follow; a refusal of that
 (another's reservation, or the cap) refuses the step for a person, naming it,

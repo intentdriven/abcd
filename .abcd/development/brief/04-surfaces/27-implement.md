@@ -608,7 +608,9 @@ it, or paths too many for one reservation message, naming the message's cap. A f
 trailing space, and the writer reads each message it composes back before it
 writes it, writing nothing when the footprint does not read back as composed. The lane's brief tells the implementer that the loop reserves what its
 commits change, and what is still refused or waited for; it names no widen
-step. The landing's narrowing keeps a path the lane widened to and changed, a
+step. A landing's narrowing that would leave the reservation message no room
+for the record paths the land fence adds before the push is declined, the hold
+left as it stands. The landing's narrowing keeps a path the lane widened to and changed, a
 resume at land renews that narrowing as it stands, a resume that reserves
 again over this copy's live or lapsed hold keeps the paths that hold names
 beside the found_at, and a lane leaving land for a fresh round reserves its

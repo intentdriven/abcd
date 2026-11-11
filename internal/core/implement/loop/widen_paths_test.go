@@ -62,3 +62,26 @@ func TestAWideningOfVeryManyPathsIsRefusedAtOnce(t *testing.T) {
 		t.Fatalf("checking and deduplicating the paths takes no more than a pass over them: %s", took)
 	}
 }
+
+// TestPathsTheWriterCanCarryAreReservedAtTheReceipt: the walled implementer
+// changes forty-seven files beyond the found_at, a footprint that leaves less
+// room in the message than claim.FootprintFits keeps but that the writer can
+// carry; the loop reserves each by its own name and the receipt verifies.
+func TestPathsTheWriterCanCarryAreReservedAtTheReceipt(t *testing.T) {
+	f := newNarrowFixture(t)
+	names := []string{"docs/page.md"}
+	var beyond []string
+	for i := range 47 {
+		beyond = append(beyond, fmt.Sprintf("pkg/a-file-with-a-long-enough-name-to-fill-%02d.txt", i))
+	}
+	if claim.FootprintFits(append([]string{"docs"}, beyond...)) {
+		t.Fatal("premise: the footprint leaves less room than FootprintFits keeps")
+	}
+	path := f.walledStage(t, append(names, beyond...)...)
+	if _, err := Receipt(f.repo.Root(), f.runID, path, f.stages, Options{}); err != nil {
+		t.Fatalf("the receipt verifies once each path is reserved: %v", err)
+	}
+	if fp := f.footprint(t); len(fp) != 1+len(beyond) {
+		t.Fatalf("the hold names the found_at and each path by its own name: %d paths, %q", len(fp), fp)
+	}
+}
