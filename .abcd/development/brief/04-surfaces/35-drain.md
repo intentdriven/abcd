@@ -551,7 +551,11 @@ with what a stage carries too, and only a receipt from a preflight the drive ran
 lands a lane. A lane at its landing that changes the Makefile, `scripts/` or the active
 hooks, measured from what it last merged of the default branch, is handed back, and an
 issue that names one is passed over before a lane opens: that change needs a person's own
-session, and the drive's last lines name each one. What the driver wrote of a run is compared after each agent's call, and a
+session, and the drive's last lines name each one. A stage's shell has no credential for
+origin, so a stage reserves nothing: the driver, which holds it, reserves every path a
+lane's branch changes beyond the issue's hold once the implementer hands its receipt back,
+before it judges the receipt and before the validators start, again before each step at
+the validators and at the fence before the landing's push (the implement verb's page). What the driver wrote of a run is compared after each agent's call, and a
 difference, or a read that keeps failing, stops the drive, and a later drive, step or
 hand-in refuses that run until a person discards its lanes or restores its state. One drive holds a checkout at a time, and each checkout has
 its stage's home to itself. A credential variable the harness would bill
@@ -641,9 +645,11 @@ on origin's default branch backs off, with a tip or without one
    fence reads it, the reservation now another person's, or its sync's merge
    conflicting in a file not declared generated. A wait by design
    is no refusal and is never counted: the landing's wait for its preflight
-   receipt, every outage wait, a land fence that cannot read origin, and a
-   release being cut that holds merges
-   (dcn-2610170116582725). The drain hands a stuck lane back as
+   receipt, every outage wait, a land fence that cannot read origin, a
+   release being cut that holds merges (dcn-2610170116582725), and a lane
+   whose hold the loop could not widen to a path its branch changes because
+   another copy holds that path live, which waits before its validators or at
+   the fence until the hold ends (iss-2611110638266241). The drain hands a stuck lane back as
    `stuck`, naming the refusal, releases its reservation with the hand-back's
    tombstone, and goes on to the next issue in the same move. The lane keeps
    its worktree and branch until the person discards it through the step verb,

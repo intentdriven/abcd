@@ -175,7 +175,13 @@ reserves it again, judged for overlap, once the spec has widened it; either
 way it keeps the reservation's term, so a resume never cuts the day the land
 fence gave a waiting pull request. It reserves anew one a release released
 or a run started before reservations never took, recording it in the run's
-state; a run handed back reserves nothing. A release asked of the
+state; a run handed back reserves nothing. An issue run's reservation follows
+what its lane changes (iss-2611110638266241): once the implementer hands its
+receipt back, the loop reserves every path the lane's branch changes beyond
+the `found_at` before it judges the receipt, and again before each step at the
+lane's validators and before its landing's push, judged for overlap and
+against the cap, and another copy's live hold on one is a wait until that hold
+ends (the implement verb's page). A release asked of the
 verb pushes the tombstone over this copy's reservation on the key and changes
 nothing in the run's state (C36); the run's next step meets it at the land fence. A run whose
 issue lane is handed back releases its reservation as the step hands it back,

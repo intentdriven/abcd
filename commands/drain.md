@@ -110,7 +110,13 @@ no program it makes itself. The driver's commit, merge and
 reset hooks, and any filter run inside those commands, get the stage's variables, while its
 network commands, its other filters and its forge calls keep the person's environment. A lane that changes the Makefile, `scripts/` or the active
 hooks is handed back at its landing, and an issue that names one is passed over: that change
-needs a person's own session, and the drive's last lines name each one. Where
+needs a person's own session, and the drive's last lines name each one. A stage's
+shell holds no credential for origin, so a stage reserves nothing: once an
+implementer hands its receipt back, the drive itself reserves every path the
+lane's branch changes beyond the issue's hold, before it judges the receipt and
+before the validators start, and a path another copy holds live makes the lane
+wait for that hold to end, which is neither a failed launch nor a step counted
+toward handing the lane back as stuck (`commands/implement.md`). Where
 `facilitator.mode` is `auto`, a lane's records commit takes a short review round of its own
 and a lane whose reviewers passed it arms its own merge, as `abcd build`'s and any drain's
 lane does. One that moves an issue's record its full round was not told of, or holds more
@@ -664,9 +670,11 @@ what it did in `next`:
   read as holding every issue, and the drain would pass each over and end.
   The lane's run then renews the reservation, fences its landing on it, before
   its push and again before arming, and tombstones it once it lands
-  (`commands/implement.md`). Each fence also reserves any path the lane's branch
-  changes that the reservation does not cover, judged for overlap; another's hold
-  on one stops the lane there, naming that hold. Every drain move that neither waits on origin nor stops at a given-up outage also renews the lane in
+  (`commands/implement.md`). The run also reserves any path the lane's branch
+  changes that the reservation does not cover, judged for overlap: once the
+  lane's implementer hands a receipt back, before each step at its validators,
+  and at each fence. Another's live hold on one makes the lane wait there,
+  naming that hold, and the wait is never counted toward the stuck bounds. Every drain move that neither waits on origin nor stops at a given-up outage also renews the lane in
   progress at half its lease, waiting on the pace or a judgement or not, though no step of the lane ran,
   so a lane the host paused past its lease is not taken over (a lane handed
   back is renewed by no move). Once the lane's validators have passed and it
@@ -729,7 +737,8 @@ what it did in `next`:
   another person's, or its sync's merge conflicting in a file not declared
   generated. A wait is not a refusal and is never counted: the landing's wait
   for its preflight receipt, the wait through an outage, a land fence that
-  cannot read `origin`, and a release being cut that holds merges.
+  cannot read `origin`, a release being cut that holds merges, and a lane
+  waiting for another copy's live hold on a path its branch changes to end.
   The bounds are `pace.stuck_refusals` and `pace.stuck_minutes` in
   `.abcd/config.json` or `~/.abcd.noindex/config.json`, read at every move that reads a lane in progress. A
   stuck lane keeps its worktree and branch:
