@@ -294,8 +294,10 @@ func landingsClip(s string, n int) string {
 // landingsNote is a note masked and bounded as one line: every whitespace run,
 // a line break included, read as one space, then landingsClip. It is a
 // terminal line, not markdown, so it adds no markdown neutralisation: that
-// would space the verb's own "--since <tag|YYYY-MM-DD>" into "< tag", and the
-// reader's notes reach it already neutralised where they carry typed text.
+// would space the verb's own "--since <tag|YYYY-MM-DD>" into "< tag". The
+// reader's notes reach it already neutralised where they carry typed text; a
+// refusal's text (a tag or branch name, what git said of a failed read) is
+// masked and bounded here and nothing more.
 func landingsNote(s string) string {
 	return strings.TrimSpace(landingsClip(strings.Join(strings.Fields(s), " "), landingsNoteBytes))
 }
