@@ -479,6 +479,7 @@ var knownRules = map[string]bool{
 	ruleHarnessLeak:              true,
 	ruleIntentSOTA:               true,
 	ruleSpecStepsSerial:          true,
+	ruleSpecUnsettled:            true,
 	ruleChangelogUnreleasedEmpty: true,
 	ruleLocalTierUntracked:       true,
 	ruleBriefFlagLanded:          true,

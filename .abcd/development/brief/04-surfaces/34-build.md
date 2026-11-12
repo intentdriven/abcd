@@ -48,9 +48,31 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   brief is the issue with its remedy as the work.
 - **ready** — the implement-readiness gate the intent verb reports: planned,
   criteria written, the spec linked both ways and written past its stub. Its
-  advisory rows stay advisory.
-- **open questions** — no open question under the record's `## Open Questions`.
-  The reader fails closed and knows the record's two settled markers: a section
+  advisory rows stay advisory. A spec is held by its own `blocked_by` or by
+  an open item under its `## Open Questions` or a sub-heading of it (named by
+  its text) (iss-2611101318042398). A spec that says it is not ready in prose
+  fails this check too, as a filter for that mistake, on exactly these forms:
+  "Not READY" or "NOT READY", READY in capitals, at a line's or a table cell's
+  start (after any blockquote, heading `#`, list marker, task box `[ ]`,
+  emphasis or opening bracket), after a ".", "!", "?", ":" or ";" and a
+  space, after a dash with a space on each side, after an opening bracket, or
+  with a line break between the two words; a bold "Open:" label
+  (`**Open:**`, `**Open**:`, `__Open:__`, or the same with "question(s)",
+  "point(s)" or "design question(s)" after the word, in any letter case) on
+  any line but the one an open question's item opens on, a paragraph or a
+  table row under `## Open Questions` included; a fence or HTML comment that
+  never closes; and fences or comments whose extent turns on the layout around
+  them, such as a fence indented four columns or more, or a line inside a list
+  item's fence nearer the margin than the item's text (each named by its line,
+  and the text from there on is read). Lower-case "not READY", "Not ready",
+  and the phrase elsewhere in a sentence are not matched. The frontmatter,
+  inline code spans that open and close on one line, fenced blocks (one at up to three columns under a list
+  item included) and HTML comments are not read;
+  an indented code block is read. So a phrase quoted rather than said goes in
+  an inline code span. A closed spec, and a record in `shipped/`,
+  `superseded/` or `disciplines/`, is not judged.
+- **open questions** — no open question under the record's `## Open Questions`
+  or a sub-heading of it. The reader fails closed and knows the record's two settled markers: a section
   that opens with an italic `_All resolved …_` line (or `_All four resolved …_`)
   is settled whole, and an item explicitly marked resolved or deferred — a bold
   span opening with the word (`**Resolved — …**`, `**Deferred**`, `**explicitly
@@ -62,13 +84,20 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   that only points to another record, and one that merely mentions deferral
   all count (the 2026-09-25 decision [dcn-2609250000000028](../../../work/decisions/dcn-2609250000000028-the-build-s-open-question-check-reads.md), and its
   2026-09-28 correction [dcn-2609280000000008](../../../work/decisions/dcn-2609280000000008-correction-to-the-2026-09-25-entry-on.md)).
+  The record's text must read whole: a fence or HTML comment that never
+  closes, or fences or comments whose extent turns on the layout around them,
+  fails this check too (named by its line). Only an ATX heading (`#`) opens
+  or ends the section; a setext or HTML heading does not. The reader reads
+  ATX headings, fences, HTML comments and inline code spans that open and close on one line; any other raw
+  HTML block is read as ordinary text, line by line.
 - **claim sections** — the mechanism prompt is answered or the section absent,
   and the scope conditions are recorded. The readiness gate reports both as
   advisory; a run is where they bind, because an autonomous lane has nobody to
   ask what the record meant.
 - **hold** — the record carries no `held:`, well formed or not
   (iss-2609200830076665).
-- **blocked** — nothing the record names in `blocked_by` is unsettled: an
+- **blocked** — nothing the record, or its open spec, names in `blocked_by`
+  is unsettled (an edge the spec names is reported with the spec's id): an
   intent in `shipped/` or `disciplines/` is settled (ruling CF2 of 2026-09-30:
   a discipline is a standing rule, not work that ships), and an intent anywhere
   else, or one this checkout's store does not hold, blocks it
