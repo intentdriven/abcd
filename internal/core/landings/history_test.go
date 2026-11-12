@@ -518,17 +518,26 @@ func TestAHistoryPastItsBoundIsRefusedWhole(t *testing.T) {
 }
 
 // TestAModeThatCannotBeReadIsNoPersons: a first parent whose
-// .abcd/config.json cannot be judged reads mode unreadable, never human.
+// .abcd/config.json cannot be judged reads mode unreadable, never human, and
+// the listing says why, once, masked.
 func TestAModeThatCannotBeReadIsNoPersons(t *testing.T) {
 	f := newFx(t, "human")
-	f.r.Write(".abcd/config.json", `{"facilitator":{"mode":"sometimes"}}`+"\n")
+	f.r.Write(".abcd/config.json", `{"facilitator":{"mode":"some\u001b[2Jtimes"}}`+"\n")
 	f.r.Commit("chore: a mode that is none")
+	parent := f.head()
 	b := f.branch("a", "feat: a")
 	m := f.merge(1, "a")
+	f.branch("c", "feat: c")
+	f.merge(2, "c")
 	ff := &fakeForge{t: t}
 	ff.add(answer(1, m, b))
-	if r := row(t, f.list(ff.call), m); r.Mode != ModeUnreadable || r.Class != ClassAutomatic || !r.Unattended {
+	l := f.list(ff.call)
+	if r := row(t, l, m); r.Mode != ModeUnreadable || r.Class != ClassAutomatic || !r.Unattended {
 		t.Fatalf("row %+v", r)
+	}
+	if !strings.Contains(l.ModeUnread, parent[:12]+" committed cannot be read") || strings.Count(l.ModeUnread, "cannot be read") != 1 ||
+		strings.ContainsRune(l.ModeUnread, 0x1b) {
+		t.Fatalf("the mode's note %q", l.ModeUnread)
 	}
 }
 

@@ -188,6 +188,10 @@ type Listing struct {
 	ForgeUnread string `json:"forge_unread,omitempty"`
 	// CacheUnwritten says why an answer could not be kept in the forge cache.
 	CacheUnwritten string `json:"cache_unwritten,omitempty"`
+	// ModeUnread says why the facilitator mode some first parent committed
+	// could not be read, "" when every one read; such a row's mode is
+	// ModeUnreadable.
+	ModeUnread string `json:"mode_unread,omitempty"`
 }
 
 // Bounds on what list reads from git.
@@ -273,7 +277,8 @@ func listRows(ctx context.Context, repoRoot string, r Range, o Options) (Listing
 		return Listing{}, err
 	}
 	out := Listing{Tip: boundText(termsafe.Sanitize(r.Tip), maxTextBytes), From: r.From, To: r.To,
-		Since: boundText(termsafe.Sanitize(r.Since), maxTextBytes), SinceNote: termsafe.CleanProseLine(r.Note, 600), Rows: []Row{}}
+		Since: boundText(termsafe.Sanitize(r.Since), maxTextBytes), SinceNote: termsafe.CleanProseLine(r.Note, 600), Rows: []Row{},
+		ModeUnread: boundText(strings.Join(l.modeWhy, "; "), 4000)}
 
 	facts := make([]rowFacts, len(rows))
 	var asks []prAsk
@@ -432,6 +437,8 @@ type lister struct {
 	h    *history
 	// rules memoises the drain rule records' file names at a commit.
 	rules map[string][]string
+	// modeWhy is why each mode that could not be read was not.
+	modeWhy []string
 }
 
 // rowFacts are what history says of one row before the forge is asked.
@@ -526,11 +533,13 @@ func (l *lister) modes(r Range, rows []string) (map[string]string, error) {
 
 // modeAt is the mode as commit committed it: modeless for a commit with no
 // .abcd/config.json, and unreadable for one whose file cannot be read or
-// judged.
+// judged, the reason kept for the listing's note.
 func (l *lister) modeAt(commit string) string {
 	mode, found, err := committedMode(l.ctx, l.root, commit)
 	switch {
 	case err != nil:
+		// Each first parent is read once (modes), so each reason is said once.
+		l.modeWhy = append(l.modeWhy, "the facilitator mode "+commit[:12]+" committed cannot be read: "+whyText(err))
 		return ModeUnreadable
 	case !found:
 		return ModeModeless
