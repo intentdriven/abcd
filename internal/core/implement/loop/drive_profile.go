@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -115,6 +116,15 @@ func (t *terminal) markProfile(runID string) error {
 		st.UpdatedAt = now
 		return true, nil
 	})
+	if left, ok := leftAtVersion(err); ok {
+		// No lock's release changes this: the run's file states another version and this
+		// session may not save it, so the run keeps naming no profile, said once a drive.
+		if !slices.Contains(t.unmarked, runID) {
+			t.unmarked = append(t.unmarked, runID)
+			t.say("%s: its profile is not marked %s, since %s; %s", runID, termsafe.Sanitize(profile), left.Reason, left.Remedy)
+		}
+		return nil
+	}
 	if r, ok := AsRefusal(err); ok && r.Contention {
 		return nil
 	}

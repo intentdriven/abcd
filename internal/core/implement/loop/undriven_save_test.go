@@ -2,6 +2,7 @@ package loop
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -733,4 +734,65 @@ func TestASignalsUnsettledMarkOnAnotherVersionsRunIsTakenOver(t *testing.T) {
 	if v := stateVersionOf(t, repo.Root(), runID); v != strconv.Itoa(SchemaVersion) {
 		t.Fatalf("the save after the take-over left the run at version %s", v)
 	}
+}
+
+// TestADrivesProfileMarkSaysWhatItLeft: a drive marks a run that names no profile with
+// its own, a whole save; over a run whose file states another version and that another
+// live session drives, the mark is left, the file with it, and the drive says what it
+// left and why, once however often it comes back to the lane.
+func TestADrivesProfileMarkSaysWhatItLeft(t *testing.T) {
+	repo, runID, _, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	o := Options{stopHome: home, Profile: "work"}
+	claimedBy(t, repo.Root(), runID, o, hostTwo, hostOne, hostOne, hostTwo)
+	before := stateAtVersion(t, repo.Root(), runID, schemaVersionPrevious)
+	var said []string
+	drive := &terminal{repoRoot: repo.Root(), o: TerminalOptions{Options: o, Say: func(s string) { said = append(said, s) }}}
+
+	for range 2 {
+		if err := drive.markProfile(runID); err != nil {
+			t.Fatalf("the mark refused the drive: %v", err)
+		}
+	}
+
+	if len(said) != 1 {
+		t.Fatalf("the drive says what it left once, not %d times: %q", len(said), said)
+	}
+	wantLeft(t, repo.Root(), runID, schemaVersionPrevious, before, said[0])
+	if !strings.Contains(said[0], "its profile is not marked work") {
+		t.Fatalf("the line does not say what was left: %s", said[0])
+	}
+}
+
+// TestADrivesTakeUpOfARunLeftAtItsVersionEndsTheDrive: a drive's reservation of its lane
+// again refused because the run's file states another version and the drive may not save
+// it is no other drive taking the issue up: the drive ends on it, saying what it left and
+// why, and records nothing on the run, which it may not save.
+func TestADrivesTakeUpOfARunLeftAtItsVersionEndsTheDrive(t *testing.T) {
+	repo, runID, _, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	o := Options{stopHome: home}
+	claimedBy(t, repo.Root(), runID, o, hostTwo, hostOne, hostOne, hostTwo)
+	before := stateAtVersion(t, repo.Root(), runID, schemaVersionPrevious)
+	run, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var said []string
+	drive := &terminal{repoRoot: repo.Root(), o: TerminalOptions{Options: o, Say: func(s string) { said = append(said, s) }}}
+	left := wholeSaveLeft(repo.Root(), runID, o)
+	if left == nil {
+		t.Fatal("premise: the run is left at its version")
+	}
+
+	done, ended := drive.tookUp(context.Background(), run, left)
+
+	if !done || ended != TerminalWall {
+		t.Fatalf("the drive goes on over a run it may not save: %v %q", done, ended)
+	}
+	all := strings.Join(said, "\n")
+	if strings.Contains(all, "another drive took the issue up") {
+		t.Fatalf("the drive says another drive took the issue up:\n%s", all)
+	}
+	wantLeft(t, repo.Root(), runID, schemaVersionPrevious, before, drive.why)
 }

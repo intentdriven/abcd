@@ -207,6 +207,9 @@ type terminal struct {
 	last  DrainResult
 	// heldToProfile is set when the drive ended on a run's profile (holdToProfile).
 	heldToProfile bool
+	// unmarked names the runs whose profile markProfile said it could not mark, so it says
+	// so once a drive.
+	unmarked []string
 	// idleSince is when the run last stopped moving, zero while it moves.
 	idleSince time.Time
 	// ranClean names the lane and head a preflight last exited 0 on.
@@ -2041,6 +2044,13 @@ func (t *terminal) tookUp(ctx context.Context, run State, err error) (bool, stri
 	r, ok := AsRefusal(err)
 	if !ok {
 		r = refuse(StageReservation, "", "", err.Error(), "see the reason")
+	}
+	// The run's file states another version and this drive may not save it: no other
+	// drive took the issue up, and nothing the drive saves of the lane would be kept, so
+	// the drive ends on it, once, saying what was left and why.
+	if r.leftAtVersion {
+		t.stoppedBy(fmt.Errorf("%s, run %s, is not taken up: %s; %s", run.Key, runID, r.Reason, r.Remedy))
+		return true, TerminalWall
 	}
 	if r.recordMoved {
 		reason, derr := dropMovedRun(t.repoRoot, run, r.Reason, t.now(), t.o.Options)
