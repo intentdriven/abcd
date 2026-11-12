@@ -57,9 +57,10 @@ func GraphQLField(typ, field string) (string, bool) {
 // abcd's queries take, and refuses any other: an optional `query` keyword,
 // name and variable definitions, then nested selections of plain fields, each
 // with optional arguments, and inline fragments (`... on Type { }`) on a
-// union the type is pinned to be, or on the selection's own type. An alias, a
-// named fragment, a directive or a mutation is refused as not parsed rather
-// than passed unchecked; arguments are not checked.
+// union the type is pinned to be, or on the selection's own type. An alias
+// (`p12: pullRequest(number:12)`) is read past to the field it names, which is
+// checked as any other. A named fragment, a directive or a mutation is refused
+// as not parsed rather than passed unchecked; arguments are not checked.
 func CheckGraphQL(query string) error {
 	p := &gqlParser{s: query}
 	p.skip()
@@ -188,7 +189,14 @@ func (p *gqlParser) selection(typ string) error {
 		if union != nil && name != "" {
 			return fmt.Errorf("graphql: %q is selected directly on the union %s, which takes only fragments on its types", name, typ)
 		}
-		if p.skip(); name == "" || p.peek() == ':' {
+		if p.skip(); name != "" && p.peek() == ':' {
+			// An alias: the field it names is the one read and checked.
+			p.i++
+			p.skip()
+			name = p.name()
+			p.skip()
+		}
+		if name == "" || p.peek() == ':' {
 			return p.unparsed()
 		}
 		f, ok := fields[name]

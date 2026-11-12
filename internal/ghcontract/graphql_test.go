@@ -34,6 +34,19 @@ func TestTheGraphQLFieldsAreTheForgesOwn(t *testing.T) {
 		{"StatusContext", "createdAt", "DateTime"},
 		{"StatusCheckRollupContextConnection", "pageInfo", "PageInfo"},
 		{"PageInfo", "hasNextPage", "Boolean"},
+		// The landings reader's batch (spc-2610301950480609 approach 6), read
+		// live 2026-11-12 (graphql-fields.txt says how).
+		{"PullRequestReviewConnection", "totalCount", "Int"},
+		{"PullRequestReviewConnection", "nodes", "PullRequestReview"},
+		{"PullRequestReview", "author", "Actor"},
+		{"PullRequestReview", "state", "PullRequestReviewState"},
+		{"PullRequestReview", "commit", "Commit"},
+		{"PullRequestReview", "submittedAt", "DateTime"},
+		{"PullRequestCommitConnection", "totalCount", "Int"},
+		{"PullRequestCommitConnection", "nodes", "PullRequestCommit"},
+		{"PullRequestCommit", "commit", "Commit"},
+		{"Commit", "oid", "GitObjectID"},
+		{"Commit", "message", "String"},
 	} {
 		if got, ok := ghcontract.GraphQLField(c.typ, c.field); !ok || got != c.named {
 			t.Fatalf("GraphQLField(%s, %s) = %q, %v; want %s", c.typ, c.field, got, ok, c.named)
@@ -56,7 +69,7 @@ func TestCheckGraphQLRefusesAFieldTheForgeLacks(t *testing.T) {
 		{"autoMergeRequest{mergeMethods}", `"mergeMethods"`},
 		{"headRefOid{oid}", "takes no selection"},
 		{"autoMergeRequest", "needs a selection"},
-		{"mergeQueueEntry{headCommit{oid}}", "Commit"},
+		{"mergeQueueEntry{headCommit{tree{oid}}}", "Commit"},
 		{"...on PullRequest{number}", ""},
 		{"...on Commit{oid}", "can't be spread inside PullRequest"},
 		{"...Named", "not parsed"},
@@ -68,7 +81,12 @@ func TestCheckGraphQLRefusesAFieldTheForgeLacks(t *testing.T) {
 		{"statusCheckRollup{contexts(first:1){nodes{... on CheckRun{nme}}}}", `"nme"`},
 		{"statusCheckRollup{contexts(first:1){nodes{... on CheckRun}}}", "not parsed"},
 		{"autoMergeRequest{enabledAt enabledBy{login}}", ""},
-		{"a:number", "not parsed"},
+		// An alias names the field it reads, which is checked as any other.
+		{"a:number", ""},
+		{"p12: number p13 : headRefOid", ""},
+		{"a:nmber", `"nmber"`},
+		{"a:", "not parsed"},
+		{"a:b:number", "not parsed"},
 		{"number @include(if:true)", "not parsed"},
 		{"number", ""},
 		{"", "empty selection"},
