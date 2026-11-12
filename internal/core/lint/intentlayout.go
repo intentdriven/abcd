@@ -12,7 +12,10 @@ import (
 // more under a list item among them) — is not ready at the build's
 // open_questions row, which reads it through spec.LayoutStatements. This rule
 // names each such statement where the intent is written, on its line, through
-// the same reader, so the two never disagree about what the layout says.
+// the same reader, so the two agree about what the layout says. They part only
+// on size: an intent over the intent store's cap (256 KiB) is refused by the
+// start check for its size before its layout is read, while this rule, which
+// reads up to the lint's larger file cap, still names its lines.
 // spec_unsettled reports the same statements for an open spec.
 const ruleIntentLayout = "intent_layout"
 
@@ -37,7 +40,7 @@ func checkIntentLayout(tree intentTree, cfg RuleConfig) []Finding {
 		for _, st := range spec.LayoutStatements(strings.Join(r.lines, "\n")) {
 			out = append(out, Finding{
 				File: r.rel, Line: st.Line, RuleID: ruleIntentLayout, Severity: cfg.Severity,
-				Message: "intent's text is not read whole, so the build's open_questions check refuses it: " +
+				Message: "intent's text is not read whole, so the open_questions check refuses it (at a build's start, at planning and at abcd intent ready): " +
 					st.Describe() + " — " + spec.LayoutRemedy,
 			})
 		}

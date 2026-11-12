@@ -43,6 +43,8 @@ func TestIntentLayout(t *testing.T) {
 			base + "/shipped/itd-7-thing.md", nested, nil, ""},
 		{"a superseded intent is out of reach",
 			base + "/superseded/itd-7-thing.md", nested, nil, ""},
+		{"a discipline record is never built and is out of reach",
+			base + "/disciplines/itd-7-thing.md", nested, nil, ""},
 	}
 	rule := RuleConfig{Enabled: true, Severity: severityWarn, IntentsDir: "intents"}
 	for _, c := range cases {
@@ -67,13 +69,57 @@ func TestIntentLayout(t *testing.T) {
 				if f.File != filepath.FromSlash(c.rel) || f.Line != c.lines[i] || f.Severity != severityWarn {
 					t.Errorf("finding %+v, want %s line %d at %s", f, c.rel, c.lines[i], severityWarn)
 				}
-				for _, w := range []string{c.want, "open_questions", spec.LayoutRemedy} {
+				for _, w := range []string{c.want, "open_questions", "intent ready", spec.LayoutRemedy} {
 					if !strings.Contains(f.Message, w) {
 						t.Errorf("message = %q, want it to contain %q", f.Message, w)
 					}
 				}
 			}
 		})
+	}
+}
+
+// The rule names the lines the build's open_questions row names: each text,
+// fed to spec.LayoutStatements and to record-lint, gives the same lines in the
+// same order. Every fixture holds a statement, and they sit on different lines,
+// so an offset or a dropped statement cannot pass.
+func TestIntentLayoutNamesTheReadersLines(t *testing.T) {
+	const rel = "rec/intents/planned/itd-7-thing.md"
+	const fm = "---\nid: itd-7\nkind: standalone\nspec_id: null\n---\n# T\n\n## Summary\n\n"
+	texts := []string{
+		fm + "- an item\n\n    ```\n    code\n    ```\n\n## Open Questions\n\n- resolved: settled.\n",
+		fm + "Some prose.\n\n```\n## Open Questions\n- hidden?\n",
+		fm + "Some prose.\n\nMore prose.\n\n<!-- parked\nhidden\n",
+	}
+	rule := RuleConfig{Enabled: true, Severity: severityWarn, IntentsDir: "intents"}
+	for i, text := range texts {
+		var want []int
+		for _, st := range spec.LayoutStatements(text) {
+			want = append(want, st.Line)
+		}
+		if len(want) == 0 {
+			t.Fatalf("fixture %d must hold a layout statement for the reader", i)
+		}
+		root := t.TempDir()
+		writeFile(t, root, rel, text)
+		fs, err := Lint(Config{Roots: []string{"rec"}, Rules: map[string]RuleConfig{ruleIntentLayout: rule}}, root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []int
+		for _, f := range fs {
+			if f.RuleID == ruleIntentLayout {
+				got = append(got, f.Line)
+			}
+		}
+		if len(got) != len(want) {
+			t.Fatalf("fixture %d: %s lines = %v, reader's lines = %v", i, ruleIntentLayout, got, want)
+		}
+		for j := range want {
+			if got[j] != want[j] {
+				t.Fatalf("fixture %d: %s lines = %v, reader's lines = %v", i, ruleIntentLayout, got, want)
+			}
+		}
 	}
 }
 

@@ -2009,16 +2009,17 @@ type intentRecord struct {
 	// precedes it, 0 otherwise — the extraction half of the loader contract.
 	preamble int
 	// lines is the file's content split on newlines, kept for the rules that read
-	// an intent's body rather than its frontmatter (intent_sota).
+	// an intent's body rather than its frontmatter (intent_sota, intent_layout).
 	lines []string
 }
 
 // intentTree is ONE scan of the intent buckets, shared by every rule that reads
-// the tree (intent_lifecycle, intent_impact_valid). records holds EVERY intent
-// file in a declared bucket: both rules over this tree are schema rules (which
-// bucket demands which fields, which impact values are legal), and a schema rule
-// is not excused by the content exemption — that is what let two intents sit in
-// superseded/ carrying no supersession at all (iss-39). known and idFiles index
+// the tree (intent_lifecycle, intent_impact_valid, intent_sota, intent_layout).
+// records holds EVERY intent file in a declared bucket: the two schema rules
+// over this tree (which bucket demands which fields, which impact values are
+// legal) are not excused by the content exemption — that is what let two
+// intents sit in superseded/ carrying no supersession at all (iss-39) — and the
+// body rules pick their own buckets from it. known and idFiles index
 // every intent file found anywhere beneath the tree, because a superseded_by
 // target and an id collision must resolve against the whole corpus.
 type intentTree struct {
