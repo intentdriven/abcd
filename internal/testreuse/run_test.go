@@ -957,7 +957,8 @@ func TestAReleaseCutSaysSoInItsReport(t *testing.T) {
 // TestATestAskingGitAboutTheRepositoryGetsNoAnswer: the check directory has no
 // .git, and git may not walk above it, even when the home is itself a repository,
 // so a test reading the repository through git cannot pass on state the cache
-// cannot see. Written so the classifier finds nothing, as in a package's helper.
+// cannot see. Written so the classifier finds nothing: git named outright, asked
+// a question the classifier does not read as reaching the repository.
 func TestATestAskingGitAboutTheRepositoryGetsNoAnswer(t *testing.T) {
 	w := newWorld(t)
 	runGit(t, w.home, "init", "-q")
@@ -967,8 +968,7 @@ import (
 	"testing"
 )
 func TestAsks(t *testing.T) {
-	name := "git"
-	if out, err := exec.Command(name, "status").CombinedOutput(); err != nil {
+	if out, err := exec.Command("git", "status").CombinedOutput(); err != nil {
 		t.Fatalf("no answer: %s", out)
 	}
 }
