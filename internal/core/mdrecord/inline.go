@@ -25,8 +25,10 @@ import (
 //     numbered item numbered 1 with text after it, a thematic break, a setext
 //     underline, all at up to three columns) and a line opening an HTML
 //     comment block (`<!--` first on the line, after any list or blockquote
-//     markers), which holds no code span after the comment either: the rest
-//     of that line is raw HTML;
+//     markers). The page shows a comment block's line, and the rest of a line
+//     a comment closes on past its paragraph, as raw HTML, so Read reports no
+//     span there; its comment walk pairs that line's spans on the line alone,
+//     as it always has, so an opener a span there would cover stays read;
 //   - an ATX heading, a thematic break, a setext underline, a comment block's
 //     line and a table row each hold their own spans, so the next line starts
 //     a paragraph;
@@ -57,7 +59,9 @@ import (
 // references are not decoded, so an encoded backtick is no backtick here
 // either; link and image syntax is not read, which code spans outrank anyway;
 // the lines of an HTML block are read for comments as markdown is, so an
-// opener a span would cover there is not opened (more is read); and an inline
+// opener a span would cover there is not opened (more is read); a numbered
+// item and a block start four columns in are not told apart by the list
+// around them, nor a blockquote's continuation from its start; and an inline
 // raw HTML tag's own extent is not read, past the rule above.
 
 // lineKind is how a line bears on the paragraph a code span may pair over.
@@ -231,9 +235,12 @@ type atom struct {
 	lines      []lineInline
 	// open is, per line, whether the line ends inside a comment.
 	open []bool
-	// rawHTML: the stretch is the rest of an HTML block's line, so it pairs no
-	// span.
-	rawHTML bool
+	// block: the stretch is one line of an HTML comment block, a comment
+	// block's line or the rest of the line a comment closes on past its
+	// paragraph. Its spans are paired for the comment walk alone, as the line
+	// was always read, and Read reports none there: the page shows the line
+	// as raw HTML, backticks and all.
+	block bool
 	// paired: every run opened was closed and no comment is left open, so the
 	// stretch pairs alike joined to the next one or not.
 	paired bool
@@ -245,18 +252,18 @@ type atom struct {
 }
 
 // walkAtom pairs the stretch of the paragraph that starts on line i at byte
-// col: that line alone when it is a single-line kind or rawHTML, else it and
+// col: that line alone when it is a single-line kind or block, else it and
 // every kText line below it. One pass over the stretch: each byte is visited
 // once and each run is paired by one CodeSpanPairer, so the cost is in line
 // with the stretch.
-func walkAtom(lines []string, kinds []lineKind, i, col int, rawHTML bool) *atom {
+func walkAtom(lines []string, kinds []lineKind, i, col int, block bool) *atom {
 	end := i + 1
-	if !rawHTML && !kinds[i].single() {
+	if !block && !kinds[i].single() {
 		for end < len(lines) && kinds[end] == kText {
 			end++
 		}
 	}
-	a := &atom{start: i, end: end, lines: make([]lineInline, end-i), open: make([]bool, end-i), rawHTML: rawHTML, paired: true}
+	a := &atom{start: i, end: end, lines: make([]lineInline, end-i), open: make([]bool, end-i), block: block, paired: true}
 	offs := make([]int, end-i)
 	var s string
 	if end == i+1 {
@@ -329,10 +336,6 @@ func walkAtom(lines []string, kinds []lineKind, i, col int, rawHTML bool) *atom 
 		case c == '`':
 			stepN(1)
 			q := runEnd(s, p)
-			if rawHTML {
-				p = q
-				continue
-			}
 			// Outside a span a backtick behind an odd run of backslashes is
 			// escaped, a literal character; the rest of its run may open.
 			open, n := p, 0
@@ -352,7 +355,7 @@ func walkAtom(lines []string, kinds []lineKind, i, col int, rawHTML bool) *atom 
 					p = sp.End
 					continue
 				}
-				a.paired = false
+				a.paired = a.paired && block
 			}
 			p = q
 		case c == '<' && strings.HasPrefix(s[p:], "<!--"):
@@ -363,16 +366,14 @@ func walkAtom(lines []string, kinds []lineKind, i, col int, rawHTML bool) *atom 
 			if e < 0 {
 				split(p, len(s), addComment, true)
 				a.open[len(offs)-1] = true
-				if !rawHTML {
-					a.paired = false
-				}
+				a.paired = a.paired && block
 				p = len(s)
 				continue
 			}
 			to := p + len("<!") + e + len("-->")
 			split(p, to, addComment, true)
 			p = to
-		case c == '<' && !rawHTML && p+1 < len(s) && (isASCIILetter(s[p+1]) || s[p+1] == '/'):
+		case c == '<' && !block && p+1 < len(s) && (isASCIILetter(s[p+1]) || s[p+1] == '/'):
 			stepN(1)
 			gt, bt = max(gt, p), max(bt, p)
 			for gt < len(s) && s[gt] != '>' {

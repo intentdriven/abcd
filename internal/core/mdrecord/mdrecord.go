@@ -338,7 +338,7 @@ func Read(lines []string, rule Rule) Reading {
 					if a.open[i-a.start] {
 						in := a.lines[i-a.start]
 						openComment(i, in.openers[len(in.openers)-1])
-						inlineComment = !a.rawHTML
+						inlineComment = !a.block
 					}
 				}
 			case k < 0:
@@ -395,10 +395,10 @@ func Read(lines []string, rule Rule) Reading {
 			if a.open[i-a.start] {
 				in := a.lines[i-a.start]
 				openComment(i, in.openers[len(in.openers)-1])
-				inlineComment = !a.rawHTML
+				inlineComment = !a.block
 			}
 		}
-		r.unread[i] = pairing || indented || html[i]
+		r.unread[i] = pairing || indented || html[i] || a != nil && i < a.end && a.block
 		if pairing {
 			for _, o := range r.inline[i].openers {
 				if (tick || strings.Contains(ln[:o], "`")) && r.openPairing < 0 && r.Mask[i]&MaskFence == 0 {
@@ -446,13 +446,10 @@ func CodeSpans(lines []string) [][][2]int { return Read(lines, TopLevel).CodeSpa
 // closes on its own line, so it never opens a span; a genuinely unclosed opener
 // masks to end of file.
 //
-// It is Read's walk over the one line, a paragraph of its own: a line opening
-// a comment block (inline.go's kComment) holds raw HTML, so a backtick after
-// its closer quotes nothing.
+// It is Read's walk over the one line, a paragraph of its own.
 func OpensComment(ln string) bool {
 	ln = strings.TrimRight(ln, "\r")
-	k := kindOf(ln)
-	return walkAtom([]string{ln}, []lineKind{k}, 0, 0, k == kComment).open[0]
+	return walkAtom([]string{ln}, []lineKind{kindOf(ln)}, 0, 0, true).open[0]
 }
 
 // FirstContent is the tree's one leading-comment locator: the first line
