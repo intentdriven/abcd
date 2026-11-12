@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // TestAForgeApprovalCountsOnlyAPersonWithWriteAccess: an approving review of
@@ -241,12 +242,21 @@ func TestARefusalEveryBatchWouldMeetStopsTheAsking(t *testing.T) {
 func TestAnEndedCtxStopsTheListing(t *testing.T) {
 	f := newFx(t, "auto")
 	ff := manyMerges(t, f, MaxBatch+1)
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	ff.onCall = cancel
-	_, err := list(ctx, f.r.Root(), Range{From: f.base, To: f.head()}, Options{Forge: ff.call})
-	if !errors.Is(err, context.Canceled) || ff.calls != 1 {
-		t.Fatalf("list = %v after %d calls; want the ctx's end after one", err, ff.calls)
+	wts, err := gitutil.ListWorktrees(f.r.Root(), gitutil.MaxWorktreeListing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// With the worktrees listed or given: the reads after the ctx ended that
+	// fail for it quietly (a recorded approval, a rule's path) never make rows.
+	for _, given := range [][]gitutil.Worktree{nil, wts} {
+		ff.calls = 0
+		ctx, cancel := context.WithCancel(t.Context())
+		ff.onCall = cancel
+		l, err := list(ctx, f.r.Root(), Range{From: f.base, To: f.head()}, Options{Forge: ff.call, Worktrees: given})
+		cancel()
+		if !errors.Is(err, context.Canceled) || ff.calls != 1 || l.Rows != nil {
+			t.Fatalf("list = %d rows, %v after %d calls; want the ctx's end after one", len(l.Rows), err, ff.calls)
+		}
 	}
 }
 
@@ -273,8 +283,8 @@ func TestBoundedGivesADeadlineOnlyWhereNoneIs(t *testing.T) {
 func TestAnAnswerThatDoesNotCheckIsUnread(t *testing.T) {
 	f := newFx(t, "human")
 	ff := manyMerges(t, f, 5)
+	ff.prs[2].Number = 0
 	ff.prs[1].Number = 9
-	ff.prs[2].MergeCommit.Oid = "abc"
 	ff.prs[3].HeadRefOid = strings.Repeat("z", 40)
 	ff.prs[4].Reviews.TotalCount = 0
 	ff.prs[4].Reviews.Nodes = []forgeReview{review(alice, "APPROVED", ff.prs[4].HeadRefOid)}

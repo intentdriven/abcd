@@ -112,8 +112,10 @@ func TestCommittedModeReadsTheCommitsFile(t *testing.T) {
 	if _, _, err := CommittedMode(t.Context(), repo.Root(), bad); err == nil {
 		t.Fatal("a value that is no mode was read")
 	}
-	if _, _, err := CommittedMode(t.Context(), repo.Root(), auto[:12]); err == nil {
-		t.Fatal("a short name was read")
+	for _, name := range []string{auto[:12], "HEAD"} {
+		if _, _, err := CommittedMode(t.Context(), repo.Root(), name); err == nil {
+			t.Fatalf("%s, no full object name, was read", name)
+		}
 	}
 }
 

@@ -155,14 +155,16 @@ var loginRe = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$`)
 var writeAssociations = map[string]bool{"OWNER": true, "MEMBER": true, "COLLABORATOR": true}
 
 // check says why a is not an answer for pull request n, "" when it is: the
-// number asked, object names in their shape, and pages no longer than asked.
+// number asked, a head in an object name's shape, and pages no longer than
+// asked.
 func (a *prAnswer) check(n int) string {
 	switch {
 	case a.Number != n:
 		return fmt.Sprintf("the forge's answer for pull request #%d names another", n)
-	case a.HeadRefOid != "" && !gitutil.IsFullSHA(a.HeadRefOid),
-		a.MergeCommit != nil && !gitutil.IsFullSHA(a.MergeCommit.Oid):
-		return fmt.Sprintf("the forge's answer for pull request #%d names a commit by no full object name", n)
+	case a.HeadRefOid != "" && !gitutil.IsFullSHA(a.HeadRefOid):
+		// The merge commit needs no shape check here: landedAs compares it
+		// with the row's full object name, so no other shape answers a row.
+		return fmt.Sprintf("the forge's answer for pull request #%d names a head by no full object name", n)
 	case len(a.Reviews.Nodes) > maxPage || len(a.Commits.Nodes) > maxPage ||
 		a.Reviews.TotalCount < len(a.Reviews.Nodes) || a.Commits.TotalCount < len(a.Commits.Nodes):
 		return fmt.Sprintf("the forge's answer for pull request #%d holds pages it was not asked for", n)
