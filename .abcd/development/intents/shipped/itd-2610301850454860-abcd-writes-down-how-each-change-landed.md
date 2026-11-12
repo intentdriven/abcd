@@ -21,14 +21,14 @@ production_mode: hand-written
 ## Why This Matters
 
 Typed links: `builds_on`
-[itd-82](../shipped/itd-82-drain-ledger-triage.md) (the drain, whose lane
+[itd-82](itd-82-drain-ledger-triage.md) (the drain, whose lane
 this record names by the rule record it took the issue under) and
-[itd-2610150602547271](../shipped/itd-2610150602547271-a-repository-declares-whether-its.md)
+[itd-2610150602547271](itd-2610150602547271-a-repository-declares-whether-its.md)
 (the facilitator mode, shipped: In `auto` a maintainer's pull request is armed
 only when a review receipt names its head, in `human` only once an approval of
 the head counts, and this record says which of the two admitted each merge).
 Blocks
-[itd-2610301750162657](itd-2610301750162657-a-person-spot-checks-what-abcd-s-agents.md)
+[itd-2610301750162657](../planned/itd-2610301750162657-a-person-spot-checks-what-abcd-s-agents.md)
 (the spot-check, whose collection lane draws from this listing at each landing
 once a window of time or of landed changes has passed, and whose review lane
 reads an item's state when it was drawn and its state now).
@@ -337,7 +337,9 @@ forge is asked for, the verb and its flags, and the revert trace, each in
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-6cf4f0f63ccf -->
+Fidelity review OWED (receipt rcp-6cf4f0f63ccf).
+<!-- abcd-review-end receipt=rcp-6cf4f0f63ccf -->
 
 ## Grounds
 
