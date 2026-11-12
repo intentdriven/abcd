@@ -62,7 +62,7 @@ type lineRead struct {
 // `<!--` it steps to the `-->` closing it, or to the line's end. With
 // pastLoose a comment opener after a run the line leaves open still opens a
 // comment; without it, none does. Each byte is visited a bounded number of
-// times, and each step the walk takes is reported to stepHook.
+// times, and each step the walk takes is reported to walkHook.
 func walkLine(ln string, from int, comments, pastLoose bool) lineRead {
 	var w lineRead
 	if from >= len(ln) {
@@ -158,11 +158,16 @@ func textSpans(src, text []string, skip func(int) bool) [][][2]int {
 	return out
 }
 
-// stepN reports n steps to stepHook.
+// walkHook, when set, is called once per step the line walk takes, each
+// byte it visits, scans or lists counted (stepN); a test counts the calls.
+// stepHook counts the walks ReadPage makes beyond Read's own pass.
+var walkHook func()
+
+// stepN reports n steps of the line walk to walkHook.
 func stepN(n int) {
-	if stepHook != nil {
+	if walkHook != nil {
 		for range n {
-			stepHook()
+			walkHook()
 		}
 	}
 }

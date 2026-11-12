@@ -143,7 +143,8 @@ func TestOpensCommentReadsTheLineAlone(t *testing.T) {
 func TestCodeSpansStepInLineWithTheBody(t *testing.T) {
 	steps := 0
 	stepHook = func() { steps++ }
-	defer func() { stepHook = nil }()
+	walkHook = func() { steps++ }
+	defer func() { stepHook, walkHook = nil, nil }()
 	shapes := map[string]func(n int) string{
 		"runs of every length on one line": func(n int) string {
 			var b strings.Builder
