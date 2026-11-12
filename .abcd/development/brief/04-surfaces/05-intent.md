@@ -696,8 +696,9 @@ call record carries its own. A routing table that cannot be read, an
 override naming an agent this invocation does not dispatch, a tier outside
 `local`, `economy`, `frontier` and `host-decides`, or a connection this machine
 has not configured exits 2 before anything is written. With no table accepted
-and no override, the step asks for `host-decides` on the harness and nothing is
-printed.
+and no override, the step asks for `host-decides` on the harness and no stderr
+fallback line is printed; the `routing:` line still reports `host-decides`,
+decided by `none`, via `harness`.
 
 **An auditor routed to a provider runs there.** When the person's
 `oracle.roles.intent-auditor` points at a provider, the audit's emit, the
