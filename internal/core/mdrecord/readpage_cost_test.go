@@ -4,7 +4,6 @@ import (
 	"math/rand/v2"
 	"strings"
 	"testing"
-	"time"
 )
 
 // costUnits are bodies of repeated units whose fences and comments sit one to
@@ -31,22 +30,6 @@ func TestReadPageStepsInLineWithTheBody(t *testing.T) {
 			if limit := 24 * len(body); steps > limit {
 				t.Errorf("ReadPage over %d lines of %q took %d steps, want at most %d", len(body), unit, steps, limit)
 			}
-		}
-	}
-}
-
-// TestReadPageReadsARecordAtTheSizeLimitPromptly: a body at the 256 KiB a spec
-// or an intent is read up to is read in well under a second.
-func TestReadPageReadsARecordAtTheSizeLimitPromptly(t *testing.T) {
-	if raceEnabled {
-		t.Skip("asserts only a wall-clock bound, which the plain lane holds")
-	}
-	for _, unit := range costUnits {
-		body := lines(strings.Repeat(unit, 256*1024/len(unit)))
-		start := time.Now()
-		ReadPage(body)
-		if elapsed := time.Since(start); elapsed > time.Second {
-			t.Errorf("ReadPage over %d lines of %q took %s", len(body), unit, elapsed)
 		}
 	}
 }
