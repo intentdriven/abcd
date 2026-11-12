@@ -403,8 +403,9 @@ func landingRow(r landings.Row) []string {
 // either cap left lines out, how many, how many of those mark a row, how many
 // do not, and how many of the ones that do not are untraceable. A row can carry many lines that mark no row (one for each
 // of its commits whose subject reads as git's revert, and up to 64 for each
-// commit's or body's revert lines), so they have a cap of their own, and no
-// line that marks one is printed while a line that marks none is held back.
+// commit's or body's revert lines), so they have a cap of their own. Every
+// printed line that marks none comes before any that marks one; the lines past
+// either cap are counted in the remainder.
 func landingsRevertLines(xs []landings.RevertLine) []string {
 	var untraceable, unmarked, marked []landings.RevertLine
 	for _, x := range xs {

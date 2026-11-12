@@ -68,8 +68,9 @@ those mark a row, how many do not, and how many of the ones that do not are
 untraceable. A row can carry many lines that mark no row (one for each of its
 commits that reads as git's revert and names nothing it resolves, up to 64 for
 each commit's message or pull request body, and one for each bound passed),
-which is why they have a cap of their own; no line that marks a row prints
-while one that marks none is held back. `--json` keeps them all. After the rows
+which is why they have a cap of their own; every printed line that marks none
+comes before any that marks a row, and the lines past either cap are counted
+in the remainder. `--json` keeps them all. After the rows
 come the notes and the tip read.
 
 The classes:

@@ -64,8 +64,8 @@ then up to eight that mark a row, then how many more of each and how many of the
 hidden ones that mark no row are untraceable. A row can carry many lines that mark no row,
 one for each of its commits that reads as git's revert and names nothing it
 resolves and up to 64 for each commit's message or pull request body, so they
-have a cap of their own, and no line that marks a row is printed while one that
-marks none is held back. Then come the notes (how the range was found, why
+have a cap of their own, and every printed line that marks none comes before any
+line that marks a row, the lines past either cap being counted in the remainder. Then come the notes (how the range was found, why
 the forge was not read for some row, why an answer was not kept, why a first
 parent's mode could not be read) and the tip read. The machine form prints the
 reader's listing with the same rows and stable keys. A filter keeps the
