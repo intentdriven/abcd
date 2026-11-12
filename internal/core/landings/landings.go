@@ -148,10 +148,13 @@ type Approval struct {
 type Row struct {
 	Commit string    `json:"commit"`
 	When   time.Time `json:"when"`
-	// PR is the pull request the subject names, 0 for none.
+	// PR is the pull request the subject names, 0 for none. On a person-push
+	// row the forge contradicted (ForgeSays set), it is the number the subject
+	// named, not a merged pull request.
 	PR int `json:"pr,omitempty"`
 	// MergedHead is the head the merge brought: the second parent, or the
-	// forge's head for a one-parent row that names a pull request.
+	// forge's head for a one-parent row that names a pull request; "" on a row
+	// the forge contradicted.
 	MergedHead string `json:"merged_head,omitempty"`
 	// Committer is git's committer name, for a person's push.
 	Committer string   `json:"committer,omitempty"`
@@ -653,10 +656,14 @@ func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR bool, wts [
 // message, and unattended unless the technical facilitator's recorded
 // approval of the commit itself is found, whatever the mode. said is what the
 // forge answered against the pull request its subject names, "" for a subject
-// that names none.
+// that names none; where the forge said so, the merged head is cleared, the
+// forge having denied the merge it would name.
 func (l *lister) push(row Row, said string, wts []gitutil.Worktree) Row {
 	c := l.h.commits[row.Commit]
 	row.Class = ClassPersonPush
+	if said != "" {
+		row.MergedHead = ""
+	}
 	row.Committer = boundText(termsafe.Sanitize(c.committer), maxTextBytes)
 	row.Resolves, row.Delivers, row.AssistedBy = trailers([]string{c.message})
 	row.ForgeSays = termsafe.CleanProseLine(said, 300)

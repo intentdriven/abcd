@@ -104,8 +104,8 @@ func TestALatestReviewIsReadAsTheMergeGateReadsIt(t *testing.T) {
 // whose subject names a pull request the forge answered for and contradicts
 // (it has not merged, it merged as another commit, or the number names no pull
 // request) is the push it is: person-push, unattended, carrying the forge's
-// reason, reading none of that pull request (no review, no commits, no
-// recorded approval of its head). Only the answers that cannot change are
+// reason, reading none of that pull request (no review, no commits, no merged
+// head, no recorded approval of its head). Only the answers that cannot change are
 // kept, so the next listing reads them again without asking: the number names
 // no pull request, or it merged as another commit. One saying the pull request
 // has not merged, or naming no merge commit, is asked again, even where a
@@ -138,7 +138,7 @@ func TestTheForgeMustSayThePullRequestMergedAsTheRow(t *testing.T) {
 			m: "#311 names no pull request", mo: "#312 did not merge as " + mo[:12]} {
 			r := row(t, l, c)
 			if r.Class != ClassPersonPush || !r.Unattended || r.Approval != (Approval{Source: SourceNoneSeen}) || r.Rule != (Rule{}) ||
-				r.Lane != "" || !strings.Contains(r.ForgeSays, want) || ((c == sq || c == nm) && r.MergedHead != "") {
+				r.Lane != "" || !strings.Contains(r.ForgeSays, want) || r.MergedHead != "" {
 				t.Fatalf("%s: a subject the forge contradicts (%s): %+v", mode, want, r)
 			}
 		}
