@@ -102,6 +102,17 @@ into the repository or the report, which names only the credential's name. A sec
 writes nothing and says so. Two providers ship, behind an adapter seam
 ([`05-internals/02-adapters.md`](../05-internals/02-adapters.md#hosting-providers)).
 
+**A site already live.** A provider that acts through the forge is read before
+anything is asked or written. Where the repository already publishes a site
+there and does not yet hold the workflow setup writes, that site is someone's,
+and setup publishes over it only on a yes to a question naming it, by its
+address and how it is built: the workflow would replace it at the next release.
+A no, or a run nobody answers, declines with nothing written and nothing remote
+changed. The pre-given yes never answers it: a run that carries it refuses
+before anything is asked or written, naming the site, unless the run is also
+told to replace an existing site. That switch is the answer given in advance,
+and publishes over the live site without asking.
+
 ## A project's own site
 
 The second provider publishes a managed repository's site on the project's own
