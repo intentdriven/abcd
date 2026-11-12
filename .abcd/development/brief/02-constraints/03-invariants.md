@@ -179,6 +179,18 @@ The following are non-negotiable invariants — any architectural choice that vi
    `TestPresentReadsDiskOnly`
    ([adr-2610181003541997](../../decisions/adrs/2610181003541997-the-away-mode-s-stop-check-reads-the.md),
    which refines adr-38 for this verb's meaning alone).
+   `landings` (itd-2610301850454860) reads the default branch as this
+   checkout last fetched it, and fetches nothing and pushes nothing: its
+   meaning is reads through the forge client (`gh api graphql`) of each pull
+   request its range names whose answer its cache does not keep, in batches
+   of up to twenty, asked again in halves, within a bound, where a batch's
+   answer is too large or carries an error naming no one pull request, and a
+   read of a squashed revert's pull request body for the forge's revert line,
+   asked apart on every listing. The local tier keeps only the answers that
+   cannot change (one accepted for its row, one saying the pull request
+   merged as another commit, the forge's word that a number names no pull
+   request); every other answer is asked again on the next listing, and no
+   body is kept. A trace makes the same reads over at most two listings.
    Setup (`abcd ahoy install`) downloads abcd only on a yes to the question
    that names the download, the release and the file it is written to, which
    is that fetch's documented meaning: the release's binary for this computer,

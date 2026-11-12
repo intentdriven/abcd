@@ -4552,6 +4552,84 @@ author's approval of their own): the shell guard refuses it to an agent.
       --rests-on string             make --record-review a delta review resting on the full pair recorded for this commit, given by its full object name; each return also states Reviewed delta: <base>..<head>
 ```
 
+### `abcd landings`
+
+List how each change landed on the default branch and what admitted it: Writes only its forge cache in the local tier; refuses no default branch or no range.
+
+**Usage:** `abcd landings [commit] [flags]`
+
+List how each change landed on the default branch, newest first: one row per
+commit on the default branch's first-parent line, as this checkout last fetched
+it, with its pull request, its class (person-approved, drain, automatic or
+person-push), the rule that admitted it (a drain rule record by id, or
+facilitator.mode as the first parent committed it), the lane kind its branch's
+Admitted-by: trailer names, the approval it rests on and where that was read
+(forge, local tier, none seen, forge unread) and whether one was seen, up to
+eight of the issues and intents it resolves and delivers, its mode, whether it
+is unattended, and the commit that reverts it; then when it landed, the head
+it merged, where its rule was read and up to eight Assisted-by: values. Under
+a row come, never dropped and each cut at 600 bytes, what the forge said
+against the pull request its subject names and why the forge's answer was not
+read; then its revert lines, each with the row it marks or why it marks none:
+up to sixteen that mark no row first (the untraceable ones before the rest),
+then up to eight that mark one, then how many more of each and how many of
+the hidden ones that mark no row are untraceable. Every capped list says how
+many more it holds; --json keeps them all. After the rows come the notes (how
+the range was found, why the forge was not read for some row, why an answer
+was not kept, why a first parent's mode could not be read) and the tip read.
+
+The range runs from --since, a tag or a date YYYY-MM-DD (taken as the first
+first-parent commit at or after it), to the default branch's tip; with no
+--since it starts after the last release tag (v*) the tip reaches, and with
+no such tag, or one git describes by a name no tag holds (an annotated tag
+whose ref was renamed), the verb refuses, naming the flag. A tag is looked up
+as that exact ref. --unattended keeps the rows no
+evidence places with a person. --reverted lists the rows a later commit
+reverts, grouped by the rule that admitted them, each group with a count, and
+the rows carrying an untraceable revert in a group of their own. The two
+filters are not taken together.
+
+With one commit named, it traces that commit instead: the row that brought it
+onto the default branch however far back, with its class and rule, and for a
+reverting commit the rows it reverts; a commit the tip does not reach is said
+to be not on the default branch. A trace takes none of the three flags.
+
+It fetches nothing and pushes nothing. It asks the forge (gh api graphql)
+about each pull request the range names whose answer its cache does not keep,
+up to twenty to a document, and keeps in .abcd/.work.local/landings/, the only
+thing it writes, the answers that cannot change: one it accepts for its row,
+one saying the pull request merged as another commit, and the forge's word
+that a number names no pull request. An answer it could not read, one whose
+reviews run past the page it reads, one read without the commits its row
+asked, and one saying the pull request has not merged or naming no merge
+commit are not kept, so every listing asks for them again. A document whose
+answer is too large, or carries an error naming no one pull request, is asked
+again in halves, within a bound on the calls one listing spends so. A squashed
+revert's pull request body is asked apart, on every listing that reads it, and
+never kept. The render masks for the terminal every value it prints, and the
+committer name, the forge's logins and failure text, the lane, the ids, a
+revert line's names and the notes carry text someone typed.
+
+Exit 0 with the listing or the trace, a listing whose forge answers were not
+read included (those rows are unattended and the forge note says how many);
+exit 1 when history, the tags or the repository cannot be read, but for the
+reads named below; exit 2 outside a git checkout, with no default branch,
+with no range, with both filters, or with a commit named that names none.
+A lookup of the default branch that failed is reported as no default branch,
+at exit 2, because the shared lookup gives one answer for both. Answers git
+gives without failing are taken as git's answer: a tag ref git's listing
+skips reads as no tag, a tag named by --since whose commit object
+is absent reads as pointing at no commit, and a default branch whose tip's
+commit object is absent reads as no default branch.
+
+**Flags:**
+
+```
+      --reverted       list the reverted rows grouped by the rule that admitted them
+      --since string   start the range after this tag, or at the first first-parent commit on this date (YYYY-MM-DD); default: the last release tag (v*)
+      --unattended     keep only the rows no evidence places with a person
+```
+
 ### `abcd launch`
 
 Preview the release cut, the launch bundle, its secret scan and the gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run.

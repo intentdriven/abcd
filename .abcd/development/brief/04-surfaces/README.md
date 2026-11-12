@@ -53,6 +53,7 @@ are wiring rather than user-facing surface are listed separately under
 | 39 | `/abcd:status` | shipped | Read everyone's status on the shared remote: the announcements every session posted, who holds which reservation and each release being cut | [`39-status.md`](39-status.md) |
 | 40 | `/abcd:checklist` | shipped | Keep this working copy's checklist on disk, so what a session is doing survives a compaction or a crash | [`40-checklist.md`](40-checklist.md) |
 | 41 | `/abcd:agents` | shipped | List the agents abcd started for a session or a run and add up their tokens, cost and API time, from the launch ledger on this computer | [`41-agents.md`](41-agents.md) |
+| 42 | `/abcd:landings` | shipped | Say how each change landed on the default branch and the rule that admitted it, and trace one commit to the landing that brought it | [`42-landings.md`](42-landings.md) |
 
 ## How much of this table a machine keeps honest
 
@@ -148,7 +149,7 @@ the command's sentence (the section below).
 | Block | Group | Verbs |
 |---|---|---|
 | people | set-up | `ahoy`, `dashboard`, `session`, `update`, and the framework's `help` and `completion` |
-| people | records | `agents`, `build`, `capture`, `decide`, `ideate`, `intent`, `land`, `library`, `status` |
+| people | records | `agents`, `build`, `capture`, `decide`, `ideate`, `intent`, `land`, `landings`, `library`, `status` |
 | people | checks | `lab`, `reading` |
 | people | portability | `disembark`, `embark` |
 | people | release | `embargo`, `launch` |
@@ -243,7 +244,10 @@ kind and the item it announces. Bare `abcd reserve` refuses
 as a usage error because its one operand is the record it reserves; the
 reservations render through `abcd peers`. Bare `abcd land` is the landing of
 the checkout's current branch, so it acts rather than renders; it refuses on
-the default branch, a detached HEAD or uncommitted work and pushes nothing. Bare `abcd identity` and bare `abcd ahoy remote` list their sub-verbs,
+the default branch, a detached HEAD or uncommitted work and pushes nothing. Bare
+`abcd landings` lists the changes since the last release tag the default
+branch reaches, so in a checkout with no release tag it refuses, naming where
+the person can say the range starts, and lists nothing. Bare `abcd identity` and bare `abcd ahoy remote` list their sub-verbs,
 because their reports are `abcd lint identity` and `abcd ahoy --remote`. Bare `abcd report` opens the editor on a
 terminal and refuses anywhere else, because it files a report rather than
 rendering one, and bare `abcd statusline` renders abcd's row only in a managed
@@ -378,9 +382,9 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `abcd`, `agents`, `ahoy`, `announce`, `banlist`, `build`, `capture`,
 `checklist`, `dashboard`, `decide`, `disembark`, `docs`, `drain`, `embargo`,
 `embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
-`intent`, `lab`, `land`, `launch`, `library`, `lint`, `memory`, `mode`, `peers`,
-`reading`, `reflect`, `report`, `reserve`, `scribe`, `session`, `site`,
-`status`, `update`.
+`intent`, `lab`, `land`, `landings`, `launch`, `library`, `lint`, `memory`,
+`mode`, `peers`, `reading`, `reflect`, `report`, `reserve`, `scribe`, `session`,
+`site`, `status`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.

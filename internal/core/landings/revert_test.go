@@ -61,18 +61,18 @@ func TestTraceThroughGitsOwnWords(t *testing.T) {
 
 	// The positional trace: the revert names the row it reverts, the reverted
 	// commit the row that brought it, with its class, rule and revert.
-	tr, err := trace(t.Context(), f.r.Root(), rc[:10], Options{Forge: ff.call})
+	tr, err := TraceCommit(t.Context(), f.r.Root(), rc[:10], Options{Forge: ff.call})
 	if err != nil || tr.Says != "" || tr.Row == nil || tr.Row.Commit != m2 || len(tr.Reverts) != 1 || tr.Reverts[0].Commit != m1 ||
 		tr.Reverts[0].Reverted == nil || tr.Reverts[0].Reverted.By != rc {
 		t.Fatalf("trace(revert) = %+v, %v", tr, err)
 	}
-	tr, err = trace(t.Context(), f.r.Root(), x, Options{Forge: ff.call})
+	tr, err = TraceCommit(t.Context(), f.r.Root(), x, Options{Forge: ff.call})
 	if err != nil || tr.Row == nil || tr.Row.Commit != m1 || tr.Row.Class != ClassAutomatic || tr.Row.Rule.String() != "facilitator.mode: auto" ||
 		tr.Row.Reverted == nil || tr.Row.Reverted.By != rc || len(tr.Reverts) != 0 {
 		t.Fatalf("trace(reverted) = %+v, %v", tr, err)
 	}
 	// A commit on the first-parent line is its own row, however far back.
-	tr, err = trace(t.Context(), f.r.Root(), f.base, Options{Forge: ff.call})
+	tr, err = TraceCommit(t.Context(), f.r.Root(), f.base, Options{Forge: ff.call})
 	if err != nil || tr.Row == nil || tr.Row.Commit != f.base || tr.Row.Class != ClassPersonPush {
 		t.Fatalf("trace(root) = %+v, %v", tr, err)
 	}
@@ -101,7 +101,7 @@ func TestRevertOfARevert(t *testing.T) {
 		t.Fatalf("the newest revert is marked %+v", got)
 	}
 	// The reinstated row stays in its group: its change was reverted.
-	if g := revertedGroups(l); len(g) != 1 || g[0].Count != 2 || g[0].Rows[1].Commit != m1 {
+	if g := RevertedGroups(l); len(g) != 1 || g[0].Count != 2 || g[0].Rows[1].Commit != m1 {
 		t.Fatalf("groups %+v", g)
 	}
 
@@ -124,7 +124,7 @@ func TestTraceNotOnTheDefaultBranch(t *testing.T) {
 	off := f.branch("unmerged", "feat: never merged")
 	f.commit("docs: a push")
 	ff := &fakeForge{t: t}
-	tr, err := trace(t.Context(), f.r.Root(), off[:8], Options{Forge: ff.call})
+	tr, err := TraceCommit(t.Context(), f.r.Root(), off[:8], Options{Forge: ff.call})
 	if err != nil || tr.Row != nil || tr.Commit != off || tr.Says != SaysNotOnDefault {
 		t.Fatalf("trace(off) = %+v, %v", tr, err)
 	}
@@ -137,7 +137,7 @@ func TestTraceNotOnTheDefaultBranch(t *testing.T) {
 		"abc123":                            "is no object name",
 		f.r.Git("rev-parse", "HEAD^{tree}"): "names a tree, not a commit",
 	} {
-		tr, err := trace(t.Context(), f.r.Root(), name, Options{Forge: ff.call})
+		tr, err := TraceCommit(t.Context(), f.r.Root(), name, Options{Forge: ff.call})
 		if err != nil || tr.Row != nil || !strings.Contains(tr.Says, says) {
 			t.Fatalf("trace(%q) = %+v, %v; want %q", name, tr, err, says)
 		}
@@ -192,7 +192,7 @@ func TestAnAmbiguousNameIsSaidNeverGuessed(t *testing.T) {
 			t.Fatalf("an ambiguous name marked %+v", x)
 		}
 	}
-	if tr, err := trace(t.Context(), f.r.Root(), p, Options{Forge: (&fakeForge{t: t}).call}); err != nil || tr.Row != nil || !strings.Contains(tr.Says, "ambiguous") {
+	if tr, err := TraceCommit(t.Context(), f.r.Root(), p, Options{Forge: (&fakeForge{t: t}).call}); err != nil || tr.Row != nil || !strings.Contains(tr.Says, "ambiguous") {
 		t.Fatalf("trace(ambiguous) = %+v, %v", tr, err)
 	}
 }
@@ -267,7 +267,7 @@ func TestUntraceableRevertHasItsOwnGroup(t *testing.T) {
 	if !strings.Contains(row(t, l, unread).Reverts[0].Unmarked, "not read") {
 		t.Fatalf("an unread forge answer is not said: %+v", row(t, l, unread).Reverts)
 	}
-	g := revertedGroups(l)
+	g := RevertedGroups(l)
 	if len(g) != 1 || g[0].Rule != GroupUntraceable || g[0].Count != 3 {
 		t.Fatalf("groups %+v", g)
 	}
@@ -296,7 +296,7 @@ func TestRevertedGroupsByRule(t *testing.T) {
 	// with an automatic row, and each keeps its own unattended mark.
 	ff.prs[3].Reviews.Nodes, ff.prs[3].Reviews.TotalCount = []forgeReview{review(alice, "APPROVED", b)}, 1
 	l := f.list(ff.call)
-	got := revertedGroups(l)
+	got := RevertedGroups(l)
 	var shape []string
 	for _, g := range got {
 		var rows []string
@@ -525,11 +525,11 @@ func TestARefSpelledLikeANameIsNotRead(t *testing.T) {
 		t.Fatalf("a name only a tag spells: %+v", r.Reverts)
 	}
 	for name, want := range map[string]string{x[:7]: x, y[:8]: y} {
-		if tr, err := trace(t.Context(), f.r.Root(), name, Options{Forge: (&fakeForge{t: t}).call}); err != nil || tr.Commit != want {
+		if tr, err := TraceCommit(t.Context(), f.r.Root(), name, Options{Forge: (&fakeForge{t: t}).call}); err != nil || tr.Commit != want {
 			t.Fatalf("trace(%s) = %+v, %v; want %s", name, tr, err, want)
 		}
 	}
-	if tr, err := trace(t.Context(), f.r.Root(), "deadbee", Options{Forge: (&fakeForge{t: t}).call}); err != nil || !strings.Contains(tr.Says, "names no object") {
+	if tr, err := TraceCommit(t.Context(), f.r.Root(), "deadbee", Options{Forge: (&fakeForge{t: t}).call}); err != nil || !strings.Contains(tr.Says, "names no object") {
 		t.Fatalf("trace(deadbee) = %+v, %v", tr, err)
 	}
 }
@@ -791,7 +791,7 @@ func TestAFailedResolutionUnresolvesItsLinesAlone(t *testing.T) {
 // trace's range, which may start at it, so they are not compared).
 func traceAgrees(t *testing.T, f *fx, forge landing.ForgeCall, extra ...string) {
 	t.Helper()
-	full, err := list(t.Context(), f.r.Root(), Range{To: f.head()}, Options{Forge: forge})
+	full, err := List(t.Context(), f.r.Root(), Range{To: f.head()}, Options{Forge: forge})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -800,7 +800,7 @@ func traceAgrees(t *testing.T, f *fx, forge landing.ForgeCall, extra ...string) 
 		names = append(names, r.Commit)
 	}
 	for _, name := range append(names, extra...) {
-		tr, err := trace(t.Context(), f.r.Root(), name, Options{Forge: forge})
+		tr, err := TraceCommit(t.Context(), f.r.Root(), name, Options{Forge: forge})
 		if err != nil || tr.Row == nil {
 			t.Fatalf("trace(%s) = %+v, %v", name[:8], tr, err)
 		}
@@ -846,7 +846,7 @@ func TestTheTraceAgreesWithTheListing(t *testing.T) {
 		f.commit(revertMsg(`Revert "Revert "feat: x""`, r2, 9))
 		ff := mergeForge(t, f, map[int]string{1: m1, 2: m2, 3: m3})
 		traceAgrees(t, f, ff.call, x, r1, r2)
-		if tr, err := trace(t.Context(), f.r.Root(), m2, Options{Forge: ff.call}); err != nil || len(tr.Reverts) != 1 || tr.Reverts[0].Commit != m1 {
+		if tr, err := TraceCommit(t.Context(), f.r.Root(), m2, Options{Forge: ff.call}); err != nil || len(tr.Reverts) != 1 || tr.Reverts[0].Commit != m1 {
 			t.Fatalf("the merge of a revert's pull request: %+v, %v", tr, err)
 		}
 	})
@@ -864,7 +864,7 @@ func TestTheTraceAgreesWithTheListing(t *testing.T) {
 		m3 := f.merge(3, "self")
 		ff := mergeForge(t, f, map[int]string{1: m1, 2: m2, 3: m3})
 		traceAgrees(t, f, ff.call, rv, sib)
-		if tr, err := trace(t.Context(), f.r.Root(), rv, Options{Forge: ff.call}); err != nil || len(tr.Reverts) != 0 {
+		if tr, err := TraceCommit(t.Context(), f.r.Root(), rv, Options{Forge: ff.call}); err != nil || len(tr.Reverts) != 0 {
 			t.Fatalf("a revert naming a commit merged after it: %+v, %v", tr, err)
 		}
 	})
@@ -889,7 +889,7 @@ func TestTheTraceAgreesWithTheListing(t *testing.T) {
 		ff.add(answer(1, s1, strings.Repeat("1", 40)))
 		ff.add(answer(3, s3, strings.Repeat("3", 40)))
 		traceAgrees(t, f, ff.call)
-		if tr, err := trace(t.Context(), f.r.Root(), s3, Options{Forge: ff.call}); err != nil || len(tr.Reverts) != 1 || tr.Reverts[0].Commit != s1 {
+		if tr, err := TraceCommit(t.Context(), f.r.Root(), s3, Options{Forge: ff.call}); err != nil || len(tr.Reverts) != 1 || tr.Reverts[0].Commit != s1 {
 			t.Fatalf("a squashed revert traced alone: %+v, %v", tr, err)
 		}
 	})
@@ -938,29 +938,29 @@ func TestTheTraceReadsBoundedOlderMessages(t *testing.T) {
 	ff := &fakeForge{t: t, bodies: map[int]string{3: "Reverts #1"}}
 	ff.add(answer(1, s1, strings.Repeat("1", 40)))
 	ff.add(answer(3, s3, strings.Repeat("3", 40)))
-	if tr, err := trace(t.Context(), f.r.Root(), s3, Options{Forge: ff.call}); err != nil || len(tr.Reverts) != 1 || tr.RangeNote != "" {
+	if tr, err := TraceCommit(t.Context(), f.r.Root(), s3, Options{Forge: ff.call}); err != nil || len(tr.Reverts) != 1 || tr.RangeNote != "" {
 		t.Fatalf("within the bounds: %+v, %v", tr, err)
 	}
 	defer func(n, b int) { maxOlderCommits, maxOlderBytes = n, b }(maxOlderCommits, maxOlderBytes)
 	// The older commits are the one between, s1 and the root: three.
 	const fewer = "the trace read the messages of 2 of the 3 older first-parent commits, the most it reads, so a row older than those it read may have merged a pull request its lines name"
 	maxOlderCommits = 2
-	tr, err := trace(t.Context(), f.r.Root(), s3, Options{Forge: ff.call})
+	tr, err := TraceCommit(t.Context(), f.r.Root(), s3, Options{Forge: ff.call})
 	if err != nil || len(tr.Reverts) != 1 || tr.RangeNote != fewer {
 		t.Fatalf("every pull request placed, more commits than read: %+v, %v", tr, err)
 	}
 	maxOlderCommits = 1
-	tr, err = trace(t.Context(), f.r.Root(), s3, Options{Forge: ff.call})
+	tr, err = TraceCommit(t.Context(), f.r.Root(), s3, Options{Forge: ff.call})
 	if err != nil || len(tr.Reverts) != 0 || !strings.Contains(tr.RangeNote, "named by no subject of the 1 older first-parent commits the trace read") ||
 		!strings.Contains(tr.RangeNote, "the trace read the messages of 1 of the 3 older first-parent commits, the most it reads") {
 		t.Fatalf("past the commits read: %+v, %v", tr, err)
 	}
 	maxOlderCommits = 3
-	if tr, err = trace(t.Context(), f.r.Root(), s3, Options{Forge: ff.call}); err != nil || len(tr.Reverts) != 1 || tr.RangeNote != "" {
+	if tr, err = TraceCommit(t.Context(), f.r.Root(), s3, Options{Forge: ff.call}); err != nil || len(tr.Reverts) != 1 || tr.RangeNote != "" {
 		t.Fatalf("every older commit read: %+v, %v", tr, err)
 	}
 	maxOlderCommits, maxOlderBytes = 4096, 16
-	tr, err = trace(t.Context(), f.r.Root(), s3, Options{Forge: ff.call})
+	tr, err = TraceCommit(t.Context(), f.r.Root(), s3, Options{Forge: ff.call})
 	if err != nil || len(tr.Reverts) != 0 || !strings.Contains(tr.RangeNote, "1 pull requests its lines name were not looked for") {
 		t.Fatalf("past the bytes read: %+v, %v", tr, err)
 	}
@@ -1012,7 +1012,7 @@ func TestTheTraceAsksGitABoundedNumberOfTimes(t *testing.T) {
 		return prevResolve(ctx, root, names)
 	}
 	calls := countedGit(t)
-	tr, err := trace(t.Context(), f.r.Root(), rc, Options{Forge: (&fakeForge{t: t}).call})
+	tr, err := TraceCommit(t.Context(), f.r.Root(), rc, Options{Forge: (&fakeForge{t: t}).call})
 	if err != nil || tr.Row == nil {
 		t.Fatalf("trace = %+v, %v", tr, err)
 	}
@@ -1038,11 +1038,11 @@ func TestTheTraceAsksGitABoundedNumberOfTimes(t *testing.T) {
 	// Every git call: a trace whose lines name forty more commits past the
 	// bound asks git exactly as often.
 	calls()
-	if _, err := trace(t.Context(), f.r.Root(), rc, Options{Forge: (&fakeForge{t: t}).call}); err != nil {
+	if _, err := TraceCommit(t.Context(), f.r.Root(), rc, Options{Forge: (&fakeForge{t: t}).call}); err != nil {
 		t.Fatal(err)
 	}
 	few := calls()
-	if _, err := trace(t.Context(), f.r.Root(), more, Options{Forge: (&fakeForge{t: t}).call}); err != nil {
+	if _, err := TraceCommit(t.Context(), f.r.Root(), more, Options{Forge: (&fakeForge{t: t}).call}); err != nil {
 		t.Fatal(err)
 	}
 	many := calls()
@@ -1072,7 +1072,7 @@ func TestHistoryIsReadAsStored(t *testing.T) {
 		if r := row(t, l, y); r.PR != 0 || len(r.Reverts) != 0 || row(t, l, x).Reverted != nil {
 			t.Fatalf("the listing read the replacement: %+v", r)
 		}
-		if tr, err := trace(t.Context(), f.r.Root(), y, Options{Forge: ff.call}); err != nil || tr.Row == nil || tr.Row.PR != 0 || len(tr.Reverts) != 0 {
+		if tr, err := TraceCommit(t.Context(), f.r.Root(), y, Options{Forge: ff.call}); err != nil || tr.Row == nil || tr.Row.PR != 0 || len(tr.Reverts) != 0 {
 			t.Fatalf("the trace read the replacement: %+v, %v", tr, err)
 		}
 		if ff.calls != 0 {
@@ -1119,7 +1119,7 @@ func TestHistoryIsReadAsStored(t *testing.T) {
 		if len(l.Rows) != 2 || row(t, l, y).Mode != landing.ModeAuto {
 			t.Fatalf("the listing read the graft: %+v", l.Rows)
 		}
-		if tr, err := trace(t.Context(), f.r.Root(), x, Options{Forge: (&fakeForge{t: t}).call}); err != nil || tr.Row == nil || tr.Row.Commit != x {
+		if tr, err := TraceCommit(t.Context(), f.r.Root(), x, Options{Forge: (&fakeForge{t: t}).call}); err != nil || tr.Row == nil || tr.Row.Commit != x {
 			t.Fatalf("the trace read the graft: %+v, %v", tr, err)
 		}
 	})
@@ -1132,7 +1132,7 @@ func TestHistoryIsReadAsStored(t *testing.T) {
 		b := f.commit("feat: b")
 		f.r.Git("tag", "-a", "-m", "other", "v1b", b)
 		f.r.Git("replace", f.r.Git("rev-parse", "refs/tags/v1"), f.r.Git("rev-parse", "refs/tags/v1b"))
-		if r, err := resolve(t.Context(), f.r.Root(), "v1"); err != nil || r.From != a {
+		if r, err := Resolve(t.Context(), f.r.Root(), "v1"); err != nil || r.From != a {
 			t.Fatalf("resolve(v1) = %+v, %v; want From %s", r, err, a[:8])
 		}
 	})
@@ -1143,7 +1143,7 @@ func TestHistoryIsReadAsStored(t *testing.T) {
 		f.r.Git("tag", "v2", c)
 		d := f.commit("feat: d")
 		f.r.Git("replace", "--graft", d, f.base)
-		if r, err := resolve(t.Context(), f.r.Root(), ""); err != nil || r.Since != "v2" || r.From != c || r.Note != "" {
+		if r, err := Resolve(t.Context(), f.r.Root(), ""); err != nil || r.Since != "v2" || r.From != c || r.Note != "" {
 			t.Fatalf("resolve() = %+v, %v; want v2 at %s", r, err, c[:8])
 		}
 	})
@@ -1174,7 +1174,7 @@ func TestHistoryIsReadAsStored(t *testing.T) {
 		ff := &fakeForge{t: t, bodies: map[int]string{3: "Reverts #1"}}
 		ff.add(answer(1, s1, strings.Repeat("1", 40)))
 		ff.add(answer(3, s3, strings.Repeat("3", 40)))
-		tr, err := trace(t.Context(), f.r.Root(), s3, Options{Forge: ff.call})
+		tr, err := TraceCommit(t.Context(), f.r.Root(), s3, Options{Forge: ff.call})
 		if err != nil || len(tr.Reverts) != 1 || tr.Reverts[0].Commit != s1 || tr.RangeNote != "" {
 			t.Fatalf("the older messages read through the replacement: %+v, %v", tr, err)
 		}
@@ -1280,25 +1280,34 @@ func TestABodyAnswerNamingAnotherMergeIsNotRead(t *testing.T) {
 }
 
 // TestABodyEditedAfterTheMergeIsNotRead: a body the forge says was last
-// edited after its pull request merged, or whose merge time it does not
-// give, is not read for the forge's line; one edited before the merge is.
+// edited in the second its pull request merged or later, or whose merge time
+// it does not give, is not read for the forge's line; one edited in an
+// earlier second is.
 func TestABodyEditedAfterTheMergeIsNotRead(t *testing.T) {
 	f := newFx(t, "auto")
 	s1 := f.commit("feat: x (#1)")
 	s2 := f.commit("feat: y (#2)")
+	s5 := f.commit("feat: z (#5)")
 	s3 := f.commit(`Revert "feat: x (#1)" (#3)`)
 	s4 := f.commit(`Revert "feat: y (#2)" (#4)`)
-	ff := &fakeForge{t: t, bodies: map[int]string{3: "Reverts #1", 4: "Reverts #2"},
-		bodyEdited: map[int]string{3: "2026-11-01T10:00:01Z", 4: "2026-11-01T09:59:59Z"}}
-	for n, c := range map[int]string{1: s1, 2: s2, 3: s3, 4: s4} {
+	s6 := f.commit(`Revert "feat: z (#5)" (#6)`)
+	ff := &fakeForge{t: t, bodies: map[int]string{3: "Reverts #1", 4: "Reverts #2", 6: "Reverts #5"},
+		bodyEdited: map[int]string{3: "2026-11-01T10:00:01Z", 4: "2026-11-01T09:59:59Z", 6: "2026-11-01T10:00:00Z"}}
+	for n, c := range map[int]string{1: s1, 2: s2, 3: s3, 4: s4, 5: s5, 6: s6} {
 		ff.add(answer(n, c, strings.Repeat(strconv.Itoa(n), 40)))
 	}
 	l := f.list(ff.call)
 	if got := row(t, l, s1).Reverted; got != nil {
 		t.Fatalf("a body edited after the merge marked %+v", got)
 	}
-	if r := row(t, l, s3); len(r.Reverts) != 1 || r.Reverts[0].Kind != RevertUntraceable || !strings.Contains(r.Reverts[0].Unmarked, "edited after it merged") {
+	if r := row(t, l, s3); len(r.Reverts) != 1 || r.Reverts[0].Kind != RevertUntraceable || !strings.Contains(r.Reverts[0].Unmarked, "edited in or after the second it merged") {
 		t.Fatalf("row #3 reverts %+v", r.Reverts)
+	}
+	if got := row(t, l, s5).Reverted; got != nil {
+		t.Fatalf("a body edited in the merge's second marked %+v", got)
+	}
+	if r := row(t, l, s6); len(r.Reverts) != 1 || r.Reverts[0].Kind != RevertUntraceable || !strings.Contains(r.Reverts[0].Unmarked, "edited in or after the second it merged") {
+		t.Fatalf("row #6 reverts %+v", r.Reverts)
 	}
 	if got := row(t, l, s2).Reverted; got == nil || got.By != s4 {
 		t.Fatalf("a body edited before the merge: %+v", got)
