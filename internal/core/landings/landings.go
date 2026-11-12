@@ -314,10 +314,7 @@ func listRows(ctx context.Context, repoRoot string, r Range, o Options) (Listing
 	for i, sha := range rows {
 		facts[i] = l.historyFacts(sha, modes[sha])
 		if facts[i].row.PR != 0 {
-			// A row that merged with one parent asks its commits, and its body
-			// for the forge's revert line (revert.go).
-			one := !facts[i].twoParent
-			asks = append(asks, prAsk{pr: facts[i].row.PR, commit: sha, commits: one, body: one})
+			asks = append(asks, prAsk{pr: facts[i].row.PR, commit: sha, commits: !facts[i].twoParent})
 		}
 	}
 
@@ -359,15 +356,19 @@ func listRows(ctx context.Context, repoRoot string, r Range, o Options) (Listing
 	}
 	out.ForgeUnread = boundText(unreadNote(unreadRows, unread), 4000)
 
-	// The revert trace reads a pull request's body only where its answer was
+	// The revert trace asks a pull request's body only where its answer was
 	// read and confirmed the row (classify): a row the forge contradicted, or
-	// whose answer was not read, carries no forge revert line.
-	accepted := map[string]*prAnswer{}
+	// whose answer was not read, carries no forge revert line. The body is
+	// asked in a document of its own, after every row is classed, within
+	// what the listing's bound on asking again still holds, so no row's class
+	// rests on it.
+	accepted := map[string]bool{}
 	for _, row := range out.Rows {
-		if a := answers.got[row.PR]; row.PR != 0 && a != nil && row.ForgeSays == "" && row.ForgeUnreadable == "" {
-			accepted[row.Commit] = a
+		if row.PR != 0 && answers.got[row.PR] != nil && row.ForgeSays == "" && row.ForgeUnreadable == "" {
+			accepted[row.Commit] = true
 		}
 	}
+	l.bodies = func(asks []prAsk) bodyAnswers { return readBodies(ctx, forge, asks, answers.left) }
 	l.traceReverts(out.Rows, accepted)
 	return out, nil
 }
@@ -509,6 +510,9 @@ type lister struct {
 	rules map[string][]string
 	// modeWhy is why each mode that could not be read was not.
 	modeWhy []string
+	// bodies asks the forge the bodies the revert trace reads; nil asks
+	// nothing, and every body reads as not asked.
+	bodies func([]prAsk) bodyAnswers
 }
 
 // rowFacts are what history says of one row before the forge is asked.

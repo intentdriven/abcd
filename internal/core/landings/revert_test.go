@@ -3,7 +3,9 @@ package landings
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -205,13 +207,11 @@ func TestSquashedRevertByForgeLine(t *testing.T) {
 	for i, c := range []string{s1, s2, s3, s4, s5} {
 		ff.add(answer(i+1, c, strings.Repeat(strconv.Itoa(i+1), 40)))
 	}
-	repo := &forgeRepo{NameWithOwner: "Org/Repo"}
-	for n, body := range map[int]string{
+	ff.repo = "Org/Repo"
+	ff.bodies = map[int]string{
 		3: "Reverts #1",
 		4: "Some prose.\n\nReverts org/repo#2\n",
 		5: "Reverts other/repo#2\n> Reverts #1\n  Reverts #2\nReverts #9\nReverts #5",
-	} {
-		ff.prs[n].Body, ff.prs[n].BaseRepository = body, repo
 	}
 	l := f.list(ff.call)
 	if got := row(t, l, s1).Reverted; got == nil || *got != (Revert{By: s3, ByRow: s3, Kind: RevertForge}) {
@@ -229,10 +229,15 @@ func TestSquashedRevertByForgeLine(t *testing.T) {
 			t.Fatalf("line %d: %+v; want %q", i, r5.Reverts[i], want)
 		}
 	}
-	// The body is asked for a row that merged with one parent, and only there.
-	if !strings.Contains(batchQuery([]prAsk{{pr: 1, commits: true, body: true}}), "body baseRepository{nameWithOwner}") ||
-		strings.Contains(batchQuery([]prAsk{{pr: 1}}), "body") {
-		t.Fatal("the body is asked where it is not read, or not where it is")
+	// The bodies are asked in one document of their own, for the three
+	// squashed reverts alone, and no batch of the listing's asks one.
+	if ff.bodyCalls != 1 {
+		t.Fatalf("the bodies were asked in %d documents", ff.bodyCalls)
+	}
+	for _, q := range ff.queries {
+		if strings.Contains(q, "body") {
+			t.Fatalf("a batch asks a body: %q", q)
+		}
 	}
 }
 
@@ -407,7 +412,7 @@ func TestAReversionNamingItselfOrACycleMarksNothing(t *testing.T) {
 	h.assign(rows)
 	l := &lister{ctx: t.Context(), root: t.TempDir(), h: h}
 	out := []Row{{Commit: c}, {Commit: b}, {Commit: a}}
-	l.traceReverts(out, map[string]*prAnswer{})
+	l.traceReverts(out, map[string]bool{})
 	if out[0].Reverted != nil || !strings.Contains(out[0].Reverts[0].Unmarked, "itself") {
 		t.Fatalf("a commit naming itself: %+v", out[0])
 	}
@@ -526,5 +531,232 @@ func TestARevertOfAMergeWithdrawsTheRevertsItBrought(t *testing.T) {
 	}
 	if got := row(t, l, m2).Reverted; got == nil || *got != (Revert{By: c, ByRow: c, Kind: RevertGit}) {
 		t.Fatalf("the merge reverted by its own name: %+v", got)
+	}
+}
+
+// TestAForgeLineCountsOnlyBesideReadAnswers: the body is asked only for a
+// squashed revert whose own answer was read and confirmed it, and the forge's
+// line names only a row whose answer was read and confirmed too: a pull
+// request the forge says merged as another commit, or whose answer was not
+// read, is named by no line and asked for no body.
+func TestAForgeLineCountsOnlyBesideReadAnswers(t *testing.T) {
+	f := newFx(t, "auto")
+	s1 := f.commit("feat: x (#1)")
+	s2 := f.commit("feat: y (#2)")
+	f.commit("feat: z (#3)")
+	s4 := f.commit(`Revert "feat: y" (#4)`)
+	s5 := f.commit(`Revert "feat: x" (#5)`)
+	s6 := f.commit(`Revert "feat: x" (#6)`)
+	ff := &fakeForge{t: t}
+	ff.add(answer(1, s1, strings.Repeat("1", 40)))
+	ff.add(answer(2, strings.Repeat("e", 40), strings.Repeat("2", 40)))
+	ff.add(answer(4, s4, strings.Repeat("4", 40)))
+	ff.add(answer(5, strings.Repeat("f", 40), strings.Repeat("5", 40)))
+	ff.bodies = map[int]string{4: "Reverts #2\nReverts #3", 5: "Reverts #1", 6: "Reverts #1"}
+	l := f.list(ff.call)
+	if !slices.Equal(ff.bodyAsked, []int{4}) {
+		t.Fatalf("bodies asked for %v, want [4]", ff.bodyAsked)
+	}
+	if got := row(t, l, s1).Reverted; got != nil {
+		t.Fatalf("a row named by a body that was not asked is marked %+v", got)
+	}
+	r4 := row(t, l, s4)
+	if len(r4.Reverts) != 2 {
+		t.Fatalf("row #4 reverts %+v", r4.Reverts)
+	}
+	for _, x := range r4.Reverts {
+		if x.Row != "" || !strings.Contains(x.Unmarked, "no row of the listing merged") {
+			t.Fatalf("a line naming a pull request whose answer was not accepted: %+v", x)
+		}
+	}
+	if got := row(t, l, s2).Reverted; got != nil {
+		t.Fatalf("a row the forge contradicted is marked %+v", got)
+	}
+	for _, c := range []string{s5, s6} {
+		if r := row(t, l, c); len(r.Reverts) != 1 || r.Reverts[0].Kind != RevertUntraceable {
+			t.Fatalf("row %s reverts %+v", c[:8], r.Reverts)
+		}
+	}
+	if !strings.Contains(row(t, l, s6).Reverts[0].Unmarked, "was not read") {
+		t.Fatalf("an unread answer is not said: %+v", row(t, l, s6).Reverts)
+	}
+}
+
+// TestAForgeLineReadsAsWritten: a line naming a pull request merged after the
+// revert marks nothing; an owner/repo form beside an answer naming no
+// repository marks nothing and says so; a body's lines past the bound are
+// counted; and a row that merged with two parents is asked for no body.
+func TestAForgeLineReadsAsWritten(t *testing.T) {
+	f := newFx(t, "auto")
+	s1 := f.commit("feat: x (#1)")
+	s2 := f.commit(`Revert "feat: later" (#2)`)
+	s3 := f.commit("feat: later (#3)")
+	s4 := f.commit(`Revert "feat: x" (#4)`)
+	s5 := f.commit(`Revert "feat: x" (#5)`)
+	f.branch("six", "feat: six")
+	f.r.Git("merge", "-q", "--no-ff", "-m", `Revert "feat: x" (#6)`, "six")
+	m6 := f.head()
+	ff := &fakeForge{t: t}
+	for n, c := range map[int]string{1: s1, 2: s2, 3: s3, 4: s4, 5: s5} {
+		ff.add(answer(n, c, strings.Repeat(strconv.Itoa(n), 40)))
+	}
+	ff.add(answer(6, m6, f.r.Git("rev-parse", m6+"^2")))
+	ff.bodies = map[int]string{2: "Reverts #3", 4: "Reverts org/repo#1", 5: strings.Repeat("Reverts #1\n", maxRevertLinesPerCommit+2), 6: "Reverts #1"}
+	l := f.list(ff.call)
+	if slices.Contains(ff.bodyAsked, 6) {
+		t.Fatalf("a two-parent row's body was asked: %v", ff.bodyAsked)
+	}
+	if r := row(t, l, s2); len(r.Reverts) != 1 || !strings.Contains(r.Reverts[0].Unmarked, "merged after it") {
+		t.Fatalf("a line naming a later pull request: %+v", r.Reverts)
+	}
+	if got := row(t, l, s3).Reverted; got != nil {
+		t.Fatalf("a later row is marked %+v", got)
+	}
+	if r := row(t, l, s4); len(r.Reverts) != 1 || !strings.Contains(r.Reverts[0].Unmarked, "names no repository") {
+		t.Fatalf("an owner/repo line beside no repository: %+v", r.Reverts)
+	}
+	r5 := row(t, l, s5)
+	if len(r5.Reverts) != maxRevertLinesPerCommit+1 || !strings.Contains(r5.Reverts[maxRevertLinesPerCommit].Unmarked, "2 more revert lines past the 64 a body is read for") {
+		t.Fatalf("a body of many lines: %d lines, last %+v", len(r5.Reverts), r5.Reverts[len(r5.Reverts)-1])
+	}
+	if got := row(t, l, s1).Reverted; got == nil || got.By != s5 {
+		t.Fatalf("the many-line body's row marks %+v", got)
+	}
+	if r := row(t, l, m6); r.Reverted != nil || len(r.Reverts) != 1 || r.Reverts[0].Kind != RevertUntraceable {
+		t.Fatalf("the two-parent row: %+v", r)
+	}
+}
+
+// TestHugeBodiesLeaveEveryRowAsItWas: bodies too large to read, asked in a
+// document of their own, leave every row's class, rule, approval and
+// unattended mark as a listing that reads them has it, ask the listing's
+// batches nothing more, and leave each squashed revert untraceable, saying
+// why.
+func TestHugeBodiesLeaveEveryRowAsItWas(t *testing.T) {
+	f := newFx(t, "auto")
+	var revs []string
+	ff := &fakeForge{t: t, bodies: map[int]string{}, bodyHuge: map[int]bool{}}
+	for i := 1; i <= 2*MaxBatch+2; i++ {
+		head := fmt.Sprintf("%040x", i)
+		var c string
+		if i%2 == 1 {
+			c = f.commit(fmt.Sprintf("feat: x%d (#%d)", i, i))
+		} else {
+			c = f.commit(fmt.Sprintf(`Revert "feat: x%d (#%d)" (#%d)`, i-1, i-1, i))
+			revs = append(revs, c)
+			ff.bodies[i] = fmt.Sprintf("Reverts #%d", i-1)
+			ff.bodyHuge[i] = true
+		}
+		var rs []forgeReview
+		if i%3 == 0 {
+			rs = append(rs, review(alice, "APPROVED", head))
+		}
+		ff.add(answer(i, c, head, rs...))
+	}
+	huge := f.list(ff.call)
+	mainCalls := ff.calls
+	ff.bodyHuge = nil
+	read := f.list(ff.call)
+	if mainCalls != 3 {
+		t.Fatalf("the listing's batches were asked %d times", mainCalls)
+	}
+	if huge.ForgeUnread != read.ForgeUnread || huge.ForgeUnread != "" {
+		t.Fatalf("the forge notes %q and %q", huge.ForgeUnread, read.ForgeUnread)
+	}
+	for i := range read.Rows {
+		a, b := huge.Rows[i], read.Rows[i]
+		a.Reverted, a.Reverts, b.Reverted, b.Reverts = nil, nil, nil, nil
+		if fmt.Sprint(a) != fmt.Sprint(b) {
+			t.Fatalf("row %d moved:\n%+v\n%+v", i, a, b)
+		}
+	}
+	for _, c := range revs {
+		r := row(t, huge, c)
+		if r.Reverted != nil || len(r.Reverts) != 1 || r.Reverts[0].Kind != RevertUntraceable || !strings.Contains(r.Reverts[0].Unmarked, "too large to read") {
+			t.Fatalf("row %s with a huge body: %+v", c[:8], r.Reverts)
+		}
+		if r := row(t, read, c); len(r.Reverts) != 1 || r.Reverts[0].Kind != RevertForge || r.Reverts[0].Row == "" {
+			t.Fatalf("row %s with its body read: %+v", c[:8], r.Reverts)
+		}
+	}
+}
+
+// TestNoBodyIsCached: the forge cache holds what the listing's batches read
+// and nothing of a body, so a second listing reads its answers from the cache
+// and asks the bodies again.
+func TestNoBodyIsCached(t *testing.T) {
+	f := newFx(t, "auto")
+	s1 := f.commit("feat: x (#1)")
+	s2 := f.commit(`Revert "feat: x (#1)" (#2)`)
+	ff := &fakeForge{t: t, repo: "org/repo", bodies: map[int]string{2: "A body.\n\nReverts #1\n"}}
+	ff.add(answer(1, s1, strings.Repeat("1", 40)))
+	ff.add(answer(2, s2, strings.Repeat("2", 40)))
+	f.list(ff.call)
+	for _, n := range []int{1, 2} {
+		raw, err := os.ReadFile(filepath.Join(f.r.Root(), cacheRel(n)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), "body") || strings.Contains(string(raw), "Reverts") || strings.Contains(string(raw), "org/repo") {
+			t.Fatalf("pr-%d.json keeps the body: %s", n, raw)
+		}
+	}
+	calls := ff.calls
+	l := f.list(ff.call)
+	if ff.calls != calls || ff.bodyCalls != 2 {
+		t.Fatalf("the second listing asked the batches %d more times and the bodies %d times in all", ff.calls-calls, ff.bodyCalls)
+	}
+	if got := row(t, l, s1).Reverted; got == nil || got.By != s2 {
+		t.Fatalf("the second listing's mark %+v", got)
+	}
+}
+
+// TestAForgeRevertOfARevertsPullRequestWithdrawsIt: the forge's line naming a
+// pull request that brought a revert reverts every commit that row brought,
+// so the revert it carried is withdrawn and the row it reverted reinstated.
+func TestAForgeRevertOfARevertsPullRequestWithdrawsIt(t *testing.T) {
+	f := newFx(t, "auto")
+	x := f.branch("one", "feat: x")
+	m1 := f.merge(1, "one")
+	rc := f.branch("two", revertMsg("feat: x", x, 40))
+	m2 := f.merge(2, "two")
+	s3 := f.commit(`Revert "Merge pull request #2 from org/two" (#3)`)
+	ff := mergeForge(t, f, map[int]string{1: m1, 2: m2})
+	ff.add(answer(3, s3, strings.Repeat("3", 40)))
+	ff.bodies = map[int]string{3: "Reverts #2"}
+	l := f.list(ff.call)
+	if got := row(t, l, m1).Reverted; got == nil || *got != (Revert{By: rc, ByRow: m2, Kind: RevertGit, WithdrawnBy: s3}) {
+		t.Fatalf("the row the merged revert reverted: %+v", got)
+	}
+	if got := row(t, l, m2).Reverted; got == nil || *got != (Revert{By: s3, ByRow: s3, Kind: RevertForge}) {
+		t.Fatalf("the pull request the forge's line reverts: %+v", got)
+	}
+}
+
+// TestAFailedResolutionUnresolvesItsLinesAlone: a git call that fails leaves
+// the lines it was asked for unresolved, saying why, and marks nothing for
+// them, while a line naming a commit the history holds by its full name is
+// still followed.
+func TestAFailedResolutionUnresolvesItsLinesAlone(t *testing.T) {
+	f := newFx(t, "human")
+	x := f.commit("feat: x")
+	y := f.commit("feat: y")
+	rx := f.commit(revertMsg("feat: x", x, 9))
+	ry := f.commit(revertMsg("feat: y", y, 40))
+	defer func(prev func(ctx context.Context, root string, names []string) (map[string]resolved, error)) {
+		resolveNames = prev
+	}(resolveNames)
+	resolveNames = func(context.Context, string, []string) (map[string]resolved, error) {
+		return nil, fmt.Errorf("git cat-file: exit status 128")
+	}
+	l := f.list((&fakeForge{t: t}).call)
+	if r := row(t, l, rx); r.Reverts[0].Row != "" || !strings.Contains(r.Reverts[0].Unmarked, "cannot be resolved") {
+		t.Fatalf("a line whose name git did not resolve: %+v", r.Reverts)
+	}
+	if got := row(t, l, x).Reverted; got != nil {
+		t.Fatalf("x is marked %+v", got)
+	}
+	if got := row(t, l, y).Reverted; got == nil || got.By != ry {
+		t.Fatalf("y, named in full: %+v", got)
 	}
 }

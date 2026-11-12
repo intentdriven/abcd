@@ -257,17 +257,21 @@ type revertEdge struct {
 
 // traceReverts marks rows (the listing's, newest first, each row's commit
 // rows[i].Commit) with what later commits revert, and gives each row the
-// revert lines its commits carry. accepted holds, by row commit, the forge's
-// answer each row's pull request was read for and confirmed by; only those
-// rows' bodies are read for the forge's line, and only those rows are named by
-// it. It asks git once, for the names the history alone cannot resolve.
-func (l *lister) traceReverts(rows []Row, accepted map[string]*prAnswer) {
+// revert lines its commits carry. accepted holds the row commits whose pull
+// request's answer was read and confirmed the row: only those rows are named
+// by the forge's line, and only their bodies are asked for it (l.bodies), and
+// of those only a row that merged with one parent, whose subject is git
+// revert's, and whose commits carry no git revert line git resolved. It asks
+// git at most twice (resolveNames), for the names the history alone cannot
+// resolve, and the forge only for those bodies; a body that is not read
+// leaves the row's revert untraceable, saying why, and changes nothing else.
+func (l *lister) traceReverts(rows []Row, accepted map[string]bool) {
 	h := l.h
 	at := make(map[string]int, len(rows))
 	byPR := map[int]int{}
 	for i, r := range rows {
 		at[r.Commit] = i
-		if accepted[r.Commit] != nil {
+		if accepted[r.Commit] {
 			byPR[r.PR] = i
 		}
 	}
@@ -276,73 +280,44 @@ func (l *lister) traceReverts(rows []Row, accepted map[string]*prAnswer) {
 		name, commit string
 	}
 	var git []pending
-	var edges []revertEdge
+	plain := make([][]string, len(rows))
 	budget := maxRevertLines
 	for i := len(rows) - 1; i >= 0; i-- {
 		r := &rows[i]
-		var plain []string
+		over := 0
 		for _, c := range append([]string{r.Commit}, h.branch[r.Commit]...) {
 			msg := h.commits[c].message
 			names, past := revertNames(msg)
 			for _, n := range names {
-				line := RevertLine{Commit: c, Kind: RevertGit, Names: n}
 				if budget == 0 {
-					line.Unmarked = fmt.Sprintf("past the listing's bound of %d revert lines, so it is not followed", maxRevertLines)
-				} else {
-					budget--
-					git = append(git, pending{row: i, line: len(r.Reverts), name: n, commit: c})
+					over++
+					continue
 				}
-				r.Reverts = append(r.Reverts, line)
+				budget--
+				git = append(git, pending{row: i, line: len(r.Reverts), name: n, commit: c})
+				r.Reverts = append(r.Reverts, RevertLine{Commit: c, Kind: RevertGit, Names: n})
 			}
 			if past > 0 {
 				r.Reverts = append(r.Reverts, RevertLine{Commit: c, Kind: RevertGit,
 					Unmarked: fmt.Sprintf("%d more revert lines past the %d a commit is read for", past, maxRevertLinesPerCommit)})
 			}
 			if len(names) == 0 && past == 0 && revertSubject(msg) {
-				plain = append(plain, c)
+				plain[i] = append(plain[i], c)
 			}
 		}
-		forgeLines := false
-		if a := accepted[r.Commit]; a != nil && len(h.commits[r.Commit].parents) < 2 {
-			refs, past := forgeRevertLines(a.Body)
-			forgeLines = len(refs) > 0 || past > 0
-			for _, ref := range refs {
-				line := RevertLine{Commit: r.Commit, Kind: RevertForge, Names: ref.text}
-				j, merged := byPR[ref.pr]
-				switch {
-				case ref.repo != "" && (a.BaseRepository == nil || !strings.EqualFold(ref.repo, a.BaseRepository.NameWithOwner)):
-					line.Unmarked = "names another repository's pull request"
-				case ref.pr == r.PR:
-					line.Unmarked = "names its own pull request"
-				case !merged:
-					line.Unmarked = "names a pull request no row of the listing merged as the forge's answer says"
-				case j < i:
-					line.Unmarked = "names a pull request merged after it"
-				default:
-					edges = append(edges, revertEdge{from: r.Commit, to: rows[j].Commit, kind: RevertForge, row: i, line: len(r.Reverts)})
-				}
-				r.Reverts = append(r.Reverts, line)
-			}
-			if past > 0 {
-				r.Reverts = append(r.Reverts, RevertLine{Commit: r.Commit, Kind: RevertForge,
-					Unmarked: fmt.Sprintf("%d more revert lines past the %d a body is read for", past, maxRevertLinesPerCommit)})
-			}
-		}
-		for _, c := range plain {
-			if forgeLines && c == r.Commit {
-				continue
-			}
-			why := "its subject reads as git's revert, but no line names what it reverts"
-			if c == r.Commit && r.ForgeUnreadable != "" {
-				why += ", and the forge's answer for its pull request, whose body may carry the forge's revert line, was not read"
-			}
-			r.Reverts = append(r.Reverts, RevertLine{Commit: c, Kind: RevertUntraceable, Unmarked: why})
+		if over > 0 {
+			// Counted once for the row, so lines past the bound add one line
+			// to the listing, not one each.
+			r.Reverts = append(r.Reverts, RevertLine{Commit: r.Commit, Kind: RevertGit,
+				Unmarked: fmt.Sprintf("%d revert lines its commits carry are past the listing's bound of %d revert lines, so they are not followed", over, maxRevertLines)})
 		}
 	}
 
+	asked := map[string]bool{}
 	var need []string
 	for _, p := range git {
-		if h.commits[p.name] == nil && !slices.Contains(need, p.name) {
+		if h.commits[p.name] == nil && !asked[p.name] {
+			asked[p.name] = true
 			need = append(need, p.name)
 		}
 	}
@@ -352,7 +327,7 @@ func (l *lister) traceReverts(rows []Row, accepted map[string]*prAnswer) {
 		res, resErr = resolveNames(l.ctx, l.root, need)
 	}
 	var gen map[string]int
-	var gitEdges []revertEdge
+	var edges []revertEdge
 	for _, p := range git {
 		line := &rows[p.row].Reverts[p.line]
 		full := p.name
@@ -378,16 +353,97 @@ func (l *lister) traceReverts(rows []Row, accepted map[string]*prAnswer) {
 			line.Unmarked = "names a commit its own row brought, so it reverts nothing that landed"
 		default:
 			if gen == nil {
-				gen = h.generations()
+				if gen = h.generations(l.ctx); gen == nil {
+					return
+				}
 			}
-			if !h.isAncestor(gen, full, p.commit) {
+			if !h.isAncestor(l.ctx, gen, full, p.commit) {
+				if l.ctx.Err() != nil {
+					return
+				}
 				line.Unmarked = "names a commit that is not an ancestor of the reverting one"
 				continue
 			}
-			gitEdges = append(gitEdges, revertEdge{from: p.commit, to: full, kind: RevertGit, row: p.row, line: p.line})
+			edges = append(edges, revertEdge{from: p.commit, to: full, kind: RevertGit, row: p.row, line: p.line})
 		}
 	}
-	edges = append(gitEdges, edges...)
+
+	wantBody := map[int]bool{}
+	var bodyAsks []prAsk
+	for i := len(rows) - 1; i >= 0; i-- {
+		r := rows[i]
+		c := h.commits[r.Commit]
+		if !accepted[r.Commit] || len(c.parents) > 1 || !revertSubject(c.message) ||
+			slices.ContainsFunc(r.Reverts, func(x RevertLine) bool { return x.Kind == RevertGit && x.Target != "" }) {
+			continue
+		}
+		wantBody[i] = true
+		bodyAsks = append(bodyAsks, prAsk{pr: r.PR, commit: r.Commit})
+	}
+	bodies := bodyAnswers{}
+	if len(bodyAsks) > 0 && l.bodies != nil {
+		bodies = l.bodies(bodyAsks)
+	}
+
+	for i := len(rows) - 1; i >= 0; i-- {
+		r := &rows[i]
+		forgeLines, unread := false, ""
+		if wantBody[i] {
+			b := bodies.got[r.PR]
+			if b == nil {
+				unread = boundText(bodies.why[r.PR], 600)
+				if unread == "" {
+					unread = "it was not asked"
+				}
+			} else {
+				refs, past := forgeRevertLines(b.Body)
+				forgeLines = len(refs) > 0 || past > 0
+				for _, ref := range refs {
+					line := RevertLine{Commit: r.Commit, Kind: RevertForge, Names: ref.text}
+					j, merged := byPR[ref.pr]
+					switch {
+					case ref.repo != "" && (b.BaseRepository == nil || b.BaseRepository.NameWithOwner == ""):
+						line.Unmarked = "names a repository by name, and the forge's answer names no repository the pull request merged into"
+					case ref.repo != "" && !strings.EqualFold(ref.repo, b.BaseRepository.NameWithOwner):
+						line.Unmarked = "names another repository's pull request"
+					case ref.pr == r.PR:
+						line.Unmarked = "names its own pull request"
+					case !merged:
+						line.Unmarked = "names a pull request no row of the listing merged as the forge's answer says"
+					case j < i:
+						line.Unmarked = "names a pull request merged after it"
+					default:
+						edges = append(edges, revertEdge{from: r.Commit, to: rows[j].Commit, kind: RevertForge, row: i, line: len(r.Reverts)})
+					}
+					r.Reverts = append(r.Reverts, line)
+				}
+				if past > 0 {
+					r.Reverts = append(r.Reverts, RevertLine{Commit: r.Commit, Kind: RevertForge,
+						Unmarked: fmt.Sprintf("%d more revert lines past the %d a body is read for", past, maxRevertLinesPerCommit)})
+				}
+			}
+		}
+		bodyUnread := ", and its pull request's body, which may carry the forge's revert line, was not read: " + unread
+		for _, c := range plain[i] {
+			if forgeLines && c == r.Commit {
+				continue
+			}
+			why := "its subject reads as git's revert, but no line names what it reverts"
+			switch {
+			case c == r.Commit && r.ForgeUnreadable != "":
+				why += ", and the forge's answer for its pull request, whose body may carry the forge's revert line, was not read"
+			case c == r.Commit && unread != "":
+				why += bodyUnread
+			}
+			r.Reverts = append(r.Reverts, RevertLine{Commit: c, Kind: RevertUntraceable, Unmarked: why})
+		}
+		if unread != "" && !slices.Contains(plain[i], r.Commit) {
+			// Its git lines resolved nothing, and the body that might have
+			// named what it reverts was not read.
+			r.Reverts = append(r.Reverts, RevertLine{Commit: r.Commit, Kind: RevertUntraceable,
+				Unmarked: "its subject reads as git's revert, but no line it carries resolved" + bodyUnread})
+		}
+	}
 	// Oldest reverting row first, then in the order the lines were read.
 	slices.SortStableFunc(edges, func(a, b revertEdge) int { return b.row - a.row })
 	l.mark(rows, at, edges)
@@ -459,20 +515,30 @@ func (l *lister) mark(rows []Row, at map[string]int, edges []revertEdge) {
 	}
 }
 
+// ctxCheckSteps is how many steps generations and isAncestor take between
+// looks at the listing's ctx: both run in memory, after git has answered, so
+// the ctx is all that bounds them in time.
+const ctxCheckSteps = 4096
+
 // generations is each commit's generation within the range: one more than
 // its highest parent in the range, 1 for a commit with none there, so an
 // ancestor's generation is always below its descendant's. One pass, without
-// recursion; a parent met while still being judged (a cycle git cannot store)
-// is read as outside the range.
-func (h *history) generations() map[string]int {
+// recursion, each commit and parent link once; a parent met while still being
+// judged (a cycle git cannot store) is read as outside the range. nil when ctx
+// ends first.
+func (h *history) generations(ctx context.Context) map[string]int {
 	gen := make(map[string]int, len(h.commits))
 	open := map[string]bool{}
+	steps := 0
 	for start := range h.commits {
 		if gen[start] != 0 {
 			continue
 		}
 		stack := []string{start}
 		for len(stack) > 0 {
+			if steps++; steps%ctxCheckSteps == 0 && ctx.Err() != nil {
+				return nil
+			}
 			c := stack[len(stack)-1]
 			if gen[c] != 0 {
 				stack = stack[:len(stack)-1]
@@ -506,14 +572,19 @@ func (h *history) generations() map[string]int {
 // isAncestor says whether a is a strict ancestor of c within the range. Every
 // commit between them is in the range too (one reachable from the range's
 // From would make a reachable as well), so the walk stays in the history read,
-// and skips every commit no newer than a by generation.
-func (h *history) isAncestor(gen map[string]int, a, c string) bool {
+// and skips every commit no newer than a by generation: it visits each commit
+// of the range at most once, and a listing walks at most maxRevertLines times.
+// It answers false once ctx ends, which the caller reads from ctx.
+func (h *history) isAncestor(ctx context.Context, gen map[string]int, a, c string) bool {
 	if a == c || gen[a] >= gen[c] {
 		return false
 	}
 	seen := map[string]bool{c: true}
 	stack := []string{c}
-	for len(stack) > 0 {
+	for steps := 1; len(stack) > 0; steps++ {
+		if steps%ctxCheckSteps == 0 && ctx.Err() != nil {
+			return false
+		}
 		x := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 		for _, p := range h.commits[x].parents {
