@@ -347,19 +347,30 @@ may still take it. Its worktree, branch and asides stay until a discard, the han
 each, and the move goes on to the next issue. Nothing about the release is a stop:
 `waitsUntaken` does not read it, and a later drive takes the lane up rather than passing it
 over. A run lock another invocation holds at the take-up is waited out, with nothing written on
-the lane. A take-up the judge of a whole save refuses, since the run's file states another
-schema version and this drive may not save it, passes the lane over (iss-2611120957377169): the
-drive says once what it left, in the judge's reason and remedy, and keeps the lane's run id in
-its own memory alone, never in the run's file, its control record or the drain's state. Every
-move after is given that list and leaves such a lane: nothing of it is saved, and it is not
-picked as the lane in progress, so the drive neither claims, reserves nor steps it again, and
-no agent starts for it. Where the move would
-stop the drain at its cap or as empty with such a lane in progress, it leaves the drain open and
-names the lanes, and the drive ends on `passed-lanes`, exit 3, listing each with why. A later
-drive starts with an empty list, so its own claim and the same judge decide the lane again. The listing's `reserved` is false for a lane let go, since the run's `reserved_at`
+the lane. The listing's `reserved` is false for a lane let go, since the run's `reserved_at`
 outlives the release. A person's stop during the wait halts the run as ever, its page naming
 what the limit saved aside, and the take-over then reserves it again, since the run still names
 a reservation.
+
+A take-up the judge of a whole save refuses, since the run's file states another schema version
+and this drive may not save it, passes the lane over (iss-2611120957377169), and so does a
+take-over of a run the drive's own signal halted, which that judge refuses once the take-over
+has reserved the issue again, where the halt released it, and cleared the stop's mark. The drive
+says once what it left, in the judge's reason and remedy, and keeps the lane's run id in its own
+memory alone, never in the run's file, its control record or the drain's state. The pass lasts the rest of the drive
+whatever the judge's reason, one that could change while it runs, such as a process table that
+could not be read, among them. From the pass on, the drive writes nothing for the lane: every
+move is given the list and leaves the lane, reading no outcome of it and neither pacing,
+halting, renewing nor finishing it, and does not pick it as the lane in progress; the drive's
+waits leave a passed lane's reservation and record alone; its halt, its signal's halt and its
+let-go at the end pass the lane by; and no agent starts for it. Where the move would stop the
+drain at its cap or as empty with such a lane in progress, it leaves the drain open and names
+the lanes, and the drive ends on `passed-lanes`, exit 3, listing each with why and naming the
+command that starts a drive. The drain's other stops, on an outage a run gave up on and on
+origin it cannot read, end it as before, a passed lane in progress or not. A passed lane another
+session finishes still reads as in progress, so it keeps the drain open until a later drive
+routes it. A later drive starts with an empty list, so its own claim and the same judge decide
+the lane again.
 
 An agent that goes silent cannot be told from a hung one on what is known today. It
 is treated as a hang: its role's deadline kills its process group, its worktree is left

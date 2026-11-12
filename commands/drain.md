@@ -133,16 +133,23 @@ hand-in refuses that run until you discard its lanes (`abcd implement step --run
 It prints one line per step and logs them under `.abcd/.work.local/logs/`. It ends
 at the cap, when nothing is eligible, at the bound below, or on a stop.
 
-**A lane it may not save.** A lane the drive let go and comes back to whose run's file
-states another schema version than this abcd's, and that this drive may not save, is passed
-over rather than ending the run. The drive says once what it left and why, in the words of
-the refusal and its remedy, and for the rest of the run nothing of that lane is saved,
-claimed or reserved, and no agent starts for it: each move leaves the lane, and the drive
-goes on with its other lanes and issues. Where the drive would have ended at the cap or with
-nothing eligible left and such a lane is still in progress, the drain stays open, and the
-drive ends instead on an ending of its own, at exit 3, naming each lane it passed over with
-why. A later drive comes to the lane again, where its own claim and the same judge decide
-whether it may take it up. Nothing of this is written to the run or the drain's state.
+**A lane it may not save.** A lane the drive let go, or halted on a signal, and comes back to,
+whose run's file states another schema version than this abcd's and that this drive may not
+save, is passed over rather than ending the run. The drive says once what it left and why, in
+the words of the refusal and its remedy, and goes on with its other lanes and issues. The pass
+lasts the rest of the run whatever the reason, one that could change while the drive runs, such
+as a process table that could not be read, among them. For the rest of the run the drive writes
+nothing for that lane: no save, no claim, no reservation pushed or renewed, no line in its
+record, and no agent starts for it. Each move leaves the lane, the drive's waits leave a passed
+lane's reservation and record alone, and its halts and its release at the end pass it by. Where
+the drive would have ended at the cap or with nothing eligible left and such a lane is still in
+progress, the drain stays open, and the drive ends instead on an ending of its own, at exit 3,
+naming each lane it passed over with why and the command to resume with. The drain's other
+stops, on a connection a run gave up on and on origin it cannot read, end it as before. A
+passed lane another session finishes still counts as in progress, so it keeps the drain open
+until a later drive routes it. A later drive comes to the lane again, where its own claim and
+the same judge decide whether it may take it up. The drive keeps the lanes it passed over in
+its own memory, not in the run or the drain's state.
 
 **A new release during the run.** The yes covers one more thing, and the question says so
 on a line of its own: about once an hour, at a lane boundary and never during a stage, the
