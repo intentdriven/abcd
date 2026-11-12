@@ -483,13 +483,19 @@ func (o Options) passingSave() saveFrame {
 
 // claimInPassing is claimToSave for a run this session saves once and does not drive on:
 // letGo lets go a claim this call recorded, and does nothing where it recorded none (the
-// run at this abcd's version, already this session's, or another live session's). Letting
-// it go leaves the control record naming no driver, which the run's record says, so the
-// next session to step it claims it. A let-go that fails leaves the claim, which then
-// stands until this session ends, as any driver's does.
+// run at this abcd's version, already this session's, another live session's, or a control
+// record that could not be read before the claim). Letting it go leaves the control record
+// naming no driver, so the next session to step it claims it; where the claim named the
+// driver it replaced in the run's record, the let-go is a line there too, and where it
+// named none it adds none, so a run saved this way move after move does not grow its
+// record. A let-go that fails leaves the claim, which then stands until this session
+// ends, as any driver's does.
 func claimInPassing(repoRoot, runID string, o Options) (letGo func(), err error) {
 	letGo = func() {}
-	before, _ := runControl(repoRoot, runID)
+	before, err := runControl(repoRoot, runID)
+	if err != nil {
+		return letGo, claimToSave(repoRoot, runID, o)
+	}
 	if err := claimToSave(repoRoot, runID, o); err != nil {
 		return letGo, err
 	}
@@ -497,8 +503,8 @@ func claimInPassing(repoRoot, runID string, o Options) (letGo func(), err error)
 	if err != nil || after.Driver == nil || (before.Driver != nil && sameClaim(*before.Driver, *after.Driver)) {
 		return letGo, nil
 	}
-	made := *after.Driver
-	return func() { _ = letClaimGo(repoRoot, runID, made, o) }, nil
+	made, said := *after.Driver, before.Driver != nil
+	return func() { _ = letClaimGo(repoRoot, runID, made, said, o) }, nil
 }
 
 // sameClaim reports whether a and b are one claim: one process, claimed at one instant.
@@ -507,16 +513,16 @@ func sameClaim(a, b LiveDriver) bool {
 }
 
 // letClaimGo takes the claim made off the run's control record where it still stands
-// there, with a line in the run's record; the file keeps the version it states
+// there, with a line in the run's record where said; the file keeps the version it states
 // (saveRecord).
-func letClaimGo(repoRoot, runID string, made LiveDriver, o Options) error {
+func letClaimGo(repoRoot, runID string, made LiveDriver, said bool, o Options) error {
 	return saveRecord(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		c, err := readControl(root, runID)
 		if err != nil || c.Driver == nil || !sameClaim(*c.Driver, made) {
 			return false, err
 		}
 		c.Driver = nil
-		if err := writeControl(root, runID, c); err != nil {
+		if err := writeControl(root, runID, c); err != nil || !said {
 			return false, err
 		}
 		now := o.now()

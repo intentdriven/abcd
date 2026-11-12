@@ -922,6 +922,21 @@ func TestADrainLetsGoARunThatIsNotItsLaneOnceItsSaveIsMade(t *testing.T) {
 			if !slices.ContainsFunc(st.Record, func(e Entry) bool { return e.Stage == StageDriver && strings.Contains(e.Note, "let the run go") }) {
 				t.Fatalf("the run's record does not say the drain let it go: %+v", st.Record)
 			}
+			// A claim that names no driver it replaced is let go with no line, so a run saved
+			// this way move after move does not grow its record.
+			driverLines := func(st State) int {
+				return len(slices.DeleteFunc(slices.Clone(st.Record), func(e Entry) bool { return e.Stage != StageDriver }))
+			}
+			lines := driverLines(st)
+			if _, err := Drain(f.repo.Root(), o, DrainOptions{}); err != nil {
+				t.Fatalf("the second move: %v", err)
+			}
+			if st, err = ReadState(f.repo.Root(), f.runID); err != nil || driverLines(st) != lines {
+				t.Fatalf("the second move grew the run's record with driver lines: %d, then %+v %v", lines, st.Record, err)
+			}
+			if c := controlOf(t, f.repo.Root(), f.runID); c.Driver != nil {
+				t.Fatalf("the second move's claim outlived its save: %+v", c.Driver)
+			}
 			procsOf(t, hostThree, hostOne, hostThree)
 			if err := ClaimDriver(f.repo.Root(), f.runID, o); err != nil {
 				t.Fatalf("the person's own step is refused while the drain's session lives: %v", err)
