@@ -254,7 +254,8 @@ claim could not take (the process table unread, or the session the build runs un
 not found), one a drive stopped on, one whose control record holds a stop, and one the
 stop read for its shared folder finds stopped or cannot trust are left as they stand,
 with a line saying why, or the build is refused where its reservation's save is the
-first thing the run is saved by. One deadline bounds the closing's own git: the fetch, the ref
+first thing the run is saved by; that save is judged before the reservation is pushed, so
+such a build reserves nothing on origin. One deadline bounds the closing's own git: the fetch, the ref
 reads and ancestry checks it makes, the worktree listing and the worktree reads.
 A closing already out of time when it takes the run's lock is refused with
 nothing removed; one that runs out later keeps the lanes it has closed, says it

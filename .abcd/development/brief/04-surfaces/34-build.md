@@ -469,7 +469,10 @@ commit past the default branch is not read as merged and resumes as before.
 A resumed run whose state file states another version than this binary's is
 claimed before anything of it is saved, as a step claims a run: one whose driver
 is gone, or that names none, becomes this session's, and one another live session
-drives refuses the build with nothing changed. Under the run's lock, immediately
+drives refuses the build with nothing changed. A claim that takes nothing (the
+process table unread, or the session the build runs under not found) leaves the
+save that records the reservation refused, and that save is judged before the
+reservation is pushed, so such a build reserves nothing on origin. Under the run's lock, immediately
 before anything is removed, the run is left as it stands, with a line saying why,
 when its state file states another version than this binary's and this session is
 not the driver its control record names, a drive stopped on it, its control record holds a stop, or

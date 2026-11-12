@@ -878,6 +878,10 @@ session its control record names. The drain claims such a run first, as a step c
 run, whether it is a lane of this drain's, an ended drain's or a build's, so a drain run by a
 newer binary finishes the merged lanes a gone driver left; a run another live session
 drives, or that the claim cannot take, is left as its file stands and named with why. A
+parked run that is not one of this drain's lanes is claimed for that save alone, as it is
+for the check that takes up a lifted stop's mark on it, and the claim is let go once the
+save is made, with a line in the run's record, so the person's own step from another
+session claims the run after the move. A
 lane in progress the move admits, takes a new pace into or hands back as stuck is claimed
 the same way, and one another live session drives is named as left to that session, once
 each move, without refusing the move.

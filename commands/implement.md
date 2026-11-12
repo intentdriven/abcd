@@ -1023,7 +1023,11 @@ signal's stop leaves no file to lift, so its mark stays until a take-over), a re
 claims it before anything is saved, and a drain claims a run it takes up. Each claim replaces a driver
 that is gone, naming it in the run's record, and refuses at exit 3 while another driver is alive. A
 claim that cannot read the process table, or cannot find the session it runs under, claims nothing, and
-the save that follows is refused the same way. A claim, a cleared stop mark, the stop's page note and a
+the save that follows is refused the same way. A caller with no host session to find, such as a
+scheduler or a detached script, is that second case: after an upgrade its whole saves of a run whose
+file states the older version are refused until one `abcd implement step --run <run-id>` from a session
+claims the run, after which the file states this abcd's version and any session saves it. `abcd drain
+--drive` claims as its own process, so it is not such a caller. A claim, a cleared stop mark, the stop's page note and a
 drive's release each add only lines to the run's record and its control record, and keep the version
 its file states. The judge tells sessions apart by their host process, not by the abcd they run, so a
 newer abcd run under the driver's own session counts as that driver. A step under a stop claims
@@ -1039,7 +1043,10 @@ runs it may save, its refusal naming each run it leaves and that the run's own d
 the stop. With no stop, a run it finishes, syncs again, watches in the merge queue or hands back closed,
 and a lane in progress it admits, paces or hands back as stuck, is claimed first where its file states
 another version, so a drain run by a newer abcd takes up its own lanes and the merged lanes an earlier
-drain or a build left. A run another live session drives is left as its file stands and named in
+drain or a build left. A parked run that is not one of the drain's lanes, a build's or an ended
+drain's, is claimed for that save alone, and so is one carrying the mark of a stop since lifted, for
+the check that takes the mark up: the claim is let go once the save is made, with a line in the run's
+record, so the person's own step from another session claims the run after the move. A run another live session drives is left as its file stands and named in
 `next`, once each move, and the move is not refused for it: a lane in progress left that way ends the
 move as any lane in progress does, and one a new pace leaves keeps its pace. With no agent left in its
 call and its work saved it no longer renews. Work a save could not take stays uncommitted in its

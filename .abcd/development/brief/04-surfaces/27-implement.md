@@ -776,7 +776,12 @@ on. A session takes such a run up by claiming it: a step claims it while no stop
 take-over while one does, since a signal's stop leaves no file to lift, a resumed build before it saves
 anything and a drain over a run it takes up. A claim replaces a driver that is gone and names it in the
 run's record, refuses while another is alive, and claims nothing where the process table or the
-session it runs under cannot be read, after which the save is refused the same way. The driver is told
+session it runs under cannot be read, after which the save is refused the same way. A caller with no
+host session to find, a scheduler or a detached script, is the second case: after an upgrade its whole
+saves of a run whose file states the older version are refused until one step from a session claims the
+run, after which the file states this binary's version and any session saves it; a drive claims as its
+own process, so it is not such a caller. A drain's claim on a parked run that is not one of its lanes
+lasts for one save, and is let go once the save is made. The driver is told
 by its host process, not by the abcd it runs, so a newer abcd run under the driver's own session counts
 as the driver. Lines a claim, a cleared mark, the stop's page note and a drive's release add to a run's
 record keep the version its file states. A step under a stop claims nothing, so it halts such a run
