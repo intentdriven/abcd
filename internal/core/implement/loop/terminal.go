@@ -56,7 +56,23 @@ const (
 	// TerminalKilled: the context ended, a second signal: the agent's process
 	// group was killed, and what it held lapses on its own.
 	TerminalKilled = "killed"
+	// TerminalPassedLanes: the only lanes the drain has left in progress are ones the
+	// drive passed over, since it may not save them (PassedLane): the drain stays open,
+	// and a drive that may save them takes them up.
+	TerminalPassedLanes = "passed-lanes"
 )
+
+// PassedLane is a lane a drive passed over: its run's file states another schema
+// version, and the judge of a whole save (mayWholeSave) refused this drive the save
+// taking it up or taking it over needs. Reason is that judge's reason and remedy. From
+// the pass to the drive's end, whatever the reason, the drive writes nothing for the
+// lane: no save, claim, reservation pushed or renewed, or line in its record, and no
+// agent runs for it.
+type PassedLane struct {
+	Issue  string `json:"issue"`
+	Run    string `json:"run"`
+	Reason string `json:"reason"`
+}
 
 // TerminalResumeCommand resumes a run that left a lane.
 const TerminalResumeCommand = "abcd drain --drive"
@@ -190,6 +206,8 @@ type TerminalResult struct {
 	HeldBack []string `json:"held_back,omitempty"`
 	// PassedOver names each issue the run did not open, with why.
 	PassedOver []Excluded `json:"passed_over,omitempty"`
+	// PassedLanes names each lane the run passed over, with why.
+	PassedLanes []PassedLane `json:"passed_lanes,omitempty"`
 	// Why is what stopped the run when a check did.
 	Why string `json:"why,omitempty"`
 }
@@ -268,6 +286,9 @@ type terminal struct {
 	holdToSay bool
 	// passedOver are the issues said to need a person, each once.
 	passedOver []Excluded
+	// passedLanes are the lanes passed over because the drive may not save them, each
+	// said once, and given to every move after (DrainOptions.PassedLanes).
+	passedLanes []PassedLane
 	// why is what stopped the run, when a check did, and wallEnded the reason a wait
 	// inside that check ended it for, when one did.
 	why       string
@@ -480,7 +501,7 @@ func (t *terminal) settleHalted() {
 	st, _, err := readDrain(t.repoRoot)
 	if err == nil {
 		for _, l := range st.Lanes {
-			if l.Outcome != DrainLaneInProgress {
+			if l.Outcome != DrainLaneInProgress || t.passedLane(l.RunID) {
 				continue
 			}
 			if _, err := stopCheck(t.repoRoot, l.RunID, t.o.Stages, t.o.Options); t.why == "" {
@@ -512,7 +533,7 @@ func (t *terminal) haltOnSignal() {
 	}
 	now := t.now()
 	for _, l := range st.Lanes {
-		if l.Outcome != DrainLaneInProgress || driveStopped(l.RunID) {
+		if l.Outcome != DrainLaneInProgress || driveStopped(l.RunID) || t.passedLane(l.RunID) {
 			continue
 		}
 		s := runstop.Stop{SetBy: "a signal to the drive", SetAt: now}
@@ -580,15 +601,17 @@ func (t *terminal) sayWait(d time.Duration, why string) {
 
 // renewHeld renews each due reservation of a run in progress, but one a drive
 // let go, as it ended or for a limit, and of a lane parked at its pull request, and says
-// what failed.
+// what failed. A lane this drive passed over is renewed by neither, whatever its file
+// says (DrainOptions.PassedLanes): a drive's waits leave a passed lane's reservation and
+// record alone.
 func (t *terminal) renewHeld() {
 	now := t.now()
-	for _, r := range renewRunsAt(t.repoRoot, "", func(st State) bool { return !letGoByDrive(st) }, now) {
+	for _, r := range renewRunsAt(t.repoRoot, "", func(st State) bool { return !letGoByDrive(st) && !t.passedLane(st.RunID) }, now) {
 		if !r.Renewed {
 			t.say("%s: %s", r.Key, r.Note)
 		}
 	}
-	for _, note := range renewParkedDue(t.repoRoot, now) {
+	for _, note := range renewParkedDue(t.repoRoot, now, t.o.Drain.PassedLanes) {
 		t.say("%s", note)
 	}
 }
@@ -721,6 +744,9 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		if res.Stopped != "" {
 			return t.ended(res.Stopped), nil
 		}
+		if len(res.passedOnly) > 0 {
+			return t.ended(TerminalPassedLanes), nil
+		}
 		if res.Judged != nil {
 			t.moved()
 		}
@@ -781,7 +807,9 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		if ended != "" {
 			return t.ended(ended), nil
 		}
-		t.inHand = t.laneInProgress(res.Lane.RunID)
+		// A lane the take-up in driveLane has just passed over is not in hand, so a new
+		// release does not wait on it.
+		t.inHand = !t.passedLane(res.Lane.RunID) && t.laneInProgress(res.Lane.RunID)
 	}
 }
 
@@ -1995,6 +2023,26 @@ func (t *terminal) passOverHalted(run State) (bool, string) {
 	return true, ""
 }
 
+// passLane passes over the lane of run, whose file states another version this drive may
+// not save (r, the judge's refusal): every move after leaves it (DrainOptions.PassedLanes),
+// and so do the drive's waits, its halts and its let-go at the end; the line saying what
+// was left and why, the judge's reason and remedy, is said once.
+func (t *terminal) passLane(run State, r *Refusal) {
+	if t.passedLane(run.RunID) {
+		return
+	}
+	p := PassedLane{Issue: termsafe.Sanitize(run.Key), Run: run.RunID,
+		Reason: termsafe.Sanitize(fsutil.RedactHome(r.Reason + "; " + r.Remedy))}
+	t.passedLanes = append(t.passedLanes, p)
+	t.o.Drain.PassedLanes = append(t.o.Drain.PassedLanes, run.RunID)
+	t.say("passed over %s's lane, run %s, and going on with the drain's other work: %s", p.Issue, p.Run, p.Reason)
+}
+
+// passedLane reports whether the drive passed the lane of runID over.
+func (t *terminal) passedLane(runID string) bool {
+	return t.o.Drain.passedLane(runID)
+}
+
 // notePassedOver says an issue needs a person, once.
 func (t *terminal) notePassedOver(p Excluded) {
 	if slices.ContainsFunc(t.passedOver, func(e Excluded) bool { return e.ID == p.ID }) {
@@ -2020,11 +2068,15 @@ func (t *terminal) takeOver(ctx context.Context, run State) (bool, string) {
 		return true, TerminalHalted
 	}
 	if r, ok := AsRefusal(err); ok {
-		switch r.Stage {
-		case StageResume:
+		switch {
+		// The refusal of a whole save is at the driver's stage, and the lane is passed
+		// over as the take-up passes it (tookUp), not waited on as a driver is.
+		case r.leftAtVersion:
+			return t.tookUp(ctx, run, err)
+		case r.Stage == StageResume:
 			t.stoppedBy(fmt.Errorf("%s; %s", r.Reason, r.Remedy))
 			return true, TerminalWall
-		case StageDriver:
+		case r.Stage == StageDriver:
 			if t.idle(ctx, TerminalWaitFloor, r.Reason) {
 				return true, TerminalWaited
 			}
@@ -2047,10 +2099,11 @@ func (t *terminal) tookUp(ctx context.Context, run State, err error) (bool, stri
 	}
 	// The run's file states another version and this drive may not save it: no other
 	// drive took the issue up, and nothing the drive saves of the lane would be kept, so
-	// the drive ends on it, once, saying what was left and why.
+	// the drive passes the lane over, once, saying what was left and why, and goes on
+	// with its other work (passLane).
 	if r.leftAtVersion {
-		t.stoppedBy(fmt.Errorf("%s, run %s, is not taken up: %s; %s", run.Key, runID, r.Reason, r.Remedy))
-		return true, TerminalWall
+		t.passLane(run, r)
+		return true, ""
 	}
 	if r.recordMoved {
 		reason, derr := dropMovedRun(t.repoRoot, run, r.Reason, t.now(), t.o.Options)
@@ -2299,7 +2352,7 @@ func (t *terminal) letGo() {
 			return err
 		}
 		for _, l := range st.Lanes {
-			if l.Outcome != DrainLaneInProgress {
+			if l.Outcome != DrainLaneInProgress || t.passedLane(l.RunID) {
 				continue
 			}
 			run, err := ReadState(t.repoRoot, l.RunID)
@@ -2354,16 +2407,22 @@ func (t *terminal) ended(why string) TerminalResult {
 	if why != TerminalKilled && why != TerminalHalted {
 		t.letGo()
 	}
-	res := TerminalResult{Ended: why, Last: t.last, HeldBack: t.heldBack, PassedOver: t.passedOver}
+	res := TerminalResult{Ended: why, Last: t.last, HeldBack: t.heldBack, PassedOver: t.passedOver, PassedLanes: t.passedLanes}
 	if why == TerminalWall || why == TerminalHalted {
 		res.Why = t.why
+	}
+	// The lanes passed over are a later drive's to take up, so the command that starts one
+	// is named, as it is for a lane left on its branch.
+	if why == TerminalPassedLanes {
+		res.Resume = TerminalResumeCommand
 	}
 	st, _, err := readDrain(t.repoRoot)
 	if err != nil {
 		return res
 	}
 	for _, l := range st.Lanes {
-		if l.Outcome != DrainLaneInProgress {
+		// A lane passed over is named among PassedLanes, not as the lane left.
+		if l.Outcome != DrainLaneInProgress || t.passedLane(l.RunID) {
 			continue
 		}
 		res.Run, res.Issue = l.RunID, l.Issue

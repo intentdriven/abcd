@@ -490,19 +490,27 @@ func (o Options) laneSave(claim bool) saveFrame {
 // lanes: a person's build, or an earlier drain's lane. It is claimed first, as laneSave
 // claims, and a claim this call made is let go once the save is done (claimInPassing), so
 // the run is the drain's for that save alone and a step from the person's own session
-// is not refused for as long as the drain's session lives.
+// is not refused for as long as the drain's session lives. The let-go is deferred before
+// the claim's error is judged: a claim can record its driver and then fail to add its line
+// to the run's record, and that claim is let go too, the save not made.
 func (o Options) passingSave() saveFrame {
 	return func(repoRoot, runID string, fn func(root *os.Root, st *State) (bool, error)) error {
-		letGo, err := claimInPassing(repoRoot, runID, o)
+		letGo, err := claimPassing(repoRoot, runID, o)
+		defer letGo()
 		if err != nil {
 			if _, refused := AsRefusal(err); !refused {
 				return err
 			}
 		}
-		defer letGo()
 		return saveRun(repoRoot, runID, o, fn)
 	}
 }
+
+// claimPassing is the claim passingSave makes; a test stands one in to fail a claim
+// after its driver is recorded. It is the package's, as its other seams are, so a test
+// that swaps it, and every test that reaches passingSave (a drain's move finishing a
+// parked run that is not its lane), must not run in parallel.
+var claimPassing = claimInPassing
 
 // claimInPassing is claimToSave for a run this session saves once and does not drive on:
 // letGo lets go the claim this call recorded, as the claim itself reported it under the

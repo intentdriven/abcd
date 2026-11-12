@@ -352,6 +352,32 @@ outlives the release. A person's stop during the wait halts the run as ever, its
 what the limit saved aside, and the take-over then reserves it again, since the run still names
 a reservation.
 
+A take-up the judge of a whole save refuses, since the run's file states another schema version
+and this drive may not save it, passes the lane over (iss-2611120957377169), and so does a
+take-over of a run the drive's own signal halted, which that judge refuses. Where the checkout
+has an origin and the halt released the issue, the judge refuses the take-over at its
+reservation, before anything is pushed, and the stop's mark stays; a reservation pushed in the
+window before the save, which a lock or a driver taken in between then refuses, is released
+again. Where there is no origin, the halt held no reservation, or the record has already
+finished on the default branch, the judge refuses the take-over at its save, after it has
+cleared the stop's mark (iss-2611121517368816). In neither case does the lane keep a
+reservation the take-over made. The drive
+says once what it left, in the judge's reason and remedy, and keeps the lane's run id in its own
+memory alone, never in the run's file, its control record or the drain's state. The pass lasts the rest of the drive
+whatever the judge's reason, one that could change while it runs, such as a process table that
+could not be read, among them. From the pass on, the drive writes nothing for the lane: every
+move is given the list and leaves the lane, reading no outcome of it and neither pacing,
+halting, renewing nor finishing it, and does not pick it as the lane in progress; the drive's
+waits leave a passed lane's reservation and record alone; its halt, its signal's halt and its
+let-go at the end pass the lane by; and no agent starts for it. Where the move would stop the
+drain at its cap or as empty with such a lane in progress, it leaves the drain open and names
+the lanes, and the drive ends on `passed-lanes`, exit 3, listing each with why and naming the
+command that starts a drive. The drain's other stops, on an outage a run gave up on and on
+origin it cannot read, end it as before, a passed lane in progress or not. A passed lane another
+session finishes still reads as in progress, so it keeps the drain open until a later drive
+routes it. A later drive starts with an empty list, so its own claim and the same judge decide
+the lane again.
+
 An agent that goes silent cannot be told from a hung one on what is known today. It
 is treated as a hang: its role's deadline kills its process group, its worktree is left
 as it stood, and the role is retried; it counts against its lane only if a probe answers.

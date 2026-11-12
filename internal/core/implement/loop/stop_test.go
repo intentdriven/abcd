@@ -497,7 +497,7 @@ func TestADrainUnderAStopLeavesAnotherDriversRunAtItsVersion(t *testing.T) {
 			}
 			o, _, _ := stopped(t)
 
-			_, err = drainStop(repo.Root(), &st, o)
+			_, err = drainStop(repo.Root(), &st, o, nil)
 			r := wantStopRefusal(t, err)
 
 			c := controlOf(t, repo.Root(), runID)
@@ -838,7 +838,7 @@ func TestADrainIsHeldWhenARunsSettingHasGone(t *testing.T) {
 	if err := os.Remove(settingOf(home)); err != nil {
 		t.Fatal(err)
 	}
-	_, err := drainStop(repo.Root(), &DrainState{}, o)
+	_, err := drainStop(repo.Root(), &DrainState{}, o, nil)
 	wantStopRefusal(t, err)
 }
 
