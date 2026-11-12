@@ -156,8 +156,13 @@ type prAnswer struct {
 	} `json:"commits"`
 }
 
-// loginRe is a person's forge login's shape; any other is no reviewer.
-var loginRe = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$`)
+// loginRe is a person's forge login's shape, any other no reviewer: letters,
+// digits and hyphens, and the underscore an enterprise-managed account's login
+// carries, at most 39 long. A bot's or an app's login is refused by the type
+// the review node names, not by this shape. The merge gate's own name check
+// (landing's ownerName) still takes no underscore, so the gate reads such a
+// reviewer's permission as unverified where this reader counts them.
+var loginRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,38}$`)
 
 // writeAssociations are the reviewer associations the forge gives an account
 // that holds the repository or was let into it: an owner, a member of the
@@ -216,6 +221,13 @@ func (a *prAnswer) whole() string {
 // the pull request merged counts for nothing, and so does one whose times do
 // not read. A reviews page the forge says is not whole counts none, and says
 // why.
+//
+// Two limits stand. The association and the push access are the forge's
+// answer as of the read, not as of the review: a reviewer who has since lost
+// access no longer counts on a fresh read, one who has since gained it does,
+// and a cached answer keeps what was true when it was read. And the forge
+// gives a machine account of type User the same answer as a person, so one
+// with write access counts as a person.
 func (a *prAnswer) approval(head string) (Approval, string) {
 	if why := a.whole(); why != "" {
 		return Approval{}, why

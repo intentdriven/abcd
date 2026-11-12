@@ -35,21 +35,23 @@ func TestAForgeApprovalCountsOnlyAPersonWithWriteAccess(t *testing.T) {
 		change change
 		counts bool
 	}{
-		"a member who can push":         {func(*prAnswer, *forgeReview) {}, true},
-		"an owner":                      {func(_ *prAnswer, r *forgeReview) { r.AuthorAssociation = "OWNER" }, true},
-		"a collaborator":                {func(_ *prAnswer, r *forgeReview) { r.AuthorAssociation = "COLLABORATOR" }, true},
-		"submitted as it merged":        {func(_ *prAnswer, r *forgeReview) { r.SubmittedAt = "2026-11-01T10:00:00Z" }, true},
-		"a bot":                         {func(_ *prAnswer, r *forgeReview) { r.Author.Typename = "Bot" }, false},
-		"an app's account":              {func(_ *prAnswer, r *forgeReview) { r.Author.Typename = "Mannequin" }, false},
-		"a login in a bot's shape":      {func(_ *prAnswer, r *forgeReview) { r.Author.Login = "helper[bot]" }, false},
-		"a contributor":                 {func(_ *prAnswer, r *forgeReview) { r.AuthorAssociation = "CONTRIBUTOR" }, false},
-		"no association":                {func(_ *prAnswer, r *forgeReview) { r.AuthorAssociation = "NONE" }, false},
-		"a member who cannot push":      {func(_ *prAnswer, r *forgeReview) { r.AuthorCanPush = false }, false},
-		"submitted after the merge":     {func(_ *prAnswer, r *forgeReview) { r.SubmittedAt = "2026-11-01T10:00:01Z" }, false},
-		"a time that does not read":     {func(_ *prAnswer, r *forgeReview) { r.SubmittedAt = "yesterday" }, false},
-		"a merge time that does not":    {func(a *prAnswer, _ *forgeReview) { s := "soon"; a.MergedAt = &s }, false},
-		"no author the forge names":     {func(a *prAnswer, _ *forgeReview) { a.Author = nil }, false},
-		"the author's own, in capitals": {func(a *prAnswer, r *forgeReview) { r.Author.Login = strings.ToUpper(author) }, false},
+		"a member who can push":          {func(*prAnswer, *forgeReview) {}, true},
+		"an owner":                       {func(_ *prAnswer, r *forgeReview) { r.AuthorAssociation = "OWNER" }, true},
+		"a collaborator":                 {func(_ *prAnswer, r *forgeReview) { r.AuthorAssociation = "COLLABORATOR" }, true},
+		"submitted as it merged":         {func(_ *prAnswer, r *forgeReview) { r.SubmittedAt = "2026-11-01T10:00:00Z" }, true},
+		"a managed account's login":      {func(_ *prAnswer, r *forgeReview) { r.Author.Login = "pat_acme" }, true},
+		"a login past the forge's bound": {func(_ *prAnswer, r *forgeReview) { r.Author.Login = strings.Repeat("a", 40) }, false},
+		"a bot":                          {func(_ *prAnswer, r *forgeReview) { r.Author.Typename = "Bot" }, false},
+		"an app's account":               {func(_ *prAnswer, r *forgeReview) { r.Author.Typename = "Mannequin" }, false},
+		"a login in a bot's shape":       {func(_ *prAnswer, r *forgeReview) { r.Author.Login = "helper[bot]" }, false},
+		"a contributor":                  {func(_ *prAnswer, r *forgeReview) { r.AuthorAssociation = "CONTRIBUTOR" }, false},
+		"no association":                 {func(_ *prAnswer, r *forgeReview) { r.AuthorAssociation = "NONE" }, false},
+		"a member who cannot push":       {func(_ *prAnswer, r *forgeReview) { r.AuthorCanPush = false }, false},
+		"submitted after the merge":      {func(_ *prAnswer, r *forgeReview) { r.SubmittedAt = "2026-11-01T10:00:01Z" }, false},
+		"a time that does not read":      {func(_ *prAnswer, r *forgeReview) { r.SubmittedAt = "yesterday" }, false},
+		"a merge time that does not":     {func(a *prAnswer, _ *forgeReview) { s := "soon"; a.MergedAt = &s }, false},
+		"no author the forge names":      {func(a *prAnswer, _ *forgeReview) { a.Author = nil }, false},
+		"the author's own, in capitals":  {func(a *prAnswer, r *forgeReview) { r.Author.Login = strings.ToUpper(author) }, false},
 	}
 	merges := map[string]string{}
 	n := 200
