@@ -172,8 +172,7 @@ func TestTheForgeMustSayThePullRequestMergedAsTheRow(t *testing.T) {
 
 // TestARecordedApprovalOfAMergeTheForgeDeniesCountsNothing: in either mode, a
 // merge commit whose subject names a pull request the forge says merged as
-// another commit counts no recorded approval of its second parent; with the
-// forge unread, the recorded approval still counts.
+// another commit counts no recorded approval of its second parent.
 func TestARecordedApprovalOfAMergeTheForgeDeniesCountsNothing(t *testing.T) {
 	for _, mode := range []string{"human", "auto"} {
 		f := newFx(t, mode)
@@ -182,14 +181,61 @@ func TestARecordedApprovalOfAMergeTheForgeDeniesCountsNothing(t *testing.T) {
 		if _, err := landing.RecordApproval(f.r.Root(), b); err != nil {
 			t.Fatal(err)
 		}
-		unread := &fakeForge{t: t, err: errors.New("gh api graphql: exit status 1 (HTTP 502)")}
-		if r := row(t, f.list(unread.call), m); r.Approval != (Approval{Seen: true, Source: SourceLocalTier}) || r.Unattended {
-			t.Fatalf("%s: with the forge unread: %+v", mode, r)
-		}
 		ff := &fakeForge{t: t}
 		ff.add(answer(320, strings.Repeat("c", 40), b))
 		if r := row(t, f.list(ff.call), m); r.Approval.Seen || r.Class != ClassPersonPush || !r.Unattended {
 			t.Fatalf("%s: a recorded approval counted where the forge denies the merge: %+v", mode, r)
+		}
+	}
+}
+
+// TestARecordedApprovalOfAMergedHeadCountsOnlyBesideAReadAnswer: in every
+// mode, a two-parent row whose pull request the forge's answer was not read
+// for is unattended, with the reason, though an approval of its second parent
+// is recorded; with the answer read and saying the pull request merged as the
+// row, the same recorded approval makes the row a person's.
+func TestARecordedApprovalOfAMergedHeadCountsOnlyBesideAReadAnswer(t *testing.T) {
+	for _, mode := range []string{"human", "", "auto"} {
+		f := newFx(t, mode)
+		b := f.branch("approved", "feat: approved once")
+		m := f.merge(321, "approved")
+		if _, err := landing.RecordApproval(f.r.Root(), b); err != nil {
+			t.Fatal(err)
+		}
+		unread := &fakeForge{t: t, err: errors.New("gh api graphql: exit status 1 (HTTP 502)")}
+		if r := row(t, f.list(unread.call), m); r.Approval.Seen || r.Approval.Source != SourceForgeUnread || r.ForgeUnreadable == "" ||
+			r.Class != ClassAutomatic || !r.Unattended {
+			t.Fatalf("mode %q: with the forge unread: %+v", mode, r)
+		}
+		ff := &fakeForge{t: t}
+		ff.add(answer(321, m, b))
+		if r := row(t, f.list(ff.call), m); r.Approval != (Approval{Seen: true, Source: SourceLocalTier}) || r.ForgeUnreadable != "" ||
+			r.Class != ClassPersonApproved || r.Unattended {
+			t.Fatalf("mode %q: with the forge read: %+v", mode, r)
+		}
+	}
+}
+
+// TestTheNoteCountsTheUnreadRowsLeftUnattended: the note's count is the
+// number of rows whose forge answer was not read that the listing leaves
+// unattended, whatever else holds for the other rows.
+func TestTheNoteCountsTheUnreadRowsLeftUnattended(t *testing.T) {
+	for _, mode := range []string{"human", "auto"} {
+		f := newFx(t, mode)
+		ff := manyMerges(t, f, 3)
+		if _, err := landing.RecordApproval(f.r.Root(), ff.prs[1].HeadRefOid); err != nil {
+			t.Fatal(err)
+		}
+		ff.err = errors.New("gh api graphql: exit status 1 (HTTP 502)")
+		l := f.list(ff.call)
+		n := 0
+		for _, r := range l.Rows {
+			if r.ForgeUnreadable != "" && r.Unattended {
+				n++
+			}
+		}
+		if n == 0 || !strings.HasPrefix(l.ForgeUnread, fmt.Sprintf("the forge's answer was not read for %d rows,", n)) {
+			t.Fatalf("mode %s: %d unread rows unattended, the note %q", mode, n, l.ForgeUnread)
 		}
 	}
 }

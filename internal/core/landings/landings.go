@@ -16,11 +16,11 @@ package landings
 // terminal here, where it is read, as is every error list returns. No trailer
 // a branch's author typed lifts a row to person-approved: that class rests on
 // a recorded approval, a forge review of the merged head, or the human mode
-// the first parent committed, and the mode only for a merge the forge's answer
-// was read for. A subject names a pull request only as far as the forge
-// confirms it merged as that row's commit; where the forge answered and says
-// otherwise, the row is read as the push it is, and none of that pull
-// request's evidence is read for it.
+// the first parent committed, and the recorded approval and the mode only for
+// a merge the forge's answer was read for. A subject names a pull request
+// only as far as the forge confirms it merged as that row's commit; where the
+// forge answered and says otherwise, the row is read as the push it is, and
+// none of that pull request's evidence is read for it.
 
 import (
 	"bytes"
@@ -56,8 +56,8 @@ const (
 	// ClassPersonApproved is a merge a person approved: a recorded approval of
 	// its merged head, a forge review approving that head by someone other
 	// than the pull request's author, or the human mode its first parent
-	// committed, for a merge the forge's answer was read for and says merged
-	// as that commit.
+	// committed, each for a merge the forge's answer was read for and says
+	// merged as that commit.
 	ClassPersonApproved = "person-approved"
 	// ClassDrain is a merge under auto with no approval seen whose branch
 	// carries the drain's admission, or such a merge in either mode whose
@@ -338,7 +338,7 @@ func listRows(ctx context.Context, repoRoot string, r Range, o Options) (Listing
 		if why != "" && !slices.Contains(unread, why) {
 			unread = append(unread, why)
 		}
-		if row.ForgeUnreadable != "" {
+		if row.ForgeUnreadable != "" && row.Unattended {
 			unreadRows++
 		}
 		out.Rows = append(out.Rows, row)
@@ -348,7 +348,8 @@ func listRows(ctx context.Context, repoRoot string, r Range, o Options) (Listing
 }
 
 // unreadNote is the listing's forge note: how many rows the forge's answer
-// was not read for, first, so the bound never cuts it, then each reason once.
+// was not read for that are left unattended, first, so the bound never cuts
+// it, then each reason once.
 func unreadNote(rows int, reasons []string) string {
 	note := strings.Join(reasons, "; ")
 	if rows == 0 {
@@ -657,8 +658,10 @@ func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR bool, wts [
 		}
 	}
 
+	// A recorded approval of the merged head counts only beside a forge answer
+	// read for the pull request, and confirmed above as merged as this commit.
 	row.Approval.Source = SourceNoneSeen
-	if row.MergedHead != "" {
+	if row.MergedHead != "" && a != nil {
 		row.Approval = l.recorded(row.MergedHead, wts)
 	}
 	if !row.Approval.Seen {
