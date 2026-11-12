@@ -850,3 +850,28 @@ func TestAResumedStartWhoseClaimClaimedNothingPushesNoReservation(t *testing.T) 
 		t.Fatalf("a reservation was pushed for a start whose save is refused: %+v", tip)
 	}
 }
+
+// TestASaveOverANewerVersionsRunIsRefusedByTheRead: the judge of a whole save never sees
+// a file stating a version above this abcd's, since the read every save makes refuses it
+// first: the change is never made, and the file is left as it stands.
+func TestASaveOverANewerVersionsRunIsRefusedByTheRead(t *testing.T) {
+	repo, runID, _, _ := awaitingLane(t)
+	before := stateAtVersion(t, repo.Root(), runID, SchemaVersion+1)
+	called := false
+
+	err := saveRun(repo.Root(), runID, Options{}, func(_ *os.Root, st *State) (bool, error) {
+		called = true
+		st.UpdatedAt = time.Now()
+		return true, nil
+	})
+
+	if err == nil || called {
+		t.Fatalf("a save over a newer version's file was made: called %v, %v", called, err)
+	}
+	if want := fmt.Sprintf("is schema version %d, which a newer abcd wrote", SchemaVersion+1); !strings.Contains(err.Error(), want) {
+		t.Fatalf("the refusal does not name the newer version: %v", err)
+	}
+	if after := readStateBytes(t, repo.Root(), runID); !bytes.Equal(before, after) {
+		t.Fatalf("the save rewrote a newer version's file:\n%s", after)
+	}
+}
