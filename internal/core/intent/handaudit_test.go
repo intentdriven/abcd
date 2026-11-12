@@ -97,14 +97,21 @@ func TestHandAuditedReadsOnlyItsOwnSection(t *testing.T) {
 	}
 }
 
-// TestHandAuditedReadsCodeSpansAsThePagePairsThem: a verdict inside a span
-// the page pairs over a line break is quoted, and a verdict the page shows as
-// prose after such a span is given.
-func TestHandAuditedReadsCodeSpansAsThePagePairsThem(t *testing.T) {
-	if HandAudited(withAuditNotes("Criterion 2 now quotes `the\nNOT_MET` token in its refusal.")) {
-		t.Errorf("a verdict quoted over a line break read as given")
+// TestHandAuditedReadsCodeSpansOnOneLine: a verdict inside a span that opens
+// and closes on its line is quoted; a span over a line break is read as prose,
+// a verdict in it included; and a span is blanked, not cut out, so the text
+// either side of one cannot join into a comment.
+func TestHandAuditedReadsCodeSpansOnOneLine(t *testing.T) {
+	if HandAudited(withAuditNotes("Criterion 2 names the `MET` token in its refusal.")) {
+		t.Errorf("a verdict quoted on one line read as given")
+	}
+	if !HandAudited(withAuditNotes("Criterion 2 now quotes `the\nNOT_MET` token in its refusal.")) {
+		t.Errorf("a verdict in a span over a line break not read")
 	}
 	if !HandAudited(withAuditNotes("Criterion 2 names `x\ny` and is MET, as `z` shows.")) {
 		t.Errorf("a verdict after a span over a line break not read")
+	}
+	if !HandAudited(withAuditNotes("<`x`!-- Criterion 2 MET -->")) {
+		t.Errorf("a verdict either side of which a span sits read as a comment")
 	}
 }

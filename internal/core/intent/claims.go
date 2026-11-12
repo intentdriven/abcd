@@ -219,8 +219,12 @@ func readConditionBlock(lines []string, spans [][][2]int, b mdrecord.BulletBlock
 		for _, m := range condMarkerRe.FindAllStringSubmatchIndex(ln, -1) {
 			// A marker quoted in backticks is DOCUMENTATION of the grammar, not an
 			// identity — the gradient's own prose writes it that way. Reading it as
-			// one hands a condition an id nobody minted. The spans are the
-			// page's (mdrecord.CodeSpans), so one may open on the line above.
+			// one hands a condition an id nobody minted. The spans are
+			// mdrecord.CodeSpans': one that opens and closes on the line, and
+			// none on a line its stretch reads whole (a backtick run left open
+			// above it) or over a line break. There a marker the page shows
+			// quoted reads as an identity, as it did when spans were paired a
+			// line at a time.
 			if mdrecord.InAnyRange(spans[i], m[0]) {
 				malformed = true
 				continue

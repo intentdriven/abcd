@@ -66,8 +66,8 @@ func PairCodeSpan(s string, i int) (span PairedSpan, ok bool) {
 }
 
 // CodeSpanPairer pairs every backtick run of one string by PairCodeSpan's
-// rule, for a walk that asks about its runs left to right: a paragraph's walk
-// that pairs spans over its line breaks. Asking PairCodeSpan at each run costs
+// rule, for a walk that asks about its runs left to right: the page readers'
+// walk of one line (mdrecord). Asking PairCodeSpan at each run costs
 // a scan to the closer, and to the end of the string for a run nothing closes,
 // so a string of runs that never close costs the square of its length; the
 // pairer lists the string's runs once, by length, and answers each question by

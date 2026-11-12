@@ -12,124 +12,149 @@ type spanCase struct {
 	want [][][2]int // per line; nil for a line holding none
 }
 
+// checkSpans holds CodeSpans and ReadPage's Spans to the same want.
 func checkSpans(t *testing.T, cases []spanCase) {
 	t.Helper()
-	for _, c := range cases {
-		body := lines(c.body)
-		got := CodeSpans(body)
-		for i := range got {
-			if len(got[i]) == 0 {
-				got[i] = nil
+	norm := func(s [][][2]int) [][][2]int {
+		for i := range s {
+			if len(s[i]) == 0 {
+				s[i] = nil
 			}
 		}
+		return s
+	}
+	for _, c := range cases {
+		body := lines(c.body)
 		want := c.want
 		for len(want) < len(body) {
 			want = append(want, nil)
 		}
-		if !reflect.DeepEqual(got, want) {
+		if got := norm(CodeSpans(body)); !reflect.DeepEqual(got, want) {
 			t.Errorf("%s: CodeSpans(%q) = %v, want %v", c.name, c.body, got, want)
 		}
-		page := ReadPage(body).Spans
-		for i := range page {
-			if len(page[i]) == 0 {
-				page[i] = nil
+		if got := norm(ReadPage(body).Spans); !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: ReadPage(%q).Spans = %v, want %v", c.name, c.body, got, want)
+		}
+	}
+}
+
+// TestCodeSpansPairOnOneLine: a run closes at the next run of its length on
+// the same line, and a backtick behind an odd run of backslashes opens none.
+func TestCodeSpansPairOnOneLine(t *testing.T) {
+	checkSpans(t, []spanCase{
+		{"one backtick", "a `x` b", [][][2]int{{{2, 5}}}},
+		{"two backticks, one inside", "a ``x` y`` b", [][][2]int{{{2, 10}}}},
+		{"three backticks, two inside", "a ```x`` y``` b", [][][2]int{{{2, 13}}}},
+		{"a balanced line after a balanced line", "a `x` b\nc `y` d", [][][2]int{{{2, 5}}, {{2, 5}}}},
+		{"an escaped backtick opens nothing", "a \\`x` b `y` c", [][][2]int{{{5, 10}}}},
+		{"an escaped backslash leaves the backtick open", "a \\\\`x` b", [][][2]int{{{4, 7}}}},
+	})
+}
+
+// TestCodeSpansReadAStretchWholeBelowARunLeftOpen: below a backtick run a line
+// leaves open, every line to the next blank line reports no span, whatever
+// block it starts; the line holding the run keeps its own spans on either side
+// of it; a fence's lines leave the stretch as it was.
+func TestCodeSpansReadAStretchWholeBelowARunLeftOpen(t *testing.T) {
+	checkSpans(t, []spanCase{
+		{"a span over a line break", "a `x\ny` b", nil},
+		{"a span after it", "a `x\ny` b `z`", nil},
+		{"over three lines", "a `x\nmore\ny` b `z`", nil},
+		{"a heading, a list item and a blockquote", "a `x\n# h `y`\n- i `z`\n> q `w`", nil},
+		{"a fence", "a `x\n```\n`y`\n```\nc `z` d", nil},
+		{"a comment line", "a `x\n<!-- c -->\nd `y` e", nil},
+		{"spans after the run on its line", "a `` b `c` d\ne `f` g", [][][2]int{{{7, 10}}}},
+		{"spans either side of the run", "`a` `` `b`\nc `d`", [][][2]int{{{0, 3}, {7, 10}}}},
+		{"a blank line ends the stretch", "a `x\n\nc `y` d", [][][2]int{nil, nil, {{2, 5}}}},
+		{"a line of spaces and tabs ends it", "a `x\n \t\nc `y` d", [][][2]int{nil, nil, {{2, 5}}}},
+		{"a line of no-break spaces does not", "a `x\n \nc `y` d", nil},
+		{"a fence in a sure stretch", "a `x` b\n```\n`\n```\nc `y` d", [][][2]int{{{2, 5}}, nil, nil, nil, {{2, 5}}}},
+	})
+}
+
+// TestCodeSpansStepOverComments: backticks inside an HTML comment are literal,
+// and a comment opener inside a span opens nothing.
+func TestCodeSpansStepOverComments(t *testing.T) {
+	checkSpans(t, []spanCase{
+		{"a backtick inside a comment", "<!-- `x --> `y` z", [][][2]int{{{12, 15}}}},
+		{"an opener inside a span", "`<!--` x <!-- `y` -->", [][][2]int{{{0, 6}}}},
+		{"a comment over two lines", "a <!-- b\n`c` -->\nd `e`", [][][2]int{nil, nil, {{2, 5}}}},
+		{"an opener after a run left open", "a `x <!-- b\nc --> `d`", nil},
+	})
+}
+
+// TestReadOpensNoCommentBelowARunLeftOpen: from a backtick run a line leaves
+// open to the next blank line, a comment opener opens no comment, on the run's
+// own line or below it, and the page reads those lines whole; after a blank
+// line, and after balanced lines, an opener opens one as before.
+func TestReadOpensNoCommentBelowARunLeftOpen(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		body string
+		mask []uint8
+	}{
+		{"an opener on the line below", "Intro `a\nb <!-- c\nd -->\ne", []uint8{0, 0, 0, 0}},
+		{"an opener after the run on its line", "Intro `a <!-- c\nd -->", []uint8{0, 0}},
+		{"an opener inside a span over a line break", "Intro `a <!-- b\nc` d --> e", []uint8{0, 0}},
+		{"a blockquote", "> a `x\n> y` <!-- b\n> c -->\nd", []uint8{0, 0, 0, 0}},
+		{"an opener after a blank line", "Intro `a\n\nb <!-- c\nd -->", []uint8{0, 0, MaskComment, MaskComment}},
+		{"an opener after balanced lines", "Intro `a` b\nc <!-- d\ne -->", []uint8{0, MaskComment, MaskComment}},
+		{"an opener inside a one-line span", "`<!--` b\nc", []uint8{0, 0}},
+	} {
+		body := lines(c.body)
+		if m := Mask(body); !reflect.DeepEqual(m, c.mask) {
+			t.Errorf("%s: Mask(%q) = %v, want %v", c.name, c.body, m, c.mask)
+		}
+		p := ReadPage(body)
+		if _, ok := p.Unsure(); ok {
+			t.Errorf("%s: ReadPage(%q) is unsure, want it read", c.name, c.body)
+		}
+		for i, m := range c.mask {
+			if m == 0 && p.Text[i] != body[i] {
+				t.Errorf("%s: Text[%d] = %q, want the line whole", c.name, i, p.Text[i])
 			}
 		}
-		if !reflect.DeepEqual(page, want) {
-			t.Errorf("%s: ReadPage(%q).Spans = %v, want %v", c.name, c.body, page, want)
+	}
+}
+
+// TestOpensCommentReadsTheLineAlone: a line read alone opens a comment after
+// a backtick run it leaves open, the answer a writer asking before it appends
+// the line needs, since on the page the run may pair with nothing.
+func TestOpensCommentReadsTheLineAlone(t *testing.T) {
+	for ln, want := range map[string]bool{
+		"a `x <!-- y":     true,
+		"a `x` <!-- y":    true,
+		"a `<!--` y":      false,
+		"a <!-- `x -->":   false,
+		"a `x <!-- y -->": false,
+	} {
+		if got := OpensComment(ln); got != want {
+			t.Errorf("OpensComment(%q) = %v, want %v", ln, got, want)
 		}
 	}
 }
 
-// TestCodeSpansPairOverALineBreak: a backtick run closes at the next run of
-// its length on a later line of the same paragraph, as the page pairs it.
-func TestCodeSpansPairOverALineBreak(t *testing.T) {
-	checkSpans(t, []spanCase{
-		{"one backtick", "a `x\ny` b", [][][2]int{{{2, 4}}, {{0, 2}}}},
-		{"two backticks, one inside", "a ``x\n` y`` b", [][][2]int{{{2, 5}}, {{0, 5}}}},
-		{"three backticks, two inside", "a ```x\n`` y``` b", [][][2]int{{{2, 6}}, {{0, 7}}}},
-		{"over three lines", "a `x\nmore\ny` b", [][][2]int{{{2, 4}}, {{0, 4}}, {{0, 2}}}},
-		{"a list item's continuation", "- a `x\n  y` b", [][][2]int{{{4, 6}}, {{0, 4}}}},
-		{"an unpaired run, then a span on the next line", "a `x\ny` b `z`", [][][2]int{{{2, 4}}, {{0, 2}, {5, 8}}}},
-		{"a span on its own line", "a `x` b", [][][2]int{{{2, 5}}}},
-		{"an escaped backtick opens nothing", "a \\`x` b `y`", [][][2]int{{{5, 10}}}},
-	})
-}
-
-// TestCodeSpansEndAtTheParagraph: a blank line, a heading, a fence, a list
-// item, a thematic break or a comment line ends the paragraph, and a run left
-// open there is literal backticks.
-func TestCodeSpansEndAtTheParagraph(t *testing.T) {
-	checkSpans(t, []spanCase{
-		{"a blank line", "a `x\n\ny` b", nil},
-		{"a heading", "a `x\n# y` b", nil},
-		{"a fence", "a `x\n```\ny`\n```\nz` c", nil},
-		{"a list item", "a `x\n- y` b", nil},
-		{"a numbered item", "a `x\n1. y` b", nil},
-		{"a thematic break", "a `x\n***\ny` b", nil},
-		{"a setext underline", "a `x\n---\ny` b", nil},
-		{"a comment line", "a `x\n<!-- c -->\ny` b", nil},
-		{"after a heading", "# a `x\ny` b", nil},
-	})
-}
-
-// TestCodeSpansReadWhereThePairingIsOpen: where the paragraph's extent turns
-// on a construct the package does not parse, and a run there could pair over
-// it, the lines hold no span, so a reader reads them.
-func TestCodeSpansReadWhereThePairingIsOpen(t *testing.T) {
-	checkSpans(t, []spanCase{
-		{"a blockquote line after an unpaired run", "> a `x\n> y` b `z`", nil},
-		{"a table cell holds the run", "| h | i |\n|---|---|\n| `a | b` |", nil},
-		{"an HTML block", "<div>\na `x` b\n</div>", nil},
-		{"an indented first line", "    a `x` b", nil},
-		{"a tag holding a backtick", "a <b title=\"`\">x</b> `y", nil},
-		{"a comment block's line", "<!-- a --> `x` b", nil},
-		{"the rest of a line a comment closes on past its paragraph", "<!-- a\n\nb --> `x` c", nil},
-		{"self-contained lines across a blockquote line", "> a `x` b\n> c `y` d", [][][2]int{{{4, 7}}, {{4, 7}}}},
-	})
-}
-
-// TestReadOpensNoCommentInsideASpanOverALineBreak: an opener inside a span
-// the page pairs over a line break opens no comment, so the text after the
-// span is read.
-func TestReadOpensNoCommentInsideASpanOverALineBreak(t *testing.T) {
-	body := lines("Intro `a <!-- b\nc` d --> e")
-	if m := Mask(body); m[0] != 0 || m[1] != 0 {
-		t.Fatalf("Mask = %v, want both lines live", m)
-	}
-	p := ReadPage(body)
-	if p.Text[1] != "c` d --> e" {
-		t.Fatalf("Text[1] = %q, want the line whole", p.Text[1])
-	}
-	if _, ok := p.Unsure(); ok {
-		t.Fatalf("the page is unsure, want it read whole")
-	}
-}
-
-// TestReadPageReadsACommentWhosePairingIsOpen: a comment opener on a line
-// whose spans the package cannot settle, with a backtick before it, makes the
-// page unsure from that line, so its text is read.
-func TestReadPageReadsACommentWhosePairingIsOpen(t *testing.T) {
-	p := ReadPage(lines("> a `x\n> y` <!-- b\n> c -->\nd"))
-	if l, ok := p.Unsure(); !ok || l > 1 {
-		t.Fatalf("Unsure = %d %v, want line 1", l, ok)
-	}
-}
-
-// TestCodeSpansStepInLineWithTheBody: a paragraph of runs of every length,
-// none of which closes, a body of many paragraphs each left with an unpaired
-// backtick and a comment opener, and one long paragraph of single backticks
-// take steps in line with the body: twice or four times the body, at most
-// about as many times the steps. A scan from each run to the paragraph's end
-// takes about eight times the steps on the first shape.
+// TestCodeSpansStepInLineWithTheBody: every step the line walk takes is
+// counted, and each shape takes steps in line with the body: a body twice or
+// four times as long takes at most half as many steps again per byte. A scan
+// from each run to the line's end, or from each comment opener back to the
+// line's start, grows with the square of a line on the first shape and the
+// comment shapes.
 func TestCodeSpansStepInLineWithTheBody(t *testing.T) {
 	steps := 0
 	stepHook = func() { steps++ }
 	defer func() { stepHook = nil }()
 	shapes := map[string]func(n int) string{
-		"runs of every length in one paragraph": func(n int) string {
+		"runs of every length on one line": func(n int) string {
 			var b strings.Builder
-			for k := 1; k <= n; k++ {
+			for k := 1; k <= n/10; k++ {
+				b.WriteString(strings.Repeat("`", k) + " a ")
+			}
+			return b.String()
+		},
+		"runs of every length, one a line, in one stretch": func(n int) string {
+			var b strings.Builder
+			for k := 1; k <= n/10; k++ {
 				b.WriteString("t " + strings.Repeat("`", k) + "\n")
 			}
 			return b.String()
@@ -137,8 +162,20 @@ func TestCodeSpansStepInLineWithTheBody(t *testing.T) {
 		"an unpaired backtick in every paragraph": func(n int) string {
 			return strings.Repeat("a ` b <!-- c --> d\n\n", n)
 		},
-		"one long paragraph of single backticks": func(n int) string {
+		"one long stretch of single backticks": func(n int) string {
 			return strings.Repeat("a ` b\n", n)
+		},
+		"empty comments, then a backtick left open, then a blockquote": func(n int) string {
+			return strings.Repeat("<!---->", n) + " `\n> x\n"
+		},
+		"a backtick left open, then comment openers": func(n int) string {
+			return "` " + strings.Repeat("<!---->", n) + "\n> x\n"
+		},
+		"comment openers none closes": func(n int) string {
+			return strings.Repeat("<!--", n) + "\n> x\n"
+		},
+		"escaped backticks": func(n int) string {
+			return strings.Repeat("\\`", n) + "\n" + strings.Repeat("\\\\`x` ", n) + "\n"
 		},
 	}
 	for name, shape := range shapes {
@@ -150,9 +187,6 @@ func TestCodeSpansStepInLineWithTheBody(t *testing.T) {
 			return steps, len(strings.Join(body, "\n"))
 		}
 		n := 1000
-		if strings.HasPrefix(name, "runs") {
-			n = 100 // the body grows with the square of n
-		}
 		small, ns := count(n)
 		large, nl := count(2 * n)
 		if small == 0 || float64(large)/float64(nl) > 1.5*float64(small)/float64(ns) {

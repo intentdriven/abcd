@@ -465,14 +465,14 @@ func TestConditionWithTwoMarkersIsAFault(t *testing.T) {
 	}
 }
 
-// TestParseConditionsReadsCodeSpansAsThePagePairsThem: a marker inside a span
-// the page pairs over a line break is quoted grammar, not an identity, and a
-// marker the page shows after such a span is one.
-func TestParseConditionsReadsCodeSpansAsThePagePairsThem(t *testing.T) {
-	body := "- a condition quoting `the grammar\n" +
-		"  written <!-- cond: cond-2608300102030407 --> so` here\n" +
-		"- a condition naming `x\n" +
-		"  y` <!-- cond: cond-2608300102030408 --> and `z`\n"
+// TestParseConditionsReadsAMarkerQuotedOnOneLineOnly: a marker inside a span
+// that opens and closes on its line is quoted grammar, not an identity; below
+// a backtick run a line leaves open, nothing is read as a span, so a marker
+// there is an identity, as when spans were paired a line at a time.
+func TestParseConditionsReadsAMarkerQuotedOnOneLineOnly(t *testing.T) {
+	body := "- quotes `<!-- cond: cond-2608300102030409 -->` as grammar\n" +
+		"- a condition quoting `the grammar\n" +
+		"  written <!-- cond: cond-2608300102030407 --> so` here\n"
 	c := parseClaims(claimRecord(nil, str(body)))
 	if len(c.Conditions) != 2 {
 		t.Fatalf("got %d conditions, want 2: %+v", len(c.Conditions), c.Conditions)
@@ -480,7 +480,27 @@ func TestParseConditionsReadsCodeSpansAsThePagePairsThem(t *testing.T) {
 	if c.Conditions[0].ID != "" || !c.Conditions[0].MalformedMarker {
 		t.Errorf("condition 1 = %+v, want the quoted marker read as no identity", c.Conditions[0])
 	}
-	if c.Conditions[1].ID != "cond-2608300102030408" {
-		t.Errorf("condition 2 ID = %q, want the marker after the span", c.Conditions[1].ID)
+	if c.Conditions[1].ID != "cond-2608300102030407" || c.Conditions[1].MalformedMarker {
+		t.Errorf("condition 2 = %+v, want the marker below the open run read as its identity", c.Conditions[1])
+	}
+}
+
+// TestStampReadsBackAMarkerAfterABacktickLeftOpen: a bullet whose first line
+// leaves a backtick run open, closed on its continuation line, is stamped at
+// the end of its first line; the next read takes that marker as the bullet's
+// identity, and a second stamp leaves the record as it was.
+func TestStampReadsBackAMarkerAfterABacktickLeftOpen(t *testing.T) {
+	content := claimRecord(nil, str("- a condition quoting `x\n  y` here\n"))
+	once, n, err := stampScopeConditions(content, fixedMinter(7))
+	if err != nil || n != 1 {
+		t.Fatalf("first stamp: %d, %v; want one bullet stamped", n, err)
+	}
+	conds := parseClaims(once).Conditions
+	if len(conds) != 1 || conds[0].ID == "" || conds[0].MalformedMarker {
+		t.Fatalf("read after the stamp = %+v, want the stamped identity", conds)
+	}
+	twice, n, err := stampScopeConditions(once, fixedMinter(9))
+	if err != nil || n != 0 || twice != once {
+		t.Fatalf("second stamp: %d, %v, changed %v; want nothing stamped", n, err, twice != once)
 	}
 }

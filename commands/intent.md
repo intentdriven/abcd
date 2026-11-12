@@ -538,18 +538,23 @@ checks; the judgement is yours, as the host.
     way to hold a spec: lower-case "not READY", "Not ready", and the phrase
     elsewhere in a sentence are not matched, and the declared holds are the
     spec's `blocked_by` and its open questions. The frontmatter, inline code
-    spans, fenced blocks (one at up to three columns under a list item
-    included) and HTML comments are not read; an indented code block is read.
-    A code span is paired as the page pairs it, over a line break inside a
-    paragraph; where the pairing turns on a layout the reader does not parse
-    (a blockquote, a table row, an HTML block, a list marker numbered other
-    than 1, a paragraph indented four columns or more), the reader must read
-    that text rather than skip it, and it does. So a phrase quoted rather than
-    said goes in an inline code span. Only an
+    spans that open and close on one line, fenced blocks (one at up to three
+    columns under a list item included) and HTML comments are not read; an
+    indented code block is read. From a backtick run that a line leaves with
+    no closer on that line to the next blank line, the reader blanks no span
+    and opens no comment, since the page may pair that run over a line break:
+    it reads that text whole, and it reads a span over a line break as prose.
+    So a phrase quoted rather than said goes in an inline code span that opens
+    and closes on one line. The reader pairs a backtick inside an HTML tag or
+    an autolink as if it stood in text, opens a comment at an opener inside a
+    tag's attribute, blanks a one-line span or comment inside an indented code
+    block or an HTML block and a span over a table cell's `|`, and does not
+    end a line at a carriage return alone. Only an
     ATX heading (`#`) opens or ends the section; a setext or HTML heading does
     not. The reader reads ATX headings, fences, HTML comments and inline code
-    spans, paired over a line break as the page pairs them; any other raw HTML
-    block is read as ordinary text, line by line. A
+    spans that open and close on one line, below a backtick run a line leaves
+    open as above; any other raw HTML block is read as ordinary text, line by
+    line. A
     closed spec, and an intent in `shipped/`, `superseded/` or `disciplines/`, is
     not judged. An intent the design waits on goes in the spec's own
     `blocked_by`;

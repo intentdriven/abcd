@@ -114,14 +114,16 @@ var (
 //     (LayoutStatements).
 //
 // It reads what a person reading the page reads, through mdrecord.ReadPage,
-// the reading OpenQuestions takes. The frontmatter, inline code spans, fenced
-// blocks and HTML comments are not read, a comment that opens and closes on
-// one line included; the text before a comment's opener and after its closer,
-// on the same line, is, and so is an indented code block. A code span is
-// paired as the page pairs it (mdrecord.Page.Spans): over a line break inside
-// a paragraph, and where the pairing turns on a layout the reader does not
-// parse, not at all, so that text is read. A line carrying a sentence and a
-// label is reported once, as not ready.
+// the reading OpenQuestions takes. The frontmatter, fenced blocks and HTML
+// comments are not read, a comment that opens and closes on one line
+// included; the text before a comment's opener and after its closer, on the
+// same line, is, and so is an indented code block. An inline code span that
+// opens and closes on one line is not read (mdrecord.Page.Spans), except below
+// a backtick run that a line leaves open with no closer on that line: from
+// that run to the next blank line no comment opens and the lines are read
+// whole, since the page may pair the run over a line break. A span over a line
+// break is read. A line carrying a sentence and a label is reported once, as
+// not ready.
 func Unsettled(content string) []Statement {
 	lines := strings.Split(content, "\n")
 	body := 0
