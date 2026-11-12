@@ -9,7 +9,7 @@ found_during: "manual-capture"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/resume.go"
-remedy: "Judge the whole save after the take-over's claim and before it reserves the issue again or clears the stop's mark, so a take-over that judge refuses pushes and writes nothing"
+remedy: "Judge the whole save before a take-over clears the stop's mark on every route, so a take-over that judge refuses neither clears the mark nor adds its line to the run's record"
 ---
 
-A take-over of a run its own drive's signal halted reserves the issue again and clears the stop's mark before the whole save of the run is judged, so a take-over that judge then refuses, the run's file at another schema version the session may not save, has pushed a reservation and cleared the mark though nothing of the take-over is saved; a drive then passes the lane over holding that reservation, which nothing renews or releases until it lapses with its lease
+A take-over of a run its own drive's signal halted clears the stop's mark, and adds that line to the run's record, before the whole save of the run is judged where the checkout has no origin, where the halt held no reservation, or where the record has already finished on the default branch; a take-over that judge then refuses, the run's file at another schema version the session may not save, has cleared the mark though nothing else of the take-over is saved, and a drive passes the lane over. Where the checkout has an origin and the halt released the issue, the same judge refuses the take-over at its reservation, before anything is pushed and before the mark is cleared, and a reservation pushed in the window before the save is released again when the save is refused, so no route leaves the lane holding a reservation the take-over made

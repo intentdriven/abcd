@@ -354,8 +354,14 @@ a reservation.
 
 A take-up the judge of a whole save refuses, since the run's file states another schema version
 and this drive may not save it, passes the lane over (iss-2611120957377169), and so does a
-take-over of a run the drive's own signal halted, which that judge refuses once the take-over
-has reserved the issue again, where the halt released it, and cleared the stop's mark. The drive
+take-over of a run the drive's own signal halted, which that judge refuses. Where the checkout
+has an origin and the halt released the issue, the judge refuses the take-over at its
+reservation, before anything is pushed, and the stop's mark stays; a reservation pushed in the
+window before the save, which a lock or a driver taken in between then refuses, is released
+again. Where there is no origin, the halt held no reservation, or the record has already
+finished on the default branch, the judge refuses the take-over at its save, after it has
+cleared the stop's mark (iss-2611121517368816). In neither case does the lane keep a
+reservation the take-over made. The drive
 says once what it left, in the judge's reason and remedy, and keeps the lane's run id in its own
 memory alone, never in the run's file, its control record or the drain's state. The pass lasts the rest of the drive
 whatever the judge's reason, one that could change while it runs, such as a process table that

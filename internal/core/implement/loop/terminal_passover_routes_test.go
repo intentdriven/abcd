@@ -262,7 +262,11 @@ func reservedAgainAfterThePass(t *testing.T) (root, bare, runID, key string, c *
 // another version the drive may not save, the take-over is refused at the whole save, and
 // the drive passes the lane over, says so once and waits on nothing, as the take-up does.
 // After the pass, the drive's waits, its signal's halt and its let-go write nothing of the
-// lane, though, taken over and not let go by a drive, it is one no other guard leaves.
+// lane. Of the three, only the let-go can fail here: the run, taken over and not let go by a
+// drive, names a reservation, so without the pass the let-go would add its line. The waits
+// have no origin here to read a view from, and the judge of the whole save refuses the halt
+// with or without the pass, so the paired runs of
+// TestEveryWriteRouteOfADriveLeavesALaneItPassedOver hold those two.
 func TestADrivesTakeOverOfARunItMayNotSavePassesTheLaneOver(t *testing.T) {
 	repo := drainRepo(t)
 	first := drainedToLaneOnce(t, repo, DrainOptions{})
