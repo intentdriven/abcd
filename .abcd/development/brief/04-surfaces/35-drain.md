@@ -874,8 +874,13 @@ move cannot fetch, is named there with the reason and stops nothing; the next
 move looks again. The landing's step saves the run's whole state, as do a parked lane's
 sync, its merge-queue watch and a closed pull request's hand-back, so a run whose state
 file states another version than this binary's is saved only by its driver, the live
-session its control record names: a lane of this drain's own is claimed first, as a step
-claims a run, and any other such run is left as its file stands and named with why.
+session its control record names. The drain claims such a run first, as a step claims a
+run, whether it is a lane of this drain's, an ended drain's or a build's, so a drain run by a
+newer binary finishes the merged lanes a gone driver left; a run another live session
+drives, or that the claim cannot take, is left as its file stands and named with why. A
+lane in progress the move admits, takes a new pace into or hands back as stuck is claimed
+the same way, and one another live session drives is named as left to that session, once
+each move, without refusing the move.
 
 Unless the move is waiting on origin, the host's answer is taken once the ledger is read, before the window clock and the
 lane's routing: an invocation given the answer's path validates it and records

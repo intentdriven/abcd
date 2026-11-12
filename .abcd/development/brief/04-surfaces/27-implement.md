@@ -768,10 +768,19 @@ whose stop cannot be looked at, holds the run: it moves
 nothing and lets nothing go until the setting is put back, and only a read that saw
 clearly and found no stop counts as a lift, or lets a run be taken over. A home that
 cannot be found holds the run the same way. The chosen folder does not move while a stop
-stands in it. A save of a run's whole state writes the file at the saving abcd's version, so only the
-run's driver, the live session its control record names, saves one whose file states another version;
-any other session leaves the run as its file stands and names it, the file and both versions with it.
-A step under a stop claims nothing, so it halts such a run only where this session already drives it.
+stands in it. A save of a run's whole state writes the file at the saving abcd's version, so the state
+file's one whole writer replaces a file that states another version only for the run's driver, the live
+session its control record names, and every route that saves a run whole goes through it; any other
+session leaves the run as its file stands and names it, the file and both versions with it, and the way
+on. A session takes such a run up by claiming it: a step claims it while no stop's mark stands on it, a
+take-over while one does, since a signal's stop leaves no file to lift, a resumed build before it saves
+anything and a drain over a run it takes up. A claim replaces a driver that is gone and names it in the
+run's record, refuses while another is alive, and claims nothing where the process table or the
+session it runs under cannot be read, after which the save is refused the same way. The driver is told
+by its host process, not by the abcd it runs, so a newer abcd run under the driver's own session counts
+as the driver. Lines a claim, a cleared mark, the stop's page note and a drive's release add to a run's
+record keep the version its file states. A step under a stop claims nothing, so it halts such a run
+only where this session already drives it.
 A renewal is never the driver, since a lane's own abcd may make it: one that falls due under a stop
 settles the run first only where the run's state file states the renewing abcd's version, and otherwise
 leaves the run unsettled to its own driver's check and says so. Its claim is still renewed, at the version its file states, while an agent may be in its call or

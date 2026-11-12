@@ -466,10 +466,13 @@ default branch, is not read as merged here (iss-2610150827113191), and a lane
 that has left its landing is not closed either. A lane whose branch holds a
 commit past the default branch is not read as merged and resumes as before.
 
-Under the run's lock, immediately before anything is removed, the run is left as
-it stands, with a line saying why, when its state file states another version
-than this binary's and this session is not the driver its control record
-names, a drive stopped on it, its control record holds a stop, or
+A resumed run whose state file states another version than this binary's is
+claimed before anything of it is saved, as a step claims a run: one whose driver
+is gone, or that names none, becomes this session's, and one another live session
+drives refuses the build with nothing changed. Under the run's lock, immediately
+before anything is removed, the run is left as it stands, with a line saying why,
+when its state file states another version than this binary's and this session is
+not the driver its control record names, a drive stopped on it, its control record holds a stop, or
 the stop read for the shared folder the run started under finds a stop or
 cannot be trusted; and what each lane pushed is checked on the fetched commit
 again. Each merged lane's worktree is then read for files its removal would
