@@ -1,6 +1,7 @@
 package landings
 
 import (
+	"context"
 	"errors"
 	"os/exec"
 	"strings"
@@ -113,5 +114,66 @@ func TestSinceRefusesWhatIsNeither(t *testing.T) {
 		if err == nil || strings.ContainsRune(err.Error(), 0x1b) {
 			t.Fatalf("resolve(%q) = %v", since, err)
 		}
+	}
+}
+
+// TestABackDatedCommitDoesNotCutADateRangeShort: the range opens at the
+// oldest first-parent commit dated on or after the day, so a commit dated
+// before it nearer the tip is inside the range, and the range's note says
+// the line's dates are not in order.
+func TestABackDatedCommitDoesNotCutADateRangeShort(t *testing.T) {
+	r, c := sinceFx(t)
+	back := dated(t, r, "chore: back-dated", "2026-09-15T12:00:00Z")
+	after := dated(t, r, "chore: after", "2026-10-06T12:00:00Z")
+	got, err := resolve(t.Context(), r.Root(), "2026-10-03")
+	if err != nil || got.From != c[1] || got.To != after || !strings.Contains(got.Note, "1 of the range's first-parent commits are dated before 2026-10-03") {
+		t.Fatalf("resolve(2026-10-03) = %+v, %v", got, err)
+	}
+	l, err := list(t.Context(), r.Root(), got, Options{Forge: (&fakeForge{t: t}).call})
+	if err != nil || len(l.Rows) != 4 || l.Rows[1].Commit != back || l.SinceNote == "" {
+		t.Fatalf("the listing from 2026-10-03: %+v, %v", l, err)
+	}
+	if got, _ := resolve(t.Context(), r.Root(), "2026-10-02"); got.From != c[0] || got.Note == "" {
+		t.Fatalf("resolve(2026-10-02) = %+v", got)
+	}
+	inOrder, _ := sinceFx(t)
+	if got, _ := resolve(t.Context(), inOrder.Root(), "2026-10-03"); got.Note != "" {
+		t.Fatalf("a line in order has a note: %q", got.Note)
+	}
+}
+
+// TestAnEndedCtxIsReportedAsThat: a ctx that has ended is resolve's error,
+// not a branch or a tag the repository lacks.
+func TestAnEndedCtxIsReportedAsThat(t *testing.T) {
+	r, _ := sinceFx(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	for _, since := range []string{"", "v0.1.0", "2026-10-03"} {
+		if _, err := resolve(ctx, r.Root(), since); !errors.Is(err, context.Canceled) {
+			t.Fatalf("resolve(%q) with an ended ctx = %v", since, err)
+		}
+	}
+}
+
+// TestATagOffTheFirstParentLineIsSaid: a tag on a branch merged into the
+// default branch opens a range of what the tip reaches that the tag does not,
+// and the range's note says so.
+func TestATagOffTheFirstParentLineIsSaid(t *testing.T) {
+	r, c := sinceFx(t)
+	r.Git("checkout", "-q", "-b", "release", c[1])
+	tagged := dated(t, r, "chore: release fix", "2026-10-05T12:00:00Z")
+	r.Git("tag", "v0.1.1")
+	r.Git("checkout", "-q", "main")
+	r.Git("merge", "-q", "--no-ff", "-m", "Merge pull request #5 from org/release", "release")
+	got, err := resolve(t.Context(), r.Root(), "v0.1.1")
+	if err != nil || got.From != tagged || !strings.Contains(got.Note, "not on main's first-parent line") {
+		t.Fatalf("resolve(v0.1.1) = %+v, %v", got, err)
+	}
+	l, err := list(t.Context(), r.Root(), got, Options{Forge: (&fakeForge{t: t}).call})
+	if err != nil || len(l.Rows) != 3 || !strings.Contains(l.SinceNote, "not on main's first-parent line") {
+		t.Fatalf("the listing from v0.1.1: %+v, %v", l, err)
+	}
+	if got, err := resolve(t.Context(), r.Root(), "v0.1.0"); err != nil || got.Note != "" {
+		t.Fatalf("a tag on the line has a note: %+v, %v", got, err)
 	}
 }
