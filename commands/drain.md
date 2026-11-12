@@ -133,6 +133,17 @@ hand-in refuses that run until you discard its lanes (`abcd implement step --run
 It prints one line per step and logs them under `.abcd/.work.local/logs/`. It ends
 at the cap, when nothing is eligible, at the bound below, or on a stop.
 
+**A lane it may not save.** A lane the drive let go and comes back to whose run's file
+states another schema version than this abcd's, and that this drive may not save, is passed
+over rather than ending the run. The drive says once what it left and why, in the words of
+the refusal and its remedy, and for the rest of the run nothing of that lane is saved,
+claimed or reserved, and no agent starts for it: each move leaves the lane, and the drive
+goes on with its other lanes and issues. Where the drive would have ended at the cap or with
+nothing eligible left and such a lane is still in progress, the drain stays open, and the
+drive ends instead on an ending of its own, at exit 3, naming each lane it passed over with
+why. A later drive comes to the lane again, where its own claim and the same judge decide
+whether it may take it up. Nothing of this is written to the run or the drain's state.
+
 **A new release during the run.** The yes covers one more thing, and the question says so
 on a line of its own: about once an hour, at a lane boundary and never during a stage, the
 drive asks the release origin for its latest release. A lane still in progress after a refused
