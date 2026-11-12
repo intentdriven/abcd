@@ -157,46 +157,90 @@ type resolved struct {
 	says string
 }
 
-// resolveNames asks git, once, what each name names, from stored objects
-// (gitutil.RunCappedBytesAsStoredContext: no replace ref, graft or lazy
-// fetch), each name on standard input, so none is ever an argument. Every name
-// must be a hex name (hexNameRe) or nothing is asked. A variable only so a
-// test can count its calls.
+// resolveNames asks git what each name names, as a prefix of the object names
+// git stores and of nothing else, in at most two calls however many names it
+// is given: one listing, for every name at once, the stored objects whose
+// names begin with it (rev-parse --disambiguate=<name>, each name hex-checked
+// before it is an argument, in a form no option reads), and one asking the
+// type of each object named by exactly one, by its full name on standard
+// input. Both read stored objects only (gitutil.RunCappedBytesAsStoredContext:
+// no replace ref, graft or lazy fetch). A name begun by no stored object names
+// nothing, one begun by two or more is ambiguous, and an answer that does not
+// read for one name leaves that name alone unresolved. Every name must be a
+// hex name (hexNameRe) or nothing is asked. A variable only so a test can
+// count its calls.
 var resolveNames = func(ctx context.Context, root string, names []string) (map[string]resolved, error) {
-	var in strings.Builder
+	args := []string{"rev-parse"}
 	for _, n := range names {
 		if !hexNameRe.MatchString(n) {
 			return nil, errors.New("a name asked of git is no hex object name")
 		}
-		in.WriteString(n)
-		in.WriteByte('\n')
+		args = append(args, "--disambiguate="+n)
 	}
-	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, in.String(), len(names)*96+64,
+	got := make(map[string]resolved, len(names))
+	if len(names) == 0 {
+		return got, nil
+	}
+	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxListBytes, args...)
+	if err != nil {
+		return nil, err
+	}
+	var objects []string
+	for o := range strings.FieldsSeq(string(out)) {
+		if !gitutil.IsFullSHA(o) {
+			return nil, errors.New("git listed the objects a name begins in a shape it does not document")
+		}
+		objects = append(objects, o)
+	}
+	// Sorted and unique, so the objects a name begins are one run.
+	slices.Sort(objects)
+	objects = slices.Compact(objects)
+	match := make(map[string]string, len(names))
+	asked := map[string]bool{}
+	var ask []string
+	for _, n := range names {
+		i, _ := slices.BinarySearch(objects, n)
+		hits := 0
+		for j := i; j < len(objects) && strings.HasPrefix(objects[j], n) && hits < 2; j++ {
+			hits++
+		}
+		switch hits {
+		case 0:
+			got[n] = resolved{says: "names no object"}
+		case 1:
+			match[n] = objects[i]
+			if !asked[objects[i]] {
+				asked[objects[i]] = true
+				ask = append(ask, objects[i])
+			}
+		default:
+			got[n] = resolved{says: "is ambiguous: it names more than one object, and none is guessed"}
+		}
+	}
+	if len(ask) == 0 {
+		return got, nil
+	}
+	in := strings.Join(ask, "\n") + "\n"
+	out, err = gitutil.RunCappedBytesAsStoredContext(ctx, root, in, len(ask)*96+64,
 		"cat-file", "--batch-check=%(objectname) %(objecttype)")
 	if err != nil {
 		return nil, err
 	}
-	lines := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
-	if len(lines) != len(names) {
-		return nil, fmt.Errorf("git answered %d names for %d asked", len(lines), len(names))
+	kinds := make(map[string]string, len(ask))
+	for line := range strings.SplitSeq(strings.TrimSuffix(string(out), "\n"), "\n") {
+		full, kind, _ := strings.Cut(line, " ")
+		if asked[full] && kinds[full] == "" {
+			kinds[full] = kind
+		}
 	}
-	got := make(map[string]resolved, len(names))
-	for i, n := range names {
-		switch line := lines[i]; line {
-		case n + " missing":
-			got[n] = resolved{says: "names no object"}
-		case n + " ambiguous":
-			got[n] = resolved{says: "is ambiguous: it names more than one object, and none is guessed"}
-		default:
-			full, kind, _ := strings.Cut(line, " ")
-			if !gitutil.IsFullSHA(full) || !strings.HasPrefix(full, n) {
-				return nil, errors.New("git answered a name in a shape it does not document")
-			}
-			if kind != "commit" {
-				got[n] = resolved{says: "names a " + boundText(kind, 16) + ", not a commit"}
-				continue
-			}
+	for n, full := range match {
+		switch kind := kinds[full]; kind {
+		case "commit":
 			got[n] = resolved{full: full}
+		case "", "missing":
+			got[n] = resolved{says: "names an object git did not say the type of"}
+		default:
+			got[n] = resolved{says: "names a " + boundText(kind, 16) + ", not a commit"}
 		}
 	}
 	return got, nil

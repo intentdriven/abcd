@@ -472,3 +472,37 @@ func TestTheTraceAsksGitOnceForTheWholeRange(t *testing.T) {
 		t.Fatalf("with a bound of 5: %d marked, %d said past it", marked, past)
 	}
 }
+
+// TestARefSpelledLikeANameIsNotRead: a tag or a branch spelled as a commit's
+// abbreviated name and pointing at another commit neither answers that name
+// nor stops any other line resolving, and one spelled as a name no object
+// begins leaves that line alone unresolved.
+func TestARefSpelledLikeANameIsNotRead(t *testing.T) {
+	f := newFx(t, "human")
+	x := f.commit("feat: x")
+	y := f.commit("feat: y")
+	f.r.Git("tag", x[:7], y)
+	f.r.Git("branch", y[:8], x)
+	f.r.Git("tag", "deadbee", y)
+	rx := f.commit(revertMsg("feat: x", x, 7))
+	ry := f.commit(revertMsg("feat: y", y, 8))
+	rn := f.commit("Revert \"z\"\n\nThis reverts commit deadbee.\n")
+	l := f.list((&fakeForge{t: t}).call)
+	if got := row(t, l, x).Reverted; got == nil || got.By != rx {
+		t.Fatalf("x, named by its prefix beside a tag of that name: %+v", got)
+	}
+	if got := row(t, l, y).Reverted; got == nil || got.By != ry {
+		t.Fatalf("y, named by its prefix beside a branch of that name: %+v", got)
+	}
+	if r := row(t, l, rn); len(r.Reverts) != 1 || r.Reverts[0].Row != "" || !strings.Contains(r.Reverts[0].Unmarked, "names no object") {
+		t.Fatalf("a name only a tag spells: %+v", r.Reverts)
+	}
+	for name, want := range map[string]string{x[:7]: x, y[:8]: y} {
+		if tr, err := trace(t.Context(), f.r.Root(), name, Options{Forge: (&fakeForge{t: t}).call}); err != nil || tr.Commit != want {
+			t.Fatalf("trace(%s) = %+v, %v; want %s", name, tr, err, want)
+		}
+	}
+	if tr, err := trace(t.Context(), f.r.Root(), "deadbee", Options{Forge: (&fakeForge{t: t}).call}); err != nil || !strings.Contains(tr.Says, "names no object") {
+		t.Fatalf("trace(deadbee) = %+v, %v", tr, err)
+	}
+}
