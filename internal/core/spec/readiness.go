@@ -114,7 +114,7 @@ var (
 //     (LayoutStatements).
 //
 // It reads what a person reading the page reads, through mdrecord.ReadPage,
-// the reading OpenQuestions takes. The frontmatter, inline code spans, fenced
+// the reading OpenQuestions takes. The frontmatter, inline code spans that open and close on one line, fenced
 // blocks and HTML comments are not read, a comment that opens and closes on
 // one line included; the text before a comment's opener and after its closer,
 // on the same line, is, and so is an indented code block. A line carrying a

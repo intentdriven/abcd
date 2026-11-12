@@ -66,7 +66,7 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   item's fence nearer the margin than the item's text (each named by its line,
   and the text from there on is read). Lower-case "not READY", "Not ready",
   and the phrase elsewhere in a sentence are not matched. The frontmatter,
-  inline code spans, fenced blocks (one at up to three columns under a list
+  inline code spans that open and close on one line, fenced blocks (one at up to three columns under a list
   item included) and HTML comments are not read;
   an indented code block is read. So a phrase quoted rather than said goes in
   an inline code span. A closed spec, and a record in `shipped/`,
@@ -88,7 +88,7 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   closes, or fences or comments whose extent turns on the layout around them,
   fails this check too (named by its line). Only an ATX heading (`#`) opens
   or ends the section; a setext or HTML heading does not. The reader reads
-  ATX headings, fences, HTML comments and inline code spans; any other raw
+  ATX headings, fences, HTML comments and inline code spans that open and close on one line; any other raw
   HTML block is read as ordinary text, line by line.
 - **claim sections** — the mechanism prompt is answered or the section absent,
   and the scope conditions are recorded. The readiness gate reports both as
