@@ -2,6 +2,7 @@ package loop
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/runstop"
+	"github.com/intentdriven/abcd/internal/core/sessionname"
 )
 
 // A save of a run's whole state takes the file to this abcd's version, so a session
@@ -45,9 +47,6 @@ func leftLine(runID string, version int) string {
 func wantLeft(t *testing.T, repoRoot, runID string, version int, before []byte, said string) {
 	t.Helper()
 	want := leftLine(runID, version)
-	if version > SchemaVersion {
-		want = StateRelPath(runID) + " is schema version " + strconv.Itoa(version) + ", which a newer abcd wrote"
-	}
 	if !strings.Contains(said, want) {
 		t.Fatalf("the route does not say %q of the run it left:\n%s", want, said)
 	}
@@ -90,20 +89,18 @@ func stateVersionOf(t *testing.T, repoRoot, runID string) string {
 // nothing, and its move's check settles the run only where this session is the run's
 // driver or the file states this abcd's version. A run another live session drives, or
 // whose driver is gone, is left as its file stands, the refusal at the stage `stop`
-// naming the file and both versions; a newer abcd's file is refused by its read.
+// naming the file and both versions.
 func TestAStepUnderAStopLeavesAnotherVersionsRunToItsDriver(t *testing.T) {
 	for _, tc := range []struct {
-		name          string
-		version       int
-		driver, here  int
-		alive         []int
-		halts         bool
-		leftByTheRead bool
+		name         string
+		version      int
+		driver, here int
+		alive        []int
+		halts        bool
 	}{
 		{name: "another live session drives it, previous version", version: schemaVersionPrevious, driver: hostTwo, here: hostOne, alive: []int{hostOne, hostTwo}},
 		{name: "another live session drives it, version 24", version: schemaVersionUnrenamed, driver: hostTwo, here: hostOne, alive: []int{hostOne, hostTwo}},
 		{name: "its driver is gone", version: schemaVersionPrevious, driver: hostTwo, here: hostOne, alive: []int{hostOne}},
-		{name: "a newer abcd wrote it", version: SchemaVersion + 1, driver: hostTwo, here: hostOne, alive: []int{hostOne, hostTwo}, leftByTheRead: true},
 		{name: "this session drives it", version: schemaVersionPrevious, driver: hostOne, here: hostOne, alive: []int{hostOne, hostTwo}, halts: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -137,7 +134,7 @@ func TestAStepUnderAStopLeavesAnotherVersionsRunToItsDriver(t *testing.T) {
 			if !ok {
 				t.Fatalf("want a refusal, got %v", err)
 			}
-			if !tc.leftByTheRead && (r.Stage != StageStop || !r.Contention) {
+			if r.Stage != StageStop || !r.Contention {
 				t.Fatalf("the step's refusal is not the stop's, at exit 3: %+v", r)
 			}
 			wantLeft(t, repo.Root(), runID, tc.version, before, r.Error())
@@ -217,11 +214,11 @@ func TestADrainsMoveLeavesItsMarkedParkedLaneAnotherSessionDrives(t *testing.T) 
 
 // TestADrainsLandingStepLeavesAMergedRunToItsDriver: the landing's last step over a
 // merged lane is taken only by the run's driver where its file states another version.
-// A lane of the drain's own that another live session drives, and a person's own build
-// whose driver is gone, are left as their files stand, named among what the move
-// finished, worktree and all; a newer abcd's file is refused by its read. A lane of the
-// drain's own whose driver is gone is claimed by the drain, with a line in its record,
-// and finished, as a drain resumed by a newer abcd finishes its lanes.
+// A run another live session drives, one of the drain's own lanes or not, is left as
+// its file stands, named among what the move finished, worktree and all. A run whose
+// driver is gone is claimed by the drain, with a line in its record, and finished: a
+// drain resumed by a newer abcd finishes its own lanes, and a new drain finishes the
+// merged lanes an earlier drain, or a person's build, left.
 func TestADrainsLandingStepLeavesAMergedRunToItsDriver(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -231,9 +228,10 @@ func TestADrainsLandingStepLeavesAMergedRunToItsDriver(t *testing.T) {
 		finishes bool
 	}{
 		{name: "its own lane another live session drives", version: schemaVersionPrevious, own: true, alive: []int{hostOne, hostTwo}},
-		{name: "a person's own build whose driver is gone", version: schemaVersionPrevious, alive: []int{hostOne}},
-		{name: "a newer abcd's file", version: SchemaVersion + 1, own: true, alive: []int{hostOne, hostTwo}},
+		{name: "another run another live session drives", version: schemaVersionPrevious, alive: []int{hostOne, hostTwo}},
 		{name: "its own lane whose driver is gone", version: schemaVersionPrevious, own: true, alive: []int{hostOne}, finishes: true},
+		{name: "another run whose driver is gone", version: schemaVersionPrevious, alive: []int{hostOne}, finishes: true},
+		{name: "another run at this abcd's version", version: SchemaVersion, alive: []int{hostOne, hostTwo}, finishes: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := drainLandFixture(t)
@@ -253,7 +251,10 @@ func TestADrainsLandingStepLeavesAMergedRunToItsDriver(t *testing.T) {
 			home, _ := stopWorld(t, false)
 			o := Options{stopHome: home}
 			claimedBy(t, f.repo.Root(), f.runID, o, hostTwo, hostOne, tc.alive...)
-			before := stateAtVersion(t, f.repo.Root(), f.runID, tc.version)
+			before := readStateBytes(t, f.repo.Root(), f.runID)
+			if tc.version != SchemaVersion {
+				before = stateAtVersion(t, f.repo.Root(), f.runID, tc.version)
+			}
 
 			res, err := Drain(f.repo.Root(), o, DrainOptions{})
 
@@ -272,7 +273,7 @@ func TestADrainsLandingStepLeavesAMergedRunToItsDriver(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if !slices.ContainsFunc(st.Record, func(e Entry) bool { return e.Stage == StageDriver && strings.Contains(e.Note, "gone") }) {
+				if tc.version != SchemaVersion && !slices.ContainsFunc(st.Record, func(e Entry) bool { return e.Stage == StageDriver && strings.Contains(e.Note, "gone") }) {
 					t.Fatalf("the run's record does not say the drain took the run over: %+v", st.Record)
 				}
 				return
@@ -371,7 +372,8 @@ func TestARecordOfTranscriptsLeavesARunAnotherSessionDrives(t *testing.T) {
 // TestADrainsMoveLeavesItsLaneInProgressAnotherSessionDrives: a drain's move admits a
 // lane of its own that names no admission, which saves its run whole, so a lane whose
 // file states another version and which another live session drives is left as it
-// stands, and the move's refusal names it.
+// stands. The move is not refused for it: it names the lane as left to that session,
+// once a move, and ends as it does over any lane in progress.
 func TestADrainsMoveLeavesItsLaneInProgressAnotherSessionDrives(t *testing.T) {
 	f := drainLandFixture(t)
 	first := f.firstMove(t)
@@ -379,11 +381,356 @@ func TestADrainsMoveLeavesItsLaneInProgressAnotherSessionDrives(t *testing.T) {
 	home, _ := stopWorld(t, false)
 	o := Options{stopHome: home}
 	claimedBy(t, f.repo.Root(), f.runID, o, hostTwo, hostOne, hostOne, hostTwo)
-	before := stateAtVersion(t, f.repo.Root(), f.runID, schemaVersionPrevious)
+	before := stateAtVersion(t, f.repo.Root(), f.runID, schemaVersionUnadmitted)
 
-	_, err := Drain(f.repo.Root(), o, DrainOptions{})
-	if err == nil {
-		t.Fatal("the move went on over a lane it may not save")
+	for range 2 {
+		res, err := Drain(f.repo.Root(), o, DrainOptions{})
+		if err != nil {
+			t.Fatalf("the move was refused over a lane another session drives: %v", err)
+		}
+		if !strings.Contains(res.Next, "run "+f.runID+", is left as its file stands") {
+			t.Fatalf("the move does not name the lane it left: %q", res.Next)
+		}
+		wantLeft(t, f.repo.Root(), f.runID, schemaVersionUnadmitted, before, res.Next)
 	}
-	wantLeft(t, f.repo.Root(), f.runID, schemaVersionPrevious, before, err.Error())
+}
+
+// TestAReceiptLeavesARunAnotherSessionDrives: implement receipt makes no claim, and its
+// hand-in saves the run whole, so a run whose file states another version and which
+// another live session drives is left as it stands, nothing handed in, and the refusal
+// says how the run is taken up.
+func TestAReceiptLeavesARunAnotherSessionDrives(t *testing.T) {
+	repo, runID, l, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	o := Options{stopHome: home}
+	claimedBy(t, repo.Root(), runID, o, hostTwo, hostOne, hostOne, hostTwo)
+	before := stateAtVersion(t, repo.Root(), runID, schemaVersionPrevious)
+
+	_, err := Receipt(repo.Root(), runID, l.awaiting().Receipt, DefaultStages(), o)
+
+	r, ok := leftAtVersion(err)
+	if !ok {
+		t.Fatalf("want the refusal that leaves the run at its version, got %v", err)
+	}
+	wantLeft(t, repo.Root(), runID, schemaVersionPrevious, before, r.Error())
+	if !strings.Contains(r.Remedy, "back off") {
+		t.Fatalf("the refusal does not say to back off from the live driver: %s", r.Remedy)
+	}
+}
+
+// TestAStepWhoseClaimClaimedNothingLeavesAnotherVersionsRun: a step whose claim could
+// not read the process table, or could not find the session it runs under, claims
+// nothing, so its own save over a run whose file states another version is refused and
+// the run is left as its file stands.
+func TestAStepWhoseClaimClaimedNothingLeavesAnotherVersionsRun(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		set  func()
+		why  string
+	}{
+		{"the process table cannot be read", func() {
+			readProcs = func() (sessionname.Table, error) { return sessionname.Table{}, errors.New("no table") }
+		}, "the process table cannot be read"},
+		{"the session it runs under cannot be found", func() { hereFrom = func() int { return 77777 } }, "the session this call runs under cannot be found"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := briefRepo(t, agentsMarked)
+			start, err := startedOnce(t, repo, "itd-10")
+			if err != nil {
+				t.Fatal(err)
+			}
+			home, _ := stopWorld(t, false)
+			o := Options{stopHome: home}
+			claimedBy(t, repo.Root(), start.RunID, o, hostTwo, hostOne, hostOne)
+			before := stateAtVersion(t, repo.Root(), start.RunID, schemaVersionPrevious)
+			tc.set()
+
+			if err := ClaimDriver(repo.Root(), start.RunID, o); err != nil {
+				t.Fatalf("premise: the claim claims nothing and refuses nothing: %v", err)
+			}
+			_, err = advance(repo.Root(), start.RunID, DefaultStages(), o)
+
+			r, ok := leftAtVersion(err)
+			if !ok {
+				t.Fatalf("want the refusal that leaves the run at its version, got %v", err)
+			}
+			wantLeft(t, repo.Root(), start.RunID, schemaVersionPrevious, before, r.Error())
+			if !strings.Contains(r.Reason, tc.why) {
+				t.Fatalf("the refusal does not say %q: %s", tc.why, r.Reason)
+			}
+		})
+	}
+}
+
+// TestAResumedStartClaimsARunWhoseFileStatesAnotherVersion: a build that resumes a run
+// whose file states another version claims it before anything saves it. Its driver gone,
+// the run is this session's, the record naming the driver it replaced, and its late
+// admission saved at this abcd's version; another live session driving it, the start is
+// refused at exit 3 with the run left as its file stands.
+func TestAResumedStartClaimsARunWhoseFileStatesAnotherVersion(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		alive []int
+		takes bool
+	}{
+		{"its driver is gone", []int{hostOne}, true},
+		{"another live session drives it", []int{hostOne, hostTwo}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo, runID, _, _ := awaitingLane(t)
+			home, _ := stopWorld(t, false)
+			o := Options{stopHome: home, noReserve: true}
+			claimedBy(t, repo.Root(), runID, o, hostTwo, hostOne, tc.alive...)
+			before := stateAtVersion(t, repo.Root(), runID, schemaVersionUnadmitted)
+
+			res, err := Start(repo.Root(), "itd-10", o)
+
+			if !tc.takes {
+				r, ok := AsRefusal(err)
+				if !ok || !r.Contention || r.Stage != StageDriver {
+					t.Fatalf("want the claim's refusal at exit 3, got %v", err)
+				}
+				if !strings.Contains(r.Reason, "is driven by") {
+					t.Fatalf("the refusal does not name the live driver: %s", r.Reason)
+				}
+				after := readStateBytes(t, repo.Root(), runID)
+				if !bytes.Equal(before, after) {
+					t.Fatalf("the start rewrote a run another session drives:\n%s", after)
+				}
+				return
+			}
+			if err != nil || !res.Resumed {
+				t.Fatalf("the start resumes the run: %+v %v", res, err)
+			}
+			if v := stateVersionOf(t, repo.Root(), runID); v != strconv.Itoa(SchemaVersion) {
+				t.Fatalf("the resumed run is at version %s, not %d", v, SchemaVersion)
+			}
+			st, err := ReadState(repo.Root(), runID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if st.Admitted == nil {
+				t.Fatal("the resumed run's admission was not recorded")
+			}
+			if !slices.ContainsFunc(st.Record, func(e Entry) bool { return e.Stage == StageDriver && strings.Contains(e.Note, "is gone") }) {
+				t.Fatalf("the run's record does not name the driver the start replaced: %+v", st.Record)
+			}
+			if c := controlOf(t, repo.Root(), runID); c.Driver == nil || c.Driver.PID != hostOne {
+				t.Fatalf("the start did not claim the run: %+v", c.Driver)
+			}
+		})
+	}
+}
+
+// TestADrivesDropLeavesARunAnotherSessionDrives: a drive's drop of a lane whose issue
+// moved hands the lane back, a whole save, so a run another live session drives at
+// another version is left as its file stands and the drop says why.
+func TestADrivesDropLeavesARunAnotherSessionDrives(t *testing.T) {
+	repo, runID, _, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	o := Options{stopHome: home}
+	claimedBy(t, repo.Root(), runID, o, hostTwo, hostOne, hostOne, hostTwo)
+	before := stateAtVersion(t, repo.Root(), runID, schemaVersionPrevious)
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, drop := range []func() error{
+		func() error { return dropRun(repo.Root(), runID, "the record moved", "the person", time.Now(), o) },
+		func() error {
+			_, err := dropMovedRun(repo.Root(), st, "the record moved", time.Now(), o)
+			return err
+		},
+	} {
+		r, ok := leftAtVersion(drop())
+		if !ok {
+			t.Fatal("want the refusal that leaves the run at its version")
+		}
+		wantLeft(t, repo.Root(), runID, schemaVersionPrevious, before, r.Error())
+	}
+}
+
+// TestADrivesLetGoKeepsTheVersionOfItsLanesRun: at a drive's end the release of a lane
+// in progress adds lines to its run's record and nothing else, so the run's file keeps
+// the version it states, whichever session drives it.
+func TestADrivesLetGoKeepsTheVersionOfItsLanesRun(t *testing.T) {
+	repo := drainRepo(t)
+	first := drainedToLaneOnce(t, repo, DrainOptions{})
+	runID := first.Start.RunID
+	editState(t, repo.Root(), runID, func(doc map[string]any) {
+		if doc["reserved_at"] == nil {
+			doc["reserved_at"] = time.Now().UTC().Format(time.RFC3339)
+		}
+	})
+	stateAtVersion(t, repo.Root(), runID, schemaVersionPrevious)
+
+	(&terminal{repoRoot: repo.Root()}).letGo()
+
+	if v := stateVersionOf(t, repo.Root(), runID); v != strconv.Itoa(schemaVersionPrevious) {
+		t.Fatalf("the release raised the run's file to version %s", v)
+	}
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(st.Record, func(e Entry) bool { return e.Stage == StageDriveReleased }) {
+		t.Fatalf("the release is not in the run's record: %+v", st.Record)
+	}
+}
+
+// TestARunningDrainsPaceLeavesALaneAnotherSessionDrives: a running drain given a new
+// pace saves each lane in progress whole; a lane another live session drives at another
+// version keeps its pace and is named, and the move is not refused for it.
+func TestARunningDrainsPaceLeavesALaneAnotherSessionDrives(t *testing.T) {
+	repo := drainRepo(t)
+	first := drainedToLaneOnce(t, repo, DrainOptions{})
+	runID := first.Start.RunID
+	home, _ := stopWorld(t, false)
+	claimedBy(t, repo.Root(), runID, Options{stopHome: home}, hostTwo, hostOne, hostOne, hostTwo)
+	before := stateAtVersion(t, repo.Root(), runID, schemaVersionPrevious)
+
+	moved, err := Drain(repo.Root(), Options{Pace: strp("60/15"), SubAgents: strp("3"), stopHome: home}, DrainOptions{})
+
+	if err != nil {
+		t.Fatalf("the move was refused over a lane another session drives: %v", err)
+	}
+	if !strings.Contains(moved.Next, "run "+runID+", keeps its pace") {
+		t.Fatalf("the move does not name the lane that kept its pace: %q", moved.Next)
+	}
+	wantLeft(t, repo.Root(), runID, schemaVersionPrevious, before, moved.Next)
+}
+
+// TestTheGuardedRoutesLeaveARunAnotherSessionDrives: the stuck hand-back, the go-on after
+// a lift and the mark of an await a stop refused each save the run whole, so each leaves a
+// run another live session drives at another version as its file stands and says so.
+func TestTheGuardedRoutesLeaveARunAnotherSessionDrives(t *testing.T) {
+	stopped := refuse(StageStop, "", "", "a stop holds", "")
+	for _, tc := range []struct {
+		name  string
+		route func(repoRoot, runID, receipt string, o Options) error
+	}{
+		{"the stuck hand-back", func(repoRoot, runID, _ string, o Options) error {
+			_, err := handBackStuck(repoRoot, runID, stuckBounds{}, time.Now(), o.laneSave(true))
+			return err
+		}},
+		{"the go-on after a lift", func(repoRoot, runID, _ string, o Options) error {
+			return goOnAfterLift(repoRoot, runID, o)
+		}},
+		{"the mark of an await a stop refused", func(repoRoot, runID, receipt string, o Options) error {
+			return notStartedUnderStop(repoRoot, runID, receipt, DefaultStages(), o, stopped)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo, runID, l, _ := awaitingLane(t)
+			home, _ := stopWorld(t, false)
+			o := Options{stopHome: home}
+			claimedBy(t, repo.Root(), runID, o, hostTwo, hostOne, hostOne, hostTwo)
+			before := stateAtVersion(t, repo.Root(), runID, schemaVersionPrevious)
+
+			err := tc.route(repo.Root(), runID, l.awaiting().Receipt, o)
+
+			r, ok := leftAtVersion(err)
+			if !ok {
+				t.Fatalf("want the refusal that leaves the run at its version, got %v", err)
+			}
+			wantLeft(t, repo.Root(), runID, schemaVersionPrevious, before, r.Error())
+		})
+	}
+}
+
+// TestTheStopsPageNoteKeepsTheVersionOfTheRun: the note of whether the stop's page was
+// written is the control record's mark and a line in the run's record, so it is kept for
+// a run whose file states another version, which keeps that version.
+func TestTheStopsPageNoteKeepsTheVersionOfTheRun(t *testing.T) {
+	repo, runID, _, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	o := Options{stopHome: home}
+	claimedBy(t, repo.Root(), runID, o, hostTwo, hostOne, hostOne, hostTwo)
+	now := time.Now()
+	rec := &RunStop{SetBy: "a person", SetAt: now, NotedAt: now, HaltedAt: &now, FromFile: true, PageFailed: "an earlier failure"}
+	root, err := os.OpenRoot(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	c := controlOf(t, repo.Root(), runID)
+	c.Stop = rec
+	if err := writeControl(root, runID, c); err != nil {
+		t.Fatal(err)
+	}
+	stateAtVersion(t, repo.Root(), runID, schemaVersionPrevious)
+
+	out, err := notePage(repo.Root(), runID, rec, runstop.Stop{SetBy: "a person", SetAt: now}, o)
+
+	if err != nil {
+		t.Fatalf("the page note was not kept: %v", err)
+	}
+	if got := controlOf(t, repo.Root(), runID).Stop.PageFailed; got != out.PageFailed || got == rec.PageFailed {
+		t.Fatalf("the control record does not keep what the page note says: %q, answered %q", got, out.PageFailed)
+	}
+	if v := stateVersionOf(t, repo.Root(), runID); v != strconv.Itoa(schemaVersionPrevious) {
+		t.Fatalf("the page note raised the run's file to version %s", v)
+	}
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(st.Record); n == 0 || st.Record[n-1].Stage != StageStop {
+		t.Fatalf("the page note is not in the run's record: %+v", st.Record)
+	}
+}
+
+// TestASignalsUnsettledMarkOnAnotherVersionsRunIsTakenOver: a signal's stop marked a run
+// whose file states another version and whose driver is gone, before its lanes settled.
+// A step by a newer abcd claims nothing under the mark, and its check leaves the run as
+// its file stands; the refusal names the take-over, since a signal's stop has no file to
+// lift, and the take-over claims the run and clears the mark, so its next save is made at
+// this version.
+func TestASignalsUnsettledMarkOnAnotherVersionsRunIsTakenOver(t *testing.T) {
+	repo, runID, _, _, _ := deadLane(t)
+	home, _ := stopWorld(t, false)
+	o := Options{stopHome: home}
+	claimedBy(t, repo.Root(), runID, o, hostTwo, hostOne, hostOne)
+	root, err := os.OpenRoot(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	now := time.Now()
+	c := controlOf(t, repo.Root(), runID)
+	c.Stop = &RunStop{SetBy: "a signal", SetAt: now, NotedAt: now}
+	if err := writeControl(root, runID, c); err != nil {
+		t.Fatal(err)
+	}
+	before := stateAtVersion(t, repo.Root(), runID, schemaVersionPrevious)
+
+	if err := ClaimDriver(repo.Root(), runID, o); err != nil {
+		t.Fatalf("the claim under the mark: %v", err)
+	}
+	r, ok := leftAtVersion(checkOnce(repo.Root(), runID, o))
+	if !ok || r.Stage != StageStop {
+		t.Fatalf("want the stop's refusal that leaves the run at its version, got %+v", r)
+	}
+	wantLeft(t, repo.Root(), runID, schemaVersionPrevious, before, r.Error())
+	if !strings.Contains(r.Remedy, "`abcd implement resume --take "+runID+"`") || strings.Contains(r.Remedy, "--lift") {
+		t.Fatalf("the remedy does not name the take-over alone as the way on: %s", r.Remedy)
+	}
+
+	if _, err := TakeRun(repo.Root(), runID, o); err != nil {
+		t.Fatalf("the take-over the remedy names: %v", err)
+	}
+	if c := controlOf(t, repo.Root(), runID); c.Stop != nil || c.Driver == nil || c.Driver.PID != hostOne {
+		t.Fatalf("the take-over did not claim the run and clear its mark: %+v %+v", c.Driver, c.Stop)
+	}
+	// The run is this session's now, so its next whole save is made, at this version.
+	if err := saveRun(repo.Root(), runID, o, func(_ *os.Root, st *State) (bool, error) {
+		st.Record = append(st.Record, Entry{At: time.Now(), Stage: StageDriver, Note: "a step after the take-over"})
+		return true, nil
+	}); err != nil {
+		t.Fatalf("a save after the take-over: %v", err)
+	}
+	if v := stateVersionOf(t, repo.Root(), runID); v != strconv.Itoa(SchemaVersion) {
+		t.Fatalf("the save after the take-over left the run at version %s", v)
+	}
 }

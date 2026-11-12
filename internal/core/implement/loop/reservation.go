@@ -879,7 +879,7 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 	if since.unread != "" {
 		r.note += "; " + since.unread + own
 	}
-	if err := mutate(repoRoot, res.RunID, func(_ *os.Root, st *State) (bool, error) {
+	if err := saveRun(repoRoot, res.RunID, o, func(_ *os.Root, st *State) (bool, error) {
 		if st.ReservedAt == nil {
 			st.ReservedAt = r.at
 		}

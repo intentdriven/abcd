@@ -84,7 +84,7 @@ type Checkpoint struct {
 // in flight.
 func rateLimitWindow(repoRoot, runID, laneID string, aw Await, fl *runner.Failure, o Options) (StepResult, error) {
 	var res StepResult
-	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err := saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
 		hit := slices.IndexFunc(st.Lanes, func(l Lane) bool { return l.ID == laneID })
 		if hit < 0 {

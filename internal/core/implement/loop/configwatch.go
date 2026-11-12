@@ -647,7 +647,7 @@ func configTripwireIn(repoRoot string, root *os.Root, runID string) error {
 // alone.
 func AcceptConfigChange(repoRoot, runID string, o Options) ([]string, error) {
 	var accepted []string
-	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err := saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
 		was, ok, err := readFingerprint(root, runID)
 		var bad *Refusal

@@ -291,7 +291,8 @@ func TestABuildLeavesARunAnotherDriverOrAStopHasTheSayOver(t *testing.T) {
 		name string
 		set  func(t *testing.T, f *landFixture, o *Options)
 	}{
-		{"another version's state", func(t *testing.T, f *landFixture, _ *Options) {
+		{"another version's state another live session drives", func(t *testing.T, f *landFixture, o *Options) {
+			claimedBy(t, f.repo.Root(), f.runID, *o, hostTwo, hostOne, hostOne, hostTwo)
 			stateAtVersion(t, f.repo.Root(), f.runID, schemaVersionPrevious)
 		}},
 		{"a drive stopped on it", func(t *testing.T, f *landFixture, _ *Options) {
@@ -385,6 +386,35 @@ func TestABuildLeavesARunAnotherDriverOrAStopHasTheSayOver(t *testing.T) {
 				t.Fatalf("the build closes nothing and says why: %+v", res)
 			}
 			f.leftAsItStands(t, l)
+		})
+	}
+}
+
+// TestABuildClosesTheMergedLanesOfAnotherVersionsRunItTakesUp: a build that resumes a run
+// whose file states another version closes its merged lanes as its driver: the run this
+// session already drives, and one whose driver is gone, which the build claims first.
+func TestABuildClosesTheMergedLanesOfAnotherVersionsRunItTakesUp(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		driver int
+	}{
+		{"this session drives it", hostOne},
+		{"its driver is gone", hostTwo},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, l := mergedLaneFixture(t)
+			f.mergeCommit(t, l.Landing.Pushed)
+			o := Options{noReserve: true}
+			claimedBy(t, f.repo.Root(), f.runID, o, tc.driver, hostOne, hostOne)
+			stateAtVersion(t, f.repo.Root(), f.runID, schemaVersionPrevious)
+
+			res, err := Start(f.repo.Root(), "itd-10", o)
+			if err != nil {
+				t.Fatalf("the build: %v", err)
+			}
+			if !slices.ContainsFunc(res.Closed, func(c ClosedLane) bool { return c.Lane == l.ID }) {
+				t.Fatalf("the build did not close the merged lane of the run it drives: %+v", res)
+			}
 		})
 	}
 }

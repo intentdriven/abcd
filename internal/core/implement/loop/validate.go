@@ -1321,7 +1321,7 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 	if err != nil {
 		return fallBack(repoRoot, runID, res, aw, rr, err, o)
 	}
-	placed, err := placeRouteReturn(repoRoot, runID, aw.Receipt, rr.Name, ret)
+	placed, err := placeRouteReturn(repoRoot, runID, aw.Receipt, rr.Name, ret, o)
 	if refusal, ok := AsRefusal(err); ok && refusal.Contention {
 		// Another invocation held the run's lock past the retries, so the
 		// return could not be placed: the answer is kept aside rather than
@@ -1356,7 +1356,7 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 			// taken back off the path, without the run's lock, where the
 			// host's agent could otherwise hand it back as its own, and the
 			// answer recorded on its await is dropped.
-			if rerr := takeBack(repoRoot, runID, aw.Receipt); rerr != nil {
+			if rerr := takeBack(repoRoot, runID, aw.Receipt, o); rerr != nil {
 				return res, errors.Join(err, rerr)
 			}
 			return res, err
@@ -1436,14 +1436,18 @@ func fallBack(repoRoot, runID string, res StepResult, aw Await, rr *ReviewRoute,
 // (Await.Answered), so a return the step's own receipt cannot verify is still
 // the route's when it is handed back as placed. It reports whether it wrote
 // the return.
-func placeReturn(repoRoot, runID, rel, route string, ret string) (bool, error) {
+func placeReturn(repoRoot, runID, rel, route string, ret string, o Options) (bool, error) {
 	if err := fsutil.EnsureRealDirAll(repoRoot, filepath.ToSlash(filepath.Dir(filepath.FromSlash(rel))), dirPerm); err != nil {
 		return false, fmt.Errorf("creating the review's directory: %w", err)
 	}
 	placed := false
 	err := retryContended(func() error {
 		return withLock(repoRoot, func(root *os.Root) error {
-			st, err := readStateIn(root, runID)
+			st, stated, err := readStatedIn(root, runID)
+			if err != nil {
+				return err
+			}
+			right, err := mayWholeSave(root, runID, stated, o)
 			if err != nil {
 				return err
 			}
@@ -1467,7 +1471,7 @@ func placeReturn(repoRoot, runID, rel, route string, ret string) (bool, error) {
 				return fmt.Errorf("writing %s: %w", rel, werr)
 			}
 			st.Lanes[i].Awaits[k].Answered = &RouteAnswer{Route: route, SHA256: answerDigest([]byte(ret))}
-			if err := writeState(root, st); err != nil {
+			if err := storeState(root, st, right); err != nil {
 				_ = root.Remove(rel)
 				return err
 			}
@@ -1508,13 +1512,13 @@ func validatorRoute(lane Lane, ret string) *runner.RouteRecord {
 // invocation holds past the retries never leaves the route's answer standing
 // where the host's agent writes; the drop it does need is then refused naming
 // the answer still recorded.
-func takeBack(repoRoot, runID, rel string) error {
+func takeBack(repoRoot, runID, rel string, o Options) error {
 	removed, err := removePlaced(repoRoot, runID, rel)
 	if err != nil {
 		return err
 	}
 	err = retryContended(func() error {
-		return mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		return saveRun(repoRoot, runID, o, func(_ *os.Root, st *State) (bool, error) {
 			return st.dropAnswer(repoRoot, rel), nil
 		})
 	})

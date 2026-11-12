@@ -320,7 +320,7 @@ func CaptureTranscripts(repoRoot, runID string, paths []string, capture Transcri
 	var rec RunRecord
 	var final State
 	var failed error
-	err := saveUndriven(repoRoot, runID, o, func(_ *os.Root, st *State) (bool, error) {
+	err := saveRun(repoRoot, runID, o, func(_ *os.Root, st *State) (bool, error) {
 		if !st.Complete() {
 			return false, refuse(StageRecord, "", "", st.RunID+" is not complete, and its transcripts are captured at its end",
 				"finish the run with `abcd implement step`, then capture its transcripts")

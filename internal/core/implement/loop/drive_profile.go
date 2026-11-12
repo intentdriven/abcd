@@ -106,7 +106,7 @@ func (t *terminal) markProfile(runID string) error {
 	}
 	now, marked := t.now(), false
 	note := "this run named no profile, and from here a drive runs it on profile " + termsafe.Sanitize(profile)
-	err := mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	err := saveRun(t.repoRoot, runID, t.o.Options, func(_ *os.Root, st *State) (bool, error) {
 		if st.Profile != "" {
 			return false, nil
 		}

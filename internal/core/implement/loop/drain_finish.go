@@ -208,8 +208,9 @@ var afterParkedFetch = func() {}
 // save could not take, and otherwise it lapses at its lease with the lane's work still on its branch and in its worktree.
 // The landing's last step below, resyncParked, watchParked and handBackClosed each save the
 // run's whole state, so each is judged before it acts (mayWholeSave, through laneSave): a
-// lane of the drain's own whose file states another version is claimed first
-// (claimOwnLane), and a run this session does not drive is left as its file stands, named
+// parked run whose file states another version, this drain's lane or an earlier drain's,
+// is claimed first (claimToSave), so a drain run by a newer abcd finishes what a gone
+// driver left, and a run another live session drives is left as its file stands, named
 // with why among what the move finished or read.
 func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options) ([]DrainFinished, []DrainParked, error) {
 	runs, err := Runs(repoRoot)
@@ -323,7 +324,7 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options) 
 	afterParkedFetch()
 	for _, run := range parked {
 		lane := run.Lanes[parkedAtLand(run)]
-		save := o.laneSave(drainsRun(lanes, run.RunID))
+		save := o.laneSave(true)
 		f := DrainFinished{Issue: run.Issue(), RunID: run.RunID, PR: lane.PR}
 		// A stop can reach the run while the forge is read and the default branch fetched.
 		if note := stopMarkNote(repoRoot, run.RunID); note != "" {

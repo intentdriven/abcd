@@ -331,6 +331,7 @@ func TestAnOlderStateMigratesItsReviewerToIndexZero(t *testing.T) {
 		t.Fatal(err)
 	}
 	id, stages := start.RunID, DefaultStages()
+	claimAsDriver(t, repo.Root(), id, Options{})
 	implementedOnce(t, repo, id, "one.txt")
 	first := stepAwait(t, repo, id, stages, Options{})
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(id)))

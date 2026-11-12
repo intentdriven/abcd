@@ -743,7 +743,7 @@ func TestABusyLockAtThePlacementKeepsTheAnswerAside(t *testing.T) {
 	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
 	aw := *res.Awaiting
 	prev := placeRouteReturn
-	placeRouteReturn = func(string, string, string, string, string) (bool, error) {
+	placeRouteReturn = func(string, string, string, string, string, Options) (bool, error) {
 		return false, contend("state", "", "", "another invocation is changing this checkout's runs", "back off and retry")
 	}
 	_, err := DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, rpRoute(t, rpServer(verdictFor)))
@@ -1097,7 +1097,7 @@ func TestASecondAnswerKeptAsideNeverReplacesTheFirst(t *testing.T) {
 	srv := rpServer(func(string) string { calls++; return answers[calls-1] })
 	rr := rpRoute(t, srv)
 	prev := placeRouteReturn
-	placeRouteReturn = func(string, string, string, string, string) (bool, error) {
+	placeRouteReturn = func(string, string, string, string, string, Options) (bool, error) {
 		return false, contend("state", "", "", "another invocation is changing this checkout's runs", "back off and retry")
 	}
 	t.Cleanup(func() { placeRouteReturn = prev })
@@ -1226,7 +1226,7 @@ func TestKeepingAsideSweepsATemporaryFileAKilledProcessLeft(t *testing.T) {
 		t.Fatal(err)
 	}
 	prev := placeRouteReturn
-	placeRouteReturn = func(string, string, string, string, string) (bool, error) {
+	placeRouteReturn = func(string, string, string, string, string, Options) (bool, error) {
 		return false, contend("state", "", "", "another invocation is changing this checkout's runs", "back off and retry")
 	}
 	t.Cleanup(func() { placeRouteReturn = prev })
@@ -1258,7 +1258,7 @@ func TestAnAnswerIsKeptAsideWhereNoHardLinkCanBeMade(t *testing.T) {
 	linkAside = func(*os.Root, string, string) error {
 		return &os.LinkError{Op: "link", Err: errors.New("operation not supported")}
 	}
-	placeRouteReturn = func(string, string, string, string, string) (bool, error) {
+	placeRouteReturn = func(string, string, string, string, string, Options) (bool, error) {
 		return false, contend("state", "", "", "another invocation is changing this checkout's runs", "back off and retry")
 	}
 	t.Cleanup(func() { linkAside, placeRouteReturn = prevLink, prevPlace })
@@ -1338,6 +1338,7 @@ func TestATakeBackThatCannotReadSaysTheReturnStands(t *testing.T) {
 // the route's answer reads with both.
 func TestAVersion11ReservationReadsAsVersion12(t *testing.T) {
 	repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+	claimAsDriver(t, repo.Root(), id, Options{})
 	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
 	aw := *res.Awaiting
 	reserved := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)

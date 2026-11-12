@@ -325,7 +325,7 @@ func restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 	afterStopCheck()
 	var res RestartResult
 	var retold []Await
-	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err = saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		// A stop may have come since the check: under the lock it re-tells no one.
 		if c, err := readControl(root, runID); err != nil {
 			return false, err

@@ -1771,7 +1771,7 @@ func (t *terminal) laneRefused(ctx context.Context, runID, laneID, reason, final
 	why := refuse(string(StageLand), "", laneID, reason, "see the reason")
 	why.final = final
 	now := t.now()
-	if err := mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	if err := saveRun(t.repoRoot, runID, t.o.Options, func(_ *os.Root, st *State) (bool, error) {
 		return noteRefusal(st, why, now), nil
 	}); err != nil {
 		return false, "", err
@@ -1839,7 +1839,7 @@ func (t *terminal) takeUpOptions() Options {
 // reservation after all. A failure is said, and the next move tries again.
 func (t *terminal) retellLimit(runID string) {
 	now := t.now()
-	err := mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	err := saveRun(t.repoRoot, runID, t.o.Options, func(_ *os.Root, st *State) (bool, error) {
 		told := retellKept(st, limitKept, now)
 		if len(told) > 0 {
 			st.UpdatedAt = now
@@ -1946,13 +1946,13 @@ func recordMovedOn(repoRoot string, run State, now time.Time) recordSince {
 // the reason it goes back for. Only a release of the run's own that did not reach origin is
 // tried again, and only over the tip it left, so a reservation anyone made since stands,
 // and the reason says which.
-func dropMovedRun(repoRoot string, run State, why string, now time.Time) (string, error) {
+func dropMovedRun(repoRoot string, run State, why string, now time.Time, o Options) (string, error) {
 	if tip := failedReleaseTip(run); tip != "" {
 		clause, failed := releaseReservationAt(repoRoot, run.Key, tip, "", now)
 		why += "; " + clause
 		if failed {
 			why += ", so it lapses with its lease"
-		} else if err := mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+		} else if err := mutateReservation(repoRoot, run.RunID, func(st *State) (bool, error) {
 			st.Record = append(st.Record, Entry{At: now, Stage: StageReservationReleased, Note: clause})
 			st.UpdatedAt = now
 			return true, nil
@@ -1964,7 +1964,7 @@ func dropMovedRun(repoRoot string, run State, why string, now time.Time) (string
 			why += "; the reservation made on it from this copy since it was let go stands"
 		}
 	}
-	return why, dropRun(repoRoot, run.RunID, why, recordMovedOnWith, now)
+	return why, dropRun(repoRoot, run.RunID, why, recordMovedOnWith, now, o)
 }
 
 // passOverHalted leaves a run a person's stop halted to its explicit take-over, names it and
@@ -2043,7 +2043,7 @@ func (t *terminal) tookUp(ctx context.Context, run State, err error) (bool, stri
 		r = refuse(StageReservation, "", "", err.Error(), "see the reason")
 	}
 	if r.recordMoved {
-		reason, derr := dropMovedRun(t.repoRoot, run, r.Reason, t.now())
+		reason, derr := dropMovedRun(t.repoRoot, run, r.Reason, t.now(), t.o.Options)
 		t.sayDropped(run, reason, derr)
 		return true, ""
 	}
@@ -2078,7 +2078,7 @@ func (t *terminal) tookUp(ctx context.Context, run State, err error) (bool, stri
 func (t *terminal) stayAsItIs(runID, key string, r *Refusal) {
 	t.say("%s, run %s, stays as it is: %s", key, runID, r.Reason)
 	now := t.now()
-	_ = mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	_ = saveRun(t.repoRoot, runID, t.o.Options, func(_ *os.Root, st *State) (bool, error) {
 		i := st.current()
 		if i < 0 {
 			return false, nil
@@ -2122,7 +2122,7 @@ func (t *terminal) letGoForLimit(runID string) {
 	}
 	now := t.now()
 	key, held, clause, failed := "", "", "", false
-	err := mutate(t.repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err := saveRun(t.repoRoot, runID, t.o.Options, func(root *os.Root, st *State) (bool, error) {
 		if st.ReservedAt == nil || letGoByDrive(*st) {
 			return false, nil
 		}
@@ -2212,7 +2212,7 @@ func limitKeepsHold(st State, c control, now time.Time) string {
 
 // dropLane ends a lane whose reservation backed off, naming who the issue is with now.
 func (t *terminal) dropLane(run State, r *Refusal) {
-	t.sayDropped(run, r.Reason, dropRun(t.repoRoot, run.RunID, r.Reason, t.issueIsWith(run.Key), t.now()))
+	t.sayDropped(run, r.Reason, dropRun(t.repoRoot, run.RunID, r.Reason, t.issueIsWith(run.Key), t.now(), t.o.Options))
 }
 
 // sayDropped says what became of dropping run's lane for reason.
@@ -2255,9 +2255,9 @@ func (t *terminal) issueIsWith(key string) string {
 // release is pushed and no hand-back is published over an issue that is no person's
 // question, and the next move routes it and takes the next issue. What the lane left stays
 // where the hand-back says.
-func dropRun(repoRoot, runID, why, whose string, now time.Time) error {
+func dropRun(repoRoot, runID, why, whose string, now time.Time, o Options) error {
 	reason := termsafe.Sanitize(fsutil.RedactHome(why))
-	return mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	return saveRun(repoRoot, runID, o, func(_ *os.Root, st *State) (bool, error) {
 		i := st.current()
 		if i < 0 || st.Lanes[i].HandBack != nil {
 			return false, nil
@@ -2302,7 +2302,8 @@ func (t *terminal) letGo() {
 			}
 			clause, failed := releaseReservation(t.repoRoot, run.Key, "", now)
 			t.say("%s: %s", run.Key, clause)
-			_ = mutate(t.repoRoot, l.RunID, func(_ *os.Root, st *State) (bool, error) {
+			// Lines in the run's record alone: its file keeps the version it states.
+			_ = mutateReservation(t.repoRoot, l.RunID, func(st *State) (bool, error) {
 				noteRecordReleased(t.repoRoot, st, failed, now)
 				st.Record = append(st.Record, Entry{At: now, Stage: StageDriveReleased, Note: clause})
 				st.UpdatedAt = now

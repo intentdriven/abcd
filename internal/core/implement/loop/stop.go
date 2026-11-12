@@ -185,19 +185,20 @@ func pinShared(repoRoot, runID string, o Options) {
 	if pin == nil {
 		return
 	}
-	_ = mutate(repoRoot, runID, func(root *os.Root, _ *State) (bool, error) {
+	_ = withRun(repoRoot, runID, func(root *os.Root) error {
 		c, err := readControl(root, runID)
 		if err != nil || c.Shared != nil {
-			return false, err
+			return err
 		}
 		c.Shared = pin
-		return false, writeControl(root, runID, c)
+		return writeControl(root, runID, c)
 	})
 }
 
 // clearStop removes the run's stop mark, with why in its record.
 func clearStop(repoRoot, runID, why string, o Options) error {
-	return mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	// The mark and a line in the run's record: its file keeps the version it states.
+	return saveRecord(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		c, err := readControl(root, runID)
 		if err != nil || c.Stop == nil {
 			return false, err
@@ -218,7 +219,7 @@ func clearStop(repoRoot, runID, why string, o Options) error {
 // that await is told again, so the next step names a fresh agent and the mark does
 // not outlive it, reading a live agent as lost.
 func goOnAfterLift(repoRoot, runID string, o Options) error {
-	return saveUndriven(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
+	return saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		c, err := readControl(root, runID)
 		if err != nil || c.Stop == nil {
 			return false, err
@@ -263,11 +264,17 @@ func retellKept(st *State, prefix string, now time.Time) []string {
 
 // leftUnderStop is the answer a move gets where a stop holds and the run was left
 // unsettled to its own driver (mayWholeSave): the stop's refusal at exit 3, saying why
-// nothing of the run was written.
+// nothing of the run was written. A stop read from the file is lifted by the person; a
+// signal's has no file, so its mark stays until a take-over, which the judge's remedy
+// names.
 func leftUnderStop(s runstop.Stop, left *Refusal) error {
+	lift := "; the person's own `abcd implement stop --lift` lifts the stop"
+	if s.Path == "" {
+		lift = "; the stop came from a signal, which leaves no file to lift, so its mark stays until the run is taken over"
+	}
 	r := contend(StageStop, "", "", fmt.Sprintf("a stop set by %s at %s holds, and nothing further starts; %s",
 		termsafe.Sanitize(s.SetBy), s.SetAt.UTC().Format(time.RFC3339), left.Reason),
-		left.Remedy+"; the person's own `abcd implement stop --lift` lifts the stop")
+		left.Remedy+lift)
 	r.leftAtVersion = true
 	return r
 }
@@ -356,15 +363,17 @@ func stopMarkNote(repoRoot, runID string) string {
 // settled first takes the check every move makes, so one from a stop lifted since goes, and
 // the run is then as any other. That check saves the run whole, so it is made only where
 // this session may (mayWholeSave): a lane of the drain's own (ours) whose file states
-// another version is claimed first (claimOwnLane), and a run this session does not drive
+// another version is claimed first (claimToSave), and a run this session does not drive
 // keeps its mark for its own driver, the note saying why.
 func parkedStopNote(repoRoot, runID string, ours bool, o Options) (string, error) {
 	c, err := runControl(repoRoot, runID)
 	left := ""
 	if err == nil && c.Stop != nil && c.Stop.HaltedAt == nil {
 		if ours {
-			if err := claimOwnLane(repoRoot, runID, o); err != nil {
-				return "", err
+			if err := claimToSave(repoRoot, runID, o); err != nil {
+				if _, refused := AsRefusal(err); !refused {
+					return "", err
+				}
 			}
 		}
 		if r := wholeSaveLeft(repoRoot, runID, o); r != nil {
@@ -401,7 +410,7 @@ func haltRun(repoRoot, runID string, s runstop.Stop, steps Stages, o Options) (*
 	now := o.now()
 	var rec *RunStop
 	var driver *LiveDriver
-	err := saveUndriven(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
+	err := saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		if st.Complete() {
 			return false, nil
 		}
@@ -432,7 +441,7 @@ func haltRun(repoRoot, runID string, s runstop.Stop, steps Stages, o Options) (*
 	}
 	if rec.HaltedAt != nil {
 		if rec.FromFile && rec.PageFailed != "" {
-			return notePage(repoRoot, runID, rec, s, o), nil
+			return notePage(repoRoot, runID, rec, s, o)
 		}
 		return rec, nil
 	}
@@ -447,7 +456,7 @@ func haltRun(repoRoot, runID string, s runstop.Stop, steps Stages, o Options) (*
 	if configTripwire(repoRoot, runID) == nil {
 		collected = collectArrived(repoRoot, runID, steps, seen, nil, o)
 	}
-	err = saveUndriven(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
+	err = saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		c, err := readControl(root, runID)
 		if err != nil {
 			return false, err
@@ -479,7 +488,7 @@ func haltRun(repoRoot, runID string, s runstop.Stop, steps Stages, o Options) (*
 	}
 	// The page says the person's stop holds and how to lift it, which a signal is not.
 	if rec.HaltedAt != nil && rec.FromFile {
-		return notePage(repoRoot, runID, rec, s, o), nil
+		return notePage(repoRoot, runID, rec, s, o)
 	}
 	return rec, nil
 }
@@ -867,7 +876,7 @@ func notStartedUnderStop(repoRoot, runID, receiptPath string, steps Stages, o Op
 	if rf, ok := AsRefusal(refused); !ok || rf.Stage != StageStop {
 		return refused
 	}
-	err := saveUndriven(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
+	err := saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		c, err := readControl(root, runID)
 		if err != nil || c.Stop == nil {
 			return false, err
@@ -994,8 +1003,10 @@ func ArmedLine(pr int) string {
 }
 
 // notePage writes the page for a run the stop halted and keeps in the run's account whether
-// it could, so the stop's answer can say; a later check tries again.
-func notePage(repoRoot, runID string, rec *RunStop, s runstop.Stop, o Options) *RunStop {
+// it could, so the stop's answer can say; a later check tries again. What it keeps is the
+// control record's mark and a line in the run's record, so the state file keeps the version
+// it states (saveRecord), and a save that fails is returned with the stop as it stood.
+func notePage(repoRoot, runID string, rec *RunStop, s runstop.Stop, o Options) (*RunStop, error) {
 	why := ""
 	inForce := *rec
 	if s.Path != "" {
@@ -1005,10 +1016,10 @@ func notePage(repoRoot, runID string, rec *RunStop, s runstop.Stop, o Options) *
 		why = "the day's page could not be written: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))
 	}
 	if why == rec.PageFailed {
-		return rec
+		return rec, nil
 	}
 	now := o.now()
-	_ = saveUndriven(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
+	err := saveRecord(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		c, err := readControl(root, runID)
 		if err != nil || c.Stop == nil {
 			return false, err
@@ -1025,9 +1036,12 @@ func notePage(repoRoot, runID string, rec *RunStop, s runstop.Stop, o Options) *
 		st.UpdatedAt = now
 		return true, nil
 	})
+	if err != nil {
+		return rec, err
+	}
 	out := *rec
 	out.PageFailed = why
-	return &out
+	return &out, nil
 }
 
 // machineCheckouts is every checkout whose runs this account can read: this

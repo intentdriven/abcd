@@ -59,7 +59,7 @@ func cellFailed(repoRoot, runID, laneID string, aw Await, session, asked string,
 		return pauseAwait(repoRoot, runID, laneID, aw, session, fb, stderr, handIn, o)
 	}
 	var res StepResult
-	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	err := saveRun(repoRoot, runID, o, func(_ *os.Root, st *State) (bool, error) {
 		now := o.now()
 		i, _ := st.findAwait(repoRoot, aw.Receipt)
 		if i < 0 || st.Lanes[i].ID != laneID {

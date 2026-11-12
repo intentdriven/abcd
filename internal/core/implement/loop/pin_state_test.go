@@ -97,6 +97,7 @@ func TestAVersion15FileReadsAsVersion16s(t *testing.T) {
 		t.Fatalf("a route's pins are state version 16's, got %d", schemaVersionUnplanned)
 	}
 	root, id, path := sidedRun(t)
+	claimAsDriver(t, root, id, Options{})
 	editState(t, root, id, func(doc map[string]any) { doc["schema_version"] = 15 })
 	old, err := os.ReadFile(path)
 	if err != nil {

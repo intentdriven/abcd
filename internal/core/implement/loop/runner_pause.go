@@ -230,7 +230,7 @@ func releaseToHost(repoRoot, runID string, o Options, rs Runners, res StepResult
 	}
 	var out StepResult
 	released := false
-	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	err := saveRun(repoRoot, runID, o, func(_ *os.Root, st *State) (bool, error) {
 		// A trial's role is the cell's route under test (trial.go): the host
 		// never takes it, whatever the person's route says now.
 		if st.autoPlanning() || st.Trial {
@@ -414,7 +414,7 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	// trial is the run's trial mode, read under the lock: its dispatch runs in
 	// the runners' cell mode, so nothing stands in for the cell's route.
 	var trial bool
-	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err := saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		// A stop may have come since the check: under the lock it starts nothing.
 		if c, err := readControl(root, runID); err != nil {
 			return false, err
@@ -458,7 +458,7 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	if err != nil {
 		return on, err
 	}
-	release := func() error { return releaseClaim(repoRoot, runID, aw.Receipt, session) }
+	release := func() error { return releaseClaim(repoRoot, runID, aw.Receipt, session, o) }
 
 	if aw.Paused != nil && aw.Paused.Reason == runner.ReasonInvalid {
 		noteRefusedReturn(repoRoot, runID, laneID, aw)
@@ -643,7 +643,7 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 func pauseAwait(repoRoot, runID, laneID string, aw Await, session string, fb runner.FallbackReceipt, stderr string, handIn error, o Options) (StepResult, *RunnerPause, error) {
 	var res StepResult
 	var paused *RunnerPause
-	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err := saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
 		i, k := st.findAwait(repoRoot, aw.Receipt)
 		if i < 0 || st.Lanes[i].ID != laneID {
@@ -819,7 +819,7 @@ func workStands(repoRoot, worktree, base string, aw Await) (int, bool) {
 // launch spent. It returns the lane's result, which names the await.
 func keepKilled(repoRoot, runID, laneID string, aw Await, session string, fb runner.FallbackReceipt, commits int, o Options) (StepResult, error) {
 	var res StepResult
-	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	err := saveRun(repoRoot, runID, o, func(_ *os.Root, st *State) (bool, error) {
 		now := o.now()
 		i, k := st.findAwait(repoRoot, aw.Receipt)
 		var lane Lane
@@ -859,8 +859,8 @@ func keepKilled(repoRoot, runID, laneID string, aw Await, session string, fb run
 
 // releaseClaim drops the claim session took on the await at receipt, when the
 // await still carries it.
-func releaseClaim(repoRoot, runID, receipt, session string) error {
-	return mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+func releaseClaim(repoRoot, runID, receipt, session string, o Options) error {
+	return saveRun(repoRoot, runID, o, func(_ *os.Root, st *State) (bool, error) {
 		i, k := st.findAwait(repoRoot, receipt)
 		if i < 0 {
 			return false, nil

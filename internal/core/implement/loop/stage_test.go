@@ -99,6 +99,7 @@ func TestAVersionThreeStateIsMigratedOnReadAndNeverRewrittenByTheRead(t *testing
 		t.Fatal(err)
 	}
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(start.RunID)))
+	claimAsDriver(t, repo.Root(), start.RunID, Options{})
 	v3 := `{
   "schema_version": 3,
   "run_id": "` + start.RunID + `",
