@@ -25,10 +25,12 @@ package landings
 // scopes the forge does not take, an error for the repository itself, judged
 // from the answer's typed fields where it carries them and from the client's
 // text where it does not. An answer that passes the client's output bound is
-// asked again in halves, down to one pull request; one that carries errors
-// naming no pull request is asked again along one chain of halves, and when
-// both halves of a batch fail so, neither is asked further. A listing spends
-// at most maxHalvingCalls calls asking again. Every row left unanswered reads
+// asked again in halves, down to one pull request, which is asked once more
+// without its commits where it asked them; an answer still past the bound is
+// too large to read, and its row is unattended in either mode. One that
+// carries errors naming no pull request is asked again along one chain of
+// halves, and when both halves of a batch fail so, neither is asked further. A
+// listing spends at most maxHalvingCalls calls asking again. Every row left unanswered reads
 // as "forge unread", never guessed, and the reason is the listing's note.
 
 import (
@@ -156,6 +158,9 @@ type prAnswer struct {
 		TotalCount int           `json:"totalCount"`
 		Nodes      []forgeCommit `json:"nodes"`
 	} `json:"commits"`
+	// commitsUnread marks an answer asked without the commits its row wanted
+	// (asker.alone): its commits are not read, and it is not kept.
+	commitsUnread bool
 }
 
 // loginRe is a person's forge login's shape, any other no reviewer: letters,
@@ -206,7 +211,7 @@ func (a *prAnswer) landedAs(n int, commit string) string {
 // lasting says whether a, the forge's answer for the row commit, is one a
 // later listing may read again without asking: one saying the pull request
 // merged as another commit, or one the row accepts whose reviews page is
-// whole. An answer saying the pull request has not merged, or naming no merge
+// whole and whose commits were asked where the row wanted them. An answer saying the pull request has not merged, or naming no merge
 // commit, can change once the forge marks the merge, so it is asked again.
 func (a *prAnswer) lasting(commit string) bool {
 	switch {
@@ -215,7 +220,7 @@ func (a *prAnswer) lasting(commit string) bool {
 	case a.MergeCommit.Oid != commit:
 		return true
 	}
-	return a.whole() == ""
+	return a.whole() == "" && !a.commitsUnread
 }
 
 // whole says why a's reviews cannot be judged, "" when the page holds them
@@ -450,9 +455,32 @@ func (q *asker) halve(batch []prAsk, why string, size bool) {
 }
 
 // alone settles batch, one pull request whose answer passed the output bound
-// asked alone (why): it is too large to read, so it is not asked again in the
-// listing and its row is left to no mode (classify).
+// asked alone (why). Where it was asked with its commits, it is asked once
+// more without them, spending one of the listing's halvings, and that answer
+// is read with its commits unread. An answer past the bound still is too large
+// to read, so it is not asked again in the listing and its row is left to no
+// mode (classify).
 func (q *asker) alone(batch []prAsk, why string) {
+	if a := batch[0]; len(batch) == 1 && a.commits && q.halvings >= 1 {
+		q.halvings--
+		lean := a
+		lean.commits = false
+		r, ok := q.call([]prAsk{lean})
+		switch {
+		case !ok:
+			return
+		case r.whole == "":
+			if got := r.got[a.pr]; got != nil {
+				got.commitsUnread = true
+			}
+			q.take(batch, r)
+			return
+		case !r.size:
+			q.unread(batch, r.whole)
+			return
+		}
+		why = r.whole
+	}
 	for _, a := range batch {
 		q.fa.tooLarge[a.pr] = true
 		q.fa.why[a.pr] = why + ", asked alone, so it is too large to read"

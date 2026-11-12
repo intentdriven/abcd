@@ -249,6 +249,58 @@ func TestAnAnswerTooLargeToReadAloneIsNoModesToAttend(t *testing.T) {
 	}
 }
 
+// TestAOneParentRowTooLargeWithItsCommitsIsAskedWithout: a one-parent row's
+// pull request whose answer passes the output bound asked alone with its
+// commits is asked once more without them, and that answer is read: a merge
+// it confirms keeps its reviews, its head and an unknown lane, and is not kept
+// in the cache, while one it contradicts is the push it is. Past the bound
+// without its commits too, it is too large to read.
+func TestAOneParentRowTooLargeWithItsCommitsIsAskedWithout(t *testing.T) {
+	for _, mode := range []string{"human", "auto"} {
+		f := newFx(t, mode)
+		head := strings.Repeat("e", 40)
+		sq := f.commit("fix: squashed with many commits (#340)")
+		push := f.commit("fix: pushed naming a large one (#341)")
+		huge := f.commit("fix: squashed larger still (#342)")
+		ff := &fakeForge{t: t, big: map[int]bool{340: true, 341: true}, huge: map[int]bool{342: true}}
+		merged := answer(340, sq, head, review(alice, "APPROVED", head))
+		// What the forge would have said of its commits, which an answer asked
+		// without them must not read.
+		merged.Commits.Nodes = []forgeCommit{{}}
+		merged.Commits.Nodes[0].Commit.Oid, merged.Commits.Nodes[0].Commit.Message = head, recordsCommit(drainTrailer)
+		merged.Commits.TotalCount = 1
+		ff.add(merged)
+		ff.add(answer(341, strings.Repeat("c", 40), head, review(alice, "APPROVED", head)))
+		ff.add(answer(342, huge, head, review(alice, "APPROVED", head)))
+		l := f.list(ff.call)
+		if r := row(t, l, sq); r.Class != ClassPersonApproved || r.Approval.Source != SourceForge || r.MergedHead != head ||
+			r.Lane != LaneUnknown || r.Resolves != nil || r.Unattended || r.ForgeUnreadable != "" {
+			t.Fatalf("%s: a merge read without its commits: %+v", mode, r)
+		}
+		if r := row(t, l, push); r.Class != ClassPersonPush || !r.Unattended || !strings.Contains(r.ForgeSays, "#341 did not merge as") {
+			t.Fatalf("%s: a push read without its commits: %+v", mode, r)
+		}
+		if r := row(t, l, huge); r.Class != ClassAutomatic || !r.Unattended || !strings.Contains(r.ForgeUnreadable, "too large to read") {
+			t.Fatalf("%s: too large without its commits: %+v", mode, r)
+		}
+		alone := 0
+		for _, b := range ff.batches {
+			if slices.Equal(b, []int{342}) {
+				alone++
+			}
+		}
+		if alone != 2 {
+			t.Fatalf("%s: #342 asked alone %d times in %v; want with its commits and without", mode, alone, ff.batches)
+		}
+		ff.asked = nil
+		f.list(ff.call)
+		slices.Sort(ff.asked)
+		if !slices.Equal(ff.asked, []int{340}) {
+			t.Fatalf("%s: the next listing answered %v; want #340 alone asked again", mode, ff.asked)
+		}
+	}
+}
+
 // TestTheForgesAnswerIsReadAPullRequestAtATime: an error naming one pull
 // request's node leaves that one unread and the batch's others answered,
 // whether the client exits 0 or fails beside the answer.

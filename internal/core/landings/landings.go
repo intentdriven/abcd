@@ -610,7 +610,7 @@ func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR, tooLarge b
 	commitsRead := f.twoParent
 	if !f.twoParent && a != nil {
 		row.MergedHead = a.HeadRefOid
-		if a.Commits.TotalCount <= len(a.Commits.Nodes) {
+		if !a.commitsUnread && a.Commits.TotalCount <= len(a.Commits.Nodes) {
 			commitsRead = true
 			for _, c := range a.Commits.Nodes {
 				messages = append(messages, c.Commit.Message)
