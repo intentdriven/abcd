@@ -163,18 +163,35 @@ func receiptIn(wt gitutil.Worktree, rel, sha string) string {
 // an error naming what and carrying its bounded stderr, scrubbed of
 // credential URLs (gitutil.ScrubURLCredentials) before it is cut.
 func runCapped(ctx context.Context, cmd *exec.Cmd, what string) (string, error) {
+	out, err := runCappedAnswer(ctx, cmd, what)
+	if err != nil {
+		return "", err
+	}
+	return out, nil
+}
+
+// ErrOutputCap marks a forge client's answer refused for passing MaxOutput.
+var ErrOutputCap = errors.New("the forge client's output bound")
+
+// runCappedAnswer is runCapped that keeps what the command wrote to stdout
+// within MaxOutput beside the error of a failed exit: the forge client exits
+// non-zero on a GraphQL answer that carries errors, and writes that answer,
+// data and errors, to stdout. An answer past the bound is never returned, and
+// its error wraps ErrOutputCap.
+func runCappedAnswer(ctx context.Context, cmd *exec.Cmd, what string) (string, error) {
 	var stdout, stderr bytes.Buffer
-	if err := procgroup.RunToEOF(ctx, cmd, &stdout, &stderr); err != nil {
+	err := procgroup.RunToEOF(ctx, cmd, &stdout, &stderr)
+	if stdout.Len() > MaxOutput {
+		return "", fmt.Errorf("%s wrote more than %d bytes (%w)", what, MaxOutput, ErrOutputCap)
+	}
+	if err != nil {
 		// Scrubbed BEFORE the cut, as gitutil's runners do: a cut across a
 		// credential URL leaves a fragment the scrubber no longer recognises.
 		msg := gitutil.ScrubURLCredentials(strings.TrimSpace(stderr.String()))
 		if len(msg) > maxStderr {
 			msg = msg[:maxStderr]
 		}
-		return "", fmt.Errorf("%s: %v (%s)", what, err, msg)
-	}
-	if stdout.Len() > MaxOutput {
-		return "", fmt.Errorf("%s wrote more than %d bytes", what, MaxOutput)
+		return stdout.String(), fmt.Errorf("%s: %v (%s)", what, err, msg)
 	}
 	return stdout.String(), nil
 }
@@ -201,6 +218,19 @@ func GH(dir string, args ...string) (string, error) {
 // deadline (the away mode's stop check, which lists the forge under ten
 // seconds) holds.
 func GHContext(parent context.Context, dir string, args ...string) (string, error) {
+	return gh(parent, dir, runCapped, args)
+}
+
+// GHAnswerContext is GHContext that keeps the client's answer beside the
+// error of a failed exit (runCappedAnswer): the forge client exits non-zero on
+// a GraphQL answer carrying errors, and a reader that judges each error by the
+// part of the answer it names reads that answer whole.
+func GHAnswerContext(parent context.Context, dir string, args ...string) (string, error) {
+	return gh(parent, dir, runCappedAnswer, args)
+}
+
+// gh runs the forge client as GHContext describes, through run.
+func gh(parent context.Context, dir string, run func(context.Context, *exec.Cmd, string) (string, error), args []string) (string, error) {
 	// abcd's own recorded copy runs whatever comes first on PATH
 	// (itd-2610240918594138); otherwise PATH finds gh, as before.
 	bin, err := tools.Resolve("gh")
@@ -213,7 +243,7 @@ func GHContext(parent context.Context, dir string, args ...string) (string, erro
 	cmd.Dir = dir
 	cmd.Env = append(gitutil.ScrubbedEnv(), "GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1")
 	cmd.WaitDelay = time.Second
-	return runCapped(ctx, cmd, "gh "+strings.Join(args[:min(2, len(args))], " "))
+	return run(ctx, cmd, "gh "+strings.Join(args[:min(2, len(args))], " "))
 }
 
 // GitFunc runs one networked git command (a fetch or a push) from dir:
