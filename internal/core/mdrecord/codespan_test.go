@@ -83,6 +83,8 @@ func TestCodeSpansReadWhereThePairingIsOpen(t *testing.T) {
 		{"an HTML block", "<div>\na `x` b\n</div>", nil},
 		{"an indented first line", "    a `x` b", nil},
 		{"a tag holding a backtick", "a <b title=\"`\">x</b> `y", nil},
+		{"a comment block's line", "<!-- a --> `x` b", nil},
+		{"the rest of a line a comment closes on past its paragraph", "<!-- a\n\nb --> `x` c", nil},
 		{"self-contained lines across a blockquote line", "> a `x` b\n> c `y` d", [][][2]int{{{4, 7}}, {{4, 7}}}},
 	})
 }
