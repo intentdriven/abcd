@@ -186,7 +186,7 @@ pass:
   `intent_layout` rule names the same lines in a draft or planned intent, at
   warn, where they are written (an intent over the intent store's size cap is
   refused for its size before its layout is read, and the rule still names its
-  lines). Only an ATX heading
+  lines, up to record-lint's own file cap). Only an ATX heading
   (`#`) opens or ends the section; a setext or HTML heading does not. The
   reader reads ATX headings, fences, HTML comments and inline code spans that open and close on one line; any
   other raw HTML block is read as ordinary text, line by line.

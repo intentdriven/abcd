@@ -140,7 +140,8 @@ type RuleConfig struct {
 	// (TestBuildsOnExemptionsNeverGrow).
 	ExemptEdges []string `json:"exempt_edges"`
 	// IntentsDir is the intents subdirectory (relative to a root) read by the
-	// intent-tree rules, intent_lifecycle and intent_impact_valid. Rules that name
+	// intent-tree rules (intent_lifecycle, intent_impact_valid, intent_sota and
+	// intent_layout). Rules that name
 	// the same directory share one scan of it. spec_lifecycle also reads it to
 	// resolve the intent corpus its specs link to.
 	IntentsDir string `json:"intents_dir"`

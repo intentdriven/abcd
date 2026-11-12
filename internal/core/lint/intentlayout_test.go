@@ -81,8 +81,8 @@ func TestIntentLayout(t *testing.T) {
 
 // The rule names the lines the build's open_questions row names: each text,
 // fed to spec.LayoutStatements and to record-lint, gives the same lines in the
-// same order. Every fixture holds a statement, and they sit on different lines,
-// so an offset or a dropped statement cannot pass.
+// same order. Every fixture holds a statement, and the rule's lines are compared
+// with the reader's, so an offset or a dropped statement cannot pass.
 func TestIntentLayoutNamesTheReadersLines(t *testing.T) {
 	const rel = "rec/intents/planned/itd-7-thing.md"
 	const fm = "---\nid: itd-7\nkind: standalone\nspec_id: null\n---\n# T\n\n## Summary\n\n"

@@ -361,8 +361,8 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			findings = append(findings, dc...)
 		}
 
-		// The intent-tree rules (intent_lifecycle, intent_impact_valid) read the
-		// SAME bucket tree, so it is scanned once per distinct intents_dir and each
+		// Every rule over the intent tree (intent_lifecycle, intent_impact_valid,
+		// intent_sota, intent_layout) reads the SAME bucket tree, so it is scanned once per distinct intents_dir and each
 		// rule validates the records that scan produced. A rule is never a second
 		// walk of a tree another rule already read.
 		intentTrees := map[string]intentTree{}
@@ -2009,7 +2009,7 @@ type intentRecord struct {
 	// precedes it, 0 otherwise — the extraction half of the loader contract.
 	preamble int
 	// lines is the file's content split on newlines, kept for the rules that read
-	// an intent's body rather than its frontmatter (intent_sota, intent_layout).
+	// an intent's text (intent_sota its body, intent_layout the whole file).
 	lines []string
 }
 

@@ -40,7 +40,7 @@ func checkIntentLayout(tree intentTree, cfg RuleConfig) []Finding {
 		for _, st := range spec.LayoutStatements(strings.Join(r.lines, "\n")) {
 			out = append(out, Finding{
 				File: r.rel, Line: st.Line, RuleID: ruleIntentLayout, Severity: cfg.Severity,
-				Message: "intent's text is not read whole, so the open_questions check refuses it (at a build's start, at planning and at abcd intent ready): " +
+				Message: "intent's text is not read whole, so the open_questions check refuses it (at a build's start, when it is planned automatically and at abcd intent ready): " +
 					st.Describe() + " — " + spec.LayoutRemedy,
 			})
 		}
