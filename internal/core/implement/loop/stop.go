@@ -364,16 +364,21 @@ func stopMarkNote(repoRoot, runID string) string {
 // the run is then as any other. That check saves the run whole, so it is made only where
 // this session may (mayWholeSave): a parked run whose file states another version is
 // claimed first, a lane of the drain's own (ours) as claimToSave claims it and any other
-// for the check alone, the claim let go once the check is done (claimInPassing), and a run
-// another live session drives keeps its mark for that driver, the note saying why.
+// that names a driver for the check alone, the claim let go once the check is done
+// (claimInPassing); a run another live session drives, or one not the drain's that names
+// no driver, keeps its mark, the note saying why.
 func parkedStopNote(repoRoot, runID string, ours bool, o Options) (string, error) {
 	c, err := runControl(repoRoot, runID)
 	left := ""
 	if err == nil && c.Stop != nil && c.Stop.HaltedAt == nil {
 		var err error
-		if ours {
+		switch {
+		case ours:
 			err = claimToSave(repoRoot, runID, o)
-		} else {
+		case c.Driver != nil:
+			// A run that is not the drain's is claimed only over a driver it names, so one
+			// whose driver is gone is taken up after an upgrade; one that names none is left
+			// to whoever steps it, as its file stands (iss-2611120545484783).
 			var letGo func()
 			letGo, err = claimInPassing(repoRoot, runID, o)
 			defer letGo()
