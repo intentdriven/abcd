@@ -947,3 +947,51 @@ func TestADrainLetsGoARunThatIsNotItsLaneOnceItsSaveIsMade(t *testing.T) {
 		})
 	}
 }
+
+// TestAPassingClaimThatTookNothingLetsNothingGo: a drain's claim in passing that takes
+// nothing (no host is found for this call) lets nothing go, though another session's
+// claim is recorded while it reads the process table: that claim stands after the
+// let-go, and the run's record gains no line saying the run was let go.
+func TestAPassingClaimThatTookNothingLetsNothingGo(t *testing.T) {
+	repo, runID, _, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	o := Options{stopHome: home}
+	claimedBy(t, repo.Root(), runID, o, hostTwo, hostOne, hostOne)
+	stateAtVersion(t, repo.Root(), runID, schemaVersionPrevious)
+	hereFrom = func() int { return 77777 }
+	tab, err := readProcs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := LiveDriver{Session: "session-three", PID: hostThree, StartUnix: 1, At: time.Now().UTC().Truncate(time.Second)}
+	readProcs = func() (sessionname.Table, error) {
+		root, err := os.OpenRoot(repo.Root())
+		if err != nil {
+			return tab, err
+		}
+		defer root.Close()
+		c, err := readControl(root, runID)
+		if err != nil {
+			return tab, err
+		}
+		c.Driver = &other
+		return tab, writeControl(root, runID, c)
+	}
+
+	letGo, err := claimInPassing(repo.Root(), runID, o)
+	if err != nil {
+		t.Fatalf("the claim in passing: %v", err)
+	}
+	letGo()
+
+	if c := controlOf(t, repo.Root(), runID); c.Driver == nil || !sameClaim(*c.Driver, other) {
+		t.Fatalf("the let-go took off another session's claim: %+v", c.Driver)
+	}
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.ContainsFunc(st.Record, func(e Entry) bool { return strings.Contains(e.Note, "let the run go") }) {
+		t.Fatalf("the run's record says a claim this call never made was let go: %+v", st.Record)
+	}
+}

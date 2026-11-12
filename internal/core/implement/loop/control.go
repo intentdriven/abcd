@@ -193,22 +193,36 @@ func procOf(tab sessionname.Table, pid int) (sessionname.Host, bool) {
 // session that tried must not stand in the way of the take-over the run waits for. The
 // same holds of a run a drive stopped on (drive_stop.go), which no step moves either.
 func ClaimDriver(repoRoot, runID string, o Options) error {
+	_, err := claimRun(repoRoot, runID, o)
+	return err
+}
+
+// claimMade is what one claim recorded, as decided under the run's lock: the driver it
+// wrote to the control record, nil where it wrote none (it claimed nothing, or the run was
+// already this session's), and whether it replaced a driver it named in the run's record.
+type claimMade struct {
+	driver   *LiveDriver
+	replaced bool
+}
+
+// claimRun is ClaimDriver, saying what the claim recorded.
+func claimRun(repoRoot, runID string, o Options) (claimMade, error) {
 	c, err := runControl(repoRoot, runID)
 	if err != nil {
-		return err
+		return claimMade{}, err
 	}
 	if driveStopped(runID) {
-		return nil
+		return claimMade{}, nil
 	}
 	if o.stopRead(c.Shared).Stop != nil || (c.Stop != nil && (!c.Stop.FromFile || c.Stop.HaltedAt != nil)) {
 		if _, err := stopCheck(repoRoot, runID, DefaultStages(), o); err != nil {
 			if _, refused := AsRefusal(err); !refused {
-				return err
+				return claimMade{}, err
 			}
 		}
-		return nil
+		return claimMade{}, nil
 	}
-	return claimDriver(repoRoot, runID, o, false)
+	return claimDriverMade(repoRoot, runID, o, false)
 }
 
 // hereSelf is this process; a test stands one in.
@@ -244,9 +258,15 @@ func driverOf(tab sessionname.Table, from int, home string) (sessionname.Host, s
 // and an idle session does not hold it from being taken over. One that claimed since
 // is a take-over at work, which holds the run as any driver does.
 func claimDriver(repoRoot, runID string, o Options, overHalted bool) error {
+	_, err := claimDriverMade(repoRoot, runID, o, overHalted)
+	return err
+}
+
+// claimDriverMade is claimDriver, saying what the claim recorded.
+func claimDriverMade(repoRoot, runID string, o Options, overHalted bool) (made claimMade, err error) {
 	tab, err := readProcs()
 	if err != nil {
-		return nil
+		return claimMade{}, nil
 	}
 	home := o.stopHomeOf()
 	here, marked, hostErr := o.driverHere(tab)
@@ -257,7 +277,7 @@ func claimDriver(repoRoot, runID string, o Options, overHalted bool) error {
 	// The claim adds a line to the run's record and nothing else of its state, so
 	// the file keeps the version it states (saveRecord): a claim is what lets this
 	// session save it whole after.
-	return saveRecord(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err = saveRecord(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
 		c, err := readControl(root, runID)
 		if err != nil {
@@ -306,11 +326,14 @@ func claimDriver(repoRoot, runID string, o Options, overHalted bool) error {
 		if err := writeControl(root, runID, c); err != nil {
 			return false, err
 		}
+		d := *c.Driver
+		made = claimMade{driver: &d, replaced: changed}
 		if home != "" {
 			noteRunCheckout(home, repoRoot)
 		}
 		return changed, nil
 	})
+	return made, err
 }
 
 // driverHere is the process this call would claim a run as: a drive's own, or the host
@@ -482,29 +505,26 @@ func (o Options) passingSave() saveFrame {
 }
 
 // claimInPassing is claimToSave for a run this session saves once and does not drive on:
-// letGo lets go a claim this call recorded, and does nothing where it recorded none (the
-// run at this abcd's version, already this session's, another live session's, or a control
-// record that could not be read before the claim). Letting it go leaves the control record
-// naming no driver, so the next session to step it claims it; where the claim named the
-// driver it replaced in the run's record, the let-go is a line there too, and where it
-// named none it adds none, so a run saved this way move after move does not grow its
-// record. A let-go that fails leaves the claim, which then stands until this session
-// ends, as any driver's does.
+// letGo lets go the claim this call recorded, as the claim itself reported it under the
+// run's lock (claimMade), and does nothing where it recorded none (the run at this abcd's
+// version, already this session's, another live session's, no host found, the process
+// table unread), so a claim another session records meanwhile is never taken for this
+// one's. Letting it go leaves the control record naming no driver, so the next session to
+// step it claims it; where the claim named the driver it replaced in the run's record, the
+// let-go is a line there too, and where it named none it adds none, so a run saved this
+// way move after move does not grow its record. A let-go that fails leaves the claim,
+// which then stands until this session ends, as any driver's does.
 func claimInPassing(repoRoot, runID string, o Options) (letGo func(), err error) {
 	letGo = func() {}
-	before, err := runControl(repoRoot, runID)
-	if err != nil {
-		return letGo, claimToSave(repoRoot, runID, o)
-	}
-	if err := claimToSave(repoRoot, runID, o); err != nil {
-		return letGo, err
-	}
-	after, err := runControl(repoRoot, runID)
-	if err != nil || after.Driver == nil || (before.Driver != nil && sameClaim(*before.Driver, *after.Driver)) {
+	if stated, err := statedAt(repoRoot, runID); err != nil || stated == SchemaVersion {
 		return letGo, nil
 	}
-	made, said := *after.Driver, before.Driver != nil
-	return func() { _ = letClaimGo(repoRoot, runID, made, said, o) }, nil
+	made, err := claimRun(repoRoot, runID, o)
+	if made.driver == nil {
+		return letGo, err
+	}
+	d, said := *made.driver, made.replaced
+	return func() { _ = letClaimGo(repoRoot, runID, d, said, o) }, err
 }
 
 // sameClaim reports whether a and b are one claim: one process, claimed at one instant.
@@ -513,8 +533,9 @@ func sameClaim(a, b LiveDriver) bool {
 }
 
 // letClaimGo takes the claim made off the run's control record where it still stands
-// there, with a line in the run's record where said; the file keeps the version it states
-// (saveRecord).
+// there, judged under the run's lock against what that claim wrote (process, start time,
+// instant), with a line in the run's record where said; the file keeps the version it
+// states (saveRecord).
 func letClaimGo(repoRoot, runID string, made LiveDriver, said bool, o Options) error {
 	return saveRecord(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		c, err := readControl(root, runID)
