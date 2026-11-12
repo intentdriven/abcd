@@ -260,9 +260,8 @@ func readFacilitatorAt(r layered.Roots, repoRoot, tip, name string) (Facilitator
 // Its git questions are bound to ctx. The error is the reader's raw text, for
 // the caller to mask.
 func CommittedMode(ctx context.Context, repoRoot, commit string) (mode string, found bool, err error) {
-	if !gitutil.IsFullSHA(commit) {
-		return "", false, fmt.Errorf("%s is not a commit's full object name", clip(commit))
-	}
+	// layered refuses a RepoAt that is not a full object name, so commit is
+	// never read as a ref or a short name.
 	s, err := layered.LoadContext(ctx, layered.Config, layered.Roots{Repo: repoRoot, RepoAt: commit, RepoAtName: short(commit), HomeRefused: true})
 	if err != nil {
 		return "", false, err
