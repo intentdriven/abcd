@@ -1322,6 +1322,17 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 		return fallBack(repoRoot, runID, res, aw, rr, err, o)
 	}
 	placed, err := placeRouteReturn(repoRoot, runID, aw.Receipt, rr.Name, ret, o)
+	if left, ok := leftAtVersion(err); ok {
+		// The run's file states another version and this session may not save it
+		// (mayWholeSave), which no lock's release changes: a receipt from here is
+		// refused the same way, so the judge's own remedy stands, and the answer is
+		// kept aside rather than dropped, for the session that takes the run up.
+		aside, kerr := keepAside(repoRoot, aw, rr, ret)
+		if kerr != nil {
+			return res, errors.Join(err, kerr)
+		}
+		return res, keptForTheDriver(left, fmt.Sprintf("the %s route's answer is kept aside at %s and recorded nowhere", rr.Name, aside), aw.Receipt)
+	}
 	if refusal, ok := AsRefusal(err); ok && refusal.Contention {
 		// Another invocation held the run's lock past the retries, so the
 		// return could not be placed: the answer is kept aside rather than
@@ -1361,6 +1372,12 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 			}
 			return res, err
 		}
+		if refusal.leftAtVersion {
+			// The file states another version again, as an older driver wrote it after
+			// the placement, and this session may not save it: the return stands where it
+			// was placed, for that run's driver to hand back.
+			return res, keptForTheDriver(refusal, fmt.Sprintf("the %s route's return stands at %s", rr.Name, aw.Receipt), aw.Receipt)
+		}
 		if refusal.Contention {
 			// Another invocation held the run's lock past the retries: the
 			// verifier never read the return, which stands where it was placed
@@ -1381,6 +1398,17 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 	}
 	r.Route = &route
 	return r, nil
+}
+
+// keptForTheDriver is the refusal left of a whole save the route's answer could not be
+// recorded through, its judge's reason and remedy kept: where the answer stands, and that
+// it is handed back once the run is this session's. A lock's release changes nothing
+// here, so the remedy is never a hand-back from where the save was refused.
+func keptForTheDriver(left *Refusal, where, receipt string) *Refusal {
+	r := *left
+	r.Remedy = fmt.Sprintf("%s; %s; once the run is taken up, copy the answer to %s if nothing stands there yet, and the session that took it up hands it back with `abcd implement receipt %s`",
+		left.Remedy, where, receipt, receipt)
+	return &r
 }
 
 // roundHead is the head a lane's latest round read, "" when it cannot be read, which

@@ -605,6 +605,50 @@ func TestABusyLockLeavesThePlacedReturnStanding(t *testing.T) {
 	}
 }
 
+// TestARunLeftAtItsVersionIsNotReadAsABusyLock: the placement of a route's return, or
+// its receipt, refused because the run's file states another version and this session
+// may not save it, is no busy lock: a hand-back from here is refused the same way. The
+// judge's refusal stands, its remedy kept, with where the answer stands beside it, and
+// nothing in it says a busy lock kept the answer.
+func TestARunLeftAtItsVersionIsNotReadAsABusyLock(t *testing.T) {
+	judged := "`abcd implement step --run r` claims it"
+	for _, at := range []string{"placement", "receipt"} {
+		t.Run(at, func(t *testing.T) {
+			repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+			res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+			aw := *res.Awaiting
+			left := leftAt(id, schemaVersionPrevious, "its driver is alive", judged)
+			if at == "placement" {
+				prev := placeRouteReturn
+				placeRouteReturn = func(string, string, string, string, string, Options) (bool, error) { return false, left }
+				t.Cleanup(func() { placeRouteReturn = prev })
+			} else {
+				prev := reviewReceipt
+				reviewReceipt = func(string, string, string, Stages, Options, *runner.RouteRecord) (StepResult, error) {
+					return StepResult{}, left
+				}
+				t.Cleanup(func() { reviewReceipt = prev })
+			}
+			_, err := DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, rpRoute(t, rpServer(verdictFor)))
+			r, ok := leftAtVersion(err)
+			if !ok || r.Reason != left.Reason || !strings.HasPrefix(r.Remedy, judged+"; ") {
+				t.Fatalf("the judge's refusal and remedy stand: %v", err)
+			}
+			if strings.Contains(r.Remedy, "busy lock") || !strings.Contains(r.Remedy, "the session that took it up hands it back with `abcd implement receipt "+aw.Receipt+"`") {
+				t.Fatalf("the remedy reads the refusal as a busy lock, or does not say who hands the answer back: %s", r.Remedy)
+			}
+			where := aw.Receipt
+			if at == "placement" {
+				where = filepath.ToSlash(filepath.Dir(filepath.FromSlash(aw.Receipt))) + "/rp-return.md"
+			}
+			b, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(where)))
+			if err != nil || headless(b) != reviewerReturn("SHIP") || !strings.Contains(r.Remedy, where) {
+				t.Fatalf("the route's answer stands at %s, which the remedy names: %q %v", where, b, err)
+			}
+		})
+	}
+}
+
 // TestAReceiptThatErrsTakesThePlacedReturnBack: a receipt that fails with an
 // error that is not a refusal leaves the review open, so the route's return
 // is taken back off the path, where the host's agent could otherwise hand it
