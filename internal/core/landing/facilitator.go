@@ -33,6 +33,7 @@ package landing
 // unreadable answer never lets a merge through.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -177,6 +178,64 @@ func readAuthor(forge ForgeCall, repo, n string) (login, role, why string) {
 	return a.User.Login, role, why
 }
 
+// Review is one review as a page of a pull request's reviews lists it, oldest
+// first: its reviewer's login ("" for none the forge names), its state, and
+// the commit it reviewed. Index is its place on the page, which LatestReviews
+// sets so a caller can go back to the rest of what it read.
+type Review struct {
+	Login, State, Commit string
+	Index                int
+}
+
+// LatestReviews is the merge gate's reading of a page of reviews: the latest
+// submitted review of each reviewer, in the order they first reviewed. A
+// pending review is the reviewer's own draft, not a review, and a review that
+// names no reviewer is no one's; every other state, a dismissed one included,
+// is the reviewer's latest word, so it supersedes an earlier approval.
+// Reviewers are told apart without regard to case, as the forge's logins are.
+func LatestReviews(page []Review) []Review {
+	latest := map[string]Review{}
+	var order []string
+	for i, r := range page {
+		if r.Login == "" || r.State == "PENDING" {
+			continue
+		}
+		r.Index = i
+		k := strings.ToLower(r.Login)
+		if _, ok := latest[k]; !ok {
+			order = append(order, k)
+		}
+		latest[k] = r
+	}
+	out := make([]Review, 0, len(order))
+	for _, k := range order {
+		out = append(out, latest[k])
+	}
+	return out
+}
+
+// Approves says whether r, a reviewer's latest review, approves head on a pull
+// request author opened, before anything is asked of the reviewer's access: it
+// is APPROVED, of head, by someone other than author. note says why one that
+// approved something does not count, "" for a review that approves nothing;
+// with no author known, no review can be told from the author's own, so none
+// counts.
+func (r Review) Approves(head, author string) (note string, ok bool) {
+	switch {
+	case r.State != "APPROVED":
+		return "", false
+	case author == "":
+		return "the pull request's author is not known, so " + r.Login + "'s approval cannot be told from the author's own", false
+	case strings.EqualFold(r.Login, author):
+		return r.Login + " is its author", false
+	case r.Commit == "":
+		return r.Login + "'s approval names no commit", false
+	case r.Commit != head:
+		return r.Login + " approved " + short(r.Commit) + ", not the head", false
+	}
+	return "", true
+}
+
 // countedApproval is the approval of head that counts, and by whom: the
 // technical facilitator's recorded approval (approvalRecord), else the latest
 // review of a reviewer other than the author that approves head, by a
@@ -201,39 +260,27 @@ func countedApproval(forge ForgeCall, repoRoot, repo, n, head, author string) (b
 	if len(reviews) >= maxReviews {
 		return "", why + fmt.Sprintf("pull request #%s has %d reviews or more, a later one may sit beyond the page read, so none counts", n, maxReviews), true
 	}
-	// The latest submitted review of each reviewer, in the order they first
-	// reviewed. A pending review is the reviewer's own draft, not a review.
-	latest := map[string]reviewAnswer{}
-	var order []string
-	for _, r := range reviews {
-		if r.User == nil || r.User.Login == "" || r.State == "PENDING" {
-			continue
+	page := make([]Review, len(reviews))
+	for i, r := range reviews {
+		page[i] = Review{State: r.State, Commit: r.CommitID}
+		if r.User != nil {
+			page[i].Login = r.User.Login
 		}
-		k := strings.ToLower(r.User.Login)
-		if _, ok := latest[k]; !ok {
-			order = append(order, k)
-		}
-		latest[k] = r
 	}
 	var notes []string
-	for _, k := range order {
-		r := latest[k]
-		switch {
-		case r.State != "APPROVED":
-			continue
-		case strings.EqualFold(r.User.Login, author):
-			notes = append(notes, r.User.Login+" is its author")
-			continue
-		case r.CommitID != head:
-			notes = append(notes, r.User.Login+" approved "+short(r.CommitID)+", not the head")
+	for _, r := range LatestReviews(page) {
+		if note, ok := r.Approves(head, author); !ok {
+			if note != "" {
+				notes = append(notes, note)
+			}
 			continue
 		}
-		role, rwhy := readRole(forge, repo, r.User.Login)
+		role, rwhy := readRole(forge, repo, r.Login)
 		if role == RoleMaintainer {
-			return r.User.Login + "'s approving review (" + rwhy + ")", "", false
+			return r.Login + "'s approving review (" + rwhy + ")", "", false
 		}
 		unread = unread || role == RoleUnverified
-		notes = append(notes, r.User.Login+"'s approval is not by someone with write access ("+rwhy+")")
+		notes = append(notes, r.Login+"'s approval is not by someone with write access ("+rwhy+")")
 	}
 	if len(notes) == 0 {
 		return "", why + "no review approves " + short(head), unread
@@ -246,6 +293,23 @@ func countedApproval(forge ForgeCall, repoRoot, repo, n, head, author string) (b
 // a review receipt, and returns its path, or "" when none names sha.
 func approvalRecord(repoRoot, sha string) (string, error) {
 	return findReceipt(repoRoot, ApprovalsRelDir, sha)
+}
+
+// ApprovalRecord is approvalRecord for a reader of past landings
+// (internal/core/landings), bound to ctx: the technical facilitator's recorded
+// approval of sha in any of wts, by findReceipt's rule (a regular file, never a
+// symlink, and never one git tracks). wts nil lists the worktrees git knows for
+// the repository at repoRoot, as findReceipt does; a reader asking about many
+// commits lists them once and passes them in.
+func ApprovalRecord(ctx context.Context, repoRoot, sha string, wts []gitutil.Worktree) (string, error) {
+	if !fullSHA.MatchString(sha) {
+		return "", fmt.Errorf("%s is not a commit's full object name", clip(sha))
+	}
+	if wts == nil {
+		found, err := findReceiptsContext(ctx, repoRoot, ApprovalsRelDir, sha)
+		return firstReceipt(found, err)
+	}
+	return firstReceipt(receiptsIn(ctx, wts, ApprovalsRelDir, sha))
 }
 
 // approvalEntry is a recorded approval's content.

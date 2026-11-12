@@ -250,6 +250,42 @@ func readFacilitatorAt(r layered.Roots, repoRoot, tip, name string) (Facilitator
 	return readMode(r)
 }
 
+// CommittedMode is facilitator.mode as .abcd/config.json held it at commit, a
+// full object name the repository at repoRoot holds, read from its object
+// store as readFacilitatorAt reads the default branch's tip (bounded, a regular
+// file only) and judged by checkMode: the repository layer alone, never the
+// machine layer, since a reader of a past commit cannot read the machine as it
+// was then. found says whether the commit holds the file at all; a file that
+// sets no mode is human, the bundled default, and so is a commit without one.
+// Its git questions are bound to ctx. The error is the reader's raw text, for
+// the caller to mask.
+func CommittedMode(ctx context.Context, repoRoot, commit string) (mode string, found bool, err error) {
+	// Refused here, not left to layered: an empty RepoAt there means the
+	// working tree, so an empty name would read the working tree's mode as
+	// if a commit held it.
+	if !gitutil.IsFullSHA(commit) {
+		return "", false, fmt.Errorf("%s is not a commit's full object name", clip(commit))
+	}
+	s, err := layered.LoadContext(ctx, layered.Config, layered.Roots{Repo: repoRoot, RepoAt: commit, RepoAtName: short(commit), HomeRefused: true})
+	if err != nil {
+		return "", false, err
+	}
+	if err := s.Claim("facilitator", "mode"); err != nil {
+		return "", false, err
+	}
+	vals, err := decodeLayers([]stack{{s: s}}, KeyFacilitatorMode, checkMode, "human or auto")
+	if err != nil {
+		return "", false, err
+	}
+	found = s.Present(layered.Repo)
+	for _, v := range vals {
+		if v.layer == layered.Repo.String() {
+			return v.v, found, nil
+		}
+	}
+	return ModeHuman, found, nil
+}
+
 // AutoAt reports whether the facilitator mode the merge gate reads at tip is auto.
 func AutoAt(r layered.Roots, repoRoot, tip, name string) bool {
 	m, err := readFacilitatorAt(r, repoRoot, tip, name)
