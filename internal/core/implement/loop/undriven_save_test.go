@@ -995,3 +995,47 @@ func TestAPassingClaimThatTookNothingLetsNothingGo(t *testing.T) {
 		t.Fatalf("the run's record says a claim this call never made was let go: %+v", st.Record)
 	}
 }
+
+// TestAPassingClaimThatFailsAfterItsDriverIsRecordedIsLetGo: a drain's claim in passing
+// that records this session as the run's driver and then fails with a plain error, as a
+// claim whose line in the run's record cannot be written does, is let go all the same:
+// passingSave returns the error, makes no save, and leaves the run's control record
+// naming no driver rather than this session until its end.
+func TestAPassingClaimThatFailsAfterItsDriverIsRecordedIsLetGo(t *testing.T) {
+	repo, runID, _, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	o := Options{stopHome: home}
+	claimedBy(t, repo.Root(), runID, o, hostTwo, hostOne, hostOne)
+	stateAtVersion(t, repo.Root(), runID, schemaVersionPrevious)
+	fault := errors.New("the run's record could not be written")
+	old := claimPassing
+	claimPassing = func(repoRoot, runID string, o Options) (func(), error) {
+		letGo, err := claimInPassing(repoRoot, runID, o)
+		if err != nil {
+			t.Fatalf("premise: the claim itself: %v", err)
+		}
+		if c := controlOf(t, repoRoot, runID); c.Driver == nil || c.Driver.PID != hostOne {
+			t.Fatalf("premise: the claim recorded this session as the driver: %+v", c.Driver)
+		}
+		return letGo, fault
+	}
+	t.Cleanup(func() { claimPassing = old })
+
+	saved := false
+	err := o.passingSave()(repo.Root(), runID, func(*os.Root, *State) (bool, error) {
+		saved = true
+		return true, nil
+	})
+	if !errors.Is(err, fault) {
+		t.Fatalf("the save does not return the claim's fault: %v", err)
+	}
+	if saved {
+		t.Fatal("the save was made over a claim that failed")
+	}
+	if c := controlOf(t, repo.Root(), runID); c.Driver != nil {
+		t.Fatalf("a claim that failed after recording its driver was not let go: %+v", c.Driver)
+	}
+	if v := stateVersionOf(t, repo.Root(), runID); v != strconv.Itoa(schemaVersionPrevious) {
+		t.Fatalf("the run's file now states version %s", v)
+	}
+}
