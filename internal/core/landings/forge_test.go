@@ -17,16 +17,22 @@ import (
 // field of its type in the forge's schema as ghcontract pins it, and the
 // pages are the forge's maximum.
 func TestTheBatchSelectsOnlyTheForgesFields(t *testing.T) {
-	q := batchQuery([]int{1, 22, 333})
+	q := batchQuery([]prAsk{{pr: 1}, {pr: 22, commits: true}, {pr: 333}})
 	if err := ghcontract.CheckGraphQL(q); err != nil {
 		t.Fatalf("batchQuery: %v", err)
 	}
-	for _, want := range []string{"p22:pullRequest(number:22){", "reviews(last:100){totalCount", "commits(first:100){totalCount"} {
+	for _, want := range []string{"p22:pullRequest(number:22){", "reviews(last:100){totalCount", "commits(first:100){totalCount",
+		"author{__typename login} authorAssociation authorCanPushToRepository"} {
 		if !strings.Contains(q, want) {
 			t.Fatalf("the batch %q does not read %s", q, want)
 		}
 	}
-	args := batchArgs([]int{5})
+	// The commits are asked only for a row that merged with one parent, and
+	// nothing this step does not read is asked at all.
+	if strings.Count(q, "commits(") != 1 || strings.Contains(q, "body") {
+		t.Fatalf("the batch asks more than it reads: %q", q)
+	}
+	args := batchArgs([]prAsk{{pr: 5}})
 	if !slices.Equal(args[:6], []string{"api", "graphql", "-F", "o={owner}", "-F", "r={repo}"}) {
 		t.Fatalf("the batch's arguments %q", args)
 	}

@@ -11,17 +11,19 @@ package landings
 // nothing outside its forge cache.
 //
 // Every input but the object names git itself computes is text someone typed:
-// a subject, a trailer, a committer's name, a forge login or body. Each is read
-// to a strict shape or dropped, and each that a row carries is masked for a
-// terminal here, where it is read. No trailer a branch's author typed lifts a
-// row to person-approved: that class rests on a recorded approval, a forge
-// review of the merged head, or the human mode the first parent committed.
+// a subject, a trailer, a committer's name, a forge login. Each is read to a
+// strict shape or dropped, and each that a row carries is masked for a
+// terminal here, where it is read, as is every error list returns. No trailer
+// a branch's author typed lifts a row to person-approved: that class rests on
+// a recorded approval, a forge review of the merged head, or the human mode
+// the first parent committed. A subject names a pull request only as far as
+// the forge confirms it merged as that row's commit; where the forge says
+// otherwise, none of that pull request's evidence is read for the row.
 
 import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"path"
 	"regexp"
 	"slices"
@@ -32,6 +34,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -41,7 +44,9 @@ import (
 // The four classes, decided in this order.
 const (
 	// ClassPersonPush is a first-parent commit whose subject names no pull
-	// request: someone pushed it to the default branch.
+	// request: the shape of a commit pushed to the default branch, which a
+	// rebase merge's commits share. The class confirms no person: the row is
+	// unattended unless a recorded approval of the commit itself is found.
 	ClassPersonPush = "person-push"
 	// ClassPersonApproved is a merge a person approved: a recorded approval of
 	// its merged head, a forge review approving that head by someone other
@@ -83,13 +88,15 @@ const RuleMode = landing.KeyFacilitatorMode
 // Range is the stretch of the default branch a listing reads: From exclusive
 // ("" for the whole history up to To) and To inclusive, full object names. Tip
 // and Since are how the caller named them (the remote-tracking ref To was read
-// from, and the tag or date From was taken from); list copies them into the
-// listing and reads neither.
+// from, and the tag or date From was taken from), and Note what resolve has to
+// say of how it found From; list copies the three into the listing, masked,
+// and reads none of them.
 type Range struct {
 	From  string
 	To    string
 	Tip   string
 	Since string
+	Note  string
 }
 
 // Options are list's seams.
@@ -157,7 +164,6 @@ type Row struct {
 	AssistedBy []string `json:"assisted_by,omitempty"`
 	// Unattended marks a row no evidence places with a person.
 	Unattended bool `json:"unattended"`
-	// The revert trace (approach 7) marks a row it undoes here.
 }
 
 // Listing is list's answer.
@@ -166,7 +172,10 @@ type Listing struct {
 	From  string `json:"from"`
 	To    string `json:"to"`
 	Since string `json:"since"`
-	Rows  []Row  `json:"rows"`
+	// SinceNote says what a reader of the range should know of how From was
+	// found (Range.Note), "" for nothing.
+	SinceNote string `json:"since_note,omitempty"`
+	Rows      []Row  `json:"rows"`
 	// ForgeUnread says why the forge did not answer for some row, "" when it
 	// answered for every row that names a pull request.
 	ForgeUnread string `json:"forge_unread,omitempty"`
@@ -176,24 +185,72 @@ type Listing struct {
 
 // Bounds on what list reads from git.
 const (
-	// maxHistoryBytes bounds the log of the range, messages and all: a range
-	// past it is refused whole, never read in part.
-	maxHistoryBytes = 64 << 20
 	// maxListBytes bounds the range's commit listing and a tree listing.
 	maxListBytes = 16 << 20
 	// maxTextBytes bounds a name a row carries.
 	maxTextBytes = 200
 )
 
-// list is the reader's entry (the spec's List): it stays unexported until a
-// front door calls it, the verb and the spot-check, since the core reach
-// audit refuses an exported function no production code reaches.
+// maxHistoryBytes bounds the log of the range, messages and all: a range past
+// it is refused whole, never read in part. A variable only so a test can hold
+// a small history to it.
+var maxHistoryBytes = 64 << 20
+
+// listBound is the time list allows itself when its caller's ctx sets no
+// deadline: every git and forge call it starts ends by then.
+const listBound = 10 * time.Minute
+
+// bounded is ctx with listBound as its deadline when it carries none.
+func bounded(ctx context.Context) (context.Context, context.CancelFunc) {
+	if _, ok := ctx.Deadline(); ok {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, listBound)
+}
+
+// The reader's seams onto git and the landing package, variables so a test
+// can hand it a log git would never write or count its reads of the mode.
+var (
+	historyLog    = gitutil.RunCappedBytesContext
+	committedMode = landing.CommittedMode
+)
+
+// maskedError is a failure list returns, its text masked as a row's text is
+// (whyText) and its cause kept for errors.Is.
+type maskedError struct {
+	msg   string
+	cause error
+}
+
+func (e *maskedError) Error() string { return e.msg }
+func (e *maskedError) Unwrap() error { return e.cause }
+
+// masked is err as list returns it: what failed, then err's text masked.
+func masked(what string, err error) error {
+	return &maskedError{msg: what + ": " + whyText(err), cause: err}
+}
+
+// list is the reader's entry (the spec's List). It stays unexported for this
+// step: step 4 exports it when it wires the verb.
 //
 // list reads every first-parent commit of r on the repository at repoRoot,
 // newest first, and classes each. It fetches nothing; it writes only its forge
 // cache in repoRoot's local tier. Every git call and every forge call is bound
-// to ctx, and each forge batch also to landing.ForgeTimeout.
+// to ctx, or to listBound when ctx sets no deadline, and each forge batch also
+// to landing.ForgeTimeout. A ctx that ends before the listing is done is the
+// error, whatever the read it ended was.
 func list(ctx context.Context, repoRoot string, r Range, o Options) (Listing, error) {
+	ctx, cancel := bounded(ctx)
+	defer cancel()
+	l, err := listRows(ctx, repoRoot, r, o)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return Listing{}, ctxErr
+	}
+	return l, err
+}
+
+// listRows is list's work, under the ctx list bounds.
+func listRows(ctx context.Context, repoRoot string, r Range, o Options) (Listing, error) {
 	if !gitutil.IsFullSHA(r.To) || (r.From != "" && !gitutil.IsFullSHA(r.From)) {
 		return Listing{}, errors.New("a landings range names its ends by full object names")
 	}
@@ -201,43 +258,46 @@ func list(ctx context.Context, repoRoot string, r Range, o Options) (Listing, er
 	if err != nil {
 		return Listing{}, err
 	}
-	l := &lister{ctx: ctx, root: repoRoot, h: h, modes: map[string]string{}, rules: map[string][]string{}}
+	l := &lister{ctx: ctx, root: repoRoot, h: h, rules: map[string][]string{}}
 	rows := h.firstParent(r.To)
 	h.assign(rows)
-	out := Listing{Tip: termsafe.Sanitize(r.Tip), From: r.From, To: r.To, Since: termsafe.Sanitize(r.Since), Rows: []Row{}}
+	modes, err := l.modes(r, rows)
+	if err != nil {
+		return Listing{}, err
+	}
+	out := Listing{Tip: boundText(termsafe.Sanitize(r.Tip), maxTextBytes), From: r.From, To: r.To,
+		Since: boundText(termsafe.Sanitize(r.Since), maxTextBytes), SinceNote: termsafe.CleanProseLine(r.Note, 600), Rows: []Row{}}
 
 	facts := make([]rowFacts, len(rows))
 	var asks []prAsk
 	for i, sha := range rows {
-		f, err := l.historyFacts(sha)
-		if err != nil {
-			return Listing{}, err
-		}
-		facts[i] = f
-		if f.row.PR != 0 {
-			asks = append(asks, prAsk{pr: f.row.PR, commit: sha})
+		facts[i] = l.historyFacts(sha, modes[sha])
+		if facts[i].row.PR != 0 {
+			asks = append(asks, prAsk{pr: facts[i].row.PR, commit: sha, commits: !facts[i].twoParent})
 		}
 	}
 
 	forge := o.Forge
 	if forge == nil {
-		forge = func(args ...string) (string, error) { return landing.GHContext(ctx, repoRoot, args...) }
+		forge = func(args ...string) (string, error) { return landing.GHAnswerContext(ctx, repoRoot, args...) }
 	}
 	answers := readForge(ctx, repoRoot, forge, asks)
-	if err := ctx.Err(); err != nil {
-		return Listing{}, err
-	}
 	out.CacheUnwritten = answers.cacheWhy
 
 	wts := o.Worktrees
 	if wts == nil {
 		if wts, err = gitutil.ListWorktreesContext(ctx, repoRoot, gitutil.MaxWorktreeListing); err != nil {
-			return Listing{}, fmt.Errorf("listing the repository's worktrees: %w", err)
+			return Listing{}, masked("listing the repository's worktrees", err)
+		}
+		if wts == nil {
+			// Listed once: an empty listing must not read as "list them".
+			wts = []gitutil.Worktree{}
 		}
 	}
 	var unread []string
 	for i := range facts {
-		row, why, err := l.classify(facts[i], answers.got[facts[i].row.PR], answers.why[facts[i].row.PR], wts)
+		pr := facts[i].row.PR
+		row, why, err := l.classify(facts[i], answers.got[pr], answers.why[pr], answers.notPR[pr], wts)
 		if err != nil {
 			return Listing{}, err
 		}
@@ -267,23 +327,25 @@ type history struct {
 	branch map[string][]string
 }
 
-// readHistory reads every commit From..To reaches in one log, and refuses an
-// answer whose commits do not match git's own listing of the range one for
-// one: a message is text its author chose, and one that carries the log's
-// separators must never be read as another commit.
+// readHistory reads every commit From..To reaches in one log, NUL-separated,
+// so a message carrying the unit or record separator is still one commit's
+// message (git ends a message at a NUL). It refuses an answer whose commits do
+// not match git's own listing of the range one for one, in number, name and
+// order: whatever the log holds, nothing in it is read as a commit git did not
+// list.
 func readHistory(ctx context.Context, repoRoot string, r Range) (*history, error) {
 	spec := r.To
 	if r.From != "" {
 		spec = r.From + ".." + r.To
 	}
-	raw, err := gitutil.RunCappedBytesContext(ctx, repoRoot, maxHistoryBytes,
+	raw, err := historyLog(ctx, repoRoot, maxHistoryBytes,
 		"log", "-z", "--no-show-signature", "--format=%H%x1f%P%x1f%ct%x1f%cn%x1f%B", spec, "--")
 	if err != nil {
-		return nil, fmt.Errorf("reading the default branch's history: %w", err)
+		return nil, masked("reading the default branch's history", err)
 	}
 	listed, err := gitutil.RunCappedContext(ctx, repoRoot, maxListBytes, "rev-list", spec, "--")
 	if err != nil {
-		return nil, fmt.Errorf("listing the default branch's commits: %w", err)
+		return nil, masked("listing the default branch's commits", err)
 	}
 	want := strings.Fields(listed)
 	h := &history{commits: map[string]*commitInfo{}, onLine: map[string]bool{}, branch: map[string][]string{}}
@@ -291,7 +353,7 @@ func readHistory(ctx context.Context, repoRoot string, r Range) (*history, error
 	if n := len(recs); n > 0 && len(bytes.TrimSpace(recs[n-1])) == 0 {
 		recs = recs[:n-1]
 	}
-	refuse := errors.New("the default branch's history does not read apart into its commits (a commit message carries the log's separators), so it is not listed")
+	refuse := errors.New("the default branch's history does not read apart into the commits git lists for the range, so it is not listed")
 	if len(recs) != len(want) {
 		return nil, refuse
 	}
@@ -358,10 +420,9 @@ func (h *history) assign(rows []string) {
 
 // lister holds one list's reads.
 type lister struct {
-	ctx   context.Context
-	root  string
-	h     *history
-	modes map[string]string
+	ctx  context.Context
+	root string
+	h    *history
 	// rules memoises the drain rule records' file names at a commit.
 	rules map[string][]string
 }
@@ -400,10 +461,10 @@ func subjectPR(message string) int {
 }
 
 // historyFacts reads one row's facts from history: its pull request, merged
-// head, mode at the first parent, and the commits it brought.
-func (l *lister) historyFacts(sha string) (rowFacts, error) {
+// head, the commits it brought, and mode, its first parent's (modes).
+func (l *lister) historyFacts(sha, mode string) rowFacts {
 	c := l.h.commits[sha]
-	f := rowFacts{row: Row{Commit: sha, When: time.Unix(c.when, 0).UTC(), PR: subjectPR(c.message)}}
+	f := rowFacts{row: Row{Commit: sha, When: time.Unix(c.when, 0).UTC(), PR: subjectPR(c.message), Mode: mode}}
 	if len(c.parents) > 0 {
 		f.firstPar = c.parents[0]
 	}
@@ -411,11 +472,6 @@ func (l *lister) historyFacts(sha string) (rowFacts, error) {
 	if f.twoParent {
 		f.row.MergedHead = c.parents[1]
 	}
-	mode, err := l.modeAt(f.firstPar)
-	if err != nil {
-		return rowFacts{}, err
-	}
-	f.row.Mode = mode
 	switch {
 	case f.row.PR == 0:
 		f.messages = []string{c.message}
@@ -424,29 +480,55 @@ func (l *lister) historyFacts(sha string) (rowFacts, error) {
 			f.messages = append(f.messages, l.h.commits[b].message)
 		}
 	}
-	return f, nil
+	return f
 }
 
-// modeAt is the row's mode as its first parent committed it, memoised.
-func (l *lister) modeAt(commit string) (string, error) {
-	if commit == "" {
-		return ModeModeless, nil
+// modes is each row's mode as its first parent committed it. The commits on
+// the first-parent line that change .abcd/config.json against their first
+// parent are read in one log, and the file is read and judged only at the
+// oldest row's first parent and after each of those, so a range in which the
+// mode never changes reads it once.
+func (l *lister) modes(r Range, rows []string) (map[string]string, error) {
+	spec := r.To
+	if r.From != "" {
+		spec = r.From + ".." + r.To
 	}
-	if m, ok := l.modes[commit]; ok {
-		return m, nil
+	out, err := gitutil.RunCappedContext(l.ctx, l.root, maxListBytes, "log", "--first-parent", "--no-show-signature", "--format=%H", spec, "--", layered.Config.RepoRel)
+	if err != nil {
+		return nil, masked("reading where the facilitator mode changed", err)
 	}
-	mode, found, err := landing.CommittedMode(l.ctx, l.root, commit)
-	if ctxErr := l.ctx.Err(); ctxErr != nil {
-		return "", ctxErr
+	changed := map[string]bool{}
+	for _, c := range strings.Fields(out) {
+		changed[c] = true
 	}
+	modes := make(map[string]string, len(rows))
+	mode := ""
+	for i := len(rows) - 1; i >= 0; i-- {
+		if i == len(rows)-1 || changed[rows[i+1]] {
+			ps := l.h.commits[rows[i]].parents
+			if len(ps) == 0 {
+				mode = ModeModeless
+			} else {
+				mode = l.modeAt(ps[0])
+			}
+		}
+		modes[rows[i]] = mode
+	}
+	return modes, nil
+}
+
+// modeAt is the mode as commit committed it: modeless for a commit with no
+// .abcd/config.json, and unreadable for one whose file cannot be read or
+// judged.
+func (l *lister) modeAt(commit string) string {
+	mode, found, err := committedMode(l.ctx, l.root, commit)
 	switch {
 	case err != nil:
-		mode = ModeUnreadable
+		return ModeUnreadable
 	case !found:
-		mode = ModeModeless
+		return ModeModeless
 	}
-	l.modes[commit] = mode
-	return mode, nil
+	return mode
 }
 
 // human says whether a row's mode reads as human: committed so, or not
@@ -468,18 +550,27 @@ func (f rowFacts) modeRule() Rule {
 
 // classify decides one row's class, rule, lane, approval and trailers from its
 // history facts, the forge's answer for its pull request (nil when the forge
-// gave none, with why), and the recorded approvals in wts. The why it returns
-// is a reason the forge was not read for this row, for the listing's note.
-func (l *lister) classify(f rowFacts, a *prAnswer, why string, wts []gitutil.Worktree) (Row, string, error) {
+// gave none, with why, and notPR when the forge says the number names no pull
+// request), and the recorded approvals in wts. The why it returns is a reason
+// the forge was not read for this row, for the listing's note.
+func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR bool, wts []gitutil.Worktree) (Row, string, error) {
 	row := f.row
 	if row.PR == 0 {
 		row.Class = ClassPersonPush
 		row.Committer = boundText(termsafe.Sanitize(l.h.commits[row.Commit].committer), maxTextBytes)
 		row.Resolves, row.Delivers, row.AssistedBy = trailers(f.messages)
+		row.Approval = l.recorded(row.Commit, wts)
+		row.Unattended = !row.Approval.Seen
 		return row, "", nil
 	}
+	// The forge contradicts the subject when it answered and says the pull
+	// request did not merge as this commit, or that the number names no pull
+	// request: then nothing of that pull request is read for the row, its
+	// recorded approval included.
+	contradicted := notPR
 	if a != nil && why == "" {
 		why = a.landedAs(row.PR, row.Commit)
+		contradicted = why != ""
 	}
 	if why != "" {
 		a = nil
@@ -506,17 +597,8 @@ func (l *lister) classify(f rowFacts, a *prAnswer, why string, wts []gitutil.Wor
 	}
 
 	row.Approval.Source = SourceNoneSeen
-	if row.MergedHead != "" {
-		p, err := landing.ApprovalRecord(l.ctx, l.root, row.MergedHead, wts)
-		if ctxErr := l.ctx.Err(); ctxErr != nil {
-			return Row{}, "", ctxErr
-		}
-		// A record that cannot be counted (one git tracks, say) counts for
-		// nothing, as the merge gate counts it: the row falls to the forge and
-		// the mode, which never read it as a person's on less.
-		if err == nil && p != "" {
-			row.Approval = Approval{Seen: true, Source: SourceLocalTier}
-		}
+	if row.MergedHead != "" && !contradicted {
+		row.Approval = l.recorded(row.MergedHead, wts)
 	}
 	if !row.Approval.Seen {
 		switch {
@@ -548,9 +630,19 @@ func (l *lister) classify(f rowFacts, a *prAnswer, why string, wts []gitutil.Wor
 	default:
 		row.Class, row.Rule = ClassAutomatic, f.modeRule()
 	}
-	row.Unattended = row.Class == ClassDrain || row.Class == ClassAutomatic ||
-		(row.Class != ClassPersonApproved && !human(row.Mode) && (row.Lane == LaneUnknown || row.Approval.Source == SourceForgeUnread))
+	row.Unattended = row.Class == ClassDrain || row.Class == ClassAutomatic
 	return row, why, nil
+}
+
+// recorded is the technical facilitator's recorded approval of sha in wts as
+// a row's approval: Seen from the local tier, or none seen. A record that
+// cannot be counted (one git tracks, say) counts for nothing, as the merge
+// gate counts it.
+func (l *lister) recorded(sha string, wts []gitutil.Worktree) Approval {
+	if p, err := landing.ApprovalRecord(l.ctx, l.root, sha, wts); err == nil && p != "" {
+		return Approval{Seen: true, Source: SourceLocalTier}
+	}
+	return Approval{Source: SourceNoneSeen}
 }
 
 // admission is the one admission the commits' messages carry: none, or two
@@ -582,9 +674,6 @@ func (l *lister) rulePath(commit, id string) (string, error) {
 	names, ok := l.rules[commit]
 	if !ok {
 		out, err := gitutil.RunCappedContext(l.ctx, l.root, maxListBytes, "ls-tree", "-z", "--name-only", commit, "--", drainrule.ADRsRelDir+"/")
-		if ctxErr := l.ctx.Err(); ctxErr != nil {
-			return "", ctxErr
-		}
 		if err == nil {
 			for n := range strings.SplitSeq(out, "\x00") {
 				if n != "" {
@@ -604,14 +693,15 @@ func (l *lister) rulePath(commit, id string) (string, error) {
 
 // The trailers a row carries, each to the shape the repository writes.
 var (
-	trailerRe    = regexp.MustCompile(`(?i)^(resolves|delivers|assisted-by)\s*:\s*(\S+)\s*$`)
+	trailerRe    = regexp.MustCompile(`(?i)^(resolves|delivers|assisted-by)\s*:\s*(\S+)$`)
 	issueRe      = regexp.MustCompile(`^iss-[0-9]{1,20}$`)
 	assistedByRe = regexp.MustCompile(`^(None|[A-Za-z][A-Za-z0-9._-]{0,63}:[A-Za-z0-9][A-Za-z0-9._+-]{0,63})$`)
 )
 
 // trailers reads the Resolves:, Delivers: and Assisted-by: trailers of every
-// message's trailer block (its last paragraph), once each, sorted. A value not
-// in the shape its key takes is dropped.
+// message's trailer block (trailerBlock, the reader ParseAdmitted reads the
+// admission through), once each, sorted. A value not in the shape its key
+// takes is dropped.
 func trailers(messages []string) (resolves, delivers, assisted []string) {
 	add := func(list []string, v string) []string {
 		if slices.Contains(list, v) {
@@ -620,9 +710,8 @@ func trailers(messages []string) (resolves, delivers, assisted []string) {
 		return append(list, v)
 	}
 	for _, m := range messages {
-		paras := strings.Split(strings.TrimRight(strings.ReplaceAll(m, "\r\n", "\n"), "\n"), "\n\n")
-		for line := range strings.SplitSeq(paras[len(paras)-1], "\n") {
-			t := trailerRe.FindStringSubmatch(strings.TrimSpace(line))
+		for _, line := range trailerBlock(m) {
+			t := trailerRe.FindStringSubmatch(line)
 			if t == nil {
 				continue
 			}

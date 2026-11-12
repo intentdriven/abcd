@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -112,14 +113,25 @@ func row(t *testing.T, l Listing, commit string) Row {
 }
 
 // fakeForge answers batchQuery documents from prs; a number it does not hold
-// answers null. Every document is checked against the forge's pinned schema.
+// answers null, or, with gh set, as the forge client does for a number that
+// names no pull request: a NOT_FOUND error naming its node, the answer written
+// beside a failed exit. err fails every call (beside raw when both are set),
+// capAt fails a batch of more pull requests than it with the output bound,
+// failOn answers any batch holding that number with an error naming no node,
+// and onCall runs before each answer. Every document is checked against the
+// forge's pinned schema.
 type fakeForge struct {
-	t     *testing.T
-	prs   map[int]*prAnswer
-	err   error
-	raw   string
-	calls int
-	asked []int
+	t       *testing.T
+	prs     map[int]*prAnswer
+	err     error
+	raw     string
+	gh      bool
+	capAt   int
+	failOn  int
+	onCall  func()
+	calls   int
+	asked   []int
+	batches [][]int
 }
 
 var aliasRe = regexp.MustCompile(`p([0-9]+):pullRequest\(number:([0-9]+)\)`)
@@ -133,26 +145,50 @@ func (ff *fakeForge) call(args ...string) (string, error) {
 	if err := ghcontract.CheckGraphQL(q); err != nil {
 		ff.t.Errorf("the batch selects what the forge lacks: %v", err)
 	}
-	if ff.err != nil {
-		return "", ff.err
+	if ff.onCall != nil {
+		ff.onCall()
 	}
-	if ff.raw != "" {
-		return ff.raw, nil
-	}
-	repo := map[string]any{}
+	var batch []int
 	for _, m := range aliasRe.FindAllStringSubmatch(q, -1) {
 		if m[1] != m[2] {
 			ff.t.Errorf("alias %s names pull request %s", m[1], m[2])
 		}
 		n, _ := strconv.Atoi(m[1])
+		batch = append(batch, n)
+	}
+	ff.batches = append(ff.batches, batch)
+	if ff.raw != "" || ff.err != nil {
+		return ff.raw, ff.err
+	}
+	if ff.capAt > 0 && len(batch) > ff.capAt {
+		return "", fmt.Errorf("gh api graphql wrote more than 1 bytes (%w)", landing.ErrOutputCap)
+	}
+	if ff.failOn != 0 && slices.Contains(batch, ff.failOn) {
+		return `{"data":null,"errors":[{"type":"INTERNAL","message":"something went wrong"}]}`, errors.New("gh api graphql: exit status 1 (gh: something went wrong)")
+	}
+	repo := map[string]any{}
+	var errs []any
+	for _, n := range batch {
 		ff.asked = append(ff.asked, n)
+		alias := "p" + strconv.Itoa(n)
 		if a := ff.prs[n]; a != nil {
-			repo["p"+m[1]] = a
+			repo[alias] = a
 		} else {
-			repo["p"+m[1]] = nil
+			repo[alias] = nil
+			if ff.gh {
+				errs = append(errs, map[string]any{"type": "NOT_FOUND", "path": []any{"repository", alias},
+					"message": "Could not resolve to a PullRequest with the number of " + strconv.Itoa(n) + "."})
+			}
 		}
 	}
-	out, err := json.Marshal(map[string]any{"data": map[string]any{"repository": repo}})
+	ans := map[string]any{"data": map[string]any{"repository": repo}}
+	if len(errs) > 0 {
+		ans["errors"] = errs
+	}
+	out, err := json.Marshal(ans)
+	if err == nil && len(errs) > 0 {
+		err = errors.New("gh api graphql: exit status 1 (gh: Could not resolve to a PullRequest)")
+	}
 	return string(out), err
 }
 
@@ -170,8 +206,11 @@ func answer(n int, merge, head string, reviews ...forgeReview) *prAnswer {
 	return a
 }
 
+// review is a review by login, a person who can push to the repository as a
+// member of its organisation.
 func review(login, state, commit string) forgeReview {
-	return forgeReview{Author: &forgeLogin{login}, State: state, Commit: &forgeOid{commit}, SubmittedAt: "2026-11-01T09:00:00Z"}
+	return forgeReview{Author: &forgeActor{Typename: "User", Login: login}, AuthorAssociation: "MEMBER", AuthorCanPush: true,
+		State: state, Commit: &forgeOid{commit}, SubmittedAt: "2026-11-01T09:00:00Z"}
 }
 
 func (ff *fakeForge) add(a *prAnswer) {
@@ -436,12 +475,36 @@ func TestDirectPushIsAPersons(t *testing.T) {
 	ff := &fakeForge{t: t}
 	l := f.list(ff.call)
 	r := row(t, l, f.head())
-	if r.Class != ClassPersonPush || r.Committer != "Pat ?[31mPusher" || r.Rule != (Rule{}) || r.Lane != "" || r.Unattended ||
-		strings.Join(r.Resolves, ",") != "iss-3" {
+	if r.Class != ClassPersonPush || r.Committer != "Pat ?[31mPusher" || r.Rule != (Rule{}) || r.Lane != "" || !r.Unattended ||
+		r.Approval != (Approval{Source: SourceNoneSeen}) || strings.Join(r.Resolves, ",") != "iss-3" {
 		t.Fatalf("row %+v", r)
 	}
 	if ff.calls != 0 {
 		t.Fatalf("a push naming no pull request asked the forge %d times", ff.calls)
+	}
+}
+
+// TestAPushIsAttendedOnlyByARecordedApprovalOfIt: a person-push row is
+// unattended in either mode until the technical facilitator's approval of
+// that very commit is recorded; an approval of another commit does not count.
+func TestAPushIsAttendedOnlyByARecordedApprovalOfIt(t *testing.T) {
+	for _, mode := range []string{"human", "auto"} {
+		f := newFx(t, mode)
+		other := f.commit("docs: an earlier push")
+		push := f.commit("docs: a push")
+		if _, err := landing.RecordApproval(f.r.Root(), other); err != nil {
+			t.Fatal(err)
+		}
+		if r := row(t, f.list((&fakeForge{t: t}).call), push); r.Class != ClassPersonPush || !r.Unattended || r.Approval.Seen {
+			t.Fatalf("%s: an approval of another commit placed the push: %+v", mode, r)
+		}
+		if _, err := landing.RecordApproval(f.r.Root(), push); err != nil {
+			t.Fatal(err)
+		}
+		if r := row(t, f.list((&fakeForge{t: t}).call), push); r.Class != ClassPersonPush || r.Unattended ||
+			r.Approval != (Approval{Seen: true, Source: SourceLocalTier}) {
+			t.Fatalf("%s: a recorded approval of the push: %+v", mode, r)
+		}
 	}
 }
 
@@ -487,7 +550,8 @@ func TestSquashWithForgeUnreadIsUnknownAndUnattended(t *testing.T) {
 }
 
 // TestUnattendedLeavesNoUnplacedRowOut: under auto every row the evidence
-// cannot place with a person is unattended; a person's approval or push never.
+// cannot place with a person is unattended, a push no approval places with a
+// person included; a person's approval never.
 func TestUnattendedLeavesNoUnplacedRowOut(t *testing.T) {
 	f := newFx(t, "auto")
 	bu := f.branch("u", "feat: no trailer")
@@ -501,7 +565,7 @@ func TestUnattendedLeavesNoUnplacedRowOut(t *testing.T) {
 	ff.add(answer(80, mu, bu))
 	ff.add(answer(82, ma, ba, review(alice, "APPROVED", ba)))
 	l := f.list(ff.call)
-	for m, want := range map[string]bool{mu: true, mr: true, ma: false, push: false} {
+	for m, want := range map[string]bool{mu: true, mr: true, ma: false, push: true} {
 		if r := row(t, l, m); r.Unattended != want {
 			t.Fatalf("row %+v unattended %v, want %v", r, r.Unattended, want)
 		}
@@ -516,7 +580,7 @@ func TestUnattendedLeavesNoUnplacedRowOut(t *testing.T) {
 // row a person's by a review, and says why once.
 func TestForgeUnreachableReadsHistoryAlone(t *testing.T) {
 	f := newFx(t, "auto")
-	bd := f.branch("d", recordsCommit(drainTrailer))
+	f.branch("d", recordsCommit(drainTrailer))
 	md := f.merge(90, "d")
 	f.branch("a", "feat: a")
 	ma := f.merge(91, "a")
@@ -536,7 +600,6 @@ func TestForgeUnreachableReadsHistoryAlone(t *testing.T) {
 			t.Fatalf("%s: the reason %q, asked %d times", name, l.ForgeUnread, ff.calls)
 		}
 	}
-	_ = bd
 }
 
 // TestASubjectNamingAnotherMergeReadsNoneOfIt: a commit whose subject names a
