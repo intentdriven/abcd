@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os/exec"
 	"regexp"
 	"slices"
 	"strconv"
@@ -43,8 +44,9 @@ func (e *releaseTagError) Error() string        { return e.msg }
 func (e *releaseTagError) Is(target error) bool { return target == ErrReleaseTagUnnamed }
 
 // ErrBadSince is what every since that names neither a tag the repository
-// holds nor a date is (errors.Is), so the verb refuses it as a range it was
-// not given.
+// holds nor a date is (errors.Is), and one naming a tag git says points at no
+// commit, so the verb refuses it as a range it was not given. A since whose
+// tag could not be read is a failed read, never this.
 var ErrBadSince = errors.New("the range's start names neither a tag nor a date")
 
 // sinceError is a refused since, its text saying which.
@@ -61,6 +63,10 @@ var dateRe = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
 
 // refCap bounds one ref question's answer.
 const refCap = 4096
+
+// tagRefFormat is the line git for-each-ref prints for each tag ref tagCommit
+// asks about: its object's full name and the ref.
+const tagRefFormat = "--format=%(objectname) %(refname)"
 
 // Resolve is the Range from since to the default branch's tip as the
 // repository at repoRoot last fetched it, as abcd landings names it.
@@ -92,8 +98,11 @@ func resolveRange(ctx context.Context, repoRoot, since string) (Range, error) {
 		return Range{}, ErrNoDefaultBranch
 	}
 	to, err := commitOf(ctx, repoRoot, ref)
-	if err != nil {
+	if errors.Is(err, errNoCommit) {
 		return Range{}, ErrNoDefaultBranch
+	}
+	if err != nil {
+		return Range{}, err
 	}
 	r := Range{To: to, Tip: gitutil.ShortRef(ref)}
 	line, err := firstParentLine(ctx, repoRoot, to)
@@ -108,12 +117,19 @@ func resolveRange(ctx context.Context, repoRoot, since string) (Range, error) {
 		if err != nil {
 			return Range{}, err
 		}
-		if r.From, err = tagCommit(ctx, repoRoot, tag); err != nil {
+		r.From, err = tagCommit(ctx, repoRoot, tag)
+		shown := termsafe.Sanitize(boundText(tag, maxTextBytes))
+		switch {
+		case errors.Is(err, errNotTagName) || errors.Is(err, errNoTagRef):
 			// git describes an annotated tag by the name stored inside it,
 			// so a tag whose ref was renamed is described under a name no
 			// ref holds: the person names the range, as with no release tag.
-			return Range{}, &releaseTagError{fmt.Sprintf("the last release tag git describes, %s, names no tag this repository holds (an annotated tag whose ref was renamed is described by the name stored inside it), so there is no range to list by default; name where to start with --since <tag|YYYY-MM-DD>",
-				termsafe.Sanitize(boundText(tag, maxTextBytes)))}
+			return Range{}, &releaseTagError{fmt.Sprintf("the last release tag git describes, %s, names no tag this repository holds (an annotated tag whose ref was renamed is described by the name stored inside it), so there is no range to list by default; name where to start with --since <tag|YYYY-MM-DD>", shown)}
+		case errors.Is(err, errNoCommit):
+			// git describes only a tag a commit the tip reaches carries.
+			return Range{}, readFailed("reading the last release tag "+shown, errors.New("git describes it, and says its ref points at no commit"))
+		case err != nil:
+			return Range{}, readFailed("reading the last release tag "+shown, err)
 		}
 		r.Since = tag
 	case dateRe.MatchString(since):
@@ -126,8 +142,14 @@ func resolveRange(ctx context.Context, repoRoot, since string) (Range, error) {
 		return r, nil
 	default:
 		from, err := tagCommit(ctx, repoRoot, since)
-		if err != nil {
-			return Range{}, &sinceError{fmt.Sprintf("--since %s is neither a tag this repository holds nor a date (YYYY-MM-DD)", termsafe.Sanitize(boundText(since, maxTextBytes)))}
+		shown := termsafe.Sanitize(boundText(since, maxTextBytes))
+		switch {
+		case errors.Is(err, errNotTagName) || errors.Is(err, errNoTagRef):
+			return Range{}, &sinceError{fmt.Sprintf("--since %s is neither a tag this repository holds nor a date (YYYY-MM-DD)", shown)}
+		case errors.Is(err, errNoCommit):
+			return Range{}, &sinceError{fmt.Sprintf("--since %s names a tag that points at no commit, so no range opens there", shown)}
+		case err != nil:
+			return Range{}, readFailed("reading the tag --since names, "+shown, err)
 		}
 		r.From, r.Since = from, since
 	}
@@ -145,10 +167,15 @@ func resolveRange(ctx context.Context, repoRoot, since string) (Range, error) {
 // --list --merged, which matches the pattern as describe does), and only an
 // empty listing reads as no tag. A listing that fails, or names a tag
 // describe did not give, is a failed read of the tags, never "no release
-// tag".
+// tag". The name is used as git printed it, the line end alone taken off: a
+// tag name may end in a rune Unicode calls a space.
 func lastReleaseTag(ctx context.Context, repoRoot, to string) (string, error) {
-	tag, err := storedText(ctx, repoRoot, refCap, "describe", "--tags", "--match", ReleaseTagPattern, "--abbrev=0", to)
-	if tag = strings.TrimSpace(tag); err == nil && tag != "" {
+	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, repoRoot, "", refCap, "describe", "--tags", "--match", ReleaseTagPattern, "--abbrev=0", to)
+	tag := strings.TrimSuffix(string(out), "\n")
+	if err == nil && strings.ContainsAny(tag, "\r\n") {
+		return "", errors.New("reading the last release tag: git described the tip in a shape it does not read")
+	}
+	if err == nil && tag != "" {
 		return tag, nil
 	}
 	describeErr := err
@@ -179,12 +206,12 @@ func firstParentLine(ctx context.Context, repoRoot, to string) ([]lineCommit, er
 	}
 	var line []lineCommit
 	for l := range strings.SplitSeq(out, "\n") {
-		ts, sha, ok := strings.Cut(strings.TrimSpace(l), " ")
-		if !ok {
+		if l == "" {
 			continue
 		}
+		ts, sha, ok := strings.Cut(l, " ")
 		t, err := strconv.ParseInt(ts, 10, 64)
-		if err != nil || !gitutil.IsFullSHA(sha) {
+		if !ok || err != nil || !gitutil.IsFullSHA(sha) {
 			return nil, errors.New("git listed the default branch's first-parent line in a shape it does not read")
 		}
 		line = append(line, lineCommit{sha, t})
@@ -228,36 +255,89 @@ func sinceDay(line []lineCommit, day time.Time) (from, note string) {
 	return from, note
 }
 
+// The answers commitOf and tagCommit give when git says the name is not what
+// was asked: errNoCommit, git's verify of the peel saying no commit (its exit
+// 1 under --quiet); errNotTagName, a name not in a tag ref's shape (empty,
+// starting with a dash, or refused by git check-ref-format's exit 1); and
+// errNoTagRef, no ref under refs/tags/ holding the name. Every other error
+// either returns is a read that failed or an answer it does not read, and its
+// text says so.
+var (
+	errNoCommit   = errors.New("git says it names no commit")
+	errNotTagName = errors.New("not a tag name")
+	errNoTagRef   = errors.New("no tag of that name")
+)
+
+// exitedWith reports whether err is git's own exit with code.
+func exitedWith(err error, code int) bool {
+	var ee *exec.ExitError
+	return errors.As(err, &ee) && ee.ExitCode() == code
+}
+
+// readFailed is err, a read that failed, as resolve returns it: what was
+// being read, then err's text, which tagCommit and commitOf mask.
+func readFailed(what string, err error) error {
+	return &maskedError{msg: what + ": " + err.Error(), cause: err}
+}
+
 // commitOf is the full object name of the commit ref names, read as stored
 // (storedText), so no replace ref stands one tag in for another on the way to
-// it.
+// it; errNoCommit when git's verify says ref names none.
 func commitOf(ctx context.Context, repoRoot, ref string) (string, error) {
 	out, err := storedText(ctx, repoRoot, refCap, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
-	out = strings.TrimSpace(out)
-	if err != nil || !gitutil.IsFullSHA(out) {
-		return "", fmt.Errorf("%s names no commit", ref)
+	switch {
+	case exitedWith(err, 1):
+		return "", errNoCommit
+	case err != nil:
+		return "", masked("reading the commit "+termsafe.Sanitize(boundText(ref, maxTextBytes))+" names", err)
+	case !gitutil.IsFullSHA(out):
+		return "", fmt.Errorf("reading the commit %s names: git named it in a shape it does not read", termsafe.Sanitize(boundText(ref, maxTextBytes)))
 	}
 	return out, nil
 }
 
 // tagCommit is the commit the tag name points at, the name held to a ref's
-// shape under refs/tags/ first and then looked up as that exact ref (git
-// show-ref --verify), so it is never read as anything else: rev-parse would
-// take a name no ref holds that ends in -g and hex, as git describe prints,
-// for the commit the hex names. The ref's object is then peeled by its full
-// name.
+// shape under refs/tags/ first and then looked up as that exact ref among the
+// refs git for-each-ref lists under it, so it is never read as anything else:
+// rev-parse would take a name no ref holds that ends in -g and hex, as git
+// describe prints, for the commit the hex names. The ref's object is then
+// peeled by its full name. errNotTagName and errNoTagRef are git's own word
+// that the name is no tag, and errNoCommit that the tag points at no commit;
+// a check, a listing or a peel that failed, and a listing in a shape it does
+// not read, are failed reads.
 func tagCommit(ctx context.Context, repoRoot, name string) (string, error) {
 	if name == "" || strings.HasPrefix(name, "-") {
-		return "", errors.New("not a tag name")
+		return "", errNotTagName
 	}
 	ref := "refs/tags/" + name
-	if _, err := storedText(ctx, repoRoot, refCap, "check-ref-format", ref); err != nil {
-		return "", errors.New("not a tag name")
+	switch _, err := storedText(ctx, repoRoot, refCap, "check-ref-format", ref); {
+	case exitedWith(err, 1):
+		return "", errNotTagName
+	case err != nil:
+		return "", masked("checking the tag name's shape", err)
 	}
-	out, err := storedText(ctx, repoRoot, refCap, "show-ref", "--verify", ref)
-	oid, got, ok := strings.Cut(strings.TrimSpace(out), " ")
-	if err != nil || !ok || got != ref || !gitutil.IsFullSHA(oid) {
-		return "", errors.New("no tag of that name")
+	// for-each-ref lists the ref and every ref below it as a directory; a line
+	// is cut past maxLine, which only a ref below it reaches.
+	var oid string
+	odd := false
+	err := gitutil.EachAsStoredContext(ctx, repoRoot, len(ref)+128, func(line string) {
+		o, got, ok := strings.Cut(line, " ")
+		switch {
+		case !ok || !gitutil.IsFullSHA(o) || (got != ref && !strings.HasPrefix(got, ref+"/")):
+			odd = true
+		case got == ref && oid != "":
+			odd = true
+		case got == ref:
+			oid = o
+		}
+	}, "for-each-ref", tagRefFormat, ref)
+	switch {
+	case err != nil:
+		return "", masked("listing the tag's ref", err)
+	case odd:
+		return "", errors.New("listing the tag's ref: git listed it in a shape it does not read")
+	case oid == "":
+		return "", errNoTagRef
 	}
 	return commitOf(ctx, repoRoot, oid)
 }

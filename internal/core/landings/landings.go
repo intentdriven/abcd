@@ -262,7 +262,9 @@ var (
 // commit in for another, and no graft gives a commit parents it does not
 // store), its output with trailing space trimmed. Every git call the reader
 // makes that reads an object reads it as stored: through it, historyLog,
-// traceGit or resolveNames, and the facilitator mode through committedMode
+// traceGit or resolveNames, the release tag described and a tag's ref through
+// gitutil's as-stored reads themselves (lastReleaseTag and tagCommit, which
+// keep a tag name as git printed it), and the facilitator mode through committedMode
 // (landing.CommittedMode, which reads the commit's trees and the file's blob
 // as stored). In the listing, the range and the trace that is the range's log
 // and commit listing, the mode log and the mode's file, the drain rules' tree,
@@ -817,7 +819,8 @@ func admission(messages []string) (Admitted, bool) {
 }
 
 // rulePath is the path of the drain rule record id in the decision store as
-// commit holds it, "" when it holds none by that id.
+// commit holds it, "" when it holds none by that id, and an error when the
+// store's tree could not be read.
 func (l *lister) rulePath(commit, id string) (string, error) {
 	if commit == "" {
 		return "", nil
@@ -825,11 +828,14 @@ func (l *lister) rulePath(commit, id string) (string, error) {
 	names, ok := l.rules[commit]
 	if !ok {
 		out, err := storedText(l.ctx, l.root, maxListBytes, "ls-tree", "-z", "--name-only", commit, "--", drainrule.ADRsRelDir+"/")
-		if err == nil {
-			for n := range strings.SplitSeq(out, "\x00") {
-				if n != "" {
-					names = append(names, n)
-				}
+		if err != nil {
+			// A tree that could not be read is no answer that it holds no
+			// rule.
+			return "", masked("reading the drain rules the merge's first parent holds", err)
+		}
+		for n := range strings.SplitSeq(out, "\x00") {
+			if n != "" {
+				names = append(names, n)
 			}
 		}
 		l.rules[commit] = names

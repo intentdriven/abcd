@@ -28,10 +28,11 @@ from the first first-parent commit at or after a date `YYYY-MM-DD`. With no
 such tag it refuses (exit 2) and names the flag, and so it does when the tag
 git describes names no tag the repository holds (git describes an annotated
 tag by the name stored inside it, which a renamed ref no longer carries); a
-failed read of the tags is not taken for no tag, and exits 1. A tag is looked
-up as that exact ref, never read as the commit a name ending in `-g` and hex
-names. A `--since` that names neither a tag nor a
-date, or a date that is no day, is refused at exit 2.
+failed read of the tags, or of the ref or commit of the tag named, is not taken
+for no tag, and exits 1. A tag is looked up as that exact ref, its name as git
+printed it, never read as the commit a name ending in `-g` and hex names. A
+`--since` that names neither a tag nor a date, a tag that points at no commit,
+or a date that is no day, is refused at exit 2.
 
 ## What it asks the forge, and what it keeps
 
@@ -57,12 +58,13 @@ eight of the issues and intents it resolves and delivers and how many more, its
 mode, `unattended` where it is, and the commit that reverts it where one does.
 The next line says when it landed, the head it merged, where its rule was read,
 and up to eight of its `Assisted-by:` values and how many more. Then, each on
-its own line and never capped: what the forge said against the pull request its
-subject names, and why the forge's answer for it was not read. Then its revert
-lines, each with the row it marks or why it marks none: first those that mark
-no row, the untraceable ones before the rest, up to sixteen; then up to eight
-that mark a row; then how many more, and how many of those mark a row and how
-many do not. A row can carry many lines that mark no row (one for each of its
+its own line, never dropped and each cut at 600 bytes: what the forge said
+against the pull request its subject names, and why the forge's answer for it
+was not read. Then its revert lines, each with the row it marks or why it marks
+none: first those that mark no row, the untraceable ones before the rest, up to
+sixteen; then up to eight that mark a row; then how many more, how many of
+those mark a row, how many do not, and how many of the ones that do not are
+untraceable. A row can carry many lines that mark no row (one for each of its
 commits that reads as git's revert and names nothing it resolves, up to 64 for
 each commit's message or pull request body, and one for each bound passed),
 which is why they have a cap of their own; no line that marks a row prints
@@ -135,7 +137,7 @@ whole past 64 MiB.
 Exit 0 with the listing or the trace, and with a listing whose forge answers
 were partly or wholly unread: those rows are unattended and the `forge` note
 says how many, so a script reads `forge_unread`, not the exit alone. Exit 1
-when history or the tags cannot be read. Exit 2 outside a git checkout, with no
+when history, the tags or the repository cannot be read. Exit 2 outside a git checkout, with no
 default branch, with no range, with both filters, or with a commit named that
 names none.
 

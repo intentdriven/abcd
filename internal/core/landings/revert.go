@@ -762,8 +762,11 @@ func traceCommit(ctx context.Context, repoRoot, name string, o Options) (Trace, 
 		return Trace{}, ErrNoDefaultBranch
 	}
 	to, err := commitOf(ctx, repoRoot, ref)
-	if err != nil {
+	if errors.Is(err, errNoCommit) {
 		return Trace{}, ErrNoDefaultBranch
+	}
+	if err != nil {
+		return Trace{}, err
 	}
 	t := Trace{Tip: gitutil.ShortRef(ref), To: to}
 	if !hexNameRe.MatchString(name) {

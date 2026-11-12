@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -227,6 +228,144 @@ func TestAFailedReadOfTheTagsIsNotNoReleaseTag(t *testing.T) {
 				t.Fatalf("resolve() = %v; want no release tag %v", err, tc.noTag)
 			}
 		})
+	}
+}
+
+// answeringGit puts a git on PATH for the rest of t that answers every call
+// one of whose arguments matches the shell case pattern with out on standard
+// output and the exit code, and runs the real git for every other.
+func answeringGit(t *testing.T, pattern, out string, code int) {
+	t.Helper()
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	script := "#!/bin/sh\nfor a in \"$@\"; do\n  case \"$a\" in\n    " + pattern + ") printf '%s' '" + out + "'; [ " + strconv.Itoa(code) + " = 0 ] || echo 'fatal: an answer the test gave' >&2; exit " + strconv.Itoa(code) + ";;\n" +
+		"  esac\ndone\nexec '" + real + "' \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// TestATagLookupThatFailedIsAFailedRead: a tag is no tag only when git says
+// so (its name is not in a ref's shape, or no ref under refs/tags/ holds it);
+// a lookup or a peel that failed, or answered in a shape the reader does not
+// read, is a failed read, for the default range and for --since alike, and
+// its text names no cause nothing read.
+func TestATagLookupThatFailedIsAFailedRead(t *testing.T) {
+	r, _ := sinceFx(t)
+	obj := r.Git("rev-parse", "refs/tags/v0.2.0")
+	format := "'" + tagRefFormat + "'"
+	peel := "'" + obj + "^{commit}'"
+	for _, tc := range []struct {
+		name, pattern, out string
+		code               int
+		noTag, noCommit    bool
+	}{
+		{"the ref lookup fails", format, "", 128, false, false},
+		{"the ref lookup answers in another shape", format, "zz refs/tags/v0.2.0\n", 0, false, false},
+		{"the ref lookup answers two refs of the name", format, obj + " refs/tags/v0.2.0\n" + obj + " refs/tags/v0.2.0\n", 0, false, false},
+		{"the shape check fails", "check-ref-format", "", 128, false, false},
+		{"the peel fails", peel, "", 128, false, false},
+		{"the ref lookup says no ref holds it", format, "", 0, true, false},
+		{"the shape check refuses the name", "check-ref-format", "", 1, true, false},
+		{"the peel says no commit", peel, "", 1, false, true},
+	} {
+		for _, since := range []string{"", "v0.2.0"} {
+			t.Run(tc.name+" since "+since, func(t *testing.T) {
+				answeringGit(t, tc.pattern, tc.out, tc.code)
+				_, err := Resolve(t.Context(), r.Root(), since)
+				if err == nil {
+					t.Fatal("resolve read the tag")
+				}
+				refused := errors.Is(err, ErrReleaseTagUnnamed) || errors.Is(err, ErrBadSince)
+				noTagText := strings.Contains(err.Error(), "names no tag") || strings.Contains(err.Error(), "neither a tag")
+				switch {
+				case tc.noTag:
+					if want := map[string]error{"": ErrReleaseTagUnnamed, "v0.2.0": ErrBadSince}[since]; !errors.Is(err, want) || !noTagText {
+						t.Fatalf("resolve(%q) = %v, want %v", since, err, want)
+					}
+				case tc.noCommit && since != "":
+					if !errors.Is(err, ErrBadSince) || noTagText || !strings.Contains(err.Error(), "points at no commit") {
+						t.Fatalf("resolve(%q) = %v, want a tag that points at no commit", since, err)
+					}
+				default:
+					if refused || noTagText || !strings.Contains(err.Error(), "reading") {
+						t.Fatalf("resolve(%q) = %v, want a failed read that names no cause it did not read", since, err)
+					}
+				}
+			})
+		}
+	}
+}
+
+// TestAFailedReadOfTheTipIsNotNoDefaultBranch: the default branch's tip
+// names no commit only when git says so; a peel of it that failed, and a
+// first-parent line git answered in a shape the reader does not read, are
+// failed reads, for a range and a trace alike.
+func TestAFailedReadOfTheTipIsNotNoDefaultBranch(t *testing.T) {
+	r, c := sinceFx(t)
+	t.Run("the tip's peel fails", func(t *testing.T) {
+		answeringGit(t, "*'/main^{commit}'", "", 128)
+		if _, err := Resolve(t.Context(), r.Root(), "2026-10-03"); err == nil || errors.Is(err, ErrNoDefaultBranch) || !strings.Contains(err.Error(), "reading") {
+			t.Fatalf("resolve() = %v, want a failed read", err)
+		}
+		if _, err := TraceCommit(t.Context(), r.Root(), c[2], Options{Forge: (&fakeForge{t: t}).call}); err == nil || errors.Is(err, ErrNoDefaultBranch) || !strings.Contains(err.Error(), "reading") {
+			t.Fatalf("trace() = %v, want a failed read", err)
+		}
+	})
+	t.Run("the tip's peel says no commit", func(t *testing.T) {
+		answeringGit(t, "*'/main^{commit}'", "", 1)
+		if _, err := Resolve(t.Context(), r.Root(), "2026-10-03"); !errors.Is(err, ErrNoDefaultBranch) {
+			t.Fatalf("resolve() = %v, want no default branch", err)
+		}
+	})
+	t.Run("the first-parent line in another shape", func(t *testing.T) {
+		answeringGit(t, "--timestamp", "notaline\n", 0)
+		if _, err := Resolve(t.Context(), r.Root(), "2026-10-03"); err == nil {
+			t.Fatal("resolve read a first-parent line it does not read")
+		}
+	})
+}
+
+// TestAFailedReadOfTheDrainRulesIsNotNoRule: a drain row's rule is read from
+// the rules' tree at its first parent; a read of that tree that failed fails
+// the listing, never a row whose rule the tree does not hold.
+func TestAFailedReadOfTheDrainRulesIsNotNoRule(t *testing.T) {
+	f := newFx(t, "auto")
+	b := f.branch("d", "fix: x", recordsCommit(drainTrailer))
+	m := f.merge(50, "d")
+	ff := &fakeForge{t: t}
+	ff.add(answer(50, m, b))
+	answeringGit(t, "ls-tree", "", 128)
+	if _, err := List(t.Context(), f.r.Root(), Range{From: f.base, To: f.head()}, Options{Forge: ff.call}); err == nil || !strings.Contains(err.Error(), "reading") {
+		t.Fatalf("list() = %v, want a failed read of the drain rules", err)
+	}
+}
+
+// TestATagNameIsReadAsGitPrintsIt: a tag name is used as git printed it, the
+// line end alone taken off, so a tag ending in a no-break space opens the
+// range at itself, never at a tag holding the name without it.
+func TestATagNameIsReadAsGitPrintsIt(t *testing.T) {
+	r := gittest.NewRepo(t)
+	var c []string
+	for _, d := range []string{"2026-10-01T12:00:00Z", "2026-10-02T12:00:00Z", "2026-10-03T12:00:00Z"} {
+		c = append(c, dated(t, r, "chore: "+d, d))
+	}
+	spaced := "v2 "
+	r.Git("tag", "v2", c[0])
+	r.Git("tag", spaced, c[1])
+	for since, from := range map[string]string{"": c[1], spaced: c[1], "v2": c[0]} {
+		got, err := Resolve(t.Context(), r.Root(), since)
+		want := since
+		if want == "" {
+			want = spaced
+		}
+		if err != nil || got.From != from || got.Since != want {
+			t.Fatalf("resolve(%q) = %+v, %v; want from %s since %q", since, got, err, from, want)
+		}
 	}
 }
 

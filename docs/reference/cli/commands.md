@@ -4568,14 +4568,15 @@ Admitted-by: trailer names, the approval it rests on and where that was read
 eight of the issues and intents it resolves and delivers, its mode, whether it
 is unattended, and the commit that reverts it; then when it landed, the head
 it merged, where its rule was read and up to eight Assisted-by: values. Under
-a row come, never capped, what the forge said against the pull request its
-subject names and why the forge's answer was not read; then its revert lines,
-each with the row it marks or why it marks none: up to sixteen that mark no
-row first (the untraceable ones before the rest), then up to eight that mark
-one, then how many more of each. Every capped list says how many more it
-holds; --json keeps them all. After the rows come the notes (how the range was
-found, why the forge was not read for some row, why an answer was not kept,
-why a first parent's mode could not be read) and the tip read.
+a row come, never dropped and each cut at 600 bytes, what the forge said
+against the pull request its subject names and why the forge's answer was not
+read; then its revert lines, each with the row it marks or why it marks none:
+up to sixteen that mark no row first (the untraceable ones before the rest),
+then up to eight that mark one, then how many more of each and how many of
+the hidden ones that mark no row are untraceable. Every capped list says how
+many more it holds; --json keeps them all. After the rows come the notes (how
+the range was found, why the forge was not read for some row, why an answer
+was not kept, why a first parent's mode could not be read) and the tip read.
 
 The range runs from --since, a tag or a date YYYY-MM-DD (taken as the first
 first-parent commit at or after it), to the default branch's tip; with no
@@ -4611,9 +4612,9 @@ revert line's names and the notes carry text someone typed.
 
 Exit 0 with the listing or the trace, a listing whose forge answers were not
 read included (those rows are unattended and the forge note says how many);
-exit 1 when history or the tags cannot be read; exit 2 outside a git
-checkout, with no default branch, with no range, with both filters, or with a
-commit named that names none.
+exit 1 when history, the tags or the repository cannot be read; exit 2
+outside a git checkout, with no default branch, with no range, with both
+filters, or with a commit named that names none.
 
 **Flags:**
 

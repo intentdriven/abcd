@@ -33,9 +33,9 @@ var landingsForge landing.ForgeCall
 // values, and of its revert lines at most landingsMaxUnmarkedLines that mark
 // no row, printed first, and landingsMaxRevertLines that mark one, each list
 // then saying how many more it holds. So one row's text is bounded however
-// many ids and lines the row carries; --json keeps them all. Nothing that says
-// why a row is unattended or why the forge's answer was not read is capped:
-// those are one line each.
+// many ids and lines the row carries; --json keeps them all. What the forge
+// said against the pull request and why the forge's answer was not read are
+// never dropped, each cut at landingsNoteBytes: one line each.
 const (
 	landingsFieldBytes       = 200
 	landingsNoteBytes        = 600
@@ -73,14 +73,15 @@ func newLandingsCommand(asJSON *bool) *cobra.Command {
 			"eight of the issues and intents it resolves and delivers, its mode, whether it\n" +
 			"is unattended, and the commit that reverts it; then when it landed, the head\n" +
 			"it merged, where its rule was read and up to eight Assisted-by: values. Under\n" +
-			"a row come, never capped, what the forge said against the pull request its\n" +
-			"subject names and why the forge's answer was not read; then its revert lines,\n" +
-			"each with the row it marks or why it marks none: up to sixteen that mark no\n" +
-			"row first (the untraceable ones before the rest), then up to eight that mark\n" +
-			"one, then how many more of each. Every capped list says how many more it\n" +
-			"holds; --json keeps them all. After the rows come the notes (how the range was\n" +
-			"found, why the forge was not read for some row, why an answer was not kept,\n" +
-			"why a first parent's mode could not be read) and the tip read.\n\n" +
+			"a row come, never dropped and each cut at 600 bytes, what the forge said\n" +
+			"against the pull request its subject names and why the forge's answer was not\n" +
+			"read; then its revert lines, each with the row it marks or why it marks none:\n" +
+			"up to sixteen that mark no row first (the untraceable ones before the rest),\n" +
+			"then up to eight that mark one, then how many more of each and how many of\n" +
+			"the hidden ones that mark no row are untraceable. Every capped list says how\n" +
+			"many more it holds; --json keeps them all. After the rows come the notes (how\n" +
+			"the range was found, why the forge was not read for some row, why an answer\n" +
+			"was not kept, why a first parent's mode could not be read) and the tip read.\n\n" +
 			"The range runs from --since, a tag or a date YYYY-MM-DD (taken as the first\n" +
 			"first-parent commit at or after it), to the default branch's tip; with no\n" +
 			"--since it starts after the last release tag (v*) the tip reaches, and with\n" +
@@ -112,9 +113,9 @@ func newLandingsCommand(asJSON *bool) *cobra.Command {
 			"revert line's names and the notes carry text someone typed.\n\n" +
 			"Exit 0 with the listing or the trace, a listing whose forge answers were not\n" +
 			"read included (those rows are unattended and the forge note says how many);\n" +
-			"exit 1 when history or the tags cannot be read; exit 2 outside a git\n" +
-			"checkout, with no default branch, with no range, with both filters, or with a\n" +
-			"commit named that names none.",
+			"exit 1 when history, the tags or the repository cannot be read; exit 2\n" +
+			"outside a git checkout, with no default branch, with no range, with both\n" +
+			"filters, or with a commit named that names none.",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return &exitError{Code: 2, Msg: "abcd landings: takes at most one commit to trace (nothing read)"}
@@ -133,6 +134,11 @@ func newLandingsCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			root, err := gitutil.CheckoutRoot(cwd, landingsStore)
+			if err != nil && gitutil.RepoShapedRoot(cwd) != "" {
+				// Inside a repository git could not answer for: a read that
+				// failed, not a directory outside every checkout.
+				return &exitError{Code: 1, Msg: "abcd landings: " + termsafe.Sanitize(err.Error())}
+			}
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd landings: " + termsafe.Sanitize(err.Error()) + " (nothing read)"}
 			}
@@ -389,8 +395,8 @@ func landingRow(r landings.Row) []string {
 // lines that mark no row come first, the untraceable ones (why the row is in
 // the untraceable group) before the rest, up to landingsMaxUnmarkedLines;
 // then the lines that mark a row, up to landingsMaxRevertLines; then, when
-// either cap left lines out, how many, and how many of those mark a row and
-// how many do not. A row can carry many lines that mark no row (one for each
+// either cap left lines out, how many, how many of those mark a row, how many
+// do not, and how many of the ones that do not are untraceable. A row can carry many lines that mark no row (one for each
 // of its commits whose subject reads as git's revert, and up to 64 for each
 // commit's or body's revert lines), so they have a cap of their own, and no
 // line that marks one is printed while a line that marks none is held back.
@@ -413,7 +419,8 @@ func landingsRevertLines(xs []landings.RevertLine) []string {
 		out = append(out, landingsRevertLine(x))
 	}
 	if hiddenNone, hiddenMarked := len(none)-shownNone, len(marked)-shownMarked; hiddenNone+hiddenMarked > 0 {
-		out = append(out, fmt.Sprintf("and %d more revert lines: %d marking a row, %d with no row marked", hiddenNone+hiddenMarked, hiddenMarked, hiddenNone))
+		hiddenUntraceable := len(untraceable) - min(len(untraceable), shownNone)
+		out = append(out, fmt.Sprintf("and %d more revert lines: %d marking a row, %d with no row marked, %d of them untraceable", hiddenNone+hiddenMarked, hiddenMarked, hiddenNone, hiddenUntraceable))
 	}
 	return out
 }

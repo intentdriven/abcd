@@ -892,6 +892,52 @@ func TestLandingsNoCapHidesWhyARevertMarksNoRow(t *testing.T) {
 	}
 }
 
+// TestLandingsRevertRemainderCountsTheHiddenUntraceable: past sixteen lines
+// that mark no row, the untraceable ones print first and the rest are held
+// back, and the remainder says how many of the hidden lines mark a row, how
+// many mark none and how many of those are untraceable.
+func TestLandingsRevertRemainderCountsTheHiddenUntraceable(t *testing.T) {
+	for _, tc := range []struct {
+		name                       string
+		untraceable, other, marked int
+		want                       string
+	}{
+		{"more untraceable lines than the cap", landingsMaxUnmarkedLines + 2, 4, landingsMaxRevertLines + 2,
+			"and 8 more revert lines: 2 marking a row, 6 with no row marked, 2 of them untraceable"},
+		{"the last of seventeen untraceable", 1, landingsMaxUnmarkedLines, 1,
+			"and 1 more revert lines: 0 marking a row, 1 with no row marked, 0 of them untraceable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, _ := landingsAllRow()
+			r.Reverts = nil
+			why := func(kind string, i int) string { return fmt.Sprintf("%s reason %02d.", kind, i) }
+			for i := range tc.marked {
+				r.Reverts = append(r.Reverts, landings.RevertLine{Commit: fmt.Sprintf("%040x", i), Kind: landings.RevertGit,
+					Names: fmt.Sprintf("%040x", i), Target: fmt.Sprintf("%040x", i+100), Row: fmt.Sprintf("%040x", i+200)})
+			}
+			for i := range tc.other {
+				r.Reverts = append(r.Reverts, landings.RevertLine{Commit: strings.Repeat("e", 40), Kind: landings.RevertGit, Unmarked: why("other", i)})
+			}
+			for i := range tc.untraceable {
+				r.Reverts = append(r.Reverts, landings.RevertLine{Commit: strings.Repeat("f", 40), Kind: landings.RevertUntraceable, Unmarked: why("untraceable", i)})
+			}
+			text := strings.Join(landingRow(r), "\n")
+			shownUntraceable := min(tc.untraceable, landingsMaxUnmarkedLines)
+			shownOther := min(tc.other, landingsMaxUnmarkedLines-shownUntraceable)
+			for kind, n := range map[string][2]int{"untraceable": {shownUntraceable, tc.untraceable}, "other": {shownOther, tc.other}} {
+				for i := range n[1] {
+					if printed := strings.Contains(text, "marks no row: "+why(kind, i)); printed != (i < n[0]) {
+						t.Fatalf("%q printed %v, want %v:\n%s", why(kind, i), printed, i < n[0], text)
+					}
+				}
+			}
+			if !strings.Contains(text, tc.want) {
+				t.Fatalf("the row does not say %q:\n%s", tc.want, text)
+			}
+		})
+	}
+}
+
 // landingsHostile is text carrying every kind of rune the terminal mask
 // masks, a line break that would forge a line, and a byte that is no UTF-8.
 const landingsHostile = "x\x1b[2J\u009b31m\u202e\u200b\x07\x7f\U000E0041\r\nFORGED\t\xff"
@@ -1238,8 +1284,10 @@ func TestLandingsExitCodes(t *testing.T) {
 	w := newLandingsWorld(t, "auto")
 	w.merge(1, "", "feat: one")
 	w.r.Git("tag", "v0.1.0", w.head())
+	tagged := w.r.Git("rev-parse", "v0.1.0")
 	w.push("docs: after the tag")
 	tree := w.r.Git("rev-parse", "HEAD^{tree}")
+	tagRef := "'--format=%(objectname) %(refname)'"
 	ambiguous := landingsCollidingBlobs(t, w.r)
 	for _, tc := range []struct {
 		name string
@@ -1250,6 +1298,12 @@ func TestLandingsExitCodes(t *testing.T) {
 	}{
 		{"unreadable history", nil, []string{"--timestamp"}, 1, "first-parent line"},
 		{"unreadable tags", nil, []string{"describe"}, 1, "release tag"},
+		{"an unreadable release tag ref", nil, []string{tagRef}, 1, "reading the last release tag v0.1.0"},
+		{"an unreadable --since tag ref", []string{"--since", "v0.1.0"}, []string{tagRef}, 1, "reading the tag --since names"},
+		{"an unreadable peel of the release tag", nil, []string{"'" + tagged + "^{commit}'"}, 1, "reading the last release tag v0.1.0"},
+		{"an unreadable peel of the --since tag", []string{"--since", "v0.1.0"}, []string{"'" + tagged + "^{commit}'"}, 1, "reading the tag --since names"},
+		{"an unreadable tip", []string{"--since", "v0.1.0"}, []string{"*'/main^{commit}'"}, 1, "reading the commit"},
+		{"a --since tag no ref holds", []string{"--since", "v9.9.9"}, nil, 2, "neither a tag"},
 		{"a date that is no day", []string{"--since", "2030-02-30"}, nil, 2, "is not a date"},
 		{"both filters", []string{"--unattended", "--reverted"}, nil, 2, "not taken together"},
 		{"an ambiguous name", []string{ambiguous}, nil, 2, "is ambiguous"},
@@ -1264,6 +1318,9 @@ func TestLandingsExitCodes(t *testing.T) {
 			if code != tc.code || !strings.Contains(errOut, tc.says) {
 				t.Fatalf("exit %d, want %d: %q", code, tc.code, errOut)
 			}
+			if code == 1 && (strings.Contains(errOut, "names no tag") || strings.Contains(errOut, "neither a tag") || strings.Contains(errOut, "no default branch")) {
+				t.Fatalf("a failed read states a cause nothing read: %q", errOut)
+			}
 		})
 	}
 	out, errOut, code := runLandings(t, "--json", tree)
@@ -1275,6 +1332,12 @@ func TestLandingsExitCodes(t *testing.T) {
 	t.Run("outside a checkout", func(t *testing.T) {
 		t.Chdir(t.TempDir())
 		if _, errOut, code := runLandings(t); code != 2 || !strings.Contains(errOut, "nothing read") {
+			t.Fatalf("exit %d: %q", code, errOut)
+		}
+	})
+	t.Run("a checkout git cannot name the root of", func(t *testing.T) {
+		landingsGit(t, "", "--show-toplevel")
+		if _, errOut, code := runLandings(t); code != 1 || strings.Contains(errOut, "nothing read") || strings.Contains(errOut, "not inside a git repository") {
 			t.Fatalf("exit %d: %q", code, errOut)
 		}
 	})
