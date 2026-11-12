@@ -639,8 +639,8 @@ func TestAVersion4StateReadsAsOneNoValidatorHasJudged(t *testing.T) {
 		t.Fatal(err)
 	}
 	id, stages := start.RunID, DefaultStages()
-	claimAsDriver(t, repo.Root(), id, Options{})
 	implementedOnce(t, repo, id, "one.txt")
+	claimAsDriver(t, repo.Root(), id, Options{})
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(id)))
 	cur := fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)
 	if err := os.WriteFile(path, downgraded(t, stateBytes(t, repo.Root(), id), 4), 0o600); err != nil {
