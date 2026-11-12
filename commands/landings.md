@@ -25,8 +25,12 @@ fetches nothing and pushes nothing; its one network act is the forge client
 The listing runs from `--since` to the default branch's tip: after a tag, or
 from the first first-parent commit at or after a date `YYYY-MM-DD`. With no
 `--since` it starts after the last release tag (`v*`) the tip reaches. With no
-such tag it refuses (exit 2) and names the flag; a failed read of the tags is
-not taken for no tag, and exits 1. A `--since` that names neither a tag nor a
+such tag it refuses (exit 2) and names the flag, and so it does when the tag
+git describes names no tag the repository holds (git describes an annotated
+tag by the name stored inside it, which a renamed ref no longer carries); a
+failed read of the tags is not taken for no tag, and exits 1. A tag is looked
+up as that exact ref, never read as the commit a name ending in `-g` and hex
+names. A `--since` that names neither a tag nor a
 date, or a date that is no day, is refused at exit 2.
 
 ## What it asks the forge, and what it keeps
@@ -48,15 +52,22 @@ is asked apart, on every listing that reads it, and never kept.
 One row per commit on the default branch's first-parent line, newest first.
 The text prints each row as its first line: the commit, the pull request, the
 class, the rule (or, for a person's push, the committer name git holds), the
-lane kind, the approval and where it was read, the issues and intents it
-resolves and delivers, its mode, `unattended` where it is, and the commit that
-reverts it where one does. The next line says when it landed, the head it
-merged, where its rule was read, and its `Assisted-by:` values. Then, each on
-its own line: what the forge said against the pull request its subject names,
-why the forge's answer for it was not read, and each revert line its commits
-carry, with the row it marks or why it marks none. A row prints at most eight
-of its ids, eight `Assisted-by:` values and eight revert lines, then how many
-more; `--json` keeps them all. After the rows come the notes and the tip read.
+lane kind, the approval, where it was read and `seen` where one was, up to
+eight of the issues and intents it resolves and delivers and how many more, its
+mode, `unattended` where it is, and the commit that reverts it where one does.
+The next line says when it landed, the head it merged, where its rule was read,
+and up to eight of its `Assisted-by:` values and how many more. Then, each on
+its own line and never capped: what the forge said against the pull request its
+subject names, and why the forge's answer for it was not read. Then its revert
+lines, each with the row it marks or why it marks none: first those that mark
+no row, the untraceable ones before the rest, up to sixteen; then up to eight
+that mark a row; then how many more, and how many of those mark a row and how
+many do not. A row can carry many lines that mark no row (one for each of its
+commits that reads as git's revert and names nothing it resolves, up to 64 for
+each commit's message or pull request body, and one for each bound passed),
+which is why they have a cap of their own; no line that marks a row prints
+while one that marks none is held back. `--json` keeps them all. After the rows
+come the notes and the tip read.
 
 The classes:
 

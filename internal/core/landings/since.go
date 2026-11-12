@@ -28,6 +28,20 @@ var ErrNoDefaultBranch = errors.New("the repository has no default branch to lis
 // tag is reachable from the default branch: there is no default range.
 var ErrNoReleaseTag = errors.New("no release tag (v*) is reachable from the default branch, so there is no range to list by default; name where to start with --since <tag|YYYY-MM-DD>")
 
+// ErrReleaseTagUnnamed is what resolve's refusal is (errors.Is) when the
+// last release tag git describes names no tag the repository holds: git
+// describes an annotated tag by the name stored inside it, which a ref renamed
+// since no longer carries. As with no release tag, there is no range to list
+// by default, and the person names one.
+var ErrReleaseTagUnnamed = errors.New("the last release tag git describes names no tag this repository holds")
+
+// releaseTagError is a described release tag no ref holds, its text naming
+// the tag and the flag.
+type releaseTagError struct{ msg string }
+
+func (e *releaseTagError) Error() string        { return e.msg }
+func (e *releaseTagError) Is(target error) bool { return target == ErrReleaseTagUnnamed }
+
 // ErrBadSince is what every since that names neither a tag the repository
 // holds nor a date is (errors.Is), so the verb refuses it as a range it was
 // not given.
@@ -95,7 +109,11 @@ func resolveRange(ctx context.Context, repoRoot, since string) (Range, error) {
 			return Range{}, err
 		}
 		if r.From, err = tagCommit(ctx, repoRoot, tag); err != nil {
-			return Range{}, masked("reading the commit of the release tag "+termsafe.Sanitize(boundText(tag, maxTextBytes)), err)
+			// git describes an annotated tag by the name stored inside it,
+			// so a tag whose ref was renamed is described under a name no
+			// ref holds: the person names the range, as with no release tag.
+			return Range{}, &releaseTagError{fmt.Sprintf("the last release tag git describes, %s, names no tag this repository holds (an annotated tag whose ref was renamed is described by the name stored inside it), so there is no range to list by default; name where to start with --since <tag|YYYY-MM-DD>",
+				termsafe.Sanitize(boundText(tag, maxTextBytes)))}
 		}
 		r.Since = tag
 	case dateRe.MatchString(since):
@@ -223,13 +241,23 @@ func commitOf(ctx context.Context, repoRoot, ref string) (string, error) {
 }
 
 // tagCommit is the commit the tag name points at, the name held to a ref's
-// shape under refs/tags/ first, so it is never read as anything else.
+// shape under refs/tags/ first and then looked up as that exact ref (git
+// show-ref --verify), so it is never read as anything else: rev-parse would
+// take a name no ref holds that ends in -g and hex, as git describe prints,
+// for the commit the hex names. The ref's object is then peeled by its full
+// name.
 func tagCommit(ctx context.Context, repoRoot, name string) (string, error) {
 	if name == "" || strings.HasPrefix(name, "-") {
 		return "", errors.New("not a tag name")
 	}
-	if _, err := storedText(ctx, repoRoot, refCap, "check-ref-format", "refs/tags/"+name); err != nil {
+	ref := "refs/tags/" + name
+	if _, err := storedText(ctx, repoRoot, refCap, "check-ref-format", ref); err != nil {
 		return "", errors.New("not a tag name")
 	}
-	return commitOf(ctx, repoRoot, "refs/tags/"+name)
+	out, err := storedText(ctx, repoRoot, refCap, "show-ref", "--verify", ref)
+	oid, got, ok := strings.Cut(strings.TrimSpace(out), " ")
+	if err != nil || !ok || got != ref || !gitutil.IsFullSHA(oid) {
+		return "", errors.New("no tag of that name")
+	}
+	return commitOf(ctx, repoRoot, oid)
 }

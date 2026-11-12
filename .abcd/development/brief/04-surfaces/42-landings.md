@@ -23,8 +23,12 @@ in the local tier.
 
 Bare, the verb lists the rows since the last release tag the tip reaches; a
 flag names another start, a tag or a date, and with no release tag and no start
-named it refuses at exit 2, naming what to give. A failed read of the tags is
-not taken for no tag: it exits 1, as unreadable history does. Named one commit,
+named it refuses at exit 2, naming what to give, as it does when the tag git
+describes names no tag the repository holds (an annotated tag whose ref was
+renamed is described by the name stored inside it). A failed read of the tags
+is not taken for no tag: it exits 1, as unreadable history does. A tag is
+looked up as that exact ref, never read as the commit a name in the shape git
+describe prints would name. Named one commit,
 it traces that commit instead.
 
 ## The rows
@@ -41,13 +45,20 @@ request the forge's answer was not read for is unattended in every mode.
 
 The text says what the machine form carries. Each row's first line holds the
 commit, the pull request, the class, the rule or the committer name git holds
-for a person's push, the lane kind, the approval and where it was read, the
-issues and intents the row resolves and delivers, its mode, the unattended mark,
-and the commit that reverts it where one does; the next says when it landed,
-the head it merged, where its rule was read and who assisted. Under them come
-what the forge said against the pull request the subject names, why the forge's
-answer was not read, and each revert line the row's commits carry, with the row
-it marks or why it marks none. Then come the notes (how the range was found, why
+for a person's push, the lane kind, the approval, where it was read and whether
+one was seen, up to eight of the issues and intents the row resolves and
+delivers, its mode, the unattended mark, and the commit that reverts it where
+one does; the next says when it landed, the head it merged, where its rule was
+read and up to eight of the values saying who assisted. Under them come, never
+capped, what the forge said against the pull request the subject names and why
+the forge's answer was not read; then the revert lines the row's commits carry,
+each with the row it marks or why it marks none: those that mark no row first,
+the untraceable ones before the rest, up to sixteen, then up to eight that mark
+a row, then how many more of each. A row can carry many lines that mark no row,
+one for each of its commits that reads as git's revert and names nothing it
+resolves and up to 64 for each commit's message or pull request body, so they
+have a cap of their own, and no line that marks a row is printed while one that
+marks none is held back. Then come the notes (how the range was found, why
 the forge was not read for some row, why an answer was not kept, why a first
 parent's mode could not be read) and the tip read. The machine form prints the
 reader's listing with the same rows and stable keys. A filter keeps the
@@ -72,9 +83,8 @@ The committer name, the forge's logins and failure text, the lane, the ids, a
 revert line's names and the notes carry text someone typed. The reader masks
 each for a terminal and bounds it where it reads it, and the render masks every
 value it prints again, cuts each field at 200 bytes and each note at 600, and
-prints at most eight of a row's ids, eight of its assisting values and eight of
-its revert lines, then how many more, so one row's text is bounded whatever the
-reader hands it. The machine form writes the runes the terminal mask masks as
+caps a row's lists as the rows section says, each then saying how many more, so
+one row's text is bounded whatever the reader hands it. The machine form writes the runes the terminal mask masks as
 its own escapes. The number of rows is bounded only by the history the reader
 takes, whose log it refuses whole past 64 MiB.
 

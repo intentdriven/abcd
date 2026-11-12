@@ -4564,19 +4564,25 @@ it, with its pull request, its class (person-approved, drain, automatic or
 person-push), the rule that admitted it (a drain rule record by id, or
 facilitator.mode as the first parent committed it), the lane kind its branch's
 Admitted-by: trailer names, the approval it rests on and where that was read
-(forge, local tier, none seen, forge unread), the issues and intents it
-resolves and delivers, its mode, whether it is unattended, and the commit that
-reverts it. Under a row come what the forge said against the pull request its
-subject names, why the forge's answer was not read, and each revert line its
-commits carry with the row it marks or why it marks none. After the rows come
-the notes (how the range was found, why the forge was not read for some row,
-why an answer was not kept, why a first parent's mode could not be read) and
-the tip read.
+(forge, local tier, none seen, forge unread) and whether one was seen, up to
+eight of the issues and intents it resolves and delivers, its mode, whether it
+is unattended, and the commit that reverts it; then when it landed, the head
+it merged, where its rule was read and up to eight Assisted-by: values. Under
+a row come, never capped, what the forge said against the pull request its
+subject names and why the forge's answer was not read; then its revert lines,
+each with the row it marks or why it marks none: up to sixteen that mark no
+row first (the untraceable ones before the rest), then up to eight that mark
+one, then how many more of each. Every capped list says how many more it
+holds; --json keeps them all. After the rows come the notes (how the range was
+found, why the forge was not read for some row, why an answer was not kept,
+why a first parent's mode could not be read) and the tip read.
 
 The range runs from --since, a tag or a date YYYY-MM-DD (taken as the first
 first-parent commit at or after it), to the default branch's tip; with no
 --since it starts after the last release tag (v*) the tip reaches, and with
-no such tag the verb refuses, naming the flag. --unattended keeps the rows no
+no such tag, or one git describes by a name no tag holds (an annotated tag
+whose ref was renamed), the verb refuses, naming the flag. A tag is looked up
+as that exact ref. --unattended keeps the rows no
 evidence places with a person. --reverted lists the rows a later commit
 reverts, grouped by the rule that admitted them, each group with a count, and
 the rows carrying an untraceable revert in a group of their own. The two

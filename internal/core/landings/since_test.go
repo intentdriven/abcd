@@ -229,3 +229,31 @@ func TestAFailedReadOfTheTagsIsNotNoReleaseTag(t *testing.T) {
 		})
 	}
 }
+
+// TestARenamedReleaseTagNamesTheFlag: git describes an annotated tag by the
+// name stored inside it, so a release tag whose ref was renamed is described
+// under a name no ref holds. That is a range the person must name, as with no
+// release tag, and the refusal says so; a failed read of the tag list stays a
+// failed read (TestAFailedReadOfTheTagsIsNotNoReleaseTag).
+func TestARenamedReleaseTagNamesTheFlag(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Commit("chore: one")
+	r.Git("tag", "-a", "v1.0.0", "-m", "release")
+	r.Git("update-ref", "refs/tags/v2.0.0", "refs/tags/v1.0.0")
+	r.Git("update-ref", "-d", "refs/tags/v1.0.0")
+	r.Commit("chore: two")
+	_, err := Resolve(t.Context(), r.Root(), "")
+	if !errors.Is(err, ErrReleaseTagUnnamed) || !strings.Contains(err.Error(), "--since") || !strings.Contains(err.Error(), "v1.0.0") {
+		t.Fatalf("resolve() over a renamed release tag = %v", err)
+	}
+	// The name describe printed, and any like it, is no tag: rev-parse would
+	// read its -g and hex as the commit they name.
+	for _, since := range []string{"v1.0.0-1-g" + r.Git("rev-parse", "HEAD"), "v9-1-g" + r.Git("rev-parse", "HEAD")[:12]} {
+		if _, err := Resolve(t.Context(), r.Root(), since); !errors.Is(err, ErrBadSince) {
+			t.Fatalf("resolve(%q) = %v, want a refused since", since, err)
+		}
+	}
+	if got, err := Resolve(t.Context(), r.Root(), "v2.0.0"); err != nil || got.From != r.Git("rev-parse", "HEAD~1") {
+		t.Fatalf("resolve(v2.0.0) = %+v, %v", got, err)
+	}
+}

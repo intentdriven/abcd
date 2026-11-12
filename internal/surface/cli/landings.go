@@ -30,14 +30,18 @@ var landingsForge landing.ForgeCall
 // and whatever the reader hands it: every value a row prints is cut at
 // landingsFieldBytes and every note at landingsNoteBytes; a row prints at most
 // landingsMaxIDs of the ids it resolves and delivers, and of its Assisted-by:
-// values, and at most landingsMaxRevertLines of its revert lines, each list
+// values, and of its revert lines at most landingsMaxUnmarkedLines that mark
+// no row, printed first, and landingsMaxRevertLines that mark one, each list
 // then saying how many more it holds. So one row's text is bounded however
-// many ids and lines the row carries; --json keeps them all.
+// many ids and lines the row carries; --json keeps them all. Nothing that says
+// why a row is unattended or why the forge's answer was not read is capped:
+// those are one line each.
 const (
-	landingsFieldBytes     = 200
-	landingsNoteBytes      = 600
-	landingsMaxIDs         = 8
-	landingsMaxRevertLines = 8
+	landingsFieldBytes       = 200
+	landingsNoteBytes        = 600
+	landingsMaxIDs           = 8
+	landingsMaxRevertLines   = 8
+	landingsMaxUnmarkedLines = 16
 )
 
 // landingsOutput is the listing's --json: the reader's Listing, its rows kept
@@ -65,18 +69,24 @@ func newLandingsCommand(asJSON *bool) *cobra.Command {
 			"person-push), the rule that admitted it (a drain rule record by id, or\n" +
 			"facilitator.mode as the first parent committed it), the lane kind its branch's\n" +
 			"Admitted-by: trailer names, the approval it rests on and where that was read\n" +
-			"(forge, local tier, none seen, forge unread), the issues and intents it\n" +
-			"resolves and delivers, its mode, whether it is unattended, and the commit that\n" +
-			"reverts it. Under a row come what the forge said against the pull request its\n" +
-			"subject names, why the forge's answer was not read, and each revert line its\n" +
-			"commits carry with the row it marks or why it marks none. After the rows come\n" +
-			"the notes (how the range was found, why the forge was not read for some row,\n" +
-			"why an answer was not kept, why a first parent's mode could not be read) and\n" +
-			"the tip read.\n\n" +
+			"(forge, local tier, none seen, forge unread) and whether one was seen, up to\n" +
+			"eight of the issues and intents it resolves and delivers, its mode, whether it\n" +
+			"is unattended, and the commit that reverts it; then when it landed, the head\n" +
+			"it merged, where its rule was read and up to eight Assisted-by: values. Under\n" +
+			"a row come, never capped, what the forge said against the pull request its\n" +
+			"subject names and why the forge's answer was not read; then its revert lines,\n" +
+			"each with the row it marks or why it marks none: up to sixteen that mark no\n" +
+			"row first (the untraceable ones before the rest), then up to eight that mark\n" +
+			"one, then how many more of each. Every capped list says how many more it\n" +
+			"holds; --json keeps them all. After the rows come the notes (how the range was\n" +
+			"found, why the forge was not read for some row, why an answer was not kept,\n" +
+			"why a first parent's mode could not be read) and the tip read.\n\n" +
 			"The range runs from --since, a tag or a date YYYY-MM-DD (taken as the first\n" +
 			"first-parent commit at or after it), to the default branch's tip; with no\n" +
 			"--since it starts after the last release tag (v*) the tip reaches, and with\n" +
-			"no such tag the verb refuses, naming the flag. --unattended keeps the rows no\n" +
+			"no such tag, or one git describes by a name no tag holds (an annotated tag\n" +
+			"whose ref was renamed), the verb refuses, naming the flag. A tag is looked up\n" +
+			"as that exact ref. --unattended keeps the rows no\n" +
 			"evidence places with a person. --reverted lists the rows a later commit\n" +
 			"reverts, grouped by the rule that admitted them, each group with a count, and\n" +
 			"the rows carrying an untraceable revert in a group of their own. The two\n" +
@@ -195,7 +205,7 @@ func runTrace(ctx context.Context, cmd *cobra.Command, asJSON bool, root, name s
 // masked either way.
 func landingsFailed(err error) error {
 	msg := "abcd landings: " + landingsNote(err.Error())
-	if errors.Is(err, landings.ErrNoReleaseTag) || errors.Is(err, landings.ErrNoDefaultBranch) || errors.Is(err, landings.ErrBadSince) {
+	if errors.Is(err, landings.ErrNoReleaseTag) || errors.Is(err, landings.ErrReleaseTagUnnamed) || errors.Is(err, landings.ErrNoDefaultBranch) || errors.Is(err, landings.ErrBadSince) {
 		return &exitError{Code: 2, Msg: msg + " (nothing read)"}
 	}
 	return &exitError{Code: 1, Msg: msg}
@@ -303,14 +313,15 @@ func landingsList(vals []string, max int, sep string) string {
 
 // landingRow is one row as its lines. The first is the row: commit, pull
 // request, class, rule (or a person's push's committer name, as git holds
-// it), lane kind, approval and where it was read, the ids it resolves and
-// delivers, its mode, the unattended mark, and the commit that reverts it.
-// The second says when it landed and what it was read from: its committer
-// time, the head it merged, where its rule was read, and its Assisted-by:
-// values. Then, each on its own line, what the forge said against the pull
-// request its subject names, why the forge's answer was not read, and each
-// revert line its commits carry with the row it marks or why it marks none.
-// Every value is masked and clipped, and the lists capped.
+// it), lane kind, approval, where it was read and whether one was seen, the
+// ids it resolves and delivers, its mode, the unattended mark, and the commit
+// that reverts it. The second says when it landed and what it was read from:
+// its committer time, the head it merged, where its rule was read, and its
+// Assisted-by: values. Then, each on its own line, what the forge said against
+// the pull request its subject names, why the forge's answer was not read,
+// and the revert lines its commits carry with the row each marks or why it
+// marks none (landingsRevertLines). Every value is masked and clipped, and the
+// lists capped.
 func landingRow(r landings.Row) []string {
 	pr := "-"
 	if r.PR > 0 {
@@ -322,6 +333,9 @@ func landingRow(r landings.Row) []string {
 	}
 	if !r.Approval.At.IsZero() {
 		approval += ", " + r.Approval.At.UTC().Format(time.RFC3339)
+	}
+	if r.Approval.Seen {
+		approval += ", seen"
 	}
 	rule := landingsOrDash(r.Rule.String())
 	committerIsRule := r.Rule.String() == "" && r.Committer != ""
@@ -365,13 +379,43 @@ func landingRow(r landings.Row) []string {
 	if r.ForgeUnreadable != "" {
 		lines = append(lines, "  forge unread: "+landingsNote(r.ForgeUnreadable))
 	}
-	for _, x := range r.Reverts[:min(landingsMaxRevertLines, len(r.Reverts))] {
-		lines = append(lines, "  "+landingsRevertLine(x))
-	}
-	if len(r.Reverts) > landingsMaxRevertLines {
-		lines = append(lines, fmt.Sprintf("  and %d more revert lines", len(r.Reverts)-landingsMaxRevertLines))
+	for _, l := range landingsRevertLines(r.Reverts) {
+		lines = append(lines, "  "+l)
 	}
 	return lines
+}
+
+// landingsRevertLines is a row's revert lines as the text prints them. The
+// lines that mark no row come first, the untraceable ones (why the row is in
+// the untraceable group) before the rest, up to landingsMaxUnmarkedLines;
+// then the lines that mark a row, up to landingsMaxRevertLines; then, when
+// either cap left lines out, how many, and how many of those mark a row and
+// how many do not. A row can carry many lines that mark no row (one for each
+// of its commits whose subject reads as git's revert, and up to 64 for each
+// commit's or body's revert lines), so they have a cap of their own, and no
+// line that marks one is printed while a line that marks none is held back.
+func landingsRevertLines(xs []landings.RevertLine) []string {
+	var untraceable, unmarked, marked []landings.RevertLine
+	for _, x := range xs {
+		switch {
+		case x.Row != "":
+			marked = append(marked, x)
+		case x.Kind == landings.RevertUntraceable:
+			untraceable = append(untraceable, x)
+		default:
+			unmarked = append(unmarked, x)
+		}
+	}
+	none := append(untraceable, unmarked...)
+	shownNone, shownMarked := min(len(none), landingsMaxUnmarkedLines), min(len(marked), landingsMaxRevertLines)
+	var out []string
+	for _, x := range append(none[:shownNone:shownNone], marked[:shownMarked]...) {
+		out = append(out, landingsRevertLine(x))
+	}
+	if hiddenNone, hiddenMarked := len(none)-shownNone, len(marked)-shownMarked; hiddenNone+hiddenMarked > 0 {
+		out = append(out, fmt.Sprintf("and %d more revert lines: %d marking a row, %d with no row marked", hiddenNone+hiddenMarked, hiddenMarked, hiddenNone))
+	}
+	return out
 }
 
 // landingsRevertLine is one revert line: its kind, the commit carrying it,

@@ -274,7 +274,11 @@ func TestLandingsTextAndJSONHoldTheSameRows(t *testing.T) {
 	if !slices.Equal(fromText, fromJSON) || !slices.Equal(landingsCommits(l.Rows), []string{p, m2, m1}) {
 		t.Fatalf("text rows %v, json rows %v\n%s", fromText, fromJSON, text)
 	}
-	if !strings.Contains(text, "#1  person-approved  facilitator.mode: auto") || !strings.Contains(text, "approval forge: alice-reviewer, 2026-11-01T09:00:00Z  iss-1") ||
+	approved := regexp.MustCompile(`(?m)^` + m1[:12] + `  .*$`).FindString(text)
+	if approved == "" || strings.Contains(approved, "unattended") {
+		t.Fatalf("the person-approved row's line is missing or carries the unattended mark:\n%s", text)
+	}
+	if !strings.Contains(text, "#1  person-approved  facilitator.mode: auto") || !strings.Contains(text, "approval forge: alice-reviewer, 2026-11-01T09:00:00Z, seen  iss-1") ||
 		!strings.Contains(text, "#2  automatic  facilitator.mode: auto  lane unknown  approval none seen") {
 		t.Fatalf("the rows' text:\n%s", text)
 	}
@@ -609,10 +613,8 @@ func landingsAllRow() (landings.Row, map[string][]string) {
 		"Commit": {short("a")}, "When": {"landed 2026-11-02T03:04:05Z"}, "PR": {"#4242"}, "MergedHead": {"merged head " + short("b")},
 		"Committer": {"committer Casey Committer"}, "Class": {"  drain  "},
 		"Rule.Kind": {"drain adr-77"}, "Rule.ID": {"drain adr-77"}, "Rule.Path": {"rule read from .abcd/rule-path.md"}, "Rule.At": {"at " + short("d")},
-		"Lane": {"lane lane-kind-x"},
-		// Seen is the source's word: forge and local tier are an approval
-		// seen, none seen and forge unread are not.
-		"Approval.Seen": {"approval forge"}, "Approval.By": {"approval forge: reviewer-login"}, "Approval.At": {"reviewer-login, 2026-11-01T09:08:07Z"}, "Approval.Source": {"approval forge"},
+		"Lane":          {"lane lane-kind-x"},
+		"Approval.Seen": {"2026-11-01T09:08:07Z, seen"}, "Approval.By": {"approval forge: reviewer-login"}, "Approval.At": {"reviewer-login, 2026-11-01T09:08:07Z"}, "Approval.Source": {"approval forge"},
 		"Mode": {"mode mode-y"}, "Resolves": {"iss-11"}, "Delivers": {"itd-22"}, "AssistedBy": {"assisted by Vendor:model-9"},
 		"ForgeSays": {"forge says: the forge says it merged as another commit"}, "ForgeUnreadable": {"forge unread: the forge timed out for this one"},
 		"Unattended":  {"  unattended"},
@@ -623,11 +625,70 @@ func landingsAllRow() (landings.Row, map[string][]string) {
 	}
 }
 
-// landingsCovers fails t unless want names every leaf path of typ (so a field
-// added later must be given its text) and text holds every value want names.
-func landingsCovers(t *testing.T, what string, typ reflect.Type, want map[string][]string, text string, stop ...reflect.Type) {
+// landingsLeaves is every value the dotted path names under v: a pointer is
+// followed, and a slice's every element.
+func landingsLeaves(v reflect.Value, path []string) []reflect.Value {
+	switch {
+	case v.Kind() == reflect.Pointer:
+		if v.IsNil() {
+			return nil
+		}
+		return landingsLeaves(v.Elem(), path)
+	case len(path) == 0:
+		return []reflect.Value{v}
+	case v.Kind() == reflect.Slice:
+		var out []reflect.Value
+		for i := range v.Len() {
+			out = append(out, landingsLeaves(v.Index(i), path)...)
+		}
+		return out
+	}
+	return landingsLeaves(v.FieldByName(path[0]), path[1:])
+}
+
+// landingsChange changes v to another value of its kind: a string gains a
+// leading "Z" (so a commit's first twelve characters change too), an int one
+// more, a bool its other state, a time an hour; a struct, pointer or slice has
+// each of its values changed. A kind it does not know fails t.
+func landingsChange(t *testing.T, v reflect.Value) {
 	t.Helper()
-	paths := landingsFieldPaths(typ, "", stop...)
+	switch v.Kind() {
+	case reflect.String:
+		v.SetString("Z" + v.String())
+	case reflect.Int:
+		v.SetInt(v.Int() + 1)
+	case reflect.Bool:
+		v.SetBool(!v.Bool())
+	case reflect.Pointer:
+		if !v.IsNil() {
+			landingsChange(t, v.Elem())
+		}
+	case reflect.Slice:
+		for i := range v.Len() {
+			landingsChange(t, v.Index(i))
+		}
+	case reflect.Struct:
+		if v.Type() == reflect.TypeFor[time.Time]() {
+			v.Set(reflect.ValueOf(v.Interface().(time.Time).Add(time.Hour)))
+			return
+		}
+		for i := range v.NumField() {
+			landingsChange(t, v.Field(i))
+		}
+	default:
+		t.Fatalf("landingsChange: a value of kind %s", v.Kind())
+	}
+}
+
+// landingsCovers fails t unless want names every leaf path of T (so a field
+// added later must be given its text), render(build()) holds every text want
+// names, and changing any one leaf of a fresh build() changes what render
+// prints, so a field's text is its own and not text the output holds for
+// another reason. A bool leaf set false prints none of the texts want names
+// for it, so a mark printed on every row fails too.
+func landingsCovers[T any](t *testing.T, what string, build func() T, render func(T) string, want map[string][]string, stop ...reflect.Type) {
+	t.Helper()
+	paths := landingsFieldPaths(reflect.TypeFor[T](), "", stop...)
 	for _, p := range paths {
 		if _, ok := want[p]; !ok {
 			t.Fatalf("%s: the field %s is not given the text it prints", what, p)
@@ -636,10 +697,31 @@ func landingsCovers(t *testing.T, what string, typ reflect.Type, want map[string
 	if len(want) != len(paths) {
 		t.Fatalf("%s: the test names %d fields, the type has %d (%v)", what, len(want), len(paths), paths)
 	}
+	text := render(build())
 	for p, vals := range want {
 		for _, v := range vals {
 			if !strings.Contains(text, v) {
 				t.Fatalf("%s: the text does not print %s (%q):\n%s", what, p, v, text)
+			}
+		}
+	}
+	for _, p := range paths {
+		v := build()
+		leaves := landingsLeaves(reflect.ValueOf(&v).Elem(), strings.Split(p, "."))
+		if len(leaves) == 0 {
+			t.Fatalf("%s: the built value holds no %s to change", what, p)
+		}
+		wasTrue := leaves[0].Kind() == reflect.Bool && leaves[0].Bool()
+		for _, l := range leaves {
+			landingsChange(t, l)
+		}
+		got := render(v)
+		if got == text {
+			t.Fatalf("%s: the text does not change when %s does:\n%s", what, p, text)
+		}
+		for _, s := range want[p] {
+			if wasTrue && strings.Contains(got, s) {
+				t.Fatalf("%s: with %s false the text still prints %q:\n%s", what, p, s, got)
 			}
 		}
 	}
@@ -652,44 +734,59 @@ func landingsCovers(t *testing.T, what string, typ reflect.Type, want map[string
 // or why it marks none. Each struct's fields are walked, so one added later
 // fails here until it is printed.
 func TestLandingsTextSaysWhatTheJSONSays(t *testing.T) {
+	buildRow := func() landings.Row { r, _ := landingsAllRow(); return r }
 	row, want := landingsAllRow()
 	text := strings.Join(landingRow(row), "\n")
-	landingsCovers(t, "a row", reflect.TypeFor[landings.Row](), want, text)
+	landingsCovers(t, "a row", buildRow, func(r landings.Row) string { return strings.Join(landingRow(r), "\n") }, want)
 
 	rowType := reflect.TypeFor[landings.Row]()
 	sha := func(c string) string { return strings.Repeat(c, 40) }
-	l := landings.Listing{Tip: "tip-ref", From: sha("6"), To: sha("7"), Since: "since-tag", SinceNote: "a since note",
-		Rows: []landings.Row{row}, ForgeUnread: "a forge note", CacheUnwritten: "a cache note", ModeUnread: "a mode note"}
-	var b bytes.Buffer
-	renderLandings(&b, landingsView(l, false, false), false, false)
-	landingsCovers(t, "the listing", reflect.TypeFor[landings.Listing](), map[string][]string{
+	buildListing := func() landings.Listing {
+		return landings.Listing{Tip: "tip-ref", From: sha("6"), To: sha("7"), Since: "since-tag", SinceNote: "a since note",
+			Rows: []landings.Row{buildRow()}, ForgeUnread: "a forge note", CacheUnwritten: "a cache note", ModeUnread: "a mode note"}
+	}
+	render := func(f func(io.Writer)) string {
+		var b bytes.Buffer
+		f(&b)
+		return b.String()
+	}
+	landingsCovers(t, "the listing", buildListing, func(l landings.Listing) string {
+		return render(func(w io.Writer) { renderLandings(w, landingsView(l, false, false), false, false) })
+	}, map[string][]string{
 		"Tip": {"read tip-ref"}, "From": {"after " + sha("6")[:12]}, "To": {"at " + sha("7")[:12]}, "Since": {"since since-tag"},
 		"SinceNote": {"range: a since note"}, "Rows": {text}, "ForgeUnread": {"forge: a forge note"},
 		"CacheUnwritten": {"cache: a cache note"}, "ModeUnread": {"mode: a mode note"},
-	}, b.String(), rowType)
+	}, rowType)
 
-	b.Reset()
-	g := landings.RevertGroup{Rule: "group-rule", Count: 1, Rows: []landings.Row{row}}
-	renderLandings(&b, landingsOutput{Listing: l, Groups: []landings.RevertGroup{g}}, false, true)
 	indented := strings.ReplaceAll("  "+text, "\n", "\n  ")
-	landingsCovers(t, "a group", reflect.TypeFor[landings.RevertGroup](), map[string][]string{
+	landingsCovers(t, "a group", func() landings.RevertGroup {
+		return landings.RevertGroup{Rule: "group-rule", Count: 1, Rows: []landings.Row{buildRow()}}
+	}, func(g landings.RevertGroup) string {
+		return render(func(w io.Writer) {
+			renderLandings(w, landingsOutput{Listing: buildListing(), Groups: []landings.RevertGroup{g}}, false, true)
+		})
+	}, map[string][]string{
 		"Rule": {"group-rule  1\n"}, "Count": {"group-rule  1\n"}, "Rows": {indented},
-	}, b.String(), rowType)
+	}, rowType)
 
-	b.Reset()
-	other := row
-	other.Commit = sha("8")
-	tr := landings.Trace{Commit: sha("c"), Row: &row, Reverts: []landings.Row{other}, Tip: "tip-ref", To: sha("7"), From: sha("6"),
-		RangeNote: "a range note", ForgeUnread: "a forge note", CacheUnwritten: "a cache note", ModeUnread: "a mode note"}
-	renderTrace(&b, "c", tr)
-	traced := b.String()
-	b.Reset()
-	renderTrace(&b, "c", landings.Trace{Says: "is ambiguous here", Tip: "tip-ref", To: sha("7")})
-	landingsCovers(t, "a trace", reflect.TypeFor[landings.Trace](), map[string][]string{
+	// The trace's Says is empty here, so its row prints; the second render
+	// says, and prints the name it was given, as a trace that names no commit
+	// does.
+	landingsCovers(t, "a trace", func() landings.Trace {
+		r, other := buildRow(), buildRow()
+		other.Commit = sha("8")
+		return landings.Trace{Commit: sha("c"), Row: &r, Reverts: []landings.Row{other}, Tip: "tip-ref", To: sha("7"), From: sha("6"),
+			RangeNote: "a range note", ForgeUnread: "a forge note", CacheUnwritten: "a cache note", ModeUnread: "a mode note"}
+	}, func(tr landings.Trace) string {
+		return render(func(w io.Writer) {
+			renderTrace(w, "c", tr)
+			renderTrace(w, "c", landings.Trace{Says: "is ambiguous here", Tip: tr.Tip, To: tr.To})
+		})
+	}, map[string][]string{
 		"Commit": {sha("c")[:12] + " landed in:"}, "Says": {"c: is ambiguous here"}, "Row": {indented},
 		"Reverts": {"it reverts:\n  " + sha("8")[:12]}, "Tip": {"read tip-ref"}, "To": {"at " + sha("7")[:12]}, "From": {"listed after " + sha("6")[:12]},
 		"RangeNote": {"range: a range note"}, "ForgeUnread": {"forge: a forge note"}, "CacheUnwritten": {"cache: a cache note"}, "ModeUnread": {"mode: a mode note"},
-	}, traced+b.String(), rowType)
+	}, rowType)
 }
 
 // TestLandingsTextNamesWhyARevertIsUntraceable: a trace of a reverting
@@ -715,9 +812,10 @@ func TestLandingsTextNamesWhyARevertIsUntraceable(t *testing.T) {
 }
 
 // TestLandingsRowTextIsBounded: a row prints at most landingsMaxIDs of its
-// ids and of its Assisted-by: values, and landingsMaxRevertLines of its
-// revert lines, then how many more, so a row carrying thousands prints no
-// more than one carrying fifty but for the counts' digits.
+// ids and of its Assisted-by: values, landingsMaxUnmarkedLines of its revert
+// lines that mark no row and landingsMaxRevertLines of those that mark one,
+// then how many more of each, so a row carrying thousands prints no more than
+// one carrying fifty but for the counts' digits.
 func TestLandingsRowTextIsBounded(t *testing.T) {
 	rowOf := func(n int) landings.Row {
 		r, _ := landingsAllRow()
@@ -726,24 +824,71 @@ func TestLandingsRowTextIsBounded(t *testing.T) {
 			r.Resolves = append(r.Resolves, fmt.Sprintf("iss-%d", 1000000+i))
 			r.Delivers = append(r.Delivers, fmt.Sprintf("itd-%d", 1000000+i))
 			r.AssistedBy = append(r.AssistedBy, fmt.Sprintf("Vendor:model-%d", 1000000+i))
-			r.Reverts = append(r.Reverts, landings.RevertLine{Commit: fmt.Sprintf("%040x", i), Kind: landings.RevertGit,
-				Names: fmt.Sprintf("%040x", i), Unmarked: "names a commit outside the listed range"})
+			r.Reverts = append(r.Reverts,
+				landings.RevertLine{Commit: fmt.Sprintf("%040x", i), Kind: landings.RevertGit, Names: fmt.Sprintf("%040x", i), Row: fmt.Sprintf("%040x", i)},
+				landings.RevertLine{Commit: fmt.Sprintf("%040x", i), Kind: landings.RevertGit, Names: fmt.Sprintf("%040x", i), Unmarked: "names a commit outside the listed range"})
 		}
 		return r
 	}
 	small := strings.Join(landingRow(rowOf(50)), "\n")
 	big := strings.Join(landingRow(rowOf(5000)), "\n")
+	hidden := 2*5000 - landingsMaxRevertLines - landingsMaxUnmarkedLines
 	for _, more := range []string{fmt.Sprintf("and %d more", 2*5000-landingsMaxIDs), fmt.Sprintf("and %d more", 5000-landingsMaxIDs),
-		fmt.Sprintf("and %d more revert lines", 5000-landingsMaxRevertLines)} {
+		fmt.Sprintf("and %d more revert lines: %d marking a row, %d with no row marked", hidden, 5000-landingsMaxRevertLines, 5000-landingsMaxUnmarkedLines)} {
 		if !strings.Contains(big, more) {
 			t.Fatalf("the row does not say %q:\n%s", more, big)
 		}
 	}
-	if d := len(big) - len(small); d < 0 || d > 6 {
+	if d := len(big) - len(small); d < 0 || d > 10 {
 		t.Fatalf("a row of 5000 ids and lines prints %d bytes, one of 50 prints %d", len(big), len(small))
 	}
-	if n := strings.Count(big, "\n  reverts ("); n != landingsMaxRevertLines {
+	if n := strings.Count(big, "\n  reverts ("); n != landingsMaxRevertLines+landingsMaxUnmarkedLines {
 		t.Fatalf("the row prints %d revert lines", n)
+	}
+}
+
+// TestLandingsNoCapHidesWhyARevertMarksNoRow: a row whose ninth and later
+// revert lines are the ones that mark no row prints every one of them, the
+// untraceable one first, before the lines that mark a row, in a listing,
+// under the reverted filter (where the untraceable line is why the row is in
+// its group) and in a trace; and what the cap hides is counted by whether it
+// marks a row.
+func TestLandingsNoCapHidesWhyARevertMarksNoRow(t *testing.T) {
+	r, _ := landingsAllRow()
+	r.Reverts = nil
+	for i := range landingsMaxRevertLines + 3 {
+		r.Reverts = append(r.Reverts, landings.RevertLine{Commit: fmt.Sprintf("%040x", i), Kind: landings.RevertGit,
+			Names: fmt.Sprintf("%040x", i), Target: fmt.Sprintf("%040x", i+100), Row: fmt.Sprintf("%040x", i+200)})
+	}
+	reasons := []string{"reason one: names a commit outside the listed range", "reason two: 3 more revert lines past the 64 a commit is read for"}
+	for _, why := range reasons {
+		r.Reverts = append(r.Reverts, landings.RevertLine{Commit: strings.Repeat("e", 40), Kind: landings.RevertGit, Unmarked: why})
+	}
+	untraceable := "reason three: its subject reads as git's revert, but no line names what it reverts"
+	r.Reverts = append(r.Reverts, landings.RevertLine{Commit: strings.Repeat("f", 40), Kind: landings.RevertUntraceable, Unmarked: untraceable})
+	reasons = append(reasons, untraceable)
+
+	l := landings.Listing{Tip: "main", To: strings.Repeat("7", 40), Rows: []landings.Row{r}}
+	var listing, grouped, traced bytes.Buffer
+	renderLandings(&listing, landingsView(l, false, false), false, false)
+	view := landingsView(l, false, true)
+	renderLandings(&grouped, view, false, true)
+	renderTrace(&traced, "c", landings.Trace{Commit: strings.Repeat("c", 40), Row: &r, Reverts: []landings.Row{r}, Tip: "main", To: l.To})
+	if len(view.Groups) == 0 || view.Groups[len(view.Groups)-1].Rule != landings.GroupUntraceable {
+		t.Fatalf("the row is not in the untraceable group: %+v", view.Groups)
+	}
+	for mode, text := range map[string]string{"a listing": listing.String(), "the reverted groups": grouped.String(), "a trace": traced.String()} {
+		for _, why := range reasons {
+			if !strings.Contains(text, "marks no row: "+why) {
+				t.Fatalf("%s does not print %q:\n%s", mode, why, text)
+			}
+		}
+		if u, first := strings.Index(text, untraceable), strings.Index(text, "marks no row: "+reasons[0]); u < 0 || u > first || first > strings.Index(text, ": marks row ") {
+			t.Fatalf("%s does not print the untraceable line, then the others marking no row, before those marking one:\n%s", mode, text)
+		}
+		if want := "and 3 more revert lines: 3 marking a row, 0 with no row marked"; !strings.Contains(text, want) {
+			t.Fatalf("%s does not say %q:\n%s", mode, want, text)
+		}
 	}
 }
 
@@ -757,8 +902,10 @@ var landingsMasked = []string{"\x1b", "\u009b", "\u202e", "\u200b", "\x07", "\x7
 
 // landingsFill sets every string v holds to s, every int to 7, every bool to
 // true and every time to one instant, giving each nil pointer and empty slice
-// one element first.
-func landingsFill(v reflect.Value, s string) {
+// one element first. A kind it does not know fails t, so a field of a kind
+// added later is not left unset and unchecked.
+func landingsFill(t *testing.T, v reflect.Value, s string) {
+	t.Helper()
 	switch v.Kind() {
 	case reflect.String:
 		v.SetString(s)
@@ -770,13 +917,13 @@ func landingsFill(v reflect.Value, s string) {
 		if v.IsNil() {
 			v.Set(reflect.New(v.Type().Elem()))
 		}
-		landingsFill(v.Elem(), s)
+		landingsFill(t, v.Elem(), s)
 	case reflect.Slice:
 		if v.Len() == 0 {
 			v.Set(reflect.MakeSlice(v.Type(), 1, 1))
 		}
 		for i := range v.Len() {
-			landingsFill(v.Index(i), s)
+			landingsFill(t, v.Index(i), s)
 		}
 	case reflect.Struct:
 		if v.Type() == reflect.TypeFor[time.Time]() {
@@ -784,14 +931,60 @@ func landingsFill(v reflect.Value, s string) {
 			return
 		}
 		for i := range v.NumField() {
-			landingsFill(v.Field(i), s)
+			landingsFill(t, v.Field(i), s)
 		}
+	default:
+		t.Fatalf("landingsFill: a field of kind %s %s is not filled", v.Kind(), v.Type())
 	}
 }
 
-// landingsCheckMasked fails t if text carries a masked rune raw, is not
-// UTF-8, or holds a line the hostile text's line break forged.
-func landingsCheckMasked(t *testing.T, mode, text string) {
+// landingsStrings is every string v holds, in the order landingsFill fills
+// them, each settable.
+func landingsStrings(v reflect.Value) []reflect.Value {
+	switch v.Kind() {
+	case reflect.String:
+		return []reflect.Value{v}
+	case reflect.Pointer:
+		if v.IsNil() {
+			return nil
+		}
+		return landingsStrings(v.Elem())
+	case reflect.Slice:
+		var out []reflect.Value
+		for i := range v.Len() {
+			out = append(out, landingsStrings(v.Index(i))...)
+		}
+		return out
+	case reflect.Struct:
+		if v.Type() == reflect.TypeFor[time.Time]() {
+			return nil
+		}
+		var out []reflect.Value
+		for i := range v.NumField() {
+			out = append(out, landingsStrings(v.Field(i))...)
+		}
+		return out
+	}
+	return nil
+}
+
+// landingsFilled is a T with every field filled with s by landingsFill, and
+// then its string number empty set to "" (none for empty < 0), and how many
+// strings it holds.
+func landingsFilled[T any](t *testing.T, s string, empty int) (T, int) {
+	t.Helper()
+	var v T
+	landingsFill(t, reflect.ValueOf(&v).Elem(), s)
+	strs := landingsStrings(reflect.ValueOf(&v).Elem())
+	if empty >= 0 {
+		strs[empty].SetString("")
+	}
+	return v, len(strs)
+}
+
+// landingsNoRaw fails t if text carries a masked rune raw, is not UTF-8, or
+// holds a line the hostile text's line break forged.
+func landingsNoRaw(t *testing.T, mode, text string) {
 	t.Helper()
 	if !utf8.ValidString(text) {
 		t.Fatalf("%s: the text is not UTF-8: %q", mode, text)
@@ -806,6 +999,13 @@ func landingsCheckMasked(t *testing.T, mode, text string) {
 			t.Fatalf("%s: a line was forged:\n%q", mode, text)
 		}
 	}
+}
+
+// landingsCheckMasked is landingsNoRaw, and fails t too unless the masked
+// hostile text is printed.
+func landingsCheckMasked(t *testing.T, mode, text string) {
+	t.Helper()
+	landingsNoRaw(t, mode, text)
 	if !strings.Contains(text, "x?[2J") {
 		t.Fatalf("%s: the masked text is not printed:\n%q", mode, text)
 	}
@@ -817,39 +1017,48 @@ func landingsCheckMasked(t *testing.T, mode, text string) {
 // and escape runes, reaches no output raw: not the listing, the unattended
 // filter, the reverted groups or the trace in text, whatever the reader
 // handed the render, and not --json, whose \u escapes are the mask there and
-// read back the same strings.
+// read back every string it was given. The text is checked again with each
+// string emptied in turn, so a value printed only when another is empty (a
+// person's push's committer where the rule would be, a revert line that marks
+// no row, a trace's name where it names no commit) is reached too, whatever
+// fields are added later.
 func TestLandingsRenderMasksEveryString(t *testing.T) {
-	var out landingsOutput
-	landingsFill(reflect.ValueOf(&out).Elem(), landingsHostile)
-	var tr landings.Trace
-	landingsFill(reflect.ValueOf(&tr).Elem(), landingsHostile)
 	text := func(f func(io.Writer)) string {
 		var b bytes.Buffer
 		f(&b)
 		return b.String()
 	}
-	views := map[string]landingsOutput{
-		"the listing":         landingsView(out.Listing, false, false),
-		"the unattended rows": landingsView(out.Listing, true, false),
-		"the reverted groups": landingsView(out.Listing, false, true),
-		"the groups handed":   out,
+	_, nOut := landingsFilled[landingsOutput](t, landingsHostile, -1)
+	for empty := -1; empty < nOut; empty++ {
+		out, _ := landingsFilled[landingsOutput](t, landingsHostile, empty)
+		views := map[string]landingsOutput{
+			"the listing":         landingsView(out.Listing, false, false),
+			"the unattended rows": landingsView(out.Listing, true, false),
+			"the reverted groups": landingsView(out.Listing, false, true),
+			"the groups handed":   out,
+		}
+		for mode, v := range views {
+			landingsCheckMasked(t, fmt.Sprintf("%s, string %d empty", mode, empty), text(func(w io.Writer) {
+				renderLandings(w, v, mode == "the unattended rows", mode != "the listing" && mode != "the unattended rows")
+			}))
+		}
+		if g := views["the reverted groups"].Groups; empty < 0 && len(g) == 0 {
+			t.Fatal("the filled listing groups no row")
+		}
 	}
-	for mode, v := range views {
-		landingsCheckMasked(t, mode, text(func(w io.Writer) {
-			renderLandings(w, v, mode == "the unattended rows", mode != "the listing" && mode != "the unattended rows")
-		}))
+	_, nTrace := landingsFilled[landings.Trace](t, landingsHostile, -1)
+	for empty := -1; empty < nTrace; empty++ {
+		tr, _ := landingsFilled[landings.Trace](t, landingsHostile, empty)
+		landingsCheckMasked(t, fmt.Sprintf("a trace that says, string %d empty", empty), text(func(w io.Writer) { renderTrace(w, landingsHostile, tr) }))
+		tr.Says = ""
+		landingsCheckMasked(t, fmt.Sprintf("a trace, string %d empty", empty), text(func(w io.Writer) { renderTrace(w, landingsHostile, tr) }))
 	}
-	if g := views["the reverted groups"].Groups; len(g) == 0 {
-		t.Fatal("the filled listing groups no row")
-	}
-	landingsCheckMasked(t, "a trace that says", text(func(w io.Writer) { renderTrace(w, landingsHostile, tr) }))
-	noSays := tr
-	noSays.Says = ""
-	landingsCheckMasked(t, "a trace", text(func(w io.Writer) { renderTrace(w, landingsHostile, noSays) }))
 
 	valid := strings.ToValidUTF8(landingsHostile, "\ufffd")
-	for mode, v := range map[string]any{"--json listing": views["the listing"], "--json unattended": views["the unattended rows"],
-		"--json reverted": views["the reverted groups"], "--json trace": tr} {
+	out, _ := landingsFilled[landingsOutput](t, landingsHostile, -1)
+	tr, _ := landingsFilled[landings.Trace](t, landingsHostile, -1)
+	for mode, v := range map[string]any{"--json listing": landingsView(out.Listing, false, false), "--json unattended": landingsView(out.Listing, true, false),
+		"--json reverted": landingsView(out.Listing, false, true), "--json trace": tr} {
 		var b bytes.Buffer
 		if err := landingsRender(&b, true, v, nil); err != nil {
 			t.Fatal(err)
@@ -859,9 +1068,21 @@ func TestLandingsRenderMasksEveryString(t *testing.T) {
 				t.Fatalf("%s carries %U raw:\n%s", mode, r, b.String())
 			}
 		}
-		var back map[string]any
-		if err := json.Unmarshal(b.Bytes(), &back); err != nil || back["tip"] != valid {
-			t.Fatalf("%s does not read back the string it was given: %v, %q", mode, err, back["tip"])
+		// Read back into the type written, every string it holds is the one
+		// written (each holds the hostile text: a group's rule is made of the
+		// row rule's two strings), and it holds as many as were written.
+		back := reflect.New(reflect.TypeOf(v))
+		if err := json.Unmarshal(b.Bytes(), back.Interface()); err != nil {
+			t.Fatalf("%s: %v", mode, err)
+		}
+		got, sent := landingsStrings(back.Elem()), landingsStrings(reflect.ValueOf(&v).Elem().Elem())
+		if len(got) != len(sent) {
+			t.Fatalf("%s reads back %d strings, %d were written", mode, len(got), len(sent))
+		}
+		for i, s := range got {
+			if want := strings.ToValidUTF8(sent[i].String(), "\ufffd"); s.String() != want || !strings.Contains(want, valid) {
+				t.Fatalf("%s reads back string %d as %q, not %q", mode, i, s.String(), want)
+			}
 		}
 	}
 }
@@ -912,9 +1133,9 @@ func landingsKeys(t *testing.T, raw json.RawMessage) []string {
 // there is no groups key.
 func TestLandingsJSONKeys(t *testing.T) {
 	var out landingsOutput
-	landingsFill(reflect.ValueOf(&out).Elem(), "v")
+	landingsFill(t, reflect.ValueOf(&out).Elem(), "v")
 	var tr landings.Trace
-	landingsFill(reflect.ValueOf(&tr).Elem(), "v")
+	landingsFill(t, reflect.ValueOf(&tr).Elem(), "v")
 	raw := func(v any) json.RawMessage {
 		var b bytes.Buffer
 		if err := landingsRender(&b, true, v, nil); err != nil {
@@ -1085,6 +1306,48 @@ func TestLandingsForgeUnreadStaysExitZeroUnderEveryFilter(t *testing.T) {
 	}
 	if l := landingsJSON(t, "--since", "start", "--unattended"); !strings.Contains(l.ForgeUnread, "not read for 1 row") || len(l.Rows) != 2 {
 		t.Fatalf("--unattended --json: %+v", l)
+	}
+}
+
+// TestLandingsMasksTheOperandItIsGiven: the name a trace is given and the
+// --since value reach the refusal at exit 2 masked, and a release tag whose
+// name carries runes the mask masks (git takes them in a tag name) reaches the
+// listing's text masked: in the row's range line and the tip read.
+func TestLandingsMasksTheOperandItIsGiven(t *testing.T) {
+	w := newLandingsWorld(t, "auto")
+	tag := "v1\u009b31m‮​\U000E0041"
+	w.r.Git("tag", tag, w.head())
+	w.merge(1, "", "feat: one")
+	for _, args := range [][]string{{landingsHostile}, {"--json", landingsHostile}, {"--since", landingsHostile}, {"--json", "--since", landingsHostile}} {
+		out, errOut, code := runLandings(t, args...)
+		if code != 2 || !strings.Contains(errOut, "x?[2J") {
+			t.Fatalf("landings %q: exit %d, %q", args, code, errOut)
+		}
+		landingsNoRaw(t, fmt.Sprintf("the refusal of %q", args), errOut)
+		landingsNoRaw(t, fmt.Sprintf("the output of %q", args), out)
+	}
+	for _, args := range [][]string{{"--since", tag}, nil} {
+		text, errOut, code := runLandings(t, args...)
+		if code != 0 || !strings.Contains(text, "since v1?31m???") {
+			t.Fatalf("landings %q: exit %d, %s\n%q", args, code, errOut, text)
+		}
+		landingsNoRaw(t, fmt.Sprintf("the listing of %q", args), text)
+	}
+}
+
+// TestLandingsARenamedReleaseTagNamesTheFlag: git describes an annotated
+// tag by the name inside it, so a release tag whose ref was renamed is
+// described under a name no ref holds; the verb refuses at exit 2 and tells
+// the person to name --since, as it does with no release tag.
+func TestLandingsARenamedReleaseTagNamesTheFlag(t *testing.T) {
+	w := newLandingsWorld(t, "auto")
+	w.r.Git("tag", "-a", "v1.0.0", "-m", "release", w.head())
+	w.r.Git("update-ref", "refs/tags/v2.0.0", "refs/tags/v1.0.0")
+	w.r.Git("update-ref", "-d", "refs/tags/v1.0.0")
+	w.merge(1, "", "feat: one")
+	out, errOut, code := runLandings(t)
+	if code != 2 || !strings.Contains(errOut, "--since") || out != "" {
+		t.Fatalf("a renamed release tag: exit %d, stdout %q, stderr %q", code, out, errOut)
 	}
 }
 

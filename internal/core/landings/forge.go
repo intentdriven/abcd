@@ -1,24 +1,24 @@
 package landings
 
 // forge.go is the reader's one door to the forge (spc-2610301950480609
-// approach 6): every row that names a pull request is asked about at most
-// once, in GraphQL documents of up to MaxBatch aliased pullRequest nodes, run
-// as `gh api graphql` through the landing's own client (landing.GHAnswerContext,
-// so each call is bounded by landing.ForgeTimeout and the caller's ctx, its
-// environment scrubbed and its output bounded). Each node asks only what this
-// step reads: who opened the pull request, its head, how it merged, and its
-// reviews, with its commits only for a row that merged with one parent. The
-// revert trace (revert.go) asks a squashed revert's body apart, in a document
-// of its own (readBodies), after every row is classed, so no answer here
-// depends on a body. What
-// the forge said of a row's pull request is kept in the local tier's cache as
-// each batch returns, keyed by the row's commit, so a later listing asks only
-// about pull requests it has not read, and a listing whose time runs out keeps
-// what it read of what cannot change: an answer the reader accepts for its
-// row, one saying the pull request merged as another commit, and the forge's
-// word that a number names no pull request. An unread answer, one whose
-// reviews page is not whole, and one saying the pull request has not merged or
-// naming no merge commit, is never kept.
+// approach 6): a listing asks about each row that names a pull request whose
+// answer the local tier's cache does not keep, in GraphQL documents of up to
+// MaxBatch aliased pullRequest nodes, run as `gh api graphql` through the
+// landing's own client (landing.GHAnswerContext, so each call is bounded by
+// landing.ForgeTimeout and the caller's ctx, its environment scrubbed and its
+// output bounded). Each node asks only what this step reads: who opened the
+// pull request, its head, how it merged, and its reviews, with its commits
+// only for a row that merged with one parent. The revert trace (revert.go)
+// asks a squashed revert's body apart, in a document of its own
+// (readBodies), after every row is classed, so no answer here depends on a
+// body. The cache, keyed by the row's commit and written as each batch
+// returns (so a listing whose time runs out keeps what it read), keeps only
+// what cannot change: an answer the reader accepts for its row, one saying
+// the pull request merged as another commit, and the forge's word that a
+// number names no pull request. An unread answer, one whose reviews page is
+// not whole, one read without the commits its row asked, and one saying the
+// pull request has not merged or naming no merge commit, is never kept, so
+// every listing asks for it again.
 //
 // The forge's answer is judged a pull request at a time: an error that names
 // one pull request leaves that one unread and the others answered, and a
