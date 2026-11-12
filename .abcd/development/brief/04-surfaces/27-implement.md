@@ -779,9 +779,13 @@ run's record, refuses while another is alive, and claims nothing where the proce
 session it runs under cannot be read, after which the save is refused the same way. A caller with no
 host session to find, a scheduler or a detached script, is the second case: after an upgrade its whole
 saves of a run whose file states the older version are refused until one step from a session claims the
-run, after which the file states this binary's version and any session saves it; a drive claims as its
+run; the claim keeps the version the file states, and that step's whole save writes this binary's
+version, after which any session saves it; a drive claims as its
 own process, so it is not such a caller. A drain's claim on a parked run that is not one of its lanes
-lasts for one save, and is let go once the save is made. The driver is told
+lasts for one save, and the claim that save made is let go once the save is made; a let-go that fails
+leaves the claim standing until the drain's session ends. After a let-go the run's control record names
+no driver, so a lifted stop's mark on it is not taken up by a drain, which reads it as a run that
+names none (iss-2611120545484783). The driver is told
 by its host process, not by the abcd it runs, so a newer abcd run under the driver's own session counts
 as the driver. Lines a claim, a cleared mark, the stop's page note and a drive's release add to a run's
 record keep the version its file states. A step under a stop claims nothing, so it halts such a run

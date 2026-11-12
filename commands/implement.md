@@ -1026,7 +1026,7 @@ claim that cannot read the process table, or cannot find the session it runs und
 the save that follows is refused the same way. A caller with no host session to find, such as a
 scheduler or a detached script, is that second case: after an upgrade its whole saves of a run whose
 file states the older version are refused until one `abcd implement step --run <run-id>` from a session
-claims the run, after which the file states this abcd's version and any session saves it. `abcd drain
+claims the run; the claim keeps the version the file states, and that step's whole save writes this abcd's version, after which any session saves it. `abcd drain
 --drive` claims as its own process, so it is not such a caller. A claim, a cleared stop mark, the stop's page note and a
 drive's release each add only lines to the run's record and its control record, and keep the version
 its file states. The judge tells sessions apart by their host process, not by the abcd they run, so a
@@ -1045,8 +1045,10 @@ and a lane in progress it admits, paces or hands back as stuck, is claimed first
 another version, so a drain run by a newer abcd takes up its own lanes and the merged lanes an earlier
 drain or a build left. A parked run that is not one of the drain's lanes, a build's or an ended
 drain's, is claimed for that save alone, and so is one carrying the mark of a stop since lifted whose
-control record names a driver, for the check that takes the mark up: the claim is let go once the save is made, with a line in the run's
-record where the claim named a driver it replaced, so the person's own step from another session claims the run after the move. A run another live session drives is left as its file stands and named in
+control record names a driver, for the check that takes the mark up: the claim that save made is let go once the save is made, with a line in the run's
+record where the claim named a driver it replaced, so the person's own step from another session claims the run after the move.
+A let-go that fails leaves the claim standing until the drain's session ends. After a let-go the run's control record names no
+driver, so a lifted stop's mark on it is not taken up by a drain, which reads it as a run that names none (iss-2611120545484783). A run another live session drives is left as its file stands and named in
 `next`, once each move, and the move is not refused for it: a lane in progress left that way ends the
 move as any lane in progress does, and one a new pace leaves keeps its pace. With no agent left in its
 call and its work saved it no longer renews. Work a save could not take stays uncommitted in its
