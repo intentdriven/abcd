@@ -426,6 +426,14 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			findings = append(findings, ss...)
 		}
 
+		if suCfg, ok := cfg.Rules[ruleSpecUnsettled]; ok && suCfg.Enabled {
+			su, err := checkSpecUnsettled(repoRoot, rootAbs, suCfg, cfg)
+			if err != nil {
+				return nil, err
+			}
+			findings = append(findings, su...)
+		}
+
 		if fsCfg, ok := cfg.Rules["forbidden_synonyms"]; ok && fsCfg.Enabled {
 			fs, err := checkForbiddenSynonyms(repoRoot, rootAbs, fsCfg)
 			if err != nil {

@@ -11,8 +11,8 @@ production_mode: hand-written
 
 _Draft, filed 2026-10-23 by the remainder close of spc-2610141709430146, on
 abcd-ae's ruling as coordinator (dcn-2610230609300445).
-Not READY: its design is unsettled below, and it is planned through the usual
-walk._
+Its design is unsettled: the questions under Open Questions are settled
+through the usual planning walk._
 
 spc-2610141709430146 delivered live brief sessions. Its intent-fidelity
 audit (Opus, with a Sonnet second; receipt rcp-a260a0a30612) found one
@@ -40,7 +40,7 @@ The same audit found ac-6 (a guest from another tailnet joining a local
 session through Tailscale) inconclusive: never exercised. Its live proof is
 iss-2610161444081367, outside this spec.
 
-## Open design questions (to settle at planning)
+## Open Questions
 
 - **How abcd learns the relay's address.** Options include reading it back
   from Render after the deploy, the relay announcing itself to the repository,
@@ -61,4 +61,4 @@ iss-2610161444081367, outside this spec.
 
 ## Steps
 
-_To be listed at planning, once the open design questions are settled._
+_To be listed at planning, once the open questions are settled._

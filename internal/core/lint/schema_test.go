@@ -286,6 +286,25 @@ func TestRecordSchemaResolvesSpecHandles(t *testing.T) {
 	})
 }
 
+// TestRecordSchemaResolvesASpecsBlockers: a spec's `blocked_by` is a
+// cross-reference as an intent's is, so each record it names must be in the
+// corpus; a named record that is present passes.
+func TestRecordSchemaResolvesASpecsBlockers(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "rec/intents/drafts/itd-2-two.md", "---\nid: itd-2\nkind: null\nspec_id: null\n---\n# draft\n")
+	writeFile(t, root, "rec/specs/open/spc-6-new.md", "---\nid: spc-6\nintent: itd-1\nslug: new\nblocked_by: [itd-2, itd-9]\n---\n# x\n")
+	fs, err := Lint(schemaConfig(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countRule(fs, ruleRecordSchema); n != 1 {
+		t.Fatalf("want one record_schema finding, the absent blocker, got %d: %+v", n, fs)
+	}
+	if !findingWith(fs, filepath.Join("rec", "specs", "open", "spc-6-new.md"), ruleRecordSchema, "blocked_by names 'itd-9'") {
+		t.Fatalf("want the spec's absent blocker named: %+v", fs)
+	}
+}
+
 // An empty flow sequence is this record's house spelling for an empty list, so it
 // says "nothing here" — not "a value that is not a handle".
 func TestRecordSchemaEmptyListIsAbsent(t *testing.T) {
