@@ -9,13 +9,13 @@ production_mode: hand-written
 
 ## Summary
 
-_Filed by the remainder close of spc-2611041701500441, which delivered the record and `abcd agents`. Not READY: the first step below needs a ruling before it is built._
+_Filed by the remainder close of spc-2611041701500441, which delivered the record and `abcd agents`. The first step below needs a ruling before it is built: the question under Open Questions._
 
 Delivers what is left of itd-2611031342011261: the figures the ledger holds reach the two places a person meets them without asking. Criterion 7 and criterion 9 (the status line), criterion 8's alternative basis and criterion 12's warning are step 1; criterion 11 (a run's summary) is step 2. The intent ships when this spec closes.
 
 **Step 1: what the row has to live within.**
 - The status verb has 500 ms for all of its work, and `runner.ReadLedger` is no bounded pass: it opens every file in the store, up to the retention's 1,000,000, and reading the process table to judge a running entry starts `/bin/ps` on macOS, where the composition starts no subprocess at all. A reader for the row therefore takes one session's figures in a bounded pass, and says it stopped short rather than showing a partial sum as a whole one.
-- The status verb is read-only by rule (`internal/core/statusline/readonly_guard_test.go`): one write is admitted, the session's fill file, on the product thinker's ruling. Decision 15's cached read, 30 seconds across refreshes, is a second write on that path, so it needs a ruling of its own. **Open:** admit one cache file beside the fill file, or have each launch's writer keep a per-session rollup the verb only reads, which adds no write to the status path but makes the rollup a second record of what the entries say. This is the question that keeps the spec from READY.
+- The status verb is read-only by rule (`internal/core/statusline/readonly_guard_test.go`): one write is admitted, the session's fill file, on the product thinker's ruling. Decision 15's cached read, 30 seconds across refreshes, is a second write on that path, so it needs a ruling of its own, asked under Open Questions.
 - The session comes from the harness's payload, `session_id`, not the environment, and a row with no session id shows no agents' element.
 - The elements, their words and their dropping order are the sibling draft's (itd-2611031342000215), which this step supplies figures to and does not pre-empt. If that draft is not planned when this is built, the step adds one element of its own, which that draft then takes over.
 - The explanation does not exist yet: `abcd statusline --json` gives the row's ordered elements and no source, basis or threshold. Decision 5 asks for a machine-readable form of the status line's state, in which each ledger figure names the ledger as its source, the token basis it counts and the threshold it warns at, and which counts two launches for one await as a warning.
@@ -29,6 +29,10 @@ Delivers what is left of itd-2611031342011261: the figures the ledger holds reac
 - A read here is not on the status path, so it reads the whole store; a hosted runner's home is as short-lived as the runner, so this summary is the account that survives there (the third scope condition).
 
 **Out of scope.** The budget's own check against a cap, a session's by-hand launches (decision 19) and the row's elements beyond the ledger's figures.
+
+## Open Questions
+
+- Admit one cache file beside the fill file, or have each launch's writer keep a per-session rollup the verb only reads, which adds no write to the status path but makes the rollup a second record of what the entries say? This is the question that keeps the spec from READY.
 
 ## Footprint
 

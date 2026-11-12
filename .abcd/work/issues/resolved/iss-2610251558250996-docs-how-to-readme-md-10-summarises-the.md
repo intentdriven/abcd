@@ -10,6 +10,14 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "docs/how-to/README.md"
 remedy: "Name the runner-route change and the move to AGENTS.md in the entry, as the v0.14.0 entry names all five of its sections."
+resolution: "The how-to index entry for upgrade-to-v0.13.0.md now names every section of the guide, adding the runner-route change, the move from CLAUDE.md to AGENTS.md, and the update of your own scripts."
+impact: fix
+resolved_by:
+  commit: "ff5442ef9d43dacdf3c122d22e221193ac18c7aa"
 ---
 
 docs/how-to/README.md:10 summarises the v0.13.0 guide as the folder rename, the worktree repair, the both-folders recovery and the block refresh. Its sections 'Route a role to a runner from your own settings' (upgrade-to-v0.13.0.md:90) and 'Keep your project's conventions in AGENTS.md' (:115) are not named, so a reader looking for the CLAUDE.md move cannot find it from the index.
+
+## Grounds
+
+- pursued: a reader of docs/how-to/README.md finds the runner-route change and the CLAUDE.md to AGENTS.md move named in the v0.13.0 entry; an entry that omits either, or names a section the guide does not have, would show it wrong

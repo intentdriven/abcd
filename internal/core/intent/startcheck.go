@@ -74,7 +74,11 @@ func StartChecksIn(repoRoot string, corpus Corpus, store spec.Store, r ReadyResu
 	res.Rows = append(res.Rows, startClaimSectionsRow(r, content))
 	it, _ := corpus.Lookup(r.IntentID)
 	res.Rows = append(res.Rows, startHoldRow(it))
-	blockedRow, err := startBlockedRow(repoRoot, corpus, r.IntentID, content)
+	sp, specContent, err := linkedSpecContent(repoRoot, store, r)
+	if err != nil {
+		return res, err
+	}
+	blockedRow, err := startBlockedRowWithSpec(repoRoot, corpus, r.IntentID, content, sp.ID, specContent)
 	if err != nil {
 		return res, err
 	}
@@ -88,17 +92,35 @@ func StartChecksIn(repoRoot string, corpus Corpus, store spec.Store, r ReadyResu
 	return res, nil
 }
 
-// startOpenQuestionsRow refuses a record that still asks a question.
+// startOpenQuestionsRow refuses a record that still asks a question, and a
+// record whose text cannot be read whole (spec.LayoutStatements): an opener
+// nothing closes, or fences that cannot be read one way, withhold readiness as
+// they do for a spec, since the questions are read through the same reading.
+// The statements name a line and the construct, never the record's text.
 func startOpenQuestionsRow(id, content string) StartRow {
 	row := StartRow{Name: StartCheckOpenQuestions}
 	qs := openQuestions(content)
-	if len(qs) == 0 {
+	layout := spec.LayoutStatements(content)
+	if len(qs) == 0 && len(layout) == 0 {
 		row.OK = true
 		row.Detail = "no open question"
 		return row
 	}
-	row.Detail = fmt.Sprintf("%s asks %d open question(s): %s", id, len(qs), strings.Join(qs, " | "))
-	row.Remedy = "answer each in the record's `## Decisions` and mark it settled (an item marked `resolved:` or `**Deferred**`, or a section opening `_All resolved …_`), through the planning interview (/abcd:intent)"
+	var why, remedy []string
+	if len(qs) > 0 {
+		why = append(why, fmt.Sprintf("%s asks %d open question(s): %s", id, len(qs), questionList(qs)))
+		remedy = append(remedy, "answer each in the record's `## Decisions` and mark it settled (an item marked `resolved:` or `**Deferred**`, or a section opening `_All resolved …_`), through the planning interview (/abcd:intent)")
+	}
+	if len(layout) > 0 {
+		parts := make([]string, len(layout))
+		for i, st := range layout {
+			parts[i] = st.Describe()
+		}
+		why = append(why, id+"'s text is not read whole, so its open questions are not known: "+strings.Join(parts, "; "))
+		remedy = append(remedy, "close the fence or HTML comment opened on that line; write a fence at column 0, or at up to three columns with no line inside it nearer the margin than the fence, and not on a list marker's line; and open a comment that runs over several lines at the start of its line, at up to three columns")
+	}
+	row.Detail = strings.Join(why, "; ")
+	row.Remedy = strings.Join(remedy, "; ")
 	return row
 }
 
@@ -146,8 +168,25 @@ func startHoldRow(it Intent) StartRow {
 	return row
 }
 
+// linkedSpecContent reads the spec the readiness gate judged for r, or nothing
+// when the gate linked none (the steps row names that case) or the spec is
+// closed: a closed spec is never built again, so its `blocked_by` holds
+// nothing, as record-lint reads only open specs.
+func linkedSpecContent(repoRoot string, store spec.Store, r ReadyResult) (spec.Spec, string, error) {
+	sp, ok := store.Lookup(r.SpecID)
+	if !ok || sp.Status == spec.StatusClosed {
+		return spec.Spec{}, "", nil
+	}
+	data, err := readRepoFile(filepath.Join(repoRoot, filepath.FromSlash(sp.Path)), sp.Path)
+	if err != nil {
+		return spec.Spec{}, "", err
+	}
+	return sp, string(data), nil
+}
+
 // startBlockedRow refuses a record that names, in `blocked_by`, a blocker that
-// is not settled. An intent is settled when it has shipped or sits in
+// is not settled. It is startBlockedRowWithSpec for a record with no spec (a
+// draft the auto-plan judges). An intent is settled when it has shipped or sits in
 // disciplines/ (ruling CF2 of 2026-09-30: a blocker reclassified as a
 // discipline is a standing rule, not work that will ever ship, so it counts as
 // settled). A blocker the corpus does not hold is unsettled as far as this
@@ -165,14 +204,41 @@ func startHoldRow(it Intent) StartRow {
 // row says which record settled the edge. An error is a fault in reading the
 // checkout.
 func startBlockedRow(repoRoot string, corpus Corpus, id, content string) (StartRow, error) {
+	return startBlockedRowWithSpec(repoRoot, corpus, id, content, "", "")
+}
+
+// startBlockedRowWithSpec is the blocked row over the intent's own
+// `blocked_by`, then its spec's: a spec names an intent its design waits on in
+// the same field, read by the same reader, and each of its blockers is judged
+// exactly as the intent's are, named with the spec (iss-2611101318042398).
+// specID is "" when no spec is linked.
+func startBlockedRowWithSpec(repoRoot string, corpus Corpus, id, content, specID, specContent string) (StartRow, error) {
 	row := StartRow{Name: StartCheckBlocked}
 	var open, followed []string
+	type edge struct{ blocker, via string }
+	var edges []edge
 	for _, b := range blockedBy(content) {
-		end, err := followBlocker(repoRoot, corpus, b)
+		edges = append(edges, edge{blocker: b})
+	}
+	if specID != "" {
+		for _, b := range blockedBy(specContent) {
+			edges = append(edges, edge{blocker: b, via: specID})
+		}
+	}
+	for _, e := range edges {
+		end, err := followBlocker(repoRoot, corpus, e.blocker)
 		if err != nil {
 			return row, err
 		}
-		path := strings.Join(end.chain, " → ")
+		b := shownText(e.blocker, maxEdgeRunes)
+		if e.via != "" {
+			b += " (named by " + e.via + ")"
+		}
+		chain := make([]string, len(end.chain))
+		for i, c := range end.chain {
+			chain[i] = shownText(c, maxEdgeRunes)
+		}
+		path := strings.Join(chain, " → ")
 		switch {
 		case end.problem != "" && len(end.chain) == 1:
 			open = append(open, b+" ("+end.problem+")")
@@ -189,14 +255,35 @@ func startBlockedRow(repoRoot string, corpus Corpus, id, content string) (StartR
 	if len(open) == 0 {
 		row.OK = true
 		row.Detail = id + " names no unsettled blocker"
+		if specID != "" {
+			row.Detail = id + " and " + specID + " name no unsettled blocker"
+		}
 		if len(followed) > 0 {
-			row.Detail += "; a superseded blocker is settled by the record that replaced it: " + strings.Join(followed, ", ")
+			row.Detail += "; a superseded blocker is settled by the record that replaced it: " + edgeList(followed)
 		}
 		return row, nil
 	}
-	row.Detail = id + " is blocked by " + strings.Join(open, ", ")
-	row.Remedy = "ship the blocker first, or settle the record its supersession chain ends at: ship that intent, or accept that decision (`status: accepted`); each superseded record names its successor in `superseded_by`, so repair a chain that loops or ends nowhere; or drop the edge from `blocked_by` if it no longer holds"
+	row.Detail = id + " is blocked by " + edgeList(open)
+	row.Remedy = "ship the blocker first, or settle the record its supersession chain ends at: ship that intent, or accept that decision (`status: accepted`); each superseded record names its successor in `superseded_by`, so repair a chain that loops or ends nowhere; or drop the edge from the intent's or the spec's `blocked_by` if it no longer holds"
 	return row, nil
+}
+
+// maxEdgeRunes caps one record id, or one `superseded_by` or status value, as
+// the blocked row quotes it; maxEdgesShown caps how many edges it names. The
+// values are frontmatter agents and people write, so a long or numerous one
+// reaches a refusal clipped and counted, never whole.
+const (
+	maxEdgeRunes  = 80
+	maxEdgesShown = 5
+)
+
+// edgeList joins the blocked row's edges, at most maxEdgesShown of them, and
+// counts the rest.
+func edgeList(edges []string) string {
+	if len(edges) <= maxEdgesShown {
+		return strings.Join(edges, ", ")
+	}
+	return strings.Join(edges[:maxEdgesShown], ", ") + fmt.Sprintf(", and %d more", len(edges)-maxEdgesShown)
 }
 
 // blockerEnd is where one blocker's supersession chain ends. chain names every
@@ -248,7 +335,7 @@ func followBlocker(repoRoot string, corpus Corpus, blocker string) (blockerEnd, 
 		adr := recordid.CanonADRID(next)
 		if adr == "" {
 			end.chain = append(end.chain, next)
-			end.problem = next + " names neither an intent nor a decision"
+			end.problem = shownText(next, maxEdgeRunes) + " names neither an intent nor a decision"
 			return end, nil
 		}
 		end.chain = append(end.chain, adr)
@@ -261,7 +348,7 @@ func followBlocker(repoRoot string, corpus Corpus, blocker string) (blockerEnd, 
 		case status == "":
 			end.problem = adr + " carries no status: a decision settles the edge once its status is accepted"
 		case status != adrStatusAccepted:
-			end.problem = adr + " is " + status + ": a decision settles the edge once its status is accepted"
+			end.problem = adr + " is " + shownText(status, maxEdgeRunes) + ": a decision settles the edge once its status is accepted"
 		default:
 			end.state = status
 			end.settled = true
