@@ -904,7 +904,7 @@ func TestLandingsRevertRemainderCountsTheHiddenUntraceable(t *testing.T) {
 	}{
 		{"more untraceable lines than the cap", landingsMaxUnmarkedLines + 2, 4, landingsMaxRevertLines + 2,
 			"and 8 more revert lines: 2 marking a row, 6 with no row marked, 2 of them untraceable"},
-		{"the last of seventeen untraceable", 1, landingsMaxUnmarkedLines, 1,
+		{"one untraceable line shown, none hidden", 1, landingsMaxUnmarkedLines, 1,
 			"and 1 more revert lines: 0 marking a row, 1 with no row marked, 0 of them untraceable"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

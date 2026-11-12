@@ -324,8 +324,8 @@ func TestAFailedReadOfTheTipIsNotNoDefaultBranch(t *testing.T) {
 	})
 	t.Run("the first-parent line in another shape", func(t *testing.T) {
 		answeringGit(t, "--timestamp", "notaline\n", 0)
-		if _, err := Resolve(t.Context(), r.Root(), "2026-10-03"); err == nil {
-			t.Fatal("resolve read a first-parent line it does not read")
+		if _, err := Resolve(t.Context(), r.Root(), "2026-10-03"); err == nil || errors.Is(err, ErrNoDefaultBranch) || !strings.Contains(err.Error(), "first-parent line in a shape it does not read") {
+			t.Fatalf("resolve() = %v, want the first-parent line's shape error", err)
 		}
 	})
 }
@@ -340,7 +340,7 @@ func TestAFailedReadOfTheDrainRulesIsNotNoRule(t *testing.T) {
 	ff := &fakeForge{t: t}
 	ff.add(answer(50, m, b))
 	answeringGit(t, "ls-tree", "", 128)
-	if _, err := List(t.Context(), f.r.Root(), Range{From: f.base, To: f.head()}, Options{Forge: ff.call}); err == nil || !strings.Contains(err.Error(), "reading") {
+	if _, err := List(t.Context(), f.r.Root(), Range{From: f.base, To: f.head()}, Options{Forge: ff.call}); err == nil || !strings.Contains(err.Error(), "reading the drain rules the merge's first parent holds") {
 		t.Fatalf("list() = %v, want a failed read of the drain rules", err)
 	}
 }

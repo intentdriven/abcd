@@ -113,9 +113,14 @@ func newLandingsCommand(asJSON *bool) *cobra.Command {
 			"revert line's names and the notes carry text someone typed.\n\n" +
 			"Exit 0 with the listing or the trace, a listing whose forge answers were not\n" +
 			"read included (those rows are unattended and the forge note says how many);\n" +
-			"exit 1 when history, the tags or the repository cannot be read; exit 2\n" +
-			"outside a git checkout, with no default branch, with no range, with both\n" +
-			"filters, or with a commit named that names none.",
+			"exit 1 when history, the tags or the repository cannot be read, but for the\n" +
+			"three reads below; exit 2 outside a git checkout, with no default branch,\n" +
+			"with no range, with both filters, or with a commit named that names none.\n" +
+			"A lookup of the default branch that failed is reported as no default branch,\n" +
+			"at exit 2, because the shared lookup gives one answer for both. Two answers\n" +
+			"git gives without failing are taken as git's answer: a tag ref git's listing\n" +
+			"skips reads as no tag, and a tag or tip whose commit object is absent reads\n" +
+			"as pointing at no commit.",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return &exitError{Code: 2, Msg: "abcd landings: takes at most one commit to trace (nothing read)"}

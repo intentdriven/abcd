@@ -29,7 +29,8 @@ such tag it refuses (exit 2) and names the flag, and so it does when the tag
 git describes names no tag the repository holds (git describes an annotated
 tag by the name stored inside it, which a renamed ref no longer carries); a
 failed read of the tags, or of the ref or commit of the tag named, is not taken
-for no tag, and exits 1. A tag is looked up as that exact ref, its name as git
+for no tag, and exits 1, but for the two answers git gives without failing that
+the exit codes below name. A tag is looked up as that exact ref, its name as git
 printed it, never read as the commit a name ending in `-g` and hex names. A
 `--since` that names neither a tag nor a date, a tag that points at no commit,
 or a date that is no day, is refused at exit 2.
@@ -137,9 +138,15 @@ whole past 64 MiB.
 Exit 0 with the listing or the trace, and with a listing whose forge answers
 were partly or wholly unread: those rows are unattended and the `forge` note
 says how many, so a script reads `forge_unread`, not the exit alone. Exit 1
-when history, the tags or the repository cannot be read. Exit 2 outside a git checkout, with no
-default branch, with no range, with both filters, or with a commit named that
-names none.
+when history, the tags or the repository cannot be read, but for the three
+reads below. Exit 2 outside a git checkout, with no default branch, with no
+range, with both filters, or with a commit named that names none.
+
+A lookup of the default branch that failed is reported as no default branch,
+at exit 2, because the shared lookup gives one answer for both. Two answers git
+gives without failing are taken as git's answer: a tag ref git's listing skips
+reads as no tag, and a tag or tip whose commit object is absent reads as
+pointing at no commit.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a
