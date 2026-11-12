@@ -29,10 +29,11 @@ renamed is described by the name stored inside it). A failed read of the tags,
 or of the ref or commit of the tag named, is not taken for no tag: it exits 1,
 as unreadable history does. Three reads are the exception. A lookup of the
 default branch that failed is reported as no default branch, at exit 2, because
-the shared lookup gives one answer for both. Two answers git gives without
+the shared lookup gives one answer for both. Answers git gives without
 failing are taken as git's answer: a tag ref git's listing skips reads as no
-tag, and a tag or tip whose commit object is absent reads as pointing at no
-commit. A tag is
+tag, a tag given as the range's start whose commit object is absent reads as
+pointing at no commit, and a default branch whose tip's commit object is absent
+reads as no default branch. A tag is
 looked up as that exact ref, never read as the commit a name in the shape git
 describe prints would name. Named one commit,
 it traces that commit instead.

@@ -117,10 +117,11 @@ func newLandingsCommand(asJSON *bool) *cobra.Command {
 			"three reads below; exit 2 outside a git checkout, with no default branch,\n" +
 			"with no range, with both filters, or with a commit named that names none.\n" +
 			"A lookup of the default branch that failed is reported as no default branch,\n" +
-			"at exit 2, because the shared lookup gives one answer for both. Two answers\n" +
-			"git gives without failing are taken as git's answer: a tag ref git's listing\n" +
-			"skips reads as no tag, and a tag or tip whose commit object is absent reads\n" +
-			"as pointing at no commit.",
+			"at exit 2, because the shared lookup gives one answer for both. Answers git\n" +
+			"gives without failing are taken as git's answer: a tag ref git's listing\n" +
+			"skips reads as no tag, a tag given as the range's start whose commit object\n" +
+			"is absent reads as pointing at no commit, and a default branch whose tip's\n" +
+			"commit object is absent reads as no default branch.",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return &exitError{Code: 2, Msg: "abcd landings: takes at most one commit to trace (nothing read)"}

@@ -144,10 +144,11 @@ reads below. Exit 2 outside a git checkout, with no default branch, with no
 range, with both filters, or with a commit named that names none.
 
 A lookup of the default branch that failed is reported as no default branch,
-at exit 2, because the shared lookup gives one answer for both. Two answers git
+at exit 2, because the shared lookup gives one answer for both. Answers git
 gives without failing are taken as git's answer: a tag ref git's listing skips
-reads as no tag, and a tag or tip whose commit object is absent reads as
-pointing at no commit.
+reads as no tag, a tag given as the range's start whose commit object is absent
+reads as pointing at no commit, and a default branch whose tip's commit object
+is absent reads as no default branch.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a
