@@ -821,3 +821,32 @@ func TestAPageNoteThatCannotBeKeptLeavesTheStopsRefusal(t *testing.T) {
 		t.Fatalf("the stop's refusal does not say the page note could not be kept: %s", r.Reason)
 	}
 }
+
+// TestAResumedStartWhoseClaimClaimedNothingPushesNoReservation: a resumed start whose
+// claim could not find the session it runs under claims nothing, so the save that would
+// record its reservation is refused; it is judged before anything is pushed, so origin
+// never shows the record reserved and released again, and the run is left as it stands.
+func TestAResumedStartWhoseClaimClaimedNothingPushesNoReservation(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), footprintedSpec)
+	res, err := startedOnce(t, repo, "itd-10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bare := onOrigin(t, repo)
+	home, _ := stopWorld(t, false)
+	o := Options{stopHome: home}
+	claimedBy(t, repo.Root(), res.RunID, o, hostTwo, hostOne, hostOne)
+	before := stateAtVersion(t, repo.Root(), res.RunID, schemaVersionPrevious)
+	hereFrom = func() int { return 77777 }
+
+	_, err = Start(repo.Root(), "itd-10", o)
+
+	r, ok := leftAtVersion(err)
+	if !ok {
+		t.Fatalf("want the refusal that leaves the run at its version, got %v", err)
+	}
+	wantLeft(t, repo.Root(), res.RunID, schemaVersionPrevious, before, r.Error())
+	if tip := originReservation(t, bare, reservedRef); tip.commit != "" {
+		t.Fatalf("a reservation was pushed for a start whose save is refused: %+v", tip)
+	}
+}

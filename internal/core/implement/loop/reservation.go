@@ -861,9 +861,14 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 		fp = heldWith(fp, widenedPaths(st))
 	}
 	// A reservation the run could not record is released again, and peers would see the
-	// issue flap on each retry, so the lock is looked at before anything is pushed.
+	// issue flap on each retry, so the lock is looked at before anything is pushed, and so
+	// is the judge of the save that records it: a run whose file states another version,
+	// which this session may not save whole (mayWholeSave), is refused here, unreserved.
 	if err := withLock(repoRoot, func(*os.Root) error { return nil }); err != nil {
 		return err
+	}
+	if left := wholeSaveLeft(repoRoot, res.RunID, o); left != nil {
+		return left
 	}
 	i := st.current()
 	landing := i >= 0 && st.Lanes[i].Stage == StageLand
