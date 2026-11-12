@@ -802,7 +802,12 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 // driveEndExit is the exit of a drive that ended as res says, once its end is rendered.
 func driveEndExit(res loop.TerminalResult) error {
 	if len(res.HeldBack) > 0 && res.Ended != loop.TerminalKilled && res.Ended != loop.TerminalWall {
-		return driveHeldBackExit(res.HeldBack)
+		err := driveHeldBackExit(res.HeldBack)
+		// A drive that also ended on the lanes it passed over names both.
+		if res.Ended == loop.TerminalPassedLanes {
+			err.Msg += "; and " + driveEndWords(res.Ended)
+		}
+		return err
 	}
 	switch res.Ended {
 	case loop.TerminalKilled:
@@ -817,7 +822,7 @@ func driveEndExit(res loop.TerminalResult) error {
 }
 
 // driveHeldBackExit is the exit of a run that held issues back.
-func driveHeldBackExit(held []string) error {
+func driveHeldBackExit(held []string) *exitError {
 	return &exitError{Code: 3, Msg: "abcd drain --drive: stopped short: it held back " + termsafe.Sanitize(strings.Join(held, ", "))}
 }
 
@@ -909,6 +914,8 @@ func renderDriveEnd(w io.Writer, res loop.TerminalResult) {
 		if res.Lapses != nil {
 			fmt.Fprintf(w, "  its reservation lapses at %s\n", res.Lapses.UTC().Format(time.RFC3339))
 		}
+	} else if res.Resume != "" {
+		fmt.Fprintf(w, "  to resume: %s\n", res.Resume)
 	}
 }
 
@@ -928,7 +935,7 @@ func driveEndWords(ended string) string {
 		loop.TerminalWall:       "a check before a stage no longer holds",
 		loop.TerminalRefused:    "a move was refused",
 		loop.TerminalKilled:     "killed",
-		loop.TerminalPassedLanes: "the only lanes left are ones this drive passed over, since it may not save them; " +
+		loop.TerminalPassedLanes: "the only lanes left in progress are ones this drive passed over, since it may not save them; " +
 			"the drain stays open for a drive that may",
 	}[ended]
 	if why == "" {

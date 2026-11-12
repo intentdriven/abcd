@@ -1099,8 +1099,10 @@ func machineCheckouts(repoRoot, home string) []string {
 // driver; the drain keeps its state and goes on when the stop lifts. The caller's
 // deferred settle releases the hold st no longer names. Under a stop no claim is made,
 // as a step makes none, so a lane of the drain's own is halted at another version only
-// where this session is already its driver.
-func drainStop(repoRoot string, st *DrainState, o Options) (string, error) {
+// where this session is already its driver. A run whose lane the drive passed over
+// (passed, DrainOptions.PassedLanes) is not halted, whatever its file says, and is named
+// among those left: the drive that takes it up takes the stop with its own check.
+func drainStop(repoRoot string, st *DrainState, o Options, passed []string) (string, error) {
 	r := o.stopRead(nil)
 	notes := []string{}
 	note := func(line string) {
@@ -1145,6 +1147,11 @@ func drainStop(repoRoot string, st *DrainState, o Options) (string, error) {
 			continue
 		}
 		if driveStopped(run.RunID) {
+			continue
+		}
+		if slices.Contains(passed, run.RunID) {
+			id := termsafe.Sanitize(run.RunID)
+			leftRuns = append(leftRuns, fmt.Sprintf("run %s, which this drive passed over, so the drive that takes it up takes the stop", id))
 			continue
 		}
 		// A run whose file states another version is halted only by its driver

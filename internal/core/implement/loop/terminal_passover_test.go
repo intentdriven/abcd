@@ -223,6 +223,9 @@ func TestADriveLeftWithOnlyLanesItPassedOverEndsInBoundedMoves(t *testing.T) {
 			}
 			w.wantUntouched(t)
 			w.wantNamed(t, res)
+			if res.Resume != TerminalResumeCommand {
+				t.Fatalf("the ending does not name the command a later drive starts with: %q", res.Resume)
+			}
 			if got := w.launches(t); got != 1 {
 				t.Fatalf("only the lane's judge ran, got %d launches", got)
 			}
@@ -231,6 +234,33 @@ func TestADriveLeftWithOnlyLanesItPassedOverEndsInBoundedMoves(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestANewReleaseDoesNotWaitOnALaneTheDrivePassedOver: the lane the take-up has just
+// passed over is the one the move handed the drive, and it is not in hand, so the release
+// boundary due after that move is taken at once rather than held for the lane.
+func TestANewReleaseDoesNotWaitOnALaneTheDrivePassedOver(t *testing.T) {
+	w, o := newPassedOverWorld(t, 0)
+	o.Drain.Max = 1
+	o.BoundaryCeiling = time.Hour
+	asked := 0
+	o.AtBoundary = func(context.Context) bool {
+		asked++
+		return false
+	}
+
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+
+	if err != nil {
+		t.Fatalf("%v\n%s", err, strings.Join(w.lines, "\n"))
+	}
+	if res.Ended != TerminalPassedLanes {
+		t.Fatalf("premise: the drive ends on the lane it passed over, not %q\n%s", res.Ended, strings.Join(w.lines, "\n"))
+	}
+	if asked != 1 {
+		t.Fatalf("the boundary after the pass is taken once, not %d times\n%s", asked, strings.Join(w.lines, "\n"))
+	}
+	w.wantUntouched(t)
 }
 
 // TestAMoveLeavesALanePassedOverAndALaterDrivesMoveTakesItUp: a move given the lane passed

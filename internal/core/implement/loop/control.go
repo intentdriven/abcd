@@ -507,7 +507,9 @@ func (o Options) passingSave() saveFrame {
 }
 
 // claimPassing is the claim passingSave makes; a test stands one in to fail a claim
-// after its driver is recorded.
+// after its driver is recorded. It is the package's, as its other seams are, so a test
+// that swaps it, and every test that reaches passingSave (a drain's move finishing a
+// parked run that is not its lane), must not run in parallel.
 var claimPassing = claimInPassing
 
 // claimInPassing is claimToSave for a run this session saves once and does not drive on:

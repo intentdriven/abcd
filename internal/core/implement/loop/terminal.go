@@ -64,8 +64,10 @@ const (
 
 // PassedLane is a lane a drive passed over: its run's file states another schema
 // version, and the judge of a whole save (mayWholeSave) refused this drive the save
-// taking it up needs. Reason is that judge's reason and remedy. Nothing of the lane is
-// saved, claimed or reserved, and no agent runs for it, for the rest of the drive.
+// taking it up or taking it over needs. Reason is that judge's reason and remedy. From
+// the pass to the drive's end, whatever the reason, the drive writes nothing for the
+// lane: no save, claim, reservation pushed or renewed, or line in its record, and no
+// agent runs for it.
 type PassedLane struct {
 	Issue  string `json:"issue"`
 	Run    string `json:"run"`
@@ -599,15 +601,17 @@ func (t *terminal) sayWait(d time.Duration, why string) {
 
 // renewHeld renews each due reservation of a run in progress, but one a drive
 // let go, as it ended or for a limit, and of a lane parked at its pull request, and says
-// what failed.
+// what failed. A lane this drive passed over is renewed by neither, whatever its file
+// says (DrainOptions.PassedLanes): a drive's waits leave a passed lane's reservation and
+// record alone.
 func (t *terminal) renewHeld() {
 	now := t.now()
-	for _, r := range renewRunsAt(t.repoRoot, "", func(st State) bool { return !letGoByDrive(st) }, now) {
+	for _, r := range renewRunsAt(t.repoRoot, "", func(st State) bool { return !letGoByDrive(st) && !t.passedLane(st.RunID) }, now) {
 		if !r.Renewed {
 			t.say("%s: %s", r.Key, r.Note)
 		}
 	}
-	for _, note := range renewParkedDue(t.repoRoot, now) {
+	for _, note := range renewParkedDue(t.repoRoot, now, t.o.Drain.PassedLanes) {
 		t.say("%s", note)
 	}
 }
@@ -803,6 +807,8 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		if ended != "" {
 			return t.ended(ended), nil
 		}
+		// A lane the take-up in driveLane has just passed over is not in hand, so a new
+		// release does not wait on it.
 		t.inHand = !t.passedLane(res.Lane.RunID) && t.laneInProgress(res.Lane.RunID)
 	}
 }
@@ -947,14 +953,6 @@ func drainMoved(res DrainResult) bool {
 // next move has something to say about it. It returns why the run ends, "" to
 // go on to the next move.
 func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) {
-	// A lane passed over is never claimed, reserved or stepped again by this drive. The
-	// move does not hand one back, so this is a wait at the floor, as a move with no lane is.
-	if t.passedLane(runID) {
-		if t.idle(ctx, TerminalWaitFloor, runID+" was passed over, and the move gave it back") {
-			return TerminalWaited, nil
-		}
-		return "", nil
-	}
 	// A marked run stops the drive under any bound, before any count or wait.
 	if err := driveStopRefusal(runID); err != nil {
 		t.stoppedBy(err)
@@ -2027,7 +2025,8 @@ func (t *terminal) passOverHalted(run State) (bool, string) {
 
 // passLane passes over the lane of run, whose file states another version this drive may
 // not save (r, the judge's refusal): every move after leaves it (DrainOptions.PassedLanes),
-// and the line saying what was left and why, the judge's reason and remedy, is said once.
+// and so do the drive's waits, its halts and its let-go at the end; the line saying what
+// was left and why, the judge's reason and remedy, is said once.
 func (t *terminal) passLane(run State, r *Refusal) {
 	if t.passedLane(run.RunID) {
 		return
@@ -2069,11 +2068,15 @@ func (t *terminal) takeOver(ctx context.Context, run State) (bool, string) {
 		return true, TerminalHalted
 	}
 	if r, ok := AsRefusal(err); ok {
-		switch r.Stage {
-		case StageResume:
+		switch {
+		// The refusal of a whole save is at the driver's stage, and the lane is passed
+		// over as the take-up passes it (tookUp), not waited on as a driver is.
+		case r.leftAtVersion:
+			return t.tookUp(ctx, run, err)
+		case r.Stage == StageResume:
 			t.stoppedBy(fmt.Errorf("%s; %s", r.Reason, r.Remedy))
 			return true, TerminalWall
-		case StageDriver:
+		case r.Stage == StageDriver:
 			if t.idle(ctx, TerminalWaitFloor, r.Reason) {
 				return true, TerminalWaited
 			}
@@ -2407,6 +2410,11 @@ func (t *terminal) ended(why string) TerminalResult {
 	res := TerminalResult{Ended: why, Last: t.last, HeldBack: t.heldBack, PassedOver: t.passedOver, PassedLanes: t.passedLanes}
 	if why == TerminalWall || why == TerminalHalted {
 		res.Why = t.why
+	}
+	// The lanes passed over are a later drive's to take up, so the command that starts one
+	// is named, as it is for a lane left on its branch.
+	if why == TerminalPassedLanes {
+		res.Resume = TerminalResumeCommand
 	}
 	st, _, err := readDrain(t.repoRoot)
 	if err != nil {

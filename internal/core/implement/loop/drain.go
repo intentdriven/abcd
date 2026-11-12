@@ -266,10 +266,12 @@ type DrainOptions struct {
 	Unskip     []string
 	// PassedLanes are the run ids of lanes a drive passed over this run, each a run
 	// whose file states another schema version that the drive may not save
-	// (terminal.go): the move does nothing to such a lane, admitting, pacing,
-	// renewing, finishing or handing it back as stuck, never picks it as the lane
-	// in progress, and does not stop the drain while one is in progress, so a later
-	// drive takes it up. Held in the drive's memory alone, never written.
+	// (terminal.go): the move writes nothing for such a lane, neither halting it
+	// under a stop, admitting, pacing, renewing, finishing nor handing it back as
+	// stuck, never picks it as the lane in progress, and does not stop the drain at
+	// its cap or as empty while one is in progress, so a later drive takes it up.
+	// The outage and origin stops end the drain as before. Held in the drive's
+	// memory alone, never written.
 	PassedLanes []string
 }
 
@@ -478,7 +480,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	}()
 	// A stop comes before the plan is read: the lanes take it and the move
 	// opens nothing (stop.go). A judgement awaited is let go with its hold.
-	stopNote, serr := drainStop(repoRoot, &st, o)
+	stopNote, serr := drainStop(repoRoot, &st, o, d.PassedLanes)
 	if serr != nil {
 		persisted = st.Judging
 		return DrainResult{}, serr

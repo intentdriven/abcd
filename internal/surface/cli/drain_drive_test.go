@@ -602,18 +602,38 @@ func TestADriveWorldsHomeDoesNotCarryTheSubtestsName(t *testing.T) {
 // at exit 3, and its end names each lane with the judge's reason and remedy.
 func TestADriveEndOnLanesItPassedOverNamesThemAndStopsShort(t *testing.T) {
 	const why = ".abcd/.work.local/run/run-2/state.json states schema version 25 and this abcd writes 26, and its control record names no driver; `abcd implement step --run run-2` claims it"
-	res := loop.TerminalResult{Ended: loop.TerminalPassedLanes, PassedLanes: []loop.PassedLane{{Issue: "iss-2", Run: "run-2", Reason: why}}}
+	res := loop.TerminalResult{Ended: loop.TerminalPassedLanes, PassedLanes: []loop.PassedLane{{Issue: "iss-2", Run: "run-2", Reason: why}},
+		Resume: loop.TerminalResumeCommand}
 	var b bytes.Buffer
 
 	renderDriveEnd(&b, res)
 	err := driveEndExit(res)
 
-	for _, want := range []string{"ones this drive passed over", "iss-2, run run-2: " + why} {
+	for _, want := range []string{"the only lanes left in progress are ones this drive passed over", "iss-2, run run-2: " + why,
+		"to resume: " + loop.TerminalResumeCommand} {
 		if !strings.Contains(b.String(), want) {
 			t.Fatalf("the end does not say %q:\n%s", want, b.String())
 		}
 	}
+	if code := exitCode(err); code != 3 || !strings.Contains(err.Error(), "ones this drive passed over") {
+		t.Fatalf("the drive does not stop short at exit 3 on the lanes it passed over: %d %v", code, err)
+	}
+}
+
+// TestADriveThatHeldBackAndEndedOnLanesItPassedOverNamesBoth: a drive that held an issue
+// back and ended on lanes it passed over stops short at exit 3 with both in its message.
+func TestADriveThatHeldBackAndEndedOnLanesItPassedOverNamesBoth(t *testing.T) {
+	res := loop.TerminalResult{Ended: loop.TerminalPassedLanes, HeldBack: []string{"iss-1"},
+		PassedLanes: []loop.PassedLane{{Issue: "iss-2", Run: "run-2", Reason: "why"}}}
+
+	err := driveEndExit(res)
+
 	if code := exitCode(err); code != 3 {
 		t.Fatalf("the drive does not stop short at exit 3: %d %v", code, err)
+	}
+	for _, want := range []string{"held back iss-1", "the only lanes left in progress are ones this drive passed over"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("the exit does not say %q: %v", want, err)
+		}
 	}
 }

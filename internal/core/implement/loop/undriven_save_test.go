@@ -172,7 +172,7 @@ func TestADrainsStopHaltsItsOwnLaneOnlyAsItsDriver(t *testing.T) {
 			before := stateAtVersion(t, repo.Root(), runID, schemaVersionPrevious)
 			st := DrainState{Lanes: []DrainLane{{Issue: secondIssue, RunID: runID, Outcome: DrainLaneInProgress}}}
 
-			_, err := drainStop(repo.Root(), &st, o)
+			_, err := drainStop(repo.Root(), &st, o, nil)
 			r := wantStopRefusal(t, err)
 
 			if halted := controlOf(t, repo.Root(), runID).Stop != nil; halted != tc.halts {
@@ -1018,7 +1018,8 @@ func TestAPassingClaimThatTookNothingLetsNothingGo(t *testing.T) {
 // that records this session as the run's driver and then fails with a plain error, as a
 // claim whose line in the run's record cannot be written does, is let go all the same:
 // passingSave returns the error, makes no save, and leaves the run's control record
-// naming no driver rather than this session until its end.
+// naming no driver rather than this session until its end. It swaps the package's
+// claimPassing, so neither it nor any test that reaches passingSave runs in parallel.
 func TestAPassingClaimThatFailsAfterItsDriverIsRecordedIsLetGo(t *testing.T) {
 	repo, runID, _, _ := awaitingLane(t)
 	home, _ := stopWorld(t, false)
