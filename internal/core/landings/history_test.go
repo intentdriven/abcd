@@ -194,27 +194,100 @@ func TestARecordedApprovalOfAMergeTheForgeDeniesCountsNothing(t *testing.T) {
 	}
 }
 
-// TestUnderHumanTheModeAttendsAPullRequestTheForgeLeftUnread: where the
-// forge did not answer, a row whose subject names a pull request stays a
-// pull-request row, which the human mode attends, and the listing's note says
-// the forge was not read.
-func TestUnderHumanTheModeAttendsAPullRequestTheForgeLeftUnread(t *testing.T) {
-	f := newFx(t, "human")
-	sq := f.commit("fix: squashed (#330)")
-	l := f.list((&fakeForge{t: t, err: errors.New("gh api graphql: exit status 1 (HTTP 502)")}).call)
-	if r := row(t, l, sq); r.Class != ClassPersonApproved || r.Unattended || r.Approval.Source != SourceForgeUnread || r.ForgeSays != "" {
-		t.Fatalf("row %+v", r)
+// TestARowTheForgeWasNotReadForIsUnattendedInEveryMode: in every mode, a row
+// whose subject names a pull request the forge's answer was not read for is
+// unattended, whatever left it unread: no forge client, a refusal, a call
+// that failed for its batch, an error on its node, the listing's bound on
+// asking again spent, an answer too large to read. It stays a pull-request
+// row (a subject the forge would have contradicted included), carries the
+// reason and never the human mode's rule, and the listing's note counts the
+// rows left unread.
+func TestARowTheForgeWasNotReadForIsUnattendedInEveryMode(t *testing.T) {
+	keep := maxHalvingCalls
+	t.Cleanup(func() { maxHalvingCalls = keep })
+	nodeErrors := `{"data":{"repository":{"p1":null,"p2":null}},"errors":[` +
+		`{"type":"FORBIDDEN","path":["repository","p1","reviews"],"message":"no"},` +
+		`{"type":"FORBIDDEN","path":["repository","p2","reviews"],"message":"no"}]}`
+	for _, c := range []struct {
+		name   string
+		forge  fakeForge
+		budget int
+		push   bool
+		reason string
+	}{
+		{name: "no forge client", forge: fakeForge{err: landing.ErrNoForgeClient}, reason: "could not be asked"},
+		{name: "the rate limit", forge: fakeForge{raw: `{"data":null,"errors":[{"type":"RATE_LIMITED","message":"slow down"}]}`}, reason: "rate limit"},
+		{name: "a failed call", forge: fakeForge{err: errors.New("gh api graphql: exit status 1 (HTTP 502)")}, reason: "could not be asked"},
+		{name: "an error on its node", forge: fakeForge{raw: nodeErrors}, reason: "carries an error"},
+		{name: "the bound on asking again spent", forge: fakeForge{capAt: 1}, budget: 1, push: true, reason: "bound on asking again"},
+		{name: "too large to read", forge: fakeForge{huge: map[int]bool{1: true, 2: true}}, reason: "too large to read"},
+	} {
+		for _, mode := range []string{"human", "", "auto"} {
+			maxHalvingCalls = keep
+			if c.budget != 0 {
+				maxHalvingCalls = c.budget
+			}
+			f := newFx(t, mode)
+			ff := manyMerges(t, f, 2)
+			want := 2
+			if c.push {
+				// A subject the forge would contradict, in the batch left unread.
+				f.commit("fix: pushed naming another merge (#3)")
+				ff.add(answer(3, strings.Repeat("c", 40), strings.Repeat("d", 40), review(alice, "APPROVED", strings.Repeat("d", 40))))
+				want = 3
+			}
+			ff.err, ff.raw, ff.capAt, ff.huge = c.forge.err, c.forge.raw, c.forge.capAt, c.forge.huge
+			l := f.list(ff.call)
+			for _, r := range l.Rows {
+				if r.Class == ClassPersonApproved || r.Class == ClassPersonPush || !r.Unattended || r.Approval.Source != SourceForgeUnread ||
+					!strings.Contains(r.ForgeUnreadable, c.reason) || r.Rule.String() == "facilitator.mode: human" || r.ForgeSays != "" {
+					t.Fatalf("%s, mode %q: row %+v", c.name, mode, r)
+				}
+			}
+			if len(l.Rows) != want || !strings.HasPrefix(l.ForgeUnread, fmt.Sprintf("the forge's answer was not read for %d rows", want)) {
+				t.Fatalf("%s, mode %q: %d rows, the note %q", c.name, mode, len(l.Rows), l.ForgeUnread)
+			}
+		}
 	}
-	if !strings.Contains(l.ForgeUnread, "#330") {
-		t.Fatalf("the note %q", l.ForgeUnread)
+}
+
+// TestNoUnattendedRowIsGroupedUnderTheHumanRule: grouped by rule, a listing
+// under the human mode, committed or the bundled default, places no
+// unattended row under facilitator.mode: human, whatever left it unattended:
+// a push, an answer too large to read, a pull request the forge left out.
+// Only the merges the forge's answer says merged as their rows are there.
+func TestNoUnattendedRowIsGroupedUnderTheHumanRule(t *testing.T) {
+	for _, mode := range []string{"human", ""} {
+		f := newFx(t, mode)
+		ff := manyMerges(t, f, 4)
+		ff.huge = map[int]bool{2: true}
+		delete(ff.prs, 3)
+		f.commit("docs: pushed")
+		l := f.list(ff.call)
+		groups := map[string][]int{}
+		unattended := 0
+		for _, r := range l.Rows {
+			groups[r.Rule.String()] = append(groups[r.Rule.String()], r.PR)
+			if r.Unattended {
+				unattended++
+				if r.Rule.String() == "facilitator.mode: human" {
+					t.Fatalf("mode %q: an unattended row under the human rule: %+v", mode, r)
+				}
+			}
+		}
+		if !slices.Equal(groups["facilitator.mode: human"], []int{4, 1}) || unattended != 3 ||
+			!slices.Equal(groups[RuleForgeUnread], []int{3, 2}) {
+			t.Fatalf("mode %q: grouped by rule %v, %d unattended", mode, groups, unattended)
+		}
 	}
 }
 
 // TestAnAnswerTooLargeToReadAloneIsNoModesToAttend: in either mode, a pull
 // request whose answer passes the client's output bound even asked alone is
 // asked no further in the listing, and its row is unattended, with the reason
-// on the row and in the listing's note; the batch's others read as before. So
-// it is beside a half whose errors name no pull request.
+// on the row and in the listing's note; the batch's others read as before.
+// Beside a half whose errors name no pull request, it is still asked alone,
+// so its reason says it is too large to read, and both rows are unattended.
 func TestAnAnswerTooLargeToReadAloneIsNoModesToAttend(t *testing.T) {
 	for _, mode := range []string{"human", "auto"} {
 		f := newFx(t, mode)
@@ -242,7 +315,8 @@ func TestAnAnswerTooLargeToReadAloneIsNoModesToAttend(t *testing.T) {
 		gf := manyMerges(t, g, 2)
 		gf.huge, gf.failOn = map[int]bool{1: true}, 2
 		for _, r := range g.list(gf.call).Rows {
-			if (r.PR == 1) != (r.ForgeUnreadable != "" && r.Unattended) {
+			want := map[int]string{1: "too large to read", 2: "neither half"}[r.PR]
+			if !r.Unattended || !strings.Contains(r.ForgeUnreadable, want) {
 				t.Fatalf("%s: beside a failing half: row %+v", mode, r)
 			}
 		}

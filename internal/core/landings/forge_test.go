@@ -100,7 +100,8 @@ func TestAnUnreadAnswerIsNeverCached(t *testing.T) {
 }
 
 // TestNoForgeClientStopsAsking: with no forge client, the first batch's
-// refusal answers for every batch.
+// refusal answers for every batch, and under the human mode every row is
+// unattended, the mode attending no merge the forge was not read for.
 func TestNoForgeClientStopsAsking(t *testing.T) {
 	f := newFx(t, "human")
 	ff := manyMerges(t, f, MaxBatch+1)
@@ -110,7 +111,7 @@ func TestNoForgeClientStopsAsking(t *testing.T) {
 		t.Fatalf("asked %d times with no client", ff.calls)
 	}
 	for _, r := range l.Rows {
-		if r.Approval.Source != SourceForgeUnread || r.Class != ClassPersonApproved {
+		if r.Approval.Source != SourceForgeUnread || r.Class != ClassAutomatic || !r.Unattended {
 			t.Fatalf("row %+v", r)
 		}
 	}

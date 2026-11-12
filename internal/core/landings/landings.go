@@ -16,15 +16,17 @@ package landings
 // terminal here, where it is read, as is every error list returns. No trailer
 // a branch's author typed lifts a row to person-approved: that class rests on
 // a recorded approval, a forge review of the merged head, or the human mode
-// the first parent committed. A subject names a pull request only as far as
-// the forge confirms it merged as that row's commit; where the forge answered
-// and says otherwise, the row is read as the push it is, and none of that
-// pull request's evidence is read for it.
+// the first parent committed, and the mode only for a merge the forge's answer
+// was read for. A subject names a pull request only as far as the forge
+// confirms it merged as that row's commit; where the forge answered and says
+// otherwise, the row is read as the push it is, and none of that pull
+// request's evidence is read for it.
 
 import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"path"
 	"regexp"
 	"slices"
@@ -54,15 +56,16 @@ const (
 	// ClassPersonApproved is a merge a person approved: a recorded approval of
 	// its merged head, a forge review approving that head by someone other
 	// than the pull request's author, or the human mode its first parent
-	// committed.
+	// committed, for a merge the forge's answer was read for and says merged
+	// as that commit.
 	ClassPersonApproved = "person-approved"
 	// ClassDrain is a merge under auto with no approval seen whose branch
 	// carries the drain's admission, or such a merge in either mode whose
-	// forge answer was too large to read.
+	// forge answer was not read.
 	ClassDrain = "drain"
 	// ClassAutomatic is every other merge under auto with no approval seen,
 	// and every other merge in either mode with no approval seen whose forge
-	// answer was too large to read.
+	// answer was not read.
 	ClassAutomatic = "automatic"
 )
 
@@ -91,6 +94,11 @@ const (
 // RuleMode is the kind of a Rule that names facilitator.mode.
 const RuleMode = landing.KeyFacilitatorMode
 
+// RuleForgeUnread is the kind, and the whole name, of the Rule of a merge
+// under the human mode whose forge answer was not read: no rule read admits
+// it, and the human mode attends only a merge the forge's answer confirms.
+const RuleForgeUnread = "forge unread"
+
 // Range is the stretch of the default branch a listing reads: From exclusive
 // ("" for the whole history up to To) and To inclusive, full object names. Tip
 // and Since are how the caller named them (the remote-tracking ref To was read
@@ -117,7 +125,8 @@ type Options struct {
 
 // Rule is what admitted a row: a drain rule record by its id and path, or
 // facilitator.mode by its value as .abcd/config.json held it at At (the first
-// parent). A person's push names none.
+// parent). A person's push names none, and a merge under the human mode whose
+// forge answer was not read names RuleForgeUnread alone.
 type Rule struct {
 	Kind string `json:"kind,omitempty"`
 	ID   string `json:"id,omitempty"`
@@ -125,12 +134,12 @@ type Rule struct {
 	At   string `json:"at,omitempty"`
 }
 
-// String is the rule as a listing names it: "drain adr-N" or
-// "facilitator.mode: auto"; "" for none.
+// String is the rule as a listing names it: "drain adr-N",
+// "facilitator.mode: auto" or "forge unread"; "" for none.
 func (r Rule) String() string {
 	switch r.Kind {
-	case "":
-		return ""
+	case "", RuleForgeUnread:
+		return r.Kind
 	case RuleMode:
 		return r.Kind + ": " + r.ID
 	}
@@ -176,9 +185,9 @@ type Row struct {
 	// every other row.
 	ForgeSays string `json:"forge_says,omitempty"`
 	// ForgeUnreadable says why the forge's answer for the pull request the
-	// subject names could not be read, for a row whose answer was too large to
-	// read even asked alone: no mode attends such a row. "" for every other
-	// row.
+	// subject names was not read, whatever the cause (an answer too large to
+	// read even asked alone among them): no mode attends such a row. "" for
+	// every other row.
 	ForgeUnreadable string `json:"forge_unreadable,omitempty"`
 	// Unattended marks a row no evidence places with a person.
 	Unattended bool `json:"unattended"`
@@ -195,7 +204,8 @@ type Listing struct {
 	SinceNote string `json:"since_note,omitempty"`
 	Rows      []Row  `json:"rows"`
 	// ForgeUnread says why the forge did not answer for some row, "" when it
-	// answered for every row that names a pull request.
+	// answered for every row that names a pull request; it opens with the
+	// count of rows whose answer was not read (unreadNote).
 	ForgeUnread string `json:"forge_unread,omitempty"`
 	// CacheUnwritten says why an answer could not be kept in the forge cache.
 	CacheUnwritten string `json:"cache_unwritten,omitempty"`
@@ -318,19 +328,37 @@ func listRows(ctx context.Context, repoRoot string, r Range, o Options) (Listing
 		}
 	}
 	var unread []string
+	unreadRows := 0
 	for i := range facts {
 		pr := facts[i].row.PR
-		row, why, err := l.classify(facts[i], answers.got[pr], answers.why[pr], answers.notPR[pr], answers.tooLarge[pr], wts)
+		row, why, err := l.classify(facts[i], answers.got[pr], answers.why[pr], answers.notPR[pr], wts)
 		if err != nil {
 			return Listing{}, err
 		}
 		if why != "" && !slices.Contains(unread, why) {
 			unread = append(unread, why)
 		}
+		if row.ForgeUnreadable != "" {
+			unreadRows++
+		}
 		out.Rows = append(out.Rows, row)
 	}
-	out.ForgeUnread = boundText(strings.Join(unread, "; "), 4000)
+	out.ForgeUnread = boundText(unreadNote(unreadRows, unread), 4000)
 	return out, nil
+}
+
+// unreadNote is the listing's forge note: how many rows the forge's answer
+// was not read for, first, so the bound never cuts it, then each reason once.
+func unreadNote(rows int, reasons []string) string {
+	note := strings.Join(reasons, "; ")
+	if rows == 0 {
+		return note
+	}
+	noun := "rows"
+	if rows == 1 {
+		noun = "row"
+	}
+	return fmt.Sprintf("the forge's answer was not read for %d %s, which no mode attends, and a later listing asks about them again: %s", rows, noun, note)
 }
 
 // commitInfo is one commit as the range's log gives it.
@@ -577,11 +605,10 @@ func (f rowFacts) modeRule() Rule {
 
 // classify decides one row's class, rule, lane, approval and trailers from its
 // history facts, the forge's answer for its pull request (nil when the forge
-// gave none, with why, notPR when the forge says the number names no pull
-// request, and tooLarge when its answer was too large to read even asked
-// alone), and the recorded approvals in wts. The why it returns is a reason
+// gave none, with why, and notPR when the forge says the number names no pull
+// request), and the recorded approvals in wts. The why it returns is a reason
 // the forge was not read for this row, for the listing's note.
-func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR, tooLarge bool, wts []gitutil.Worktree) (Row, string, error) {
+func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR bool, wts []gitutil.Worktree) (Row, string, error) {
 	row := f.row
 	if row.PR == 0 {
 		return l.push(row, "", wts), "", nil
@@ -589,9 +616,9 @@ func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR, tooLarge b
 	// The forge contradicts the subject when it answered and says the number
 	// names no pull request, or that the pull request did not merge as this
 	// commit: the row is then the push it is, in either mode, and nothing of
-	// that pull request is read for it. Only a forge that did not answer
-	// leaves the row to the subject, and a row whose answer was too large to
-	// read even asked alone is left to no mode.
+	// that pull request is read for it. A forge whose answer was not read,
+	// whatever the cause, leaves the row to the subject, and no mode attends
+	// it: the row carries why.
 	if notPR {
 		return l.push(row, why, wts), "", nil
 	}
@@ -603,7 +630,10 @@ func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR, tooLarge b
 	if why != "" {
 		a = nil
 	}
-	if tooLarge {
+	if a == nil {
+		if why == "" {
+			why = fmt.Sprintf("the forge gave no answer for pull request #%d", row.PR)
+		}
 		row.ForgeUnreadable = termsafe.CleanProseLine(why, 300)
 	}
 	messages := f.messages
@@ -648,7 +678,9 @@ func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR, tooLarge b
 	switch {
 	case row.Approval.Seen:
 		row.Class, row.Rule = ClassPersonApproved, f.modeRule()
-	case human(row.Mode) && !tooLarge:
+	case human(row.Mode) && a != nil:
+		// The human mode attends a merge the forge's answer was read for and
+		// says merged as this commit (landedAs above), and no other.
 		row.Class, row.Rule = ClassPersonApproved, f.modeRule()
 	case adm != nil && adm.Kind == KindDrain:
 		row.Class = ClassDrain
@@ -658,6 +690,10 @@ func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR, tooLarge b
 			return Row{}, "", err
 		}
 		row.Rule.Path = p
+	case human(row.Mode):
+		// An unattended merge never carries the human mode's rule, so a
+		// grouping by rule never places it with the merges the mode attends.
+		row.Class, row.Rule = ClassAutomatic, Rule{Kind: RuleForgeUnread}
 	default:
 		row.Class, row.Rule = ClassAutomatic, f.modeRule()
 	}

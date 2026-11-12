@@ -26,12 +26,14 @@ package landings
 // from the answer's typed fields where it carries them and from the client's
 // text where it does not. An answer that passes the client's output bound is
 // asked again in halves, down to one pull request, which is asked once more
-// without its commits where it asked them; an answer still past the bound is
-// too large to read, and its row is unattended in either mode. One that
+// without its commits where it asked them and the listing's bound on asking
+// again allows; an answer still past the bound is too large to read. One that
 // carries errors naming no pull request is asked again along one chain of
 // halves, and when both halves of a batch fail so, neither is asked further. A
-// listing spends at most maxHalvingCalls calls asking again. Every row left unanswered reads
-// as "forge unread", never guessed, and the reason is the listing's note.
+// listing spends at most maxHalvingCalls calls asking again. Every row whose
+// answer was not read, whatever the cause, reads as "forge unread", never
+// guessed, no mode attends it (classify), and the reason is on the row and in
+// the listing's note.
 
 import (
 	"context"
@@ -211,8 +213,9 @@ func (a *prAnswer) landedAs(n int, commit string) string {
 // lasting says whether a, the forge's answer for the row commit, is one a
 // later listing may read again without asking: one saying the pull request
 // merged as another commit, or one the row accepts whose reviews page is
-// whole and whose commits were asked where the row wanted them. An answer saying the pull request has not merged, or naming no merge
-// commit, can change once the forge marks the merge, so it is asked again.
+// whole and whose commits were asked where the row wanted them. An answer
+// saying the pull request has not merged, or naming no merge commit, can
+// change once the forge marks the merge, so it is asked again.
 func (a *prAnswer) lasting(commit string) bool {
 	switch {
 	case a.MergedAt == nil || a.MergeCommit == nil:
@@ -292,13 +295,11 @@ func (a *prAnswer) approval(head string) (Approval, string) {
 
 // forgeAnswers are readForge's answers by pull request, why each one it has
 // none for was not read, which numbers the forge says name no pull request,
-// which pull requests' answers were too large to read even asked alone, and
-// why an answer could not be cached.
+// and why an answer could not be cached.
 type forgeAnswers struct {
 	got      map[int]*prAnswer
 	why      map[int]string
 	notPR    map[int]bool
-	tooLarge map[int]bool
 	cacheWhy string
 }
 
@@ -309,7 +310,7 @@ type forgeAnswers struct {
 // ctx stops the asking, and every pull request not yet answered reads as
 // unread with the reason.
 func readForge(ctx context.Context, repoRoot string, forge landing.ForgeCall, asks []prAsk) forgeAnswers {
-	fa := forgeAnswers{got: map[int]*prAnswer{}, why: map[int]string{}, notPR: map[int]bool{}, tooLarge: map[int]bool{}}
+	fa := forgeAnswers{got: map[int]*prAnswer{}, why: map[int]string{}, notPR: map[int]bool{}}
 	byPR := map[int]*prAsk{}
 	var want []*prAsk
 	for _, a := range asks {
@@ -401,11 +402,11 @@ func (q *asker) ask(batch []prAsk) {
 
 // halve asks batch, which the forge answered for none of (why; size when for
 // the output bound), again in two halves. A half that passed the output bound
-// is halved again in turn, down to one pull request, whose answer is then too
-// large to read (alone); one that again carries errors naming no pull request
-// is followed alone, as one chain, and when both halves fail other than for
-// their size the failure is not one pull request's, so neither is asked
-// further for it, while a half past the bound is still halved. Each call
+// is halved again in turn, down to one pull request, which alone settles; one
+// that again carries errors naming no pull request is followed alone, as one
+// chain, and when both halves fail other than for their size the failure is
+// not one pull request's, so neither is asked further for it, while a half
+// past the bound is still halved, so the others in it are read. Each call
 // spends one of the listing's halvings, and with none left the batch reads as
 // unread.
 func (q *asker) halve(batch []prAsk, why string, size bool) {
@@ -455,11 +456,11 @@ func (q *asker) halve(batch []prAsk, why string, size bool) {
 }
 
 // alone settles batch, one pull request whose answer passed the output bound
-// asked alone (why). Where it was asked with its commits, it is asked once
-// more without them, spending one of the listing's halvings, and that answer
-// is read with its commits unread. An answer past the bound still is too large
-// to read, so it is not asked again in the listing and its row is left to no
-// mode (classify).
+// asked alone (why). Where it was asked with its commits and a halving is
+// left, it is asked once more without them, spending that halving, and that
+// answer is read with its commits unread. Otherwise, or past the bound still,
+// it is too large to read and reads as unread, so it is not asked again in the
+// listing.
 func (q *asker) alone(batch []prAsk, why string) {
 	if a := batch[0]; len(batch) == 1 && a.commits && q.halvings >= 1 {
 		q.halvings--
@@ -481,10 +482,7 @@ func (q *asker) alone(batch []prAsk, why string) {
 		}
 		why = r.whole
 	}
-	for _, a := range batch {
-		q.fa.tooLarge[a.pr] = true
-		q.fa.why[a.pr] = why + ", asked alone, so it is too large to read"
-	}
+	q.unread(batch, why+", asked alone, so it is too large to read")
 }
 
 // take reads one answered batch's answers into the listing's, and keeps what
