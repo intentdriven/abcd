@@ -1046,7 +1046,7 @@ another version, so a drain run by a newer abcd takes up its own lanes and the m
 drain or a build left. A parked run that is not one of the drain's lanes, a build's or an ended
 drain's, is claimed for that save alone, and so is one carrying the mark of a stop since lifted, for
 the check that takes the mark up: the claim is let go once the save is made, with a line in the run's
-record, so the person's own step from another session claims the run after the move. A run another live session drives is left as its file stands and named in
+record where the claim named a driver it replaced, so the person's own step from another session claims the run after the move. A run another live session drives is left as its file stands and named in
 `next`, once each move, and the move is not refused for it: a lane in progress left that way ends the
 move as any lane in progress does, and one a new pace leaves keeps its pace. With no agent left in its
 call and its work saved it no longer renews. Work a save could not take stays uncommitted in its
