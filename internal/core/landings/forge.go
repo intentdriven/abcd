@@ -54,9 +54,9 @@ const prSelection = `number author{login} headRefOid mergedAt body mergeCommit{o
 	`reviews(last:100){totalCount nodes{author{login} state commit{oid} submittedAt}} ` +
 	`commits(first:100){totalCount nodes{commit{oid message}}}`
 
-// BatchQuery is the GraphQL document asking about the pull requests prs, each
+// batchQuery is the GraphQL document asking about the pull requests prs, each
 // as the aliased node p<N>. The owner and name are its variables $o and $r.
-func BatchQuery(prs []int) string {
+func batchQuery(prs []int) string {
 	var b strings.Builder
 	b.WriteString(`query($o:String!,$r:String!){repository(owner:$o,name:$r){`)
 	for _, n := range prs {
@@ -66,11 +66,11 @@ func BatchQuery(prs []int) string {
 	return b.String()
 }
 
-// batchArgs are the forge client's arguments for BatchQuery on prs, for the
+// batchArgs are the forge client's arguments for batchQuery on prs, for the
 // repository the forge client resolves for the checkout ({owner} and {repo},
 // which gh fills in).
 func batchArgs(prs []int) []string {
-	return []string{"api", "graphql", "-F", "o={owner}", "-F", "r={repo}", "-f", "query=" + BatchQuery(prs)}
+	return []string{"api", "graphql", "-F", "o={owner}", "-F", "r={repo}", "-f", "query=" + batchQuery(prs)}
 }
 
 type forgeLogin struct {
@@ -265,7 +265,7 @@ func readForge(ctx context.Context, repoRoot string, forge landing.ForgeCall, as
 	return fa
 }
 
-// batchAnswer is the forge's answer to one BatchQuery. An answer may carry
+// batchAnswer is the forge's answer to one batchQuery. An answer may carry
 // errors beside its data, and gh exits 0 on some of them, so Errors is read.
 type batchAnswer struct {
 	Data *struct {

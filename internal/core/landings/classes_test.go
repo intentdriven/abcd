@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/ghcontract"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -91,9 +92,9 @@ func (f *fx) setMode(mode string) string {
 
 func (f *fx) list(forge landing.ForgeCall) Listing {
 	f.t.Helper()
-	l, err := List(context.Background(), f.r.Root(), Range{From: f.base, To: f.head()}, Options{Forge: forge})
+	l, err := list(context.Background(), f.r.Root(), Range{From: f.base, To: f.head()}, Options{Forge: forge})
 	if err != nil {
-		f.t.Fatalf("List: %v", err)
+		f.t.Fatalf("list: %v", err)
 	}
 	return l
 }
@@ -110,7 +111,7 @@ func row(t *testing.T, l Listing, commit string) Row {
 	return Row{}
 }
 
-// fakeForge answers BatchQuery documents from prs; a number it does not hold
+// fakeForge answers batchQuery documents from prs; a number it does not hold
 // answers null. Every document is checked against the forge's pinned schema.
 type fakeForge struct {
 	t     *testing.T
@@ -328,10 +329,10 @@ func TestPersonApprovedByRecordedApproval(t *testing.T) {
 // mode, not the machine layer's, and not the mode the merge itself brings.
 func TestHumanModeIsAPersonsMerge(t *testing.T) {
 	home := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(home, ".abcd.noindex"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".abcd.noindex", "config.json"), []byte(`{"facilitator":{"mode":"auto"}}`), 0o600); err != nil {
+	if err := os.WriteFile(abcdhome.Path(home, "config.json"), []byte(`{"facilitator":{"mode":"auto"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)

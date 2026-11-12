@@ -17,9 +17,9 @@ import (
 // field of its type in the forge's schema as ghcontract pins it, and the
 // pages are the forge's maximum.
 func TestTheBatchSelectsOnlyTheForgesFields(t *testing.T) {
-	q := BatchQuery([]int{1, 22, 333})
+	q := batchQuery([]int{1, 22, 333})
 	if err := ghcontract.CheckGraphQL(q); err != nil {
-		t.Fatalf("BatchQuery: %v", err)
+		t.Fatalf("batchQuery: %v", err)
 	}
 	for _, want := range []string{"p22:pullRequest(number:22){", "reviews(last:100){totalCount", "commits(first:100){totalCount"} {
 		if !strings.Contains(q, want) {
@@ -152,7 +152,7 @@ func TestTheCacheIsKeyedByTheRowsCommit(t *testing.T) {
 	f.r.Git("commit", "-q", "-m", "chore: a cache that came with a commit")
 	ff := &fakeForge{t: t}
 	ff.add(answer(1, m, b))
-	l, err := List(t.Context(), f.r.Root(), Range{From: f.base, To: m}, Options{Forge: ff.call})
+	l, err := list(t.Context(), f.r.Root(), Range{From: f.base, To: m}, Options{Forge: ff.call})
 	if err != nil {
 		t.Fatal(err)
 	}

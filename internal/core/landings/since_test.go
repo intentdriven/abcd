@@ -40,11 +40,11 @@ func sinceFx(t *testing.T) (*gittest.Repo, []string) {
 // TestSinceTag: a tag opens the range after the commit it names.
 func TestSinceTag(t *testing.T) {
 	r, c := sinceFx(t)
-	got, err := Resolve(t.Context(), r.Root(), "v0.1.0")
+	got, err := resolve(t.Context(), r.Root(), "v0.1.0")
 	if err != nil || got != (Range{From: c[1], To: c[3], Tip: "main", Since: "v0.1.0"}) {
-		t.Fatalf("Resolve(v0.1.0) = %+v, %v", got, err)
+		t.Fatalf("resolve(v0.1.0) = %+v, %v", got, err)
 	}
-	if got, err := Resolve(t.Context(), r.Root(), "v0.2.0"); err != nil || got.From != c[2] {
+	if got, err := resolve(t.Context(), r.Root(), "v0.2.0"); err != nil || got.From != c[2] {
 		t.Fatalf("an annotated tag resolves to %+v, %v", got, err)
 	}
 }
@@ -59,17 +59,17 @@ func TestSinceDate(t *testing.T) {
 		"2026-09-01": "",
 		"2026-10-05": c[3],
 	} {
-		got, err := Resolve(t.Context(), r.Root(), since)
+		got, err := resolve(t.Context(), r.Root(), since)
 		if err != nil || got.From != from || got.To != c[3] || got.Since != since {
-			t.Fatalf("Resolve(%s) = %+v, %v; want from %q", since, got, err, from)
+			t.Fatalf("resolve(%s) = %+v, %v; want from %q", since, got, err, from)
 		}
 	}
-	got, _ := Resolve(t.Context(), r.Root(), "2026-10-03")
-	l, err := List(t.Context(), r.Root(), got, Options{Forge: (&fakeForge{t: t}).call})
+	got, _ := resolve(t.Context(), r.Root(), "2026-10-03")
+	l, err := list(t.Context(), r.Root(), got, Options{Forge: (&fakeForge{t: t}).call})
 	if err != nil || len(l.Rows) != 2 || l.Rows[1].Commit != c[2] || l.Since != "2026-10-03" || l.Tip != "main" {
 		t.Fatalf("the listing from 2026-10-03: %+v, %v", l, err)
 	}
-	if _, err := Resolve(t.Context(), r.Root(), "2026-13-40"); err == nil {
+	if _, err := resolve(t.Context(), r.Root(), "2026-13-40"); err == nil {
 		t.Fatal("a date that is no day resolved")
 	}
 }
@@ -78,9 +78,9 @@ func TestSinceDate(t *testing.T) {
 // the last release tag reachable from the tip.
 func TestDefaultRangeIsTheLastReleaseTag(t *testing.T) {
 	r, c := sinceFx(t)
-	got, err := Resolve(t.Context(), r.Root(), "")
+	got, err := resolve(t.Context(), r.Root(), "")
 	if err != nil || got != (Range{From: c[2], To: c[3], Tip: "main", Since: "v0.2.0"}) {
-		t.Fatalf("Resolve() = %+v, %v", got, err)
+		t.Fatalf("resolve() = %+v, %v", got, err)
 	}
 }
 
@@ -90,17 +90,17 @@ func TestNoTagAndNoSinceRefuses(t *testing.T) {
 	r := gittest.NewRepo(t)
 	r.Commit("chore: one")
 	r.Git("tag", "other")
-	_, err := Resolve(t.Context(), r.Root(), "")
+	_, err := resolve(t.Context(), r.Root(), "")
 	if !errors.Is(err, ErrNoReleaseTag) || !strings.Contains(err.Error(), "--since") {
-		t.Fatalf("Resolve() = %v", err)
+		t.Fatalf("resolve() = %v", err)
 	}
 }
 
 // TestNoDefaultBranchRefuses: a repository with no commit has no range.
 func TestNoDefaultBranchRefuses(t *testing.T) {
 	r := gittest.NewRepo(t)
-	if _, err := Resolve(t.Context(), r.Root(), ""); !errors.Is(err, ErrNoDefaultBranch) {
-		t.Fatalf("Resolve() = %v", err)
+	if _, err := resolve(t.Context(), r.Root(), ""); !errors.Is(err, ErrNoDefaultBranch) {
+		t.Fatalf("resolve() = %v", err)
 	}
 }
 
@@ -109,9 +109,9 @@ func TestNoDefaultBranchRefuses(t *testing.T) {
 func TestSinceRefusesWhatIsNeither(t *testing.T) {
 	r, _ := sinceFx(t)
 	for _, since := range []string{"v9.9.9", "--all", "main~1", "x\x1b[2J", "refs/heads/main"} {
-		_, err := Resolve(t.Context(), r.Root(), since)
+		_, err := resolve(t.Context(), r.Root(), since)
 		if err == nil || strings.ContainsRune(err.Error(), 0x1b) {
-			t.Fatalf("Resolve(%q) = %v", since, err)
+			t.Fatalf("resolve(%q) = %v", since, err)
 		}
 	}
 }

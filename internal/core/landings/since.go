@@ -19,11 +19,11 @@ import (
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
-// ErrNoDefaultBranch is Resolve's answer for a repository with no default
+// ErrNoDefaultBranch is resolve's answer for a repository with no default
 // branch to list.
 var ErrNoDefaultBranch = errors.New("the repository has no default branch to list the landings of")
 
-// ErrNoReleaseTag is Resolve's answer when no since is named and no release
+// ErrNoReleaseTag is resolve's answer when no since is named and no release
 // tag is reachable from the default branch: there is no default range.
 var ErrNoReleaseTag = errors.New("no release tag (v*) is reachable from the default branch, so there is no range to list by default; name where to start with --since <tag|YYYY-MM-DD>")
 
@@ -36,14 +36,16 @@ var dateRe = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
 // refCap bounds one ref question's answer.
 const refCap = 4096
 
-// Resolve is the Range from since to the default branch's tip as the
+// resolve is unexported until the verb, its front door, calls it, as list is.
+//
+// resolve is the Range from since to the default branch's tip as the
 // repository at repoRoot last fetched it. since is a tag, a date YYYY-MM-DD
 // (taken in UTC as the start of that day, From being the first commit on the
 // first-parent line before it, so the range opens at the first first-parent
 // commit at or after it), or "" for the last release tag reachable from the
 // tip (git describe --tags --match 'v*' --abbrev=0). Every git question is
 // bound to ctx.
-func Resolve(ctx context.Context, repoRoot, since string) (Range, error) {
+func resolve(ctx context.Context, repoRoot, since string) (Range, error) {
 	ref := gitutil.DefaultRefContext(ctx, repoRoot)
 	if err := ctx.Err(); err != nil {
 		return Range{}, err

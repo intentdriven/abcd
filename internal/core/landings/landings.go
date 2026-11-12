@@ -83,7 +83,7 @@ const RuleMode = landing.KeyFacilitatorMode
 // Range is the stretch of the default branch a listing reads: From exclusive
 // ("" for the whole history up to To) and To inclusive, full object names. Tip
 // and Since are how the caller named them (the remote-tracking ref To was read
-// from, and the tag or date From was taken from); List copies them into the
+// from, and the tag or date From was taken from); list copies them into the
 // listing and reads neither.
 type Range struct {
 	From  string
@@ -92,9 +92,9 @@ type Range struct {
 	Since string
 }
 
-// Options are List's seams.
+// Options are list's seams.
 type Options struct {
-	// Forge runs the forge client; nil is landing.GHContext bound to List's
+	// Forge runs the forge client; nil is landing.GHContext bound to list's
 	// ctx, run in repoRoot.
 	Forge landing.ForgeCall
 	// Worktrees are where recorded approvals are looked for; nil lists the
@@ -160,7 +160,7 @@ type Row struct {
 	// The revert trace (approach 7) marks a row it undoes here.
 }
 
-// Listing is List's answer.
+// Listing is list's answer.
 type Listing struct {
 	Tip   string `json:"tip"`
 	From  string `json:"from"`
@@ -174,7 +174,7 @@ type Listing struct {
 	CacheUnwritten string `json:"cache_unwritten,omitempty"`
 }
 
-// Bounds on what List reads from git.
+// Bounds on what list reads from git.
 const (
 	// maxHistoryBytes bounds the log of the range, messages and all: a range
 	// past it is refused whole, never read in part.
@@ -185,11 +185,15 @@ const (
 	maxTextBytes = 200
 )
 
-// List reads every first-parent commit of r on the repository at repoRoot,
+// list is the reader's entry (the spec's List): it stays unexported until a
+// front door calls it, the verb and the spot-check, since the core reach
+// audit refuses an exported function no production code reaches.
+//
+// list reads every first-parent commit of r on the repository at repoRoot,
 // newest first, and classes each. It fetches nothing; it writes only its forge
 // cache in repoRoot's local tier. Every git call and every forge call is bound
 // to ctx, and each forge batch also to landing.ForgeTimeout.
-func List(ctx context.Context, repoRoot string, r Range, o Options) (Listing, error) {
+func list(ctx context.Context, repoRoot string, r Range, o Options) (Listing, error) {
 	if !gitutil.IsFullSHA(r.To) || (r.From != "" && !gitutil.IsFullSHA(r.From)) {
 		return Listing{}, errors.New("a landings range names its ends by full object names")
 	}
@@ -352,7 +356,7 @@ func (h *history) assign(rows []string) {
 	}
 }
 
-// lister holds one List's reads.
+// lister holds one list's reads.
 type lister struct {
 	ctx   context.Context
 	root  string
