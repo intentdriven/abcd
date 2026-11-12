@@ -165,7 +165,7 @@ func (ff *fakeForge) call(args ...string) (string, error) {
 	}
 	tooBig := ff.capAt > 0 && len(batch) > ff.capAt
 	for _, n := range batch {
-		withCommits := strings.Contains(q, fmt.Sprintf("p%d:pullRequest(number:%d){%s%s}", n, n, prSelection, commitsSelection))
+		withCommits := strings.Contains(q, fmt.Sprintf("p%d:pullRequest(number:%d){%s%s", n, n, prSelection, commitsSelection))
 		tooBig = tooBig || ff.huge[n] || (ff.big[n] && withCommits)
 	}
 	if tooBig {

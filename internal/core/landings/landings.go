@@ -7,8 +7,10 @@ package landings
 // first parent committed, the admission a branch's records commit carries);
 // the forge decides what history cannot hold (who approved which head, a
 // squash's commits), and only through forge.go; the local tier adds the
-// technical facilitator's recorded approvals. It writes nothing to stdout and
-// nothing outside its forge cache.
+// technical facilitator's recorded approvals. Once every row is classed, the
+// revert trace (revert.go) marks the rows a later commit reverts, which
+// changes no row's class. It writes nothing to stdout and nothing outside its
+// forge cache.
 //
 // Every input but the object names git itself computes is text someone typed:
 // a subject, a trailer, a committer's name, a forge login. Each is read to a
@@ -191,6 +193,12 @@ type Row struct {
 	ForgeUnreadable string `json:"forge_unreadable,omitempty"`
 	// Unattended marks a row no evidence places with a person.
 	Unattended bool `json:"unattended"`
+	// Reverted marks a row a later commit on the default branch reverts
+	// (revert.go), nil for none; it changes nothing else on the row.
+	Reverted *Revert `json:"reverted,omitempty"`
+	// Reverts are the revert lines the row's commits carry, and its
+	// untraceable reverts, each with the row it marks or why it marks none.
+	Reverts []RevertLine `json:"reverts,omitempty"`
 }
 
 // Listing is list's answer.
@@ -306,7 +314,10 @@ func listRows(ctx context.Context, repoRoot string, r Range, o Options) (Listing
 	for i, sha := range rows {
 		facts[i] = l.historyFacts(sha, modes[sha])
 		if facts[i].row.PR != 0 {
-			asks = append(asks, prAsk{pr: facts[i].row.PR, commit: sha, commits: !facts[i].twoParent})
+			// A row that merged with one parent asks its commits, and its body
+			// for the forge's revert line (revert.go).
+			one := !facts[i].twoParent
+			asks = append(asks, prAsk{pr: facts[i].row.PR, commit: sha, commits: one, body: one})
 		}
 	}
 
@@ -338,12 +349,26 @@ func listRows(ctx context.Context, repoRoot string, r Range, o Options) (Listing
 		if why != "" && !slices.Contains(unread, why) {
 			unread = append(unread, why)
 		}
-		if row.ForgeUnreadable != "" && row.Unattended {
+		// Every row the forge's answer was not read for is unattended
+		// (classify: no approval is read for it, and no mode attends it), so
+		// the count needs no second test.
+		if row.ForgeUnreadable != "" {
 			unreadRows++
 		}
 		out.Rows = append(out.Rows, row)
 	}
 	out.ForgeUnread = boundText(unreadNote(unreadRows, unread), 4000)
+
+	// The revert trace reads a pull request's body only where its answer was
+	// read and confirmed the row (classify): a row the forge contradicted, or
+	// whose answer was not read, carries no forge revert line.
+	accepted := map[string]*prAnswer{}
+	for _, row := range out.Rows {
+		if a := answers.got[row.PR]; row.PR != 0 && a != nil && row.ForgeSays == "" && row.ForgeUnreadable == "" {
+			accepted[row.Commit] = a
+		}
+	}
+	l.traceReverts(out.Rows, accepted)
 	return out, nil
 }
 
@@ -377,6 +402,9 @@ type history struct {
 	onLine  map[string]bool
 	// branch is each row's commits, the second parents' walk, in walk order.
 	branch map[string][]string
+	// rowOf is the row that brought each commit assigned: a first-parent
+	// commit's own, and the row whose walk took each other.
+	rowOf map[string]string
 }
 
 // readHistory reads every commit From..To reaches in one log, NUL-separated,
@@ -400,7 +428,7 @@ func readHistory(ctx context.Context, repoRoot string, r Range) (*history, error
 		return nil, masked("listing the default branch's commits", err)
 	}
 	want := strings.Fields(listed)
-	h := &history{commits: map[string]*commitInfo{}, onLine: map[string]bool{}, branch: map[string][]string{}}
+	h := &history{commits: map[string]*commitInfo{}, onLine: map[string]bool{}, branch: map[string][]string{}, rowOf: map[string]string{}}
 	recs := bytes.Split(raw, []byte{0})
 	if n := len(recs); n > 0 && len(bytes.TrimSpace(recs[n-1])) == 0 {
 		recs = recs[:n-1]
@@ -436,6 +464,7 @@ func (h *history) firstParent(to string) []string {
 	for c := to; h.commits[c] != nil && !h.onLine[c]; {
 		rows = append(rows, c)
 		h.onLine[c] = true
+		h.rowOf[c] = c
 		ps := h.commits[c].parents
 		if len(ps) == 0 {
 			break
@@ -463,6 +492,7 @@ func (h *history) assign(rows []string) {
 			}
 			taken[c] = true
 			h.branch[row] = append(h.branch[row], c)
+			h.rowOf[c] = row
 			for j := len(ci.parents) - 1; j >= 0; j-- {
 				stack = append(stack, ci.parents[j])
 			}

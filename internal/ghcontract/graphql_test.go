@@ -49,6 +49,11 @@ func TestTheGraphQLFieldsAreTheForgesOwn(t *testing.T) {
 		{"PullRequestCommit", "commit", "Commit"},
 		{"Commit", "oid", "GitObjectID"},
 		{"Commit", "message", "String"},
+		// The landings reader's revert trace (spc-2610301950480609 approach
+		// 7), read live 2026-11-12 (graphql-fields.txt says how).
+		{"PullRequest", "body", "String"},
+		{"PullRequest", "baseRepository", "Repository"},
+		{"Repository", "nameWithOwner", "String"},
 	} {
 		if got, ok := ghcontract.GraphQLField(c.typ, c.field); !ok || got != c.named {
 			t.Fatalf("GraphQLField(%s, %s) = %q, %v; want %s", c.typ, c.field, got, ok, c.named)

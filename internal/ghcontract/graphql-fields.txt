@@ -307,3 +307,10 @@ PullRequestCommitConnection.totalCount Int SCALAR
 PullRequestCommit.commit Commit OBJECT
 Commit.message String SCALAR
 Commit.oid GitObjectID SCALAR
+# The landings reader's revert trace (spc-2610301950480609 approach 7,
+# internal/core/landings/revert.go) adds PullRequest.body and
+# PullRequest.baseRepository, pinned above with PullRequest whole, and of
+# Repository the name its revert line is checked against, read 2026-11-12 by
+# {__type(name:"Repository"){fields{name type{name kind ofType{name kind}}}}}
+# (a non-null String).
+Repository.nameWithOwner String SCALAR

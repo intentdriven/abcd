@@ -7,7 +7,9 @@ package landings
 // so each call is bounded by landing.ForgeTimeout and the caller's ctx, its
 // environment scrubbed and its output bounded). Each node asks only what this
 // step reads: who opened the pull request, its head, how it merged, and its
-// reviews, with its commits only for a row that merged with one parent. What
+// reviews, with its commits, its body and its repository's name only for a
+// row that merged with one parent (the body for the forge's own revert line,
+// revert.go). What
 // the forge said of a row's pull request is kept in the local tier's cache as
 // each batch returns, keyed by the row's commit, so a later listing asks only
 // about pull requests it has not read, and a listing whose time runs out keeps
@@ -73,20 +75,26 @@ var maxHalvingCalls = 64
 const maxCacheBytes = 2 * landing.MaxOutput
 
 // prSelection is what the batch reads of each pull request, and
-// commitsSelection what it adds for a row that merged with one parent. Every
-// field is pinned in internal/ghcontract (graphql-fields.txt).
+// commitsSelection and bodySelection what it adds for a row that merged with
+// one parent: its commits, and its body with the name of the repository it
+// merged into, for the forge's revert line. Every field is pinned in
+// internal/ghcontract (graphql-fields.txt).
 const (
 	prSelection = `number author{login} headRefOid mergedAt mergeCommit{oid} ` +
 		`reviews(last:100){totalCount nodes{author{__typename login} authorAssociation authorCanPushToRepository state commit{oid} submittedAt}}`
 	commitsSelection = ` commits(first:100){totalCount nodes{commit{oid message}}}`
+	bodySelection    = ` body baseRepository{nameWithOwner}`
 )
 
 // prAsk is one row's question: its pull request, its commit, and whether the
-// row needs the pull request's commits (a row with one parent does).
+// row needs the pull request's commits and its body (a row with one parent
+// does). An answer too large asked alone is asked again without its commits,
+// never without its body.
 type prAsk struct {
 	pr      int
 	commit  string
 	commits bool
+	body    bool
 }
 
 // batchQuery is the GraphQL document asking about asks, each as the aliased
@@ -100,6 +108,9 @@ func batchQuery(asks []prAsk) string {
 		sel := prSelection
 		if a.commits {
 			sel += commitsSelection
+		}
+		if a.body {
+			sel += bodySelection
 		}
 		fmt.Fprintf(&b, "p%d:pullRequest(number:%d){%s} ", a.pr, a.pr, sel)
 	}
@@ -127,6 +138,11 @@ type forgeActor struct {
 
 type forgeOid struct {
 	Oid string `json:"oid"`
+}
+
+// forgeRepo is the repository a pull request merged into, by its owner/name.
+type forgeRepo struct {
+	NameWithOwner string `json:"nameWithOwner"`
 }
 
 type forgeReview struct {
@@ -160,6 +176,10 @@ type prAnswer struct {
 		TotalCount int           `json:"totalCount"`
 		Nodes      []forgeCommit `json:"nodes"`
 	} `json:"commits"`
+	// Body and BaseRepository are asked only for a row with one parent: the
+	// body is read for the forge's revert line and nothing else.
+	Body           string     `json:"body"`
+	BaseRepository *forgeRepo `json:"baseRepository"`
 	// commitsUnread marks an answer asked without the commits its row wanted
 	// (asker.alone): its commits are not read, and it is not kept.
 	commitsUnread bool
@@ -316,6 +336,7 @@ func readForge(ctx context.Context, repoRoot string, forge landing.ForgeCall, as
 	for _, a := range asks {
 		if b := byPR[a.pr]; b != nil {
 			b.commits = b.commits || a.commits
+			b.body = b.body || a.body
 			continue
 		}
 		byPR[a.pr] = &a
