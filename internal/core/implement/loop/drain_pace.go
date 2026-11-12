@@ -12,8 +12,11 @@ package loop
 // drain's state or in any lane.
 
 import (
+	"fmt"
 	"os"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // drainRepace is the new pace a move of a running drain was given: the pace
@@ -64,13 +67,17 @@ func repaceDrain(repoRoot string, st *DrainState, o Options, f paceFlags) (*drai
 
 // lanes takes the new pace into the run pace of each lane of st in progress,
 // which that lane's next stage reads, saying so in its run record. A lane
-// already on it is left as it stands, so taking it again changes nothing.
-func (r *drainRepace) lanes(repoRoot string, st DrainState, now time.Time) error {
+// already on it is left as it stands, so taking it again changes nothing. The pace
+// saves each run whole, through save (Options.laneSave): a lane whose run another
+// session drives at another version keeps its pace, and is named in what it returns,
+// and the other lanes take it.
+func (r *drainRepace) lanes(repoRoot string, st DrainState, now time.Time, save saveFrame) ([]string, error) {
+	var left []string
 	for _, l := range st.Lanes {
 		if l.Outcome != DrainLaneInProgress {
 			continue
 		}
-		if err := mutate(repoRoot, l.RunID, func(_ *os.Root, run *State) (bool, error) {
+		err := save(repoRoot, l.RunID, func(_ *os.Root, run *State) (bool, error) {
 			if run.Complete() {
 				return false, nil
 			}
@@ -83,9 +90,14 @@ func (r *drainRepace) lanes(repoRoot string, st DrainState, now time.Time) error
 				Note: "the drain's pace changed to " + p.String() + "; this lane runs on it from its next stage"})
 			run.UpdatedAt = now
 			return true, nil
-		}); err != nil {
-			return err
+		})
+		if lr, ok := leftAtVersion(err); ok {
+			left = append(left, fmt.Sprintf("%s's lane, run %s, keeps its pace: %s", l.Issue, l.RunID, fsutil.RedactHome(lr.Reason)))
+			continue
+		}
+		if err != nil {
+			return left, err
 		}
 	}
-	return nil
+	return left, nil
 }

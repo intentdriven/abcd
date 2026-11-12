@@ -273,10 +273,17 @@ from the worktree's root: `.abcd/work/issues/.iss-alloc.lock` (the issue
 ledger's allocator lock a landing that resolves an issue leaves), and the plugin
 bootstrap's `abcd`, `.binary-meta`, `.bootstrap.lock/`, `.bootstrap.attempt` and
 `.bootstrap.tmp.<pid>/`; they and the local tier go with the worktree, as with the
-land step. A run whose state file states another version than this abcd's, one a
-drive stopped on, one whose control record holds a stop, and one the stop read
-for its shared folder finds stopped or cannot trust are left as they stand, with
-a line saying why. One deadline bounds the closing's own git: the fetch, the ref
+land step. A resumed run whose state file states another version than this abcd's
+is claimed before anything of it is saved, as a step claims a run: one whose driver
+is gone, or that names none, is this session's from then on, the run's record naming
+the driver it replaced, and its merged lanes are closed; one another live session
+drives refuses the build at exit 3 with nothing changed. A run of another version the
+claim could not take (the process table unread, or the session the build runs under
+not found), one a drive stopped on, one whose control record holds a stop, and one the
+stop read for its shared folder finds stopped or cannot trust are left as they stand,
+with a line saying why, or the build is refused where its reservation's save is the
+first thing the run is saved by; that save is judged before the reservation is pushed, so
+such a build reserves nothing on origin. One deadline bounds the closing's own git: the fetch, the ref
 reads and ancestry checks it makes, the worktree listing and the worktree reads.
 A closing already out of time when it takes the run's lock is refused with
 nothing removed; one that runs out later keeps the lanes it has closed, says it

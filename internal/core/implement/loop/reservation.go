@@ -861,9 +861,19 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 		fp = heldWith(fp, widenedPaths(st))
 	}
 	// A reservation the run could not record is released again, and peers would see the
-	// issue flap on each retry, so the lock is looked at before anything is pushed.
+	// issue flap on each retry, so the lock is looked at before anything is pushed, and so
+	// is the judge of the save that records it: a run whose file states another version,
+	// which this session may not save whole (mayWholeSave), is refused here, unreserved.
+	// Both are read outside the lock the save takes, since the push cannot be made inside
+	// it: that lock is every run's in the checkout, held for a few seconds at most, and a
+	// push can outlast it. So a window remains: a lock taken, or a driver recorded over
+	// this session's claim, between this judge and the save leaves the save refused after
+	// the push, and a reservation this call made fresh is released again, as before.
 	if err := withLock(repoRoot, func(*os.Root) error { return nil }); err != nil {
 		return err
+	}
+	if left := wholeSaveLeft(repoRoot, res.RunID, o); left != nil {
+		return left
 	}
 	i := st.current()
 	landing := i >= 0 && st.Lanes[i].Stage == StageLand
@@ -879,7 +889,7 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 	if since.unread != "" {
 		r.note += "; " + since.unread + own
 	}
-	if err := mutate(repoRoot, res.RunID, func(_ *os.Root, st *State) (bool, error) {
+	if err := saveRun(repoRoot, res.RunID, o, func(_ *os.Root, st *State) (bool, error) {
 		if st.ReservedAt == nil {
 			st.ReservedAt = r.at
 		}
@@ -1328,8 +1338,10 @@ func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) s
 	// The retry released it: the run's record says so (iss-2610150616434848),
 	// so its last reservation entry is no longer the failure, and a later
 	// routing over the run reuses this entry rather than pushing again. Best
-	// effort: the release is on origin whether or not the record takes it.
-	_ = mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+	// effort: the release is on origin whether or not the record takes it. The
+	// line is the record's alone (mutateReservation), so a run another version's
+	// driver writes keeps its version.
+	_ = mutateReservation(repoRoot, run.RunID, func(st *State) (bool, error) {
 		for _, e := range st.Record {
 			if e.Stage == StageReservationReleased {
 				return false, nil

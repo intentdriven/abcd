@@ -786,7 +786,25 @@ what it did in `next`:
   only while such a lane is parked. A lane the landing will not finish (its branch moved past what
   landed, a worktree with changes, its branch checked out in another
   checkout, which the drain names, or a pushed head git cannot read) is named
-  in `next` and the move goes on. A run a stop's mark stands on is not finished, synced
+  in `next` and the move goes on. Finishing a lane, entering its sync again, watching its
+  pull request in the merge queue and handing a closed one back each save the lane's whole
+  run, so a run whose file states another version than this abcd's is saved only by its
+  driver: the drain claims it first, as a step claims a run, whether it is this drain's lane,
+  an ended drain's or a build's, so a drain run by a newer abcd finishes the merged lanes a
+  gone driver left. A parked run that is not this drain's lane is the drain's for that save
+  alone, and so, where its control record names a driver, for the check that takes up a
+  lifted stop's mark on it: the claim that save made is let go
+  once the save is made, with a line in the run's record where the claim named a driver it
+  replaced, so the person's own step from
+  another session claims it after the move. A let-go that fails leaves the claim standing
+  until the drain's session ends. After a let-go the run's control record names no driver,
+  so a lifted stop's mark on it is not taken up by a drain, which reads it as a run
+  that names none. A run another live session drives, or that the claim cannot take (the
+  process table unread, the session not found), is left as its file stands and named with
+  why. A lane in progress the move admits, takes a new pace into or hands back as stuck is
+  claimed the same way, and one another live session drives is named in `next` as left to
+  that session, once each move: the move is not refused for it, and ends as it does over
+  any lane in progress. A run a stop's mark stands on is not finished, synced
   or queued, whatever its pull request says: it is named in `next` and in `parked` as
   `stop-holds`, with what takes it up. While the read refuses a stop file, a
   run with work a save could not take has its reservation renewed. A read that holds the run

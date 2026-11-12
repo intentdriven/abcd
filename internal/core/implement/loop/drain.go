@@ -565,9 +565,11 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// The lanes in progress take a new pace only once the move has
 		// written it, so a move refused before here takes none.
 		if repace != nil {
-			if err := repace.lanes(repoRoot, st, now); err != nil {
+			left, err := repace.lanes(repoRoot, st, now, o.laneSave(true))
+			if err != nil {
 				return DrainResult{}, fmt.Errorf("the drain took its new pace, but a lane in progress did not: %w; give the pace again", err)
 			}
+			res.Next = joinNext(append([]string{res.Next}, left...)...)
 		}
 		res.Max, res.Pace, res.Lanes, res.HandBacks = st.Max, st.Pace, st.Lanes, st.HandBacks
 		res.Judging, res.Judgements = st.Judging, st.Judgements
@@ -891,9 +893,15 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			return refuseMoved(err)
 		}
 		if run.Admitted == nil {
-			if run, err = admitDrainLane(repoRoot, st, run, rule, now); err != nil {
+			admitted, err := admitDrainLane(repoRoot, st, run, rule, now, o.laneSave(true))
+			if left, ok := leftAtVersion(err); ok {
+				res.Next = leftToItsDriver(*l, left)
+				return finish(true)
+			}
+			if err != nil {
 				return refuseMoved(err)
 			}
+			run = admitted
 		}
 		outcome, pr, hb := laneOutcome(run)
 		if outcome == DrainLaneInProgress {
@@ -905,9 +913,15 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				bounds = &b
 			}
 			if stuckReason(run, *bounds) != "" {
-				if run, err = handBackStuck(repoRoot, l.RunID, *bounds, now); err != nil {
+				handed, err := handBackStuck(repoRoot, l.RunID, *bounds, now, o.laneSave(true))
+				if left, ok := leftAtVersion(err); ok {
+					res.Next = leftToItsDriver(*l, left)
+					return finish(true)
+				}
+				if err != nil {
 					return refuseMoved(err)
 				}
+				run = handed
 				outcome, pr, hb = laneOutcome(run)
 			}
 		}
@@ -1318,15 +1332,25 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 // names no admission, as a lane opened before runs recorded theirs does, so the
 // records step that refused it goes on (admitResumed). Only the rule the drain
 // began under is the one that admitted the lane: a move whose rule is another
-// record leaves the run as it is, and its records step stays refused.
-func admitDrainLane(repoRoot string, st DrainState, run State, rule drainrule.Rule, now time.Time) (State, error) {
+// record leaves the run as it is, and its records step stays refused. The admission
+// saves the run whole, through save (Options.laneSave).
+func admitDrainLane(repoRoot string, st DrainState, run State, rule drainrule.Rule, now time.Time, save saveFrame) (State, error) {
 	if rule.Record == "" || recordid.CanonADRID(st.Rule) != rule.Record {
 		return run, nil
 	}
-	if err := admitLate(repoRoot, run.RunID, Admitted{Kind: landings.KindDrain, Record: rule.Record, Path: rule.Path}, now); err != nil {
+	if err := admitLate(repoRoot, run.RunID, Admitted{Kind: landings.KindDrain, Record: rule.Record, Path: rule.Path}, now, save); err != nil {
 		return run, err
 	}
 	return ReadState(repoRoot, run.RunID)
+}
+
+// leftToItsDriver is a move's next over a lane in progress whose run another session
+// drives at another version (mayWholeSave): the lane is left to that session and the
+// move ends as it does over any lane in progress, without refusing, so each move says it
+// once and the drain goes on once the lane is handed back or its pull request opens.
+func leftToItsDriver(l DrainLane, left *Refusal) string {
+	return fmt.Sprintf("%s's lane, run %s, is left as its file stands: %s; %s; run `abcd drain` again once it is handed back or its pull request is open",
+		l.Issue, l.RunID, fsutil.RedactHome(left.Reason), fsutil.RedactHome(left.Remedy))
 }
 
 // joinNext joins the clauses of a move's next step that are not empty with

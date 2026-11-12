@@ -193,22 +193,36 @@ func procOf(tab sessionname.Table, pid int) (sessionname.Host, bool) {
 // session that tried must not stand in the way of the take-over the run waits for. The
 // same holds of a run a drive stopped on (drive_stop.go), which no step moves either.
 func ClaimDriver(repoRoot, runID string, o Options) error {
+	_, err := claimRun(repoRoot, runID, o)
+	return err
+}
+
+// claimMade is what one claim recorded, as decided under the run's lock: the driver it
+// wrote to the control record, nil where it wrote none (it claimed nothing, or the run was
+// already this session's), and whether it replaced a driver it named in the run's record.
+type claimMade struct {
+	driver   *LiveDriver
+	replaced bool
+}
+
+// claimRun is ClaimDriver, saying what the claim recorded.
+func claimRun(repoRoot, runID string, o Options) (claimMade, error) {
 	c, err := runControl(repoRoot, runID)
 	if err != nil {
-		return err
+		return claimMade{}, err
 	}
 	if driveStopped(runID) {
-		return nil
+		return claimMade{}, nil
 	}
 	if o.stopRead(c.Shared).Stop != nil || (c.Stop != nil && (!c.Stop.FromFile || c.Stop.HaltedAt != nil)) {
 		if _, err := stopCheck(repoRoot, runID, DefaultStages(), o); err != nil {
 			if _, refused := AsRefusal(err); !refused {
-				return err
+				return claimMade{}, err
 			}
 		}
-		return nil
+		return claimMade{}, nil
 	}
-	return claimDriver(repoRoot, runID, o, false)
+	return claimDriverMade(repoRoot, runID, o, false)
 }
 
 // hereSelf is this process; a test stands one in.
@@ -244,20 +258,26 @@ func driverOf(tab sessionname.Table, from int, home string) (sessionname.Host, s
 // and an idle session does not hold it from being taken over. One that claimed since
 // is a take-over at work, which holds the run as any driver does.
 func claimDriver(repoRoot, runID string, o Options, overHalted bool) error {
+	_, err := claimDriverMade(repoRoot, runID, o, overHalted)
+	return err
+}
+
+// claimDriverMade is claimDriver, saying what the claim recorded.
+func claimDriverMade(repoRoot, runID string, o Options, overHalted bool) (made claimMade, err error) {
 	tab, err := readProcs()
 	if err != nil {
-		return nil
+		return claimMade{}, nil
 	}
 	home := o.stopHomeOf()
-	here, marked, hostErr := driverOf(tab, hereFrom(), home)
-	if o.driverIsSelf {
-		here, marked, hostErr = selfDriver(tab)
-	}
+	here, marked, hostErr := o.driverHere(tab)
 	session := o.Session
 	if session == "" {
 		session = marked
 	}
-	return mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	// The claim adds a line to the run's record and nothing else of its state, so
+	// the file keeps the version it states (saveRecord): a claim is what lets this
+	// session save it whole after.
+	err = saveRecord(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
 		c, err := readControl(root, runID)
 		if err != nil {
@@ -306,11 +326,283 @@ func claimDriver(repoRoot, runID string, o Options, overHalted bool) error {
 		if err := writeControl(root, runID, c); err != nil {
 			return false, err
 		}
+		d := *c.Driver
+		made = claimMade{driver: &d, replaced: changed}
 		if home != "" {
 			noteRunCheckout(home, repoRoot)
 		}
 		return changed, nil
 	})
+	return made, err
+}
+
+// driverHere is the process this call would claim a run as: a drive's own, or the host
+// a step runs under (driverOf).
+func (o Options) driverHere(tab sessionname.Table) (sessionname.Host, string, error) {
+	if o.driverIsSelf {
+		return selfDriver(tab)
+	}
+	return driverOf(tab, hereFrom(), o.stopHomeOf())
+}
+
+// wholeSave is the right to replace one run's state file whole (iss-2611110933196955).
+// A whole save writes the file at this abcd's version, and an abcd refuses a file above
+// its own, so a save over a file that states another version raises the run out of its
+// driver's reach. storeState, the state file's one writer, refuses such a file unless it
+// is handed the right for that run and that stated version, and mayWholeSave alone
+// mints one: a field-for-field value, so no caller can grant itself one by setting a
+// flag.
+type wholeSave struct {
+	runID  string
+	stated int
+}
+
+// mayWholeSave is the one judge of whether this session may save a run's whole state:
+// it returns the right storeState needs, or the refusal that leaves the run as its file
+// stands. stated is the version the file states (readListedStated), never a read
+// State's, which an older file reaches already raised; a version above this abcd's is
+// refused by that read before anything comes here.
+//
+// A file at this abcd's version may be saved by any session: an older driver refuses
+// it, so none drives it, and a newer one never wrote it. A file stating another
+// version is saved only by the run's driver: the live process its control record
+// names (claimDriver) is the one this call runs under. Nothing else tells a driver
+// resumed by a newer abcd from a second session in its checkout, so a session that has
+// not claimed the run leaves it, and the way to take it up is a claim: a step makes
+// one, a resumed start and a drain over its lanes make one where no live driver holds
+// the run, and a take-over makes one over a halted run. A renewal (o.afar) is never the
+// driver: its waiter may run a lane's own abcd under the driver's own host session.
+func mayWholeSave(root *os.Root, runID string, stated int, o Options) (wholeSave, error) {
+	if stated == SchemaVersion {
+		return wholeSave{runID: runID, stated: stated}, nil
+	}
+	id := termsafe.Sanitize(runID)
+	takeUp := "`abcd implement step --run " + id + "` claims it for this abcd while no stop's mark stands on it, and `abcd implement resume --take " +
+		id + "` takes it over while one does; either names the driver it replaces in the run's record"
+	var why, remedy string
+	switch c, err := readControl(root, runID); {
+	case o.afar:
+		why = "a renewal may run a lane's own abcd, which never drives the run"
+		remedy = "nothing is needed here: the run's driver saves it at its next step"
+	case err != nil:
+		why = "its control record cannot be read, so whether this session drives it cannot be told"
+		remedy = "restore " + controlRel(id) + ", which the loop alone writes, or remove it; then " + takeUp
+	case c.Driver == nil:
+		why = "its control record names no driver, and this session has not claimed it"
+		remedy = takeUp
+	default:
+		tab, err := readProcs()
+		if err != nil {
+			why = "the process table cannot be read, so whether this session drives it cannot be told"
+			remedy = "run it again once the process table can be read"
+			break
+		}
+		alive := tab.Alive(c.Driver.host())
+		here, _, hostErr := o.driverHere(tab)
+		switch {
+		case hostErr != nil:
+			why = "the session this call runs under cannot be found, so whether it is the run's driver cannot be told"
+			remedy = "run it from the session that is to drive the run, where " + takeUp
+		case alive && here.PID == c.Driver.PID:
+			return wholeSave{runID: runID, stated: stated}, nil
+		case alive:
+			why = "it is driven by " + driverName(*c.Driver) + ", which is alive"
+			remedy = "back off: that session steps it on; once it is gone, " + takeUp
+		default:
+			why = "its driver " + driverName(*c.Driver) + " is gone, and this session has not claimed it"
+			remedy = takeUp
+		}
+	}
+	return wholeSave{}, leftAt(id, stated, why, remedy)
+}
+
+// leftAt is the refusal of a whole save over a file that states another version: the
+// run is left as its file stands, and the refusal names the file and both versions.
+func leftAt(id string, stated int, why, remedy string) *Refusal {
+	r := contend(StageDriver, "", "", fmt.Sprintf("%s states schema version %d and this abcd writes %d, and %s, so the run is left as its file stands and nothing of it is written",
+		StateRelPath(id), stated, SchemaVersion, why), remedy)
+	r.leftAtVersion = true
+	return r
+}
+
+// covers is storeState's check: nil where the file at the run's state path is absent (a
+// new run), states this abcd's version, or states the version this right was minted for.
+func (w wholeSave) covers(root *os.Root, runID string) error {
+	stated, present, err := statedOnDisk(root, runID)
+	if err != nil || !present || stated == SchemaVersion || (w.runID == runID && w.stated == stated) {
+		return err
+	}
+	id := termsafe.Sanitize(runID)
+	return leftAt(id, stated, "this save was not judged as its driver's",
+		"this is a fault in abcd, so report it; the run's driver steps it on with `abcd implement step --run "+id+"`")
+}
+
+// saveRun is every whole save's frame: check the tier, take the lock, read the state and
+// the version its file states, judge the save (mayWholeSave), let fn change the state,
+// and write it only when fn says it changed. A run left is left whole: fn runs only
+// once the save is judged, so nothing fn would have done is done.
+func saveRun(repoRoot, runID string, o Options, fn func(root *os.Root, st *State) (bool, error)) error {
+	return withRun(repoRoot, runID, func(root *os.Root) error {
+		st, stated, err := readStatedIn(root, runID)
+		if err != nil {
+			return err
+		}
+		right, err := mayWholeSave(root, runID, stated, o)
+		if err != nil {
+			return err
+		}
+		changed, err := fn(root, &st)
+		if err != nil || !changed {
+			return err
+		}
+		return storeState(root, st, right)
+	})
+}
+
+// saveFrame is a whole save's frame: saveRun as a session saves (Options.saver), or with a
+// claim made first for a drain over a run it takes up (Options.laneSave).
+type saveFrame func(repoRoot, runID string, fn func(root *os.Root, st *State) (bool, error)) error
+
+// saver is saveRun as a frame.
+func (o Options) saver() saveFrame {
+	return func(repoRoot, runID string, fn func(root *os.Root, st *State) (bool, error)) error {
+		return saveRun(repoRoot, runID, o, fn)
+	}
+}
+
+// laneSave is the frame for a drain's save over a run: one it takes up (claim) is
+// claimed first where its file states another version (claimToSave), and every save
+// is judged as saveRun judges it.
+func (o Options) laneSave(claim bool) saveFrame {
+	return func(repoRoot, runID string, fn func(root *os.Root, st *State) (bool, error)) error {
+		if claim {
+			if err := claimToSave(repoRoot, runID, o); err != nil {
+				if _, refused := AsRefusal(err); !refused {
+					return err
+				}
+			}
+		}
+		return saveRun(repoRoot, runID, o, fn)
+	}
+}
+
+// passingSave is the frame for a drain's save over a parked run that is not one of its
+// lanes: a person's build, or an earlier drain's lane. It is claimed first, as laneSave
+// claims, and a claim this call made is let go once the save is done (claimInPassing), so
+// the run is the drain's for that save alone and a step from the person's own session
+// is not refused for as long as the drain's session lives.
+func (o Options) passingSave() saveFrame {
+	return func(repoRoot, runID string, fn func(root *os.Root, st *State) (bool, error)) error {
+		letGo, err := claimInPassing(repoRoot, runID, o)
+		if err != nil {
+			if _, refused := AsRefusal(err); !refused {
+				return err
+			}
+		}
+		defer letGo()
+		return saveRun(repoRoot, runID, o, fn)
+	}
+}
+
+// claimInPassing is claimToSave for a run this session saves once and does not drive on:
+// letGo lets go the claim this call recorded, as the claim itself reported it under the
+// run's lock (claimMade), and does nothing where it recorded none (the run at this abcd's
+// version, already this session's, another live session's, no host found, the process
+// table unread), so a claim another session records meanwhile is never taken for this
+// one's. Letting it go leaves the control record naming no driver, so the next session to
+// step it claims it; where the claim named the driver it replaced in the run's record, the
+// let-go is a line there too, and where it named none it adds none, so a run saved this
+// way move after move does not grow its record. A let-go that fails leaves the claim,
+// which then stands until this session ends, as any driver's does.
+func claimInPassing(repoRoot, runID string, o Options) (letGo func(), err error) {
+	letGo = func() {}
+	if stated, err := statedAt(repoRoot, runID); err != nil || stated == SchemaVersion {
+		return letGo, nil
+	}
+	made, err := claimRun(repoRoot, runID, o)
+	if made.driver == nil {
+		return letGo, err
+	}
+	d, said := *made.driver, made.replaced
+	return func() { _ = letClaimGo(repoRoot, runID, d, said, o) }, err
+}
+
+// sameClaim reports whether a and b are one claim: one process, claimed at one instant.
+func sameClaim(a, b LiveDriver) bool {
+	return a.PID == b.PID && a.StartUnix == b.StartUnix && a.At.Equal(b.At)
+}
+
+// letClaimGo takes the claim made off the run's control record where it still stands
+// there, judged under the run's lock against what that claim wrote (process, start time,
+// instant), with a line in the run's record where said; the file keeps the version it
+// states (saveRecord).
+func letClaimGo(repoRoot, runID string, made LiveDriver, said bool, o Options) error {
+	return saveRecord(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+		c, err := readControl(root, runID)
+		if err != nil || c.Driver == nil || !sameClaim(*c.Driver, made) {
+			return false, err
+		}
+		c.Driver = nil
+		if err := writeControl(root, runID, c); err != nil || !said {
+			return false, err
+		}
+		now := o.now()
+		st.Record = append(st.Record, Entry{At: now, Stage: StageDriver,
+			Note: fmt.Sprintf("%s let the run go once the drain's save was made: it is not one of the drain's lanes, so the next session to step it drives it", driverName(made))})
+		st.UpdatedAt = now
+		return true, nil
+	})
+}
+
+// claimToSave makes this session the driver of a run whose file states another version,
+// as a step claims a run (ClaimDriver), so the whole save that follows is its driver's: a
+// gone driver is named in the run's record and replaced, one that names none is
+// claimed, and one another live session drives is not, the claim refusing at exit 3. A
+// run at this abcd's version, or whose file cannot be read, is not claimed: its save is
+// judged, or refused by the read, as before.
+func claimToSave(repoRoot, runID string, o Options) error {
+	if stated, err := statedAt(repoRoot, runID); err != nil || stated == SchemaVersion {
+		return nil
+	}
+	return ClaimDriver(repoRoot, runID, o)
+}
+
+// statedAt is the version the run's state file states (readListedStated).
+func statedAt(repoRoot, runID string) (int, error) {
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return 0, err
+	}
+	defer root.Close()
+	_, stated, err := readListedStated(root, runID)
+	return stated, err
+}
+
+// wholeSaveLeft is mayWholeSave read outside the lock, for a route that asks before it
+// does anything: nil where the run may be saved whole, or where its file cannot be read,
+// which the save that follows refuses as it always has.
+func wholeSaveLeft(repoRoot, runID string, o Options) *Refusal {
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return nil
+	}
+	defer root.Close()
+	_, stated, err := readListedStated(root, runID)
+	if err != nil {
+		return nil
+	}
+	if _, err := mayWholeSave(root, runID, stated, o); err != nil {
+		if r, ok := AsRefusal(err); ok {
+			return r
+		}
+	}
+	return nil
+}
+
+// leftAtVersion is the refusal mayWholeSave gave in err, if it gave one.
+func leftAtVersion(err error) (*Refusal, bool) {
+	r, ok := AsRefusal(err)
+	return r, ok && r.leftAtVersion
 }
 
 // driverName names a driver for a line: its session where there is one, and its

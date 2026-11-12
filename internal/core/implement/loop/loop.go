@@ -51,6 +51,9 @@ type Options struct {
 	// driverIsSelf has a claim on the run name this process, where a drive runs the
 	// run itself, rather than the session above it.
 	driverIsSelf bool
+	// afar marks a renewal's save, whose waiter may run a lane's own abcd under the
+	// driver's own host session: it is never the run's driver (mayWholeSave).
+	afar bool
 	// stopHome is the home a stop is read from; "" is the account's own
 	// (defaultStopHome). A test names a fixture home.
 	stopHome string
@@ -640,7 +643,7 @@ func admitResumed(repoRoot, runID string, o Options) error {
 	default:
 		return nil
 	}
-	return admitLate(repoRoot, runID, a, o.now())
+	return admitLate(repoRoot, runID, a, o.now(), o.saver())
 }
 
 // drainsLane reports whether the drain's state lists runID as one of its lanes.
@@ -652,11 +655,13 @@ func drainsLane(repoRoot, runID string) bool {
 
 // admitLate writes a into a run's state that names no admission, with a record
 // entry saying it was recorded after the start; a state that names one keeps it.
-func admitLate(repoRoot, runID string, a Admitted, now time.Time) error {
+// save is the frame: saveRun for the run's driver resuming it, a drain's laneSave for
+// one of its lanes.
+func admitLate(repoRoot, runID string, a Admitted, now time.Time, save saveFrame) error {
 	if why := a.Check(); why != "" {
 		return fmt.Errorf("admitting run %s: %s", runID, why)
 	}
-	return mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	return save(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
 		if st.Admitted != nil {
 			return false, nil
 		}
@@ -688,6 +693,13 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		if err == nil && flags.set {
 			err = resumeWithFlags(res, flags)
 		}
+		// A resumed run whose file states another version is claimed before
+		// anything saves it, so its saves are its driver's: one whose recorded
+		// driver is gone, or that names none, is this session's from here, and one
+		// another live session drives refuses the start at exit 3 (claimToSave).
+		if err == nil {
+			err = claimToSave(repoRoot, res.RunID, o)
+		}
 		// A reservation refused because the record sits finished on origin's
 		// default branch (claim.ErrFinished, and that refusal alone) has nothing
 		// to reserve: a build whose closing of merged lanes then finishes the run
@@ -714,7 +726,7 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		if err != nil {
 			if rf, ok := AsRefusal(err); ok && rf.recordMoved {
 				if st, rerr := ReadState(repoRoot, res.RunID); rerr == nil {
-					if _, derr := dropMovedRun(repoRoot, st, rf.Reason, o.now()); derr != nil {
+					if _, derr := dropMovedRun(repoRoot, st, rf.Reason, o.now(), o); derr != nil {
 						return StartResult{}, derr
 					}
 				}
@@ -898,7 +910,9 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 			st.Record = append(st.Record, Entry{At: now, Lane: rp.Lane, Stage: StagePick,
 				Note: pickNote(rp)})
 		}
-		if err := writeState(root, st); err != nil {
+		// The run's directory was made for it above, so its file is new and takes no
+		// right (wholeSave.covers).
+		if err := storeState(root, st, wholeSave{}); err != nil {
 			if claim != nil && !claim.Renewed {
 				_, _ = shared.Release(o.Session, chk.record())
 			}
@@ -1229,7 +1243,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	var res StepResult
 	var wait error
 	counted := false
-	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err = saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		// A stop may have come since the check: under the lock nothing acts on a
 		// run that took one.
 		if c, err := readControl(root, runID); err != nil {
@@ -1484,7 +1498,7 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 	var res StepResult
 	var noted *runner.RouteRecord
 	renewNote := ""
-	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err := saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
 		i, k := st.findAwait(repoRoot, receipt)
 		if i < 0 {
@@ -1804,27 +1818,8 @@ func withLock(repoRoot string, fn func(root *os.Root) error) error {
 	return err
 }
 
-// mutate is every in-run mutation's frame: resolve nothing, check the tier,
-// take the lock, read the state, let fn change it, and write it only when fn
-// says it changed. The write takes the file to this abcd's own version, which
-// only the abcd driving the run may do: a writer that may be running a lane's
-// abcd uses mutateReservation (reservation_save.go).
-func mutate(repoRoot, runID string, fn func(root *os.Root, st *State) (bool, error)) error {
-	return withRun(repoRoot, runID, func(root *os.Root) error {
-		st, err := readStateIn(root, runID)
-		if err != nil {
-			return err
-		}
-		changed, err := fn(root, &st)
-		if err != nil || !changed {
-			return err
-		}
-		return writeState(root, st)
-	})
-}
-
 // withRun is a save's frame: resolve nothing, check the tier and the run, and
-// take the lock. mutate and mutateReservation are what is done under it.
+// take the lock. saveRun and saveRecord are what is done under it.
 func withRun(repoRoot, runID string, fn func(root *os.Root) error) error {
 	if err := tierPresent(repoRoot); err != nil {
 		return err

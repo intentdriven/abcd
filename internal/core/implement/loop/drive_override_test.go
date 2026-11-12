@@ -95,6 +95,7 @@ func TestARouteOverrideIsStateVersion16s(t *testing.T) {
 		t.Fatalf("the --route's record is state version 16's, got %d", schemaVersionUnplanned)
 	}
 	root, id, steps, o, path := overrideDrive(t)
+	claimAsDriver(t, root, id, o)
 	current, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

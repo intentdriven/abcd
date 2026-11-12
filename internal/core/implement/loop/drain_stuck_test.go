@@ -239,7 +239,7 @@ func TestAStepThatSucceedsBeforeTheHandBackKeepsTheLane(t *testing.T) {
 	if _, err := advance(repo.Root(), runID, DefaultStages(), o); err != nil {
 		t.Fatalf("the step at the same time succeeds: %v", err)
 	}
-	st, err := handBackStuck(repo.Root(), runID, b, c.t)
+	st, err := handBackStuck(repo.Root(), runID, b, c.t, Options{}.laneSave(true))
 	if err != nil {
 		t.Fatal(err)
 	}

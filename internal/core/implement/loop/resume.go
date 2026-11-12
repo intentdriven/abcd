@@ -619,7 +619,7 @@ func takeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 
 	now := o.now()
 	var lost, failed []string
-	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err = saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		changed := false
 		// Saving a lane runs git in its worktree: the run tripwire is checked
 		// first, as a restart checks it.
@@ -1046,7 +1046,7 @@ func closeMergedLanes(repoRoot, runID string, o Options, finishing bool) (merged
 	now := o.now()
 	key := ""
 	var refused error
-	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err = saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		key = st.Key
 		again := "run `abcd build " + termsafe.Sanitize(st.Key) + "` again"
 		var merged []int
@@ -1140,7 +1140,7 @@ func closeMergedLanes(repoRoot, runID string, o Options, finishing bool) (merged
 		cx := Context{RepoRoot: repoRoot, RunDir: runRel(runID), State: mc.state, Now: now}
 		if clause := tidyReservation(cx, last); clause != "" {
 			mc.released = clause
-			if err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+			if err := saveRun(repoRoot, runID, o, func(_ *os.Root, st *State) (bool, error) {
 				st.Record = append(st.Record, Entry{At: now, Stage: StageReservationReleased, Note: clause})
 				mc.state = *st
 				return true, nil
@@ -1203,8 +1203,9 @@ func leftAloneAt(repoRoot, runID string, o Options) string {
 
 // leftAlone says why a run is left exactly as it stands, its merged lanes not
 // closed, or "" when the build may close them: a drive stopped on it
-// (driveStopped); its state file states another version than this binary's,
-// its own driver's to settle (settlesHere); its control record holds a stop;
+// (driveStopped); its state file states another version than this binary's and
+// this session is not its driver, so it is its own driver's to settle
+// (mayWholeSave); its control record holds a stop;
 // or the stop read for the folder the run started under (stopRead of
 // control.Shared) finds a stop, or cannot be trusted (Held), as ClaimDriver and
 // stopEndsRenewal read it. A record that cannot be read is left alone too.
@@ -1216,8 +1217,11 @@ func leftAlone(root *os.Root, runID string, o Options) string {
 	if err != nil {
 		return "its state cannot be read"
 	}
-	if !settlesHere(stated) {
-		return fmt.Sprintf("its state file states version %d and this abcd writes %d, so the run is its own driver's to settle", stated, SchemaVersion)
+	if _, err := mayWholeSave(root, runID, stated, o); err != nil {
+		if r, ok := AsRefusal(err); ok {
+			return r.Reason
+		}
+		return err.Error()
 	}
 	c, err := readControl(root, runID)
 	if err != nil {
