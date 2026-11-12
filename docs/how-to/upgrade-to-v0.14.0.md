@@ -29,10 +29,13 @@ Search your scripts, hooks, and CI workflows for each spelling in the left-hand
 column, change it to the right-hand one, and run the changed command once to
 see it answer.
 
-A release after v0.14.0 reuses the name `memory` for a different job, the
-agents' memory notes, so from that release `abcd memory` and `/abcd:memory`
-run instead of refusing. Change those spellings to `library` rather than
-waiting for the refusal to find them; the memory store stays under `library`.
+v0.14.2 reuses the name `memory` for a different job, the agents' memory
+notes. From that release bare `abcd memory` counts those notes instead of
+refusing, and `/abcd:memory` is an agents' command for them: typed by a
+person it gets the host's refusal, and an agent's call runs the memory-notes
+page. Neither names `library` any longer, so change those spellings to
+`library` rather than waiting for a refusal to find them; the memory store
+stays under `library`.
 
 ## Move memory and source commands under library
 
