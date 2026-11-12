@@ -463,6 +463,70 @@ func (o Options) laneSave(claim bool) saveFrame {
 	}
 }
 
+// passingSave is the frame for a drain's save over a parked run that is not one of its
+// lanes: a person's build, or an earlier drain's lane. It is claimed first, as laneSave
+// claims, and a claim this call made is let go once the save is done (claimInPassing), so
+// the run is the drain's for that save alone and a step from the person's own session
+// is not refused for as long as the drain's session lives.
+func (o Options) passingSave() saveFrame {
+	return func(repoRoot, runID string, fn func(root *os.Root, st *State) (bool, error)) error {
+		letGo, err := claimInPassing(repoRoot, runID, o)
+		if err != nil {
+			if _, refused := AsRefusal(err); !refused {
+				return err
+			}
+		}
+		defer letGo()
+		return saveRun(repoRoot, runID, o, fn)
+	}
+}
+
+// claimInPassing is claimToSave for a run this session saves once and does not drive on:
+// letGo lets go a claim this call recorded, and does nothing where it recorded none (the
+// run at this abcd's version, already this session's, or another live session's). Letting
+// it go leaves the control record naming no driver, which the run's record says, so the
+// next session to step it claims it. A let-go that fails leaves the claim, which then
+// stands until this session ends, as any driver's does.
+func claimInPassing(repoRoot, runID string, o Options) (letGo func(), err error) {
+	letGo = func() {}
+	before, _ := runControl(repoRoot, runID)
+	if err := claimToSave(repoRoot, runID, o); err != nil {
+		return letGo, err
+	}
+	after, err := runControl(repoRoot, runID)
+	if err != nil || after.Driver == nil || (before.Driver != nil && sameClaim(*before.Driver, *after.Driver)) {
+		return letGo, nil
+	}
+	made := *after.Driver
+	return func() { _ = letClaimGo(repoRoot, runID, made, o) }, nil
+}
+
+// sameClaim reports whether a and b are one claim: one process, claimed at one instant.
+func sameClaim(a, b LiveDriver) bool {
+	return a.PID == b.PID && a.StartUnix == b.StartUnix && a.At.Equal(b.At)
+}
+
+// letClaimGo takes the claim made off the run's control record where it still stands
+// there, with a line in the run's record; the file keeps the version it states
+// (saveRecord).
+func letClaimGo(repoRoot, runID string, made LiveDriver, o Options) error {
+	return saveRecord(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+		c, err := readControl(root, runID)
+		if err != nil || c.Driver == nil || !sameClaim(*c.Driver, made) {
+			return false, err
+		}
+		c.Driver = nil
+		if err := writeControl(root, runID, c); err != nil {
+			return false, err
+		}
+		now := o.now()
+		st.Record = append(st.Record, Entry{At: now, Stage: StageDriver,
+			Note: fmt.Sprintf("%s let the run go once the drain's save was made: it is not one of the drain's lanes, so the next session to step it drives it", driverName(made))})
+		st.UpdatedAt = now
+		return true, nil
+	})
+}
+
 // claimToSave makes this session the driver of a run whose file states another version,
 // as a step claims a run (ClaimDriver), so the whole save that follows is its driver's: a
 // gone driver is named in the run's record and replaced, one that names none is

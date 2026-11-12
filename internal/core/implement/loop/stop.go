@@ -362,18 +362,25 @@ func stopMarkNote(repoRoot, runID string) string {
 // parkedStopNote is stopMarkNote for a drain's move over a parked run. A mark that has not
 // settled first takes the check every move makes, so one from a stop lifted since goes, and
 // the run is then as any other. That check saves the run whole, so it is made only where
-// this session may (mayWholeSave): a lane of the drain's own (ours) whose file states
-// another version is claimed first (claimToSave), and a run this session does not drive
-// keeps its mark for its own driver, the note saying why.
+// this session may (mayWholeSave): a parked run whose file states another version is
+// claimed first, a lane of the drain's own (ours) as claimToSave claims it and any other
+// for the check alone, the claim let go once the check is done (claimInPassing), and a run
+// another live session drives keeps its mark for that driver, the note saying why.
 func parkedStopNote(repoRoot, runID string, ours bool, o Options) (string, error) {
 	c, err := runControl(repoRoot, runID)
 	left := ""
 	if err == nil && c.Stop != nil && c.Stop.HaltedAt == nil {
+		var err error
 		if ours {
-			if err := claimToSave(repoRoot, runID, o); err != nil {
-				if _, refused := AsRefusal(err); !refused {
-					return "", err
-				}
+			err = claimToSave(repoRoot, runID, o)
+		} else {
+			var letGo func()
+			letGo, err = claimInPassing(repoRoot, runID, o)
+			defer letGo()
+		}
+		if err != nil {
+			if _, refused := AsRefusal(err); !refused {
+				return "", err
 			}
 		}
 		if r := wholeSaveLeft(repoRoot, runID, o); r != nil {

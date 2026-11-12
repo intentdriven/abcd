@@ -875,3 +875,60 @@ func TestASaveOverANewerVersionsRunIsRefusedByTheRead(t *testing.T) {
 		t.Fatalf("the save rewrote a newer version's file:\n%s", after)
 	}
 }
+
+// hostThree is a third host in a fixture process table: a person's own session.
+const hostThree = 4500
+
+// TestADrainLetsGoARunThatIsNotItsLaneOnceItsSaveIsMade: a parked run that is not one of
+// the drain's lanes, a person's build whose file states another version and whose driver
+// is gone, is claimed for the drain's save over it and let go once the save is made: the
+// merge-queue watch, and the check that takes up a lifted stop's mark. The run's record
+// says it was let go, and the person's own step from another session claims it while the
+// drain's session lives.
+func TestADrainLetsGoARunThatIsNotItsLaneOnceItsSaveIsMade(t *testing.T) {
+	for _, marked := range []bool{false, true} {
+		t.Run(fmt.Sprintf("marked=%v", marked), func(t *testing.T) {
+			f := drainLandFixture(t)
+			start, err := f.startOnce(t, secondIssue)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.runID, f.issue = start.RunID, secondIssue
+			l := f.armIssueLaneOnce(t)
+			f.listPRs(t, stubPR{Number: 7, HeadRefName: l.Branch, State: "OPEN", Mergeable: "MERGEABLE", MergeStateStatus: "CLEAN"})
+			home, _ := stopWorld(t, false)
+			o := Options{stopHome: home}
+			claimedBy(t, f.repo.Root(), f.runID, o, hostTwo, hostOne, hostOne)
+			if marked {
+				markUnsettled(t, f.repo.Root(), f.runID)
+			}
+			stateAtVersion(t, f.repo.Root(), f.runID, schemaVersionPrevious)
+
+			if _, err := Drain(f.repo.Root(), o, DrainOptions{}); err != nil {
+				t.Fatalf("the move: %v", err)
+			}
+
+			c := controlOf(t, f.repo.Root(), f.runID)
+			if c.Driver != nil {
+				t.Fatalf("the drain's claim on a run that is not its lane outlived its save: %+v", c.Driver)
+			}
+			if marked && c.Stop != nil {
+				t.Fatalf("the lifted stop's mark was not taken up: %+v", c.Stop)
+			}
+			st, err := ReadState(f.repo.Root(), f.runID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.ContainsFunc(st.Record, func(e Entry) bool { return e.Stage == StageDriver && strings.Contains(e.Note, "let the run go") }) {
+				t.Fatalf("the run's record does not say the drain let it go: %+v", st.Record)
+			}
+			procsOf(t, hostThree, hostOne, hostThree)
+			if err := ClaimDriver(f.repo.Root(), f.runID, o); err != nil {
+				t.Fatalf("the person's own step is refused while the drain's session lives: %v", err)
+			}
+			if c := controlOf(t, f.repo.Root(), f.runID); c.Driver == nil || c.Driver.PID != hostThree {
+				t.Fatalf("the person's own step did not claim the run: %+v", c.Driver)
+			}
+		})
+	}
+}
