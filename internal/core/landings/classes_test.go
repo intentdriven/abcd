@@ -604,7 +604,7 @@ func TestForgeUnreachableReadsHistoryAlone(t *testing.T) {
 
 // TestASubjectNamingAnotherMergeReadsNoneOfIt: a commit whose subject names a
 // pull request the forge says merged as another commit reads none of that
-// pull request's reviews.
+// pull request's reviews: it is a push, and says what the forge answered.
 func TestASubjectNamingAnotherMergeReadsNoneOfIt(t *testing.T) {
 	f := newFx(t, "auto")
 	b := f.branch("fake", "feat: pushed as if merged")
@@ -612,11 +612,12 @@ func TestASubjectNamingAnotherMergeReadsNoneOfIt(t *testing.T) {
 	ff := &fakeForge{t: t}
 	ff.add(answer(95, strings.Repeat("c", 40), b, review(alice, "APPROVED", b)))
 	l := f.list(ff.call)
-	if r := row(t, l, m); r.Class != ClassAutomatic || r.Approval.Seen || r.Approval.Source != SourceForgeUnread || !r.Unattended {
+	if r := row(t, l, m); r.Class != ClassPersonPush || r.Approval != (Approval{Source: SourceNoneSeen}) || !r.Unattended ||
+		!strings.Contains(r.ForgeSays, "did not merge as "+m[:12]) {
 		t.Fatalf("row %+v", r)
 	}
-	if !strings.Contains(l.ForgeUnread, "did not merge as "+m[:12]) {
-		t.Fatalf("the reason %q", l.ForgeUnread)
+	if l.ForgeUnread != "" {
+		t.Fatalf("the note %q", l.ForgeUnread)
 	}
 }
 

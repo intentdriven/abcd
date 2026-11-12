@@ -17,8 +17,9 @@ package landings
 // a branch's author typed lifts a row to person-approved: that class rests on
 // a recorded approval, a forge review of the merged head, or the human mode
 // the first parent committed. A subject names a pull request only as far as
-// the forge confirms it merged as that row's commit; where the forge says
-// otherwise, none of that pull request's evidence is read for the row.
+// the forge confirms it merged as that row's commit; where the forge answered
+// and says otherwise, the row is read as the push it is, and none of that
+// pull request's evidence is read for it.
 
 import (
 	"bytes"
@@ -44,9 +45,11 @@ import (
 // The four classes, decided in this order.
 const (
 	// ClassPersonPush is a first-parent commit whose subject names no pull
-	// request: the shape of a commit pushed to the default branch, which a
-	// rebase merge's commits share. The class confirms no person: the row is
-	// unattended unless a recorded approval of the commit itself is found.
+	// request, or names one the forge answered for and says did not merge as
+	// that commit: the shape of a commit pushed to the default branch, which a
+	// rebase merge's commits share. The class confirms no person, in either
+	// mode: the row is unattended unless a recorded approval of the commit
+	// itself is found.
 	ClassPersonPush = "person-push"
 	// ClassPersonApproved is a merge a person approved: a recorded approval of
 	// its merged head, a forge review approving that head by someone other
@@ -101,8 +104,8 @@ type Range struct {
 
 // Options are list's seams.
 type Options struct {
-	// Forge runs the forge client; nil is landing.GHContext bound to list's
-	// ctx, run in repoRoot.
+	// Forge runs the forge client; nil is landing.GHAnswerContext bound to
+	// list's ctx, run in repoRoot.
 	Forge landing.ForgeCall
 	// Worktrees are where recorded approvals are looked for; nil lists the
 	// worktrees git knows for repoRoot, once.
@@ -162,6 +165,10 @@ type Row struct {
 	Resolves   []string `json:"resolves,omitempty"`
 	Delivers   []string `json:"delivers,omitempty"`
 	AssistedBy []string `json:"assisted_by,omitempty"`
+	// ForgeSays is what the forge answered against the pull request the
+	// subject names, for a person-push row whose subject names one: "" for
+	// every other row.
+	ForgeSays string `json:"forge_says,omitempty"`
 	// Unattended marks a row no evidence places with a person.
 	Unattended bool `json:"unattended"`
 }
@@ -556,21 +563,20 @@ func (f rowFacts) modeRule() Rule {
 func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR bool, wts []gitutil.Worktree) (Row, string, error) {
 	row := f.row
 	if row.PR == 0 {
-		row.Class = ClassPersonPush
-		row.Committer = boundText(termsafe.Sanitize(l.h.commits[row.Commit].committer), maxTextBytes)
-		row.Resolves, row.Delivers, row.AssistedBy = trailers(f.messages)
-		row.Approval = l.recorded(row.Commit, wts)
-		row.Unattended = !row.Approval.Seen
-		return row, "", nil
+		return l.push(row, "", wts), "", nil
 	}
-	// The forge contradicts the subject when it answered and says the pull
-	// request did not merge as this commit, or that the number names no pull
-	// request: then nothing of that pull request is read for the row, its
-	// recorded approval included.
-	contradicted := notPR
+	// The forge contradicts the subject when it answered and says the number
+	// names no pull request, or that the pull request did not merge as this
+	// commit: the row is then the push it is, in either mode, and nothing of
+	// that pull request is read for it. Only a forge that did not answer
+	// leaves the row to the subject.
+	if notPR {
+		return l.push(row, why, wts), "", nil
+	}
 	if a != nil && why == "" {
-		why = a.landedAs(row.PR, row.Commit)
-		contradicted = why != ""
+		if said := a.landedAs(row.PR, row.Commit); said != "" {
+			return l.push(row, said, wts), "", nil
+		}
 	}
 	if why != "" {
 		a = nil
@@ -597,7 +603,7 @@ func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR bool, wts [
 	}
 
 	row.Approval.Source = SourceNoneSeen
-	if row.MergedHead != "" && !contradicted {
+	if row.MergedHead != "" {
 		row.Approval = l.recorded(row.MergedHead, wts)
 	}
 	if !row.Approval.Seen {
@@ -632,6 +638,22 @@ func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR bool, wts [
 	}
 	row.Unattended = row.Class == ClassDrain || row.Class == ClassAutomatic
 	return row, why, nil
+}
+
+// push is row read as a person's push: its committer, the trailers of its own
+// message, and unattended unless the technical facilitator's recorded
+// approval of the commit itself is found, whatever the mode. said is what the
+// forge answered against the pull request its subject names, "" for a subject
+// that names none.
+func (l *lister) push(row Row, said string, wts []gitutil.Worktree) Row {
+	c := l.h.commits[row.Commit]
+	row.Class = ClassPersonPush
+	row.Committer = boundText(termsafe.Sanitize(c.committer), maxTextBytes)
+	row.Resolves, row.Delivers, row.AssistedBy = trailers([]string{c.message})
+	row.ForgeSays = termsafe.CleanProseLine(said, 300)
+	row.Approval = l.recorded(row.Commit, wts)
+	row.Unattended = !row.Approval.Seen
+	return row
 }
 
 // recorded is the technical facilitator's recorded approval of sha in wts as

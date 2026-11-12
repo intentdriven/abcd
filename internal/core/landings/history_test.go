@@ -98,56 +98,95 @@ func TestALatestReviewIsReadAsTheMergeGateReadsIt(t *testing.T) {
 	}
 }
 
-// TestTheForgeMustSayThePullRequestMergedAsTheRow: a one-parent commit whose
-// subject names a pull request the forge says has not merged reads none of
-// it, and neither does a merge whose number the forge says names no pull
-// request: no review, no commits, and no recorded approval of the head.
+// TestTheForgeMustSayThePullRequestMergedAsTheRow: in either mode, a commit
+// whose subject names a pull request the forge answered for and contradicts
+// (it has not merged, it merged as another commit, or the number names no pull
+// request) is the push it is: person-push, unattended, carrying the forge's
+// reason, reading none of that pull request (no review, no commits, no
+// recorded approval of its head), and the forge's answer is kept so the next
+// listing reads it again without asking. A recorded approval of the commit
+// itself attends it.
 func TestTheForgeMustSayThePullRequestMergedAsTheRow(t *testing.T) {
-	f := newFx(t, "auto")
-	head := strings.Repeat("e", 40)
-	sq := f.commit("fix: pushed with a number (#310)")
-	open := answer(310, sq, head, review(alice, "APPROVED", head))
-	open.MergedAt = nil
-	b := f.branch("issue", "feat: an issue's number")
-	m := f.merge(311, "issue")
-	if _, err := landing.RecordApproval(f.r.Root(), b); err != nil {
-		t.Fatal(err)
-	}
-	ff := &fakeForge{t: t, gh: true}
-	ff.add(open)
-	l := f.list(ff.call)
-	if r := row(t, l, sq); r.Approval.Seen || r.MergedHead != "" || r.Approval.Source != SourceForgeUnread || r.Class != ClassAutomatic {
-		t.Fatalf("a pull request the forge says has not merged answered: %+v", r)
-	}
-	if r := row(t, l, m); r.Approval.Seen || r.Class != ClassAutomatic || !r.Unattended {
-		t.Fatalf("a recorded approval counted for a number the forge says names no pull request: %+v", r)
-	}
-	for _, want := range []string{"#310 has not merged", "#311 names no pull request"} {
-		if !strings.Contains(l.ForgeUnread, want) {
-			t.Fatalf("the note %q does not say %q", l.ForgeUnread, want)
+	for _, mode := range []string{"human", "auto"} {
+		f := newFx(t, mode)
+		head := strings.Repeat("e", 40)
+		sq := f.commit("fix: pushed with a number (#310)")
+		open := answer(310, sq, head, review(alice, "APPROVED", head))
+		open.MergedAt = nil
+		b := f.branch("issue", "feat: an issue's number")
+		m := f.merge(311, "issue")
+		bo := f.branch("other", "feat: merged elsewhere")
+		mo := f.merge(312, "other")
+		for _, c := range []string{b, bo} {
+			if _, err := landing.RecordApproval(f.r.Root(), c); err != nil {
+				t.Fatal(err)
+			}
+		}
+		ff := &fakeForge{t: t, gh: true}
+		ff.add(open)
+		ff.add(answer(312, strings.Repeat("c", 40), bo, review(alice, "APPROVED", bo)))
+		l := f.list(ff.call)
+		for c, want := range map[string]string{sq: "#310 has not merged", m: "#311 names no pull request", mo: "#312 did not merge as " + mo[:12]} {
+			r := row(t, l, c)
+			if r.Class != ClassPersonPush || !r.Unattended || r.Approval != (Approval{Source: SourceNoneSeen}) || r.Rule != (Rule{}) ||
+				r.Lane != "" || !strings.Contains(r.ForgeSays, want) || (c == sq && r.MergedHead != "") {
+				t.Fatalf("%s: a subject the forge contradicts (%s): %+v", mode, want, r)
+			}
+		}
+		if l.ForgeUnread != "" {
+			t.Fatalf("%s: the forge was read, yet the note says %q", mode, l.ForgeUnread)
+		}
+		ff.calls = 0
+		again := f.list(ff.call)
+		if ff.calls != 0 || mustJSON(t, again.Rows) != mustJSON(t, l.Rows) {
+			t.Fatalf("%s: the next listing asked %d times, rows %+v", mode, ff.calls, again.Rows)
+		}
+		if _, err := landing.RecordApproval(f.r.Root(), sq); err != nil {
+			t.Fatal(err)
+		}
+		if r := row(t, f.list(ff.call), sq); r.Class != ClassPersonPush || r.Unattended || r.Approval != (Approval{Seen: true, Source: SourceLocalTier}) {
+			t.Fatalf("%s: a recorded approval of the commit itself: %+v", mode, r)
 		}
 	}
 }
 
-// TestARecordedApprovalOfAMergeTheForgeDeniesCountsNothing: a merge commit
-// whose subject names a pull request the forge says merged as another commit
-// counts no recorded approval of its second parent; with the forge unread, the
-// recorded approval still counts.
+// TestARecordedApprovalOfAMergeTheForgeDeniesCountsNothing: in either mode, a
+// merge commit whose subject names a pull request the forge says merged as
+// another commit counts no recorded approval of its second parent; with the
+// forge unread, the recorded approval still counts.
 func TestARecordedApprovalOfAMergeTheForgeDeniesCountsNothing(t *testing.T) {
-	f := newFx(t, "auto")
-	b := f.branch("approved", "feat: approved once")
-	m := f.merge(320, "approved")
-	if _, err := landing.RecordApproval(f.r.Root(), b); err != nil {
-		t.Fatal(err)
+	for _, mode := range []string{"human", "auto"} {
+		f := newFx(t, mode)
+		b := f.branch("approved", "feat: approved once")
+		m := f.merge(320, "approved")
+		if _, err := landing.RecordApproval(f.r.Root(), b); err != nil {
+			t.Fatal(err)
+		}
+		unread := &fakeForge{t: t, err: errors.New("gh api graphql: exit status 1 (HTTP 502)")}
+		if r := row(t, f.list(unread.call), m); r.Approval != (Approval{Seen: true, Source: SourceLocalTier}) || r.Unattended {
+			t.Fatalf("%s: with the forge unread: %+v", mode, r)
+		}
+		ff := &fakeForge{t: t}
+		ff.add(answer(320, strings.Repeat("c", 40), b))
+		if r := row(t, f.list(ff.call), m); r.Approval.Seen || r.Class != ClassPersonPush || !r.Unattended {
+			t.Fatalf("%s: a recorded approval counted where the forge denies the merge: %+v", mode, r)
+		}
 	}
-	ff := &fakeForge{t: t}
-	ff.add(answer(320, strings.Repeat("c", 40), b))
-	if r := row(t, f.list(ff.call), m); r.Approval.Seen || r.Class != ClassAutomatic || !r.Unattended {
-		t.Fatalf("a recorded approval counted where the forge denies the merge: %+v", r)
+}
+
+// TestUnderHumanTheModeAttendsAPullRequestTheForgeLeftUnread: where the
+// forge did not answer, a row whose subject names a pull request stays a
+// pull-request row, which the human mode attends, and the listing's note says
+// the forge was not read.
+func TestUnderHumanTheModeAttendsAPullRequestTheForgeLeftUnread(t *testing.T) {
+	f := newFx(t, "human")
+	sq := f.commit("fix: squashed (#330)")
+	l := f.list((&fakeForge{t: t, err: errors.New("gh api graphql: exit status 1 (HTTP 502)")}).call)
+	if r := row(t, l, sq); r.Class != ClassPersonApproved || r.Unattended || r.Approval.Source != SourceForgeUnread || r.ForgeSays != "" {
+		t.Fatalf("row %+v", r)
 	}
-	unread := &fakeForge{t: t, err: errors.New("gh api graphql: exit status 1 (HTTP 502)")}
-	if r := row(t, f.list(unread.call), m); r.Approval != (Approval{Seen: true, Source: SourceLocalTier}) || r.Unattended {
-		t.Fatalf("with the forge unread: %+v", r)
+	if !strings.Contains(l.ForgeUnread, "#330") {
+		t.Fatalf("the note %q", l.ForgeUnread)
 	}
 }
 
@@ -212,6 +251,12 @@ func TestARefusalEveryBatchWouldMeetStopsTheAsking(t *testing.T) {
 		"the answer's rate limit":  {raw: `{"data":null,"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}`},
 		"credentials not accepted": {err: errors.New("gh api graphql: exit status 1 (HTTP 401: Bad credentials)")},
 		"no forge client":          {err: landing.ErrNoForgeClient},
+		"the body's HTTP status":   {raw: `{"message":"Bad credentials","status":"401"}`, err: errors.New("gh api graphql: exit status 1")},
+		"the repository itself": {raw: `{"data":null,"errors":[{"type":"NOT_FOUND","path":["repository"],"message":"no"}]}`,
+			err: errors.New("gh api graphql: exit status 1")},
+		"no repository in the data": {raw: `{"data":{"repository":null}}`},
+		"scopes the forge does not take": {raw: `{"data":null,"errors":[{"type":"INSUFFICIENT_SCOPES","message":"no"}]}`,
+			err: errors.New("gh api graphql: exit status 1")},
 	} {
 		f := newFx(t, "human")
 		all := manyMerges(t, f, MaxBatch+1)
@@ -233,6 +278,59 @@ func TestARefusalEveryBatchWouldMeetStopsTheAsking(t *testing.T) {
 	f.list(ff.call)
 	if ff.calls != 2 {
 		t.Fatalf("a failure of one batch stopped the asking: %d calls", ff.calls)
+	}
+}
+
+// TestAskingAgainInHalvesIsBounded: a batch both of whose halves again carry
+// errors naming no pull request is asked no further, and a listing spends no
+// more calls asking again than its bound, the rest reading as unread.
+func TestAskingAgainInHalvesIsBounded(t *testing.T) {
+	f := newFx(t, "human")
+	ff := manyMerges(t, f, 8)
+	ff.raw = `{"data":null,"errors":[{"type":"INTERNAL","message":"something went wrong"}]}`
+	ff.err = errors.New("gh api graphql: exit status 1 (gh: something went wrong)")
+	if l := f.list(ff.call); ff.calls != 3 || !strings.Contains(l.ForgeUnread, "neither half") {
+		t.Fatalf("both halves failing: asked %d times, note %q", ff.calls, l.ForgeUnread)
+	}
+	keep := maxHalvingCalls
+	t.Cleanup(func() { maxHalvingCalls = keep })
+	maxHalvingCalls = 2
+	g := newFx(t, "human")
+	gf := manyMerges(t, g, 8)
+	gf.failOn = 5
+	l := g.list(gf.call)
+	slices.Sort(gf.asked)
+	if gf.calls != 3 || !slices.Equal(gf.asked, []int{1, 2, 3, 4}) || !strings.Contains(l.ForgeUnread, "bound on asking again") {
+		t.Fatalf("past the bound: asked %d times about %v, note %q", gf.calls, gf.asked, l.ForgeUnread)
+	}
+}
+
+// TestAListingWhoseTimeRunsOutKeepsWhatItRead: a ctx that ends after the
+// first batch was answered leaves that batch's answers in the cache, so the
+// next listing asks only about the rest; and where the time ran out before
+// git was asked whether it ignores the cache, the reason says so.
+func TestAListingWhoseTimeRunsOutKeepsWhatItRead(t *testing.T) {
+	f := newFx(t, "auto")
+	ff := manyMerges(t, f, MaxBatch+1)
+	ctx, cancel := context.WithCancel(t.Context())
+	ff.onCall = cancel
+	if _, err := list(ctx, f.r.Root(), Range{From: f.base, To: f.head()}, Options{Forge: ff.call}); !errors.Is(err, context.Canceled) || ff.calls != 1 {
+		t.Fatalf("list = %v after %d calls; want the ctx's end after one", err, ff.calls)
+	}
+	ff.onCall, ff.calls, ff.asked = nil, 0, nil
+	f.list(ff.call)
+	if ff.calls != 1 || len(ff.asked) != 1 {
+		t.Fatalf("the next listing asked %d times about %v; want once, about the one left", ff.calls, ff.asked)
+	}
+
+	g := newFx(t, "auto")
+	g.branch("a", "feat: a")
+	m := g.merge(1, "a")
+	ended, stop := context.WithCancel(t.Context())
+	stop()
+	fa := readForge(ended, g.r.Root(), (&fakeForge{t: t}).call, []prAsk{{pr: 1, commit: m}})
+	if !strings.Contains(fa.cacheWhy, "time ran out") || strings.Contains(fa.cacheWhy, "does not say it ignores") {
+		t.Fatalf("the reason %q", fa.cacheWhy)
 	}
 }
 
@@ -303,17 +401,18 @@ func TestAnAnswerThatDoesNotCheckIsUnread(t *testing.T) {
 	}
 }
 
-// TestTheCacheKeepsOnlyAnswersTheRowAccepts: an answer the reader does not
-// accept for its row (not merged as it, or a reviews page that is not whole)
-// is not kept, nor is anything in a tier git does not say it ignores; a
-// checkout with no tier keeps nothing and says nothing.
+// TestTheCacheKeepsOnlyAnswersTheRowAccepts: an answer the reader accepts
+// for its row is kept, and so is one that contradicts the row's subject; an
+// accepted one whose reviews page is not whole is not, nor is anything in a
+// tier git does not say it ignores; a checkout with no tier keeps nothing and
+// says nothing.
 func TestTheCacheKeepsOnlyAnswersTheRowAccepts(t *testing.T) {
 	f := newFx(t, "auto")
 	ff := manyMerges(t, f, 3)
 	ff.prs[1].MergeCommit.Oid = strings.Repeat("c", 40)
 	ff.prs[2].Reviews.TotalCount = maxPage + 1
 	f.list(ff.call)
-	for n, kept := range map[int]bool{1: false, 2: false, 3: true} {
+	for n, kept := range map[int]bool{1: true, 2: false, 3: true} {
 		_, err := os.Lstat(filepath.Join(f.r.Root(), filepath.FromSlash(cacheRel(n))))
 		if (err == nil) != kept {
 			t.Fatalf("pull request #%d kept %v, want %v", n, err == nil, kept)

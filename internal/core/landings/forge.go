@@ -7,21 +7,27 @@ package landings
 // so each call is bounded by landing.ForgeTimeout and the caller's ctx, its
 // environment scrubbed and its output bounded). Each node asks only what this
 // step reads: who opened the pull request, its head, how it merged, and its
-// reviews, with its commits only for a row that merged with one parent. An
-// answer the reader accepts for its row is kept in the local tier's cache,
-// keyed by the row's commit, so a later listing asks only about pull requests
-// it has not read; an answer it does not accept, and an unread one, is never
-// kept.
+// reviews, with its commits only for a row that merged with one parent. What
+// the forge said of a row's pull request is kept in the local tier's cache as
+// each batch returns, keyed by the row's commit, so a later listing asks only
+// about pull requests it has not read, and a listing whose time runs out keeps
+// what it read: an answer the reader accepts for its row, one that contradicts
+// the row's subject, and the forge's word that a number names no pull request.
+// An unread answer, and one whose reviews page is not whole, is never kept.
 //
 // The forge's answer is judged a pull request at a time: an error that names
 // one pull request leaves that one unread and the others answered, and a
-// number the forge says is no pull request reads so for its row alone. An
-// answer that does not parse, or carries errors that name no pull request, or
-// passes the client's output bound, answers for none of the batch, which is
-// asked again in halves, down to one pull request, while the listing's time
-// lasts. A missing client and a refusal for the rate limit or the credentials
-// stop the asking. Every row left unanswered reads as "forge unread", never
-// guessed, and the reason is the listing's note.
+// number the forge says is no pull request reads so for its row alone. A
+// refusal that concerns the login or the repository rather than one pull
+// request stops the asking: a missing client, the rate limit, credentials or
+// scopes the forge does not take, an error for the repository itself, judged
+// from the answer's typed fields where it carries them and from the client's
+// text where it does not. An answer that passes the client's output bound is
+// asked again in halves, down to one pull request; one that carries errors
+// naming no pull request is asked again along one chain of halves, and when
+// both halves of a batch fail so, neither is asked further. A listing spends
+// at most maxHalvingCalls calls asking again. Every row left unanswered reads
+// as "forge unread", never guessed, and the reason is the listing's note.
 
 import (
 	"context"
@@ -51,6 +57,10 @@ const maxPage = 100
 // file per pull request, pr-<N>.json. It holds the forge logins a row prints,
 // so it lives in the gitignored tier and never in a committed file.
 const CacheRelDir = landing.TierRelDir + "/landings"
+
+// maxHalvingCalls bounds the calls one listing spends asking batches again in
+// halves. A variable only so a test can hold a listing to a small one.
+var maxHalvingCalls = 64
 
 // maxCacheBytes bounds one cache file: an answer is bounded by the forge
 // client's own output bound.
@@ -278,74 +288,129 @@ func readForge(ctx context.Context, repoRoot string, forge landing.ForgeCall, as
 	if rootErr == nil {
 		defer root.Close()
 	}
-	cached, cacheWhy := readCache(ctx, root, repoRoot, want)
+	cached, cachedNotPR, cacheWhy := readCache(ctx, root, repoRoot, want)
 	fa.cacheWhy = cacheWhy
 	var ask []prAsk
 	for _, a := range want {
-		if c := cached[a.pr]; c != nil {
-			fa.got[a.pr] = c
-		} else {
+		switch {
+		case cached[a.pr] != nil:
+			fa.got[a.pr] = cached[a.pr]
+		case cachedNotPR[a.pr]:
+			fa.notPR[a.pr], fa.why[a.pr] = true, notPRWhy(a.pr)
+		default:
 			ask = append(ask, *a)
 		}
 	}
-	q := &asker{ctx: ctx, forge: forge, fa: &fa}
+	q := &asker{ctx: ctx, forge: forge, fa: &fa, halvings: maxHalvingCalls}
+	if len(ask) > 0 && cacheWhy == "" {
+		// Judged once, before the first batch, so each batch's answers are
+		// kept as it returns.
+		if ok, why := cacheWritable(ctx, root, rootErr, repoRoot); ok {
+			q.cache = root
+		} else {
+			fa.cacheWhy = why
+		}
+	}
 	for i := 0; i < len(ask); i += MaxBatch {
 		q.ask(ask[i:min(i+MaxBatch, len(ask))])
-	}
-	var keep []prAsk
-	for _, a := range ask {
-		if got := fa.got[a.pr]; got != nil && got.landedAs(a.pr, a.commit) == "" && got.whole() == "" {
-			keep = append(keep, a)
-		}
-	}
-	if cacheWhy != "" || len(keep) == 0 {
-		return fa
-	}
-	if ok, why := cacheWritable(ctx, root, rootErr, repoRoot); !ok {
-		fa.cacheWhy = why
-		return fa
-	}
-	for _, a := range keep {
-		if why := writeCache(root, a.pr, a.commit, fa.got[a.pr]); why != "" {
-			fa.cacheWhy = why
-			break
-		}
 	}
 	return fa
 }
 
-// asker asks the forge about batches for readForge, splitting a batch the
-// forge answered for none of, and stopping on a refusal that would refuse
-// every batch.
+// asker asks the forge about batches for readForge, asking again in halves a
+// batch the forge answered for none of, within halvings, stopping on a refusal
+// that would refuse every batch, and keeping each batch's answers in cache (nil
+// for no cache) as it returns.
 type asker struct {
-	ctx   context.Context
-	forge landing.ForgeCall
-	fa    *forgeAnswers
-	stop  string
+	ctx      context.Context
+	forge    landing.ForgeCall
+	fa       *forgeAnswers
+	stop     string
+	halvings int
+	cache    *os.Root
 }
 
-func (q *asker) ask(batch []prAsk) {
+// call asks the forge about batch unless the asking has stopped, and reports
+// whether the answer is there to read; a batch it does not ask about, or whose
+// answer stops the asking, reads as unread.
+func (q *asker) call(batch []prAsk) (batchResult, bool) {
 	if q.stop == "" && q.ctx.Err() != nil {
 		q.stop = "the listing's time ran out before the forge was asked: " + whyText(q.ctx.Err())
 	}
 	if q.stop != "" {
 		q.unread(batch, q.stop)
-		return
+		return batchResult{}, false
 	}
 	r := askBatch(q.forge, batch)
-	switch {
-	case r.stop:
+	if r.stop {
 		q.stop = r.whole
 		q.unread(batch, r.whole)
-		return
-	case r.whole != "" && r.split && len(batch) > 1:
-		q.ask(batch[:len(batch)/2])
-		q.ask(batch[len(batch)/2:])
-		return
+		return r, false
+	}
+	return r, true
+}
+
+func (q *asker) ask(batch []prAsk) {
+	r, ok := q.call(batch)
+	switch {
+	case !ok:
+	case r.whole != "" && r.split:
+		q.halve(batch, r.whole)
 	case r.whole != "":
 		q.unread(batch, r.whole)
+	default:
+		q.take(batch, r)
+	}
+}
+
+// halve asks batch, which the forge answered for none of (why), again in two
+// halves. A half that passed the output bound is halved again in turn; one
+// that again carries errors naming no pull request is followed alone, as one
+// chain, and when both halves fail other than for their size the failure is
+// not one pull request's, so neither is asked further. Each call spends one of
+// the listing's halvings, and with none left the batch reads as unread.
+func (q *asker) halve(batch []prAsk, why string) {
+	switch {
+	case len(batch) < 2:
+		q.unread(batch, why)
+		return
+	case q.halvings < 2:
+		q.unread(batch, why+"; it is not asked again in halves, the listing's bound on asking again being spent")
 		return
 	}
+	q.halvings -= 2
+	type failed struct {
+		batch []prAsk
+		why   string
+		size  bool
+	}
+	var fails []failed
+	for _, h := range [][]prAsk{batch[:len(batch)/2], batch[len(batch)/2:]} {
+		r, ok := q.call(h)
+		switch {
+		case !ok:
+		case r.whole != "" && r.split:
+			fails = append(fails, failed{h, r.whole, r.size})
+		case r.whole != "":
+			q.unread(h, r.whole)
+		default:
+			q.take(h, r)
+		}
+	}
+	if len(fails) == 2 && !(fails[0].size && fails[1].size) {
+		for _, f := range fails {
+			q.unread(f.batch, f.why+"; neither half of the batch answered, so it is not asked again")
+		}
+		return
+	}
+	for _, f := range fails {
+		q.halve(f.batch, f.why)
+	}
+}
+
+// take reads one answered batch's answers into the listing's, and keeps what
+// the forge said of each pull request in the cache.
+func (q *asker) take(batch []prAsk, r batchResult) {
 	for _, a := range batch {
 		switch {
 		case r.got[a.pr] != nil:
@@ -358,6 +423,30 @@ func (q *asker) ask(batch []prAsk) {
 		default:
 			q.fa.why[a.pr] = fmt.Sprintf("the forge's answer leaves out pull request #%d", a.pr)
 		}
+		q.keep(a)
+	}
+}
+
+// keep writes what the forge said of a's pull request to the cache: an answer
+// the row accepts, one that contradicts the row's subject, or the forge's word
+// that the number names no pull request; never an unread answer, nor an
+// accepted one whose reviews page is not whole, which a later listing asks
+// again. The first write that fails stops the keeping and says why.
+func (q *asker) keep(a prAsk) {
+	if q.cache == nil {
+		return
+	}
+	e := cacheEntry{Commit: a.commit}
+	switch got := q.fa.got[a.pr]; {
+	case q.fa.notPR[a.pr]:
+		e.NotPR = true
+	case got == nil, got.landedAs(a.pr, a.commit) == "" && got.whole() != "":
+		return
+	default:
+		e.PR = *got
+	}
+	if why := writeCache(q.cache, a.pr, e); why != "" {
+		q.fa.cacheWhy, q.cache = why, nil
 	}
 }
 
@@ -375,6 +464,9 @@ type batchAnswer struct {
 		Repository map[string]json.RawMessage `json:"repository"`
 	} `json:"data"`
 	Errors []forgeError `json:"errors"`
+	// Status is the HTTP status the forge writes in the body of a refusal
+	// that never reached the query (a string or a number).
+	Status json.RawMessage `json:"status"`
 }
 
 // forgeError is one GraphQL error: its type, the path into the answer it
@@ -388,21 +480,55 @@ type forgeError struct {
 // batchResult is one batch's answer: the pull requests answered, why each
 // other was not, which the forge says are no pull request; or, for the whole
 // batch, why none was answered (whole), whether asking about fewer at a time
-// may answer (split), and whether to stop asking (stop).
+// may answer (split, and size when it was the output bound), and whether to
+// stop asking (stop).
 type batchResult struct {
 	got   map[int]*prAnswer
 	why   map[int]string
 	notPR map[int]bool
 	whole string
 	split bool
+	size  bool
 	stop  bool
 }
 
 // stopsAsking says whether a refusal's text is one every later batch would
-// meet too: the forge's rate limit, or credentials it does not take.
+// meet too: the forge's rate limit, or credentials it does not take. It reads
+// the forge client's own wording, for a refusal whose answer carries no typed
+// field (refusal).
 func stopsAsking(text string) bool {
 	t := strings.ToLower(text)
-	return strings.Contains(t, "rate limit") || strings.Contains(t, "http 401") || strings.Contains(t, "bad credentials")
+	return strings.Contains(t, "rate limit") || strings.Contains(t, "http 401") || strings.Contains(t, "http 403") ||
+		strings.Contains(t, "bad credentials")
+}
+
+// accessTypes are the GraphQL error types that, on an error naming no pull
+// request, refuse the login or the repository: every batch would meet them.
+var accessTypes = map[string]bool{"FORBIDDEN": true, "INSUFFICIENT_SCOPES": true, "NOT_FOUND": true, "UNAUTHORIZED": true}
+
+// refusal says, from the answer's typed fields, why a would refuse every
+// batch, "" when nothing in it does: an HTTP status of 401 or 403 in the body,
+// the rate limit, an error for the repository itself (its path is the
+// repository alone), an error naming no pull request whose type refuses the
+// login or the repository, or data whose repository is null.
+func refusal(a batchAnswer) string {
+	if s := strings.Trim(string(a.Status), `"`); s == "401" || s == "403" {
+		return "the forge answered HTTP " + s
+	}
+	for _, e := range a.Errors {
+		switch {
+		case e.Type == "RATE_LIMITED":
+			return "for its rate limit"
+		case len(e.Path) == 1 && e.Path[0] == "repository":
+			return "for the repository"
+		case len(e.Path) == 0 && accessTypes[e.Type]:
+			return "with an error of type " + e.Type + " that names no pull request"
+		}
+	}
+	if a.Data != nil && a.Data.Repository == nil {
+		return "it names no repository"
+	}
+	return ""
 }
 
 // askBatch asks the forge about batch in one document and reads the answer a
@@ -422,20 +548,20 @@ func askBatch(forge landing.ForgeCall, batch []prAsk) batchResult {
 		r.whole, r.stop = "the forge could not be asked about "+about+": "+whyText(err), true
 		return r
 	case errors.Is(err, landing.ErrOutputCap):
-		r.whole, r.split = "the forge's answer about "+about+" passes the forge client's output bound", true
-		return r
-	}
-	if err != nil && stopsAsking(err.Error()) {
-		r.whole, r.stop = "the forge refused "+about+": "+whyText(err), true
+		r.whole, r.split, r.size = "the forge's answer about "+about+" passes the forge client's output bound", true, true
 		return r
 	}
 	var a batchAnswer
 	decoded := json.Unmarshal([]byte(out), &a) == nil
-	for _, e := range a.Errors {
-		if e.Type == "RATE_LIMITED" {
-			r.whole, r.stop = "the forge refused "+about+" for its rate limit", true
+	if decoded {
+		if why := refusal(a); why != "" {
+			r.whole, r.stop = "the forge refused "+about+" "+why, true
 			return r
 		}
+	}
+	if err != nil && stopsAsking(err.Error()) {
+		r.whole, r.stop = "the forge refused "+about+": "+whyText(err), true
+		return r
 	}
 	switch {
 	case !decoded && err != nil, decoded && len(a.Errors) == 0 && err != nil:
@@ -444,10 +570,11 @@ func askBatch(forge landing.ForgeCall, batch []prAsk) batchResult {
 	case !decoded:
 		r.whole = "the forge's answer about " + about + " does not parse"
 		return r
-	case a.Data == nil || a.Data.Repository == nil:
-		// Errors with no data under the repository may come of one pull
-		// request; asked about fewer at a time, the others may answer.
-		r.whole, r.split = "the forge's answer about "+about+" names no repository", len(a.Errors) > 0
+	case a.Data == nil:
+		// Errors with no data that refuse nothing (refusal) may come of the
+		// document's cost or of one pull request; asked about fewer at a
+		// time, the others may answer.
+		r.whole, r.split = "the forge's answer about "+about+" carries no data", len(a.Errors) > 0
 		return r
 	}
 	for _, e := range a.Errors {
@@ -460,7 +587,7 @@ func askBatch(forge landing.ForgeCall, batch []prAsk) batchResult {
 		switch {
 		case e.Type == "NOT_FOUND" && len(e.Path) == 2:
 			r.notPR[n] = true
-			r.why[n] = fmt.Sprintf("the forge says #%d names no pull request", n)
+			r.why[n] = notPRWhy(n)
 		case r.why[n] == "":
 			r.why[n] = fmt.Sprintf("the forge's answer for pull request #%d carries an error", n)
 		}
@@ -487,6 +614,10 @@ func askBatch(forge landing.ForgeCall, batch []prAsk) batchResult {
 	return r
 }
 
+// notPRWhy is the reason a row reads for number n the forge says names no
+// pull request.
+func notPRWhy(n int) string { return fmt.Sprintf("the forge says #%d names no pull request", n) }
+
 // pathAlias is the pull request node an error's path names: its second
 // element under "repository".
 func pathAlias(path []any) (string, bool) {
@@ -497,11 +628,13 @@ func pathAlias(path []any) (string, bool) {
 	return s, ok
 }
 
-// cacheEntry is one cache file: the answer, and the row commit it was asked
-// for.
+// cacheEntry is one cache file: the answer, or the forge's word that the
+// number names no pull request (NotPR, with no answer), and the row commit it
+// was asked for.
 type cacheEntry struct {
 	Commit string   `json:"commit"`
 	PR     prAnswer `json:"pr"`
+	NotPR  bool     `json:"not_pr,omitempty"`
 }
 
 func cacheRel(n int) string { return CacheRelDir + "/pr-" + strconv.Itoa(n) + ".json" }
@@ -511,11 +644,12 @@ func cacheRel(n int) string { return CacheRelDir + "/pr-" + strconv.Itoa(n) + ".
 // written, so it is read as the forge's answer is: a regular file, never a
 // link, within its bound (fsutil.ReadGuardedInRoot), decoded strictly and
 // checked. A cache git tracks came with a commit, so none of it counts, and
-// the reason says so, so the listing writes none over it.
-func readCache(ctx context.Context, root *os.Root, repoRoot string, want []*prAsk) (got map[int]*prAnswer, why string) {
-	got = map[int]*prAnswer{}
+// the reason says so, so the listing writes none over it. notPR holds the
+// numbers an entry says name no pull request.
+func readCache(ctx context.Context, root *os.Root, repoRoot string, want []*prAsk) (got map[int]*prAnswer, notPR map[int]bool, why string) {
+	got, notPR = map[int]*prAnswer{}, map[int]bool{}
 	if root == nil {
-		return got, ""
+		return got, notPR, ""
 	}
 	var rels []string
 	for _, a := range want {
@@ -531,17 +665,22 @@ func readCache(ctx context.Context, root *os.Root, repoRoot string, want []*prAs
 		var e cacheEntry
 		dec := json.NewDecoder(strings.NewReader(string(raw)))
 		dec.DisallowUnknownFields()
-		if dec.Decode(&e) != nil || dec.More() || e.Commit != a.commit || e.PR.check(a.pr) != "" {
-			continue
+		switch {
+		case dec.Decode(&e) != nil || dec.More() || e.Commit != a.commit:
+		case e.NotPR:
+			if e.PR.Number == 0 {
+				notPR[a.pr] = true
+			}
+		case e.PR.check(a.pr) == "":
+			got[a.pr] = &e.PR
 		}
-		got[a.pr] = &e.PR
 	}
 	if len(rels) > 0 {
 		if err := localtier.UntrackedEach(ctx, repoRoot, rels...); err != nil {
-			return map[int]*prAnswer{}, "the forge cache is neither read nor written: " + whyText(err)
+			return map[int]*prAnswer{}, map[int]bool{}, "the forge cache is neither read nor written: " + whyText(err)
 		}
 	}
-	return got, ""
+	return got, notPR, ""
 }
 
 // cacheWritable says whether the cache may be written in the checkout at
@@ -557,18 +696,22 @@ func cacheWritable(ctx context.Context, root *os.Root, rootErr error, repoRoot s
 		return false, ""
 	}
 	if err := gitutil.WorkingTreeCommandContext(ctx, repoRoot, "check-ignore", "-q", "--", CacheRelDir+"/").Run(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return false, "the forge's answers are not kept: the listing's time ran out before git said whether it ignores " + CacheRelDir + "/: " + whyText(ctxErr)
+		}
 		return false, "the forge's answers are not kept: git does not say it ignores " + CacheRelDir + "/ in this checkout"
 	}
 	return true, ""
 }
 
-// writeCache keeps a, the answer for pull request n asked for commit, in the
-// local tier cacheWritable allowed, and says why it could not, "" when it did.
-// The file is one a later listing makes again from the forge, so it is
-// written without the flushes only a power cut needs
-// (fsutil.WriteRebuildableInRoot).
-func writeCache(root *os.Root, n int, commit string, a *prAnswer) string {
-	data, err := json.Marshal(cacheEntry{Commit: commit, PR: *a})
+// writeCache keeps e, what the forge said of pull request n, in the local
+// tier cacheWritable allowed, and says why it could not, "" when it did. The
+// file is one a later listing makes again from the forge, so it is written
+// without the flushes only a power cut needs (fsutil.WriteRebuildableInRoot),
+// and none of it waits on the listing's ctx, so an answer read is kept even
+// when the listing's time runs out after it.
+func writeCache(root *os.Root, n int, e cacheEntry) string {
+	data, err := json.Marshal(e)
 	if err != nil {
 		return "the forge's answers cannot be kept: " + whyText(err)
 	}
