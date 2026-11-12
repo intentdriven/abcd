@@ -112,7 +112,10 @@ func TestCommittedModeReadsTheCommitsFile(t *testing.T) {
 	if _, _, err := CommittedMode(t.Context(), repo.Root(), bad); err == nil {
 		t.Fatal("a value that is no mode was read")
 	}
-	for _, name := range []string{auto[:12], "HEAD"} {
+	// The empty name included: it would otherwise read the working tree,
+	// which here holds a mode that reads.
+	repo.Write(".abcd/config.json", `{"facilitator":{"mode":"auto"}}`+"\n")
+	for _, name := range []string{auto[:12], "HEAD", ""} {
 		if _, _, err := CommittedMode(t.Context(), repo.Root(), name); err == nil {
 			t.Fatalf("%s, no full object name, was read", name)
 		}
