@@ -151,6 +151,9 @@ func TestCodeSpansStepInLineWithTheBody(t *testing.T) {
 		"a backtick left open, then comment openers": func(n int) string {
 			return "` " + strings.Repeat("<!---->", n) + "\n> x\n"
 		},
+		"a backtick left open, then spans holding openers below it": func(n int) string {
+			return "a `\n" + strings.Repeat("`<!--` ", n) + "\n" + strings.Repeat("b `<!-- c` d\n", n)
+		},
 		"comment openers none closes": func(n int) string {
 			return strings.Repeat("<!--", n) + "\n> x\n"
 		},

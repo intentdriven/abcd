@@ -282,7 +282,7 @@ func TestOpenQuestionsReadBelowALineInitialComment(t *testing.T) {
 
 // TestUnsettledReadsProseBetweenTwoLineInitialComments: below a backtick run
 // a line leaves open, two comments that each open first on their line and
-// each hold a fence delimiter hide those delimiters, so they pair nothing and
+// each hold a fence delimiter mask those delimiters, so they pair nothing and
 // the prose between the comments is read.
 func TestUnsettledReadsProseBetweenTwoLineInitialComments(t *testing.T) {
 	checkUnsettled(t, []unsettledCase{
