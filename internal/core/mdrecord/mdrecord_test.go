@@ -125,10 +125,10 @@ func TestOpensCommentLetsTheFirstConstructWin(t *testing.T) {
 	}
 }
 
-// TestCodeSpanRangesPairsRunsOfEqualLength: a run closes on a run of the SAME
+// TestCodeSpansPairRunsOfEqualLength: a run closes on a run of the SAME
 // length, and an unmatched run is literal backticks rather than an opener that
 // swallows the rest of the line.
-func TestCodeSpanRangesPairsRunsOfEqualLength(t *testing.T) {
+func TestCodeSpansPairRunsOfEqualLength(t *testing.T) {
 	for name, tc := range map[string]struct {
 		line string
 		want [][2]int
@@ -140,8 +140,8 @@ func TestCodeSpanRangesPairsRunsOfEqualLength(t *testing.T) {
 		"length mixed": {"a ``b` c", nil},
 		"none":         {"plain prose", nil},
 	} {
-		if got := CodeSpanRanges(tc.line); !reflect.DeepEqual(got, tc.want) {
-			t.Fatalf("%s: CodeSpanRanges(%q) = %v, want %v", name, tc.line, got, tc.want)
+		if got := CodeSpans([]string{tc.line})[0]; !reflect.DeepEqual(got, tc.want) {
+			t.Fatalf("%s: CodeSpans(%q) = %v, want %v", name, tc.line, got, tc.want)
 		}
 	}
 }
@@ -363,11 +363,11 @@ func BenchmarkOpensCommentDistinctRuns(b *testing.B) {
 	}
 }
 
-func BenchmarkCodeSpanRangesDistinctRuns(b *testing.B) {
-	ln := pathologicalRuns(120)
+func BenchmarkCodeSpansDistinctRuns(b *testing.B) {
+	ln := []string{pathologicalRuns(120)}
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if r := CodeSpanRanges(ln); len(r) != 0 {
+		if r := CodeSpans(ln)[0]; len(r) != 0 {
 			b.Fatalf("the fixture must pair no spans, got %v", r)
 		}
 	}

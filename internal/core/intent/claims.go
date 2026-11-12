@@ -194,8 +194,9 @@ func parseConditions(lines []string) []ScopeCondition {
 		return []ScopeCondition{}
 	}
 	conds := []ScopeCondition{}
+	spans := mdrecord.CodeSpans(lines)
 	for _, b := range mdrecord.BulletBlocks(lines, mask, start, end) {
-		ids, malformed, text := readConditionBlock(lines, b)
+		ids, malformed, text := readConditionBlock(lines, spans, b)
 		c := ScopeCondition{Ordinal: len(conds) + 1, Text: text, MalformedMarker: malformed}
 		if len(ids) > 0 {
 			c.ID, c.ExtraIDs = ids[0], ids[1:]
@@ -210,17 +211,17 @@ func parseConditions(lines []string) []ScopeCondition {
 // the bullet's prose with the well-formed markers excised. A malformed marker is
 // left in the prose deliberately: the gate names it and the remedy is to delete
 // it, so the reader has to be able to see what to delete.
-func readConditionBlock(lines []string, b mdrecord.BulletBlock) (ids []string, malformed bool, text string) {
+func readConditionBlock(lines []string, spans [][][2]int, b mdrecord.BulletBlock) (ids []string, malformed bool, text string) {
 	var parts []string
 	for i := b.Start; i < b.End; i++ {
 		ln := strings.TrimRight(lines[i], "\r")
-		spans := mdrecord.CodeSpanRanges(ln)
 		var live []string
 		for _, m := range condMarkerRe.FindAllStringSubmatchIndex(ln, -1) {
 			// A marker quoted in backticks is DOCUMENTATION of the grammar, not an
 			// identity — the gradient's own prose writes it that way. Reading it as
-			// one hands a condition an id nobody minted.
-			if mdrecord.InAnyRange(spans, m[0]) {
+			// one hands a condition an id nobody minted. The spans are the
+			// page's (mdrecord.CodeSpans), so one may open on the line above.
+			if mdrecord.InAnyRange(spans[i], m[0]) {
 				malformed = true
 				continue
 			}
@@ -336,12 +337,13 @@ func stampScopeConditions(content string, minter recordid.Minter) (string, int, 
 		}
 	}
 	stamped := 0
+	spans := mdrecord.CodeSpans(lines)
 	for _, b := range mdrecord.BulletBlocks(lines, mask, start, end) {
 		// Marker-free bullets only. A bullet that already carries an identity —
 		// wherever in its wrapped text that identity sits — is never re-minted, and
 		// one carrying a near-miss of a marker is left for the human to correct
 		// rather than given a second thing that looks like an identity.
-		ids, malformed, _ := readConditionBlock(lines, b)
+		ids, malformed, _ := readConditionBlock(lines, spans, b)
 		if len(ids) > 0 || malformed {
 			continue
 		}

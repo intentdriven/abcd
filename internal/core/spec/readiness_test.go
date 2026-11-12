@@ -142,3 +142,66 @@ func TestUnsettledDescribesAnUnclosedOpener(t *testing.T) {
 		t.Fatalf("Describe = %q", d)
 	}
 }
+
+// TestUnsettledReadsCodeSpansAsThePagePairsThem: a span the page pairs over a
+// line break is not read, and text the page shows as prose around one is.
+func TestUnsettledReadsCodeSpansAsThePagePairsThem(t *testing.T) {
+	const fm = "---\nid: spc-1\n---\n# T\n"
+	cases := []struct {
+		name string
+		body string
+		want []Statement // Line and Kind only
+	}{
+		{"the phrase inside a span over a line break", "Quote `x.\nNot READY: owed` here.\n", nil},
+		{"the same phrase outside one", "Quote `x` y.\nNot READY: owed.\n", []Statement{{Line: 6, Kind: UnsettledNotReady}}},
+		{"an unpaired backtick, then the phrase after a span's close", "The cache `x\ny`. Not READY: owed `z`.\n", []Statement{{Line: 6, Kind: UnsettledNotReady}}},
+		{"a comment opener inside a span over a line break", "Intro `a <!-- b\nc` Not READY: owed. -->\n", []Statement{{Line: 6, Kind: UnsettledNotReady}}},
+		{"a blank line between the two backticks", "Quote `x.\n\nNot READY: owed` here.\n", []Statement{{Line: 7, Kind: UnsettledNotReady}}},
+		{"a heading between the two backticks", "Quote `x.\n## Not READY: owed` here.\n", []Statement{{Line: 6, Kind: UnsettledNotReady}}},
+		{"a list item between the two backticks", "Quote `x.\n- Not READY: owed` here.\n", []Statement{{Line: 6, Kind: UnsettledNotReady}}},
+		{"a fence between the two backticks", "Quote `x.\n```\ncode\n```\nNot READY: owed` here.\n", []Statement{{Line: 9, Kind: UnsettledNotReady}}},
+		{"a table cell between the two backticks", "| a | b |\n|---|---|\n| `x | Not READY: owed` |\n", []Statement{{Line: 7, Kind: UnsettledNotReady}}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := Unsettled(fm + c.body)
+			if len(got) != len(c.want) {
+				t.Fatalf("Unsettled = %+v, want %+v", got, c.want)
+			}
+			for i := range got {
+				if got[i].Line != c.want[i].Line || got[i].Kind != c.want[i].Kind {
+					t.Fatalf("statement %d = %+v, want line %d %s", i, got[i], c.want[i].Line, c.want[i].Kind)
+				}
+			}
+		})
+	}
+}
+
+// TestOpenQuestionsReadUnderACommentOpenedAfterASpan: an unpaired backtick,
+// then a line opening with a backtick and an HTML comment opener, the comment
+// running over the Open Questions section: the page pairs the two backticks
+// and shows the questions, and so does the reader. With the opener inside the
+// span the page shows no comment at all, and the reader reports no layout.
+func TestOpenQuestionsReadUnderACommentOpenedAfterASpan(t *testing.T) {
+	const fm = "---\nid: spc-1\n---\n# T\n"
+	for _, c := range []struct {
+		name, body string
+		layout     bool
+	}{
+		{"the opener after the span", "The cache ` is named\n` <!-- parked\n\n## Open Questions\n\n- Which cache?\n\n-->\n", true},
+		{"the opener inside the span", "The cache `a <!-- parked\nb` named.\n\n## Open Questions\n\n- Which cache?\n\n-->\n", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if q := OpenQuestions(fm + c.body); len(q) != 1 || q[0].Text != "Which cache?" {
+				t.Fatalf("OpenQuestions = %+v, want the one question", q)
+			}
+			layout := false
+			for _, st := range Unsettled(fm + c.body) {
+				layout = layout || st.Kind == UnsettledLayout || st.Kind == UnsettledUnclosed
+			}
+			if layout != c.layout {
+				t.Fatalf("Unsettled = %+v, want a layout statement %v", Unsettled(fm+c.body), c.layout)
+			}
+		})
+	}
+}

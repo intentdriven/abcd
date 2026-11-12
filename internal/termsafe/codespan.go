@@ -65,6 +65,61 @@ func PairCodeSpan(s string, i int) (span PairedSpan, ok bool) {
 	return PairedSpan{}, false
 }
 
+// CodeSpanPairer pairs every backtick run of one string by PairCodeSpan's
+// rule, for a walk that asks about its runs left to right: a paragraph's walk
+// that pairs spans over its line breaks. Asking PairCodeSpan at each run costs
+// a scan to the closer, and to the end of the string for a run nothing closes,
+// so a string of runs that never close costs the square of its length; the
+// pairer lists the string's runs once, by length, and answers each question by
+// moving that length's cursor forward, so a whole walk costs time in line with
+// the string.
+type CodeSpanPairer struct {
+	runs  map[int][]int // each maximal run's start, by its length, in order
+	next  map[int]int   // per length, the first listed run not yet passed
+	steps int
+}
+
+// Steps is the pairer's whole cost so far: one step per byte it listed and
+// per run a cursor passed, for a caller that holds its own cost to a bound.
+func (p *CodeSpanPairer) Steps() int { return p.steps }
+
+// NewCodeSpanPairer lists the runs of s.
+func NewCodeSpanPairer(s string) *CodeSpanPairer {
+	p := &CodeSpanPairer{runs: map[int][]int{}, next: map[int]int{}}
+	for i := 0; i < len(s); {
+		p.steps++
+		if s[i] != '`' {
+			i++
+			continue
+		}
+		j := backtickRunEnd(s, i)
+		p.runs[j-i] = append(p.runs[j-i], i)
+		i = j
+	}
+	return p
+}
+
+// Pair reports the span opened by the backticks s[i:end], where end is the end
+// of the maximal run they sit in and i may sit inside it (a run whose first
+// backtick is escaped opens past it): the first maximal run starting at or
+// after end of exactly end-i backticks closes it, as PairCodeSpan pairs it.
+// Calls must come in rising order of end.
+func (p *CodeSpanPairer) Pair(i, end int) (PairedSpan, bool) {
+	n := end - i
+	starts := p.runs[n]
+	k := p.next[n]
+	for k < len(starts) && starts[k] < end {
+		p.steps++
+		k++
+	}
+	p.next[n] = k
+	if k == len(starts) {
+		return PairedSpan{}, false
+	}
+	j := starts[k]
+	return PairedSpan{Start: i, ContentStart: end, ContentEnd: j, End: j + n}, true
+}
+
 // backtickRunEnd returns the index just past the run of backticks at i.
 func backtickRunEnd(s string, i int) int {
 	for i < len(s) && s[i] == '`' {

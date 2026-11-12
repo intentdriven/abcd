@@ -464,3 +464,23 @@ func TestConditionWithTwoMarkersIsAFault(t *testing.T) {
 		t.Fatalf("stamped %d — a bullet that already carries markers is never stamped", n)
 	}
 }
+
+// TestParseConditionsReadsCodeSpansAsThePagePairsThem: a marker inside a span
+// the page pairs over a line break is quoted grammar, not an identity, and a
+// marker the page shows after such a span is one.
+func TestParseConditionsReadsCodeSpansAsThePagePairsThem(t *testing.T) {
+	body := "- a condition quoting `the grammar\n" +
+		"  written <!-- cond: cond-2608300102030407 --> so` here\n" +
+		"- a condition naming `x\n" +
+		"  y` <!-- cond: cond-2608300102030408 --> and `z`\n"
+	c := parseClaims(claimRecord(nil, str(body)))
+	if len(c.Conditions) != 2 {
+		t.Fatalf("got %d conditions, want 2: %+v", len(c.Conditions), c.Conditions)
+	}
+	if c.Conditions[0].ID != "" || !c.Conditions[0].MalformedMarker {
+		t.Errorf("condition 1 = %+v, want the quoted marker read as no identity", c.Conditions[0])
+	}
+	if c.Conditions[1].ID != "cond-2608300102030408" {
+		t.Errorf("condition 2 ID = %q, want the marker after the span", c.Conditions[1].ID)
+	}
+}

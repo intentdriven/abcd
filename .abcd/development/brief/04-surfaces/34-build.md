@@ -66,10 +66,18 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   item's fence nearer the margin than the item's text (each named by its line,
   and the text from there on is read). Lower-case "not READY", "Not ready",
   and the phrase elsewhere in a sentence are not matched. The frontmatter,
-  inline code spans that open and close on one line, fenced blocks (one at up to three columns under a list
+  inline code spans, fenced blocks (one at up to three columns under a list
   item included) and HTML comments are not read;
-  an indented code block is read. So a phrase quoted rather than said goes in
-  an inline code span. A closed spec, and a record in `shipped/`,
+  an indented code block is read. A code span is paired as the page pairs it:
+  a run of backticks closes at the next run of its length, over a line break
+  inside a paragraph, and a run left open where the paragraph ends is
+  literal; a comment opener inside a span opens nothing. Where the pairing
+  turns on a layout the reader does not parse (a blockquote, a table row, an
+  HTML block, a list marker numbered other than 1, a paragraph indented four
+  columns or more) and a run there could pair over it, the reader must read
+  that text rather than skip it, and it does: those lines hold no span for
+  it, and a comment opener there after a backtick is a layout statement. So a
+  phrase quoted rather than said goes in an inline code span. A closed spec, and a record in `shipped/`,
   `superseded/` or `disciplines/`, is not judged.
 - **open questions** — no open question under the record's `## Open Questions`
   or a sub-heading of it. The reader fails closed and knows the record's two settled markers: a section
@@ -91,8 +99,9 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   are written (an intent over the intent store's size cap is refused for its
   size before its layout is read, and the rule still names its lines, up to record-lint's own file cap). Only an ATX heading (`#`) opens
   or ends the section; a setext or HTML heading does not. The reader reads
-  ATX headings, fences, HTML comments and inline code spans that open and close on one line; any other raw
-  HTML block is read as ordinary text, line by line.
+  ATX headings, fences, HTML comments and inline code spans, paired over a
+  line break as the page pairs them; any other raw HTML block is read as
+  ordinary text, line by line.
 - **claim sections** — the mechanism prompt is answered or the section absent,
   and the scope conditions are recorded. The readiness gate reports both as
   advisory; a run is where they bind, because an autonomous lane has nobody to

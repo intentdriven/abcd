@@ -72,6 +72,7 @@ func HandAudited(content string) bool {
 	if !ok {
 		return false
 	}
+	spans := mdrecord.CodeSpans(lines)
 	var block strings.Builder
 	judged := false
 	flush := func() {
@@ -89,7 +90,7 @@ func HandAudited(content string) bool {
 		if auditSectionCloseRe.MatchString(raw) {
 			break
 		}
-		prose := proseOf(raw)
+		prose := proseOf(raw, spans[i])
 		switch {
 		case strings.TrimSpace(prose) == "":
 			flush()
@@ -108,16 +109,16 @@ func HandAudited(content string) bool {
 	return judged
 }
 
-// proseOf is one line with what is not prose taken out: each HTML comment
-// closed on the line, and each inline code span, since a verdict word quoted
-// as code is vocabulary under discussion, not a verdict given.
-func proseOf(line string) string {
-	line = auditInlineCommentRe.ReplaceAllString(line, "")
-	spans := mdrecord.CodeSpanRanges(line)
+// proseOf is one line with what is not prose taken out: each inline code
+// span, its ranges the page's (mdrecord.CodeSpans, so one may open on the
+// line above), since a verdict word quoted as code is vocabulary under
+// discussion, not a verdict given, and then each HTML comment closed on what
+// is left of the line.
+func proseOf(line string, spans [][2]int) string {
 	for k := len(spans) - 1; k >= 0; k-- {
 		line = line[:spans[k][0]] + line[spans[k][1]:]
 	}
-	return line
+	return auditInlineCommentRe.ReplaceAllString(line, "")
 }
 
 // blockJudges reports whether one block names a criterion and gives a verdict.

@@ -114,11 +114,14 @@ var (
 //     (LayoutStatements).
 //
 // It reads what a person reading the page reads, through mdrecord.ReadPage,
-// the reading OpenQuestions takes. The frontmatter, inline code spans that open and close on one line, fenced
+// the reading OpenQuestions takes. The frontmatter, inline code spans, fenced
 // blocks and HTML comments are not read, a comment that opens and closes on
 // one line included; the text before a comment's opener and after its closer,
-// on the same line, is, and so is an indented code block. A line carrying a
-// sentence and a label is reported once, as not ready.
+// on the same line, is, and so is an indented code block. A code span is
+// paired as the page pairs it (mdrecord.Page.Spans): over a line break inside
+// a paragraph, and where the pairing turns on a layout the reader does not
+// parse, not at all, so that text is read. A line carrying a sentence and a
+// label is reported once, as not ready.
 func Unsettled(content string) []Statement {
 	lines := strings.Split(content, "\n")
 	body := 0
@@ -134,12 +137,12 @@ func Unsettled(content string) []Statement {
 	}
 	live := page.Text
 	for i := body; i < len(lines); i++ {
-		ln := blankCodeSpans(live[i])
+		ln := blankSpans(live[i], page.Spans[i])
 		kind := ""
 		switch {
 		case notReadyAt(ln):
 			kind = UnsettledNotReady
-		case notReadyAt(ln+" READY") && readyHeadRe.MatchString(nextLine(live, i)):
+		case notReadyAt(ln+" READY") && readyHeadRe.MatchString(nextLine(page, i)):
 			kind = UnsettledNotReady
 		case openLabelRe.MatchString(ln) && !asked[i+1]:
 			kind = UnsettledOpenLabel
@@ -185,11 +188,11 @@ func notReadyAt(ln string) bool {
 
 // nextLine is the live text of the line after i, blanked of code spans, or
 // "" past the end: a blank line ends the paragraph, so it carries no wrap.
-func nextLine(live []string, i int) string {
-	if i+1 >= len(live) {
+func nextLine(page mdrecord.Page, i int) string {
+	if i+1 >= len(page.Text) {
 		return ""
 	}
-	return blankCodeSpans(live[i+1])
+	return blankSpans(page.Text[i+1], page.Spans[i+1])
 }
 
 // unclosedText is what an unclosed statement quotes: the construct, not the
@@ -213,10 +216,10 @@ func insertStatement(out []Statement, st Statement) []Statement {
 	return out
 }
 
-// blankCodeSpans replaces each inline code span on ln with spaces of the same
-// length, so a pattern cannot match inside one and the offsets stay put.
-func blankCodeSpans(ln string) string {
-	ranges := mdrecord.CodeSpanRanges(ln)
+// blankSpans replaces each of ln's code span ranges (mdrecord.Page.Spans)
+// with spaces of the same length, so a pattern cannot match inside one and
+// the offsets stay put.
+func blankSpans(ln string, ranges [][2]int) string {
 	if len(ranges) == 0 {
 		return ln
 	}

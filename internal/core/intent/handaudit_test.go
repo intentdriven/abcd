@@ -96,3 +96,15 @@ func TestHandAuditedReadsOnlyItsOwnSection(t *testing.T) {
 		t.Error("a record with no Audit Notes section was read as hand-audited")
 	}
 }
+
+// TestHandAuditedReadsCodeSpansAsThePagePairsThem: a verdict inside a span
+// the page pairs over a line break is quoted, and a verdict the page shows as
+// prose after such a span is given.
+func TestHandAuditedReadsCodeSpansAsThePagePairsThem(t *testing.T) {
+	if HandAudited(withAuditNotes("Criterion 2 now quotes `the\nNOT_MET` token in its refusal.")) {
+		t.Errorf("a verdict quoted over a line break read as given")
+	}
+	if !HandAudited(withAuditNotes("Criterion 2 names `x\ny` and is MET, as `z` shows.")) {
+		t.Errorf("a verdict after a span over a line break not read")
+	}
+}
