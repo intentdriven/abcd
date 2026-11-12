@@ -112,13 +112,19 @@ type LaneWorktree struct {
 // laneWorktree derives the lane's worktree and branch from the run and lane
 // ids and the repository's root commit, building no path from anything else.
 func laneWorktree(repoRoot, runID, laneID string) (LaneWorktree, error) {
+	return laneWorktreeContext(context.Background(), repoRoot, runID, laneID)
+}
+
+// laneWorktreeContext is laneWorktree with the root-commit lookup bound to ctx
+// (worktree.LaneForContext).
+func laneWorktreeContext(ctx context.Context, repoRoot, runID, laneID string) (LaneWorktree, error) {
 	name, err := laneName(runID, laneID)
 	if err != nil {
 		return LaneWorktree{}, err
 	}
 	// A repository with no root commit is the store's refusal; git not
 	// answering is an error, no evidence of none, and no path is built.
-	l, err := worktree.LaneFor(repoRoot)
+	l, err := worktree.LaneForContext(ctx, repoRoot)
 	if err != nil {
 		return LaneWorktree{}, storeRefusal(err, laneID)
 	}
@@ -202,7 +208,12 @@ func heldIn(dir string, held *worktree.Held) error {
 // non-empty string and laid the close's local tier in a directory the state
 // named (iss-2610090821552801). stage labels the refusal.
 func loopWorktree(c Context, lane Lane, stage string) error {
-	_, err := derivedLaneWorktree(c.RepoRoot, c.State.RunID, lane, stage)
+	return loopWorktreeContext(context.Background(), c, lane, stage)
+}
+
+// loopWorktreeContext is loopWorktree with the derivation's git bound to ctx.
+func loopWorktreeContext(ctx context.Context, c Context, lane Lane, stage string) error {
+	_, err := derivedLaneWorktreeContext(ctx, c.RepoRoot, c.State.RunID, lane, stage)
 	return err
 }
 
@@ -211,7 +222,13 @@ func loopWorktree(c Context, lane Lane, stage string) error {
 // worktree is, which every stage that hands the path on, and the restart,
 // asks (loopWorktree, restartWorktree).
 func derivedLaneWorktree(repoRoot, runID string, lane Lane, stage string) (LaneWorktree, error) {
-	lw, err := laneWorktree(repoRoot, runID, lane.ID)
+	return derivedLaneWorktreeContext(context.Background(), repoRoot, runID, lane, stage)
+}
+
+// derivedLaneWorktreeContext is derivedLaneWorktree with the derivation's git
+// bound to ctx (laneWorktreeContext).
+func derivedLaneWorktreeContext(ctx context.Context, repoRoot, runID string, lane Lane, stage string) (LaneWorktree, error) {
+	lw, err := laneWorktreeContext(ctx, repoRoot, runID, lane.ID)
 	if err != nil {
 		return LaneWorktree{}, relabel(err, Stage(stage))
 	}

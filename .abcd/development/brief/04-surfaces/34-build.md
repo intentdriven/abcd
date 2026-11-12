@@ -204,7 +204,13 @@ reserves it again, judged for overlap, once the spec has widened it; either
 way it keeps the reservation's term, so a resume never cuts the day the land
 fence gave a waiting pull request. It reserves anew one a release released
 or a run started before reservations never took, recording it in the run's
-state; a run handed back reserves nothing. A release asked of the
+state; a run handed back reserves nothing. An issue run's reservation follows
+what its lane changes (iss-2611110638266241): once the implementer hands its
+receipt back, the loop reserves every path the lane's branch changes beyond
+the `found_at` before it judges the receipt, and again before each step at the
+lane's validators and before its landing's push, judged for overlap and
+against the cap, and another copy's live hold on one is a wait until that hold
+ends (the implement verb's page). A release asked of the
 verb pushes the tombstone over this copy's reservation on the key and changes
 nothing in the run's state (C36); the run's next step meets it at the land fence. A run whose
 issue lane is handed back releases its reservation as the step hands it back,
@@ -463,6 +469,68 @@ and the checks run only when a run is created: they judged the record at the
 start, and the run's own lanes then change what they read (a lane's worktree
 moves the intent to `shipped/`, a lane claims it), so judging again would refuse
 the run as its own peer. Only the key's shape is checked before the lookup.
+
+A build that finds the live run closes each of its lanes whose pull request has
+merged before it resumes the run (iss-2611101317510356), so the work goes on in
+a new lane on a new branch cut from origin's default branch tip, never on the
+merged lane's worktree, branch and range. It does so only once the resume's own
+checks have passed (a pick that chose a run already in progress, a pace that
+differs from the run's, a reservation another holds): a resume they refuse
+removes nothing. The one exception is the record already finished: a resume
+whose reservation is refused because the record is finished on origin's default
+branch still closes its merged lanes when that finishes the run. It is told by
+the reservation's own refusal, never by a read of the checkout; any other
+refusal of the reservation (another holder, origin unreachable, a lock error, an
+unreadable record) stands and removes nothing. A lane is a candidate when it is
+parked at its landing with no agent awaited and no hold, its pull request opened
+and its head pushed. The build fetches the default branch from origin, as the
+land step does, and resolves it to a commit straight after the fetch; it reads
+the lane as merged only when what it pushed is on that commit and the status
+board reads it as landed (its branch is gone, or its branch's tip is on the
+default branch). A remote-tracking ref as it stands in the checkout may be out
+of date, so it is never the proof. A fetch that fails or does not finish in time
+is a merge not seen: nothing is closed, and a line on stderr says why. The forge
+is not asked, so a squash or rebase merge, which leaves the pushed head off the
+default branch, is not read as merged here (iss-2610150827113191), and a lane
+that has left its landing is not closed either. A lane whose branch holds a
+commit past the default branch is not read as merged and resumes as before.
+
+Under the run's lock, immediately before anything is removed, the run is left as
+it stands, with a line saying why, when its state file states another version
+than this binary's, a drive stopped on it, its control record holds a stop, or
+the stop read for the shared folder the run started under finds a stop or
+cannot be trusted; and what each lane pushed is checked on the fetched commit
+again. Each merged lane's worktree is then read for files its removal would
+lose: an uncommitted or untracked file, or an ignored one that is neither in
+the worktree's own local tier nor one of abcd's own artefacts. Those artefacts are
+matched by their exact paths from the worktree's root, as this repository's
+`.gitignore` names them: the issue ledger's allocator lock
+(`.abcd/work/issues/.iss-alloc.lock`, which a landing that resolves an issue
+leaves behind), and the plugin bootstrap's `abcd`, `.binary-meta`,
+`.bootstrap.lock/`, `.bootstrap.attempt` and `.bootstrap.tmp.<pid>/`. A
+worktree that holds any other is refused at the `resume` stage, naming the lane,
+its worktree, the count and the first files, and nothing is closed. The
+worktree's local tier and abcd's artefacts go with it, as they always have with
+the land step's cleanup. The closing is the land stage's own cleanup, against
+the fetched commit: the branch's tip must be on it, the worktree is removed, the
+branch deleted, the landing records that commit as merged, the lane is done and
+the run's next lane opens; a refusal on this route names the `resume` stage and
+the build to run again, and a refusal met after an earlier lane closed keeps
+that lane's closing. One deadline bounds the closing's own git: the fetch, the
+ref reads and ancestry checks it makes, the worktree listing, the derivation of
+each lane's worktree and the reads of each worktree. A closing already out of
+time when it takes the run's lock is refused with nothing removed; one that runs
+out later keeps the lanes it has closed, its refusal says it ran out of time,
+and the next build closes the rest. Once a lane's worktree removal has begun,
+nothing of that lane is cut off: the removal is not bound, since git stopped
+part-way through it leaves a half-removed worktree, and the branch's deletion
+after it is not cut off by the deadline. Neither is the reservation's release,
+which keeps the release's own network bound. When the closing leaves the run
+with no step to build, the run's state is written first and its reservation
+released after, the result says the run finished and names the lanes closed,
+the text says the lane was closed and the run finished, no late admission is
+recorded, and the invocation starts nothing more. A drain's start and a trial's
+close nothing here: the drain finishes its merged lanes on its own move.
 
 ## The step interface
 

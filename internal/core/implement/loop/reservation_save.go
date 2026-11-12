@@ -6,8 +6,8 @@ package loop
 // the lane's own abcd, so a lane whose change raises SchemaVersion runs a newer
 // one, and three writers reach the driver's file from there: the gated waiter
 // its go test and make preflight run under (RenewRuns, across worktrees),
-// implement status (RenewRunsIn), and implement widen, which the lane's brief
-// runs from the driver's checkout. Each used to save the whole state at its own
+// implement status (RenewRunsIn), and implement widen, which a session may run
+// from the driver's checkout. Each used to save the whole state at its own
 // binary's version, after which the driver, reading up to the version it was
 // built with, refused every step and receipt until someone set the number back
 // by hand.

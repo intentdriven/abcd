@@ -96,7 +96,12 @@ spec's `- packages:` line to the files the work changes. A step's own
 
 `implement step` then renews the reservation, fences the landing on it and
 tombstones it once the run's last lane lands (`/abcd:implement`); a run whose
-issue lane is handed back releases it then. Starting again while the run is in
+issue lane is handed back releases it then. An issue's reservation follows
+what its lane changes: once the implementer hands its receipt back, the run
+reserves every path the lane's branch changes beyond the `found_at`, and again
+before each step at its validators and before its landing's push, judged for
+overlap, and another copy's live hold on one of them is a wait until that hold
+ends (`/abcd:implement`). Starting again while the run is in
 progress reserves again: it renews this copy's live reservation (keeping its
 footprint and term, so another reservation over the same files that a race let
 in does not refuse it) while that footprint still covers every path the spec's
@@ -240,6 +245,44 @@ refuses. Starting again while the run is in progress creates nothing, runs no
 check, and reports `resumed: true` with the same run and an empty `checks`: the
 run's own lanes move and claim the intent, so judging it again would refuse the
 run as its own peer.
+
+**A lane whose pull request has merged is closed before the run resumes.** Once
+the resume's own checks pass, a lane parked at its landing with its head pushed
+is closed when what it pushed is on origin's default branch as the build fetches
+it (resolved to a commit straight after the fetch, and that commit is the proof
+throughout), and the lane's branch is gone or its tip is on that branch: its
+worktree is removed, its branch deleted, its landing records the merge, and the
+run goes on in a new lane, on a new branch cut from origin's default branch tip.
+A resume the checks refuse removes nothing, with one exception: a resume whose
+reservation is refused because the record is finished on origin's default branch
+still closes its merged lanes when that finishes the run; any other refusal of
+the reservation (another holder, origin unreachable, a lock error, an unreadable
+record) stands and removes nothing. The result lists each lane closed in
+`closed` (`lane`, `pr`, `merged`) and the text prints a `closed:` line for each.
+When no step is left to build, the run's state is written, its reservation
+released after it, the result carries `finished: true`, the text reads
+`finished`, no late admission is recorded, and nothing more is started. A fetch
+that fails or does not finish in time closes nothing and says so on stderr. A
+squash or rebase merge, which leaves the pushed head off the default branch, is
+not closed this way, and a lane whose branch holds a commit past the default
+branch is resumed as before. A lane whose worktree holds an uncommitted or
+untracked file, or an ignored one other than its own `.abcd/.work.local/` and
+abcd's own artefacts, is refused at the `resume` stage, naming the lane, its worktree
+and the files, and nothing is removed. abcd's artefacts are matched by exact path
+from the worktree's root: `.abcd/work/issues/.iss-alloc.lock` (the issue
+ledger's allocator lock a landing that resolves an issue leaves), and the plugin
+bootstrap's `abcd`, `.binary-meta`, `.bootstrap.lock/`, `.bootstrap.attempt` and
+`.bootstrap.tmp.<pid>/`; they and the local tier go with the worktree, as with the
+land step. A run whose state file states another version than this abcd's, one a
+drive stopped on, one whose control record holds a stop, and one the stop read
+for its shared folder finds stopped or cannot trust are left as they stand, with
+a line saying why. One deadline bounds the closing's own git: the fetch, the ref
+reads and ancestry checks it makes, the worktree listing and the worktree reads.
+A closing already out of time when it takes the run's lock is refused with
+nothing removed; one that runs out later keeps the lanes it has closed, says it
+ran out of time, and the next build closes the rest. Once a lane's worktree
+removal has begun, neither it nor the branch's deletion after it is cut off, and
+the reservation's release keeps its own network bound.
 
 **A session whose setting reads as off a profile is warned while the away mode
 holds.** While `abcd mode autonomous` holds, or its record cannot be read, every

@@ -59,6 +59,11 @@ const (
 // clause a refusal no git would write.
 var claimReserve = claim.Reserve
 
+// reserveFresh is claim.Reserve as reserveKey makes it, a seam a test replaces
+// to give a reservation a refusal claim gives no record finished on origin's
+// default branch (it backs off such a record before it judges any holder).
+var reserveFresh = claim.Reserve
+
 // claimOptions are the options a run's reservation act runs under: the step's
 // clock, so a test's injected clock dates the commits too.
 func claimOptions(now time.Time) claim.Options {
@@ -352,7 +357,7 @@ func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, s
 
 // laneChangesHeld ends the fence with holdLaneChanges, its clause beside notice.
 func laneChangesHeld(c Context, lane Lane, act fenceAct, holds time.Time, notice string) (time.Time, string, error) {
-	reserved, err := holdLaneChanges(c, lane, act)
+	reserved, _, err := holdLaneChanges(c, lane, StageLand, act)
 	if err != nil {
 		return holds, notice, err
 	}
@@ -667,7 +672,7 @@ type reserved struct {
 // start.
 func reserveKey(repoRoot, key string, req claim.Request, now time.Time) (reserved, error) {
 	req.Record = key
-	res, err := claim.Reserve(repoRoot, req, claimOptions(now))
+	res, err := reserveFresh(repoRoot, req, claimOptions(now))
 	return reservedNote(res, err, now)
 }
 
@@ -714,8 +719,10 @@ func reserveForJudgement(repoRoot, id string, footprint []string, takeOver bool,
 func reservedNote(res claim.Result, err error, now time.Time) (reserved, error) {
 	if err != nil {
 		if errors.Is(err, claim.ErrBackOff) {
-			return reserved{}, contend(StageReservation, CheckReservation, "", err.Error(),
+			r := contend(StageReservation, CheckReservation, "", err.Error(),
 				"take other work; `abcd peers` lists the reservations on "+claim.Remote)
+			r.recordFinished = errors.Is(err, claim.ErrFinished)
+			return reserved{}, r
 		}
 		if ce := (*claim.CapError)(nil); errors.As(err, &ce) {
 			r := refuse(StageReservation, "", "", err.Error(), "wait for one of your pull requests to merge, which ends its reservation, then run the verb again")
@@ -724,6 +731,7 @@ func reservedNote(res claim.Result, err error, now time.Time) (reserved, error) 
 		}
 		r := refuse(StageReservation, "", "", err.Error(), "settle what it names, then run the verb again")
 		r.originUnread = isPushFailure(err)
+		r.overCap = errors.Is(err, claim.ErrOverCap)
 		return reserved{}, r
 	}
 	verb := map[claim.Act]string{claim.ActReserved: "reserved", claim.ActRenewed: "renewed the reservation on",
@@ -904,7 +912,7 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 // with the tip's term, so a widening resume never cuts the fence's day either.
 // An issue's tip, while its lane is at its landing (landing), is the
 // narrowing of that landing (narrow.go) to the files the lane changed, a
-// path it widened to beyond its found_at before an edit (widen.go) among
+// path the lane widened to beyond its found_at (widen.go) among
 // them, renewed as it stands, never read as a widening: no implementer edits
 // at the landing, and a lane leaving it for a fresh round reserves its
 // found_at again (reserveOnLeavingLand). Anywhere short of the landing
@@ -931,7 +939,7 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver, drain, landing bo
 	r, ok := snap.Lookup(key)
 	// An issue's tip this copy holds, live or lapsed, or released with a tombstone
 	// that keeps its footprint, as a drive lets a lane go for a limit, names the
-	// paths its lane widened to beyond the found_at before an edit (widen.go), and
+	// paths its lane widened to beyond the found_at (widen.go), and
 	// the lane's branch changes them: a reservation made again keeps them beside
 	// the found_at rather than dropping them.
 	if validIssueKey(key) && ok && r.Copy == claim.CopyThis &&

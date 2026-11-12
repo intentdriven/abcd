@@ -427,7 +427,7 @@ func checkMessage(root, text string) error { return checkText(root, reservationF
 // pushed. Each refusal names the family's message and, at the cap, its remedy.
 func checkText(root string, f *family, text string) error {
 	if n := len(text); n > MaxMessageBytes {
-		return refuse("the %s message would be %d bytes, over the %d-byte cap: %s; %s",
+		return refuseOverCap("the %s message would be %d bytes, over the %d-byte cap: %s; %s",
 			f.name, n, MaxMessageBytes, f.shorten, nothingPushed)
 	}
 	findings, err := scanner.CheckOutbound(root, text, f.name+" message")

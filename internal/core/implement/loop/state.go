@@ -1022,24 +1022,74 @@ func (s State) landed() bool {
 // routed reports whether the state carries anything only a version-8 run
 // writes: a fallback receipt, or a runner's route on a receipt or a return.
 func (s State) routed() bool {
-	if len(s.Fallbacks) > 0 {
-		return true
+	return len(s.Fallbacks) > 0 || s.firstRoute(func(r storedRoute) string { return r.where() }) != ""
+}
+
+// storedRoute is one route record a state stores, and where it stores it: on
+// an implementer's verified receipt (Receipt, counted from 1) or on a
+// validator's return (Round, and Validator counted from 1). Route is never
+// nil.
+type storedRoute struct {
+	Route *runner.RouteRecord
+	// Lane is the lane's id, and Role the role the receipt or the return is
+	// of.
+	Lane, Role string
+	// Receipt is the receipt's place among its lane's, from 1; 0 on a
+	// validator's return.
+	Receipt int
+	// Round is the validation round's number and Validator the validator's
+	// place in it, from 1; both 0 on a receipt.
+	Round, Validator int
+}
+
+// where names the route by its place.
+func (r storedRoute) where() string {
+	if r.Receipt > 0 {
+		return fmt.Sprintf("%s's receipt %d's route", r.Lane, r.Receipt)
 	}
+	return fmt.Sprintf("%s's round %d validator %d's route", r.Lane, r.Round, r.Validator)
+}
+
+// holder names what carries the route, by its role.
+func (r storedRoute) holder() string {
+	if r.Receipt > 0 {
+		return r.Lane + "'s " + r.Role + " receipt"
+	}
+	return r.Lane + "'s " + r.Role + " return"
+}
+
+// eachRoute is the one walk over every route record a state stores, in the
+// order the file lists them: it hands each to visit, and stops at the first
+// visit that returns false. Every check of a route's fields goes through it
+// (firstRoute), so a place that stores a route is added here and nowhere
+// else, and no check can miss it (iss-2610230235262742).
+func (s State) eachRoute(visit func(storedRoute) bool) {
 	for _, l := range s.Lanes {
-		for _, r := range l.Receipts {
-			if r.Route != nil {
-				return true
+		for i, r := range l.Receipts {
+			if r.Route != nil && !visit(storedRoute{Route: r.Route, Lane: l.ID, Role: r.Role, Receipt: i + 1}) {
+				return
 			}
 		}
 		for _, v := range l.Validation {
-			for _, vr := range v.Validators {
-				if vr.Route != nil {
-					return true
+			for i, vr := range v.Validators {
+				if vr.Route != nil && !visit(storedRoute{Route: vr.Route, Lane: l.ID, Role: vr.Role, Round: v.Round, Validator: i + 1}) {
+					return
 				}
 			}
 		}
 	}
-	return false
+}
+
+// firstRoute is what check says of the first stored route it says anything
+// of, or "": a check is a function of one route, and names what the route
+// carries.
+func (s State) firstRoute(check func(storedRoute) string) string {
+	var found string
+	s.eachRoute(func(r storedRoute) bool {
+		found = check(r)
+		return found == ""
+	})
+	return found
 }
 
 // validated reports whether the state carries anything only the validate
@@ -1109,24 +1159,27 @@ func (s State) pausedOnRunner() string {
 // metered reports the first route, in a state, that carries either side of
 // its run, which only version 14 and later write, or "".
 func (s State) metered() string {
-	sided := func(r *runner.RouteRecord) bool {
-		return r != nil && !reflect.DeepEqual(r.Sides, runner.Sides{})
-	}
-	for _, l := range s.Lanes {
-		for i, r := range l.Receipts {
-			if sided(r.Route) {
-				return fmt.Sprintf("%s's receipt %d's route", l.ID, i+1)
-			}
+	return s.firstRoute(func(r storedRoute) string {
+		if reflect.DeepEqual(r.Route.Sides, runner.Sides{}) {
+			return ""
 		}
-		for _, v := range l.Validation {
-			for i, vr := range v.Validators {
-				if sided(vr.Route) {
-					return fmt.Sprintf("%s's round %d validator %d's route", l.ID, v.Round, i+1)
-				}
-			}
+		return r.where()
+	})
+}
+
+// efforted reports the first route, in a state, that carries the effort its
+// runner was asked for, which only version 25 and later write, or "". The
+// efforts a state carries anywhere else are renamed's.
+func (s State) efforted() string {
+	return s.firstRoute(func(r storedRoute) string {
+		switch {
+		case r.Route.EffortAsked == "":
+			return ""
+		case r.Receipt > 0:
+			return "an effort on " + r.where()
 		}
-	}
-	return ""
+		return fmt.Sprintf("an effort on %s's round %d validator %d", r.Lane, r.Round, r.Validator)
+	})
 }
 
 // shown names the first field only version 21 and later write that the run carries, or
@@ -1180,41 +1233,23 @@ func pinKey(r *runner.RouteRecord) string {
 // pinned reports the first route, in a state, that carries a pin or names
 // its model as local, which only version 16 and later write, or "".
 func (s State) pinned() string {
-	for _, l := range s.Lanes {
-		for i, r := range l.Receipts {
-			if k := pinKey(r.Route); k != "" {
-				return fmt.Sprintf("`%s` on %s's receipt %d's route", k, l.ID, i+1)
-			}
+	return s.firstRoute(func(r storedRoute) string {
+		if k := pinKey(r.Route); k != "" {
+			return "`" + k + "` on " + r.where()
 		}
-		for _, v := range l.Validation {
-			for i, vr := range v.Validators {
-				if k := pinKey(vr.Route); k != "" {
-					return fmt.Sprintf("`%s` on %s's round %d validator %d's route", k, l.ID, v.Round, i+1)
-				}
-			}
-		}
-	}
-	return ""
+		return ""
+	})
 }
 
 // overridden reports the first route record, in a state, that carries
 // `override`, which only version 16 and later write, or "".
 func (s State) overridden() string {
-	for _, l := range s.Lanes {
-		for _, r := range l.Receipts {
-			if r.Route != nil && r.Route.Override != "" {
-				return "`override` on " + l.ID + "'s " + r.Role + " receipt"
-			}
+	return s.firstRoute(func(r storedRoute) string {
+		if r.Route.Override != "" {
+			return "`override` on " + r.holder()
 		}
-		for _, v := range l.Validation {
-			for _, vr := range v.Validators {
-				if vr.Route != nil && vr.Route.Override != "" {
-					return "`override` on " + l.ID + "'s " + vr.Role + " return"
-				}
-			}
-		}
-	}
-	return ""
+		return ""
+	})
 }
 
 // rounded reports the first validation round, in a state, that carries
@@ -1225,6 +1260,82 @@ func (s State) rounded() string {
 			if len(v.Routes) > 0 {
 				return fmt.Sprintf("`routes` on %s's round %d", l.ID, v.Round)
 			}
+		}
+	}
+	return ""
+}
+
+// versionCheck is one row of the read's refusals: what a file of version
+// highest or lower never wrote. carries names the first such thing a state
+// carries, or "".
+type versionCheck struct {
+	// lowest bounds the row from below when it is not 0: the two oldest rows
+	// hold only files of the versions the loop wrote, and a file stating a
+	// version below them is refused as a version this abcd does not read.
+	lowest int
+	// highest is the last version that never wrote what carries names.
+	highest int
+	carries func(State) string
+}
+
+// carrying makes a check of a yes or no: what when the state has it.
+func carrying(what string, has func(State) bool) func(State) string {
+	return func(s State) string {
+		if has(s) {
+			return what
+		}
+		return ""
+	}
+}
+
+// versionChecks is every refusal of an older file carrying a newer field, in
+// the order the read tries them: oldest version first, so a file is refused
+// for the oldest thing it could not have written. A version that adds a field
+// adds its row here, and a field of a route its check through firstRoute
+// (iss-2610230235262742).
+var versionChecks = []versionCheck{
+	{lowest: schemaVersionUnpaced, highest: schemaVersionUnpaced, carries: carrying("a pace", func(s State) bool { return s.Pace != nil })},
+	{lowest: schemaVersionUnpaced, highest: schemaVersionUnpicked, carries: carrying("a pick", State.picked)},
+	{highest: schemaVersionUnvalidated, carries: carrying("a validation", State.validated)},
+	{highest: schemaVersionUncapped, carries: carrying("a fix-round cap or a hand-back", State.capped)},
+	{highest: schemaVersionUnlanded, carries: carrying("a landing, a verified receipt or a captured transcript", State.landed)},
+	{highest: schemaVersionUnrouted, carries: carrying("a fallback or a runner's route", State.routed)},
+	{highest: schemaVersionUnkept, carries: State.kept},
+	{highest: schemaVersionUnreserved, carries: carrying("a reservation", func(s State) bool { return s.ReservedAt != nil })},
+	{highest: schemaVersionUnanswered, carries: State.answered},
+	{highest: schemaVersionUnrefused, carries: State.refused},
+	{highest: schemaVersionUnmetered, carries: func(s State) string {
+		if r := s.metered(); r != "" {
+			return "both sides of " + r
+		}
+		return ""
+	}},
+	{highest: schemaVersionUnreviewed, carries: carrying("a review set", func(s State) bool { return s.Review != nil })},
+	{highest: schemaVersionUnpinned, carries: State.overridden},
+	{highest: schemaVersionUnpinned, carries: State.rounded},
+	{highest: schemaVersionUnpinned, carries: State.pinned},
+	{highest: schemaVersionUnplanned, carries: State.autoPlanned},
+	{highest: schemaVersionUnpaused, carries: State.pausedOnRunner},
+	{highest: schemaVersionUnspent, carries: State.spent},
+	{highest: schemaVersionUnkeyed, carries: State.keyed},
+	{highest: schemaVersionUnshown, carries: State.shown},
+	{highest: schemaVersionUnprofiled, carries: carrying("a profile", func(s State) bool { return s.Profile != "" })},
+	{highest: schemaVersionUnsettled, carries: State.settledSpec},
+	{highest: schemaVersionUnlocated, carries: State.located},
+	{highest: schemaVersionUnrenamed, carries: State.renamed},
+	{highest: schemaVersionUnrenamed, carries: State.efforted},
+	{highest: schemaVersionUnadmitted, carries: carrying("an admission", func(s State) bool { return s.Admitted != nil })},
+}
+
+// unwritten names the first thing the state carries that a file stating
+// version never wrote, by versionChecks, or "".
+func (s State) unwritten(version int) string {
+	for _, c := range versionChecks {
+		if version > c.highest || (c.lowest != 0 && version < c.lowest) {
+			continue
+		}
+		if what := c.carries(s); what != "" {
+			return what
 		}
 	}
 	return ""
@@ -1374,82 +1485,11 @@ func readListedStated(root *os.Root, runID string) (State, int, error) {
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	stated := st.SchemaVersion
+	if what := st.unwritten(st.SchemaVersion); what != "" {
+		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, what, st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
 	switch {
-	case st.SchemaVersion == schemaVersionUnpaced && st.Pace != nil:
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a pace, which version %d never wrote", rel, st.SchemaVersion, schemaVersionUnpaced),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case (st.SchemaVersion == schemaVersionUnpaced || st.SchemaVersion == schemaVersionUnpicked) && st.picked():
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a pick, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnvalidated && st.validated():
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a validation, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUncapped && st.capped():
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a fix-round cap or a hand-back, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnlanded && st.landed():
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a landing, a verified receipt or a captured transcript, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnrouted && st.routed():
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a fallback or a runner's route, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnkept && st.kept() != "":
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.kept(), st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnreserved && st.ReservedAt != nil:
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a reservation, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnanswered && st.answered() != "":
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.answered(), st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnrefused && st.refused() != "":
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.refused(), st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnmetered && st.metered() != "":
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries both sides of %s, which version %d never wrote", rel, st.SchemaVersion, st.metered(), st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnreviewed && st.Review != nil:
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a review set, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnpinned && st.overridden() != "":
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.overridden(), st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnpinned && st.rounded() != "":
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.rounded(), st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnpinned && st.pinned() != "":
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.pinned(), st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnplanned && st.autoPlanned() != "":
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.autoPlanned(), st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnpaused && st.pausedOnRunner() != "":
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.pausedOnRunner(), st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnspent && st.spent() != "":
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.spent(), st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnkeyed && st.keyed() != "":
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.keyed(), st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnshown && st.shown() != "":
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.shown(), st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnprofiled && st.Profile != "":
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a profile, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnsettled && st.settledSpec() != "":
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.settledSpec(), st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnlocated && st.located() != "":
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.located(), st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnrenamed && st.renamed() != "":
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.renamed(), st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion <= schemaVersionUnadmitted && st.Admitted != nil:
-		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries an admission, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
-			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnrenamed:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step` and its class labels renamed

@@ -3816,15 +3816,15 @@ pushed. The run record says what was widened. Only the run's current lane, at it
 implement or validate stage, widens; an intent's run holds its spec's footprint and is
 refused. A run holding no reservation has nothing to widen and says so.
 
-An implementer's receipt is refused while the lane's branch changes a path the
-reservation does not cover, naming this command, so a widening forgotten or an edit made
-through the shell is caught before the lane moves on.
+No lane needs it: once an implementer hands its receipt back, the loop reserves every
+path the lane's branch changes beyond the hold itself, from the process driving the run,
+before it judges the receipt, and again before each step at the lane's validators and
+before its landing's push. It is for a session of your own that wants a path held before
+its edit; a stage `abcd drain --drive` walls off from origin cannot push it.
 
-Run it from the checkout the run lives in; the lane's brief names the command in full.
---run names the run; without it, the one run in progress in this checkout. Exit 2 on a
-refusal; exit 3 when another copy holds a live reservation on one of the paths, with
-nothing pushed (edit none of them, and stop without a receipt: the lane is handed to an
-implementer again on a later step), or on a locked run state.
+Run it from the checkout the run lives in. --run names the run; without it, the one run
+in progress in this checkout. Exit 2 on a refusal; exit 3 when another copy holds a live
+reservation on one of the paths, with nothing pushed, or on a locked run state.
 
 **Flags:**
 
