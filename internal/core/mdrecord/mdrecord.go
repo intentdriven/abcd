@@ -18,8 +18,11 @@
 package mdrecord
 
 import (
+	"cmp"
 	"fmt"
 	"regexp"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -626,17 +629,24 @@ func ReadPage(lines []string) Page {
 		}
 	}
 	for _, r := range rs {
+		var spans []indentedSpan
 		for _, s := range r.Fences {
-			leftOfSpan(lines, r.Mask, s, indentWidth(strings.TrimRight(lines[s.Start], "\r")), at)
+			spans = append(spans, indentedSpan{s, indentWidth(strings.TrimRight(lines[s.Start], "\r"))})
 		}
 		for _, c := range r.comments {
 			lead := strings.TrimRight(lines[c.Start], "\r")[:c.col]
 			switch {
 			case strings.TrimSpace(lead) == "" && indentWidth(lead) < 4:
-				leftOfSpan(lines, r.Mask, c.Span, indentWidth(lead), at)
+				spans = append(spans, indentedSpan{c.Span, indentWidth(lead)})
 			case !inParagraph(lines, c):
 				at(c.Start)
 			}
+		}
+		// listItems answers in document order, one pass over the body.
+		slices.SortFunc(spans, func(a, b indentedSpan) int { return cmp.Compare(a.Start, b.Start) })
+		items := &listItems{lines: lines, mask: r.Mask}
+		for _, s := range spans {
+			leftOfSpan(lines, items, s.Span, s.indent, at)
 		}
 	}
 	for i, raw := range lines {
@@ -661,21 +671,39 @@ func ReadPage(lines []string) Page {
 	return p
 }
 
+// stepHook, when set, is called once per line or marker a ReadPage walk
+// visits beyond Read's own pass; a test counts the calls.
+var stepHook func()
+
+func step() {
+	if stepHook != nil {
+		stepHook()
+	}
+}
+
+// indentedSpan is a fence or a comment and the column its opener is indented.
+type indentedSpan struct {
+	Span
+	indent int
+}
+
 // leftOfSpan names, through at, the first non-blank line of s indented less
 // than its lines must be to stay in the block, when its opener is indented
 // `indent` columns and sits in a list item: the opener's indent, or the item's
 // content column when that is nearer the margin. A list item ends at such a
-// line, and the block with it.
-func leftOfSpan(lines []string, mask []uint8, s Span, indent int, at func(int)) {
+// line, and the block with it. Spans are passed in order of their Start, as
+// items requires.
+func leftOfSpan(lines []string, items *listItems, s Span, indent int, at func(int)) {
 	if indent == 0 {
 		return
 	}
-	keep, ok := itemContentCol(lines, mask, s.Start, indent)
+	keep, ok := items.contentCol(s.Start, indent)
 	if !ok {
 		return
 	}
 	keep = min(keep, indent)
 	for j := s.Start + 1; j < s.End; j++ {
+		step()
 		if ln := strings.TrimRight(lines[j], "\r"); strings.TrimSpace(ln) != "" && indentWidth(ln) < keep {
 			at(j)
 			return
@@ -704,6 +732,7 @@ func inParagraph(lines []string, c commentSpan) bool {
 		return false
 	}
 	for j := c.Start + 1; j < c.End; j++ {
+		step()
 		l := strings.TrimRight(lines[j], "\r")
 		if strings.TrimSpace(l) == "" || paragraphBreakRe.MatchString(l) {
 			return false
@@ -716,34 +745,64 @@ func inParagraph(lines []string, c commentSpan) bool {
 // markers, blockquote markers and blanks.
 var markersOnlyRe = regexp.MustCompile(`^[ \t>]*(?:(?:[-*+]|[0-9]{1,9}[.)])[ \t]+[ \t>]*)*$`)
 
-// itemContentCol is the content column of the list item the line at `at`,
-// indented `indent` columns, sits in, and whether it sits in one: walking up,
-// a list marker line indented less than `indent` comes before a blank line
-// that has a line at column 0 below it. A line at column 0 with no blank line
-// above it may continue an item's paragraph, so the walk goes on past it.
-func itemContentCol(lines []string, mask []uint8, at, indent int) (int, bool) {
-	col0 := false
-	for j := at - 1; j >= 0; j-- {
-		ln := strings.TrimRight(lines[j], "\r")
-		if strings.TrimSpace(ln) == "" {
-			if col0 {
-				return 0, false
-			}
-			continue
-		}
-		if mask[j] != 0 {
-			col0 = false
-			continue
-		}
-		w := indentWidth(ln)
-		if w < indent {
-			if c, ok := listContentCol(ln); ok {
-				return c, true
-			}
-		}
-		col0 = w == 0
+// listItems tells, for lines taken in document order, which list item a line
+// sits in, under one reading's mask. A line indented `indent` columns sits in
+// the item of the nearest marker line above it indented less than that,
+// unless a blank line comes between with a line at column 0 below it; a line
+// at column 0 with no blank line above it may continue an item's paragraph,
+// so it cuts nothing off. Each line is folded in once: markers holds only the
+// marker lines a later line can still sit in, nearest last, each indented less
+// than the one after it, since a marker is hidden from every later line by a
+// nearer one indented as little or less.
+type listItems struct {
+	lines   []string
+	mask    []uint8
+	next    int // the first line not yet folded in
+	markers []listMarker
+}
+
+// listMarker is a marker line's indent and its item's content column.
+type listMarker struct{ indent, content int }
+
+// contentCol is the content column of the list item the line at `at`,
+// indented `indent` columns, sits in, and whether it sits in one. Calls come
+// in order of at.
+func (li *listItems) contentCol(at, indent int) (int, bool) {
+	for ; li.next < at; li.next++ {
+		step()
+		li.fold(li.next)
 	}
-	return 0, false
+	// The markers' indents rise, so those indented less than indent lead.
+	k := sort.Search(len(li.markers), func(i int) bool {
+		step()
+		return li.markers[i].indent >= indent
+	})
+	if k == 0 {
+		return 0, false
+	}
+	return li.markers[k-1].content, true
+}
+
+// fold takes line x into the markers: a line at column 0 after a blank line
+// ends every item above it, and a marker line hides each marker indented as
+// far as it or further.
+func (li *listItems) fold(x int) {
+	ln := strings.TrimRight(li.lines[x], "\r")
+	if strings.TrimSpace(ln) == "" || li.mask[x] != 0 {
+		return
+	}
+	w := indentWidth(ln)
+	if w == 0 && x > 0 && strings.TrimSpace(li.lines[x-1]) == "" {
+		li.markers = li.markers[:0]
+	}
+	c, ok := listContentCol(ln)
+	if !ok {
+		return
+	}
+	for len(li.markers) > 0 && li.markers[len(li.markers)-1].indent >= w {
+		li.markers = li.markers[:len(li.markers)-1]
+	}
+	li.markers = append(li.markers, listMarker{indent: w, content: c})
 }
 
 // listMarkerRe is a list item's marker line at any indent: a bullet or a
@@ -815,6 +874,7 @@ func htmlBlocks(lines []string, mask []uint8, at func(int)) {
 		rawText := rawTextTags[tag] && !strings.HasPrefix(strings.TrimLeft(ln, " "), "</")
 		j := i
 		for ; j < len(lines); j++ {
+			step()
 			l := strings.TrimRight(lines[j], "\r")
 			if !rawText && strings.TrimSpace(l) == "" {
 				break
