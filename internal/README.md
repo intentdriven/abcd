@@ -326,8 +326,9 @@ plugin surface, and a future MCP server share one engine.
   (itd-2610301850454860): `List` classes every commit on the default branch's
   first-parent line in a range (`Resolve` names it from a tag or a date) by the
   approval, the committed facilitator mode and the lane's `Admitted-by:`
-  trailer, reading the forge at most once per pull request through
-  `core/landing`'s client and keeping each answer in the local tier;
+  trailer, asking the forge through `core/landing`'s client about each pull
+  request whose answer its local-tier cache does not keep, and keeping only
+  the answers that cannot change;
   `TraceCommit` follows one commit to the row that brought it, and
   `RevertedGroups` groups the rows a later commit reverts. It is a core package
   before it is a verb, since the spot-check reads it at landing time with no

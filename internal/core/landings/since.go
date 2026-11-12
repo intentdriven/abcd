@@ -90,13 +90,12 @@ func resolveRange(ctx context.Context, repoRoot, since string) (Range, error) {
 	case since == "":
 		// As stored, so no replace ref or graft moves which tags the tip
 		// reaches.
-		tag, err := storedText(ctx, repoRoot, refCap, "describe", "--tags", "--match", ReleaseTagPattern, "--abbrev=0", to)
-		tag = strings.TrimSpace(tag)
-		if err != nil || tag == "" {
-			return Range{}, ErrNoReleaseTag
+		tag, err := lastReleaseTag(ctx, repoRoot, to)
+		if err != nil {
+			return Range{}, err
 		}
 		if r.From, err = tagCommit(ctx, repoRoot, tag); err != nil {
-			return Range{}, ErrNoReleaseTag
+			return Range{}, masked("reading the commit of the release tag "+termsafe.Sanitize(boundText(tag, maxTextBytes)), err)
 		}
 		r.Since = tag
 	case dateRe.MatchString(since):
@@ -119,6 +118,32 @@ func resolveRange(ctx context.Context, repoRoot, since string) (Range, error) {
 			termsafe.Sanitize(boundText(r.Since, maxTextBytes)), r.Tip, r.Tip)
 	}
 	return r, nil
+}
+
+// lastReleaseTag is the last release tag reachable from to (git describe
+// --tags --match 'v*' --abbrev=0, as stored), ErrNoReleaseTag only when git
+// says none is: describe fails both for no tag and for a failed read, so a
+// failure is followed by a listing of the release tags to reaches (git tag
+// --list --merged, which matches the pattern as describe does), and only an
+// empty listing reads as no tag. A listing that fails, or names a tag
+// describe did not give, is a failed read of the tags, never "no release
+// tag".
+func lastReleaseTag(ctx context.Context, repoRoot, to string) (string, error) {
+	tag, err := storedText(ctx, repoRoot, refCap, "describe", "--tags", "--match", ReleaseTagPattern, "--abbrev=0", to)
+	if tag = strings.TrimSpace(tag); err == nil && tag != "" {
+		return tag, nil
+	}
+	describeErr := err
+	listed, err := storedText(ctx, repoRoot, maxListBytes, "tag", "--list", "--merged", to, ReleaseTagPattern)
+	switch {
+	case err != nil:
+		return "", masked("reading the release tags", err)
+	case strings.TrimSpace(listed) == "":
+		return "", ErrNoReleaseTag
+	case describeErr != nil:
+		return "", masked("reading the last release tag", describeErr)
+	}
+	return "", errors.New("reading the last release tag: git described the tip with no tag, and lists release tags it reaches")
 }
 
 // lineCommit is one commit on the first-parent line and its committer date.

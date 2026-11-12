@@ -56,9 +56,9 @@ The exemptions carrying a rationale of their own:
 The remaining surfaces are exempt for the plain reason that no maritime cognate
 adds meaning: `announce`, `banlist`, `build`, `checklist`, `dashboard`,
 `decide`, `docs`, `drain`, `embargo`, `guard`, `history`, `hook`, `ideate`,
-`identity`, `implement`, `inbox`, `lab`, `land`, `library`, `lint`, `memory`,
-`mode`, `peers`, `reading`, `report`, `reserve`, `rules`, `scribe`, `session`,
-`site`, `spec`, `status`, `statusline`, and `update`. They are registered here so the
+`identity`, `implement`, `inbox`, `lab`, `land`, `landings`, `library`, `lint`,
+`memory`, `mode`, `peers`, `reading`, `report`, `reserve`, `rules`, `scribe`,
+`session`, `site`, `spec`, `status`, `statusline`, and `update`. They are registered here so the
 exemption is on the record. `embargo` is meant in its disclosure sense, an
 advisory held private until it is closed or published, not the maritime order
 that once kept ships in port.

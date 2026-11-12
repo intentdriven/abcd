@@ -3,7 +3,9 @@ package landings
 import (
 	"context"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -175,5 +177,55 @@ func TestATagOffTheFirstParentLineIsSaid(t *testing.T) {
 	}
 	if got, err := Resolve(t.Context(), r.Root(), "v0.1.0"); err != nil || got.Note != "" {
 		t.Fatalf("a tag on the line has a note: %+v, %v", got, err)
+	}
+}
+
+// failingGit puts a git on PATH for the rest of t that fails, as a read git
+// could not make, every call whose arguments hold one of words as a word, and
+// runs the real git for every other.
+func failingGit(t *testing.T, words ...string) {
+	t.Helper()
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	script := "#!/bin/sh\nfor a in \"$@\"; do\n  case \"$a\" in\n"
+	for _, w := range words {
+		script += "    " + w + ") echo 'fatal: a read that failed' >&2; exit 128;;\n"
+	}
+	script += "  esac\ndone\nexec '" + real + "' \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// TestAFailedReadOfTheTagsIsNotNoReleaseTag: describe fails both for no tag
+// and for a read that failed, so only a listing of the release tags that
+// comes back empty is "no release tag"; a failed describe beside a tag the
+// tip reaches, or a failed listing, is a failed read of the tags.
+func TestAFailedReadOfTheTagsIsNotNoReleaseTag(t *testing.T) {
+	r, _ := sinceFx(t)
+	empty := gittest.NewRepo(t)
+	empty.Commit("chore: one")
+	for _, tc := range []struct {
+		name  string
+		root  string
+		words []string
+		noTag bool
+	}{
+		{"describe fails beside a tag", r.Root(), []string{"describe"}, false},
+		{"describe and the listing fail", r.Root(), []string{"describe", "--merged"}, false},
+		{"the listing fails with no tag", empty.Root(), []string{"--merged"}, false},
+		{"no tag, both read", empty.Root(), nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			failingGit(t, tc.words...)
+			_, err := Resolve(t.Context(), tc.root, "")
+			if err == nil || errors.Is(err, ErrNoReleaseTag) != tc.noTag {
+				t.Fatalf("resolve() = %v; want no release tag %v", err, tc.noTag)
+			}
+		})
 	}
 }

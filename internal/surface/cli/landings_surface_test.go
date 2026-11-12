@@ -2,20 +2,29 @@ package cli
 
 import (
 	"bytes"
+	"crypto/sha1"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
+	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/landings"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The `abcd landings` front door (spc-2610301950480609 step 4,
@@ -315,8 +324,14 @@ func TestLandingsUnattendedKeepsExactlyTheUnattendedRows(t *testing.T) {
 		t.Fatalf("--unattended --json: %v, want %v", got, want)
 	}
 	text, _, _ := runLandings(t, "--since", "start", "--unattended")
-	if strings.Contains(text, m1[:12]) || !strings.Contains(text, m2[:12]) || !strings.Contains(text, p[:12]) {
-		t.Fatalf("--unattended text:\n%s", text)
+	var rows []string
+	for _, l := range strings.Split(text, "\n") {
+		if m := landingsTextRow.FindStringSubmatch(l); m != nil {
+			rows = append(rows, m[1])
+		}
+	}
+	if !slices.Equal(rows, []string{p[:12], m2[:12]}) || m1 == m2 {
+		t.Fatalf("--unattended text rows %v:\n%s", rows, text)
 	}
 }
 
@@ -404,7 +419,8 @@ func TestLandingsPrintsTypedTextMadeSafe(t *testing.T) {
 			t.Fatalf("the text carries %q raw:\n%q", bad, text)
 		}
 	}
-	if !strings.Contains(text, "pushed by Pat ?[31mPusher?2J?") || !strings.Contains(text, "\nforge: ") {
+	if !regexp.MustCompile(`(?m)^[0-9a-f]{12}  -  person-push  committer Pat \?\[31mPusher\?2J\?  `).MatchString(text) ||
+		strings.Contains(text, "pushed by") || !strings.Contains(text, "\nforge: ") {
 		t.Fatalf("the masked committer or the forge note is missing:\n%q", text)
 	}
 	for _, l := range strings.Split(text, "\n") {
@@ -414,29 +430,102 @@ func TestLandingsPrintsTypedTextMadeSafe(t *testing.T) {
 	}
 }
 
-// TestLandingsFetchesNothingAndWritesOnlyItsCache: the listing and the trace
-// make no git call that fetches or pushes, ask the forge only GraphQL
-// documents, and leave the tree as it was but for the forge cache in the
-// local tier.
-func TestLandingsFetchesNothingAndWritesOnlyItsCache(t *testing.T) {
-	w := newLandingsWorld(t, "auto")
-	w.r.Git("tag", "start", w.head())
-	_, branch := w.merge(1, "", "feat: one")
-	w.push("docs: pushed")
+// landingsGit puts a git on PATH for the rest of t that appends each call's
+// arguments to log (when log is not "") and fails, as a read git could not
+// make, every call one of whose arguments is one of fail; every other call
+// runs the real git.
+func landingsGit(t *testing.T, log string, fail ...string) {
+	t.Helper()
 	real, err := exec.LookPath("git")
 	if err != nil {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	log := filepath.Join(dir, "calls")
-	script := "#!/bin/sh\n{ printf '%s' \"$*\" | tr '\\n' ' '; echo; } >> '" + log + "'\nexec '" + real + "' \"$@\"\n"
+	script := "#!/bin/sh\n"
+	if log != "" {
+		script += "{ printf '%s' \"$*\" | tr '\\n' ' '; echo; } >> '" + log + "'\n"
+	}
+	script += "for a in \"$@\"; do\n  case \"$a\" in\n"
+	for _, f := range fail {
+		script += "    " + f + ") echo 'fatal: a read that failed' >&2; exit 128;;\n"
+	}
+	script += "  esac\ndone\nexec '" + real + "' \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	before := w.r.Git("status", "--porcelain", "--ignored", "--untracked-files=all")
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// landingsTreeHash is a hash of every file under dir (its path, mode and
+// bytes) but those under a path in skip, relative to dir, and the paths it
+// read.
+func landingsTreeHash(t *testing.T, dir string, skip ...string) (string, []string) {
+	t.Helper()
+	h := sha256.New()
+	var paths []string
+	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, p)
+		if slices.Contains(skip, filepath.ToSlash(rel)) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(h, "%s %v\n", rel, info.Mode())
+		if d.Type().IsRegular() {
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			h.Write(b)
+		}
+		paths = append(paths, rel)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), paths
+}
+
+// TestLandingsFetchesNothingAndWritesOnlyItsCache: with an origin that points
+// nowhere and the default branch read from its remote-tracking ref, the
+// listing and the trace make no git call that fetches or pushes, ask the
+// forge only GraphQL documents, and change nothing in the git directory, in
+// the local tier outside the forge cache, or in the working tree. Nothing is
+// left out of the git directory's hash, the index included: every call the
+// verb makes reads, and none refreshes the index or writes a ref, a log or
+// an object.
+func TestLandingsFetchesNothingAndWritesOnlyItsCache(t *testing.T) {
+	w := newLandingsWorld(t, "auto")
+	w.r.Git("tag", "start", w.head())
+	_, branch := w.merge(1, "", "feat: one")
+	w.push("docs: pushed")
+	w.r.Git("remote", "add", "origin", filepath.Join(t.TempDir(), "no-such-remote.git"))
+	w.r.Git("update-ref", "refs/remotes/origin/main", "main")
+	w.r.Git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+	// The listing must be read from origin's ref, not the local branch.
+	w.r.Git("checkout", "-q", "-b", "local-only")
+	w.push("docs: never fetched by origin")
+	gitDir := filepath.Join(w.r.Root(), ".git")
+	tier := filepath.Join(w.r.Root(), ".abcd", ".work.local")
+	// The test's own status runs first: it may refresh the index, and the
+	// verb runs no command that does.
+	before := w.r.Git("status", "--porcelain", "--ignored", "--untracked-files=all")
+	gitBefore, _ := landingsTreeHash(t, gitDir)
+	tierBefore, _ := landingsTreeHash(t, tier, "landings")
+	log := filepath.Join(t.TempDir(), "calls")
+	landingsGit(t, log)
 	for _, args := range [][]string{{"--since", "start"}, {"--json", "--since", "start", "--reverted"}, {branch[0]}} {
-		if out, errOut, code := runLandings(t, args...); code != 0 {
+		out, errOut, code := runLandings(t, args...)
+		if code != 0 || !strings.Contains(out, "origin/main") {
 			t.Fatalf("landings %v: exit %d, %s %s", args, code, out, errOut)
 		}
 	}
@@ -458,6 +547,12 @@ func TestLandingsFetchesNothingAndWritesOnlyItsCache(t *testing.T) {
 			t.Fatalf("the forge was asked %v", c)
 		}
 	}
+	if after, paths := landingsTreeHash(t, gitDir); after != gitBefore {
+		t.Fatalf("the verb changed the git directory (%d paths now)", len(paths))
+	}
+	if after, _ := landingsTreeHash(t, tier, "landings"); after != tierBefore {
+		t.Fatal("the verb changed the local tier outside its forge cache")
+	}
 	after := w.r.Git("status", "--porcelain", "--ignored", "--untracked-files=all")
 	for _, l := range strings.Split(after, "\n") {
 		if l != "" && !strings.Contains(before, l) && !strings.HasPrefix(l, "!! "+landings.CacheRelDir+"/") {
@@ -469,32 +564,539 @@ func TestLandingsFetchesNothingAndWritesOnlyItsCache(t *testing.T) {
 	}
 }
 
-// TestLandingsRenderMasksAndBoundsWhatTheReaderHandsIt: the render masks and
-// bounds every value it prints itself, whatever the reader handed it, so a
-// value a later reader left raw or long still reaches the terminal safe.
-func TestLandingsRenderMasksAndBoundsWhatTheReaderHandsIt(t *testing.T) {
-	long := strings.Repeat("y", 5000)
-	r := landings.Row{Commit: strings.Repeat("a", 40), PR: 7, Class: "person-push\x1b[2J", Committer: "Pat\x1b]0;title\x07" + long,
-		Lane: "drain‮", Approval: landings.Approval{Seen: true, By: "who\u009b", Source: "forge"},
-		Resolves: []string{"iss-1\x1b[1m"}, Delivers: []string{"itd-2​"}}
-	out := landingsOutput{Listing: landings.Listing{Tip: "main\x1b[2J", To: strings.Repeat("b", 40), Since: "v1\x1b", Rows: []landings.Row{r},
-		ForgeUnread: "boom\x1b[2J" + long, SinceNote: "note\u009b", CacheUnwritten: "c\x07", ModeUnread: "m‮"}}
+// landingsFieldPaths is every leaf field of typ, by dotted path: a struct's
+// fields are followed through pointers and slices, and a time or a type in
+// stop is a leaf.
+func landingsFieldPaths(typ reflect.Type, prefix string, stop ...reflect.Type) []string {
+	for typ.Kind() == reflect.Pointer || typ.Kind() == reflect.Slice {
+		typ = typ.Elem()
+	}
+	if typ.Kind() != reflect.Struct || typ == reflect.TypeFor[time.Time]() || (prefix != "" && slices.Contains(stop, typ)) {
+		return []string{prefix}
+	}
+	var out []string
+	for i := range typ.NumField() {
+		f := typ.Field(i)
+		p := f.Name
+		if prefix != "" {
+			p = prefix + "." + f.Name
+		}
+		out = append(out, landingsFieldPaths(f.Type, p, stop...)...)
+	}
+	return out
+}
+
+// landingsAllRow is a row with every field set, each to a value of its own,
+// and what the text must print of each, by field path.
+func landingsAllRow() (landings.Row, map[string][]string) {
+	sha := func(c string) string { return strings.Repeat(c, 40) }
+	r := landings.Row{
+		Commit: sha("a1"[:1]), When: time.Date(2026, 11, 2, 3, 4, 5, 0, time.UTC), PR: 4242, MergedHead: sha("b"),
+		Committer: "Casey Committer", Class: landings.ClassDrain,
+		Rule: landings.Rule{Kind: "drain", ID: "adr-77", Path: ".abcd/rule-path.md", At: sha("d")},
+		Lane: "lane-kind-x", Approval: landings.Approval{Seen: true, By: "reviewer-login", At: time.Date(2026, 11, 1, 9, 8, 7, 0, time.UTC), Source: landings.SourceForge},
+		Mode: "mode-y", Resolves: []string{"iss-11"}, Delivers: []string{"itd-22"}, AssistedBy: []string{"Vendor:model-9"},
+		ForgeSays: "the forge says it merged as another commit", ForgeUnreadable: "the forge timed out for this one",
+		Unattended: true,
+		Reverted:   &landings.Revert{By: sha("e"), ByRow: sha("f"), Kind: "git-kind", WithdrawnBy: sha("9")},
+		Reverts: []landings.RevertLine{
+			{Commit: sha("1"), Kind: "forge-kind", Names: "#77", Target: sha("2"), Row: sha("3"), Unmarked: "a reason beside the mark"},
+			{Commit: sha("4"), Kind: landings.RevertUntraceable, Names: "names-zzz", Target: sha("5"), Unmarked: "names a commit outside the listed range"},
+		},
+	}
+	short := func(c string) string { return sha(c)[:12] }
+	return r, map[string][]string{
+		"Commit": {short("a")}, "When": {"landed 2026-11-02T03:04:05Z"}, "PR": {"#4242"}, "MergedHead": {"merged head " + short("b")},
+		"Committer": {"committer Casey Committer"}, "Class": {"  drain  "},
+		"Rule.Kind": {"drain adr-77"}, "Rule.ID": {"drain adr-77"}, "Rule.Path": {"rule read from .abcd/rule-path.md"}, "Rule.At": {"at " + short("d")},
+		"Lane": {"lane lane-kind-x"},
+		// Seen is the source's word: forge and local tier are an approval
+		// seen, none seen and forge unread are not.
+		"Approval.Seen": {"approval forge"}, "Approval.By": {"approval forge: reviewer-login"}, "Approval.At": {"reviewer-login, 2026-11-01T09:08:07Z"}, "Approval.Source": {"approval forge"},
+		"Mode": {"mode mode-y"}, "Resolves": {"iss-11"}, "Delivers": {"itd-22"}, "AssistedBy": {"assisted by Vendor:model-9"},
+		"ForgeSays": {"forge says: the forge says it merged as another commit"}, "ForgeUnreadable": {"forge unread: the forge timed out for this one"},
+		"Unattended":  {"  unattended"},
+		"Reverted.By": {"reverted by " + short("e")}, "Reverted.ByRow": {"in row " + short("f")}, "Reverted.Kind": {"(git-kind, in row"}, "Reverted.WithdrawnBy": {"withdrawn by " + short("9")},
+		"Reverts.Commit": {"line in " + short("1"), "line in " + short("4")}, "Reverts.Kind": {"(forge-kind line", "(untraceable line"},
+		"Reverts.Names": {"names #77", "names names-zzz"}, "Reverts.Target": {"resolved to " + short("2"), "resolved to " + short("5")},
+		"Reverts.Row": {"marks row " + short("3")}, "Reverts.Unmarked": {"; a reason beside the mark", "marks no row: names a commit outside the listed range"},
+	}
+}
+
+// landingsCovers fails t unless want names every leaf path of typ (so a field
+// added later must be given its text) and text holds every value want names.
+func landingsCovers(t *testing.T, what string, typ reflect.Type, want map[string][]string, text string, stop ...reflect.Type) {
+	t.Helper()
+	paths := landingsFieldPaths(typ, "", stop...)
+	for _, p := range paths {
+		if _, ok := want[p]; !ok {
+			t.Fatalf("%s: the field %s is not given the text it prints", what, p)
+		}
+	}
+	if len(want) != len(paths) {
+		t.Fatalf("%s: the test names %d fields, the type has %d (%v)", what, len(want), len(paths), paths)
+	}
+	for p, vals := range want {
+		for _, v := range vals {
+			if !strings.Contains(text, v) {
+				t.Fatalf("%s: the text does not print %s (%q):\n%s", what, p, v, text)
+			}
+		}
+	}
+}
+
+// TestLandingsTextSaysWhatTheJSONSays: everything --json carries of a row,
+// the listing, a group and a trace, the text prints, a row's attendance and
+// reverts included: the unattended mark, the mode, what the forge said and
+// why its answer was not read, and every revert line with the row it marks
+// or why it marks none. Each struct's fields are walked, so one added later
+// fails here until it is printed.
+func TestLandingsTextSaysWhatTheJSONSays(t *testing.T) {
+	row, want := landingsAllRow()
+	text := strings.Join(landingRow(row), "\n")
+	landingsCovers(t, "a row", reflect.TypeFor[landings.Row](), want, text)
+
+	rowType := reflect.TypeFor[landings.Row]()
+	sha := func(c string) string { return strings.Repeat(c, 40) }
+	l := landings.Listing{Tip: "tip-ref", From: sha("6"), To: sha("7"), Since: "since-tag", SinceNote: "a since note",
+		Rows: []landings.Row{row}, ForgeUnread: "a forge note", CacheUnwritten: "a cache note", ModeUnread: "a mode note"}
 	var b bytes.Buffer
-	renderLandings(&b, out, false)
-	text := b.String()
-	for _, bad := range []string{"\x1b", "\x07", "\u009b", "‮", "​"} {
+	renderLandings(&b, landingsView(l, false, false), false, false)
+	landingsCovers(t, "the listing", reflect.TypeFor[landings.Listing](), map[string][]string{
+		"Tip": {"read tip-ref"}, "From": {"after " + sha("6")[:12]}, "To": {"at " + sha("7")[:12]}, "Since": {"since since-tag"},
+		"SinceNote": {"range: a since note"}, "Rows": {text}, "ForgeUnread": {"forge: a forge note"},
+		"CacheUnwritten": {"cache: a cache note"}, "ModeUnread": {"mode: a mode note"},
+	}, b.String(), rowType)
+
+	b.Reset()
+	g := landings.RevertGroup{Rule: "group-rule", Count: 1, Rows: []landings.Row{row}}
+	renderLandings(&b, landingsOutput{Listing: l, Groups: []landings.RevertGroup{g}}, false, true)
+	indented := strings.ReplaceAll("  "+text, "\n", "\n  ")
+	landingsCovers(t, "a group", reflect.TypeFor[landings.RevertGroup](), map[string][]string{
+		"Rule": {"group-rule  1\n"}, "Count": {"group-rule  1\n"}, "Rows": {indented},
+	}, b.String(), rowType)
+
+	b.Reset()
+	other := row
+	other.Commit = sha("8")
+	tr := landings.Trace{Commit: sha("c"), Row: &row, Reverts: []landings.Row{other}, Tip: "tip-ref", To: sha("7"), From: sha("6"),
+		RangeNote: "a range note", ForgeUnread: "a forge note", CacheUnwritten: "a cache note", ModeUnread: "a mode note"}
+	renderTrace(&b, "c", tr)
+	traced := b.String()
+	b.Reset()
+	renderTrace(&b, "c", landings.Trace{Says: "is ambiguous here", Tip: "tip-ref", To: sha("7")})
+	landingsCovers(t, "a trace", reflect.TypeFor[landings.Trace](), map[string][]string{
+		"Commit": {sha("c")[:12] + " landed in:"}, "Says": {"c: is ambiguous here"}, "Row": {indented},
+		"Reverts": {"it reverts:\n  " + sha("8")[:12]}, "Tip": {"read tip-ref"}, "To": {"at " + sha("7")[:12]}, "From": {"listed after " + sha("6")[:12]},
+		"RangeNote": {"range: a range note"}, "ForgeUnread": {"forge: a forge note"}, "CacheUnwritten": {"cache: a cache note"}, "ModeUnread": {"mode: a mode note"},
+	}, traced+b.String(), rowType)
+}
+
+// TestLandingsTextNamesWhyARevertIsUntraceable: a trace of a reverting
+// commit whose line marks no row prints the line and its reason, and under
+// --reverted the untraceable group's rows print theirs, through the verb.
+func TestLandingsTextNamesWhyARevertIsUntraceable(t *testing.T) {
+	w := newLandingsWorld(t, "auto")
+	w.r.Git("tag", "start", w.head())
+	rv := w.push("Revert \"feat: gone\"")
+	text, errOut, code := runLandings(t, rv)
+	if code != 0 || !strings.Contains(text, "marks no row: ") {
+		t.Fatalf("trace of an untraceable revert (exit %d, %s):\n%s", code, errOut, text)
+	}
+	l := landingsJSON(t, "--since", "start")
+	why := l.Rows[0].Reverts[0].Unmarked
+	if why == "" || !strings.Contains(text, why) {
+		t.Fatalf("the trace does not print the reason %q:\n%s", why, text)
+	}
+	text, _, _ = runLandings(t, "--since", "start", "--reverted")
+	if !strings.HasPrefix(text, landings.GroupUntraceable+"  1\n  "+rv[:12]) || !strings.Contains(text, why) {
+		t.Fatalf("the untraceable group:\n%s", text)
+	}
+}
+
+// TestLandingsRowTextIsBounded: a row prints at most landingsMaxIDs of its
+// ids and of its Assisted-by: values, and landingsMaxRevertLines of its
+// revert lines, then how many more, so a row carrying thousands prints no
+// more than one carrying fifty but for the counts' digits.
+func TestLandingsRowTextIsBounded(t *testing.T) {
+	rowOf := func(n int) landings.Row {
+		r, _ := landingsAllRow()
+		r.Resolves, r.Delivers, r.AssistedBy, r.Reverts = nil, nil, nil, nil
+		for i := range n {
+			r.Resolves = append(r.Resolves, fmt.Sprintf("iss-%d", 1000000+i))
+			r.Delivers = append(r.Delivers, fmt.Sprintf("itd-%d", 1000000+i))
+			r.AssistedBy = append(r.AssistedBy, fmt.Sprintf("Vendor:model-%d", 1000000+i))
+			r.Reverts = append(r.Reverts, landings.RevertLine{Commit: fmt.Sprintf("%040x", i), Kind: landings.RevertGit,
+				Names: fmt.Sprintf("%040x", i), Unmarked: "names a commit outside the listed range"})
+		}
+		return r
+	}
+	small := strings.Join(landingRow(rowOf(50)), "\n")
+	big := strings.Join(landingRow(rowOf(5000)), "\n")
+	for _, more := range []string{fmt.Sprintf("and %d more", 2*5000-landingsMaxIDs), fmt.Sprintf("and %d more", 5000-landingsMaxIDs),
+		fmt.Sprintf("and %d more revert lines", 5000-landingsMaxRevertLines)} {
+		if !strings.Contains(big, more) {
+			t.Fatalf("the row does not say %q:\n%s", more, big)
+		}
+	}
+	if d := len(big) - len(small); d < 0 || d > 6 {
+		t.Fatalf("a row of 5000 ids and lines prints %d bytes, one of 50 prints %d", len(big), len(small))
+	}
+	if n := strings.Count(big, "\n  reverts ("); n != landingsMaxRevertLines {
+		t.Fatalf("the row prints %d revert lines", n)
+	}
+}
+
+// landingsHostile is text carrying every kind of rune the terminal mask
+// masks, a line break that would forge a line, and a byte that is no UTF-8.
+const landingsHostile = "x\x1b[2J\u009b31m\u202e\u200b\x07\x7f\U000E0041\r\nFORGED\t\xff"
+
+// landingsMasked are the runes landingsHostile carries that must never reach
+// the text raw.
+var landingsMasked = []string{"\x1b", "\u009b", "\u202e", "\u200b", "\x07", "\x7f", "\U000E0041", "\r", "\t", "\xff"}
+
+// landingsFill sets every string v holds to s, every int to 7, every bool to
+// true and every time to one instant, giving each nil pointer and empty slice
+// one element first.
+func landingsFill(v reflect.Value, s string) {
+	switch v.Kind() {
+	case reflect.String:
+		v.SetString(s)
+	case reflect.Int:
+		v.SetInt(7)
+	case reflect.Bool:
+		v.SetBool(true)
+	case reflect.Pointer:
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+		landingsFill(v.Elem(), s)
+	case reflect.Slice:
+		if v.Len() == 0 {
+			v.Set(reflect.MakeSlice(v.Type(), 1, 1))
+		}
+		for i := range v.Len() {
+			landingsFill(v.Index(i), s)
+		}
+	case reflect.Struct:
+		if v.Type() == reflect.TypeFor[time.Time]() {
+			v.Set(reflect.ValueOf(time.Date(2026, 11, 3, 4, 5, 6, 0, time.UTC)))
+			return
+		}
+		for i := range v.NumField() {
+			landingsFill(v.Field(i), s)
+		}
+	}
+}
+
+// landingsCheckMasked fails t if text carries a masked rune raw, is not
+// UTF-8, or holds a line the hostile text's line break forged.
+func landingsCheckMasked(t *testing.T, mode, text string) {
+	t.Helper()
+	if !utf8.ValidString(text) {
+		t.Fatalf("%s: the text is not UTF-8: %q", mode, text)
+	}
+	for _, bad := range landingsMasked {
 		if strings.Contains(text, bad) {
-			t.Fatalf("the render printed %q raw:\n%q", bad, text)
+			t.Fatalf("%s: the text carries %q raw:\n%q", mode, bad, text)
 		}
 	}
 	for _, l := range strings.Split(text, "\n") {
-		if len(l) > 2*landingsNoteBytes {
-			t.Fatalf("a line of %d bytes", len(l))
+		if strings.HasPrefix(strings.TrimSpace(l), "FORGED") {
+			t.Fatalf("%s: a line was forged:\n%q", mode, text)
 		}
 	}
-	b.Reset()
-	renderTrace(&b, "abc\x1b1234", landings.Trace{Says: "is \x1b[2Jnot", Tip: "main\x1b", To: strings.Repeat("c", 40)})
-	if strings.Contains(b.String(), "\x1b") {
-		t.Fatalf("the trace printed ESC raw: %q", b.String())
+	if !strings.Contains(text, "x?[2J") {
+		t.Fatalf("%s: the masked text is not printed:\n%q", mode, text)
+	}
+}
+
+// TestLandingsRenderMasksEveryString: every string of the listing, a row, a
+// revert mark, a revert line, a trace and a group, filled by walking the
+// structs (so a field added later is filled too) with text carrying control
+// and escape runes, reaches no output raw: not the listing, the unattended
+// filter, the reverted groups or the trace in text, whatever the reader
+// handed the render, and not --json, whose \u escapes are the mask there and
+// read back the same strings.
+func TestLandingsRenderMasksEveryString(t *testing.T) {
+	var out landingsOutput
+	landingsFill(reflect.ValueOf(&out).Elem(), landingsHostile)
+	var tr landings.Trace
+	landingsFill(reflect.ValueOf(&tr).Elem(), landingsHostile)
+	text := func(f func(io.Writer)) string {
+		var b bytes.Buffer
+		f(&b)
+		return b.String()
+	}
+	views := map[string]landingsOutput{
+		"the listing":         landingsView(out.Listing, false, false),
+		"the unattended rows": landingsView(out.Listing, true, false),
+		"the reverted groups": landingsView(out.Listing, false, true),
+		"the groups handed":   out,
+	}
+	for mode, v := range views {
+		landingsCheckMasked(t, mode, text(func(w io.Writer) {
+			renderLandings(w, v, mode == "the unattended rows", mode != "the listing" && mode != "the unattended rows")
+		}))
+	}
+	if g := views["the reverted groups"].Groups; len(g) == 0 {
+		t.Fatal("the filled listing groups no row")
+	}
+	landingsCheckMasked(t, "a trace that says", text(func(w io.Writer) { renderTrace(w, landingsHostile, tr) }))
+	noSays := tr
+	noSays.Says = ""
+	landingsCheckMasked(t, "a trace", text(func(w io.Writer) { renderTrace(w, landingsHostile, noSays) }))
+
+	valid := strings.ToValidUTF8(landingsHostile, "\ufffd")
+	for mode, v := range map[string]any{"--json listing": views["the listing"], "--json unattended": views["the unattended rows"],
+		"--json reverted": views["the reverted groups"], "--json trace": tr} {
+		var b bytes.Buffer
+		if err := landingsRender(&b, true, v, nil); err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range b.String() {
+			if r != '\n' && termsafe.Sanitize(string(r)) != string(r) {
+				t.Fatalf("%s carries %U raw:\n%s", mode, r, b.String())
+			}
+		}
+		var back map[string]any
+		if err := json.Unmarshal(b.Bytes(), &back); err != nil || back["tip"] != valid {
+			t.Fatalf("%s does not read back the string it was given: %v, %q", mode, err, back["tip"])
+		}
+	}
+}
+
+// TestLandingsClipIsExact: the clip never prints more than its bound, never
+// cuts inside a rune, and prints only masked UTF-8, on any input, invalid
+// UTF-8 included.
+func TestLandingsClipIsExact(t *testing.T) {
+	for _, s := range []string{strings.Repeat("\xff", 50), strings.Repeat("é", 30) + "\xff\xfe" + strings.Repeat("語", 20), "ab\xe8\xaa", landingsHostile} {
+		for n := 0; n <= len(s)+2; n++ {
+			got := landingsClip(s, n)
+			if len(got) > n || !utf8.ValidString(got) || termsafe.Sanitize(got) != got {
+				t.Fatalf("clip(%q, %d) = %q (%d bytes)", s, n, got, len(got))
+			}
+		}
+	}
+}
+
+// landingsJSONKeys are the keys --json prints, by object, as the command
+// page lists them.
+var landingsJSONKeys = map[string][]string{
+	"The listing":             {"tip", "from", "to", "since", "since_note", "rows", "forge_unread", "cache_unwritten", "mode_unread", "groups"},
+	"A row":                   {"commit", "when", "pr", "merged_head", "committer", "class", "rule", "lane", "approval", "mode", "resolves", "delivers", "assisted_by", "forge_says", "forge_unreadable", "unattended", "reverted", "reverts"},
+	"A row's rule":            {"kind", "id", "path", "at"},
+	"A row's approval":        {"seen", "by", "at", "source"},
+	"A row's reverted mark":   {"by", "by_row", "kind", "withdrawn_by"},
+	"Each of a row's reverts": {"commit", "kind", "names", "target", "row", "unmarked"},
+	"A group":                 {"rule", "count", "rows"},
+	"A trace":                 {"commit", "says", "row", "reverts", "tip", "to", "from", "range_note", "forge_unread", "cache_unwritten", "mode_unread"},
+}
+
+// landingsKeys is the sorted keys of the JSON object raw.
+func landingsKeys(t *testing.T, raw json.RawMessage) []string {
+	t.Helper()
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("%v: %s", err, raw)
+	}
+	keys := slices.Collect(maps.Keys(m))
+	slices.Sort(keys)
+	return keys
+}
+
+// TestLandingsJSONKeys: the full key set of the listing, a row and its
+// sub-objects, a group and a trace, every field filled, is the list this
+// test holds, and the command page lists exactly those keys; under
+// --reverted with nothing reverted, groups is an empty list, and without it
+// there is no groups key.
+func TestLandingsJSONKeys(t *testing.T) {
+	var out landingsOutput
+	landingsFill(reflect.ValueOf(&out).Elem(), "v")
+	var tr landings.Trace
+	landingsFill(reflect.ValueOf(&tr).Elem(), "v")
+	raw := func(v any) json.RawMessage {
+		var b bytes.Buffer
+		if err := landingsRender(&b, true, v, nil); err != nil {
+			t.Fatal(err)
+		}
+		return b.Bytes()
+	}
+	var listing struct {
+		Rows   []json.RawMessage `json:"rows"`
+		Groups []json.RawMessage `json:"groups"`
+	}
+	lraw := raw(out)
+	if err := json.Unmarshal(lraw, &listing); err != nil || len(listing.Rows) != 1 || len(listing.Groups) != 1 {
+		t.Fatalf("%v: %s", err, lraw)
+	}
+	var row struct {
+		Rule, Approval, Reverted json.RawMessage
+		Reverts                  []json.RawMessage
+	}
+	if err := json.Unmarshal(listing.Rows[0], &row); err != nil || len(row.Reverts) != 1 {
+		t.Fatalf("%v: %s", err, listing.Rows[0])
+	}
+	got := map[string][]string{
+		"The listing": landingsKeys(t, lraw), "A row": landingsKeys(t, listing.Rows[0]), "A row's rule": landingsKeys(t, row.Rule),
+		"A row's approval": landingsKeys(t, row.Approval), "A row's reverted mark": landingsKeys(t, row.Reverted),
+		"Each of a row's reverts": landingsKeys(t, row.Reverts[0]), "A group": landingsKeys(t, listing.Groups[0]), "A trace": landingsKeys(t, raw(tr)),
+	}
+	page, err := os.ReadFile(filepath.Join(repoRootForTest(t), "commands", "landings.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, section, _ := strings.Cut(string(page), "\n## What --json prints\n")
+	section, _, _ = strings.Cut(section, "\n## ")
+	onPage := map[string][]string{}
+	keyRe := regexp.MustCompile("`([a-z_]+)`")
+	for _, l := range strings.Split(strings.ReplaceAll(section, "\n  ", " "), "\n") {
+		label, keys, ok := strings.Cut(strings.TrimPrefix(l, "- "), ": ")
+		if !ok || !strings.HasPrefix(l, "- ") {
+			continue
+		}
+		for _, m := range keyRe.FindAllStringSubmatch(keys, -1) {
+			onPage[label] = append(onPage[label], m[1])
+		}
+	}
+	for obj, want := range landingsJSONKeys {
+		want = slices.Sorted(slices.Values(want))
+		if !slices.Equal(got[obj], want) {
+			t.Fatalf("%s carries %v, the test holds %v", obj, got[obj], want)
+		}
+		if page := slices.Sorted(slices.Values(onPage[obj])); !slices.Equal(page, want) {
+			t.Fatalf("the page lists %s as %v, the test holds %v", obj, page, want)
+		}
+	}
+	if len(onPage) != len(landingsJSONKeys) {
+		t.Fatalf("the page lists %d objects, the test holds %d: %v", len(onPage), len(landingsJSONKeys), onPage)
+	}
+
+	w := newLandingsWorld(t, "auto")
+	w.r.Git("tag", "start", w.head())
+	w.merge(1, "", "feat: one")
+	r, _, code := runLandings(t, "--json", "--since", "start", "--reverted")
+	if code != 0 || !strings.Contains(r, `"groups": []`) {
+		t.Fatalf("--reverted --json with nothing reverted (exit %d):\n%s", code, r)
+	}
+	if r, _, _ := runLandings(t, "--json", "--since", "start"); strings.Contains(r, `"groups"`) {
+		t.Fatalf("--json without --reverted carries groups:\n%s", r)
+	}
+}
+
+// landingsCollidingBlobs writes two blobs to r whose object names share
+// their first seven hex characters, and returns that prefix.
+func landingsCollidingBlobs(t *testing.T, r *gittest.Repo) string {
+	t.Helper()
+	blobID := func(c string) string {
+		h := sha1.Sum([]byte(fmt.Sprintf("blob %d\x00%s", len(c), c)))
+		return hex.EncodeToString(h[:])
+	}
+	seen := map[string]string{}
+	for i := 0; ; i++ {
+		c := strconv.Itoa(i)
+		id := blobID(c)
+		if other, ok := seen[id[:7]]; ok {
+			for _, x := range []string{other, c} {
+				cmd := exec.Command("git", "-C", r.Root(), "hash-object", "-w", "--stdin")
+				cmd.Env = r.Env()
+				cmd.Stdin = strings.NewReader(x)
+				got, err := cmd.Output()
+				if err != nil || strings.TrimSpace(string(got)) != blobID(x) {
+					t.Fatalf("git wrote %q as %q (%v), not %s", x, got, err, blobID(x))
+				}
+			}
+			return id[:7]
+		}
+		seen[id[:7]] = c
+	}
+}
+
+// TestLandingsExitCodes: every exit the help and the page state, at the verb.
+func TestLandingsExitCodes(t *testing.T) {
+	w := newLandingsWorld(t, "auto")
+	w.merge(1, "", "feat: one")
+	w.r.Git("tag", "v0.1.0", w.head())
+	w.push("docs: after the tag")
+	tree := w.r.Git("rev-parse", "HEAD^{tree}")
+	ambiguous := landingsCollidingBlobs(t, w.r)
+	for _, tc := range []struct {
+		name string
+		args []string
+		fail []string
+		code int
+		says string
+	}{
+		{"unreadable history", nil, []string{"--timestamp"}, 1, "first-parent line"},
+		{"unreadable tags", nil, []string{"describe"}, 1, "release tag"},
+		{"a date that is no day", []string{"--since", "2030-02-30"}, nil, 2, "is not a date"},
+		{"both filters", []string{"--unattended", "--reverted"}, nil, 2, "not taken together"},
+		{"an ambiguous name", []string{ambiguous}, nil, 2, "is ambiguous"},
+		{"a name of a tree", []string{tree}, nil, 2, "names a tree, not a commit"},
+		{"a listing read", nil, nil, 0, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.fail != nil {
+				landingsGit(t, "", tc.fail...)
+			}
+			_, errOut, code := runLandings(t, tc.args...)
+			if code != tc.code || !strings.Contains(errOut, tc.says) {
+				t.Fatalf("exit %d, want %d: %q", code, tc.code, errOut)
+			}
+		})
+	}
+	out, errOut, code := runLandings(t, "--json", tree)
+	var tr landings.Trace
+	if code != 2 || json.Unmarshal([]byte(out), &tr) != nil || !strings.Contains(tr.Says, "names a tree") || !strings.Contains(errOut, "names a tree") {
+		t.Fatalf("--json on a refused trace: exit %d, %q, %q", code, out, errOut)
+	}
+
+	t.Run("outside a checkout", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		if _, errOut, code := runLandings(t); code != 2 || !strings.Contains(errOut, "nothing read") {
+			t.Fatalf("exit %d: %q", code, errOut)
+		}
+	})
+	t.Run("no default branch", func(t *testing.T) {
+		r := gittest.NewRepo(t)
+		r.Commit("chore: one")
+		r.Git("branch", "-m", "feature")
+		t.Chdir(r.Root())
+		if _, errOut, code := runLandings(t, "--since", "2020-01-01"); code != 2 || !strings.Contains(errOut, landings.ErrNoDefaultBranch.Error()) {
+			t.Fatalf("exit %d: %q", code, errOut)
+		}
+	})
+}
+
+// TestLandingsForgeUnreadStaysExitZeroUnderEveryFilter: a listing whose forge
+// answers were not read exits 0, with its rows unattended and the forge note
+// saying how many, bare, under each filter and in a trace.
+func TestLandingsForgeUnreadStaysExitZeroUnderEveryFilter(t *testing.T) {
+	w := newLandingsWorld(t, "auto")
+	w.r.Git("tag", "start", w.head())
+	m, branch := w.merge(1, "alice-reviewer", "feat: one")
+	w.r.Git("revert", "--no-edit", branch[0])
+	w.forge.fail = "the forge is away"
+	for _, args := range [][]string{{"--since", "start"}, {"--since", "start", "--unattended"}, {"--since", "start", "--reverted"}, {m}} {
+		text, errOut, code := runLandings(t, args...)
+		if code != 0 || !strings.Contains(text, "\nforge: the forge's answer was not read for 1 row") {
+			t.Fatalf("landings %v: exit %d, %s\n%s", args, code, errOut, text)
+		}
+	}
+	if l := landingsJSON(t, "--since", "start", "--unattended"); !strings.Contains(l.ForgeUnread, "not read for 1 row") || len(l.Rows) != 2 {
+		t.Fatalf("--unattended --json: %+v", l)
+	}
+}
+
+// TestLandingsUnattendedSaysWhenNoRowIs: with the filter and no unattended
+// row, the text says no row in the range is unattended, not that nothing
+// landed.
+func TestLandingsUnattendedSaysWhenNoRowIs(t *testing.T) {
+	w := newLandingsWorld(t, "human")
+	w.r.Git("tag", "start", w.head())
+	w.merge(1, "alice-reviewer", "feat: one")
+	text, _, code := runLandings(t, "--since", "start", "--unattended")
+	if code != 0 || !strings.HasPrefix(text, "no row in the range is unattended\n") {
+		t.Fatalf("exit %d:\n%s", code, text)
 	}
 }

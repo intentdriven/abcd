@@ -9,10 +9,8 @@ block: people
 
 Say how each change landed on the default branch: who or what let it in, and
 under which rule. The verb reads history as this checkout last fetched it. It
-fetches nothing and pushes nothing; its one network act is a read through the
-forge client (`gh api graphql`) of each pull request it has not read before,
-and it keeps each answer it read in `.abcd/.work.local/landings/`, the only
-thing it writes.
+fetches nothing and pushes nothing; its one network act is the forge client
+(`gh api graphql`), and it writes only `.abcd/.work.local/landings/`.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" landings --json                       # since the last release tag
@@ -27,17 +25,38 @@ thing it writes.
 The listing runs from `--since` to the default branch's tip: after a tag, or
 from the first first-parent commit at or after a date `YYYY-MM-DD`. With no
 `--since` it starts after the last release tag (`v*`) the tip reaches. With no
-such tag it refuses (exit 2) and names the flag.
-A `--since` that names neither a tag nor a date is refused the same way.
+such tag it refuses (exit 2) and names the flag; a failed read of the tags is
+not taken for no tag, and exits 1. A `--since` that names neither a tag nor a
+date, or a date that is no day, is refused at exit 2.
+
+## What it asks the forge, and what it keeps
+
+It asks the forge about each pull request the range names whose answer its
+cache does not keep, up to twenty to a document. It keeps, one file per pull
+request, only the answers that cannot change: one it accepts for its row, one
+saying the pull request merged as another commit, and the forge's word that a
+number names no pull request. An answer it could not read, one whose reviews
+run past the page it reads, one read without the commits its row asked, and one
+saying the pull request has not merged or naming no merge commit are not kept,
+so every listing asks for them again. A document whose answer is too large, or
+carries an error naming no one pull request, is asked again in halves, within a
+bound on the calls one listing spends so. A squashed revert's pull request body
+is asked apart, on every listing that reads it, and never kept.
 
 ## What a row says
 
 One row per commit on the default branch's first-parent line, newest first.
-The text prints each as one line: the commit, the pull request, the class, the
-rule (or, for a person's push, its committer), the lane kind, the approval and
-where it was read, and the issues and intents it resolves and delivers, with
-the commit that reverts it where one does. After the rows come the notes and
-the tip it read.
+The text prints each row as its first line: the commit, the pull request, the
+class, the rule (or, for a person's push, the committer name git holds), the
+lane kind, the approval and where it was read, the issues and intents it
+resolves and delivers, its mode, `unattended` where it is, and the commit that
+reverts it where one does. The next line says when it landed, the head it
+merged, where its rule was read, and its `Assisted-by:` values. Then, each on
+its own line: what the forge said against the pull request its subject names,
+why the forge's answer for it was not read, and each revert line its commits
+carry, with the row it marks or why it marks none. A row prints at most eight
+of its ids, eight `Assisted-by:` values and eight revert lines, then how many
+more; `--json` keeps them all. After the rows come the notes and the tip read.
 
 The classes:
 
@@ -56,35 +75,58 @@ The approval's source is `forge`, `local tier`, `none seen` or `forge unread`.
 A row whose pull request the forge did not answer for is never placed with a
 person, and the `forge` note says why and how many.
 
-`--json` prints the listing: `tip`, `from`, `to`, `since`, `rows`, and, when
-they say something, `since_note`, `forge_unread`, `cache_unwritten` and
-`mode_unread`. Each row carries `commit`, `when`, `pr`, `merged_head`,
-`committer`, `class`, `rule` (`kind`, `id`, `path`, `at`), `lane`,
-`approval` (`seen`, `by`, `at`, `source`), `mode`, `resolves`, `delivers`,
-`assisted_by`, `forge_says`, `forge_unreadable`, `unattended`, `reverted`
-(`by`, `by_row`, `kind`, `withdrawn_by`) and `reverts`.
-
 `--unattended` keeps the rows with `unattended` set: the drain's and the
 automatic merges, a person's push no recorded approval names, and every row
-the evidence cannot place with a person. `--reverted` adds `groups`, each a
-`rule` with its `count` and `rows`, and the untraceable reverts in a group of
-their own; the text prints each group's rule and count, then its rows.
+the evidence cannot place with a person; with none, the text says no row in the
+range is unattended. `--reverted` adds `groups`, each a rule with its count and
+rows, and the rows carrying an untraceable revert in a group of their own; the
+text prints each group's rule and count, then its rows. The two filters are not
+taken together (exit 2).
 
 ## Tracing one commit
 
 Name a commit and the verb traces it: the row that brought it onto the default
-branch, however far back, with its class and rule, and for a reverting commit
-the rows it reverts. `--json` prints `commit`, `row`, `reverts`, `tip`, `to`
-and the notes. A commit the tip does not reach prints `not on the default
-branch` and exits 0. A name that names no one commit is refused (exit 2), and a
-trace takes none of `--since`, `--unattended` and `--reverted`.
+branch, however far back, with its class, rule and revert lines, and for a
+reverting commit the rows it reverts; the notes say what the range could not
+place. A commit the tip does not reach prints `not on the default branch` and
+exits 0. A name that names no one commit (none, two or more, or an object that
+is no commit) is refused (exit 2), and `--json` prints the trace with its
+`says` first. A trace takes none of `--since`, `--unattended` and `--reverted`.
+
+## What --json prints
+
+- The listing: `tip`, `from`, `to`, `since`, `rows`, and, when they say
+  something, `since_note`, `forge_unread`, `cache_unwritten` and
+  `mode_unread`; under `--reverted`, `groups`, an empty list when no row is
+  reverted.
+- A row: `commit`, `when`, `pr`, `merged_head`, `committer`, `class`, `rule`,
+  `lane`, `approval`, `mode`, `resolves`, `delivers`, `assisted_by`,
+  `forge_says`, `forge_unreadable`, `unattended`, `reverted` and `reverts`.
+- A row's rule: `kind`, `id`, `path`, `at`.
+- A row's approval: `seen`, `by`, `at`, `source`.
+- A row's reverted mark: `by`, `by_row`, `kind`, `withdrawn_by`.
+- Each of a row's reverts: `commit`, `kind`, `names`, `target`, `row`,
+  `unmarked`.
+- A group: `rule`, `count`, `rows`.
+- A trace: `commit`, `says`, `row`, `reverts`, `tip`, `to`, `from`,
+  `range_note`, `forge_unread`, `cache_unwritten`, `mode_unread`.
+
+## Telling the user
 
 Tell the user the rows that matter to their question, by class and rule, and
-read every note out: a `forge` note means some rows could not be placed. Every
-value is text someone typed and is masked for the terminal. Exit 0 with the
-listing or the trace; exit 1 when history cannot be read; exit 2
-outside a git checkout, with no default branch, with no range, or with a
-commit named that names none.
+read every note out: a `forge` note means some rows could not be placed. The
+render masks every value it prints for the terminal; the committer name, the
+forge's logins and failure text, the lane, the ids, a revert line's names and
+the notes carry text someone typed. One row's text is bounded; the number of
+rows is bounded only by the history the reader takes, whose log it refuses
+whole past 64 MiB.
+
+Exit 0 with the listing or the trace, and with a listing whose forge answers
+were partly or wholly unread: those rows are unattended and the `forge` note
+says how many, so a script reads `forge_unread`, not the exit alone. Exit 1
+when history or the tags cannot be read. Exit 2 outside a git checkout, with no
+default branch, with no range, with both filters, or with a commit named that
+names none.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

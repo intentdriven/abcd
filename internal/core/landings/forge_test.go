@@ -233,3 +233,26 @@ func TestAFullReviewsPageCountsNone(t *testing.T) {
 		t.Fatalf("the reason %q", l.ForgeUnread)
 	}
 }
+
+// TestTheBodyRuleComparesWholeSeconds: the forge gives the body's last edit
+// and the merge to the second, and the rule compares them so even where an
+// answer carries a fraction: an edit earlier within the merge's own second
+// is in that second, so the body is not read, and an edit in an earlier
+// second is read however near.
+func TestTheBodyRuleComparesWholeSeconds(t *testing.T) {
+	at := func(s string) *string { return &s }
+	for _, tc := range []struct {
+		merged, edited string
+		read           bool
+	}{
+		{"2026-11-01T10:00:00.900Z", "2026-11-01T10:00:00.200Z", false},
+		{"2026-11-01T10:00:00.100Z", "2026-11-01T09:59:59.950Z", true},
+		{"2026-11-01T10:00:00Z", "2026-11-01T10:00:00Z", false},
+		{"2026-11-01T10:00:01Z", "2026-11-01T10:00:00.999Z", true},
+	} {
+		p := &prBody{MergedAt: at(tc.merged), LastEditedAt: at(tc.edited)}
+		if got := p.unedited(); got != tc.read {
+			t.Fatalf("merged %s, edited %s: read %v, want %v", tc.merged, tc.edited, got, tc.read)
+		}
+	}
+}

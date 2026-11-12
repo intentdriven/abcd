@@ -4564,10 +4564,14 @@ it, with its pull request, its class (person-approved, drain, automatic or
 person-push), the rule that admitted it (a drain rule record by id, or
 facilitator.mode as the first parent committed it), the lane kind its branch's
 Admitted-by: trailer names, the approval it rests on and where that was read
-(forge, local tier, none seen, forge unread), and the issues and intents it
-resolves and delivers. After the rows come the notes (how the range was
-found, why the forge was not read for some row, why an answer was not kept,
-why a first parent's mode could not be read) and the tip read.
+(forge, local tier, none seen, forge unread), the issues and intents it
+resolves and delivers, its mode, whether it is unattended, and the commit that
+reverts it. Under a row come what the forge said against the pull request its
+subject names, why the forge's answer was not read, and each revert line its
+commits carry with the row it marks or why it marks none. After the rows come
+the notes (how the range was found, why the forge was not read for some row,
+why an answer was not kept, why a first parent's mode could not be read) and
+the tip read.
 
 The range runs from --since, a tag or a date YYYY-MM-DD (taken as the first
 first-parent commit at or after it), to the default branch's tip; with no
@@ -4575,20 +4579,35 @@ first-parent commit at or after it), to the default branch's tip; with no
 no such tag the verb refuses, naming the flag. --unattended keeps the rows no
 evidence places with a person. --reverted lists the rows a later commit
 reverts, grouped by the rule that admitted them, each group with a count, and
-the untraceable reverts in a group of their own.
+the rows carrying an untraceable revert in a group of their own. The two
+filters are not taken together.
 
 With one commit named, it traces that commit instead: the row that brought it
 onto the default branch however far back, with its class and rule, and for a
 reverting commit the rows it reverts; a commit the tip does not reach is said
 to be not on the default branch. A trace takes none of the three flags.
 
-It fetches nothing and pushes nothing: it asks the forge (gh api graphql) at
-most once per pull request it has not read before, and keeps each answer it
-read in .abcd/.work.local/landings/, the only thing it writes. Every value a
-row prints is text someone typed (a subject, a trailer, a login) and is
-masked for the terminal. Exit 0 with the listing or the trace; exit 1 when
-history cannot be read; exit 2 outside a git checkout, with no default
-branch, with no range, or with a commit named that names none.
+It fetches nothing and pushes nothing. It asks the forge (gh api graphql)
+about each pull request the range names whose answer its cache does not keep,
+up to twenty to a document, and keeps in .abcd/.work.local/landings/, the only
+thing it writes, the answers that cannot change: one it accepts for its row,
+one saying the pull request merged as another commit, and the forge's word
+that a number names no pull request. An answer it could not read, one whose
+reviews run past the page it reads, one read without the commits its row
+asked, and one saying the pull request has not merged or naming no merge
+commit are not kept, so every listing asks for them again. A document whose
+answer is too large, or carries an error naming no one pull request, is asked
+again in halves, within a bound on the calls one listing spends so. A squashed
+revert's pull request body is asked apart, on every listing that reads it, and
+never kept. The render masks for the terminal every value it prints, and the
+committer name, the forge's logins and failure text, the lane, the ids, a
+revert line's names and the notes carry text someone typed.
+
+Exit 0 with the listing or the trace, a listing whose forge answers were not
+read included (those rows are unattended and the forge note says how many);
+exit 1 when history or the tags cannot be read; exit 2 outside a git
+checkout, with no default branch, with no range, with both filters, or with a
+commit named that names none.
 
 **Flags:**
 
