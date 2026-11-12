@@ -722,9 +722,9 @@ func askNodes(forge landing.ForgeCall, batch []prAsk, args []string, limit int) 
 // bodySelection is what the body query reads of a pull request: its number
 // and merge commit, so the answer is read only for the row its own answer
 // confirmed, its body, for the forge's revert line, when it merged and when
-// its body was last edited, so a body edited after the merge is not read, and
-// the name of the repository it merged into, which that line's owner/repo
-// form is checked against. Every field is pinned in internal/ghcontract
+// its body was last edited, so a body edited in or after the merge's second
+// is not read, and the name of the repository it merged into, which that
+// line's owner/repo form is checked against. Every field is pinned in internal/ghcontract
 // (graphql-fields.txt).
 const bodySelection = `number mergeCommit{oid} mergedAt lastEditedAt body baseRepository{nameWithOwner}`
 
@@ -766,16 +766,19 @@ type prBody struct {
 	BaseRepository *forgeRepo `json:"baseRepository"`
 }
 
-// unedited says whether the forge says p's body was not edited after the
-// pull request merged: never edited, or last edited no later than the merge,
-// both times read. It cuts both ways. Any edit of the body after the merge
-// leaves a true revert line in it unread: the row it names then carries no
-// mark, and the reverting row says why in an untraceable line. And the forge
-// gives both times to the second, so an edit in the same second as the merge
-// reads as unedited. That lastEditedAt moves on every edit of the body is the
-// forge's documented meaning, shown here only through the fake forge; it must
-// be checked against the live forge before step 4, and nothing enforces that
-// yet (dcn-2611121125486678).
+// unedited says whether the forge says p's body was not edited in or after
+// the second the pull request merged: never edited, or last edited in an
+// earlier second than the merge, both times read. The forge gives both times
+// to the second, so an edit in the merge's own second cannot be told from an
+// edit just after it, and both leave the body unread. It cuts both ways: a
+// true revert line written in the merge's second is left unread, so the row
+// it names carries no mark and the reverting row says why in an untraceable
+// line; and nothing written at or after the merge's second is read. A body
+// never edited carries no last-edited time, and an edited one carries the
+// time of its newest edit, as a read of this repository's merged pull
+// requests found; that an edit after the merge moves it is the forge's
+// documented meaning of the field (dcn-2611121125486678, narrowed by
+// dcn-2611121446194027).
 func (p *prBody) unedited() bool {
 	if p.LastEditedAt == nil {
 		return true
@@ -785,7 +788,7 @@ func (p *prBody) unedited() bool {
 	}
 	merged, err1 := time.Parse(time.RFC3339, *p.MergedAt)
 	edited, err2 := time.Parse(time.RFC3339, *p.LastEditedAt)
-	return err1 == nil && err2 == nil && !edited.After(merged)
+	return err1 == nil && err2 == nil && edited.Truncate(time.Second).Before(merged.Truncate(time.Second))
 }
 
 // bodyAnswers are readBodies' answers by pull request, and why each one it
@@ -929,7 +932,7 @@ func (b *bodyAsker) take(batch []prAsk, r batchResult, nodes map[int]json.RawMes
 		case p.MergeCommit == nil || p.MergeCommit.Oid != a.commit:
 			b.out.why[a.pr] = fmt.Sprintf("the forge's body answer for pull request #%d does not say it merged as %s", a.pr, a.commit[:12])
 		case !p.unedited():
-			b.out.why[a.pr] = fmt.Sprintf("the forge says the body of pull request #%d was edited after it merged, or does not say when, so it is not read", a.pr)
+			b.out.why[a.pr] = fmt.Sprintf("the forge says the body of pull request #%d was edited in or after the second it merged, or does not say when, so it is not read", a.pr)
 		default:
 			b.out.got[a.pr] = &p
 		}

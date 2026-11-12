@@ -1280,25 +1280,34 @@ func TestABodyAnswerNamingAnotherMergeIsNotRead(t *testing.T) {
 }
 
 // TestABodyEditedAfterTheMergeIsNotRead: a body the forge says was last
-// edited after its pull request merged, or whose merge time it does not
-// give, is not read for the forge's line; one edited before the merge is.
+// edited in the second its pull request merged or later, or whose merge time
+// it does not give, is not read for the forge's line; one edited in an
+// earlier second is.
 func TestABodyEditedAfterTheMergeIsNotRead(t *testing.T) {
 	f := newFx(t, "auto")
 	s1 := f.commit("feat: x (#1)")
 	s2 := f.commit("feat: y (#2)")
+	s5 := f.commit("feat: z (#5)")
 	s3 := f.commit(`Revert "feat: x (#1)" (#3)`)
 	s4 := f.commit(`Revert "feat: y (#2)" (#4)`)
-	ff := &fakeForge{t: t, bodies: map[int]string{3: "Reverts #1", 4: "Reverts #2"},
-		bodyEdited: map[int]string{3: "2026-11-01T10:00:01Z", 4: "2026-11-01T09:59:59Z"}}
-	for n, c := range map[int]string{1: s1, 2: s2, 3: s3, 4: s4} {
+	s6 := f.commit(`Revert "feat: z (#5)" (#6)`)
+	ff := &fakeForge{t: t, bodies: map[int]string{3: "Reverts #1", 4: "Reverts #2", 6: "Reverts #5"},
+		bodyEdited: map[int]string{3: "2026-11-01T10:00:01Z", 4: "2026-11-01T09:59:59Z", 6: "2026-11-01T10:00:00Z"}}
+	for n, c := range map[int]string{1: s1, 2: s2, 3: s3, 4: s4, 5: s5, 6: s6} {
 		ff.add(answer(n, c, strings.Repeat(strconv.Itoa(n), 40)))
 	}
 	l := f.list(ff.call)
 	if got := row(t, l, s1).Reverted; got != nil {
 		t.Fatalf("a body edited after the merge marked %+v", got)
 	}
-	if r := row(t, l, s3); len(r.Reverts) != 1 || r.Reverts[0].Kind != RevertUntraceable || !strings.Contains(r.Reverts[0].Unmarked, "edited after it merged") {
+	if r := row(t, l, s3); len(r.Reverts) != 1 || r.Reverts[0].Kind != RevertUntraceable || !strings.Contains(r.Reverts[0].Unmarked, "edited in or after the second it merged") {
 		t.Fatalf("row #3 reverts %+v", r.Reverts)
+	}
+	if got := row(t, l, s5).Reverted; got != nil {
+		t.Fatalf("a body edited in the merge's second marked %+v", got)
+	}
+	if r := row(t, l, s6); len(r.Reverts) != 1 || r.Reverts[0].Kind != RevertUntraceable || !strings.Contains(r.Reverts[0].Unmarked, "edited in or after the second it merged") {
+		t.Fatalf("row #6 reverts %+v", r.Reverts)
 	}
 	if got := row(t, l, s2).Reverted; got == nil || got.By != s4 {
 		t.Fatalf("a body edited before the merge: %+v", got)
