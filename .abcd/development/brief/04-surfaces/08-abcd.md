@@ -316,7 +316,12 @@ commit dropped), `settled` (each ended release of the reader's whose
 withdrawals the listing re-armed or skipped, with `not_read`, `unplaced` and
 `not_ended`, each once for each tip, `not_ended_claimed` (true when that
 holder is a holder id that is not the reader's), and `failures`, a comment not
-posted as sent among them, iss-2610222014550692) and `view`
+posted as sent among them, iss-2610222014550692), `ceiling` (the reader's own
+live reservations against this machine's `reservation.max_live`, counted by
+copy, with its warning from four fifths of the limit, present only when the
+reader's identity is known without the network and the limit is one a
+reservation would not be refused on; `commands/peers.md` lists its fields,
+iss-2610231004140527) and `view`
 (`origin`, `fetched_at`, `age_seconds`). When the fetch fails, the listing renders the view as last
 fetched with its age, names the failure on stderr and in `fetch_error`, and
 exits 1; the peer rows are unchanged. When `~/.abcd.noindex/holder-ids` is
