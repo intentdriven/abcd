@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // revertMsg is git revert's own message for commit sha, named by its first n
@@ -147,7 +149,7 @@ func ambiguousPrefix(t *testing.T, f *fx) string {
 		fmt.Fprintf(&in, "blob\ndata %d\n%s\n", len(s), s)
 	}
 	cmd := exec.Command("git", "-C", f.r.Root(), "fast-import", "--quiet")
-	cmd.Env = f.r.Env()
+	cmd.Env = gittest.Env(t)
 	cmd.Stdin = strings.NewReader(in.String())
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("fast-import: %v %s", err, out)
