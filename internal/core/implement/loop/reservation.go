@@ -864,6 +864,11 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 	// issue flap on each retry, so the lock is looked at before anything is pushed, and so
 	// is the judge of the save that records it: a run whose file states another version,
 	// which this session may not save whole (mayWholeSave), is refused here, unreserved.
+	// Both are read outside the lock the save takes, since the push cannot be made inside
+	// it: that lock is every run's in the checkout, held for a few seconds at most, and a
+	// push can outlast it. So a window remains: a lock taken, or a driver recorded over
+	// this session's claim, between this judge and the save leaves the save refused after
+	// the push, and a reservation this call made fresh is released again, as before.
 	if err := withLock(repoRoot, func(*os.Root) error { return nil }); err != nil {
 		return err
 	}
