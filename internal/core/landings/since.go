@@ -78,7 +78,9 @@ func resolveRange(ctx context.Context, repoRoot, since string) (Range, error) {
 	}
 	switch {
 	case since == "":
-		tag, err := gitutil.RunLimitedContext(ctx, repoRoot, refCap, "describe", "--tags", "--match", ReleaseTagPattern, "--abbrev=0", to)
+		// As stored, so no replace ref or graft moves which tags the tip
+		// reaches.
+		tag, err := storedText(ctx, repoRoot, refCap, "describe", "--tags", "--match", ReleaseTagPattern, "--abbrev=0", to)
 		tag = strings.TrimSpace(tag)
 		if err != nil || tag == "" {
 			return Range{}, ErrNoReleaseTag
@@ -118,7 +120,7 @@ type lineCommit struct {
 // firstParentLine is to's first-parent line, newest first, with each commit's
 // committer date.
 func firstParentLine(ctx context.Context, repoRoot, to string) ([]lineCommit, error) {
-	out, err := gitutil.RunCappedContext(ctx, repoRoot, maxListBytes, "rev-list", "--first-parent", "--timestamp", to, "--")
+	out, err := storedText(ctx, repoRoot, maxListBytes, "rev-list", "--first-parent", "--timestamp", to, "--")
 	if err != nil {
 		return nil, masked("listing the default branch's first-parent line", err)
 	}
@@ -173,9 +175,11 @@ func sinceDay(line []lineCommit, day time.Time) (from, note string) {
 	return from, note
 }
 
-// commitOf is the full object name of the commit ref names.
+// commitOf is the full object name of the commit ref names, read as stored
+// (storedText), so no replace ref stands one tag in for another on the way to
+// it.
 func commitOf(ctx context.Context, repoRoot, ref string) (string, error) {
-	out, err := gitutil.RunLimitedContext(ctx, repoRoot, refCap, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
+	out, err := storedText(ctx, repoRoot, refCap, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
 	out = strings.TrimSpace(out)
 	if err != nil || !gitutil.IsFullSHA(out) {
 		return "", fmt.Errorf("%s names no commit", ref)
@@ -189,7 +193,7 @@ func tagCommit(ctx context.Context, repoRoot, name string) (string, error) {
 	if name == "" || strings.HasPrefix(name, "-") {
 		return "", errors.New("not a tag name")
 	}
-	if _, err := gitutil.RunLimitedContext(ctx, repoRoot, refCap, "check-ref-format", "refs/tags/"+name); err != nil {
+	if _, err := storedText(ctx, repoRoot, refCap, "check-ref-format", "refs/tags/"+name); err != nil {
 		return "", errors.New("not a tag name")
 	}
 	return commitOf(ctx, repoRoot, "refs/tags/"+name)

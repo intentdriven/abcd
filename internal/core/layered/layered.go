@@ -151,6 +151,12 @@ type Roots struct {
 	// (dcn-2610230058333177).
 	RepoAt     string
 	RepoAtName string
+	// RepoAtAsStored reads the repository layer at RepoAt as the object store
+	// holds it (gitutil.RunCappedBytesAsStoredContext: no replace ref stands
+	// one tree or blob in for another), for a reader whose every other read of
+	// history is as stored. false, the zero value every other reader leaves it
+	// at, reads it as git resolves it.
+	RepoAtAsStored bool
 }
 
 // RootsFor is the one way a front door resolves Roots for a working directory,
@@ -295,7 +301,13 @@ func LoadContext(ctx context.Context, f File, r Roots) (*Stack, error) {
 		read := func() ([]byte, error) { return readRepo(r.Repo, f.RepoRel) }
 		if r.RepoAt != "" {
 			s.repo.origin = f.RepoOrigin() + " at " + r.RepoAtName
-			read = func() ([]byte, error) { return readRepoAt(ctx, r.Repo, r.RepoAt, f.RepoRel) }
+			git := gitutil.RunCappedBytesContext
+			if r.RepoAtAsStored {
+				git = func(ctx context.Context, root string, maxBytes int, args ...string) ([]byte, error) {
+					return gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxBytes, args...)
+				}
+			}
+			read = func() ([]byte, error) { return readRepoAt(ctx, git, r.Repo, r.RepoAt, f.RepoRel) }
 		}
 		raw, err := read()
 		if err != nil {
@@ -382,12 +394,12 @@ func readRepo(repoRoot, rel string) ([]byte, error) {
 // repoRoot: a regular blob (mode 100644 or 100755), bounded by MaxFileBytes. A
 // symlink, a submodule or a tree at the path is refused, as readRepo refuses
 // one in the working tree, and a commit with nothing at the path returns
-// (nil, nil).
-func readRepoAt(ctx context.Context, repoRoot, at, rel string) ([]byte, error) {
+// (nil, nil). git runs both of its questions (Roots.RepoAtAsStored chooses it).
+func readRepoAt(ctx context.Context, git func(ctx context.Context, root string, maxBytes int, args ...string) ([]byte, error), repoRoot, at, rel string) ([]byte, error) {
 	if !gitutil.IsFullSHA(at) {
 		return nil, fmt.Errorf("the commit %q to read it at is not a full object name", at)
 	}
-	entry, err := gitutil.RunCappedBytesContext(ctx, repoRoot, 4096, "ls-tree", "-z", at, "--", rel)
+	entry, err := git(ctx, repoRoot, 4096, "ls-tree", "-z", at, "--", rel)
 	if err != nil {
 		return nil, fmt.Errorf("it could not be listed at the commit: %w", err)
 	}
@@ -403,7 +415,7 @@ func readRepoAt(ctx context.Context, repoRoot, at, rel string) ([]byte, error) {
 	if fields[1] != "blob" || (fields[0] != "100644" && fields[0] != "100755") {
 		return nil, errors.New("it is not a regular file at the commit (a symlink, a directory or a submodule), so it is refused rather than followed")
 	}
-	raw, err := gitutil.RunCappedBytesContext(ctx, repoRoot, MaxFileBytes, "cat-file", "blob", fields[2])
+	raw, err := git(ctx, repoRoot, MaxFileBytes, "cat-file", "blob", fields[2])
 	if err != nil {
 		return nil, fmt.Errorf("it could not be read at the commit: %w", err)
 	}

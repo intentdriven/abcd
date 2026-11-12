@@ -7,7 +7,10 @@ package landings
 // so each call is bounded by landing.ForgeTimeout and the caller's ctx, its
 // environment scrubbed and its output bounded). Each node asks only what this
 // step reads: who opened the pull request, its head, how it merged, and its
-// reviews, with its commits only for a row that merged with one parent. What
+// reviews, with its commits only for a row that merged with one parent. The
+// revert trace (revert.go) asks a squashed revert's body apart, in a document
+// of its own (readBodies), after every row is classed, so no answer here
+// depends on a body. What
 // the forge said of a row's pull request is kept in the local tier's cache as
 // each batch returns, keyed by the row's commit, so a later listing asks only
 // about pull requests it has not read, and a listing whose time runs out keeps
@@ -301,6 +304,9 @@ type forgeAnswers struct {
 	why      map[int]string
 	notPR    map[int]bool
 	cacheWhy string
+	// left is what the listing's bound on asking again (maxHalvingCalls)
+	// holds once the answers are read, for the body query (readBodies).
+	left int
 }
 
 // readForge answers asks from the cache where it holds the row's commit, and
@@ -351,6 +357,7 @@ func readForge(ctx context.Context, repoRoot string, forge landing.ForgeCall, as
 	for i := 0; i < len(ask); i += MaxBatch {
 		q.ask(ask[i:min(i+MaxBatch, len(ask))])
 	}
+	fa.left = q.halvings
 	return fa
 }
 
@@ -611,73 +618,10 @@ func refusal(a batchAnswer) string {
 // askBatch asks the forge about batch in one document and reads the answer a
 // pull request at a time.
 func askBatch(forge landing.ForgeCall, batch []prAsk) batchResult {
-	r := batchResult{got: map[int]*prAnswer{}, why: map[int]string{}, notPR: map[int]bool{}}
-	names := make([]string, len(batch))
-	inBatch := map[string]int{}
-	for i, a := range batch {
-		names[i] = "#" + strconv.Itoa(a.pr)
-		inBatch["p"+strconv.Itoa(a.pr)] = a.pr
-	}
-	about := "pull requests " + strings.Join(names, ", ")
-	out, err := forge(batchArgs(batch)...)
-	switch {
-	case errors.Is(err, landing.ErrNoForgeClient):
-		r.whole, r.stop = "the forge could not be asked about "+about+": "+whyText(err), true
-		return r
-	case errors.Is(err, landing.ErrOutputCap):
-		// A failed exit whose output also passes the bound is halved before
-		// its answer is read as a refusal; that order follows from the bound
-		// being judged first, and is not a rule.
-		r.whole, r.split, r.size = "the forge's answer about "+about+" passes the forge client's output bound", true, true
-		return r
-	}
-	var a batchAnswer
-	decoded := json.Unmarshal([]byte(out), &a) == nil
-	if decoded {
-		if why := refusal(a); why != "" {
-			r.whole, r.stop = "the forge refused "+about+" "+why, true
-			return r
-		}
-	}
-	if err != nil && stopsAsking(err.Error()) {
-		r.whole, r.stop = "the forge refused "+about+": "+whyText(err), true
-		return r
-	}
-	switch {
-	case !decoded && err != nil, decoded && len(a.Errors) == 0 && err != nil:
-		r.whole = "the forge could not be asked about " + about + ": " + whyText(err)
-		return r
-	case !decoded:
-		r.whole = "the forge's answer about " + about + " does not parse"
-		return r
-	case a.Data == nil:
-		// Errors with no data that refuse nothing (refusal) may come of the
-		// document's cost or of one pull request; asked about fewer at a
-		// time, the others may answer.
-		r.whole, r.split = "the forge's answer about "+about+" carries no data", len(a.Errors) > 0
-		return r
-	}
-	for _, e := range a.Errors {
-		alias, _ := pathAlias(e.Path)
-		n, ok := inBatch[alias]
-		if !ok {
-			r.whole, r.split = fmt.Sprintf("the forge's answer about %s carries errors that name no one pull request", about), true
-			return r
-		}
-		switch {
-		case e.Type == "NOT_FOUND" && len(e.Path) == 2:
-			r.notPR[n] = true
-			r.why[n] = notPRWhy(n)
-		case r.why[n] == "":
-			r.why[n] = fmt.Sprintf("the forge's answer for pull request #%d carries an error", n)
-		}
-	}
+	r, nodes := askNodes(forge, batch, batchArgs(batch), 0)
 	for _, b := range batch {
-		if r.why[b.pr] != "" {
-			continue
-		}
-		raw, ok := a.Data.Repository["p"+strconv.Itoa(b.pr)]
-		if !ok || string(raw) == "null" {
+		raw, ok := nodes[b.pr]
+		if !ok {
 			continue
 		}
 		var pr prAnswer
@@ -692,6 +636,304 @@ func askBatch(forge landing.ForgeCall, batch []prAsk) batchResult {
 		r.got[b.pr] = &pr
 	}
 	return r
+}
+
+// askNodes asks the forge args, one document about batch, and judges the
+// answer as askBatch reads it: whole, for a refusal, a failure or an answer
+// past the forge client's output bound (or past limit, where it is above 0),
+// and otherwise a pull request at a time, giving each node no error names and
+// the forge did not answer null for, unparsed.
+func askNodes(forge landing.ForgeCall, batch []prAsk, args []string, limit int) (batchResult, map[int]json.RawMessage) {
+	r := batchResult{got: map[int]*prAnswer{}, why: map[int]string{}, notPR: map[int]bool{}}
+	names := make([]string, len(batch))
+	inBatch := map[string]int{}
+	for i, a := range batch {
+		names[i] = "#" + strconv.Itoa(a.pr)
+		inBatch["p"+strconv.Itoa(a.pr)] = a.pr
+	}
+	about := "pull requests " + strings.Join(names, ", ")
+	out, err := forge(args...)
+	switch {
+	case errors.Is(err, landing.ErrNoForgeClient):
+		r.whole, r.stop = "the forge could not be asked about "+about+": "+whyText(err), true
+		return r, nil
+	case errors.Is(err, landing.ErrOutputCap), limit > 0 && len(out) > limit:
+		// A failed exit whose output also passes the bound is halved before
+		// its answer is read as a refusal; that order follows from the bound
+		// being judged first, and is not a rule.
+		r.whole, r.split, r.size = "the forge's answer about "+about+" passes the forge client's output bound", true, true
+		return r, nil
+	}
+	var a batchAnswer
+	decoded := json.Unmarshal([]byte(out), &a) == nil
+	if decoded {
+		if why := refusal(a); why != "" {
+			r.whole, r.stop = "the forge refused "+about+" "+why, true
+			return r, nil
+		}
+	}
+	if err != nil && stopsAsking(err.Error()) {
+		r.whole, r.stop = "the forge refused "+about+": "+whyText(err), true
+		return r, nil
+	}
+	switch {
+	case !decoded && err != nil, decoded && len(a.Errors) == 0 && err != nil:
+		r.whole = "the forge could not be asked about " + about + ": " + whyText(err)
+		return r, nil
+	case !decoded:
+		r.whole = "the forge's answer about " + about + " does not parse"
+		return r, nil
+	case a.Data == nil:
+		// Errors with no data that refuse nothing (refusal) may come of the
+		// document's cost or of one pull request; asked about fewer at a
+		// time, the others may answer.
+		r.whole, r.split = "the forge's answer about "+about+" carries no data", len(a.Errors) > 0
+		return r, nil
+	}
+	for _, e := range a.Errors {
+		alias, _ := pathAlias(e.Path)
+		n, ok := inBatch[alias]
+		if !ok {
+			r.whole, r.split = fmt.Sprintf("the forge's answer about %s carries errors that name no one pull request", about), true
+			return r, nil
+		}
+		switch {
+		case e.Type == "NOT_FOUND" && len(e.Path) == 2:
+			r.notPR[n] = true
+			r.why[n] = notPRWhy(n)
+		case r.why[n] == "":
+			r.why[n] = fmt.Sprintf("the forge's answer for pull request #%d carries an error", n)
+		}
+	}
+	nodes := map[int]json.RawMessage{}
+	for _, b := range batch {
+		if r.why[b.pr] != "" {
+			continue
+		}
+		raw, ok := a.Data.Repository["p"+strconv.Itoa(b.pr)]
+		if !ok || string(raw) == "null" {
+			continue
+		}
+		nodes[b.pr] = raw
+	}
+	return r, nodes
+}
+
+// bodySelection is what the body query reads of a pull request: its number
+// and merge commit, so the answer is read only for the row its own answer
+// confirmed, its body, for the forge's revert line, when it merged and when
+// its body was last edited, so a body edited after the merge is not read, and
+// the name of the repository it merged into, which that line's owner/repo
+// form is checked against. Every field is pinned in internal/ghcontract
+// (graphql-fields.txt).
+const bodySelection = `number mergeCommit{oid} mergedAt lastEditedAt body baseRepository{nameWithOwner}`
+
+// maxBodyAnswerBytes is the body query's own output bound: one document's
+// answer past it is asked again in halves, and one pull request's alone past
+// it is not read. It holds a body at the forge's bound of 65,536 characters
+// with each written as a six-byte escape, and the rest of its node.
+const maxBodyAnswerBytes = 512 << 10
+
+// bodyQuery is the GraphQL document asking the body of each of asks, as the
+// aliased node p<N>, in the repository batchQuery asks about.
+func bodyQuery(asks []prAsk) string {
+	var b strings.Builder
+	b.WriteString(`query($o:String!,$r:String!){repository(owner:$o,name:$r){`)
+	for _, a := range asks {
+		fmt.Fprintf(&b, "p%d:pullRequest(number:%d){%s} ", a.pr, a.pr, bodySelection)
+	}
+	b.WriteString("}}")
+	return b.String()
+}
+
+func bodyArgs(asks []prAsk) []string {
+	return []string{"api", "graphql", "-F", "o={owner}", "-F", "r={repo}", "-f", "query=" + bodyQuery(asks)}
+}
+
+// forgeRepo is the repository a pull request merged into, by its owner/name.
+type forgeRepo struct {
+	NameWithOwner string `json:"nameWithOwner"`
+}
+
+// prBody is the forge's answer to the body query for one pull request. It is
+// never kept: the cache holds what batchQuery reads and nothing else.
+type prBody struct {
+	Number         int        `json:"number"`
+	MergeCommit    *forgeOid  `json:"mergeCommit"`
+	MergedAt       *string    `json:"mergedAt"`
+	LastEditedAt   *string    `json:"lastEditedAt"`
+	Body           string     `json:"body"`
+	BaseRepository *forgeRepo `json:"baseRepository"`
+}
+
+// unedited says whether the forge says p's body was not edited after the
+// pull request merged: never edited, or last edited no later than the merge,
+// both times read. It cuts both ways. Any edit of the body after the merge
+// leaves a true revert line in it unread: the row it names then carries no
+// mark, and the reverting row says why in an untraceable line. And the forge
+// gives both times to the second, so an edit in the same second as the merge
+// reads as unedited. That lastEditedAt moves on every edit of the body is the
+// forge's documented meaning, shown here only through the fake forge; it must
+// be checked against the live forge before step 4, and nothing enforces that
+// yet (dcn-2611121125486678).
+func (p *prBody) unedited() bool {
+	if p.LastEditedAt == nil {
+		return true
+	}
+	if p.MergedAt == nil {
+		return false
+	}
+	merged, err1 := time.Parse(time.RFC3339, *p.MergedAt)
+	edited, err2 := time.Parse(time.RFC3339, *p.LastEditedAt)
+	return err1 == nil && err2 == nil && !edited.After(merged)
+}
+
+// bodyAnswers are readBodies' answers by pull request, and why each one it
+// has none for was not read.
+type bodyAnswers struct {
+	got map[int]*prBody
+	why map[int]string
+}
+
+// readBodies asks the forge the body of each of asks (pull requests whose
+// answer the listing read and accepted for their row), MaxBatch to a
+// document, under ctx, within calls more calls asking again (what the
+// listing's bound on asking again holds once its answers are read). A
+// document past the output bound, or whose answer carries errors naming no
+// one pull request, is asked again in halves as the listing's batches are
+// (asker.halve): a half past the bound is halved again down to one pull
+// request, which alone past it is too large to read; a half failing so
+// otherwise is followed alone, and when both halves fail other than for their
+// size neither is asked further. One that fails otherwise, or a refusal,
+// leaves its pull requests' bodies unread, and a refusal or an ended ctx
+// stops the asking. An answer is read only where it
+// names the pull request asked and says it merged as the row's commit. It
+// writes nothing.
+func readBodies(ctx context.Context, forge landing.ForgeCall, asks []prAsk, calls int) bodyAnswers {
+	b := &bodyAsker{ctx: ctx, forge: forge, calls: calls, out: bodyAnswers{got: map[int]*prBody{}, why: map[int]string{}}}
+	for i := 0; i < len(asks); i += MaxBatch {
+		b.ask(asks[i:min(i+MaxBatch, len(asks))])
+	}
+	return b.out
+}
+
+type bodyAsker struct {
+	ctx   context.Context
+	forge landing.ForgeCall
+	calls int
+	stop  string
+	out   bodyAnswers
+}
+
+func (b *bodyAsker) unread(batch []prAsk, why string) {
+	for _, a := range batch {
+		b.out.why[a.pr] = why
+	}
+}
+
+// call asks the forge about batch's bodies once, and reports false when it
+// was not asked or refused, the batch then read as unread.
+func (b *bodyAsker) call(batch []prAsk) (batchResult, map[int]json.RawMessage, bool) {
+	if b.stop == "" && b.ctx.Err() != nil {
+		b.stop = "the listing's time ran out before the forge was asked: " + whyText(b.ctx.Err())
+	}
+	if b.stop != "" {
+		b.unread(batch, b.stop)
+		return batchResult{}, nil, false
+	}
+	r, nodes := askNodes(b.forge, batch, bodyArgs(batch), maxBodyAnswerBytes)
+	if r.stop {
+		b.stop = r.whole
+		b.unread(batch, r.whole)
+		return r, nil, false
+	}
+	return r, nodes, true
+}
+
+func (b *bodyAsker) ask(batch []prAsk) {
+	r, nodes, ok := b.call(batch)
+	switch {
+	case !ok:
+	case r.whole != "" && r.split:
+		b.halve(batch, r.whole, r.size)
+	case r.whole != "":
+		b.unread(batch, r.whole)
+	default:
+		b.take(batch, r, nodes)
+	}
+}
+
+// halve asks batch again in two halves, as asker.halve asks a batch of the
+// listing's: why is why the forge answered for none of it, size whether for
+// the output bound. Each call spends one of calls.
+func (b *bodyAsker) halve(batch []prAsk, why string, size bool) {
+	switch {
+	case len(batch) < 2 && size:
+		b.unread(batch, why+", asked alone, so it is too large to read")
+		return
+	case len(batch) < 2:
+		b.unread(batch, why)
+		return
+	case b.calls < 2:
+		b.unread(batch, why+"; it is not asked again in halves, the listing's bound on asking again being spent")
+		return
+	}
+	b.calls -= 2
+	type failed struct {
+		batch []prAsk
+		why   string
+		size  bool
+	}
+	var fails []failed
+	for _, h := range [][]prAsk{batch[:len(batch)/2], batch[len(batch)/2:]} {
+		r, nodes, ok := b.call(h)
+		switch {
+		case !ok:
+		case r.whole != "" && r.split:
+			fails = append(fails, failed{h, r.whole, r.size})
+		case r.whole != "":
+			b.unread(h, r.whole)
+		default:
+			b.take(h, r, nodes)
+		}
+	}
+	if len(fails) == 2 && !(fails[0].size && fails[1].size) {
+		for _, f := range fails {
+			if f.size {
+				b.halve(f.batch, f.why, true)
+				continue
+			}
+			b.unread(f.batch, f.why+"; neither half of the batch answered, so it is not asked again")
+		}
+		return
+	}
+	for _, f := range fails {
+		b.halve(f.batch, f.why, f.size)
+	}
+}
+
+// take reads the answer r and nodes for batch a pull request at a time.
+func (b *bodyAsker) take(batch []prAsk, r batchResult, nodes map[int]json.RawMessage) {
+	for _, a := range batch {
+		raw, ok := nodes[a.pr]
+		var p prBody
+		switch {
+		case r.why[a.pr] != "":
+			b.out.why[a.pr] = r.why[a.pr]
+		case !ok:
+			b.out.why[a.pr] = fmt.Sprintf("the forge's answer leaves out pull request #%d", a.pr)
+		case json.Unmarshal(raw, &p) != nil:
+			b.out.why[a.pr] = fmt.Sprintf("the forge's answer for pull request #%d does not parse", a.pr)
+		case p.Number != a.pr:
+			b.out.why[a.pr] = fmt.Sprintf("the forge's answer for pull request #%d names another", a.pr)
+		case p.MergeCommit == nil || p.MergeCommit.Oid != a.commit:
+			b.out.why[a.pr] = fmt.Sprintf("the forge's body answer for pull request #%d does not say it merged as %s", a.pr, a.commit[:12])
+		case !p.unedited():
+			b.out.why[a.pr] = fmt.Sprintf("the forge says the body of pull request #%d was edited after it merged, or does not say when, so it is not read", a.pr)
+		default:
+			b.out.got[a.pr] = &p
+		}
+	}
 }
 
 // notPRWhy is the reason a row reads for number n the forge says names no

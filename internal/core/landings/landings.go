@@ -7,8 +7,10 @@ package landings
 // first parent committed, the admission a branch's records commit carries);
 // the forge decides what history cannot hold (who approved which head, a
 // squash's commits), and only through forge.go; the local tier adds the
-// technical facilitator's recorded approvals. It writes nothing to stdout and
-// nothing outside its forge cache.
+// technical facilitator's recorded approvals. Once every row is classed, the
+// revert trace (revert.go) marks the rows a later commit reverts, which
+// changes no row's class. It writes nothing to stdout and nothing outside its
+// forge cache.
 //
 // Every input but the object names git itself computes is text someone typed:
 // a subject, a trailer, a committer's name, a forge login. Each is read to a
@@ -191,6 +193,12 @@ type Row struct {
 	ForgeUnreadable string `json:"forge_unreadable,omitempty"`
 	// Unattended marks a row no evidence places with a person.
 	Unattended bool `json:"unattended"`
+	// Reverted marks a row a later commit on the default branch reverts
+	// (revert.go), nil for none; it changes nothing else on the row.
+	Reverted *Revert `json:"reverted,omitempty"`
+	// Reverts are the revert lines the row's commits carry, and its
+	// untraceable reverts, each with the row it marks or why it marks none.
+	Reverts []RevertLine `json:"reverts,omitempty"`
 }
 
 // Listing is list's answer.
@@ -243,9 +251,37 @@ func bounded(ctx context.Context) (context.Context, context.CancelFunc) {
 // The reader's seams onto git and the landing package, variables so a test
 // can hand it a log git would never write or count its reads of the mode.
 var (
-	historyLog    = gitutil.RunCappedBytesContext
+	historyLog = func(ctx context.Context, root string, maxBytes int, args ...string) ([]byte, error) {
+		return gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxBytes, args...)
+	}
 	committedMode = landing.CommittedMode
 )
+
+// storedText is a bounded read of git under ctx that reads history as
+// stored (gitutil.RunCappedBytesAsStoredContext: no replace ref stands one
+// commit in for another, and no graft gives a commit parents it does not
+// store), its output with trailing space trimmed. Every git call the reader
+// makes that reads an object reads it as stored: through it, historyLog,
+// traceGit or resolveNames, and the facilitator mode through committedMode
+// (landing.CommittedMode, which reads the commit's trees and the file's blob
+// as stored). In the listing, the range and the trace that is the range's log
+// and commit listing, the mode log and the mode's file, the drain rules' tree,
+// the first-parent line, the tip's commit, the release tag described, a tag's
+// commit and a tag name's shape, every revert line's name and type, and the
+// trace's ancestry paths and older messages. The calls left are the default
+// branch's ref questions (gitutil.DefaultRefContext), which read refs, the
+// type of the object each names and, for a tag, of the object it points at,
+// and peel a ref to its commit as git resolves it, only to choose which ref is
+// the default branch, whose tip commitOf then reads as stored; the worktree
+// listing; and the forge cache's checks of what git tracks and ignores, which
+// read the index.
+func storedText(ctx context.Context, root string, maxBytes int, args ...string) (string, error) {
+	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxBytes, args...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(string(out), " \t\r\n"), nil
+}
 
 // maskedError is a failure list returns, its text masked as a row's text is
 // (whyText) and its cause kept for errors.Is.
@@ -338,12 +374,30 @@ func listRows(ctx context.Context, repoRoot string, r Range, o Options) (Listing
 		if why != "" && !slices.Contains(unread, why) {
 			unread = append(unread, why)
 		}
-		if row.ForgeUnreadable != "" && row.Unattended {
+		// Every row the forge's answer was not read for is unattended
+		// (classify: no approval is read for it, and no mode attends it), so
+		// the count needs no second test.
+		if row.ForgeUnreadable != "" {
 			unreadRows++
 		}
 		out.Rows = append(out.Rows, row)
 	}
 	out.ForgeUnread = boundText(unreadNote(unreadRows, unread), 4000)
+
+	// The revert trace asks a pull request's body only where its answer was
+	// read and confirmed the row (classify): a row the forge contradicted, or
+	// whose answer was not read, carries no forge revert line. The body is
+	// asked in a document of its own, after every row is classed, within
+	// what the listing's bound on asking again still holds, so no row's class
+	// rests on it.
+	accepted := map[string]bool{}
+	for _, row := range out.Rows {
+		if row.PR != 0 && answers.got[row.PR] != nil && row.ForgeSays == "" && row.ForgeUnreadable == "" {
+			accepted[row.Commit] = true
+		}
+	}
+	l.bodies = func(asks []prAsk) bodyAnswers { return readBodies(ctx, forge, asks, answers.left) }
+	l.traceReverts(out.Rows, accepted)
 	return out, nil
 }
 
@@ -377,6 +431,9 @@ type history struct {
 	onLine  map[string]bool
 	// branch is each row's commits, the second parents' walk, in walk order.
 	branch map[string][]string
+	// rowOf is the row that brought each commit assigned: a first-parent
+	// commit's own, and the row whose walk took each other.
+	rowOf map[string]string
 }
 
 // readHistory reads every commit From..To reaches in one log, NUL-separated,
@@ -395,12 +452,12 @@ func readHistory(ctx context.Context, repoRoot string, r Range) (*history, error
 	if err != nil {
 		return nil, masked("reading the default branch's history", err)
 	}
-	listed, err := gitutil.RunCappedContext(ctx, repoRoot, maxListBytes, "rev-list", spec, "--")
+	listed, err := storedText(ctx, repoRoot, maxListBytes, "rev-list", spec, "--")
 	if err != nil {
 		return nil, masked("listing the default branch's commits", err)
 	}
 	want := strings.Fields(listed)
-	h := &history{commits: map[string]*commitInfo{}, onLine: map[string]bool{}, branch: map[string][]string{}}
+	h := &history{commits: map[string]*commitInfo{}, onLine: map[string]bool{}, branch: map[string][]string{}, rowOf: map[string]string{}}
 	recs := bytes.Split(raw, []byte{0})
 	if n := len(recs); n > 0 && len(bytes.TrimSpace(recs[n-1])) == 0 {
 		recs = recs[:n-1]
@@ -436,6 +493,7 @@ func (h *history) firstParent(to string) []string {
 	for c := to; h.commits[c] != nil && !h.onLine[c]; {
 		rows = append(rows, c)
 		h.onLine[c] = true
+		h.rowOf[c] = c
 		ps := h.commits[c].parents
 		if len(ps) == 0 {
 			break
@@ -463,6 +521,7 @@ func (h *history) assign(rows []string) {
 			}
 			taken[c] = true
 			h.branch[row] = append(h.branch[row], c)
+			h.rowOf[c] = row
 			for j := len(ci.parents) - 1; j >= 0; j-- {
 				stack = append(stack, ci.parents[j])
 			}
@@ -479,6 +538,9 @@ type lister struct {
 	rules map[string][]string
 	// modeWhy is why each mode that could not be read was not.
 	modeWhy []string
+	// bodies asks the forge the bodies the revert trace reads; nil asks
+	// nothing, and every body reads as not asked.
+	bodies func([]prAsk) bodyAnswers
 }
 
 // rowFacts are what history says of one row before the forge is asked.
@@ -547,7 +609,7 @@ func (l *lister) modes(r Range, rows []string) (map[string]string, error) {
 	if r.From != "" {
 		spec = r.From + ".." + r.To
 	}
-	out, err := gitutil.RunCappedContext(l.ctx, l.root, maxListBytes, "log", "--first-parent", "--no-show-signature", "--format=%H", spec, "--", layered.Config.RepoRel)
+	out, err := storedText(l.ctx, l.root, maxListBytes, "log", "--first-parent", "--no-show-signature", "--format=%H", spec, "--", layered.Config.RepoRel)
 	if err != nil {
 		return nil, masked("reading where the facilitator mode changed", err)
 	}
@@ -763,7 +825,7 @@ func (l *lister) rulePath(commit, id string) (string, error) {
 	}
 	names, ok := l.rules[commit]
 	if !ok {
-		out, err := gitutil.RunCappedContext(l.ctx, l.root, maxListBytes, "ls-tree", "-z", "--name-only", commit, "--", drainrule.ADRsRelDir+"/")
+		out, err := storedText(l.ctx, l.root, maxListBytes, "ls-tree", "-z", "--name-only", commit, "--", drainrule.ADRsRelDir+"/")
 		if err == nil {
 			for n := range strings.SplitSeq(out, "\x00") {
 				if n != "" {

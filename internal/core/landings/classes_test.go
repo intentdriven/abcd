@@ -120,7 +120,14 @@ func row(t *testing.T, l Listing, commit string) Row {
 // does a batch holding a number in huge, or one in big whose node asks for its
 // commits, failOn answers any batch holding that number with an error naming
 // no node, and onCall runs before each answer. Every document is checked
-// against the forge's pinned schema.
+// against the forge's pinned schema, and every node is answered with only the
+// fields it selects, at every depth (selected), so a field dropped from a
+// query is a field the answer lacks. A batch whose node selects a body is
+// answered it from bodies, and fails with the output bound for a number in
+// bodyHuge. A document whose nodes ask no reviews is the body query: it is
+// answered from prs, bodies and repo (nameWithOwner, "" for none), it fails
+// with the output bound for a number in bodyHuge and answers as failOn does
+// for one in bodyFailOn, and it is counted in bodyCalls, not calls.
 type fakeForge struct {
 	t       *testing.T
 	prs     map[int]*prAnswer
@@ -135,6 +142,194 @@ type fakeForge struct {
 	calls   int
 	asked   []int
 	batches [][]int
+	queries []string
+
+	bodies    map[int]string
+	repo      string
+	bodyHuge  map[int]bool
+	bodyCalls int
+	bodyAsked []int
+	// bodyMerge answers the body query's merge commit for a number in it in
+	// place of the one prs holds, and bodyEdited its body's last edit.
+	bodyMerge  map[int]string
+	bodyEdited map[int]string
+	bodyFailOn int
+	// unasked answers the nodes of the numbers in it whole, every field
+	// whether selected or not, as a forge answering what it was not asked. It
+	// is for the one test that needs such a forge
+	// (TestAnAnswerThatDoesNotCheckIsUnread); set widely, it would answer
+	// fields a query does not select, and a field dropped from a query would
+	// no longer be a field the answer lacks.
+	unasked map[int]bool
+}
+
+// selectionFields is each field sel selects at its top level, with its own
+// selection ("" for a leaf); an argument list is read past.
+func selectionFields(sel string) map[string]string {
+	fields := map[string]string{}
+	name, last := strings.Builder{}, ""
+	for i := 0; i < len(sel); i++ {
+		switch c := sel[i]; {
+		case c == '(':
+			for i < len(sel) && sel[i] != ')' {
+				i++
+			}
+		case c == '{':
+			depth, j := 1, i+1
+			for ; j < len(sel) && depth > 0; j++ {
+				switch sel[j] {
+				case '{':
+					depth++
+				case '}':
+					depth--
+				}
+			}
+			fields[last] = sel[i+1 : j-1]
+			i = j - 1
+		case c == '_' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z':
+			name.WriteByte(c)
+			if i+1 == len(sel) || !(sel[i+1] == '_' || sel[i+1] >= 'A' && sel[i+1] <= 'Z' || sel[i+1] >= 'a' && sel[i+1] <= 'z') {
+				last = name.String()
+				fields[last] = ""
+				name.Reset()
+			}
+		}
+	}
+	return fields
+}
+
+// selected is v, a JSON value as encoding/json decodes one, with only what sel
+// selects of each object in it, at every depth.
+func selected(v any, sel string) any {
+	switch x := v.(type) {
+	case []any:
+		for i := range x {
+			x[i] = selected(x[i], sel)
+		}
+		return x
+	case map[string]any:
+		out := map[string]any{}
+		for k, sub := range selectionFields(sel) {
+			if val, ok := x[k]; ok {
+				if sub != "" {
+					val = selected(val, sub)
+				}
+				out[k] = val
+			}
+		}
+		return out
+	}
+	return v
+}
+
+// node is the answer a for pull request n as the node sel selects it.
+func (ff *fakeForge) node(a *prAnswer, n int, sel string) any {
+	raw, err := json.Marshal(a)
+	if err != nil {
+		ff.t.Fatal(err)
+	}
+	var v map[string]any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		ff.t.Fatal(err)
+	}
+	v["body"] = ff.bodies[n]
+	return selected(v, sel)
+}
+
+// nodeSelection is what q's node for pull request n selects, "" for none.
+func nodeSelection(q string, n int) string {
+	open := fmt.Sprintf("p%d:pullRequest(number:%d){", n, n)
+	i := strings.Index(q, open)
+	if i < 0 {
+		return ""
+	}
+	i += len(open)
+	depth := 1
+	for j := i; j < len(q); j++ {
+		switch q[j] {
+		case '{':
+			depth++
+		case '}':
+			if depth--; depth == 0 {
+				return q[i:j]
+			}
+		}
+	}
+	return ""
+}
+
+var selFieldRe = regexp.MustCompile(`[A-Za-z_]+`)
+
+// selects says whether sel selects field at its top level.
+func selects(sel, field string) bool {
+	depth := 0
+	var top strings.Builder
+	for _, c := range sel {
+		switch c {
+		case '{':
+			depth++
+			top.WriteByte(' ')
+		case '}':
+			depth--
+		default:
+			if depth == 0 {
+				top.WriteRune(c)
+			}
+		}
+	}
+	return slices.Contains(selFieldRe.FindAllString(top.String(), -1), field)
+}
+
+// bodyCall answers the body query q for batch.
+func (ff *fakeForge) bodyCall(q string, batch []int) (string, error) {
+	ff.bodyCalls++
+	repo := map[string]any{}
+	ff.bodyAsked = append(ff.bodyAsked, batch...)
+	if ff.bodyFailOn != 0 && slices.Contains(batch, ff.bodyFailOn) {
+		return `{"data":null,"errors":[{"type":"INTERNAL","message":"something went wrong"}]}`, errors.New("gh api graphql: exit status 1 (gh: something went wrong)")
+	}
+	for _, n := range batch {
+		if ff.bodyHuge[n] {
+			return "", fmt.Errorf("gh api graphql wrote more than 1 bytes (%w)", landing.ErrOutputCap)
+		}
+		a := ff.prs[n]
+		if a == nil {
+			repo["p"+strconv.Itoa(n)] = nil
+			continue
+		}
+		sel, node := nodeSelection(q, n), map[string]any{}
+		if selects(sel, "number") {
+			node["number"] = a.Number
+		}
+		if selects(sel, "mergeCommit") {
+			node["mergeCommit"] = a.MergeCommit
+			if m, ok := ff.bodyMerge[n]; ok {
+				node["mergeCommit"] = forgeOid{m}
+			}
+		}
+		if selects(sel, "body") {
+			node["body"] = ff.bodies[n]
+		}
+		if selects(sel, "mergedAt") {
+			node["mergedAt"] = a.MergedAt
+		}
+		if selects(sel, "lastEditedAt") {
+			node["lastEditedAt"] = nil
+			if e, ok := ff.bodyEdited[n]; ok {
+				node["lastEditedAt"] = e
+			}
+		}
+		if selects(sel, "baseRepository") {
+			if ff.repo != "" {
+				node["baseRepository"] = map[string]string{"nameWithOwner": ff.repo}
+			} else {
+				node["baseRepository"] = nil
+			}
+		}
+		repo["p"+strconv.Itoa(n)] = node
+	}
+	out, err := json.Marshal(map[string]any{"data": map[string]any{"repository": repo}})
+	return string(out), err
 }
 
 var aliasRe = regexp.MustCompile(`p([0-9]+):pullRequest\(number:([0-9]+)\)`)
@@ -159,6 +354,11 @@ func (ff *fakeForge) call(args ...string) (string, error) {
 		n, _ := strconv.Atoi(m[1])
 		batch = append(batch, n)
 	}
+	if len(batch) > 0 && !strings.Contains(q, "reviews(") && ff.raw == "" && ff.err == nil {
+		ff.calls--
+		return ff.bodyCall(q, batch)
+	}
+	ff.queries = append(ff.queries, q)
 	ff.batches = append(ff.batches, batch)
 	if ff.raw != "" || ff.err != nil {
 		return ff.raw, ff.err
@@ -166,7 +366,7 @@ func (ff *fakeForge) call(args ...string) (string, error) {
 	tooBig := ff.capAt > 0 && len(batch) > ff.capAt
 	for _, n := range batch {
 		withCommits := strings.Contains(q, fmt.Sprintf("p%d:pullRequest(number:%d){%s%s}", n, n, prSelection, commitsSelection))
-		tooBig = tooBig || ff.huge[n] || (ff.big[n] && withCommits)
+		tooBig = tooBig || ff.huge[n] || (ff.big[n] && withCommits) || (ff.bodyHuge[n] && selects(nodeSelection(q, n), "body"))
 	}
 	if tooBig {
 		return "", fmt.Errorf("gh api graphql wrote more than 1 bytes (%w)", landing.ErrOutputCap)
@@ -180,7 +380,10 @@ func (ff *fakeForge) call(args ...string) (string, error) {
 		ff.asked = append(ff.asked, n)
 		alias := "p" + strconv.Itoa(n)
 		if a := ff.prs[n]; a != nil {
-			repo[alias] = a
+			repo[alias] = ff.node(a, n, nodeSelection(q, n))
+			if ff.unasked[n] {
+				repo[alias] = a
+			}
 		} else {
 			repo[alias] = nil
 			if ff.gh {
