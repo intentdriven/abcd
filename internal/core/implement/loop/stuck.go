@@ -293,10 +293,11 @@ func times(n int) string {
 // (releaseOnHandBack), under the run's lock; it returns the run as written.
 // The lane is judged again under the lock, so a step running at the same time
 // that succeeded, or handed the lane back itself, since the drain read it
-// leaves the lane as that step wrote it.
-func handBackStuck(repoRoot, runID string, b stuckBounds, now time.Time) (State, error) {
+// leaves the lane as that step wrote it. The hand-back saves the run whole, through
+// save (Options.laneSave).
+func handBackStuck(repoRoot, runID string, b stuckBounds, now time.Time, save saveFrame) (State, error) {
 	var out State
-	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	err := save(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
 		i := st.current()
 		why := stuckReason(*st, b)
 		if i < 0 || st.Lanes[i].HandBack != nil || why == "" {

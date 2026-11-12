@@ -463,8 +463,8 @@ func TestADrainUnderAStopOpensNothing(t *testing.T) {
 // TestADrainUnderAStopLeavesAnotherDriversRunAtItsVersion: a drain's move under a stop
 // halts every run in the checkout. One that is not among the drain's lanes is another
 // driver's: where its file states another version it is left to that driver's check,
-// its file as the driver wrote it. At this binary's version it is halted, and a run
-// that is one of the drain's lanes is the drain's to halt whatever its file states.
+// its file as the driver wrote it. At this binary's version it is halted, and so is a
+// lane of the drain's at another version where this session is its driver.
 func TestADrainUnderAStopLeavesAnotherDriversRunAtItsVersion(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -479,6 +479,11 @@ func TestADrainUnderAStopLeavesAnotherDriversRunAtItsVersion(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo, runID, _, _, _ := deadLane(t)
+			if tc.lane {
+				// The drain's lane at another version is halted by its driver, which
+				// this session is (TestADrainsStopHaltsItsOwnLaneOnlyAsItsDriver).
+				claimedBy(t, repo.Root(), runID, Options{}, hostOne, hostOne, hostOne)
+			}
 			before, err := os.ReadFile(runStatePath(repo.Root(), runID))
 			if err != nil {
 				t.Fatal(err)
@@ -1142,8 +1147,12 @@ func TestASettleLeavesARunAtAnotherSchemaToItsDriver(t *testing.T) {
 			stopHomeIs(t, home)
 			before := stateAtVersion(t, repo.Root(), runID, version)
 
-			renewRunsAt(repo.Root(), runID, nil, now.Add(90*time.Minute))
+			renewed := renewRunsAt(repo.Root(), runID, nil, now.Add(90*time.Minute))
 
+			// The run left unsettled is said, never passed over in silence.
+			if len(renewed) != 1 || !strings.Contains(renewed[0].Note, leftLine(runID, version)) {
+				t.Fatalf("the renewal does not name the run it left unsettled: %+v", renewed)
+			}
 			after, err := os.ReadFile(runStatePath(repo.Root(), runID))
 			if err != nil {
 				t.Fatal(err)

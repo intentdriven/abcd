@@ -1203,8 +1203,9 @@ func leftAloneAt(repoRoot, runID string, o Options) string {
 
 // leftAlone says why a run is left exactly as it stands, its merged lanes not
 // closed, or "" when the build may close them: a drive stopped on it
-// (driveStopped); its state file states another version than this binary's,
-// its own driver's to settle (settlesHere); its control record holds a stop;
+// (driveStopped); its state file states another version than this binary's and
+// this session is not its driver, so it is its own driver's to settle
+// (mayWholeSave); its control record holds a stop;
 // or the stop read for the folder the run started under (stopRead of
 // control.Shared) finds a stop, or cannot be trusted (Held), as ClaimDriver and
 // stopEndsRenewal read it. A record that cannot be read is left alone too.
@@ -1216,8 +1217,8 @@ func leftAlone(root *os.Root, runID string, o Options) string {
 	if err != nil {
 		return "its state cannot be read"
 	}
-	if !settlesHere(stated) {
-		return fmt.Sprintf("its state file states version %d and this abcd writes %d, so the run is its own driver's to settle", stated, SchemaVersion)
+	if r, ok := AsRefusal(mayWholeSave(root, runID, stated, o)); ok {
+		return r.Reason
 	}
 	c, err := readControl(root, runID)
 	if err != nil {

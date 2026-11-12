@@ -282,7 +282,7 @@ func TestABuildRefusesAMergedLaneThatWouldLoseFiles(t *testing.T) {
 // as it stands, its worktree and branch kept, where the run is not this
 // build's to settle, each read inside the run's lock immediately before
 // anything is removed: its state file states another version than this
-// binary's (settlesHere), a drive stopped on it, its control record holds a
+// binary's and this session is not its driver (mayWholeSave), a drive stopped on it, its control record holds a
 // stop, a stop is set, or the stop read for the folder the run started under
 // cannot be trusted. Each but the version and the hold is set after the merge
 // was seen, so only the read under the lock can find it.

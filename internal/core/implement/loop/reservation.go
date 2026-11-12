@@ -1328,8 +1328,10 @@ func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) s
 	// The retry released it: the run's record says so (iss-2610150616434848),
 	// so its last reservation entry is no longer the failure, and a later
 	// routing over the run reuses this entry rather than pushing again. Best
-	// effort: the release is on origin whether or not the record takes it.
-	_ = mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+	// effort: the release is on origin whether or not the record takes it. The
+	// line is the record's alone (mutateReservation), so a run another version's
+	// driver writes keeps its version.
+	_ = mutateReservation(repoRoot, run.RunID, func(st *State) (bool, error) {
 		for _, e := range st.Record {
 			if e.Stage == StageReservationReleased {
 				return false, nil

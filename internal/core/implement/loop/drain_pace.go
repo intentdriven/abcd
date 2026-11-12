@@ -64,13 +64,14 @@ func repaceDrain(repoRoot string, st *DrainState, o Options, f paceFlags) (*drai
 
 // lanes takes the new pace into the run pace of each lane of st in progress,
 // which that lane's next stage reads, saying so in its run record. A lane
-// already on it is left as it stands, so taking it again changes nothing.
-func (r *drainRepace) lanes(repoRoot string, st DrainState, now time.Time) error {
+// already on it is left as it stands, so taking it again changes nothing. The pace
+// saves each run whole, through save (Options.laneSave).
+func (r *drainRepace) lanes(repoRoot string, st DrainState, now time.Time, save saveFrame) error {
 	for _, l := range st.Lanes {
 		if l.Outcome != DrainLaneInProgress {
 			continue
 		}
-		if err := mutate(repoRoot, l.RunID, func(_ *os.Root, run *State) (bool, error) {
+		if err := save(repoRoot, l.RunID, func(_ *os.Root, run *State) (bool, error) {
 			if run.Complete() {
 				return false, nil
 			}

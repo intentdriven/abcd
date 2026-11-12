@@ -47,6 +47,10 @@ type Refusal struct {
 	// and a later hand-in brings no report, so the return is set aside as the role
 	// pauses.
 	cutShort bool
+	// leftAtVersion marks the refusal of a whole save by a session that is not the
+	// run's driver, over a file stating another version (mayWholeSave): the run is left
+	// as its file stands, and a route names it.
+	leftAtVersion bool
 	// work marks an implementer's receipt refused for the work it reports: it
 	// names this run, this lane and this branch in the schema this abcd reads,
 	// and what it reports is short of done (verifyLaneReceipt). A drive sets such

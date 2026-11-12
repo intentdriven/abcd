@@ -26,29 +26,18 @@ package loop
 // write the fields that version adds.
 //
 // Every renewal saves this way, a parked lane's included (drain_finish.go,
-// drain_lease.go). A settle under a stop cannot: it saves the lanes, so a process
-// that is not the run's driver leaves the stop's halt and a stop's unsettled mark
-// on a run whose file states another version to that driver (settlesHere): the
-// renewal does, and so does a drain's move over a run not among its lanes, which
-// neither halts it (drainStop) nor takes up its mark (parkedStopNote).
-//
-// Two limits stand, and nothing enforces either yet. First, a step under a stop
-// (ClaimDriver, then the move's own check) and a drain's move over its own lanes
-// must not raise a run another version's driver writes, and both settle it at
-// this binary's version. Second, a drain's move over a parked run with no stop's
-// mark must not raise one another version's driver writes, among its lanes or
-// not, and four saves in it take the whole state to this binary's version with
-// no stop in force: the landing's last step on a merged lane (finishMerged),
-// the sync entered again over a conflict (resyncParked), the merge-queue watch
-// (watchParked) and the hand-back of a closed pull request (handBackClosed).
-// A step from a newer abcd is how a driver resumes after an upgrade, a newer
-// drain in the checkout reads the same drain state as the drain it resumes, and
-// a new drain, which starts with no lanes, finishing the merged lanes an earlier
-// drain left is the ordinary path after one; under a stop ClaimDriver records no
-// driver, and the driver it recorded before names a process a driver's own new
-// session does not match, so nothing the run holds tells its driver from a
-// second session or drain. Closing either needs the run to name its driver in a
-// form a new session of it can prove.
+// drain_lease.go). A save that takes the whole state cannot, so every one made by a
+// session that may not be the run's driver is judged first (mayWholeSave,
+// control.go): a run whose file states another version is saved only by the live
+// session its control record names as its driver, and is otherwise left as its file
+// stands, the refusal naming the file and both versions. A renewal is never that
+// driver, since its waiter may run a lane's own abcd under the driver's own host
+// session (Options.afar). A step under a stop claims nothing, so its check settles
+// such a run only where this session already drives it; a drain claims a lane of its
+// own before it saves one (claimOwnLane), so a drain resumed by a newer abcd takes its
+// lanes up, while a lane another live session drives stays that session's. A step
+// with no stop claims the run first (ClaimDriver) and saves it as its driver
+// (mutate), which is how a driver resumes after an upgrade.
 
 import (
 	"bytes"

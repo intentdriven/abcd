@@ -51,6 +51,9 @@ type Options struct {
 	// driverIsSelf has a claim on the run name this process, where a drive runs the
 	// run itself, rather than the session above it.
 	driverIsSelf bool
+	// afar marks a renewal's save, whose waiter may run a lane's own abcd under the
+	// driver's own host session: it is never the run's driver (mayWholeSave).
+	afar bool
 	// stopHome is the home a stop is read from; "" is the account's own
 	// (defaultStopHome). A test names a fixture home.
 	stopHome string
@@ -640,7 +643,7 @@ func admitResumed(repoRoot, runID string, o Options) error {
 	default:
 		return nil
 	}
-	return admitLate(repoRoot, runID, a, o.now())
+	return admitLate(repoRoot, runID, a, o.now(), mutate)
 }
 
 // drainsLane reports whether the drain's state lists runID as one of its lanes.
@@ -652,11 +655,13 @@ func drainsLane(repoRoot, runID string) bool {
 
 // admitLate writes a into a run's state that names no admission, with a record
 // entry saying it was recorded after the start; a state that names one keeps it.
-func admitLate(repoRoot, runID string, a Admitted, now time.Time) error {
+// save is the frame: mutate for the run's driver resuming it, a drain's laneSave for
+// one of its lanes.
+func admitLate(repoRoot, runID string, a Admitted, now time.Time, save saveFrame) error {
 	if why := a.Check(); why != "" {
 		return fmt.Errorf("admitting run %s: %s", runID, why)
 	}
-	return mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	return save(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
 		if st.Admitted != nil {
 			return false, nil
 		}
@@ -1808,7 +1813,8 @@ func withLock(repoRoot string, fn func(root *os.Root) error) error {
 // take the lock, read the state, let fn change it, and write it only when fn
 // says it changed. The write takes the file to this abcd's own version, which
 // only the abcd driving the run may do: a writer that may be running a lane's
-// abcd uses mutateReservation (reservation_save.go).
+// abcd uses mutateReservation (reservation_save.go), and a session that may not
+// be the run's driver saveUndriven (control.go).
 func mutate(repoRoot, runID string, fn func(root *os.Root, st *State) (bool, error)) error {
 	return withRun(repoRoot, runID, func(root *os.Root) error {
 		st, err := readStateIn(root, runID)

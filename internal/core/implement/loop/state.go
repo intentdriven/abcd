@@ -1435,10 +1435,17 @@ func ReadState(repoRoot, runID string) (State, error) {
 }
 
 func readStateIn(root *os.Root, runID string) (State, error) {
+	st, _, err := readStatedIn(root, runID)
+	return st, err
+}
+
+// readStatedIn is readStateIn with the version the file states (readListedStated),
+// which a save by a session that may not be the run's driver judges (mayWholeSave).
+func readStatedIn(root *os.Root, runID string) (State, int, error) {
 	if rf := tierRefusal("state", "", localtier.Untracked(root.Name(), StateRelPath(runID))); rf != nil {
-		return State{}, rf
+		return State{}, 0, rf
 	}
-	return readListedState(root, runID)
+	return readListedStated(root, runID)
 }
 
 // readListedState is readStateIn for a run runIDs listed: the listing asked

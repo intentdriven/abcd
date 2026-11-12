@@ -435,7 +435,7 @@ func TestAParkedLaneTheWatchFinishesIsReadAsFinished(t *testing.T) {
 	l := f.armIssueLane(t)
 	f.merged(t, l.Landing.Pushed)
 
-	note, dropped, finished, err := watchParked(f.repo.Root(), f.runID, time.Now().UTC())
+	note, dropped, finished, err := watchParked(f.repo.Root(), f.runID, time.Now().UTC(), Options{}.laneSave(true))
 	if err != nil {
 		t.Fatal(err)
 	}

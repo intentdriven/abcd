@@ -238,7 +238,7 @@ func TestAPausedDrainDoesNotRenewALaneHandedBack(t *testing.T) {
 				refuseStep(t, repo, runID, briefRefusing(sameRefusal), o)
 			}
 			b := stuckBounds{refusals: PaceValue{Value: BundledStuckRefusals}, minutes: PaceValue{Value: BundledStuckMinutes}}
-			if _, err := handBackStuck(repo.Root(), runID, b, c.t); err != nil {
+			if _, err := handBackStuck(repo.Root(), runID, b, c.t, Options{}.laneSave(true)); err != nil {
 				t.Fatal(err)
 			}
 		},

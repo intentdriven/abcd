@@ -49,7 +49,7 @@ func TestTwoLanesWaitingOnEachOthersHoldAreHandedBackPastTheMinutesBound(t *test
 		}
 	}
 	at := base.Add(70 * time.Minute)
-	run, err := handBackStuck(f.repo.Root(), f.runID, b, at)
+	run, err := handBackStuck(f.repo.Root(), f.runID, b, at, Options{}.laneSave(true))
 	if err != nil {
 		t.Fatal(err)
 	}

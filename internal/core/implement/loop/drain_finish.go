@@ -201,15 +201,16 @@ var afterParkedFetch = func() {}
 // to finish (a branch moved past what landed, a worktree with changes) is
 // named, not fatal: the drain's own move goes on. A run a stop's mark stands on
 // is not among them, whatever the forge says of it: it is named as what the mark
-// waits for, and the mark on a parked run not among the drain's lanes is taken up only
-// where its file states this version (parkedStopNote). Only its renewal stands, which decides for itself (stopEndsRenewal), and only
+// waits for, and the mark on a parked run is taken up only where this session may save
+// the run whole (parkedStopNote). Only its renewal stands, which decides for itself (stopEndsRenewal), and only
 // where this code is reached: under a stop in force the move refuses first (drainStop), so
 // only a drive still in an agent's call or a preflight renews the claim of a run with work a
 // save could not take, and otherwise it lapses at its lease with the lane's work still on its branch and in its worktree.
-// A parked run with no mark is an open route: the landing's last step below, resyncParked,
-// watchParked and handBackClosed each save its whole state at this binary's version, among
-// the drain's lanes or not and with no stop in force, so one another version's driver
-// writes must not be raised here, and nothing enforces that yet (reservation_save.go).
+// The landing's last step below, resyncParked, watchParked and handBackClosed each save the
+// run's whole state, so each is judged before it acts (mayWholeSave, through laneSave): a
+// lane of the drain's own whose file states another version is claimed first
+// (claimOwnLane), and a run this session does not drive is left as its file stands, named
+// with why among what the move finished or read.
 func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options) ([]DrainFinished, []DrainParked, error) {
 	runs, err := Runs(repoRoot)
 	if err != nil {
@@ -322,6 +323,7 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options) 
 	afterParkedFetch()
 	for _, run := range parked {
 		lane := run.Lanes[parkedAtLand(run)]
+		save := o.laneSave(drainsRun(lanes, run.RunID))
 		f := DrainFinished{Issue: run.Issue(), RunID: run.RunID, PR: lane.PR}
 		// A stop can reach the run while the forge is read and the default branch fetched.
 		if note := stopMarkNote(repoRoot, run.RunID); note != "" {
@@ -345,7 +347,7 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options) 
 				// A conflict confined to declared generated files, or one
 				// this checkout cannot reproduce, goes back through the
 				// lane's sync (sync.go, step 13): the run's own step takes it.
-				note, moved, err := resyncParked(repoRoot, run.RunID, now)
+				note, moved, err := resyncParked(repoRoot, run.RunID, now, save)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -364,7 +366,7 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options) 
 				// watched in the merge queue by the lane's own landing step
 				// (queue.go): queued, or reported dropped with the failed
 				// check (iss-2610090642376032).
-				note, dropped, done, err := watchParked(repoRoot, run.RunID, now)
+				note, dropped, done, err := watchParked(repoRoot, run.RunID, now, save)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -384,7 +386,7 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options) 
 				}
 			}
 			if p.State == ParkedClosed {
-				if p.Note, err = handBackClosed(repoRoot, run.RunID, now); err != nil {
+				if p.Note, err = handBackClosed(repoRoot, run.RunID, now, save); err != nil {
 					return nil, nil, err
 				}
 				if p.Note == "" {
@@ -395,7 +397,7 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options) 
 			reads = append(reads, p)
 			continue
 		}
-		err = mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+		err = save(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
 			i := parkedAtLand(*st)
 			if i < 0 {
 				return false, nil
@@ -452,9 +454,10 @@ func syncable(repoRoot, tracking, pushed string) bool {
 // resyncParked takes the run's own landing step for its parked lane, under
 // the run's lock, which enters the lane's sync again over its conflicting
 // pull request (resyncLane). moved is true when the lane left its merge wait
-// for the sync; note is the record's line, or why the step refused.
-func resyncParked(repoRoot, runID string, now time.Time) (note string, moved bool, err error) {
-	err = mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+// for the sync; note is the record's line, or why the step refused, a run save
+// leaves as its file stands (mayWholeSave) among them.
+func resyncParked(repoRoot, runID string, now time.Time, save saveFrame) (note string, moved bool, err error) {
+	err = save(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
 		i := parkedAtLand(*st)
 		if i < 0 {
 			return false, nil
@@ -498,10 +501,11 @@ func outOfQueue(pr listedPR) bool {
 // toggle. note is the record's line after an act, or the report; dropped is
 // set by the report. finished is set when the step itself took the landing's
 // last step, the pull request having merged since the move fetched the
-// default branch: the lane is then done, not parked. A wait, or a step that
-// refused for any other reason, leaves the listing's reading as it was.
-func watchParked(repoRoot, runID string, now time.Time) (note string, dropped, finished bool, err error) {
-	err = mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+// default branch: the lane is then done, not parked. A run save leaves as its
+// file stands (mayWholeSave) is named in note. A wait, or a step that refused for
+// any other reason, leaves the listing's reading as it was.
+func watchParked(repoRoot, runID string, now time.Time, save saveFrame) (note string, dropped, finished bool, err error) {
+	err = save(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
 		i := parkedAtLand(*st)
 		if i < 0 {
 			return false, nil
@@ -523,8 +527,11 @@ func watchParked(repoRoot, runID string, now time.Time) (note string, dropped, f
 		return true, nil
 	})
 	if r, ok := AsRefusal(err); ok {
-		if r.outOfQueue {
+		switch {
+		case r.outOfQueue:
 			return fsutil.RedactHome(r.Reason + "; " + r.Remedy), true, false, nil
+		case r.leftAtVersion:
+			return fsutil.RedactHome(r.Reason + "; " + r.Remedy), false, false, nil
 		}
 		return "", false, false, nil
 	}
@@ -535,10 +542,11 @@ func watchParked(repoRoot, runID string, now time.Time) (note string, dropped, f
 // closed without merging, and releases the issue's reservation with the
 // hand-back's tombstone (releaseOnHandBack), under the run's lock. It returns
 // the record's line, "" when the lane is no longer parked (a step running at
-// the same time moved it).
-func handBackClosed(repoRoot, runID string, now time.Time) (string, error) {
+// the same time moved it), or why save left the run as its file stands
+// (mayWholeSave), nothing handed back and nothing released.
+func handBackClosed(repoRoot, runID string, now time.Time, save saveFrame) (string, error) {
 	note := ""
-	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	err := save(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
 		i := parkedAtLand(*st)
 		if i < 0 {
 			return false, nil
@@ -557,6 +565,9 @@ func handBackClosed(repoRoot, runID string, now time.Time) (string, error) {
 		}
 		return true, nil
 	})
+	if r, ok := leftAtVersion(err); ok {
+		return fsutil.RedactHome(r.Reason + "; " + r.Remedy), nil
+	}
 	return note, err
 }
 
