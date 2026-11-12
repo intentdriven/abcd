@@ -268,10 +268,13 @@ var (
 // and commit listing, the mode log and the mode's file, the drain rules' tree,
 // the first-parent line, the tip's commit, the release tag described, a tag's
 // commit and a tag name's shape, every revert line's name and type, and the
-// trace's ancestry paths and older messages. The calls left read refs, the
-// worktrees or the index and no history: the default branch's ref questions
-// (gitutil.DefaultRefContext), the worktree listing, and the forge cache's
-// checks of what git tracks and ignores.
+// trace's ancestry paths and older messages. The calls left are the default
+// branch's ref questions (gitutil.DefaultRefContext), which read refs, the
+// type of the object each names and, for a tag, of the object it points at,
+// and peel a ref to its commit as git resolves it, only to choose which ref is
+// the default branch, whose tip commitOf then reads as stored; the worktree
+// listing; and the forge cache's checks of what git tracks and ignores, which
+// read the index.
 func storedText(ctx context.Context, root string, maxBytes int, args ...string) (string, error) {
 	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxBytes, args...)
 	if err != nil {

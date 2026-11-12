@@ -155,7 +155,11 @@ type fakeForge struct {
 	bodyEdited map[int]string
 	bodyFailOn int
 	// unasked answers the nodes of the numbers in it whole, every field
-	// whether selected or not, as a forge answering what it was not asked.
+	// whether selected or not, as a forge answering what it was not asked. It
+	// is for the one test that needs such a forge
+	// (TestAnAnswerThatDoesNotCheckIsUnread); set widely, it would answer
+	// fields a query does not select, and a field dropped from a query would
+	// no longer be a field the answer lacks.
 	unasked map[int]bool
 }
 

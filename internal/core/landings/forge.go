@@ -770,10 +770,12 @@ type prBody struct {
 // pull request merged: never edited, or last edited no later than the merge,
 // both times read. It cuts both ways. Any edit of the body after the merge
 // leaves a true revert line in it unread: the row it names then carries no
-// mark, and the reverting row says why in an untraceable line. And the forge gives both times to the second, so an edit
-// in the same second as the merge reads as unedited. That lastEditedAt moves
-// on every edit of the body is the forge's documented meaning, shown here only
-// through the fake forge; it is checked on the live forge before step 4.
+// mark, and the reverting row says why in an untraceable line. And the forge
+// gives both times to the second, so an edit in the same second as the merge
+// reads as unedited. That lastEditedAt moves on every edit of the body is the
+// forge's documented meaning, shown here only through the fake forge; it must
+// be checked against the live forge before step 4, and nothing enforces that
+// yet (dcn-2611121125486678).
 func (p *prBody) unedited() bool {
 	if p.LastEditedAt == nil {
 		return true

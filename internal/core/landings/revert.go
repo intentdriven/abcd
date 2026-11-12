@@ -735,15 +735,18 @@ var traceGit = gitutil.RunCappedBytesAsStoredContext
 // they name (at most maxTraceTargets looked for), and RangeNote says what it
 // could not place. So a trace reads at most two listings, and beside them asks
 // git, before the first: the default branch's ref questions
-// (gitutil.DefaultRefContext, reading refs alone), the tip's commit
-// (commitOf), the name's objects and their types (resolveNames, at most two
-// calls), the first-parent line (firstParentLine) and the traced commit's
-// ancestry path (rowOn); and between the two: one ancestry path for each
-// commit looked for (at most maxTraceTargets) and one log of the older
-// commits' messages. Every one of them, as every call of the listings', reads
-// objects as stored. It fetches nothing, writes only the listing's forge
-// cache, and binds every call to ctx as list does. It stays unexported for this step: step 4 exports
-// it when it wires the verb.
+// (gitutil.DefaultRefContext), the tip's commit (commitOf), the name's
+// objects and their types (resolveNames, at most two calls), the first-parent
+// line (firstParentLine) and the traced commit's ancestry path (rowOn); and
+// between the two: one ancestry path for each commit looked for (at most
+// maxTraceTargets) and one log of the older commits' messages. Every one of
+// them but the ref questions, as every call of the listings', reads objects as
+// stored. The ref questions read refs, the type of the object each names and,
+// for a tag, of the object it points at, and peel a ref to its commit as git
+// resolves it, only to choose the default branch's ref, whose tip commitOf
+// then reads as stored. It fetches nothing, writes only the listing's forge
+// cache, and binds every call to ctx as list does. It stays unexported for
+// this step: step 4 exports it when it wires the verb.
 func trace(ctx context.Context, repoRoot, name string, o Options) (Trace, error) {
 	ctx, cancel := bounded(ctx)
 	defer cancel()
@@ -892,7 +895,9 @@ func (p pastTargets) holds(x RevertLine) bool {
 // own when there is none. note says what it could not place: a commit no
 // first-parent commit brought, a pull request no older first-parent commit's
 // subject names, or one the older commits' messages, read to their bounds
-// (maxOlderCommits, maxOlderBytes), did not reach, and the targets past
+// (maxOlderCommits, maxOlderBytes), did not reach; that fewer older commits
+// were read than exist, whenever they were, even with every pull request
+// placed; and the targets past
 // maxTraceTargets, which past holds. The subject is each message's first line,
 // as the listing reads it (subjectPR).
 func olderTargets(ctx context.Context, repoRoot, to string, line []lineCommit, idx map[string]int, own int, r Row) (int, string, pastTargets, error) {
@@ -964,9 +969,15 @@ func olderTargets(ctx context.Context, repoRoot, to string, line []lineCommit, i
 			oldest = max(oldest, i)
 		}
 	}
+	// Said whenever more older commits exist than were read, whether or not
+	// every pull request was placed: a row past them may be the oldest that
+	// merged one, which the listing's own byPR would take.
+	if older > maxOlderCommits {
+		notes = append(notes, fmt.Sprintf("the trace read the messages of %d of the %d older first-parent commits, the most it reads, so a row older than those it read may have merged a pull request its lines name", maxOlderCommits, older))
+	}
 	switch missing := len(prs) - len(found); {
 	case missing > 0 && older > maxOlderCommits:
-		notes = append(notes, fmt.Sprintf("%d pull requests its lines name are named by no subject of the %d older first-parent commits the trace reads, the most it reads, so an older row may have merged them", missing, maxOlderCommits))
+		notes = append(notes, fmt.Sprintf("%d pull requests its lines name are named by no subject of the %d older first-parent commits the trace read", missing, maxOlderCommits))
 	case missing > 0:
 		notes = append(notes, fmt.Sprintf("%d pull requests its lines name are named by no older first-parent commit's subject", missing))
 	}

@@ -927,7 +927,9 @@ func countedGit(t *testing.T) func() []string {
 
 // TestTheTraceReadsBoundedOlderMessages: the older commits' messages the
 // trace reads for a pull request a forge line names are bounded in number and
-// in bytes, and a trace past either says so in its range note, never fails.
+// in bytes, and a trace past either says so in its range note, never fails,
+// whether or not it placed every pull request: the trace says when it read
+// fewer older commits than exist.
 func TestTheTraceReadsBoundedOlderMessages(t *testing.T) {
 	f := newFx(t, "auto")
 	s1 := f.commit("feat: x (#1)")
@@ -940,10 +942,22 @@ func TestTheTraceReadsBoundedOlderMessages(t *testing.T) {
 		t.Fatalf("within the bounds: %+v, %v", tr, err)
 	}
 	defer func(n, b int) { maxOlderCommits, maxOlderBytes = n, b }(maxOlderCommits, maxOlderBytes)
-	maxOlderCommits = 1
+	// The older commits are the one between, s1 and the root: three.
+	const fewer = "the trace read the messages of 2 of the 3 older first-parent commits, the most it reads, so a row older than those it read may have merged a pull request its lines name"
+	maxOlderCommits = 2
 	tr, err := trace(t.Context(), f.r.Root(), s3, Options{Forge: ff.call})
-	if err != nil || len(tr.Reverts) != 0 || !strings.Contains(tr.RangeNote, "named by no subject of the 1 older first-parent commits the trace reads, the most it reads") {
+	if err != nil || len(tr.Reverts) != 1 || tr.RangeNote != fewer {
+		t.Fatalf("every pull request placed, more commits than read: %+v, %v", tr, err)
+	}
+	maxOlderCommits = 1
+	tr, err = trace(t.Context(), f.r.Root(), s3, Options{Forge: ff.call})
+	if err != nil || len(tr.Reverts) != 0 || !strings.Contains(tr.RangeNote, "named by no subject of the 1 older first-parent commits the trace read") ||
+		!strings.Contains(tr.RangeNote, "the trace read the messages of 1 of the 3 older first-parent commits, the most it reads") {
 		t.Fatalf("past the commits read: %+v, %v", tr, err)
+	}
+	maxOlderCommits = 3
+	if tr, err = trace(t.Context(), f.r.Root(), s3, Options{Forge: ff.call}); err != nil || len(tr.Reverts) != 1 || tr.RangeNote != "" {
+		t.Fatalf("every older commit read: %+v, %v", tr, err)
 	}
 	maxOlderCommits, maxOlderBytes = 4096, 16
 	tr, err = trace(t.Context(), f.r.Root(), s3, Options{Forge: ff.call})
@@ -1133,6 +1147,70 @@ func TestHistoryIsReadAsStored(t *testing.T) {
 			t.Fatalf("resolve() = %+v, %v; want v2 at %s", r, err, c[:8])
 		}
 	})
+	// A revert line's name, resolved by git (resolveNames): the type of the
+	// one object it begins (cat-file). The other call, the objects a name
+	// begins (rev-parse --disambiguate), git lists from the object store,
+	// which no replace ref changes, so no case here can tell its two reads
+	// apart.
+	t.Run("a replaced object a revert line names", func(t *testing.T) {
+		f := newFx(t, "human")
+		x := f.commit("feat: x")
+		rv := f.commit(revertMsg("feat: x", x, 12))
+		f.r.Git("update-ref", "refs/replace/"+x, f.r.Git("rev-parse", f.base+":.gitignore"))
+		l := f.list((&fakeForge{t: t}).call)
+		if r := row(t, l, x); r.Reverted == nil || r.Reverted.By != rv {
+			t.Fatalf("the name's type read through the replacement: %+v, %+v", r, row(t, l, rv).Reverts)
+		}
+	})
+	// The trace's older-messages log alone: an older commit whose stored
+	// subject names the pull request a forge line names, replaced by one whose
+	// subject names none, is the row the trace widens to.
+	t.Run("a replaced older commit's message", func(t *testing.T) {
+		f := newFx(t, "auto")
+		s1 := f.commit("feat: x (#1)")
+		f.commit("docs: between")
+		s3 := f.commit(`Revert "feat: x (#1)" (#3)`)
+		f.r.Git("replace", s1, f.r.Git("commit-tree", s1+"^{tree}", "-p", f.base, "-m", "feat: x"))
+		ff := &fakeForge{t: t, bodies: map[int]string{3: "Reverts #1"}}
+		ff.add(answer(1, s1, strings.Repeat("1", 40)))
+		ff.add(answer(3, s3, strings.Repeat("3", 40)))
+		tr, err := trace(t.Context(), f.r.Root(), s3, Options{Forge: ff.call})
+		if err != nil || len(tr.Reverts) != 1 || tr.Reverts[0].Commit != s1 || tr.RangeNote != "" {
+			t.Fatalf("the older messages read through the replacement: %+v, %v", tr, err)
+		}
+	})
+	// The grafts file, which git honours with replace refs off: the range's
+	// log and commit listing and the mode log.
+	t.Run("a grafts file", func(t *testing.T) {
+		f := newFx(t, "human")
+		x := f.setMode("auto")
+		y := f.commit("docs: y")
+		info := filepath.Join(f.r.Root(), ".git", "info")
+		if err := os.MkdirAll(info, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(info, "grafts"), []byte(y+" "+f.base+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		l := f.list((&fakeForge{t: t}).call)
+		if len(l.Rows) != 2 || row(t, l, y).Mode != landing.ModeAuto || row(t, l, x).Commit != x {
+			t.Fatalf("the listing read the grafts file: %+v", l.Rows)
+		}
+	})
+}
+
+// TestTheTracesReasonsArePinned: the reasons the positional trace matches a
+// line's whole reason against (widenable) are spelled as written here, so a
+// rewording of the text the next step renders is a change this test names.
+func TestTheTracesReasonsArePinned(t *testing.T) {
+	for _, c := range []struct{ got, want string }{
+		{unmarkedOutside, "names a commit outside the listed range"},
+		{unmarkedNoRow, "names a pull request no row of the listing merged as the forge's answer says"},
+	} {
+		if c.got != c.want {
+			t.Errorf("reason %q, want %q", c.got, c.want)
+		}
+	}
 }
 
 // TestTheInMemoryWalksStopWithTheListingsTime: the generation pass and the
