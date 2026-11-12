@@ -244,7 +244,10 @@ kind and the item it announces. Bare `abcd reserve` refuses
 as a usage error because its one operand is the record it reserves; the
 reservations render through `abcd peers`. Bare `abcd land` is the landing of
 the checkout's current branch, so it acts rather than renders; it refuses on
-the default branch, a detached HEAD or uncommitted work and pushes nothing. Bare `abcd identity` and bare `abcd ahoy remote` list their sub-verbs,
+the default branch, a detached HEAD or uncommitted work and pushes nothing. Bare
+`abcd landings` lists the changes since the last release tag the default
+branch reaches, so in a checkout with no release tag it refuses, naming where
+the person can say the range starts, and lists nothing. Bare `abcd identity` and bare `abcd ahoy remote` list their sub-verbs,
 because their reports are `abcd lint identity` and `abcd ahoy --remote`. Bare `abcd report` opens the editor on a
 terminal and refuses anywhere else, because it files a report rather than
 rendering one, and bare `abcd statusline` renders abcd's row only in a managed

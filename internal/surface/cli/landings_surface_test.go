@@ -195,12 +195,14 @@ func landingsCommits(rows []landings.Row) []string {
 
 // TestLandingsDefaultRangeIsTheLastReleaseTag: with no --since the range
 // opens after the last release tag the tip reaches, and with none the verb
-// refuses at exit 2, naming the flag and listing nothing.
+// refuses at exit 2, naming the flag and listing nothing. The flag is named
+// as the page spells it, "--since <tag|YYYY-MM-DD>": the refusal is the
+// verb's own text for a terminal, so no markdown neutralisation spaces it.
 func TestLandingsDefaultRangeIsTheLastReleaseTag(t *testing.T) {
 	w := newLandingsWorld(t, "auto")
 	w.push("docs: before")
 	out, errOut, code := runLandings(t)
-	if code != 2 || !strings.Contains(errOut, "--since") || out != "" {
+	if code != 2 || !strings.Contains(errOut, "--since <tag|YYYY-MM-DD> (nothing read)") || out != "" {
 		t.Fatalf("no tag: exit %d, stdout %q, stderr %q", code, out, errOut)
 	}
 	tagged := w.push("chore: release")
@@ -1409,7 +1411,7 @@ func TestLandingsARenamedReleaseTagNamesTheFlag(t *testing.T) {
 	w.r.Git("update-ref", "-d", "refs/tags/v1.0.0")
 	w.merge(1, "", "feat: one")
 	out, errOut, code := runLandings(t)
-	if code != 2 || !strings.Contains(errOut, "--since") || out != "" {
+	if code != 2 || !strings.Contains(errOut, "--since <tag|YYYY-MM-DD> (nothing read)") || out != "" {
 		t.Fatalf("a renamed release tag: exit %d, stdout %q, stderr %q", code, out, errOut)
 	}
 }

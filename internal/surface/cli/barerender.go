@@ -40,6 +40,10 @@ var bareRenderExceptions = map[string]string{
 		"pushes and arms rather than rendering, and on the default branch, a detached HEAD " +
 		"or uncommitted work it refuses (exit 2) and pushes nothing; --no-push --no-enqueue " +
 		"limits it to the gate",
+	"landings": "bare lists the rows after the last release tag (v*) the default branch's " +
+		"tip reaches, so in a checkout with no such tag, this test's scratch repository " +
+		"included, bare refuses (exit 2) naming --since <tag|YYYY-MM-DD> and lists nothing; " +
+		"the listing renders there with --since (TestLandingsDefaultRangeIsTheLastReleaseTag)",
 	"launch": "its state is the release preview, asked for with --dry-run; bare refuses " +
 		"(exit 1) naming the flag, because publishing is not wired",
 	"reflect": "its one operand is the cut release whose seed it renders, and a " +

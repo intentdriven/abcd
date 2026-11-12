@@ -291,8 +291,14 @@ func landingsClip(s string, n int) string {
 	return s
 }
 
-// landingsNote is a note masked and bounded as one line.
-func landingsNote(s string) string { return termsafe.CleanProseLine(s, landingsNoteBytes) }
+// landingsNote is a note masked and bounded as one line: every whitespace run,
+// a line break included, read as one space, then landingsClip. It is a
+// terminal line, not markdown, so it adds no markdown neutralisation: that
+// would space the verb's own "--since <tag|YYYY-MM-DD>" into "< tag", and the
+// reader's notes reach it already neutralised where they carry typed text.
+func landingsNote(s string) string {
+	return strings.TrimSpace(landingsClip(strings.Join(strings.Fields(s), " "), landingsNoteBytes))
+}
 
 // landingsShort is a commit's first twelve characters, masked, "-" for none.
 func landingsShort(sha string) string {
@@ -487,7 +493,7 @@ func renderLandings(w io.Writer, out landingsOutput, unattended, reverted bool) 
 			printLandingRow(w, "", r)
 		}
 	}
-	renderLandingsNotes(w, [][2]string{
+	renderLandingsLabelled(w, [][2]string{
 		{"range", out.SinceNote}, {"forge", out.ForgeUnread}, {"cache", out.CacheUnwritten}, {"mode", out.ModeUnread},
 	})
 	from := "the whole history"
@@ -497,11 +503,15 @@ func renderLandings(w io.Writer, out landingsOutput, unattended, reverted bool) 
 	fmt.Fprintf(w, "read %s at %s, since %s (%s)\n", landingsOrDash(out.Tip), landingsShort(out.To), landingsOrDash(out.Since), from)
 }
 
-// renderLandingsNotes prints each note that says something, one masked line each.
-func renderLandingsNotes(w io.Writer, notes [][2]string) {
-	for _, n := range notes {
-		if n[1] != "" {
-			fmt.Fprintf(w, "%s: %s\n", n[0], landingsNote(n[1]))
+// renderLandingsLabelled prints each of the listing's labelled lines that says
+// something, "label: text", one masked line each, on stdout as part of the
+// listing. They are the reader's notes on what it read, not a configuration
+// layer's resolution notes: those go to stderr through noteLine, whose "abcd: "
+// prefix would here misattribute a line of the listing as a diagnostic.
+func renderLandingsLabelled(w io.Writer, labelled [][2]string) {
+	for _, l := range labelled {
+		if l[1] != "" {
+			fmt.Fprintf(w, "%s: %s\n", l[0], landingsNote(l[1]))
 		}
 	}
 }
@@ -528,7 +538,7 @@ func renderTrace(w io.Writer, name string, t landings.Trace) {
 			}
 		}
 	}
-	renderLandingsNotes(w, [][2]string{
+	renderLandingsLabelled(w, [][2]string{
 		{"range", t.RangeNote}, {"forge", t.ForgeUnread}, {"cache", t.CacheUnwritten}, {"mode", t.ModeUnread},
 	})
 	tip := fmt.Sprintf("read %s at %s", landingsOrDash(t.Tip), landingsShort(t.To))
