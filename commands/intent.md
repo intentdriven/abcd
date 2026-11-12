@@ -533,7 +533,8 @@ checks; the judgement is yours, as the host.
     paragraph or a table row under that section included, a fence or HTML
     comment that never closes, or fences or comments whose extent turns on
     the layout around them; record-lint's `spec_unsettled` rule refuses those
-    four in an open spec. The phrase match is a filter for a mistake, not a
+    four in an open spec, and its `intent_layout` rule names the last two in
+    a draft or planned intent, at warn. The phrase match is a filter for a mistake, not a
     way to hold a spec: lower-case "not READY", "Not ready", and the phrase
     elsewhere in a sentence are not matched, and the declared holds are the
     spec's `blocked_by` and its open questions. The frontmatter, inline code

@@ -254,6 +254,11 @@ func (s Statement) Describe() string {
 	return "line " + strconv.Itoa(s.Line) + ": " + what + " (" + s.Text + ")"
 }
 
+// LayoutRemedy is the one remedy for a record LayoutStatements reports on:
+// the build's open-questions row names it for an intent, and record-lint's
+// intent_layout rule names it where the intent is written.
+const LayoutRemedy = "close the fence or HTML comment opened on that line; write a fence at column 0, or at up to three columns with no line inside it nearer the margin than the fence, and not on a list marker's line; and open a comment that runs over several lines at the start of its line, at up to three columns"
+
 // UnsettledRemedy is the one remedy for a spec Unsettled reports on, which
 // the readiness gate and record-lint both name.
 const UnsettledRemedy = "ask the spec's open questions as items under its `## Open Questions` section, where the build reads them, and mark each `resolved:` once it is answered; drop the \"Not READY\" sentence and the bold \"Open:\" label once the question is there, or put the phrase in a code span when it is quoted, not said; close a fence or an HTML comment left open; write a fence at column 0, or at up to three columns with no line inside it nearer the margin than the fence, and not on a list marker's line; and open a comment that runs over several lines at the start of its line, at up to three columns"

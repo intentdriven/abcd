@@ -182,7 +182,9 @@ pass:
   resolved or deferred (`**Deferred**`, `resolved:`, `**explicitly
   deferred**`). The record's text must read whole: a fence or HTML comment
   that never closes, or fences or comments whose extent turns on the layout
-  around them, fails this check too (named by its line). Only an ATX heading
+  around them, fails this check too (named by its line); record-lint's
+  `intent_layout` rule names the same lines in a draft or planned intent, at
+  warn, where they are written. Only an ATX heading
   (`#`) opens or ends the section; a setext or HTML heading does not. The
   reader reads ATX headings, fences, HTML comments and inline code spans that open and close on one line; any
   other raw HTML block is read as ordinary text, line by line.

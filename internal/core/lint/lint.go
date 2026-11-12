@@ -402,6 +402,14 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			findings = append(findings, checkIntentSOTA(tree, sotaCfg)...)
 		}
 
+		if layoutCfg, ok := cfg.Rules[ruleIntentLayout]; ok && layoutCfg.Enabled {
+			tree, err := scanIntents(intentsDirOf(layoutCfg))
+			if err != nil {
+				return nil, err
+			}
+			findings = append(findings, checkIntentLayout(tree, layoutCfg)...)
+		}
+
 		if specCfg, ok := cfg.Rules["spec_lifecycle"]; ok && specCfg.Enabled {
 			sl, err := checkSpecLifecycle(repoRoot, rootAbs, specCfg, cfg)
 			if err != nil {
