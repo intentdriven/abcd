@@ -178,8 +178,9 @@ type ceilingRow struct {
 }
 
 // reservationView dates the listing: when abcd last fetched the reservations
-// here and how long ago, both absent when nothing here stamped a fetch, and
-// whether the checkout has a remote named origin to fetch them from.
+// here and how long ago, and whether the checkout has a remote named origin to
+// fetch them from. When nothing here stamped a fetch, fetched_at is omitted
+// and age_seconds is emitted as null.
 type reservationView struct {
 	Origin     bool   `json:"origin"`
 	FetchedAt  string `json:"fetched_at,omitempty"`

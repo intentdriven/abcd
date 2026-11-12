@@ -220,8 +220,9 @@ payload adds:
   last fetched, and asks the network nothing more. Tell the user what each
   other account's drain handed back and why, by its kind.
 - `view`: `origin` (whether there is a remote named origin), and
-  `fetched_at` and `age_seconds` for the fetch this view was made by, both
-  absent when nothing here has fetched.
+  `fetched_at` and `age_seconds` for the fetch this view was made by. When
+  nothing here has fetched, `fetched_at` is absent and `age_seconds` is
+  present as `null`: test `age_seconds` for `null`, never for the key.
 - `fetch_error`, when the fetch failed: the reservations are then listed as
   last fetched, with that view's age, the failure is named on stderr, and the
   verb exits 1. Tell the user the listing may be stale and why.
