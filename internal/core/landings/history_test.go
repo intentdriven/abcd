@@ -210,6 +210,45 @@ func TestUnderHumanTheModeAttendsAPullRequestTheForgeLeftUnread(t *testing.T) {
 	}
 }
 
+// TestAnAnswerTooLargeToReadAloneIsNoModesToAttend: in either mode, a pull
+// request whose answer passes the client's output bound even asked alone is
+// asked no further in the listing, and its row is unattended, with the reason
+// on the row and in the listing's note; the batch's others read as before. So
+// it is beside a half whose errors name no pull request.
+func TestAnAnswerTooLargeToReadAloneIsNoModesToAttend(t *testing.T) {
+	for _, mode := range []string{"human", "auto"} {
+		f := newFx(t, mode)
+		ff := manyMerges(t, f, 3)
+		ff.huge = map[int]bool{2: true}
+		l := f.list(ff.call)
+		alone := 0
+		for _, b := range ff.batches {
+			if slices.Equal(b, []int{2}) {
+				alone++
+			}
+		}
+		for _, r := range l.Rows {
+			tooLarge := r.Class == ClassAutomatic && r.Unattended && r.Approval.Source == SourceForgeUnread &&
+				strings.Contains(r.ForgeUnreadable, "#2 ") && strings.Contains(r.ForgeUnreadable, "too large to read")
+			if (r.PR == 2) != tooLarge || (r.PR != 2 && r.ForgeUnreadable != "") {
+				t.Fatalf("%s: row %+v", mode, r)
+			}
+		}
+		if alone != 1 || !strings.Contains(l.ForgeUnread, "#2 ") {
+			t.Fatalf("%s: asked alone %d times in %v, note %q", mode, alone, ff.batches, l.ForgeUnread)
+		}
+
+		g := newFx(t, mode)
+		gf := manyMerges(t, g, 2)
+		gf.huge, gf.failOn = map[int]bool{1: true}, 2
+		for _, r := range g.list(gf.call).Rows {
+			if (r.PR == 1) != (r.ForgeUnreadable != "" && r.Unattended) {
+				t.Fatalf("%s: beside a failing half: row %+v", mode, r)
+			}
+		}
+	}
+}
+
 // TestTheForgesAnswerIsReadAPullRequestAtATime: an error naming one pull
 // request's node leaves that one unread and the batch's others answered,
 // whether the client exits 0 or fails beside the answer.

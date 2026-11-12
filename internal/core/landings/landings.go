@@ -57,9 +57,12 @@ const (
 	// committed.
 	ClassPersonApproved = "person-approved"
 	// ClassDrain is a merge under auto with no approval seen whose branch
-	// carries the drain's admission.
+	// carries the drain's admission, or such a merge in either mode whose
+	// forge answer was too large to read.
 	ClassDrain = "drain"
-	// ClassAutomatic is every other merge under auto with no approval seen.
+	// ClassAutomatic is every other merge under auto with no approval seen,
+	// and every other merge in either mode with no approval seen whose forge
+	// answer was too large to read.
 	ClassAutomatic = "automatic"
 )
 
@@ -172,6 +175,11 @@ type Row struct {
 	// subject names, for a person-push row whose subject names one: "" for
 	// every other row.
 	ForgeSays string `json:"forge_says,omitempty"`
+	// ForgeUnreadable says why the forge's answer for the pull request the
+	// subject names could not be read, for a row whose answer was too large to
+	// read even asked alone: no mode attends such a row. "" for every other
+	// row.
+	ForgeUnreadable string `json:"forge_unreadable,omitempty"`
 	// Unattended marks a row no evidence places with a person.
 	Unattended bool `json:"unattended"`
 }
@@ -312,7 +320,7 @@ func listRows(ctx context.Context, repoRoot string, r Range, o Options) (Listing
 	var unread []string
 	for i := range facts {
 		pr := facts[i].row.PR
-		row, why, err := l.classify(facts[i], answers.got[pr], answers.why[pr], answers.notPR[pr], wts)
+		row, why, err := l.classify(facts[i], answers.got[pr], answers.why[pr], answers.notPR[pr], answers.tooLarge[pr], wts)
 		if err != nil {
 			return Listing{}, err
 		}
@@ -569,10 +577,11 @@ func (f rowFacts) modeRule() Rule {
 
 // classify decides one row's class, rule, lane, approval and trailers from its
 // history facts, the forge's answer for its pull request (nil when the forge
-// gave none, with why, and notPR when the forge says the number names no pull
-// request), and the recorded approvals in wts. The why it returns is a reason
+// gave none, with why, notPR when the forge says the number names no pull
+// request, and tooLarge when its answer was too large to read even asked
+// alone), and the recorded approvals in wts. The why it returns is a reason
 // the forge was not read for this row, for the listing's note.
-func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR bool, wts []gitutil.Worktree) (Row, string, error) {
+func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR, tooLarge bool, wts []gitutil.Worktree) (Row, string, error) {
 	row := f.row
 	if row.PR == 0 {
 		return l.push(row, "", wts), "", nil
@@ -581,7 +590,8 @@ func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR bool, wts [
 	// names no pull request, or that the pull request did not merge as this
 	// commit: the row is then the push it is, in either mode, and nothing of
 	// that pull request is read for it. Only a forge that did not answer
-	// leaves the row to the subject.
+	// leaves the row to the subject, and a row whose answer was too large to
+	// read even asked alone is left to no mode.
 	if notPR {
 		return l.push(row, why, wts), "", nil
 	}
@@ -592,6 +602,9 @@ func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR bool, wts [
 	}
 	if why != "" {
 		a = nil
+	}
+	if tooLarge {
+		row.ForgeUnreadable = termsafe.CleanProseLine(why, 300)
 	}
 	messages := f.messages
 	commitsRead := f.twoParent
@@ -635,7 +648,7 @@ func (l *lister) classify(f rowFacts, a *prAnswer, why string, notPR bool, wts [
 	switch {
 	case row.Approval.Seen:
 		row.Class, row.Rule = ClassPersonApproved, f.modeRule()
-	case human(row.Mode):
+	case human(row.Mode) && !tooLarge:
 		row.Class, row.Rule = ClassPersonApproved, f.modeRule()
 	case adm != nil && adm.Kind == KindDrain:
 		row.Class = ClassDrain

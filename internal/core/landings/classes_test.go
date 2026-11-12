@@ -116,10 +116,11 @@ func row(t *testing.T, l Listing, commit string) Row {
 // answers null, or, with gh set, as the forge client does for a number that
 // names no pull request: a NOT_FOUND error naming its node, the answer written
 // beside a failed exit. err fails every call (beside raw when both are set),
-// capAt fails a batch of more pull requests than it with the output bound,
-// failOn answers any batch holding that number with an error naming no node,
-// and onCall runs before each answer. Every document is checked against the
-// forge's pinned schema.
+// capAt fails a batch of more pull requests than it with the output bound, so
+// does a batch holding a number in huge, or one in big whose node asks for its
+// commits, failOn answers any batch holding that number with an error naming
+// no node, and onCall runs before each answer. Every document is checked
+// against the forge's pinned schema.
 type fakeForge struct {
 	t       *testing.T
 	prs     map[int]*prAnswer
@@ -127,6 +128,8 @@ type fakeForge struct {
 	raw     string
 	gh      bool
 	capAt   int
+	big     map[int]bool
+	huge    map[int]bool
 	failOn  int
 	onCall  func()
 	calls   int
@@ -160,7 +163,12 @@ func (ff *fakeForge) call(args ...string) (string, error) {
 	if ff.raw != "" || ff.err != nil {
 		return ff.raw, ff.err
 	}
-	if ff.capAt > 0 && len(batch) > ff.capAt {
+	tooBig := ff.capAt > 0 && len(batch) > ff.capAt
+	for _, n := range batch {
+		withCommits := strings.Contains(q, fmt.Sprintf("p%d:pullRequest(number:%d){%s%s}", n, n, prSelection, commitsSelection))
+		tooBig = tooBig || ff.huge[n] || (ff.big[n] && withCommits)
+	}
+	if tooBig {
 		return "", fmt.Errorf("gh api graphql wrote more than 1 bytes (%w)", landing.ErrOutputCap)
 	}
 	if ff.failOn != 0 && slices.Contains(batch, ff.failOn) {

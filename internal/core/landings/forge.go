@@ -287,11 +287,13 @@ func (a *prAnswer) approval(head string) (Approval, string) {
 
 // forgeAnswers are readForge's answers by pull request, why each one it has
 // none for was not read, which numbers the forge says name no pull request,
-// and why an answer could not be cached.
+// which pull requests' answers were too large to read even asked alone, and
+// why an answer could not be cached.
 type forgeAnswers struct {
 	got      map[int]*prAnswer
 	why      map[int]string
 	notPR    map[int]bool
+	tooLarge map[int]bool
 	cacheWhy string
 }
 
@@ -302,7 +304,7 @@ type forgeAnswers struct {
 // ctx stops the asking, and every pull request not yet answered reads as
 // unread with the reason.
 func readForge(ctx context.Context, repoRoot string, forge landing.ForgeCall, asks []prAsk) forgeAnswers {
-	fa := forgeAnswers{got: map[int]*prAnswer{}, why: map[int]string{}, notPR: map[int]bool{}}
+	fa := forgeAnswers{got: map[int]*prAnswer{}, why: map[int]string{}, notPR: map[int]bool{}, tooLarge: map[int]bool{}}
 	byPR := map[int]*prAsk{}
 	var want []*prAsk
 	for _, a := range asks {
@@ -384,7 +386,7 @@ func (q *asker) ask(batch []prAsk) {
 	switch {
 	case !ok:
 	case r.whole != "" && r.split:
-		q.halve(batch, r.whole)
+		q.halve(batch, r.whole, r.size)
 	case r.whole != "":
 		q.unread(batch, r.whole)
 	default:
@@ -392,14 +394,20 @@ func (q *asker) ask(batch []prAsk) {
 	}
 }
 
-// halve asks batch, which the forge answered for none of (why), again in two
-// halves. A half that passed the output bound is halved again in turn; one
-// that again carries errors naming no pull request is followed alone, as one
-// chain, and when both halves fail other than for their size the failure is
-// not one pull request's, so neither is asked further. Each call spends one of
-// the listing's halvings, and with none left the batch reads as unread.
-func (q *asker) halve(batch []prAsk, why string) {
+// halve asks batch, which the forge answered for none of (why; size when for
+// the output bound), again in two halves. A half that passed the output bound
+// is halved again in turn, down to one pull request, whose answer is then too
+// large to read (alone); one that again carries errors naming no pull request
+// is followed alone, as one chain, and when both halves fail other than for
+// their size the failure is not one pull request's, so neither is asked
+// further for it, while a half past the bound is still halved. Each call
+// spends one of the listing's halvings, and with none left the batch reads as
+// unread.
+func (q *asker) halve(batch []prAsk, why string, size bool) {
 	switch {
+	case len(batch) < 2 && size:
+		q.alone(batch, why)
+		return
 	case len(batch) < 2:
 		q.unread(batch, why)
 		return
@@ -428,12 +436,26 @@ func (q *asker) halve(batch []prAsk, why string) {
 	}
 	if len(fails) == 2 && !(fails[0].size && fails[1].size) {
 		for _, f := range fails {
+			if f.size {
+				q.halve(f.batch, f.why, true)
+				continue
+			}
 			q.unread(f.batch, f.why+"; neither half of the batch answered, so it is not asked again")
 		}
 		return
 	}
 	for _, f := range fails {
-		q.halve(f.batch, f.why)
+		q.halve(f.batch, f.why, f.size)
+	}
+}
+
+// alone settles batch, one pull request whose answer passed the output bound
+// asked alone (why): it is too large to read, so it is not asked again in the
+// listing and its row is left to no mode (classify).
+func (q *asker) alone(batch []prAsk, why string) {
+	for _, a := range batch {
+		q.fa.tooLarge[a.pr] = true
+		q.fa.why[a.pr] = why + ", asked alone, so it is too large to read"
 	}
 }
 
