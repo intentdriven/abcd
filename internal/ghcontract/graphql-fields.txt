@@ -282,11 +282,21 @@ RemovedFromMergeQueueEvent.reason String SCALAR
 # fields the batch selects. PullRequestReviewState's values, read by
 # {__type(name:"PullRequestReviewState"){enumValues{name}}}, are PENDING,
 # COMMENTED, APPROVED, CHANGES_REQUESTED and DISMISSED.
+# PullRequestReview.authorAssociation and .authorCanPushToRepository were read
+# 2026-11-12 by the same __type query; CommentAuthorAssociation's values, read
+# by {__type(name:"CommentAuthorAssociation"){enumValues{name}}}, are MEMBER,
+# OWNER, MANNEQUIN, COLLABORATOR, CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR,
+# FIRST_TIMER and NONE, and Actor's possible types, read by
+# {__type(name:"Actor"){possibleTypes{name}}}, are Bot, EnterpriseUserAccount,
+# Mannequin, Organization and User (the batch reads them through __typename,
+# the meta-field every selection may take).
 PullRequestReviewConnection.edges PullRequestReviewEdge OBJECT
 PullRequestReviewConnection.nodes PullRequestReview OBJECT
 PullRequestReviewConnection.pageInfo PageInfo OBJECT
 PullRequestReviewConnection.totalCount Int SCALAR
 PullRequestReview.author Actor INTERFACE
+PullRequestReview.authorAssociation CommentAuthorAssociation ENUM
+PullRequestReview.authorCanPushToRepository Boolean SCALAR
 PullRequestReview.commit Commit OBJECT
 PullRequestReview.state PullRequestReviewState ENUM
 PullRequestReview.submittedAt DateTime SCALAR
