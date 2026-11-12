@@ -142,7 +142,9 @@ exercises the right: the flip of line N checks the first gate, refuses naming it
 when it fails, and on success appends a new line, a copy of line N with
 `cited_publicly` true and `flips` naming N. An agent never runs the flip. The
 binary cannot tell a person from an agent, so that rule lives in the command
-pages.
+pages. Where the host runs the hook of the [shell guard](17-guard.md), the shell
+guard also refuses an agent's flip before it runs (`abcd-source-ledger-flip`); on
+a host that does not run that hook, the command pages are the only bar.
 
 Declassification is how a confidential source becomes citable when it is
 published: its folder moves `confidential/ → public/` by `git mv`, its entry's
