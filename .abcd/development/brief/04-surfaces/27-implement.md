@@ -122,7 +122,8 @@ contention naming the file's full path, and after the grace the claim logs
 ## The bounds
 
 A session joined as `second` is refused at exit 2, with a `refusal` line naming
-the condition, when it claims while holding another live claim
+the condition, when it sets the window's mode (`second_session_sets_no_mode`),
+claims while holding another live claim
 (`second_session_lane_cap`), claims or checks a lane in a `split-roles` window
 (`split_roles_second_builds_nothing`), declares a path in the reading corpus
 (`reading_corpus_lane`), or reaches the release stage (`second_session_release`).
