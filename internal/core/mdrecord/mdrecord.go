@@ -586,8 +586,9 @@ func (p Page) Unclosed() (line int, flag uint8, ok bool) {
 	return p.openLine, p.openFlag, p.openLine >= 0
 }
 
-// ReadPage is the one reading for a reader of what a page says that must not
-// read less than the page shows: a gate that refuses on what the text states.
+// ReadPage is the one reading for a gate that refuses on what the text states:
+// it reads every line its three readings do not all agree is fenced or
+// commented.
 // Its fences are ListNested's and its comments are Read's: the first raw `-->`
 // closes a comment, a code span outside one is skipped whole (a `<!--` quoted
 // in backticks opens nothing), and inside a fence a comment opener is literal.
@@ -610,9 +611,11 @@ func (p Page) Unclosed() (line int, flag uint8, ok bool) {
 //     or after other text on that line and is not closed inside the same
 //     paragraph (inParagraph; the opener's line is named);
 //   - a list marker and a fence delimiter share a line;
-//   - a fence delimiter sits in an HTML block (a line opening with a tag, to
-//     the next blank line, or for pre, script, style and textarea to the
-//     element's closing tag), or a comment opener sits in one of those four.
+//   - a fence delimiter sits in an HTML block (a line opening with a tag, a
+//     processing instruction or a CDATA section, after any list markers, to
+//     the next blank line, or to its closer: htmlBlocks), or a comment opener
+//     sits in a raw text element's block (rawTextTags);
+//   - a comment opener sits behind a backslash.
 func ReadPage(lines []string) Page {
 	rs := [...]Reading{Read(lines, TopLevel), Read(lines, ListNested), Read(lines, listItem)}
 	nl := rs[1]
@@ -656,8 +659,9 @@ func ReadPage(lines []string) Page {
 		}
 	}
 	htmlBlocks(lines, nl.Mask, at)
+	text := liveText(lines, nl.Mask, at)
 
-	p := Page{Text: liveText(lines, nl.Mask), Mask: nl.Mask, unsure: -1, openLine: nl.openLine, openFlag: nl.openFlag}
+	p := Page{Text: text, Mask: nl.Mask, unsure: -1, openLine: nl.openLine, openFlag: nl.openFlag}
 	if u < len(lines) {
 		p.unsure = u
 		p.Mask = append([]uint8(nil), nl.Mask...)
@@ -850,19 +854,28 @@ func markerFence(ln string) bool {
 	return ok
 }
 
-// htmlStartRe is a line that opens with an HTML tag, at up to three columns.
-var htmlStartRe = regexp.MustCompile(`^ {0,3}</?([A-Za-z][A-Za-z0-9-]*)(?:[ \t>/]|$)`)
+// htmlStartRe is a line that opens, at up to three columns or after list
+// markers, with an HTML tag (its name in group 1), a processing instruction
+// (group 2) or a CDATA section (group 3).
+var htmlStartRe = regexp.MustCompile(`^(?: {0,3}|[ \t]*(?:(?:[-*+]|[0-9]{1,9}[.)])[ \t]+)+)(?:</?([A-Za-z][A-Za-z0-9-]*)(?:[ \t>/]|$)|(<\?)|(<!\[CDATA\[))`)
 
 // rawTextTags are the elements whose block runs to their closing tag and
-// holds no markdown, a comment opener included.
-var rawTextTags = map[string]bool{"pre": true, "script": true, "style": true, "textarea": true}
+// holds no markdown, a comment opener included: CommonMark's pre, script,
+// style and textarea, and the other elements HTML's parser reads as raw text
+// or as text with character references alone.
+var rawTextTags = map[string]bool{
+	"pre": true, "script": true, "style": true, "textarea": true,
+	"xmp": true, "title": true, "plaintext": true, "iframe": true,
+	"noembed": true, "noframes": true, "noscript": true,
+}
 
 // htmlBlocks names, through at, the first fence delimiter in an HTML block,
 // where the page reads it as HTML, and the first comment opener in a block of
 // one of rawTextTags, where the page reads it as text. A block opens at a
 // line htmlStartRe matches, outside a fence or comment, and runs to the line
-// before the next blank line, or for rawTextTags to the line holding the
-// element's closing tag.
+// before the next blank line, or to the line holding its closer: the
+// element's closing tag for rawTextTags, `?>` for a processing instruction
+// and `]]>` for a CDATA section.
 func htmlBlocks(lines []string, mask []uint8, at func(int)) {
 	for i := 0; i < len(lines); i++ {
 		ln := strings.TrimRight(lines[i], "\r")
@@ -871,12 +884,20 @@ func htmlBlocks(lines []string, mask []uint8, at func(int)) {
 			continue
 		}
 		tag := strings.ToLower(m[1])
-		rawText := rawTextTags[tag] && !strings.HasPrefix(strings.TrimLeft(ln, " "), "</")
+		closer, rawText := "", false
+		switch {
+		case m[2] != "":
+			closer = "?>"
+		case m[3] != "":
+			closer = "]]>"
+		case rawTextTags[tag] && !strings.Contains(m[0], "</"):
+			closer, rawText = "</"+tag+">", true
+		}
 		j := i
 		for ; j < len(lines); j++ {
 			step()
 			l := strings.TrimRight(lines[j], "\r")
-			if !rawText && strings.TrimSpace(l) == "" {
+			if closer == "" && strings.TrimSpace(l) == "" {
 				break
 			}
 			if j > i && mask[j]&MaskComment == 0 && nestedFenceRe.MatchString(l) {
@@ -887,7 +908,7 @@ func htmlBlocks(lines []string, mask []uint8, at func(int)) {
 				at(j)
 				return
 			}
-			if rawText && strings.Contains(strings.ToLower(l), "</"+tag+">") {
+			if closer != "" && strings.Contains(strings.ToLower(l), closer) {
 				break
 			}
 		}
@@ -895,15 +916,17 @@ func htmlBlocks(lines []string, mask []uint8, at func(int)) {
 	}
 }
 
-// liveText is Page.Text over a fence mask Read computed.
-func liveText(lines []string, mask []uint8) []string {
+// liveText is Page.Text over a fence mask Read computed. It names, through
+// at, the first line holding a comment opener behind a backslash, which the
+// page reads as text.
+func liveText(lines []string, mask []uint8, at func(int)) []string {
 	out := make([]string, len(lines))
 	in := false
 	for i, raw := range lines {
 		if mask[i]&MaskFence != 0 {
 			continue
 		}
-		out[i], in = blankComments(strings.TrimRight(raw, "\r"), in)
+		out[i], in = blankComments(strings.TrimRight(raw, "\r"), in, func() { at(i) })
 	}
 	return out
 }
@@ -911,8 +934,9 @@ func liveText(lines []string, mask []uint8) []string {
 // blankComments is one line of Page.Text: in is whether a comment is open as
 // the line begins, and the second result whether one is open as it ends.
 // Inside a comment the first raw `-->` closes it, as Read reads it; the rest
-// of the line is commentWalk's.
-func blankComments(ln string, in bool) (string, bool) {
+// of the line is commentWalk's. escaped is called for an opener behind an
+// odd run of backslashes.
+func blankComments(ln string, in bool, escaped func()) (string, bool) {
 	b := []byte(ln)
 	blank := func(from, to int) {
 		for j := from; j < to; j++ {
@@ -929,7 +953,16 @@ func blankComments(ln string, in bool) (string, bool) {
 		start = k + len("-->")
 		blank(0, start)
 	}
-	open := commentWalk(ln, start, blank)
+	open := commentWalk(ln, start, func(from, to int) {
+		k := from
+		for k > 0 && ln[k-1] == '\\' {
+			k--
+		}
+		if (from-k)%2 == 1 {
+			escaped()
+		}
+		blank(from, to)
+	})
 	return string(b), open
 }
 

@@ -769,6 +769,16 @@ func TestReadPageReadsEveryLineThePageShows(t *testing.T) {
 		{"a comment opener in a script element", "<script>\n<!--\n</script>\nNot READY: shown\n-->\n"},
 		{"a fence in an HTML block", "<div>\n```\nNot READY: shown\n```\n</div>\n"},
 		{"a fence in a pre element", "<pre>\n\n```\nNot READY: shown\n```\n</pre>\n"},
+		{"a fence in an HTML block on a list marker's line", "- <div>\n  ```\n  Not READY: shown\n  ```\n"},
+		{"a comment opener in an HTML block on a list marker's line", "- <textarea>\n  <!--\n  </textarea>\n  Not READY: shown\n  -->\n"},
+		{"a comment opener in an xmp element", "<xmp>\n<!--\n</xmp>\nNot READY: shown\n-->\n"},
+		{"a comment opener in a plaintext element", "<plaintext>\n<!--\nNot READY: shown\n-->\n"},
+		{"a comment opener behind a backslash", "Status: \\<!-- Not READY: shown -->\n"},
+		{"a comment behind a backslash over several lines", "\\<!-- note\nNot READY: shown\n-->\n"},
+		{"a fence in a processing instruction", "<?x>\n\n```\nNot READY: shown\n```\n?>\n"},
+		{"a fence in a CDATA section", "<![CDATA[>\n```\nNot READY: shown\n```\n]]>\n"},
+		{"a fence in a blockquote, then a paragraph", "> ```\n> code\nNot READY: shown\n```\n"},
+		{"an inline comment a setext underline ends", "Title <!-- note\n---\nNot READY: shown\n-->\n"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -809,6 +819,8 @@ func TestReadPageReadsEveryLineThePageShows(t *testing.T) {
 		"- item\n  <!--\n  Not READY: code\n  -->\n",
 		"<div>\n\n```\nNot READY: code\n```\n",
 		"Text <!-- note\nNot READY: code\n--> after\n",
+		"\\\\<!-- Not READY: code -->\n",
+		"<?x?>\n\n```\nNot READY: code\n```\n",
 	} {
 		p := ReadPage(lines(in))
 		if l, ok := p.Unsure(); ok {
@@ -845,3 +857,4 @@ func TestSectionLineRangeNestedInReadsAnIndentedHeadingsDepth(t *testing.T) {
 		t.Fatalf("SectionLineRangeNestedIn = (%d, %d, %v), want (1, 3, true)", start, end, ok)
 	}
 }
+
