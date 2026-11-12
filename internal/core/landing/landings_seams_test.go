@@ -164,7 +164,9 @@ func TestLatestReviewsIsTheGatesReading(t *testing.T) {
 // TestGHAnswerContextKeepsTheAnswerOfAFailedExit: the forge client exits
 // non-zero on a GraphQL answer carrying errors and writes the answer, which
 // GHAnswerContext returns beside the error and GHContext does not; an answer
-// past the bound is returned by neither, its error naming the bound.
+// past the bound is returned by neither: GHAnswerContext's error names the
+// bound and keeps the stderr, and GHContext's names a failed exit with its
+// stderr first, as it did before GHAnswerContext.
 func TestGHAnswerContextKeepsTheAnswerOfAFailedExit(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	bin := t.TempDir()
@@ -183,10 +185,22 @@ func TestGHAnswerContextKeepsTheAnswerOfAFailedExit(t *testing.T) {
 	if err := os.WriteFile(big, []byte(strings.Repeat("x", MaxOutput+1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte("#!/bin/sh\ncat '"+big+"'\nexit 1\n"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte("#!/bin/sh\ncat '"+big+"'\necho 'gh: refused here' >&2\nexit 1\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := GHAnswerContext(t.Context(), t.TempDir(), "api", "graphql"); !errors.Is(err, ErrOutputCap) || out != "" {
+	if out, err := GHAnswerContext(t.Context(), t.TempDir(), "api", "graphql"); !errors.Is(err, ErrOutputCap) || out != "" || !strings.Contains(err.Error(), "gh: refused here") {
 		t.Fatalf("an answer past the bound: %d bytes, %v", len(out), err)
+	}
+	// Every other caller's call is judged by its exit first, as before: the
+	// failure and its stderr, not the bound.
+	if out, err := GHContext(t.Context(), t.TempDir(), "api", "graphql"); err == nil || out != "" || errors.Is(err, ErrOutputCap) ||
+		!strings.Contains(err.Error(), "exit status 1 (gh: refused here)") {
+		t.Fatalf("GHContext past the bound with a failed exit: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte("#!/bin/sh\ncat '"+big+"'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := GHContext(t.Context(), t.TempDir(), "api", "graphql"); err == nil || out != "" || !strings.Contains(err.Error(), "wrote more than") {
+		t.Fatalf("GHContext past the bound: %v", err)
 	}
 }

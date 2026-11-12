@@ -162,12 +162,28 @@ func receiptIn(wt gitutil.Worktree, rel, sha string) string {
 // runCapped runs cmd, returning its stdout within MaxOutput and, on a failure,
 // an error naming what and carrying its bounded stderr, scrubbed of
 // credential URLs (gitutil.ScrubURLCredentials) before it is cut.
+// A failed exit is judged first, so its error carries the client's stderr
+// whatever it wrote to stdout; only a call that succeeded is held to the bound.
 func runCapped(ctx context.Context, cmd *exec.Cmd, what string) (string, error) {
-	out, err := runCappedAnswer(ctx, cmd, what)
-	if err != nil {
-		return "", err
+	var stdout, stderr bytes.Buffer
+	if err := procgroup.RunToEOF(ctx, cmd, &stdout, &stderr); err != nil {
+		return "", exitError(what, err, &stderr)
 	}
-	return out, nil
+	if stdout.Len() > MaxOutput {
+		return "", fmt.Errorf("%s wrote more than %d bytes", what, MaxOutput)
+	}
+	return stdout.String(), nil
+}
+
+// exitError is a failed command's error: what, the exit, and its stderr,
+// scrubbed BEFORE the cut, as gitutil's runners do: a cut across a credential
+// URL leaves a fragment the scrubber no longer recognises.
+func exitError(what string, err error, stderr *bytes.Buffer) error {
+	msg := gitutil.ScrubURLCredentials(strings.TrimSpace(stderr.String()))
+	if len(msg) > maxStderr {
+		msg = msg[:maxStderr]
+	}
+	return fmt.Errorf("%s: %v (%s)", what, err, msg)
 }
 
 // ErrOutputCap marks a forge client's answer refused for passing MaxOutput.
@@ -177,21 +193,19 @@ var ErrOutputCap = errors.New("the forge client's output bound")
 // within MaxOutput beside the error of a failed exit: the forge client exits
 // non-zero on a GraphQL answer that carries errors, and writes that answer,
 // data and errors, to stdout. An answer past the bound is never returned, and
-// its error wraps ErrOutputCap.
+// its error wraps ErrOutputCap, with the exit and the stderr of a failed call
+// beside it. Only the landings reader runs through it (GHAnswerContext).
 func runCappedAnswer(ctx context.Context, cmd *exec.Cmd, what string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	err := procgroup.RunToEOF(ctx, cmd, &stdout, &stderr)
 	if stdout.Len() > MaxOutput {
+		if err != nil {
+			return "", fmt.Errorf("%s wrote more than %d bytes (%w); %w", what, MaxOutput, ErrOutputCap, exitError(what, err, &stderr))
+		}
 		return "", fmt.Errorf("%s wrote more than %d bytes (%w)", what, MaxOutput, ErrOutputCap)
 	}
 	if err != nil {
-		// Scrubbed BEFORE the cut, as gitutil's runners do: a cut across a
-		// credential URL leaves a fragment the scrubber no longer recognises.
-		msg := gitutil.ScrubURLCredentials(strings.TrimSpace(stderr.String()))
-		if len(msg) > maxStderr {
-			msg = msg[:maxStderr]
-		}
-		return stdout.String(), fmt.Errorf("%s: %v (%s)", what, err, msg)
+		return stdout.String(), exitError(what, err, &stderr)
 	}
 	return stdout.String(), nil
 }
