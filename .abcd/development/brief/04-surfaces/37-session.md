@@ -128,6 +128,23 @@ that was edited or that abcd did not write. It refuses outside a checkout abcd
 manages and for a release that publishes no checksum for the linux/amd64
 binary.
 
+Two more files sit in `.abcd/relay/`. `.abcd/relay/relays.json` names the
+deployed relay's https origin as the one relay the repository trusts
+(`{"relays": ["https://<relay>"]}`), and the session page reads it to find
+the relay. It is written only when the relay's origin is given, on the
+relay-origin flag: by the blueprint verb or, where sessions may run in the
+cloud, by the setup verb, which writes the blueprint as the blueprint verb
+does. Without the flag neither writes it. It carries the same digest, as its
+first key since JSON holds no comment, so the rerun rule above covers it too.
+
+`.abcd/relay/github-app.json` names the public client id of the team's GitHub
+sign-in app, `{"client_id": "…"}`, and nothing else. The setup verb writes
+it, once GitHub has created the app; an app already recorded is kept, and the
+file is not written again. It carries no digest. The client secret is never
+written, and a file that holds a `client_secret` is refused when read. A
+local session reads the client id from it, and `render.yaml` carries it once
+it is recorded.
+
 ## The page
 
 The page is written into a directory the person names, from files embedded in
