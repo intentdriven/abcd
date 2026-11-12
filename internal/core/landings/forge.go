@@ -94,8 +94,6 @@ type prAsk struct {
 
 // batchQuery is the GraphQL document asking about asks, each as the aliased
 // node p<N>. The owner and name are its variables $o and $r.
-//
-// It stays unexported for this step: step 4 exports it when it wires the verb.
 func batchQuery(asks []prAsk) string {
 	var b strings.Builder
 	b.WriteString(`query($o:String!,$r:String!){repository(owner:$o,name:$r){`)

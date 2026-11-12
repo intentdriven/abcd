@@ -630,15 +630,14 @@ type RevertGroup struct {
 	Rows  []Row  `json:"rows"`
 }
 
-// revertedGroups is l's reverted rows grouped by rule, each group where its
+// RevertedGroups is l's reverted rows grouped by rule, each group where its
 // newest row falls, and the untraceable reverts in a group of their own, last.
 // A row whose revert was withdrawn is grouped with the rest: its change was
 // reverted, and its mark says it was reinstated. A group is the rule's, not
 // the class's, so one may hold attended and unattended rows (a row a person
 // approved under auto shares the auto group with the automatic rows); each
-// row carries its own Unattended, which a reader splits the group by. It stays unexported for this
-// step: step 4 exports it when it wires the verb.
-func revertedGroups(l Listing) []RevertGroup {
+// row carries its own Unattended, which a reader splits the group by.
+func RevertedGroups(l Listing) []RevertGroup {
 	var groups []RevertGroup
 	at := map[string]int{}
 	var untraceable []Row
@@ -723,7 +722,7 @@ var (
 // variable only so a test can count them.
 var traceGit = gitutil.RunCappedBytesAsStoredContext
 
-// trace is the positional trace (the spec's Trace): name, a full or
+// TraceCommit is the positional trace (the spec's Trace): name, a full or
 // abbreviated hex name, resolved by git from stored objects alone, followed to
 // the first-parent commit of the default branch's tip, as last fetched, that
 // brought it, however far back. Its row is read from a listing, so it is
@@ -745,9 +744,8 @@ var traceGit = gitutil.RunCappedBytesAsStoredContext
 // for a tag, of the object it points at, and peel a ref to its commit as git
 // resolves it, only to choose the default branch's ref, whose tip commitOf
 // then reads as stored. It fetches nothing, writes only the listing's forge
-// cache, and binds every call to ctx as list does. It stays unexported for
-// this step: step 4 exports it when it wires the verb.
-func trace(ctx context.Context, repoRoot, name string, o Options) (Trace, error) {
+// cache, and binds every call to ctx as List does.
+func TraceCommit(ctx context.Context, repoRoot, name string, o Options) (Trace, error) {
 	ctx, cancel := bounded(ctx)
 	defer cancel()
 	t, err := traceCommit(ctx, repoRoot, name, o)
@@ -804,7 +802,7 @@ func traceCommit(ctx context.Context, repoRoot, name string, o Options) (Trace, 
 		return ""
 	}
 
-	l, err := list(ctx, repoRoot, Range{From: from(own), To: to, Tip: ref}, o)
+	l, err := List(ctx, repoRoot, Range{From: from(own), To: to, Tip: ref}, o)
 	if err != nil {
 		return Trace{}, err
 	}
@@ -818,7 +816,7 @@ func traceCommit(ctx context.Context, repoRoot, name string, o Options) (Trace, 
 	}
 	t.RangeNote = note
 	if oldest > own {
-		if l, err = list(ctx, repoRoot, Range{From: from(oldest), To: to, Tip: ref}, o); err != nil {
+		if l, err = List(ctx, repoRoot, Range{From: from(oldest), To: to, Tip: ref}, o); err != nil {
 			return Trace{}, err
 		}
 		if r, err = rowIn(l, line[own].sha); err != nil {

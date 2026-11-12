@@ -28,6 +28,17 @@ var ErrNoDefaultBranch = errors.New("the repository has no default branch to lis
 // tag is reachable from the default branch: there is no default range.
 var ErrNoReleaseTag = errors.New("no release tag (v*) is reachable from the default branch, so there is no range to list by default; name where to start with --since <tag|YYYY-MM-DD>")
 
+// ErrBadSince is what every since that names neither a tag the repository
+// holds nor a date is (errors.Is), so the verb refuses it as a range it was
+// not given.
+var ErrBadSince = errors.New("the range's start names neither a tag nor a date")
+
+// sinceError is a refused since, its text saying which.
+type sinceError struct{ msg string }
+
+func (e *sinceError) Error() string        { return e.msg }
+func (e *sinceError) Is(target error) bool { return target == ErrBadSince }
+
 // ReleaseTagPattern is the tags `git describe` takes the default range from.
 const ReleaseTagPattern = "v*"
 
@@ -37,9 +48,8 @@ var dateRe = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
 // refCap bounds one ref question's answer.
 const refCap = 4096
 
-// resolve is the Range from since to the default branch's tip as the
-// repository at repoRoot last fetched it. It stays unexported for this step:
-// step 4 exports it when it wires the verb.
+// Resolve is the Range from since to the default branch's tip as the
+// repository at repoRoot last fetched it, as abcd landings names it.
 //
 // since is a tag, a date YYYY-MM-DD (taken in UTC as the start of that day:
 // the range opens at the first commit on the tip's first-parent line, oldest
@@ -51,7 +61,7 @@ const refCap = 4096
 // Note says what that range then holds. Every git question is bound to ctx, or
 // to listBound when ctx sets no deadline, and a ctx that ends first is the
 // error, whatever the question it ended was.
-func resolve(ctx context.Context, repoRoot, since string) (Range, error) {
+func Resolve(ctx context.Context, repoRoot, since string) (Range, error) {
 	ctx, cancel := bounded(ctx)
 	defer cancel()
 	r, err := resolveRange(ctx, repoRoot, since)
@@ -92,7 +102,7 @@ func resolveRange(ctx context.Context, repoRoot, since string) (Range, error) {
 	case dateRe.MatchString(since):
 		day, err := time.ParseInLocation(time.DateOnly, since, time.UTC)
 		if err != nil {
-			return Range{}, fmt.Errorf("--since %s is not a date (YYYY-MM-DD)", since)
+			return Range{}, &sinceError{fmt.Sprintf("--since %s is not a date (YYYY-MM-DD)", since)}
 		}
 		r.From, r.Note = sinceDay(line, day)
 		r.Since = since
@@ -100,7 +110,7 @@ func resolveRange(ctx context.Context, repoRoot, since string) (Range, error) {
 	default:
 		from, err := tagCommit(ctx, repoRoot, since)
 		if err != nil {
-			return Range{}, fmt.Errorf("--since %s is neither a tag this repository holds nor a date (YYYY-MM-DD)", termsafe.Sanitize(boundText(since, maxTextBytes)))
+			return Range{}, &sinceError{fmt.Sprintf("--since %s is neither a tag this repository holds nor a date (YYYY-MM-DD)", termsafe.Sanitize(boundText(since, maxTextBytes)))}
 		}
 		r.From, r.Since = from, since
 	}

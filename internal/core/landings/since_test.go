@@ -41,11 +41,11 @@ func sinceFx(t *testing.T) (*gittest.Repo, []string) {
 // TestSinceTag: a tag opens the range after the commit it names.
 func TestSinceTag(t *testing.T) {
 	r, c := sinceFx(t)
-	got, err := resolve(t.Context(), r.Root(), "v0.1.0")
+	got, err := Resolve(t.Context(), r.Root(), "v0.1.0")
 	if err != nil || got != (Range{From: c[1], To: c[3], Tip: "main", Since: "v0.1.0"}) {
 		t.Fatalf("resolve(v0.1.0) = %+v, %v", got, err)
 	}
-	if got, err := resolve(t.Context(), r.Root(), "v0.2.0"); err != nil || got.From != c[2] {
+	if got, err := Resolve(t.Context(), r.Root(), "v0.2.0"); err != nil || got.From != c[2] {
 		t.Fatalf("an annotated tag resolves to %+v, %v", got, err)
 	}
 }
@@ -60,17 +60,17 @@ func TestSinceDate(t *testing.T) {
 		"2026-09-01": "",
 		"2026-10-05": c[3],
 	} {
-		got, err := resolve(t.Context(), r.Root(), since)
+		got, err := Resolve(t.Context(), r.Root(), since)
 		if err != nil || got.From != from || got.To != c[3] || got.Since != since {
 			t.Fatalf("resolve(%s) = %+v, %v; want from %q", since, got, err, from)
 		}
 	}
-	got, _ := resolve(t.Context(), r.Root(), "2026-10-03")
-	l, err := list(t.Context(), r.Root(), got, Options{Forge: (&fakeForge{t: t}).call})
+	got, _ := Resolve(t.Context(), r.Root(), "2026-10-03")
+	l, err := List(t.Context(), r.Root(), got, Options{Forge: (&fakeForge{t: t}).call})
 	if err != nil || len(l.Rows) != 2 || l.Rows[1].Commit != c[2] || l.Since != "2026-10-03" || l.Tip != "main" {
 		t.Fatalf("the listing from 2026-10-03: %+v, %v", l, err)
 	}
-	if _, err := resolve(t.Context(), r.Root(), "2026-13-40"); err == nil {
+	if _, err := Resolve(t.Context(), r.Root(), "2026-13-40"); err == nil {
 		t.Fatal("a date that is no day resolved")
 	}
 }
@@ -79,7 +79,7 @@ func TestSinceDate(t *testing.T) {
 // the last release tag reachable from the tip.
 func TestDefaultRangeIsTheLastReleaseTag(t *testing.T) {
 	r, c := sinceFx(t)
-	got, err := resolve(t.Context(), r.Root(), "")
+	got, err := Resolve(t.Context(), r.Root(), "")
 	if err != nil || got != (Range{From: c[2], To: c[3], Tip: "main", Since: "v0.2.0"}) {
 		t.Fatalf("resolve() = %+v, %v", got, err)
 	}
@@ -91,7 +91,7 @@ func TestNoTagAndNoSinceRefuses(t *testing.T) {
 	r := gittest.NewRepo(t)
 	r.Commit("chore: one")
 	r.Git("tag", "other")
-	_, err := resolve(t.Context(), r.Root(), "")
+	_, err := Resolve(t.Context(), r.Root(), "")
 	if !errors.Is(err, ErrNoReleaseTag) || !strings.Contains(err.Error(), "--since") {
 		t.Fatalf("resolve() = %v", err)
 	}
@@ -100,7 +100,7 @@ func TestNoTagAndNoSinceRefuses(t *testing.T) {
 // TestNoDefaultBranchRefuses: a repository with no commit has no range.
 func TestNoDefaultBranchRefuses(t *testing.T) {
 	r := gittest.NewRepo(t)
-	if _, err := resolve(t.Context(), r.Root(), ""); !errors.Is(err, ErrNoDefaultBranch) {
+	if _, err := Resolve(t.Context(), r.Root(), ""); !errors.Is(err, ErrNoDefaultBranch) {
 		t.Fatalf("resolve() = %v", err)
 	}
 }
@@ -110,7 +110,7 @@ func TestNoDefaultBranchRefuses(t *testing.T) {
 func TestSinceRefusesWhatIsNeither(t *testing.T) {
 	r, _ := sinceFx(t)
 	for _, since := range []string{"v9.9.9", "--all", "main~1", "x\x1b[2J", "refs/heads/main"} {
-		_, err := resolve(t.Context(), r.Root(), since)
+		_, err := Resolve(t.Context(), r.Root(), since)
 		if err == nil || strings.ContainsRune(err.Error(), 0x1b) {
 			t.Fatalf("resolve(%q) = %v", since, err)
 		}
@@ -125,19 +125,19 @@ func TestABackDatedCommitDoesNotCutADateRangeShort(t *testing.T) {
 	r, c := sinceFx(t)
 	back := dated(t, r, "chore: back-dated", "2026-09-15T12:00:00Z")
 	after := dated(t, r, "chore: after", "2026-10-06T12:00:00Z")
-	got, err := resolve(t.Context(), r.Root(), "2026-10-03")
+	got, err := Resolve(t.Context(), r.Root(), "2026-10-03")
 	if err != nil || got.From != c[1] || got.To != after || !strings.Contains(got.Note, "1 of the range's first-parent commits are dated before 2026-10-03") {
 		t.Fatalf("resolve(2026-10-03) = %+v, %v", got, err)
 	}
-	l, err := list(t.Context(), r.Root(), got, Options{Forge: (&fakeForge{t: t}).call})
+	l, err := List(t.Context(), r.Root(), got, Options{Forge: (&fakeForge{t: t}).call})
 	if err != nil || len(l.Rows) != 4 || l.Rows[1].Commit != back || l.SinceNote == "" {
 		t.Fatalf("the listing from 2026-10-03: %+v, %v", l, err)
 	}
-	if got, _ := resolve(t.Context(), r.Root(), "2026-10-02"); got.From != c[0] || got.Note == "" {
+	if got, _ := Resolve(t.Context(), r.Root(), "2026-10-02"); got.From != c[0] || got.Note == "" {
 		t.Fatalf("resolve(2026-10-02) = %+v", got)
 	}
 	inOrder, _ := sinceFx(t)
-	if got, _ := resolve(t.Context(), inOrder.Root(), "2026-10-03"); got.Note != "" {
+	if got, _ := Resolve(t.Context(), inOrder.Root(), "2026-10-03"); got.Note != "" {
 		t.Fatalf("a line in order has a note: %q", got.Note)
 	}
 }
@@ -149,7 +149,7 @@ func TestAnEndedCtxIsReportedAsThat(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	for _, since := range []string{"", "v0.1.0", "2026-10-03"} {
-		if _, err := resolve(ctx, r.Root(), since); !errors.Is(err, context.Canceled) {
+		if _, err := Resolve(ctx, r.Root(), since); !errors.Is(err, context.Canceled) {
 			t.Fatalf("resolve(%q) with an ended ctx = %v", since, err)
 		}
 	}
@@ -165,15 +165,15 @@ func TestATagOffTheFirstParentLineIsSaid(t *testing.T) {
 	r.Git("tag", "v0.1.1")
 	r.Git("checkout", "-q", "main")
 	r.Git("merge", "-q", "--no-ff", "-m", "Merge pull request #5 from org/release", "release")
-	got, err := resolve(t.Context(), r.Root(), "v0.1.1")
+	got, err := Resolve(t.Context(), r.Root(), "v0.1.1")
 	if err != nil || got.From != tagged || !strings.Contains(got.Note, "not on main's first-parent line") {
 		t.Fatalf("resolve(v0.1.1) = %+v, %v", got, err)
 	}
-	l, err := list(t.Context(), r.Root(), got, Options{Forge: (&fakeForge{t: t}).call})
+	l, err := List(t.Context(), r.Root(), got, Options{Forge: (&fakeForge{t: t}).call})
 	if err != nil || len(l.Rows) != 3 || !strings.Contains(l.SinceNote, "not on main's first-parent line") {
 		t.Fatalf("the listing from v0.1.1: %+v, %v", l, err)
 	}
-	if got, err := resolve(t.Context(), r.Root(), "v0.1.0"); err != nil || got.Note != "" {
+	if got, err := Resolve(t.Context(), r.Root(), "v0.1.0"); err != nil || got.Note != "" {
 		t.Fatalf("a tag on the line has a note: %+v, %v", got, err)
 	}
 }

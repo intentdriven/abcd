@@ -93,7 +93,7 @@ func (f *fx) setMode(mode string) string {
 
 func (f *fx) list(forge landing.ForgeCall) Listing {
 	f.t.Helper()
-	l, err := list(context.Background(), f.r.Root(), Range{From: f.base, To: f.head()}, Options{Forge: forge})
+	l, err := List(context.Background(), f.r.Root(), Range{From: f.base, To: f.head()}, Options{Forge: forge})
 	if err != nil {
 		f.t.Fatalf("list: %v", err)
 	}

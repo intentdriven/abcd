@@ -545,7 +545,7 @@ func TestAListingWhoseTimeRunsOutKeepsWhatItRead(t *testing.T) {
 	ff := manyMerges(t, f, MaxBatch+1)
 	ctx, cancel := context.WithCancel(t.Context())
 	ff.onCall = cancel
-	if _, err := list(ctx, f.r.Root(), Range{From: f.base, To: f.head()}, Options{Forge: ff.call}); !errors.Is(err, context.Canceled) || ff.calls != 1 {
+	if _, err := List(ctx, f.r.Root(), Range{From: f.base, To: f.head()}, Options{Forge: ff.call}); !errors.Is(err, context.Canceled) || ff.calls != 1 {
 		t.Fatalf("list = %v after %d calls; want the ctx's end after one", err, ff.calls)
 	}
 	ff.onCall, ff.calls, ff.asked = nil, 0, nil
@@ -581,7 +581,7 @@ func TestAnEndedCtxStopsTheListing(t *testing.T) {
 		ff.calls = 0
 		ctx, cancel := context.WithCancel(t.Context())
 		ff.onCall = cancel
-		l, err := list(ctx, f.r.Root(), Range{From: f.base, To: f.head()}, Options{Forge: ff.call, Worktrees: given})
+		l, err := List(ctx, f.r.Root(), Range{From: f.base, To: f.head()}, Options{Forge: ff.call, Worktrees: given})
 		cancel()
 		if !errors.Is(err, context.Canceled) || ff.calls != 1 || l.Rows != nil {
 			t.Fatalf("list = %d rows, %v after %d calls; want the ctx's end after one", len(l.Rows), err, ff.calls)
@@ -655,7 +655,7 @@ func TestTheCacheKeepsOnlyAnswersTheRowAccepts(t *testing.T) {
 	gf := manyMerges(t, g, 1)
 	g.r.Write(".gitignore", "")
 	g.r.Commit("chore: the tier is no longer ignored")
-	l, err := list(t.Context(), g.r.Root(), Range{From: g.base, To: g.head()}, Options{Forge: gf.call})
+	l, err := List(t.Context(), g.r.Root(), Range{From: g.base, To: g.head()}, Options{Forge: gf.call})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -730,7 +730,7 @@ func TestTheLogIsHeldToGitsOwnListing(t *testing.T) {
 		}
 		return append(out, []byte(forged+"\x1f"+push+"\x1f1\x1fMallory\x1fMerge pull request #9 from x\n\x00")...), err
 	}
-	if _, err := list(t.Context(), f.r.Root(), Range{From: f.base, To: push}, Options{Forge: (&fakeForge{t: t}).call}); err == nil ||
+	if _, err := List(t.Context(), f.r.Root(), Range{From: f.base, To: push}, Options{Forge: (&fakeForge{t: t}).call}); err == nil ||
 		!strings.Contains(err.Error(), "does not read apart") {
 		t.Fatalf("a log holding a commit git did not list: %v", err)
 	}
@@ -744,7 +744,7 @@ func TestAHistoryPastItsBoundIsRefusedWhole(t *testing.T) {
 	keep := maxHistoryBytes
 	t.Cleanup(func() { maxHistoryBytes = keep })
 	maxHistoryBytes = 256
-	if _, err := list(t.Context(), f.r.Root(), Range{From: f.base, To: f.head()}, Options{Forge: (&fakeForge{t: t}).call}); err == nil {
+	if _, err := List(t.Context(), f.r.Root(), Range{From: f.base, To: f.head()}, Options{Forge: (&fakeForge{t: t}).call}); err == nil {
 		t.Fatal("a history past its bound was listed")
 	}
 }
@@ -837,7 +837,7 @@ func TestEveryTextAListingCarriesIsMasked(t *testing.T) {
 	m := f.merge(1, "d")
 	sq := f.commit("fix: s (#2)")
 	ff := &fakeForge{t: t, err: errors.New("gh api graphql: exit status 1 (\x1b[2J HTTP 502)")}
-	l, err := list(t.Context(), f.r.Root(), Range{From: f.base, To: sq, Tip: "main\x1b[2J", Since: "v1\x1b[2J", Note: "a note\x1b[2J"}, Options{Forge: ff.call})
+	l, err := List(t.Context(), f.r.Root(), Range{From: f.base, To: sq, Tip: "main\x1b[2J", Since: "v1\x1b[2J", Note: "a note\x1b[2J"}, Options{Forge: ff.call})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -850,7 +850,7 @@ func TestEveryTextAListingCarriesIsMasked(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	gone := filepath.Join(home, "no\x1b[2Jrepo")
-	_, err = list(t.Context(), gone, Range{To: m}, Options{Forge: ff.call})
+	_, err = List(t.Context(), gone, Range{To: m}, Options{Forge: ff.call})
 	if err == nil || strings.ContainsRune(err.Error(), 0x1b) || strings.Contains(err.Error(), home) {
 		t.Fatalf("list's error %q is not masked", err)
 	}

@@ -298,16 +298,15 @@ func masked(what string, err error) error {
 	return &maskedError{msg: what + ": " + whyText(err), cause: err}
 }
 
-// list is the reader's entry (the spec's List). It stays unexported for this
-// step: step 4 exports it when it wires the verb.
+// List is the reader's entry, which abcd landings and the spot-check call.
 //
-// list reads every first-parent commit of r on the repository at repoRoot,
+// List reads every first-parent commit of r on the repository at repoRoot,
 // newest first, and classes each. It fetches nothing; it writes only its forge
 // cache in repoRoot's local tier. Every git call and every forge call is bound
 // to ctx, or to listBound when ctx sets no deadline, and each forge batch also
 // to landing.ForgeTimeout. A ctx that ends before the listing is done is the
 // error, whatever the read it ended was.
-func list(ctx context.Context, repoRoot string, r Range, o Options) (Listing, error) {
+func List(ctx context.Context, repoRoot string, r Range, o Options) (Listing, error) {
 	ctx, cancel := bounded(ctx)
 	defer cancel()
 	l, err := listRows(ctx, repoRoot, r, o)

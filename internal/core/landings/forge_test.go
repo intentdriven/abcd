@@ -163,7 +163,7 @@ func TestTheCacheIsKeyedByTheRowsCommit(t *testing.T) {
 	f.r.Git("commit", "-q", "-m", "chore: a cache that came with a commit")
 	ff := &fakeForge{t: t}
 	ff.add(answer(1, m, b))
-	l, err := list(t.Context(), f.r.Root(), Range{From: f.base, To: m}, Options{Forge: ff.call})
+	l, err := List(t.Context(), f.r.Root(), Range{From: f.base, To: m}, Options{Forge: ff.call})
 	if err != nil {
 		t.Fatal(err)
 	}
