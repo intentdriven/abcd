@@ -858,3 +858,17 @@ func TestSectionLineRangeNestedInReadsAnIndentedHeadingsDepth(t *testing.T) {
 	}
 }
 
+// TestSectionLineRangeNestedInEndsAtAnIndentedHeading: a heading indented up
+// to three columns ends the section as it opens one; at four columns it is
+// not a heading.
+func TestSectionLineRangeNestedInEndsAtAnIndentedHeading(t *testing.T) {
+	head := regexp.MustCompile(`^ {0,3}#{1,6}\s+Open Questions\s*$`)
+	body := lines("## Open Questions\n\n- a?\n\n   ## Decisions\n\n- decided\n")
+	if _, end, ok := SectionLineRangeNestedIn(body, Mask(body), head); !ok || end != 4 {
+		t.Fatalf("SectionLineRangeNestedIn end = %d (%v), want 4", end, ok)
+	}
+	code := lines("## Open Questions\n\n- a?\n\n    ## not a heading\n")
+	if _, end, _ := SectionLineRangeNestedIn(code, Mask(code), head); end != len(code) {
+		t.Fatalf("a line four columns in ends nothing: end = %d, want %d", end, len(code))
+	}
+}

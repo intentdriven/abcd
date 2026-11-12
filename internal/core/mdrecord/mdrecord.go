@@ -523,8 +523,9 @@ func SectionLineRangeIn(lines []string, mask []uint8, headRe *regexp.Regexp) (st
 
 // SectionLineRangeNestedIn is SectionLineRangeIn for a section that holds
 // sub-sections of its own: its body runs to the next live heading of the same
-// depth or shallower, so a `### Relay` under `## Open Questions` is inside it
-// and a `## Decisions` after it is not.
+// depth or shallower, indented up to three columns as its own may be, so a
+// `### Relay` under `## Open Questions` is inside it and a `## Decisions`
+// after it is not.
 func SectionLineRangeNestedIn(lines []string, mask []uint8, headRe *regexp.Regexp) (start, end int, ok bool) {
 	for i, ln := range lines {
 		ln = strings.TrimRight(ln, "\r")
@@ -535,7 +536,7 @@ func SectionLineRangeNestedIn(lines []string, mask []uint8, headRe *regexp.Regex
 		end = len(lines)
 		for j := i + 1; j < len(lines); j++ {
 			next := strings.TrimRight(lines[j], "\r")
-			if !masked(mask, j) && headingRe.MatchString(next) && headingDepth(next) <= depth {
+			if !masked(mask, j) && headingDepth(next) <= depth {
 				end = j
 				break
 			}

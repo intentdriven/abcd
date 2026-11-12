@@ -46,6 +46,12 @@ func TestOpenQuestionsReadsWhatThePageShows(t *testing.T) {
 		{"an indented heading with a closing run", "  ## Open Questions ##\n\n- Which cache?\n", []int{5}},
 		{"a comment opened after text runs past a blank line", "Text <!-- note\n\n## Open Questions\n\n- which cache?\n\n-->\n", []int{7}},
 		{"a settled section in a comment settles nothing", "## Open Questions\n\n<!-- _All resolved._ -->\n- Which cache?\n", []int{6}},
+		{"an empty item", "## Open Questions\n\n-\n\n- Which cache?\n", []int{5, 7}},
+		{"a thematic break of stars", "## Open Questions\n\n* * *\n", []int{5}},
+		{"a two-column bullet under a numbered item", "## Open Questions\n\n1. Which cache?\n  - Which size?\n", []int{5, 6}},
+		{"a numbered item's marker left of its content after a blank", "## Open Questions\n\n1. Which cache?\n\n  resolved: placeholder\n", []int{5}},
+		{"an indented heading ends the section", "## Open Questions\n\n- Which cache?\n\n   ## Decisions\n\n- decided\n", []int{5}},
+		{"a setext heading opens no section", "Open Questions\n--------------\n\n- Which cache?\n", nil},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
