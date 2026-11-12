@@ -577,6 +577,9 @@ func askBatch(forge landing.ForgeCall, batch []prAsk) batchResult {
 		r.whole, r.stop = "the forge could not be asked about "+about+": "+whyText(err), true
 		return r
 	case errors.Is(err, landing.ErrOutputCap):
+		// A failed exit whose output also passes the bound is halved before
+		// its answer is read as a refusal; that order follows from the bound
+		// being judged first, and is not a rule.
 		r.whole, r.split, r.size = "the forge's answer about "+about+" passes the forge client's output bound", true, true
 		return r
 	}
