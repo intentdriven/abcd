@@ -209,6 +209,16 @@ func WorkingTreeCommand(root string, args ...string) *exec.Cmd {
 	return workingTreeCommand(context.Background(), root, ExecPins(), args)
 }
 
+// WorkingTreeCommandContext is WorkingTreeCommand bound to ctx, for a caller on
+// a deadline: git is killed when ctx ends (exec.CommandContext's default), so
+// it is only for a command that writes nothing to the repository or the
+// working tree (a status read with --no-optional-locks, an ls-files listing),
+// whose interruption leaves nothing to repair. A command that removes or
+// rewrites files, `git worktree remove` among them, runs unbound.
+func WorkingTreeCommandContext(ctx context.Context, root string, args ...string) *exec.Cmd {
+	return workingTreeCommand(ctx, root, ExecPins(), args)
+}
+
 // WorkingTreeCommitCommand is WorkingTreeCommand for a git command that runs
 // the repository's hooks on a working tree abcd makes for the work, so a
 // lane's record commit, a merge into a lane, a lane's reset --hard and the

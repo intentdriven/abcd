@@ -68,14 +68,20 @@ const (
 // ErrOverCap marks, beside ErrRefused, a refusal of a message the writer
 // composed past MaxMessageBytes, so a caller can tell a footprint too large
 // for one reservation from any other refusal.
+//
+// ErrFinished marks, beside ErrBackOff, the one back-off whose record sits
+// finished on origin's default branch as the act just fetched it (an issue
+// resolved or wontfix, an intent shipped or superseded), so a caller tells that
+// refusal from every other without reading its message.
 var (
-	ErrBackOff = errors.New("the record is reserved")
-	ErrRefused = errors.New("the reservation was refused")
-	ErrOverCap = errors.New("the message passes its cap")
+	ErrBackOff  = errors.New("the record is reserved")
+	ErrRefused  = errors.New("the reservation was refused")
+	ErrOverCap  = errors.New("the message passes its cap")
+	ErrFinished = errors.New("the record is finished on origin's default branch")
 )
 
 // refusal is a refusal carrying its class (ErrBackOff or ErrRefused), and
-// also, when set, a mark beside it (ErrOverCap).
+// also, when set, a mark beside it (ErrOverCap or ErrFinished).
 type refusal struct {
 	msg  string
 	kind error
@@ -197,5 +203,10 @@ type NotHeld struct {
 	kind error
 }
 
-func (e *NotHeld) Error() string        { return e.msg }
-func (e *NotHeld) Is(target error) bool { return target == e.kind }
+func (e *NotHeld) Error() string { return e.msg }
+
+// Is matches the NotHeld's class, and ErrFinished when Derived names a record,
+// not a release, finished on origin's default branch.
+func (e *NotHeld) Is(target error) bool {
+	return target == e.kind || (target == ErrFinished && e.Derived && !isRelease(e.Record))
+}

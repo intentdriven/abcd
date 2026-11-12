@@ -426,7 +426,13 @@ type StartResult struct {
 	// through on because reservation.fork_origin names it (claim's
 	// Result.ForkAllowed); "" when none was.
 	ForkAllowed string `json:"fork_allowed,omitempty"`
-	Next        string `json:"next"`
+	// Closed is each lane a resumed build closed because its pull request had
+	// merged (closeOnResume); empty when it closed none.
+	Closed []ClosedLane `json:"closed,omitempty"`
+	// Finished is true when that closing left the run nothing to build: the
+	// run is complete, and the invocation started nothing more.
+	Finished bool   `json:"finished,omitempty"`
+	Next     string `json:"next"`
 }
 
 // StepResult is what advance and Receipt return.
@@ -682,10 +688,27 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		if err == nil && flags.set {
 			err = resumeWithFlags(res, flags)
 		}
+		// A reservation refused because the record sits finished on origin's
+		// default branch (claim.ErrFinished, and that refusal alone) has nothing
+		// to reserve: a build whose closing of merged lanes then finishes the run
+		// says so, and any other resume of it is refused as before
+		// (closeOnResume). Every other refusal of the reservation stands.
+		var unreserved error
 		if err == nil {
-			err = reserveResumed(repoRoot, &res, o)
+			if err = reserveResumed(repoRoot, &res, o); err != nil {
+				if rf, ok := AsRefusal(err); ok && rf.recordFinished {
+					unreserved, err = err, nil
+				}
+			}
 		}
 		if err == nil {
+			res, err = closeOnResume(repoRoot, res, o, unreserved != nil)
+			if err == nil && unreserved != nil && !res.Finished {
+				err = unreserved
+			}
+		}
+		// A run the closing finished admits nothing late: it is complete.
+		if err == nil && !res.Finished {
 			err = admitResumed(repoRoot, res.RunID, o)
 		}
 		if err != nil {

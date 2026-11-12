@@ -59,6 +59,11 @@ const (
 // clause a refusal no git would write.
 var claimReserve = claim.Reserve
 
+// reserveFresh is claim.Reserve as reserveKey makes it, a seam a test replaces
+// to give a reservation a refusal claim gives no record finished on origin's
+// default branch (it backs off such a record before it judges any holder).
+var reserveFresh = claim.Reserve
+
 // claimOptions are the options a run's reservation act runs under: the step's
 // clock, so a test's injected clock dates the commits too.
 func claimOptions(now time.Time) claim.Options {
@@ -667,7 +672,7 @@ type reserved struct {
 // start.
 func reserveKey(repoRoot, key string, req claim.Request, now time.Time) (reserved, error) {
 	req.Record = key
-	res, err := claim.Reserve(repoRoot, req, claimOptions(now))
+	res, err := reserveFresh(repoRoot, req, claimOptions(now))
 	return reservedNote(res, err, now)
 }
 
@@ -714,8 +719,10 @@ func reserveForJudgement(repoRoot, id string, footprint []string, takeOver bool,
 func reservedNote(res claim.Result, err error, now time.Time) (reserved, error) {
 	if err != nil {
 		if errors.Is(err, claim.ErrBackOff) {
-			return reserved{}, contend(StageReservation, CheckReservation, "", err.Error(),
+			r := contend(StageReservation, CheckReservation, "", err.Error(),
 				"take other work; `abcd peers` lists the reservations on "+claim.Remote)
+			r.recordFinished = errors.Is(err, claim.ErrFinished)
+			return reserved{}, r
 		}
 		if ce := (*claim.CapError)(nil); errors.As(err, &ce) {
 			r := refuse(StageReservation, "", "", err.Error(), "wait for one of your pull requests to merge, which ends its reservation, then run the verb again")
