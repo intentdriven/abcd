@@ -792,7 +792,8 @@ what it did in `next`:
   driver: the drain claims it first, as a step claims a run, whether it is this drain's lane,
   an ended drain's or a build's, so a drain run by a newer abcd finishes the merged lanes a
   gone driver left. A parked run that is not this drain's lane is the drain's for that save
-  alone, and so for the check that takes up a lifted stop's mark on it: the claim is let go
+  alone, and so, where its control record names a driver, for the check that takes up a
+  lifted stop's mark on it: the claim is let go
   once the save is made, with a line in the run's record where the claim named a driver it
   replaced, so the person's own step from
   another session claims it after the move. A run another live session drives, or that the claim cannot take (the

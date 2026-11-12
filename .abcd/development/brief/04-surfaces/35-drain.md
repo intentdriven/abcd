@@ -879,7 +879,8 @@ run, whether it is a lane of this drain's, an ended drain's or a build's, so a d
 newer binary finishes the merged lanes a gone driver left; a run another live session
 drives, or that the claim cannot take, is left as its file stands and named with why. A
 parked run that is not one of this drain's lanes is claimed for that save alone, as it is
-for the check that takes up a lifted stop's mark on it, and the claim is let go once the
+for the check that takes up a lifted stop's mark on it where its control record names a
+driver, and the claim is let go once the
 save is made, with a line in the run's record where the claim named a driver it replaced,
 so the person's own step from another
 session claims the run after the move. A
