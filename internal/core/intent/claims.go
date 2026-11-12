@@ -194,9 +194,8 @@ func parseConditions(lines []string) []ScopeCondition {
 		return []ScopeCondition{}
 	}
 	conds := []ScopeCondition{}
-	spans := mdrecord.CodeSpans(lines)
 	for _, b := range mdrecord.BulletBlocks(lines, mask, start, end) {
-		ids, malformed, text := readConditionBlock(lines, spans, b)
+		ids, malformed, text := readConditionBlock(lines, b)
 		c := ScopeCondition{Ordinal: len(conds) + 1, Text: text, MalformedMarker: malformed}
 		if len(ids) > 0 {
 			c.ID, c.ExtraIDs = ids[0], ids[1:]
@@ -211,21 +210,20 @@ func parseConditions(lines []string) []ScopeCondition {
 // the bullet's prose with the well-formed markers excised. A malformed marker is
 // left in the prose deliberately: the gate names it and the remedy is to delete
 // it, so the reader has to be able to see what to delete.
-func readConditionBlock(lines []string, spans [][][2]int, b mdrecord.BulletBlock) (ids []string, malformed bool, text string) {
+func readConditionBlock(lines []string, b mdrecord.BulletBlock) (ids []string, malformed bool, text string) {
 	var parts []string
 	for i := b.Start; i < b.End; i++ {
 		ln := strings.TrimRight(lines[i], "\r")
+		spans := mdrecord.CodeSpanRanges(ln)
 		var live []string
 		for _, m := range condMarkerRe.FindAllStringSubmatchIndex(ln, -1) {
 			// A marker quoted in backticks is DOCUMENTATION of the grammar, not an
 			// identity — the gradient's own prose writes it that way. Reading it as
-			// one hands a condition an id nobody minted. The spans are
-			// mdrecord.CodeSpans': one that opens and closes on the line, and
-			// none on a line its stretch reads whole (a backtick run left open
-			// above it) or over a line break. There a marker the page shows
-			// quoted reads as an identity, as it did when spans were paired a
-			// line at a time.
-			if mdrecord.InAnyRange(spans[i], m[0]) {
+			// one hands a condition an id nobody minted. The spans are paired
+			// on the line alone, whatever the lines above it leave open, so a
+			// marker quoted on its line is not an identity even where the page
+			// may pair a backtick over the line break.
+			if mdrecord.InAnyRange(spans, m[0]) {
 				malformed = true
 				continue
 			}
@@ -313,7 +311,8 @@ func UnmarkedConditionOrdinals(conds []ScopeCondition) []int {
 // surviving marker and the retired one simply stops appearing.
 func stampScopeConditions(content string, minter recordid.Minter) (string, int, error) {
 	lines := strings.Split(content, "\n")
-	mask := mdrecord.Mask(lines)
+	rd := mdrecord.Read(lines, mdrecord.TopLevel)
+	mask := rd.Mask
 	start, end, ok := mdrecord.SectionLineRangeIn(lines, mask, scopeHeadingRe)
 	if !ok {
 		return content, 0, nil
@@ -331,6 +330,12 @@ func stampScopeConditions(content string, minter recordid.Minter) (string, int, 
 	if mdrecord.AnyMasked(mask, start, end, mdrecord.MaskComment) {
 		return "", 0, fmt.Errorf("intent: '## Scope Conditions' contains an HTML comment; refusing to stamp a section where a marker's own `-->` would close the comment early")
 	}
+	// Below a backtick run a line leaves open, the page may pair the run over
+	// the line break, and where that turns whether an opener starts a comment
+	// the mask cannot say where comments end, so the stamp refuses the record.
+	if line, ok := rd.Unsure(); ok {
+		return "", 0, fmt.Errorf("intent: line %d holds an HTML comment opener the page may read inside a code span over a line break; refusing to stamp a record whose comments can be read two ways", line+1)
+	}
 	used := map[string]bool{}
 	for _, c := range parseConditions(lines) {
 		if c.ID != "" {
@@ -341,13 +346,12 @@ func stampScopeConditions(content string, minter recordid.Minter) (string, int, 
 		}
 	}
 	stamped := 0
-	spans := mdrecord.CodeSpans(lines)
 	for _, b := range mdrecord.BulletBlocks(lines, mask, start, end) {
 		// Marker-free bullets only. A bullet that already carries an identity —
 		// wherever in its wrapped text that identity sits — is never re-minted, and
 		// one carrying a near-miss of a marker is left for the human to correct
 		// rather than given a second thing that looks like an identity.
-		ids, malformed, _ := readConditionBlock(lines, spans, b)
+		ids, malformed, _ := readConditionBlock(lines, b)
 		if len(ids) > 0 || malformed {
 			continue
 		}

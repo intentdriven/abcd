@@ -69,17 +69,27 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   inline code spans that open and close on one line, fenced blocks (one at
   up to three columns under a list item included) and HTML comments are not
   read; an indented code block is read. A comment opener inside a one-line
-  code span opens no comment. A line that leaves a backtick run with no closer
-  of its length later on that line may pair it, on the page, with a backtick
-  on a line below, so from that run to the next blank line (a line of nothing
-  but spaces and tabs) the reader blanks no span and opens no comment: it
-  reads that text whole, and it reads a span over a line break as prose. So a
-  phrase quoted rather than said goes in an inline code span that opens and
-  closes on one line. The reader pairs a backtick inside an HTML tag or an
-  autolink as if it stood in text, opens a comment at an opener inside a
-  tag's attribute, blanks a one-line span or comment inside an indented code
-  block or an HTML block and a span over a table cell's `|`, and does not end
-  a line at a carriage return alone. A closed spec, and a record in `shipped/`,
+  code span opens no comment, and a backtick behind an odd run of backslashes
+  opens no span. A line that leaves a backtick run with no closer of its
+  length later on that line may pair it, on the page, with a backtick on a
+  line below, so on the lines below it, to the next blank line outside a fence
+  or comment (a line of nothing but spaces and tabs; a blank line inside a
+  fence or comment ends this too), the reader blanks no span, and it reads a
+  span over a line break as prose; the run's own line keeps its spans. There,
+  and after the run on its own line, a comment opener that is the first thing
+  on its line, at up to three columns, opens a comment; any other opener's
+  comment is read as text when it closes on its line, and when it does not,
+  the line is named and the text from there on is read. So a phrase quoted
+  rather than said goes in an inline code span that opens and closes on one
+  line. The reader pairs a backtick inside an HTML tag, an autolink, an inline
+  link's destination or title, or a processing instruction, declaration or
+  CDATA section in the middle of a line, as if it stood in text; opens a
+  comment at an opener inside a tag's attribute; reads a one-line comment
+  whose text holds two hyphens as a comment; blanks a one-line span or comment
+  inside an indented code block or an HTML block and a span over a table
+  cell's `|`; takes a backslash before a backtick inside an indented code
+  block, an HTML block or a tag, where the page shows the backslash, as making
+  the backtick literal; and does not end a line at a carriage return alone. A closed spec, and a record in `shipped/`,
   `superseded/` or `disciplines/`, is not judged.
 - **open questions** — no open question under the record's `## Open Questions`
   or a sub-heading of it. The reader fails closed and knows the record's two settled markers: a section

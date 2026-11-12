@@ -413,11 +413,11 @@ type proseLine struct {
 	// the marker anywhere on the line.
 	illustrative, forwardLooking bool
 	// forwardMarker is a forward-looking marker outside every inline code span
-	// (mdrecord.CodeSpans, the one reading of a span): a marker, not a
+	// (mdrecord.CodeSpanRanges, the one reading of a span): a marker, not a
 	// sentence about the marker, which is what a report asking for the marker's
-	// removal must be about. CodeSpans reports no span on a line its stretch
-	// reads whole (a backtick run left open above it) or over a line break, so
-	// a marker the page shows quoted there reads as a marker.
+	// removal must be about. The spans are paired on the line alone, whatever
+	// the lines above it leave open, so a marker quoted on its line is a
+	// mention even where the page may pair a backtick over the line break.
 	forwardMarker bool
 }
 
@@ -427,7 +427,6 @@ type proseLine struct {
 // the lines skip marks, and lines that cite no id are not returned.
 func readProseLines(lines []string, skip []bool) []proseLine {
 	mask := fenceMask(lines)
-	spans := mdrecord.CodeSpans(lines)
 	var out []proseLine
 	for i := 0; i < len(lines); i++ {
 		if mask[i] || (i < len(skip) && skip[i]) {
@@ -455,8 +454,9 @@ func readProseLines(lines []string, skip []bool) []proseLine {
 				pl.forwardLooking = true
 			}
 		}
+		spans := mdrecord.CodeSpanRanges(line)
 		for _, m := range proseEscapeRe.FindAllStringSubmatchIndex(line, -1) {
-			if strings.EqualFold(line[m[2]:m[3]], "forward-looking") && !mdrecord.InAnyRange(spans[i], m[0]) {
+			if strings.EqualFold(line[m[2]:m[3]], "forward-looking") && !mdrecord.InAnyRange(spans, m[0]) {
 				pl.forwardMarker = true
 			}
 		}

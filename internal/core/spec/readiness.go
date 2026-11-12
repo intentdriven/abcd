@@ -118,12 +118,18 @@ var (
 // comments are not read, a comment that opens and closes on one line
 // included; the text before a comment's opener and after its closer, on the
 // same line, is, and so is an indented code block. An inline code span that
-// opens and closes on one line is not read (mdrecord.Page.Spans), except below
-// a backtick run that a line leaves open with no closer on that line: from
-// that run to the next blank line no comment opens and the lines are read
-// whole, since the page may pair the run over a line break. A span over a line
-// break is read. A line carrying a sentence and a label is reported once, as
-// not ready.
+// opens and closes on one line is not read (mdrecord.Page.Spans), except
+// below a backtick run that a line leaves with no closer on that line, since
+// the page may pair the run over a line break: on the lines below it, to the
+// next blank line outside a fence or comment (a blank line inside one also
+// ends this), no span is blanked, and the run's own line keeps its spans.
+// There, and after the run on its own line, a comment opener that is the
+// first thing on its line, at up to three columns, opens a comment, since the
+// page starts one there in every reading; any other opener's comment is read
+// as text when it closes on its line, and when it does not, every line from
+// that one is read as its own text and the line is named (LayoutStatements).
+// A span over a line break is read. A line carrying a sentence and a label is
+// reported once, as not ready.
 func Unsettled(content string) []Statement {
 	lines := strings.Split(content, "\n")
 	body := 0

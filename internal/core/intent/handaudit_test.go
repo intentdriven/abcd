@@ -98,9 +98,10 @@ func TestHandAuditedReadsOnlyItsOwnSection(t *testing.T) {
 }
 
 // TestHandAuditedReadsCodeSpansOnOneLine: a verdict inside a span that opens
-// and closes on its line is quoted; a span over a line break is read as prose,
-// a verdict in it included; and a span is blanked, not cut out, so the text
-// either side of one cannot join into a comment.
+// and closes on its line is quoted; a span is paired on each line alone, so
+// one over a line break is read as prose, a verdict in it included, and on
+// the line below it two backticks pair as on any line; and a span is blanked,
+// not cut out, so the text either side of one cannot join into a comment.
 func TestHandAuditedReadsCodeSpansOnOneLine(t *testing.T) {
 	if HandAudited(withAuditNotes("Criterion 2 names the `MET` token in its refusal.")) {
 		t.Errorf("a verdict quoted on one line read as given")
@@ -108,10 +109,19 @@ func TestHandAuditedReadsCodeSpansOnOneLine(t *testing.T) {
 	if !HandAudited(withAuditNotes("Criterion 2 now quotes `the\nNOT_MET` token in its refusal.")) {
 		t.Errorf("a verdict in a span over a line break not read")
 	}
-	if !HandAudited(withAuditNotes("Criterion 2 names `x\ny` and is MET, as `z` shows.")) {
-		t.Errorf("a verdict after a span over a line break not read")
+	if HandAudited(withAuditNotes("Criterion 2 names `x\ny` and is MET, as `z` shows.")) {
+		t.Errorf("a verdict between two backticks on the line below a span over a line break read as given")
 	}
 	if !HandAudited(withAuditNotes("<`x`!-- Criterion 2 MET -->")) {
 		t.Errorf("a verdict either side of which a span sits read as a comment")
+	}
+}
+
+// TestHandAuditedPairsSpansOnEveryLine: the hand-audit reader pairs a span on
+// each line alone, below a backtick run a line leaves open as anywhere else,
+// so a verdict quoted on its line there is not a verdict given.
+func TestHandAuditedPairsSpansOnEveryLine(t *testing.T) {
+	if HandAudited(withAuditNotes("Criterion 2 names `x\ny and quotes the `MET` token.")) {
+		t.Errorf("a verdict quoted on its line below a run left open read as given")
 	}
 }

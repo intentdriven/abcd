@@ -72,7 +72,6 @@ func HandAudited(content string) bool {
 	if !ok {
 		return false
 	}
-	spans := mdrecord.CodeSpans(lines)
 	var block strings.Builder
 	judged := false
 	flush := func() {
@@ -90,7 +89,7 @@ func HandAudited(content string) bool {
 		if auditSectionCloseRe.MatchString(raw) {
 			break
 		}
-		prose := proseOf(raw, spans[i])
+		prose := proseOf(raw)
 		switch {
 		case strings.TrimSpace(prose) == "":
 			flush()
@@ -109,25 +108,27 @@ func HandAudited(content string) bool {
 	return judged
 }
 
-// proseOf is one line with what is not prose taken out: each inline code
-// span, since a verdict word quoted as code is vocabulary under discussion,
-// not a verdict given, and then each HTML comment closed on the line. The
-// spans are mdrecord.CodeSpans': one that opens and closes on the line, and
-// none on a line its stretch reads whole (a backtick run left open above it)
-// or over a line break, so a verdict the page shows quoted there reads as
-// given. Each span is blanked with spaces rather than cut out, so the text on
-// either side of one cannot join into a comment.
-func proseOf(line string, spans [][2]int) string {
-	if len(spans) > 0 {
-		b := []byte(line)
-		for _, sp := range spans {
-			for j := sp[0]; j < sp[1] && j < len(b); j++ {
-				b[j] = ' '
-			}
-		}
-		line = string(b)
+// proseOf is one line with what is not prose taken out: each HTML comment
+// closed on the line, and each inline code span, since a verdict word quoted
+// as code is vocabulary under discussion, not a verdict given. The spans are
+// paired on the line alone (mdrecord.CodeSpanRanges), whatever the lines
+// above it leave open, so a verdict quoted on its line is not read as given
+// even where the page may pair a backtick over the line break. Each span is
+// blanked with spaces rather than cut out, so the text on either side of one
+// cannot join into a word.
+func proseOf(line string) string {
+	line = auditInlineCommentRe.ReplaceAllString(line, "")
+	spans := mdrecord.CodeSpanRanges(line)
+	if len(spans) == 0 {
+		return line
 	}
-	return auditInlineCommentRe.ReplaceAllString(line, "")
+	b := []byte(line)
+	for _, sp := range spans {
+		for j := sp[0]; j < sp[1]; j++ {
+			b[j] = ' '
+		}
+	}
+	return string(b)
 }
 
 // blockJudges reports whether one block names a criterion and gives a verdict.

@@ -155,9 +155,13 @@ type Reading struct {
 	comments []commentSpan
 
 	// lines is, per line, what the line's walk read there (inline.go): its
-	// one-line code spans and its comment ranges. A fenced line, and a line
-	// its stretch reads whole, holds neither.
+	// one-line code spans and its comment ranges. A fenced line holds
+	// neither.
 	lines []lineRead
+
+	// unsure is the first line on which the walk met a comment opener whose
+	// comment the page may read another way (lineRead.doubt), or -1.
+	unsure int
 
 	openLine int
 	openFlag uint8
@@ -175,6 +179,18 @@ type commentSpan struct {
 func (r Reading) Unclosed() (line int, flag uint8, ok bool) {
 	return r.openLine, r.openFlag, r.openLine >= 0
 }
+
+// Unsure reports the first line holding a comment opener whose comment the
+// page may read another way, and whether there is one: below a backtick run a
+// line above it in its stretch left open, or after a run its own line leaves
+// open, an opener that is not the first thing on its line, at up to three
+// columns, and has no `-->` after it on the line, whether the walk met it or
+// it sits inside a one-line span on a line below the run. The page may pair
+// that run over the line break, so the opener may sit inside a span, or a
+// span the walk paired may not be one. Mask reads the opener as a line read
+// alone does, a comment opened outside a span; a writer refuses such a body,
+// and ReadPage reads it whole from that line.
+func (r Reading) Unsure() (line int, ok bool) { return r.unsure, r.unsure >= 0 }
 
 // FencedUnderEveryRule reports, per line, whether EVERY reading reads that line
 // as inside a fence (its delimiters included): TopLevel, ListNested, and the
@@ -273,12 +289,13 @@ func inItem(rule Rule, indent int) bool {
 // Spelled twice, two readers could disagree about which lines a span covers and
 // which line opened it.
 //
-// A comment opener inside a one-line code span opens nothing, and from a
-// backtick run a line leaves open the rest of its stretch is read whole,
-// opening no comment (inline.go): there the page may pair that run over a line
-// break and hold the opener inside a span.
+// Each line outside a fence is walked alone (inline.go): a comment opener
+// inside a one-line code span opens nothing, and one outside a span opens a
+// comment. From a backtick run a line leaves open to the next blank line the
+// page may pair that run over a line break, and where that turns which
+// comments there are, the reading is Unsure from the line.
 func Read(lines []string, rule Rule) Reading {
-	r := Reading{Mask: make([]uint8, len(lines)), lines: make([]lineRead, len(lines)), openLine: -1}
+	r := Reading{Mask: make([]uint8, len(lines)), lines: make([]lineRead, len(lines)), unsure: -1, openLine: -1}
 	fenceOpen, fenceIndent, fenceStart := "", 0, 0
 	inComment := false
 	// loose is whether a line above, in the stretch being read, left a
@@ -300,6 +317,16 @@ func Read(lines []string, rule Rule) Reading {
 		c.End, c.Closed = i+1, true
 		inComment = false
 		r.openLine, r.openFlag = -1, 0
+	}
+	took := func(i int, w lineRead) {
+		r.lines[i] = w
+		loose = loose || w.loose
+		if w.doubt && r.unsure < 0 {
+			r.unsure = i
+		}
+		if w.open {
+			openComment(i, w)
+		}
 	}
 	for i, raw := range lines {
 		ln := strings.TrimRight(raw, "\r")
@@ -325,12 +352,9 @@ func Read(lines []string, rule Rule) Reading {
 			}
 			stepN(k + len("-->"))
 			closeComment(i)
-			w := walkLine(ln, k+len("-->"), true, false)
+			w := walkLine(ln, k+len("-->"), true, loose)
 			w.comments = append([][2]int{{0, k + len("-->")}}, w.comments...)
-			r.lines[i], loose = w, w.loose
-			if w.open {
-				openComment(i, w)
-			}
+			took(i, w)
 		case fenceOpen != "":
 			r.Mask[i] |= MaskFence
 			run, rest, indent, ok := fenceOpener(ln, rule)
@@ -348,36 +372,13 @@ func Read(lines []string, rule Rule) Reading {
 				r.openLine, r.openFlag = i, MaskFence
 				continue
 			}
-			if loose {
-				continue
-			}
-			w := walkLine(ln, 0, true, false)
-			r.lines[i], loose = w, w.loose
-			if w.open {
-				openComment(i, w)
-			}
+			took(i, walkLine(ln, 0, true, loose))
 		}
 	}
 	if fenceOpen != "" {
 		r.Fences = append(r.Fences, Span{Start: fenceStart, End: len(lines)})
 	}
 	return r
-}
-
-// CodeSpans is, per line, the byte ranges of the line inside an inline code
-// span, under the TopLevel reading Mask takes: a span that opens and closes
-// on the line, outside an HTML comment, on a line that no line above it in
-// its stretch leaves a backtick run open on (inline.go). A fenced line, a line
-// inside a comment and a line its stretch reads whole report none, and a span
-// over a line break is not reported, so a reader that blanks the spans reads
-// that text.
-func CodeSpans(lines []string) [][][2]int {
-	r := Read(lines, TopLevel)
-	out := make([][][2]int, len(lines))
-	for i, w := range r.lines {
-		out[i] = w.spans
-	}
-	return out
 }
 
 // OpensComment reports whether a line leaves an HTML comment open. It walks the
@@ -396,8 +397,10 @@ func CodeSpans(lines []string) [][][2]int {
 //
 // The line is read alone, and an opener after an unmatched run opens a comment
 // here, which is the answer a writer asking before it appends the line needs:
-// on the page that run may pair with nothing.
-func OpensComment(ln string) bool { return walkLine(ln, 0, true, true).open }
+// on the page that run may pair with nothing. A backtick behind an odd run of
+// backslashes opens no span (CodeSpanRanges), so the next backtick may open
+// one that holds an opener.
+func OpensComment(ln string) bool { return walkLine(ln, 0, true, false).open }
 
 // FirstContent is the tree's one leading-comment locator: the first line
 // holding anything but blanks and HTML comments, and the byte column in that
@@ -565,9 +568,10 @@ type Page struct {
 	// a line is masked only where Text does not read it.
 	Mask []uint8
 	// Spans is, per line, the byte ranges of Text inside an inline code span
-	// that opens and closes on the line, on a line that no line above it in
-	// its stretch leaves a backtick run open on (inline.go). A fenced line and
-	// a line its stretch reads whole report none.
+	// that opens and closes on the line, outside a comment, on a line that no
+	// line above it in its stretch leaves a backtick run open on (inline.go).
+	// A fenced line, a line below such a run to the next blank line, and
+	// every line from the one Unsure names, report none.
 	Spans [][][2]int
 
 	unsure   int
@@ -615,7 +619,8 @@ func (p Page) Unclosed() (line int, flag uint8, ok bool) {
 //     processing instruction or a CDATA section, after any list markers, to
 //     the next blank line, or to its closer: htmlBlocks), or a comment opener
 //     sits in a raw text element's block (rawTextTags);
-//   - a comment opener sits behind a backslash.
+//   - a comment opener sits behind a backslash;
+//   - a comment opener's comment can be read another way (Reading.Unsure).
 func ReadPage(lines []string) Page {
 	rs := [...]Reading{Read(lines, TopLevel), Read(lines, ListNested), Read(lines, listItem)}
 	nl := rs[1]
@@ -632,6 +637,9 @@ func ReadPage(lines []string) Page {
 		}
 	}
 	for _, r := range rs {
+		if l, ok := r.Unsure(); ok {
+			at(l)
+		}
 		var spans []indentedSpan
 		for _, s := range r.Fences {
 			spans = append(spans, indentedSpan{s, indentWidth(strings.TrimRight(lines[s.Start], "\r"))})
@@ -672,7 +680,12 @@ func ReadPage(lines []string) Page {
 			p.openLine, p.openFlag = -1, 0
 		}
 	}
-	p.Spans = textSpans(lines, p.Text, func(j int) bool { return j < u && nl.Mask[j]&MaskFence != 0 })
+	p.Spans = make([][][2]int, len(lines))
+	for j := 0; j < u; j++ {
+		if w := nl.lines[j]; !w.under {
+			p.Spans[j] = w.spans
+		}
+	}
 	return p
 }
 
@@ -1018,6 +1031,14 @@ func PeelTrailingLinkRefs(section *[]string) []string {
 	*section = s
 	return refs
 }
+
+// CodeSpanRanges returns the byte ranges of the inline code spans on one line,
+// the line read alone: a run of backticks closed by the next run of exactly
+// the same length (termsafe.PairCodeSpan's rule, through the linear
+// termsafe.CodeSpanPairer), where a backtick behind an odd run of
+// backslashes opens none, as on the page outside a span. The line's HTML
+// comments are not consulted.
+func CodeSpanRanges(ln string) [][2]int { return walkLine(ln, 0, false, false).spans }
 
 // MaskCodeSpans hides each inline code span in s behind an opaque token, so a
 // rewrite of the text around the spans (a link read as its text, an HTML tag

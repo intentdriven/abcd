@@ -185,8 +185,8 @@ func TestUnsettledBlanksASpanOnlyWhereEveryReadingAgrees(t *testing.T) {
 		{"the phrase inside a span over a line break", "Quote `x.\nNot READY: owed` here.\n", notReady(6)},
 		{"an unpaired backtick, then a line of one backtick and the phrase", "The cache `x\ny`. Not READY: owed.\n", notReady(6)},
 		{"an unpaired backtick, then the phrase after a span's close", "The cache `x\ny`. Not READY: owed `z`.\n", notReady(6)},
-		{"a comment opener inside a span over a line break", "Intro `a <!-- b\nc`. Not READY: owed. -->\n", notReady(6)},
-		{"a comment opener after the run on its line", "Intro `a <!-- b\nc `. Not READY: owed. -->\n", notReady(6)},
+		{"a comment opener inside a span over a line break", "Intro `a <!-- b\nc`. Not READY: owed. -->\n", []Statement{layoutAt(5), notReady(6)[0]}},
+		{"a comment opener after the run on its line", "Intro `a <!-- b\nc `. Not READY: owed. -->\n", []Statement{layoutAt(5), notReady(6)[0]}},
 		{"a blank line ends the stretch", "Quote `x.\n\nc `x. Not READY: owed` d.\n", nil},
 		{"a line of spaces and tabs ends the stretch", "Quote `x.\n \t \nc `x. Not READY: owed` d.\n", nil},
 		{"a line of other white space does not", "Quote `x.\n\u00a0\ny`. Not READY: owed `z`.\n", notReady(7)},
@@ -231,24 +231,98 @@ func TestUnsettledReadsTheLayoutsTheReviewsNamed(t *testing.T) {
 
 // TestOpenQuestionsReadUnderACommentOpenedAfterASpan: an unpaired backtick,
 // then a line holding a backtick and an HTML comment opener, the comment
-// running over the Open Questions section: the questions are read, and no
-// comment is opened on a line below the run, so no layout is reported.
+// running over the Open Questions section: the questions are read, and the
+// opener's line, from which the page may read the comment or none, is named.
 func TestOpenQuestionsReadUnderACommentOpenedAfterASpan(t *testing.T) {
 	const fm = "---\nid: spc-1\n---\n# T\n"
-	for _, c := range []struct{ name, body string }{
-		{"the opener after the second backtick", "The cache ` is named\n` <!-- parked\n\n## Open Questions\n\n- Which cache?\n\n-->\n"},
-		{"the opener between the backticks", "The cache `a <!-- parked\nb` named.\n\n## Open Questions\n\n- Which cache?\n\n-->\n"},
-		{"the opener on the line below the run", "The cache `a\nb <!-- parked\n\n## Open Questions\n\n- Which cache?\n\n-->\n"},
+	for _, c := range []struct {
+		name, body string
+		line       int
+	}{
+		{"the opener after the second backtick", "The cache ` is named\n` <!-- parked\n\n## Open Questions\n\n- Which cache?\n\n-->\n", 6},
+		{"the opener between the backticks", "The cache `a <!-- parked\nb` named.\n\n## Open Questions\n\n- Which cache?\n\n-->\n", 5},
+		{"the opener on the line below the run", "The cache `a\nb <!-- parked\n\n## Open Questions\n\n- Which cache?\n\n-->\n", 6},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if q := OpenQuestions(fm + c.body); len(q) != 1 || q[0].Text != "Which cache?" {
 				t.Fatalf("OpenQuestions = %+v, want the one question", q)
 			}
-			for _, st := range Unsettled(fm + c.body) {
-				if st.Kind == UnsettledLayout || st.Kind == UnsettledUnclosed {
-					t.Fatalf("Unsettled = %+v, want no layout statement", Unsettled(fm+c.body))
-				}
+			if st := Unsettled(fm + c.body); len(st) != 1 || st[0] != (Statement{Line: c.line, Kind: UnsettledLayout, Text: st[0].Text}) {
+				t.Fatalf("Unsettled = %+v, want the layout named on line %d", st, c.line)
 			}
 		})
 	}
+}
+
+// layoutAt is one layout statement on line n.
+func layoutAt(n int) Statement { return Statement{Line: n, Kind: UnsettledLayout} }
+
+// TestOpenQuestionsReadBelowALineInitialComment: below a backtick run a line
+// leaves open, a comment opener that is the first thing on its line, at up to
+// three columns, opens a comment, as the page starts one there in every
+// reading: a heading inside it does not end the Open Questions section, and
+// the question below it is counted.
+func TestOpenQuestionsReadBelowALineInitialComment(t *testing.T) {
+	const fm = "---\nid: spc-1\n---\n# T\n"
+	for _, c := range []struct{ name, body string }{
+		{"at the margin", "## Open Questions\n\nStray ` tick\n<!--\n## Parked\n-->\n\n- Which cache?\n"},
+		{"three columns in", "## Open Questions\n\nStray ` tick\n   <!--\n## Parked\n-->\n\n- Which cache?\n"},
+		{"on the run's own stretch, no blank line after", "## Open Questions\n\nStray ` tick\n<!--\n## Parked\n-->\n- Which cache?\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if q := OpenQuestions(fm + c.body); len(q) != 1 || q[0].Text != "Which cache?" {
+				t.Fatalf("OpenQuestions = %+v, want the one question", q)
+			}
+			if st := Unsettled(fm + c.body); len(st) != 0 {
+				t.Fatalf("Unsettled = %+v, want nothing", st)
+			}
+		})
+	}
+}
+
+// TestUnsettledReadsProseBetweenTwoLineInitialComments: below a backtick run
+// a line leaves open, two comments that each open first on their line and
+// each hold a fence delimiter hide those delimiters, so they pair nothing and
+// the prose between the comments is read.
+func TestUnsettledReadsProseBetweenTwoLineInitialComments(t *testing.T) {
+	checkUnsettled(t, []unsettledCase{
+		{"backtick fences", "Stray ` tick\n<!--\n```\n-->\nNot READY: owed.\n<!--\n```\n-->\n", notReady(9)},
+		{"tilde fences", "Stray ` tick\n<!--\n~~~\n-->\nNot READY: owed.\n<!--\n~~~\n-->\n", notReady(9)},
+	})
+}
+
+// TestUnsettledNamesAnOpenerBelowARunLeftOpen: below a backtick run a line
+// leaves open, and after the run on its own line, a comment opener that is
+// not the first thing on its line, or comes first after list or blockquote
+// markers, may sit inside a span the page pairs over the line break; where
+// no closer follows it on the line the page is read whole from that line,
+// which is named.
+func TestUnsettledNamesAnOpenerBelowARunLeftOpen(t *testing.T) {
+	checkUnsettled(t, []unsettledCase{
+		{"after other text", "Stray ` tick\nsee <!-- parked\n## Parked\n-->\n", []Statement{layoutAt(6)}},
+		{"after a list marker", "Stray ` tick\n- <!-- parked\n## Parked\n-->\n", []Statement{layoutAt(6)}},
+		{"after a blockquote marker", "Stray ` tick\n> <!-- parked\n> ## Parked\n> -->\n", []Statement{layoutAt(6)}},
+		{"four columns in", "Stray ` tick\n    <!-- parked\n## Parked\n-->\n", []Statement{layoutAt(6)}},
+		{"after the run on its line", "Stray ` tick <!-- parked\n## Parked\n-->\n", []Statement{layoutAt(5)}},
+		{"inside a one-line span", "Stray ` tick\nsee `<!-- parked` here\n## Parked\n-->\n", []Statement{layoutAt(6)}},
+		{"closed on its line, the text is read", "Stray ` tick\nsee <!-- c. Not READY: owed. --> here\n", notReady(6)},
+		{"after a blank line, as before", "Stray ` tick\n\nsee <!-- parked\n-->\n", nil},
+	})
+}
+
+// TestUnsettledPinsTheOlderLimits: what the reader does today in layouts it
+// does not mirror, held so a change to any of them is seen. In each, the page
+// shows the phrase as prose and the reader does not report it.
+func TestUnsettledPinsTheOlderLimits(t *testing.T) {
+	checkUnsettled(t, []unsettledCase{
+		{"a backtick in an inline link's destination", "See [a](/u`x). Not READY: owed `y`.\n", nil},
+		{"a backtick in an inline link's title", "See [a](/u \"t`x\"). Not READY: owed `y`.\n", nil},
+		{"a backtick in a processing instruction", "See <?p ` ?>. Not READY: owed ` here.\n", nil},
+		{"a backtick in a declaration", "See <!X ` >. Not READY: owed ` here.\n", nil},
+		{"a backtick in a CDATA section", "See <![CDATA[ ` ]]>. Not READY: owed ` here.\n", nil},
+		{"a one-line comment holding two hyphens", "See <!-- a -- b. Not READY: owed. --> here.\n", nil},
+		{"a backslash in an indented code block", "intro\n\n    \\`a` b. Not READY: x `c`\n", nil},
+		{"a backslash in an HTML block", "<div>\n\\`a` b. Not READY: x `c`\n</div>\n", nil},
+		{"a backslash in a tag", "See <a title=\"\\`x`\">. Not READY: owed `y`.\n", nil},
+	})
 }

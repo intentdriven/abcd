@@ -504,3 +504,45 @@ func TestStampReadsBackAMarkerAfterABacktickLeftOpen(t *testing.T) {
 		t.Fatalf("second stamp: %d, %v, changed %v; want nothing stamped", n, err, twice != once)
 	}
 }
+
+// TestStampRefusesALineInitialCommentBelowARunLeftOpen: below a backtick run a
+// line leaves open, a comment that opens first on its line is a comment, as
+// the page reads it: a section holding one is refused, and a section parked
+// inside one is not there to stamp. Nothing is written into the comment.
+func TestStampRefusesALineInitialCommentBelowARunLeftOpen(t *testing.T) {
+	held := "---\nid: itd-10\n---\n\n# alpha\n\n## Scope Conditions\n\n- a `x\n- b\n<!-- hidden\n- c\n-->\n"
+	if out, n, err := stampScopeConditions(held, fixedMinter(7, 8, 9)); err == nil {
+		t.Fatalf("stamped %d into a section holding a comment:\n%s", n, out)
+	}
+	parked := "---\nid: itd-10\n---\n\n# alpha\n\nIntro `x\n<!--\n## Scope Conditions\n\n- parked\n-->\n"
+	out, n, err := stampScopeConditions(parked, fixedMinter(7, 8, 9))
+	if err != nil || n != 0 || out != parked {
+		t.Fatalf("stamp of a parked section: %d, %v, changed %v; want it left as it was", n, err, out != parked)
+	}
+}
+
+// TestStampRefusesAPageWhoseCommentsReadTwoWays: below a backtick run a line
+// leaves open, a comment opener after other text, with no closer on its line,
+// may sit inside a span the page pairs over the line break, so the page's
+// comments can be read two ways and the stamp refuses it.
+func TestStampRefusesAPageWhoseCommentsReadTwoWays(t *testing.T) {
+	for _, content := range []string{
+		"---\nid: itd-10\n---\n\n# alpha\n\n## Scope Conditions\n\n- a `x\n- b <!-- hidden\n- c\n-->\n",
+		"---\nid: itd-10\n---\n\n# alpha\n\nIntro `x\nsee <!-- a note\n-->\n\n## Scope Conditions\n\n- a\n",
+	} {
+		if out, n, err := stampScopeConditions(content, fixedMinter(7, 8, 9)); err == nil {
+			t.Errorf("stamped %d into a page whose comments read two ways:\n%s", n, out)
+		}
+	}
+}
+
+// TestParseConditionsPairsSpansOnEveryLine: the scope-condition reader pairs
+// a span on each line alone, below a backtick run a line leaves open as
+// anywhere else, so a marker quoted on its line there is not an identity.
+func TestParseConditionsPairsSpansOnEveryLine(t *testing.T) {
+	body := "- a condition quoting `x\n  and `<!-- cond: cond-2608300102030407 -->` here\n"
+	c := parseClaims(claimRecord(nil, str(body)))
+	if len(c.Conditions) != 1 || c.Conditions[0].ID != "" || !c.Conditions[0].MalformedMarker {
+		t.Fatalf("conditions = %+v, want the quoted marker read as no identity", c.Conditions)
+	}
+}
