@@ -128,6 +128,11 @@ func findReceiptsContext(ctx context.Context, repoRoot, rel, sha string) ([]foun
 	if err != nil {
 		return nil, fmt.Errorf("listing the repository's worktrees: %w", err)
 	}
+	return receiptsIn(ctx, wts, rel, sha)
+}
+
+// receiptsIn is findReceiptsContext over worktrees already listed.
+func receiptsIn(ctx context.Context, wts []gitutil.Worktree, rel, sha string) ([]foundReceipt, error) {
 	var found []foundReceipt
 	for _, wt := range wts {
 		if p := receiptIn(wt, rel, sha); p != "" {

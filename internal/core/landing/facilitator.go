@@ -33,6 +33,7 @@ package landing
 // unreadable answer never lets a merge through.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -246,6 +247,23 @@ func countedApproval(forge ForgeCall, repoRoot, repo, n, head, author string) (b
 // a review receipt, and returns its path, or "" when none names sha.
 func approvalRecord(repoRoot, sha string) (string, error) {
 	return findReceipt(repoRoot, ApprovalsRelDir, sha)
+}
+
+// ApprovalRecord is approvalRecord for a reader of past landings
+// (internal/core/landings), bound to ctx: the technical facilitator's recorded
+// approval of sha in any of wts, by findReceipt's rule (a regular file, never a
+// symlink, and never one git tracks). wts nil lists the worktrees git knows for
+// the repository at repoRoot, as findReceipt does; a reader asking about many
+// commits lists them once and passes them in.
+func ApprovalRecord(ctx context.Context, repoRoot, sha string, wts []gitutil.Worktree) (string, error) {
+	if !fullSHA.MatchString(sha) {
+		return "", fmt.Errorf("%s is not a commit's full object name", clip(sha))
+	}
+	if wts == nil {
+		found, err := findReceiptsContext(ctx, repoRoot, ApprovalsRelDir, sha)
+		return firstReceipt(found, err)
+	}
+	return firstReceipt(receiptsIn(ctx, wts, ApprovalsRelDir, sha))
 }
 
 // approvalEntry is a recorded approval's content.
