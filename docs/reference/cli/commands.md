@@ -4552,6 +4552,52 @@ author's approval of their own): the shell guard refuses it to an agent.
       --rests-on string             make --record-review a delta review resting on the full pair recorded for this commit, given by its full object name; each return also states Reviewed delta: <base>..<head>
 ```
 
+### `abcd landings`
+
+List how each change landed on the default branch and what admitted it: Writes only its forge cache in the local tier; refuses no default branch or no range.
+
+**Usage:** `abcd landings [commit] [flags]`
+
+List how each change landed on the default branch, newest first: one row per
+commit on the default branch's first-parent line, as this checkout last fetched
+it, with its pull request, its class (person-approved, drain, automatic or
+person-push), the rule that admitted it (a drain rule record by id, or
+facilitator.mode as the first parent committed it), the lane kind its branch's
+Admitted-by: trailer names, the approval it rests on and where that was read
+(forge, local tier, none seen, forge unread), and the issues and intents it
+resolves and delivers. After the rows come the notes (how the range was
+found, why the forge was not read for some row, why an answer was not kept,
+why a first parent's mode could not be read) and the tip read.
+
+The range runs from --since, a tag or a date YYYY-MM-DD (taken as the first
+first-parent commit at or after it), to the default branch's tip; with no
+--since it starts after the last release tag (v*) the tip reaches, and with
+no such tag the verb refuses, naming the flag. --unattended keeps the rows no
+evidence places with a person. --reverted lists the rows a later commit
+reverts, grouped by the rule that admitted them, each group with a count, and
+the untraceable reverts in a group of their own.
+
+With one commit named, it traces that commit instead: the row that brought it
+onto the default branch however far back, with its class and rule, and for a
+reverting commit the rows it reverts; a commit the tip does not reach is said
+to be not on the default branch. A trace takes none of the three flags.
+
+It fetches nothing and pushes nothing: it asks the forge (gh api graphql) at
+most once per pull request it has not read before, and keeps each answer it
+read in .abcd/.work.local/landings/, the only thing it writes. Every value a
+row prints is text someone typed (a subject, a trailer, a login) and is
+masked for the terminal. Exit 0 with the listing or the trace; exit 1 when
+history cannot be read; exit 2 outside a git checkout, with no default
+branch, with no range, or with a commit named that names none.
+
+**Flags:**
+
+```
+      --reverted       list the reverted rows grouped by the rule that admitted them
+      --since string   start the range after this tag, or at the first first-parent commit on this date (YYYY-MM-DD); default: the last release tag (v*)
+      --unattended     keep only the rows no evidence places with a person
+```
+
 ### `abcd launch`
 
 Preview the release cut, the launch bundle, its secret scan and the gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run.

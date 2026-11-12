@@ -77,8 +77,8 @@ func newLandingsCommand(asJSON *bool) *cobra.Command {
 			"read in .abcd/.work.local/landings/, the only thing it writes. Every value a\n" +
 			"row prints is text someone typed (a subject, a trailer, a login) and is\n" +
 			"masked for the terminal. Exit 0 with the listing or the trace; exit 1 when\n" +
-			"history or the cache cannot be read; exit 2 outside a git checkout, with no\n" +
-			"default branch, with no range, or with a commit named that names none.",
+			"history cannot be read; exit 2 outside a git checkout, with no default\n" +
+			"branch, with no range, or with a commit named that names none.",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return &exitError{Code: 2, Msg: "abcd landings: takes at most one commit to trace (nothing read)"}
