@@ -15,6 +15,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // A save of a run's whole state takes the file to this abcd's version, so a session
@@ -762,11 +763,13 @@ func TestADrivesProfileMarkSaysWhatItLeft(t *testing.T) {
 	}
 }
 
-// TestADrivesTakeUpOfARunLeftAtItsVersionEndsTheDrive: a drive's reservation of its lane
-// again refused because the run's file states another version and the drive may not save
-// it is no other drive taking the issue up: the drive ends on it, saying what it left and
-// why, and records nothing on the run, which it may not save.
-func TestADrivesTakeUpOfARunLeftAtItsVersionEndsTheDrive(t *testing.T) {
+// TestADrivesTakeUpOfARunLeftAtItsVersionPassesTheLaneOver: a drive's reservation of its
+// lane again refused because the run's file states another version and the drive may not
+// save it is no other drive taking the issue up: the drive passes the lane over and goes
+// on (iss-2611120957377169), saying once, however often it comes back to it, what it left
+// and why, in the judge's own reason and remedy; every move after is given the lane to
+// leave, and nothing is recorded on the run, which it may not save.
+func TestADrivesTakeUpOfARunLeftAtItsVersionPassesTheLaneOver(t *testing.T) {
 	repo, runID, _, _ := awaitingLane(t)
 	home, _ := stopWorld(t, false)
 	o := Options{stopHome: home}
@@ -783,16 +786,31 @@ func TestADrivesTakeUpOfARunLeftAtItsVersionEndsTheDrive(t *testing.T) {
 		t.Fatal("premise: the run is left at its version")
 	}
 
-	done, ended := drive.tookUp(context.Background(), run, left)
+	for range 2 {
+		done, ended := drive.tookUp(context.Background(), run, left)
+		if !done || ended != "" {
+			t.Fatalf("the drive does not pass the lane over and go on: %v %q", done, ended)
+		}
+	}
 
-	if !done || ended != TerminalWall {
-		t.Fatalf("the drive goes on over a run it may not save: %v %q", done, ended)
+	if len(said) != 1 {
+		t.Fatalf("the drive says what it passed over once, not %d times: %q", len(said), said)
 	}
-	all := strings.Join(said, "\n")
-	if strings.Contains(all, "another drive took the issue up") {
-		t.Fatalf("the drive says another drive took the issue up:\n%s", all)
+	if strings.Contains(said[0], "another drive took the issue up") {
+		t.Fatalf("the drive says another drive took the issue up: %s", said[0])
 	}
-	wantLeft(t, repo.Root(), runID, schemaVersionPrevious, before, drive.why)
+	for _, part := range []string{left.Reason, left.Remedy} {
+		if !strings.Contains(said[0], fsutil.RedactHome(part)) {
+			t.Fatalf("the line does not keep the judge's %q: %s", part, said[0])
+		}
+	}
+	if !slices.Equal(drive.o.Drain.PassedLanes, []string{runID}) || len(drive.passedLanes) != 1 || drive.passedLanes[0].Run != runID {
+		t.Fatalf("the moves after are not given the lane to leave: %v %+v", drive.o.Drain.PassedLanes, drive.passedLanes)
+	}
+	if drive.why != "" {
+		t.Fatalf("the drive is stopped over the lane it passed: %s", drive.why)
+	}
+	wantLeft(t, repo.Root(), runID, schemaVersionPrevious, before, said[0])
 }
 
 // TestAPageNoteThatCannotBeKeptLeavesTheStopsRefusal: the stop holds whether or not its

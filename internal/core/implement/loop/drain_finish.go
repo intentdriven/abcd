@@ -213,8 +213,9 @@ var afterParkedFetch = func() {}
 // driver left, and a run another live session drives is left as its file stands, named
 // with why among what the move finished or read. A run that is not one of the drain's
 // lanes is claimed for each save alone, the claim let go once the save is done
-// (passingSave).
-func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options) ([]DrainFinished, []DrainParked, error) {
+// (passingSave). A run whose lane the drive passed over this run (passed,
+// DrainOptions.PassedLanes) is not read at all: nothing is saved or claimed over it.
+func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, passed []string) ([]DrainFinished, []DrainParked, error) {
 	runs, err := Runs(repoRoot)
 	if err != nil {
 		return nil, nil, err
@@ -222,6 +223,9 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options) 
 	var parked, marked []State
 	out, reads := []DrainFinished{}, []DrainParked{}
 	for _, run := range runs {
+		if slices.Contains(passed, run.RunID) {
+			continue
+		}
 		// What a run a drive stopped on says is not known to be its driver's, so nothing
 		// is done on its word, whatever it reads as: it is named.
 		if driveStopped(run.RunID) {

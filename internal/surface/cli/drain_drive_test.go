@@ -596,3 +596,24 @@ func TestADriveWorldsHomeDoesNotCarryTheSubtestsName(t *testing.T) {
 		}
 	})
 }
+
+// TestADriveEndOnLanesItPassedOverNamesThemAndStopsShort (iss-2611120957377169): a drive
+// whose only lanes left are ones it passed over, since it may not save them, stops short
+// at exit 3, and its end names each lane with the judge's reason and remedy.
+func TestADriveEndOnLanesItPassedOverNamesThemAndStopsShort(t *testing.T) {
+	const why = ".abcd/.work.local/run/run-2/state.json states schema version 25 and this abcd writes 26, and its control record names no driver; `abcd implement step --run run-2` claims it"
+	res := loop.TerminalResult{Ended: loop.TerminalPassedLanes, PassedLanes: []loop.PassedLane{{Issue: "iss-2", Run: "run-2", Reason: why}}}
+	var b bytes.Buffer
+
+	renderDriveEnd(&b, res)
+	err := driveEndExit(res)
+
+	for _, want := range []string{"ones this drive passed over", "iss-2, run run-2: " + why} {
+		if !strings.Contains(b.String(), want) {
+			t.Fatalf("the end does not say %q:\n%s", want, b.String())
+		}
+	}
+	if code := exitCode(err); code != 3 {
+		t.Fatalf("the drive does not stop short at exit 3: %d %v", code, err)
+	}
+}
