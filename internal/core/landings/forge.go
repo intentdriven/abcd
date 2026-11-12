@@ -721,10 +721,12 @@ func askNodes(forge landing.ForgeCall, batch []prAsk, args []string, limit int) 
 
 // bodySelection is what the body query reads of a pull request: its number
 // and merge commit, so the answer is read only for the row its own answer
-// confirmed, its body, for the forge's revert line, and the name of the
-// repository it merged into, which that line's owner/repo form is checked
-// against. Every field is pinned in internal/ghcontract (graphql-fields.txt).
-const bodySelection = `number mergeCommit{oid} body baseRepository{nameWithOwner}`
+// confirmed, its body, for the forge's revert line, when it merged and when
+// its body was last edited, so a body edited after the merge is not read, and
+// the name of the repository it merged into, which that line's owner/repo
+// form is checked against. Every field is pinned in internal/ghcontract
+// (graphql-fields.txt).
+const bodySelection = `number mergeCommit{oid} mergedAt lastEditedAt body baseRepository{nameWithOwner}`
 
 // maxBodyAnswerBytes is the body query's own output bound: one document's
 // answer past it is asked again in halves, and one pull request's alone past
@@ -758,8 +760,25 @@ type forgeRepo struct {
 type prBody struct {
 	Number         int        `json:"number"`
 	MergeCommit    *forgeOid  `json:"mergeCommit"`
+	MergedAt       *string    `json:"mergedAt"`
+	LastEditedAt   *string    `json:"lastEditedAt"`
 	Body           string     `json:"body"`
 	BaseRepository *forgeRepo `json:"baseRepository"`
+}
+
+// unedited says whether the forge says p's body was not edited after the
+// pull request merged: never edited, or last edited no later than the merge,
+// both times read.
+func (p *prBody) unedited() bool {
+	if p.LastEditedAt == nil {
+		return true
+	}
+	if p.MergedAt == nil {
+		return false
+	}
+	merged, err1 := time.Parse(time.RFC3339, *p.MergedAt)
+	edited, err2 := time.Parse(time.RFC3339, *p.LastEditedAt)
+	return err1 == nil && err2 == nil && !edited.After(merged)
 }
 
 // bodyAnswers are readBodies' answers by pull request, and why each one it
@@ -843,6 +862,8 @@ func (b *bodyAsker) ask(batch []prAsk) {
 			b.out.why[a.pr] = fmt.Sprintf("the forge's answer for pull request #%d names another", a.pr)
 		case p.MergeCommit == nil || p.MergeCommit.Oid != a.commit:
 			b.out.why[a.pr] = fmt.Sprintf("the forge's body answer for pull request #%d does not say it merged as %s", a.pr, a.commit[:12])
+		case !p.unedited():
+			b.out.why[a.pr] = fmt.Sprintf("the forge says the body of pull request #%d was edited after it merged, or does not say when, so it is not read", a.pr)
 		default:
 			b.out.got[a.pr] = &p
 		}

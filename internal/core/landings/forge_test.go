@@ -28,9 +28,13 @@ func TestTheBatchSelectsOnlyTheForgesFields(t *testing.T) {
 		}
 	}
 	// The commits are asked only for a row that merged with one parent, and
-	// nothing this step does not read is asked at all.
+	// the batch asks no body: the revert trace asks bodies in a document of
+	// its own (bodyQuery).
 	if strings.Count(q, "commits(") != 1 || strings.Contains(q, "body") {
 		t.Fatalf("the batch asks more than it reads: %q", q)
+	}
+	if b := bodyQuery([]prAsk{{pr: 4}}); ghcontract.CheckGraphQL(b) != nil || !strings.Contains(b, "p4:pullRequest(number:4){"+bodySelection+"}") || strings.Contains(b, "reviews(") {
+		t.Fatalf("the body query %q", b)
 	}
 	args := batchArgs([]prAsk{{pr: 5}})
 	if !slices.Equal(args[:6], []string{"api", "graphql", "-F", "o={owner}", "-F", "r={repo}"}) {

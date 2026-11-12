@@ -145,6 +145,10 @@ type fakeForge struct {
 	bodyHuge  map[int]bool
 	bodyCalls int
 	bodyAsked []int
+	// bodyMerge answers the body query's merge commit for a number in it in
+	// place of the one prs holds, and bodyEdited its body's last edit.
+	bodyMerge  map[int]string
+	bodyEdited map[int]string
 }
 
 // nodeSelection is what q's node for pull request n selects, "" for none.
@@ -211,9 +215,21 @@ func (ff *fakeForge) bodyCall(q string, batch []int) (string, error) {
 		}
 		if selects(sel, "mergeCommit") {
 			node["mergeCommit"] = a.MergeCommit
+			if m, ok := ff.bodyMerge[n]; ok {
+				node["mergeCommit"] = forgeOid{m}
+			}
 		}
 		if selects(sel, "body") {
 			node["body"] = ff.bodies[n]
+		}
+		if selects(sel, "mergedAt") {
+			node["mergedAt"] = a.MergedAt
+		}
+		if selects(sel, "lastEditedAt") {
+			node["lastEditedAt"] = nil
+			if e, ok := ff.bodyEdited[n]; ok {
+				node["lastEditedAt"] = e
+			}
 		}
 		if selects(sel, "baseRepository") {
 			if ff.repo != "" {

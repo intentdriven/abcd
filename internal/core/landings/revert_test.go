@@ -6,11 +6,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -97,6 +99,10 @@ func TestRevertOfARevert(t *testing.T) {
 	}
 	if got := row(t, l, m3).Reverted; got != nil {
 		t.Fatalf("the newest revert is marked %+v", got)
+	}
+	// The reinstated row stays in its group: its change was reverted.
+	if g := revertedGroups(l); len(g) != 1 || g[0].Count != 2 || g[0].Rows[1].Commit != m1 {
+		t.Fatalf("groups %+v", g)
 	}
 
 	r3 := f.commit(revertMsg(`Revert "Revert "feat: x""`, r2, 9))
@@ -286,6 +292,9 @@ func TestRevertedGroupsByRule(t *testing.T) {
 	mr := f.merge(5, "reverts")
 	untr := f.commit(`Revert "docs: z"`)
 	ff := mergeForge(t, f, map[int]string{1: md, 2: ma, 3: mb, 4: mh, 5: mr})
+	// A person approved b's head under auto: its row shares the auto group
+	// with an automatic row, and each keeps its own unattended mark.
+	ff.prs[3].Reviews.Nodes, ff.prs[3].Reviews.TotalCount = []forgeReview{review(alice, "APPROVED", b)}, 1
 	l := f.list(ff.call)
 	got := revertedGroups(l)
 	var shape []string
@@ -305,6 +314,9 @@ func TestRevertedGroupsByRule(t *testing.T) {
 	}
 	if !slices.Equal(shape, want) {
 		t.Fatalf("groups\n%s\nwant\n%s", strings.Join(shape, "\n"), strings.Join(want, "\n"))
+	}
+	if auto := got[2].Rows; auto[0].Class != ClassPersonApproved || auto[0].Unattended || auto[1].Class != ClassAutomatic || !auto[1].Unattended {
+		t.Fatalf("the auto group's rows do not keep their own marks: %+v", auto)
 	}
 	if r := row(t, l, mr); r.Class != ClassPersonApproved || len(r.Reverts) != 5 {
 		t.Fatalf("the reverting row %+v", r)
@@ -360,7 +372,6 @@ func TestARevertMarksOnlyAnEarlierRowsAncestor(t *testing.T) {
 	f.r.Git("checkout", "-q", "-b", "reverter", "main")
 	f.r.Write("rv/0", "x")
 	f.r.Commit(revertMsg("feat: s", sib, 12))
-	rv := f.head()
 	f.r.Git("checkout", "-q", "main")
 	m1 := f.merge(1, "reverter")
 	m2 := f.merge(2, "sibling")
@@ -394,7 +405,6 @@ func TestARevertMarksOnlyAnEarlierRowsAncestor(t *testing.T) {
 			}
 		}
 	}
-	_ = rv
 }
 
 // TestAReversionNamingItselfOrACycleMarksNothing: a commit naming itself, and
@@ -425,8 +435,9 @@ func TestAReversionNamingItselfOrACycleMarksNothing(t *testing.T) {
 }
 
 // TestTheTraceAsksGitOnceForTheWholeRange: however many revert lines the range
-// carries, the names are resolved in one call, and the listing's lines past
-// its bound are said, not followed.
+// carries, the names are resolved in one resolveNames call (at most two git
+// calls), and the listing's lines past its bound are counted on their rows,
+// not followed.
 func TestTheTraceAsksGitOnceForTheWholeRange(t *testing.T) {
 	f := newFx(t, "human")
 	var targets []string
@@ -758,5 +769,276 @@ func TestAFailedResolutionUnresolvesItsLinesAlone(t *testing.T) {
 	}
 	if got := row(t, l, y).Reverted; got == nil || got.By != ry {
 		t.Fatalf("y, named in full: %+v", got)
+	}
+}
+
+// traceAgrees checks the positional trace of every row's commit, and of each
+// of extra, against a listing of the whole history: the same row, read and
+// marked alike, its range note empty, and as its reverts the rows its lines
+// mark there, each read and marked alike (its own lines are read over the
+// trace's range, which may start at it, so they are not compared).
+func traceAgrees(t *testing.T, f *fx, forge landing.ForgeCall, extra ...string) {
+	t.Helper()
+	full, err := list(t.Context(), f.r.Root(), Range{To: f.head()}, Options{Forge: forge})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	var names []string
+	for _, r := range full.Rows {
+		names = append(names, r.Commit)
+	}
+	for _, name := range append(names, extra...) {
+		tr, err := trace(t.Context(), f.r.Root(), name, Options{Forge: forge})
+		if err != nil || tr.Row == nil {
+			t.Fatalf("trace(%s) = %+v, %v", name[:8], tr, err)
+		}
+		want := row(t, full, tr.Row.Commit)
+		if !reflect.DeepEqual(*tr.Row, want) {
+			t.Fatalf("trace(%s) reads its row\n%+v\nwhere the listing reads\n%+v", name[:8], *tr.Row, want)
+		}
+		var marked, got []string
+		for _, x := range want.Reverts {
+			if x.Row != "" && !slices.Contains(marked, x.Row) {
+				marked = append(marked, x.Row)
+			}
+		}
+		for _, r := range tr.Reverts {
+			got = append(got, r.Commit)
+			w := row(t, full, r.Commit)
+			r.Reverts, w.Reverts = nil, nil
+			if !reflect.DeepEqual(r, w) {
+				t.Fatalf("trace(%s) reads the reverted row %s\n%+v\nwhere the listing reads\n%+v", name[:8], r.Commit[:8], r, w)
+			}
+		}
+		if !slices.Equal(got, marked) || tr.RangeNote != "" {
+			t.Fatalf("trace(%s) reverts %v (note %q); the listing's lines mark %v", name[:8], got, tr.RangeNote, marked)
+		}
+	}
+}
+
+// TestTheTraceAgreesWithTheListing: over a revert of a revert, a revert by a
+// non-ancestor and of a commit its own row brought, a merge reverted by its
+// own name, and the forge's lines, the trace of each commit reads its row,
+// and the rows it reverts, as a listing of the whole history does: the merge
+// of a revert's pull request names the row its branch's line reverts, and a
+// squashed revert the row its body's line names.
+func TestTheTraceAgreesWithTheListing(t *testing.T) {
+	t.Run("revert of a revert", func(t *testing.T) {
+		f := newFx(t, "human")
+		x := f.branch("one", "feat: x")
+		m1 := f.merge(1, "one")
+		r1 := f.branch("two", revertMsg("feat: x", x, 40))
+		m2 := f.merge(2, "two")
+		r2 := f.branch("three", revertMsg(`Revert "feat: x"`, r1, 7))
+		m3 := f.merge(3, "three")
+		f.commit(revertMsg(`Revert "Revert "feat: x""`, r2, 9))
+		ff := mergeForge(t, f, map[int]string{1: m1, 2: m2, 3: m3})
+		traceAgrees(t, f, ff.call, x, r1, r2)
+		if tr, err := trace(t.Context(), f.r.Root(), m2, Options{Forge: ff.call}); err != nil || len(tr.Reverts) != 1 || tr.Reverts[0].Commit != m1 {
+			t.Fatalf("the merge of a revert's pull request: %+v, %v", tr, err)
+		}
+	})
+	t.Run("non-ancestor and own row", func(t *testing.T) {
+		f := newFx(t, "human")
+		sib := f.branch("sibling", "feat: s")
+		rv := f.branch("reverter", revertMsg("feat: s", sib, 12))
+		m1 := f.merge(1, "reverter")
+		m2 := f.merge(2, "sibling")
+		self := f.branch("self", "feat: t")
+		f.r.Git("checkout", "-q", "self")
+		f.r.Write("self/x", "x")
+		f.r.Commit(revertMsg("feat: t", self, 12))
+		f.r.Git("checkout", "-q", "main")
+		m3 := f.merge(3, "self")
+		ff := mergeForge(t, f, map[int]string{1: m1, 2: m2, 3: m3})
+		traceAgrees(t, f, ff.call, rv, sib)
+		if tr, err := trace(t.Context(), f.r.Root(), rv, Options{Forge: ff.call}); err != nil || len(tr.Reverts) != 0 {
+			t.Fatalf("a revert naming a commit merged after it: %+v, %v", tr, err)
+		}
+	})
+	t.Run("merge reverted by its own name", func(t *testing.T) {
+		f := newFx(t, "human")
+		f.branch("one", "feat: x")
+		m1 := f.merge(1, "one")
+		b := f.branch("two", revertMsg("Merge pull request #1 from org/one", m1, 40))
+		m2 := f.merge(2, "two")
+		f.r.Git("revert", "-m1", "--no-edit", m2)
+		ff := mergeForge(t, f, map[int]string{1: m1, 2: m2})
+		traceAgrees(t, f, ff.call, b)
+	})
+	t.Run("forge lines", func(t *testing.T) {
+		f := newFx(t, "auto")
+		s1 := f.commit("feat: x (#1)")
+		f.commit("docs: between")
+		s3 := f.commit(`Revert "feat: x (#1)" (#3)`)
+		ff := &fakeForge{t: t, bodies: map[int]string{3: "Reverts #1"}}
+		ff.add(answer(1, s1, strings.Repeat("1", 40)))
+		ff.add(answer(3, s3, strings.Repeat("3", 40)))
+		traceAgrees(t, f, ff.call)
+		if tr, err := trace(t.Context(), f.r.Root(), s3, Options{Forge: ff.call}); err != nil || len(tr.Reverts) != 1 || tr.Reverts[0].Commit != s1 {
+			t.Fatalf("a squashed revert traced alone: %+v, %v", tr, err)
+		}
+	})
+}
+
+// TestTheTraceAsksGitABoundedNumberOfTimes: a traced commit whose lines name
+// one old commit many times and more distinct old commits than the trace
+// looks for asks git once for its own row and once for each commit it looks
+// for, resolves names in three calls (the name traced, and each listing's),
+// and says what it did not look for.
+func TestTheTraceAsksGitABoundedNumberOfTimes(t *testing.T) {
+	f := newFx(t, "human")
+	var olds []string
+	for i := range maxTraceTargets + 4 {
+		olds = append(olds, f.commit("feat: "+strconv.Itoa(i)))
+	}
+	var msg strings.Builder
+	msg.WriteString("Revert \"many\"\n\n")
+	for range maxRevertLinesPerCommit - len(olds) {
+		msg.WriteString("This reverts commit " + olds[0] + ".\n")
+	}
+	for _, o := range olds {
+		msg.WriteString("This reverts commit " + o[:12] + ".\n")
+	}
+	rc := f.commit(msg.String())
+	f.commit("docs: after")
+	gitCalls, resolves := 0, 0
+	defer func(g func(ctx context.Context, root, stdin string, maxBytes int, args ...string) ([]byte, error),
+		r func(ctx context.Context, root string, names []string) (map[string]resolved, error)) {
+		traceGit, resolveNames = g, r
+	}(traceGit, resolveNames)
+	prevGit, prevResolve := traceGit, resolveNames
+	traceGit = func(ctx context.Context, root, stdin string, maxBytes int, args ...string) ([]byte, error) {
+		gitCalls++
+		return prevGit(ctx, root, stdin, maxBytes, args...)
+	}
+	resolveNames = func(ctx context.Context, root string, names []string) (map[string]resolved, error) {
+		resolves++
+		return prevResolve(ctx, root, names)
+	}
+	tr, err := trace(t.Context(), f.r.Root(), rc, Options{Forge: (&fakeForge{t: t}).call})
+	if err != nil || tr.Row == nil {
+		t.Fatalf("trace = %+v, %v", tr, err)
+	}
+	if gitCalls != 1+maxTraceTargets || resolves != 3 {
+		t.Fatalf("the trace read git %d times and resolved names %d times", gitCalls, resolves)
+	}
+	if !strings.Contains(tr.RangeNote, "4 more commits or pull requests") || len(tr.Reverts) != len(olds) {
+		t.Fatalf("note %q, %d rows reverted", tr.RangeNote, len(tr.Reverts))
+	}
+}
+
+// TestHistoryIsReadAsStored: a replace ref standing a commit carrying a pull
+// request's subject and a revert line in for a row's commit changes nothing
+// the listing or the trace reads of it.
+func TestHistoryIsReadAsStored(t *testing.T) {
+	f := newFx(t, "human")
+	x := f.commit("feat: x")
+	y := f.commit("docs: y")
+	z := f.r.Git("commit-tree", y+"^{tree}", "-p", x, "-m", "Revert \"feat: x\" (#7)\n\nThis reverts commit "+x+".")
+	f.r.Git("replace", y, z)
+	ff := &fakeForge{t: t}
+	ff.add(answer(7, y, strings.Repeat("7", 40)))
+	l := f.list(ff.call)
+	if r := row(t, l, y); r.PR != 0 || len(r.Reverts) != 0 || row(t, l, x).Reverted != nil {
+		t.Fatalf("the listing read the replacement: %+v", r)
+	}
+	if tr, err := trace(t.Context(), f.r.Root(), y, Options{Forge: ff.call}); err != nil || tr.Row == nil || tr.Row.PR != 0 || len(tr.Reverts) != 0 {
+		t.Fatalf("the trace read the replacement: %+v, %v", tr, err)
+	}
+	if ff.calls != 0 {
+		t.Fatalf("the forge was asked about a pull request only the replacement names")
+	}
+}
+
+// TestTheInMemoryWalksStopWithTheListingsTime: the generation pass and the
+// ancestor walk over a long history stop once the listing's ctx has ended.
+func TestTheInMemoryWalksStopWithTheListingsTime(t *testing.T) {
+	h := &history{commits: map[string]*commitInfo{}}
+	var prev string
+	var chain []string
+	for i := range 3 * ctxCheckSteps {
+		c := fmt.Sprintf("%040x", i+1)
+		ci := &commitInfo{}
+		if prev != "" {
+			ci.parents = []string{prev}
+		}
+		h.commits[c], prev = ci, c
+		chain = append(chain, c)
+	}
+	gen := h.generations(t.Context())
+	if gen == nil || !h.isAncestor(t.Context(), gen, chain[0], prev) {
+		t.Fatal("the walks do not answer with time left")
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if h.generations(ctx) != nil {
+		t.Fatal("the generation pass ran on past its ctx")
+	}
+	if h.isAncestor(ctx, gen, chain[0], prev) {
+		t.Fatal("the ancestor walk ran on past its ctx")
+	}
+}
+
+// TestLinesPastTheListingsBoundAreCountedOnce: a commit carrying more lines
+// than the listing follows adds one counted line for the rest, not one each.
+func TestLinesPastTheListingsBoundAreCountedOnce(t *testing.T) {
+	f := newFx(t, "human")
+	var msg strings.Builder
+	msg.WriteString("Revert \"many\"\n\n")
+	for i := range 6 {
+		msg.WriteString("This reverts commit " + f.commit("feat: " + strconv.Itoa(i))[:12] + ".\n")
+	}
+	rc := f.commit(msg.String())
+	defer func(n int) { maxRevertLines = n }(maxRevertLines)
+	maxRevertLines = 2
+	r := row(t, f.list((&fakeForge{t: t}).call), rc)
+	if len(r.Reverts) != 3 || !strings.HasPrefix(r.Reverts[2].Unmarked, "4 revert lines its commits carry are past the listing's bound of 2") {
+		t.Fatalf("lines past the bound: %+v", r.Reverts)
+	}
+}
+
+// TestABodyAnswerNamingAnotherMergeIsNotRead: a body answer that does not say
+// the pull request merged as the row's commit is not read: the row's revert
+// is untraceable, saying why, and marks nothing.
+func TestABodyAnswerNamingAnotherMergeIsNotRead(t *testing.T) {
+	f := newFx(t, "auto")
+	s1 := f.commit("feat: x (#1)")
+	s2 := f.commit(`Revert "feat: x (#1)" (#2)`)
+	ff := &fakeForge{t: t, bodies: map[int]string{2: "Reverts #1"}, bodyMerge: map[int]string{2: strings.Repeat("e", 40)}}
+	ff.add(answer(1, s1, strings.Repeat("1", 40)))
+	ff.add(answer(2, s2, strings.Repeat("2", 40)))
+	l := f.list(ff.call)
+	if got := row(t, l, s1).Reverted; got != nil {
+		t.Fatalf("a body answer for another merge marked %+v", got)
+	}
+	if r := row(t, l, s2); len(r.Reverts) != 1 || r.Reverts[0].Kind != RevertUntraceable || !strings.Contains(r.Reverts[0].Unmarked, "does not say it merged as") {
+		t.Fatalf("row #2 reverts %+v", r.Reverts)
+	}
+}
+
+// TestABodyEditedAfterTheMergeIsNotRead: a body the forge says was last
+// edited after its pull request merged, or whose merge time it does not
+// give, is not read for the forge's line; one edited before the merge is.
+func TestABodyEditedAfterTheMergeIsNotRead(t *testing.T) {
+	f := newFx(t, "auto")
+	s1 := f.commit("feat: x (#1)")
+	s2 := f.commit("feat: y (#2)")
+	s3 := f.commit(`Revert "feat: x (#1)" (#3)`)
+	s4 := f.commit(`Revert "feat: y (#2)" (#4)`)
+	ff := &fakeForge{t: t, bodies: map[int]string{3: "Reverts #1", 4: "Reverts #2"},
+		bodyEdited: map[int]string{3: "2026-11-01T10:00:01Z", 4: "2026-11-01T09:59:59Z"}}
+	for n, c := range map[int]string{1: s1, 2: s2, 3: s3, 4: s4} {
+		ff.add(answer(n, c, strings.Repeat(strconv.Itoa(n), 40)))
+	}
+	l := f.list(ff.call)
+	if got := row(t, l, s1).Reverted; got != nil {
+		t.Fatalf("a body edited after the merge marked %+v", got)
+	}
+	if r := row(t, l, s3); len(r.Reverts) != 1 || r.Reverts[0].Kind != RevertUntraceable || !strings.Contains(r.Reverts[0].Unmarked, "edited after it merged") {
+		t.Fatalf("row #3 reverts %+v", r.Reverts)
+	}
+	if got := row(t, l, s2).Reverted; got == nil || got.By != s4 {
+		t.Fatalf("a body edited before the merge: %+v", got)
 	}
 }

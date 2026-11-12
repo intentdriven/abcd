@@ -9,18 +9,24 @@ package landings
 //
 // A revert line is text whoever made the commit typed, so it is read to git
 // revert's own shape or not at all, and the commit it names is resolved by
-// git from stored objects, in one call for the whole range, never guessed: a
-// name that is ambiguous, names nothing, names no commit, names a commit
-// outside the range, the reverting commit itself, a commit its own row
-// brought, or a commit that is not an ancestor of the reverting one, marks no
-// row and says so on the row that carries it. Since every line that marks a
-// row names a strict ancestor of the commit carrying it, the reverts form no
-// cycle, and a revert of a revert is followed to its end. A mark changes no
-// row's class, rule or Unattended: a reverted row is read as it landed, and a
-// reverting commit is a row like any other. dcn-2611120948130053 records each
-// of these readings and its grounds.
+// git from stored objects alone, in at most two calls for the whole range,
+// never guessed: a name that is ambiguous, names nothing, names no commit,
+// names a commit outside the range, the reverting commit itself, a commit its
+// own row brought, or a commit that is not an ancestor of the reverting one,
+// marks no row and says so on the row that carries it. A git line marks only
+// a strict ancestor of the commit carrying it, and a forge line only an older
+// row whose pull request's answer was read; either way a mark points to an
+// older row, so the reverts form no cycle, and a revert of a revert is
+// followed to its end. A line naming a row's own commit reverts every commit
+// that row brought. A mark changes no row's class, rule or Unattended: a
+// reverted row is read as it landed, and a reverting commit is a row like any
+// other; the forge is asked for a body only after every row is classed, in a
+// document of its own, and nothing it answers is kept. dcn-2611120948130053
+// records these readings and their grounds, as dcn-2611121039108572 corrects
+// it.
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -614,7 +620,10 @@ type RevertGroup struct {
 // revertedGroups is l's reverted rows grouped by rule, each group where its
 // newest row falls, and the untraceable reverts in a group of their own, last.
 // A row whose revert was withdrawn is grouped with the rest: its change was
-// reverted, and its mark says it was reinstated. It stays unexported for this
+// reverted, and its mark says it was reinstated. A group is the rule's, not
+// the class's, so one may hold attended and unattended rows (a row a person
+// approved under auto shares the auto group with the automatic rows); each
+// row carries its own Unattended, which a reader splits the group by. It stays unexported for this
 // step: step 4 exports it when it wires the verb.
 func revertedGroups(l Listing) []RevertGroup {
 	var groups []RevertGroup
@@ -649,10 +658,12 @@ func revertedGroups(l Listing) []RevertGroup {
 
 // Trace is what the positional trace says of one commit: its full name; what
 // stops it having a row (SaysNotOnDefault, or why the name names no commit);
-// the row that brought it onto the default branch, as a listing from that row
-// to the tip classes and marks it; and, for a commit whose message reverts
-// others, the rows that brought each commit it names that is on the default
-// branch. Tip and To are the tip read, and the notes are the listing's.
+// the row that brought it onto the default branch, as a listing over the
+// range From says classes and marks it; and the rows that row's revert lines
+// mark in that listing, each classed and marked as the listing has it (their
+// own revert lines are read over the same range, which may start at them). RangeNote says why the range may not hold a row one
+// of its lines names, "" when it holds every one. Tip and To are the tip
+// read, and the notes are the listing's.
 type Trace struct {
 	Commit         string `json:"commit,omitempty"`
 	Says           string `json:"says,omitempty"`
@@ -660,21 +671,37 @@ type Trace struct {
 	Reverts        []Row  `json:"reverts,omitempty"`
 	Tip            string `json:"tip"`
 	To             string `json:"to"`
+	From           string `json:"from,omitempty"`
+	RangeNote      string `json:"range_note,omitempty"`
 	ForgeUnread    string `json:"forge_unread,omitempty"`
 	CacheUnwritten string `json:"cache_unwritten,omitempty"`
 	ModeUnread     string `json:"mode_unread,omitempty"`
 }
 
-// maxMessageBytes bounds the traced commit's message.
-const maxMessageBytes = 4 << 20
+// maxTraceTargets bounds the rows the positional trace looks for before it
+// widens its range: the distinct commits outside its first range, and the
+// distinct pull requests no row of it merged, that the traced row's lines
+// name. One git call looks for each commit, and one for every pull request.
+const maxTraceTargets = 16
+
+// traceGit is the positional trace's own reads of git, each as stored
+// (gitutil.RunCappedBytesAsStoredContext: no replace ref or graft). A
+// variable only so a test can count them.
+var traceGit = gitutil.RunCappedBytesAsStoredContext
 
 // trace is the positional trace (the spec's Trace): name, a full or
-// abbreviated hex name, resolved by git, followed to the first-parent commit
-// of the default branch's tip, as last fetched, that brought it, however far
-// back. It reads the listing from the oldest row it needs (that row's, or a
-// reverted commit's row) to the tip, so its rows are classed and marked as
-// the listing classes and marks them, the forge asked as the listing asks it.
-// It fetches nothing, writes only the listing's forge cache, and binds every
+// abbreviated hex name, resolved by git from stored objects alone, followed to
+// the first-parent commit of the default branch's tip, as last fetched, that
+// brought it, however far back. Its row is read from a listing, so it is
+// classed and marked as the listing classes and marks it, the forge asked as
+// the listing asks it, and its reverts are the rows that listing's lines of
+// that row mark, by the listing's own rules. The listing runs from the traced
+// row to the tip; where the row's lines name a commit before it, or a pull
+// request no row of it merged, the range is widened once to the oldest row
+// they name (at most maxTraceTargets looked for), and RangeNote says what it
+// could not place. So a trace reads at most two listings and, beside them,
+// four git calls before the first and maxTraceTargets+1 between the two. It
+// fetches nothing, writes only the listing's forge cache, and binds every
 // call to ctx as list does. It stays unexported for this step: step 4 exports
 // it when it wires the verb.
 func trace(ctx context.Context, repoRoot, name string, o Options) (Trace, error) {
@@ -727,67 +754,144 @@ func traceCommit(ctx context.Context, repoRoot, name string, o Options) (Trace, 
 		t.Says = SaysNotOnDefault
 		return t, nil
 	}
-
-	// The rows of the commits its own message reverts, on the default branch.
-	raw, err := gitutil.RunCappedBytesContext(ctx, repoRoot, maxMessageBytes, "log", "-1", "--no-show-signature", "--format=%B", t.Commit, "--")
-	if err != nil {
-		return Trace{}, masked("reading the traced commit's message", err)
-	}
-	oldest := own
-	var reverted []int
-	if names, _ := revertNames(string(raw)); len(names) > 0 {
-		got, err := resolveNames(ctx, repoRoot, names)
-		if err != nil {
-			return Trace{}, masked("resolving the commits the traced commit reverts", err)
+	from := func(i int) string {
+		if i+1 < len(line) {
+			return line[i+1].sha
 		}
-		for _, n := range names {
-			full := got[n].full
-			if full == "" || full == t.Commit {
-				continue
-			}
-			i, err := rowOn(ctx, repoRoot, to, full, line, idx)
-			if err != nil {
-				return Trace{}, err
-			}
-			if i >= 0 && i != own && !slices.Contains(reverted, i) {
-				reverted = append(reverted, i)
-				oldest = max(oldest, i)
-			}
-		}
+		return ""
 	}
 
-	from := ""
-	if oldest+1 < len(line) {
-		from = line[oldest+1].sha
-	}
-	l, err := list(ctx, repoRoot, Range{From: from, To: to, Tip: ref}, o)
+	l, err := list(ctx, repoRoot, Range{From: from(own), To: to, Tip: ref}, o)
 	if err != nil {
 		return Trace{}, err
 	}
+	r, err := rowIn(l, line[own].sha)
+	if err != nil {
+		return Trace{}, err
+	}
+	oldest, note, err := olderTargets(ctx, repoRoot, to, line, idx, own, r)
+	if err != nil {
+		return Trace{}, err
+	}
+	t.RangeNote = note
+	if oldest > own {
+		if l, err = list(ctx, repoRoot, Range{From: from(oldest), To: to, Tip: ref}, o); err != nil {
+			return Trace{}, err
+		}
+		if r, err = rowIn(l, line[own].sha); err != nil {
+			return Trace{}, err
+		}
+	}
+	t.From = l.From
 	t.ForgeUnread, t.CacheUnwritten, t.ModeUnread = l.ForgeUnread, l.CacheUnwritten, l.ModeUnread
-	byCommit := make(map[string]int, len(l.Rows))
-	for i, r := range l.Rows {
-		byCommit[r.Commit] = i
-	}
-	pick := func(i int) (*Row, error) {
-		j, ok := byCommit[line[i].sha]
-		if !ok {
-			return nil, errors.New("the listing from the traced commit's row holds no row for it")
+	t.Row = &r
+	var marked []string
+	for _, x := range r.Reverts {
+		if x.Row != "" && !slices.Contains(marked, x.Row) {
+			marked = append(marked, x.Row)
 		}
-		r := l.Rows[j]
-		return &r, nil
 	}
-	if t.Row, err = pick(own); err != nil {
-		return Trace{}, err
-	}
-	for _, i := range reverted {
-		r, err := pick(i)
+	for _, c := range marked {
+		m, err := rowIn(l, c)
 		if err != nil {
 			return Trace{}, err
 		}
-		t.Reverts = append(t.Reverts, *r)
+		t.Reverts = append(t.Reverts, m)
 	}
 	return t, nil
+}
+
+// rowIn is l's row for commit.
+func rowIn(l Listing, commit string) (Row, error) {
+	for _, r := range l.Rows {
+		if r.Commit == commit {
+			return r, nil
+		}
+	}
+	return Row{}, errors.New("the listing for the trace holds no row for a commit it names")
+}
+
+// olderTargets is the index on line of the oldest row older than own that
+// r's revert lines name and the listing from own could not read: a commit a
+// git line resolved to outside the listing's range, and a pull request a
+// forge line names that no row of it merged; own when there is none. note
+// says what it could not place: a commit no first-parent commit brought, a
+// pull request no older first-parent commit's subject names, or targets past
+// maxTraceTargets.
+func olderTargets(ctx context.Context, repoRoot, to string, line []lineCommit, idx map[string]int, own int, r Row) (int, string, error) {
+	var commits []string
+	var prs []int
+	past := 0
+	for _, x := range r.Reverts {
+		var pr int
+		switch {
+		case x.Kind == RevertGit && x.Target != "" && strings.HasPrefix(x.Unmarked, "names a commit outside the listed range"):
+			if slices.Contains(commits, x.Target) {
+				continue
+			}
+		case x.Kind == RevertForge && strings.HasPrefix(x.Unmarked, "names a pull request no row of the listing merged"):
+			_, num, _ := strings.Cut(x.Names, "#")
+			if pr, _ = strconv.Atoi(num); pr == 0 || slices.Contains(prs, pr) {
+				continue
+			}
+		default:
+			continue
+		}
+		if len(commits)+len(prs) == maxTraceTargets {
+			past++
+			continue
+		}
+		if pr != 0 {
+			prs = append(prs, pr)
+		} else {
+			commits = append(commits, x.Target)
+		}
+	}
+	oldest := own
+	var notes []string
+	if past > 0 {
+		notes = append(notes, fmt.Sprintf("%d more commits or pull requests its lines name are past the %d looked for, so the range may not hold their rows", past, maxTraceTargets))
+	}
+	off := 0
+	for _, c := range commits {
+		i, err := rowOn(ctx, repoRoot, to, c, line, idx)
+		if err != nil {
+			return 0, "", err
+		}
+		if i < 0 {
+			off++
+		}
+		oldest = max(oldest, i)
+	}
+	if off > 0 {
+		notes = append(notes, fmt.Sprintf("%d commits its lines name are on no first-parent commit of the default branch", off))
+	}
+	if len(prs) > 0 && own+1 < len(line) {
+		out, err := traceGit(ctx, repoRoot, "", maxListBytes,
+			"log", "-z", "--first-parent", "--no-show-signature", "--format=%H%x1f%s", line[own+1].sha, "--")
+		if err != nil {
+			return 0, "", masked("reading the subjects of the default branch's older commits", err)
+		}
+		found := map[int]bool{}
+		for rec := range bytes.SplitSeq(out, []byte{0}) {
+			sha, subject, ok := strings.Cut(strings.TrimPrefix(string(rec), "\n"), "\x1f")
+			i, on := idx[sha]
+			if !ok || !on {
+				continue
+			}
+			if n := subjectPR(subject); n != 0 && slices.Contains(prs, n) {
+				// The oldest row naming it, as the listing's own byPR reads it.
+				found[n] = true
+				oldest = max(oldest, i)
+			}
+		}
+		if len(found) < len(prs) {
+			notes = append(notes, fmt.Sprintf("%d pull requests its lines name are named by no older first-parent commit's subject", len(prs)-len(found)))
+		}
+	} else if len(prs) > 0 {
+		notes = append(notes, fmt.Sprintf("%d pull requests its lines name are named by no older first-parent commit's subject", len(prs)))
+	}
+	return oldest, strings.Join(notes, "; "), nil
 }
 
 // rowOn is the index on line (to's first-parent line, newest first, idx its
@@ -800,12 +904,15 @@ func rowOn(ctx context.Context, repoRoot, to, sha string, line []lineCommit, idx
 	if sha == to {
 		return 0, nil
 	}
-	out, err := gitutil.RunCappedContext(ctx, repoRoot, maxListBytes, "rev-list", "--ancestry-path", sha+".."+to, "--")
+	if !gitutil.IsFullSHA(sha) || !gitutil.IsFullSHA(to) {
+		return 0, errors.New("the trace names a commit by no full object name")
+	}
+	out, err := traceGit(ctx, repoRoot, "", maxListBytes, "rev-list", "--ancestry-path", sha+".."+to, "--")
 	if err != nil {
 		return 0, masked("finding the first-parent commit that brought the traced commit", err)
 	}
 	oldest := -1
-	for c := range strings.FieldsSeq(out) {
+	for c := range strings.FieldsSeq(string(out)) {
 		if i, ok := idx[c]; ok {
 			oldest = max(oldest, i)
 		}

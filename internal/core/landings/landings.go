@@ -251,9 +251,25 @@ func bounded(ctx context.Context) (context.Context, context.CancelFunc) {
 // The reader's seams onto git and the landing package, variables so a test
 // can hand it a log git would never write or count its reads of the mode.
 var (
-	historyLog    = gitutil.RunCappedBytesContext
+	historyLog = func(ctx context.Context, root string, maxBytes int, args ...string) ([]byte, error) {
+		return gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxBytes, args...)
+	}
 	committedMode = landing.CommittedMode
 )
+
+// storedText is a bounded read of git under ctx that reads history as
+// stored (gitutil.RunCappedBytesAsStoredContext: no replace ref stands one
+// commit in for another, and no graft gives a commit parents it does not
+// store), its output with trailing space trimmed: every read of the range's
+// commits, their trees and the first-parent line goes through it or
+// historyLog.
+func storedText(ctx context.Context, root string, maxBytes int, args ...string) (string, error) {
+	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxBytes, args...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(string(out), " \t\r\n"), nil
+}
 
 // maskedError is a failure list returns, its text masked as a row's text is
 // (whyText) and its cause kept for errors.Is.
@@ -424,7 +440,7 @@ func readHistory(ctx context.Context, repoRoot string, r Range) (*history, error
 	if err != nil {
 		return nil, masked("reading the default branch's history", err)
 	}
-	listed, err := gitutil.RunCappedContext(ctx, repoRoot, maxListBytes, "rev-list", spec, "--")
+	listed, err := storedText(ctx, repoRoot, maxListBytes, "rev-list", spec, "--")
 	if err != nil {
 		return nil, masked("listing the default branch's commits", err)
 	}
@@ -581,7 +597,7 @@ func (l *lister) modes(r Range, rows []string) (map[string]string, error) {
 	if r.From != "" {
 		spec = r.From + ".." + r.To
 	}
-	out, err := gitutil.RunCappedContext(l.ctx, l.root, maxListBytes, "log", "--first-parent", "--no-show-signature", "--format=%H", spec, "--", layered.Config.RepoRel)
+	out, err := storedText(l.ctx, l.root, maxListBytes, "log", "--first-parent", "--no-show-signature", "--format=%H", spec, "--", layered.Config.RepoRel)
 	if err != nil {
 		return nil, masked("reading where the facilitator mode changed", err)
 	}
@@ -797,7 +813,7 @@ func (l *lister) rulePath(commit, id string) (string, error) {
 	}
 	names, ok := l.rules[commit]
 	if !ok {
-		out, err := gitutil.RunCappedContext(l.ctx, l.root, maxListBytes, "ls-tree", "-z", "--name-only", commit, "--", drainrule.ADRsRelDir+"/")
+		out, err := storedText(l.ctx, l.root, maxListBytes, "ls-tree", "-z", "--name-only", commit, "--", drainrule.ADRsRelDir+"/")
 		if err == nil {
 			for n := range strings.SplitSeq(out, "\x00") {
 				if n != "" {

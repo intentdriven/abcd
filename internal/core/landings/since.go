@@ -118,7 +118,7 @@ type lineCommit struct {
 // firstParentLine is to's first-parent line, newest first, with each commit's
 // committer date.
 func firstParentLine(ctx context.Context, repoRoot, to string) ([]lineCommit, error) {
-	out, err := gitutil.RunCappedContext(ctx, repoRoot, maxListBytes, "rev-list", "--first-parent", "--timestamp", to, "--")
+	out, err := storedText(ctx, repoRoot, maxListBytes, "rev-list", "--first-parent", "--timestamp", to, "--")
 	if err != nil {
 		return nil, masked("listing the default branch's first-parent line", err)
 	}
