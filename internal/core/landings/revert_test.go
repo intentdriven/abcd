@@ -506,3 +506,25 @@ func TestARefSpelledLikeANameIsNotRead(t *testing.T) {
 		t.Fatalf("trace(deadbee) = %+v, %v", tr, err)
 	}
 }
+
+// TestARevertOfAMergeWithdrawsTheRevertsItBrought: a revert of a merge row,
+// by the merge's own name as git revert -m1 writes it, reverts every commit
+// that row brought, so a revert one of them carried is withdrawn, and the row
+// it reverted reads reinstated.
+func TestARevertOfAMergeWithdrawsTheRevertsItBrought(t *testing.T) {
+	f := newFx(t, "human")
+	f.branch("one", "feat: x")
+	m1 := f.merge(1, "one")
+	b := f.branch("two", revertMsg("Merge pull request #1 from org/one", m1, 40))
+	m2 := f.merge(2, "two")
+	f.r.Git("revert", "-m1", "--no-edit", m2)
+	c := f.head()
+	ff := mergeForge(t, f, map[int]string{1: m1, 2: m2})
+	l := f.list(ff.call)
+	if got := row(t, l, m1).Reverted; got == nil || *got != (Revert{By: b, ByRow: m2, Kind: RevertGit, WithdrawnBy: c}) {
+		t.Fatalf("the row the merged revert reverted: %+v", got)
+	}
+	if got := row(t, l, m2).Reverted; got == nil || *got != (Revert{By: c, ByRow: c, Kind: RevertGit}) {
+		t.Fatalf("the merge reverted by its own name: %+v", got)
+	}
+}

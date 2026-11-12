@@ -395,19 +395,28 @@ func (l *lister) traceReverts(rows []Row, accepted map[string]*prAnswer) {
 
 // mark sets each reverted row's mark from edges, oldest reverting row first:
 // the first revert of the row that stands, else the first, with the commit
-// that withdrew it. A revert stands when no revert that stands reverts it.
+// that withdrew it. A revert stands when no revert that stands reverts it. An
+// edge to a row's own commit (a merge reverted by its own name, or a pull
+// request named by the forge's line) reverts every commit that row brought,
+// so a revert one of those commits carries is withdrawn by it too.
 func (l *lister) mark(rows []Row, at map[string]int, edges []revertEdge) {
 	h := l.h
 	reverters := map[string][]int{}
 	for i, e := range edges {
 		reverters[e.to] = append(reverters[e.to], i)
+		if h.onLine[e.to] {
+			for _, c := range h.branch[e.to] {
+				reverters[c] = append(reverters[c], i)
+			}
+		}
 	}
 	memo := map[string]int8{}
 	var standing func(c string) bool
 	standing = func(c string) bool {
 		if v, ok := memo[c]; ok {
-			// 2 is a commit being judged: no line forms a cycle (each names a
-			// strict ancestor), and were one to, it reads as standing.
+			// 2 is a commit being judged: no edge forms a cycle (each goes to
+			// a commit an older row brought), and were one to, it reads as
+			// standing.
 			return v != 0
 		}
 		memo[c] = 2
