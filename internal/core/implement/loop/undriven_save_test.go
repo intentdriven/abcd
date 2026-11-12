@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -662,11 +663,8 @@ func TestTheStopsPageNoteKeepsTheVersionOfTheRun(t *testing.T) {
 	}
 	stateAtVersion(t, repo.Root(), runID, schemaVersionPrevious)
 
-	out, err := notePage(repo.Root(), runID, rec, runstop.Stop{SetBy: "a person", SetAt: now}, o)
+	out := notePage(repo.Root(), runID, rec, runstop.Stop{SetBy: "a person", SetAt: now}, o)
 
-	if err != nil {
-		t.Fatalf("the page note was not kept: %v", err)
-	}
 	if got := controlOf(t, repo.Root(), runID).Stop.PageFailed; got != out.PageFailed || got == rec.PageFailed {
 		t.Fatalf("the control record does not keep what the page note says: %q, answered %q", got, out.PageFailed)
 	}
@@ -795,4 +793,31 @@ func TestADrivesTakeUpOfARunLeftAtItsVersionEndsTheDrive(t *testing.T) {
 		t.Fatalf("the drive says another drive took the issue up:\n%s", all)
 	}
 	wantLeft(t, repo.Root(), runID, schemaVersionPrevious, before, drive.why)
+}
+
+// TestAPageNoteThatCannotBeKeptLeavesTheStopsRefusal: the stop holds whether or not its
+// page note is kept, so a note whose save fails ends the move at the stage `stop`, at exit
+// 3, as any check under the stop does, and the refusal says the note could not be kept.
+func TestAPageNoteThatCannotBeKeptLeavesTheStopsRefusal(t *testing.T) {
+	repo, runID, _, _, _ := deadLane(t)
+	o, _, folder := stopped(t)
+	// The page cannot be written, so there is a note to keep (TestAPageThatCannotBeWrittenIsNamed).
+	for _, dir := range []string{accountDigestDir(), runstop.DigestDir} {
+		if err := os.WriteFile(filepath.Join(folder, dir), []byte("not a directory\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	later := time.Now().Add(3 * time.Hour)
+	o.Now = func() time.Time { return later }
+	prev := savePageNote
+	savePageNote = func(string, string, func(*os.Root, *State) (bool, error)) error {
+		return errors.New("the note's save failed")
+	}
+	t.Cleanup(func() { savePageNote = prev })
+
+	r := wantStopRefusal(t, checkOnce(repo.Root(), runID, o))
+
+	if !strings.Contains(r.Reason, "the day's page could not be written") || !strings.Contains(r.Reason, "the run's account of it could not be kept: the note's save failed") {
+		t.Fatalf("the stop's refusal does not say the page note could not be kept: %s", r.Reason)
+	}
 }

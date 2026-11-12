@@ -441,7 +441,7 @@ func haltRun(repoRoot, runID string, s runstop.Stop, steps Stages, o Options) (*
 	}
 	if rec.HaltedAt != nil {
 		if rec.FromFile && rec.PageFailed != "" {
-			return notePage(repoRoot, runID, rec, s, o)
+			return notePage(repoRoot, runID, rec, s, o), nil
 		}
 		return rec, nil
 	}
@@ -488,7 +488,7 @@ func haltRun(repoRoot, runID string, s runstop.Stop, steps Stages, o Options) (*
 	}
 	// The page says the person's stop holds and how to lift it, which a signal is not.
 	if rec.HaltedAt != nil && rec.FromFile {
-		return notePage(repoRoot, runID, rec, s, o)
+		return notePage(repoRoot, runID, rec, s, o), nil
 	}
 	return rec, nil
 }
@@ -1005,8 +1005,10 @@ func ArmedLine(pr int) string {
 // notePage writes the page for a run the stop halted and keeps in the run's account whether
 // it could, so the stop's answer can say; a later check tries again. What it keeps is the
 // control record's mark and a line in the run's record, so the state file keeps the version
-// it states (saveRecord), and a save that fails is returned with the stop as it stood.
-func notePage(repoRoot, runID string, rec *RunStop, s runstop.Stop, o Options) (*RunStop, error) {
+// it states (saveRecord). A save that fails takes nothing from the stop, which holds all
+// the same: the stop it returns says how the page stands and that the run's account of it
+// could not be kept, so the move still ends at the stage `stop`, at exit 3.
+func notePage(repoRoot, runID string, rec *RunStop, s runstop.Stop, o Options) *RunStop {
 	why := ""
 	inForce := *rec
 	if s.Path != "" {
@@ -1016,10 +1018,10 @@ func notePage(repoRoot, runID string, rec *RunStop, s runstop.Stop, o Options) (
 		why = "the day's page could not be written: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))
 	}
 	if why == rec.PageFailed {
-		return rec, nil
+		return rec
 	}
 	now := o.now()
-	err := saveRecord(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err := savePageNote(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		c, err := readControl(root, runID)
 		if err != nil || c.Stop == nil {
 			return false, err
@@ -1036,13 +1038,20 @@ func notePage(repoRoot, runID string, rec *RunStop, s runstop.Stop, o Options) (
 		st.UpdatedAt = now
 		return true, nil
 	})
-	if err != nil {
-		return rec, err
-	}
 	out := *rec
 	out.PageFailed = why
-	return &out, nil
+	if err != nil {
+		said := why
+		if said == "" {
+			said = "the day's page was written"
+		}
+		out.PageFailed = said + ", and the run's account of it could not be kept: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+	}
+	return &out
 }
+
+// savePageNote is notePage's save; a variable so a test can stand in for one that fails.
+var savePageNote = saveRecord
 
 // machineCheckouts is every checkout whose runs this account can read: this
 // repository's worktrees and each checkout a driver noted, those that still
