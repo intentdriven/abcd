@@ -114,12 +114,12 @@ func newLandingsCommand(asJSON *bool) *cobra.Command {
 			"Exit 0 with the listing or the trace, a listing whose forge answers were not\n" +
 			"read included (those rows are unattended and the forge note says how many);\n" +
 			"exit 1 when history, the tags or the repository cannot be read, but for the\n" +
-			"three reads below; exit 2 outside a git checkout, with no default branch,\n" +
+			"reads named below; exit 2 outside a git checkout, with no default branch,\n" +
 			"with no range, with both filters, or with a commit named that names none.\n" +
 			"A lookup of the default branch that failed is reported as no default branch,\n" +
 			"at exit 2, because the shared lookup gives one answer for both. Answers git\n" +
 			"gives without failing are taken as git's answer: a tag ref git's listing\n" +
-			"skips reads as no tag, a tag given as the range's start whose commit object\n" +
+			"skips reads as no tag, a tag named by --since whose commit object\n" +
 			"is absent reads as pointing at no commit, and a default branch whose tip's\n" +
 			"commit object is absent reads as no default branch.",
 		Args: func(_ *cobra.Command, args []string) error {

@@ -4613,12 +4613,12 @@ revert line's names and the notes carry text someone typed.
 Exit 0 with the listing or the trace, a listing whose forge answers were not
 read included (those rows are unattended and the forge note says how many);
 exit 1 when history, the tags or the repository cannot be read, but for the
-three reads below; exit 2 outside a git checkout, with no default branch,
+reads named below; exit 2 outside a git checkout, with no default branch,
 with no range, with both filters, or with a commit named that names none.
 A lookup of the default branch that failed is reported as no default branch,
 at exit 2, because the shared lookup gives one answer for both. Answers git
 gives without failing are taken as git's answer: a tag ref git's listing
-skips reads as no tag, a tag given as the range's start whose commit object
+skips reads as no tag, a tag named by --since whose commit object
 is absent reads as pointing at no commit, and a default branch whose tip's
 commit object is absent reads as no default branch.
 
