@@ -257,8 +257,11 @@ func readFacilitatorAt(r layered.Roots, repoRoot, tip, name string) (Facilitator
 // machine layer, since a reader of a past commit cannot read the machine as it
 // was then. found says whether the commit holds the file at all; a file that
 // sets no mode is human, the bundled default, and so is a commit without one.
-// Its git questions are bound to ctx. The error is the reader's raw text, for
-// the caller to mask.
+// Its git questions are bound to ctx and read the commit's trees and the
+// file's blob as stored (layered.Roots.RepoAtAsStored: no replace ref stands
+// one in for another), as the landings reader, its one caller, reads the rest
+// of history; the merge gate's own read (readFacilitatorAt) is unchanged. The
+// error is the reader's raw text, for the caller to mask.
 func CommittedMode(ctx context.Context, repoRoot, commit string) (mode string, found bool, err error) {
 	// Refused here, not left to layered: an empty RepoAt there means the
 	// working tree, so an empty name would read the working tree's mode as
@@ -266,7 +269,7 @@ func CommittedMode(ctx context.Context, repoRoot, commit string) (mode string, f
 	if !gitutil.IsFullSHA(commit) {
 		return "", false, fmt.Errorf("%s is not a commit's full object name", clip(commit))
 	}
-	s, err := layered.LoadContext(ctx, layered.Config, layered.Roots{Repo: repoRoot, RepoAt: commit, RepoAtName: short(commit), HomeRefused: true})
+	s, err := layered.LoadContext(ctx, layered.Config, layered.Roots{Repo: repoRoot, RepoAt: commit, RepoAtName: short(commit), RepoAtAsStored: true, HomeRefused: true})
 	if err != nil {
 		return "", false, err
 	}

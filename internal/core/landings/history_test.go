@@ -619,6 +619,7 @@ func TestAnAnswerThatDoesNotCheckIsUnread(t *testing.T) {
 	ff.prs[4].Reviews.Nodes = []forgeReview{review(alice, "APPROVED", ff.prs[4].HeadRefOid)}
 	ff.prs[5].Commits.Nodes = make([]forgeCommit, maxPage+1)
 	ff.prs[5].Commits.TotalCount = maxPage + 1
+	ff.unasked = map[int]bool{5: true}
 	l := f.list(ff.call)
 	for _, r := range l.Rows {
 		if r.Approval.Source != SourceForgeUnread {

@@ -768,7 +768,12 @@ type prBody struct {
 
 // unedited says whether the forge says p's body was not edited after the
 // pull request merged: never edited, or last edited no later than the merge,
-// both times read.
+// both times read. It cuts both ways. Any edit of the body after the merge
+// leaves a true revert line in it unread: the row it names then carries no
+// mark, and the reverting row says why in an untraceable line. And the forge gives both times to the second, so an edit
+// in the same second as the merge reads as unedited. That lastEditedAt moves
+// on every edit of the body is the forge's documented meaning, shown here only
+// through the fake forge; it is checked on the live forge before step 4.
 func (p *prBody) unedited() bool {
 	if p.LastEditedAt == nil {
 		return true
@@ -792,9 +797,14 @@ type bodyAnswers struct {
 // answer the listing read and accepted for their row), MaxBatch to a
 // document, under ctx, within calls more calls asking again (what the
 // listing's bound on asking again holds once its answers are read). A
-// document past the output bound is asked again in halves; one that fails
-// otherwise, or a refusal, leaves its pull requests' bodies unread, and a
-// refusal or an ended ctx stops the asking. An answer is read only where it
+// document past the output bound, or whose answer carries errors naming no
+// one pull request, is asked again in halves as the listing's batches are
+// (asker.halve): a half past the bound is halved again down to one pull
+// request, which alone past it is too large to read; a half failing so
+// otherwise is followed alone, and when both halves fail other than for their
+// size neither is asked further. One that fails otherwise, or a refusal,
+// leaves its pull requests' bodies unread, and a refusal or an ended ctx
+// stops the asking. An answer is read only where it
 // names the pull request asked and says it merged as the row's commit. It
 // writes nothing.
 func readBodies(ctx context.Context, forge landing.ForgeCall, asks []prAsk, calls int) bodyAnswers {
@@ -819,35 +829,89 @@ func (b *bodyAsker) unread(batch []prAsk, why string) {
 	}
 }
 
-func (b *bodyAsker) ask(batch []prAsk) {
+// call asks the forge about batch's bodies once, and reports false when it
+// was not asked or refused, the batch then read as unread.
+func (b *bodyAsker) call(batch []prAsk) (batchResult, map[int]json.RawMessage, bool) {
 	if b.stop == "" && b.ctx.Err() != nil {
 		b.stop = "the listing's time ran out before the forge was asked: " + whyText(b.ctx.Err())
 	}
 	if b.stop != "" {
 		b.unread(batch, b.stop)
-		return
+		return batchResult{}, nil, false
 	}
 	r, nodes := askNodes(b.forge, batch, bodyArgs(batch), maxBodyAnswerBytes)
-	switch {
-	case r.stop:
+	if r.stop {
 		b.stop = r.whole
 		b.unread(batch, r.whole)
-		return
-	case r.size && len(batch) == 1:
-		b.unread(batch, r.whole+", asked alone, so it is too large to read")
-		return
-	case r.size && b.calls >= 2:
-		b.calls -= 2
-		b.ask(batch[:len(batch)/2])
-		b.ask(batch[len(batch)/2:])
-		return
-	case r.size:
-		b.unread(batch, r.whole+"; it is not asked again in halves, the listing's bound on asking again being spent")
-		return
+		return r, nil, false
+	}
+	return r, nodes, true
+}
+
+func (b *bodyAsker) ask(batch []prAsk) {
+	r, nodes, ok := b.call(batch)
+	switch {
+	case !ok:
+	case r.whole != "" && r.split:
+		b.halve(batch, r.whole, r.size)
 	case r.whole != "":
 		b.unread(batch, r.whole)
+	default:
+		b.take(batch, r, nodes)
+	}
+}
+
+// halve asks batch again in two halves, as asker.halve asks a batch of the
+// listing's: why is why the forge answered for none of it, size whether for
+// the output bound. Each call spends one of calls.
+func (b *bodyAsker) halve(batch []prAsk, why string, size bool) {
+	switch {
+	case len(batch) < 2 && size:
+		b.unread(batch, why+", asked alone, so it is too large to read")
+		return
+	case len(batch) < 2:
+		b.unread(batch, why)
+		return
+	case b.calls < 2:
+		b.unread(batch, why+"; it is not asked again in halves, the listing's bound on asking again being spent")
 		return
 	}
+	b.calls -= 2
+	type failed struct {
+		batch []prAsk
+		why   string
+		size  bool
+	}
+	var fails []failed
+	for _, h := range [][]prAsk{batch[:len(batch)/2], batch[len(batch)/2:]} {
+		r, nodes, ok := b.call(h)
+		switch {
+		case !ok:
+		case r.whole != "" && r.split:
+			fails = append(fails, failed{h, r.whole, r.size})
+		case r.whole != "":
+			b.unread(h, r.whole)
+		default:
+			b.take(h, r, nodes)
+		}
+	}
+	if len(fails) == 2 && !(fails[0].size && fails[1].size) {
+		for _, f := range fails {
+			if f.size {
+				b.halve(f.batch, f.why, true)
+				continue
+			}
+			b.unread(f.batch, f.why+"; neither half of the batch answered, so it is not asked again")
+		}
+		return
+	}
+	for _, f := range fails {
+		b.halve(f.batch, f.why, f.size)
+	}
+}
+
+// take reads the answer r and nodes for batch a pull request at a time.
+func (b *bodyAsker) take(batch []prAsk, r batchResult, nodes map[int]json.RawMessage) {
 	for _, a := range batch {
 		raw, ok := nodes[a.pr]
 		var p prBody

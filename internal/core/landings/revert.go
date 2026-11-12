@@ -21,9 +21,13 @@ package landings
 // that row brought. A mark changes no row's class, rule or Unattended: a
 // reverted row is read as it landed, and a reverting commit is a row like any
 // other; the forge is asked for a body only after every row is classed, in a
-// document of its own, and nothing it answers is kept. dcn-2611120948130053
-// records these readings and their grounds, as dcn-2611121039108572 corrects
-// it.
+// document of its own, and nothing it answers is kept. A body is asked only
+// for a row whose subject is git revert's own, so a squashed revert whose
+// title was reworded is not seen at all: nothing marks the row it reverts, and
+// no untraceable line says it was not read; that keeps the asking bounded and
+// step 2's answers as they were. dcn-2611120948130053 records these readings
+// and their grounds, as dcn-2611121039108572 and dcn-2611121125486678
+// correct it.
 
 import (
 	"bytes"
@@ -53,6 +57,14 @@ const (
 // GroupUntraceable is the group the reverted groups hold untraceable reverts
 // in, apart from the groups by rule.
 const GroupUntraceable = "untraceable"
+
+// The reasons a line marks no row that the positional trace widens its range
+// for (olderTargets): they are matched whole, so a reason reworded here is
+// reworded for both.
+const (
+	unmarkedOutside = "names a commit outside the listed range"
+	unmarkedNoRow   = "names a pull request no row of the listing merged as the forge's answer says"
+)
 
 // SaysNotOnDefault is what the positional trace says of a commit no
 // first-parent commit of the default branch brought.
@@ -171,10 +183,11 @@ type resolved struct {
 // type of each object named by exactly one, by its full name on standard
 // input. Both read stored objects only (gitutil.RunCappedBytesAsStoredContext:
 // no replace ref, graft or lazy fetch). A name begun by no stored object names
-// nothing, one begun by two or more is ambiguous, and an answer that does not
-// read for one name leaves that name alone unresolved. Every name must be a
-// hex name (hexNameRe) or nothing is asked. A variable only so a test can
-// count its calls.
+// nothing, one begun by two or more is ambiguous, and one whose type git does
+// not give leaves that name alone unresolved; a git call that fails leaves
+// every name asked of it unresolved, and never a line read for another name.
+// Every name must be a hex name (hexNameRe) or nothing is asked. A variable
+// only so a test can count its calls.
 var resolveNames = func(ctx context.Context, root string, names []string) (map[string]resolved, error) {
 	args := []string{"rev-parse"}
 	for _, n := range names {
@@ -354,7 +367,7 @@ func (l *lister) traceReverts(rows []Row, accepted map[string]bool) {
 		case full == p.commit:
 			line.Unmarked = "names the reverting commit itself"
 		case h.commits[full] == nil:
-			line.Unmarked = "names a commit outside the listed range"
+			line.Unmarked = unmarkedOutside
 		case h.rowOf[full] == h.rowOf[p.commit]:
 			line.Unmarked = "names a commit its own row brought, so it reverts nothing that landed"
 		default:
@@ -415,7 +428,7 @@ func (l *lister) traceReverts(rows []Row, accepted map[string]bool) {
 					case ref.pr == r.PR:
 						line.Unmarked = "names its own pull request"
 					case !merged:
-						line.Unmarked = "names a pull request no row of the listing merged as the forge's answer says"
+						line.Unmarked = unmarkedNoRow
 					case j < i:
 						line.Unmarked = "names a pull request merged after it"
 					default:
@@ -660,10 +673,22 @@ func revertedGroups(l Listing) []RevertGroup {
 // stops it having a row (SaysNotOnDefault, or why the name names no commit);
 // the row that brought it onto the default branch, as a listing over the
 // range From says classes and marks it; and the rows that row's revert lines
-// mark in that listing, each classed and marked as the listing has it (their
-// own revert lines are read over the same range, which may start at them). RangeNote says why the range may not hold a row one
-// of its lines names, "" when it holds every one. Tip and To are the tip
-// read, and the notes are the listing's.
+// mark in that listing, each classed and marked as the listing has it.
+// RangeNote says why the range may not hold a row one of its lines names, ""
+// when it holds every one. Tip and To are the tip read, and the notes are the
+// listing's.
+//
+// A traced row reads as a listing over a longer range reads it but in these
+// ways. The reverted rows' own revert lines are read over the trace's range,
+// which may start at them, so their lines can say "outside the listed range".
+// A line past the maxTraceTargets the trace looks for keeps its reason, which
+// then says the bound was reached. And every bound a listing holds is the
+// listing's own and spent oldest row first: the maxRevertLines git lines it
+// follows, and the maxHalvingCalls of asking again that its pull request
+// batches and then its bodies share. So a listing from an older start can
+// leave unfollowed or unread a line or a body that the trace's shorter range
+// follows or reads, and the widened listing can do the same to the traced
+// row's own lines.
 type Trace struct {
 	Commit         string `json:"commit,omitempty"`
 	Says           string `json:"says,omitempty"`
@@ -684,6 +709,15 @@ type Trace struct {
 // name. One git call looks for each commit, and one for every pull request.
 const maxTraceTargets = 16
 
+// The bounds on the older commits' messages the trace reads to find the row
+// that merged a pull request a forge line names: the most commits, and the most
+// bytes, read. Past either, RangeNote says so and the range is not widened for
+// them. Variables only so a test can hold a trace to small ones.
+var (
+	maxOlderCommits = 4096
+	maxOlderBytes   = maxListBytes
+)
+
 // traceGit is the positional trace's own reads of git, each as stored
 // (gitutil.RunCappedBytesAsStoredContext: no replace ref or graft). A
 // variable only so a test can count them.
@@ -699,10 +733,16 @@ var traceGit = gitutil.RunCappedBytesAsStoredContext
 // row to the tip; where the row's lines name a commit before it, or a pull
 // request no row of it merged, the range is widened once to the oldest row
 // they name (at most maxTraceTargets looked for), and RangeNote says what it
-// could not place. So a trace reads at most two listings and, beside them,
-// four git calls before the first and maxTraceTargets+1 between the two. It
-// fetches nothing, writes only the listing's forge cache, and binds every
-// call to ctx as list does. It stays unexported for this step: step 4 exports
+// could not place. So a trace reads at most two listings, and beside them asks
+// git, before the first: the default branch's ref questions
+// (gitutil.DefaultRefContext, reading refs alone), the tip's commit
+// (commitOf), the name's objects and their types (resolveNames, at most two
+// calls), the first-parent line (firstParentLine) and the traced commit's
+// ancestry path (rowOn); and between the two: one ancestry path for each
+// commit looked for (at most maxTraceTargets) and one log of the older
+// commits' messages. Every one of them, as every call of the listings', reads
+// objects as stored. It fetches nothing, writes only the listing's forge
+// cache, and binds every call to ctx as list does. It stays unexported for this step: step 4 exports
 // it when it wires the verb.
 func trace(ctx context.Context, repoRoot, name string, o Options) (Trace, error) {
 	ctx, cancel := bounded(ctx)
@@ -769,7 +809,7 @@ func traceCommit(ctx context.Context, repoRoot, name string, o Options) (Trace, 
 	if err != nil {
 		return Trace{}, err
 	}
-	oldest, note, err := olderTargets(ctx, repoRoot, to, line, idx, own, r)
+	oldest, note, past, err := olderTargets(ctx, repoRoot, to, line, idx, own, r)
 	if err != nil {
 		return Trace{}, err
 	}
@@ -784,6 +824,12 @@ func traceCommit(ctx context.Context, repoRoot, name string, o Options) (Trace, 
 	}
 	t.From = l.From
 	t.ForgeUnread, t.CacheUnwritten, t.ModeUnread = l.ForgeUnread, l.CacheUnwritten, l.ModeUnread
+	r.Reverts = slices.Clone(r.Reverts)
+	for i := range r.Reverts {
+		if past.holds(r.Reverts[i]) {
+			r.Reverts[i].Unmarked += fmt.Sprintf("; the trace looks for at most %d such rows, a bound this line is past, so its range was not widened to it", maxTraceTargets)
+		}
+	}
 	t.Row = &r
 	var marked []string
 	for _, x := range r.Reverts {
@@ -811,52 +857,74 @@ func rowIn(l Listing, commit string) (Row, error) {
 	return Row{}, errors.New("the listing for the trace holds no row for a commit it names")
 }
 
+// pastTargets are the commits and pull requests a traced row's lines name
+// past the maxTraceTargets the trace looks for.
+type pastTargets struct {
+	commits map[string]bool
+	prs     map[int]bool
+}
+
+// widenable is the target x names that the trace widens its range for: a
+// commit a git line resolved to outside the listing's range, or a pull request
+// a forge line names that no row of it merged, by the line's reason, matched
+// whole (unmarkedOutside, unmarkedNoRow); "" and 0 for any other line.
+func widenable(x RevertLine) (commit string, pr int) {
+	switch {
+	case x.Kind == RevertGit && x.Target != "" && x.Unmarked == unmarkedOutside:
+		return x.Target, 0
+	case x.Kind == RevertForge && x.Unmarked == unmarkedNoRow:
+		_, num, _ := strings.Cut(x.Names, "#")
+		n, _ := strconv.Atoi(num)
+		return "", n
+	}
+	return "", 0
+}
+
+// holds says whether x names a target past the bound, read as widenable
+// reads it.
+func (p pastTargets) holds(x RevertLine) bool {
+	c, n := widenable(x)
+	return (c != "" && p.commits[c]) || (n != 0 && p.prs[n])
+}
+
 // olderTargets is the index on line of the oldest row older than own that
-// r's revert lines name and the listing from own could not read: a commit a
-// git line resolved to outside the listing's range, and a pull request a
-// forge line names that no row of it merged; own when there is none. note
-// says what it could not place: a commit no first-parent commit brought, a
-// pull request no older first-parent commit's subject names, or targets past
-// maxTraceTargets.
-func olderTargets(ctx context.Context, repoRoot, to string, line []lineCommit, idx map[string]int, own int, r Row) (int, string, error) {
+// r's revert lines name and the listing from own could not read (widenable);
+// own when there is none. note says what it could not place: a commit no
+// first-parent commit brought, a pull request no older first-parent commit's
+// subject names, or one the older commits' messages, read to their bounds
+// (maxOlderCommits, maxOlderBytes), did not reach, and the targets past
+// maxTraceTargets, which past holds. The subject is each message's first line,
+// as the listing reads it (subjectPR).
+func olderTargets(ctx context.Context, repoRoot, to string, line []lineCommit, idx map[string]int, own int, r Row) (int, string, pastTargets, error) {
 	var commits []string
 	var prs []int
-	past := 0
+	past := pastTargets{commits: map[string]bool{}, prs: map[int]bool{}}
 	for _, x := range r.Reverts {
-		var pr int
+		c, pr := widenable(x)
 		switch {
-		case x.Kind == RevertGit && x.Target != "" && strings.HasPrefix(x.Unmarked, "names a commit outside the listed range"):
-			if slices.Contains(commits, x.Target) {
-				continue
-			}
-		case x.Kind == RevertForge && strings.HasPrefix(x.Unmarked, "names a pull request no row of the listing merged"):
-			_, num, _ := strings.Cut(x.Names, "#")
-			if pr, _ = strconv.Atoi(num); pr == 0 || slices.Contains(prs, pr) {
-				continue
-			}
-		default:
+		case c == "" && pr == 0, slices.Contains(commits, c), slices.Contains(prs, pr),
+			past.commits[c], past.prs[pr]:
 			continue
-		}
-		if len(commits)+len(prs) == maxTraceTargets {
-			past++
-			continue
-		}
-		if pr != 0 {
+		case len(commits)+len(prs) == maxTraceTargets && pr != 0:
+			past.prs[pr] = true
+		case len(commits)+len(prs) == maxTraceTargets:
+			past.commits[c] = true
+		case pr != 0:
 			prs = append(prs, pr)
-		} else {
-			commits = append(commits, x.Target)
+		default:
+			commits = append(commits, c)
 		}
 	}
 	oldest := own
 	var notes []string
-	if past > 0 {
-		notes = append(notes, fmt.Sprintf("%d more commits or pull requests its lines name are past the %d looked for, so the range may not hold their rows", past, maxTraceTargets))
+	if n := len(past.commits) + len(past.prs); n > 0 {
+		notes = append(notes, fmt.Sprintf("%d more commits or pull requests its lines name are past the %d looked for, so the range may not hold their rows", n, maxTraceTargets))
 	}
 	off := 0
 	for _, c := range commits {
 		i, err := rowOn(ctx, repoRoot, to, c, line, idx)
 		if err != nil {
-			return 0, "", err
+			return 0, "", past, err
 		}
 		if i < 0 {
 			off++
@@ -866,32 +934,43 @@ func olderTargets(ctx context.Context, repoRoot, to string, line []lineCommit, i
 	if off > 0 {
 		notes = append(notes, fmt.Sprintf("%d commits its lines name are on no first-parent commit of the default branch", off))
 	}
-	if len(prs) > 0 && own+1 < len(line) {
-		out, err := traceGit(ctx, repoRoot, "", maxListBytes,
-			"log", "-z", "--first-parent", "--no-show-signature", "--format=%H%x1f%s", line[own+1].sha, "--")
-		if err != nil {
-			return 0, "", masked("reading the subjects of the default branch's older commits", err)
-		}
-		found := map[int]bool{}
-		for rec := range bytes.SplitSeq(out, []byte{0}) {
-			sha, subject, ok := strings.Cut(strings.TrimPrefix(string(rec), "\n"), "\x1f")
-			i, on := idx[sha]
-			if !ok || !on {
-				continue
-			}
-			if n := subjectPR(subject); n != 0 && slices.Contains(prs, n) {
-				// The oldest row naming it, as the listing's own byPR reads it.
-				found[n] = true
-				oldest = max(oldest, i)
-			}
-		}
-		if len(found) < len(prs) {
-			notes = append(notes, fmt.Sprintf("%d pull requests its lines name are named by no older first-parent commit's subject", len(prs)-len(found)))
-		}
-	} else if len(prs) > 0 {
-		notes = append(notes, fmt.Sprintf("%d pull requests its lines name are named by no older first-parent commit's subject", len(prs)))
+	if len(prs) == 0 {
+		return oldest, strings.Join(notes, "; "), past, nil
 	}
-	return oldest, strings.Join(notes, "; "), nil
+	older := len(line) - own - 1
+	if older <= 0 {
+		notes = append(notes, fmt.Sprintf("%d pull requests its lines name are named by no older first-parent commit's subject", len(prs)))
+		return oldest, strings.Join(notes, "; "), past, nil
+	}
+	out, err := traceGit(ctx, repoRoot, "", maxOlderBytes,
+		"log", "-z", "--first-parent", "--no-show-signature", "--max-count="+strconv.Itoa(maxOlderCommits), "--format=%H%x1f%B", line[own+1].sha, "--")
+	if err != nil {
+		if ctx.Err() != nil {
+			return 0, "", past, ctx.Err()
+		}
+		notes = append(notes, fmt.Sprintf("%d pull requests its lines name were not looked for: the older first-parent commits' messages were not read (%s)", len(prs), whyText(err)))
+		return oldest, strings.Join(notes, "; "), past, nil
+	}
+	found := map[int]bool{}
+	for rec := range bytes.SplitSeq(out, []byte{0}) {
+		sha, message, ok := strings.Cut(strings.TrimPrefix(string(rec), "\n"), "\x1f")
+		i, on := idx[sha]
+		if !ok || !on {
+			continue
+		}
+		if n := subjectPR(message); n != 0 && slices.Contains(prs, n) {
+			// The oldest row naming it, as the listing's own byPR reads it.
+			found[n] = true
+			oldest = max(oldest, i)
+		}
+	}
+	switch missing := len(prs) - len(found); {
+	case missing > 0 && older > maxOlderCommits:
+		notes = append(notes, fmt.Sprintf("%d pull requests its lines name are named by no subject of the %d older first-parent commits the trace reads, the most it reads, so an older row may have merged them", missing, maxOlderCommits))
+	case missing > 0:
+		notes = append(notes, fmt.Sprintf("%d pull requests its lines name are named by no older first-parent commit's subject", missing))
+	}
+	return oldest, strings.Join(notes, "; "), past, nil
 }
 
 // rowOn is the index on line (to's first-parent line, newest first, idx its

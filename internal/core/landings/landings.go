@@ -260,9 +260,18 @@ var (
 // storedText is a bounded read of git under ctx that reads history as
 // stored (gitutil.RunCappedBytesAsStoredContext: no replace ref stands one
 // commit in for another, and no graft gives a commit parents it does not
-// store), its output with trailing space trimmed: every read of the range's
-// commits, their trees and the first-parent line goes through it or
-// historyLog.
+// store), its output with trailing space trimmed. Every git call the reader
+// makes that reads an object reads it as stored: through it, historyLog,
+// traceGit or resolveNames, and the facilitator mode through committedMode
+// (landing.CommittedMode, which reads the commit's trees and the file's blob
+// as stored). In the listing, the range and the trace that is the range's log
+// and commit listing, the mode log and the mode's file, the drain rules' tree,
+// the first-parent line, the tip's commit, the release tag described, a tag's
+// commit and a tag name's shape, every revert line's name and type, and the
+// trace's ancestry paths and older messages. The calls left read refs, the
+// worktrees or the index and no history: the default branch's ref questions
+// (gitutil.DefaultRefContext), the worktree listing, and the forge cache's
+// checks of what git tracks and ignores.
 func storedText(ctx context.Context, root string, maxBytes int, args ...string) (string, error) {
 	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxBytes, args...)
 	if err != nil {
