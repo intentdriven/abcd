@@ -24,10 +24,10 @@ import (
 //     on the page outside a span; a closer is found with no escape test, as
 //     inside a span a backslash is literal. CodeSpanRanges is that pairing.
 //   - A stretch is a run of lines with no blank line between them, a blank
-//     line being one that is empty or holds nothing but spaces and tabs. No
-//     heading, fence, list item, blockquote, table or HTML line ends a
-//     stretch, so a paragraph the page forms lies inside one stretch. A
-//     blank line inside a fence or a comment ends a stretch too.
+//     line being one that is empty or holds nothing but spaces and tabs,
+//     inside a fence or comment as well as outside. No heading, fence, list
+//     item, blockquote, table or HTML line ends a stretch, so a paragraph the
+//     page forms lies inside one stretch.
 //   - Walking a stretch top to bottom, a line that leaves a backtick run with
 //     no closer of its length later on that line leaves the run open. The
 //     lines below it, to the stretch's end, are unsure, and so is the rest of
@@ -40,11 +40,11 @@ import (
 //     the walk steps over the span whole. One outside a span opens a comment.
 //     Backticks inside a comment are literal.
 //   - Where a line is unsure, a comment opener that is the first thing on
-//     its line, at up to three columns, opens a comment, since the page
-//     starts a comment block there in every reading. Any other opener is
-//     read as a line read alone reads it, and where it has no `-->` after it
-//     on the line, met by the walk or inside a span the walk steps over, the
-//     reading is Unsure from that line (Reading.Unsure).
+//     its line, at up to three columns, opens a comment whatever the lines
+//     above leave open, as an HTML comment block starts at such a line. Any
+//     other opener is read as a line read alone reads it, and where it has no
+//     `-->` after it on the line, met by the walk or inside a span the walk
+//     steps over, the reading is Unsure from that line (Reading.Unsure).
 //
 // ReadPage, the reading the readiness gate takes, blanks no span on a line
 // below an open run, reads the text of a comment whose opener is unsure and
@@ -69,10 +69,12 @@ type lineRead struct {
 	// spans are the byte ranges inside a one-line code span, paired on the
 	// line alone, outside the comments the walk stepped over.
 	spans [][2]int
-	// comments are the byte ranges inside an HTML comment that every reading
-	// agrees is one, the last of which may run to the line's end: Page.Text
-	// blanks them. A comment opened where the line is unsure and not first on
-	// its line is not among them.
+	// comments are the byte ranges inside an HTML comment the walk opened
+	// where it is sure of the opener (on a sure line, or first on its line at
+	// up to three columns), the last of which may run to the line's end, and
+	// Read adds the part of the line inside a comment an earlier line opened:
+	// Page.Text blanks them. A comment opened where the line is unsure and not
+	// first on its line is not among them.
 	comments [][2]int
 	// openers are the offsets of the comment openers that opened a comment.
 	openers []int
@@ -101,9 +103,10 @@ type lineRead struct {
 // From there, or from a run this line leaves open, the line is unsure: the
 // page may pair that run over the line break and hold any comment opener
 // after it inside a span. There a comment opener that is the first thing on
-// its line, at up to three columns, is a comment in every reading, since the
-// page starts a comment block at it; any other opener with no `-->` after it
-// on the line, met by the walk or inside a span it steps over, sets doubt.
+// its line, at up to three columns, opens a comment whatever the lines above
+// leave open, as an HTML comment block starts at such a line; any other
+// opener with no `-->` after it on the line, met by the walk or inside a span
+// it steps over, sets doubt.
 // Each byte is visited a bounded number of times, and each step the walk
 // takes is reported to walkHook.
 func walkLine(ln string, from int, comments, unsure bool) lineRead {

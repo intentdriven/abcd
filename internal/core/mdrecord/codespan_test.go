@@ -182,8 +182,8 @@ func TestCodeSpansStepInLineWithTheBody(t *testing.T) {
 
 // TestReadOpensALineInitialCommentBelowARunLeftOpen: below a backtick run a
 // line leaves open, a comment opener that is the first thing on its line, at
-// up to three columns, opens a comment, as the page starts one there in every
-// reading, and the page is read as sure.
+// up to three columns, opens a comment whatever the lines above leave open,
+// and the page is read as sure.
 func TestReadOpensALineInitialCommentBelowARunLeftOpen(t *testing.T) {
 	for _, c := range []struct {
 		name string

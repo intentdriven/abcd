@@ -100,8 +100,11 @@ func TestHandAuditedReadsOnlyItsOwnSection(t *testing.T) {
 // TestHandAuditedReadsCodeSpansOnOneLine: a verdict inside a span that opens
 // and closes on its line is quoted; a span is paired on each line alone, so
 // one over a line break is read as prose, a verdict in it included, and on
-// the line below it two backticks pair as on any line; and a span is blanked,
-// not cut out, so the text either side of one cannot join into a comment.
+// the line below it two backticks pair as on any line. A span is blanked with
+// spaces, not cut out, so the text either side of one stays apart and cannot
+// join into a verdict word. Comments are taken out before spans are paired,
+// so text either side of a span is never joined into a comment either: the
+// line's verdict is read.
 func TestHandAuditedReadsCodeSpansOnOneLine(t *testing.T) {
 	if HandAudited(withAuditNotes("Criterion 2 names the `MET` token in its refusal.")) {
 		t.Errorf("a verdict quoted on one line read as given")
@@ -114,6 +117,9 @@ func TestHandAuditedReadsCodeSpansOnOneLine(t *testing.T) {
 	}
 	if !HandAudited(withAuditNotes("<`x`!-- Criterion 2 MET -->")) {
 		t.Errorf("a verdict either side of which a span sits read as a comment")
+	}
+	if HandAudited(withAuditNotes("Criterion 2 is ME`x`T, the span cut out.")) {
+		t.Errorf("the text either side of a span joined into a verdict")
 	}
 }
 

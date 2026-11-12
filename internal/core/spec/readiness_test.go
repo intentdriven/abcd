@@ -259,8 +259,8 @@ func layoutAt(n int) Statement { return Statement{Line: n, Kind: UnsettledLayout
 
 // TestOpenQuestionsReadBelowALineInitialComment: below a backtick run a line
 // leaves open, a comment opener that is the first thing on its line, at up to
-// three columns, opens a comment, as the page starts one there in every
-// reading: a heading inside it does not end the Open Questions section, and
+// three columns, opens a comment whatever the lines above leave open: a
+// heading inside it does not end the Open Questions section, and
 // the question below it is counted.
 func TestOpenQuestionsReadBelowALineInitialComment(t *testing.T) {
 	const fm = "---\nid: spc-1\n---\n# T\n"
@@ -311,8 +311,10 @@ func TestUnsettledNamesAnOpenerBelowARunLeftOpen(t *testing.T) {
 }
 
 // TestUnsettledPinsTheOlderLimits: what the reader does today in layouts it
-// does not mirror, held so a change to any of them is seen. In each, the page
-// shows the phrase as prose and the reader does not report it.
+// does not mirror, held so a change to any of them is seen. In each the
+// reader does not report the phrase. In the backtick and backslash cases the
+// page shows it as prose; a one-line comment whose text holds two hyphens the
+// reader reads as a comment, so its text is not read.
 func TestUnsettledPinsTheOlderLimits(t *testing.T) {
 	checkUnsettled(t, []unsettledCase{
 		{"a backtick in an inline link's destination", "See [a](/u`x). Not READY: owed `y`.\n", nil},

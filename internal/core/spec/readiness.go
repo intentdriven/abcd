@@ -121,13 +121,15 @@ var (
 // opens and closes on one line is not read (mdrecord.Page.Spans), except
 // below a backtick run that a line leaves with no closer on that line, since
 // the page may pair the run over a line break: on the lines below it, to the
-// next blank line outside a fence or comment (a blank line inside one also
-// ends this), no span is blanked, and the run's own line keeps its spans.
-// There, and after the run on its own line, a comment opener that is the
-// first thing on its line, at up to three columns, opens a comment, since the
-// page starts one there in every reading; any other opener's comment is read
-// as text when it closes on its line, and when it does not, every line from
-// that one is read as its own text and the line is named (LayoutStatements).
+// next blank line, inside a fence or comment as well as outside, no span is
+// blanked, and the run's own line keeps its spans. On those lines a comment
+// opener that is the first thing on its line, at up to three columns, opens
+// a comment whatever the lines above leave open. Any other opener there, or
+// after the run on its own line, has its comment read as text when it closes
+// on its line, and when it does not, every line from that one is read as its
+// own text and the line is named (LayoutStatements); on the lines below the
+// run, so does an opener quoted in a one-line span with no closer after it on
+// its line.
 // A span over a line break is read. A line carrying a sentence and a label is
 // reported once, as not ready.
 func Unsettled(content string) []Statement {
