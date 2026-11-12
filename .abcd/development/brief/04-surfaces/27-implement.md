@@ -768,9 +768,13 @@ whose stop cannot be looked at, holds the run: it moves
 nothing and lets nothing go until the setting is put back, and only a read that saw
 clearly and found no stop counts as a lift, or lets a run be taken over. A home that
 cannot be found holds the run the same way. The chosen folder does not move while a stop
-stands in it. A renewal that falls due under a stop settles the run first, unless the run's state
-file states another version than the renewing abcd's, which leaves the run unsettled to its own driver's
-check. Its claim is still renewed, at the version its file states, while an agent may be in its call or
+stands in it. A save of a run's whole state writes the file at the saving abcd's version, so only the
+run's driver, the live session its control record names, saves one whose file states another version;
+any other session leaves the run as its file stands and names it, the file and both versions with it.
+A step under a stop claims nothing, so it halts such a run only where this session already drives it.
+A renewal is never the driver, since a lane's own abcd may make it: one that falls due under a stop
+settles the run first only where the run's state file states the renewing abcd's version, and otherwise
+leaves the run unsettled to its own driver's check and says so. Its claim is still renewed, at the version its file states, while an agent may be in its call or
 while that check has left work a save could not take; otherwise it is neither renewed nor let go, and
 lapses at its lease with the lane's work on its branch and in its worktree, none of it saved aside. With no agent left in its
 call and its work saved, a run under a stop no longer renews its reservation; a run with work a save

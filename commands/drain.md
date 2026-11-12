@@ -786,7 +786,12 @@ what it did in `next`:
   only while such a lane is parked. A lane the landing will not finish (its branch moved past what
   landed, a worktree with changes, its branch checked out in another
   checkout, which the drain names, or a pushed head git cannot read) is named
-  in `next` and the move goes on. A run a stop's mark stands on is not finished, synced
+  in `next` and the move goes on. Finishing a lane, entering its sync again, watching its
+  pull request in the merge queue and handing a closed one back each save the lane's whole
+  run, so a run whose file states another version than this abcd's is saved only by its
+  driver: a lane of this drain's own is claimed first, as a step claims a run, and a run
+  another live session drives, or that nothing claims, is left as its file stands and named
+  with why. A run a stop's mark stands on is not finished, synced
   or queued, whatever its pull request says: it is named in `next` and in `parked` as
   `stop-holds`, with what takes it up. While the read refuses a stop file, a
   run with work a save could not take has its reservation renewed. A read that holds the run

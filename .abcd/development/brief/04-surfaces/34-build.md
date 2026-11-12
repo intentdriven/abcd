@@ -468,7 +468,8 @@ commit past the default branch is not read as merged and resumes as before.
 
 Under the run's lock, immediately before anything is removed, the run is left as
 it stands, with a line saying why, when its state file states another version
-than this binary's, a drive stopped on it, its control record holds a stop, or
+than this binary's and this session is not the driver its control record
+names, a drive stopped on it, its control record holds a stop, or
 the stop read for the shared folder the run started under finds a stop or
 cannot be trusted; and what each lane pushed is checked on the fetched commit
 again. Each merged lane's worktree is then read for files its removal would

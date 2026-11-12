@@ -1011,23 +1011,27 @@ platform's shared folder for the account it expects. A setting that cannot be re
 should read whose stop cannot be looked at,
 holds the run at the stage `stop`, exit 3, with nothing let go: tell the person, who puts it back.
 A home that cannot be found holds it the same way. A take-over needs a read that saw clearly.
-A renewal that falls due under a stop settles the run first, unless the run's state file
-states another version than the renewing abcd's: that run is not settled, and is left to its own
-driver's check. Its claim is still renewed, with a line in its record and its file left at its own
-version, while an agent may be in its call or while that check has left work a save could not take;
-otherwise it is neither renewed nor let go, and lapses at its lease with the lane's work on its branch
-and in its worktree, none of it saved aside. A drain's move leaves a run that is not one of its
-lanes the same way: under a stop it does not halt one whose file states another version, its refusal
-naming each run it leaves and that the run's own driver's next check takes the stop, and it leaves
-such a parked run's unsettled mark to its own driver. Two limits stand, and nothing enforces either
-yet. A step under a stop, and a drain's move over its own lanes, must leave another version's run to
-its driver too, and each settles the run at the stepping abcd's version. A drain's move must also leave
-alone a parked run another version's driver writes that carries no stop's mark, one of its own lanes or
-not, and it needs no stop to reach one: finishing a merged lane, entering a conflicting lane's sync
-again, watching an armed pull request in the merge queue and handing back a closed one each save the
-run at the drain's abcd's version. Neither is closed because nothing the run records tells its own
-driver resumed by a newer abcd from a second session or drain started in its checkout, and a new drain
-finishing the merged lanes an earlier drain left is the ordinary path after an upgrade. With no agent left in its
+A save of a run's whole state writes its file at the saving abcd's version, and an abcd refuses a
+file above its own, so only the run's driver saves the whole state of a run whose file states another
+version: the live session its control record names, which a step's claim records. Any other session
+leaves such a run as its file stands and says so, naming the file and both versions. A step under a stop
+claims nothing, so its check halts such a run only where this session already drives it; otherwise the
+stop's refusal names the run it left to its driver. A renewal is never the driver, since a lane's own abcd
+may make it: one that falls due under a stop settles the run first only where its file states the
+renewing abcd's version, and otherwise names the run it left unsettled for its own driver's check. Its
+claim is still renewed, with a line in its record and its file left at its own version, while an agent
+may be in its call or while that check has left work a save could not take; otherwise it is neither
+renewed nor let go, and lapses at its lease with the lane's work on its branch and in its worktree, none
+of it saved aside. A drain's move judges each whole save the same way. Under a stop it halts only the
+runs it may save, its refusal naming each run it leaves and that the run's own driver's next check takes
+the stop. With no stop it finishes a merged lane, enters a conflicting lane's sync again, watches an
+armed pull request in the merge queue, hands back a closed one, takes up a lifted stop's mark, and
+admits, paces or hands back as stuck a lane in progress, each only where it may save the run, and names
+the run otherwise. A lane of the drain's own whose file states another version is claimed first, as a
+step claims a run, so a drain resumed by a newer abcd takes its lanes up, the run's record naming the
+driver that was gone; one another live session drives stays that session's. A run left this way is
+taken up by a newer abcd once its driver claims it with `abcd implement step --run <run-id>`, with no
+stop holding. With no agent left in its
 call and its work saved it no longer renews. Work a save could not take stays uncommitted in its
 worktree and nowhere else, and its claim lapses at its lease unless a gated waiter, `abcd implement status` or a drive still
 in an agent's call or a preflight renews it; only that drive renews a run parked at land. A

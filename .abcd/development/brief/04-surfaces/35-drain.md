@@ -871,7 +871,11 @@ reservation is released. The summary names each in `finished`, and a lane of
 this drain's takes the outcome done. A lane the landing refuses to finish (a
 branch moved past what landed, a worktree with changes), or a default branch the
 move cannot fetch, is named there with the reason and stops nothing; the next
-move looks again.
+move looks again. The landing's step saves the run's whole state, as do a parked lane's
+sync, its merge-queue watch and a closed pull request's hand-back, so a run whose state
+file states another version than this binary's is saved only by its driver, the live
+session its control record names: a lane of this drain's own is claimed first, as a step
+claims a run, and any other such run is left as its file stands and named with why.
 
 Unless the move is waiting on origin, the host's answer is taken once the ledger is read, before the window clock and the
 lane's routing: an invocation given the answer's path validates it and records

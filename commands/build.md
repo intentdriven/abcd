@@ -245,8 +245,9 @@ from the worktree's root: `.abcd/work/issues/.iss-alloc.lock` (the issue
 ledger's allocator lock a landing that resolves an issue leaves), and the plugin
 bootstrap's `abcd`, `.binary-meta`, `.bootstrap.lock/`, `.bootstrap.attempt` and
 `.bootstrap.tmp.<pid>/`; they and the local tier go with the worktree, as with the
-land step. A run whose state file states another version than this abcd's, one a
-drive stopped on, one whose control record holds a stop, and one the stop read
+land step. A run whose state file states another version than this abcd's and
+that this session does not drive (its control record names another driver, or
+none), one a drive stopped on, one whose control record holds a stop, and one the stop read
 for its shared folder finds stopped or cannot trust are left as they stand, with
 a line saying why. One deadline bounds the closing's own git: the fetch, the ref
 reads and ancestry checks it makes, the worktree listing and the worktree reads.
