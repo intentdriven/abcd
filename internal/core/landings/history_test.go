@@ -541,6 +541,15 @@ func TestAModeThatCannotBeReadIsNoPersons(t *testing.T) {
 		strings.ContainsRune(l.ModeUnread, 0x1b) {
 		t.Fatalf("the mode's note %q", l.ModeUnread)
 	}
+	// A reason that carries a terminal escape is masked.
+	real := committedMode
+	t.Cleanup(func() { committedMode = real })
+	committedMode = func(context.Context, string, string) (string, bool, error) {
+		return "", false, errors.New("the file reads \x1b[2J here")
+	}
+	if l := f.list(ff.call); !strings.Contains(l.ModeUnread, "the file reads") || strings.ContainsRune(l.ModeUnread, 0x1b) {
+		t.Fatalf("the mode's note %q is not masked", l.ModeUnread)
+	}
 }
 
 // TestTheModeIsReadOncePerChange: a range in which the mode never changes
