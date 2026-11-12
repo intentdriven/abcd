@@ -105,9 +105,11 @@ func TestALatestReviewIsReadAsTheMergeGateReadsIt(t *testing.T) {
 // (it has not merged, it merged as another commit, or the number names no pull
 // request) is the push it is: person-push, unattended, carrying the forge's
 // reason, reading none of that pull request (no review, no commits, no
-// recorded approval of its head), and the forge's answer is kept so the next
-// listing reads it again without asking. A recorded approval of the commit
-// itself attends it.
+// recorded approval of its head). Only the answers that cannot change are
+// kept, so the next listing reads them again without asking: the number names
+// no pull request, or it merged as another commit. One saying the pull request
+// has not merged, or naming no merge commit, is asked again, even where a
+// cache file holds it. A recorded approval of the commit itself attends it.
 func TestTheForgeMustSayThePullRequestMergedAsTheRow(t *testing.T) {
 	for _, mode := range []string{"human", "auto"} {
 		f := newFx(t, mode)
@@ -115,6 +117,9 @@ func TestTheForgeMustSayThePullRequestMergedAsTheRow(t *testing.T) {
 		sq := f.commit("fix: pushed with a number (#310)")
 		open := answer(310, sq, head, review(alice, "APPROVED", head))
 		open.MergedAt = nil
+		nm := f.commit("fix: merged a moment ago (#313)")
+		noMerge := answer(313, nm, head, review(alice, "APPROVED", head))
+		noMerge.MergeCommit = nil
 		b := f.branch("issue", "feat: an issue's number")
 		m := f.merge(311, "issue")
 		bo := f.branch("other", "feat: merged elsewhere")
@@ -126,22 +131,35 @@ func TestTheForgeMustSayThePullRequestMergedAsTheRow(t *testing.T) {
 		}
 		ff := &fakeForge{t: t, gh: true}
 		ff.add(open)
+		ff.add(noMerge)
 		ff.add(answer(312, strings.Repeat("c", 40), bo, review(alice, "APPROVED", bo)))
 		l := f.list(ff.call)
-		for c, want := range map[string]string{sq: "#310 has not merged", m: "#311 names no pull request", mo: "#312 did not merge as " + mo[:12]} {
+		for c, want := range map[string]string{sq: "#310 has not merged", nm: "#313 did not merge as " + nm[:12],
+			m: "#311 names no pull request", mo: "#312 did not merge as " + mo[:12]} {
 			r := row(t, l, c)
 			if r.Class != ClassPersonPush || !r.Unattended || r.Approval != (Approval{Source: SourceNoneSeen}) || r.Rule != (Rule{}) ||
-				r.Lane != "" || !strings.Contains(r.ForgeSays, want) || (c == sq && r.MergedHead != "") {
+				r.Lane != "" || !strings.Contains(r.ForgeSays, want) || ((c == sq || c == nm) && r.MergedHead != "") {
 				t.Fatalf("%s: a subject the forge contradicts (%s): %+v", mode, want, r)
 			}
 		}
 		if l.ForgeUnread != "" {
 			t.Fatalf("%s: the forge was read, yet the note says %q", mode, l.ForgeUnread)
 		}
-		ff.calls = 0
+		for n, kept := range map[int]bool{310: false, 313: false, 311: true, 312: true} {
+			if _, err := os.Lstat(filepath.Join(f.r.Root(), filepath.FromSlash(cacheRel(n)))); (err == nil) != kept {
+				t.Fatalf("%s: pull request #%d kept %v, want %v", mode, n, err == nil, kept)
+			}
+		}
+		// A cache file holding an answer that can change is not read.
+		if err := os.WriteFile(filepath.Join(f.r.Root(), filepath.FromSlash(cacheRel(310))),
+			[]byte(mustJSON(t, cacheEntry{Commit: sq, PR: *open})+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		ff.calls, ff.asked = 0, nil
 		again := f.list(ff.call)
-		if ff.calls != 0 || mustJSON(t, again.Rows) != mustJSON(t, l.Rows) {
-			t.Fatalf("%s: the next listing asked %d times, rows %+v", mode, ff.calls, again.Rows)
+		slices.Sort(ff.asked)
+		if ff.calls != 1 || !slices.Equal(ff.asked, []int{310, 313}) || mustJSON(t, again.Rows) != mustJSON(t, l.Rows) {
+			t.Fatalf("%s: the next listing asked %d times about %v, rows %+v", mode, ff.calls, ff.asked, again.Rows)
 		}
 		if _, err := landing.RecordApproval(f.r.Root(), sq); err != nil {
 			t.Fatal(err)

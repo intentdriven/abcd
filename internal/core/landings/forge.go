@@ -11,9 +11,11 @@ package landings
 // the forge said of a row's pull request is kept in the local tier's cache as
 // each batch returns, keyed by the row's commit, so a later listing asks only
 // about pull requests it has not read, and a listing whose time runs out keeps
-// what it read: an answer the reader accepts for its row, one that contradicts
-// the row's subject, and the forge's word that a number names no pull request.
-// An unread answer, and one whose reviews page is not whole, is never kept.
+// what it read of what cannot change: an answer the reader accepts for its
+// row, one saying the pull request merged as another commit, and the forge's
+// word that a number names no pull request. An unread answer, one whose
+// reviews page is not whole, and one saying the pull request has not merged or
+// naming no merge commit, is never kept.
 //
 // The forge's answer is judged a pull request at a time: an error that names
 // one pull request leaves that one unread and the others answered, and a
@@ -199,6 +201,21 @@ func (a *prAnswer) landedAs(n int, commit string) string {
 		return fmt.Sprintf("the forge says pull request #%d did not merge as %s, so it does not answer for it", n, commit[:12])
 	}
 	return ""
+}
+
+// lasting says whether a, the forge's answer for the row commit, is one a
+// later listing may read again without asking: one saying the pull request
+// merged as another commit, or one the row accepts whose reviews page is
+// whole. An answer saying the pull request has not merged, or naming no merge
+// commit, can change once the forge marks the merge, so it is asked again.
+func (a *prAnswer) lasting(commit string) bool {
+	switch {
+	case a.MergedAt == nil || a.MergeCommit == nil:
+		return false
+	case a.MergeCommit.Oid != commit:
+		return true
+	}
+	return a.whole() == ""
 }
 
 // whole says why a's reviews cannot be judged, "" when the page holds them
@@ -439,11 +456,11 @@ func (q *asker) take(batch []prAsk, r batchResult) {
 	}
 }
 
-// keep writes what the forge said of a's pull request to the cache: an answer
-// the row accepts, one that contradicts the row's subject, or the forge's word
-// that the number names no pull request; never an unread answer, nor an
-// accepted one whose reviews page is not whole, which a later listing asks
-// again. The first write that fails stops the keeping and says why.
+// keep writes what the forge said of a's pull request to the cache where it
+// cannot change (prAnswer.lasting): an answer the row accepts, one saying it
+// merged as another commit, or the forge's word that the number names no pull
+// request; never an unread answer, nor one a later listing asks again. The
+// first write that fails stops the keeping and says why.
 func (q *asker) keep(a prAsk) {
 	if q.cache == nil {
 		return
@@ -452,7 +469,7 @@ func (q *asker) keep(a prAsk) {
 	switch got := q.fa.got[a.pr]; {
 	case q.fa.notPR[a.pr]:
 		e.NotPR = true
-	case got == nil, got.landedAs(a.pr, a.commit) == "" && got.whole() != "":
+	case got == nil, !got.lasting(a.commit):
 		return
 	default:
 		e.PR = *got
@@ -655,7 +672,8 @@ func cacheRel(n int) string { return CacheRelDir + "/pr-" + strconv.Itoa(n) + ".
 // commit. A cache file is something any process of the account could have
 // written, so it is read as the forge's answer is: a regular file, never a
 // link, within its bound (fsutil.ReadGuardedInRoot), decoded strictly and
-// checked. A cache git tracks came with a commit, so none of it counts, and
+// checked, and an answer keep would not write (prAnswer.lasting) is asked
+// again. A cache git tracks came with a commit, so none of it counts, and
 // the reason says so, so the listing writes none over it. notPR holds the
 // numbers an entry says name no pull request.
 func readCache(ctx context.Context, root *os.Root, repoRoot string, want []*prAsk) (got map[int]*prAnswer, notPR map[int]bool, why string) {
@@ -683,7 +701,7 @@ func readCache(ctx context.Context, root *os.Root, repoRoot string, want []*prAs
 			if e.PR.Number == 0 {
 				notPR[a.pr] = true
 			}
-		case e.PR.check(a.pr) == "":
+		case e.PR.check(a.pr) == "" && e.PR.lasting(a.commit):
 			got[a.pr] = &e.PR
 		}
 	}
