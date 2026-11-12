@@ -96,11 +96,13 @@ nobody answers.
 
 Every refusal of the away verbs exits 2 with nothing written: an unreadable
 or past end, one past seven days, a checkout without the local tier (checked
-only when setting the mode), no checkout, a queued step with no record holding
-or with no words, and, when setting the mode or queueing a step, a lock not
-had within two seconds and a record or lock that fails the checks. Ending the
-mode refuses only where there is no checkout, no home or no root commit to key
-the record on. None makes a network request.
+only when setting the mode), no checkout, no home folder or no root commit to
+key the record on, a queued step with no record holding, with no words or over
+500 characters, a full queue (it is never cut to make room), and, when setting
+the mode or queueing a step, a lock not had within two seconds, a record or
+lock that fails the checks, and a record the write would take past 64 KiB.
+Ending the mode refuses only where there is no checkout, no home folder or no
+root commit to key the record on. None makes a network request.
 
 ## A session off a profile
 
