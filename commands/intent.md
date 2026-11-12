@@ -517,6 +517,37 @@ checks; the judgement is yours, as the host.
     spec expects to touch, comma-separated, and `- tests:` the tests that will
     show it works. `abcd build next` scores a spec's test path and footprint
     from it, and reads a spec without it as carrying no footprint.
+    A question the spec leaves open goes under its own `## Open Questions`,
+    as an intent's does: `abcd intent ready` reports the intent not ready
+    (`spec_body`) while the section, a sub-heading of it included, holds an
+    item that is not settled (marked `resolved:` or `**Deferred**`, or under
+    a section opening `_All resolved …_`), and while the spec has a sentence
+    opening "Not READY" or "NOT READY", READY in capitals (at a line's or a
+    table cell's start after any blockquote, heading `#`, list marker, task
+    box `[ ]`, emphasis or opening bracket, after a ".", "!", "?", ":" or ";"
+    and a space, after a dash with a space on each side, after an opening
+    bracket, or with a line break between the two words), a bold "Open:"
+    label (`**Open:**`, `**Open**:`, `__Open:__`, or the same with
+    "question(s)", "point(s)" or "design question(s)" after the word, in any
+    letter case) on any line but the one an open question's item opens on, a
+    paragraph or a table row under that section included, a fence or HTML
+    comment that never closes, or fences or comments whose extent turns on
+    the layout around them; record-lint's `spec_unsettled` rule refuses those
+    four in an open spec. The phrase match is a filter for a mistake, not a
+    way to hold a spec: lower-case "not READY", "Not ready", and the phrase
+    elsewhere in a sentence are not matched, and the declared holds are the
+    spec's `blocked_by` and its open questions. The frontmatter, inline code
+    spans that open and close on one line, fenced blocks (one at up to three columns under a list item
+    included) and HTML comments are not read; an indented code block is read.
+    So a phrase quoted rather than said goes in an inline code span. Only an
+    ATX heading (`#`) opens or ends the section; a setext or HTML heading does
+    not. The reader reads ATX headings, fences, HTML comments and inline code
+    spans that open and close on one line; any other raw HTML block is read as ordinary text, line by line. A
+    closed spec, and an intent in `shipped/`, `superseded/` or `disciplines/`, is
+    not judged. An intent the design waits on goes in the spec's own
+    `blocked_by`;
+    `abcd intent ready` does not report it, and the build refuses the run
+    until that intent is settled.
 12. Re-run `abcd intent ready <itd-N>` and report READY to the user.
 
 ### In a plain Terminal
@@ -880,10 +911,13 @@ something the verb decides.
 
 An intent names the intents it depends on in two lists: `blocked_by` (it
 cannot ship before them) and `builds_on` (it is cheaper or better if they exist
-first). The build's pre-start check refuses an intent whose `blocked_by` names
-one not yet settled: a blocker is settled when it is shipped or a discipline,
+first). The build's pre-start check refuses an intent whose `blocked_by`, or whose
+open spec's `blocked_by`, names one not yet settled: a blocker is settled when it is shipped or a discipline,
 or when its supersession chain ends at a shipped intent, a discipline or an
-accepted decision. Record-lint's edge rules read both lists. `edge` is the verb
+accepted decision. Record-lint's edge rules read both of an intent's lists; a
+spec's `blocked_by` is read by the build's pre-start check, which the status
+board also runs to mark an intent startable, and record-lint checks only that
+each record it names exists. `edge` is the verb
 that writes them, the intent counterpart of `capture link`:
 
 ```bash
