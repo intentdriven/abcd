@@ -177,7 +177,10 @@ pass:
   resolved or deferred (`**Deferred**`, `resolved:`, `**explicitly
   deferred**`). The record's text must read whole: a fence or HTML comment
   that never closes, or fences or comments whose extent turns on the layout
-  around them, fails this check too (named by its line).
+  around them, fails this check too (named by its line). Only an ATX heading
+  (`#`) opens or ends the section; a setext or HTML heading does not. The
+  reader reads ATX headings, fences, HTML comments and inline code spans; any
+  other raw HTML block is read as ordinary text, line by line.
 - `claim_sections` — the `## Mechanism` prompt is answered (or the section
   absent) and the scope conditions are recorded.
 - `hold` — the intent carries no `held:`.

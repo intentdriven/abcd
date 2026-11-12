@@ -539,8 +539,11 @@ checks; the judgement is yours, as the host.
     spec's `blocked_by` and its open questions. The frontmatter, inline code
     spans, fenced blocks (one at up to three columns under a list item
     included) and HTML comments are not read; an indented code block is read.
-    So a phrase quoted rather than said goes in an inline code span. A closed
-    spec, and an intent in `shipped/`, `superseded/` or `disciplines/`, is
+    So a phrase quoted rather than said goes in an inline code span. Only an
+    ATX heading (`#`) opens or ends the section; a setext or HTML heading does
+    not. The reader reads ATX headings, fences, HTML comments and inline code
+    spans; any other raw HTML block is read as ordinary text, line by line. A
+    closed spec, and an intent in `shipped/`, `superseded/` or `disciplines/`, is
     not judged. An intent the design waits on goes in the spec's own
     `blocked_by`;
     `abcd intent ready` does not report it, and the build refuses the run
