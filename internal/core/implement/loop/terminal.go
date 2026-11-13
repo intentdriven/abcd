@@ -657,20 +657,25 @@ func (t *terminal) failed(ctx context.Context, judge bool, what string) bool {
 func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 	t.ctx = ctx
 	t.joinSharedRun()
-	// origin's identity and the checkout's hooks directory are read once,
-	// before the drive's first move, and held here for the lanes it opens
-	// (remoteid.go, with its limits): a lane's agent can rewrite the
-	// checkout's settings and hooks, and each lane's run records its own
-	// afresh. A restarted drive reads them afresh. The drive refuses to
-	// start when the settings cannot be listed, the repository's own
-	// settings cannot be read or the common git directory cannot be
-	// resolved (readRemoteIdentity); an unreadable hooks directory is held
-	// as such and does not stop it.
+	// The settings the drive holds, the checkout's hooks directory and
+	// info/attributes are read once, before the drive's first move, and held
+	// here for the lanes it opens (remoteid.go, with what it cannot hold): a
+	// lane's agent can rewrite the checkout's settings and hooks, and each
+	// lane's run records its own afresh. A restarted drive reads them
+	// afresh, and so proves an in-tree hooks copy against the tip origin
+	// reports (proveCheckoutHooks). The drive refuses to start when the
+	// settings cannot be listed, the hooks directory git takes at the
+	// checkout cannot be told, the common git directory cannot be resolved,
+	// the hooks tree is past its bound (readRemoteIdentity), or the proof
+	// fails; an unreadable hooks directory is held as such and does not
+	// stop it.
 	id, err := readRemoteIdentity(t.repoRoot)
+	if err == nil {
+		err = proveCheckoutHooks(t.repoRoot, id)
+	}
 	if err != nil {
 		t.leaveSharedRun()
-		return TerminalResult{}, refuse(StageDrain, "", "", "the drive cannot start: "+err.Error(),
-			"settle what git reports for the repository's own settings (`git config --local --list --show-origin`) and for the settings the drive holds (`git config --list --show-origin`), then start the drive again")
+		return TerminalResult{}, startRefusal(t.repoRoot, err)
 	}
 	t.o.Options.remote = id
 	if t.o.Resumed {

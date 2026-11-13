@@ -37,7 +37,9 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -81,8 +83,21 @@ const watchedConfig = `^(` +
 	`|includeif\..+\.path` +
 	`)$`
 
-// maxHookEntries bounds the hooks directory entries one fingerprint hashes; a
-// directory past it is fingerprinted by its first entries and its count.
+// watchedKeyRE is watchedConfig as a Go expression: git's extended syntax and
+// Go's agree on every construct the pattern uses.
+var watchedKeyRE = regexp.MustCompile(watchedConfig)
+
+// watchedKey says whether a canonical config key is one the run's fingerprint
+// watches (watchedConfig). It is the one predicate for "watched": git applies
+// the pattern for the fingerprint's read, and a drive's hold across its lanes
+// (remoteIdentityKey) applies this, so the two never hold different lists.
+func watchedKey(key string) bool { return watchedKeyRE.MatchString(key) }
+
+// maxHookEntries bounds the entries, at every depth, one read of a hooks
+// directory hashes. A tree past it is recorded by its first entries, in walk
+// order, and a marker at the directory's own path saying the bound was
+// passed; a drive refuses to start on one (readRemoteIdentity), and the lane's
+// pin refuses one (provenHooks).
 const maxHookEntries = 1024
 
 // maxFingerprintBytes caps a fingerprint file read.
@@ -213,14 +228,14 @@ func takeFingerprint(repoRoot string, lanes []laneDir, salt string, now time.Tim
 
 // checkoutHooks is how the fingerprint reads the checkout's hooks: each
 // watched key the repository's own settings set is hashed into keys
-// (hashEntries), and each top-level entry of the hooks directory those
+// (hashEntries), and each entry, at every depth, of the hooks directory those
 // settings name (the last core.hooksPath among them, else the common git
 // directory's hooks) into files (hashDir), all under salt. A core.hooksPath
 // set only in global or system settings is not read here, so with one the
 // directory hashed can be other than the one git runs at the checkout. It
-// returns that directory and the common git directory. A drive holds the same
-// hashes of the checkout's hooks across its lanes (remoteid.go), read through
-// this one function.
+// returns that directory and the common git directory. A drive holds the
+// hooks directory git takes at the checkout from every scope instead
+// (readCheckoutHooks in remoteid.go), hashed through the same walk.
 func checkoutHooks(repoRoot, salt string, keys, files map[string]string) (hooks, common string, err error) {
 	entries, err := gitutil.RepoConfig(repoRoot, watchedConfig)
 	if err != nil {
@@ -338,67 +353,184 @@ func expandHooksPath(repoRoot, v string) string {
 	return filepath.Clean(v)
 }
 
-// hashDir records each entry of dir under its path: a regular file by its
-// mode and content, a symlink by its target, anything else by its kind. A
-// directory that is not there records nothing; one that cannot be read
-// records that, so its becoming readable is a change too.
-func hashDir(into map[string]string, salt, dir string) {
+// hashDir records each entry of dir, at every depth, under its path: a
+// regular file by its mode and content, a symlink by its target's text and by
+// what it resolves to (linkHash), a subdirectory by its kind and then each
+// entry in it, anything else by its kind. A symlink that resolves to a
+// directory outside dir has that directory's entries recorded under the
+// link's path, each such directory once; one that resolves to a directory
+// inside dir is recorded as a link only, since that directory's entries are
+// already recorded where they stand. Entries are walked in name order, depth
+// first, and each is examined once, so the cost is linear in the tree. Past
+// maxHookEntries entries the walk stops and records a marker at dir's own
+// path; over says so. A directory that is not there records nothing; one that
+// cannot be read records that, so its becoming readable is a change too.
+// steps counts the entries and directories examined, for the test of cost.
+func hashDir(into map[string]string, salt, dir string) (steps int, over bool) {
 	des, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
-		return
+		return 1, false
 	}
 	if err != nil {
 		into[dir] = saltedHash(salt, "unreadable directory")
-		return
+		return 1, false
 	}
-	if len(des) > maxHookEntries {
-		into[dir] = saltedHash(salt, "entries", fmt.Sprint(len(des)))
-		des = des[:maxHookEntries]
+	w := &hookWalk{into: into, salt: salt, seen: map[string]bool{}, steps: 1}
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		w.root = real
+		w.seen[real] = true
 	}
+	w.entries(dir, dir, des)
+	if w.over {
+		into[dir] = saltedHash(salt, "entries past", strconv.Itoa(maxHookEntries))
+	}
+	return w.steps, w.over
+}
+
+// hookWalk is one hashDir walk: root is the hooks directory's resolved path
+// ("" when it cannot be resolved, in which case no link's directory is walked
+// into), seen the resolved directories walked, n the entries recorded.
+type hookWalk struct {
+	into  map[string]string
+	salt  string
+	root  string
+	seen  map[string]bool
+	n     int
+	steps int
+	over  bool
+}
+
+// entries records under at each entry of the directory read at from as des:
+// the same path, or, for a directory reached through a link, where the link
+// resolves.
+func (w *hookWalk) entries(at, from string, des []fs.DirEntry) {
 	for _, de := range des {
-		hashFile(into, salt, filepath.Join(dir, de.Name()))
+		if w.n >= maxHookEntries {
+			w.over = true
+			return
+		}
+		w.n++
+		w.steps++
+		path, real := filepath.Join(at, de.Name()), filepath.Join(from, de.Name())
+		fi := hashFileAs(w.into, w.salt, path, real)
+		switch {
+		case fi == nil:
+		case fi.IsDir():
+			w.dir(path, real)
+		case fi.Mode()&fs.ModeSymlink != 0:
+			w.linkedDir(path, real)
+		}
+		if w.over {
+			return
+		}
 	}
 }
 
-// hashFile records path as hashDir records an entry; a path that is not there
-// records nothing.
-func hashFile(into map[string]string, salt, path string) {
-	fi, err := os.Lstat(path)
-	if errors.Is(err, fs.ErrNotExist) {
+// dir walks the directory read at from, recording its entries under at.
+func (w *hookWalk) dir(at, from string) {
+	des, err := os.ReadDir(from)
+	w.steps++
+	if err != nil {
+		w.into[at] = saltedHash(w.salt, "unreadable directory")
 		return
 	}
-	if err != nil {
-		into[path] = saltedHash(salt, "unreadable")
+	w.entries(at, from, des)
+}
+
+// linkedDir walks, under the link's path at, the directory the symlink read
+// at from resolves to, when that is outside the hooks directory and not
+// walked yet.
+func (w *hookWalk) linkedDir(at, from string) {
+	if w.root == "" {
 		return
+	}
+	real, err := filepath.EvalSymlinks(from)
+	if err != nil || w.seen[real] || within(w.root, real) {
+		return
+	}
+	if fi, err := os.Stat(real); err != nil || !fi.IsDir() {
+		return
+	}
+	w.seen[real] = true
+	w.dir(at, real)
+}
+
+// within says whether path is root or lies under it, both resolved.
+func within(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
+// hashFile records path as hashDir records an entry, and returns what it
+// examined (nil when it recorded nothing or could not examine it); a path
+// that is not there records nothing.
+func hashFile(into map[string]string, salt, path string) fs.FileInfo {
+	return hashFileAs(into, salt, path, path)
+}
+
+// hashFileAs is hashFile recording under at what it reads at from (an entry
+// of a directory a link resolves to, recorded under the link's path).
+func hashFileAs(into map[string]string, salt, at, from string) fs.FileInfo {
+	fi, err := os.Lstat(from)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		into[at] = saltedHash(salt, "unreadable")
+		return nil
 	}
 	switch {
 	case fi.Mode()&fs.ModeSymlink != 0:
-		target, _ := os.Readlink(path)
-		into[path] = symlinkHash(salt, target)
+		target, _ := os.Readlink(from)
+		into[at] = linkHash(salt, from, target)
 	case fi.Mode().IsRegular():
-		f, err := os.Open(path)
-		if err != nil {
-			into[path] = saltedHash(salt, "unreadable")
-			return
+		h, ok := regularHash(salt, from, fi.Mode().Perm())
+		if !ok {
+			into[at] = saltedHash(salt, "unreadable")
+			return nil
 		}
-		defer f.Close()
-		h := regularHasher(salt, fi.Mode().Perm())
-		if _, err := io.Copy(h, f); err != nil {
-			into[path] = saltedHash(salt, "unreadable")
-			return
-		}
-		into[path] = hex.EncodeToString(h.Sum(nil))
+		into[at] = h
 	default:
-		into[path] = kindHash(salt, fi.Mode())
+		into[at] = kindHash(salt, fi.Mode())
 	}
+	return fi
 }
 
-// symlinkHash, regularHasher and kindHash are how hashFile records an entry:
-// a symlink by its target, a regular file by its mode and then its bytes
-// (written to the hasher), anything else by its kind. The lane's hooks pin
-// (pinLaneHooks) records the entries it proves the same way, so a later check
-// reads them as unchanged.
-func symlinkHash(salt, target string) string { return saltedHash(salt, "symlink", target) }
+// regularHash is a regular file's record: its mode, then its bytes.
+func regularHash(salt, path string, perm fs.FileMode) (string, bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+	h := regularHasher(salt, perm)
+	if _, err := io.Copy(h, f); err != nil {
+		return "", false
+	}
+	return hex.EncodeToString(h.Sum(nil)), true
+}
+
+// linkHash, regularHasher and kindHash are how hashFile records an entry: a
+// symlink by its target's text and by what the link resolves to (a regular
+// file's mode and bytes, anything else by its kind, a link that resolves to
+// nothing as such), a regular file by its mode and then its bytes (written to
+// the hasher), anything else by its kind. The lane's hooks pin (pinLaneHooks)
+// records the entries it proves the same way, so a later check reads them as
+// unchanged.
+func linkHash(salt, link, target string) string {
+	fi, err := os.Stat(link)
+	switch {
+	case err != nil:
+		return saltedHash(salt, "symlink", target, "unresolved")
+	case fi.Mode().IsRegular():
+		if h, ok := regularHash(salt, link, fi.Mode().Perm()); ok {
+			return saltedHash(salt, "symlink", target, "file", h)
+		}
+		return saltedHash(salt, "symlink", target, "unreadable")
+	default:
+		return saltedHash(salt, "symlink", target, "kind", fi.Mode().Type().String())
+	}
+}
 
 func regularHasher(salt string, perm fs.FileMode) hash.Hash {
 	h := sha256.New()
@@ -736,12 +868,12 @@ type hookTreeEntry struct {
 // pinned from git's objects as stored (no replace ref or graft file stands in
 // for them: hooksTreeAt, hookTreeEntries), never from what anything wrote in
 // the lane: the directory's tree in base must be its tree in tip, and what
-// stands on disk must be base's entries exactly, each name, each file's size
-// and bytes (its blob id recomputed from them), its exec bit, each symlink's
-// target and each subdirectory's kind. A subdirectory's contents are neither
-// proved nor pinned, and a symlink is proved by its target's text, not by the
-// file it points to. Any difference is refused at the worktree stage and
-// nothing is pinned. The entries proved are recorded, hashed from the bytes
+// stands on disk must be base's entries exactly, at every depth, each name,
+// each file's size and bytes (its blob id recomputed from them), its exec
+// bit, each symlink's target and each subdirectory's kind. A symlink that
+// leaves the hooks directory is refused; one inside it is recorded by its
+// target's text and by what it resolves to, itself an entry proved. Any
+// difference is refused at the worktree stage and nothing is pinned. The entries proved are recorded, hashed from the bytes
 // that were proved, as the run's fingerprint holds the lane, with each watched
 // key the lane reads at the hash the fingerprint recorded for the checkout, so
 // from then on the lane's hooks are compared with its own commit and never
@@ -931,7 +1063,8 @@ func hooksTreeAt(repoRoot, commit, rel string) (string, error) {
 	return "", nil
 }
 
-// hookTreeEntries lists the tree tree by entry name (none for ""), as stored
+// hookTreeEntries lists the tree tree at every depth (`ls-tree -r -t`), by
+// each entry's slash-separated path under it (none for ""), as stored
 // (gitutil.RunCappedAsStored): its mode, its object and a blob's stored size.
 // An object that is not a tree, a listing past its cap or past maxHookEntries
 // entries, or a record git does not document is an error.
@@ -940,7 +1073,7 @@ func hookTreeEntries(repoRoot, tree string) (map[string]hookTreeEntry, error) {
 	if tree == "" {
 		return want, nil
 	}
-	out, err := gitutil.RunCappedAsStored(repoRoot, maxHookTreeBytes, "ls-tree", "-z", "-l", tree)
+	out, err := gitutil.RunCappedAsStored(repoRoot, maxHookTreeBytes, "ls-tree", "-r", "-t", "-z", "-l", tree)
 	if err != nil {
 		return nil, fmt.Errorf("the commit's hooks directory is not a directory git can list: %v", err)
 	}
@@ -962,17 +1095,20 @@ func hookTreeEntries(repoRoot, tree string) (map[string]hookTreeEntry, error) {
 			size = n
 		}
 		want[name] = hookTreeEntry{mode: f[0], oid: f[2], size: size}
-	}
-	if len(want) > maxHookEntries {
-		return nil, fmt.Errorf("the commit's hooks directory holds more than %d entries", maxHookEntries)
+		if len(want) > maxHookEntries {
+			return nil, fmt.Errorf("the commit's hooks directory holds more than %d entries", maxHookEntries)
+		}
 	}
 	return want, nil
 }
 
-// provenHooks proves what stands in dir is want exactly and returns each
-// entry's record, as hashDir keys and hashes it, from what was proved. A
-// directory that is not there holds nothing.
+// provenHooks proves what stands in dir, at every depth, is want exactly and
+// returns each entry's record, as hashDir keys and hashes it, from what was
+// proved. A directory that is not there holds nothing. Every difference is
+// named, each by its path, in the one error; a tree past maxHookEntries
+// entries, or a directory in it that cannot be read, is refused whole.
 func provenHooks(salt, dir string, want map[string]hookTreeEntry) (map[string]string, error) {
+	p := &hookProof{salt: salt, root: dir, want: want, out: map[string]string{}, seen: map[string]bool{}}
 	des, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		des, err = nil, nil
@@ -980,41 +1116,106 @@ func provenHooks(salt, dir string, want map[string]hookTreeEntry) (map[string]st
 	if err != nil {
 		return nil, fmt.Errorf("%s cannot be read: %v", dir, err)
 	}
-	if len(des) > maxHookEntries {
-		return nil, fmt.Errorf("%s holds more than %d entries", dir, maxHookEntries)
+	if err := p.walk("", des); err != nil {
+		return nil, err
 	}
-	out := map[string]string{}
-	for _, de := range des {
-		path := filepath.Join(dir, de.Name())
-		e, ok := want[de.Name()]
-		if !ok {
-			return nil, fmt.Errorf("%s stands there, and the commit holds no such entry", path)
+	var missing []string
+	for name := range want {
+		if !p.seen[name] && !p.under[parentOf(name)] {
+			missing = append(missing, filepath.Join(dir, filepath.FromSlash(name)))
 		}
-		h, err := provenEntry(salt, path, e)
-		if err != nil {
-			return nil, fmt.Errorf("%s %v", path, err)
-		}
-		out[path] = h
 	}
-	if len(out) != len(want) {
-		var missing []string
-		for name := range want {
-			if _, ok := out[filepath.Join(dir, name)]; !ok {
-				missing = append(missing, filepath.Join(dir, name))
-			}
-		}
-		slices.Sort(missing)
-		return nil, fmt.Errorf("%s, which the commit holds, is not there", strings.Join(missing, ", "))
+	slices.Sort(missing)
+	if len(missing) > 0 {
+		p.problems = append(p.problems, strings.Join(missing, ", ")+", which the commit holds, is not there")
 	}
-	return out, nil
+	if len(p.problems) > 0 {
+		return nil, errors.New(strings.Join(p.problems, "; "))
+	}
+	return p.out, nil
 }
 
-// provenEntry proves the entry at path is e and returns its record: a
-// symlink whose target is e's blob, a regular file whose bytes are e's blob
-// and whose owner exec bit is set exactly when e is 100755, a directory where
-// e is a tree. A file is read once, through the descriptor its record and its
-// blob id are both taken from.
-func provenEntry(salt, path string, e hookTreeEntry) (string, error) {
+// hookProof is one provenHooks walk: the entries proved so far, by path, and
+// each difference found.
+type hookProof struct {
+	salt, root string
+	want       map[string]hookTreeEntry
+	out        map[string]string
+	seen       map[string]bool
+	under      map[string]bool
+	n          int
+	problems   []string
+}
+
+// parentOf is the slash-separated directory a tree path stands in, "" at the
+// top.
+func parentOf(name string) string {
+	if i := strings.LastIndexByte(name, '/'); i >= 0 {
+		return name[:i]
+	}
+	return ""
+}
+
+// walk proves each entry of the directory at rel (slash-separated, "" for the
+// hooks directory itself), read as des, and each real subdirectory's in turn.
+func (p *hookProof) walk(rel string, des []fs.DirEntry) error {
+	for _, de := range des {
+		if p.n++; p.n > maxHookEntries {
+			return fmt.Errorf("%s holds more than %d entries", p.root, maxHookEntries)
+		}
+		name := path.Join(rel, de.Name())
+		at := filepath.Join(p.root, filepath.FromSlash(name))
+		p.seen[name] = true
+		e, ok := p.want[name]
+		if !ok {
+			p.problems = append(p.problems, at+" stands there, and the commit holds no such entry")
+			continue
+		}
+		h, err := provenEntry(p.salt, p.root, at, e)
+		if err != nil {
+			p.problems = append(p.problems, at+" "+err.Error())
+			if e.mode == "040000" {
+				// What the commit holds under a directory that is not one
+				// here is named by the directory alone.
+				p.markUnder(name)
+			}
+			continue
+		}
+		p.out[at] = h
+		if e.mode == "040000" {
+			sub, err := os.ReadDir(at)
+			if err != nil {
+				return fmt.Errorf("%s cannot be read: %v", at, err)
+			}
+			if err := p.walk(name, sub); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// markUnder records that nothing under the tree path name is named missing,
+// since name itself was named.
+func (p *hookProof) markUnder(name string) {
+	if p.under == nil {
+		p.under = map[string]bool{}
+	}
+	for n := range p.want {
+		if strings.HasPrefix(n, name+"/") {
+			p.under[parentOf(n)] = true
+		}
+	}
+}
+
+// provenEntry proves the entry at path, in the hooks directory root, is e
+// and returns its record: a symlink whose target is e's blob and resolves
+// inside root, a regular file whose bytes are e's blob and whose owner exec
+// bit is set exactly when e is 100755, a directory where e is a tree. A file
+// is read once, through the descriptor its record and its blob id are both
+// taken from. A symlink's record holds what it resolves to (linkHash), which
+// is an entry of root proved on its own.
+func provenEntry(salt, root, path string, e hookTreeEntry) (string, error) {
 	fi, err := os.Lstat(path)
 	if err != nil {
 		return "", fmt.Errorf("cannot be examined: %v", err)
@@ -1039,7 +1240,10 @@ func provenEntry(salt, path string, e hookTreeEntry) (string, error) {
 		if hex.EncodeToString(blob.Sum(nil)) != e.oid {
 			return "", errors.New("points elsewhere than the commit's symlink")
 		}
-		return symlinkHash(salt, target), nil
+		if !linkStaysIn(root, path, target) {
+			return "", errors.New("is a symlink that leaves the hooks directory, which the pin does not prove")
+		}
+		return linkHash(salt, path, target), nil
 	case "100644", "100755":
 		if !fi.Mode().IsRegular() {
 			return "", errors.New("is not the regular file the commit holds")
@@ -1082,6 +1286,28 @@ func provenEntry(salt, path string, e hookTreeEntry) (string, error) {
 		return kindHash(salt, fi.Mode()), nil
 	}
 	return "", fmt.Errorf("is an entry of mode %s, which the pin does not prove", e.mode)
+}
+
+// linkStaysIn says whether the symlink at path, whose target text is target,
+// names a path inside root, read as written and, where it resolves, as
+// resolved: a link that resolves nowhere but is written inside root stays in.
+func linkStaysIn(root, path, target string) bool {
+	to := target
+	if !filepath.IsAbs(to) {
+		to = filepath.Join(filepath.Dir(path), to)
+	}
+	if !within(filepath.Clean(root), filepath.Clean(to)) {
+		return false
+	}
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return false
+	}
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return true
+	}
+	return within(realRoot, real)
 }
 
 // blobHasher is the hash git names a blob of size bytes by, in the object

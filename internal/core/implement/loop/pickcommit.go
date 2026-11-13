@@ -135,12 +135,12 @@ func commitGit(dir string, args ...string) (string, error) {
 // hooks directory there, and a relative core.hooksPath names the checkout's
 // own working-tree copy. The run's fingerprint records that copy at the run's
 // first check, and within a run a later change to it is refused; across the
-// lanes of one drive the drive holds it, within the limits
-// checkoutHooksUnchanged states (a change after its read and before git runs
-// the hook is not seen, nothing holds the directory through the add, the
-// directory read is the one the repository's own settings name, and only its
-// top-level entries are compared); elsewhere nothing does, so it must not
-// change between runs, and nothing enforces it.
+// lanes of one drive the drive holds it at every depth, read from the
+// directory git takes at the checkout from every scope, and proves an in-tree
+// copy against origin's tip as it starts (remoteid.go); a change after the
+// drive's read and before git runs the hook is not seen, nothing holds the
+// directory through the add, and outside a drive nothing holds it, so it must
+// not change between runs, and nothing enforces it.
 func worktreeAddGit(dir string, args ...string) (string, error) {
 	return gitutil.RunCommitCommandBoundedAsStored(dir, worktreeAddTimeout, errCheckoutStalled, args...)
 }

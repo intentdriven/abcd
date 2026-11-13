@@ -146,8 +146,8 @@ func TestAHookChangeMergedOnTheDefaultBranchIsNoChangeInTheLane(t *testing.T) {
 	if err != nil || res.PerformedStage != StageBrief {
 		t.Fatalf("the lane takes its next step: %+v %v", res, err)
 	}
-	if wt, ok := pinned(t, repo, runID, path); !ok || len(wt.Hooks) != 3 {
-		t.Fatalf("the lane's three hook entries are pinned as it opens: %+v %v", wt, ok)
+	if wt, ok := pinned(t, repo, runID, path); !ok || len(wt.Hooks) != 4 {
+		t.Fatalf("the lane's four hook entries, at every depth, are pinned as it opens: %+v %v", wt, ok)
 	}
 }
 

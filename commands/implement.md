@@ -1147,31 +1147,42 @@ Where your repository's own settings name the hooks directory, the run's
 fingerprint records that copy at the run's first check, which is normally the
 step that makes the lane, and within a run a later change to it is refused at
 the next step. Across the lanes of one drive the drive holds it: as it starts
-it reads the checkout's hooks directory through the fingerprint's own reader
-and keeps hashes of it in its own memory; just before each lane's add the
-worktree stage reads the directory again, and a hook file added, removed or
-changed since the drive started, and still so at that read, refuses the lane,
-naming the file, before that lane's add. The hold has three limits, and
-nothing else checks them for you. The directory is read just before the add:
-a change made after that read and before git runs the hook is not seen, and
-nothing holds the directory through the add. The directory read is the one
-your repository's own settings name (else the git directory's `hooks`): with
-a relative `core.hooksPath` set only in your global settings, the copy the
-add runs is not the one read. What is compared is each top-level entry of the
-directory, a file by its bytes and mode, a subdirectory by its kind only and a
-symlink by its target text, up to 1024 entries (past that, their count and the
-first 1024): nothing a hook sources or runs from a subdirectory or from
-elsewhere is held. Elsewhere nothing holds the copy: a step the host runs, a
-single build and a drive started again take it as it stands at the run's
-first check, so it must not change between runs, and nothing enforces it.
+it reads the hooks directory git takes at the checkout, from your repository,
+global and system settings alike, and the git directory's `info/attributes`,
+and keeps hashes of them in its own memory; just before each lane's add the
+worktree stage reads them again, and an entry added, removed or changed since
+the drive started, and still so at that read, refuses the lane, naming the
+file, before that lane's add. The directory is read at every depth: a file by
+its bytes and mode, a subdirectory by its kind and then everything in it, and
+a symlink by its target's text and by what it resolves to, so a file a hook
+sources from a subdirectory, or a linked hook whose target's bytes changed, is
+seen. A link to a directory outside the hooks directory has that directory's
+files held under the link's path. Up to 1024 entries are held, at every depth
+together; a drive whose hooks directory holds more does not start, and one
+that grows past that refuses the next lane.
 
 As it starts, the drive reads your settings and the checkout's hooks
-directory, and it refuses to start when the settings cannot be listed or the
-common git directory cannot be resolved, naming what git reported; look at
-your repository's own settings (`git config --local --list --show-origin`),
-then start it again. A hooks directory it cannot read is recorded as such,
-not refused, and compared like the rest: one made unreadable after the drive
-started refuses the next lane.
+directory, and it refuses to start when the settings cannot be listed, the
+hooks directory git takes at the checkout cannot be told or the common git
+directory cannot be resolved, naming what git reported; look at your settings
+(`git config --list --show-origin`), then start it again. A hooks directory it
+cannot read is recorded as such, not refused, and compared like the rest: one
+made unreadable after the drive started refuses the next lane.
+
+Where that hooks directory is the checkout's own copy in its working tree (a
+relative `core.hooksPath` such as `.githooks`) and the repository has an
+`origin`, the drive also proves the copy as it starts: it asks `origin` for
+its default branch's tip, and what stands in the directory, at every depth,
+must be that tip's hooks directory as stored, each name, each file's bytes and
+exec bit and each symlink's target, with no symlink leaving the directory. A
+difference refuses the start, naming each file; so does an `origin` that
+cannot be asked or a tip not yet fetched here. Look at what changed the hooks
+(`git status` and `git diff` on the directory); commit and land the change, or
+put the hooks back as the tip holds them, then start the drive again. A hooks
+directory outside the working tree (an absolute or home path, or the git
+directory's own `hooks`), or a repository with no `origin`, has nothing to be
+proved against: nothing is proved, and the drive starts with the copy as it
+stands.
 
 A branch that already stands under the lane's name (a step stopped between git
 making the branch and the worktree) has its head resolved once. That commit's
@@ -1198,20 +1209,21 @@ A standing branch's content outside the hooks directory is its own and is not
 vouched for.
 
 Then, before any commit in the lane, a lane whose hooks directory is its own
-copy has that directory proved against the commit it opens on: the same
-entries, each file's size, bytes and exec bit, each symlink's target text and
-each subdirectory as a directory. A lane abcd finds again (a step stopped
+copy has that directory proved against the commit it opens on, at every
+depth: the same entries, each file's size, bytes and exec bit, each symlink's
+target text and each subdirectory as a directory, with everything in it. A
+symlink that leaves the hooks directory is refused, since what it points to
+is not the commit's; one inside it is held by its target's text and by what it
+resolves to, itself an entry proved. Up to 1024 entries are proved; a
+directory holding more is refused. A lane abcd finds again (a step stopped
 before its state was written) must also hold the same hooks as the tip.
 Anything else is refused at the worktree stage. What was proved is pinned for
 the lane, and the lane is compared with it from then on: a hook changed in the
 lane stops the next step, even one put back to the checkout's older copy.
 
-The proof covers less than the whole directory, and nothing else checks these
-for you. A subdirectory is proved and pinned only as a directory: the files in
-it, which a hook may run or read, are outside the pin. A symlink is proved by
-the text of its target only, not by the file it points to. A lane on a file
-system that keeps no exec bit is always refused, and so is one where a content
-filter rewrites the hook files as they are checked out (an end-of-line or
+The proof has its own refusals. A lane on a file system that keeps no exec
+bit is always refused, and so is one where a content filter rewrites the hook
+files as they are checked out (an end-of-line or
 smudge filter), since either leaves them other than the commit's. A lane that
 later merges in a reviewed hook change from the default branch is refused
 against its pin, which is the commit the lane opened on. A lane abcd finds
@@ -1221,25 +1233,47 @@ step another process of your account can still write in the lane; the pin
 holds what was proved, so that step's check names the change.
 
 A drive reads these settings once as it starts, before its first lane, and
-keeps hashes of their values in its own memory, never in a file: `origin`'s
-`url`, `pushurl`, `uploadpack`, `proxy` and `vcs`; every URL rewrite
-(`url.*.insteadOf` and `pushInsteadOf`); `core.sshCommand`, `core.gitProxy`,
-`core.hooksPath` and `core.askPass`; every `credential.*` key; `protocol.allow`
-and every `protocol.*.allow`; and `http.proxy` and `http.sslVerify`. It reads
-them through the same runner the ask of `origin` uses, so it sees the values
-the ask sees, from your repository, global and system settings alike. Each lane's
-worktree stage reads them again before it asks `origin` anything and once more
-after `origin` has answered, and refuses the lane on any difference, naming
-the key (a URL in a key's name hidden, as below). A change made between the
-two reads and put back before the second is not seen. Not held: any other
-`http.*` key, a per-URL one included; an `origin` defined only by a legacy
-remotes or branches file in the git directory, which has no key to compare;
-the run fingerprint's other watched settings (content filters, diff and merge
-drivers, signing programs, includes and the rest), which each run records
-afresh at its first check; and anything changed while no drive runs. A drive started again reads them
-afresh, so such a change is the new drive's starting point. A step the host
-runs and a single build carry no such record: there these settings must not
-change between one lane's run and the next, and nothing enforces it.
+keeps hashes of their scopes and values in its own memory, never in a file:
+every setting the run's fingerprint watches (listed at the head of this
+section: each remote's URLs, uploadpack, receivepack, proxy and vcs, every URL
+rewrite, the hooks directory, ssh command, proxy program, askpass, fsmonitor,
+pager, editor and worktree settings, every `credential.*` key, the protocol
+allow rules, content filters, diff and merge drivers, signing programs and
+include paths), the same list and no other, and `http.proxy` and
+`http.sslVerify`. It reads them through the same runner the ask of `origin`
+uses, so it sees the values the ask sees, from your repository, global and
+system settings alike. Each lane's worktree stage reads them again before it
+asks `origin` anything and once more after `origin` has answered, and refuses
+the lane on any difference, naming the key (a URL in a key's name hidden, as
+below); a content filter set with an attributes line in the git directory
+during one lane stops the next before its add. Not held: any other `http.*`
+key, a per-URL one included; an `origin` defined only by a legacy remotes or
+branches file in the git directory, which has no key to compare; and your
+global and system attributes files. A step the host runs and a single build
+carry no such record: there these settings must not change between one lane's
+run and the next, and nothing enforces it.
+
+A run whose fingerprint an earlier abcd recorded holds only the hooks
+directory's top level, and a symlink by its target's text: its next step
+reads the rest as a change and stops once at the stage `config`, as below,
+until you accept it; the fingerprint's schema version is unchanged.
+
+A drive is not a boundary against a program one of its own agents starts:
+that program runs as you, and can change the checkout as you can, so three things are outside what abcd can
+close on one account. git reads a hook after the drive's read: a change made
+after the read just before a lane's add, and before git runs the hook, is not
+seen, and a setting changed and put back between the two reads around the ask
+of `origin` is not seen either. A hook may start any program (a script, `make`,
+a program on your `PATH`, a file in the lane): nothing it runs from outside
+the hooks directory is held, and the landing gate looks only at committed
+changes to the hooks, `Makefile` and `scripts/`. And what changes while no
+drive runs is the next drive's starting point, except for an in-tree hooks
+copy, which a drive proves against `origin`'s tip as it starts; a hooks
+directory outside the tree, or a repository with no `origin`, is taken as it
+stands. The remedy is yours: run a drive on an account or machine whose
+checkout no other work shares, and look at `git status` and
+`git config --local --list` before each start. A profile is not a boundary
+either (`commands/drain.md`).
 
 With no `origin`, in a trial, or where the lane's hooks directory is not its
 own copy, nothing is pinned: a lane made after the fingerprint was recorded is
@@ -1248,16 +1282,19 @@ holds differently. The pin leaves these out, and nothing checks them for you:
 an absolute `core.hooksPath` or a hook dispatcher your global settings name
 gets no pin of its own, and is compared with the checkout as recorded; a
 relative `core.hooksPath` set only in your global settings is neither proved
-nor pinned in the lane, and the checkout's copy it names, which the add's
-post-checkout hook runs from, is not watched, since the fingerprint and the
-drive read the hooks directory from the repository's own settings; the
+nor pinned in the lane, and outside a drive the checkout's copy it names,
+which the add's post-checkout hook runs from, is not watched, since the
+fingerprint reads the hooks directory from the repository's own settings (a
+drive reads the one git takes, from every scope, as above); the
 checkout's own hooks and settings changing when you pull it during a run are a
 change like any other, which stops the next step until you accept it; and each
 run records the watched settings afresh when it first checks them, so a
 setting changed before a run's first check is that run's starting point (each
 lane of a drain is a run of its own, and a drive holds across its lanes only
-the settings and the checkout's hooks directory named above), and you must look at what changes between runs yourself. Your global and system
-settings are your own and are not watched. The file holds salted hashes, never
+the settings, the checkout's hooks directory and `info/attributes` named
+above), and you must look at what changes between runs yourself. The run's
+fingerprint does not watch your global and system settings; a drive holds
+them across its lanes, as above. The file holds salted hashes, never
 a value: a credential helper's value may carry a secret, so only key names and
 file paths are ever stored or reported. A key's name can carry a secret too (a
 URL rewrite or a credential context names a URL, which may hold a token), so a

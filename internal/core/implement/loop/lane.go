@@ -383,10 +383,12 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 	// defensive: it refuses a branch whose hooks differ before a worktree is
 	// made rather than at the proof after it. The value on the add's command
 	// line refuses nothing: it pins the directory the check judged. Neither
-	// stops that hook from running.
+	// stops that hook from running. A drive's lane reads it with no origin
+	// too, for the hold on the checkout's hooks (checkoutHooksUnchanged),
+	// and the add is then told nothing, as before.
 	hooksPath, judged := "", ""
 	var added worktree.Added
-	if tip != "" && !adopted {
+	if (tip != "" || c.remote != nil) && !adopted {
 		if hooksPath, err = checkoutHooksPath(c.RepoRoot); err != nil {
 			return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
 				"the hooks directory git takes at the checkout cannot be read, so the hooks the lane's checkout would run cannot be told: "+gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())),
@@ -402,7 +404,11 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		}
 		base = mb
 	default:
-		opts := worktree.AddOptions{Name: name, Branch: lw.Branch, Base: base, Git: laneAddGit(hooksPath)}
+		told := ""
+		if tip != "" {
+			told = hooksPath
+		}
+		opts := worktree.AddOptions{Name: name, Branch: lw.Branch, Base: base, Git: laneAddGit(told)}
 		if _, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", branchRef, "--"); err == nil {
 			// A process killed between git making the branch and the worktree
 			// left the branch: it is the lane's, checked out rather than remade.
@@ -439,15 +445,14 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		// worktree to 0700 once git has made it.
 		//
 		// Just before it, a drive's lane has the checkout's hooks directory
-		// compared with what the drive read as it started
-		// (checkoutHooksUnchanged), so a top-level hook file changed there
+		// (the one git takes there from every scope, hooksPath) and
+		// info/attributes compared with what the drive read as it started
+		// (checkoutHooksUnchanged), so an entry at any depth changed there
 		// between two lanes and still changed at this read is refused before
-		// this add. Its limits are checkoutHooksUnchanged's: a change made
-		// after this read and before git runs the hook is not seen, since
-		// nothing holds the directory through the add; the directory read is
-		// the one the repository's own settings name; and only its top-level
-		// entries are compared.
-		if err := checkoutHooksUnchanged(c, lane.ID); err != nil {
+		// this add. A change made after this read and before git runs the
+		// hook is not seen, since nothing holds the directory through the
+		// add.
+		if err := checkoutHooksUnchanged(c, lane.ID, hooksPath); err != nil {
 			return Outcome{}, err
 		}
 		added, err = addWorktree(c.RepoRoot, opts)
@@ -517,15 +522,15 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 	// settings name the hooks directory, the run's fingerprint records that
 	// copy at the run's first check, normally this very step, and within a run
 	// a later change to it is refused at the next step. Across the lanes of one
-	// drive the drive holds it, within limits (checkoutHooksUnchanged, just
-	// before the add): a change after that read and before git runs the hook
-	// is not seen, the directory read is the one the repository's own settings
-	// name, and only its top-level entries are compared.
-	// Elsewhere (a step the host runs, a single build, a drive started again)
-	// nothing does: a copy changed before the run's first check is that run's
-	// starting point and runs in the add, so it must not change between runs,
-	// and nothing enforces it. One named only in the person's global settings
-	// is not watched at all. The add reads
+	// drive the drive holds it at every depth, read from the directory git
+	// takes at the checkout from every scope (checkoutHooksUnchanged, just
+	// before the add); a change after that read and before git runs the hook
+	// is not seen. A drive started again proves an in-tree copy against the
+	// tip origin reports (proveCheckoutHooks). Elsewhere (a step the host
+	// runs, a single build) nothing does: a copy changed before the run's
+	// first check is that run's starting point and runs in the add, so it
+	// must not change between runs, and nothing enforces it. Outside a drive,
+	// one named only in the person's global settings is not watched at all. The add reads
 	// objects as stored, so the lane holds the tree its commit stores. An
 	// adopted worktree ran its hook when it was made. With no origin, or in a
 	// trial, nothing is pinned and the lane is compared with the checkout as
