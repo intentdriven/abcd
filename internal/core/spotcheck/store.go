@@ -41,8 +41,9 @@
 // whole by one fixed placeholder, so a bare repository-relative path such as
 // internal/core/x.go stays, and an absolute path, a home-relative path, an
 // address such as file:// or https://, an option glued to an absolute path
-// (-I/usr/include), and any path in quotes, brackets or backticks, a
-// repository-relative one included, go. Control and invisible characters
+// (-I/usr/include), a path that begins with a dot (.abcd/config.json), and
+// any path in quotes, brackets or backticks, a repository-relative one
+// included, go. Control and invisible characters
 // separate words and are removed, and each text is bounded. The read side checks a stored text with
 // the same function, so two readers of one store agree on what it holds.
 //

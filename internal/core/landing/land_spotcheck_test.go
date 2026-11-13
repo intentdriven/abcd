@@ -35,6 +35,13 @@ func gateRecords(t *testing.T, f *fixture) []spotcheck.Decision {
 	return out
 }
 
+// keptWhy is the gate's reason as the store's cleaning rule keeps it in the
+// fixtures: the mode's origin, .abcd/config.json, begins with a dot and holds
+// a slash, so it is replaced whole.
+func keptWhy(why string) string {
+	return strings.ReplaceAll(why, ".abcd/config.json", "<removed>")
+}
+
 // withRecorder runs land with the gate's recorder replaced for the call: rec
 // nil turns the record off, as land is without it.
 func withRecorder(t *testing.T, rec func(root, site, pr, head string, d MergeDecision) string, land func() Step) Step {
@@ -90,7 +97,7 @@ func TestTheLandVerbsGateRecordsItsDecision(t *testing.T) {
 	}
 	r := recs[0]
 	if r.Kind != spotcheck.KindMergeGate || r.Site != spotcheck.SiteLand || r.PR != 7 || r.Head != f.head() ||
-		r.Arm != d.Arm || r.Method != d.Method || r.Why != d.Why || r.Unread != d.Unread ||
+		r.Arm != d.Arm || r.Method != d.Method || r.Why != keptWhy(d.Why) || r.Unread != d.Unread ||
 		r.Mode != ModeAuto || r.AuthorCanWrite == nil || !*r.AuthorCanWrite || r.ApprovalCounted == nil || *r.ApprovalCounted {
 		t.Fatalf("the record is %+v; the gate decided %+v", r, d)
 	}

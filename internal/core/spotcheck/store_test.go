@@ -339,6 +339,8 @@ func TestTheCleaningRule(t *testing.T) {
 		// goes too; bare, and with a line number after it, it stays.
 		{"(internal/x.go) [internal/x.go] \"internal/x.go\" 'a/b' `a/b` <a/b>", "<removed> <removed> <removed> <removed> <removed> <removed>"},
 		{"internal/x.go:12: x/abs/path a/b,", "internal/x.go:12: x/abs/path a/b,"},
+		// A path that begins with a dot goes, a repository-relative one too.
+		{"facilitator.mode is auto (repo layer, .abcd/config.json at origin/main)", "facilitator.mode is auto (repo layer, <removed> at origin/main)"},
 		{"(/abs/path) [/abs] {/abs} </abs> |/abs @/abs \"/abs\" '/abs' =/abs", "<removed> <removed> <removed> <removed> <removed> <removed> <removed> <removed> <removed>"},
 		{"at file:///home/x/y and https://example.invalid/a/b", "at <removed> and <removed>"},
 		{"the address http://host.invalid:8080/x", "the address <removed>"},

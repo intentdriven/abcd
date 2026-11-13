@@ -100,7 +100,7 @@ func TestAParkedLanesGateDecisionIsRecorded(t *testing.T) {
 		t.Fatalf("handed %+v, recorded %+v", handed, recs)
 	}
 	r, d := recs[0], handed[0]
-	if r.Site != spotcheck.SiteLane || r.PR != l.PR || r.Head != l.Landing.Pushed || r.Arm || r.Arm != d.Arm || r.Method != d.Method || r.Why != d.Why || r.Unread != d.Unread {
+	if r.Site != spotcheck.SiteLane || r.PR != l.PR || r.Head != l.Landing.Pushed || r.Arm || r.Arm != d.Arm || r.Method != d.Method || r.Why != strings.ReplaceAll(d.Why, ".abcd/config.json", "<removed>") || r.Unread != d.Unread {
 		t.Fatalf("the record is %+v; the gate decided %+v", r, d)
 	}
 	if !strings.HasPrefix(l.Landing.Merge, "left open: "+d.Why) {

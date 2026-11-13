@@ -1051,9 +1051,10 @@ recorded. Free text in a record is cleaned by one rule: every slash has an
 ASCII letter or digit right before it, every word holding a slash begins with
 one, and the text holds no backslash and no tilde; a run of non-space
 characters that would break it is replaced whole by a placeholder, so a bare
-repository-relative path stays and an absolute or home-relative path, an
-address, an option written straight against an absolute path, or any path in
-quotes, brackets or backticks, a repository-relative one included, goes.
+repository-relative path that begins with a letter or digit stays and an
+absolute or home-relative path, an address, an option written straight against
+an absolute path, a path that begins with a dot, or any path in quotes,
+brackets or backticks, a repository-relative one included, goes.
 Control and invisible characters separate words and are removed. A record that cannot be written never holds the move: `next` says how
 many records the move tried to write and could not, and why, and a later move
 tries them again; a record the store cannot keep at all (a hand-back with no
