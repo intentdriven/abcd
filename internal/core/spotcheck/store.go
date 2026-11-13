@@ -46,9 +46,11 @@
 // brackets or backticks, a path with a line number or punctuation written
 // against it (internal/x.go:12, internal/x.go,), and a path that begins with
 // a dot (.abcd/config.json). Control and invisible characters separate words
-// and are removed, and each text is bounded. The read side checks a stored
-// text with the same function, so two readers of one store agree on what it
-// holds.
+// and are removed. A text over its bound is cut between words: the word the
+// cut falls in goes whole and the cut is marked by a word of its own, so a
+// text cleaned twice reads the same as one cleaned once. The read side checks
+// a stored text with the same function, so two readers of one store agree on
+// what it holds.
 //
 // WHO A COMMIT NAMES. Every git command that makes an object or moves a ref
 // runs through one helper (storeGit) whose environment names abcd's fixed
@@ -259,25 +261,31 @@ var (
 // characters, which separate words and are removed, and the words are joined
 // by single spaces; a word that holds "\" or "~", or holds a "/" and is not
 // a bare repository-relative path (pathFree), is replaced whole by the
-// placeholder; and the text is cut to maxTextBytes, the cut marked. It reads
-// nothing of the machine, so a text it leaves unchanged is one it accepts on
+// placeholder; and a text longer than maxTextBytes is cut at a word boundary:
+// the word the cut falls in goes whole, and the mark is written as a word of
+// its own, so the cut text, mark included, is within the bound. It reads
+// nothing of the machine, and cleaning a cleaned text returns the same bytes
+// (every word it keeps, the placeholder and the mark each pass the rule, and
+// no step joins or splits a word), so a text it writes is one it accepts on
 // read (readRecord).
 func clean(s string) string {
 	words := strings.FieldsFunc(s, separates)
+	n := -1
 	for i, w := range words {
 		if !pathFree(w) {
 			words[i] = placeholder
 		}
+		n += 1 + len(words[i])
 	}
-	s = strings.Join(words, " ")
-	if len(s) > maxTextBytes {
-		cut := maxTextBytes - len(ellipsis)
-		for cut > 0 && !utf8.RuneStart(s[cut]) {
-			cut--
-		}
-		s = s[:cut] + ellipsis
+	if n <= maxTextBytes {
+		return strings.Join(words, " ")
 	}
-	return s
+	keep, n := 0, 0
+	for keep < len(words) && n+len(words[keep])+1+len(ellipsis) <= maxTextBytes {
+		n += len(words[keep]) + 1
+		keep++
+	}
+	return strings.Join(append(words[:keep:keep], ellipsis), " ")
 }
 
 // separates reports whether r separates words of free text: a space, a
@@ -290,8 +298,9 @@ func separates(r rune) bool {
 // pathFree reports whether a word keeps to the rule: no "\" and no "~"; and,
 // when it holds a "/", an ASCII letter or digit first, an ASCII letter or
 // digit right before every "/", and no byte but an ASCII letter, a digit,
-// ".", "_", "-" or "/". So a word holding a "/" is kept only as a bare
-// repository-relative path.
+// ".", "_", "-" or "/". So a word holding a "/" is kept only when it has the
+// shape of a bare relative path; the shape alone cannot tell a repository's
+// path from any other written that way.
 func pathFree(w string) bool {
 	if strings.ContainsAny(w, `\~`) {
 		return false

@@ -3,6 +3,7 @@ package spotcheck
 import (
 	"context"
 	"errors"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -376,34 +378,155 @@ func TestTheCleaningRule(t *testing.T) {
 		if got != c.want {
 			t.Errorf("clean(%q) = %q, want %q", c.in, got, c.want)
 		}
-		if clean(got) != got {
-			t.Errorf("clean is not stable on %q: %q", got, clean(got))
-		}
-		for i := 0; i < len(got); i++ {
-			if got[i] == '/' && (i == 0 || !asciiAlnum(got[i-1])) {
-				t.Errorf("clean(%q) = %q keeps a \"/\" after %q", c.in, got, got[max(i-1, 0):i])
-			}
-		}
-		for _, w := range strings.Fields(got) {
-			if !strings.Contains(w, "/") {
-				continue
-			}
-			if !asciiAlnum(w[0]) {
-				t.Errorf("clean(%q) = %q keeps a word holding \"/\" that begins with %q", c.in, got, w[:1])
-			}
-			for i := 0; i < len(w); i++ {
-				if b := w[i]; !asciiAlnum(b) && b != '.' && b != '_' && b != '-' && b != '/' {
-					t.Errorf("clean(%q) = %q keeps a word holding \"/\" and the byte %q", c.in, got, b)
-				}
-			}
-		}
-		if strings.ContainsAny(got, "\\~\x1b\n\t\u200b") {
-			t.Errorf("clean(%q) = %q keeps a character the rule removes", c.in, got)
-		}
+		keepsTheRule(t, c.in, got)
 	}
 	long := clean(strings.Repeat("z", 3*maxTextBytes))
-	if len(long) > maxTextBytes || !strings.HasSuffix(long, ellipsis) || clean(long) != long {
-		t.Fatalf("a long text is %d bytes", len(long))
+	if long != ellipsis {
+		t.Errorf("a text of one word over the bound is %q, want the mark alone", long)
+	}
+	keepsTheRule(t, "a long word", long)
+}
+
+// keepsTheRule fails the test unless got, the cleaning of in, is a text the
+// rule keeps: cleaning it again changes nothing; it is within the bound and
+// valid UTF-8; every "/" has an ASCII letter or digit right before it; every
+// word holding a "/" begins with an ASCII letter or digit and holds nothing
+// but ASCII letters, digits, ".", "_", "-" and "/"; and it holds no character
+// the rule removes.
+func keepsTheRule(t *testing.T, in, got string) {
+	t.Helper()
+	in = ends(in)
+	if again := clean(got); again != got {
+		t.Errorf("clean is not stable on clean(%q):\n once  %q\n twice %q", in, ends(got), ends(again))
+	}
+	if len(got) > maxTextBytes {
+		t.Errorf("clean(%q) is %d bytes, over the bound of %d", in, len(got), maxTextBytes)
+	}
+	if !utf8.ValidString(got) {
+		t.Errorf("clean(%q) = %q is not valid UTF-8", in, ends(got))
+	}
+	for i := 0; i < len(got); i++ {
+		if got[i] == '/' && (i == 0 || !asciiAlnum(got[i-1])) {
+			t.Errorf("clean(%q) = %q keeps a \"/\" after %q", in, ends(got), got[max(i-1, 0):i])
+		}
+	}
+	for _, w := range strings.Fields(got) {
+		if !strings.Contains(w, "/") {
+			continue
+		}
+		if !asciiAlnum(w[0]) {
+			t.Errorf("clean(%q) = %q keeps a word holding \"/\" that begins with %q", in, ends(got), w[:1])
+		}
+		for i := 0; i < len(w); i++ {
+			if b := w[i]; !asciiAlnum(b) && b != '.' && b != '_' && b != '-' && b != '/' {
+				t.Errorf("clean(%q) = %q keeps a word holding \"/\" and the byte %q", in, ends(got), b)
+			}
+		}
+	}
+	if strings.ContainsAny(got, "\\~\x1b\n\t\u200b") {
+		t.Errorf("clean(%q) = %q keeps a character the rule removes", in, ends(got))
+	}
+}
+
+// ends is s, its middle elided when it is long, for a failure's message.
+func ends(s string) string {
+	if len(s) <= 120 {
+		return s
+	}
+	return s[:40] + " ... " + s[len(s)-80:]
+}
+
+// Cleaning a cleaned text changes nothing, for every input: held over
+// generated texts whose length lies around the bound, so the cut lands at
+// every position of a path word, and over texts of words made from an
+// alphabet holding every kind of character the rule treats apart.
+func TestCleaningACleanedTextChangesNothing(t *testing.T) {
+	// A text cut at the bound: the word the cut falls in goes whole and the
+	// mark is a word of its own.
+	const path = "internal/core/implement/loop/x_test.go"
+	for d := -2; d <= len(path)+40; d++ {
+		filler := strings.Repeat("a ", (maxTextBytes-d)/2)
+		if (maxTextBytes-d)%2 == 1 {
+			filler = "b" + filler
+		}
+		in := filler + path + " tail"
+		got := clean(in)
+		keepsTheRule(t, in, got)
+		for _, w := range strings.Fields(got) {
+			if w != "a" && w != "b" && w != path && w != "tail" && w != ellipsis && w != "ba" {
+				t.Errorf("a text cut %d bytes before the path keeps the word %q", d, w)
+			}
+		}
+		if len(in) > maxTextBytes && !strings.HasSuffix(got, " "+ellipsis) {
+			t.Errorf("a text cut %d bytes before the path does not end in the mark: %q", d, got[max(len(got)-60, 0):])
+		}
+	}
+
+	// Words made from an alphabet holding letters, the characters a path or an
+	// option is written with, quotes and brackets, the characters the rule
+	// refuses, spaces, a tab, control characters, a byte that is not UTF-8, a
+	// two-byte and a three-byte character, and the placeholder's and the
+	// mark's own characters.
+	alphabet := []string{
+		"a", "b", "z", "Q", "0", "7", "/", "/", "/", ".", "-", "_", "=", ":", ",", "\"", "'", "`", "(", ")", "[",
+		"~", "\\", " ", " ", "\t", "\n", "\x1b", "\x00", "\x7f", "\xff", "\u00e9", "\u00a0", "\u20ac", "\u200b",
+		"<", ">", "r", "e", "m", "o", "v", "d", placeholder, ellipsis,
+	}
+	// uncut is how long s is once its words are judged and joined, before
+	// any cut: it sizes a generated text so the cut lands where it should.
+	uncut := func(s string) int {
+		n := -1
+		for _, w := range strings.FieldsFunc(s, separates) {
+			if !pathFree(w) {
+				w = placeholder
+			}
+			n += 1 + len(w)
+		}
+		return max(n, 0)
+	}
+	r := rand.New(rand.NewPCG(2611131, 5))
+	for n := 0; n < 600; n++ {
+		size := maxTextBytes - 2 + r.IntN(43)
+		if n%4 == 0 {
+			size = r.IntN(64)
+		}
+		var b strings.Builder
+		for short := size; short > 0; short = size - uncut(b.String()) {
+			for end := b.Len() + short; b.Len() < end; {
+				if r.IntN(3) == 0 {
+					// A word that is a bare path, kept, so the cut often falls
+					// in one.
+					for k := 1 + r.IntN(5); k > 0; k-- {
+						b.WriteString(string(rune('a' + r.IntN(26))))
+						b.WriteString(strings.Repeat("x", r.IntN(6)))
+						b.WriteString("/")
+					}
+					b.WriteString("y.go ")
+					continue
+				}
+				b.WriteString(alphabet[r.IntN(len(alphabet))])
+			}
+		}
+		in := b.String()
+		keepsTheRule(t, in, clean(in))
+	}
+}
+
+// A hand-back whose reason is over the bound, cut inside a bare path, is
+// written and read back as a record, the mark in its reason.
+func TestAReasonCutInsideAPathReadsBack(t *testing.T) {
+	a, _, _ := twoClones(t)
+	const path = "internal/core/implement/loop/x_test.go"
+	h := handBack("iss-1", at0)
+	h.Reason = strings.Repeat("a ", (maxTextBytes-20)/2) + path + " and more after it"
+	write(t, a.Root(), hb(h))
+	rec := readLocal(t, a.Root())
+	if len(rec.Unreadable) != 0 || len(rec.HandBacks) != 1 {
+		t.Fatalf("read back %d hand-backs, unreadable %q", len(rec.HandBacks), rec.Unreadable)
+	}
+	got := rec.HandBacks[0].Reason
+	if !strings.HasSuffix(got, " "+ellipsis) || strings.Contains(got, "internal") || len(got) > maxTextBytes {
+		t.Fatalf("the reason read back ends %q", got[max(len(got)-60, 0):])
 	}
 }
 

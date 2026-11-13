@@ -1185,7 +1185,10 @@ the model, the rule record and the reason. Each file's name ends in a short
 hash of its content, so two records that differ in anything are two files, and
 a record counts as kept only when the local copy holds a file of its name with
 that content. Each commit of the copy names abcd's fixed identity as its
-author and committer, with its dates in UTC.
+author and committer, with its dates in UTC. The local copy is a ref of the
+repository outside its branches and tags, so a push of branches or tags leaves
+it behind, and a mirror push, which sends every ref, carries the records with
+it.
 
 Free text is cleaned before it is kept, by one rule that reads nothing of the
 machine or the account. The text holds no backslash and no tilde, and a word
@@ -1203,8 +1206,11 @@ under a top-level folder whose name begins with a dot (a workflow file under
 `.github`, a record under `.abcd`) reads as the placeholder in every text a
 record keeps, a hand-back's reason and a merge-gate reason included; the
 gate's mode is kept in a field of its own. Control and invisible characters
-separate words and are removed, and each text is bounded. A record read back
-is checked with the same rule, so two readers agree on what the copy holds.
+separate words and are removed. A text over its bound is cut between words:
+the word the cut falls in goes whole and the cut is marked by a word of its
+own, so a text cleaned twice reads the same as one cleaned once. A record read
+back is checked with the same rule, so two readers agree on what the copy
+holds.
 
 The records are rebuilt from the drain's state at every move, and only those
 the copy does not yet hold are written, so a record one move could not write

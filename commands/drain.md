@@ -1047,7 +1047,10 @@ person involved: every hand-back it routed and every judgement a routed model
 answered, each as one file on this checkout's local copy of the spot-check's
 branch, all of one move's in one commit, written without touching the working
 tree and without reaching the network; a judgement a person answered is not
-recorded. Free text in a record is cleaned by one rule: the text holds no
+recorded. The local copy is a ref of the repository, `refs/abcd/spotcheck`,
+outside its branches and tags: a push of branches or tags leaves it behind,
+and a push of every ref (`git push --mirror`) carries the records with it.
+Free text in a record is cleaned by one rule: the text holds no
 backslash and no tilde, and a word holding a slash is kept only when it begins
 with an ASCII letter or digit, every slash has one right before it, and every
 character of it is an ASCII letter, a digit, a dot, an underscore, a dash or a
@@ -1061,7 +1064,9 @@ dot. A path under a top-level folder whose name begins with a dot (a workflow
 file under `.github`, a record under `.abcd`) reads as `<removed>` in every
 text a record keeps, a hand-back's reason and a merge-gate reason included;
 the gate's mode is kept in a field of its own. Control and invisible
-characters separate words and are removed. A record that cannot be written never holds the move: `next` says how
+characters separate words and are removed. A text over its bound is cut
+between words: the word the cut falls in goes whole and the cut is marked by a
+word of its own, so a text cleaned twice reads the same as one cleaned once. A record that cannot be written never holds the move: `next` says how
 many records the move tried to write and could not, and why, and a later move
 tries them again; a record the store cannot keep at all (a hand-back with no
 time) is counted apart, the same number at every move. A merge-gate record that
