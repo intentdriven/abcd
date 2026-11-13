@@ -10,9 +10,9 @@ import (
 
 // The merge gate's decisions recorded for the spot-check (spc-2610301925429250
 // step 1), through the land verb's enqueue: a decision abcd takes as the
-// facilitator, in auto mode over a maintainer's pull request, is kept on the
-// store's local copy, made from the decision alone; every other decision
-// waits for a person and is not. Nothing the gate decides or asks changes.
+// facilitator alone, in auto mode over a pull request whose author can write
+// with no person's approval counted, is kept on the store's local copy, made
+// from the decision alone; every other decision is not. Nothing the gate decides or asks changes.
 
 // gateRecords are the merge-gate records the store's local copy holds, read
 // with git alone.
@@ -90,8 +90,12 @@ func TestTheLandVerbsGateRecordsItsDecision(t *testing.T) {
 	}
 	r := recs[0]
 	if r.Kind != spotcheck.KindMergeGate || r.Site != spotcheck.SiteLand || r.PR != 7 || r.Head != f.head() ||
-		r.Arm != d.Arm || r.Method != d.Method || r.Why != d.Why || r.Unread != d.Unread {
+		r.Arm != d.Arm || r.Method != d.Method || r.Why != d.Why || r.Unread != d.Unread ||
+		r.Mode != ModeAuto || r.AuthorCanWrite == nil || !*r.AuthorCanWrite || r.ApprovalCounted == nil || *r.ApprovalCounted {
 		t.Fatalf("the record is %+v; the gate decided %+v", r, d)
+	}
+	if d.Mode != ModeAuto || !d.AuthorCanWrite || d.ApprovalCounted {
+		t.Fatalf("the gate's facts are %+v", d)
 	}
 
 	// The same land with no record: the gate's decision, what land asks the
@@ -153,8 +157,8 @@ func TestARecordThatCannotBeWrittenChangesNothingTheGateDecided(t *testing.T) {
 
 // TestAHumanModeOrContributorDecisionIsNotRecorded: in human mode a
 // person's approval decides, and a contributor's pull request waits for a
-// maintainer's in either mode; neither is abcd's decision alone, and neither
-// is recorded.
+// maintainer's in either mode, armed or not once one counted; none is abcd's
+// decision alone, and none is recorded.
 func TestAHumanModeOrContributorDecisionIsNotRecorded(t *testing.T) {
 	human := newFixture(t, queueRuleset)
 	wantArmed(t, human, landGate(t, human))
@@ -163,39 +167,109 @@ func TestAHumanModeOrContributorDecisionIsNotRecorded(t *testing.T) {
 		"maintainer-b": defaultRoles["maintainer-b"]}
 	contributor.reviewed(t)
 	wantArmed(t, contributor, landGate(t, contributor))
-	for name, f := range map[string]*fixture{"human mode": human, "contributor": contributor} {
+	// A contributor's pull request a person approved, in auto mode with no
+	// review receipt for its head: the gate's reason opens with the mode and
+	// names no approval, and it is still not abcd's decision alone.
+	unreviewed := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
+	unreviewed.forge.roles = contributor.forge.roles
+	wantLeft(t, unreviewed, landGate(t, unreviewed), "no review receipt names")
+	for name, f := range map[string]*fixture{"human mode": human, "contributor": contributor, "contributor, approved, unreviewed": unreviewed} {
 		if out := f.repo.Git("for-each-ref", spotcheck.LocalRef); out != "" {
 			t.Errorf("%s: a record was written: %s", name, out)
 		}
 	}
 }
 
-// TestTheRecordTakesTheGatesAnswerInAutoOverAMaintainer: the recorder tells
-// a decision abcd took alone from the gate's own words, for every row of the
-// gate's table: auto mode over a maintainer's pull request, armed or not, is
-// recorded; a contributor's, an unverified author's and every human-mode
-// answer are not.
-func TestTheRecordTakesTheGatesAnswerInAutoOverAMaintainer(t *testing.T) {
+// TestTheGatesFactsAreFieldsAndTheRecordReadsThem: over every row of the
+// gate's table, each in both modes and for each role it reaches, the
+// decision is the gate's (arming, method and reason byte for byte as main
+// writes them) and carries the facts it was taken on as fields: the mode,
+// whether the author can write and whether a person's approval counted. The
+// recorder reads those fields alone: auto mode, an author who can write and
+// no approval counted is recorded, and nothing else is, the contributor's
+// approved pull request in auto mode included on every row it reaches.
+func TestTheGatesFactsAreFieldsAndTheRecordReadsThem(t *testing.T) {
 	auto := Facilitator{Mode: ModeAuto, Layer: "repo", Origin: ".abcd/config.json at origin/main"}
 	human := Facilitator{Mode: ModeHuman, Layer: "default", Origin: "no file"}
+	const (
+		autoText  = "facilitator.mode is auto (repo layer, .abcd/config.json at origin/main)"
+		humanText = "facilitator.mode is human (default layer, no file)"
+		plain     = "; auto-merge armed (merge commit): no merge queue gates main (per the ruleset mirror)"
+		queued    = "; auto-merge armed through main's merge queue (squash)"
+		h12       = "eeeeeeeeeeee"
+	)
 	head := strings.Repeat("e", 40)
-	for _, c := range []struct {
-		name string
-		f    gateFacts
-		want bool
+	queue := MergeRule{Method: "SQUASH"}
+	unverified := "its author's role on the repository is unverified (the forge answered 403), so nothing is armed, whatever approvals it has"
+	contributorWaits := "its author is a contributor (read), so an approval of " + h12 + " by someone with write access is needed before anything is armed, in either facilitator mode: no approving review names " + h12
+	unreadReceipts := autoText + ", but the review receipts cannot be read (the receipts folder is a file), so whether a review pair passed " + h12 + " is unknown and nothing is armed"
+	noStanding := autoText + ", but no review receipt for " + h12 + " stands (its tree differs): the head needs a recorded review pair (abcd land --record-review), so nothing is armed"
+	deltaUnjudged := autoText + ", but whether the delta review recorded for " + h12 + " stands cannot be judged (its base cannot be read), so nothing is armed"
+	deltaRefused := autoText + ", but the delta review recorded for " + h12 + " does not stand (it touches a gate file), so it needs a full review pair (record it with abcd land --record-review), and nothing is armed"
+	noReceipt := autoText + ", but no review receipt names " + head + ": the head has no recorded review pair (record it with abcd land --record-review), so nothing is armed"
+	type row struct {
+		name     string
+		f        gateFacts
+		want     MergeDecision
+		recorded bool
+	}
+	unverifiedF := func(m Facilitator) gateFacts {
+		return gateFacts{mode: m, def: "main", head: head, role: RoleUnverified, roleWhy: "the forge answered 403"}
+	}
+	contributor := func(m Facilitator, approved bool) gateFacts {
+		f := gateFacts{mode: m, def: "main", head: head, role: RoleContributor, roleWhy: "read", approvalWhy: "no approving review names " + h12}
+		if approved {
+			f.approvedBy, f.approvalWhy = "maintainer-b", ""
+		}
+		return f
+	}
+	maintainer := func(m Facilitator) gateFacts {
+		return gateFacts{mode: m, def: "main", head: head, role: RoleMaintainer, roleWhy: "write"}
+	}
+	with := func(f gateFacts, edit func(*gateFacts)) gateFacts { edit(&f); return f }
+	rows := []row{
+		{"auto, unverified", unverifiedF(auto), MergeDecision{Why: unverified, Unread: true, Mode: ModeAuto}, false},
+		{"human, unverified", unverifiedF(human), MergeDecision{Why: unverified, Unread: true, Mode: ModeHuman}, false},
+		{"auto, contributor, no approval", contributor(auto, false), MergeDecision{Why: contributorWaits, Mode: ModeAuto}, false},
+		{"human, contributor, no approval", contributor(human, false), MergeDecision{Why: contributorWaits, Mode: ModeHuman}, false},
+		{"human, maintainer, no approval", with(maintainer(human), func(f *gateFacts) { f.approvalWhy = "none found" }),
+			MergeDecision{Why: humanText + ", so it waits for the technical facilitator's approval of " + h12 +
+				" (a forge review approving that commit by someone with write access other than its author, or abcd land --approve run by the facilitator): none found",
+				Mode: ModeHuman, AuthorCanWrite: true}, false},
+		{"human, maintainer, approved", with(maintainer(human), func(f *gateFacts) { f.approvedBy = "maintainer-b" }),
+			MergeDecision{Arm: true, Method: "--merge", Why: humanText + "; approved by maintainer-b" + plain, Mode: ModeHuman, AuthorCanWrite: true, ApprovalCounted: true}, false},
+		{"human, contributor, approved", with(contributor(human, true), func(f *gateFacts) { f.rule = queue }),
+			MergeDecision{Arm: true, Method: "--squash", Why: humanText + "; approved by maintainer-b" + queued, Mode: ModeHuman, ApprovalCounted: true}, false},
+		{"auto, maintainer, armed", with(maintainer(auto), func(f *gateFacts) { f.reviewed, f.reviewNote, f.rule = true, "a delta over the reviewed head", queue }),
+			MergeDecision{Arm: true, Method: "--squash", Why: autoText + "; a review receipt names " + h12 + " (a delta over the reviewed head)" + queued, Mode: ModeAuto, AuthorCanWrite: true}, true},
+		{"auto, contributor, approved, armed", with(contributor(auto, true), func(f *gateFacts) { f.reviewed = true }),
+			MergeDecision{Arm: true, Method: "--merge", Why: autoText + "; approved by maintainer-b; a review receipt names " + h12 + plain, Mode: ModeAuto, ApprovalCounted: true}, false},
+	}
+	// The five rows auto mode reaches after the approval, once for an author
+	// who can write and once for a contributor whose approval counted.
+	for _, r := range []struct {
+		name   string
+		edit   func(*gateFacts)
+		why    string
+		unread bool
 	}{
-		{"auto, maintainer, reviewed", gateFacts{mode: auto, role: RoleMaintainer, reviewed: true, head: head}, true},
-		{"auto, maintainer, no receipt", gateFacts{mode: auto, role: RoleMaintainer, head: head}, true},
-		{"auto, maintainer, receipts unread", gateFacts{mode: auto, role: RoleMaintainer, reviewWhy: "unreadable", reviewUnread: true, head: head}, true},
-		{"auto, contributor, approved", gateFacts{mode: auto, role: RoleContributor, approvedBy: "maintainer-b", reviewed: true, head: head}, false},
-		{"auto, contributor, no approval", gateFacts{mode: auto, role: RoleContributor, head: head}, false},
-		{"auto, unverified", gateFacts{mode: auto, role: RoleUnverified, roleWhy: "403", head: head}, false},
-		{"human, maintainer, approved", gateFacts{mode: human, role: RoleMaintainer, approvedBy: "maintainer-b", head: head}, false},
-		{"human, maintainer, no approval", gateFacts{mode: human, role: RoleMaintainer, head: head}, false},
+		{"receipts unread", func(f *gateFacts) { f.reviewWhy, f.reviewUnread = "the receipts folder is a file", true }, unreadReceipts, true},
+		{"no receipt stands", func(f *gateFacts) { f.reviewWhy = "its tree differs" }, noStanding, false},
+		{"delta cannot be judged", func(f *gateFacts) { f.deltaWhy, f.reviewUnread = "its base cannot be read", true }, deltaUnjudged, true},
+		{"delta does not stand", func(f *gateFacts) { f.deltaWhy = "it touches a gate file" }, deltaRefused, false},
+		{"no receipt", func(*gateFacts) {}, noReceipt, false},
 	} {
-		g := mergeGate(c.f)
-		if got := gateActedAlone(MergeDecision{Arm: g.arm, Method: g.method, Why: g.why}); got != c.want {
-			t.Errorf("%s: recorded %v, want %v (%q)", c.name, got, c.want, g.why)
+		rows = append(rows,
+			row{"auto, maintainer, " + r.name, with(maintainer(auto), r.edit), MergeDecision{Why: r.why, Unread: r.unread, Mode: ModeAuto, AuthorCanWrite: true}, true},
+			row{"auto, contributor, approved, " + r.name, with(contributor(auto, true), r.edit), MergeDecision{Why: r.why, Unread: r.unread, Mode: ModeAuto, ApprovalCounted: true}, false})
+	}
+	for _, c := range rows {
+		got := decided(c.f)
+		if got != c.want {
+			t.Errorf("%s: decided\n%+v\nwant\n%+v", c.name, got, c.want)
+		}
+		if takenAlone(got) != c.recorded {
+			t.Errorf("%s: recorded %v, want %v", c.name, takenAlone(got), c.recorded)
 		}
 	}
 }

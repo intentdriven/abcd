@@ -1857,25 +1857,29 @@ var recordGate = RecordMergeGate
 
 // RecordMergeGate keeps d, the merge gate's answer about pull request pr at
 // head, for the spot-check (spc-2610301925429250 step 1), when the answer is
-// one abcd took as the facilitator with no person's approval counted
-// (gateActedAlone). The record (spotcheck.Decision of kind merge-gate) names
-// site, the pull request and its head, and the answer as the gate gave it:
-// whether it armed, the method, the reason and whether it rests on an answer
-// the gate could not read. Nothing else is read for it: no forge, no mode,
-// no receipt. It is committed on the store's local copy and reaches no
-// network, and the gate asked again over the same head with the same answer
-// keeps the one record. A record that cannot be written changes nothing: the
-// reason is returned for the caller to add to the decision's Why, "" when the
-// record is kept or not taken.
+// one abcd took as the facilitator alone (takenAlone): read from the fields
+// the gate set as it decided, never from the words of its reason. The record
+// (spotcheck.Decision of kind merge-gate) names site, the pull request and
+// its head, the answer as the gate gave it (whether it armed, the method, the
+// reason and whether it rests on an answer the gate could not read) and the
+// three facts it was taken on: the mode, whether the author can write to the
+// repository and whether a person's approval counted. Nothing else is read
+// for it: no forge, no mode, no receipt. It is committed on the store's local
+// copy and reaches no network, and the gate asked again over the same head
+// with the same answer keeps the one record. A record that cannot be written
+// changes nothing: the reason is returned for the caller to add to the
+// decision's Why, "" when the record is kept or not taken.
 func RecordMergeGate(root, site, pr, head string, d MergeDecision) string {
-	if !gateActedAlone(d) {
+	if !takenAlone(d) {
 		return ""
 	}
 	n, _ := strconv.Atoi(pr)
 	ctx, cancel := context.WithTimeout(context.Background(), spotcheck.WriteTimeout)
 	defer cancel()
+	canWrite, counted := d.AuthorCanWrite, d.ApprovalCounted
 	w := spotcheck.Write(ctx, root, spotcheck.Batch{Decisions: []spotcheck.Decision{{Kind: spotcheck.KindMergeGate, At: time.Now(),
-		Holder: spotcheck.Holder(), Site: site, PR: n, Head: head, Arm: d.Arm, Method: d.Method, Why: d.Why, Unread: d.Unread}}})
+		Holder: spotcheck.Holder(), Site: site, PR: n, Head: head, Arm: d.Arm, Method: d.Method, Why: d.Why, Unread: d.Unread,
+		Mode: d.Mode, AuthorCanWrite: &canWrite, ApprovalCounted: &counted}}})
 	switch {
 	case errors.Is(w.Err, spotcheck.ErrNoOrigin):
 		return ""
@@ -1887,13 +1891,10 @@ func RecordMergeGate(root, site, pr, head string, d MergeDecision) string {
 	return ""
 }
 
-// gateActedAlone reports whether d is an answer abcd gave as the facilitator
-// with no person's approval counted, by the gate's own words (mergeGate): a
-// reason that opens with the mode at auto (modeText) and names no approval.
-// The gate's reason opens otherwise for an author whose role is unverified
-// and for a contributor's pull request with no approval, and names the
-// approval that counted for a contributor's pull request in auto mode, so
-// this is the gate's answer in auto mode over a maintainer's pull request.
-func gateActedAlone(d MergeDecision) bool {
-	return strings.HasPrefix(d.Why, "facilitator.mode is "+ModeAuto+" (") && !strings.Contains(d.Why, "; approved by ")
+// takenAlone reports whether d is an answer abcd took as the facilitator
+// with no person involved, by the fields the gate set as it decided: the
+// gate ran in auto mode, the pull request's author can write to the
+// repository, and no person's approval counted.
+func takenAlone(d MergeDecision) bool {
+	return d.Mode == ModeAuto && d.AuthorCanWrite && !d.ApprovalCounted
 }

@@ -191,8 +191,8 @@ type HandBack struct {
 
 // Decision is one of the automated facilitator's decisions, as decisions/
 // holds it: the drain's judgement a model answered (KindDrainJudgement) or
-// the merge gate's in auto mode over a maintainer's pull request
-// (KindMergeGate). Each kind sets its own fields and leaves the other's empty.
+// the merge gate's in auto mode over a pull request whose author can write,
+// with no person's approval counted (KindMergeGate). Each kind sets its own fields and leaves the other's empty.
 type Decision struct {
 	SchemaVersion int       `json:"schema_version"`
 	Kind          string    `json:"kind"`
@@ -213,14 +213,19 @@ type Decision struct {
 	// A merge-gate decision: where it was asked, the pull request and its
 	// head, and the gate's answer as the gate gave it: whether it armed, the
 	// method, its reason, and whether it rests on an answer the gate could
-	// not read.
-	Site   string `json:"site,omitempty"`
-	PR     int    `json:"pr,omitempty"`
-	Head   string `json:"head,omitempty"`
-	Arm    bool   `json:"arm,omitempty"`
-	Method string `json:"method,omitempty"`
-	Why    string `json:"why,omitempty"`
-	Unread bool   `json:"unread,omitempty"`
+	// not read; and the facts the gate set as it decided: the mode it ran in,
+	// whether the author can write to the repository and whether a person's
+	// approval counted (both always present on a merge-gate record).
+	Site            string `json:"site,omitempty"`
+	PR              int    `json:"pr,omitempty"`
+	Head            string `json:"head,omitempty"`
+	Arm             bool   `json:"arm,omitempty"`
+	Method          string `json:"method,omitempty"`
+	Why             string `json:"why,omitempty"`
+	Unread          bool   `json:"unread,omitempty"`
+	Mode            string `json:"mode,omitempty"`
+	AuthorCanWrite  *bool  `json:"author_can_write,omitempty"`
+	ApprovalCounted *bool  `json:"approval_counted,omitempty"`
 }
 
 var (
@@ -340,6 +345,7 @@ func (d Decision) normalise() (Decision, error) {
 		d.Answer, d.AnswerKind, d.Model = cleanWord(d.Answer), cleanWord(d.AnswerKind), clean(d.Model)
 		d.Question, d.Rule, d.Reason = clean(d.Question), clean(d.Rule), clean(d.Reason)
 		d.Site, d.PR, d.Head, d.Arm, d.Method, d.Why, d.Unread = "", 0, "", false, "", "", false
+		d.Mode, d.AuthorCanWrite, d.ApprovalCounted = "", nil, nil
 	case KindMergeGate:
 		if d.PR <= 0 {
 			return Decision{}, errors.New("a merge-gate decision names no pull request")
@@ -350,12 +356,19 @@ func (d Decision) normalise() (Decision, error) {
 		if d.Site != SiteLand && d.Site != SiteLane {
 			return Decision{}, fmt.Errorf("a merge-gate decision names no site the store keeps (%s)", termsafe.Sanitize(echo(d.Site)))
 		}
-		d.Method, d.Why = clean(d.Method), clean(d.Why)
+		d.Method, d.Why, d.Mode = clean(d.Method), clean(d.Why), cleanWord(d.Mode)
+		d.AuthorCanWrite, d.ApprovalCounted = flag(d.AuthorCanWrite), flag(d.ApprovalCounted)
 		d.Issue, d.Question, d.Answer, d.AnswerKind, d.Model, d.Rule, d.Reason = "", "", "", "", "", "", ""
 	default:
 		return Decision{}, fmt.Errorf("a decision of kind %s is not one the store keeps", termsafe.Sanitize(echo(d.Kind)))
 	}
 	return d, nil
+}
+
+// flag is b as a record keeps it: a copy of its own, false when unset.
+func flag(b *bool) *bool {
+	v := b != nil && *b
+	return &v
 }
 
 // echo is s cut for a refusal to name.
