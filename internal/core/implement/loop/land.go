@@ -85,6 +85,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/core/spec"
+	"github.com/intentdriven/abcd/internal/core/spotcheck"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -2366,8 +2367,8 @@ func askMergeGate(c Context, lane Lane, def string, rule landing.MergeRule) (lan
 	}
 	roots, _ := layered.RootsFor(c.RepoRoot)
 	unrecorded := recordOwnReview(c, lane, roots, tip, Remote+"/"+def)
-	d, err := landing.DecideMerge(landing.MergeQuery{RepoRoot: c.RepoRoot, Roots: roots, Tip: tip, TipName: Remote + "/" + def, Default: def,
-		Rule: rule, Repo: "{owner}/{repo}", PR: strconv.Itoa(lane.PR), Head: lane.Landing.Pushed, Forge: gateForge(c, lane)})
+	d, err := landing.DecideMergeRecorded(landing.MergeQuery{RepoRoot: c.RepoRoot, Roots: roots, Tip: tip, TipName: Remote + "/" + def, Default: def,
+		Rule: rule, Repo: "{owner}/{repo}", PR: strconv.Itoa(lane.PR), Head: lane.Landing.Pushed, Forge: gateForge(c, lane)}, spotcheck.SiteLane)
 	if err != nil {
 		r := refuse(string(StageLand), "", lane.ID, termsafe.Sanitize(fsutil.RedactHome(err.Error()))+" at "+Remote+"/"+def+", so nothing was armed",
 			"correct the file it names, then run `abcd implement step` again")

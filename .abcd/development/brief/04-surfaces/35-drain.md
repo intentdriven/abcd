@@ -1155,6 +1155,43 @@ the pull requests its lanes opened, not the ones merged; a drain that ends with 
 none in a pull request says so as a normal ending and exits 0, and one that
 stops with a lane still in progress (an outage give-up) claims no such ending.
 
+The summary also states the hand-backs per pull request the drain's lanes
+opened (itd-2610301750162657), the measure of the load the agents hand back to
+people: one line for each pull request, one with no hand-back included, with
+its lane's issue, how many hand-backs that lane routed and their kinds, then
+the hand-backs no pull request carries (the judgement's, a reservation's, and
+a lane's that opened none). A hand-back belongs to the lane on its issue that
+opened latest before it was routed, so an issue taken up again is counted
+against each of its lanes in turn. The drain's state file is unchanged by it:
+the count is read from the lanes and hand-backs the state already keeps.
+
+### The spot-check's record
+
+Each move keeps the spot-check's record of what the drain decided with no
+person involved (itd-2610301750162657): every hand-back the drain has routed,
+and every judgement a routed model answered, each as a file of its own on this
+checkout's local copy of the spot-check's branch. A judgement a person answered
+is not the automated facilitator's and is not recorded. The write touches no
+working tree, index or HEAD and reaches no network, and every worktree of the
+checkout shares the copy, so a lane's worktree removed after its landing takes
+no record with it. A hand-back's record names its issue, where it came from,
+its kind and route, the rule it names, the drain's rule record, the reason,
+the lane's pull request and run when it had them, the blob of the issue's
+record, and the writer by holder id; a judgement's names the issue, the
+question, the answer, the model, the rule record and the reason. Free text is
+cleaned before it is kept: the home directory and every absolute path are
+replaced, control characters dropped and each text bounded; no person's name
+or address is written by abcd, the commits included. The records are rebuilt
+from the drain's state at every move, and only those the copy does not yet hold
+are written, so a record one move could not write is written by a later one. A
+write that fails never fails, holds or changes the move: the move goes on as it
+would, and its `next` says how many records were not written and why. A lane's
+landing whose merge gate decides in auto mode over a pull request whose author
+can write to the repository records that decision on the same copy, once for
+each head and answer; a
+decision that waits for a person is not recorded. A checkout with no remote
+named origin keeps no record.
+
 ## The trust boundary
 
 The eligibility record is a file the drained repository authors, and it decides

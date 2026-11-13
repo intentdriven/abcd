@@ -1034,14 +1034,27 @@ whose landing opened one; a merge is a person's gate and is not counted),
 sum of `implementers`, each implementer's receipt the loop verified, and
 `validators`, each validator's return it read a verdict from, the unit the
 budget check counts in; `unread` names a lane's run whose state could not be
-read, which makes the spend a floor); `next` is the one move to make. A drain
+read, which makes the spend a floor), `hand_backs_by_pr` (one entry for each
+pull request the drain's lanes opened, one with no hand-back included: `pr`,
+the lane's `issue`, `hand_backs` its lane routed and their `kinds`) and
+`hand_backs_without_pr` (the judgement's, a reservation's, and a lane's that
+opened none); `next` is the one move to make. A drain
 that ends with every lane ended and none in a pull request says so in `next` as
 a normal ending; one that stops with a lane still in progress does not.
+
+Each move also keeps the spot-check's record of what the drain decided with no
+person involved: every hand-back it routed and every judgement a routed model
+answered, each as one file on this checkout's local copy of the spot-check's
+branch, written without touching the working tree and without reaching the
+network; a judgement a person answered is not recorded. A record that cannot be
+written never holds the move: `next` says how many were not written and why,
+and a later move writes them. A checkout with no remote named `origin` keeps no
+record.
 
 Tell the user any loosened floors first, then what this move did (the
 judgement asked or taken, the merged lanes finished, the lane opened, the
 hand-back routed, the pause or the end), then every hand-back with its route and what it wrote, then the
-counts and the spend, then `next`. Do not plan a promoted draft or write
+counts, the hand-backs per pull request and the spend, then `next`. Do not plan a promoted draft or write
 a flagged decision: those are a person's.
 
 ## Refusals

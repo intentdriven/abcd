@@ -100,6 +100,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runstop"
+	"github.com/intentdriven/abcd/internal/core/spotcheck"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/procgroup"
@@ -1483,8 +1484,8 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 	// just fetched and the machine layer declare it, never the branch's own
 	// checkout (dcn-2610230058333177), the author's role, the approvals of
 	// the head, and in auto a review receipt naming it.
-	d, err := DecideMerge(MergeQuery{RepoRoot: dir, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
-		Rule: rule, Repo: nameWithOwner, PR: n, Head: res.Head, Forge: func(args ...string) (string, error) { return o.Forge(dir, args...) }})
+	d, err := DecideMergeRecorded(MergeQuery{RepoRoot: dir, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
+		Rule: rule, Repo: nameWithOwner, PR: n, Head: res.Head, Forge: func(args ...string) (string, error) { return o.Forge(dir, args...) }}, spotcheck.SiteLand)
 	if err != nil {
 		stop, unread, cerr := atHeadChecked()
 		if stop {
@@ -1840,4 +1841,77 @@ func shellQuote(s string) string {
 		return s
 	}
 	return shellquote.Single(s)
+}
+
+// DecideMergeRecorded is DecideMerge, with the decision kept for the
+// spot-check (spc-2610301925429250 step 1) when abcd is the facilitator and
+// no person's approval counted: the mode at the tip is auto and the author a
+// maintainer. The record (spotcheck.Decision of kind merge-gate) names site,
+// the pull request and its head, the mode and the layer that declared it, the
+// author's role, whether a review receipt named the head, and the gate's
+// answer; it is committed on the store's local copy and reaches no network,
+// and the gate asked again over the same head with the same answer keeps the
+// one record. The forge is asked nothing more for it: each forge answer the
+// gate read is kept for the call and read back from there. A record that
+// cannot be written changes nothing the gate decided: its reason is added to
+// Why, and the landing goes on.
+func DecideMergeRecorded(q MergeQuery, site string) (MergeDecision, error) {
+	q.Forge = rememberForge(q.Forge)
+	d, err := DecideMerge(q)
+	if err != nil {
+		return d, err
+	}
+	if note := recordMergeGate(q, d, site); note != "" {
+		d.Why += "; " + note
+	}
+	return d, nil
+}
+
+// recordMergeGate writes the spot-check's record of d, the gate's answer to
+// q, when it is one abcd took as the facilitator; it says why when the record
+// could not be written, "" otherwise.
+func recordMergeGate(q MergeQuery, d MergeDecision, site string) string {
+	mode, err := readFacilitatorAt(q.Roots, q.RepoRoot, q.Tip, q.TipName)
+	if err != nil || mode.Mode != ModeAuto {
+		return ""
+	}
+	if _, role, _ := readAuthor(q.Forge, q.Repo, q.PR); role != RoleMaintainer {
+		return ""
+	}
+	pr, err := strconv.Atoi(q.PR)
+	if err != nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), spotcheck.WriteTimeout)
+	defer cancel()
+	_, err = spotcheck.WriteDecision(ctx, q.RepoRoot, spotcheck.Decision{Kind: spotcheck.KindMergeGate, At: time.Now(),
+		Holder: spotcheck.Holder(), Site: site, PR: pr, Head: q.Head, Mode: mode.Mode, ModeLayer: mode.Layer,
+		Role: RoleMaintainer, Reviewed: readReviewProof(q.RepoRoot, q.Head, q.Tip).reviewed, Arm: d.Arm, Method: d.Method, Why: d.Why})
+	if err == nil || errors.Is(err, spotcheck.ErrNoOrigin) {
+		return ""
+	}
+	return "the spot-check's record of this decision was not written (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "), and nothing the gate decided waits on it"
+}
+
+// rememberForge is forge with each answer kept, by its arguments, for the
+// life of one decision: a second read of what the gate already asked is
+// answered from there, its error included, and never reaches the forge.
+func rememberForge(forge ForgeCall) ForgeCall {
+	if forge == nil {
+		return nil
+	}
+	type answer struct {
+		out string
+		err error
+	}
+	kept := map[string]answer{}
+	return func(args ...string) (string, error) {
+		key := strings.Join(args, "\x00")
+		if a, ok := kept[key]; ok {
+			return a.out, a.err
+		}
+		out, err := forge(args...)
+		kept[key] = answer{out, err}
+		return out, err
+	}
 }

@@ -387,6 +387,23 @@ type DrainCounts struct {
 	Judgements int        `json:"judgements"`
 	Passed     int        `json:"passed"`
 	Spend      DrainSpend `json:"spend"`
+	// HandBacksByPR are the hand-backs per pull request the drain's lanes
+	// opened (itd-2610301750162657): one entry for each pull request, in the
+	// order its lane opened, none left out for having no hand-back.
+	// HandBacksNoPR counts the hand-backs no pull request carries: the
+	// judgement's, a reservation's, and a lane's that opened none.
+	HandBacksByPR []DrainPRHandBacks `json:"hand_backs_by_pr"`
+	HandBacksNoPR int                `json:"hand_backs_without_pr"`
+}
+
+// DrainPRHandBacks is one pull request's hand-backs: its lane's issue, how
+// many hand-backs its lane routed and their kinds, each named once, in the
+// order first routed.
+type DrainPRHandBacks struct {
+	PR        int      `json:"pr"`
+	Issue     string   `json:"issue"`
+	HandBacks int      `json:"hand_backs"`
+	Kinds     []string `json:"kinds"`
 }
 
 // DrainSpend is what the drain's lanes have spent, in agent runs, the unit the
@@ -601,6 +618,12 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			}
 			persisted = st.Judging
 		}
+		// The spot-check's record of what the drain decided alone: written
+		// from the state as the move leaves it, never failing the move
+		// (spotcheckRecords).
+		if note := spotcheckRecords(d.Context, repoRoot, st); note != "" {
+			res.Next = joinNext(res.Next, note)
+		}
 		// The lanes in progress take a new pace only once the move has
 		// written it, so a move refused before here takes none.
 		if repace != nil {
@@ -665,6 +688,11 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			persisted = st.Judging
 		}
 		var notes []string
+		if live {
+			if note := spotcheckRecords(d.Context, repoRoot, st); note != "" {
+				notes = append(notes, note)
+			}
+		}
 		if note := finishedNote(res.Finished); note != "" {
 			notes = append(notes, "before refusing, this move "+note)
 		}
@@ -1508,6 +1536,14 @@ func drainCounts(repoRoot string, st DrainState, flags []DrainRoute, passed []Ex
 		}
 	}
 	c.Spend.AgentRuns = c.Spend.Implementers + c.Spend.Validators
+	c.HandBacksByPR = []DrainPRHandBacks{}
+	at := map[int]int{}
+	for _, l := range st.Lanes {
+		if _, seen := at[l.PR]; l.PR > 0 && !seen {
+			at[l.PR] = len(c.HandBacksByPR)
+			c.HandBacksByPR = append(c.HandBacksByPR, DrainPRHandBacks{PR: l.PR, Issue: l.Issue, Kinds: []string{}})
+		}
+	}
 	for _, r := range st.HandBacks {
 		switch r.Route {
 		case RoutePromoted:
@@ -1516,6 +1552,17 @@ func drainCounts(repoRoot string, st DrainState, flags []DrainRoute, passed []Ex
 			c.DecisionRecords++
 		case RouteHome:
 			c.Homes++
+		}
+		l, ok := routedLane(st, r)
+		i, opened := at[l.PR]
+		if !ok || l.PR <= 0 || !opened {
+			c.HandBacksNoPR++
+			continue
+		}
+		e := &c.HandBacksByPR[i]
+		e.HandBacks++
+		if !slices.Contains(e.Kinds, r.Kind) {
+			e.Kinds = append(e.Kinds, r.Kind)
 		}
 	}
 	return c

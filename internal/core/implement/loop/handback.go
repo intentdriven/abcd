@@ -13,11 +13,16 @@ package loop
 // is what the person replans from.
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/spotcheck"
+	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // handBackLane stops lane with hb and records it, loudly, in the run record.
@@ -177,4 +182,109 @@ func tombstoneKind(hb HandBack) string {
 		return hb.Kind
 	}
 	return claim.HandBackUnachievable
+}
+
+// spotcheckBatchTimeout bounds one move's writes of the spot-check's record
+// together: a write it cuts short is written by a later move.
+const spotcheckBatchTimeout = 2 * spotcheck.WriteTimeout
+
+// spotcheckRecords keeps the spot-check's record of what the drain decided
+// with no person involved (spc-2610301925429250 step 1): each hand-back st
+// has routed, under handbacks/, and each judgement a model answered, under
+// decisions/, each as its own file on the store's local copy
+// (internal/core/spotcheck), reaching no network. The records are rebuilt
+// from st, which keeps every route and judgement of the drain, and only those
+// neither copy of the store holds are written, so a write that failed in one
+// move is made by the next. It never fails, holds or changes the move: what
+// it could not write is said in the note it returns, "" when everything is
+// kept, and a checkout with no remote named origin keeps no record.
+func spotcheckRecords(parent context.Context, repoRoot string, st DrainState) string {
+	if len(st.HandBacks) == 0 && len(st.Judgements) == 0 {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(ctxOr(parent), spotcheckBatchTimeout)
+	defer cancel()
+	kept, err := spotcheck.Kept(ctx, repoRoot)
+	if err != nil {
+		return spotcheckNote(len(st.HandBacks)+len(st.Judgements), err)
+	}
+	holder := spotcheck.Holder()
+	failed, first := 0, error(nil)
+	write := func(name string, w func() (bool, error)) bool {
+		if kept[name] {
+			return true
+		}
+		if _, err := w(); err != nil {
+			if errors.Is(err, spotcheck.ErrNoOrigin) {
+				return false
+			}
+			failed++
+			if first == nil {
+				first = err
+			}
+		}
+		return true
+	}
+	for _, r := range st.HandBacks {
+		if r.At == nil {
+			continue
+		}
+		h := spotcheckHandBack(st, r, holder)
+		if !write(spotcheck.HandBacksDir+"/"+h.Name(), func() (bool, error) { return spotcheck.WriteHandBack(ctx, repoRoot, h) }) {
+			return ""
+		}
+	}
+	for _, j := range st.Judgements {
+		if j.Route == nil {
+			// A person's answer is not the automated facilitator's.
+			continue
+		}
+		d := spotcheck.Decision{Kind: spotcheck.KindDrainJudgement, At: j.At, Holder: holder, Issue: j.Issue,
+			Question: drainQuestion().Ask, Answer: j.Answer, AnswerKind: j.Kind, Model: j.Route.Model, Rule: st.Rule, Reason: j.Reason}
+		if !write(spotcheck.DecisionsDir+"/"+d.Name(), func() (bool, error) { return spotcheck.WriteDecision(ctx, repoRoot, d) }) {
+			return ""
+		}
+	}
+	if failed == 0 {
+		return ""
+	}
+	return spotcheckNote(failed, first)
+}
+
+// spotcheckHandBack is r as the spot-check keeps it, with the lane's pull
+// request and run (routedLane).
+func spotcheckHandBack(st DrainState, r DrainRoute, holder string) spotcheck.HandBack {
+	h := spotcheck.HandBack{At: *r.At, Issue: r.Issue, From: r.From, Kind: r.Kind, Route: r.Route, Rule: r.Rule,
+		DrainRule: st.Rule, Reason: r.Reason, Blob: r.Blob, Holder: holder}
+	if l, ok := routedLane(st, r); ok {
+		h.PR, h.RunID = l.PR, l.RunID
+	}
+	return h
+}
+
+// routedLane is the drain lane a lane's hand-back r came from: the lane
+// on its issue opened latest at or before the hand-back, since an issue
+// handed back and changed since may be taken up again. ok is false for a
+// hand-back no lane made (the judgement's, the rule's, a reservation's).
+func routedLane(st DrainState, r DrainRoute) (DrainLane, bool) {
+	if r.From != "lane" {
+		return DrainLane{}, false
+	}
+	var found DrainLane
+	ok := false
+	for _, l := range st.Lanes {
+		if l.Issue != r.Issue || (r.At != nil && l.OpenedAt.After(*r.At)) {
+			continue
+		}
+		if !ok || l.OpenedAt.After(found.OpenedAt) {
+			found, ok = l, true
+		}
+	}
+	return found, ok
+}
+
+// spotcheckNote says that n records were not written, and why.
+func spotcheckNote(n int, err error) string {
+	return fmt.Sprintf("the spot-check's record of %d hand-back(s) and judgement(s) was not written here (%s); the next move writes it, and nothing the drain did waits on it",
+		n, termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 }

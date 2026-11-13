@@ -485,6 +485,78 @@ func push(root string, args []string) error {
 	return nil
 }
 
+// PushBranch pushes commit sha to ref, a branch of abcd's own on origin
+// (refs/heads/abcd-…), by the one push this package makes (pushTo): plain,
+// never forced, with the repository's hooks running, so origin takes it only
+// as a fast-forward. A push origin refused comes back as git's own words
+// (pushRejection). It is how the spot-check's store reaches origin
+// (internal/core/spotcheck).
+func PushBranch(root, sha, ref string) error {
+	if !gitutil.IsFullSHA(sha) || !abcdBranch(ref) {
+		return refuse("%s is not a commit and a branch of abcd's own to push; %s", echoName(ref), nothingPushed)
+	}
+	return push(root, pushTo(sha, ref))
+}
+
+// FetchBranch fetches ref, a branch of abcd's own on origin, into tracking,
+// its remote-tracking ref (refs/remotes/origin/abcd-…), forced as a
+// remote-tracking ref always is. found is false when origin holds no such
+// branch, which a listing of origin's branches then confirms: a fetch that
+// fails for any other reason is an error, never a branch read as absent.
+// Like every networked git abcd runs, each command is bounded
+// (gitutil.NetTimeout and its stalled-connection bounds).
+func FetchBranch(root, ref, tracking string) (found bool, err error) {
+	if !abcdBranch(ref) || tracking != "refs/remotes/"+Remote+"/"+strings.TrimPrefix(ref, "refs/heads/") {
+		return false, refuse("%s is not a branch of abcd's own fetched to its own remote-tracking ref; nothing was fetched", echoName(ref))
+	}
+	args := []string{"fetch", "--no-tags", Remote, "+" + ref + ":" + tracking}
+	trace(args...)
+	_, ferr := gitutil.Net(root, args...)
+	if ferr == nil {
+		return true, nil
+	}
+	list := []string{"ls-remote", "--heads", Remote, ref}
+	trace(list...)
+	out, lerr := gitutil.Net(root, list...)
+	if lerr == nil && strings.TrimSpace(out) == "" {
+		return false, nil
+	}
+	return false, &FetchError{Reason: redacted(ferr), what: echoName(ref), outcome: "nothing was fetched"}
+}
+
+// KeptHolderID is this account's holder id as a record names its writer: the
+// one HolderIDEnv names, else the one kept in the account's home, read
+// through the guarded read (readHolderID) and never minted; "" when neither
+// reads. It runs no git and reaches no network.
+func KeptHolderID() string {
+	if id, set, err := envHolderID(); err == nil && set {
+		return id
+	}
+	home := Options{}.home()
+	if home == "" {
+		return ""
+	}
+	if id, kept, err := readHolderID(home); err == nil && kept {
+		return id
+	}
+	return ""
+}
+
+// abcdBranch reports whether ref is a full branch ref under refs/heads/abcd-,
+// one segment, in the characters abcd names its own branches with.
+func abcdBranch(ref string) bool {
+	name, ok := strings.CutPrefix(ref, "refs/heads/abcd-")
+	if !ok || name == "" {
+		return false
+	}
+	for _, r := range name {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
+			return false
+		}
+	}
+	return true
+}
+
 // lostRace explains a rejected push. When the branch moved while the push was
 // on its way and now holds a reservation this act cannot take, the refusal
 // names its holder with the back-off; otherwise the push failure is reported

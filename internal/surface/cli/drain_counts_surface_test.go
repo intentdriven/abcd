@@ -61,7 +61,7 @@ func TestTheDrainJSONSummaryCarriesEveryCount(t *testing.T) {
 		t.Fatalf("--json is not JSON: %v\n%s", err, stdout.String())
 	}
 	for _, k := range []string{"lanes_opened", "in_progress", "pull_requests", "lanes_handed_back", "promotions",
-		"decision_records", "homes", "rule_flags", "judgements", "passed", "spend"} {
+		"decision_records", "homes", "rule_flags", "judgements", "passed", "spend", "hand_backs_by_pr", "hand_backs_without_pr"} {
 		if _, ok := res.Counts[k]; !ok {
 			t.Errorf("--json counts carry no %q: %s", k, stdout.String())
 		}
@@ -78,5 +78,56 @@ func TestTheDrainJSONSummaryCarriesEveryCount(t *testing.T) {
 	}
 	if string(res.Counts["rule_flags"]) != "1" {
 		t.Errorf("the major issue is the one rule flag: %s", res.Counts["rule_flags"])
+	}
+}
+
+// TestDrainSummaryHandBacksPerPullRequest (itd-2610301750162657): the
+// summary names each pull request the drain opened with its hand-back count
+// and kinds, one with none included, then the hand-backs no pull request
+// carries, in the text and in --json; a drain with neither prints no line.
+func TestDrainSummaryHandBacksPerPullRequest(t *testing.T) {
+	res := loop.DrainResult{State: loop.DrainStateRel, Rule: "adr-1", Order: "by category", Next: "drain again",
+		Counts: loop.DrainCounts{LanesOpened: 2, PullRequests: 2, Spend: loop.DrainSpend{Unread: []string{}},
+			HandBacksByPR: []loop.DrainPRHandBacks{
+				{PR: 12, Issue: "iss-1", HandBacks: 1, Kinds: []string{"closed"}},
+				{PR: 13, Issue: "iss-2", HandBacks: 0, Kinds: []string{}},
+			}, HandBacksNoPR: 3}}
+	var b bytes.Buffer
+	renderDrainRun(&b, res)
+	for _, want := range []string{
+		"  pull request #12, iss-1: 1 hand-back(s) (closed)\n",
+		"  pull request #13, iss-2: 0 hand-back(s)\n",
+		"  no pull request: 3 hand-back(s)\n",
+	} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("the text summary does not carry %q:\n%s", want, b.String())
+		}
+	}
+	if i, j := strings.Index(b.String(), "#13"), strings.Index(b.String(), "no pull request"); i < 0 || j < i {
+		t.Errorf("the hand-backs with no pull request do not follow the pull requests:\n%s", b.String())
+	}
+	data, err := json.Marshal(res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back struct {
+		Counts struct {
+			ByPR []struct {
+				PR        int      `json:"pr"`
+				Issue     string   `json:"issue"`
+				HandBacks int      `json:"hand_backs"`
+				Kinds     []string `json:"kinds"`
+			} `json:"hand_backs_by_pr"`
+			NoPR *int `json:"hand_backs_without_pr"`
+		} `json:"counts"`
+	}
+	if err := json.Unmarshal(data, &back); err != nil || len(back.Counts.ByPR) != 2 || back.Counts.ByPR[0].PR != 12 ||
+		back.Counts.ByPR[0].HandBacks != 1 || back.Counts.ByPR[1].HandBacks != 0 || back.Counts.NoPR == nil || *back.Counts.NoPR != 3 {
+		t.Fatalf("--json carries %s (%v)", data, err)
+	}
+	var none bytes.Buffer
+	renderDrainRun(&none, loop.DrainResult{State: loop.DrainStateRel, Rule: "adr-1", Counts: loop.DrainCounts{Spend: loop.DrainSpend{Unread: []string{}}}})
+	if strings.Contains(none.String(), "pull request #") || strings.Contains(none.String(), "no pull request") {
+		t.Errorf("a drain with no pull request and no hand-back prints a line for them:\n%s", none.String())
 	}
 }
