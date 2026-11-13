@@ -86,11 +86,12 @@ func pageAnchors(lines []string) map[string]bool {
 func checkLinkAnchors(rel, fileAbs, repoRoot string, lines []string, mask []bool, cfg RuleConfig, slugs map[string]map[string]bool) []Finding {
 	fileDir := filepath.Dir(fileAbs)
 	var out []Finding
-	for i, line := range lines {
+	p := readProse(lines, mask)
+	for i := range lines {
 		if mask[i] {
 			continue
 		}
-		for _, m := range linkRe.FindAllStringSubmatch(stripInlineCode(line), -1) {
+		for _, m := range linkMatches(p, i) {
 			target := strings.TrimSpace(m[1])
 			hash := strings.IndexByte(target, '#')
 			if hash < 0 || strings.HasPrefix(target, "//") || schemeRe.MatchString(target) {

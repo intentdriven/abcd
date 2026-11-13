@@ -133,8 +133,10 @@ func Confirm(req ConfirmRequest) (ConfirmResult, error) {
 		return ConfirmResult{}, err
 	}
 	citedSet := make(map[string]bool, len(cited))
+	aloneSet := make(map[string]bool, len(cited))
 	for _, c := range cited {
 		citedSet[c.URL] = true
+		aloneSet[c.URL] = c.ReadAlone
 	}
 
 	// Validate the whole receipt first: nothing is written until every line is
@@ -146,6 +148,16 @@ func Confirm(req ConfirmRequest) (ConfirmResult, error) {
 			return ConfirmResult{}, &ConfirmError{
 				"cannot confirm " + c.URL + ": it is not cited anywhere under the configured roots. " +
 					"A receipt records a citation this repo publishes, never an arbitrary address"}
+		}
+		if !aloneSet[c.URL] {
+			// A receipt makes a finding go away, so it admits only a URL a
+			// line cites outside a code span on that line read alone; one the
+			// page may show as code is checked by the refresh, never confirmed
+			// by hand (dcn-2611130921444350).
+			return ConfirmResult{}, &ConfirmError{
+				"cannot confirm " + c.URL + ": every line citing it sits below a backtick left open on a line above, " +
+					"inside a code span on its own line, where the page may show it as code. " +
+					"Move the URL out of the span, or close the backtick left open on its own line"}
 		}
 		on := c.VerifiedOn
 		if on == "" {
