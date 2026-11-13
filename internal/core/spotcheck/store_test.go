@@ -442,8 +442,11 @@ func ends(s string) string {
 // alphabet holding every kind of character the rule treats apart.
 func TestCleaningACleanedTextChangesNothing(t *testing.T) {
 	// A text cut at the bound: the word the cut falls in goes whole and the
-	// mark is a word of its own.
+	// mark is a word of its own. Every input here is already clean, so one at
+	// or under the bound comes back whole, its last word kept and no mark; the
+	// rows exactly at the bound and one byte over must both be reached.
 	const path = "internal/core/implement/loop/x_test.go"
+	atBound, overByOne := false, false
 	for d := -2; d <= len(path)+40; d++ {
 		filler := strings.Repeat("a ", (maxTextBytes-d)/2)
 		if (maxTextBytes-d)%2 == 1 {
@@ -460,6 +463,14 @@ func TestCleaningACleanedTextChangesNothing(t *testing.T) {
 		if len(in) > maxTextBytes && !strings.HasSuffix(got, " "+ellipsis) {
 			t.Errorf("a text cut %d bytes before the path does not end in the mark: %q", d, got[max(len(got)-60, 0):])
 		}
+		if len(in) <= maxTextBytes && got != in {
+			t.Errorf("a text of %d bytes, within the bound of %d, is not returned whole: ends %q", len(in), maxTextBytes, got[max(len(got)-60, 0):])
+		}
+		atBound = atBound || len(in) == maxTextBytes
+		overByOne = overByOne || len(in) == maxTextBytes+1
+	}
+	if !atBound || !overByOne {
+		t.Fatalf("the fixed texts reach the bound exactly: %v, and one byte over it: %v; want both", atBound, overByOne)
 	}
 
 	// Words made from an alphabet holding letters, the characters a path or an
@@ -491,7 +502,14 @@ func TestCleaningACleanedTextChangesNothing(t *testing.T) {
 			size = r.IntN(64)
 		}
 		var b strings.Builder
-		for short := size; short > 0; short = size - uncut(b.String()) {
+		// Each round writes at least short bytes, but a round of separators
+		// adds nothing uncut counts, so the rounds are capped: a change to the
+		// alphabet or the seed that stalls the sizing fails here, not hangs.
+		const maxRounds = 1000
+		for short, rounds := size, 0; short > 0; short, rounds = size-uncut(b.String()), rounds+1 {
+			if rounds == maxRounds {
+				t.Fatalf("generated text %d is %d of its %d bytes after %d rounds of writing", n, uncut(b.String()), size, rounds)
+			}
 			for end := b.Len() + short; b.Len() < end; {
 				if r.IntN(3) == 0 {
 					// A word that is a bare path, kept, so the cut often falls
