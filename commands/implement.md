@@ -1169,11 +1169,13 @@ keeps the count is not seen.
 
 As it starts, the drive reads your settings and the hooks directories its git
 runs, and it refuses to start, at the stage `config`, when a read its hold
-depends on gives no answer it can take: git fails, does not finish within a
-minute, or answers in a form abcd does not take (a hooks path holding a
-newline, an answer past its bound). A read that does not finish is asked once
-more after a short wait, both asks within that minute, and only a second that
-does not finish stops it, saying it was asked twice. The refusal names the
+depends on gives no answer it can take: git fails, does not finish, or
+answers in a form abcd does not take (a hooks path holding a newline, an
+answer past its bound). Each read has one minute for two asks: the first has
+29 seconds; one that does not finish then is asked once more two seconds
+later, with the 29 seconds left, and only a second that does not finish stops
+it, naming the time each ask had. Inside a comparison, neither ask runs past
+the comparison's own bound (below). The refusal names the
 read and the environment it ran in (below); run that read there, as yourself
 or with `HOME` set to the stage's home, then start it again. A read that gives
 no answer is never taken as nothing there, nor as nothing changed: every
@@ -1313,12 +1315,35 @@ landing push, and a reservation's push or fetch a step makes, runs only under
 what the drive started with as read just before that step: a change a lane's
 agent made stops the next step, at the stage `config`, before that push. Each
 pass of the drive's loop compares it too, and so does every git command of the
-drive that runs hooks or reaches the network, in a step or not (a move's
-reservation, a renewal made while an agent runs, the release as the drive
-ends, the network probe): on a difference the command is not run and fails
-naming it. A difference ends the drive: it reads what it holds only as it
-starts, so look at the change and start it again. What changes between that
-read and git's own run of the command is not seen.
+drive that runs the repository's hooks, merge drivers or content filters, or
+reaches the network, just before it runs, in a step or not: the lane's add,
+commit, merge and reset, its staging and status reads, the landing push, a
+move's reservation, a renewal made while an agent runs, the network probe, and
+the drive's own release of what it holds as it ends. On a difference the
+command is not run and fails naming it. A difference at a pass of the loop
+ends the drive, and so does a read there that gives no answer: the drive
+reads what it holds only as it starts, so a change of yours to a watched
+setting while a drive runs (a new credential helper, an editor, an include)
+ends it too. Look at the change and start it again. When a drive ends that
+way it releases nothing, since releasing is a push: it names each
+reservation it leaves and when its lease lapses, and once the setting is as it
+should be you release one with `abcd reserve <id> --release`, or start the
+drive again, which takes the run up. What changes between a comparison and
+git's own run of the command is not seen.
+
+One comparison is about a dozen reads of git (in each of the three
+environments, its settings listing and its two attributes files, then any
+include paths; and the hooks directory of each environment whose commands
+run hooks, and the common git directory), made side by side, so it usually
+takes about as long as one read, or two where an include path is set. It is
+bounded as a whole at one minute, each
+read inside it keeping its own bound; at that bound the step stops at the
+stage `config` saying the comparison did not finish, never that anything
+changed or that nothing did. A drive on a loaded machine pays that on every
+such git command, so its lanes are slower; on one where git takes most of a
+minute, steps stop there rather than run on an answer not had. The release
+as a drive ends compares before it takes the drain's lock, so another session
+waiting on that lock does not wait on the comparison.
 Where two
 environments name the same file or directory it is held once. Each
 environment's reading is compared only with its own earlier one; two
