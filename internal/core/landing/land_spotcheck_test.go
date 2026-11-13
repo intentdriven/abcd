@@ -2,6 +2,7 @@ package landing
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -278,5 +279,43 @@ func TestTheGatesFactsAreFieldsAndTheRecordReadsThem(t *testing.T) {
 		if takenAlone(got) != c.recorded {
 			t.Errorf("%s: recorded %v, want %v", c.name, takenAlone(got), c.recorded)
 		}
+	}
+}
+
+// TestAMaintainersApprovedPullRequestInAutoModeIsRecorded: through
+// DecideMerge itself, over a forge that lists a maintainer's approval of the
+// head, a pull request whose author can write has no approval counted in
+// auto mode: the gate never reads the reviews there, asks the forge exactly
+// what it asks when none is listed, decides the same, and the decision is
+// recorded.
+func TestAMaintainersApprovedPullRequestInAutoModeIsRecorded(t *testing.T) {
+	ask := func(reviews string) (*fixture, MergeDecision, string) {
+		f := autoReviewed(t)
+		f.forge.head, f.forge.reviews = f.head(), reviews
+		before := len(f.forge.calls)
+		d := gateAt(t, f)
+		return f, d, headless(f, fmt.Sprint(f.forge.calls[before:]))
+	}
+	f, d, calls := ask(approvedBy("maintainer-b", "@HEAD@"))
+	g, none, noneCalls := ask("[]")
+	if strings.Contains(calls, "/reviews") {
+		t.Fatalf("the gate read the reviews of a maintainer's pull request in auto mode: %s", calls)
+	}
+	if calls != noneCalls {
+		t.Fatalf("with an approval listed the gate asked %s; with none %s", calls, noneCalls)
+	}
+	if !d.Arm || d.Mode != ModeAuto || !d.AuthorCanWrite || d.ApprovalCounted {
+		t.Fatalf("the gate decided %+v", d)
+	}
+	if d.Arm != none.Arm || d.Method != none.Method || d.Unread != none.Unread || headless(f, d.Why) != headless(g, none.Why) {
+		t.Fatalf("with an approval listed the gate decided %+v; with none %+v", d, none)
+	}
+	if note := RecordMergeGate(f.repo.Root(), spotcheck.SiteLand, "7", f.head(), d); note != "" {
+		t.Fatalf("the record was not written: %s", note)
+	}
+	recs := gateRecords(t, f)
+	if len(recs) != 1 || recs[0].Head != f.head() || recs[0].Mode != ModeAuto ||
+		recs[0].AuthorCanWrite == nil || !*recs[0].AuthorCanWrite || recs[0].ApprovalCounted == nil || *recs[0].ApprovalCounted {
+		t.Fatalf("records: %+v", recs)
 	}
 }

@@ -103,6 +103,14 @@ func TestAParkedLanesGateDecisionIsRecorded(t *testing.T) {
 	if r.Site != spotcheck.SiteLane || r.PR != l.PR || r.Head != l.Landing.Pushed || r.Arm || r.Arm != d.Arm || r.Method != d.Method || r.Why != strings.ReplaceAll(d.Why, ".abcd/config.json", "<removed>") || r.Unread != d.Unread {
 		t.Fatalf("the record is %+v; the gate decided %+v", r, d)
 	}
+	// The three facts the gate set as it decided, on the gate's answer and on
+	// the record made from it.
+	if d.Mode != landing.ModeAuto || !d.AuthorCanWrite || d.ApprovalCounted {
+		t.Fatalf("the gate's facts are %+v", d)
+	}
+	if r.Mode != d.Mode || r.AuthorCanWrite == nil || *r.AuthorCanWrite != d.AuthorCanWrite || r.ApprovalCounted == nil || *r.ApprovalCounted != d.ApprovalCounted {
+		t.Fatalf("the record's facts are %+v; the gate's %+v", r, d)
+	}
 	if !strings.HasPrefix(l.Landing.Merge, "left open: "+d.Why) {
 		t.Fatalf("the lane parked on %q; the gate decided %q", l.Landing.Merge, d.Why)
 	}
