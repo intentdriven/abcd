@@ -290,6 +290,9 @@ func TestALanesPinHoldsItsHooksTreeAtEveryDepth(t *testing.T) {
 		if wt, ok := pinned(t, repo, runID, path); !ok || wt.Hooks[filepath.Join(path, ".githooks", "post-commit", "x.sh")] == "" {
 			t.Fatalf("the linked directory's file is pinned under the link: %+v", wt.Hooks)
 		}
+		if err := configTripwire(repo.Root(), runID); err != nil {
+			t.Fatalf("the pin records the linked directory as the fingerprint's walk does: %v", err)
+		}
 	})
 	t.Run("a committed hook linked outside the tree", func(t *testing.T) {
 		outside := filepath.Join(t.TempDir(), "hook.sh")
@@ -429,7 +432,8 @@ func TestAnOlderRunsFingerprintStopsOnceAndAFreshRunStartsClean(t *testing.T) {
 // build pinned (its hooks recorded with no entry below the hooks directory's
 // top level) reads as changed at the run's next check, which stops it with
 // the reason the page gives, naming the lane's nested entry; once the person
-// accepts it the run moves.
+// accepts it the run moves. Not watched failing: it passes at the round's
+// base too; it holds what the page states for such a lane.
 func TestALanePinnedByAnOlderBuildStopsOnceAndMovesWhenAccepted(t *testing.T) {
 	repo, _, _ := hookedOrigin(t)
 	runID, path, err := openHookedLane(t, repo)

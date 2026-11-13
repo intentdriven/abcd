@@ -135,7 +135,9 @@ func TestADriveStartWaitsOnAnOriginItCannotReach(t *testing.T) {
 // repository does not hold, an origin that answers with an error that is not
 // the network's, a hooks directory git cannot name, and an in-tree hooks
 // directory that cannot be read each refuse the start, with nothing held.
-// Not watched failing: each refused at the round's base too.
+// Watched failing: a hooks directory git cannot name started the drive, and a
+// tip not held was refused with a remedy that did not name the fetch. The
+// other two refused at the round's base too.
 func TestADriveStartRefusesWhatItCannotCompare(t *testing.T) {
 	ask := func(t *testing.T, tip string, err error) {
 		t.Helper()
