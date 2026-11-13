@@ -242,19 +242,21 @@ type pageCitations struct {
 
 // parseCitations reads a page's footnote structure and citation corpus.
 //
-// mask excludes fenced code; stripInlineCode (shared with the banned-token
-// family) excludes backticked spans. Between them, a regexp character class
+// mask excludes fenced code; stripInlineCode (shared with the forbidden-synonym
+// and link checks) excludes backticked spans, reading whole the lines below a
+// backtick left open. Between them, a regexp character class
 // like [^A-Za-z] in documentation is not mistaken for a citation — which matters
 // because this repo's own records contain exactly that decoy.
 func parseCitations(rel string, lines []string, mask []bool) pageCitations {
 	var p pageCitations
 	inDef := false
+	prose := stripInlineCode(lines, mask)
 	for i, raw := range lines {
 		if mask[i] {
 			inDef = false
 			continue
 		}
-		line := stripInlineCode(raw)
+		line := prose[i]
 		lineNo := i + 1
 
 		// A definition line contributes its id, and its TAIL is citation corpus.
@@ -425,7 +427,10 @@ func checkCitationCrosswalkRows(rel string, lines []string, mask []bool, cfg Rul
 			if len(tableCells(lines[r])) == 0 {
 				continue
 			}
-			if footnoteMarkerRe.MatchString(stripInlineCode(lines[r])) {
+			// A row is read alone: the page parses each table row on its own,
+			// and a marker read inside a span the page shows as code would
+			// let an uncited row through, so no lines above change its spans.
+			if footnoteMarkerRe.MatchString(stripInlineCodeLine(lines[r])) {
 				continue
 			}
 			out = append(out, Finding{

@@ -29,7 +29,6 @@ import (
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
-	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Finding is one lint violation. File is repo-relative; Line is 1-based (0 when
@@ -1902,14 +1901,15 @@ func checkGitMetadata(rel string, lines []string, cfg RuleConfig) []Finding {
 func checkLinks(rel, fileAbs, repoRoot string, lines []string, mask []bool, cfg RuleConfig) []Finding {
 	fileDir := filepath.Dir(fileAbs)
 	var out []Finding
-	for i, line := range lines {
+	prose := stripInlineCode(lines, mask)
+	for i := range lines {
 		if mask[i] {
 			continue
 		}
 		// A code span takes precedence over link syntax, so `Get[T](raw)` is
 		// code rather than a link (iss-2609250915305413); the span is blanked
 		// before matching, and a link beside it or around it is still read.
-		for _, m := range linkRe.FindAllStringSubmatch(stripInlineCode(line), -1) {
+		for _, m := range linkRe.FindAllStringSubmatch(prose[i], -1) {
 			target := strings.TrimSpace(m[1])
 			if target == "" || strings.HasPrefix(target, "#") ||
 				strings.HasPrefix(target, "//") || schemeRe.MatchString(target) {
@@ -2851,6 +2851,7 @@ func checkForbiddenSynonyms(repoRoot, rootAbs string, cfg RuleConfig) ([]Finding
 		}
 		lines := strings.Split(string(content), "\n")
 		mask := fenceMask(lines)
+		prose := stripInlineCode(lines, mask)
 		bodyStart := frontmatterBodyStart(lines)
 		for i, line := range lines {
 			if i < bodyStart || mask[i] {
@@ -2859,7 +2860,7 @@ func checkForbiddenSynonyms(repoRoot, rootAbs string, cfg RuleConfig) ([]Finding
 			if matchesAny(allow, line) {
 				continue
 			}
-			stripped := stripInlineCode(line)
+			stripped := prose[i]
 			for _, m := range matchers {
 				for _, loc := range m.re.FindAllStringIndex(stripped, -1) {
 					if !wordBoundaryAt(stripped, loc[0], loc[1]) {
@@ -2993,55 +2994,56 @@ func frontmatterBodyStart(lines []string) int {
 	return 0 // no frontmatter, or unterminated: treat all as body rather than swallow the file
 }
 
-// stripInlineCode blanks every inline code span on a line, its delimiters and
-// its content, so a forbidden synonym or a link named inside one is a mention,
-// not a match. Spans are paired by termsafe.PairCodeSpan, the pairer every
-// reader shares: a run of backticks closed by the next run of exactly its
-// length. Pairing single backticks one at a time read a double-backtick span as
-// two empty spans with live prose between them (iss-2609262350446885). An
-// unpaired run and its tail stay literal, so an earlier, correctly closed span
-// stays blanked (iss-106). Each blanked rune becomes one space, so a rune's
-// column on the line is unchanged.
-func stripInlineCode(line string) string {
+// stripInlineCode is each line of a file with its inline code spans blanked,
+// delimiters and content, so a forbidden synonym, a link or a footnote marker
+// named inside one is a mention, not a match. mask is the lines the caller does
+// not read (fenced code). Spans are paired on each line alone, as
+// stripInlineCodeLine pairs them, except below a backtick run a line above
+// leaves with no closer of its length on that line: to the next blank line the
+// page may pair that run with a backtick on a later line and show as prose
+// what the line read alone pairs as a span, so those lines are read whole,
+// spans included (mdrecord.SureCodeSpans; iss-2611130850006749). A check here
+// that misses what the page shows leaves a dead link, an orphan marker or a
+// retired word unreported, while one that reads a span as prose reports text
+// the page shows as code; the second is the side these checks take.
+func stripInlineCode(lines []string, mask []bool) []string {
+	spans := mdrecord.SureCodeSpans(lines, mask)
+	out := make([]string, len(lines))
+	for i, ln := range lines {
+		out[i] = blankSpans(ln, spans[i])
+	}
+	return out
+}
+
+// stripInlineCodeLine blanks every inline code span on one line read alone,
+// for a reader whose line the page reads alone too: a crosswalk table row.
+// Spans are paired by mdrecord.CodeSpanRanges, through the pairer every reader
+// shares: a run of backticks closed by the next run of exactly its length.
+// Pairing single backticks one at a time read a double-backtick span as two
+// empty spans with live prose between them (iss-2609262350446885). An unpaired
+// run and its tail stay literal, so an earlier, correctly closed span stays
+// blanked (iss-106). Outside a span a backtick behind an odd run of
+// backslashes is escaped and opens nothing, so a link after it is still read
+// (iss-2609251004336500).
+func stripInlineCodeLine(line string) string {
+	return blankSpans(line, mdrecord.CodeSpanRanges(line))
+}
+
+// blankSpans replaces each byte range of line with one space per rune, so a
+// rune's column on the line is unchanged.
+func blankSpans(line string, spans [][2]int) string {
+	if len(spans) == 0 {
+		return line
+	}
 	var out strings.Builder
 	last := 0
-	for i := 0; i < len(line); {
-		if line[i] != '`' {
-			i++
-			continue
-		}
-		// Outside a span, a backtick behind an odd run of backslashes is
-		// escaped: a literal character, never a delimiter (CommonMark), so it
-		// opens nothing and a link after it is still read
-		// (iss-2609251004336500). The run after it may still open one. Inside
-		// a span backslashes are literal, so a closer is never escaped.
-		if escapedAt(line, i) {
-			i++
-			continue
-		}
-		sp, ok := termsafe.PairCodeSpan(line, i)
-		if !ok {
-			for i < len(line) && line[i] == '`' {
-				i++
-			}
-			continue
-		}
-		out.WriteString(line[last:sp.Start])
-		out.WriteString(strings.Repeat(" ", utf8.RuneCountInString(line[sp.Start:sp.End])))
-		last, i = sp.End, sp.End
+	for _, sp := range spans {
+		out.WriteString(line[last:sp[0]])
+		out.WriteString(strings.Repeat(" ", utf8.RuneCountInString(line[sp[0]:sp[1]])))
+		last = sp[1]
 	}
 	out.WriteString(line[last:])
 	return out.String()
-}
-
-// escapedAt reports whether the byte at i sits behind an odd number of
-// backslashes, which escape it.
-func escapedAt(s string, i int) bool {
-	n := 0
-	for j := i - 1; j >= 0 && s[j] == '\\'; j-- {
-		n++
-	}
-	return n%2 == 1
 }
 
 // wordBoundaryAt reports whether [start,end) in s is bounded by non-word runes on

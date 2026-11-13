@@ -140,6 +140,13 @@ receipt, none recorded broken, none whose recorded final address has drifted fro
 what the page cites, and a staleness warning past 180 days. Every one of these
 reads committed files only; nothing dials out.
 
+The link checks, the footnote and URL rules, and the record lint's
+forbidden-synonym check skip a link, footnote or word inside an inline code
+span that opens and closes on one line, except below a line that leaves a
+backtick open: from there to the next blank line they read every line whole,
+spans included, so they may report text the page shows as code; the crosswalk
+rule pairs each table row's spans on the row alone.
+
 `--release-gate` runs the same lint with one difference: a citation past the
 365-day threshold blocks instead of warning. It is for release machinery only —
 an ordinary commit is never blocked by the calendar.

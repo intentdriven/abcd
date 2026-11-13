@@ -173,7 +173,7 @@ func TestForbiddenSynonymsSourceOfTruth(t *testing.T) {
 func TestStripInlineCodePairedSpanBeforeStrayBacktick(t *testing.T) {
 	// `epic` is a closed span; the later lone backtick is unpaired.
 	in := "The `epic` token is retired but the ` here is stray."
-	got := stripInlineCode(in)
+	got := stripInlineCodeLine(in)
 	if strings.Contains(got, "epic") {
 		t.Errorf("closed span not blanked before a stray backtick: %q -> %q", in, got)
 	}
@@ -252,12 +252,12 @@ func TestStripInlineCodePairsRunsOfTheSameLength(t *testing.T) {
 		"ok `epic` then a stray ` here":  "epic",
 		"``one`` and `epic` and ``two``": "epic",
 	} {
-		got := stripInlineCode(in)
+		got := stripInlineCodeLine(in)
 		if strings.Contains(got, gone) {
-			t.Errorf("stripInlineCode(%q) = %q, still holds %q", in, got, gone)
+			t.Errorf("stripInlineCodeLine(%q) = %q, still holds %q", in, got, gone)
 		}
 		if utf8.RuneCountInString(got) != utf8.RuneCountInString(in) {
-			t.Errorf("stripInlineCode(%q) = %q changed the rune count", in, got)
+			t.Errorf("stripInlineCodeLine(%q) = %q changed the rune count", in, got)
 		}
 	}
 	for in, kept := range map[string]string{
@@ -266,8 +266,8 @@ func TestStripInlineCodePairsRunsOfTheSameLength(t *testing.T) {
 		"a `epic`` word":     "epic",
 		"the ```epic`` word": "epic",
 	} {
-		if got := stripInlineCode(in); !strings.Contains(got, kept) {
-			t.Errorf("stripInlineCode(%q) = %q, blanked %q, which no span holds", in, got, kept)
+		if got := stripInlineCodeLine(in); !strings.Contains(got, kept) {
+			t.Errorf("stripInlineCodeLine(%q) = %q, blanked %q, which no span holds", in, got, kept)
 		}
 	}
 }

@@ -259,3 +259,82 @@ func TestReadNamesAnOpenerBelowARunLeftOpen(t *testing.T) {
 		}
 	}
 }
+
+// TestSureCodeSpansReportsNoneBelowARunLeftOpen: SureCodeSpans pairs each
+// line's spans as CodeSpanRanges does, and reports none on the lines below a
+// backtick run a line leaves open, to the next blank line; the run's own line
+// keeps its spans, and a skipped line is not walked, though a blank one inside
+// it still ends the stretch.
+func TestSureCodeSpansReportsNoneBelowARunLeftOpen(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		body   string
+		skip   []bool
+		unsure []int
+	}{
+		{"balanced lines", "a `x` b\nc ``y`` d `z`\ne `f` g", nil, nil},
+		{"the run's own line keeps its spans", "a `x` b `c\nd` e `f`", nil, []int{1}},
+		{"to the next blank line", "a `c\nd` e `f`\ng` h `i`\n \t\nj` k `l`", nil, []int{1, 2}},
+		{"an escaped backtick leaves nothing open", "a \\` b\nd` e `f`", nil, nil},
+		{"a run that closes later on its line", "a ``b ` c`` d\ne` f `g`", nil, nil},
+		{"a blank line in a skipped fence", "a `c\n```\n\n```\nd` e `f`", []bool{false, true, true, true, false}, nil},
+		{"a skipped fence with no blank line", "a `c\n```\nx`y`\n```\nd` e `f`", []bool{false, true, true, true, false}, []int{4}},
+		{"a skipped line is not walked", "```\na `c\n```\nd` e `f`", []bool{true, true, true, false}, nil},
+	} {
+		body := lines(c.body)
+		got := SureCodeSpans(body, c.skip)
+		unsure := map[int]bool{}
+		for _, i := range c.unsure {
+			unsure[i] = true
+		}
+		for i, ln := range body {
+			want := CodeSpanRanges(ln)
+			if unsure[i] || i < len(c.skip) && c.skip[i] {
+				want = nil
+			}
+			if len(got[i]) != len(want) || len(want) > 0 && !reflect.DeepEqual(got[i], want) {
+				t.Errorf("%s: line %d %q: spans %v, want %v", c.name, i, ln, got[i], want)
+			}
+		}
+	}
+}
+
+// TestSureCodeSpansStepInLineWithTheBody: SureCodeSpans takes steps in line
+// with the body on each shape, counted on two sizes, not timed.
+func TestSureCodeSpansStepInLineWithTheBody(t *testing.T) {
+	steps := 0
+	walkHook = func() { steps++ }
+	defer func() { walkHook = nil }()
+	shapes := map[string]func(n int) string{
+		"runs of every length on one line": func(n int) string {
+			var b strings.Builder
+			for k := 1; k <= n/10; k++ {
+				b.WriteString(strings.Repeat("`", k) + " a ")
+			}
+			return b.String()
+		},
+		"one long stretch below a backtick left open": func(n int) string {
+			return "a `\n" + strings.Repeat("b ` c `d` e\n", n)
+		},
+		"a backtick left open in every paragraph": func(n int) string {
+			return strings.Repeat("a ` b\nc `d` e\n\n", n)
+		},
+		"balanced spans on every line": func(n int) string {
+			return strings.Repeat("a `b` c ``d`` e\n", n)
+		},
+	}
+	for name, shape := range shapes {
+		count := func(n int) (int, int) {
+			body := lines(shape(n))
+			steps = 0
+			SureCodeSpans(body, nil)
+			return steps, len(strings.Join(body, "\n"))
+		}
+		n := 1000
+		small, ns := count(n)
+		large, nl := count(4 * n)
+		if small == 0 || float64(large)/float64(nl) > 1.5*float64(small)/float64(ns) {
+			t.Errorf("%s: %d steps over %d bytes, %d over %d: want steps in line with the body", name, small, ns, large, nl)
+		}
+	}
+}
