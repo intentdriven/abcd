@@ -31,7 +31,24 @@ import (
 //
 // Every isolated command passes lazyFetchGuard first: a refusal is set as the
 // command's Err, so Run, Output and Start return it and git never starts.
+//
+// ExecPins does not blank content filters, textconv and external diff
+// programs, or merge drivers, so a command that can start one of them
+// (LeavesContentProgramsOn) asks the check SetBeforeHookedGit set before it
+// is run, as the hooked runners do; its refusal is set as the command's Err
+// in the same way.
 func isolatedGit(root string, args ...string) *exec.Cmd {
+	cmd := isolatedGitBlanked(root, args...)
+	if cmd.Err == nil {
+		askIfContentRuns(cmd, args)
+	}
+	return cmd
+}
+
+// isolatedGitBlanked is isolatedGit for a caller in this package that has
+// itself blanked every program the command could start (Status with its
+// filters off, even where the repository names none), so it asks nothing.
+func isolatedGitBlanked(root string, args ...string) *exec.Cmd {
 	cmd := exec.Command("git", isolatedArgs(root, args)...)
 	cmd.Env = gitEnv()
 	guardObjectRead(context.Background(), cmd, root, args)
@@ -69,13 +86,15 @@ const contextWaitDelay = 50 * time.Millisecond
 // isolatedGitContext is isolatedGit bound to ctx: when ctx ends, git is KILLED,
 // not abandoned. An abandoned git outlives its caller, and a caller on a
 // deadline that runs often — the status verb, on every refresh — would leave
-// one behind each time for as long as git hangs.
+// one behind each time for as long as git hangs. It asks the check
+// SetBeforeHookedGit set as isolatedGit does.
 func isolatedGitContext(ctx context.Context, root string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", isolatedArgs(root, args)...)
 	cmd.Env = gitEnv()
 	if ctx.Done() != nil {
 		cmd.WaitDelay = contextWaitDelay
 	}
+	askIfContentRuns(cmd, args)
 	guardObjectRead(ctx, cmd, root, args)
 	return cmd
 }

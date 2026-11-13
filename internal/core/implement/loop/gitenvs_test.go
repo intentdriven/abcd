@@ -27,7 +27,14 @@ package loop
 // CHECKED for the hooks flag alone: every row whose command runs the
 // repository's hooks names a runner that asks the drive's comparison before
 // git runs (TestEveryHookedRowAsksTheComparisonFirst), or is named in
-// hookedRowsThatAreTheComparisonsOwn with why it is not one.
+// hookedRowsThatAreTheComparisonsOwn with why it is not one; the functions
+// a drive reaches that build that exempt constructor are exactly those named
+// (TestTheExemptConstructorIsBuiltOnlyByTheComparison); and every call of an
+// isolated runner whose subcommand is a constant names one gitutil judges for
+// the programs it can start, or one said to start none
+// (TestEveryIsolatedCallADriveMakesIsJudgedForWhatItCanStart). A call whose
+// command line is built elsewhere and passed whole (claim's own runners, the
+// comparison's asks) is logged as not read: the runner judges it as it runs.
 //
 // NOT CHECKED: the environment and the hooks flag of each row. The walk
 // finds which constructors a drive reaches, not what environment each gives
@@ -55,6 +62,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -80,7 +88,7 @@ func TestEveryGitCommandADriveRunsIsInTheTable(t *testing.T) {
 	if testing.Short() {
 		t.Skip("type-checks the module from source")
 	}
-	found, programs, err := driveGitConstructors("../../../..", "./internal/core/implement/loop", "internal/core/implement/loop.RunTerminal")
+	_, found, programs, err := driveWalkOnce()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,6 +164,137 @@ func TestEveryHookedRowAsksTheComparisonFirst(t *testing.T) {
 		if _, serr := os.Stat(made); !errors.Is(serr, os.ErrNotExist) {
 			t.Errorf("%s ran git under a refusing check: %v", c.name, serr)
 		}
+	}
+}
+
+// workingTreeCommitCommandUsers are the functions outside gitutil a drive
+// reaches that build gitutil.WorkingTreeCommitCommand themselves, which
+// hookedRowsThatAreTheComparisonsOwn exempts: the comparison's own reads of
+// the stage's settings and of the checkout's hooks directory, and the
+// stage's environment the hold reads.
+var workingTreeCommitCommandUsers = []string{"loop.checkoutHooksPath", "loop.stageEnv", "loop.workingTreeAsk"}
+
+// TestTheExemptConstructorIsBuiltOnlyByTheComparison: the functions a drive
+// reaches that build WorkingTreeCommitCommand outside gitutil are exactly
+// those the exemption names, so a hooked use added elsewhere fails here
+// until it runs through a runner that asks. Watched failing with
+// "loop.stageEnv" left out of the list.
+func TestTheExemptConstructorIsBuiltOnlyByTheComparison(t *testing.T) {
+	if testing.Short() {
+		t.Skip("type-checks the module from source")
+	}
+	w, _, _, err := driveWalkOnce()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var users []string
+	for n := range w.reached {
+		if slices.ContainsFunc(w.edges[n], func(e any) bool { return w.inGitutil(e) && w.name(e) == "gitutil.WorkingTreeCommitCommand" }) {
+			users = append(users, w.name(n))
+		}
+	}
+	sort.Strings(users)
+	if !slices.Equal(slices.Compact(users), workingTreeCommitCommandUsers) {
+		t.Fatalf("WorkingTreeCommitCommand is built outside gitutil by %v, not exactly %v: a hooked command runs through RunCommitCommandBounded, which asks", users, workingTreeCommitCommandUsers)
+	}
+}
+
+// isolatedVerbsThatStartNothing are the subcommands a drive's isolated
+// reads run that gitutil.LeavesContentProgramsOn does not judge, each with
+// why it starts no program the repository names: none reads working-tree
+// content through a filter, shows content through a textconv or external
+// diff program, or runs a merge driver.
+var isolatedVerbsThatStartNothing = map[string]string{
+	"rev-parse":          "names objects and paths",
+	"rev-list":           "lists commits",
+	"merge-base":         "reads commits",
+	"config":             "reads settings",
+	"var":                "reads settings",
+	"for-each-ref":       "lists refs",
+	"show-ref":           "lists refs",
+	"symbolic-ref":       "reads a ref",
+	"update-ref":         "writes a ref",
+	"ls-tree":            "lists a tree",
+	"ls-remote":          "lists a remote's refs (networked, asked by RunLimitedNetContext)",
+	"ls-files":           "lists the index (-m alone is judged)",
+	"check-attr":         "reads attributes",
+	"check-ignore":       "reads ignore rules",
+	"check-ref-format":   "checks a name",
+	"cat-file":           "reads stored objects (--filters and --textconv are judged)",
+	"count-objects":      "counts objects",
+	"mktree":             "writes a tree from given entries",
+	"mktag":              "writes a tag",
+	"hash-object":        "judged",
+	"commit-tree":        "writes a commit from a tree",
+	"read-tree":          "reads a tree into an index (-u is judged)",
+	"write-tree":         "writes the index as a tree",
+	"name-rev":           "names a commit",
+	"describe":           "names a commit",
+	"tag":                "lists tags",
+	"branch":             "lists branches",
+	"version":            "prints git's version",
+	"init":               "makes an empty repository",
+	"fetch":              "networked (asked by its runner)",
+	"replace":            "lists replacements",
+	"notes":              "reads notes",
+	"interpret-trailers": "parses text",
+	"stripspace":         "cleans text",
+	"remote":             "lists remotes",
+	"worktree":           "judged (add)",
+	"fsck":               "checks objects",
+	"verify-commit":      "verifies a signature, which log.showSignature and gpg pins keep off",
+	"shortlog":           "summarises commits",
+}
+
+// TestEveryIsolatedCallADriveMakesIsJudgedForWhatItCanStart: every call a
+// drive reaches of an isolated runner whose command line the walk can read
+// names a subcommand that gitutil.LeavesContentProgramsOn judges (so the
+// runner asks when the command leaves a program on) or one named in
+// isolatedVerbsThatStartNothing; a subcommand in neither fails here until it
+// is looked at. Each call is logged with what it does: asks, blanks or reads
+// nothing through a program. A call whose subcommand is not a constant is
+// logged as not read: the runner still judges its command line when it runs.
+// Watched failing with "diff-tree" taken out of the judged subcommands.
+func TestEveryIsolatedCallADriveMakesIsJudgedForWhatItCanStart(t *testing.T) {
+	if testing.Short() {
+		t.Skip("type-checks the module from source")
+	}
+	w, _, _, err := driveWalkOnce()
+	if err != nil {
+		t.Fatal(err)
+	}
+	isolated := map[string]bool{}
+	for _, c := range driveGitCommands {
+		if c.env == isolatedEnv {
+			isolated[c.name] = true
+		}
+	}
+	var lines []string
+	for n := range w.reached {
+		for _, c := range w.calls[n] {
+			if !isolated[c.callee] {
+				continue
+			}
+			at := w.name(n) + " (" + c.callee + ", " + filepath.Base(c.at) + ")"
+			verb := gitutil.Subcommand(c.args)
+			switch {
+			case verb == "" || verb == "?":
+				lines = append(lines, "not read: "+at+" "+strings.Join(c.args, " "))
+			case gitutil.JudgesContentPrograms(verb) && gitutil.LeavesContentProgramsOn(c.args):
+				lines = append(lines, "asks: "+at+" "+strings.Join(c.args, " "))
+			case gitutil.JudgesContentPrograms(verb):
+				lines = append(lines, "blanks or reads no content through a program: "+at+" "+strings.Join(c.args, " "))
+			default:
+				if _, ok := isolatedVerbsThatStartNothing[verb]; !ok {
+					t.Errorf("%s runs git %s in the isolated environment: judge it in gitutil's contentJudges if it can start a filter, a textconv or external diff program or a merge driver, or say in isolatedVerbsThatStartNothing why it starts none", at, verb)
+				}
+				lines = append(lines, "starts nothing ("+verb+"): "+at)
+			}
+		}
+	}
+	sort.Strings(lines)
+	for _, l := range lines {
+		t.Log(l)
 	}
 }
 
@@ -259,11 +398,32 @@ func testGo(ctx context.Context) (string, error) {
 	return path, nil
 }
 
-// driveGitConstructors type-checks pkg's module packages from source under
-// root and walks from entry (module-relative pkg.Func): it returns the names
-// of the git command constructors reached (sorted), and the functions that
-// start a program named by a value.
-func driveGitConstructors(root, pkg, entry string) ([]string, []string, error) {
+// walked is the drive's walk, made once for the package's tests: it
+// type-checks the module from source, which takes a while.
+var walked struct {
+	once            sync.Once
+	w               *gitWalk
+	found, programs []string
+	err             error
+}
+
+// driveWalkOnce is driveWalk of the drive's entry (RunTerminal), made once
+// and walked: the walk, the constructors found and the programs named by a
+// value.
+func driveWalkOnce() (*gitWalk, []string, []string, error) {
+	walked.once.Do(func() {
+		var start any
+		walked.w, start, walked.err = driveWalk("../../../..", "./internal/core/implement/loop", "internal/core/implement/loop.RunTerminal")
+		if walked.err == nil {
+			walked.found, walked.programs, walked.err = walked.w.reach(start)
+		}
+	})
+	return walked.w, walked.found, walked.programs, walked.err
+}
+
+// driveWalk type-checks pkg's module packages from source under root and
+// builds the walk, returning it and entry's node.
+func driveWalk(root, pkg, entry string) (*gitWalk, any, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	goBin, err := testGo(ctx)
@@ -289,8 +449,10 @@ func driveGitConstructors(root, pkg, entry string) ([]string, []string, error) {
 		}
 		pkgs = append(pkgs, p)
 	}
-	w := &gitWalk{edges: map[any][]any{}, gitExec: map[any]bool{}, programs: map[any]bool{}, names: map[any]string{}, funcs: map[string]*types.Func{}}
+	w := &gitWalk{edges: map[any][]any{}, gitExec: map[any]bool{}, programs: map[any]bool{}, names: map[any]string{}, funcs: map[string]*types.Func{},
+		calls: map[any][]gitCall{}, reached: map[any]bool{}}
 	fset := token.NewFileSet()
+	w.fset = fset
 	checked := map[string]*types.Package{"unsafe": types.Unsafe}
 	type modPkg struct {
 		pkg   *types.Package
@@ -353,7 +515,7 @@ func driveGitConstructors(root, pkg, entry string) ([]string, []string, error) {
 	if start == nil {
 		return nil, nil, fmt.Errorf("no function %s", entry)
 	}
-	return w.reach(start)
+	return w, start, nil
 }
 
 // gitWalk is the call graph: nodes are *types.Func (an origin) and
@@ -367,6 +529,18 @@ type gitWalk struct {
 	funcs    map[string]*types.Func
 	named    []*types.Named
 	methods  []*types.Func
+	calls    map[any][]gitCall // the calls of a gitutil function a node makes
+	reached  map[any]bool      // the nodes outside gitutil reach walked
+	fset     *token.FileSet
+}
+
+// gitCall is one call of a gitutil function with a variadic string
+// parameter (a git command line): the function, the command line's
+// arguments as written ("?" for one that is not a constant), and where.
+type gitCall struct {
+	callee string
+	args   []string
+	at     string
 }
 
 func (w *gitWalk) rel(path string) string {
@@ -459,6 +633,7 @@ func (w *gitWalk) body(node any, n ast.Node, pkg *types.Package, info *types.Inf
 				}
 			}
 		case *ast.CallExpr:
+			w.gitutilCall(node, x, info)
 			sel, ok := x.Fun.(*ast.SelectorExpr)
 			if !ok {
 				return true
@@ -484,6 +659,73 @@ func (w *gitWalk) body(node any, n ast.Node, pkg *types.Package, info *types.Inf
 		}
 		return true
 	})
+}
+
+// gitutilCall records call when it calls a gitutil function whose last
+// parameter is a variadic string (a git command line) from outside gitutil.
+func (w *gitWalk) gitutilCall(node any, call *ast.CallExpr, info *types.Info) {
+	var fn *types.Func
+	switch f := call.Fun.(type) {
+	case *ast.SelectorExpr:
+		fn, _ = info.Uses[f.Sel].(*types.Func)
+	case *ast.Ident:
+		fn, _ = info.Uses[f].(*types.Func)
+	}
+	if fn == nil || fn.Pkg() == nil || w.rel(fn.Pkg().Path()) != "internal/gitutil" {
+		return
+	}
+	if p, ok := node.(*types.Func); ok && p.Pkg() != nil && w.rel(p.Pkg().Path()) == "internal/gitutil" {
+		return
+	}
+	sig := fn.Type().(*types.Signature)
+	if !sig.Variadic() {
+		return
+	}
+	from := sig.Params().Len() - 1
+	var args []string
+	for i := from; i < len(call.Args); i++ {
+		if call.Ellipsis.IsValid() && i == len(call.Args)-1 {
+			args = append(args, constElems(call.Args[i], info)...)
+			continue
+		}
+		args = append(args, constString(call.Args[i], info))
+	}
+	w.calls[node] = append(w.calls[node], gitCall{callee: w.name(fn), args: args, at: w.fset.Position(call.Pos()).String()})
+}
+
+// constString is e's value when it is a string constant, else "?".
+func constString(e ast.Expr, info *types.Info) string {
+	if tv := info.Types[e]; tv.Value != nil && tv.Value.Kind() == constant.String {
+		return constant.StringVal(tv.Value)
+	}
+	return "?"
+}
+
+// constElems are the elements of a slice passed whole (args...): a
+// composite literal's, or an append's onto one, each a constant or "?"; "?"
+// for anything else.
+func constElems(e ast.Expr, info *types.Info) []string {
+	switch x := e.(type) {
+	case *ast.CompositeLit:
+		var out []string
+		for _, el := range x.Elts {
+			out = append(out, constString(el, info))
+		}
+		return out
+	case *ast.CallExpr:
+		if id, ok := x.Fun.(*ast.Ident); ok && id.Name == "append" && len(x.Args) > 0 {
+			out := constElems(x.Args[0], info)
+			for i, a := range x.Args[1:] {
+				if x.Ellipsis.IsValid() && i == len(x.Args)-2 {
+					out = append(out, constElems(a, info)...)
+					continue
+				}
+				out = append(out, constString(a, info))
+			}
+			return out
+		}
+	}
+	return []string{"?"}
 }
 
 // successors are n's edges, an interface method's being every module
@@ -561,6 +803,9 @@ func (w *gitWalk) reach(start any) ([]string, []string, error) {
 	for len(queue) > 0 {
 		n := queue[0]
 		queue = queue[1:]
+		if w.reached != nil {
+			w.reached[n] = true
+		}
 		if w.gitExec[n] {
 			found[w.name(n)] = true
 		}

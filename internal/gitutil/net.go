@@ -177,16 +177,22 @@ var ErrBeforeHookedGitSet = errors.New("a check before every hooked or networked
 // remote, asks first, before the command is built: Net, NetEach, NetInput,
 // NetContext and LocalGit (runHookedContext), RunCommitCommandBounded and
 // RunCommitCommandBoundedAsStored (runCommitBounded), WorkingTreeCommand and
-// WorkingTreeCommandContext, and RunLimitedNetContext. An error from it is
-// the command's, and git does not run. A drive sets it to its comparison of
-// what it holds while it runs (implement/loop's heldBeforeGit); it is given
-// the command's arguments. One drive
-// runs in a process, so a check already set is not replaced: the call is
-// refused with ErrBeforeHookedGitSet. The returned clear removes this check
-// and only this one. Commands that read with every program-starting setting
-// off and reach no remote (NetAskContext, WorkingTreeCommitCommand built
-// directly, the isolated readers) never ask it: the comparison makes its own
-// reads through them. With no check set nothing changes.
+// WorkingTreeCommandContext, and RunLimitedNetContext. An isolated command
+// (Run and its kin) has its hooks and the other programs ExecPins names
+// pinned off, but not content filters, textconv and external diff programs
+// or merge drivers, so one that can start one of those
+// (LeavesContentProgramsOn: a hash-object, a status with the filters left
+// on, a diff of the working tree that does not blank them) asks too, and one
+// that blanks them or reads no content through them does not. An error from
+// the check is the command's, and git does not run. A drive sets it to its
+// comparison of what it holds while it runs (implement/loop's
+// heldBeforeGit); it is given the command's arguments. One drive runs in a
+// process, so a check already set is not replaced: the call is refused with
+// ErrBeforeHookedGitSet. The returned clear removes this check and only this
+// one. The comparison's own reads never ask it: they run through
+// NetAskContext, WorkingTreeCommitCommand built directly, and isolated
+// `config`, `var` and `rev-parse` reads, which start no program. With no
+// check set nothing changes.
 func SetBeforeHookedGit(f func(args []string) error) (clear func(), err error) {
 	if f == nil {
 		return nil, errors.New("no check was given")
@@ -387,15 +393,11 @@ func netSSHCommand(dir string) string {
 	return "ssh " + netSSHOptions
 }
 
-// gitVerb is the subcommand among args, past any leading -c options, for an
-// error to name.
+// gitVerb is the subcommand among args, past git's global options
+// (Subcommand), for an error to name.
 func gitVerb(args []string) string {
-	for i := 0; i < len(args); i++ {
-		if args[i] == "-c" {
-			i++
-			continue
-		}
-		return args[i]
+	if v := Subcommand(args); v != "" {
+		return v
 	}
 	return "git"
 }

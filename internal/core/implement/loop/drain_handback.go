@@ -60,7 +60,14 @@ func notHeldAsOrigin(repoRoot, issue string, origin *DrainOrigin) (string, error
 		return "this checkout holds " + issue + " in more than one record", nil
 	}
 	rel := recordid.IssuesRelDir + "/" + string(capture.StateOpen) + "/" + filepath.Base(matches[0])
+	// The read runs the repository's content filters, as git would to store
+	// the file, so under a drive it asks the drive's comparison first
+	// (gitutil.LeavesContentProgramsOn); a stop there is the step's, never a
+	// record that could not be read.
 	got, err := gitutil.Run(repoRoot, "hash-object", "--", rel)
+	if r, ok := heldStopOf(err); ok {
+		return "", r
+	}
 	if err != nil {
 		return "this checkout's record of " + issue + " could not be read", nil
 	}
