@@ -271,3 +271,20 @@ func TestTheHooksWalkFollowsEachLinkedDirectoryOnce(t *testing.T) {
 		}
 	}
 }
+
+// TestADriveStartLeavesTheGitDirectorysOwnHooksAlone: with no core.hooksPath,
+// git runs the git directory's own hooks (the sample files git init writes
+// among them), which no commit holds; the start compares nothing there and
+// the drive starts.
+func TestADriveStartLeavesTheGitDirectorysOwnHooksAlone(t *testing.T) {
+	repo, _, _ := hookedOrigin(t)
+	repo.Git("config", "--unset", "core.hooksPath")
+	writeMode(t, filepath.Join(repo.Root(), ".git", "hooks", "pre-commit.sample"), "#!/bin/sh\n", 0o755)
+	tm, err := startDrive(t, repo)
+	if err != nil || tm.o.Options.remote == nil {
+		t.Fatalf("the drive starts: %v", err)
+	}
+	if ownHooksDir(repo.Root(), tm.o.Options.remote.hooksDir) != "" {
+		t.Fatalf("the git directory's hooks are not the tree's own: %s", tm.o.Options.remote.hooksDir)
+	}
+}

@@ -1047,7 +1047,8 @@ func pinLaneHooks(c Context, laneID, lanePath, base, tip string) error {
 // ownHooksDir is the hooks directory hooksDir (as git names it: hooksDirAt),
 // relative to dir and slash-separated, when it lies inside the working tree
 // at dir, read as written or with both resolved (a checkout reached through a
-// linked parent); "" when it lies outside it or is the tree itself.
+// linked parent); "" when it lies outside it, is the tree itself, or lies in
+// the tree's .git (the git directory's own hooks, which no commit holds).
 func ownHooksDir(dir, hooksDir string) string {
 	if hooksDir == "" {
 		return ""
@@ -1057,7 +1058,11 @@ func ownHooksDir(dir, hooksDir string) string {
 		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
 			return ""
 		}
-		return filepath.ToSlash(rel)
+		rel = filepath.ToSlash(rel)
+		if first, _, _ := strings.Cut(rel, "/"); strings.EqualFold(first, ".git") {
+			return ""
+		}
+		return rel
 	}
 	if rel := in(filepath.Clean(dir), filepath.Clean(hooksDir)); rel != "" {
 		return rel
