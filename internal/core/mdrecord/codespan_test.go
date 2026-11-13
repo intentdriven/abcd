@@ -300,34 +300,55 @@ func TestSureCodeSpansReportsNoneBelowARunLeftOpen(t *testing.T) {
 }
 
 // TestSureCodeSpansStepInLineWithTheBody: SureCodeSpans takes steps in line
-// with the body on each shape, counted on two sizes, not timed.
+// with the body on each shape, counted on two sizes, not timed. Two single
+// passes are not counted: the TrimRight of each line's carriage return, and,
+// in the docs lint, blankSpans and the line-alone pairing over each line,
+// each one pass over its line.
 func TestSureCodeSpansStepInLineWithTheBody(t *testing.T) {
 	steps := 0
 	walkHook = func() { steps++ }
 	defer func() { walkHook = nil }()
-	shapes := map[string]func(n int) string{
-		"runs of every length on one line": func(n int) string {
+	unmasked := func(body string) ([]string, []bool) { return lines(body), nil }
+	shapes := map[string]func(n int) ([]string, []bool){
+		"runs of every length on one line": func(n int) ([]string, []bool) {
 			var b strings.Builder
 			for k := 1; k <= n/10; k++ {
 				b.WriteString(strings.Repeat("`", k) + " a ")
 			}
-			return b.String()
+			return unmasked(b.String())
 		},
-		"one long stretch below a backtick left open": func(n int) string {
-			return "a `\n" + strings.Repeat("b ` c `d` e\n", n)
+		"one long stretch below a backtick left open": func(n int) ([]string, []bool) {
+			return unmasked("a `\n" + strings.Repeat("b ` c `d` e\n", n))
 		},
-		"a backtick left open in every paragraph": func(n int) string {
-			return strings.Repeat("a ` b\nc `d` e\n\n", n)
+		"a backtick left open in every paragraph": func(n int) ([]string, []bool) {
+			return unmasked(strings.Repeat("a ` b\nc `d` e\n\n", n))
 		},
-		"balanced spans on every line": func(n int) string {
-			return strings.Repeat("a `b` c ``d`` e\n", n)
+		"balanced spans on every line": func(n int) ([]string, []bool) {
+			return unmasked(strings.Repeat("a `b` c ``d`` e\n", n))
+		},
+		"a skip mask over every other line": func(n int) ([]string, []bool) {
+			body := lines(strings.Repeat("a `b` c ` d\n``` x ` y `z`\n", n))
+			skip := make([]bool, len(body))
+			for i := 1; i < len(skip); i += 2 {
+				skip[i] = true
+			}
+			return body, skip
+		},
+		"long blank lines and long masked lines": func(n int) ([]string, []bool) {
+			var body []string
+			var skip []bool
+			for k := 0; k < n/10; k++ {
+				body = append(body, "a ` b", strings.Repeat(" \t", 40), strings.Repeat("`x", 40), "c `d` e")
+				skip = append(skip, false, false, true, false)
+			}
+			return body, skip
 		},
 	}
 	for name, shape := range shapes {
 		count := func(n int) (int, int) {
-			body := lines(shape(n))
+			body, skip := shape(n)
 			steps = 0
-			SureCodeSpans(body, nil)
+			SureCodeSpans(body, skip)
 			return steps, len(strings.Join(body, "\n"))
 		}
 		n := 1000
@@ -335,6 +356,41 @@ func TestSureCodeSpansStepInLineWithTheBody(t *testing.T) {
 		large, nl := count(4 * n)
 		if small == 0 || float64(large)/float64(nl) > 1.5*float64(small)/float64(ns) {
 			t.Errorf("%s: %d steps over %d bytes, %d over %d: want steps in line with the body", name, small, ns, large, nl)
+		}
+	}
+}
+
+// TestSureCodeSpansAgreesWithRead: over comment-free bodies, SureCodeSpans
+// given Read's fence mask reports no span on exactly the lines Read marks as
+// below a run left open, and Read's spans on every other line it walks, so the
+// two walks of a stretch cannot drift apart.
+func TestSureCodeSpansAgreesWithRead(t *testing.T) {
+	pieces := []string{"`", "``", "\\", "a", " ", "\n", "\n\n", "\n```\n", "\n \t\n", "x`y`z", "\n~~~\n"}
+	seed := uint32(2611130921)
+	next := func(n int) int {
+		seed = seed*1664525 + 1013904223
+		return int(seed>>8) % n
+	}
+	for k := 0; k < 4000; k++ {
+		var b strings.Builder
+		for j := next(40); j > 0; j-- {
+			b.WriteString(pieces[next(len(pieces))])
+		}
+		body := lines(b.String())
+		r := Read(body, TopLevel)
+		skip := make([]bool, len(body))
+		for i := range body {
+			skip[i] = r.Mask[i] != 0
+		}
+		got := SureCodeSpans(body, skip)
+		for i := range body {
+			var want [][2]int
+			if !skip[i] && !r.lines[i].under {
+				want = r.lines[i].spans
+			}
+			if len(got[i]) != len(want) || len(want) > 0 && !reflect.DeepEqual(got[i], want) {
+				t.Fatalf("body %q line %d: SureCodeSpans %v, Read %v (under %v)", b.String(), i, got[i], want, r.lines[i].under)
+			}
 		}
 	}
 }

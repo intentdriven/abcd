@@ -134,3 +134,153 @@ func TestStripInlineCodeLinesKeepsSureLines(t *testing.T) {
 		}
 	}
 }
+
+// TestStripInlineCodeBlanksAsTheLintDidBefore holds two lines to literal
+// text, so the sure lines' blanking does not rest only on a function as new
+// as the change: a balanced line, and one whose first backtick is escaped.
+func TestStripInlineCodeBlanksAsTheLintDidBefore(t *testing.T) {
+	for _, c := range []struct{ line, want string }{
+		{"a `x` b ``y`` c", "a     b       c"},
+		{"a \\` b `c` d", "a \\` b     d"},
+	} {
+		if got := stripInlineCode([]string{c.line}, []bool{false})[0]; got != c.want {
+			t.Errorf("stripInlineCode(%q) = %q, want %q", c.line, got, c.want)
+		}
+		if got := stripInlineCodeLine(c.line); got != c.want {
+			t.Errorf("stripInlineCodeLine(%q) = %q, want %q", c.line, got, c.want)
+		}
+	}
+}
+
+// A use that can make a finding go away reads each line alone, on every line,
+// as the lint read it before (dcn-2611130921444350): below a backtick left
+// open, a marker or definition the line alone shows in a span, which the page
+// may show as code, quiets nothing.
+
+// TestCitationFootnotesReportADefinitionQuotedOnlyBelowARunLeftOpen: a
+// definition whose only marker sits in a one-line span below a backtick left
+// open, on a paragraph line or a heading line, is never referenced.
+func TestCitationFootnotesReportADefinitionQuotedOnlyBelowARunLeftOpen(t *testing.T) {
+	for name, c := range map[string]struct {
+		body string
+		line int
+	}{
+		"a paragraph line": {"# C\n\nIntro `a\nSee `[^a]` here.\n\n[^a]: Source A, https://example.org/a.\n", 6},
+		"a heading line":   {"# C `a\nSee `[^a]` here.\n\n[^a]: Source A, https://example.org/a.\n", 4},
+	} {
+		root := citeRepo(t, map[string]string{"docs/c.md": c.body})
+		findings, err := LintAt(citeConfig("citation_footnotes", RuleConfig{}), root, fixedNow)
+		if err != nil {
+			t.Fatalf("%s: LintAt: %v", name, err)
+		}
+		got := findingsFor(findings, "citation_footnotes")
+		if len(got) != 1 || got[0].Line != c.line || !strings.Contains(got[0].Message, "[^a] is never referenced") {
+			t.Errorf("%s: want one never-referenced finding for [^a] on line %d: %+v", name, c.line, got)
+		}
+	}
+}
+
+// TestCitationFootnotesDefineAsTheLineAloneReads: below a backtick left open,
+// a line holding a definition's opener in a one-line span defines nothing, and
+// one the line alone reads as a definition defines its marker, as before.
+func TestCitationFootnotesDefineAsTheLineAloneReads(t *testing.T) {
+	for name, c := range map[string]struct {
+		body string
+		want int // the line of the one finding, or 0 for none
+	}{
+		"an opener in a span":         {"# C\n\nA claim.[^b]\n\nIntro `a\n`[^b]: x` y\n", 3},
+		"a definition after a span":   {"# C\n\nA claim.[^b]\n\nIntro `a\n`x`[^b]: Source B, https://example.org/b.\n", 0},
+		"a definition on a sure line": {"# C\n\nA claim.[^b]\n\n`x`[^b]: Source B, https://example.org/b.\n", 0},
+	} {
+		root := citeRepo(t, map[string]string{"docs/c.md": c.body})
+		findings, err := LintAt(citeConfig("citation_footnotes", RuleConfig{}), root, fixedNow)
+		if err != nil {
+			t.Fatalf("%s: LintAt: %v", name, err)
+		}
+		got := findingsFor(findings, "citation_footnotes")
+		switch {
+		case c.want == 0 && len(got) != 0:
+			t.Errorf("%s: want no finding: %+v", name, got)
+		case c.want != 0 && (len(got) != 1 || got[0].Line != c.want || !strings.Contains(got[0].Message, "[^b] has no definition")):
+			t.Errorf("%s: want one no-definition finding for [^b] on line %d: %+v", name, c.want, got)
+		}
+	}
+}
+
+// A use that can report a finding reports what either reading finds: a
+// pattern matched over the whole line can take in what the line alone reads
+// as a link or a marker of its own, so the whole reading by itself would lose
+// it.
+
+// TestLinksReportWhatTheLineAloneFindsBelowARunLeftOpen: a dead link and a
+// fragment naming no heading, each after a span whose text opens a link, are
+// reported.
+func TestLinksReportWhatTheLineAloneFindsBelowARunLeftOpen(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "rec/a.md", "# A\n\nIntro `a\nSee `[y](` and [t](missing.md)` z\nSee `[y](` and [t](#nowhere)` z\n")
+	cfg := Config{Roots: []string{"rec"}, Rules: map[string]RuleConfig{
+		"links_resolve": {Enabled: true, Severity: "blocker"},
+		"link_anchors":  {Enabled: true, Severity: "warn"},
+	}}
+	fs, err := Lint(cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dead, anchor bool
+	for _, f := range fs {
+		dead = dead || f.RuleID == "links_resolve" && f.Line == 4 && strings.HasSuffix(f.Message, "does not resolve: missing.md")
+		anchor = anchor || f.RuleID == "link_anchors" && f.Line == 5 && strings.HasSuffix(f.Message, ": #nowhere")
+	}
+	if !dead || !anchor {
+		t.Fatalf("want missing.md on line 4 and #nowhere on line 5 reported: %+v", fs)
+	}
+}
+
+// TestCitationFootnotesReportWhatTheLineAloneFindsBelowARunLeftOpen: a marker
+// after a span whose text opens one is reported as the line alone reads it.
+func TestCitationFootnotesReportWhatTheLineAloneFindsBelowARunLeftOpen(t *testing.T) {
+	root := citeRepo(t, map[string]string{"docs/c.md": "# C\n\nIntro `a\nSee `[^`b[^gone].\n"})
+	findings, err := LintAt(citeConfig("citation_footnotes", RuleConfig{}), root, fixedNow)
+	if err != nil {
+		t.Fatalf("LintAt: %v", err)
+	}
+	var found bool
+	for _, f := range findingsFor(findings, "citation_footnotes") {
+		found = found || f.Line == 4 && strings.Contains(f.Message, "footnote marker [^gone] has no definition")
+	}
+	if !found {
+		t.Fatalf("want [^gone] on line 4 reported: %+v", findings)
+	}
+}
+
+// TestCitationURLSyntaxReadsALineBelowABacktickLeftOpen: a cited URL in a
+// one-line span on a definition line below a backtick left open is checked.
+func TestCitationURLSyntaxReadsALineBelowABacktickLeftOpen(t *testing.T) {
+	root := citeRepo(t, map[string]string{"docs/c.md": "# C\n\nA claim.[^u]\n\nIntro `a\n[^u]: Source, `http://intranet/x` here.\n"})
+	findings, err := LintAt(citeConfig("citation_url_syntax", RuleConfig{}), root, fixedNow)
+	if err != nil {
+		t.Fatalf("LintAt: %v", err)
+	}
+	got := findingsFor(findings, "citation_url_syntax")
+	if len(got) != 1 || got[0].Line != 6 || !strings.Contains(got[0].Message, "http://intranet/x") {
+		t.Fatalf("want one finding for http://intranet/x on line 6: %+v", got)
+	}
+}
+
+// TestCollectCitedURLsReadsWholeAndMarksTheLineAlone: the collector lists a
+// URL only the whole reading finds, for the refresh to check, and marks as
+// read alone only the URL a line cites outside a span on that line.
+func TestCollectCitedURLsReadsWholeAndMarksTheLineAlone(t *testing.T) {
+	root := citeRepo(t, map[string]string{"docs/c.md": "# C\n\nA claim.[^u]\n\nIntro `a\n[^u]: Source, `https://example.org/q` and https://example.org/p.\n"})
+	got, err := CollectCitedURLs(Config{Roots: []string{"docs"}}, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alone := map[string]bool{}
+	for _, c := range got {
+		alone[c.URL] = c.ReadAlone
+	}
+	if len(got) != 2 || !alone["https://example.org/p"] || alone["https://example.org/q"] {
+		t.Fatalf("want p read alone and q listed but not read alone: %+v", got)
+	}
+}

@@ -142,10 +142,16 @@ reads committed files only; nothing dials out.
 
 The link checks, the footnote and URL rules, and the record lint's
 forbidden-synonym check skip a link, footnote or word inside an inline code
-span that opens and closes on one line, except below a line that leaves a
-backtick open: from there to the next blank line they read every line whole,
-spans included, so they may report text the page shows as code; the crosswalk
-rule pairs each table row's spans on the row alone.
+span that opens and closes on one line. Below a line that leaves a backtick
+open, to the next blank line, the page may pair that backtick with one further
+down, so there a use that can report something (a link, a word, a footnote
+marker or definition, a cited URL) reads each line both whole, spans included,
+and alone, and reports what either reading finds; the line that leaves the
+backtick open keeps its spans. Anything that would make a finding go away is
+read from each line alone, on every line: a marker that counts a definition as
+referenced, a definition that counts a marker as defined, a marker on a
+crosswalk table row, and a cited URL a hand receipt confirms, so `abcd docs
+cite confirm` refuses a URL cited only inside such a span.
 
 `--release-gate` runs the same lint with one difference: a citation past the
 365-day threshold blocks instead of warning. It is for release machinery only —

@@ -1901,7 +1901,7 @@ func checkGitMetadata(rel string, lines []string, cfg RuleConfig) []Finding {
 func checkLinks(rel, fileAbs, repoRoot string, lines []string, mask []bool, cfg RuleConfig) []Finding {
 	fileDir := filepath.Dir(fileAbs)
 	var out []Finding
-	prose := stripInlineCode(lines, mask)
+	p := readProse(lines, mask)
 	for i := range lines {
 		if mask[i] {
 			continue
@@ -1909,7 +1909,7 @@ func checkLinks(rel, fileAbs, repoRoot string, lines []string, mask []bool, cfg 
 		// A code span takes precedence over link syntax, so `Get[T](raw)` is
 		// code rather than a link (iss-2609250915305413); the span is blanked
 		// before matching, and a link beside it or around it is still read.
-		for _, m := range linkRe.FindAllStringSubmatch(prose[i], -1) {
+		for _, m := range linkMatches(p, i) {
 			target := strings.TrimSpace(m[1])
 			if target == "" || strings.HasPrefix(target, "#") ||
 				strings.HasPrefix(target, "//") || schemeRe.MatchString(target) {
@@ -2851,29 +2851,27 @@ func checkForbiddenSynonyms(repoRoot, rootAbs string, cfg RuleConfig) ([]Finding
 		}
 		lines := strings.Split(string(content), "\n")
 		mask := fenceMask(lines)
-		prose := stripInlineCode(lines, mask)
+		p := readProse(lines, mask)
 		bodyStart := frontmatterBodyStart(lines)
 		for i, line := range lines {
 			if i < bodyStart || mask[i] {
 				continue // YAML frontmatter and fenced code are not prose
 			}
+			// The allow context reads the raw line, each line alone.
 			if matchesAny(allow, line) {
 				continue
 			}
-			stripped := prose[i]
 			for _, m := range matchers {
-				for _, loc := range m.re.FindAllStringIndex(stripped, -1) {
-					if !wordBoundaryAt(stripped, loc[0], loc[1]) {
-						continue
-					}
-					term := canonical[m.word]
-					out = append(out, Finding{
-						File: rel, Line: i + 1, RuleID: "GL002", Severity: cfg.Severity,
-						Message: "forbidden synonym '" + m.word + "' for glossary term '" + term +
-							"' in live prose; use '" + term + "' (itd-43). If this is a mention (not a substitution), quote it in a code span.",
-					})
-					break // one finding per enforced word per line is enough signal
+				if !synonymOn(m.re, p.readings(i)) {
+					continue
 				}
+				term := canonical[m.word]
+				// One finding per enforced word per line is enough signal.
+				out = append(out, Finding{
+					File: rel, Line: i + 1, RuleID: "GL002", Severity: cfg.Severity,
+					Message: "forbidden synonym '" + m.word + "' for glossary term '" + term +
+						"' in live prose; use '" + term + "' (itd-43). If this is a mention (not a substitution), quote it in a code span.",
+				})
 			}
 		}
 	}
@@ -3002,15 +3000,100 @@ func frontmatterBodyStart(lines []string) int {
 // leaves with no closer of its length on that line: to the next blank line the
 // page may pair that run with a backtick on a later line and show as prose
 // what the line read alone pairs as a span, so those lines are read whole,
-// spans included (mdrecord.SureCodeSpans; iss-2611130850006749). A check here
-// that misses what the page shows leaves a dead link, an orphan marker or a
-// retired word unreported, while one that reads a span as prose reports text
-// the page shows as code; the second is the side these checks take.
+// spans included (mdrecord.SureCodeSpans; iss-2611130850006749). The run that
+// marks a line may sit on a line the caller walks past without masking it and
+// does not read itself, such as a frontmatter value in the forbidden-synonym
+// check, so the body lines below it, to the first blank line, are read whole.
+// This is the whole reading of readProse; a check takes it only beside the
+// line read alone.
 func stripInlineCode(lines []string, mask []bool) []string {
 	spans := mdrecord.SureCodeSpans(lines, mask)
 	out := make([]string, len(lines))
 	for i, ln := range lines {
 		out[i] = blankSpans(ln, spans[i])
+	}
+	return out
+}
+
+// prose is each line of a file read two ways (iss-2611130850006749). whole
+// is stripInlineCode: below a backtick left open, to the next blank line, the
+// line is read with its spans. alone is each line read alone, every span on it
+// blanked, as the checks read every line before the whole reading came in.
+// The two differ only on a line below a run left open (differs says whether
+// any line does), and a line mask skips is "" in alone.
+//
+// A use of the text that can report a finding (a link to check, a forbidden
+// word, a footnote marker or definition, a cited URL) reports what it finds in
+// either reading: a pattern can match differently over the longer text, so the
+// whole reading by itself could lose what the line alone yields. A use that
+// can make a finding go away (a marker that counts a definition as referenced,
+// a definition that counts a marker as defined, a marker on a crosswalk row, a
+// cited URL a hand receipt confirms) reads alone, on every line, so a span the
+// page may show as code never makes a finding go away (dcn-2611130921444350).
+type prose struct {
+	whole, alone []string
+	differs      bool
+}
+
+// readProse reads lines both ways, each in one pass over the file.
+func readProse(lines []string, mask []bool) prose {
+	p := prose{whole: stripInlineCode(lines, mask), alone: make([]string, len(lines))}
+	for i, ln := range lines {
+		if i < len(mask) && mask[i] {
+			continue
+		}
+		p.alone[i] = stripInlineCodeLine(ln)
+		p.differs = p.differs || p.alone[i] != p.whole[i]
+	}
+	return p
+}
+
+// readings is the text of line i a reporting use reads: the line alone, then
+// the whole reading where it differs.
+func (p prose) readings(i int) []string {
+	if p.alone[i] == p.whole[i] {
+		return p.alone[i : i+1]
+	}
+	return []string{p.alone[i], p.whole[i]}
+}
+
+// linkMatches is every inline link a reporting check takes from line i: each
+// the line read alone yields, then each the whole reading yields beyond those,
+// counted by target, so a line both readings agree on reports each link as
+// often as it is written.
+func linkMatches(p prose, i int) [][]string {
+	ms := linkRe.FindAllStringSubmatch(p.alone[i], -1)
+	if p.alone[i] == p.whole[i] {
+		return ms
+	}
+	left := map[string]int{}
+	for _, m := range ms {
+		left[m[1]]++
+	}
+	for _, m := range linkRe.FindAllStringSubmatch(p.whole[i], -1) {
+		if left[m[1]] > 0 {
+			left[m[1]]--
+			continue
+		}
+		ms = append(ms, m)
+	}
+	return ms
+}
+
+// beyond is base followed by each element of more beyond as many as base
+// holds of it, for a reporting use that takes what either reading finds.
+func beyond[T comparable](base, more []T) []T {
+	out := append([]T(nil), base...)
+	left := make(map[T]int, len(base))
+	for _, v := range base {
+		left[v]++
+	}
+	for _, v := range more {
+		if left[v] > 0 {
+			left[v]--
+			continue
+		}
+		out = append(out, v)
 	}
 	return out
 }
@@ -3044,6 +3127,18 @@ func blankSpans(line string, spans [][2]int) string {
 	}
 	out.WriteString(line[last:])
 	return out.String()
+}
+
+// synonymOn reports whether re matches a whole word in any of texts.
+func synonymOn(re *regexp.Regexp, texts []string) bool {
+	for _, s := range texts {
+		for _, loc := range re.FindAllStringIndex(s, -1) {
+			if wordBoundaryAt(s, loc[0], loc[1]) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // wordBoundaryAt reports whether [start,end) in s is bounded by non-word runes on

@@ -189,3 +189,28 @@ func TestReceiptHasNoMethodFieldByConstruction(t *testing.T) {
 		}
 	}
 }
+
+// TestConfirmRefusesAURLCitedOnlyInASpanBelowARunLeftOpen: a receipt makes a
+// finding go away, so it admits only a URL a line cites outside a code span on
+// that line read alone; one cited only in a span below a backtick left open,
+// which the page may show as code, is refused and nothing is written.
+func TestConfirmRefusesAURLCitedOnlyInASpanBelowARunLeftOpen(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "# Page\n\nA claim.[^a]\n\nIntro `a\n[^a]: A source, `https://example.org/quoted` here.\n"
+	if err := os.WriteFile(filepath.Join(root, "docs", "p.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Confirm(ConfirmRequest{
+		RepoRoot: root, Config: testConfig(), Now: now,
+		Receipt: Receipt{Confirmed: []ConfirmedCitation{{URL: "https://example.org/quoted"}}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "below a backtick left open") {
+		t.Fatalf("Confirm = %v, want a refusal naming the backtick left open", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, filepath.FromSlash(lint.DefaultBaselinePath))); statErr == nil {
+		t.Error("a refused confirm still wrote a baseline")
+	}
+}
