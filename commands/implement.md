@@ -1167,13 +1167,23 @@ host runs, a single build, each lane's own record) a tree past 1024 entries is
 held by its first 1024, in walk order, and its count: a change past them that
 keeps the count is not seen.
 
-As it starts, the drive reads your settings and the checkout's hooks
-directory, and it refuses to start when the settings cannot be listed in
-either environment its git runs in (below), git cannot name the hooks
-directory it runs at the checkout, or the common git directory cannot be
-resolved, naming what git reported; look at your settings (`git config --list
---show-scope --show-origin`), then start it again. The listing needs git 2.26
-and the attributes files git 2.42, so an older git starts no drive. A hooks
+As it starts, the drive reads your settings and the hooks directories its git
+runs, and it refuses to start, at the stage `config`, when a read its hold
+depends on gives no answer it can take: git fails, does not finish within a
+minute, or answers in a form abcd does not take (a hooks path holding a
+newline, an answer past its bound). The refusal names the read and the
+environment it ran in (below); run that read there, as yourself or with `HOME`
+set to the stage's home, then start it again. A read that gives no answer is
+never taken as nothing there, nor as nothing changed: a lane's check and a
+step's check of the run's fingerprint stop the same way, and a read that did
+not finish is named as such, never as a change. A lane's path where git says
+no repository stands holds no hooks, since git runs none there. The listing needs git 2.26, as
+every run's fingerprint already does. Where git does not know the names of the
+attributes files (git older than 2.42), the global one is found as git finds
+it (`core.attributesFile`, else the default under `XDG_CONFIG_HOME` or the
+home), and the system one is taken to stand beside the system settings file
+the listing names; on such a git, where the listing names no system settings
+file, the system attributes file is not held. A hooks
 directory it cannot read is recorded as such and compared like the rest: one
 made unreadable after the drive started refuses the next lane, and one inside
 the checkout of a repository with an `origin` refuses the start, at the
@@ -1196,13 +1206,21 @@ holds them); a checkout behind the tip, whose hooks are its own commit's
 (bring it up to the tip); or files git does not track in the hooks directory
 (move them out). Committed hooks that link outside the repository cannot be
 compared: the drive refuses to start, once, saying the links are the
-repository's own and a drive runs no lane there. A tip not yet fetched here
-refuses the start too, naming the fetch; an `origin` the start cannot reach
-for a network reason is waited on, as a lane's ask of `origin` is, and asked
-again. A hooks directory that lies outside the working tree (an absolute or
-home path that points elsewhere, or the git directory's own `hooks`), or a
-repository with no `origin`, has nothing to be compared with, and the drive
-starts with the copy as it stands.
+repository's own and a drive runs no lane there. A link's target is resolved
+as the system resolves it, a component at a time, so a link reached through
+another link on the way is not proved. A tip not yet fetched here refuses the
+start too, naming the fetch. The ask of `origin` is a lane's: a lost network
+is reported to the run's shared outage, and while that outage has the network
+down the start waits on its shared probe rather than ask again. The wait is
+the drive's own, ending at the drive's bounds (a stop, the `--until` bound,
+the check before a stage) or after eight hours of nothing moving, and asking
+again each time; a setting changed while no drive ran (an `origin` URL, a
+proxy or an ssh command that leads nowhere) makes a start wait so where it
+would refuse at once. A hooks directory that lies outside the working tree
+(an absolute or home path that points elsewhere), or under the tree's own
+`.git` entry or the git directory git reports (which no commit can hold), or
+a repository with no `origin`, has nothing to be compared with, and the drive
+starts with the copy as it stands; it is still held across lanes.
 
 A branch that already stands under the lane's name (a step stopped between git
 making the branch and the worktree) has its head resolved once. That commit's
@@ -1237,7 +1255,9 @@ working tree is proved through the link against what the commit holds at the
 target's path, reached through real directories only, followed through a
 further link, and a directory there proved whole. One that points outside the
 working tree cannot be proved and is refused; the commit holds it, so a lane
-made afresh is refused again, and the loop is not run in such a repository. Up
+made afresh is refused again, and the loop is not run in such a repository. A
+linked hook holds the file it points at, so a lane whose work edits that file
+stops at its next step, as one that edits the hook itself does. Up
 to 1024 entries are proved; a
 directory holding more is refused. A lane abcd finds again (a step stopped
 before its state was written) must also hold the same hooks as the tip.
@@ -1268,11 +1288,18 @@ paths), the same list and no other, and `http.proxy` and `http.sslVerify`; the
 bytes of each file an `include.path` or `includeIf.*.path` setting names,
 whether or not its condition holds at the checkout, since it can hold in a
 lane, its path resolved by git; and the global and system attributes files git
-names. The drive's git runs in two environments, and it reads all of these in
-each: the ask of `origin` runs with your own home and settings, and the lane's
-add, commit, merge and reset run with the stage's home and the stage's global
-settings file, so a home-form path there is under the stage's home. Each
-environment's reading is compared only with its own earlier one; the two
+names. It reads all of these in each environment a drive's git runs in: your
+own (your home and global settings), where the landing push and the
+reservation's pushes and fetches run with the repository's hooks on and the
+ask of `origin` runs with them off; the lane's add, commit, merge and reset,
+which run with the stage's home and the stage's global settings file, so a
+home-form path there is under the stage's home; and abcd's isolated reads of
+refs and objects, which read no global or system settings. In each
+environment whose commands run hooks it also holds the hooks directory git
+names there, at every depth, so a `core.hooksPath` set only in your global
+settings holds the directory your push's `pre-push` runs from. Where two
+environments name the same file or directory it is held once. Each
+environment's reading is compared only with its own earlier one; two
 differing from each other is expected. Each lane's worktree stage reads them
 again before it asks `origin` anything and once more after `origin` has
 answered (a trial's lane, which asks `origin` nothing, once), and refuses the
@@ -1309,15 +1336,19 @@ as they stand, which narrows this and does not close it; a hooks directory
 outside the tree, or a repository with no `origin`, is taken as it stands. The
 remedy is yours: run a drive on an account or machine whose checkout no other
 work shares, and look at `git status` and at every scope a drive takes as its
-start (`git config --list --show-scope --show-origin`) before each start. A profile is not a boundary
+start (`git config --list --show-scope --show-origin`, as yourself and with
+`HOME` set to the stage's home) before each start. A profile is not a boundary
 either (`commands/drain.md`).
 
 With no `origin`, in a trial, or where the lane's hooks directory is not its
 own copy, nothing is pinned: a lane made after the fingerprint was recorded is
 compared with the checkout as recorded, for any setting or hook it adds or
 holds differently. The pin leaves these out, and nothing checks them for you:
-an absolute `core.hooksPath` or a hook dispatcher your global settings name
-gets no pin of its own, and is compared with the checkout as recorded; the
+an absolute `core.hooksPath` gets no pin of its own, and is compared with the
+checkout as recorded; so is a hook dispatcher your global settings name, which
+is the one a step the host runs and a single build run (in a drive the lane's
+add and commit read the stage's global settings instead, and the directory
+your global settings name for the push is held across lanes, as above); the
 checkout's own hooks and settings changing when you pull it during a run are a
 change like any other, which stops the next step until you accept it; and each
 run records the watched settings afresh when it first checks them, so a

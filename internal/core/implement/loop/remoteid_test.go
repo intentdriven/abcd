@@ -169,7 +169,8 @@ func TestARemoteChangedDuringTheAskRefusesTheLane(t *testing.T) {
 
 // TestARemoteIdentityReadFailureHidesTheHome: git's own error, when the
 // settings cannot be read again, reaches the refusal with the home directory
-// written as ~, as the stage's other refusals write it.
+// written as ~, as the stage's other refusals write it. The read gave no
+// answer the hold can take, so the step stops at the config stage.
 func TestARemoteIdentityReadFailureHidesTheHome(t *testing.T) {
 	repo, _, _ := hookedOrigin(t)
 	id, err := readRemoteIdentity(repo.Root())
@@ -182,7 +183,7 @@ func TestARemoteIdentityReadFailureHidesTheHome(t *testing.T) {
 	writeMode(t, bad, "[[[\n", 0o644)
 	t.Setenv("GIT_CONFIG_GLOBAL", bad)
 	err = remoteUnchanged(Context{RepoRoot: repo.Root(), remote: id}, "lane-1")
-	r := worktreeRefused(t, err, "broken.gitconfig")
+	r := configRefused(t, err, "broken.gitconfig")
 	real, _ := filepath.EvalSymlinks(home)
 	if strings.Contains(r.Reason, home) || strings.Contains(r.Reason, real) || !strings.Contains(r.Reason, "~") {
 		t.Fatalf("the refusal writes the home as ~: %+v", r)
@@ -230,7 +231,7 @@ func TestADriveReadsTheRemotesIdentityAsItStarts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tm.o.Options.remote == nil || len(tm.o.Options.remote.changed(repo.Root(), want)) != 0 || len(want.ask.keys) == 0 || len(want.tree.keys) == 0 {
+	if tm.o.Options.remote == nil || len(tm.o.Options.remote.changed(repo.Root(), want)) != 0 || len(want.envs[personEnv]) == 0 || len(want.envs[stageEnv]) == 0 {
 		t.Fatalf("the drive holds origin's settings as it started: %+v, want %+v", tm.o.Options.remote, want)
 	}
 	// The checkout's hooks directory, .githooks here, at every depth:

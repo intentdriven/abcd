@@ -157,24 +157,9 @@ func runHooked(dir string, network bool, stdin string, args []string, sink io.Wr
 func runHookedContext(parent context.Context, dir string, network bool, stdin string, args []string, sink io.Writer) (string, error) {
 	ctx, cancel := context.WithTimeout(parent, NetTimeout)
 	defer cancel()
-	full := []string{"-c", "core.quotePath=false"}
-	if network {
-		full = append(full, "-c", "http.lowSpeedLimit="+netLowSpeedLimit, "-c", "http.lowSpeedTime="+netLowSpeedTime)
-	}
-	full = append(append(full, "-C", dir), args...)
-	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd := hookedCommand(ctx, dir, network, args)
 	if parent.Done() != nil {
 		cmd.WaitDelay = netContextWaitDelay
-	}
-	cmd.Env = append(ScrubbedEnv(), "GIT_TERMINAL_PROMPT=0")
-	if !network {
-		cmd.Env = narrowHooked(cmd.Env)
-	}
-	if network {
-		cmd.Env = netEnv(cmd.Env)
-		if ssh := netSSHCommand(dir); ssh != "" {
-			cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+ssh)
-		}
 	}
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
@@ -207,6 +192,63 @@ func runHookedContext(parent context.Context, dir string, network bool, stdin st
 	}
 	return stdout.String(), nil
 }
+
+// hookedCommand is the git command runHookedContext runs: Net's (network
+// true) or LocalGit's, bound to ctx, with no stdin or output set.
+func hookedCommand(ctx context.Context, dir string, network bool, args []string) *exec.Cmd {
+	full := []string{"-c", "core.quotePath=false"}
+	if network {
+		full = append(full, "-c", "http.lowSpeedLimit="+netLowSpeedLimit, "-c", "http.lowSpeedTime="+netLowSpeedTime)
+	}
+	full = append(append(full, "-C", dir), args...)
+	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd.Env = append(ScrubbedEnv(), "GIT_TERMINAL_PROMPT=0")
+	if !network {
+		cmd.Env = narrowHooked(cmd.Env)
+	}
+	if network {
+		cmd.Env = netEnv(cmd.Env)
+		if ssh := netSSHCommand(dir); ssh != "" {
+			cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+ssh)
+		}
+	}
+	return cmd
+}
+
+// NetAskContext runs one git command that reads and writes nothing (a
+// `config` listing, `var`, `rev-parse --git-path`) in exactly the
+// environment Net, NetEach and NetInput give git: the person's own home,
+// configuration and credentials, the repository's hooks not pinned off. It
+// is for a caller that must know what that environment reads (the settings,
+// the hooks directory a push runs, the attributes files), never for a
+// command that runs a hook or reaches a remote. It is bound to ctx, git is
+// killed when ctx ends, and its output past limit bytes is an error. The
+// error of a git that ran and failed wraps its *exec.ExitError, so the
+// caller can read the exit status; its stderr is bounded and scrubbed of
+// credentials.
+func NetAskContext(ctx context.Context, dir string, limit int, args ...string) (string, error) {
+	cmd := hookedCommand(ctx, dir, true, args)
+	cmd.WaitDelay = netContextWaitDelay
+	out := &capWriter{remaining: limit}
+	errOut := &capWriter{remaining: netStderrCap}
+	cmd.Stdout, cmd.Stderr = out, errOut
+	if err := cmd.Run(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", fmt.Errorf("git %s: %w", gitVerb(args), ctxErr)
+		}
+		return string(out.buf), fmt.Errorf("git %s: %w (%s)", gitVerb(args), err, ScrubURLCredentials(strings.TrimSpace(string(errOut.buf))))
+	}
+	if out.overflowed {
+		return "", fmt.Errorf("git %s: output exceeded the %d-byte cap", gitVerb(args), limit)
+	}
+	return string(out.buf), nil
+}
+
+// NetEnviron is the environment NetAskContext, Net, NetEach and NetInput
+// give git, less the ssh command Net composes: for a caller that must read
+// what that environment tells git (its home, its XDG_CONFIG_HOME,
+// GIT_ATTR_NOSYSTEM).
+func NetEnviron() []string { return netEnv(append(ScrubbedEnv(), "GIT_TERMINAL_PROMPT=0")) }
 
 // testTransportGuard is the configuration netEnv adds to a networked git
 // command run by a test binary, so a test can neither reach a real forge nor

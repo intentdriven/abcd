@@ -116,7 +116,8 @@ type outageGate struct {
 // due, runs it first, outside every lock. A checkout with no shared run state
 // has no outage. The session the outage is recorded and probed for is the
 // caller's (Options.Session), or else the session whose claim names the run
-// as its lane (`abcd build --session`); with neither, the outage still holds
+// as its lane (`abcd build --session`; a drive's start names no run), or else
+// the drive's (Options.OutageSession); with none, the outage still holds
 // the lanes, and the probe and the record are left to `abcd implement outage`.
 func outageFor(repoRoot, runID string, o Options) (*outageGate, error) {
 	g := &outageGate{now: o.now()}
@@ -136,7 +137,7 @@ func outageFor(repoRoot, runID string, o Options) (*outageGate, error) {
 	run.Now = o.Now
 	g.run = run
 	g.session = o.Session
-	if g.session == "" {
+	if g.session == "" && runID != "" {
 		if claims, err := run.Claims(); err == nil {
 			for _, c := range claims {
 				if c.Lane == runID && c.Session != "" && !c.Unreadable {

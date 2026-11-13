@@ -166,7 +166,10 @@ func TestADriveStartRefusesWhatItCannotCompare(t *testing.T) {
 		repo, _, _ := hookedOrigin(t)
 		repo.Git("config", "core.hooksPath", "~no-such-user-of-this-machine/hooks")
 		tm, err := startDrive(t, repo)
-		startRefused(t, tm, err, "")
+		r := startRefused(t, tm, err, "asking git for the hooks directory it runs (git rev-parse --git-path hooks)")
+		if r.Stage != StageConfig {
+			t.Fatalf("the read stops the start at the config stage: %+v", r)
+		}
 	})
 	t.Run("an in-tree hooks directory that cannot be read", func(t *testing.T) {
 		if os.Geteuid() == 0 {
@@ -284,7 +287,7 @@ func TestADriveStartLeavesTheGitDirectorysOwnHooksAlone(t *testing.T) {
 	if err != nil || tm.o.Options.remote == nil {
 		t.Fatalf("the drive starts: %v", err)
 	}
-	if ownHooksDir(repo.Root(), tm.o.Options.remote.hooksDir) != "" {
+	if rel, err := ownHooksDir(repo.Root(), tm.o.Options.remote.hooksDir); err != nil || rel != "" {
 		t.Fatalf("the git directory's hooks are not the tree's own: %s", tm.o.Options.remote.hooksDir)
 	}
 }

@@ -265,7 +265,7 @@ func TestALanesPinHoldsItsHooksTreeAtEveryDepth(t *testing.T) {
 			return added, err
 		}
 		_, _, err := openHookedLane(t, repo)
-		worktreeRefused(t, err, "through a directory that is not the commit's")
+		worktreeRefused(t, err, "itself a symlink")
 	})
 	t.Run("the file a committed link points at differs in the lane", func(t *testing.T) {
 		repo := linked(t, "../scripts/hook.sh")

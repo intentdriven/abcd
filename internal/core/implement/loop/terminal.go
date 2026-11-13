@@ -657,64 +657,48 @@ func (t *terminal) failed(ctx context.Context, judge bool, what string) bool {
 func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 	t.ctx = ctx
 	t.joinSharedRun()
-	// The settings the drive holds, the checkout's hooks directory and
+	// The settings the drive holds, the hooks directories its git runs and
 	// info/attributes are read once, before the drive's first move, and held
 	// here for the lanes it opens (remoteid.go, with what it cannot hold): a
 	// lane's agent can rewrite the checkout's settings and hooks, and each
 	// lane's run records its own afresh. A restarted drive reads them
 	// afresh, and so compares an in-tree hooks copy with the tip origin
 	// reports at that moment (proveCheckoutHooks). The drive refuses to start
-	// when the settings cannot be listed in either environment its git runs
-	// in, git cannot name the hooks directory it runs at the checkout, the
-	// common git directory cannot be resolved, the hooks tree is past its
-	// bound (readRemoteIdentity), or the comparison finds a difference. An
-	// origin it cannot reach for a network reason is waited on as a lane's
-	// ask of origin is (stepRefused: idle at the wait floor, ending once
-	// nothing has moved for as long as a drive waits), then asked again.
+	// when a read the hold depends on gives no answer it can take, the hooks
+	// tree is past its bound (readRemoteIdentity), or the comparison finds a
+	// difference. The ask of origin is a lane's ask (startHold): it waits on
+	// the run's shared outage and reports a lost network to it, and its wait
+	// is the drive's own, ended by the bounds every pass of the loop below
+	// obeys (boundEnded) and by nothing moving for as long as a drive waits
+	// (idle), then asked again.
 	var id *remoteIdentity
 	for {
 		var err error
-		id, err = readRemoteIdentity(t.repoRoot)
-		if err == nil {
-			err = proveCheckoutHooks(t.repoRoot, id)
-		}
-		if err == nil {
+		if id, err = t.startHold(); err == nil {
 			break
 		}
-		if r, ok := AsRefusal(err); ok && r.Contention {
-			if ctx.Err() == nil && !t.stopped() && t.idle(ctx, TerminalWaitFloor, r.Reason) {
-				return t.ended(TerminalWaited), nil
-			}
-			if ctx.Err() != nil {
-				return t.ended(TerminalKilled), nil
-			}
-			if t.stopped() {
-				return t.ended(TerminalStopped), nil
-			}
-			continue
+		r, ok := AsRefusal(err)
+		if !ok || !r.Contention {
+			t.leaveSharedRun()
+			return TerminalResult{}, startRefusal(t.repoRoot, err)
 		}
-		t.leaveSharedRun()
-		return TerminalResult{}, startRefusal(t.repoRoot, err)
+		if ended := t.boundEnded(ctx); ended != "" {
+			return t.ended(ended), nil
+		}
+		if t.idle(ctx, TerminalWaitFloor, r.Reason) {
+			return t.ended(TerminalWaited), nil
+		}
+		if ended := t.boundEnded(ctx); ended != "" {
+			return t.ended(ended), nil
+		}
 	}
 	t.o.Options.remote = id
 	if t.o.Resumed {
 		t.reportHeldBack()
 	}
 	for {
-		if ctx.Err() != nil {
-			return t.ended(TerminalKilled), nil
-		}
-		if t.stopped() {
-			return t.ended(TerminalStopped), nil
-		}
-		if t.stopHolds() {
-			return t.ended(TerminalHalted), nil
-		}
-		if t.pastBound() {
-			return t.ended(TerminalUntil), nil
-		}
-		if !t.wallHeld() {
-			return t.ended(TerminalWall), nil
+		if ended := t.boundEnded(ctx); ended != "" {
+			return t.ended(ended), nil
 		}
 		if t.boundaryDue && t.o.AtBoundary != nil && !t.boundaryHeld() {
 			t.boundaryDue = false
@@ -835,6 +819,54 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		// release does not wait on it.
 		t.inHand = !t.passedLane(res.Lane.RunID) && t.laneInProgress(res.Lane.RunID)
 	}
+}
+
+// boundEnded is how the drive ends at the top of each pass, "" when it goes
+// on: killed, stopped from the terminal, halted by a stop set from outside,
+// past the person's bound, or held by the check before a stage. The start's
+// wait on origin obeys it too.
+func (t *terminal) boundEnded(ctx context.Context) string {
+	switch {
+	case ctx.Err() != nil:
+		return TerminalKilled
+	case t.stopped():
+		return TerminalStopped
+	case t.stopHolds():
+		return TerminalHalted
+	case t.pastBound():
+		return TerminalUntil
+	case !t.wallHeld():
+		return TerminalWall
+	}
+	return ""
+}
+
+// startHold is one try at what the drive holds as it starts
+// (readRemoteIdentity) and the start's comparison with origin's tip
+// (proveCheckoutHooks), the ask of origin made as a lane's is: through the
+// run's shared outage (outageFor, which runs the shared network probe when
+// it is due), so while the outage has the network down the ask is not made,
+// and a lost network is reported to it.
+func (t *terminal) startHold() (*remoteIdentity, error) {
+	id, err := readRemoteIdentity(t.repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	g, err := outageFor(t.repoRoot, "", t.o.Options)
+	if err != nil {
+		return nil, err
+	}
+	err = proveCheckoutHooks(t.repoRoot, id, g)
+	g.record()
+	if note := g.recordNote(); note != "" {
+		if r, ok := AsRefusal(err); ok {
+			r.Remedy += "; " + note
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return id, nil
 }
 
 // boundaryHeld reports whether a due boundary waits: for a skip the run gave and the next

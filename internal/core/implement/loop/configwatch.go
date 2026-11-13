@@ -213,10 +213,22 @@ func takeFingerprint(repoRoot string, lanes []laneDir, salt string, now time.Tim
 		}
 		// The hooks directory git runs in the lane, asked of git there
 		// (hooksDirAt): a relative core.hooksPath is the lane's own copy.
-		// Where git cannot name one, git runs no hook there either, and the
-		// lane's hooks are passed over as its config would be.
+		// git reads the lane's config here, so a hooks directory it cannot
+		// name, or names in a form abcd does not take, stops the step
+		// (readFailure); it is never passed over as unchanged. Where git
+		// says there is no repository at the lane's path (noRepository),
+		// git runs no hook there, and the lane holds no hooks.
 		hashEntries(wt.Keys, salt, entries)
-		if dir, err := hooksDirAt(lane); err == nil && !samePath(repoRoot, dir, hooks) {
+		dir, err := hooksDirAt(lane)
+		if err != nil {
+			none, nerr := noRepository(lane)
+			if nerr != nil || !none {
+				return fp, err
+			}
+			fp.Worktrees[lane] = wt
+			continue
+		}
+		if !samePath(repoRoot, dir, hooks) {
 			hashDir(wt.Hooks, salt, dir)
 		}
 		fp.Worktrees[lane] = wt
@@ -334,30 +346,49 @@ func laneDirKind(salt, path string) string {
 	}
 }
 
-// hooksDirAt is the hooks directory git runs in the working tree at dir,
-// asked of git itself (`git rev-parse --git-path hooks`) through the command
-// constructor the lane's add, commit, merge and reset run through
-// (gitutil.WorkingTreeCommitCommand), so in the environment they run in: git
-// expands core.hooksPath (a home form, ~user, %(prefix), :(optional)) under
-// that environment's home and settings, as it does for them, and abcd expands
-// nothing. A relative answer is under dir. git failing to answer, or an
-// answer that is not one line, is an error: the caller stops rather than hash
-// a directory git would not run.
-func hooksDirAt(dir string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), originAskTimeout)
-	defer cancel()
-	out, err := workingTreeAsk(ctx, dir, 4096, "rev-parse", "--git-path", "hooks")
+// noRepository reports whether git, asked at dir in the isolated
+// environment (`git rev-parse --git-dir`, in the C locale), says there is no
+// repository there or above it: status 128 with git's own "not a git
+// repository". Any other answer is not that, and a read that gives none is a
+// readFailure.
+func noRepository(dir string) (bool, error) {
+	a, err := isolatedEnv.read(dir, "asking git whether a repository stands at the lane's path (git rev-parse --git-dir)", 4096, "rev-parse", "--git-dir")
 	if err != nil {
-		return "", fmt.Errorf("asking git for the hooks directory it runs: %w", err)
+		return false, err
 	}
-	out = strings.TrimSuffix(out, "\n")
-	if out == "" || strings.ContainsAny(out, "\n\x00") {
-		return "", errors.New("asking git for the hooks directory it runs: git did not answer with one path")
+	return a.code == 128 && strings.Contains(a.said, "fatal: not a git repository"), nil
+}
+
+// hooksDirAt is the hooks directory git runs in the working tree at dir in
+// the environment the lane's add, commit, merge and reset run in
+// (hooksDirIn, stageEnv).
+func hooksDirAt(dir string) (string, error) { return hooksDirIn(stageEnv, dir) }
+
+// hooksDirIn is the hooks directory git runs in the working tree at dir in
+// e, asked of git itself (`git rev-parse --git-path hooks`) there: git
+// expands core.hooksPath (a home form, ~user, %(prefix), :(optional)) under
+// that environment's home and settings, as it does for the commands that run
+// in it, and abcd expands nothing. A relative answer is under dir. git
+// failing, not finishing, or answering with other than one path (a value
+// holding a newline among them) is a readFailure naming the read: the caller
+// stops rather than hash a directory git would not run.
+func hooksDirIn(e *gitEnv, dir string) (string, error) {
+	what := "asking git for the hooks directory it runs (git rev-parse --git-path hooks)"
+	a, err := e.read(dir, what, 4096, "rev-parse", "--git-path", "hooks")
+	if err != nil {
+		return "", err
 	}
-	if !filepath.IsAbs(out) {
-		out = filepath.Join(dir, out)
+	if a.code != 0 {
+		return "", e.exited(what, a)
 	}
-	return filepath.Clean(out), nil
+	p, ok := onePath(a.out)
+	if !ok {
+		return "", e.failed(what, "git did not answer with one path (a core.hooksPath holding a newline answers so), so the answer is not taken")
+	}
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(dir, p)
+	}
+	return filepath.Clean(p), nil
 }
 
 // workingTreeAsk runs one read-only git command at dir through
@@ -374,7 +405,7 @@ func workingTreeAsk(ctx context.Context, dir string, limit int, args ...string) 
 		if ctx.Err() != nil {
 			return "", fmt.Errorf("git %s did not answer within %s", args[0], originAskTimeout)
 		}
-		return "", fmt.Errorf("git %s: %v (%s)", args[0], err, fsutil.RedactHome(gitutil.ScrubURLCredentials(strings.TrimSpace(stderr.b.String()))))
+		return out.b.String(), fmt.Errorf("git %s: %w (%s)", args[0], err, fsutil.RedactHome(gitutil.ScrubURLCredentials(strings.TrimSpace(stderr.b.String()))))
 	}
 	if out.over {
 		return "", fmt.Errorf("git %s answered past %d bytes", args[0], limit)
@@ -439,10 +470,13 @@ func hashDir(into map[string]string, salt, dir string) (steps int, over bool) {
 // maxHookCount bounds countEntries.
 const maxHookCount = 64 * maxHookEntries
 
-// countEntries counts the entries at every depth of dir, following no link,
-// up to maxHookCount: the marker of a tree past maxHookEntries carries it, so
+// countEntries counts the entries at every depth of dir (resolved, when dir
+// is itself a link), following no link below it, up to maxHookCount: the marker of a tree past maxHookEntries carries it, so
 // an entry added or removed past the bound changes the record.
 func countEntries(dir string) int {
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = real // a hooks directory that is itself a link is counted where it resolves
+	}
 	n := 0
 	_ = filepath.WalkDir(dir, func(p string, _ fs.DirEntry, err error) error {
 		if p == dir {
@@ -796,7 +830,10 @@ func configTripwire(repoRoot, runID string) error {
 // A configuration git cannot read at all (no git, a config file git refuses)
 // passes: git that cannot read it cannot start a program it names either, and
 // the step's own git meets the same failure. One read only in part (past the
-// read's cap) is refused, since part of it went unseen.
+// read's cap) is refused, since part of it went unseen, and so is a read of
+// the hooks directory git runs that gave no answer the check can take (git
+// failed, did not finish, or answered with other than one path: a
+// readFailure), naming the read: that is never read as nothing changed.
 func configTripwireIn(repoRoot string, root *os.Root, runID string) error {
 	st, err := readStateIn(root, runID)
 	if err != nil || st.Complete() {
@@ -814,9 +851,13 @@ func configTripwireIn(repoRoot string, root *os.Root, runID string) error {
 			return err
 		}
 		fp, err := takeFingerprint(repoRoot, lanes, salt, now)
+		if r := readRefusal(repoRoot, err); r != nil {
+			return r
+		}
 		if err != nil {
-			// Nothing was recorded to compare against, so the run is not
-			// refused for it; the next check tries again.
+			// git cannot read the configuration: nothing was recorded to
+			// compare against, so the run is not refused for it; the next
+			// check tries again.
 			return nil
 		}
 		return writeFingerprint(root, runID, fp)
@@ -826,8 +867,11 @@ func configTripwireIn(repoRoot string, root *os.Root, runID string) error {
 		return refuse(StageConfig, "", "", "the repository's git configuration is too large to read whole, so whether it changed during the run cannot be told: "+scanner.RedactRefusal(repoRoot, fsutil.RedactHome(err.Error())),
 			"look at the repository's git configuration (`git config --local --list --show-origin`); nothing was changed")
 	}
+	if r := readRefusal(repoRoot, err); r != nil {
+		return r
+	}
 	if err != nil {
-		return nil
+		return nil // git cannot read the configuration (above)
 	}
 	changed := was.changes(repoRoot, cur)
 	if len(changed) == 0 {
@@ -838,6 +882,18 @@ func configTripwireIn(repoRoot string, root *os.Root, runID string) error {
 			"; a setting that names a program runs on the loop's next git step as on your own, so no git step is taken",
 		"look at what changed (`git config --local --list --show-origin`, the hooks directory and info/attributes); "+
 			"once you trust it, run the same `abcd implement step` again with "+AcceptConfigFlag+"; nothing was changed")
+}
+
+// readRefusal is the step's refusal at the config stage of a read the check
+// depends on that gave no answer it can take (a readFailure), naming the
+// read and why; nil for any other error.
+func readRefusal(repoRoot string, err error) error {
+	var rf *readFailure
+	if !errors.As(err, &rf) {
+		return nil
+	}
+	return refuse(StageConfig, "", "", "a read the check of the repository's git configuration depends on gave no answer it can take, so whether it changed during the run cannot be told: "+scanner.RedactRefusal(repoRoot, fsutil.RedactHome(err.Error())),
+		readRemedy("run the step again"))
 }
 
 // AcceptConfigChange re-records the run's fingerprint from the repository as
@@ -990,7 +1046,12 @@ func pinLaneHooks(c Context, laneID, lanePath, base, tip string) error {
 			"git cannot name the hooks directory it runs in the lane, so the lane's hooks cannot be proved: "+scanner.RedactRefusal(c.RepoRoot, fsutil.RedactHome(err.Error())),
 			"look at the core.hooksPath git reads (`git config --show-scope --show-origin --get-all core.hooksPath`)"+again)
 	}
-	rel := ownHooksDir(lane, hooksDir)
+	rel, err := ownHooksDir(lane, hooksDir)
+	if err != nil {
+		return refuse(StageConfig, "", laneID,
+			"a read the lane's hooks proof depends on gave no answer it can take, so the lane's hooks cannot be proved: "+scanner.RedactRefusal(c.RepoRoot, fsutil.RedactHome(err.Error())),
+			readRemedy("run `abcd implement step` again"))
+	}
 	if rel == "" {
 		return nil
 	}
@@ -1047,27 +1108,44 @@ func pinLaneHooks(c Context, laneID, lanePath, base, tip string) error {
 // ownHooksDir is the hooks directory hooksDir (as git names it: hooksDirAt),
 // relative to dir and slash-separated, when it lies inside the working tree
 // at dir, read as written or with both resolved (a checkout reached through a
-// linked parent); "" when it lies outside it, is the tree itself, or lies in
-// the tree's .git (the git directory's own hooks, which no commit holds).
-func ownHooksDir(dir, hooksDir string) string {
+// linked parent); "" when it lies outside it, is the tree itself, lies under
+// the tree's own .git entry (named exactly so), or lies in the git directory
+// or the common git directory git reports for dir, resolved (git's own hooks
+// there, which no commit can hold, since git tracks no path in its own
+// directory). A git directory git cannot report is
+// a readFailure: the caller stops rather than compare or skip on a guess.
+func ownHooksDir(dir, hooksDir string) (string, error) {
 	if hooksDir == "" {
-		return ""
+		return "", nil
 	}
 	in := func(dir, hooksDir string) string {
 		rel, err := filepath.Rel(dir, hooksDir)
 		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
 			return ""
 		}
-		rel = filepath.ToSlash(rel)
-		if first, _, _ := strings.Cut(rel, "/"); strings.EqualFold(first, ".git") {
-			return ""
+		return filepath.ToSlash(rel)
+	}
+	rel := in(filepath.Clean(dir), filepath.Clean(hooksDir))
+	if rel == "" {
+		rel = in(fsutil.RealExistingPath(filepath.Clean(dir)), fsutil.RealExistingPath(filepath.Clean(hooksDir)))
+	}
+	if first, _, _ := strings.Cut(rel, "/"); rel == "" || first == ".git" {
+		// git's own entry at the top of the tree (the git directory, or in a
+		// linked worktree the file naming it), whose name git compares
+		// exactly here and never tracks.
+		return "", nil
+	}
+	real := fsutil.RealExistingPath(filepath.Clean(hooksDir))
+	for _, flag := range []string{"--git-dir", "--git-common-dir"} {
+		gitDir, err := gitutil.RevParseAbsPath(dir, flag)
+		if err != nil {
+			return "", &readFailure{what: "asking git for the git directory (git rev-parse " + flag + ")", why: fsutil.RedactHome(gitutil.ScrubURLCredentials(err.Error()))}
 		}
-		return rel
+		if g := fsutil.RealExistingPath(gitDir); real == g || within(g, real) {
+			return "", nil
+		}
 	}
-	if rel := in(filepath.Clean(dir), filepath.Clean(hooksDir)); rel != "" {
-		return rel
-	}
-	return in(fsutil.RealExistingPath(filepath.Clean(dir)), fsutil.RealExistingPath(filepath.Clean(hooksDir)))
+	return rel, nil
 }
 
 // checkoutHooksPath is the core.hooksPath git takes at the checkout, from
@@ -1108,7 +1186,10 @@ func checkoutHooksPath(repoRoot string) (string, error) {
 // branch's content outside the hooks directory is its own and is not vouched
 // for. A hooks directory outside the working tree passes.
 func standingBranchHooks(c Context, laneID, head, branch, tip, hooksDir string) error {
-	rel := ownHooksDir(c.RepoRoot, hooksDir)
+	rel, err := ownHooksDir(c.RepoRoot, hooksDir)
+	if err != nil {
+		return heldReadRefusal(c, laneID, err)
+	}
 	if rel == "" {
 		return nil
 	}
@@ -1380,30 +1461,51 @@ func (p *hookProof) link(at, from, target string, depth int) error {
 	if linkStaysIn(p.root, from, target) {
 		return nil
 	}
-	to := target
-	if !filepath.IsAbs(to) {
-		to = filepath.Join(filepath.Dir(from), to)
-	}
-	to = filepath.Clean(to)
 	// Whether the target leaves the tree is read from the link's text, which
-	// is the commit's own; where it resolves on disk is judged below.
-	rel := ""
-	if p.tree != nil && p.realTree != "" {
-		rel = p.treeRel(to)
+	// is the commit's own. One that stays in it is resolved as the system
+	// resolves it, component by component from the tree (linkTarget): a
+	// ".." after a component that is itself a link is never read as cleaned
+	// text.
+	lex := target
+	if !filepath.IsAbs(lex) {
+		lex = filepath.Join(filepath.Dir(from), lex)
 	}
-	if rel == "" {
+	lex = filepath.Clean(lex)
+	if p.tree == nil || p.realTree == "" || (!within(filepath.Clean(p.tree.dir), lex) && !within(p.realTree, lex)) {
 		p.err.linkOut = append(p.err.linkOut, at)
 		return errors.New("is a symlink whose target leaves the working tree, which cannot be proved against the commit")
+	}
+	start, text := filepath.Dir(from), target
+	if filepath.IsAbs(target) {
+		start, text = p.realTree, ""
+		for _, base := range []string{filepath.Clean(p.tree.dir), p.realTree} {
+			if rest, ok := strings.CutPrefix(target, base+string(filepath.Separator)); ok {
+				text = rest
+				break
+			}
+		}
+		if text == "" {
+			return errors.New("names the working tree in a form the proof does not follow")
+		}
+	}
+	to, err := linkTarget(start, text)
+	if err != nil {
+		return err
+	}
+	rel := ""
+	if within(p.realTree, to) {
+		if r, err := filepath.Rel(p.realTree, to); err == nil {
+			rel = filepath.ToSlash(r)
+		}
+	}
+	if rel == "" {
+		return fmt.Errorf("resolves to %s, outside the working tree its text names, which the proof does not prove", to)
 	}
 	if rel == "." {
 		return errors.New("points at the working tree itself, which the proof does not prove")
 	}
 	if depth >= maxLinkDepth {
 		return fmt.Errorf("reaches its target through more than %d symlinks, which the proof does not follow", maxLinkDepth)
-	}
-	parent, err := filepath.EvalSymlinks(filepath.Dir(to))
-	if err != nil || parent != filepath.Join(p.realTree, filepath.FromSlash(path.Dir(rel))) {
-		return fmt.Errorf("points at %s through a directory that is not the commit's, which the proof does not prove", rel)
 	}
 	e, ok, err := treeEntryAt(p.tree.repoRoot, p.tree.commit, rel)
 	if err != nil {
@@ -1423,6 +1525,48 @@ func (p *hookProof) link(at, from, target string, depth int) error {
 		return p.linkedDir(at, to, e.oid)
 	}
 	return nil
+}
+
+// linkTarget is the path target, a link's text relative to the directory
+// start, names, resolved as the system resolves it: from start (resolved),
+// one component at a time, a ".." taking the parent of the directory reached
+// so far. Every component but the last must be a real directory: one that
+// is a link, or is not there, is refused, since the proof does not follow a
+// link on the way. The last component is the target itself, proved by the
+// caller.
+func linkTarget(start, target string) (string, error) {
+	cur, err := filepath.EvalSymlinks(start)
+	if err != nil {
+		return "", fmt.Errorf("stands in a directory that cannot be resolved: %v", err)
+	}
+	parts := strings.Split(filepath.ToSlash(target), "/")
+	last := len(parts) - 1
+	for last >= 0 && (parts[last] == "" || parts[last] == ".") {
+		last--
+	}
+	for i, part := range parts {
+		switch {
+		case part == "" || part == ".":
+			continue
+		case part == "..":
+			cur = filepath.Dir(cur)
+			continue
+		}
+		cur = filepath.Join(cur, part)
+		if i == last {
+			break
+		}
+		fi, err := os.Lstat(cur)
+		switch {
+		case err != nil:
+			return "", fmt.Errorf("names %s on its way, which cannot be examined, so the proof does not follow it: %v", cur, err)
+		case fi.Mode()&fs.ModeSymlink != 0:
+			return "", fmt.Errorf("reaches its target through %s, itself a symlink, which the proof does not follow", cur)
+		case !fi.IsDir():
+			return "", fmt.Errorf("names %s on its way, which is not a directory", cur)
+		}
+	}
+	return cur, nil
 }
 
 // linkedDir proves the directory at to, which a link recorded at at resolves
@@ -1447,20 +1591,6 @@ func (p *hookProof) linkedDir(at, to, oid string) error {
 		return fmt.Errorf("resolves to a directory that cannot be read: %v", err)
 	}
 	return p.prove(&proofScope{want: want, disk: to, record: at, seen: map[string]bool{}}, des)
-}
-
-// treeRel is to relative to the proof's working tree, slash-separated, read
-// as written or against the tree resolved ("." for the tree itself); "" when
-// it is outside it.
-func (p *hookProof) treeRel(to string) string {
-	for _, base := range []string{filepath.Clean(p.tree.dir), p.realTree} {
-		if base != "" && within(base, to) {
-			if rel, err := filepath.Rel(base, to); err == nil {
-				return filepath.ToSlash(rel)
-			}
-		}
-	}
-	return ""
 }
 
 // treeEntryAt is the entry a commit records at rel, slash-separated from its

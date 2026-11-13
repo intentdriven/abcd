@@ -48,7 +48,7 @@ func stagedGit(t *testing.T) string {
 // lanes, a home-form include whose file under the stage's home changes, and
 // the stage home's global attributes file written between two lanes, each
 // refuse the second lane at its worktree stage, naming what changed, before
-// its add. Each reading of the two environments differs from the other at the
+// its add. The readings of the environments differ from each other at the
 // first lane (the ask's home holds none of these files), and the first lane
 // opens: a difference between the environments is not a change.
 func TestADriveHoldsWhatItsLanesGitReadsUnderTheStagesHome(t *testing.T) {
@@ -123,11 +123,11 @@ func TestAKeyWithNoValueIsHeldApartFromAnEmptyOne(t *testing.T) {
 		t.Helper()
 		repo.Git("config", "--remove-section", "filter.x")
 		appendFile(t, cfg, "[filter \"x\"]\n\t"+line+"\n")
-		held, err := readHeldSettings(askEnv, repo.Root(), "salt")
+		held, err := readHeldSettings(personEnv, repo.Root(), "salt", map[string]string{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		return held.keys["filter.x.clean"]
+		return held["filter.x.clean"]
 	}
 	repo.Git("config", "filter.x.smudge", "cat")
 	bare, empty := read("clean"), read("clean =")
