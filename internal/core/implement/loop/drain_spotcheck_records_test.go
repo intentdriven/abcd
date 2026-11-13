@@ -17,7 +17,7 @@ import (
 
 func localRecords(t *testing.T, root string) spotcheck.Records {
 	t.Helper()
-	rec, _, err := spotcheck.Read(context.Background(), root, spotcheck.LocalRef)
+	rec, _, err := spotcheck.ReadForTest(context.Background(), root, spotcheck.LocalRef)
 	if err != nil {
 		t.Fatal(err)
 	}

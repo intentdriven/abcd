@@ -39,7 +39,7 @@ func handBack(issue string, at time.Time) HandBack {
 
 func readLocal(t *testing.T, root string) Records {
 	t.Helper()
-	rec, ok, err := Read(context.Background(), root, LocalRef)
+	rec, ok, err := read(context.Background(), root, LocalRef)
 	if err != nil || !ok {
 		t.Fatalf("Read(local) = ok %v, %v", ok, err)
 	}
@@ -162,7 +162,7 @@ func TestAnUnreadableStoreIsNeverEmpty(t *testing.T) {
 	a, _, _ := twoClones(t)
 	blob := strings.TrimSpace(a.Git("hash-object", "-w", "a.txt"))
 	a.Git("update-ref", TrackingRef, blob)
-	if _, _, err := Read(context.Background(), a.Root(), TrackingRef); err == nil {
+	if _, _, err := read(context.Background(), a.Root(), TrackingRef); err == nil {
 		t.Fatal("Read of a ref naming a blob succeeded")
 	}
 	if _, err := WriteHandBack(context.Background(), a.Root(), handBack("iss-1", at0)); err == nil {
@@ -243,11 +243,11 @@ func TestTwoWritersBothKeepTheirRecords(t *testing.T) {
 	if _, err := WriteHandBack(ctx, b.Root(), handBack("iss-2", at0)); err != nil {
 		t.Fatal(err)
 	}
-	if res, err := Push(ctx, a.Root()); err != nil || res.Pushed != 1 {
+	if res, err := push(ctx, a.Root()); err != nil || res.Pushed != 1 {
 		t.Fatalf("a's push = %+v, %v", res, err)
 	}
 	first := gitIn(t, bare, "rev-parse", BranchRef)
-	res, err := Push(ctx, b.Root())
+	res, err := push(ctx, b.Root())
 	if err != nil || res.Pushed != 1 {
 		t.Fatalf("b's push = %+v, %v", res, err)
 	}
@@ -257,7 +257,7 @@ func TestTwoWritersBothKeepTheirRecords(t *testing.T) {
 	// No force: a's commit is still on the branch's history.
 	gitIn(t, bare, "merge-base", "--is-ancestor", first, BranchRef)
 	// A push with nothing new pushes nothing.
-	if res, err := Push(ctx, b.Root()); err != nil || res.Commit != "" {
+	if res, err := push(ctx, b.Root()); err != nil || res.Commit != "" {
 		t.Fatalf("a second push = %+v, %v; want nothing pushed", res, err)
 	}
 }
@@ -281,12 +281,12 @@ func TestALostRaceIsTriedOnceMore(t *testing.T) {
 		if _, err := WriteHandBack(ctx, a.Root(), handBack("iss-1", at0)); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := Push(ctx, a.Root()); err != nil {
+		if _, err := push(ctx, a.Root()); err != nil {
 			t.Fatal(err)
 		}
 		beforePush = func(int) {}
 	}
-	res, err := Push(ctx, b.Root())
+	res, err := push(ctx, b.Root())
 	if err != nil || res.Pushed != 1 || races != 1 {
 		t.Fatalf("b's push = %+v, %v (races %d)", res, err, races)
 	}
@@ -312,12 +312,12 @@ func TestASecondLostRaceKeepsTheRecordsForTheNextPush(t *testing.T) {
 		if _, err := WriteHandBack(ctx, a.Root(), handBack("iss-1", at0.Add(time.Duration(n)*time.Minute))); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := Push(ctx, a.Root()); err != nil {
+		if _, err := push(ctx, a.Root()); err != nil {
 			t.Fatal(err)
 		}
 		beforePush = saved
 	}
-	if _, err := Push(ctx, b.Root()); err == nil {
+	if _, err := push(ctx, b.Root()); err == nil {
 		t.Fatal("a push that lost twice succeeded")
 	}
 	beforePush = nil
@@ -328,7 +328,7 @@ func TestASecondLostRaceKeepsTheRecordsForTheNextPush(t *testing.T) {
 	if rec := readLocal(t, b.Root()); !slices.ContainsFunc(rec.HandBacks, func(h HandBack) bool { return h.Issue == "iss-2" }) {
 		t.Fatalf("b's local copy lost its record: %+v", rec.HandBacks)
 	}
-	if res, err := Push(ctx, b.Root()); err != nil || res.Pushed != 1 {
+	if res, err := push(ctx, b.Root()); err != nil || res.Pushed != 1 {
 		t.Fatalf("the next push = %+v, %v", res, err)
 	}
 	if got := remoteFiles(t, bare); len(got) != 3 {
@@ -352,14 +352,14 @@ func TestARecordOriginAlreadyHoldsIsKeptAsOriginsAndNamed(t *testing.T) {
 	if _, err := WriteHandBack(ctx, b.Root(), handBack("iss-2", at0)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Push(ctx, a.Root()); err != nil {
+	if _, err := push(ctx, a.Root()); err != nil {
 		t.Fatal(err)
 	}
-	res, err := Push(ctx, b.Root())
+	res, err := push(ctx, b.Root())
 	if err != nil || res.Pushed != 1 || len(res.Dropped) != 1 || res.Dropped[0] != "handbacks/20261113T070000Z-iss-1.json" {
 		t.Fatalf("b's push = %+v, %v", res, err)
 	}
-	rec, _, err := Read(ctx, b.Root(), TrackingRef)
+	rec, _, err := read(ctx, b.Root(), TrackingRef)
 	if err != nil {
 		t.Fatal(err)
 	}

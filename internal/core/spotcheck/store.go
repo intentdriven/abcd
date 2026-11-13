@@ -14,10 +14,10 @@
 // touching no HEAD, index or working tree, and reaches no network. LocalRef
 // lives outside refs/heads/ and refs/remotes/, so no fetch moves it and every
 // worktree of the checkout shares it: a lane's worktree removed after its
-// landing takes none of its records with it. Push carries the local copy to
-// origin: one fetch of the branch, the records origin lacks laid over its tip,
-// and one plain push, never forced, so nothing another writer pushed is
-// dropped; a push origin rejects is tried once more after a fresh fetch, and
+// landing takes none of its records with it. push, which no verb calls yet,
+// carries the local copy to origin: one fetch of the branch, the records
+// origin lacks laid over its tip, and one plain push, never forced, so
+// nothing another writer pushed is dropped; a push origin rejects is tried once more after a fresh fetch, and
 // one that fails again leaves every record on the local copy for the next
 // push. A record whose name origin already holds is kept as origin holds it,
 // and the note says so.
@@ -646,9 +646,15 @@ type Records struct {
 	Unreadable []string
 }
 
-// Read reads the store at ref (LocalRef or TrackingRef). A ref the checkout
+// ReadForTest is read, for another package's test to read what its code
+// wrote.
+func ReadForTest(ctx context.Context, root, ref string) (Records, bool, error) {
+	return read(ctx, root, ref)
+}
+
+// read reads the store at ref (LocalRef or TrackingRef). A ref the checkout
 // does not hold reads as no records, with ok false.
-func Read(ctx context.Context, root, ref string) (rec Records, ok bool, err error) {
+func read(ctx context.Context, root, ref string) (rec Records, ok bool, err error) {
 	r, err := readRefs(ctx, root)
 	if err != nil {
 		return Records{}, false, err
@@ -740,7 +746,7 @@ func sameAsWritten(v any, data []byte) bool {
 	return err == nil && bytes.Equal(want, data)
 }
 
-// PushResult is what one Push carried to origin.
+// PushResult is what one push carried to origin.
 type PushResult struct {
 	// Commit is origin's copy after the push, "" when nothing was pushed.
 	Commit string
@@ -755,7 +761,7 @@ type PushResult struct {
 // test races another writer through.
 var beforePush func(attempt int)
 
-// Push carries the local copy's records to origin: a fetch of the branch,
+// push carries the local copy's records to origin: a fetch of the branch,
 // the records origin lacks laid over its tip when another writer moved it,
 // and one plain push (claim.PushBranch), never forced. A push origin rejects
 // (a writer that pushed between the fetch and the push) is tried once more
@@ -763,7 +769,7 @@ var beforePush func(attempt int)
 // on the local copy for the next push. Nothing origin holds is removed or
 // rewritten. A checkout whose local copy holds nothing origin lacks pushes
 // nothing.
-func Push(ctx context.Context, root string) (PushResult, error) {
+func push(ctx context.Context, root string) (PushResult, error) {
 	if err := originPresent(ctx, root); err != nil {
 		return PushResult{}, err
 	}

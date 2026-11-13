@@ -2367,8 +2367,16 @@ func askMergeGate(c Context, lane Lane, def string, rule landing.MergeRule) (lan
 	}
 	roots, _ := layered.RootsFor(c.RepoRoot)
 	unrecorded := recordOwnReview(c, lane, roots, tip, Remote+"/"+def)
-	d, err := landing.DecideMergeRecorded(landing.MergeQuery{RepoRoot: c.RepoRoot, Roots: roots, Tip: tip, TipName: Remote + "/" + def, Default: def,
-		Rule: rule, Repo: "{owner}/{repo}", PR: strconv.Itoa(lane.PR), Head: lane.Landing.Pushed, Forge: gateForge(c, lane)}, spotcheck.SiteLane)
+	// The forge's answers are remembered for the call, so the spot-check's
+	// record of the decision asks it nothing more (landing.RecordMergeGate).
+	q := landing.MergeQuery{RepoRoot: c.RepoRoot, Roots: roots, Tip: tip, TipName: Remote + "/" + def, Default: def,
+		Rule: rule, Repo: "{owner}/{repo}", PR: strconv.Itoa(lane.PR), Head: lane.Landing.Pushed, Forge: landing.RememberForge(gateForge(c, lane))}
+	d, err := landing.DecideMerge(q)
+	if err == nil {
+		if note := landing.RecordMergeGate(q, d, spotcheck.SiteLane); note != "" {
+			d.Why += "; " + note
+		}
+	}
 	if err != nil {
 		r := refuse(string(StageLand), "", lane.ID, termsafe.Sanitize(fsutil.RedactHome(err.Error()))+" at "+Remote+"/"+def+", so nothing was armed",
 			"correct the file it names, then run `abcd implement step` again")

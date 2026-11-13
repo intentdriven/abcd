@@ -16,7 +16,7 @@ import (
 // gateRecordedAt asks the recorded gate about a fixture's head.
 func gateRecordedAt(t *testing.T, f *fixture) MergeDecision {
 	t.Helper()
-	d, err := DecideMergeRecorded(MergeQuery{RepoRoot: f.repo.Root(), Roots: f.options().Roots, Tip: f.repo.Git("rev-parse", "origin/main"), TipName: "origin/main", Default: "main",
+	d, err := decideMergeRecorded(MergeQuery{RepoRoot: f.repo.Root(), Roots: f.options().Roots, Tip: f.repo.Git("rev-parse", "origin/main"), TipName: "origin/main", Default: "main",
 		Repo: "o/r", PR: "7", Head: f.head(), Forge: func(args ...string) (string, error) { return f.forge.run("", args...) }}, spotcheck.SiteLand)
 	if err != nil {
 		t.Fatal(err)
@@ -26,7 +26,7 @@ func gateRecordedAt(t *testing.T, f *fixture) MergeDecision {
 
 func gateRecords(t *testing.T, f *fixture) []spotcheck.Decision {
 	t.Helper()
-	rec, _, err := spotcheck.Read(context.Background(), f.repo.Root(), spotcheck.LocalRef)
+	rec, _, err := spotcheck.ReadForTest(context.Background(), f.repo.Root(), spotcheck.LocalRef)
 	if err != nil {
 		t.Fatal(err)
 	}
