@@ -343,6 +343,9 @@ func TestTheCleaningRule(t *testing.T) {
 		{"facilitator.mode is auto (repo layer, .abcd/config.json at origin/main)", "facilitator.mode is auto (repo layer, <removed> at origin/main)"},
 		// So does any path under a top-level folder whose name begins with a dot.
 		{"see .github/workflows/ci.yml and .abcd/work/issues/open/iss-1.md", "see <removed> and <removed>"},
+		// A dot folder written straight after other characters is part of a word
+		// that begins with a letter, so the word keeps.
+		{"file=.github/workflows/ci.yml", "file=.github/workflows/ci.yml"},
 		{"(/abs/path) [/abs] {/abs} </abs> |/abs @/abs \"/abs\" '/abs' =/abs", "<removed> <removed> <removed> <removed> <removed> <removed> <removed> <removed> <removed>"},
 		{"at file:///home/x/y and https://example.invalid/a/b", "at <removed> and <removed>"},
 		{"the address http://host.invalid:8080/x", "the address <removed>"},
