@@ -145,9 +145,9 @@ func TestWhatAnIsolatedCommandCanStartIsReadFromItsCommandLine(t *testing.T) {
 		{[]string{"reset", "-q", "--", "a"}, true},
 		{[]string{"ls-files", "-z"}, false},
 		{[]string{"ls-files", "-m"}, true},
-		{[]string{"merge-file", "a", "b", "c"}, false},
 		{[]string{"rev-parse", "HEAD"}, false},
 		{[]string{"-c", "core.splitIndex=false", "config", "--get", "x"}, false},
+		{[]string{"var", "GIT_ATTR_GLOBAL"}, false},
 	} {
 		if got := gitutil.LeavesContentProgramsOn(tc.args); got != tc.want {
 			t.Errorf("%q: got %v, want %v", tc.args, got, tc.want)
@@ -155,5 +155,85 @@ func TestWhatAnIsolatedCommandCanStartIsReadFromItsCommandLine(t *testing.T) {
 	}
 	if gitutil.Subcommand([]string{"-c", "a=b", "--no-optional-locks", "-C", "x", "status"}) != "status" {
 		t.Error("the subcommand is read past git's global options")
+	}
+}
+
+// TestASubcommandTheTableDoesNotKnowAsks: a subcommand neither judged nor
+// on the starts-nothing list asks, whatever it carries; one on the list
+// does not; none is on both. Watched failing before fix round 6: every row
+// below that wants true got false, since an unknown subcommand asked nothing.
+func TestASubcommandTheTableDoesNotKnowAsks(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"merge-file", "a", "b", "c"}, true},
+		{[]string{"verify-commit", "HEAD"}, true},
+		{[]string{"interpret-trailers"}, true},
+		{[]string{"notes", "merge", "x"}, true},
+		{[]string{"sparse-checkout", "reapply"}, true},
+		{[]string{"--no-optional-locks"}, true},
+		{[]string{"describe", "--tags", "--match", "v*", "--abbrev=0", "HEAD"}, false},
+		{[]string{"tag", "--list", "v*"}, false},
+	} {
+		if got := gitutil.LeavesContentProgramsOn(tc.args); got != tc.want {
+			t.Errorf("%q: got %v, want %v", tc.args, got, tc.want)
+		}
+	}
+	for _, v := range []string{"rev-parse", "config", "var", "tag", "describe"} {
+		if !gitutil.StartsNothing(v) || gitutil.JudgesContentPrograms(v) {
+			t.Errorf("%s is on the starts-nothing list alone", v)
+		}
+	}
+	for _, v := range []string{"cat-file", "ls-files", "hash-object", "read-tree", "worktree", "status"} {
+		if gitutil.StartsNothing(v) {
+			t.Errorf("%s is judged, so it is not on the starts-nothing list", v)
+		}
+	}
+}
+
+// TestTheOptionsThatStartAProgramAreReadAsGitTakesThem: the options that
+// switch a program on are read in any prefix git takes for them and inside
+// a bundle of short options, --attr-source takes its value as the next
+// argument, an apply with --3way asks, a merge's diff and --binary are a
+// patch, and :/text and rev^{/text} name commits, not blobs. Watched failing
+// before fix round 6: each row wanting true got false (the --attr-source row
+// read "rev-parse" as the subcommand).
+func TestTheOptionsThatStartAProgramAreReadAsGitTakesThem(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"cat-file", "--filt", "HEAD:a"}, true},
+		{[]string{"cat-file", "--textc", "HEAD:a"}, true},
+		{[]string{"grep", "--textc", "-n", "x"}, true},
+		{[]string{"grep", "--text", "-n", "x"}, false},
+		{[]string{"diff-tree", "-p", "--ext-d", "a", "b"}, true},
+		{[]string{"ls-files", "--mod"}, true},
+		{[]string{"ls-files", "-tm"}, true},
+		{[]string{"ls-files", "-z", "--stage", "-t", "-v"}, false},
+		{[]string{"read-tree", "-mu", "HEAD"}, true},
+		{[]string{"--attr-source", "rev-parse", "status"}, true},
+		{[]string{"apply", "--cached", "--3way"}, true},
+		{[]string{"apply", "--cached", "-3"}, true},
+		{[]string{"apply", "--stat", "--3w"}, true},
+		{[]string{"log", "-c"}, true},
+		{[]string{"log", "--remerge-diff"}, true},
+		{[]string{"log", "--binary"}, true},
+		{[]string{"log", "--diff-merges=first-parent"}, true},
+		{[]string{"show", "-s", "-c", "HEAD"}, true},
+		{[]string{"show", "-s", "--remerge-diff", "HEAD"}, true},
+		{[]string{"reflog", "show", "-p", "HEAD"}, true},
+		{[]string{"reflog", "show", "-n", "1", "--format=%gs", "HEAD", "--"}, false},
+		{[]string{"show", ":/fix"}, true},
+		{[]string{"show", "HEAD^{/a:b}"}, true},
+		{[]string{"show", "HEAD:a.txt"}, false},
+	} {
+		if got := gitutil.LeavesContentProgramsOn(tc.args); got != tc.want {
+			t.Errorf("%q: got %v, want %v", tc.args, got, tc.want)
+		}
+	}
+	if v := gitutil.Subcommand([]string{"--attr-source", "HEAD", "status"}); v != "status" {
+		t.Errorf("--attr-source takes the next argument as its value: read %q as the subcommand", v)
 	}
 }

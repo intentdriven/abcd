@@ -182,8 +182,9 @@ var ErrBeforeHookedGitSet = errors.New("a check before every hooked or networked
 // pinned off, but not content filters, textconv and external diff programs
 // or merge drivers, so one that can start one of those
 // (LeavesContentProgramsOn: a hash-object, a status with the filters left
-// on, a diff of the working tree that does not blank them) asks too, and one
-// that blanks them or reads no content through them does not. An error from
+// on, a diff of the working tree that does not blank them, a subcommand it
+// does not know) asks too, and one that blanks them or reads no content
+// through them does not. An error from
 // the check is the command's, and git does not run. A drive sets it to its
 // comparison of what it holds while it runs (implement/loop's
 // heldBeforeGit); it is given the command's arguments. One drive runs in a

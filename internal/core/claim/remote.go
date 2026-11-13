@@ -1137,7 +1137,9 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 			trace(withDefault...)
 			_, ferr = gitutil.NetInput(root, stdin, withDefault...)
 		}
-		if ferr != nil && ref != "" {
+		// A fetch the drive's check stopped is not tried again without the
+		// default branch: git was not run, and a second try asks again.
+		if ferr != nil && ref != "" && redacted(ferr).notRun == nil {
 			gap = "could not read " + gitutil.ShortRef(ref) + " from " + Remote + ": " + redacted(ferr).text
 			ferr = nil
 			if len(args) > bare || len(listed) > 0 {

@@ -31,10 +31,11 @@ package loop
 // a drive reaches that build that exempt constructor are exactly those named
 // (TestTheExemptConstructorIsBuiltOnlyByTheComparison); and every call of an
 // isolated runner whose subcommand is a constant names one gitutil judges for
-// the programs it can start, or one said to start none
+// the programs it can start, or one on gitutil's starts-nothing list
 // (TestEveryIsolatedCallADriveMakesIsJudgedForWhatItCanStart). A call whose
 // command line is built elsewhere and passed whole (claim's own runners, the
-// comparison's asks) is logged as not read: the runner judges it as it runs.
+// comparison's asks) is logged as not read: the runner judges it as it runs,
+// and a subcommand it does not know asks.
 //
 // NOT CHECKED: the environment and the hooks flag of each row. The walk
 // finds which constructors a drive reaches, not what environment each gives
@@ -199,59 +200,12 @@ func TestTheExemptConstructorIsBuiltOnlyByTheComparison(t *testing.T) {
 	}
 }
 
-// isolatedVerbsThatStartNothing are the subcommands a drive's isolated
-// reads run that gitutil.LeavesContentProgramsOn does not judge, each with
-// why it starts no program the repository names: none reads working-tree
-// content through a filter, shows content through a textconv or external
-// diff program, or runs a merge driver.
-var isolatedVerbsThatStartNothing = map[string]string{
-	"rev-parse":          "names objects and paths",
-	"rev-list":           "lists commits",
-	"merge-base":         "reads commits",
-	"config":             "reads settings",
-	"var":                "reads settings",
-	"for-each-ref":       "lists refs",
-	"show-ref":           "lists refs",
-	"symbolic-ref":       "reads a ref",
-	"update-ref":         "writes a ref",
-	"ls-tree":            "lists a tree",
-	"ls-remote":          "lists a remote's refs (networked, asked by RunLimitedNetContext)",
-	"ls-files":           "lists the index (-m alone is judged)",
-	"check-attr":         "reads attributes",
-	"check-ignore":       "reads ignore rules",
-	"check-ref-format":   "checks a name",
-	"cat-file":           "reads stored objects (--filters and --textconv are judged)",
-	"count-objects":      "counts objects",
-	"mktree":             "writes a tree from given entries",
-	"mktag":              "writes a tag",
-	"hash-object":        "judged",
-	"commit-tree":        "writes a commit from a tree",
-	"read-tree":          "reads a tree into an index (-u is judged)",
-	"write-tree":         "writes the index as a tree",
-	"name-rev":           "names a commit",
-	"describe":           "names a commit",
-	"tag":                "lists tags",
-	"branch":             "lists branches",
-	"version":            "prints git's version",
-	"init":               "makes an empty repository",
-	"fetch":              "networked (asked by its runner)",
-	"replace":            "lists replacements",
-	"notes":              "reads notes",
-	"interpret-trailers": "parses text",
-	"stripspace":         "cleans text",
-	"remote":             "lists remotes",
-	"worktree":           "judged (add)",
-	"fsck":               "checks objects",
-	"verify-commit":      "verifies a signature, which log.showSignature and gpg pins keep off",
-	"shortlog":           "summarises commits",
-}
-
 // TestEveryIsolatedCallADriveMakesIsJudgedForWhatItCanStart: every call a
 // drive reaches of an isolated runner whose command line the walk can read
 // names a subcommand that gitutil.LeavesContentProgramsOn judges (so the
-// runner asks when the command leaves a program on) or one named in
-// isolatedVerbsThatStartNothing; a subcommand in neither fails here until it
-// is looked at. Each call is logged with what it does: asks, blanks or reads
+// runner asks when the command leaves a program on) or one on gitutil's
+// starts-nothing list (gitutil.StartsNothing); a subcommand in neither would
+// ask at every run, so it fails here until it is looked at. Each call is logged with what it does: asks, blanks or reads
 // nothing through a program. A call whose subcommand is not a constant is
 // logged as not read: the runner still judges its command line when it runs.
 // Watched failing with "diff-tree" taken out of the judged subcommands.
@@ -285,8 +239,8 @@ func TestEveryIsolatedCallADriveMakesIsJudgedForWhatItCanStart(t *testing.T) {
 			case gitutil.JudgesContentPrograms(verb):
 				lines = append(lines, "blanks or reads no content through a program: "+at+" "+strings.Join(c.args, " "))
 			default:
-				if _, ok := isolatedVerbsThatStartNothing[verb]; !ok {
-					t.Errorf("%s runs git %s in the isolated environment: judge it in gitutil's contentJudges if it can start a filter, a textconv or external diff program or a merge driver, or say in isolatedVerbsThatStartNothing why it starts none", at, verb)
+				if !gitutil.StartsNothing(verb) {
+					t.Errorf("%s runs git %s in the isolated environment, which asks at every run: judge it in gitutil's contentJudges if it can start a filter, a textconv or external diff program or a merge driver, or say in gitutil's startsNothing which form is run and why it starts none", at, verb)
 				}
 				lines = append(lines, "starts nothing ("+verb+"): "+at)
 			}

@@ -51,6 +51,33 @@ func TestAnActTheDrivesCheckStoppedKeepsTheStopReachable(t *testing.T) {
 	}
 }
 
+// TestAFetchTheDrivesCheckStoppedIsAskedOnce: a fetch of the reservations
+// that names the default branch, stopped by the drive's check, is not tried
+// again without it, so the check is asked once and the stop comes back as
+// the fetch's error. Watched failing before fix round 6: the check was asked
+// twice.
+func TestAFetchTheDrivesCheckStoppedIsAskedOnce(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	refused := errors.New("held setting changed: core.sshcommand")
+	fetches := 0
+	unset, err := gitutil.SetBeforeHookedGit(func(args []string) error {
+		if gitutil.Subcommand(args) == "fetch" {
+			fetches++
+		}
+		return refused
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(unset)
+	_, ferr := Fetch(p.dir, Options{Now: w.clock, Home: p.home})
+	var nr *gitutil.NotRunError
+	if !errors.As(ferr, &nr) || fetches != 1 {
+		t.Fatalf("the stopped fetch is asked once and comes back: asked %d times, %v", fetches, ferr)
+	}
+}
+
 // TestARedactedTextKeepsOnlyAGitNotRun: redacted keeps an error it quotes
 // only when that is a git the check did not run, so an ordinary failure's
 // cause (a deadline, git's exit) stays out of reach as it was.
