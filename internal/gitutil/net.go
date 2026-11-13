@@ -276,7 +276,7 @@ func hookedCommand(ctx context.Context, dir string, network bool, args []string)
 	}
 	if network {
 		cmd.Env = netEnv(cmd.Env)
-		if ssh := netSSHCommand(dir); ssh != "" {
+		if ssh := netSSHCommand(ctx, dir); ssh != "" {
 			cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+ssh)
 		}
 	}
@@ -382,12 +382,18 @@ func netEnvFor(env []string, underTest bool) []string {
 // netSSHCommand is the ssh command Net runs git's ssh transport through: ssh
 // in batch mode with the connect and keepalive bounds, or "" when the developer chose their
 // own (GIT_SSH_COMMAND, GIT_SSH, or core.sshCommand), which is left as it is.
-func netSSHCommand(dir string) string {
+// Its read of core.sshCommand runs under ctx, the command's own: git is
+// killed when ctx ends, so the read cannot hold a caller on a deadline past
+// it (NetAskContext's, inside a drive's comparison).
+func netSSHCommand(ctx context.Context, dir string) string {
 	if os.Getenv("GIT_SSH_COMMAND") != "" || os.Getenv("GIT_SSH") != "" {
 		return ""
 	}
-	cmd := exec.Command("git", "-C", dir, "config", "--get", "core.sshCommand")
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "config", "--get", "core.sshCommand")
 	cmd.Env = ScrubbedEnv()
+	if ctx.Done() != nil {
+		cmd.WaitDelay = contextWaitDelay
+	}
 	if out, err := cmd.Output(); err == nil && strings.TrimSpace(string(out)) != "" {
 		return ""
 	}

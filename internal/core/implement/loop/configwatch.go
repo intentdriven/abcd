@@ -407,13 +407,12 @@ func hooksDirAt(dir string) (string, error) { return hooksDirIn(stageEnv, dir) }
 // failing, not finishing, or answering with other than one path (a value
 // holding a newline among them) is a readFailure naming the read: the caller
 // stops rather than hash a directory git would not run.
-func hooksDirIn(e *gitEnv, dir string) (string, error) { return hooksDirBy(e, dir, time.Time{}) }
+func hooksDirIn(e *gitEnv, dir string) (string, error) { return hooksDirBy(e, dir, boundsNow()) }
 
-// hooksDirBy is hooksDirIn inside a comparison whose deadline is by
-// (gitEnv.readBy).
-func hooksDirBy(e *gitEnv, dir string, by time.Time) (string, error) {
+// hooksDirBy is hooksDirIn under the reading's bounds b (gitEnv.readBy).
+func hooksDirBy(e *gitEnv, dir string, b readBounds) (string, error) {
 	what := "asking git for the hooks directory it runs (git rev-parse --git-path hooks)"
-	a, err := e.readBy(by, dir, what, 4096, "rev-parse", "--git-path", "hooks")
+	a, err := e.readBy(b, dir, what, 4096, "rev-parse", "--git-path", "hooks")
 	if err != nil {
 		return "", err
 	}
@@ -430,16 +429,27 @@ func hooksDirBy(e *gitEnv, dir string, by time.Time) (string, error) {
 	return filepath.Clean(p), nil
 }
 
+// askWaitDelay bounds how long workingTreeAsk, once its context has ended
+// and git was killed, waits for git's output to close: a program git started
+// that holds it open does not hold the read, nor the comparison it is part
+// of, past this (compareGrace).
+const askWaitDelay = 2 * time.Second
+
 // workingTreeAsk runs one read-only git command at dir through
 // gitutil.WorkingTreeCommitCommand, in the environment the lane's add and
-// commit run in, bounded by ctx, and returns its output, refused past limit
+// commit run in, as env gives it (stageEnv's environ, taken as the reading
+// started), bounded by ctx, and returns its output, refused past limit
 // bytes. git is asked in the C locale, which changes no setting it reads, so
 // its own words are git's untranslated ones. A failure carries git's own
 // words, home and credentials hidden, and git's standard error as written
 // apart (gitStderr), never shown.
-func workingTreeAsk(ctx context.Context, dir string, limit int, args ...string) (string, error) {
+func workingTreeAsk(ctx context.Context, env []string, dir string, limit int, args ...string) (string, error) {
 	cmd := gitutil.WorkingTreeCommitCommand(ctx, dir, args...)
+	if env != nil {
+		cmd.Env = slices.Clip(env)
+	}
 	cmd.Env = append(cmd.Env, "LC_ALL=C", "LANG=C", "LANGUAGE=")
+	cmd.WaitDelay = askWaitDelay
 	out := &cappedBuffer{limit: limit}
 	var stderr cappedBuffer
 	stderr.limit = 4096

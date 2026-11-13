@@ -1346,7 +1346,9 @@ include paths; and the hooks directory of each environment whose commands
 run hooks, and the common git directory), made side by side, so it usually
 takes about as long as one read, or two where an include path is set. It is
 bounded as a whole at one minute, each
-read inside it keeping its own bound; at that bound the step stops at the
+read inside it keeping its own bound; at that bound every read still going
+is stopped and the comparison waits for each to end, a few seconds at most,
+so none is left running, then the step stops at the
 stage `config` saying the comparison did not finish, never that anything
 changed or that nothing did. A drive on a loaded machine pays that on every
 such git command, so its lanes are slower; on one where git takes most of a
@@ -1358,7 +1360,8 @@ two hundred and fifty reads of git; a renewal made while an agent runs
 compares twice, for its fetch and its push. The release as a drive ends
 compares once before it takes the drain's lock, so a difference found then is
 met without the lock; each push of that release, inside the lock, compares
-again, usually for one read's time and at most the minute, and another
+again, usually for one read's time and at most the minute and a few
+seconds, and another
 session that waits on that lock for its three seconds meanwhile is told
 another drain is moving and to retry. A drive's renewal pass holds its own
 renewal lock, which another pass waits on for at most two minutes, and makes

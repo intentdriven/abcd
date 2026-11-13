@@ -1,10 +1,13 @@
 package gitutil_test
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -73,5 +76,38 @@ func TestNetsSSHNeverPrompts(t *testing.T) {
 				t.Fatalf("the developer's ssh command was changed:\n%s", args)
 			}
 		})
+	}
+}
+
+// TestTheSSHCommandsReadEndsWithItsContext: NetAskContext gives git the ssh
+// command Net composes, reading core.sshCommand first; that read runs under
+// the ask's own context, so a git that hangs on it holds the ask no longer
+// than its deadline. Watched failing before: the read ran unbounded, and the
+// ask returned only once the stand-in's ten seconds were up.
+func TestTheSSHCommandsReadEndsWithItsContext(t *testing.T) {
+	gittest.Env(t)
+	for _, k := range []string{"GIT_SSH_COMMAND", "GIT_SSH"} {
+		t.Setenv(k, "")
+		if err := os.Unsetenv(k); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := gittest.NewRepo(t)
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	script := "#!/bin/sh\ncase \"$*\" in *core.sshCommand*) exec /bin/sleep 10 ;; esac\nexec '" + git + "' \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	began := time.Now()
+	_, err = gitutil.NetAskContext(ctx, r.Root(), 4096, "var", "GIT_ATTR_GLOBAL")
+	if took := time.Since(began); err == nil || took > 5*time.Second {
+		t.Fatalf("the ask ends at its deadline, its read of core.sshCommand with it (%s): %v", took.Round(time.Millisecond), err)
 	}
 }

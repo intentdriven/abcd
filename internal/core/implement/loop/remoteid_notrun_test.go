@@ -91,7 +91,9 @@ func TestAReadCutInsideItsRetryWaitAtTheDeadlineIsTheComparisonNotFinishing(t *t
 	bound, wait := heldReadTimeout, heldReadRetryWait
 	heldReadTimeout, heldReadRetryWait = 4*time.Second, 2*time.Second
 	t.Cleanup(func() { heldReadTimeout, heldReadRetryWait = bound, wait })
-	_, err := isolatedEnv.readBy(time.Now().Add(2500*time.Millisecond), repo.Root(), "the global attributes file", 4096, "var", "GIT_ATTR_GLOBAL")
+	b := boundsNow()
+	b.by = time.Now().Add(2500 * time.Millisecond)
+	_, err := isolatedEnv.readBy(b, repo.Root(), "the global attributes file", 4096, "var", "GIT_ATTR_GLOBAL")
 	if !errors.Is(err, errCompareUnfinished) {
 		t.Fatalf("a read the comparison's deadline left no retry for is the comparison not finishing: %v", err)
 	}

@@ -13,6 +13,7 @@ package loop
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -265,6 +266,61 @@ func TestAComparisonSlowOnEveryReadEndsAtItsOverallBound(t *testing.T) {
 	r := configRefused(t, err, "did not finish within 2s", "neither as changed nor as unchanged")
 	if strings.Contains(r.Reason, "changed since it started") || took >= heldReadTimeout/2 {
 		t.Fatalf("the comparison ends at its own bound, not a read's (%s), and names no change: %+v", took, r)
+	}
+}
+
+// readsRunning counts the goroutines of this process inside a read of the
+// hold (gitEnv.readBy).
+func readsRunning() int {
+	buf := make([]byte, 1<<20)
+	for {
+		n := runtime.Stack(buf, true)
+		if n < len(buf) {
+			return strings.Count(string(buf[:n]), "loop.(*gitEnv).readBy(")
+		}
+		buf = make([]byte, 2*len(buf))
+	}
+}
+
+// TestNoReadOfAComparisonIsLeftRunningOnceItEndsAtItsDeadline: with every
+// read of the comparison slow, each one's git leaving a program behind that
+// holds its output open for four seconds after git is killed, a comparison
+// bounded at one second ends saying it did not finish, and when it has
+// returned no read of it is still running, and none starts afterwards. The
+// stand-in records each read's start; it cannot record an end, since a read
+// the deadline cuts has its git killed, so the end is counted in the test:
+// no goroutine is inside a read once the comparison has returned. Watched
+// failing at f2f1169a: the comparison returned at its bound with the reads
+// in the person's own environment and the stage's still waiting on their
+// git's output.
+func TestNoReadOfAComparisonIsLeftRunningOnceItEndsAtItsDeadline(t *testing.T) {
+	repo, _, _ := hookedOrigin(t)
+	id, err := readRemoteIdentity(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := filepath.Join(t.TempDir(), "reads")
+	standInGit(t, `*"--show-scope --show-origin"*|*"var GIT_ATTR_"*|*"--git-path hooks"*|*"--git-common-dir"*) echo start >> '`+log+`'; /bin/sleep 4; exit 0 ;;`)
+	const retry = 200 * time.Millisecond
+	bound, wait, overall := heldReadTimeout, heldReadRetryWait, heldCompareTimeout
+	heldReadTimeout, heldReadRetryWait, heldCompareTimeout = 10*time.Minute, retry, time.Second
+	t.Cleanup(func() { heldReadTimeout, heldReadRetryWait, heldCompareTimeout = bound, wait, overall })
+	starts := func() int {
+		b, _ := os.ReadFile(log)
+		return strings.Count(string(b), "start")
+	}
+	err = heldBeforeGit(repo.Root(), id)
+	running, started := readsRunning(), starts()
+	configRefused(t, err, "did not finish within 1s", "neither as changed nor as unchanged")
+	if running != 0 {
+		t.Fatalf("no read of the comparison is still running once it has returned: %d are", running)
+	}
+	if started < 8 {
+		t.Fatalf("the comparison's reads started, a dozen side by side: %d did", started)
+	}
+	time.Sleep(3 * retry)
+	if n := starts(); n != started {
+		t.Fatalf("no read of the comparison starts once it has returned: %d had started, then %d", started, n)
 	}
 }
 
