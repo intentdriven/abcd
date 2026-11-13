@@ -158,6 +158,11 @@ var driveGitCommands = []driveGitCommand{
 	{"gitutil.TrackedFiles", isolatedEnv, false},
 	{"gitutil.TrackedInTreeContext", isolatedEnv, false},
 	{"gitutil.TreePathTypes", isolatedEnv, false},
+	// The spot-check store's writes: git under ExecPins and the isolated
+	// environment (gitutil.IsolatedEnv) with abcd's identity, built by the
+	// store itself, so it does not consult gitutil's table of what a command
+	// can start; the walk checks that each command it runs starts nothing.
+	{"spotcheck.storeGit", isolatedEnv, false},
 }
 
 // driveEnvs are the distinct environments of driveGitCommands, in the

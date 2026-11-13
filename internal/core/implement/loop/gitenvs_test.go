@@ -235,6 +235,9 @@ func TestEveryIsolatedCallADriveMakesIsJudgedForWhatItCanStart(t *testing.T) {
 			case verb == "" || verb == "?":
 				lines = append(lines, "not read: "+at+" "+strings.Join(c.args, " "))
 			case gitutil.JudgesContentPrograms(verb) && gitutil.LeavesContentProgramsOn(c.args):
+				if _, own := isolatedRunnersThatDoNotAsk[c.callee]; own {
+					t.Errorf("%s runs git %s, which can start a program the repository names, through a runner that does not ask: run it through one of gitutil's isolated runners", at, strings.Join(c.args, " "))
+				}
 				lines = append(lines, "asks: "+at+" "+strings.Join(c.args, " "))
 			case gitutil.JudgesContentPrograms(verb):
 				lines = append(lines, "blanks or reads no content through a program: "+at+" "+strings.Join(c.args, " "))
@@ -615,8 +618,19 @@ func (w *gitWalk) body(node any, n ast.Node, pkg *types.Package, info *types.Inf
 	})
 }
 
+// isolatedRunnersThatDoNotAsk are the isolated rows built outside gitutil,
+// which run git without consulting gitutil's table of what a command can
+// start, each with why. Their calls are read as gitutil's runners' are, and
+// one the table says can start a program fails
+// TestEveryIsolatedCallADriveMakesIsJudgedForWhatItCanStart.
+var isolatedRunnersThatDoNotAsk = map[string]string{
+	"spotcheck.storeGit": "the spot-check store's writes (hash-object --no-filters, read-tree with no -u, " +
+		"update-index --index-info, write-tree, commit-tree, update-ref), none of which starts a program",
+}
+
 // gitutilCall records call when it calls a gitutil function whose last
-// parameter is a variadic string (a git command line) from outside gitutil.
+// parameter is a variadic string (a git command line) from outside gitutil,
+// or one of isolatedRunnersThatDoNotAsk.
 func (w *gitWalk) gitutilCall(node any, call *ast.CallExpr, info *types.Info) {
 	var fn *types.Func
 	switch f := call.Fun.(type) {
@@ -625,7 +639,10 @@ func (w *gitWalk) gitutilCall(node any, call *ast.CallExpr, info *types.Info) {
 	case *ast.Ident:
 		fn, _ = info.Uses[f].(*types.Func)
 	}
-	if fn == nil || fn.Pkg() == nil || w.rel(fn.Pkg().Path()) != "internal/gitutil" {
+	if fn == nil || fn.Pkg() == nil {
+		return
+	}
+	if _, own := isolatedRunnersThatDoNotAsk[w.name(fn)]; !own && w.rel(fn.Pkg().Path()) != "internal/gitutil" {
 		return
 	}
 	if p, ok := node.(*types.Func); ok && p.Pkg() != nil && w.rel(p.Pkg().Path()) == "internal/gitutil" {

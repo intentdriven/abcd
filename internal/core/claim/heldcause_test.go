@@ -6,6 +6,7 @@ package claim
 // errors.As, so a drive tells its own stop from a failure of the act.
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -75,6 +76,30 @@ func TestAFetchTheDrivesCheckStoppedIsAskedOnce(t *testing.T) {
 	var nr *gitutil.NotRunError
 	if !errors.As(ferr, &nr) || fetches != 1 {
 		t.Fatalf("the stopped fetch is asked once and comes back: asked %d times, %v", fetches, ferr)
+	}
+}
+
+// TestASpotCheckFetchTheDrivesCheckStoppedIsAskedOnce: the spot-check
+// branch's fetch, stopped by the drive's check, comes back as that stop
+// without listing origin, so the check is asked once. Watched failing on the
+// merge of main: the listing asked a second time.
+func TestASpotCheckFetchTheDrivesCheckStoppedIsAskedOnce(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	refused := errors.New("held setting changed: core.sshcommand")
+	var asked []string
+	unset, err := gitutil.SetBeforeHookedGit(func(args []string) error {
+		asked = append(asked, gitutil.Subcommand(args))
+		return refused
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(unset)
+	found, ferr := FetchBranch(context.Background(), p.dir, spotcheckBranchRef, spotcheckTrackingRef)
+	var nr *gitutil.NotRunError
+	if found || !errors.As(ferr, &nr) || !errors.Is(ferr, refused) || len(asked) != 1 {
+		t.Fatalf("the stopped fetch is asked once and comes back as the stop: asked %q, %v, %v", asked, found, ferr)
 	}
 }
 

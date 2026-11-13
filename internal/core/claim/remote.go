@@ -533,6 +533,11 @@ func FetchBranch(ctx context.Context, root, ref, tracking string) (found bool, e
 	if ferr == nil {
 		return true, nil
 	}
+	// A fetch the drive's check stopped is that stop: git was not run, so
+	// origin is not listed, which would ask again.
+	if r := redacted(ferr); r.notRun != nil {
+		return false, &FetchError{Reason: r.text, cause: r.notRun, what: echoName(ref), outcome: "nothing was fetched"}
+	}
 	list := []string{"ls-remote", "--heads", Remote, ref}
 	trace(list...)
 	out, lerr := gitutil.NetContext(ctx, root, list...)
