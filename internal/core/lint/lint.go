@@ -3060,7 +3060,13 @@ func (p prose) readings(i int) []string {
 // linkMatches is every inline link a reporting check takes from line i: each
 // the line read alone yields, then each the whole reading yields beyond those,
 // counted by target, so a line both readings agree on reports each link as
-// often as it is written.
+// often as it is written. Where a whole-reading match takes in a link the line
+// alone also reads, the two targets differ, so one written link can be
+// reported twice on the line: once under its own target, once under the
+// longer one (TestLinksReportWhatTheLineAloneFindsBelowARunLeftOpen pins the
+// count). That is kept: dropping the longer match would need a rule for which
+// reading's match a link belongs to, and the extra finding is on a line below
+// a backtick left open, where the page's reading is unsure.
 func linkMatches(p prose, i int) [][]string {
 	ms := linkRe.FindAllStringSubmatch(p.alone[i], -1)
 	if p.alone[i] == p.whole[i] {

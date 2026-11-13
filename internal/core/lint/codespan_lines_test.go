@@ -2,6 +2,8 @@ package lint
 
 import (
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -181,16 +183,25 @@ func TestCitationFootnotesReportADefinitionQuotedOnlyBelowARunLeftOpen(t *testin
 }
 
 // TestCitationFootnotesDefineAsTheLineAloneReads: below a backtick left open,
-// a line holding a definition's opener in a one-line span defines nothing, and
-// one the line alone reads as a definition defines its marker, as before.
+// only a definition the line alone reads defines its marker, as before. The
+// whole reading can find a definition the line alone lacks, since a footnote
+// id may hold a backtick: "[^a`b]: x` y" read alone is "[^a" and a blanked
+// span, read whole it defines [^a`b]. That definition defines nothing, so the
+// marker is still reported.
 func TestCitationFootnotesDefineAsTheLineAloneReads(t *testing.T) {
 	for name, c := range map[string]struct {
 		body string
+		id   string
 		want int // the line of the one finding, or 0 for none
 	}{
-		"an opener in a span":         {"# C\n\nA claim.[^b]\n\nIntro `a\n`[^b]: x` y\n", 3},
-		"a definition after a span":   {"# C\n\nA claim.[^b]\n\nIntro `a\n`x`[^b]: Source B, https://example.org/b.\n", 0},
-		"a definition on a sure line": {"# C\n\nA claim.[^b]\n\n`x`[^b]: Source B, https://example.org/b.\n", 0},
+		// The definition pattern opens at the line's start, and this line
+		// starts with a backtick, so neither reading finds a definition: the
+		// case holds main's answer and passes on every head, the lane's
+		// included. It pins that answer, not a change.
+		"an opener in a span":         {"# C\n\nA claim.[^b]\n\nIntro `a\n`[^b]: x` y\n", "b", 3},
+		"a definition read whole":     {"# C\n\nA claim.[^a`b]\n\nIntro `z\n[^a`b]: x` y\n", "a`b", 3},
+		"a definition after a span":   {"# C\n\nA claim.[^b]\n\nIntro `a\n`x`[^b]: Source B, https://example.org/b.\n", "b", 0},
+		"a definition on a sure line": {"# C\n\nA claim.[^b]\n\n`x`[^b]: Source B, https://example.org/b.\n", "b", 0},
 	} {
 		root := citeRepo(t, map[string]string{"docs/c.md": c.body})
 		findings, err := LintAt(citeConfig("citation_footnotes", RuleConfig{}), root, fixedNow)
@@ -201,8 +212,8 @@ func TestCitationFootnotesDefineAsTheLineAloneReads(t *testing.T) {
 		switch {
 		case c.want == 0 && len(got) != 0:
 			t.Errorf("%s: want no finding: %+v", name, got)
-		case c.want != 0 && (len(got) != 1 || got[0].Line != c.want || !strings.Contains(got[0].Message, "[^b] has no definition")):
-			t.Errorf("%s: want one no-definition finding for [^b] on line %d: %+v", name, c.want, got)
+		case c.want != 0 && (len(got) != 1 || got[0].Line != c.want || !strings.Contains(got[0].Message, "[^"+c.id+"] has no definition")):
+			t.Errorf("%s: want one no-definition finding for [^%s] on line %d: %+v", name, c.id, c.want, got)
 		}
 	}
 }
@@ -214,7 +225,9 @@ func TestCitationFootnotesDefineAsTheLineAloneReads(t *testing.T) {
 
 // TestLinksReportWhatTheLineAloneFindsBelowARunLeftOpen: a dead link and a
 // fragment naming no heading, each after a span whose text opens a link, are
-// reported.
+// reported. The whole reading's longer match names the same written link
+// again under a longer target, so line 4 carries two findings for one dead
+// link; the count is pinned so a change to it is seen.
 func TestLinksReportWhatTheLineAloneFindsBelowARunLeftOpen(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "rec/a.md", "# A\n\nIntro `a\nSee `[y](` and [t](missing.md)` z\nSee `[y](` and [t](#nowhere)` z\n")
@@ -234,6 +247,14 @@ func TestLinksReportWhatTheLineAloneFindsBelowARunLeftOpen(t *testing.T) {
 	if !dead || !anchor {
 		t.Fatalf("want missing.md on line 4 and #nowhere on line 5 reported: %+v", fs)
 	}
+	count := map[string]int{}
+	for _, f := range fs {
+		count[f.RuleID+":"+strconv.Itoa(f.Line)]++
+	}
+	want := map[string]int{"links_resolve:4": 2, "links_resolve:5": 1, "link_anchors:5": 1}
+	if !reflect.DeepEqual(count, want) {
+		t.Fatalf("findings by rule and line = %v, want %v: %+v", count, want, fs)
+	}
 }
 
 // TestCitationFootnotesReportWhatTheLineAloneFindsBelowARunLeftOpen: a marker
@@ -250,6 +271,34 @@ func TestCitationFootnotesReportWhatTheLineAloneFindsBelowARunLeftOpen(t *testin
 	}
 	if !found {
 		t.Fatalf("want [^gone] on line 4 reported: %+v", findings)
+	}
+}
+
+// TestForbiddenSynonymsReportWhatEitherReadingFindsBelowARunLeftOpen: on a line
+// below a backtick left open, a word only the line alone finds and a word only
+// the whole reading finds are both reported. The line alone differs from the
+// line as written only where a span is blanked, so the word only it finds is
+// one written with the run of spaces a blanked span leaves; the word only the
+// whole reading finds is the one in the span.
+func TestForbiddenSynonymsReportWhatEitherReadingFindsBelowARunLeftOpen(t *testing.T) {
+	root := t.TempDir()
+	glossaryTerm(t, root, "spec", []string{"user   story", "epic"})
+	writeFile(t, root, "rec/x.md", "# t\n\nIntro `a\na user` `story and `epic` b\n")
+	fs, err := Lint(fsCfg([]string{"user   story", "epic"}, nil, nil), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spaced, quoted bool
+	for _, f := range fs {
+		if f.RuleID != "GL002" || f.Line != 4 {
+			t.Errorf("unexpected finding: %+v", f)
+			continue
+		}
+		spaced = spaced || strings.Contains(f.Message, "'user   story'")
+		quoted = quoted || strings.Contains(f.Message, "'epic'")
+	}
+	if len(fs) != 2 || !spaced || !quoted {
+		t.Fatalf("want two GL002 findings on line 4, the spaced word and the quoted one: %+v", fs)
 	}
 }
 

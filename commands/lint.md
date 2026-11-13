@@ -147,11 +147,13 @@ open, to the next blank line, the page may pair that backtick with one further
 down, so there a use that can report something (a link, a word, a footnote
 marker or definition, a cited URL) reads each line both whole, spans included,
 and alone, and reports what either reading finds; the line that leaves the
-backtick open keeps its spans. Anything that would make a finding go away is
-read from each line alone, on every line: a marker that counts a definition as
-referenced, a definition that counts a marker as defined, a marker on a
-crosswalk table row, and a cited URL a hand receipt confirms, so `abcd docs
-cite confirm` refuses a URL cited only inside such a span.
+backtick open keeps its spans. These uses, which can make a finding go away,
+read each line alone, on every line: a marker that makes a definition count as
+referenced, a definition that makes a marker count as defined, a marker that
+makes a crosswalk table row count as cited, and a hand receipt for a cited
+address, so `abcd docs cite confirm` refuses a URL cited only inside such a
+span. The forbidden-synonym check's allow context, and a target page's headings
+and anchors, are read from the line as written, as before.
 
 `--release-gate` runs the same lint with one difference: a citation past the
 365-day threshold blocks instead of warning. It is for release machinery only —
