@@ -232,7 +232,8 @@ func TestAWriteWithNoOriginWritesNothing(t *testing.T) {
 }
 
 // The cleaning rule, as a property: in cleaned text every "/" has an ASCII
-// letter or digit right before it, and the text holds no "\" and no "~";
+// letter or digit right before it, every word holding a "/" begins with an
+// ASCII letter or digit, and the text holds no "\" and no "~";
 // cleaning is the same on every machine, so cleaning again changes nothing;
 // and the table pins what each layout leaves.
 func TestTheCleaningRule(t *testing.T) {
@@ -244,7 +245,15 @@ func TestTheCleaningRule(t *testing.T) {
 		{"under " + home + "/work/x.go", "under <removed>"},
 		{"under /Users/someone-else/work/x.go", "under <removed>"},
 		{"under ~/work and ~someone/x", "under <removed> and <removed>"},
-		{"see `/etc/passwd` or `internal/x.go`", "see <removed> or `internal/x.go`"},
+		{"see `/etc/passwd` or `internal/x.go`", "see <removed> or <removed>"},
+		// An option glued to an absolute path, as compiler, linker and git
+		// error text prints it, goes whole.
+		{"cc -I/usr/include -L/opt/lib/x -C/home/someone/repo -Werror", "cc <removed> <removed> <removed> -Werror"},
+		{"-I" + home + "/inc", "<removed>"},
+		// A repository-relative path inside brackets, quotes or backticks
+		// goes too; bare, and with a line number after it, it stays.
+		{"(internal/x.go) [internal/x.go] \"internal/x.go\" 'a/b' `a/b` <a/b>", "<removed> <removed> <removed> <removed> <removed> <removed>"},
+		{"internal/x.go:12: x/abs/path a/b,", "internal/x.go:12: x/abs/path a/b,"},
 		{"(/abs/path) [/abs] {/abs} </abs> |/abs @/abs \"/abs\" '/abs' =/abs", "<removed> <removed> <removed> <removed> <removed> <removed> <removed> <removed> <removed>"},
 		{"at file:///home/x/y and https://example.invalid/a/b", "at <removed> and <removed>"},
 		{"the address http://host.invalid:8080/x", "the address <removed>"},
@@ -264,6 +273,11 @@ func TestTheCleaningRule(t *testing.T) {
 		for i := 0; i < len(got); i++ {
 			if got[i] == '/' && (i == 0 || !asciiAlnum(got[i-1])) {
 				t.Errorf("clean(%q) = %q keeps a \"/\" after %q", c.in, got, got[max(i-1, 0):i])
+			}
+		}
+		for _, w := range strings.Fields(got) {
+			if strings.Contains(w, "/") && !asciiAlnum(w[0]) {
+				t.Errorf("clean(%q) = %q keeps a word holding \"/\" that begins with %q", c.in, got, w[:1])
 			}
 		}
 		if strings.ContainsAny(got, "\\~\x1b\n\t\u200b") {

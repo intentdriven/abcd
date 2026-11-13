@@ -34,13 +34,15 @@
 //
 // FREE TEXT. A record's free text is cleaned by one rule that depends on
 // nothing of the machine or account writing or reading it (clean): every
-// "/" has an ASCII letter or digit right before it, and the text holds no "\"
-// and no "~". A run of non-space characters that would break the rule is
-// replaced whole by one fixed placeholder, so a repository-relative path such
-// as internal/core/x.go stays, and an absolute path, a home-relative path,
-// an address such as file:// or https://, and a path in quotes, brackets or
-// backticks go. Control and invisible characters separate words and are
-// dropped, and each text is bounded. The read side checks a stored text with
+// "/" has an ASCII letter or digit right before it, every word that holds a
+// "/" begins with an ASCII letter or digit, and the text holds no "\" and no
+// "~". A run of non-space characters that would break the rule is replaced
+// whole by one fixed placeholder, so a bare repository-relative path such as
+// internal/core/x.go stays, and an absolute path, a home-relative path, an
+// address such as file:// or https://, an option glued to an absolute path
+// (-I/usr/include), and any path in quotes, brackets or backticks, a
+// repository-relative one included, go. Control and invisible characters
+// separate words and are removed, and each text is bounded. The read side checks a stored text with
 // the same function, so two readers of one store agree on what it holds.
 //
 // WHO A COMMIT NAMES. Every git command that makes an object or moves a ref
@@ -242,12 +244,13 @@ var (
 
 // clean is free text as a record keeps it, by the one rule the package doc
 // states: words are what lies between spaces and control or invisible
-// characters, which are dropped, and the words are joined by single spaces;
-// a word that holds "\" or "~", or a "/" with anything but an ASCII letter
-// or digit right before it, is replaced whole by the placeholder; and the
-// text is cut to maxTextBytes, the cut marked. It reads nothing of the
-// machine, so a text it leaves unchanged is one it accepts on read
-// (cleanText).
+// characters, which separate words and are removed, and the words are joined
+// by single spaces; a word that holds "\" or "~", a "/" with anything but an
+// ASCII letter or digit right before it, or a "/" while it begins with
+// anything but an ASCII letter or digit, is replaced whole by the
+// placeholder; and the text is cut to maxTextBytes, the cut marked. It reads
+// nothing of the machine, so a text it leaves unchanged is one it accepts on
+// read (readRecord).
 func clean(s string) string {
 	words := strings.FieldsFunc(s, separates)
 	for i, w := range words {
@@ -273,10 +276,14 @@ func separates(r rune) bool {
 	return unicode.IsSpace(r) || r == utf8.RuneError || termsafe.Sanitize(string(r)) != string(r)
 }
 
-// pathFree reports whether a word keeps to the rule: no "\", no "~", and an
-// ASCII letter or digit right before every "/".
+// pathFree reports whether a word keeps to the rule: no "\", no "~", an
+// ASCII letter or digit right before every "/", and, when it holds a "/", an
+// ASCII letter or digit first.
 func pathFree(w string) bool {
 	if strings.ContainsAny(w, `\~`) {
+		return false
+	}
+	if strings.Contains(w, "/") && !asciiAlnum(w[0]) {
 		return false
 	}
 	for i := 0; i < len(w); i++ {

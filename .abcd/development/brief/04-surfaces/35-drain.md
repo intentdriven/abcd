@@ -1189,12 +1189,15 @@ author and committer, with its dates in UTC.
 
 Free text is cleaned before it is kept, by one rule that reads nothing of the
 machine or the account: in the cleaned text every slash has an ASCII letter or
-digit right before it, and the text holds no backslash and no tilde. A run of
+digit right before it, every word that holds a slash begins with an ASCII
+letter or digit, and the text holds no backslash and no tilde. A run of
 non-space characters that would break the rule is replaced whole by one fixed
-placeholder, so a repository-relative path stays, and an absolute path, a
-home-relative path, an address such as a file or web address, and a path set
-in quotes, brackets or backticks go. Control and invisible characters are
-dropped, and each text is bounded. A record read back is checked with the same
+placeholder, so a bare repository-relative path stays, and an absolute path, a
+home-relative path, an address such as a file or web address, an option
+written straight against an absolute path, and any path set in quotes,
+brackets or backticks, a repository-relative one included, go. Control and
+invisible characters separate words and are removed, and each text is
+bounded. A record read back is checked with the same
 rule, so two readers agree on what the copy holds.
 
 The records are rebuilt from the drain's state at every move, and only those
