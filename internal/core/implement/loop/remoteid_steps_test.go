@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -54,7 +55,7 @@ func laneRepo(t *testing.T, settings ...[2]string) string {
 	mkdirs(t, dir)
 	run := func(args ...string) {
 		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-		cmd.Env = gitutil.IsolatedEnv()
+		cmd.Env = gittest.Env(t)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
