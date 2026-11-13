@@ -126,6 +126,11 @@ var drivePreflightProgram = func() (string, []string, error) {
 	return self, []string{"implement", "load", "--wait", "--", "make", "preflight"}, nil
 }
 
+// hooksPathRemedy is what a person does about a hooks path that cannot be
+// read, which holds a lane's landing (driveGateCheck) and passes over every
+// issue (drivePassOver).
+const hooksPathRemedy = "look at what git answers for the setting with `git config --show-scope --show-origin --get-all core.hooksPath` in the repository, settle the value it names (a path git cannot expand, such as one under a home that does not exist, cannot be read), then start the drive again"
+
 // driveGateCheck says whether a lane's landing may go on: not over a lane that
 // changes what judges it, which a person's own session handles, and not when what
 // the lane changed cannot be read.
@@ -137,7 +142,7 @@ func driveGateCheck() func(worktree, base string) error {
 		}
 		hooks, err := loop.DriveHooksPath(worktree)
 		if err != nil {
-			return &loop.PreflightRefused{Reason: "the hooks path the lane's repository configures could not be read, so its landing does not go on: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+			return &loop.PreflightRefused{Reason: "the hooks path the lane's repository configures could not be read, so its landing does not go on: " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "; " + hooksPathRemedy}
 		}
 		for _, path := range strings.Split(out, "\x00") {
 			if loop.DriveGate(path, hooks) {
@@ -156,7 +161,7 @@ func driveGateCheck() func(worktree, base string) error {
 func drivePassOver(repoRoot string) func(id, foundAt string) string {
 	hooks, err := loop.DriveHooksPath(repoRoot)
 	if err != nil {
-		why := "the hooks path the repository configures could not be read, so whether its path is a gate cannot be told: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+		why := "the hooks path the repository configures could not be read, so whether its path is a gate cannot be told: " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "; " + hooksPathRemedy
 		return func(string, string) string { return why }
 	}
 	return func(_, foundAt string) string {
