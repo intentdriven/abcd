@@ -127,6 +127,11 @@ const (
 	// told to stop (SIGTERM, on which git removes its lock files), before it
 	// and every process it started are killed.
 	stopGrace = 2 * time.Second
+	// readBackTimeout bounds the read of where the local copy points once a
+	// move's git was cut off at the deadline: a git that moved the copy
+	// before it was stopped made the write, which is then reported as made.
+	// So a write returns within its deadline, stopGrace and readBackTimeout.
+	readBackTimeout = 2 * time.Second
 	// maxTextBytes bounds each free-text field a record carries.
 	maxTextBytes = 2000
 	// maxRecordBytes bounds one record file, on write and on read.
@@ -805,7 +810,10 @@ func commitTree(ctx context.Context, root, tree, parent, msg string) (string, er
 
 // moveRef moves ref to commit from old, the value read ("" for none): git
 // refuses the move when the ref holds anything else by then, which is
-// errMoved.
+// errMoved. A move git reports as failed is read back before it is reported,
+// under readBackTimeout when ctx has ended: a ref git moved to commit before
+// it was cut off is the move made. A lock file git left on ref is named in
+// the failure and never removed here, since nothing can tell it is not held.
 func moveRef(ctx context.Context, root, ref, commit, old string) error {
 	from := old
 	if from == "" {
@@ -815,10 +823,42 @@ func moveRef(ctx context.Context, root, ref, commit, old string) error {
 	if err == nil {
 		return nil
 	}
-	if now, rerr := storeRef(ctx, root, ref); rerr == nil && now != old {
+	rctx := ctx
+	if ctx.Err() != nil {
+		var cancel context.CancelFunc
+		rctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), readBackTimeout)
+		defer cancel()
+	}
+	now, rerr := storeRef(rctx, root, ref)
+	switch {
+	case rerr == nil && now == commit:
+		return nil
+	case rerr == nil && now != old:
 		return fmt.Errorf("%w: %s", errMoved, err)
 	}
+	if lock := leftLock(rctx, root, ref); lock != "" {
+		return fmt.Errorf("%w; git left the lock file %s in the repository's git directory, and it is not removed here: remove it once no git runs in this checkout", err, lock)
+	}
 	return err
+}
+
+// leftLock is the lock file git keeps on ref, named by its path in the
+// repository's common git directory, when one is there; "" when there is
+// none or the directory cannot be read.
+func leftLock(ctx context.Context, root, ref string) string {
+	out, err := gitutil.RunCappedContext(ctx, root, 64<<10, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return ""
+	}
+	dir := strings.TrimSpace(out)
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(root, dir)
+	}
+	lock := ref + ".lock"
+	if _, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(lock))); err != nil {
+		return ""
+	}
+	return lock
 }
 
 // storeGit runs one git command of the store's that makes an object or moves
@@ -827,7 +867,8 @@ func moveRef(ctx context.Context, root, ref, commit, old string) error {
 // (storeEnv), index the index the command uses ("" for the checkout's own),
 // and the program-starting settings pinned off (gitutil.ExecPins). When ctx
 // ends, git and every process it started are told to stop with SIGTERM, on
-// which git removes its lock files, and are killed stopGrace later.
+// which git removes its lock files, and are killed stopGrace later; a git
+// that exited cleanly is read by its answer, even when ctx ended as it did.
 func storeGit(ctx context.Context, root, index, stdin string, args ...string) (string, error) {
 	what := "git " + args[0]
 	if err := ctx.Err(); err != nil {
@@ -848,6 +889,9 @@ func storeGit(ctx context.Context, root, index, stdin string, args ...string) (s
 	err := cmd.Run()
 	if ctx.Err() != nil {
 		procgroup.KillLeft(cmd)
+	}
+	// A git that finished is read by what it answered, whenever ctx ended.
+	if err != nil && ctx.Err() != nil {
 		return "", fmt.Errorf("writing the spot-check's record: %s: %w", what, ctx.Err())
 	}
 	if err != nil {

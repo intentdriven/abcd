@@ -1208,7 +1208,9 @@ it tried to write and could not, and why. A record the store cannot keep at all
 (a hand-back with no time, an id outside the store's form) is counted apart, in
 a number that stays the same from move to move while the state holds it. Each
 write is bounded in time; a git command its deadline cuts off is told to stop
-in a way that lets git remove its lock, and is killed shortly after.
+in a way that lets git remove its lock, and is killed shortly after. A write
+whose git moved the copy before it was cut off is counted as written, and a
+lock git leaves behind is named in the failure and never removed.
 
 A lane's landing whose merge gate decides in auto mode over a pull request
 whose author can write to the repository records that decision on the same

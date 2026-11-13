@@ -533,56 +533,130 @@ func TestAnotherWriterMovingTheLocalCopyIsReadAgain(t *testing.T) {
 	}
 }
 
-// A git that hangs while it holds the local copy's lock is stopped at the
-// write's deadline in a way that lets it remove the lock: the write returns
-// within its bound, saying it was not written, and the next write succeeds.
-func TestAGitThatHangsLeavesTheStoreUsable(t *testing.T) {
-	a, _, _ := twoClones(t)
+// standInGit puts a git first on PATH that runs onUpdateRef (a shell
+// fragment) for an update-ref and the real git for everything else, with
+// ABCD_TEST_REAL_GIT naming the real one. It returns a func that puts PATH
+// back, for the part of a test that needs the real git again.
+func standInGit(t *testing.T, onUpdateRef string) (restore func()) {
+	t.Helper()
 	real, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip(err)
 	}
 	bin := t.TempDir()
-	script := `#!/bin/sh
-for a in "$@"; do
-  if [ "$a" = update-ref ]; then
-    : > "$ABCD_TEST_HANG_MARK"
-    printf 'start\ncreate ` + LocalRef + ` %s\nprepare\n' "$ABCD_TEST_HANG_COMMIT" | { cat; sleep 600; } | "$ABCD_TEST_REAL_GIT" -C "$ABCD_TEST_HANG_ROOT" update-ref --stdin
-    exit 1
-  fi
-done
-exec "$ABCD_TEST_REAL_GIT" "$@"
-`
+	script := "#!/bin/sh\nfor a in \"$@\"; do\n  if [ \"$a\" = update-ref ]; then\n" + onUpdateRef + "\n  fi\ndone\nexec \"$ABCD_TEST_REAL_GIT\" \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	path := os.Getenv("PATH")
 	t.Setenv("ABCD_TEST_REAL_GIT", real)
-	t.Setenv("ABCD_TEST_HANG_ROOT", a.Root())
-	t.Setenv("ABCD_TEST_HANG_COMMIT", a.Git("rev-parse", "HEAD"))
-	mark := filepath.Join(t.TempDir(), "hung")
-	t.Setenv("ABCD_TEST_HANG_MARK", mark)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+path)
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	return func() { os.Setenv("PATH", path) }
+}
+
+// hangDeadline is the deadline the hung-git tests give a write, and
+// hangMargin what they allow past the bound the store names for a write cut
+// off at it (the deadline, stopGrace and readBackTimeout): time for the
+// test's own processes to start and be reaped on a loaded machine.
+const (
+	hangDeadline = 8 * time.Second
+	hangMargin   = 3 * time.Second
+)
+
+// writeCutOff is a write of one hand-back under hangDeadline, failing the
+// test when it returns later than the store's bound and hangMargin.
+func writeCutOff(t *testing.T, root string) Written {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), hangDeadline)
 	defer cancel()
 	start := time.Now()
-	w := Write(ctx, a.Root(), hb(handBack("iss-1", at0)))
-	if took := time.Since(start); took > time.Minute {
-		t.Fatalf("the write took %s against a git that hangs for ten minutes", took)
+	w := Write(ctx, root, hb(handBack("iss-1", at0)))
+	if took, bound := time.Since(start), hangDeadline+stopGrace+readBackTimeout; took > bound+hangMargin {
+		t.Fatalf("the write took %s; its bound is %s, and the test allows %s more", took, bound, hangMargin)
 	}
-	if w.Failed != 1 || !errors.Is(w.Err, context.DeadlineExceeded) {
+	return w
+}
+
+// A git that hangs while it holds the local copy's lock is stopped at the
+// write's deadline in a way that lets it remove the lock: the lock is seen
+// to exist before the cut-off, the write returns within its bound, saying it
+// was not written, no lock remains, and the next write succeeds.
+func TestAGitThatHangsLeavesTheStoreUsable(t *testing.T) {
+	a, _, _ := twoClones(t)
+	lock := filepath.Join(a.Root(), ".git", filepath.FromSlash(LocalRef)+".lock")
+	t.Setenv("ABCD_TEST_LOCK", lock)
+	t.Setenv("ABCD_TEST_HANG_ROOT", a.Root())
+	t.Setenv("ABCD_TEST_HANG_COMMIT", a.Git("rev-parse", "HEAD"))
+	seen := filepath.Join(t.TempDir(), "lock-seen")
+	t.Setenv("ABCD_TEST_SEEN", seen)
+	restore := standInGit(t, `    printf 'start\ncreate `+LocalRef+` %s\nprepare\n' "$ABCD_TEST_HANG_COMMIT" | { cat; sleep 600; } | "$ABCD_TEST_REAL_GIT" -C "$ABCD_TEST_HANG_ROOT" update-ref --stdin &
+    while [ ! -e "$ABCD_TEST_LOCK" ]; do sleep 0.05; done
+    : > "$ABCD_TEST_SEEN"
+    wait
+    exit 1`)
+	w := writeCutOff(t, a.Root())
+	if w.Failed != 1 || w.Wrote != 0 || !errors.Is(w.Err, context.DeadlineExceeded) {
 		t.Fatalf("Write = %+v", w)
 	}
-	os.Setenv("PATH", path)
-	if _, err := os.Stat(mark); err != nil {
-		t.Fatalf("the write was cut off before it moved the local copy: %v", err)
+	restore()
+	if _, err := os.Stat(seen); err != nil {
+		t.Fatalf("git held no lock before the cut-off: %v", err)
 	}
-	lock := filepath.Join(a.Root(), ".git", filepath.FromSlash(LocalRef)+".lock")
 	if _, err := os.Stat(lock); err == nil {
 		t.Fatalf("the cut-off left %s", lock)
 	}
 	if w := write(t, a.Root(), hb(handBack("iss-1", at0))); w.Wrote != 1 {
 		t.Fatalf("the next write = %+v", w)
+	}
+}
+
+// A git that ignores the signal to stop, and leaves a lock, is killed once
+// the grace is over: the write returns within its bound, its failure names
+// the lock file, the lock is not removed, and the next write fails naming it
+// too.
+func TestAGitThatIgnoresTheStopLeavesItsLockNamed(t *testing.T) {
+	a, _, _ := twoClones(t)
+	lock := filepath.Join(a.Root(), ".git", filepath.FromSlash(LocalRef)+".lock")
+	if err := os.MkdirAll(filepath.Dir(lock), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ABCD_TEST_LOCK", lock)
+	restore := standInGit(t, `    trap '' TERM
+    : > "$ABCD_TEST_LOCK"
+    sleep 600
+    exit 1`)
+	w := writeCutOff(t, a.Root())
+	restore()
+	if w.Failed != 1 || w.Err == nil || !strings.Contains(w.Err.Error(), LocalRef+".lock") {
+		t.Fatalf("Write = %+v; want a failure naming the lock", w)
+	}
+	if _, err := os.Stat(lock); err != nil {
+		t.Fatalf("the lock was removed: %v", err)
+	}
+	w = Write(context.Background(), a.Root(), hb(handBack("iss-1", at0)))
+	if w.Failed != 1 || w.Err == nil || !strings.Contains(w.Err.Error(), LocalRef+".lock") {
+		t.Fatalf("the next write = %+v; want a failure naming the lock", w)
+	}
+	if _, err := os.Stat(lock); err != nil {
+		t.Fatalf("the lock was removed: %v", err)
+	}
+}
+
+// A git that moved the local copy and was cut off before it exited made the
+// write: the write reads back where the copy points before it reports, and
+// counts the record written.
+func TestAWriteGitFinishedAsTheDeadlinePassedIsWritten(t *testing.T) {
+	a, _, _ := twoClones(t)
+	restore := standInGit(t, `    "$ABCD_TEST_REAL_GIT" "$@" || exit 1
+    sleep 600
+    exit 0`)
+	w := writeCutOff(t, a.Root())
+	restore()
+	if w.Wrote != 1 || w.Failed != 0 || w.Err != nil {
+		t.Fatalf("Write = %+v; want the record counted written", w)
+	}
+	if rec := readLocal(t, a.Root()); len(rec.HandBacks) != 1 {
+		t.Fatalf("the local copy holds %+v", rec)
 	}
 }
 
