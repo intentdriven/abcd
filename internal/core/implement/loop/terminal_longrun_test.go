@@ -989,10 +989,11 @@ func TestAJudgeThatRanAndAnsweredBadlyIsStillHeldBackUnderABound(t *testing.T) {
 	}
 }
 
-// TestAFailedPushWhileReservingWaitsUnderABound: origin refusing a push mid-move may
-// pass, so under a bound the run waits and carries on when it does; with no bound it
-// refuses, as it did.
-func TestAFailedPushWhileReservingWaitsUnderABound(t *testing.T) {
+// TestAPushToAPathNotYetThereWaitsUnderABound: a push URL set before the drive
+// starts names a path where nothing stands yet, so the reservation's push fails
+// mid-move; under a bound the run waits and carries on once a link to origin
+// appears there; with no bound it refuses, as it did.
+func TestAPushToAPathNotYetThereWaitsUnderABound(t *testing.T) {
 	// The push URL is set before the drive starts and never changes, since a
 	// drive holds it: the push fails while nothing stands at it, and goes
 	// through once a link to origin does.

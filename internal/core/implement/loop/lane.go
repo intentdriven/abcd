@@ -268,6 +268,10 @@ func originTip(c Context, laneID, defRef, base string) (string, string, error) {
 	what := "git ls-remote " + Remote
 	branch, tip, err := remoteHeadTip(ctx, nil, c.RepoRoot, Remote)
 	if err != nil {
+		// Not run, the drive's comparison having stopped it: the step's.
+		if r, ok := heldStopOf(err); ok {
+			return "", "", r
+		}
 		if ctx.Err() != nil {
 			err = fmt.Errorf("%s did not answer within %s: operation timed out", Remote, originAskTimeout)
 		}
@@ -464,6 +468,11 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 			return Outcome{}, err
 		}
 		added, err = addWorktree(c.RepoRoot, opts)
+		// The add asks the drive's comparison first (gitutil.SetBeforeHookedGit),
+		// and is not run on a difference: that refusal is the step's.
+		if r, ok := heldStopOf(err); ok {
+			return Outcome{}, r
+		}
 		var gitFailed *worktree.Refusal
 		if errors.As(err, &gitFailed) && gitFailed.Err != nil {
 			err = gitFailed.Err

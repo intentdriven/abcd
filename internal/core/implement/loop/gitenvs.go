@@ -17,6 +17,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -174,12 +175,66 @@ func driveEnvs() []*gitEnv {
 }
 
 // heldReadTimeout bounds each read the hold makes, its second ask included
-// (gitEnv.read).
+// (gitEnv.read): the first ask has half of what is left after the wait
+// between the two, the second the rest.
 var heldReadTimeout = originAskTimeout
 
 // heldReadRetryWait is how long a read that did not finish waits before it
 // is asked once more (gitEnv.read).
 var heldReadRetryWait = 2 * time.Second
+
+// heldCompareTimeout bounds one comparison of what a drive holds with what
+// its git would read now, as a whole, every environment's reads included
+// (boundedCompare); each read inside it keeps its own bound and its one
+// retry, and none runs past it. It is far below a reservation's renewal
+// margin (a renewal falls due at half its lease, an hour into the default
+// two), and above the drain lock's wait (lockTimeout), which a drive's let-go
+// therefore does not compare under: it compares before it takes the lock.
+var heldCompareTimeout = time.Minute
+
+// errCompareUnfinished is a comparison of what a drive holds that did not
+// finish within heldCompareTimeout: neither a difference nor none.
+var errCompareUnfinished = errors.New("the comparison did not finish")
+
+// boundedCompare runs compare, given its deadline, and returns what it
+// returns, or errCompareUnfinished once heldCompareTimeout has passed,
+// whatever compare is doing then: its reads stop at the deadline, and a walk
+// of a hooks directory that is still going finishes on its own with no one
+// waiting. A read compare makes that the deadline cut is errCompareUnfinished
+// too.
+func boundedCompare[T any](compare func(by time.Time) (T, error)) (T, error) {
+	by := time.Now().Add(heldCompareTimeout)
+	type result struct {
+		v   T
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		v, err := compare(by)
+		done <- result{v, err}
+	}()
+	timer := time.NewTimer(heldCompareTimeout)
+	defer timer.Stop()
+	var zero T
+	select {
+	case r := <-done:
+		if errors.Is(r.err, errCompareUnfinished) {
+			return zero, errCompareUnfinished
+		}
+		return r.v, r.err
+	case <-timer.C:
+		return zero, errCompareUnfinished
+	}
+}
+
+// unfinishedReason is what a step stopped by errCompareUnfinished is told.
+func unfinishedReason() string {
+	return "the comparison of what the drive holds with what its git would read now did not finish within " + heldCompareTimeout.String() +
+		" (its reads run side by side, each with a bound of its own inside that one), so what its git would run is taken neither as changed nor as unchanged"
+}
+
+// unfinishedRemedy is what the person does about errCompareUnfinished.
+const unfinishedRemedy = "look at what makes git slow here (a loaded machine, a home or a hooks directory on a slow disk), then run the step again; nothing was made"
 
 // readFailure is a read the hold depends on that gave no answer the hold
 // can take: git failed, did not finish in time, or answered in a form abcd
@@ -227,33 +282,57 @@ func (e *gitStderr) Unwrap() error { return e.err }
 // A drive makes many reads a lane, and a loaded machine can make one slow,
 // so a git that did not finish is asked once more after heldReadRetryWait;
 // both asks together stay inside heldReadTimeout, the first given half of
-// what is left after the wait. A git that did not finish either time, could
-// not start, or answered past limit bytes is a readFailure naming what; a git
-// that ran and exited non-zero is not, its status returned with what it
-// wrote and said, for the caller to judge.
+// what is left after the wait, the second the rest. A git that did not
+// finish either time, could not start, or answered past limit bytes is a
+// readFailure naming what, and the bound each ask had; a git that ran and
+// exited non-zero is not, its status returned with what it wrote and said,
+// for the caller to judge.
 func (e *gitEnv) read(dir, what string, limit int, args ...string) (answer, error) {
+	return e.readBy(time.Time{}, dir, what, limit, args...)
+}
+
+// readBy is read inside a comparison whose deadline is by (boundedCompare):
+// no ask runs past it, and a read it cuts short is errCompareUnfinished,
+// never a readFailure of its own. A zero by is read's own bound alone.
+func (e *gitEnv) readBy(by time.Time, dir, what string, limit int, args ...string) (answer, error) {
 	deadline := time.Now().Add(heldReadTimeout)
 	first := (heldReadTimeout - heldReadRetryWait) / 2
 	if first <= 0 {
 		first = heldReadTimeout
 	}
+	cutBy := func() bool { return !by.IsZero() && !time.Now().Before(by) }
+	if !by.IsZero() && by.Before(deadline) {
+		deadline = by
+	}
+	var had []time.Duration
 	for try := 1; ; try++ {
 		bound := time.Until(deadline)
-		if try == 1 {
+		if try == 1 && first < bound {
 			bound = first
+		}
+		if bound <= 0 {
+			if cutBy() {
+				return answer{code: -1}, errCompareUnfinished
+			}
+			bound = time.Millisecond
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), bound)
 		out, err := e.ask(ctx, dir, limit, args...)
 		late := err != nil && ctx.Err() != nil
 		cancel()
 		if late {
+			had = append(had, bound)
 			if try == 1 && time.Until(deadline) > heldReadRetryWait {
 				time.Sleep(heldReadRetryWait)
 				continue
 			}
-			why := "git did not finish within " + heldReadTimeout.String() + ", asked twice " + heldReadRetryWait.String() + " apart, so the read is not taken"
-			if try == 1 {
-				why = "git did not finish within " + heldReadTimeout.String() + ", so the read is not taken"
+			if cutBy() {
+				return answer{code: -1}, errCompareUnfinished
+			}
+			why := "git did not finish in the " + shownBound(had[0]) + " its ask had, so the read is not taken"
+			if len(had) == 2 {
+				why = "git did not finish in the " + shownBound(had[0]) + " its first ask had, nor in the " + shownBound(had[1]) +
+					" its second had, " + heldReadRetryWait.String() + " later, so the read is not taken"
 			}
 			return answer{code: -1}, &readFailure{what: what + ", in " + e.name, why: why}
 		}
@@ -271,6 +350,15 @@ func (e *gitEnv) read(dir, what string, limit int, args ...string) (answer, erro
 		}
 		return answer{code: -1}, &readFailure{what: what + ", in " + e.name, why: said}
 	}
+}
+
+// shownBound is d as a refusal names it: to the second from ten seconds,
+// to the tenth below.
+func shownBound(d time.Duration) string {
+	if d >= 10*time.Second {
+		return d.Round(time.Second).String()
+	}
+	return d.Round(100 * time.Millisecond).String()
 }
 
 // failed is the readFailure of a read in e that git answered in a form abcd
@@ -353,11 +441,46 @@ func gitBool(v string) (on, ok bool) {
 // system settings file the listing names (system), else none: it is then
 // not held. Any other answer is a readFailure.
 func attributesFiles(e *gitEnv, dir, system string) ([]string, error) {
+	return attributesFrom(e, dir, system, askAttributes(e, dir, time.Time{}), time.Time{})
+}
+
+// attributeWhich are the two attributes files git names, global then system.
+var attributeWhich = [2]string{"GLOBAL", "SYSTEM"}
+
+// attributeAnswer is one `git var GIT_ATTR_<which>` read: its answer, or
+// why there is none.
+type attributeAnswer struct {
+	a   answer
+	err error
+}
+
+// askAttributes asks git in e at dir for both attributes files, side by
+// side, inside the comparison's deadline by (zero for none).
+func askAttributes(e *gitEnv, dir string, by time.Time) [2]attributeAnswer {
+	var out [2]attributeAnswer
+	var wg sync.WaitGroup
+	for i, which := range attributeWhich {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			out[i].a, out[i].err = e.readBy(by, dir, attributeWhat(which), 4096, "var", "GIT_ATTR_"+which)
+		}()
+	}
+	wg.Wait()
+	return out
+}
+
+// attributeWhat names the read of one attributes file.
+func attributeWhat(which string) string {
+	return "asking git for its " + strings.ToLower(which) + " attributes file (git var GIT_ATTR_" + which + ")"
+}
+
+// attributesFrom is attributesFiles from the answers askAttributes gave.
+func attributesFrom(e *gitEnv, dir, system string, asked [2]attributeAnswer, by time.Time) ([]string, error) {
 	var out []string
-	for _, which := range []string{"GLOBAL", "SYSTEM"} {
-		name := "GIT_ATTR_" + which
-		what := "asking git for its " + strings.ToLower(which) + " attributes file (git var " + name + ")"
-		a, err := e.read(dir, what, 4096, "var", name)
+	for i, which := range attributeWhich {
+		what := attributeWhat(which)
+		a, err := asked[i].a, asked[i].err
 		if err != nil {
 			return nil, err
 		}
@@ -376,7 +499,7 @@ func attributesFiles(e *gitEnv, dir, system string) ([]string, error) {
 		}
 		var p string
 		if which == "GLOBAL" {
-			p, err = globalAttributes(e, dir)
+			p, err = globalAttributes(e, dir, by)
 		} else {
 			p, err = systemAttributes(e, system)
 		}
@@ -394,9 +517,9 @@ func attributesFiles(e *gitEnv, dir, system string) ([]string, error) {
 // in e, as git finds it: core.attributesFile as a path, else
 // $XDG_CONFIG_HOME/git/attributes, else $HOME/.config/git/attributes, else
 // none.
-func globalAttributes(e *gitEnv, dir string) (string, error) {
+func globalAttributes(e *gitEnv, dir string, by time.Time) (string, error) {
 	what := "asking git for core.attributesFile as a path (git config --type=path --get core.attributesFile)"
-	a, err := e.read(dir, what, 4096, "config", "--type=path", "--get", "core.attributesFile")
+	a, err := e.readBy(by, dir, what, 4096, "config", "--type=path", "--get", "core.attributesFile")
 	if err != nil {
 		return "", err
 	}

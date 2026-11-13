@@ -407,9 +407,13 @@ func hooksDirAt(dir string) (string, error) { return hooksDirIn(stageEnv, dir) }
 // failing, not finishing, or answering with other than one path (a value
 // holding a newline among them) is a readFailure naming the read: the caller
 // stops rather than hash a directory git would not run.
-func hooksDirIn(e *gitEnv, dir string) (string, error) {
+func hooksDirIn(e *gitEnv, dir string) (string, error) { return hooksDirBy(e, dir, time.Time{}) }
+
+// hooksDirBy is hooksDirIn inside a comparison whose deadline is by
+// (gitEnv.readBy).
+func hooksDirBy(e *gitEnv, dir string, by time.Time) (string, error) {
 	what := "asking git for the hooks directory it runs (git rev-parse --git-path hooks)"
-	a, err := e.read(dir, what, 4096, "rev-parse", "--git-path", "hooks")
+	a, err := e.readBy(by, dir, what, 4096, "rev-parse", "--git-path", "hooks")
 	if err != nil {
 		return "", err
 	}
@@ -442,7 +446,7 @@ func workingTreeAsk(ctx context.Context, dir string, limit int, args ...string) 
 	cmd.Stdout, cmd.Stderr = out, &stderr
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {
-			return "", fmt.Errorf("git %s did not answer within %s", args[0], originAskTimeout)
+			return "", fmt.Errorf("git %s did not answer in the time it had: %w", args[0], ctx.Err())
 		}
 		return out.b.String(), &gitStderr{
 			err:    fmt.Errorf("git %s: %w (%s)", args[0], err, fsutil.RedactHome(gitutil.ScrubURLCredentials(strings.TrimSpace(stderr.b.String())))),

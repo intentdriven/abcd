@@ -99,7 +99,7 @@ func TestAReadThatDoesNotFinishStopsTheStep(t *testing.T) {
 	repo, runID := recordedRun(t)
 	quickRetry(t)
 	standInGit(t, `*"--git-path hooks"*) exec sleep 30 ;;`)
-	r := configRefused(t, configTripwire(repo.Root(), runID), "git rev-parse --git-path hooks", "did not finish within", "asked twice")
+	r := configRefused(t, configTripwire(repo.Root(), runID), "git rev-parse --git-path hooks", "did not finish in the 1.9s its first ask had, nor in the", "its second had, 200ms later")
 	if strings.Contains(r.Reason, "changed during the run:") {
 		t.Fatalf("a read that did not finish is not a change: %+v", r)
 	}

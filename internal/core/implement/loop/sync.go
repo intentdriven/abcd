@@ -174,7 +174,12 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 			return Outcome{}, false, err
 		}
 		msg := syncMessage(*lane, c.State.RunID, def, merged, siblings)
-		if err := syncMerge(lane.Worktree, msg, merged); errors.Is(err, errCommitStalled) {
+		if err := syncMerge(lane.Worktree, msg, merged); isHeldStop(err) {
+			// The merge asks the drive's comparison first and is not run on
+			// a difference, so there is nothing to abort or undo.
+			r, _ := heldStopOf(err)
+			return Outcome{}, false, r
+		} else if errors.Is(err, errCommitStalled) {
 			return Outcome{}, false, undoStalledSync(*lane, def, err)
 		} else if err != nil {
 			conflicted, _ := pickGit(lane.Worktree, "diff", "--name-only", "--diff-filter=U", "-z")

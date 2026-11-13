@@ -693,15 +693,23 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		}
 	}
 	t.o.Options.remote = id
-	// From here every git command of the drive that runs hooks or reaches
-	// the network (gitutil's Net, NetEach, NetInput, NetContext and
-	// LocalGit) first compares what the drive holds (heldBeforeGit), so one
-	// made outside a step (a move's reservation, a renewal while an agent
-	// runs, the release as the drive ends, the network probe) never runs
-	// under a setting or hook changed since the drive started; it fails
-	// instead, naming the difference.
-	gitutil.SetBeforeHookedGit(func() error { return heldBeforeGit(t.repoRoot, id) })
-	defer gitutil.SetBeforeHookedGit(nil)
+	// From here every git command of the drive that runs the repository's
+	// hooks, merge drivers or content filters, or reaches the network, first
+	// compares what the drive holds (heldBeforeGit): each runner gitutil has
+	// for such a command asks the check set here before it builds the
+	// command (gitutil.SetBeforeHookedGit names them), so one made inside a
+	// step (the lane's add, commit, merge and reset, the landing push) or
+	// outside one (a move's reservation, a renewal while an agent runs, the
+	// network probe) never runs under a setting or hook changed since the
+	// drive started; it fails instead, naming the difference. One drive runs
+	// in a process: a check already set refuses the start.
+	unset, err := gitutil.SetBeforeHookedGit(func([]string) error { return heldBeforeGit(t.repoRoot, id) })
+	if err != nil {
+		t.leaveSharedRun()
+		return TerminalResult{}, refuse(StageDrain, "", "", "the drive cannot start: "+err.Error(),
+			"run one drive at a time in a process; nothing was made")
+	}
+	defer unset()
 	if t.o.Resumed {
 		t.reportHeldBack()
 	}
@@ -2413,8 +2421,20 @@ func dropRun(repoRoot, runID, why, whose string, now time.Time, o Options) error
 // letGo releases what the run holds and no lane is working on: each lane in
 // progress, left on its branch, and a judgement's hold no lane opened on. A
 // lane parked at its pull request keeps its own.
+//
+// A release is a push, which a drive makes only under what it holds
+// (heldBeforeGit), so it compares first, before it takes the drain's lock,
+// whose wait other sessions keep short (lockTimeout): on a difference, a
+// read that gives no answer, or a comparison that does not finish, no
+// release is tried, and each reservation left is named with when its lease
+// lapses and how the person releases it (leftHeld). Each push inside the
+// lock asks the comparison again, as every networked git of a drive does.
 func (t *terminal) letGo() {
 	now := t.now()
+	if err := heldBeforeGit(t.repoRoot, t.o.Options.remote); err != nil {
+		t.leftHeld(err, now)
+		return
+	}
 	err := fsutil.WithFileLock(filepath.Join(t.repoRoot, filepath.FromSlash(drainLockRel)), lockTimeout, func() error {
 		// A drain that ended on an outage can have a lane still in progress, so
 		// its lanes are read whether it is live or not.
@@ -2457,6 +2477,52 @@ func (t *terminal) letGo() {
 	})
 	if err != nil {
 		t.say("what this run holds was not released, and lapses with its lease: %s", err.Error())
+	}
+}
+
+// leftHeld says, for a let-go the drive's comparison stopped (why), that
+// nothing was released, and names each reservation letGo would have
+// released, with when its lease lapses and how the person releases it once
+// what the drive holds is as it should be. It reads only: nothing is pushed
+// or written.
+func (t *terminal) leftHeld(why error, now time.Time) {
+	reason := why.Error()
+	if r, ok := AsRefusal(why); ok {
+		reason = r.Reason
+	}
+	t.say("nothing this drive holds was released: releasing is a push, and the drive runs none while %s", termsafe.Sanitize(fsutil.RedactHome(reason)))
+	st, live, err := readDrain(t.repoRoot)
+	if err != nil {
+		t.say("which reservations this drive holds could not be read, and each lapses with its lease: %s", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		return
+	}
+	var ids []string
+	for _, l := range st.Lanes {
+		if l.Outcome != DrainLaneInProgress || t.passedLane(l.RunID) {
+			continue
+		}
+		run, err := ReadState(t.repoRoot, l.RunID)
+		if err != nil || run.ReservedAt == nil || letGoByDrive(run) {
+			continue
+		}
+		if c, err := runControl(t.repoRoot, l.RunID); err == nil && c.Stop != nil {
+			continue
+		}
+		ids = append(ids, run.Key)
+	}
+	if j := st.Judging; j != nil && live && j.Hold != nil {
+		ids = append(ids, j.Issue)
+	}
+	snap, verr := claim.View(t.repoRoot, now)
+	for _, id := range ids {
+		lapses := "lapses with its lease"
+		if verr == nil {
+			if r, ok := snap.Lookup(id); ok && r.Copy == claim.CopyThis && r.State == claim.StateLive {
+				lapses = "lapses at " + stamp(r.EffectiveExpiry)
+			}
+		}
+		t.say("%s: its reservation was not released and %s; once what the drive holds is as it should be, release it with `abcd reserve %s --release`, or start the drive again, which takes the run up",
+			termsafe.Sanitize(id), lapses, termsafe.Sanitize(id))
 	}
 }
 

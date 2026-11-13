@@ -167,6 +167,34 @@ func laneAddGit(hooksPath string) func(dir string, args ...string) (string, erro
 	}
 }
 
+// heldStopOf is the refusal a git command of a drive gave without running,
+// because the drive's comparison (heldBeforeGit, asked by every gitutil
+// runner of a hooked or networked git) stopped it: gitutil makes no Refusal
+// of its own, so one inside its error is the comparison's. Its reason is
+// led by the git command that was not run (gitutil.NotRunError).
+func heldStopOf(err error) (*Refusal, bool) {
+	if err == nil {
+		return nil, false
+	}
+	r, ok := AsRefusal(err)
+	if !ok {
+		return nil, false
+	}
+	var notRun *gitutil.NotRunError
+	if errors.As(err, &notRun) {
+		named := *r
+		named.Reason = "git " + notRun.Verb + " was not run: " + r.Reason
+		return &named, true
+	}
+	return r, true
+}
+
+// isHeldStop reports whether err is such a stop (heldStopOf).
+func isHeldStop(err error) bool {
+	_, ok := heldStopOf(err)
+	return ok
+}
+
 // errCommitStalled names a commitGit command stopped at its deadline.
 var errCommitStalled = errors.New("a signing prompt or hook did not finish")
 
@@ -261,7 +289,10 @@ func pickCommit(c Context, lane *Lane, wt, branch, base string) (string, error) 
 			"the lane's worktree holds changes the pick did not make, so its record-only commit is not made over them",
 			"clean the lane's worktree, then run `abcd implement step` again")
 	}
-	if _, err := commitGit(wt, "commit", "-q", "-m", pickMessage(st), "--", rel); errors.Is(err, errCommitStalled) {
+	if _, err := commitGit(wt, "commit", "-q", "-m", pickMessage(st), "--", rel); err != nil && isHeldStop(err) {
+		r, _ := heldStopOf(err)
+		return "", r
+	} else if errors.Is(err, errCommitStalled) {
 		return "", refuse(string(StageWorktree), "", lane.ID,
 			"git could not make the pick's record commit: "+err.Error(),
 			"answer the repository's signing prompt, or settle the hook that waits, then run `abcd implement step` again")

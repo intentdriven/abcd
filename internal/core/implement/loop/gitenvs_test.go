@@ -24,6 +24,11 @@ package loop
 // constant "git" is named in nonGitPrograms below with what it is, so a new
 // one fails here until it is looked at.
 //
+// CHECKED for the hooks flag alone: every row whose command runs the
+// repository's hooks names a runner that asks the drive's comparison before
+// git runs (TestEveryHookedRowAsksTheComparisonFirst), or is named in
+// hookedRowsThatAreTheComparisonsOwn with why it is not one.
+//
 // NOT CHECKED: the environment and the hooks flag of each row. The walk
 // finds which constructors a drive reaches, not what environment each gives
 // git or whether its command runs hooks; those are read by people, from each
@@ -52,6 +57,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // nonGitPrograms are the functions a drive reaches that start a program
@@ -86,6 +94,67 @@ func TestEveryGitCommandADriveRunsIsInTheTable(t *testing.T) {
 	for _, p := range programs {
 		if _, ok := nonGitPrograms[p]; !ok {
 			t.Errorf("%s starts a program named by a value: say what it is in nonGitPrograms, or add it to driveGitCommands if it is git", p)
+		}
+	}
+}
+
+// hookedRowRunners run each hooked row's runner, as `git -C <dir> <args>`.
+var hookedRowRunners = map[string]func(dir string, args ...string) error{
+	"gitutil.Net":      func(dir string, args ...string) error { _, err := gitutil.Net(dir, args...); return err },
+	"gitutil.NetEach":  func(dir string, args ...string) error { return gitutil.NetEach(dir, 64, func(string) {}, args...) },
+	"gitutil.NetInput": func(dir string, args ...string) error { _, err := gitutil.NetInput(dir, "x\n", args...); return err },
+	"gitutil.LocalGit": func(dir string, args ...string) error { _, err := gitutil.LocalGit(dir, args...); return err },
+	"gitutil.RunCommitCommandBounded": func(dir string, args ...string) error {
+		_, err := gitutil.RunCommitCommandBounded(dir, time.Minute, errors.New("stalled"), args...)
+		return err
+	},
+	"gitutil.RunCommitCommandBoundedAsStored": func(dir string, args ...string) error {
+		_, err := gitutil.RunCommitCommandBoundedAsStored(dir, time.Minute, errors.New("stalled"), args...)
+		return err
+	},
+}
+
+// hookedRowsThatAreTheComparisonsOwn are the hooked rows that are not
+// runners that ask, each with why.
+var hookedRowsThatAreTheComparisonsOwn = map[string]string{
+	"gitutil.WorkingTreeCommitCommand": "a constructor, not a runner: a drive builds it itself only for the comparison's own reads " +
+		"(workingTreeAsk, checkoutHooksPath), `git config` and `git rev-parse`, which start no hook; " +
+		"its hooked commands run through RunCommitCommandBounded, which asks",
+}
+
+// TestEveryHookedRowAsksTheComparisonFirst: each row of driveGitCommands
+// whose command runs the repository's hooks names a runner that, with a
+// check set that refuses, gives git's subcommand to the check and does not
+// run git; or it is named, with why, in hookedRowsThatAreTheComparisonsOwn.
+// A hooked row added with neither fails here.
+func TestEveryHookedRowAsksTheComparisonFirst(t *testing.T) {
+	dir := gittest.NewRepo(t).Root()
+	refused := errors.New("held setting changed")
+	for _, c := range driveGitCommands {
+		if !c.hooks {
+			continue
+		}
+		if _, own := hookedRowsThatAreTheComparisonsOwn[c.name]; own {
+			continue
+		}
+		run, ok := hookedRowRunners[c.name]
+		if !ok {
+			t.Errorf("%s runs the repository's hooks: name how it is run in hookedRowRunners, so it is seen to ask the comparison", c.name)
+			continue
+		}
+		var saw []string
+		unset, err := gitutil.SetBeforeHookedGit(func(args []string) error { saw = args; return refused })
+		if err != nil {
+			t.Fatal(err)
+		}
+		made := filepath.Join(dir, "made-"+strings.TrimPrefix(c.name, "gitutil."))
+		err = run(dir, "init", "-q", made)
+		unset()
+		if !errors.Is(err, refused) || len(saw) == 0 || saw[0] != "init" {
+			t.Errorf("%s does not ask the comparison before git runs: saw %q, %v", c.name, saw, err)
+		}
+		if _, serr := os.Stat(made); !errors.Is(serr, os.ErrNotExist) {
+			t.Errorf("%s ran git under a refusing check: %v", c.name, serr)
 		}
 	}
 }

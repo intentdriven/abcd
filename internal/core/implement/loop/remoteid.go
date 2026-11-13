@@ -52,11 +52,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement"
@@ -119,31 +122,79 @@ func readRemoteIdentity(repoRoot string) (*remoteIdentity, error) {
 		return nil, err
 	}
 	id := &remoteIdentity{salt: salt}
-	if id.envs, id.files, err = readSettings(repoRoot, salt); err != nil {
+	r, err := readHeld(repoRoot, salt, "", time.Time{})
+	if err != nil {
 		return nil, err
 	}
-	if id.hooksDir, err = hooksDirAt(repoRoot); err != nil {
-		return nil, err
-	}
-	if id.hooks, id.hooksDirs, err = readHooks(repoRoot, salt, id.hooksDir); err != nil {
-		return nil, err
-	}
+	id.envs, id.files, id.hooks, id.hooksDirs = r.envs, r.files, r.hooks, r.dirs
+	id.hooksDir = r.dirs[0]
 	return id, nil
 }
 
-// readSettings reads the held settings in every environment a drive's git
-// runs in (driveEnvs) under salt: each environment's keys, and the files
-// every environment names, once by path.
-func readSettings(repoRoot, salt string) (map[*gitEnv]map[string]string, map[string]string, error) {
-	envs, files := map[*gitEnv]map[string]string{}, map[string]string{}
-	for _, e := range driveEnvs() {
-		keys, err := readHeldSettings(e, repoRoot, salt, files)
-		if err != nil {
-			return nil, nil, err
-		}
-		envs[e] = keys
+// heldReading is one reading of everything a drive holds (readHeld).
+type heldReading struct {
+	envs  map[*gitEnv]map[string]string
+	files map[string]string
+	hooks map[string]string
+	dirs  []string
+}
+
+// readHeld reads everything a drive holds under salt, its settings
+// (readSettings) and its hooks directories (readHooks, stageDir as there)
+// side by side, inside the comparison's deadline by (zero for none). A
+// failed read of the settings is named before one of the hooks.
+func readHeld(repoRoot, salt, stageDir string, by time.Time) (heldReading, error) {
+	var r heldReading
+	var serr, herr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		r.envs, r.files, serr = readSettings(repoRoot, salt, by)
+	}()
+	go func() {
+		defer wg.Done()
+		r.hooks, r.dirs, herr = readHooks(repoRoot, salt, stageDir, by)
+	}()
+	wg.Wait()
+	if serr != nil {
+		return heldReading{}, serr
 	}
-	return envs, files, nil
+	if herr != nil {
+		return heldReading{}, herr
+	}
+	return r, nil
+}
+
+// readSettings reads the held settings in every environment a drive's git
+// runs in (driveEnvs) under salt, the environments side by side, inside the
+// comparison's deadline by (zero for none): each environment's keys, and the
+// files every environment names, once by path. A failed read is named in
+// the table's order of the environments.
+func readSettings(repoRoot, salt string, by time.Time) (map[*gitEnv]map[string]string, map[string]string, error) {
+	envs := driveEnvs()
+	keys := make([]map[string]string, len(envs))
+	files := make([]map[string]string, len(envs))
+	errs := make([]error, len(envs))
+	var wg sync.WaitGroup
+	for i, e := range envs {
+		files[i] = map[string]string{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			keys[i], errs[i] = readHeldSettingsBy(e, repoRoot, salt, files[i], by)
+		}()
+	}
+	wg.Wait()
+	byEnv, all := map[*gitEnv]map[string]string{}, map[string]string{}
+	for i, e := range envs {
+		if errs[i] != nil {
+			return nil, nil, errs[i]
+		}
+		byEnv[e] = keys[i]
+		maps.Copy(all, files[i])
+	}
+	return byEnv, all, nil
 }
 
 // errHooksPastCap is readCheckoutHooks's refusal of a hooks directory past
@@ -151,27 +202,80 @@ func readSettings(repoRoot, salt string) (map[*gitEnv]map[string]string, map[str
 var errHooksPastCap = fmt.Errorf("the checkout's hooks directory holds more than %d entries, so the drive cannot hold it whole", maxHookEntries)
 
 // readHooks is every hooks directory a drive's git runs at the checkout:
-// stageDir, the one the lane's add and commit run (hooksDirAt), and the one
-// git names in each other environment whose commands run hooks (the landing
-// push's and the reservation's, in the person's own), each distinct
-// directory once, hashed with info/attributes (readCheckoutHooks). It
-// returns the record and the directories.
-func readHooks(repoRoot, salt, stageDir string) (map[string]string, []string, error) {
-	dirs := []string{stageDir}
+// stageDir, the one the lane's add and commit run (hooksDirAt; read here
+// when ""), and the one git names in each other environment whose commands
+// run hooks (the landing push's and the reservation's, in the person's own),
+// each distinct directory once, hashed with info/attributes
+// (readCheckoutHooks). The reads of the directories and of the common git
+// directory run side by side, inside the comparison's deadline by (zero for
+// none). It returns the record and the directories, stageDir first.
+func readHooks(repoRoot, salt, stageDir string, by time.Time) (map[string]string, []string, error) {
+	var envs []*gitEnv
+	if stageDir == "" {
+		envs = append(envs, stageEnv)
+	}
 	for _, e := range driveEnvs() {
-		if e == stageEnv || !e.hooks() {
-			continue
+		if e != stageEnv && e.hooks() {
+			envs = append(envs, e)
 		}
-		d, err := hooksDirIn(e, repoRoot)
+	}
+	found := make([]string, len(envs))
+	errs := make([]error, len(envs))
+	var common string
+	var cerr error
+	var wg sync.WaitGroup
+	for i, e := range envs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			found[i], errs[i] = hooksDirBy(e, repoRoot, by)
+		}()
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		common, cerr = commonDirBy(repoRoot, by)
+	}()
+	wg.Wait()
+	for _, err := range errs {
 		if err != nil {
 			return nil, nil, err
 		}
+	}
+	if cerr != nil {
+		return nil, nil, cerr
+	}
+	var dirs []string
+	if stageDir != "" {
+		dirs = append(dirs, stageDir)
+	}
+	for _, d := range found {
 		if !slices.ContainsFunc(dirs, func(h string) bool { return samePath(repoRoot, h, d) }) {
 			dirs = append(dirs, d)
 		}
 	}
-	hooks, err := readCheckoutHooks(repoRoot, salt, dirs...)
+	hooks, err := hashCheckoutHooks(salt, common, dirs...)
 	return hooks, dirs, err
+}
+
+// commonDirBy is the common git directory at repoRoot, asked of git
+// (`git rev-parse --path-format=absolute --git-common-dir`, isolated) inside
+// the comparison's deadline by (zero for none), bounded as every read the
+// hold makes is (gitEnv.readBy).
+func commonDirBy(repoRoot string, by time.Time) (string, error) {
+	what := "resolving the common git directory (git rev-parse --git-common-dir)"
+	a, err := isolatedEnv.readBy(by, repoRoot, what, 1<<16, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return "", err
+	}
+	if a.code != 0 {
+		return "", isolatedEnv.exited(what, a)
+	}
+	p, ok := onePath(a.out)
+	if !ok || !filepath.IsAbs(p) {
+		return "", isolatedEnv.failed(what, "git did not answer with one absolute path (--path-format needs git 2.31 or later), so the answer is not taken")
+	}
+	return p, nil
 }
 
 // readCheckoutHooks hashes, under salt, each entry at every depth of each
@@ -180,10 +284,16 @@ func readHooks(repoRoot, salt, stageDir string) (map[string]string, []string, er
 // info/attributes. It fails when the common git directory cannot be resolved
 // or a tree is past maxHookEntries entries.
 func readCheckoutHooks(repoRoot, salt string, dirs ...string) (map[string]string, error) {
-	common, err := gitutil.RevParseAbsPath(repoRoot, "--git-common-dir")
+	common, err := commonDirBy(repoRoot, time.Time{})
 	if err != nil {
-		return nil, &readFailure{what: "resolving the common git directory (git rev-parse --git-common-dir)", why: fsutil.RedactHome(gitutil.ScrubURLCredentials(err.Error()))}
+		return nil, err
 	}
+	return hashCheckoutHooks(salt, common, dirs...)
+}
+
+// hashCheckoutHooks is readCheckoutHooks with the common git directory
+// already read.
+func hashCheckoutHooks(salt, common string, dirs ...string) (map[string]string, error) {
 	hooks := map[string]string{}
 	for _, dir := range dirs {
 		if _, over := hashDir(hooks, salt, dir); over {
@@ -239,14 +349,24 @@ func parseScopedList(out string) ([]scopedSetting, error) {
 // --show-origin`, each held key's scopes and values hashed in order (a key
 // with no value apart from one with an empty value), returned; and into
 // files, under salt, by its bytes, each file an include.path or
-// includeIf.*.path names, whatever its condition (holdInclude), and the
+// includeIf.*.path names, whatever its condition (includePath), and the
 // global and system attributes files git reads in env (attributesFiles).
 // The listing needs git 2.26 or later, as the run's fingerprint does. A read
 // that gives no answer the hold can take is a readFailure naming it, which
 // stops the drive or the step.
 func readHeldSettings(env *gitEnv, repoRoot, salt string, files map[string]string) (map[string]string, error) {
+	return readHeldSettingsBy(env, repoRoot, salt, files, time.Time{})
+}
+
+// readHeldSettingsBy is readHeldSettings inside a comparison whose deadline
+// is by (zero for none): the listing and the two asks for the attributes
+// files run side by side, then the include paths, side by side.
+func readHeldSettingsBy(env *gitEnv, repoRoot, salt string, files map[string]string, by time.Time) (map[string]string, error) {
+	asked := make(chan [2]attributeAnswer, 1)
+	go func() { asked <- askAttributes(env, repoRoot, by) }()
 	what := "listing " + Remote + "'s and the other settings a drive holds (git config --list --show-scope --show-origin)"
-	a, err := env.read(repoRoot, what, maxSettingsBytes, "config", "--null", "--list", "--show-scope", "--show-origin")
+	a, err := env.readBy(by, repoRoot, what, maxSettingsBytes, "config", "--null", "--list", "--show-scope", "--show-origin")
+	attrs := <-asked
 	if err != nil {
 		return nil, err
 	}
@@ -260,6 +380,7 @@ func readHeldSettings(env *gitEnv, repoRoot, salt string, files map[string]strin
 	keys := map[string]string{}
 	values := map[string][]string{}
 	system := ""
+	var includes []scopedSetting
 	for _, r := range recs {
 		if r.scope == "system" && system == "" {
 			if f, ok := strings.CutPrefix(r.origin, "file:"); ok && filepath.IsAbs(f) {
@@ -275,19 +396,36 @@ func readHeldSettings(env *gitEnv, repoRoot, salt string, files map[string]strin
 		}
 		values[r.key] = append(values[r.key], r.scope, v)
 		if r.key == "include.path" || (strings.HasPrefix(r.key, "includeif.") && strings.HasSuffix(r.key, ".path")) {
-			if err := holdInclude(env, repoRoot, salt, files, r); err != nil {
-				return nil, err
-			}
+			includes = append(includes, r)
+		}
+	}
+	paths := make([]string, len(includes))
+	errs := make([]error, len(includes))
+	var wg sync.WaitGroup
+	for i, r := range includes {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			paths[i], errs[i] = includePath(env, repoRoot, salt, r, by)
+		}()
+	}
+	wg.Wait()
+	for i := range includes {
+		if errs[i] != nil {
+			return nil, errs[i]
+		}
+		if paths[i] != "" {
+			hashFile(files, salt, paths[i])
 		}
 	}
 	if _, set := lastEnv(env.environ(), "GIT_CONFIG_SYSTEM"); set {
 		system = ""
 	}
-	attrs, err := attributesFiles(env, repoRoot, system)
+	attrFiles, err := attributesFrom(env, repoRoot, system, attrs, by)
 	if err != nil {
 		return nil, err
 	}
-	for _, p := range attrs {
+	for _, p := range attrFiles {
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(repoRoot, p)
 		}
@@ -303,21 +441,22 @@ func readHeldSettings(env *gitEnv, repoRoot, salt string, files map[string]strin
 	return keys, nil
 }
 
-// holdInclude records into files the file an include setting r names, as git
-// resolves its path in env, by its bytes (hashFile; a file not there records
-// nothing, so its appearing is a change). A setting with no value names no
-// file and holds none. A path git cannot resolve, a resolution that does not
-// finish, or a relative path whose setting does not come from a file is a
-// readFailure that names the setting by its key and scope.
-func holdInclude(env *gitEnv, repoRoot, salt string, files map[string]string, r scopedSetting) error {
+// includePath is the file an include setting r names, as git resolves its
+// path in env inside the comparison's deadline by (zero for none), for the
+// caller to hold by its bytes (hashFile; a file not there records nothing,
+// so its appearing is a change). A setting with no value names no file: "".
+// A path git cannot resolve, a resolution that does not finish, or a
+// relative path whose setting does not come from a file is a readFailure
+// that names the setting by its key and scope.
+func includePath(env *gitEnv, repoRoot, salt string, r scopedSetting, by time.Time) (string, error) {
 	if r.noValue {
-		return nil
+		return "", nil
 	}
 	what := "resolving the path of the include setting " + hiddenKey(salt, r.key) + " (" + r.scope + " scope) as git does (git config --type=path)"
 	// What git says of a path it cannot resolve repeats the path, so only
 	// its status is named, and a read that failed otherwise names the path
 	// as the path.
-	a, err := env.read(repoRoot, what, 4096, "config", "--file", os.DevNull, "--type=path", "--default", r.value, "--get", "abcd.include")
+	a, err := env.readBy(by, repoRoot, what, 4096, "config", "--file", os.DevNull, "--type=path", "--default", r.value, "--get", "abcd.include")
 	if err != nil {
 		var rf *readFailure
 		if errors.As(err, &rf) && r.value != "" {
@@ -325,27 +464,26 @@ func holdInclude(env *gitEnv, repoRoot, salt string, files map[string]string, r 
 				rf.why = strings.ReplaceAll(rf.why, v, "<the path>")
 			}
 		}
-		return err
+		return "", err
 	}
 	if a.code != 0 {
-		return env.failed(what, "git could not resolve it (exit "+strconv.Itoa(a.code)+")")
+		return "", env.failed(what, "git could not resolve it (exit "+strconv.Itoa(a.code)+")")
 	}
 	p, ok := onePath(a.out)
 	if !ok {
-		return env.failed(what, "git did not answer with one path, so the answer is not taken")
+		return "", env.failed(what, "git did not answer with one path, so the answer is not taken")
 	}
 	if !filepath.IsAbs(p) {
 		from, ok := strings.CutPrefix(r.origin, "file:")
 		if !ok || from == "" {
-			return env.failed(what, "the path is relative and the setting does not come from a file, so it has no directory to stand under")
+			return "", env.failed(what, "the path is relative and the setting does not come from a file, so it has no directory to stand under")
 		}
 		if !filepath.IsAbs(from) {
 			from = filepath.Join(repoRoot, from)
 		}
 		p = filepath.Join(filepath.Dir(from), p)
 	}
-	hashFile(files, salt, filepath.Clean(p))
-	return nil
+	return filepath.Clean(p), nil
 }
 
 // proveCheckoutHooks is a drive's comparison, as it starts, of the checkout's
@@ -578,34 +716,37 @@ func (was *remoteIdentity) changed(repoRoot string, now *remoteIdentity) []strin
 // heldBeforeGit is a drive's comparison of what it holds (held, read as it
 // started) with what every environment its git runs in reads now: the held
 // settings of each (readSettings) and every hooks directory git names in an
-// environment whose commands run hooks, with info/attributes (readHooks). It
-// is made before each step of a drive (advanceWith), so before the step's
-// git, the lane's landing push and a reservation's push or fetch a step
-// makes among it; at each pass of the drive's loop, which ends on a
-// difference (terminal.go); and, while a drive runs, before every git
-// command that runs hooks or reaches the network, in a step or not (a
-// move's reservation, a renewal made while an agent runs, the release as
-// the drive ends, the network probe: gitutil.SetBeforeHookedGit, which the
-// drive sets), which is not run on a difference. A difference, or a read that gives no answer
-// the comparison can take, stops it at the config stage, naming what; the
-// drive reads what it holds once, as it starts, so the remedy is to stop it
-// and start it again. With nothing held (a step the host runs, a single
-// build) it compares nothing. What changes between this read and git's own
-// read is not seen (the file's header).
+// environment whose commands run hooks, with info/attributes (readHooks),
+// their reads side by side (readHeld), the comparison bounded as a whole by
+// heldCompareTimeout (boundedCompare). It is made before each step of a
+// drive (advanceWith); at each pass of the drive's loop, which ends on a
+// difference or a read that gives no answer (terminal.go); before the drive
+// releases what it holds as it ends (letGo), outside the drain's lock; and,
+// while a drive runs, before every git command abcd starts with the
+// repository's hooks, merge drivers or content filters on, or that reaches
+// the network, in a step or not (the lane's add, commit, merge and reset, the
+// landing push, a move's reservation, a renewal made while an agent runs, the
+// network probe: gitutil.SetBeforeHookedGit, which the drive sets), which is
+// not run on a difference. Each comparison answers for the git it precedes:
+// none is reused. A difference, a read that gives no answer the comparison
+// can take, or a comparison that does not finish stops it at the config
+// stage, naming which; the drive reads what it holds once, as it starts, so
+// the remedy for a difference is to stop it and start it again. With
+// nothing held (a step the host runs, a single build) it compares nothing.
+// What changes between this read and git's own read is not seen (the file's
+// header).
 func heldBeforeGit(repoRoot string, held *remoteIdentity) error {
 	if held == nil {
 		return nil
 	}
-	envs, files, err := readSettings(repoRoot, held.salt)
-	if err != nil {
-		return heldBeforeGitRefusal(repoRoot, err)
-	}
-	names := held.changed(repoRoot, &remoteIdentity{envs: envs, files: files})
-	dir, err := hooksDirAt(repoRoot)
-	if err != nil {
-		return heldBeforeGitRefusal(repoRoot, err)
-	}
-	now, _, err := readHooks(repoRoot, held.salt, dir)
+	names, err := boundedCompare(func(by time.Time) ([]string, error) {
+		now, err := readHeld(repoRoot, held.salt, "", by)
+		if err != nil {
+			return nil, err
+		}
+		names := held.changed(repoRoot, &remoteIdentity{envs: now.envs, files: now.files})
+		return append(names, nameChanges(repoRoot, configFingerprint{Files: held.hooks}.changes(repoRoot, configFingerprint{Files: now.hooks}))...), nil
+	})
 	if errors.Is(err, errHooksPastCap) {
 		return refuse(StageConfig, "", "", err.Error()+", so what the drive's next git would run cannot be shown to be what it started with, and no git step is taken",
 			"look at what grew the hooks directory; stop the drive and start it again once the hooks are as they should be; nothing was made")
@@ -613,7 +754,6 @@ func heldBeforeGit(repoRoot string, held *remoteIdentity) error {
 	if err != nil {
 		return heldBeforeGitRefusal(repoRoot, err)
 	}
-	names = append(names, nameChanges(repoRoot, configFingerprint{Files: held.hooks}.changes(repoRoot, configFingerprint{Files: now}))...)
 	if len(names) == 0 {
 		return nil
 	}
@@ -626,6 +766,9 @@ func heldBeforeGit(repoRoot string, held *remoteIdentity) error {
 // heldBeforeGitRefusal is heldBeforeGit's refusal of a read it depends on
 // that gave no answer it can take.
 func heldBeforeGitRefusal(repoRoot string, err error) error {
+	if errors.Is(err, errCompareUnfinished) {
+		return refuse(StageConfig, "", "", unfinishedReason()+", and no git step is taken", unfinishedRemedy)
+	}
 	return refuse(StageConfig, "", "",
 		"a read the drive's hold depends on gave no answer it can take, so what its next git would run cannot be shown to be what it started with: "+nameChanges(repoRoot, []string{fsutil.RedactHome(err.Error())})[0],
 		readRemedy("run the step again"))
@@ -635,6 +778,9 @@ func heldBeforeGitRefusal(repoRoot string, err error) error {
 // depends on gave no answer it can take: it stops at the config stage,
 // naming the read and why.
 func heldReadRefusal(c Context, laneID string, err error) error {
+	if errors.Is(err, errCompareUnfinished) {
+		return refuse(StageConfig, "", laneID, unfinishedReason()+", and the lane's git is not run", unfinishedRemedy)
+	}
 	return refuse(StageConfig, "", laneID,
 		"a read the drive's hold depends on gave no answer it can take, so what the lane's git would run cannot be shown to be what the drive started with: "+nameChanges(c.RepoRoot, []string{fsutil.RedactHome(err.Error())})[0],
 		readRemedy("run the step again"))
@@ -646,18 +792,24 @@ func heldReadRefusal(c Context, laneID string, err error) error {
 // calls it before it asks origin anything and again once origin has
 // answered, so a change made while the ask ran and left in place is refused
 // too; one made and put back between the two reads is not seen. A trial's
-// lane calls it once, since it asks origin nothing. A read that gives no
-// answer the hold can take stops the step at the config stage. With nothing
-// carried it checks nothing.
+// lane calls it once, since it asks origin nothing. Its reads run side by
+// side inside one bound (boundedCompare). A read that gives no answer the
+// hold can take, or a comparison that does not finish, stops the step at the
+// config stage. With nothing carried it checks nothing.
 func remoteUnchanged(c Context, laneID string) error {
 	if c.remote == nil {
 		return nil
 	}
-	envs, files, err := readSettings(c.RepoRoot, c.remote.salt)
+	keys, err := boundedCompare(func(by time.Time) ([]string, error) {
+		envs, files, err := readSettings(c.RepoRoot, c.remote.salt, by)
+		if err != nil {
+			return nil, err
+		}
+		return c.remote.changed(c.RepoRoot, &remoteIdentity{envs: envs, files: files}), nil
+	})
 	if err != nil {
 		return heldReadRefusal(c, laneID, err)
 	}
-	keys := c.remote.changed(c.RepoRoot, &remoteIdentity{envs: envs, files: files})
 	if len(keys) == 0 {
 		return nil
 	}
@@ -681,14 +833,19 @@ func remoteUnchanged(c Context, laneID string) error {
 // entries removed and others added. The stage calls it just before the add,
 // so a difference present at this read is refused before that add; a change
 // made after this read and before git runs the hook is not seen, and nothing
-// holds the directory through the add (the file's header). A read that gives
-// no answer the hold can take stops the step at the config stage. With
-// nothing carried (a step the host runs, a single build) it checks nothing.
+// holds the directory through the add (the file's header). Its reads run
+// side by side inside one bound (boundedCompare). A read that gives no answer
+// the hold can take, or a comparison that does not finish, stops the step at
+// the config stage. With nothing carried (a step the host runs, a single
+// build) it checks nothing.
 func checkoutHooksUnchanged(c Context, laneID, hooksDir string) error {
 	if c.remote == nil {
 		return nil
 	}
-	now, _, err := readHooks(c.RepoRoot, c.remote.salt, hooksDir)
+	now, err := boundedCompare(func(by time.Time) (map[string]string, error) {
+		now, _, err := readHooks(c.RepoRoot, c.remote.salt, hooksDir, by)
+		return now, err
+	})
 	if errors.Is(err, errHooksPastCap) {
 		return refuse(string(StageWorktree), "", laneID,
 			err.Error()+", and git's add of the lane's worktree runs the checkout's post-checkout hook with the drive's rights, so the lane is not made",

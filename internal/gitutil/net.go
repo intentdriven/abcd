@@ -3,6 +3,7 @@ package gitutil
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -154,29 +155,66 @@ func runHooked(dir string, network bool, stdin string, args []string, sink io.Wr
 }
 
 // beforeHooked is the check SetBeforeHookedGit sets, nil for none.
-var beforeHooked atomic.Pointer[func() error]
+var beforeHooked atomic.Pointer[func(args []string) error]
 
-// SetBeforeHookedGit sets a check every command runHookedContext runs asks
-// first (Net, NetEach, NetInput, NetContext and LocalGit: each git command
-// that runs a repository's hooks or reaches a remote): an error from it is
+// NotRunError is a git command the check SetBeforeHookedGit set refused: git
+// did not run. Verb is its subcommand; Err is the check's error.
+type NotRunError struct {
+	Verb string
+	Err  error
+}
+
+func (e *NotRunError) Error() string { return "git " + e.Verb + " was not run: " + e.Err.Error() }
+
+func (e *NotRunError) Unwrap() error { return e.Err }
+
+// ErrBeforeHookedGitSet is SetBeforeHookedGit's refusal of a second check
+// while one is set: one drive runs in a process.
+var ErrBeforeHookedGitSet = errors.New("a check before every hooked or networked git is already set in this process, and one drive runs in a process")
+
+// SetBeforeHookedGit sets a check every git command abcd starts with the
+// repository's hooks, merge drivers or content filters on, or that reaches a
+// remote, asks first, before the command is built: Net, NetEach, NetInput,
+// NetContext and LocalGit (runHookedContext), RunCommitCommandBounded and
+// RunCommitCommandBoundedAsStored (runCommitBounded), WorkingTreeCommand and
+// WorkingTreeCommandContext, and RunLimitedNetContext. An error from it is
 // the command's, and git does not run. A drive sets it to its comparison of
-// what it holds while it runs (implement/loop's heldBeforeGit); nil clears it.
-// Commands that read only (NetAskContext, the isolated readers) never ask it.
-func SetBeforeHookedGit(f func() error) {
+// what it holds while it runs (implement/loop's heldBeforeGit); it is given
+// the command's arguments. One drive
+// runs in a process, so a check already set is not replaced: the call is
+// refused with ErrBeforeHookedGitSet. The returned clear removes this check
+// and only this one. Commands that read with every program-starting setting
+// off and reach no remote (NetAskContext, WorkingTreeCommitCommand built
+// directly, the isolated readers) never ask it: the comparison makes its own
+// reads through them. With no check set nothing changes.
+func SetBeforeHookedGit(f func(args []string) error) (clear func(), err error) {
 	if f == nil {
-		beforeHooked.Store(nil)
-		return
+		return nil, errors.New("no check was given")
 	}
-	beforeHooked.Store(&f)
+	p := &f
+	if !beforeHooked.CompareAndSwap(nil, p) {
+		return nil, ErrBeforeHookedGitSet
+	}
+	return func() { beforeHooked.CompareAndSwap(p, nil) }, nil
+}
+
+// askBeforeHooked asks the check SetBeforeHookedGit set, when one is set,
+// for the git command args would run: its error is a NotRunError naming the
+// subcommand.
+func askBeforeHooked(args []string) error {
+	if f := beforeHooked.Load(); f != nil {
+		if err := (*f)(args); err != nil {
+			return &NotRunError{Verb: gitVerb(args), Err: err}
+		}
+	}
+	return nil
 }
 
 // runHookedContext is runHooked under parent, after the check
 // SetBeforeHookedGit set, when one is set.
 func runHookedContext(parent context.Context, dir string, network bool, stdin string, args []string, sink io.Writer) (string, error) {
-	if f := beforeHooked.Load(); f != nil {
-		if err := (*f)(); err != nil {
-			return "", fmt.Errorf("git %s was not run: %w", gitVerb(args), err)
-		}
+	if err := askBeforeHooked(args); err != nil {
+		return "", err
 	}
 	ctx, cancel := context.WithTimeout(parent, NetTimeout)
 	defer cancel()

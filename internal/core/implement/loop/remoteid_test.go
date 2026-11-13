@@ -190,14 +190,15 @@ func TestARemoteIdentityReadFailureHidesTheHome(t *testing.T) {
 	}
 }
 
-// TestADrivesRemoteIdentityReachesTheWorktreeStage: what the drive read as
-// it started is carried in the step's options, so a lane started after
-// origin's URL changed is refused although its run, started after the change,
-// records the new URL as its own starting point: the step's check of what the
-// drive holds stops it at the config stage before the worktree stage's git
-// runs (the stage's own check is held by driveSecondLane's tests). Without it
-// (a step the host runs, a single build) the stage is as before.
-func TestADrivesRemoteIdentityReachesTheWorktreeStage(t *testing.T) {
+// TestAStepUnderAHoldWhoseOriginChangedStopsAtTheConfigStage: a step given
+// what a drive read as it started, of a run started after origin's URL
+// changed, whose own fingerprint records the new URL as its starting point,
+// is stopped by the step's comparison of what the drive holds, at the config
+// stage, naming the URL, before any git of the worktree stage runs. Given
+// nothing (a step the host runs, a single build) the lane opens as before.
+// That the hold reaches the worktree stage's own Context is held by
+// TestAChangeMadeDuringTheAskOfOriginIsMetAtTheWorktreeStage.
+func TestAStepUnderAHoldWhoseOriginChangedStopsAtTheConfigStage(t *testing.T) {
 	repo, _, _ := hookedOrigin(t)
 	id, err := readRemoteIdentity(repo.Root())
 	if err != nil {
@@ -419,15 +420,15 @@ func TestACheckoutHookChangedBetweenTwoLanesOfADriveRefusesTheSecond(t *testing.
 	}
 }
 
-// TestADrivesHeldHooksReachANewRunsWorktreeStage: what the drive read of the
-// checkout's hooks as it started is carried in the step's options to the
-// step of a run started after the checkout's post-checkout hook changed,
-// whose own fingerprint records the changed copy as its starting point, so
-// the lane is refused before any add, at the step's check of what the drive
-// holds. Without it (a step the host
-// runs, a single build) the stage is as before: the lane opens and the add
-// runs the changed copy, the limit the docs state.
-func TestADrivesHeldHooksReachANewRunsWorktreeStage(t *testing.T) {
+// TestAStepUnderAHoldWhosePostCheckoutChangedStopsBeforeTheAdd: a step
+// given what a drive read of the checkout's hooks as it started, of a run
+// started after the checkout's post-checkout hook changed, whose own
+// fingerprint records the changed copy as its starting point, is stopped by
+// the step's comparison of what the drive holds, at the config stage, before
+// any add: the changed hook does not run. Given nothing (a step the host
+// runs, a single build) the lane opens and the add runs the changed copy,
+// the limit the docs state.
+func TestAStepUnderAHoldWhosePostCheckoutChangedStopsBeforeTheAdd(t *testing.T) {
 	repo, _, _ := hookedOrigin(t)
 	id, err := readRemoteIdentity(repo.Root())
 	if err != nil {

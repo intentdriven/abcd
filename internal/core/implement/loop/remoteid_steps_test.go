@@ -209,22 +209,23 @@ func (w *terminalWorld) heldStop(t *testing.T, res TerminalResult, err error, la
 	}
 }
 
-// TestALanesOwnPushDoesNotRunUnderAPrePushChangedDuringTheLane: a pre-push in
-// the directory named only in the person's global settings, which the
-// lane's add and commit do not read and the push does, changed by the lane's
-// agent: that lane's landing does not run, no push of the drive's runs the
-// changed hook (the hook records whether it ran), and the drive ends at the
-// config stage naming it. Watched failing: the landing ran.
-func TestALanesOwnPushDoesNotRunUnderAPrePushChangedDuringTheLane(t *testing.T) {
+// TestAStepAfterAPrePushChangedDuringTheLaneStopsBeforeTheLanding: a
+// pre-push in the directory named only in the person's global settings,
+// which the lane's add and commit do not read and the push does, changed by
+// the lane's agent: the next step stops at the config stage naming it, before
+// the land stage (stubbed here, so it records only whether it was reached),
+// and nothing reaches origin after the change. That the push itself does not
+// run the changed hook, the land stage not stubbed, is held by
+// TestAPushUnderAPrePushChangedSinceTheDriveStartedDoesNotRun. Watched
+// failing at round 3's base: the landing was reached.
+func TestAStepAfterAPrePushChangedDuringTheLaneStopsBeforeTheLanding(t *testing.T) {
 	w := newTerminalWorld(t)
 	hooks := globalHooks(t)
-	ran := filepath.Join(t.TempDir(), "pre-push-ran")
 	landed, before := w.changedDuringTheLane(t, func() {
-		writeMode(t, filepath.Join(hooks, "pre-push"), "#!/bin/sh\n: > '"+ran+"'\n", 0o755)
+		writeMode(t, filepath.Join(hooks, "pre-push"), "#!/bin/sh\nexit 0\n# changed\n", 0o755)
 	})
 	res, err := RunTerminal(context.Background(), w.repo.Root(), w.bounded(t, 3*time.Hour))
 	w.heldStop(t, res, err, *landed, *before, "pre-push (changed)")
-	absent(t, ran, "the changed pre-push never runs")
 }
 
 // TestAReservationPushDoesNotRunUnderAnSSHCommandChangedDuringTheLane: a
@@ -254,8 +255,11 @@ func TestAHookedGitOutsideAStepIsNotRunUnderAChangedHold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gitutil.SetBeforeHookedGit(func() error { return heldBeforeGit(repo.Root(), id) })
-	t.Cleanup(func() { gitutil.SetBeforeHookedGit(nil) })
+	unset, err := gitutil.SetBeforeHookedGit(func([]string) error { return heldBeforeGit(repo.Root(), id) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(unset)
 	if _, err := gitutil.Net(repo.Root(), "fetch", "-q", "origin"); err != nil {
 		t.Fatalf("an unchanged hold lets the fetch run: %v", err)
 	}
@@ -264,7 +268,7 @@ func TestAHookedGitOutsideAStepIsNotRunUnderAChangedHold(t *testing.T) {
 	if r, ok := AsRefusal(err); !ok || r.Stage != StageConfig || !strings.Contains(r.Reason, "core.editor") || !strings.Contains(err.Error(), "was not run") {
 		t.Fatalf("the fetch is not run under a changed hold: %v", err)
 	}
-	gitutil.SetBeforeHookedGit(nil)
+	unset()
 	if _, err := gitutil.Net(repo.Root(), "fetch", "-q", "origin"); err != nil {
 		t.Fatalf("with no check set the fetch runs: %v", err)
 	}
