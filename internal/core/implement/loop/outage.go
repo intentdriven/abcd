@@ -341,9 +341,11 @@ func (g *outageGate) agentWait(st State, w want) *Refusal {
 // netFailure returns the lane-only contention a network failure of what makes,
 // carrying the report the call records; nil when err is not a network failure
 // (an authentication failure, a hook's refusal, a conflict), which stays the
-// stage's own refusal.
+// stage's own refusal. A git the drive's comparison did not run
+// (gitutil.NotRunError) is never one, whatever its text names: it is
+// recognised by its type before any text is read.
 func netFailure(stage Stage, lane, what string, err error) *Refusal {
-	if err == nil || !implement.IsNetworkFailure(err.Error()) {
+	if err == nil || gitNotRun(err) || !implement.IsNetworkFailure(err.Error()) {
 		return nil
 	}
 	r := contend(string(stage), "", lane, lane+" lost the network at "+what+": "+gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())),

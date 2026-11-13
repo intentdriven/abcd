@@ -490,7 +490,7 @@ func push(root string, args []string) error {
 // names its holder with the back-off; otherwise the push failure is reported
 // as itself.
 func lostRace(p *prepared, tree string, before judged, perr error) error {
-	pushFailed := &PushError{Reason: redacted(perr)}
+	pushFailed := &PushError{Reason: redacted(perr).text, cause: redacted(perr).notRun}
 	gap, err := fetch(p.root, p.now, noReservation, reservations)
 	if err != nil {
 		return pushFailed
@@ -957,7 +957,7 @@ func judge(p *prepared, tree string) (judged, error) {
 		case ref == "":
 			j.blobUnread = "this checkout names no default branch of " + Remote
 		case err != nil:
-			j.blobUnread = p.derivedGap + "; " + redacted(err)
+			j.blobUnread = p.derivedGap + "; " + redacted(err).text
 		}
 		j.derived = p.derivedGap == "" && terminal(recs[p.id], p.id)
 		j.blob = blobOf(recs[p.id])
@@ -1011,7 +1011,7 @@ func remoteDefault(root string) (string, error) {
 	trace(args...)
 	out, err := gitutil.Net(root, args...)
 	if err != nil {
-		return "", errors.New(redacted(err))
+		return "", redacted(err).err()
 	}
 	for _, line := range strings.Split(out, "\n") {
 		rest, ok := strings.CutPrefix(line, "ref: ")
@@ -1138,7 +1138,7 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 			_, ferr = gitutil.NetInput(root, stdin, withDefault...)
 		}
 		if ferr != nil && ref != "" {
-			gap = "could not read " + gitutil.ShortRef(ref) + " from " + Remote + ": " + redacted(ferr)
+			gap = "could not read " + gitutil.ShortRef(ref) + " from " + Remote + ": " + redacted(ferr).text
 			ferr = nil
 			if len(args) > bare || len(listed) > 0 {
 				trace(args...)
@@ -1150,9 +1150,9 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 		// Each namespace keeps that its fetch failed, and why, for every
 		// reader to say rather than show the last view as current (C10).
 		for _, ns := range spaces {
-			noteFetchFailure(root, ns, now, redacted(ferr))
+			noteFetchFailure(root, ns, now, redacted(ferr).text)
 		}
-		e := &FetchError{Reason: redacted(ferr)}
+		e := &FetchError{Reason: redacted(ferr).text, cause: redacted(ferr).notRun}
 		if what := nouns(spaces); what != reservations.noun || outcome != noReservation {
 			e.what, e.outcome = what, outcome
 		}
@@ -1160,7 +1160,7 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 	}
 	for _, ns := range spaces {
 		if err := stampFetch(root, ns, now); err != nil {
-			noteFetchFailure(root, ns, now, "fetched, but could not record when: "+redacted(err))
+			noteFetchFailure(root, ns, now, "fetched, but could not record when: "+redacted(err).text)
 			return "", refuse("fetched %s, but could not record when: %s; %s", ns.noun, redacted(err), outcome)
 		}
 		clearFetchFailure(root, ns)
@@ -1189,6 +1189,10 @@ func stdinFetchFloor() error {
 type FetchError struct {
 	Reason string
 
+	// cause is the git the drive's check did not run, when that is why the
+	// fetch failed (redacted), reachable through errors.As; nil otherwise.
+	cause error
+
 	// what is what the fetch read and outcome what was not done; "" for the
 	// reservations' fetch, whose words are fixed.
 	what, outcome string
@@ -1202,18 +1206,23 @@ func (e *FetchError) Error() string {
 	return fmt.Sprintf("could not read %s from %s: %s; %s", what, Remote, e.Reason, outcome)
 }
 func (e *FetchError) Is(target error) bool { return target == ErrRefused }
+func (e *FetchError) Unwrap() error        { return e.cause }
 
 // PushError is a reservation push origin refused, for a reason other than a
 // tip the act cannot take: Reason is git's own rejection, home-redacted. It is
 // an ErrRefused refusal: no reservation was made.
 type PushError struct {
 	Reason string
+
+	// cause is as FetchError's.
+	cause error
 }
 
 func (e *PushError) Error() string {
 	return fmt.Sprintf("%s refused the reservation push: %s; %s", Remote, e.Reason, noReservation)
 }
 func (e *PushError) Is(target error) bool { return target == ErrRefused }
+func (e *PushError) Unwrap() error        { return e.cause }
 
 // HasOrigin reports whether the checkout at root has a remote named origin,
 // the one reservations live on, reading only its configuration.

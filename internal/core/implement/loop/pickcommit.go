@@ -189,6 +189,15 @@ func heldStopOf(err error) (*Refusal, bool) {
 	return r, true
 }
 
+// gitNotRun reports whether err is, or wraps, a git the check SetBeforeHookedGit
+// set did not run, for a caller that classifies a git error by its text: the
+// type is read first, so a refusal whose text holds a file or setting name is
+// never read as git's own words.
+func gitNotRun(err error) bool {
+	var nr *gitutil.NotRunError
+	return errors.As(err, &nr)
+}
+
 // isHeldStop reports whether err is such a stop (heldStopOf).
 func isHeldStop(err error) bool {
 	_, ok := heldStopOf(err)

@@ -328,6 +328,9 @@ func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, s
 		if !letItsReservationGo(c.State) {
 			m, err := claim.FetchMergeHold(c.RepoRoot, c.Now, claimOptions(c.Now))
 			var fe *claim.FetchError
+			if r, ok := heldStopOf(err); ok {
+				return time.Time{}, "", r
+			}
 			switch {
 			case errors.As(err, &fe):
 				return time.Time{}, "", fenceUnread(lane,
@@ -444,6 +447,9 @@ func renewAtFence(c Context, lane Lane, term time.Duration, act fenceAct) (time.
 	not := ", so this lane does not " + act.not
 	var fe *claim.FetchError
 	var nh *claim.NotHeld
+	if r, ok := heldStopOf(err); ok {
+		return time.Time{}, r
+	}
 	switch {
 	case errors.As(err, &fe):
 		return time.Time{}, fenceUnread(lane,
@@ -1065,6 +1071,8 @@ func reserveOnLeavingLand(repoRoot string, st State, lane Lane, to Stage, now ti
 	// lane stays at its landing with nothing merged and nothing pushed.
 	if _, ferr := claim.Fetch(repoRoot, claimOptions(now)); errors.Is(ferr, claim.ErrNoOrigin) {
 		return "", nil
+	} else if r, ok := heldStopOf(ferr); ok {
+		return "", r
 	} else if ferr != nil {
 		reason := ferr.Error()
 		if fe := (*claim.FetchError)(nil); errors.As(ferr, &fe) {

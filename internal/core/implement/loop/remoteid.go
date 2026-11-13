@@ -538,6 +538,9 @@ func proveCheckoutHooks(repoRoot string, id *remoteIdentity, g *outageGate) erro
 		if ctx.Err() != nil {
 			err = fmt.Errorf("%s did not answer within %s: operation timed out", Remote, originAskTimeout)
 		}
+		if r, ok := heldStopOf(err); ok {
+			return r
+		}
 		why := gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error()))
 		if r := netFailure(StageDrain, "", what, err); r != nil {
 			r.Reason = "the drive cannot start yet: it lost the network asking " + Remote + " for its default branch's tip, against which the checkout's hooks in " + shown + " are compared: " + why

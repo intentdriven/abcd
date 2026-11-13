@@ -186,10 +186,20 @@ var heldReadRetryWait = 2 * time.Second
 // heldCompareTimeout bounds one comparison of what a drive holds with what
 // its git would read now, as a whole, every environment's reads included
 // (boundedCompare); each read inside it keeps its own bound and its one
-// retry, and none runs past it. It is far below a reservation's renewal
-// margin (a renewal falls due at half its lease, an hour into the default
-// two), and above the drain lock's wait (lockTimeout), which a drive's let-go
-// therefore does not compare under: it compares before it takes the lock.
+// retry, and none runs past it.
+//
+// It is far below a reservation's renewal margin (a renewal falls due at half
+// its lease, an hour into the default two), and above the drain lock's wait
+// (lockTimeout, three seconds). A drive's let-go compares before it takes
+// that lock, so a difference is met with the lock never taken; but each push
+// of its release, inside the lock, asks a comparison of its own, so one runs
+// under the lock, usually in about one read's time and at most this bound,
+// and another session waiting on the lock for its three seconds can be told
+// another drain is moving. The renewal pass holds its own lock (claim's
+// renew.lock, waited on for two minutes) across its pushes, one comparison
+// per due reservation: two due at once can take two of these bounds, past
+// another pass's wait, which then renews nothing that time and leaves the
+// renewal to the next pass, well inside the hour's margin.
 var heldCompareTimeout = time.Minute
 
 // errCompareUnfinished is a comparison of what a drive holds that did not
@@ -301,7 +311,11 @@ func (e *gitEnv) readBy(by time.Time, dir, what string, limit int, args ...strin
 		first = heldReadTimeout
 	}
 	cutBy := func() bool { return !by.IsZero() && !time.Now().Before(by) }
-	if !by.IsZero() && by.Before(deadline) {
+	// byLimits: the comparison's deadline, not the read's own bound, is what
+	// ends this read's asks, so a retry it leaves no room for, or an ask it
+	// cuts, is the comparison not finishing.
+	byLimits := !by.IsZero() && !by.After(deadline)
+	if byLimits {
 		deadline = by
 	}
 	var had []time.Duration
@@ -326,7 +340,7 @@ func (e *gitEnv) readBy(by time.Time, dir, what string, limit int, args ...strin
 				time.Sleep(heldReadRetryWait)
 				continue
 			}
-			if cutBy() {
+			if cutBy() || byLimits {
 				return answer{code: -1}, errCompareUnfinished
 			}
 			why := "git did not finish in the " + shownBound(had[0]) + " its ask had, so the read is not taken"
