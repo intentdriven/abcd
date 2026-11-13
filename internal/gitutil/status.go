@@ -1,7 +1,6 @@
 package gitutil
 
 import (
-	"context"
 	"os"
 	"strings"
 
@@ -104,7 +103,9 @@ type StatusOptions struct {
 // and a filter the repository marks required fails the read. With them on,
 // the read asks the check SetBeforeHookedGit set before git runs, as every
 // isolated command that can start a filter does (isolatedGit); with them off
-// it asks nothing, since it starts no program.
+// it carries the blanks and asks nothing, since it starts no program. Where
+// the repository names no filter there is nothing to blank, so the read asks
+// all the same: the command line alone cannot show that none is named.
 //
 // --ignore-submodules=dirty keeps git from starting a status inside each
 // checked-out submodule, which reads the submodule's own config and so runs a
@@ -114,8 +115,7 @@ type StatusOptions struct {
 // listed; uncommitted content inside a submodule is not.
 func Status(root string, maxBytes int, opt StatusOptions) ([]StatusEntry, error) {
 	var args []string
-	on, _ := FiltersSwitchedOn(root)
-	if !on {
+	if on, _ := FiltersSwitchedOn(root); !on {
 		filters, err := FilterOverrides(root)
 		if err != nil {
 			return nil, err
@@ -129,13 +129,7 @@ func Status(root string, maxBytes int, opt StatusOptions) ([]StatusEntry, error)
 	if len(opt.Pathspecs) > 0 {
 		args = append(append(args, "--"), opt.Pathspecs...)
 	}
-	build := isolatedGitBlanked
-	if on {
-		build = isolatedGit
-	}
-	cmd := build(root, args...)
-	raw, overflowed, err := runBoundedCmd(context.Background(), cmd, maxBytes)
-	out, err := judgeCapped(raw, overflowed, err, maxBytes, args)
+	out, err := RunCappedBytes(root, maxBytes, args...)
 	if err != nil {
 		return nil, err
 	}

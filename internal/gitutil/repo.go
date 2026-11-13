@@ -38,20 +38,12 @@ import (
 // is run, as the hooked runners do; its refusal is set as the command's Err
 // in the same way.
 func isolatedGit(root string, args ...string) *exec.Cmd {
-	cmd := isolatedGitBlanked(root, args...)
-	if cmd.Err == nil {
-		askIfContentRuns(cmd, args)
-	}
-	return cmd
-}
-
-// isolatedGitBlanked is isolatedGit for a caller in this package that has
-// itself blanked every program the command could start (Status with its
-// filters off, even where the repository names none), so it asks nothing.
-func isolatedGitBlanked(root string, args ...string) *exec.Cmd {
 	cmd := exec.Command("git", isolatedArgs(root, args)...)
 	cmd.Env = gitEnv()
 	guardObjectRead(context.Background(), cmd, root, args)
+	if cmd.Err == nil {
+		askIfContentRuns(cmd, args)
+	}
 	return cmd
 }
 

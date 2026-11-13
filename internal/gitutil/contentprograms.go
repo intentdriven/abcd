@@ -16,9 +16,9 @@ import (
 // LeavesContentProgramsOn says the command can start one of those, and a
 // command that blanks them (FilterOverrides, --no-filters, --no-textconv
 // with --no-ext-diff, MergeDriverOverrides) or reads no working-tree content
-// and no blob through a program does not ask. Status, which knows whether it
-// blanked the filters even when the repository names none, decides for
-// itself (isolatedGitBlanked).
+// and no blob through a program does not ask. A status with the filters
+// off in a repository that names none carries no blank, so it asks: the
+// command line cannot show that none is named.
 
 // globalValued are git's global options that take their value as the next
 // argument, before the subcommand.
