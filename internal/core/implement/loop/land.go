@@ -2355,6 +2355,10 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	return armLane(c, lane, def, rule, d, held)
 }
 
+// recordLaneGate is landing.RecordMergeGate, the seam a test turns the
+// record off through to compare what the lane does without it.
+var recordLaneGate = landing.RecordMergeGate
+
 // askMergeGate asks the merge gate about the lane's pull request: the mode as
 // the default branch's tip just fetched and the machine layer declare it,
 // never the lane's checkout (dcn-2610230058333177), with the ruleset mirror's
@@ -2367,13 +2371,13 @@ func askMergeGate(c Context, lane Lane, def string, rule landing.MergeRule) (lan
 	}
 	roots, _ := layered.RootsFor(c.RepoRoot)
 	unrecorded := recordOwnReview(c, lane, roots, tip, Remote+"/"+def)
-	// The forge's answers are remembered for the call, so the spot-check's
-	// record of the decision asks it nothing more (landing.RecordMergeGate).
-	q := landing.MergeQuery{RepoRoot: c.RepoRoot, Roots: roots, Tip: tip, TipName: Remote + "/" + def, Default: def,
-		Rule: rule, Repo: "{owner}/{repo}", PR: strconv.Itoa(lane.PR), Head: lane.Landing.Pushed, Forge: landing.RememberForge(gateForge(c, lane))}
-	d, err := landing.DecideMerge(q)
+	d, err := landing.DecideMerge(landing.MergeQuery{RepoRoot: c.RepoRoot, Roots: roots, Tip: tip, TipName: Remote + "/" + def, Default: def,
+		Rule: rule, Repo: "{owner}/{repo}", PR: strconv.Itoa(lane.PR), Head: lane.Landing.Pushed, Forge: gateForge(c, lane)})
 	if err == nil {
-		if note := landing.RecordMergeGate(q, d, spotcheck.SiteLane); note != "" {
+		// The spot-check's record of the decision, made from the decision
+		// alone: a record that cannot be written changes nothing but the
+		// reason, which says so.
+		if note := recordLaneGate(c.RepoRoot, spotcheck.SiteLane, strconv.Itoa(lane.PR), lane.Landing.Pushed, d); note != "" {
 			d.Why += "; " + note
 		}
 	}

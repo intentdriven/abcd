@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -485,39 +486,55 @@ func push(root string, args []string) error {
 	return nil
 }
 
-// PushBranch pushes commit sha to ref, a branch of abcd's own on origin
-// (refs/heads/abcd-…), by the one push this package makes (pushTo): plain,
-// never forced, with the repository's hooks running, so origin takes it only
-// as a fast-forward. A push origin refused comes back as git's own words
-// (pushRejection). It is how the spot-check's store reaches origin
-// (internal/core/spotcheck).
-func PushBranch(root, sha, ref string) error {
-	if !gitutil.IsFullSHA(sha) || !abcdBranch(ref) {
-		return refuse("%s is not a commit and a branch of abcd's own to push; %s", echoName(ref), nothingPushed)
+// The spot-check's store branch (internal/core/spotcheck), the one branch
+// PushBranch and FetchBranch carry.
+const (
+	SpotcheckBranch      = "abcd-spotcheck"
+	spotcheckBranchRef   = "refs/heads/" + SpotcheckBranch
+	spotcheckTrackingRef = "refs/remotes/" + Remote + "/" + SpotcheckBranch
+	// spotcheckNetTimeout bounds each networked git command FetchBranch
+	// makes, under the caller's own context.
+	spotcheckNetTimeout = time.Minute
+)
+
+// PushBranch pushes commit sha to ref, which must be the spot-check's store
+// branch (refs/heads/abcd-spotcheck), by the one push this package makes
+// (pushTo): plain, never forced, with the repository's hooks running, so
+// origin takes it only as a fast-forward. A push origin refused comes back as
+// git's own words (pushRejection). A ctx already ended pushes nothing; the
+// push itself is bounded by gitutil.NetTimeout, since no runner of gitutil's
+// runs the repository's hooks under a caller's context.
+func PushBranch(ctx context.Context, root, sha, ref string) error {
+	if !gitutil.IsFullSHA(sha) || ref != spotcheckBranchRef {
+		return refuse("%s is not a commit and the spot-check's branch to push; %s", echoName(ref), nothingPushed)
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("%s: %w", nothingPushed, err)
 	}
 	return push(root, pushTo(sha, ref))
 }
 
-// FetchBranch fetches ref, a branch of abcd's own on origin, into tracking,
-// its remote-tracking ref (refs/remotes/origin/abcd-…), forced as a
-// remote-tracking ref always is. found is false when origin holds no such
-// branch, which a listing of origin's branches then confirms: a fetch that
-// fails for any other reason is an error, never a branch read as absent.
-// Like every networked git abcd runs, each command is bounded
-// (gitutil.NetTimeout and its stalled-connection bounds).
-func FetchBranch(root, ref, tracking string) (found bool, err error) {
-	if !abcdBranch(ref) || tracking != "refs/remotes/"+Remote+"/"+strings.TrimPrefix(ref, "refs/heads/") {
-		return false, refuse("%s is not a branch of abcd's own fetched to its own remote-tracking ref; nothing was fetched", echoName(ref))
+// FetchBranch fetches ref, which must be the spot-check's store branch, into
+// tracking, its own remote-tracking ref (refs/remotes/origin/abcd-spotcheck),
+// forced as a remote-tracking ref always is. found is false when origin holds
+// no such branch, which a listing of origin's branches then confirms: a fetch
+// that fails for any other reason is an error, never a branch read as absent.
+// Each command runs under ctx and its own bound (spotcheckNetTimeout).
+func FetchBranch(ctx context.Context, root, ref, tracking string) (found bool, err error) {
+	if ref != spotcheckBranchRef || tracking != spotcheckTrackingRef {
+		return false, refuse("%s is not the spot-check's branch fetched to its own remote-tracking ref; nothing was fetched", echoName(ref))
 	}
-	args := []string{"fetch", "--no-tags", Remote, "+" + ref + ":" + tracking}
+	ctx, cancel := context.WithTimeout(ctx, spotcheckNetTimeout)
+	defer cancel()
+	args := []string{"fetch", "--no-tags", "--no-write-fetch-head", Remote, "+" + ref + ":" + tracking}
 	trace(args...)
-	_, ferr := gitutil.Net(root, args...)
+	_, ferr := gitutil.NetContext(ctx, root, args...)
 	if ferr == nil {
 		return true, nil
 	}
 	list := []string{"ls-remote", "--heads", Remote, ref}
 	trace(list...)
-	out, lerr := gitutil.Net(root, list...)
+	out, lerr := gitutil.NetContext(ctx, root, list...)
 	if lerr == nil && strings.TrimSpace(out) == "" {
 		return false, nil
 	}
@@ -540,21 +557,6 @@ func KeptHolderID() string {
 		return id
 	}
 	return ""
-}
-
-// abcdBranch reports whether ref is a full branch ref under refs/heads/abcd-,
-// one segment, in the characters abcd names its own branches with.
-func abcdBranch(ref string) bool {
-	name, ok := strings.CutPrefix(ref, "refs/heads/abcd-")
-	if !ok || name == "" {
-		return false
-	}
-	for _, r := range name {
-		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
-			return false
-		}
-	}
-	return true
 }
 
 // lostRace explains a rejected push. When the branch moved while the push was

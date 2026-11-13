@@ -1484,8 +1484,16 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 	// just fetched and the machine layer declare it, never the branch's own
 	// checkout (dcn-2610230058333177), the author's role, the approvals of
 	// the head, and in auto a review receipt naming it.
-	d, err := decideMergeRecorded(MergeQuery{RepoRoot: dir, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
-		Rule: rule, Repo: nameWithOwner, PR: n, Head: res.Head, Forge: func(args ...string) (string, error) { return o.Forge(dir, args...) }}, spotcheck.SiteLand)
+	d, err := DecideMerge(MergeQuery{RepoRoot: dir, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
+		Rule: rule, Repo: nameWithOwner, PR: n, Head: res.Head, Forge: func(args ...string) (string, error) { return o.Forge(dir, args...) }})
+	if err == nil {
+		// The spot-check's record of the decision, made from the decision
+		// alone: a record that cannot be written changes nothing but the
+		// reason, which says so.
+		if note := recordGate(dir, spotcheck.SiteLand, n, res.Head, d); note != "" {
+			d.Why += "; " + note
+		}
+	}
 	if err != nil {
 		stop, unread, cerr := atHeadChecked()
 		if stop {
@@ -1843,76 +1851,49 @@ func shellQuote(s string) string {
 	return shellquote.Single(s)
 }
 
-// decideMergeRecorded is DecideMerge with the decision kept for the
-// spot-check (RecordMergeGate), the forge's answers remembered for the call
-// (RememberForge), so recording asks the forge nothing more; `abcd land`'s
-// enqueue asks it, and the loop's arm makes the same three calls itself.
-func decideMergeRecorded(q MergeQuery, site string) (MergeDecision, error) {
-	q.Forge = RememberForge(q.Forge)
-	d, err := DecideMerge(q)
-	if err != nil {
-		return d, err
-	}
-	if note := RecordMergeGate(q, d, site); note != "" {
-		d.Why += "; " + note
-	}
-	return d, nil
-}
+// recordGate is RecordMergeGate, the seam a test turns the record off
+// through to compare what land does without it.
+var recordGate = RecordMergeGate
 
-// RecordMergeGate keeps d, the gate's answer to q, for the spot-check
-// (spc-2610301925429250 step 1) when abcd took it as the facilitator and no
-// person's approval counted: the mode at the tip is auto and the author a
-// maintainer. The record (spotcheck.Decision of kind merge-gate) names site,
-// the pull request and its head, the mode and the layer that declared it, the
-// author's role, whether a review receipt named the head, and the gate's
-// answer; it is committed on the store's local copy and reaches no network,
-// and the gate asked again over the same head with the same answer keeps the
-// one record. q.Forge is asked again for the author's role, so a caller
-// passes the forge the gate asked through RememberForge, which answers that
-// from memory. A record that cannot be written changes nothing: the reason is
-// returned for the caller to add to the decision's Why, "" otherwise.
-func RecordMergeGate(q MergeQuery, d MergeDecision, site string) string {
-	mode, err := readFacilitatorAt(q.Roots, q.RepoRoot, q.Tip, q.TipName)
-	if err != nil || mode.Mode != ModeAuto {
+// RecordMergeGate keeps d, the merge gate's answer about pull request pr at
+// head, for the spot-check (spc-2610301925429250 step 1), when the answer is
+// one abcd took as the facilitator with no person's approval counted
+// (gateActedAlone). The record (spotcheck.Decision of kind merge-gate) names
+// site, the pull request and its head, and the answer as the gate gave it:
+// whether it armed, the method, the reason and whether it rests on an answer
+// the gate could not read. Nothing else is read for it: no forge, no mode,
+// no receipt. It is committed on the store's local copy and reaches no
+// network, and the gate asked again over the same head with the same answer
+// keeps the one record. A record that cannot be written changes nothing: the
+// reason is returned for the caller to add to the decision's Why, "" when the
+// record is kept or not taken.
+func RecordMergeGate(root, site, pr, head string, d MergeDecision) string {
+	if !gateActedAlone(d) {
 		return ""
 	}
-	if _, role, _ := readAuthor(q.Forge, q.Repo, q.PR); role != RoleMaintainer {
-		return ""
-	}
-	pr, err := strconv.Atoi(q.PR)
-	if err != nil {
-		return ""
-	}
+	n, _ := strconv.Atoi(pr)
 	ctx, cancel := context.WithTimeout(context.Background(), spotcheck.WriteTimeout)
 	defer cancel()
-	_, err = spotcheck.WriteDecision(ctx, q.RepoRoot, spotcheck.Decision{Kind: spotcheck.KindMergeGate, At: time.Now(),
-		Holder: spotcheck.Holder(), Site: site, PR: pr, Head: q.Head, Mode: mode.Mode, ModeLayer: mode.Layer,
-		Role: RoleMaintainer, Reviewed: readReviewProof(q.RepoRoot, q.Head, q.Tip).reviewed, Arm: d.Arm, Method: d.Method, Why: d.Why})
-	if err == nil || errors.Is(err, spotcheck.ErrNoOrigin) {
+	w := spotcheck.Write(ctx, root, spotcheck.Batch{Decisions: []spotcheck.Decision{{Kind: spotcheck.KindMergeGate, At: time.Now(),
+		Holder: spotcheck.Holder(), Site: site, PR: n, Head: head, Arm: d.Arm, Method: d.Method, Why: d.Why, Unread: d.Unread}}})
+	switch {
+	case errors.Is(w.Err, spotcheck.ErrNoOrigin):
 		return ""
+	case w.Err != nil:
+		return "the spot-check's record of this decision was not written (" + termsafe.Sanitize(fsutil.RedactHome(w.Err.Error())) + "), and nothing the gate decided waits on it"
+	case len(w.Unkeepable) > 0:
+		return "the spot-check's store cannot keep a record of this decision (" + termsafe.Sanitize(w.Unkeepable[0]) + "), and nothing the gate decided waits on it"
 	}
-	return "the spot-check's record of this decision was not written (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "), and nothing the gate decided waits on it"
+	return ""
 }
 
-// RememberForge is forge with each answer kept, by its arguments, for the
-// life of one decision: a second read of what the gate already asked is
-// answered from there, its error included, and never reaches the forge.
-func RememberForge(forge ForgeCall) ForgeCall {
-	if forge == nil {
-		return nil
-	}
-	type answer struct {
-		out string
-		err error
-	}
-	kept := map[string]answer{}
-	return func(args ...string) (string, error) {
-		key := strings.Join(args, "\x00")
-		if a, ok := kept[key]; ok {
-			return a.out, a.err
-		}
-		out, err := forge(args...)
-		kept[key] = answer{out, err}
-		return out, err
-	}
+// gateActedAlone reports whether d is an answer abcd gave as the facilitator
+// with no person's approval counted, by the gate's own words (mergeGate): a
+// reason that opens with the mode at auto (modeText) and names no approval.
+// The gate's reason opens otherwise for an author whose role is unverified
+// and for a contributor's pull request with no approval, and names the
+// approval that counted for a contributor's pull request in auto mode, so
+// this is the gate's answer in auto mode over a maintainer's pull request.
+func gateActedAlone(d MergeDecision) bool {
+	return strings.HasPrefix(d.Why, "facilitator.mode is "+ModeAuto+" (") && !strings.Contains(d.Why, "; approved by ")
 }

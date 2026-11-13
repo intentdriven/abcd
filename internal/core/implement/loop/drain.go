@@ -391,7 +391,8 @@ type DrainCounts struct {
 	// opened (itd-2610301750162657): one entry for each pull request, in the
 	// order its lane opened, none left out for having no hand-back.
 	// HandBacksNoPR counts the hand-backs no pull request carries: the
-	// judgement's, a reservation's, and a lane's that opened none.
+	// judgement's, a reservation's, a field hand-back's, and a lane's that
+	// opened none.
 	HandBacksByPR []DrainPRHandBacks `json:"hand_backs_by_pr"`
 	HandBacksNoPR int                `json:"hand_backs_without_pr"`
 }
