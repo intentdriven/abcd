@@ -129,9 +129,11 @@ const (
 	// and every process it started are killed.
 	stopGrace = 2 * time.Second
 	// readBackTimeout bounds the read of where the local copy points once a
-	// move's git was cut off at the deadline: a git that moved the copy
-	// before it was stopped made the write, which is then reported as made.
-	// So a write returns within its deadline, stopGrace and readBackTimeout.
+	// move's git was cut off at the deadline. The write is reported as made
+	// when the copy reads back at the commit it made within this bound; a
+	// read-back that fails, runs out, or finds the copy moved on reports it
+	// failed. So a write returns within its deadline, stopGrace and
+	// readBackTimeout.
 	readBackTimeout = 2 * time.Second
 	// maxTextBytes bounds each free-text field a record carries.
 	maxTextBytes = 2000
@@ -812,9 +814,13 @@ func commitTree(ctx context.Context, root, tree, parent, msg string) (string, er
 // moveRef moves ref to commit from old, the value read ("" for none): git
 // refuses the move when the ref holds anything else by then, which is
 // errMoved. A move git reports as failed is read back before it is reported,
-// under readBackTimeout when ctx has ended: a ref git moved to commit before
-// it was cut off is the move made. A lock file git left on ref is named in
-// the failure and never removed here, since nothing can tell it is not held.
+// under readBackTimeout when ctx has ended: when ref reads back as commit,
+// the move is made; when the read-back fails, runs out, or finds ref moved
+// on, the move is reported failed. A record such a move did keep stays on
+// the copy, and the next write finds it kept, so it is neither lost nor
+// written twice (TestACutOffMoveTheCopyMovedOnFromIsKeptOnce). A lock file
+// git left on ref is named in the failure and never removed here, since
+// nothing can tell it is not held.
 func moveRef(ctx context.Context, root, ref, commit, old string) error {
 	from := old
 	if from == "" {
@@ -868,8 +874,11 @@ func leftLock(ctx context.Context, root, ref string) string {
 // (storeEnv), index the index the command uses ("" for the checkout's own),
 // and the program-starting settings pinned off (gitutil.ExecPins). When ctx
 // ends, git and every process it started are told to stop with SIGTERM, on
-// which git removes its lock files, and are killed stopGrace later; a git
-// that exited cleanly is read by its answer, even when ctx ended as it did.
+// which git removes its lock files, and are killed stopGrace later. A git
+// that succeeds is read by its answer. One that fails once ctx has ended is
+// reported as cut off: exec reports any git it told to stop as failed,
+// whatever it exited with, so a move such a git may have made is judged by
+// moveRef's read-back, not here.
 func storeGit(ctx context.Context, root, index, stdin string, args ...string) (string, error) {
 	what := "git " + args[0]
 	if err := ctx.Err(); err != nil {
@@ -891,7 +900,7 @@ func storeGit(ctx context.Context, root, index, stdin string, args ...string) (s
 	if ctx.Err() != nil {
 		procgroup.KillLeft(cmd)
 	}
-	// A git that finished is read by what it answered, whenever ctx ended.
+	// A git that fails once ctx has ended is reported as cut off.
 	if err != nil && ctx.Err() != nil {
 		return "", fmt.Errorf("writing the spot-check's record: %s: %w", what, ctx.Err())
 	}

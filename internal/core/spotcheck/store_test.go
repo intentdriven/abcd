@@ -341,6 +341,8 @@ func TestTheCleaningRule(t *testing.T) {
 		{"internal/x.go:12: x/abs/path a/b,", "internal/x.go:12: x/abs/path a/b,"},
 		// A path that begins with a dot goes, a repository-relative one too.
 		{"facilitator.mode is auto (repo layer, .abcd/config.json at origin/main)", "facilitator.mode is auto (repo layer, <removed> at origin/main)"},
+		// So does any path under a top-level folder whose name begins with a dot.
+		{"see .github/workflows/ci.yml and .abcd/work/issues/open/iss-1.md", "see <removed> and <removed>"},
 		{"(/abs/path) [/abs] {/abs} </abs> |/abs @/abs \"/abs\" '/abs' =/abs", "<removed> <removed> <removed> <removed> <removed> <removed> <removed> <removed> <removed>"},
 		{"at file:///home/x/y and https://example.invalid/a/b", "at <removed> and <removed>"},
 		{"the address http://host.invalid:8080/x", "the address <removed>"},
@@ -383,11 +385,11 @@ func TestARecordCarriesNoPathAndIsBounded(t *testing.T) {
 	a, _, _ := twoClones(t)
 	home, _ := os.UserHomeDir()
 	h := handBack("iss-1", at0)
-	h.Reason = "failed in " + home + "/work/x.go and /private/var/tmp/run/y.txt, see https://example.invalid/a/b \x1b[31mred\x1b[0m " + strings.Repeat("z", 3*maxTextBytes)
+	h.Reason = "failed in " + home + "/work/x.go and /private/var/tmp/run/y.txt, see https://example.invalid/a/b and .github/workflows/ci.yml \x1b[31mred\x1b[0m " + strings.Repeat("z", 3*maxTextBytes)
 	h.Holder = "someone"
 	write(t, a.Root(), hb(h))
 	got := readLocal(t, a.Root()).HandBacks[0]
-	for _, bad := range []string{home, "/private/var", "example.invalid", "\x1b", "someone"} {
+	for _, bad := range []string{home, "/private/var", "example.invalid", ".github", "\x1b", "someone"} {
 		if bad != "" && strings.Contains(got.Reason+got.Holder, bad) {
 			t.Fatalf("the record carries %q: %q", bad, got.Reason)
 		}
@@ -648,16 +650,19 @@ func TestAGitThatIgnoresTheStopLeavesItsLockNamed(t *testing.T) {
     : > "$ABCD_TEST_LOCK"
     sleep 600
     exit 1`)
+	// The store's own words, which git never prints: git's own refusal of a
+	// held lock names the lock's path too.
+	named := "git left the lock file " + LocalRef + ".lock in the repository's git directory, and it is not removed here"
 	w := writeCutOff(t, a.Root())
 	restore()
-	if w.Failed != 1 || w.Err == nil || !strings.Contains(w.Err.Error(), LocalRef+".lock") {
+	if w.Failed != 1 || w.Err == nil || !strings.Contains(w.Err.Error(), named) {
 		t.Fatalf("Write = %+v; want a failure naming the lock", w)
 	}
 	if _, err := os.Stat(lock); err != nil {
 		t.Fatalf("the lock was removed: %v", err)
 	}
 	w = Write(context.Background(), a.Root(), hb(handBack("iss-1", at0)))
-	if w.Failed != 1 || w.Err == nil || !strings.Contains(w.Err.Error(), LocalRef+".lock") {
+	if w.Failed != 1 || w.Err == nil || !strings.Contains(w.Err.Error(), named) {
 		t.Fatalf("the next write = %+v; want a failure naming the lock", w)
 	}
 	if _, err := os.Stat(lock); err != nil {
@@ -680,6 +685,34 @@ func TestAWriteGitFinishedAsTheDeadlinePassedIsWritten(t *testing.T) {
 	}
 	if rec := readLocal(t, a.Root()); len(rec.HandBacks) != 1 {
 		t.Fatalf("the local copy holds %+v", rec)
+	}
+}
+
+// A git that moved the local copy, after which another writer moved it on,
+// and that was then cut off, leaves a write the read-back cannot confirm: it
+// is reported as failed, the record stays on the copy, and the next write
+// finds it kept and writes nothing, so it is neither lost nor written twice.
+func TestACutOffMoveTheCopyMovedOnFromIsKeptOnce(t *testing.T) {
+	a, _, _ := twoClones(t)
+	t.Setenv("ABCD_TEST_HANG_ROOT", a.Root())
+	restore := standInGit(t, `    "$ABCD_TEST_REAL_GIT" "$@" || exit 1
+    c=$("$ABCD_TEST_REAL_GIT" -C "$ABCD_TEST_HANG_ROOT" commit-tree -p `+LocalRef+` -m other `+LocalRef+`^{tree}) || exit 1
+    "$ABCD_TEST_REAL_GIT" -C "$ABCD_TEST_HANG_ROOT" update-ref `+LocalRef+` "$c" || exit 1
+    sleep 600
+    exit 0`)
+	w := writeCutOff(t, a.Root())
+	restore()
+	if w.Wrote != 0 || w.Failed != 1 || w.Err == nil {
+		t.Fatalf("Write = %+v; want the write reported failed", w)
+	}
+	if w := write(t, a.Root(), hb(handBack("iss-1", at0))); w.Wrote != 0 || w.Kept != 1 {
+		t.Fatalf("the next write = %+v; want the record found kept", w)
+	}
+	if rec := readLocal(t, a.Root()); len(rec.HandBacks) != 1 {
+		t.Fatalf("the local copy holds %+v", rec)
+	}
+	if n := strings.TrimSpace(gitIn(t, a.Root(), "rev-list", "--count", LocalRef)); n != "2" {
+		t.Fatalf("the local copy has %s commits; want this write's and the other writer's", n)
 	}
 }
 

@@ -1054,7 +1054,11 @@ characters that would break it is replaced whole by a placeholder, so a bare
 repository-relative path that begins with a letter or digit stays and an
 absolute or home-relative path, an address, an option written straight against
 an absolute path, a path that begins with a dot, or any path in quotes,
-brackets or backticks, a repository-relative one included, goes.
+brackets or backticks, a repository-relative one included, goes. So a path
+under a top-level folder whose name begins with a dot (a workflow file under
+`.github`, a record under `.abcd`) reads as `<removed>` in every text a record
+keeps, a hand-back's reason and a merge-gate reason included; the gate's mode
+is kept in a field of its own.
 Control and invisible characters separate words and are removed. A record that cannot be written never holds the move: `next` says how
 many records the move tried to write and could not, and why, and a later move
 tries them again; a record the store cannot keep at all (a hand-back with no

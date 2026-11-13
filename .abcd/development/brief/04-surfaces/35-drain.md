@@ -1196,7 +1196,11 @@ placeholder, so a bare repository-relative path that begins with a letter or
 digit stays, and an absolute path, a home-relative path, an address such as a
 file or web address, an option written straight against an absolute path, a
 path that begins with a dot, and any path set in quotes, brackets or
-backticks, a repository-relative one included, go. Control and
+backticks, a repository-relative one included, go. So a path under a
+top-level folder whose name begins with a dot (a workflow file under
+`.github`, a record under `.abcd`) reads as the placeholder in every text a
+record keeps, a hand-back's reason and a merge-gate reason included; the
+gate's mode is kept in a field of its own. Control and
 invisible characters separate words and are removed, and each text is
 bounded. A record read back is checked with the same
 rule, so two readers agree on what the copy holds.
@@ -1210,8 +1214,12 @@ it tried to write and could not, and why. A record the store cannot keep at all
 a number that stays the same from move to move while the state holds it. Each
 write is bounded in time; a git command its deadline cuts off is told to stop
 in a way that lets git remove its lock, and is killed shortly after. A write
-whose git moved the copy before it was cut off is counted as written, and a
-lock git leaves behind is named in the failure and never removed.
+whose git was cut off is counted as written when the copy, read back within a
+short bound, points at the commit the write made; when that read fails, runs
+out, or finds the copy moved on, the write is counted as failed. A record such
+a write did keep stays on the copy and the next write finds it kept, so it is
+neither lost nor written twice. A lock git leaves behind is named in the
+failure and never removed.
 
 A lane's landing whose merge gate decides in auto mode over a pull request
 whose author can write to the repository, with no person's approval counted,
