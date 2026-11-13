@@ -85,6 +85,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/core/spec"
+	"github.com/intentdriven/abcd/internal/core/spotcheck"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -2354,6 +2355,10 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	return armLane(c, lane, def, rule, d, held)
 }
 
+// recordLaneGate is landing.RecordMergeGate, the seam a test turns the
+// record off through to compare what the lane does without it.
+var recordLaneGate = landing.RecordMergeGate
+
 // askMergeGate asks the merge gate about the lane's pull request: the mode as
 // the default branch's tip just fetched and the machine layer declare it,
 // never the lane's checkout (dcn-2610230058333177), with the ruleset mirror's
@@ -2368,6 +2373,14 @@ func askMergeGate(c Context, lane Lane, def string, rule landing.MergeRule) (lan
 	unrecorded := recordOwnReview(c, lane, roots, tip, Remote+"/"+def)
 	d, err := landing.DecideMerge(landing.MergeQuery{RepoRoot: c.RepoRoot, Roots: roots, Tip: tip, TipName: Remote + "/" + def, Default: def,
 		Rule: rule, Repo: "{owner}/{repo}", PR: strconv.Itoa(lane.PR), Head: lane.Landing.Pushed, Forge: gateForge(c, lane)})
+	if err == nil {
+		// The spot-check's record of the decision, made from the decision
+		// alone: a record that cannot be written changes nothing but the
+		// reason, which says so.
+		if note := recordLaneGate(c.RepoRoot, spotcheck.SiteLane, strconv.Itoa(lane.PR), lane.Landing.Pushed, d); note != "" {
+			d.Why += "; " + note
+		}
+	}
 	if err != nil {
 		r := refuse(string(StageLand), "", lane.ID, termsafe.Sanitize(fsutil.RedactHome(err.Error()))+" at "+Remote+"/"+def+", so nothing was armed",
 			"correct the file it names, then run `abcd implement step` again")

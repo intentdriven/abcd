@@ -1155,6 +1155,94 @@ the pull requests its lanes opened, not the ones merged; a drain that ends with 
 none in a pull request says so as a normal ending and exits 0, and one that
 stops with a lane still in progress (an outage give-up) claims no such ending.
 
+The summary also states the hand-backs per pull request the drain's lanes
+opened (itd-2610301750162657), the measure of the load the agents hand back to
+people: one line for each pull request, one with no hand-back included, with
+its lane's issue, how many hand-backs that lane routed and their kinds, then
+the hand-backs no pull request carries (the judgement's, a reservation's, a
+field hand-back's, and a lane's that opened none). A hand-back belongs to the
+lane on its issue that opened latest before it was routed, so an issue taken
+up again is counted against each of its lanes in turn; a lane whose pull
+request number is zero or below has no line, and two lanes that name one pull
+request share its line. The drain's state file is unchanged by it: the count
+is read from the lanes and hand-backs the state already keeps.
+
+### The spot-check's record
+
+Each move keeps the spot-check's record of what the drain decided with no
+person involved (itd-2610301750162657): every hand-back the drain has routed,
+and every judgement a routed model answered, each as a file of its own on this
+checkout's local copy of the spot-check's branch, all of one move's records in
+one commit. A judgement a person answered is not the automated facilitator's
+and is not recorded. The write touches no working tree, index or HEAD and
+reaches no network, and every worktree of the checkout shares the copy, so a
+lane's worktree removed after its landing takes no record with it. A
+hand-back's record names its issue, where it came from, its kind and route,
+the rule it names, the drain's rule record, the reason, the lane's pull
+request and run when it had them, the blob of the issue's record, and the
+writer by holder id; a judgement's names the issue, the question, the answer,
+the model, the rule record and the reason. Each file's name ends in a short
+hash of its content, so two records that differ in anything are two files, and
+a record counts as kept only when the local copy holds a file of its name with
+that content. Each commit of the copy names abcd's fixed identity as its
+author and committer, with its dates in UTC. The local copy is a ref of the
+repository outside its branches and tags, so a push of branches or tags leaves
+it behind, and a mirror push, which sends every ref, carries the records with
+it.
+
+Free text is cleaned before it is kept, by one rule that reads nothing of the
+machine or the account. The text holds no backslash and no tilde, and a word
+that holds a slash is kept only when all three hold: it begins with an ASCII
+letter or digit; every slash has an ASCII letter or digit right before it;
+and every character of it is an ASCII letter, a digit, a dot, an underscore,
+a dash or a slash. Any other word holding a slash is replaced whole by one
+fixed placeholder. So a bare repository-relative path made only of letters,
+digits, dots, underscores, dashes and slashes stays, and every other word
+holding a slash goes: an absolute or home-relative path, an address such as
+a file or web address, an option or a name written straight against a path,
+a path in quotes, brackets or backticks, a path with a line number or
+punctuation written against it, and a path that begins with a dot. A path
+under a top-level folder whose name begins with a dot (a workflow file under
+`.github`, a record under `.abcd`) reads as the placeholder in every text a
+record keeps, a hand-back's reason and a merge-gate reason included; the
+gate's mode is kept in a field of its own. Control and invisible characters
+separate words and are removed. A text over its bound is cut between words:
+the word the cut falls in goes whole and the cut is marked by a word of its
+own, so a text cleaned twice reads the same as one cleaned once. A record read
+back is checked with the same rule, so two readers agree on what the copy
+holds.
+
+The records are rebuilt from the drain's state at every move, and only those
+the copy does not yet hold are written, so a record one move could not write
+is tried again by a later one. A write that fails never fails, holds or changes
+the move: the move goes on as it would, and its `next` says how many records
+it tried to write and could not, and why. A record the store cannot keep at all
+(a hand-back with no time, an id outside the store's form) is counted apart, in
+a number that stays the same from move to move while the state holds it. Each
+write is bounded in time; a git command its deadline cuts off is told to stop
+in a way that lets git remove its lock, and is killed shortly after. A write
+whose git was cut off is counted as written when the copy, read back within a
+short bound, points at the commit the write made; when that read fails, runs
+out, or finds the copy moved on, the write is counted as failed. A record such
+a write did keep stays on the copy and the next write finds it kept, so it is
+neither lost nor written twice. A lock git leaves behind is named in the
+failure and never removed.
+
+A lane's landing whose merge gate decides in auto mode over a pull request
+whose author can write to the repository, with no person's approval counted,
+records that decision on the same copy, made from the gate's answer alone: the
+site, the pull request and its head, whether it armed, the method, the reason,
+whether it rests on an answer the gate could not read, and the three facts the
+gate set as it decided, by which the record is chosen: the mode, whether the
+author can write, and whether an approval counted. It is kept once for each
+head and answer however often the gate is asked again, since whether this
+checkout holds a record is read from what this checkout wrote alone. A
+decision that waits for a person, or that a person's approval decided, is not
+recorded. A record of the gate that cannot be written is not written: the
+decision stands as the gate gave it, its reason says the record was not
+written, and nothing asks an armed gate again to write it. A checkout with no
+remote named origin keeps no record.
+
 ## The trust boundary
 
 The eligibility record is a file the drained repository authors, and it decides

@@ -1,0 +1,6 @@
+---
+id: dcn-2611130923116384
+slug: the-merge-gate-s-spot-check-record
+date: 2026-11-13
+---
+2026-11-13 — The merge gate's spot-check record (spc-2610301925429250 step 1) is made from the gate's answer alone: the site, the pull request, the head, whether it armed, the method, the reason and whether it rests on an answer the gate could not read. The mode, the layer that declared it, the author's role and whether a review receipt named the head are not recorded, since the decision does not carry them and step 1 does not widen the gate in facilitator.go. Which answers are recorded is read from the gate's own reason: one that opens with the mode at auto and names no approval, the gate's answer in auto mode over a maintainer's pull request; a test holds that reading against every row of the gate's table. This replaces the second read of the gate's inputs and the remembered forge answers dcn-2611130729597121 describes, both removed. A merge-gate decision counts as already recorded when the local copy holds a record over the same pull request, head and answer that origin's copy as last fetched does not also hold, so no file on origin keeps the gate's record from being written; once a push has carried a record to origin, the gate's next answer over that head is recorded once more.

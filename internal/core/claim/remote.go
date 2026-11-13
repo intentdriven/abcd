@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -483,6 +484,80 @@ func push(root string, args []string) error {
 		return pushRejection(out, err)
 	}
 	return nil
+}
+
+// The spot-check's store branch (internal/core/spotcheck), the one branch
+// PushBranch and FetchBranch carry.
+const (
+	SpotcheckBranch      = "abcd-spotcheck"
+	spotcheckBranchRef   = "refs/heads/" + SpotcheckBranch
+	spotcheckTrackingRef = "refs/remotes/" + Remote + "/" + SpotcheckBranch
+)
+
+// spotcheckNetTimeout bounds FetchBranch's networked git commands together,
+// under the caller's own context. A test lowers it.
+var spotcheckNetTimeout = time.Minute
+
+// PushBranch pushes commit sha to ref, which must be the spot-check's store
+// branch (refs/heads/abcd-spotcheck), by the one push this package makes
+// (pushTo): plain, never forced, with the repository's hooks running, so
+// origin takes it only as a fast-forward. A push origin refused comes back as
+// git's own words (pushRejection). A ctx already ended pushes nothing; the
+// push itself is bounded by gitutil.NetTimeout, since no runner of gitutil's
+// runs the repository's hooks under a caller's context.
+func PushBranch(ctx context.Context, root, sha, ref string) error {
+	if !gitutil.IsFullSHA(sha) || ref != spotcheckBranchRef {
+		return refuse("%s is not a commit and the spot-check's branch to push; %s", echoName(ref), nothingPushed)
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("%s: %w", nothingPushed, err)
+	}
+	return push(root, pushTo(sha, ref))
+}
+
+// FetchBranch fetches ref, which must be the spot-check's store branch, into
+// tracking, its own remote-tracking ref (refs/remotes/origin/abcd-spotcheck),
+// forced as a remote-tracking ref always is. found is false when origin holds
+// no such branch, which a listing of origin's branches then confirms: a fetch
+// that fails for any other reason is an error, never a branch read as absent.
+// Each command runs under ctx and its own bound (spotcheckNetTimeout).
+func FetchBranch(ctx context.Context, root, ref, tracking string) (found bool, err error) {
+	if ref != spotcheckBranchRef || tracking != spotcheckTrackingRef {
+		return false, refuse("%s is not the spot-check's branch fetched to its own remote-tracking ref; nothing was fetched", echoName(ref))
+	}
+	ctx, cancel := context.WithTimeout(ctx, spotcheckNetTimeout)
+	defer cancel()
+	args := []string{"fetch", "--no-tags", "--no-write-fetch-head", Remote, "+" + ref + ":" + tracking}
+	trace(args...)
+	_, ferr := gitutil.NetContext(ctx, root, args...)
+	if ferr == nil {
+		return true, nil
+	}
+	list := []string{"ls-remote", "--heads", Remote, ref}
+	trace(list...)
+	out, lerr := gitutil.NetContext(ctx, root, list...)
+	if lerr == nil && strings.TrimSpace(out) == "" {
+		return false, nil
+	}
+	return false, &FetchError{Reason: redacted(ferr), what: echoName(ref), outcome: "nothing was fetched"}
+}
+
+// KeptHolderID is this account's holder id as a record names its writer: the
+// one HolderIDEnv names, else the one kept in the account's home, read
+// through the guarded read (readHolderID) and never minted; "" when neither
+// reads. It runs no git and reaches no network.
+func KeptHolderID() string {
+	if id, set, err := envHolderID(); err == nil && set {
+		return id
+	}
+	home := Options{}.home()
+	if home == "" {
+		return ""
+	}
+	if id, kept, err := readHolderID(home); err == nil && kept {
+		return id
+	}
+	return ""
 }
 
 // lostRace explains a rejected push. When the branch moved while the push was
