@@ -1208,8 +1208,9 @@ record keeps, a hand-back's reason and a merge-gate reason included; the
 gate's mode is kept in a field of its own. Control and invisible characters
 separate words and are removed. A text over its bound is cut between words:
 the word the cut falls in goes whole and the cut is marked by a word of its
-own, so a text cleaned twice reads the same as one cleaned once. A record read
-back is checked with the same rule, so two readers agree on what the copy
+own, so a text cleaned twice reads the same as one cleaned once, and a text
+whose first word does not fit (one very long word, or a script written without
+spaces) is kept as the mark alone. A record read back is checked with the same rule, so two readers agree on what the copy
 holds.
 
 The records are rebuilt from the drain's state at every move, and only those

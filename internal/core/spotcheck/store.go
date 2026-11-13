@@ -263,7 +263,8 @@ var (
 // a bare repository-relative path (pathFree), is replaced whole by the
 // placeholder; and a text longer than maxTextBytes is cut at a word boundary:
 // the word the cut falls in goes whole, and the mark is written as a word of
-// its own, so the cut text, mark included, is within the bound. It reads
+// its own, so the cut text, mark included, is within the bound (a text whose
+// first word does not fit is the mark alone). It reads
 // nothing of the machine, and cleaning a cleaned text returns the same bytes
 // (every word it keeps, the placeholder and the mark each pass the rule, and
 // no step joins or splits a word), so a text it writes is one it accepts on
