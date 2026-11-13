@@ -13,6 +13,7 @@ package loop
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -267,44 +268,40 @@ func TestAComparisonSlowOnEveryReadEndsAtItsOverallBound(t *testing.T) {
 	}
 }
 
-// heldReads times one comparison of what id holds while the stand-in git
-// holds each of its reads for hold, and counts the reads it made.
-func heldReads(t *testing.T, root string, id *remoteIdentity, hold string) (time.Duration, int) {
-	t.Helper()
-	reads := filepath.Join(t.TempDir(), "reads")
-	standInGit(t, `*"--show-scope --show-origin"*|*"var GIT_ATTR_"*|*"--git-path hooks"*|*"--git-common-dir"*) echo >> '`+reads+`'; /bin/sleep `+hold+` ;;`)
-	began := time.Now()
-	if err := heldBeforeGit(root, id); err != nil {
-		t.Fatal(err)
-	}
-	took := time.Since(began)
-	b, err := os.ReadFile(reads)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return took, strings.Count(string(b), "\n")
-}
-
-// TestAComparisonsReadsRunSideBySide: holding each read of a comparison half
-// a second longer makes the whole comparison longer by about one read's
-// half second, not by half a second for each of its dozen reads: the reads
-// run side by side. Judged by growth, so how slow git itself is on the
-// machine cancels out. Watched failing at the base, where the reads ran one
-// after another: twelve reads held half a second longer made it 6.25s
-// longer.
+// TestAComparisonsReadsRunSideBySide: the stand-in git records each read of
+// the comparison as it starts and as it ends, and holds every read until at
+// least two have started: reads made one after another would never get past
+// the first, and the comparison would end at its bound. So the comparison
+// finishing with nothing changed, the log showing two reads started before
+// any ended, is the reads overlapping; no time is measured. Watched failing
+// with the comparison's reads made one at a time (a lock round each read):
+// the first read waited for a second that never started, and the step
+// stopped at its bound. A read's own bound is set past the comparison's, so
+// no read is cut and asked again: a retry's start would otherwise count as a
+// second read's, and reads made one after another passed.
 func TestAComparisonsReadsRunSideBySide(t *testing.T) {
 	repo, _, _ := hookedOrigin(t)
+	bound := heldReadTimeout
+	heldReadTimeout = 10 * heldCompareTimeout
+	t.Cleanup(func() { heldReadTimeout = bound })
 	id, err := readRemoteIdentity(repo.Root())
 	if err != nil {
 		t.Fatal(err)
 	}
-	quick, n := heldReads(t, repo.Root(), id, "0")
-	slow, m := heldReads(t, repo.Root(), id, "0.5")
-	if n < 8 || m != n {
-		t.Fatalf("the comparison makes its dozen reads each time: %d and %d", n, m)
+	log := filepath.Join(t.TempDir(), "reads")
+	standInGit(t, `*"--show-scope --show-origin"*|*"var GIT_ATTR_"*|*"--git-path hooks"*|*"--git-common-dir"*) echo start >> '`+log+`'; `+
+		`while [ "$(grep -c start '`+log+`')" -lt 2 ]; do /bin/sleep 0.05; done; echo end >> '`+log+`' ;;`)
+	if err := heldBeforeGit(repo.Root(), id); err != nil {
+		t.Fatalf("the comparison finishes, its reads side by side: %v", err)
 	}
-	if grew, serial := slow-quick, time.Duration(n)*500*time.Millisecond; grew >= serial/2 {
-		t.Fatalf("%d reads each held half a second longer made the comparison %s longer (%s to %s), not under half of %s", n, grew, quick, slow, serial)
+	b, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := strings.Fields(string(b))
+	first := slices.Index(events, "end")
+	if first < 2 || strings.Count(string(b), "start") < 8 || strings.Count(string(b), "start") != strings.Count(string(b), "end") {
+		t.Fatalf("two or more of the comparison's dozen reads started before any ended, and each ended: %q", events)
 	}
 }
 

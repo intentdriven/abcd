@@ -1319,8 +1319,14 @@ drive that runs the repository's hooks, merge drivers or content filters, or
 reaches the network, just before it runs, in a step or not: the lane's add,
 commit, merge and reset, its staging and status reads, the landing push, a
 move's reservation, a renewal made while an agent runs, the network probe, and
-the drive's own release of what it holds as it ends. On a difference the
-command is not run and fails naming it. A difference at a pass of the loop
+the drive's own release of what it holds as it ends. abcd's isolated reads
+switch the repository's hooks off but not its content filters, textconv and
+external diff programs or merge drivers, so an isolated read that leaves one
+of those on compares too: the drain's read of a record as git would store it
+when it routes a hand-back, and a status read in a checkout listed in
+`~/.abcd.noindex/filter-roots`. An isolated read that switches them off, or
+reads no file's content through them, starts no program and compares nothing.
+On a difference the command is not run and fails naming it. A difference at a pass of the loop
 ends the drive, and so does a read there that gives no answer: the drive
 reads what it holds only as it starts, so a change of yours to a watched
 setting while a drive runs (a new credential helper, an editor, an include)
@@ -1341,9 +1347,22 @@ read inside it keeping its own bound; at that bound the step stops at the
 stage `config` saying the comparison did not finish, never that anything
 changed or that nothing did. A drive on a loaded machine pays that on every
 such git command, so its lanes are slower; on one where git takes most of a
-minute, steps stop there rather than run on an answer not had. The release
-as a drive ends compares before it takes the drain's lock, so another session
-waiting on that lock does not wait on the comparison.
+minute, steps stop there rather than run on an answer not had. For a
+figure: a lane that lands, in abcd's own tests, compares about twenty times
+(once for each of its fifteen or so git commands that compare, four before
+the landing and eleven in it, and once for each step of the loop), so some
+two hundred and fifty reads of git; a renewal made while an agent runs
+compares twice, for its fetch and its push. The release as a drive ends
+compares once before it takes the drain's lock, so a difference found then is
+met without the lock; each push of that release, inside the lock, compares
+again, usually for one read's time and at most the minute, and another
+session that waits on that lock for its three seconds meanwhile is told
+another drain is moving and to retry. A drive's renewal pass holds its own
+renewal lock, which another pass waits on for at most two minutes, and makes
+one comparison for each fetch and push of each reservation due: two due at
+once can outlast that wait, and the waiting pass then renews nothing and
+leaves the renewal to the next pass, well inside the hour a lease keeps in
+hand before it lapses.
 Where two
 environments name the same file or directory it is held once. Each
 environment's reading is compared only with its own earlier one; two
