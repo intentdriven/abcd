@@ -1037,19 +1037,28 @@ budget check counts in; `unread` names a lane's run whose state could not be
 read, which makes the spend a floor), `hand_backs_by_pr` (one entry for each
 pull request the drain's lanes opened, one with no hand-back included: `pr`,
 the lane's `issue`, `hand_backs` its lane routed and their `kinds`) and
-`hand_backs_without_pr` (the judgement's, a reservation's, and a lane's that
-opened none); `next` is the one move to make. A drain
+`hand_backs_without_pr` (the judgement's, a reservation's, a field
+hand-back's, and a lane's that opened none); `next` is the one move to make. A drain
 that ends with every lane ended and none in a pull request says so in `next` as
 a normal ending; one that stops with a lane still in progress does not.
 
 Each move also keeps the spot-check's record of what the drain decided with no
 person involved: every hand-back it routed and every judgement a routed model
 answered, each as one file on this checkout's local copy of the spot-check's
-branch, written without touching the working tree and without reaching the
-network; a judgement a person answered is not recorded. A record that cannot be
-written never holds the move: `next` says how many were not written and why,
-and a later move writes them. A checkout with no remote named `origin` keeps no
-record.
+branch, all of one move's in one commit, written without touching the working
+tree and without reaching the network; a judgement a person answered is not
+recorded. Free text in a record is cleaned by one rule: every slash has an
+ASCII letter or digit right before it, and the text holds no backslash and no
+tilde; a run of non-space characters that would break it is replaced whole by
+a placeholder, so a repository-relative path stays and an absolute or
+home-relative path, an address, or a path in quotes, brackets or backticks
+goes. A record that cannot be written never holds the move: `next` says how
+many records the move tried to write and could not, and why, and a later move
+tries them again; a record the store cannot keep at all (a hand-back with no
+time) is counted apart, the same number at every move. A merge-gate record that
+cannot be written is not written: the gate's decision stands, its reason says
+so, and nothing asks an armed gate again. A checkout with no remote named
+`origin` keeps no record.
 
 Tell the user any loosened floors first, then what this move did (the
 judgement asked or taken, the merged lanes finished, the lane opened, the

@@ -1159,38 +1159,64 @@ The summary also states the hand-backs per pull request the drain's lanes
 opened (itd-2610301750162657), the measure of the load the agents hand back to
 people: one line for each pull request, one with no hand-back included, with
 its lane's issue, how many hand-backs that lane routed and their kinds, then
-the hand-backs no pull request carries (the judgement's, a reservation's, and
-a lane's that opened none). A hand-back belongs to the lane on its issue that
-opened latest before it was routed, so an issue taken up again is counted
-against each of its lanes in turn. The drain's state file is unchanged by it:
-the count is read from the lanes and hand-backs the state already keeps.
+the hand-backs no pull request carries (the judgement's, a reservation's, a
+field hand-back's, and a lane's that opened none). A hand-back belongs to the
+lane on its issue that opened latest before it was routed, so an issue taken
+up again is counted against each of its lanes in turn; a lane whose pull
+request number is zero or below has no line, and two lanes that name one pull
+request share its line. The drain's state file is unchanged by it: the count
+is read from the lanes and hand-backs the state already keeps.
 
 ### The spot-check's record
 
 Each move keeps the spot-check's record of what the drain decided with no
 person involved (itd-2610301750162657): every hand-back the drain has routed,
 and every judgement a routed model answered, each as a file of its own on this
-checkout's local copy of the spot-check's branch. A judgement a person answered
-is not the automated facilitator's and is not recorded. The write touches no
-working tree, index or HEAD and reaches no network, and every worktree of the
-checkout shares the copy, so a lane's worktree removed after its landing takes
-no record with it. A hand-back's record names its issue, where it came from,
-its kind and route, the rule it names, the drain's rule record, the reason,
-the lane's pull request and run when it had them, the blob of the issue's
-record, and the writer by holder id; a judgement's names the issue, the
-question, the answer, the model, the rule record and the reason. Free text is
-cleaned before it is kept: the home directory and every absolute path are
-replaced, control characters dropped and each text bounded; no person's name
-or address is written by abcd, the commits included. The records are rebuilt
-from the drain's state at every move, and only those the copy does not yet hold
-are written, so a record one move could not write is written by a later one. A
-write that fails never fails, holds or changes the move: the move goes on as it
-would, and its `next` says how many records were not written and why. A lane's
-landing whose merge gate decides in auto mode over a pull request whose author
-can write to the repository records that decision on the same copy, once for
-each head and answer; a
-decision that waits for a person is not recorded. A checkout with no remote
-named origin keeps no record.
+checkout's local copy of the spot-check's branch, all of one move's records in
+one commit. A judgement a person answered is not the automated facilitator's
+and is not recorded. The write touches no working tree, index or HEAD and
+reaches no network, and every worktree of the checkout shares the copy, so a
+lane's worktree removed after its landing takes no record with it. A
+hand-back's record names its issue, where it came from, its kind and route,
+the rule it names, the drain's rule record, the reason, the lane's pull
+request and run when it had them, the blob of the issue's record, and the
+writer by holder id; a judgement's names the issue, the question, the answer,
+the model, the rule record and the reason. Each file's name ends in a short
+hash of its content, so two records that differ in anything are two files, and
+a record counts as kept only when the local copy holds a file of its name with
+that content. Each commit of the copy names abcd's fixed identity as its
+author and committer, with its dates in UTC.
+
+Free text is cleaned before it is kept, by one rule that reads nothing of the
+machine or the account: in the cleaned text every slash has an ASCII letter or
+digit right before it, and the text holds no backslash and no tilde. A run of
+non-space characters that would break the rule is replaced whole by one fixed
+placeholder, so a repository-relative path stays, and an absolute path, a
+home-relative path, an address such as a file or web address, and a path set
+in quotes, brackets or backticks go. Control and invisible characters are
+dropped, and each text is bounded. A record read back is checked with the same
+rule, so two readers agree on what the copy holds.
+
+The records are rebuilt from the drain's state at every move, and only those
+the copy does not yet hold are written, so a record one move could not write
+is tried again by a later one. A write that fails never fails, holds or changes
+the move: the move goes on as it would, and its `next` says how many records
+it tried to write and could not, and why. A record the store cannot keep at all
+(a hand-back with no time, an id outside the store's form) is counted apart, in
+a number that stays the same from move to move while the state holds it. Each
+write is bounded in time; a git command its deadline cuts off is told to stop
+in a way that lets git remove its lock, and is killed shortly after.
+
+A lane's landing whose merge gate decides in auto mode over a pull request
+whose author can write to the repository records that decision on the same
+copy, made from the gate's answer alone: the site, the pull request and its
+head, whether it armed, the method, the reason, and whether it rests on an
+answer the gate could not read. It is kept once for each head and answer
+however often the gate is asked again. A decision that waits for a person is
+not recorded. A record of the gate that cannot be written is not written: the
+decision stands as the gate gave it, its reason says the record was not
+written, and nothing asks an armed gate again to write it. A checkout with no
+remote named origin keeps no record.
 
 ## The trust boundary
 
