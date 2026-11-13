@@ -596,8 +596,8 @@ func TestAStandingBranchMovedWhoseWorktreeCannotBeRemovedIsAdoptedNext(t *testin
 func TestAStandingBranchWhoseHooksCannotBeReadIsRefused(t *testing.T) {
 	repo, _, tip := hookedOrigin(t)
 	c := Context{RepoRoot: repo.Root()}
-	worktreeRefused(t, standingBranchHooks(c, "lane-1", strings.Repeat("1", 40), "the-branch", tip, "no-hooks-here"), "cannot be read")
-	worktreeRefused(t, standingBranchHooks(c, "lane-1", tip, "the-branch", strings.Repeat("2", 40), "no-hooks-here"), "cannot be read")
+	worktreeRefused(t, standingBranchHooks(c, "lane-1", strings.Repeat("1", 40), "the-branch", tip, filepath.Join(repo.Root(), "no-hooks-here")), "cannot be read")
+	worktreeRefused(t, standingBranchHooks(c, "lane-1", tip, "the-branch", strings.Repeat("2", 40), filepath.Join(repo.Root(), "no-hooks-here")), "cannot be read")
 }
 
 // TestALaneWhoseCommitsHooksCannotBeReadIsRefused: the proof after the add

@@ -39,6 +39,16 @@ func TestAHooksTreePastTheCapIsMarkedAndItsFirstEntriesHeld(t *testing.T) {
 	if _, ok := m[filepath.Join(dir, "sub", fmt.Sprintf("h%05d", maxHookEntries-1))]; ok {
 		t.Fatal("the entry past the bound is not recorded")
 	}
+	// The marker carries the tree's count, so one more entry past the bound
+	// changes the record (watched failing in fix round 1, where the marker
+	// was the same past any count).
+	writeMode(t, filepath.Join(dir, "sub", "one-more"), "#!/bin/sh\n", 0o755)
+	more := map[string]string{}
+	hashDir(more, "salt", dir)
+	if more[dir] == m[dir] {
+		t.Fatal("one more entry past the bound changes the marker")
+	}
+	removeAll(t, filepath.Join(dir, "sub", "one-more"))
 	under := map[string]string{}
 	removeAll(t, filepath.Join(dir, "sub", fmt.Sprintf("h%05d", maxHookEntries-1)))
 	if _, over := hashDir(under, "salt", dir); over || len(under) != maxHookEntries {

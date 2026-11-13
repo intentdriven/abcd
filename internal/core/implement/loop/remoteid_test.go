@@ -230,7 +230,7 @@ func TestADriveReadsTheRemotesIdentityAsItStarts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tm.o.Options.remote == nil || len(tm.o.Options.remote.changed(want)) != 0 || len(want.keys) == 0 {
+	if tm.o.Options.remote == nil || len(tm.o.Options.remote.changed(repo.Root(), want)) != 0 || len(want.ask.keys) == 0 || len(want.tree.keys) == 0 {
 		t.Fatalf("the drive holds origin's settings as it started: %+v, want %+v", tm.o.Options.remote, want)
 	}
 	// The checkout's hooks directory, .githooks here, at every depth:

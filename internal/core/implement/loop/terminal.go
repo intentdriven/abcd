@@ -662,18 +662,37 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 	// here for the lanes it opens (remoteid.go, with what it cannot hold): a
 	// lane's agent can rewrite the checkout's settings and hooks, and each
 	// lane's run records its own afresh. A restarted drive reads them
-	// afresh, and so proves an in-tree hooks copy against the tip origin
-	// reports (proveCheckoutHooks). The drive refuses to start when the
-	// settings cannot be listed, the hooks directory git takes at the
-	// checkout cannot be told, the common git directory cannot be resolved,
-	// the hooks tree is past its bound (readRemoteIdentity), or the proof
-	// fails; an unreadable hooks directory is held as such and does not
-	// stop it.
-	id, err := readRemoteIdentity(t.repoRoot)
-	if err == nil {
-		err = proveCheckoutHooks(t.repoRoot, id)
-	}
-	if err != nil {
+	// afresh, and so compares an in-tree hooks copy with the tip origin
+	// reports at that moment (proveCheckoutHooks). The drive refuses to start
+	// when the settings cannot be listed in either environment its git runs
+	// in, git cannot name the hooks directory it runs at the checkout, the
+	// common git directory cannot be resolved, the hooks tree is past its
+	// bound (readRemoteIdentity), or the comparison finds a difference. An
+	// origin it cannot reach for a network reason is waited on as a lane's
+	// ask of origin is (stepRefused: idle at the wait floor, ending once
+	// nothing has moved for as long as a drive waits), then asked again.
+	var id *remoteIdentity
+	for {
+		var err error
+		id, err = readRemoteIdentity(t.repoRoot)
+		if err == nil {
+			err = proveCheckoutHooks(t.repoRoot, id)
+		}
+		if err == nil {
+			break
+		}
+		if r, ok := AsRefusal(err); ok && r.Contention {
+			if ctx.Err() == nil && !t.stopped() && t.idle(ctx, TerminalWaitFloor, r.Reason) {
+				return t.ended(TerminalWaited), nil
+			}
+			if ctx.Err() != nil {
+				return t.ended(TerminalKilled), nil
+			}
+			if t.stopped() {
+				return t.ended(TerminalStopped), nil
+			}
+			continue
+		}
 		t.leaveSharedRun()
 		return TerminalResult{}, startRefusal(t.repoRoot, err)
 	}
