@@ -229,8 +229,9 @@ func (e *compareUnfinished) Is(target error) bool { return target == errCompareU
 // for what it started to end. At the deadline every read still going is
 // cancelled: its git is killed through the context it runs under, and its
 // wait for git's output is bounded by its runner (gitutil.NetAskContext's
-// two seconds, workingTreeAsk's askWaitDelay, the isolated runner's fifty
-// milliseconds), so each read ends well inside this. What cannot be
+// two seconds; workingTreeAsk and the isolated runner read git's output to
+// its end and stop at once: procgroup.RunToEOF), so each read ends well
+// inside this. What cannot be
 // cancelled is the walk of a hooks directory and the hashing of a file a
 // setting names, a filesystem call that a hung disk can hold: past this
 // grace the comparison returns without it, and what is left touches only

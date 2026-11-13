@@ -49,6 +49,7 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/localtier"
+	"github.com/intentdriven/abcd/internal/procgroup"
 )
 
 // StageConfig is the refusal stage of a step the run tripwire stopped.
@@ -429,32 +430,26 @@ func hooksDirBy(e *gitEnv, dir string, b readBounds) (string, error) {
 	return filepath.Clean(p), nil
 }
 
-// askWaitDelay bounds how long workingTreeAsk, once its context has ended
-// and git was killed, waits for git's output to close: a program git started
-// that holds it open does not hold the read, nor the comparison it is part
-// of, past this (compareGrace).
-const askWaitDelay = 2 * time.Second
-
 // workingTreeAsk runs one read-only git command at dir through
 // gitutil.WorkingTreeCommitCommand, in the environment the lane's add and
 // commit run in, as env gives it (stageEnv's environ, taken as the reading
 // started), bounded by ctx, and returns its output, refused past limit
-// bytes. git is asked in the C locale, which changes no setting it reads, so
-// its own words are git's untranslated ones. A failure carries git's own
-// words, home and credentials hidden, and git's standard error as written
-// apart (gitStderr), never shown.
+// bytes. git's output is read to its end before git is waited for
+// (procgroup.RunToEOF), and when ctx ends git is killed and waited for at
+// once, so a program git started that holds its output open holds the read
+// no longer than ctx. git is asked in the C locale, which changes no setting
+// it reads, so its own words are git's untranslated ones. A failure carries
+// git's own words, home and credentials hidden, and git's standard error as
+// written apart (gitStderr), never shown.
 func workingTreeAsk(ctx context.Context, env []string, dir string, limit int, args ...string) (string, error) {
 	cmd := gitutil.WorkingTreeCommitCommand(ctx, dir, args...)
 	if env != nil {
 		cmd.Env = slices.Clip(env)
 	}
 	cmd.Env = append(cmd.Env, "LC_ALL=C", "LANG=C", "LANGUAGE=")
-	cmd.WaitDelay = askWaitDelay
 	out := &cappedBuffer{limit: limit}
-	var stderr cappedBuffer
-	stderr.limit = 4096
-	cmd.Stdout, cmd.Stderr = out, &stderr
-	if err := cmd.Run(); err != nil {
+	stderr := &cappedBuffer{limit: 4096}
+	if err := procgroup.RunToEOF(ctx, cmd, out, stderr); err != nil {
 		if ctx.Err() != nil {
 			return "", fmt.Errorf("git %s did not answer in the time it had: %w", args[0], ctx.Err())
 		}
