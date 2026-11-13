@@ -24,7 +24,8 @@
 // of the branch, the records origin lacks laid over its tip, and one plain
 // push, never forced, so nothing another writer pushed is dropped; a push
 // origin rejects is tried once more after a fresh fetch, and one that fails
-// again leaves every record on the local copy for the next push.
+// again leaves every record on the local copy for the next push. The lay-over
+// never moves the local copy, which holds only this checkout's own writes.
 //
 // Everything read from the store was written by another session, account or
 // machine, so it is read strictly: names are checked against the forms this
@@ -89,8 +90,8 @@ const (
 	BranchRef = "refs/heads/" + Branch
 	// TrackingRef is where a fetch keeps origin's copy.
 	TrackingRef = "refs/remotes/" + claim.Remote + "/" + Branch
-	// LocalRef is this checkout's local copy, every record written here and
-	// not yet pushed included.
+	// LocalRef is this checkout's local copy: every record this checkout
+	// wrote, and nothing another writer wrote.
 	LocalRef = "refs/abcd/spotcheck"
 )
 
@@ -485,8 +486,8 @@ type Written struct {
 // reaching no network. A record is already held when the local copy holds a
 // file of its name with its content, and a merge-gate decision when the
 // local copy holds one over the same pull request and head with the same
-// answer, at any time, that origin's copy as last fetched does not also
-// hold (gateHeld). A file of a record's name with other content is replaced
+// answer, at any time (gateHeld); nothing read from origin's copy is read
+// for either. A file of a record's name with other content is replaced
 // by the record. The local copy is moved only from the value the write read
 // (a compare-and-swap): another writer of the checkout that moved it first
 // makes this one read it again, maxTries times in all. Every git command
@@ -555,14 +556,6 @@ func commitFiles(ctx context.Context, root string, files []file, attempt int) (w
 	if err != nil {
 		return 0, 0, err
 	}
-	var origin map[string]entry
-	if slices.ContainsFunc(files, func(f file) bool { return f.gateKey != "" }) {
-		// origin's copy is read only to keep its files from counting as this
-		// copy's: a copy that cannot be read counts nothing as held.
-		if tracking, terr := storeRef(ctx, root, TrackingRef); terr == nil {
-			origin, _ = listFiles(ctx, root, tracking)
-		}
-	}
 	var todo []file
 	for _, f := range files {
 		if e, ok := held[f.path()]; ok && e.typ == "blob" && e.sha == blobID(f.data, len(e.sha)) {
@@ -570,7 +563,7 @@ func commitFiles(ctx context.Context, root string, files []file, attempt int) (w
 			continue
 		}
 		if f.gateKey != "" {
-			ok, err := gateHeld(ctx, root, held, origin, f)
+			ok, err := gateHeld(ctx, root, held, f)
 			if err != nil {
 				return 0, kept, err
 			}
@@ -603,13 +596,10 @@ func commitFiles(ctx context.Context, root string, files []file, attempt int) (w
 
 // gateHeld reports whether the local copy already holds a merge-gate
 // decision over f's pull request and head with f's answer: a file of that
-// key the local copy holds and origin's copy as last fetched does not
-// (origin nil counts every file as origin's), whose content reads as a
-// record this package writes for the same head.
-func gateHeld(ctx context.Context, root string, held, origin map[string]entry, f file) (bool, error) {
-	if origin == nil {
-		return false, nil
-	}
+// key whose content reads as a record this package writes for the same head.
+// The local copy holds only what this checkout wrote (push never moves it),
+// so nothing fetched decides this.
+func gateHeld(ctx context.Context, root string, held map[string]entry, f file) (bool, error) {
 	var cands []entry
 	var names []string
 	for p, e := range held {
@@ -617,7 +607,7 @@ func gateHeld(ctx context.Context, root string, held, origin map[string]entry, f
 		if dir != DecisionsDir || len(name) < len(stamp)+1 || !strings.HasPrefix(name[len(stamp)+1:], f.gateKey+"-") {
 			continue
 		}
-		if _, theirs := origin[p]; theirs || e.typ != "blob" || e.size > maxRecordBytes {
+		if e.typ != "blob" || e.size > maxRecordBytes {
 			continue
 		}
 		cands, names = append(cands, e), append(names, name)
@@ -1058,10 +1048,10 @@ var beforePush func(attempt int)
 // push carries the local copy's records to origin: a fetch of the branch,
 // the records origin lacks laid over its tip when another writer moved it,
 // and one plain push (claim.PushBranch), never forced. A push origin rejects
-// (a writer that pushed between the fetch and the push), or a local copy
-// another writer of the checkout moved during the lay-over, is tried once
-// more after a fresh fetch; a second failure is an error, and every record
-// stays on the local copy for the next push. A branch origin no longer holds
+// (a writer that pushed between the fetch and the push) is tried once more
+// after a fresh fetch; a second failure is an error, and every record stays
+// on the local copy for the next push. The local copy is never moved: it
+// keeps only what this checkout wrote, whatever origin holds. A branch origin no longer holds
 // is no copy at all: its tracking ref is removed and the local copy pushed
 // whole. Nothing origin holds is removed, and only a file its name does not
 // give is replaced. A checkout whose local copy holds nothing origin lacks
@@ -1097,10 +1087,6 @@ func push(ctx context.Context, root string) (PushResult, error) {
 			}
 		}
 		res, err := layOver(ctx, root, local, tracking)
-		if errors.Is(err, errMoved) {
-			last = err
-			continue
-		}
 		if err != nil {
 			return PushResult{}, err
 		}
@@ -1123,13 +1109,14 @@ func push(ctx context.Context, root string) (PushResult, error) {
 }
 
 // layOver is the commit to push for the local copy and origin's (tracking,
-// "" for none) as just fetched: the local copy when it already holds
-// origin's, a commit over origin's copy holding every file the local copy
-// has and it lacks, at any depth, when the two have parted, and "" when
-// origin holds every file already. A path both hold with other content is
-// settled by its name (nameMatches): the copy its name gives is kept, and
-// the other named in Unreadable. The local copy is moved to that commit,
-// from the value read, so the records stay on it whatever the push does.
+// "" for none) as just fetched: the local copy when origin holds none or its
+// tip is an ancestor of the local copy, a commit over origin's copy holding
+// every file the local copy has and it lacks, at any depth, when the two have
+// parted, and "" when origin holds every file already. A path both hold with
+// other content is settled by its name (nameMatches): the copy its name gives
+// is kept, and the other named in Unreadable. The local copy is not moved, so
+// it never holds another writer's files and its records stay on it whatever
+// the push does.
 func layOver(ctx context.Context, root, local, tracking string) (PushResult, error) {
 	mine, err := listFiles(ctx, root, local)
 	if err != nil {
@@ -1177,12 +1164,7 @@ func layOver(ctx context.Context, root, local, tracking string) (PushResult, err
 		return res, nil
 	}
 	if res.Pushed == 0 {
-		// Origin holds everything: the local copy follows it.
-		if local != tracking {
-			if err := moveRef(ctx, root, LocalRef, tracking, local); err != nil {
-				return PushResult{}, err
-			}
-		}
+		// Origin holds everything: nothing to push.
 		return res, nil
 	}
 	ahead, err := isAncestor(ctx, root, tracking, local)
@@ -1199,9 +1181,6 @@ func layOver(ctx context.Context, root, local, tracking string) (PushResult, err
 	}
 	commit, err := commitTree(ctx, root, tree, tracking, fmt.Sprintf("spotcheck: %d record(s) laid over %s's copy", res.Pushed, claim.Remote))
 	if err != nil {
-		return PushResult{}, err
-	}
-	if err := moveRef(ctx, root, LocalRef, commit, local); err != nil {
 		return PushResult{}, err
 	}
 	res.Commit = commit

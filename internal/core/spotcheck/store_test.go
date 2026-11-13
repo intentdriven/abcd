@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -188,7 +189,7 @@ func TestAStoreCommitNamesAbcdWhateverTheEnvironmentHolds(t *testing.T) {
 
 // Writing the same record twice keeps one file and one commit; a merge-gate
 // decision asked again over the same head with the same answer is the one
-// record, whenever it is asked, unless origin's copy holds that file too.
+// record, whenever it is asked, whatever origin's copy holds.
 func TestAWriteOfARecordAlreadyKeptWritesNothing(t *testing.T) {
 	a, _, _ := twoClones(t)
 	write(t, a.Root(), hb(handBack("iss-1", at0)))
@@ -209,11 +210,74 @@ func TestAWriteOfARecordAlreadyKeptWritesNothing(t *testing.T) {
 	if w := write(t, a.Root(), Batch{Decisions: []Decision{gateDecision(7, head, true, at0)}}); w.Wrote != 1 {
 		t.Fatalf("the gate's other answer = %+v; want it written", w)
 	}
-	// Origin's copy holding the local copy's files counts none of them as
-	// this copy's own for the gate's record.
+	// Origin's copy holding the local copy's files changes nothing: what
+	// this checkout wrote is decided from its own copy alone.
 	a.Git("update-ref", TrackingRef, LocalRef)
-	if w := write(t, a.Root(), Batch{Decisions: []Decision{gateDecision(7, head, false, at0.Add(2*time.Hour))}}); w.Wrote != 1 {
-		t.Fatalf("a decision whose earlier record origin also holds = %+v; want it written", w)
+	if w := write(t, a.Root(), Batch{Decisions: []Decision{gateDecision(7, head, false, at0.Add(2*time.Hour))}}); w.Wrote != 0 || w.Kept != 1 {
+		t.Fatalf("a decision whose earlier record origin also holds = %+v; want it kept", w)
+	}
+}
+
+// gateFiles are the merge-gate records of pull request pr among files.
+func gateFiles(files []string, pr int) []string {
+	var out []string
+	for _, f := range files {
+		if strings.HasPrefix(f, DecisionsDir+"/") && strings.Contains(f, "-pr"+strconv.Itoa(pr)+"-") {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// A gate asked five times over one head with one answer keeps one record,
+// with a push between asks that lays this checkout's records over a tip
+// another writer moved: the local copy holds only what this checkout wrote,
+// so nothing a push or a fetch brings makes the record be written again, and
+// origin's copy holds the one record too.
+func TestAGateAskedAgainAcrossPushesKeepsOneRecord(t *testing.T) {
+	a, b, bare := twoClones(t)
+	ctx := context.Background()
+	head := strings.Repeat("f", 40)
+	for i := range 5 {
+		write(t, b.Root(), hb(handBack("iss-"+strconv.Itoa(10+i), at0)))
+		if _, err := push(ctx, b.Root()); err != nil {
+			t.Fatal(err)
+		}
+		w := write(t, a.Root(), Batch{Decisions: []Decision{gateDecision(7, head, false, at0.Add(time.Duration(i)*time.Hour))}})
+		if want := min(i, 1); w.Wrote != 1-want || w.Kept != want {
+			t.Fatalf("ask %d = %+v", i+1, w)
+		}
+		if _, err := push(ctx, a.Root()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := localFiles(t, a); len(got) != 1 || len(gateFiles(got, 7)) != 1 {
+		t.Fatalf("a's local copy holds %v; want its one record alone", got)
+	}
+	got := remoteFiles(t, bare)
+	if len(gateFiles(got, 7)) != 1 || len(got) != 6 {
+		t.Fatalf("origin holds %v; want one gate record and b's five", got)
+	}
+}
+
+// A copy of origin's that cannot be listed changes nothing a write decides:
+// a gate asked again over the same head and answer is kept once, and a
+// hand-back is written, whatever the tracking ref holds.
+func TestACopyOfOriginsThatCannotBeListedChangesNothing(t *testing.T) {
+	head := strings.Repeat("9", 40)
+	for name, bad := range map[string]func(r *gittest.Repo) string{
+		"a ref naming a blob":              func(r *gittest.Repo) string { return strings.TrimSpace(r.Git("hash-object", "-w", "a.txt")) },
+		"a decisions entry that is a file": func(r *gittest.Repo) string { return commitFilesAt(t, r, "", map[string]string{DecisionsDir: "x\n"}) },
+	} {
+		a, _, _ := twoClones(t)
+		a.Git("update-ref", TrackingRef, bad(a))
+		write(t, a.Root(), Batch{Decisions: []Decision{gateDecision(7, head, true, at0)}})
+		if w := write(t, a.Root(), Batch{Decisions: []Decision{gateDecision(7, head, true, at0.Add(time.Hour))}}); w.Wrote != 0 || w.Kept != 1 {
+			t.Fatalf("%s: the gate asked again = %+v; want it kept", name, w)
+		}
+		if w := write(t, a.Root(), hb(handBack("iss-1", at0))); w.Wrote != 1 {
+			t.Fatalf("%s: a hand-back = %+v", name, w)
+		}
 	}
 }
 
