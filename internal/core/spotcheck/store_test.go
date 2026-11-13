@@ -281,6 +281,27 @@ func TestACopyOfOriginsThatCannotBeListedChangesNothing(t *testing.T) {
 	}
 }
 
+// Every worktree of a checkout shares the local copy: a record written from
+// a linked worktree is read from the main one and the reverse, and the
+// worktree removed takes no record with it.
+func TestEveryWorktreeOfACheckoutSharesTheLocalCopy(t *testing.T) {
+	a, _, _ := twoClones(t)
+	wt := filepath.Join(t.TempDir(), "lane")
+	a.Git("worktree", "add", "-q", "-b", "lane", wt)
+	write(t, wt, hb(handBack("iss-1", at0)))
+	write(t, a.Root(), hb(handBack("iss-2", at0)))
+	for _, root := range []string{a.Root(), wt} {
+		rec, ok, err := read(context.Background(), root, LocalRef)
+		if err != nil || !ok || len(rec.HandBacks) != 2 {
+			t.Fatalf("read from %s = %+v, %v, %v; want both records", filepath.Base(root), rec, ok, err)
+		}
+	}
+	a.Git("worktree", "remove", "--force", wt)
+	if rec := readLocal(t, a.Root()); len(rec.HandBacks) != 2 {
+		t.Fatalf("after the worktree's removal the local copy holds %+v", rec.HandBacks)
+	}
+}
+
 // A checkout with no origin keeps no record.
 func TestAWriteWithNoOriginWritesNothing(t *testing.T) {
 	r := gittest.NewRepo(t)

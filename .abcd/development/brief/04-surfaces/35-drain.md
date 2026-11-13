@@ -1213,12 +1213,16 @@ whose git moved the copy before it was cut off is counted as written, and a
 lock git leaves behind is named in the failure and never removed.
 
 A lane's landing whose merge gate decides in auto mode over a pull request
-whose author can write to the repository records that decision on the same
-copy, made from the gate's answer alone: the site, the pull request and its
-head, whether it armed, the method, the reason, and whether it rests on an
-answer the gate could not read. It is kept once for each head and answer
-however often the gate is asked again. A decision that waits for a person is
-not recorded. A record of the gate that cannot be written is not written: the
+whose author can write to the repository, with no person's approval counted,
+records that decision on the same copy, made from the gate's answer alone: the
+site, the pull request and its head, whether it armed, the method, the reason,
+whether it rests on an answer the gate could not read, and the three facts the
+gate set as it decided, by which the record is chosen: the mode, whether the
+author can write, and whether an approval counted. It is kept once for each
+head and answer however often the gate is asked again, since whether this
+checkout holds a record is read from what this checkout wrote alone. A
+decision that waits for a person, or that a person's approval decided, is not
+recorded. A record of the gate that cannot be written is not written: the
 decision stands as the gate gave it, its reason says the record was not
 written, and nothing asks an armed gate again to write it. A checkout with no
 remote named origin keeps no record.

@@ -492,10 +492,11 @@ const (
 	SpotcheckBranch      = "abcd-spotcheck"
 	spotcheckBranchRef   = "refs/heads/" + SpotcheckBranch
 	spotcheckTrackingRef = "refs/remotes/" + Remote + "/" + SpotcheckBranch
-	// spotcheckNetTimeout bounds each networked git command FetchBranch
-	// makes, under the caller's own context.
-	spotcheckNetTimeout = time.Minute
 )
+
+// spotcheckNetTimeout bounds FetchBranch's networked git commands together,
+// under the caller's own context. A test lowers it.
+var spotcheckNetTimeout = time.Minute
 
 // PushBranch pushes commit sha to ref, which must be the spot-check's store
 // branch (refs/heads/abcd-spotcheck), by the one push this package makes
