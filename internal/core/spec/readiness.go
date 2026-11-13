@@ -114,11 +114,24 @@ var (
 //     (LayoutStatements).
 //
 // It reads what a person reading the page reads, through mdrecord.ReadPage,
-// the reading OpenQuestions takes. The frontmatter, inline code spans that open and close on one line, fenced
-// blocks and HTML comments are not read, a comment that opens and closes on
-// one line included; the text before a comment's opener and after its closer,
-// on the same line, is, and so is an indented code block. A line carrying a
-// sentence and a label is reported once, as not ready.
+// the reading OpenQuestions takes. The frontmatter, fenced blocks and HTML
+// comments are not read, a comment that opens and closes on one line
+// included; the text before a comment's opener and after its closer, on the
+// same line, is, and so is an indented code block. An inline code span that
+// opens and closes on one line is not read (mdrecord.Page.Spans), except
+// below a backtick run that a line leaves with no closer on that line, since
+// the page may pair the run over a line break: on the lines below it, to the
+// next blank line, inside a fence or comment as well as outside, no span is
+// blanked, and the run's own line keeps its spans. On those lines a comment
+// opener that is the first thing on its line, at up to three columns, opens
+// a comment whatever the lines above leave open. Any other opener there, or
+// after the run on its own line, has its comment read as text when it closes
+// on its line, and when it does not, every line from that one is read as its
+// own text and the line is named (LayoutStatements); on the lines below the
+// run, so does an opener quoted in a one-line span with no closer after it on
+// its line.
+// A span over a line break is read. A line carrying a sentence and a label is
+// reported once, as not ready.
 func Unsettled(content string) []Statement {
 	lines := strings.Split(content, "\n")
 	body := 0
@@ -134,12 +147,12 @@ func Unsettled(content string) []Statement {
 	}
 	live := page.Text
 	for i := body; i < len(lines); i++ {
-		ln := blankCodeSpans(live[i])
+		ln := blankSpans(live[i], page.Spans[i])
 		kind := ""
 		switch {
 		case notReadyAt(ln):
 			kind = UnsettledNotReady
-		case notReadyAt(ln+" READY") && readyHeadRe.MatchString(nextLine(live, i)):
+		case notReadyAt(ln+" READY") && readyHeadRe.MatchString(nextLine(page, i)):
 			kind = UnsettledNotReady
 		case openLabelRe.MatchString(ln) && !asked[i+1]:
 			kind = UnsettledOpenLabel
@@ -185,11 +198,11 @@ func notReadyAt(ln string) bool {
 
 // nextLine is the live text of the line after i, blanked of code spans, or
 // "" past the end: a blank line ends the paragraph, so it carries no wrap.
-func nextLine(live []string, i int) string {
-	if i+1 >= len(live) {
+func nextLine(page mdrecord.Page, i int) string {
+	if i+1 >= len(page.Text) {
 		return ""
 	}
-	return blankCodeSpans(live[i+1])
+	return blankSpans(page.Text[i+1], page.Spans[i+1])
 }
 
 // unclosedText is what an unclosed statement quotes: the construct, not the
@@ -213,10 +226,10 @@ func insertStatement(out []Statement, st Statement) []Statement {
 	return out
 }
 
-// blankCodeSpans replaces each inline code span on ln with spaces of the same
-// length, so a pattern cannot match inside one and the offsets stay put.
-func blankCodeSpans(ln string) string {
-	ranges := mdrecord.CodeSpanRanges(ln)
+// blankSpans replaces each of ln's code span ranges (mdrecord.Page.Spans)
+// with spaces of the same length, so a pattern cannot match inside one and
+// the offsets stay put.
+func blankSpans(ln string, ranges [][2]int) string {
 	if len(ranges) == 0 {
 		return ln
 	}

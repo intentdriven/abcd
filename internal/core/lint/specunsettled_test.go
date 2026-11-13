@@ -49,6 +49,8 @@ func TestSpecUnsettled(t *testing.T) {
 			fm + "## Not READY\n", []int{10}, "Not READY"},
 		{"a quoted phrase is told to go in a code span", base + "/open/spc-7-thing.md",
 			fm + "- NOT READY rows are listed last.\n", []int{10}, "code span"},
+		{"an opener quoted in a span below a run left open is refused on its line", base + "/open/spc-7-thing.md",
+			fm + "Stray ` tick\nsee `<!-- parked` here\n## Parked\n-->\n", []int{11}, "not read one way"},
 		{"a closed spec is out of reach", base + "/closed/spc-7-thing.md",
 			fm + "Not READY: once.\n", nil, ""},
 	}

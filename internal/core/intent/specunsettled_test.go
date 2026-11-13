@@ -59,6 +59,25 @@ func TestSpecBodyCheckExemptsWhatIsNeverBuilt(t *testing.T) {
 	}
 }
 
+// TestSpecBodyCheckNamesAnOpenerBelowARunLeftOpen: the spec_body row the
+// build's readiness gate reads takes spec.Unsettled's layout statement, so an
+// open spec holding a comment opener quoted in a one-line code span, below a
+// backtick run a line leaves open and with no closer after it on its line, is
+// refused with that line named.
+func TestSpecBodyCheckNamesAnOpenerBelowARunLeftOpen(t *testing.T) {
+	root := t.TempDir()
+	const rel = ".abcd/development/specs/open/spc-1-s.md"
+	writeFile(t, root, filepath.FromSlash(rel), "---\nid: spc-1\nintent: itd-10\n---\n# S\n\n"+
+		"Stray ` tick\nsee `<!-- parked` here\n## Parked\n-->\n")
+	c, err := specBodyCheck(root, Intent{ID: "itd-10", Bucket: BucketPlanned}, spec.Spec{ID: "spc-1", Path: rel, Status: spec.StatusOpen}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.OK || !strings.Contains(c.Detail, "line 8: the text from this line on is not read one way") {
+		t.Fatalf("spec_body = %+v, want it refused with line 8 named", c)
+	}
+}
+
 // TestOpenQuestionsReadsASubheading: a question asked under a sub-heading of
 // `## Open Questions` is a question; the section ends at a heading of its own
 // depth.

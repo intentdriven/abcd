@@ -66,10 +66,32 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   item's fence nearer the margin than the item's text (each named by its line,
   and the text from there on is read). Lower-case "not READY", "Not ready",
   and the phrase elsewhere in a sentence are not matched. The frontmatter,
-  inline code spans that open and close on one line, fenced blocks (one at up to three columns under a list
-  item included) and HTML comments are not read;
-  an indented code block is read. So a phrase quoted rather than said goes in
-  an inline code span. A closed spec, and a record in `shipped/`,
+  inline code spans that open and close on one line, fenced blocks (one at
+  up to three columns under a list item included) and HTML comments are not
+  read; an indented code block is read. A comment opener inside a one-line
+  code span opens no comment, and a backtick behind an odd run of backslashes
+  opens no span. A line that leaves a backtick run with no closer of its
+  length later on that line may pair it, on the page, with a backtick on a
+  line below, so on the lines below it, to the next blank line (a line of
+  nothing but spaces and tabs), inside a fence or comment as well as outside,
+  the reader blanks no span, and it reads a span over a line break as prose;
+  the run's own line keeps its spans. On those lines a comment opener that is
+  the first thing on its line, at up to three columns, opens a comment
+  whatever the lines above leave open. Any other opener there, or after the
+  run on its own line, has its comment read as text when it closes on its
+  line, and when it does not, the line is named and the text from there on is
+  read; on the lines below the run, a comment opener quoted in a one-line code
+  span with no closer after it on its line has its line named the same way. So
+  a phrase quoted rather than said goes in an inline code span that opens and
+  closes on one line. The reader pairs a backtick inside an HTML tag, an autolink, an inline
+  link's destination or title, or a processing instruction, declaration or
+  CDATA section in the middle of a line, as if it stood in text; opens a
+  comment at an opener inside a tag's attribute; reads a one-line comment
+  whose text holds two hyphens as a comment; blanks a one-line span or comment
+  inside an indented code block or an HTML block and a span over a table
+  cell's `|`; takes a backslash before a backtick inside an indented code
+  block, an HTML block or a tag, where the page shows the backslash, as making
+  the backtick literal; and does not end a line at a carriage return alone. A closed spec, and a record in `shipped/`,
   `superseded/` or `disciplines/`, is not judged.
 - **open questions** — no open question under the record's `## Open Questions`
   or a sub-heading of it. The reader fails closed and knows the record's two settled markers: a section
@@ -91,8 +113,10 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   are written (an intent over the intent store's size cap is refused for its
   size before its layout is read, and the rule still names its lines, up to record-lint's own file cap). Only an ATX heading (`#`) opens
   or ends the section; a setext or HTML heading does not. The reader reads
-  ATX headings, fences, HTML comments and inline code spans that open and close on one line; any other raw
-  HTML block is read as ordinary text, line by line.
+  ATX headings, fences, HTML comments and inline code spans that open and
+  close on one line, below a backtick run a line leaves open as the spec
+  body check does; any other raw HTML block is read as ordinary text, line
+  by line.
 - **claim sections** — the mechanism prompt is answered or the section absent,
   and the scope conditions are recorded. The readiness gate reports both as
   advisory; a run is where they bind, because an autonomous lane has nobody to

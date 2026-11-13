@@ -538,12 +538,38 @@ checks; the judgement is yours, as the host.
     way to hold a spec: lower-case "not READY", "Not ready", and the phrase
     elsewhere in a sentence are not matched, and the declared holds are the
     spec's `blocked_by` and its open questions. The frontmatter, inline code
-    spans that open and close on one line, fenced blocks (one at up to three columns under a list item
-    included) and HTML comments are not read; an indented code block is read.
-    So a phrase quoted rather than said goes in an inline code span. Only an
+    spans that open and close on one line, fenced blocks (one at up to three
+    columns under a list item included) and HTML comments are not read; an
+    indented code block is read. A comment opener inside a one-line code span
+    opens no comment, and a backtick behind an odd run of backslashes opens no
+    span. A line that leaves a backtick run with no closer of its length later
+    on that line may pair it, on the page, with a backtick on a line below, so
+    on the lines below it, to the next blank line (a line of nothing but
+    spaces and tabs), inside a fence or comment as well as outside, the reader
+    blanks no span, and it reads a span over a line break as prose; the run's
+    own line keeps its spans. On those lines a comment opener that is the
+    first thing on its line, at up to three columns, opens a comment whatever
+    the lines above leave open. Any other opener there, or after the run on
+    its own line, has its comment read as text when it closes on its line, and
+    when it does not, the line is named and the text from there on is read; on
+    the lines below the run, a comment opener quoted in a one-line code span
+    with no closer after it on its line has its line named the same way. So a
+    phrase quoted rather than said goes in an inline code span that opens and
+    closes on one line. The reader pairs a backtick inside an HTML tag, an autolink, an
+    inline link's destination or title, or a processing instruction,
+    declaration or CDATA section in the middle of a line, as if it stood in
+    text; opens a comment at an opener inside a tag's attribute; reads a
+    one-line comment whose text holds two hyphens as a comment; blanks a
+    one-line span or comment inside an indented code block or an HTML block
+    and a span over a table cell's `|`; takes a backslash before a backtick
+    inside an indented code block, an HTML block or a tag, where the page
+    shows the backslash, as making the backtick literal; and does not end a
+    line at a carriage return alone. Only an
     ATX heading (`#`) opens or ends the section; a setext or HTML heading does
     not. The reader reads ATX headings, fences, HTML comments and inline code
-    spans that open and close on one line; any other raw HTML block is read as ordinary text, line by line. A
+    spans that open and close on one line, below a backtick run a line leaves
+    open as above; any other raw HTML block is read as ordinary text, line by
+    line. A
     closed spec, and an intent in `shipped/`, `superseded/` or `disciplines/`, is
     not judged. An intent the design waits on goes in the spec's own
     `blocked_by`;

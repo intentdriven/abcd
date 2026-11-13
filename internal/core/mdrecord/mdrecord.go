@@ -154,6 +154,15 @@ type Reading struct {
 	// on, with the byte offset of its opener there.
 	comments []commentSpan
 
+	// lines is, per line, what the line's walk read there (inline.go): its
+	// one-line code spans and its comment ranges. A fenced line holds
+	// neither.
+	lines []lineRead
+
+	// unsure is the first line on which the walk met a comment opener whose
+	// comment the page may read another way (lineRead.doubt), or -1.
+	unsure int
+
 	openLine int
 	openFlag uint8
 }
@@ -170,6 +179,18 @@ type commentSpan struct {
 func (r Reading) Unclosed() (line int, flag uint8, ok bool) {
 	return r.openLine, r.openFlag, r.openLine >= 0
 }
+
+// Unsure reports the first line holding a comment opener whose comment the
+// page may read another way, and whether there is one: below a backtick run a
+// line above it in its stretch left open, or after a run its own line leaves
+// open, an opener that is not the first thing on its line, at up to three
+// columns, and has no `-->` after it on the line, whether the walk met it or
+// it sits inside a one-line span on a line below the run. The page may pair
+// that run over the line break, so the opener may sit inside a span, or a
+// span the walk paired may not be one. Mask reads the opener as a line read
+// alone does, a comment opened outside a span; a writer refuses such a body,
+// and ReadPage reads it whole from that line.
+func (r Reading) Unsure() (line int, ok bool) { return r.unsure, r.unsure >= 0 }
 
 // FencedUnderEveryRule reports, per line, whether EVERY reading reads that line
 // as inside a fence (its delimiters included): TopLevel, ListNested, and the
@@ -267,24 +288,51 @@ func inItem(rule Rule, indent int) bool {
 // Read is the single pass every reading of fences and comments goes through.
 // Spelled twice, two readers could disagree about which lines a span covers and
 // which line opened it.
+//
+// Each line outside a fence is walked alone (inline.go): a comment opener
+// inside a one-line code span opens nothing, and one outside a span opens a
+// comment. From a backtick run a line leaves open to the next blank line the
+// page may pair that run over a line break, and where that turns which
+// comments there are, the reading is Unsure from the line.
 func Read(lines []string, rule Rule) Reading {
-	r := Reading{Mask: make([]uint8, len(lines)), openLine: -1}
+	r := Reading{Mask: make([]uint8, len(lines)), lines: make([]lineRead, len(lines)), unsure: -1, openLine: -1}
 	fenceOpen, fenceIndent, fenceStart := "", 0, 0
 	inComment := false
+	// loose is whether a line above, in the stretch being read, left a
+	// backtick run open.
+	loose := false
 	closeFence := func(end int) {
 		r.Fences = append(r.Fences, Span{Start: fenceStart, End: end, Closed: true})
 		fenceOpen = ""
 		r.openLine, r.openFlag = -1, 0
 	}
-	openComment := func(i int, ln string, from int) {
-		r.comments = append(r.comments, commentSpan{Span: Span{Start: i, End: len(lines)}, col: openCommentCol(ln, from)})
+	openComment := func(i int, w lineRead) {
+		r.comments = append(r.comments, commentSpan{Span: Span{Start: i, End: len(lines)}, col: w.openers[len(w.openers)-1]})
+		inComment = true
+		r.Mask[i] |= MaskComment
+		r.openLine, r.openFlag = i, MaskComment
 	}
 	closeComment := func(i int) {
 		c := &r.comments[len(r.comments)-1]
 		c.End, c.Closed = i+1, true
+		inComment = false
+		r.openLine, r.openFlag = -1, 0
+	}
+	took := func(i int, w lineRead) {
+		r.lines[i] = w
+		loose = loose || w.loose
+		if w.doubt && r.unsure < 0 {
+			r.unsure = i
+		}
+		if w.open {
+			openComment(i, w)
+		}
 	}
 	for i, raw := range lines {
 		ln := strings.TrimRight(raw, "\r")
+		if blankLine(ln) {
+			loose = false
+		}
 		// A list item ends at a non-blank line at column 0, and a fence it held
 		// ends with it. The line itself is then read as live.
 		if fenceOpen != "" && inItem(rule, fenceIndent) && strings.TrimSpace(ln) != "" && indentWidth(ln) == 0 {
@@ -296,15 +344,17 @@ func Read(lines []string, rule Rule) Reading {
 			// Inside a comment every byte is literal, so the raw first `-->` is the
 			// closer; the remainder of the line is live markdown again and may open
 			// a fresh span.
-			if k := strings.Index(ln, "-->"); k >= 0 {
-				closeComment(i)
-				if inComment = opensCommentFrom(ln, k+len("-->")); inComment {
-					r.openLine, r.openFlag = i, MaskComment
-					openComment(i, ln, k+len("-->"))
-				} else {
-					r.openLine, r.openFlag = -1, 0
-				}
+			k := strings.Index(ln, "-->")
+			if k < 0 {
+				stepN(len(ln))
+				r.lines[i].comments = [][2]int{{0, len(ln)}}
+				continue
 			}
+			stepN(k + len("-->"))
+			closeComment(i)
+			w := walkLine(ln, k+len("-->"), true, loose)
+			w.comments = append([][2]int{{0, k + len("-->")}}, w.comments...)
+			took(i, w)
 		case fenceOpen != "":
 			r.Mask[i] |= MaskFence
 			run, rest, indent, ok := fenceOpener(ln, rule)
@@ -322,12 +372,7 @@ func Read(lines []string, rule Rule) Reading {
 				r.openLine, r.openFlag = i, MaskFence
 				continue
 			}
-			if OpensComment(ln) {
-				inComment = true
-				r.Mask[i] |= MaskComment
-				r.openLine, r.openFlag = i, MaskComment
-				openComment(i, ln, 0)
-			}
+			took(i, walkLine(ln, 0, true, loose))
 		}
 	}
 	if fenceOpen != "" {
@@ -349,61 +394,13 @@ func Read(lines []string, rule Rule) Reading {
 // (iss-2608300320418618, iss-2608300335369473). A well-formed identity marker
 // closes on its own line, so it never opens a span; a genuinely unclosed opener
 // masks to end of file.
-func OpensComment(ln string) bool { return opensCommentFrom(ln, 0) }
-
-// opensCommentFrom is OpensComment beginning at an offset — the form Mask needs
-// when a line closes the span it was already inside and the remainder is live
-// markdown again.
-func opensCommentFrom(ln string, start int) bool { return commentWalk(ln, start, nil) }
-
-// openCommentCol is the byte offset of the `<!--` a line leaves open, the walk
-// starting at start, or -1 when it leaves none open.
-func openCommentCol(ln string, start int) int {
-	col := -1
-	if !commentWalk(ln, start, func(from, _ int) { col = from }) {
-		return -1
-	}
-	return col
-}
-
-// commentWalk is the one left-to-right walk OpensComment and ReadPage share:
-// from start, a matched code span is skipped whole and an unmatched backtick
-// run is literal, and at `<!--` the walk skips to the `-->` closing it. It
-// reports whether a comment is still open at the end of the line, and hands
-// each comment span it skips, the open one included, to blank when blank is
-// not nil.
-func commentWalk(ln string, start int, blank func(from, to int)) bool {
-	for i := start; i < len(ln); {
-		switch {
-		case ln[i] == '`':
-			if sp, ok := termsafe.PairCodeSpan(ln, i); ok {
-				i = sp.End
-			} else {
-				i = runEnd(ln, i)
-			}
-		case strings.HasPrefix(ln[i:], "<!--"):
-			// The closer may share the opener's dashes: `<!-->` and `<!--->`
-			// are whole, empty comments (CommonMark 0.31, and HTML's own
-			// reading), so the search starts two bytes in.
-			rest := ln[i+len("<!"):]
-			k := strings.Index(rest, "-->")
-			if k < 0 {
-				if blank != nil {
-					blank(i, len(ln))
-				}
-				return true
-			}
-			end := i + len("<!") + k + len("-->")
-			if blank != nil {
-				blank(i, end)
-			}
-			i = end
-		default:
-			i++
-		}
-	}
-	return false
-}
+//
+// The line is read alone, and an opener after an unmatched run opens a comment
+// here, which is the answer a writer asking before it appends the line needs:
+// on the page that run may pair with nothing. A backtick behind an odd run of
+// backslashes opens no span (CodeSpanRanges), so the next backtick may open
+// one that holds an opener.
+func OpensComment(ln string) bool { return walkLine(ln, 0, true, false).open }
 
 // FirstContent is the tree's one leading-comment locator: the first line
 // holding anything but blanks and HTML comments, and the byte column in that
@@ -570,6 +567,12 @@ type Page struct {
 	// Mask is the per-line mask of the same reading, for a section's bounds:
 	// a line is masked only where Text does not read it.
 	Mask []uint8
+	// Spans is, per line, the byte ranges of Text inside an inline code span
+	// that opens and closes on the line, outside a comment, on a line that no
+	// line above it in its stretch leaves a backtick run open on (inline.go).
+	// A fenced line, a line below such a run to the next blank line, and
+	// every line from the one Unsure names, report none.
+	Spans [][][2]int
 
 	unsure   int
 	openLine int
@@ -616,7 +619,8 @@ func (p Page) Unclosed() (line int, flag uint8, ok bool) {
 //     processing instruction or a CDATA section, after any list markers, to
 //     the next blank line, or to its closer: htmlBlocks), or a comment opener
 //     sits in a raw text element's block (rawTextTags);
-//   - a comment opener sits behind a backslash.
+//   - a comment opener sits behind a backslash;
+//   - a comment opener's comment can be read another way (Reading.Unsure).
 func ReadPage(lines []string) Page {
 	rs := [...]Reading{Read(lines, TopLevel), Read(lines, ListNested), Read(lines, listItem)}
 	nl := rs[1]
@@ -633,6 +637,9 @@ func ReadPage(lines []string) Page {
 		}
 	}
 	for _, r := range rs {
+		if l, ok := r.Unsure(); ok {
+			at(l)
+		}
 		var spans []indentedSpan
 		for _, s := range r.Fences {
 			spans = append(spans, indentedSpan{s, indentWidth(strings.TrimRight(lines[s.Start], "\r"))})
@@ -660,7 +667,7 @@ func ReadPage(lines []string) Page {
 		}
 	}
 	htmlBlocks(lines, nl.Mask, at)
-	text := liveText(lines, nl.Mask, at)
+	text := liveText(lines, nl, at)
 
 	p := Page{Text: text, Mask: nl.Mask, unsure: -1, openLine: nl.openLine, openFlag: nl.openFlag}
 	if u < len(lines) {
@@ -671,6 +678,12 @@ func ReadPage(lines []string) Page {
 		}
 		if p.openLine >= u {
 			p.openLine, p.openFlag = -1, 0
+		}
+	}
+	p.Spans = make([][][2]int, len(lines))
+	for j := 0; j < u; j++ {
+		if w := nl.lines[j]; !w.under {
+			p.Spans[j] = w.spans
 		}
 	}
 	return p
@@ -917,54 +930,40 @@ func htmlBlocks(lines []string, mask []uint8, at func(int)) {
 	}
 }
 
-// liveText is Page.Text over a fence mask Read computed. It names, through
-// at, the first line holding a comment opener behind a backslash, which the
-// page reads as text.
-func liveText(lines []string, mask []uint8, at func(int)) []string {
+// liveText is Page.Text over a reading: a fenced line is "", and every
+// comment range the reading's walk read on a line is blanked. It names,
+// through at, the first line holding a comment opener behind an odd run of
+// backslashes, which the page reads as text.
+func liveText(lines []string, r Reading, at func(int)) []string {
 	out := make([]string, len(lines))
-	in := false
 	for i, raw := range lines {
-		if mask[i]&MaskFence != 0 {
+		if r.Mask[i]&MaskFence != 0 {
 			continue
 		}
-		out[i], in = blankComments(strings.TrimRight(raw, "\r"), in, func() { at(i) })
+		ln := strings.TrimRight(raw, "\r")
+		w := r.lines[i]
+		if len(w.comments) == 0 {
+			out[i] = ln
+			continue
+		}
+		b := []byte(ln)
+		for _, c := range w.comments {
+			for j := c[0]; j < c[1]; j++ {
+				b[j] = ' '
+			}
+		}
+		for _, o := range w.openers {
+			k := o
+			for k > 0 && ln[k-1] == '\\' {
+				k--
+			}
+			if (o-k)%2 == 1 {
+				at(i)
+			}
+		}
+		out[i] = string(b)
 	}
 	return out
-}
-
-// blankComments is one line of Page.Text: in is whether a comment is open as
-// the line begins, and the second result whether one is open as it ends.
-// Inside a comment the first raw `-->` closes it, as Read reads it; the rest
-// of the line is commentWalk's. escaped is called for an opener behind an
-// odd run of backslashes.
-func blankComments(ln string, in bool, escaped func()) (string, bool) {
-	b := []byte(ln)
-	blank := func(from, to int) {
-		for j := from; j < to; j++ {
-			b[j] = ' '
-		}
-	}
-	start := 0
-	if in {
-		k := strings.Index(ln, "-->")
-		if k < 0 {
-			blank(0, len(b))
-			return string(b), true
-		}
-		start = k + len("-->")
-		blank(0, start)
-	}
-	open := commentWalk(ln, start, func(from, to int) {
-		k := from
-		for k > 0 && ln[k-1] == '\\' {
-			k--
-		}
-		if (from-k)%2 == 1 {
-			escaped()
-		}
-		blank(from, to)
-	})
-	return string(b), open
 }
 
 // BulletBlock is one top-level bullet and the continuation lines folded into
@@ -1034,25 +1033,12 @@ func PeelTrailingLinkRefs(section *[]string) []string {
 }
 
 // CodeSpanRanges returns the byte ranges of the inline code spans on one line,
-// each paired by termsafe.PairCodeSpan (CommonMark: a run of backticks closed
-// by the next run of exactly the same length).
-func CodeSpanRanges(ln string) [][2]int {
-	var out [][2]int
-	for i := 0; i < len(ln); {
-		if ln[i] != '`' {
-			i++
-			continue
-		}
-		sp, ok := termsafe.PairCodeSpan(ln, i)
-		if !ok {
-			i = runEnd(ln, i)
-			continue
-		}
-		out = append(out, [2]int{sp.Start, sp.End})
-		i = sp.End
-	}
-	return out
-}
+// the line read alone: a run of backticks closed by the next run of exactly
+// the same length (termsafe.PairCodeSpan's rule, through the linear
+// termsafe.CodeSpanPairer), where a backtick behind an odd run of
+// backslashes opens none, as on the page outside a span. The line's HTML
+// comments are not consulted.
+func CodeSpanRanges(ln string) [][2]int { return walkLine(ln, 0, false, false).spans }
 
 // MaskCodeSpans hides each inline code span in s behind an opaque token, so a
 // rewrite of the text around the spans (a link read as its text, an HTML tag
