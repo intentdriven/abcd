@@ -34,18 +34,21 @@
 // store that cannot be read is an error, never an empty store.
 //
 // FREE TEXT. A record's free text is cleaned by one rule that depends on
-// nothing of the machine or account writing or reading it (clean): every
-// "/" has an ASCII letter or digit right before it, every word that holds a
-// "/" begins with an ASCII letter or digit, and the text holds no "\" and no
-// "~". A run of non-space characters that would break the rule is replaced
-// whole by one fixed placeholder, so a bare repository-relative path such as
-// internal/core/x.go stays, and an absolute path, a home-relative path, an
-// address such as file:// or https://, an option glued to an absolute path
-// (-I/usr/include), a path that begins with a dot (.abcd/config.json), and
-// any path in quotes, brackets or backticks, a repository-relative one
-// included, go. Control and invisible characters
-// separate words and are removed, and each text is bounded. The read side checks a stored text with
-// the same function, so two readers of one store agree on what it holds.
+// nothing of the machine or account writing or reading it (clean): the text
+// holds no "\" and no "~", and a word that holds a "/" begins with an ASCII
+// letter or digit, has one right before every "/", and holds nothing but
+// ASCII letters, digits, ".", "_", "-" and "/". A run of non-space characters
+// that would break the rule is replaced whole by one fixed placeholder, so a
+// bare repository-relative path such as internal/core/x_test.go stays, and
+// every other word holding a "/" goes: an absolute or home-relative path, an
+// address such as file:// or https://, an option or a name written straight
+// against a path (-I/usr/include, CFLAGS=-I/x, file=a/b), a path in quotes,
+// brackets or backticks, a path with a line number or punctuation written
+// against it (internal/x.go:12, internal/x.go,), and a path that begins with
+// a dot (.abcd/config.json). Control and invisible characters separate words
+// and are removed, and each text is bounded. The read side checks a stored
+// text with the same function, so two readers of one store agree on what it
+// holds.
 //
 // WHO A COMMIT NAMES. Every git command that makes an object or moves a ref
 // runs through one helper (storeGit) whose environment names abcd's fixed
@@ -254,9 +257,8 @@ var (
 // clean is free text as a record keeps it, by the one rule the package doc
 // states: words are what lies between spaces and control or invisible
 // characters, which separate words and are removed, and the words are joined
-// by single spaces; a word that holds "\" or "~", a "/" with anything but an
-// ASCII letter or digit right before it, or a "/" while it begins with
-// anything but an ASCII letter or digit, is replaced whole by the
+// by single spaces; a word that holds "\" or "~", or holds a "/" and is not
+// a bare repository-relative path (pathFree), is replaced whole by the
 // placeholder; and the text is cut to maxTextBytes, the cut marked. It reads
 // nothing of the machine, so a text it leaves unchanged is one it accepts on
 // read (readRecord).
@@ -285,18 +287,29 @@ func separates(r rune) bool {
 	return unicode.IsSpace(r) || r == utf8.RuneError || termsafe.Sanitize(string(r)) != string(r)
 }
 
-// pathFree reports whether a word keeps to the rule: no "\", no "~", an
-// ASCII letter or digit right before every "/", and, when it holds a "/", an
-// ASCII letter or digit first.
+// pathFree reports whether a word keeps to the rule: no "\" and no "~"; and,
+// when it holds a "/", an ASCII letter or digit first, an ASCII letter or
+// digit right before every "/", and no byte but an ASCII letter, a digit,
+// ".", "_", "-" or "/". So a word holding a "/" is kept only as a bare
+// repository-relative path.
 func pathFree(w string) bool {
 	if strings.ContainsAny(w, `\~`) {
 		return false
 	}
-	if strings.Contains(w, "/") && !asciiAlnum(w[0]) {
+	if !strings.Contains(w, "/") {
+		return true
+	}
+	if !asciiAlnum(w[0]) {
 		return false
 	}
 	for i := 0; i < len(w); i++ {
-		if w[i] == '/' && (i == 0 || !asciiAlnum(w[i-1])) {
+		switch b := w[i]; {
+		case b == '/':
+			if !asciiAlnum(w[i-1]) {
+				return false
+			}
+		case asciiAlnum(b), b == '.', b == '_', b == '-':
+		default:
 			return false
 		}
 	}

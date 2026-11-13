@@ -100,7 +100,7 @@ func TestAParkedLanesGateDecisionIsRecorded(t *testing.T) {
 		t.Fatalf("handed %+v, recorded %+v", handed, recs)
 	}
 	r, d := recs[0], handed[0]
-	if r.Site != spotcheck.SiteLane || r.PR != l.PR || r.Head != l.Landing.Pushed || r.Arm || r.Arm != d.Arm || r.Method != d.Method || r.Why != strings.ReplaceAll(d.Why, ".abcd/config.json", "<removed>") || r.Unread != d.Unread {
+	if r.Site != spotcheck.SiteLane || r.PR != l.PR || r.Head != l.Landing.Pushed || r.Arm || r.Arm != d.Arm || r.Method != d.Method || r.Why != keptWhy(d.Why) || r.Unread != d.Unread {
 		t.Fatalf("the record is %+v; the gate decided %+v", r, d)
 	}
 	// The three facts the gate set as it decided, on the gate's answer and on
@@ -151,4 +151,18 @@ func TestAParkedLanesGateDecisionIsRecorded(t *testing.T) {
 	if got := h.repo.Git("rev-parse", spotcheck.LocalRef); got != blob {
 		t.Fatalf("a record was written over an unreadable store: %s", got)
 	}
+}
+
+// keptWhy is the gate's reason as the store's cleaning rule keeps it in the
+// fixtures: the mode's origin, .abcd/config.json at origin/main, holds two
+// words with a slash that are not bare repository-relative paths, one that
+// begins with a dot and one with a bracket and punctuation written against
+// it, so each is replaced whole.
+func keptWhy(why string) string {
+	return strings.NewReplacer(
+		".abcd/config.json", "<removed>",
+		"origin/main);", "<removed>",
+		"origin/main),", "<removed>",
+		"origin/main)", "<removed>",
+	).Replace(why)
 }

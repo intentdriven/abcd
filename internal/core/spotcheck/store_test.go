@@ -336,20 +336,37 @@ func TestTheCleaningRule(t *testing.T) {
 		{"cc -I/usr/include -L/opt/lib/x -C/home/someone/repo -Werror", "cc <removed> <removed> <removed> -Werror"},
 		{"-I" + home + "/inc", "<removed>"},
 		// A repository-relative path inside brackets, quotes or backticks
-		// goes too; bare, and with a line number after it, it stays.
+		// goes too, and so does one with a line number or punctuation written
+		// against it.
 		{"(internal/x.go) [internal/x.go] \"internal/x.go\" 'a/b' `a/b` <a/b>", "<removed> <removed> <removed> <removed> <removed> <removed>"},
-		{"internal/x.go:12: x/abs/path a/b,", "internal/x.go:12: x/abs/path a/b,"},
+		{"internal/x.go:12: x/abs/path a/b,", "<removed> x/abs/path <removed>"},
+		{"internal/x.go:12", "<removed>"},
+		{"internal/x.go,", "<removed>"},
+		{"(internal/x.go)", "<removed>"},
+		// A bare repository-relative path made only of letters, digits, dots,
+		// underscores, dashes and slashes stays.
+		{"internal/core/x_test.go and docs/how-to/a-b.md", "internal/core/x_test.go and docs/how-to/a-b.md"},
 		// A path that begins with a dot goes, a repository-relative one too.
-		{"facilitator.mode is auto (repo layer, .abcd/config.json at origin/main)", "facilitator.mode is auto (repo layer, <removed> at origin/main)"},
+		{"facilitator.mode is auto (repo layer, .abcd/config.json at origin/main)", "facilitator.mode is auto (repo layer, <removed> at <removed>"},
 		// So does any path under a top-level folder whose name begins with a dot.
 		{"see .github/workflows/ci.yml and .abcd/work/issues/open/iss-1.md", "see <removed> and <removed>"},
-		// A dot folder written straight after other characters is part of a word
-		// that begins with a letter, so the word keeps.
-		{"file=.github/workflows/ci.yml", "file=.github/workflows/ci.yml"},
+		// An option, a name or a quote written straight against a path goes
+		// whole, wherever the path starts: an absolute path with a home in it,
+		// a dot folder, a quoted or bracketed path.
+		{"CFLAGS=-I/Users/someone/include", "<removed>"},
+		{"CFLAGS=-I" + home + "/include", "<removed>"},
+		{"file=.github/workflows/ci.yml", "<removed>"},
+		{`key="internal/x.go" f(internal/x.go) a=b/c`, "<removed> <removed> <removed>"},
+		{"PATH=/usr/bin:/bin", "<removed>"},
+		{"-I/usr/include", "<removed>"},
+		// A word holding a slash and a byte outside ASCII goes.
+		{"caf\u00e9/x.go and internal/\u00fcber.go", "<removed> and <removed>"},
+		// A word with no slash keeps whatever it holds.
+		{"key=value f(x) host.invalid:8080 caf\u00e9", "key=value f(x) host.invalid:8080 caf\u00e9"},
 		{"(/abs/path) [/abs] {/abs} </abs> |/abs @/abs \"/abs\" '/abs' =/abs", "<removed> <removed> <removed> <removed> <removed> <removed> <removed> <removed> <removed>"},
 		{"at file:///home/x/y and https://example.invalid/a/b", "at <removed> and <removed>"},
 		{"the address http://host.invalid:8080/x", "the address <removed>"},
-		{"the bare host.invalid:8080/x", "the bare host.invalid:8080/x"},
+		{"the bare host.invalid:8080/x", "the bare <removed>"},
 		{`C:\Users\x\y.txt and C:/Users/x`, "<removed> and <removed>"},
 		{"a//b and a/./b and ../up", "<removed> and <removed> and <removed>"},
 		{"/Users/jane doe/notes.txt", "<removed> doe/notes.txt"},
@@ -368,8 +385,16 @@ func TestTheCleaningRule(t *testing.T) {
 			}
 		}
 		for _, w := range strings.Fields(got) {
-			if strings.Contains(w, "/") && !asciiAlnum(w[0]) {
+			if !strings.Contains(w, "/") {
+				continue
+			}
+			if !asciiAlnum(w[0]) {
 				t.Errorf("clean(%q) = %q keeps a word holding \"/\" that begins with %q", c.in, got, w[:1])
+			}
+			for i := 0; i < len(w); i++ {
+				if b := w[i]; !asciiAlnum(b) && b != '.' && b != '_' && b != '-' && b != '/' {
+					t.Errorf("clean(%q) = %q keeps a word holding \"/\" and the byte %q", c.in, got, b)
+				}
 			}
 		}
 		if strings.ContainsAny(got, "\\~\x1b\n\t\u200b") {

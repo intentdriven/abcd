@@ -1188,22 +1188,23 @@ that content. Each commit of the copy names abcd's fixed identity as its
 author and committer, with its dates in UTC.
 
 Free text is cleaned before it is kept, by one rule that reads nothing of the
-machine or the account: in the cleaned text every slash has an ASCII letter or
-digit right before it, every word that holds a slash begins with an ASCII
-letter or digit, and the text holds no backslash and no tilde. A run of
-non-space characters that would break the rule is replaced whole by one fixed
-placeholder, so a bare repository-relative path that begins with a letter or
-digit stays, and an absolute path, a home-relative path, an address such as a
-file or web address, an option written straight against an absolute path, a
-word that begins with a dot and holds a slash, and any path set in quotes,
-brackets or backticks, a repository-relative one included, go. So a path
+machine or the account. The text holds no backslash and no tilde, and a word
+that holds a slash is kept only when all three hold: it begins with an ASCII
+letter or digit; every slash has an ASCII letter or digit right before it;
+and every character of it is an ASCII letter, a digit, a dot, an underscore,
+a dash or a slash. Any other word holding a slash is replaced whole by one
+fixed placeholder. So a bare repository-relative path made only of letters,
+digits, dots, underscores, dashes and slashes stays, and every other word
+holding a slash goes: an absolute or home-relative path, an address such as
+a file or web address, an option or a name written straight against a path,
+a path in quotes, brackets or backticks, a path with a line number or
+punctuation written against it, and a path that begins with a dot. A path
 under a top-level folder whose name begins with a dot (a workflow file under
-`.github`, a record under `.abcd`), written as a word of its own, reads as
-the placeholder in every text a record keeps, a hand-back's reason and a merge-gate reason included; the
-gate's mode is kept in a field of its own. Control and
-invisible characters separate words and are removed, and each text is
-bounded. A record read back is checked with the same
-rule, so two readers agree on what the copy holds.
+`.github`, a record under `.abcd`) reads as the placeholder in every text a
+record keeps, a hand-back's reason and a merge-gate reason included; the
+gate's mode is kept in a field of its own. Control and invisible characters
+separate words and are removed, and each text is bounded. A record read back
+is checked with the same rule, so two readers agree on what the copy holds.
 
 The records are rebuilt from the drain's state at every move, and only those
 the copy does not yet hold are written, so a record one move could not write

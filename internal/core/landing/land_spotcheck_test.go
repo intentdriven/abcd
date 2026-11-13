@@ -37,11 +37,20 @@ func gateRecords(t *testing.T, f *fixture) []spotcheck.Decision {
 }
 
 // keptWhy is the gate's reason as the store's cleaning rule keeps it in the
-// fixtures: the mode's origin, .abcd/config.json, begins with a dot and holds
-// a slash, so it is replaced whole.
+// fixtures: the mode's origin, .abcd/config.json at origin/main, holds two
+// words with a slash that are not bare repository-relative paths, one that
+// begins with a dot and one with a bracket and punctuation written against
+// it, so each is replaced whole.
 func keptWhy(why string) string {
-	return strings.ReplaceAll(why, ".abcd/config.json", "<removed>")
+	return keptWhyReplacer.Replace(why)
 }
+
+var keptWhyReplacer = strings.NewReplacer(
+	".abcd/config.json", "<removed>",
+	"origin/main);", "<removed>",
+	"origin/main),", "<removed>",
+	"origin/main)", "<removed>",
+)
 
 // withRecorder runs land with the gate's recorder replaced for the call: rec
 // nil turns the record off, as land is without it.
