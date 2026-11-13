@@ -13,11 +13,16 @@ package loop
 // is what the person replans from.
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/spotcheck"
+	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // handBackLane stops lane with hb and records it, loudly, in the run record.
@@ -177,4 +182,89 @@ func tombstoneKind(hb HandBack) string {
 		return hb.Kind
 	}
 	return claim.HandBackUnachievable
+}
+
+// spotcheckRecords keeps the spot-check's record of what the drain decided
+// with no person involved (spc-2610301925429250 step 1): each hand-back st
+// has routed, under handbacks/, and each judgement a model answered, under
+// decisions/, each as its own file on the store's local copy
+// (internal/core/spotcheck), all of a move's in one commit, reaching no
+// network. The records are rebuilt from st, which keeps every route and
+// judgement of the drain, and only those the local copy does not hold are
+// written, so a record one move could not write is tried again by the next.
+// It never fails, holds or changes the move: what it could not write is said
+// in the note it returns, "" when everything is kept, and a checkout with no
+// remote named origin keeps no record.
+func spotcheckRecords(parent context.Context, repoRoot string, st DrainState) string {
+	holder := spotcheck.Holder()
+	var b spotcheck.Batch
+	for _, r := range st.HandBacks {
+		b.HandBacks = append(b.HandBacks, spotcheckHandBack(st, r, holder))
+	}
+	for _, j := range st.Judgements {
+		if j.Route == nil {
+			// A person's answer is not the automated facilitator's.
+			continue
+		}
+		b.Decisions = append(b.Decisions, spotcheck.Decision{Kind: spotcheck.KindDrainJudgement, At: j.At, Holder: holder, Issue: j.Issue,
+			Question: drainQuestion().Ask, Answer: j.Answer, AnswerKind: j.Kind, Model: j.Route.Model, Rule: st.Rule, Reason: j.Reason})
+	}
+	return spotcheckNote(spotcheck.Write(ctxOr(parent), repoRoot, b))
+}
+
+// spotcheckHandBack is r as the spot-check keeps it, with the lane's pull
+// request and run (routedLane).
+func spotcheckHandBack(st DrainState, r DrainRoute, holder string) spotcheck.HandBack {
+	h := spotcheck.HandBack{Issue: r.Issue, From: r.From, Kind: r.Kind, Route: r.Route, Rule: r.Rule,
+		DrainRule: st.Rule, Reason: r.Reason, Blob: r.Blob, Holder: holder}
+	if r.At != nil {
+		// A route with no time cannot be kept, and the write says so.
+		h.At = *r.At
+	}
+	if l, ok := routedLane(st, r); ok {
+		h.PR, h.RunID = l.PR, l.RunID
+	}
+	return h
+}
+
+// routedLane is the drain lane a lane's hand-back r came from: the lane
+// on its issue opened latest at or before the hand-back, since an issue
+// handed back and changed since may be taken up again. ok is false for a
+// hand-back no lane made (the judgement's, the rule's, a reservation's).
+func routedLane(st DrainState, r DrainRoute) (DrainLane, bool) {
+	if r.From != "lane" {
+		return DrainLane{}, false
+	}
+	var found DrainLane
+	ok := false
+	for _, l := range st.Lanes {
+		if l.Issue != r.Issue || (r.At != nil && l.OpenedAt.After(*r.At)) {
+			continue
+		}
+		if !ok || l.OpenedAt.After(found.OpenedAt) {
+			found, ok = l, true
+		}
+	}
+	return found, ok
+}
+
+// spotcheckNote is what a move says of its write of the spot-check's
+// record: how many records it tried to write and could not, and why; and,
+// apart, how many records of the drain's state the store cannot keep at all
+// (a route with no time, an id outside the store's form), a number that
+// stays the same from move to move while the state holds them. "" when every
+// record is kept, and for a checkout with no remote named origin.
+func spotcheckNote(w spotcheck.Written) string {
+	if errors.Is(w.Err, spotcheck.ErrNoOrigin) {
+		return ""
+	}
+	var parts []string
+	if w.Failed > 0 && w.Err != nil {
+		parts = append(parts, fmt.Sprintf("%d record(s) of the spot-check were not written here (%s); a later move tries them again, and nothing the drain did waits on them",
+			w.Failed, termsafe.Sanitize(fsutil.RedactHome(w.Err.Error()))))
+	}
+	if n := len(w.Unkeepable); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d record(s) of the drain's state cannot be kept by the spot-check's store (%s)", n, termsafe.Sanitize(w.Unkeepable[0])))
+	}
+	return strings.Join(parts, "; ")
 }

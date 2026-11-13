@@ -207,8 +207,15 @@ func TestConfirmRefusesAURLCitedOnlyInASpanBelowARunLeftOpen(t *testing.T) {
 		RepoRoot: root, Config: testConfig(), Now: now,
 		Receipt: Receipt{Confirmed: []ConfirmedCitation{{URL: "https://example.org/quoted"}}},
 	})
-	if err == nil || !strings.Contains(err.Error(), "below a backtick left open") {
-		t.Fatalf("Confirm = %v, want a refusal naming the backtick left open", err)
+	// The URL may sit in no span at all (a footnote definition's continuation
+	// line that only the whole reading finds), so the refusal names only the
+	// backtick a line above leaves open, the remedy that always works, and the
+	// second step a URL in a span of its own then needs.
+	if err == nil || !strings.Contains(err.Error(), "cited only where a line above leaves a backtick open") ||
+		!strings.Contains(err.Error(), "Close that backtick on its own line") ||
+		!strings.Contains(err.Error(), "write it outside the span to cite it") ||
+		strings.Contains(err.Error(), "inside a code span on its own line") {
+		t.Fatalf("Confirm = %v, want a refusal naming the backtick a line above leaves open and its one remedy", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(root, filepath.FromSlash(lint.DefaultBaselinePath))); statErr == nil {
 		t.Error("a refused confirm still wrote a baseline")
