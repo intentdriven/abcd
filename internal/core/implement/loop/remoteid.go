@@ -575,6 +575,62 @@ func (was *remoteIdentity) changed(repoRoot string, now *remoteIdentity) []strin
 	return out
 }
 
+// heldBeforeGit is a drive's comparison of what it holds (held, read as it
+// started) with what every environment its git runs in reads now: the held
+// settings of each (readSettings) and every hooks directory git names in an
+// environment whose commands run hooks, with info/attributes (readHooks). It
+// is made before each step of a drive (advanceWith), so before the step's
+// git, the lane's landing push and a reservation's push or fetch a step
+// makes among it; at each pass of the drive's loop, which ends on a
+// difference (terminal.go); and, while a drive runs, before every git
+// command that runs hooks or reaches the network, in a step or not (a
+// move's reservation, a renewal made while an agent runs, the release as
+// the drive ends, the network probe: gitutil.SetBeforeHookedGit, which the
+// drive sets), which is not run on a difference. A difference, or a read that gives no answer
+// the comparison can take, stops it at the config stage, naming what; the
+// drive reads what it holds once, as it starts, so the remedy is to stop it
+// and start it again. With nothing held (a step the host runs, a single
+// build) it compares nothing. What changes between this read and git's own
+// read is not seen (the file's header).
+func heldBeforeGit(repoRoot string, held *remoteIdentity) error {
+	if held == nil {
+		return nil
+	}
+	envs, files, err := readSettings(repoRoot, held.salt)
+	if err != nil {
+		return heldBeforeGitRefusal(repoRoot, err)
+	}
+	names := held.changed(repoRoot, &remoteIdentity{envs: envs, files: files})
+	dir, err := hooksDirAt(repoRoot)
+	if err != nil {
+		return heldBeforeGitRefusal(repoRoot, err)
+	}
+	now, _, err := readHooks(repoRoot, held.salt, dir)
+	if errors.Is(err, errHooksPastCap) {
+		return refuse(StageConfig, "", "", err.Error()+", so what the drive's next git would run cannot be shown to be what it started with, and no git step is taken",
+			"look at what grew the hooks directory; stop the drive and start it again once the hooks are as they should be; nothing was made")
+	}
+	if err != nil {
+		return heldBeforeGitRefusal(repoRoot, err)
+	}
+	names = append(names, nameChanges(repoRoot, configFingerprint{Files: held.hooks}.changes(repoRoot, configFingerprint{Files: now}))...)
+	if len(names) == 0 {
+		return nil
+	}
+	slices.Sort(names)
+	return refuse(StageConfig, "", "",
+		"what the drive holds changed since it started ("+strings.Join(slices.Compact(names), ", ")+"): the settings it holds ("+remoteIdentityHeld+"), or a hooks directory its git runs or info/attributes; its next git command would run hooks or reach the network under them, so no git step is taken",
+		"look at what changed them (`git config --show-origin --show-scope --get-regexp '"+heldPattern+"'`, the hooks directories and the files named), in each environment the drive's git runs in: as yourself for the push's and the ask of origin's, and with HOME set to the stage's home, as the drive sets it, for the lane's add and commit; the drive reads them once, as it starts, so stop it and start it again once they are as they should be; nothing was made")
+}
+
+// heldBeforeGitRefusal is heldBeforeGit's refusal of a read it depends on
+// that gave no answer it can take.
+func heldBeforeGitRefusal(repoRoot string, err error) error {
+	return refuse(StageConfig, "", "",
+		"a read the drive's hold depends on gave no answer it can take, so what its next git would run cannot be shown to be what it started with: "+nameChanges(repoRoot, []string{fsutil.RedactHome(err.Error())})[0],
+		readRemedy("run the step again"))
+}
+
 // heldReadRefusal is the refusal of the lane's step when a read the hold
 // depends on gave no answer it can take: it stops at the config stage,
 // naming the read and why.

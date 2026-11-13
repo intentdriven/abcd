@@ -1171,19 +1171,28 @@ As it starts, the drive reads your settings and the hooks directories its git
 runs, and it refuses to start, at the stage `config`, when a read its hold
 depends on gives no answer it can take: git fails, does not finish within a
 minute, or answers in a form abcd does not take (a hooks path holding a
-newline, an answer past its bound). The refusal names the read and the
-environment it ran in (below); run that read there, as yourself or with `HOME`
-set to the stage's home, then start it again. A read that gives no answer is
-never taken as nothing there, nor as nothing changed: a lane's check and a
-step's check of the run's fingerprint stop the same way, and a read that did
-not finish is named as such, never as a change. A lane's path where git says
-no repository stands holds no hooks, since git runs none there. The listing needs git 2.26, as
-every run's fingerprint already does. Where git does not know the names of the
-attributes files (git older than 2.42), the global one is found as git finds
-it (`core.attributesFile`, else the default under `XDG_CONFIG_HOME` or the
-home), and the system one is taken to stand beside the system settings file
-the listing names; on such a git, where the listing names no system settings
-file, the system attributes file is not held. A hooks
+newline, an answer past its bound). A read that does not finish is asked once
+more after a short wait, both asks within that minute, and only a second that
+does not finish stops it, saying it was asked twice. The refusal names the
+read and the environment it ran in (below); run that read there, as yourself
+or with `HOME` set to the stage's home, then start it again. A read that gives
+no answer is never taken as nothing there, nor as nothing changed: every
+step's check of the run's fingerprint, inside a drive or not, stops the same
+way, whichever read failed (the repository's settings, the common git
+directory, a hooks directory, a lane's settings), and a read that did not
+finish is named as such, never as a change. The one answer of none taken is
+git's own: a lane's path where nothing stands, or where git, asked in the
+environment the lane's git runs in, exits 128 and begins its error with "not a
+git repository", holds nothing, since git runs nothing there; those words
+anywhere else in what git says (a path can repeat them) are not that answer.
+The listing needs git 2.26, as every run's fingerprint already does. Where git
+does not know the names of the attributes files (git older than 2.42), the
+global one is found as git finds it (`core.attributesFile`, else the default
+under `XDG_CONFIG_HOME` or the home), and the system one is taken to stand
+beside the system settings file the listing names; on such a git, where the
+listing names no system settings file, or where `GIT_CONFIG_SYSTEM` is set in
+that environment (it names a system settings file somewhere else), the system
+attributes file is not held. A hooks
 directory it cannot read is recorded as such and compared like the rest: one
 made unreadable after the drive started refuses the next lane, and one inside
 the checkout of a repository with an `origin` refuses the start, at the
@@ -1213,8 +1222,9 @@ start too, naming the fetch. The ask of `origin` is a lane's: a lost network
 is reported to the run's shared outage, and while that outage has the network
 down the start waits on its shared probe rather than ask again. The wait is
 the drive's own, ending at the drive's bounds (a stop, the `--until` bound,
-the check before a stage) or after eight hours of nothing moving, and asking
-again each time; a setting changed while no drive ran (an `origin` URL, a
+the check before a stage), and asking again each time; a drive with no
+`--until` bound also ends it after eight hours of nothing moving, and one with
+that bound waits until the bound; a setting changed while no drive ran (an `origin` URL, a
 proxy or an ssh command that leads nowhere) makes a start wait so where it
 would refuse at once. A hooks directory that lies outside the working tree
 (an absolute or home path that points elsewhere), or under the tree's own
@@ -1297,7 +1307,19 @@ home-form path there is under the stage's home; and abcd's isolated reads of
 refs and objects, which read no global or system settings. In each
 environment whose commands run hooks it also holds the hooks directory git
 names there, at every depth, so a `core.hooksPath` set only in your global
-settings holds the directory your push's `pre-push` runs from. Where two
+settings holds the directory your push's `pre-push` runs from. Every step of a
+drive compares all of it again before the step's git runs, so a lane's own
+landing push, and a reservation's push or fetch a step makes, runs only under
+what the drive started with as read just before that step: a change a lane's
+agent made stops the next step, at the stage `config`, before that push. Each
+pass of the drive's loop compares it too, and so does every git command of the
+drive that runs hooks or reaches the network, in a step or not (a move's
+reservation, a renewal made while an agent runs, the release as the drive
+ends, the network probe): on a difference the command is not run and fails
+naming it. A difference ends the drive: it reads what it holds only as it
+starts, so look at the change and start it again. What changes between that
+read and git's own run of the command is not seen.
+Where two
 environments name the same file or directory it is held once. Each
 environment's reading is compared only with its own earlier one; two
 differing from each other is expected. Each lane's worktree stage reads them

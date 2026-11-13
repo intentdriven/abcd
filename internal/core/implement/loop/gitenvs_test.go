@@ -18,10 +18,18 @@ package loop
 //
 // NOT FOLLOWED (a static walk cannot follow every route a value takes): a
 // function reached only through a function-typed struct field set outside
-// the walked code, reflection, and a call the standard library makes back
-// into the module through an interface. A program named by anything but the
+// the walked code (the drive's surface sets several, DriveHooksPath's caller
+// among them), reflection, and a call the standard library makes back into
+// the module through an interface. A program named by anything but the
 // constant "git" is named in nonGitPrograms below with what it is, so a new
 // one fails here until it is looked at.
+//
+// NOT CHECKED: the environment and the hooks flag of each row. The walk
+// finds which constructors a drive reaches, not what environment each gives
+// git or whether its command runs hooks; those are read by people, from each
+// constructor's own code, when a row is added. The walk type-checks the
+// module from source, so `go test -short` skips it; preflight and CI run the
+// package without -short, and run it.
 
 import (
 	"bytes"
@@ -110,6 +118,32 @@ func TestEveryDistinctEnvironmentIsHeldOnce(t *testing.T) {
 		if c.hooks && !c.env.hooks() {
 			t.Fatalf("%s runs hooks, so its environment's hooks directory is held", c.name)
 		}
+	}
+}
+
+// TestTheWalkNamesAHelperThatReachesGitThroughACycle: two git helpers that
+// call each other, one of which reaches a git command past the other, are
+// both named when the drive uses both; the answer of the one asked while
+// the cycle through it was open is not kept as "reaches none". Watched
+// failing: the second helper was left out.
+func TestTheWalkNamesAHelperThatReachesGitThroughACycle(t *testing.T) {
+	const mod = "example.com/m"
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	loopPkg := types.NewPackage(mod+"/internal/core/implement/loop", "loop")
+	gitPkg := types.NewPackage(mod+"/internal/gitutil", "gitutil")
+	entry := types.NewFunc(token.NoPos, loopPkg, "Entry", sig)
+	a := types.NewFunc(token.NoPos, gitPkg, "A", sig)
+	b := types.NewFunc(token.NoPos, gitPkg, "B", sig)
+	c := types.NewFunc(token.NoPos, gitPkg, "C", sig)
+	w := &gitWalk{mod: mod, names: map[any]string{},
+		edges:   map[any][]any{entry: {a, b}, a: {b, c}, b: {a}},
+		gitExec: map[any]bool{c: true}, programs: map[any]bool{}}
+	found, _, err := w.reach(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(found, []string{"gitutil.A", "gitutil.B"}) {
+		t.Fatalf("both helpers reach a git command: %v", found)
 	}
 }
 
@@ -423,27 +457,32 @@ func (w *gitWalk) inGitutil(n any) bool {
 
 // reach walks from start: a gitutil function used from outside gitutil
 // that reaches a git command is named and not walked into; a function
-// outside it that builds one is named.
+// outside it that builds one is named. Whether a function reaches a git
+// command is a walk of its own over everything it reaches, so its answer is
+// whole when it is kept: no answer is kept while a cycle through it is open.
 func (w *gitWalk) reach(start any) ([]string, []string, error) {
 	reaches := map[any]bool{}
-	var reachGit func(n any) bool
-	visiting := map[any]bool{}
-	reachGit = func(n any) bool {
+	reachGit := func(n any) bool {
 		if v, ok := reaches[n]; ok {
 			return v
 		}
-		if visiting[n] {
-			return false
-		}
-		visiting[n] = true
-		r := w.gitExec[n]
-		for _, s := range w.successors(n) {
-			if r {
+		seen := map[any]bool{n: true}
+		stack := []any{n}
+		r := false
+		for len(stack) > 0 && !r {
+			m := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if w.gitExec[m] {
+				r = true
 				break
 			}
-			r = reachGit(s)
+			for _, s := range w.successors(m) {
+				if !seen[s] {
+					seen[s] = true
+					stack = append(stack, s)
+				}
+			}
 		}
-		delete(visiting, n)
 		reaches[n] = r
 		return r
 	}

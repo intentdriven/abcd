@@ -91,16 +91,15 @@ func TestAHooksPathGitAnswersWithANewlineStopsTheStep(t *testing.T) {
 }
 
 // TestAReadThatDoesNotFinishStopsTheStep: git asked for the hooks directory
-// and not answering in time stops the step at the config stage, as a read
-// that did not finish; it is never read as nothing changed, nor as a change.
-// Watched failing: the step passed.
+// and not answering in time, asked once more and not answering again, stops
+// the step at the config stage, as a read that did not finish twice; it is
+// never read as nothing changed, nor as a change. Watched failing at round
+// 2's base: the step passed; at round 3's base the reason did not say twice.
 func TestAReadThatDoesNotFinishStopsTheStep(t *testing.T) {
 	repo, runID := recordedRun(t)
-	was := heldReadTimeout
-	heldReadTimeout = 2 * time.Second
-	t.Cleanup(func() { heldReadTimeout = was })
+	quickRetry(t)
 	standInGit(t, `*"--git-path hooks"*) exec sleep 30 ;;`)
-	r := configRefused(t, configTripwire(repo.Root(), runID), "git rev-parse --git-path hooks", "did not finish within")
+	r := configRefused(t, configTripwire(repo.Root(), runID), "git rev-parse --git-path hooks", "did not finish within", "asked twice")
 	if strings.Contains(r.Reason, "changed during the run:") {
 		t.Fatalf("a read that did not finish is not a change: %+v", r)
 	}
@@ -143,8 +142,9 @@ func TestASettingChangedNamesTheEnvironmentToListItIn(t *testing.T) {
 
 // TestADriveStartAsksAgainAfterAWaitAndProceeds: an origin the start cannot
 // reach is waited on, asked again, and once it answers the drive starts,
-// holding what it read. Watched failing: the wait was not followed by a
-// second ask (the test's kill came first).
+// holding what it read. Not watched failing: it passed at round 2's base
+// too, whose start loop already asked again after its wait, so it shows the
+// round lost nothing, not that the round's change works.
 func TestADriveStartAsksAgainAfterAWaitAndProceeds(t *testing.T) {
 	repo, _, _ := hookedOrigin(t)
 	was := remoteHeadTip

@@ -693,12 +693,27 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		}
 	}
 	t.o.Options.remote = id
+	// From here every git command of the drive that runs hooks or reaches
+	// the network (gitutil's Net, NetEach, NetInput, NetContext and
+	// LocalGit) first compares what the drive holds (heldBeforeGit), so one
+	// made outside a step (a move's reservation, a renewal while an agent
+	// runs, the release as the drive ends, the network probe) never runs
+	// under a setting or hook changed since the drive started; it fails
+	// instead, naming the difference.
+	gitutil.SetBeforeHookedGit(func() error { return heldBeforeGit(t.repoRoot, id) })
+	defer gitutil.SetBeforeHookedGit(nil)
 	if t.o.Resumed {
 		t.reportHeldBack()
 	}
 	for {
 		if ended := t.boundEnded(ctx); ended != "" {
 			return t.ended(ended), nil
+		}
+		// Each pass compares what the drive holds (heldBeforeGit): a
+		// difference ends the drive, which reads what it holds only as it
+		// starts, rather than have each git command of the pass refused.
+		if err := heldBeforeGit(t.repoRoot, t.o.Options.remote); err != nil {
+			return t.ended(TerminalRefused), err
 		}
 		if t.boundaryDue && t.o.AtBoundary != nil && !t.boundaryHeld() {
 			t.boundaryDue = false

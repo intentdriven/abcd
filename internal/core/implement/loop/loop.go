@@ -182,7 +182,8 @@ type Options struct {
 	// reads the settings again before it asks origin anything and once origin
 	// has answered, and the hooks directory just before its add, and refuses
 	// the lane when a held key or entry differs at that read, within what
-	// remoteid.go states it cannot hold. Nil (a step the host runs, a single
+	// remoteid.go states it cannot hold; each step compares all of it before
+	// its git runs (heldBeforeGit). Nil (a step the host runs, a single
 	// build) checks nothing.
 	remote *remoteIdentity
 }
@@ -1216,6 +1217,13 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	// The run tripwire (configwatch.go) comes before anything that may start
 	// git: a program-naming setting changed during the run stops the call.
 	if err := configTripwire(repoRoot, runID); err != nil {
+		return StepResult{}, err
+	}
+	// Inside a drive the step also compares what the drive holds, in every
+	// environment its git runs in, before the step's git runs: the landing
+	// push and a reservation's push or fetch run in the person's own, after
+	// the lane's agent has run (heldBeforeGit).
+	if err := heldBeforeGit(repoRoot, o.remote); err != nil {
 		return StepResult{}, err
 	}
 	g, err := outageFor(repoRoot, runID, o)

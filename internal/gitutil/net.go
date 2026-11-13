@@ -153,8 +153,31 @@ func runHooked(dir string, network bool, stdin string, args []string, sink io.Wr
 	return runHookedContext(context.Background(), dir, network, stdin, args, sink)
 }
 
-// runHookedContext is runHooked under parent.
+// beforeHooked is the check SetBeforeHookedGit sets, nil for none.
+var beforeHooked atomic.Pointer[func() error]
+
+// SetBeforeHookedGit sets a check every command runHookedContext runs asks
+// first (Net, NetEach, NetInput, NetContext and LocalGit: each git command
+// that runs a repository's hooks or reaches a remote): an error from it is
+// the command's, and git does not run. A drive sets it to its comparison of
+// what it holds while it runs (implement/loop's heldBeforeGit); nil clears it.
+// Commands that read only (NetAskContext, the isolated readers) never ask it.
+func SetBeforeHookedGit(f func() error) {
+	if f == nil {
+		beforeHooked.Store(nil)
+		return
+	}
+	beforeHooked.Store(&f)
+}
+
+// runHookedContext is runHooked under parent, after the check
+// SetBeforeHookedGit set, when one is set.
 func runHookedContext(parent context.Context, dir string, network bool, stdin string, args []string, sink io.Writer) (string, error) {
+	if f := beforeHooked.Load(); f != nil {
+		if err := (*f)(); err != nil {
+			return "", fmt.Errorf("git %s was not run: %w", gitVerb(args), err)
+		}
+	}
 	ctx, cancel := context.WithTimeout(parent, NetTimeout)
 	defer cancel()
 	cmd := hookedCommand(ctx, dir, network, args)

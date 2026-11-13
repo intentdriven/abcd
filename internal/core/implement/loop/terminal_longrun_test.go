@@ -993,16 +993,25 @@ func TestAJudgeThatRanAndAnsweredBadlyIsStillHeldBackUnderABound(t *testing.T) {
 // pass, so under a bound the run waits and carries on when it does; with no bound it
 // refuses, as it did.
 func TestAFailedPushWhileReservingWaitsUnderABound(t *testing.T) {
-	gone := func(w *terminalWorld) {
-		w.repo.Git("remote", "set-url", "--push", "origin", filepath.Join(t.TempDir(), "gone"))
+	// The push URL is set before the drive starts and never changes, since a
+	// drive holds it: the push fails while nothing stands at it, and goes
+	// through once a link to origin does.
+	gone := func(w *terminalWorld) string {
+		at := filepath.Join(t.TempDir(), "gone")
+		w.repo.Git("remote", "set-url", "--push", "origin", at)
+		return at
 	}
 	w := newTerminalWorld(t)
-	gone(w)
+	at := gone(w)
 	o := w.bounded(t, 30*24*time.Hour)
 	waited := time.Duration(0)
 	w.onSleep = func(d time.Duration) {
 		if waited += d; waited >= 2*time.Hour {
-			w.repo.Git("remote", "set-url", "--push", "origin", w.bare)
+			if _, err := os.Lstat(at); err != nil {
+				if err := os.Symlink(w.bare, at); err != nil {
+					t.Error(err)
+				}
+			}
 		}
 	}
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)

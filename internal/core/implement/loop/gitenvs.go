@@ -17,6 +17,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -172,8 +173,13 @@ func driveEnvs() []*gitEnv {
 	return out
 }
 
-// heldReadTimeout bounds each read the hold makes.
+// heldReadTimeout bounds each read the hold makes, its second ask included
+// (gitEnv.read).
 var heldReadTimeout = originAskTimeout
+
+// heldReadRetryWait is how long a read that did not finish waits before it
+// is asked once more (gitEnv.read).
+var heldReadRetryWait = 2 * time.Second
 
 // readFailure is a read the hold depends on that gave no answer the hold
 // can take: git failed, did not finish in time, or answered in a form abcd
@@ -196,33 +202,75 @@ func exitStatus(err error) int {
 // answer is what one git read returned: what it wrote to its output, its
 // exit status (0 on success), and, for a status other than 0, what git said
 // of it (its error and standard error, the home and any URL credential
-// taken out).
+// taken out). stderr is git's own standard error as it wrote it, for an
+// environment whose ask gives it apart (gitStderr), never shown: a caller
+// reads git's first words from it (noRepository).
 type answer struct {
-	out  string
-	code int
-	said string
+	out    string
+	code   int
+	said   string
+	stderr string
 }
 
-// read runs one read-only git command at dir in e, bounded by
-// heldReadTimeout, and returns its answer. A git that did not finish in
-// time, could not start, or answered past limit bytes is a readFailure
-// naming what; a git that ran and exited non-zero is not, its status
-// returned with what it wrote and said, for the caller to judge.
+// gitStderr is the error of an ask that gives git's standard error apart
+// from the text it shows (workingTreeAsk): err is what is shown, stderr git's
+// own words as written.
+type gitStderr struct {
+	err    error
+	stderr string
+}
+
+func (e *gitStderr) Error() string { return e.err.Error() }
+func (e *gitStderr) Unwrap() error { return e.err }
+
+// read runs one read-only git command at dir in e and returns its answer.
+// A drive makes many reads a lane, and a loaded machine can make one slow,
+// so a git that did not finish is asked once more after heldReadRetryWait;
+// both asks together stay inside heldReadTimeout, the first given half of
+// what is left after the wait. A git that did not finish either time, could
+// not start, or answered past limit bytes is a readFailure naming what; a git
+// that ran and exited non-zero is not, its status returned with what it
+// wrote and said, for the caller to judge.
 func (e *gitEnv) read(dir, what string, limit int, args ...string) (answer, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), heldReadTimeout)
-	defer cancel()
-	out, err := e.ask(ctx, dir, limit, args...)
-	if err == nil {
-		return answer{out: out}, nil
+	deadline := time.Now().Add(heldReadTimeout)
+	first := (heldReadTimeout - heldReadRetryWait) / 2
+	if first <= 0 {
+		first = heldReadTimeout
 	}
-	if ctx.Err() != nil {
-		return answer{code: -1}, &readFailure{what: what + ", in " + e.name, why: "git did not finish within " + heldReadTimeout.String() + ", so the read is not taken"}
+	for try := 1; ; try++ {
+		bound := time.Until(deadline)
+		if try == 1 {
+			bound = first
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), bound)
+		out, err := e.ask(ctx, dir, limit, args...)
+		late := err != nil && ctx.Err() != nil
+		cancel()
+		if late {
+			if try == 1 && time.Until(deadline) > heldReadRetryWait {
+				time.Sleep(heldReadRetryWait)
+				continue
+			}
+			why := "git did not finish within " + heldReadTimeout.String() + ", asked twice " + heldReadRetryWait.String() + " apart, so the read is not taken"
+			if try == 1 {
+				why = "git did not finish within " + heldReadTimeout.String() + ", so the read is not taken"
+			}
+			return answer{code: -1}, &readFailure{what: what + ", in " + e.name, why: why}
+		}
+		if err == nil {
+			return answer{out: out}, nil
+		}
+		said := fsutil.RedactHome(gitutil.ScrubURLCredentials(err.Error()))
+		if code := exitStatus(err); code > 0 {
+			a := answer{out: out, code: code, said: said}
+			var gs *gitStderr
+			if errors.As(err, &gs) {
+				a.stderr = gs.stderr
+			}
+			return a, nil
+		}
+		return answer{code: -1}, &readFailure{what: what + ", in " + e.name, why: said}
 	}
-	said := fsutil.RedactHome(gitutil.ScrubURLCredentials(err.Error()))
-	if code := exitStatus(err); code > 0 {
-		return answer{out: out, code: code, said: said}, nil
-	}
-	return answer{code: -1}, &readFailure{what: what + ", in " + e.name, why: said}
 }
 
 // failed is the readFailure of a read in e that git answered in a form abcd

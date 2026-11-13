@@ -181,10 +181,14 @@ func writePart(w io.Writer, s string) {
 // every entry of its effective hooks directory, and its info/attributes; and,
 // for each lane worktree in lanes, every watched key git reads there and the
 // entries of the hooks directory git runs there, when that is not the
-// checkout's. A lane worktree whose config git cannot read is passed over:
-// git cannot run there either. A live lane's path that is there but is not a
-// real directory is recorded as what stands there (laneDirKind), whether or
-// not git reads a config through it.
+// checkout's. A lane's path where nothing stands is passed over: git runs
+// nothing there. A read at a lane's path that fails is passed over only where
+// git, asked in the environment the lane's git runs in, says there is no
+// repository there (noRepository); any other failure is a readFailure that
+// stops the step (laneReadFailure). A live lane's path that is there but is
+// not a real directory is recorded as what stands there (laneDirKind),
+// whether or not git reads a config through it. Every read of the checkout
+// that fails is a readFailure (checkoutHooks).
 func takeFingerprint(repoRoot string, lanes []laneDir, salt string, now time.Time) (configFingerprint, error) {
 	fp := configFingerprint{SchemaVersion: configFingerprintVersion, RecordedAt: now, Salt: salt,
 		Keys: map[string]string{}, Worktrees: map[string]worktreeFingerprint{}, Files: map[string]string{},
@@ -201,11 +205,17 @@ func takeFingerprint(repoRoot string, lanes []laneDir, salt string, now time.Tim
 			fp.live[lane] = true
 			wt.Dir = laneDirKind(salt, lane)
 		}
+		if _, err := os.Lstat(lane); errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
 		entries, err := gitutil.RepoConfig(lane, watchedConfig)
 		if errors.Is(err, gitutil.ErrConfigCap) {
 			return fp, err
 		}
 		if err != nil {
+			if err := laneReadFailure(lane, "reading the watched settings (git config --get-regexp), in "+isolatedEnv.name, err); err != nil {
+				return fp, err
+			}
 			if wt.Dir != "" {
 				fp.Worktrees[lane] = wt
 			}
@@ -221,8 +231,7 @@ func takeFingerprint(repoRoot string, lanes []laneDir, salt string, now time.Tim
 		hashEntries(wt.Keys, salt, entries)
 		dir, err := hooksDirAt(lane)
 		if err != nil {
-			none, nerr := noRepository(lane)
-			if nerr != nil || !none {
+			if err := laneReadFailure(lane, "asking git for the hooks directory it runs (git rev-parse --git-path hooks)", err); err != nil {
 				return fp, err
 			}
 			fp.Worktrees[lane] = wt
@@ -244,15 +253,20 @@ func takeFingerprint(repoRoot string, lanes []laneDir, salt string, now time.Tim
 // (hashDir), all under salt. It returns that directory and the common git
 // directory; git failing to name the directory is an error. A drive holds the
 // same directory across its lanes (readCheckoutHooks in remoteid.go), hashed
-// through the same walk.
+// through the same walk. Every read here that fails is a readFailure naming
+// it, the cap on the settings read apart (gitutil.ErrConfigCap): the check
+// stops, and never takes a read that failed as nothing changed.
 func checkoutHooks(repoRoot, salt string, keys, files map[string]string) (hooks, common string, err error) {
 	entries, err := gitutil.RepoConfig(repoRoot, watchedConfig)
-	if err != nil {
+	if errors.Is(err, gitutil.ErrConfigCap) {
 		return "", "", err
+	}
+	if err != nil {
+		return "", "", &readFailure{what: "reading the repository's watched settings (git config --get-regexp), in " + isolatedEnv.name, why: fsutil.RedactHome(gitutil.ScrubURLCredentials(err.Error()))}
 	}
 	hashEntries(keys, salt, entries)
 	if common, err = gitutil.RevParseAbsPath(repoRoot, "--git-common-dir"); err != nil {
-		return "", "", err
+		return "", "", &readFailure{what: "resolving the common git directory (git rev-parse --git-common-dir), in " + isolatedEnv.name, why: fsutil.RedactHome(gitutil.ScrubURLCredentials(err.Error()))}
 	}
 	if hooks, err = hooksDirAt(repoRoot); err != nil {
 		return "", "", err
@@ -346,17 +360,38 @@ func laneDirKind(salt, path string) string {
 	}
 }
 
-// noRepository reports whether git, asked at dir in the isolated
-// environment (`git rev-parse --git-dir`, in the C locale), says there is no
-// repository there or above it: status 128 with git's own "not a git
-// repository". Any other answer is not that, and a read that gives none is a
-// readFailure.
+// noRepository reports whether git, asked at dir in the environment the
+// lane's git runs in (stageEnv: `git rev-parse --git-dir`, in the C locale),
+// says there is no repository there or above it: exit status 128, and its
+// standard error beginning with git's own "fatal: not a git repository".
+// Those words anywhere else in what git said (a path git repeats can hold
+// them) are not that answer. Any other answer is not that, and a read that
+// gives none is a readFailure.
 func noRepository(dir string) (bool, error) {
-	a, err := isolatedEnv.read(dir, "asking git whether a repository stands at the lane's path (git rev-parse --git-dir)", 4096, "rev-parse", "--git-dir")
+	a, err := stageEnv.read(dir, "asking git whether a repository stands at the lane's path (git rev-parse --git-dir)", 4096, "rev-parse", "--git-dir")
 	if err != nil {
 		return false, err
 	}
-	return a.code == 128 && strings.Contains(a.said, "fatal: not a git repository"), nil
+	return a.code == 128 && strings.HasPrefix(a.stderr, "fatal: not a git repository"), nil
+}
+
+// laneReadFailure is the readFailure of a read at a lane's path that failed
+// where git does not say there is no repository there (noRepository): the
+// step stops at the config stage, naming the read. A read that says so is
+// nil, and the lane is passed over, since git runs nothing there.
+func laneReadFailure(lane, what string, err error) error {
+	none, nerr := noRepository(lane)
+	if nerr != nil {
+		return nerr
+	}
+	if none {
+		return nil
+	}
+	var rf *readFailure
+	if errors.As(err, &rf) {
+		return err
+	}
+	return &readFailure{what: what + " at a lane's path", why: fsutil.RedactHome(gitutil.ScrubURLCredentials(err.Error()))}
 }
 
 // hooksDirAt is the hooks directory git runs in the working tree at dir in
@@ -394,9 +429,13 @@ func hooksDirIn(e *gitEnv, dir string) (string, error) {
 // workingTreeAsk runs one read-only git command at dir through
 // gitutil.WorkingTreeCommitCommand, in the environment the lane's add and
 // commit run in, bounded by ctx, and returns its output, refused past limit
-// bytes. A failure carries git's own words, home and credentials hidden.
+// bytes. git is asked in the C locale, which changes no setting it reads, so
+// its own words are git's untranslated ones. A failure carries git's own
+// words, home and credentials hidden, and git's standard error as written
+// apart (gitStderr), never shown.
 func workingTreeAsk(ctx context.Context, dir string, limit int, args ...string) (string, error) {
 	cmd := gitutil.WorkingTreeCommitCommand(ctx, dir, args...)
+	cmd.Env = append(cmd.Env, "LC_ALL=C", "LANG=C", "LANGUAGE=")
 	out := &cappedBuffer{limit: limit}
 	var stderr cappedBuffer
 	stderr.limit = 4096
@@ -405,7 +444,10 @@ func workingTreeAsk(ctx context.Context, dir string, limit int, args ...string) 
 		if ctx.Err() != nil {
 			return "", fmt.Errorf("git %s did not answer within %s", args[0], originAskTimeout)
 		}
-		return out.b.String(), fmt.Errorf("git %s: %w (%s)", args[0], err, fsutil.RedactHome(gitutil.ScrubURLCredentials(strings.TrimSpace(stderr.b.String()))))
+		return out.b.String(), &gitStderr{
+			err:    fmt.Errorf("git %s: %w (%s)", args[0], err, fsutil.RedactHome(gitutil.ScrubURLCredentials(strings.TrimSpace(stderr.b.String())))),
+			stderr: stderr.b.String(),
+		}
 	}
 	if out.over {
 		return "", fmt.Errorf("git %s answered past %d bytes", args[0], limit)
@@ -827,13 +869,16 @@ func configTripwire(repoRoot, runID string) error {
 // nothing; a changed one is refused, naming each changed key or file and the
 // way to accept it.
 //
-// A configuration git cannot read at all (no git, a config file git refuses)
-// passes: git that cannot read it cannot start a program it names either, and
-// the step's own git meets the same failure. One read only in part (past the
-// read's cap) is refused, since part of it went unseen, and so is a read of
-// the hooks directory git runs that gave no answer the check can take (git
-// failed, did not finish, or answered with other than one path: a
-// readFailure), naming the read: that is never read as nothing changed.
+// Every read the check makes that gives no answer it can take stops the step
+// at the config stage, naming the read (readRefusal): a configuration git
+// cannot read, a hooks directory git cannot name or names otherwise than as
+// one path, a read that did not finish. It is never read as nothing changed,
+// whether or not a fingerprint was recorded: the check's reads run in abcd's
+// isolated environment and the step's git in others, so a failure in one is
+// not the same failure in the other. One read only in part (past the read's
+// cap) is refused too, since part of it went unseen. The one answer of none
+// it takes is a lane's path where git says there is no repository
+// (takeFingerprint).
 func configTripwireIn(repoRoot string, root *os.Root, runID string) error {
 	st, err := readStateIn(root, runID)
 	if err != nil || st.Complete() {
@@ -851,27 +896,14 @@ func configTripwireIn(repoRoot string, root *os.Root, runID string) error {
 			return err
 		}
 		fp, err := takeFingerprint(repoRoot, lanes, salt, now)
-		if r := readRefusal(repoRoot, err); r != nil {
-			return r
-		}
 		if err != nil {
-			// git cannot read the configuration: nothing was recorded to
-			// compare against, so the run is not refused for it; the next
-			// check tries again.
-			return nil
+			return readRefusal(repoRoot, err)
 		}
 		return writeFingerprint(root, runID, fp)
 	}
 	cur, err := takeFingerprint(repoRoot, lanes, was.Salt, now)
-	if errors.Is(err, gitutil.ErrConfigCap) {
-		return refuse(StageConfig, "", "", "the repository's git configuration is too large to read whole, so whether it changed during the run cannot be told: "+scanner.RedactRefusal(repoRoot, fsutil.RedactHome(err.Error())),
-			"look at the repository's git configuration (`git config --local --list --show-origin`); nothing was changed")
-	}
-	if r := readRefusal(repoRoot, err); r != nil {
-		return r
-	}
 	if err != nil {
-		return nil // git cannot read the configuration (above)
+		return readRefusal(repoRoot, err)
 	}
 	changed := was.changes(repoRoot, cur)
 	if len(changed) == 0 {
@@ -885,12 +917,13 @@ func configTripwireIn(repoRoot string, root *os.Root, runID string) error {
 }
 
 // readRefusal is the step's refusal at the config stage of a read the check
-// depends on that gave no answer it can take (a readFailure), naming the
-// read and why; nil for any other error.
+// depends on that gave no answer it can take, naming the read and why: a
+// settings read past its cap says so; every other error (a readFailure, or
+// one no read named) is refused as a read that gave no answer.
 func readRefusal(repoRoot string, err error) error {
-	var rf *readFailure
-	if !errors.As(err, &rf) {
-		return nil
+	if errors.Is(err, gitutil.ErrConfigCap) {
+		return refuse(StageConfig, "", "", "the repository's git configuration is too large to read whole, so whether it changed during the run cannot be told: "+scanner.RedactRefusal(repoRoot, fsutil.RedactHome(err.Error())),
+			"look at the repository's git configuration (`git config --local --list --show-origin`); nothing was changed")
 	}
 	return refuse(StageConfig, "", "", "a read the check of the repository's git configuration depends on gave no answer it can take, so whether it changed during the run cannot be told: "+scanner.RedactRefusal(repoRoot, fsutil.RedactHome(err.Error())),
 		readRemedy("run the step again"))
@@ -1016,8 +1049,10 @@ type hookTreeEntry struct {
 // absolute or home path) is not pinned and is compared with the checkout as
 // recorded (laneBaseline). With no fingerprint yet the hooks are still proved
 // but nothing is recorded: the run's first record takes the lane as it then
-// stands. A lane whose config git cannot read is passed over, as
-// takeFingerprint passes it over: git cannot run there either.
+// stands. A lane whose config git cannot read is passed over only where git
+// says there is no repository at its path (laneReadFailure), as
+// takeFingerprint passes it over; any other failure stops the step at the
+// config stage, naming the read.
 func pinLaneHooks(c Context, laneID, lanePath, base, tip string) error {
 	lane := filepath.Clean(lanePath)
 	entries, err := gitutil.RepoConfig(lane, watchedConfig)
@@ -1026,6 +1061,9 @@ func pinLaneHooks(c Context, laneID, lanePath, base, tip string) error {
 			"look at the repository's git configuration (`git config --local --list --show-origin`); nothing was committed in the lane")
 	}
 	if err != nil {
+		if err := laneReadFailure(lane, "reading the lane's watched settings (git config --get-regexp), in "+isolatedEnv.name, err); err != nil {
+			return heldReadRefusal(c, laneID, err)
+		}
 		return nil
 	}
 	root, err := os.OpenRoot(c.RepoRoot)

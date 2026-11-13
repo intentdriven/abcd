@@ -135,7 +135,10 @@ func driveGateCheck() func(worktree, base string) error {
 		if err != nil {
 			return &loop.PreflightRefused{Reason: "what the lane changed could not be read, so its landing does not go on"}
 		}
-		hooks := loop.DriveHooksPath(worktree)
+		hooks, err := loop.DriveHooksPath(worktree)
+		if err != nil {
+			return &loop.PreflightRefused{Reason: "the hooks path the lane's repository configures could not be read, so its landing does not go on: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+		}
 		for _, path := range strings.Split(out, "\x00") {
 			if loop.DriveGate(path, hooks) {
 				return &loop.PreflightRefused{Reason: "the lane changes " + strconv.Quote(termsafe.Sanitize(path)) + ", a gate file, so it needs a person's own session and its landing does not go on: review the branch there"}
@@ -147,8 +150,15 @@ func driveGateCheck() func(worktree, base string) error {
 
 // drivePassOver says why an issue is passed over rather than opened: its own path
 // is one of the gates, so a lane on it could only be handed back.
+//
+// A hooks path that cannot be read passes over every issue, saying so: which
+// paths are gates cannot then be told.
 func drivePassOver(repoRoot string) func(id, foundAt string) string {
-	hooks := loop.DriveHooksPath(repoRoot)
+	hooks, err := loop.DriveHooksPath(repoRoot)
+	if err != nil {
+		why := "the hooks path the repository configures could not be read, so whether its path is a gate cannot be told: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+		return func(string, string) string { return why }
+	}
 	return func(_, foundAt string) string {
 		path, ok := capture.FoundAtPath(foundAt)
 		if !ok {
