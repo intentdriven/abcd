@@ -153,11 +153,13 @@ func Confirm(req ConfirmRequest) (ConfirmResult, error) {
 			// A receipt makes a finding go away, so it admits only a URL a
 			// line cites outside a code span on that line read alone; one the
 			// page may show as code is checked by the refresh, never confirmed
-			// by hand (dcn-2611130921444350).
+			// by hand (dcn-2611130921444350). Such a URL can sit in no span on
+			// its line (a footnote definition's continuation line that only the
+			// whole reading finds), so the refusal names only the backtick left
+			// open above and the one remedy that fits every case.
 			return ConfirmResult{}, &ConfirmError{
-				"cannot confirm " + c.URL + ": every line citing it sits below a backtick left open on a line above, " +
-					"inside a code span on its own line, where the page may show it as code. " +
-					"Move the URL out of the span, or close the backtick left open on its own line"}
+				"cannot confirm " + c.URL + ": it is cited only where a line above leaves a backtick open, " +
+					"so the page may show it as code. Close that backtick on its own line"}
 		}
 		on := c.VerifiedOn
 		if on == "" {
