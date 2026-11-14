@@ -81,12 +81,44 @@ const contextWaitDelay = 50 * time.Millisecond
 // one behind each time for as long as git hangs. It asks the check
 // SetBeforeHookedGit set as isolatedGit does.
 func isolatedGitContext(ctx context.Context, root string, args ...string) *exec.Cmd {
+	return isolatedGitContextAsking(ctx, root, true, args)
+}
+
+// checkOwnRead is the key of the mark WithinCheck sets on a context.
+type checkOwnRead struct{}
+
+// WithinCheck is ctx marked as the context of a read the check
+// SetBeforeHookedGit set makes itself (implement/loop's comparison of what
+// a drive holds): an isolated runner bound to it does not ask that check,
+// whatever its command line is, so a change to what LeavesContentProgramsOn
+// reads, or a value in a read's command line, can never make the check ask
+// itself. The hooked and networked runners the check reads through
+// (NetAskContext, WorkingTreeCommitCommand built directly) ask nothing in
+// any case.
+func WithinCheck(ctx context.Context) context.Context {
+	return context.WithValue(ctx, checkOwnRead{}, true)
+}
+
+// withinCheck reports whether ctx carries WithinCheck's mark.
+func withinCheck(ctx context.Context) bool {
+	on, _ := ctx.Value(checkOwnRead{}).(bool)
+	return on
+}
+
+// isolatedGitContextAsking is isolatedGitContext, asking the check
+// SetBeforeHookedGit set for what the command can start only when ask is
+// set and ctx is not one of the check's own reads (WithinCheck): a
+// networked runner (RunLimitedNetContext) has asked it already, for the
+// command as a whole, and does not ask twice.
+func isolatedGitContextAsking(ctx context.Context, root string, ask bool, args []string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", isolatedArgs(root, args)...)
 	cmd.Env = gitEnv()
 	if ctx.Done() != nil {
 		cmd.WaitDelay = contextWaitDelay
 	}
-	askIfContentRuns(cmd, args)
+	if ask && !withinCheck(ctx) {
+		askIfContentRuns(cmd, args)
+	}
 	guardObjectRead(ctx, cmd, root, args)
 	return cmd
 }
@@ -392,7 +424,15 @@ func InRepo(root string) bool {
 // the informative 1 into a generic error. A caller deriving a release's content
 // commit from the receipts directory needs the three outcomes kept apart: "yes"
 // selects a candidate, "no" skips it, and only a genuine git failure is fatal.
+// Either name empty or starting with a dash, which git would read as an
+// option, is refused before git runs (RefIsSafe): callers pass names read
+// from stored state as well as from git.
 func IsAncestor(root, ancestor, descendant string) (bool, error) {
+	for _, ref := range []string{ancestor, descendant} {
+		if !RefIsSafe(ref) {
+			return false, fmt.Errorf("refusing ref %q: an empty or option-shaped ref would reach git as a flag", ref)
+		}
+	}
 	cmd := isolatedGit(root, "merge-base", "--is-ancestor", ancestor, descendant)
 	e := &capWriter{remaining: 4096}
 	cmd.Stderr = e
@@ -400,8 +440,7 @@ func IsAncestor(root, ancestor, descendant string) (bool, error) {
 	if err == nil {
 		return true, nil
 	}
-	var ee *exec.ExitError
-	if errors.As(err, &ee) && ee.ExitCode() == 1 {
+	if ExitCode(err) == 1 {
 		return false, nil
 	}
 	return false, fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
@@ -474,8 +513,7 @@ func RootCommitContext(ctx context.Context, root string) (string, error) {
 // 128 for that and for a repository it will not answer for alike, so its
 // message and the shape decide.
 func notARepository(root string, lookupErr error) bool {
-	var ee *exec.ExitError
-	if errors.As(lookupErr, &ee) && ee.ExitCode() == 128 &&
+	if ExitCode(lookupErr) == 128 &&
 		strings.Contains(lookupErr.Error(), `(stderr: "fatal: not a git repository`) {
 		// git's own answer, in the C locale gitEnv pins: a .git entry that
 		// holds no repository (an empty folder, a stale gitfile) is still not
@@ -504,12 +542,11 @@ func notARepository(root string, lookupErr error) bool {
 // exits 1, quietly, for an unborn HEAD in a repository git answers for. Any
 // other outcome, including git not running at all, is not an empty history.
 func emptyHistory(ctx context.Context, root string, lookupErr error) bool {
-	var ee *exec.ExitError
-	if !errors.As(lookupErr, &ee) || ee.ExitCode() != 128 {
+	if ExitCode(lookupErr) != 128 {
 		return false
 	}
 	_, err := RunLimitedContext(ctx, root, 4096, "rev-parse", "--verify", "-q", "HEAD")
-	return errors.As(err, &ee) && ee.ExitCode() == 1
+	return ExitCode(err) == 1
 }
 
 // fullSHARe is a full object name: forty hex digits under SHA-1, sixty-four
@@ -795,7 +832,7 @@ func runLimitedContext(ctx context.Context, root string, maxBytes int, network b
 // past maxBytes, for a caller that must not read part of one as the whole.
 //
 // A networked one asks the check SetBeforeHookedGit set first, before the
-// command is built.
+// command is built, and only then: what it can start is asked with it.
 func runLimitedOverflow(ctx context.Context, root string, maxBytes int, network bool, args []string) (string, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return "", false, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
@@ -805,7 +842,7 @@ func runLimitedOverflow(ctx context.Context, root string, maxBytes int, network 
 			return "", false, err
 		}
 	}
-	cmd := isolatedGitContext(ctx, root, args...)
+	cmd := isolatedGitContextAsking(ctx, root, !network, args)
 	if network {
 		cmd.Env = netEnv(cmd.Env)
 	}
@@ -866,8 +903,7 @@ func RunCappedExitOneContext(ctx context.Context, root string, maxBytes int, arg
 	}
 	one := false
 	if err != nil {
-		var ee *exec.ExitError
-		if !errors.As(err, &ee) || ee.ExitCode() != 1 {
+		if ExitCode(err) != 1 {
 			return nil, false, fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
 		}
 		one = true
@@ -901,8 +937,7 @@ func runCappedExitOneCmd(cmd *exec.Cmd, maxBytes int, args []string) ([]byte, bo
 	cmd.Stdout, cmd.Stderr = w, e
 	one := false
 	if err := cmd.Run(); err != nil {
-		var ee *exec.ExitError
-		if !errors.As(err, &ee) || ee.ExitCode() != 1 {
+		if ExitCode(err) != 1 {
 			return nil, false, fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
 		}
 		one = true

@@ -464,7 +464,9 @@ func (b baseTree) decisionsNaming(base string, read func(baseEntry, int64) ([]by
 	args := []string{"grep", "-z", "-l", "-F"}
 	for _, id := range ids {
 		if id != "" {
-			args = append(args, "-e", id)
+			// The pattern is -e's own word (-e<id>), so an id that starts
+			// with a dash is never read as an option, by git or by abcd.
+			args = append(args, "-e"+id)
 		}
 	}
 	if len(args) == 4 {
