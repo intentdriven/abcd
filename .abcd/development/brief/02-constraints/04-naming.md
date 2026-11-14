@@ -11,7 +11,7 @@ record, so an exemption is a decision rather than an omission.
 
 | Path / command | Meaning |
 |---|---|
-| `/abcd:ahoy` | hail a project → install abcd into it, or report what is installed. The bare form and the read-only sub-verbs report; `install`, `uninstall`, `connect`, `remote apply` and `credential` (with `--home`) are the write paths. See [`../04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md) |
+| `/abcd:ahoy` | hail a project → install abcd into it, or report what is installed. The bare form and the read-only sub-verbs report; `install`, `uninstall`, `connect`, `remote apply`, `worktree add`, `worktree prune` and `credential` (with `--home`) are the write paths. See [`../04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md) |
 | `/abcd:disembark` | leave the ship → pack a lifeboat for the journey |
 | `/abcd:embark` | board a new ship → unpack the lifeboat |
 | `/abcd:launch` | put the (cleaned) ship to sea publicly |
