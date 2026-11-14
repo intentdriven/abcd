@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/procgroup"
 )
 
 // Bounds on a git command that reaches the remote.
@@ -226,6 +228,12 @@ func runHookedContext(parent context.Context, dir string, network bool, stdin st
 	ctx, cancel := context.WithTimeout(parent, NetTimeout)
 	defer cancel()
 	cmd := hookedCommand(ctx, dir, network, args)
+	if cmd.Err != nil {
+		if perr := parent.Err(); perr != nil {
+			return "", fmt.Errorf("git %s: %w", gitVerb(args), perr)
+		}
+		return "", cmd.Err
+	}
 	if parent.Done() != nil {
 		cmd.WaitDelay = netContextWaitDelay
 	}
@@ -262,7 +270,9 @@ func runHookedContext(parent context.Context, dir string, network bool, stdin st
 }
 
 // hookedCommand is the git command runHookedContext runs: Net's (network
-// true) or LocalGit's, bound to ctx, with no stdin or output set.
+// true) or LocalGit's, bound to ctx, with no stdin or output set. A networked
+// command whose read of core.sshCommand gave no answer of git's carries that
+// as its Err (a NotRunError), so it never starts.
 func hookedCommand(ctx context.Context, dir string, network bool, args []string) *exec.Cmd {
 	full := []string{"-c", "core.quotePath=false"}
 	if network {
@@ -276,7 +286,10 @@ func hookedCommand(ctx context.Context, dir string, network bool, args []string)
 	}
 	if network {
 		cmd.Env = netEnv(cmd.Env)
-		if ssh := netSSHCommand(ctx, dir); ssh != "" {
+		ssh, err := netSSHCommand(ctx, dir)
+		if err != nil {
+			cmd.Err = &NotRunError{Verb: gitVerb(args), Err: err}
+		} else if ssh != "" {
 			cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+ssh)
 		}
 	}
@@ -296,6 +309,12 @@ func hookedCommand(ctx context.Context, dir string, network bool, args []string)
 // credentials.
 func NetAskContext(ctx context.Context, dir string, limit int, args ...string) (string, error) {
 	cmd := hookedCommand(ctx, dir, true, args)
+	if cmd.Err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", fmt.Errorf("git %s: %w", gitVerb(args), ctxErr)
+		}
+		return "", cmd.Err
+	}
 	cmd.WaitDelay = netContextWaitDelay
 	out := &capWriter{remaining: limit}
 	errOut := &capWriter{remaining: netStderrCap}
@@ -340,8 +359,10 @@ var testTransportGuard = [][2]string{
 }
 
 // netGuardOff switches the guard off for a test of this package that drives
-// a transport through a fake (the ssh command Net composes).
-var netGuardOff bool
+// a transport through a fake (the ssh command Net composes). It is atomic,
+// since a networked read can run on a goroutine of its caller's (a drive's
+// comparison) while a test sets it back.
+var netGuardOff atomic.Bool
 
 // netEnv is the environment of every git command abcd runs that may reach a
 // remote, built on env, the environment it would otherwise run with: Net,
@@ -352,7 +373,7 @@ var netGuardOff bool
 // (testing.Testing) networked git is restricted to local transports with no
 // credential helper: testTransportGuard rides in the GIT_CONFIG_COUNT form,
 // after any entries env already carries, so it outranks every config file.
-func netEnv(env []string) []string { return netEnvFor(env, testing.Testing() && !netGuardOff) }
+func netEnv(env []string) []string { return netEnvFor(env, testing.Testing() && !netGuardOff.Load()) }
 
 // netEnvFor is netEnv with the test-binary question answered by underTest.
 func netEnvFor(env []string, underTest bool) []string {
@@ -382,23 +403,48 @@ func netEnvFor(env []string, underTest bool) []string {
 // netSSHCommand is the ssh command Net runs git's ssh transport through: ssh
 // in batch mode with the connect and keepalive bounds, or "" when the developer chose their
 // own (GIT_SSH_COMMAND, GIT_SSH, or core.sshCommand), which is left as it is.
-// Its read of core.sshCommand runs under ctx, the command's own: git is
-// killed when ctx ends, so the read cannot hold a caller on a deadline past
-// it (NetAskContext's, inside a drive's comparison).
-func netSSHCommand(ctx context.Context, dir string) string {
+//
+// Its read of core.sshCommand runs under ctx, the command's own, so it cannot
+// hold a caller past its deadline (NetAskContext's, inside a drive's
+// comparison), and reads git's answer to its end before Wait
+// (procgroup.RunToEOF), so a program git left holding the output delays the
+// answer and never cuts it. The default is composed only on git's own answer
+// that none is set: exit status 1, or exit 0 with nothing written. Any other
+// outcome (the context ended, another exit, an answer past its cap) is an
+// error naming the read, and the networked command is not started: exporting
+// the default then would run git through an ssh command other than the one the
+// repository or the person set, since GIT_SSH_COMMAND outranks
+// core.sshCommand.
+func netSSHCommand(ctx context.Context, dir string) (string, error) {
 	if os.Getenv("GIT_SSH_COMMAND") != "" || os.Getenv("GIT_SSH") != "" {
-		return ""
+		return "", nil
 	}
 	cmd := exec.CommandContext(ctx, "git", "-C", dir, "config", "--get", "core.sshCommand")
 	cmd.Env = ScrubbedEnv()
 	if ctx.Done() != nil {
 		cmd.WaitDelay = contextWaitDelay
 	}
-	if out, err := cmd.Output(); err == nil && strings.TrimSpace(string(out)) != "" {
-		return ""
+	out := &capWriter{remaining: netSSHReadCap}
+	errOut := &capWriter{remaining: netStderrCap}
+	err := procgroup.RunToEOF(ctx, cmd, out, errOut)
+	var ee *exec.ExitError
+	switch {
+	case ctx.Err() != nil:
+		return "", fmt.Errorf("the read of core.sshCommand, which decides the ssh command git runs, did not finish: %w", ctx.Err())
+	case err == nil && out.overflowed:
+		return "", fmt.Errorf("the read of core.sshCommand, which decides the ssh command git runs, answered more than %d bytes", netSSHReadCap)
+	case err == nil && strings.TrimSpace(string(out.buf)) != "":
+		return "", nil
+	case err == nil, errors.As(err, &ee) && ee.ExitCode() == 1 && len(out.buf) == 0:
+		return "ssh " + netSSHOptions, nil
 	}
-	return "ssh " + netSSHOptions
+	return "", fmt.Errorf("the read of core.sshCommand, which decides the ssh command git runs, failed: %w (%s)",
+		err, ScrubURLCredentials(strings.TrimSpace(string(errOut.buf))))
 }
+
+// netSSHReadCap bounds the answer of the read of core.sshCommand: one command
+// line.
+const netSSHReadCap = 64 << 10
 
 // gitVerb is the subcommand among args, past git's global options
 // (Subcommand), for an error to name.

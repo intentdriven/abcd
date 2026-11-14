@@ -2,6 +2,7 @@ package gitutil_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -109,5 +110,67 @@ func TestTheSSHCommandsReadEndsWithItsContext(t *testing.T) {
 	_, err = gitutil.NetAskContext(ctx, r.Root(), 4096, "var", "GIT_ATTR_GLOBAL")
 	if took := time.Since(began); err == nil || took > 5*time.Second {
 		t.Fatalf("the ask ends at its deadline, its read of core.sshCommand with it (%s): %v", took.Round(time.Millisecond), err)
+	}
+}
+
+// TestTheSSHCommandIsComposedOnlyOnGitsAnswerOfNone: the networked command is
+// given the composed ssh command only when git answered that core.sshCommand
+// is not set (exit 1, or exit 0 with nothing written). A setting git answered
+// while a program it left holds the output for a few hundred milliseconds is
+// still the person's, and the command is given no GIT_SSH_COMMAND over it; a
+// read that fails with any other exit starts no networked command. Watched
+// failing before: the read's output was copied by exec under a 50 ms wait
+// delay, so the held answer and the failed read were both taken as none, and
+// the command ran with the default.
+func TestTheSSHCommandIsComposedOnlyOnGitsAnswerOfNone(t *testing.T) {
+	gittest.Env(t)
+	for _, k := range []string{"GIT_SSH_COMMAND", "GIT_SSH"} {
+		t.Setenv(k, "")
+		if err := os.Unsetenv(k); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := gittest.NewRepo(t)
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, read string
+		runs       bool
+		want       string // the GIT_SSH_COMMAND the command was given
+	}{
+		{"set, its output held", "printf 'ssh -o MineOnly=yes\\n'; /bin/sleep 0.4 & exit 0", true, "unset"},
+		{"none, exit 1", "exit 1", true, "ssh -o BatchMode=yes"},
+		{"none, exit 0 with nothing written", "exit 0", true, "ssh -o BatchMode=yes"},
+		{"failed, exit 3", "echo 'fatal: bad config line 1' >&2; exit 3", false, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			record := filepath.Join(dir, "ran")
+			script := "#!/bin/sh\ncase \"$*\" in *core.sshCommand*) " + tc.read + " ;; esac\n" +
+				"printf '%s\\n' \"${GIT_SSH_COMMAND-unset}\" > '" + record + "'\nexec '" + git + "' \"$@\"\n"
+			if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			_, err := gitutil.NetAskContext(ctx, r.Root(), 4096, "var", "GIT_ATTR_GLOBAL")
+			got, readErr := os.ReadFile(record)
+			if !tc.runs {
+				var nr *gitutil.NotRunError
+				if readErr == nil || !errors.As(err, &nr) || !strings.Contains(err.Error(), "core.sshCommand") {
+					t.Fatalf("a failed read of core.sshCommand starts no networked git and names the read: ran=%v, err %v", readErr == nil, err)
+				}
+				return
+			}
+			if err != nil || readErr != nil {
+				t.Fatalf("the networked git ran: %v, %v", err, readErr)
+			}
+			if !strings.HasPrefix(strings.TrimSpace(string(got)), tc.want) {
+				t.Fatalf("the networked git was given GIT_SSH_COMMAND %q, want %q", strings.TrimSpace(string(got)), tc.want)
+			}
+		})
 	}
 }
