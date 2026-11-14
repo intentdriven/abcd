@@ -270,7 +270,7 @@ func pickCommit(c Context, lane *Lane, wt, branch, base string) (string, error) 
 		return first, nil
 	}
 
-	dirty, err := pickGit(wt, "status", "--porcelain", "-z", "--untracked-files=all")
+	dirty, err := pickGit(wt, gitutil.StatusArgs("--porcelain", "-z", "--untracked-files=all")...)
 	if err != nil {
 		return "", fmt.Errorf("reading the lane's worktree: %w", err)
 	}

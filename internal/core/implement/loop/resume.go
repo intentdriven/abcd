@@ -402,7 +402,7 @@ func listLane(checkout string, root *os.Root, runID string, lane Lane, c control
 		case !fsutil.IsRealDir(lw.Path):
 			out.UnreadWhy = "the lane's worktree is gone"
 		default:
-			s, err := gitutil.Run(lw.Path, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all")
+			s, err := gitutil.Run(lw.Path, append([]string{"--no-optional-locks"}, gitutil.StatusArgs("--porcelain=v1", "-z", "--no-renames", "--untracked-files=all")...)...)
 			if err != nil {
 				out.UnreadWhy = "git could not read the lane's worktree"
 				break
@@ -1324,7 +1324,7 @@ func laneWorkSaved(ctx context.Context, repoRoot string, st State, lane Lane) er
 	}
 	// An untracked file counts whoever wrote it: git refuses to remove a
 	// worktree holding one, as the land step's removal always has.
-	changed, err := read("--no-optional-locks", "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all")
+	changed, err := read(append([]string{"--no-optional-locks"}, gitutil.StatusArgs("--porcelain=v1", "-z", "--no-renames", "--untracked-files=all")...)...)
 	if err != nil {
 		return err
 	}

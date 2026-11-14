@@ -164,7 +164,7 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 		// stopped at its deadline can leave is the loop's own, and undoing
 		// it (undoStalledSync) never resets away a change the loop did not
 		// make.
-		if dirty, err := pickGit(lane.Worktree, "status", "--porcelain", "-z", "--untracked-files=all"); err != nil {
+		if dirty, err := pickGit(lane.Worktree, gitutil.StatusArgs("--porcelain", "-z", "--untracked-files=all")...); err != nil {
 			return Outcome{}, false, fmt.Errorf("reading the lane's worktree: %w", err)
 		} else if dirty != "" {
 			return Outcome{}, false, refuse(string(StageLand), "", lane.ID, "the lane's worktree holds uncommitted changes, so the sync with "+def+" is not merged over them",

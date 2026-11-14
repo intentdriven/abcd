@@ -1,10 +1,12 @@
 package gitutil_test
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -106,5 +108,60 @@ func TestStatusRunsNoSubmoduleContentFilter(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].Path != "sub" {
 		t.Fatalf("a moved submodule pointer must still be listed: %+v", entries)
+	}
+}
+
+// TestAStatusThroughStatusArgsStartsNothingInASubmodule: every status read of
+// a clean tree or a tree's changed files that abcd makes takes its command
+// line from StatusArgs, whichever runner runs it: the isolated one (a run's
+// view of a lane's worktree), the person's own (WorkingTreeCommand: a lane's
+// clean-tree checks before a sync, a pick commit and a landing, the land
+// verb's), and the one bound to a deadline (WorkingTreeCommandContext: the
+// read before a merged lane's worktree is removed). None starts a status
+// inside the checked-out submodule, so the filter its own settings name does
+// not run, and a submodule whose checked-out commit moved is still listed.
+// Watched failing with StatusArgs giving no --ignore-submodules: each runner
+// ran the submodule's clean filter.
+func TestAStatusThroughStatusArgsStartsNothingInASubmodule(t *testing.T) {
+	r, mark := submoduleFilterFixture(t)
+	runners := []struct {
+		name string
+		run  func(args ...string) (string, error)
+	}{
+		{"Run", func(args ...string) (string, error) {
+			return gitutil.Run(r.Root(), append([]string{"--no-optional-locks"}, args...)...)
+		}},
+		{"WorkingTreeCommand", func(args ...string) (string, error) {
+			return gitutil.RunTreeCommand(gitutil.WorkingTreeCommand(r.Root(), args...), args)
+		}},
+		{"WorkingTreeCommandContext", func(args ...string) (string, error) {
+			return gitutil.RunTreeCommand(gitutil.WorkingTreeCommandContext(context.Background(), r.Root(), args...), args)
+		}},
+	}
+	for _, moved := range []bool{false, true} {
+		if moved {
+			sub := exec.Command("git", "-C", filepath.Join(r.Root(), "sub"),
+				"-c", "user.name=F", "-c", "user.email=f@example.invalid", "-c", "commit.gpgsign=false",
+				"-c", "filter.subevil.clean=", "commit", "-q", "--allow-empty", "-m", "moved")
+			sub.Env = r.Env()
+			if out, err := sub.CombinedOutput(); err != nil {
+				t.Fatalf("moving the submodule: %v\n%s", err, out)
+			}
+		}
+		for _, run := range runners {
+			_ = os.Remove(mark)
+			staleSub(t, r)
+			out, err := run.run(gitutil.StatusArgs("--porcelain", "-z", "--untracked-files=all")...)
+			if err != nil {
+				t.Fatalf("%s: %v", run.name, err)
+			}
+			if ran(mark) {
+				t.Errorf("%s: the status started a status inside the submodule, and its own clean filter ran", run.name)
+			}
+			// Run gives git's answer with its outer space trimmed.
+			if want := map[bool]string{false: "", true: "M sub\x00"}[moved]; strings.TrimSpace(out) != want {
+				t.Errorf("%s, submodule moved %v: status %q, want %q", run.name, moved, out, want)
+			}
+		}
 	}
 }

@@ -766,7 +766,7 @@ func addsOnlyTheMark(repo, was, now, mark string) (bool, error) {
 // (Landing.SpecSettled), for the round to read. dirty is any other change. ownSpec
 // is "" on a lane with no spec, which has no such record.
 func worktreeChanges(worktree, ownSpec string) (dirty, settled bool, err error) {
-	out, err := pickGit(worktree, "status", "--porcelain", "-z", "--untracked-files=all", "--no-renames")
+	out, err := pickGit(worktree, gitutil.StatusArgs("--porcelain", "-z", "--untracked-files=all", "--no-renames")...)
 	if err != nil {
 		return false, false, err
 	}
@@ -1137,7 +1137,7 @@ func refuseRecordDifferences(head, work []closeRecord, fields []string, moves fu
 func ownSpecUnresolved(lane Lane, specID string) (string, error) {
 	store, err := spec.Load(lane.Worktree)
 	if err != nil {
-		changed, gerr := pickGit(lane.Worktree, "status", "--porcelain", "--", spec.SpecsRelDir)
+		changed, gerr := pickGit(lane.Worktree, gitutil.StatusArgs("--porcelain", "--", spec.SpecsRelDir)...)
 		if gerr != nil {
 			return "", fmt.Errorf("reading the lane's worktree: %w", gerr)
 		}
@@ -1198,7 +1198,7 @@ func ownSpecRestorer(worktree, specID string) func() {
 func ownIntentUnresolved(lane Lane, id string) (string, error) {
 	corpus, err := intent.Load(lane.Worktree)
 	if err != nil {
-		changed, gerr := pickGit(lane.Worktree, "status", "--porcelain", "--", intent.IntentsRelDir)
+		changed, gerr := pickGit(lane.Worktree, gitutil.StatusArgs("--porcelain", "--", intent.IntentsRelDir)...)
 		if gerr != nil {
 			return "", fmt.Errorf("reading the lane's worktree: %w", gerr)
 		}

@@ -461,7 +461,7 @@ func headOf(dir string) (string, error) {
 // untracked change, read as the person's own git reads it (their ignore files
 // included), as the preflight's receipt reads it.
 func dirtyTree(dir string) (bool, error) {
-	out, err := gitutil.WorkingTreeCommand(dir, "status", "--porcelain", "--untracked-files=normal").Output()
+	out, err := gitutil.WorkingTreeCommand(dir, gitutil.StatusArgs("--porcelain", "--untracked-files=normal")...).Output()
 	if err != nil {
 		return false, fmt.Errorf("reading the checkout's status: %w", err)
 	}
