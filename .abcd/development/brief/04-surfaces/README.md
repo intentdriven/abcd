@@ -11,49 +11,54 @@ Not every row ships. The **Status** column is machine-checked, and
 are wiring rather than user-facing surface are listed separately under
 [§ Operator-internal verbs](#operator-internal-verbs).
 
+The rows are in order of command name, the bare `/abcd` first, so a new surface's
+row goes where its name sorts and two branches that each add one change
+different lines. The **#** column is the number the chapter's file name carries;
+it does not order the table.
+
 | # | Command | Status | Purpose | File |
 |---|---|---|---|---|
-| 1 | `/abcd:ahoy` | shipped | Install abcd into a project, and see what is installed and what is missing | [`01-ahoy.md`](01-ahoy.md) |
-| 2 | `/abcd:disembark` | shipped | Carry the reasoning out of a project into a portable lifeboat, without writing to the project | [`02-disembark.md`](02-disembark.md) |
-| 3 | `/abcd:embark` | shipped | Unpack a lifeboat's records into another repository, refusing the whole write on any conflict | [`03-embark.md`](03-embark.md) |
-| 4 | `/abcd:launch` | shipped | Preview what a release would ship, and cut one by deriving its version and changelog from the record | [`04-launch.md`](04-launch.md) |
-| 5 | `/abcd:intent` | shipped | Say what you want to build as a press release, and find out whether it is ready to implement | [`05-intent.md`](05-intent.md) |
-| 6 | `/abcd:capture` | shipped | Get an observation out of your head and into a ledger in one line, and act on it later | [`06-capture.md`](06-capture.md) |
-| 7 | `/abcd:library` | shipped | Keep the documents you consult and the cited pages distilled from what the project reads, record what each source changed, and ban the confidential ones' names at commit time | [`07-library.md`](07-library.md) |
 | 8 | `/abcd` | shipped | Find out where you are, or what one record id is and what to do with it | [`08-abcd.md`](08-abcd.md) |
-| 9 | `/abcd:reflect` | shipped | Look back on a cut release in a short interview, and file what it taught as its retrospective | [`09-reflect.md`](09-reflect.md) |
+| 41 | `/abcd:agents` | shipped | List the agents abcd started for a session or a run and add up their tokens, cost and API time, from the launch ledger on this computer | [`41-agents.md`](41-agents.md) |
+| 1 | `/abcd:ahoy` | shipped | Install abcd into a project, and see what is installed and what is missing | [`01-ahoy.md`](01-ahoy.md) |
+| 38 | `/abcd:announce` | shipped | Post a short fixed-form announcement on the shared remote, so every other session, under any account, on any machine or in the cloud, sees what this one is doing | [`38-announce.md`](38-announce.md) |
+| 20 | `/abcd:banlist` | shipped | Declare the names this repo must never publish, and stop them at commit time | [`20-banlist.md`](20-banlist.md) |
+| 34 | `/abcd:build` | shipped | Start the loop that takes one READY intent to delivered, refusing while a question is open or a peer holds it | [`34-build.md`](34-build.md) |
+| 6 | `/abcd:capture` | shipped | Get an observation out of your head and into a ledger in one line, and act on it later | [`06-capture.md`](06-capture.md) |
+| 40 | `/abcd:checklist` | shipped | Keep this working copy's checklist on disk, so what a session is doing survives a compaction or a crash | [`40-checklist.md`](40-checklist.md) |
+| 36 | `/abcd:dashboard` | shipped | Open the project from a phone or another computer on your own Tailscale network, through a server that answers only the devices Tailscale names | [`36-dashboard.md`](36-dashboard.md) |
+| 24 | `/abcd:decide` | shipped | Record a decision as one file that merges cleanly, list every decision newest first, or mint an ADR with its id, date and skeleton | [`24-decide.md`](24-decide.md) |
+| 2 | `/abcd:disembark` | shipped | Carry the reasoning out of a project into a portable lifeboat, without writing to the project | [`02-disembark.md`](02-disembark.md) |
 | 10 | `/abcd:docs` | shipped | Find documentation that has gone stale, and maintain the citation baseline | [`10-docs.md`](10-docs.md) |
-| 11 | `/abcd:history` | shipped | Keep session transcripts as a local, redacted corpus this project can study | [`11-history.md`](11-history.md) |
-| 16 | `/abcd:lint` | shipped | Check whether this repo still conforms to the working conventions | [`16-lint.md`](16-lint.md) |
+| 35 | `/abcd:drain` | shipped | Work the open ledger unattended: preview with `--dry-run` which open issues a machine may fix alone and in what order, then run it one lane at a time, routing every hand-back by its kind | [`35-drain.md`](35-drain.md) |
+| 37 | `/abcd:embargo` | shipped | Keep a privately reported security advisory off the public ledger until its fix ships, then close or publish it on your approval of exactly what it shows | [`37-embargo.md`](37-embargo.md) |
+| 3 | `/abcd:embark` | shipped | Unpack a lifeboat's records into another repository, refusing the whole write on any conflict | [`03-embark.md`](03-embark.md) |
 | 17 | `/abcd:guard` | shipped | Find out whether a shell command is safe to run, and what to run instead | [`17-guard.md`](17-guard.md) |
+| 11 | `/abcd:history` | shipped | Keep session transcripts as a local, redacted corpus this project can study | [`11-history.md`](11-history.md) |
 | 18 | `/abcd:ideate` | shipped | Put a big, unproven idea through an admission gauntlet and record the verdict either way | [`18-ideate.md`](18-ideate.md) |
 | 19 | `/abcd:identity` | shipped | Make every surface say the same thing about the project, and see the diff that would fix one | [`19-identity.md`](19-identity.md) |
-| 20 | `/abcd:banlist` | shipped | Declare the names this repo must never publish, and stop them at commit time | [`20-banlist.md`](20-banlist.md) |
-| 21 | `/abcd:update` | shipped | Complete a chosen update of the installed binary, verified and atomic | [`21-update.md`](21-update.md) |
-| 22 | `/abcd:site` | shipped | Render the project website from the repository's own text, and gate what it publishes | [`22-site.md`](22-site.md) |
-| 23 | `/abcd:reading` | shipped | Assemble what a cold reading may see, prove it, and validate what comes back | [`23-reading.md`](23-reading.md) |
-| 24 | `/abcd:decide` | shipped | Record a decision as one file that merges cleanly, list every decision newest first, or mint an ADR with its id, date and skeleton | [`24-decide.md`](24-decide.md) |
-| 25 | `/abcd:worktree` | staged | Keep session and agent worktrees in a machine-scoped store rather than beside the checkout; no `/abcd:worktree` page exists, and the store's verbs ship as `ahoy worktree add`, `list` and `prune` ([`01-ahoy.md`](01-ahoy.md), [itd-2609091014076309](../../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md)) | [`../05-internals/03-configuration.md` § The worktree store](../05-internals/03-configuration.md#the-worktree-store) |
-| 26 | `/abcd:mode` | shipped | Say whose answer the agent loop is waiting on, so the status line and the board show it, or that you are away and sessions should work on | [`26-mode.md`](26-mode.md) |
 | 27 | `/abcd:implement` | shipped | Share one autonomous run between two sessions: claim a record before its lane, keep the second session inside its bounds, and compare the ways of dividing the work from the run log | [`27-implement.md`](27-implement.md) |
-| 28 | `/abcd:peers` | shipped | See what the sibling worktrees and local branches hold before capturing, fixing or filing anything | [`08-abcd.md`](08-abcd.md) |
-| 29 | `/abcd:report` | shipped | Tell abcd about a defect or propose an enhancement from a repository it manages, into an inbox in your own account | [`29-report.md`](29-report.md) |
 | 30 | `/abcd:inbox` | shipped | Read the reports managed repositories filed, and promote one to a capture that names the sender only by its root-commit key | [`30-inbox.md`](30-inbox.md) |
+| 5 | `/abcd:intent` | shipped | Say what you want to build as a press release, and find out whether it is ready to implement | [`05-intent.md`](05-intent.md) |
 | 31 | `/abcd:lab` | shipped | Run a lab against a pinned snapshot of the repository and harvest what it found, with the evidence kept out of the repository | [`31-lab.md`](31-lab.md) |
-| 32 | `/abcd:scribe` | shipped | Build the ledger scribe's context from the ledger alone, and ingest what it transcribed without letting it author anything | [`32-scribe.md`](32-scribe.md) |
-| 34 | `/abcd:build` | shipped | Start the loop that takes one READY intent to delivered, refusing while a question is open or a peer holds it | [`34-build.md`](34-build.md) |
-| 35 | `/abcd:drain` | shipped | Work the open ledger unattended: preview with `--dry-run` which open issues a machine may fix alone and in what order, then run it one lane at a time, routing every hand-back by its kind | [`35-drain.md`](35-drain.md) |
-| 36 | `/abcd:dashboard` | shipped | Open the project from a phone or another computer on your own Tailscale network, through a server that answers only the devices Tailscale names | [`36-dashboard.md`](36-dashboard.md) |
-| 37 | `/abcd:embargo` | shipped | Keep a privately reported security advisory off the public ledger until its fix ships, then close or publish it on your approval of exactly what it shows | [`37-embargo.md`](37-embargo.md) |
-| 37 | `/abcd:memory` | shipped | Keep short lessons an agent would otherwise relearn, stamped with who wrote them, when and in which session, and refused when they would hold a secret, a private name or a network address | [`37-memory.md`](37-memory.md) |
-| 37 | `/abcd:reserve` | shipped | Reserve an issue, intent or release on the shared remote before starting it, so another person, computer or hosted session sees it is taken | [`37-reserve.md`](37-reserve.md) |
-| 37 | `/abcd:session` | shipped | Run the relay a team's live brief session goes through, on the host's machine over Tailscale Serve or on the team's own relay, write that relay's blueprint, and write the session's static page | [`37-session.md`](37-session.md) |
-| 38 | `/abcd:announce` | shipped | Post a short fixed-form announcement on the shared remote, so every other session, under any account, on any machine or in the cloud, sees what this one is doing | [`38-announce.md`](38-announce.md) |
 | 38 | `/abcd:land` | shipped | Push a branch once its preflight passed and queue its pull request where the merge gate allows, resumable by running it again | [`38-land.md`](38-land.md) |
-| 39 | `/abcd:status` | shipped | Read everyone's status on the shared remote: the announcements every session posted, who holds which reservation and each release being cut | [`39-status.md`](39-status.md) |
-| 40 | `/abcd:checklist` | shipped | Keep this working copy's checklist on disk, so what a session is doing survives a compaction or a crash | [`40-checklist.md`](40-checklist.md) |
-| 41 | `/abcd:agents` | shipped | List the agents abcd started for a session or a run and add up their tokens, cost and API time, from the launch ledger on this computer | [`41-agents.md`](41-agents.md) |
 | 42 | `/abcd:landings` | shipped | Say how each change landed on the default branch and the rule that admitted it, and trace one commit to the landing that brought it | [`42-landings.md`](42-landings.md) |
+| 4 | `/abcd:launch` | shipped | Preview what a release would ship, and cut one by deriving its version and changelog from the record | [`04-launch.md`](04-launch.md) |
+| 7 | `/abcd:library` | shipped | Keep the documents you consult and the cited pages distilled from what the project reads, record what each source changed, and ban the confidential ones' names at commit time | [`07-library.md`](07-library.md) |
+| 16 | `/abcd:lint` | shipped | Check whether this repo still conforms to the working conventions | [`16-lint.md`](16-lint.md) |
+| 37 | `/abcd:memory` | shipped | Keep short lessons an agent would otherwise relearn, stamped with who wrote them, when and in which session, and refused when they would hold a secret, a private name or a network address | [`37-memory.md`](37-memory.md) |
+| 26 | `/abcd:mode` | shipped | Say whose answer the agent loop is waiting on, so the status line and the board show it, or that you are away and sessions should work on | [`26-mode.md`](26-mode.md) |
+| 28 | `/abcd:peers` | shipped | See what the sibling worktrees and local branches hold before capturing, fixing or filing anything | [`08-abcd.md`](08-abcd.md) |
+| 23 | `/abcd:reading` | shipped | Assemble what a cold reading may see, prove it, and validate what comes back | [`23-reading.md`](23-reading.md) |
+| 9 | `/abcd:reflect` | shipped | Look back on a cut release in a short interview, and file what it taught as its retrospective | [`09-reflect.md`](09-reflect.md) |
+| 29 | `/abcd:report` | shipped | Tell abcd about a defect or propose an enhancement from a repository it manages, into an inbox in your own account | [`29-report.md`](29-report.md) |
+| 37 | `/abcd:reserve` | shipped | Reserve an issue, intent or release on the shared remote before starting it, so another person, computer or hosted session sees it is taken | [`37-reserve.md`](37-reserve.md) |
+| 32 | `/abcd:scribe` | shipped | Build the ledger scribe's context from the ledger alone, and ingest what it transcribed without letting it author anything | [`32-scribe.md`](32-scribe.md) |
+| 37 | `/abcd:session` | shipped | Run the relay a team's live brief session goes through, on the host's machine over Tailscale Serve or on the team's own relay, write that relay's blueprint, and write the session's static page | [`37-session.md`](37-session.md) |
+| 22 | `/abcd:site` | shipped | Render the project website from the repository's own text, and gate what it publishes | [`22-site.md`](22-site.md) |
+| 39 | `/abcd:status` | shipped | Read everyone's status on the shared remote: the announcements every session posted, who holds which reservation and each release being cut | [`39-status.md`](39-status.md) |
+| 21 | `/abcd:update` | shipped | Complete a chosen update of the installed binary, verified and atomic | [`21-update.md`](21-update.md) |
+| 25 | `/abcd:worktree` | staged | Keep session and agent worktrees in a machine-scoped store rather than beside the checkout; no `/abcd:worktree` page exists, and the store's verbs ship as `ahoy worktree add`, `list` and `prune` ([`01-ahoy.md`](01-ahoy.md), [itd-2609091014076309](../../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md)) | [`../05-internals/03-configuration.md` § The worktree store](../05-internals/03-configuration.md#the-worktree-store) |
 
 ## How much of this table a machine keeps honest
 
@@ -127,11 +132,12 @@ plain English are prose. Only the `## Sub-verbs` table and its standard note are
 because the rule above checks them. Exit codes, output fields and what a verb
 refuses stay prose and stay a review-grain claim.
 
-**Adding a surface.** Add its row to the table above and its chapter to this
-directory, end the chapter with the two marker lines (the generator's refusal
-prints them), and run `go generate ./internal/surface/cli`. That regenerates the
-snapshot and every appendix. Keep flags and sub-verb spellings out of the prose:
-say what the surface is for, and let the appendix say how it is spelled.
+**Adding a surface.** Add its row to the table above, where its command name
+sorts, and its chapter to this directory, end the chapter with the two marker
+lines (the generator's refusal prints them), and run
+`go generate ./internal/surface/cli`. That regenerates the snapshot and every
+appendix. Keep flags and sub-verb spellings out of the prose: say what the
+surface is for, and let the appendix say how it is spelled.
 
 
 ## How the help lists the verbs
@@ -146,14 +152,63 @@ through the help verb, is refused naming the one spelling that works.
 Every other command's help is the framework's own, except that it opens with
 the command's sentence (the section below).
 
-| Block | Group | Verbs |
+The table below has one row for each entry the help lists, in order of name, so
+placing a new verb adds one line where its name sorts. An entry of more than one
+word is a sub-verb the agents' block lists in its own right, and `completion`
+and `help` are the framework's own commands, filed under set-up.
+
+| Verb | Block | Group |
 |---|---|---|
-| people | set-up | `ahoy`, `dashboard`, `session`, `update`, and the framework's `help` and `completion` |
-| people | records | `agents`, `build`, `capture`, `decide`, `ideate`, `intent`, `land`, `landings`, `library`, `status` |
-| people | checks | `lab`, `reading` |
-| people | portability | `disembark`, `embark` |
-| people | release | `embargo`, `launch` |
-| agents and hosts | — | `announce`, `banlist`, `checklist`, `docs`, `drain`, `guard`, `guard approve`, `guard hook`, `history`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lint`, `memory`, `mode`, `peers`, `reflect`, `report`, `reserve`, `rules`, `scribe`, `site`, `spec`, `statusline` |
+| `agents` | people | records |
+| `ahoy` | people | set-up |
+| `announce` | agents and hosts | — |
+| `banlist` | agents and hosts | — |
+| `build` | people | records |
+| `capture` | people | records |
+| `checklist` | agents and hosts | — |
+| `completion` | people | set-up |
+| `dashboard` | people | set-up |
+| `decide` | people | records |
+| `disembark` | people | portability |
+| `docs` | agents and hosts | — |
+| `drain` | agents and hosts | — |
+| `embargo` | people | release |
+| `embark` | people | portability |
+| `guard` | agents and hosts | — |
+| `guard approve` | agents and hosts | — |
+| `guard hook` | agents and hosts | — |
+| `help` | people | set-up |
+| `history` | agents and hosts | — |
+| `ideate` | people | records |
+| `ideate record` | agents and hosts | — |
+| `identity` | agents and hosts | — |
+| `implement` | agents and hosts | — |
+| `inbox` | agents and hosts | — |
+| `intent` | people | records |
+| `intent audit ingest` | agents and hosts | — |
+| `intent consistency ingest` | agents and hosts | — |
+| `intent prepass` | agents and hosts | — |
+| `lab` | people | checks |
+| `land` | people | records |
+| `landings` | people | records |
+| `launch` | people | release |
+| `library` | people | records |
+| `lint` | agents and hosts | — |
+| `memory` | agents and hosts | — |
+| `mode` | agents and hosts | — |
+| `peers` | agents and hosts | — |
+| `reading` | people | checks |
+| `reflect` | agents and hosts | — |
+| `report` | agents and hosts | — |
+| `reserve` | agents and hosts | — |
+| `rules` | agents and hosts | — |
+| `scribe` | agents and hosts | — |
+| `session` | people | set-up |
+| `site` | agents and hosts | — |
+| `spec` | agents and hosts | — |
+| `status` | people | records |
+| `statusline` | agents and hosts | — |
+| `update` | people | set-up |
 
 The placement is presentation. No verb is hidden, renamed, moved or nested by
 it, every verb runs the same whichever block lists it, and the group titles

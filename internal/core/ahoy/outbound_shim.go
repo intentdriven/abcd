@@ -130,19 +130,31 @@ func shimShown(cwd, gitDir, rel string) string {
 	return rel + " in this clone's shared git directory (git rev-parse --git-common-dir names it)"
 }
 
-// notWired renders the note for a clone whose check this run did not wire,
-// where abcd's copy of the check is at chain for the person's hook to call.
-func notWired(why, where, chain string) string {
-	return "the commit-message check is not wired into git in this clone: " + why +
+// notWiredLead leads the note for a clone whose check this run did not
+// wire; unreadLead leads it instead where git could not answer the read of
+// core.hooksPath, so abcd cannot tell whether git runs the check there and
+// says neither that it does nor that it does not.
+const (
+	notWiredLead = "the commit-message check is not wired into git in this clone: "
+	unreadLead   = "abcd could not tell whether git runs the commit-message check in this clone: "
+)
+
+// keptCopyNote renders the note, led by lead, for a clone whose check this
+// run did not wire, where abcd's copy of the check is at chain for the
+// person's hook to call.
+func keptCopyNote(lead, why, where, chain string) string {
+	return lead + why +
 		". Wiring the check never replaces a hook, sets core.hooksPath or changes global git config, so abcd keeps its copy of the check at " +
 		chain + ", a name git never runs; to run the check, add this line to " + where + ": " + outboundShimChainLine
 }
 
 // notWiredNoCopy renders the note for a clone where abcd could keep no copy
 // of the check either, so there is no line to give.
-func notWiredNoCopy(why string) string {
-	return "the commit-message check is not wired into git in this clone: " + why +
-		", so abcd wrote nothing; run abcd ahoy install --outbound again once that is resolved"
+func notWiredNoCopy(why string) string { return noCopyNote(notWiredLead, why) }
+
+// noCopyNote is notWiredNoCopy led by lead.
+func noCopyNote(lead, why string) string {
+	return lead + why + ", so abcd wrote nothing; run abcd ahoy install --outbound again once that is resolved"
 }
 
 // editedNote says a marked file abcd would refresh was edited, so it was left.
@@ -192,10 +204,15 @@ func planOutboundShim(cwd string) outboundShimPlan {
 	// shim, why the check is not wired and which hook the line goes in.
 	var why, where string
 	var runsCheck, chains bool
+	lead := notWiredLead
 	paths, err := gitutil.HooksPaths(cwd)
 	switch {
 	case err != nil:
-		why = "git could not say whether core.hooksPath is set (" + errText(err) + "), so abcd wrote no hook git runs"
+		// git could not answer, so which hooks git runs here is not known:
+		// abcd writes no hook git runs, and says it could not tell.
+		lead = unreadLead
+		why = "the read of core.hooksPath (git config --get-all core.hooksPath) failed (" + errText(err) +
+			"), so abcd wrote no hook git runs; check that git can read this clone's settings and your own"
 		where = "the commit-msg hook git runs in this clone"
 	case len(paths) > 0 && paths[len(paths)-1] == "":
 		// git reads an empty value as set, and runs no hook from hooks/.
@@ -260,18 +277,18 @@ func planOutboundShim(cwd string) outboundShimPlan {
 				plan.note = editedNote(chain)
 				return plan
 			}
-			plan.note = notWired(why, where, chain) + " (" + editedNote(chain) + ")"
+			plan.note = keptCopyNote(lead, why, where, chain) + " (" + editedNote(chain) + ")"
 			return plan
 		}
 	default:
 		if runsCheck && !chains {
 			return plan
 		}
-		plan.note = notWiredNoCopy(why + "; and " + chain + " holds a file abcd did not write or could not read, so abcd left it and has no copy of the check for that hook to call (move it aside to let abcd write one)")
+		plan.note = noCopyNote(lead, why+"; and "+chain+" holds a file abcd did not write or could not read, so abcd left it and has no copy of the check for that hook to call (move it aside to let abcd write one)")
 		return plan
 	}
 	if !runsCheck {
-		plan.note = notWired(why, where, chain)
+		plan.note = keptCopyNote(lead, why, where, chain)
 	}
 	return plan
 }

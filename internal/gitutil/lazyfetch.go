@@ -276,6 +276,15 @@ func lazyFetchGuard(ctx context.Context, root string, args []string) error {
 	return fmt.Errorf("%w (git on PATH: %q; ls-files can read tree objects to expand a sparse index)", ErrLazyFetchFloor, raw)
 }
 
+// LazyFetchGuard is lazyFetchGuard for a package that builds its own git
+// command in the isolated environment (the spot-check store's writes), so
+// that command passes the floor every isolated command of this package
+// passes: nil, or the refusal of args, the command line after git's pins,
+// before git starts.
+func LazyFetchGuard(ctx context.Context, root string, args []string) error {
+	return lazyFetchGuard(ctx, root, args)
+}
+
 // subcommand is the git subcommand an isolated command line names, past any
 // leading -c pairs; "" when there is none.
 func subcommand(args []string) string {

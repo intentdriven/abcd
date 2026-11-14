@@ -44,6 +44,9 @@ type Outcome string
 const (
 	// OutcomeRemoved is a worktree the store's prune reclaimed.
 	OutcomeRemoved Outcome = "removed"
+	// OutcomeSaved is a dirty worktree whose changes were saved as a patch;
+	// the worktree itself is kept.
+	OutcomeSaved Outcome = "saved"
 	// OutcomeKept is an item left as it was, its reason saying why: one the
 	// dry run kept, or one a check at the moment of acting kept.
 	OutcomeKept Outcome = "kept"
@@ -141,8 +144,9 @@ func (r Result) Notes() []string {
 // fault, whatever rows came before it; otherwise, for an applied run,
 // ExitActed when any row's outcome is other than kept, and for a dry run when
 // any row carries an action apply would take; ExitNothing when none does. A
-// save-patch row is not one yet: apply keeps it, since the sweep does not yet
-// save uncommitted changes, so a dry run never promises what apply skips.
+// save-patch row is one: the dry run has already collected its salvage, and
+// one whose changes are saved unchanged by an earlier run, or cannot be
+// saved, is a keep, so a dry run never promises what apply skips.
 func (r Result) ExitCode() int {
 	if strings.TrimSpace(r.Refusal) != "" {
 		return ExitRefused
@@ -151,7 +155,7 @@ func (r Result) ExitCode() int {
 		switch {
 		case r.Applied && row.Outcome != OutcomeKept && row.Outcome != "":
 			return ExitActed
-		case !r.Applied && row.Action != ActionKeep && row.Action != ActionSavePatch && row.Action != "":
+		case !r.Applied && row.Action != ActionKeep && row.Action != "":
 			return ExitActed
 		}
 	}
