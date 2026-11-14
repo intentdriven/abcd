@@ -52,7 +52,7 @@ type Options struct {
 	// run itself, rather than the session above it.
 	driverIsSelf bool
 	// inPassing marks a claim made for one save and let go after it (claimInPassing):
-	// it never takes a run from the terminal the drive was started under (startedUnder).
+	// it never takes a run from the process the drive's shell runs under (startedUnder).
 	inPassing bool
 	// afar marks a renewal's save, whose waiter may run a lane's own abcd under the
 	// driver's own host session: it is never the run's driver (mayWholeSave).

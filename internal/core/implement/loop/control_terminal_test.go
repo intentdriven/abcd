@@ -13,6 +13,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/core/occupancy"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // A fixture machine with two plain terminals under one terminal program: each tab's
@@ -120,7 +121,7 @@ func TestADriveTakesARunItsOwnTerminalTookOver(t *testing.T) {
 		t.Fatalf("the record gained %d entries, want one", len(rec)-before)
 	}
 	e := rec[len(rec)-1]
-	if e.Stage != StageDriver || !strings.Contains(e.Note, "the recorded driver process 5100 is the process this drive's terminal runs under, and only shells run beneath it besides this drive") ||
+	if e.Stage != StageDriver || !strings.Contains(e.Note, "the recorded driver process 5100 is the process this drive's shell runs under, and only shells run beneath it besides this drive") ||
 		!strings.Contains(e.Note, "process 5120 took the run") {
 		t.Fatalf("the record's last entry: %+v", e)
 	}
@@ -257,7 +258,7 @@ func TestADriveContendsWhereItsTerminalIsNotTheDriver(t *testing.T) {
 // TestAReusedIDIsAGoneDriver: a recorded driver holding the terminal's process id but not
 // its start time reads as gone, by the route every claim takes before startedUnder is
 // asked, and is replaced as a gone driver, never named as the process this drive's
-// terminal runs under. It holds that earlier route, which this change leaves as it was.
+// shell runs under. It holds that earlier route, which this change leaves as it was.
 func TestAReusedIDIsAGoneDriver(t *testing.T) {
 	repo, runID, _, _ := awaitingLane(t)
 	home, _ := stopWorld(t, false)
@@ -277,7 +278,7 @@ func TestAReusedIDIsAGoneDriver(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := entriesOf(t, repo.Root(), runID)
-	if e := rec[len(rec)-1]; !strings.Contains(e.Note, "the driver process 5100 is gone") || strings.Contains(e.Note, "terminal") {
+	if e := rec[len(rec)-1]; !strings.Contains(e.Note, "the driver process 5100 is gone") || strings.Contains(e.Note, "runs under") {
 		t.Fatalf("the record's last entry: %+v", e)
 	}
 }
@@ -309,7 +310,7 @@ func TestTwoDrivesFromOneTerminal(t *testing.T) {
 		for _, pair := range [][2]int{{termDrive, termDriveTwo}, {termDriveTwo, termDrive}} {
 			err := driveClaims(t, repo.Root(), runID, home, tab, termShell, pair[0])
 			contendsOn(t, err, termLogin)
-			keptBy(t, err, pair[1], "abcd")
+			keptBy(t, err, pair[1], "abcd", termLogin, "login")
 		}
 		if c := controlOf(t, repo.Root(), runID); c.Driver.PID != termLogin {
 			t.Fatalf("a drive took the run beside another: %+v", c.Driver)
@@ -375,15 +376,37 @@ func withoutProc(tab sessionname.Table, pid int) sessionname.Table {
 }
 
 // keptBy fails the test unless err's reason names process pid, called name, as what runs
-// beneath the recorded driver besides the drive, and its remedy says the way on.
-func keptBy(t *testing.T, err error, pid int, name string) {
+// beneath the recorded driver besides the drive, and its remedy gives the two ways on the
+// code accepts: end that process, or close the terminal the run was taken over from so the
+// recorded driver (process driver, called driverName) ends, and start the drive from
+// another. It never sends the person to a take-over, which a live driver refuses.
+func keptBy(t *testing.T, err error, pid int, name string, driver int, driverName string) {
 	t.Helper()
 	r, ok := AsRefusal(err)
 	want := "process " + strconv.Itoa(pid) + " (" + name + ") runs beneath it besides this drive"
-	if !ok || !strings.Contains(r.Reason, want) || !strings.Contains(r.Remedy, "end that process") ||
-		!strings.Contains(r.Remedy, "from a second terminal and close that terminal") {
-		t.Fatalf("want a refusal naming %q and the way on, got %v", want, err)
+	way := "end process " + strconv.Itoa(pid) + " (" + name + "), and this drive's next look takes the run where nothing else runs beneath it; " +
+		"or close the terminal the run was taken over from, so that process " + strconv.Itoa(driver) + " (" + driverName + ") ends, and start the drive from another terminal"
+	if !ok || !strings.Contains(r.Reason, want) || r.Remedy != way {
+		t.Fatalf("want a refusal naming %q with the way on %q, got %v", want, way, err)
 	}
+	if strings.Contains(r.Remedy, "resume --take") || strings.Contains(r.Remedy, "second terminal") {
+		t.Fatalf("the remedy sends the person to a take-over a live driver refuses: %q", r.Remedy)
+	}
+}
+
+// runLockHeld reports whether the checkout's run lock is held, as it is through a claim's
+// save: another holder of the lock file finds it taken.
+func runLockHeld(t *testing.T, repoRoot string) bool {
+	t.Helper()
+	lock := filepath.Join(repoRoot, filepath.FromSlash(RunRelDir), lockFileName)
+	err := fsutil.WithFileLock(lock, time.Millisecond, func() error { return nil })
+	if errors.Is(err, fsutil.ErrLockContention) {
+		return true
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return false
 }
 
 // A fixture terminal multiplexer: one server process, the nearest above every pane's shell
@@ -409,18 +432,48 @@ func muxProcs(now time.Time, extra ...machineload.Proc) sessionname.Table {
 
 // TestADriveWaitsOnAStepBackgroundedInItsShell: a step started in the background from the
 // drive's own shell runs beneath the take-over's terminal beside the drive, so the drive
-// waits, naming that step and the way on, and the take-over's claim stands.
+// waits, naming that step and the way on, and the take-over's claim stands. Each way on
+// leads on: with the step ended, the same claim takes the run; with the take-over's
+// terminal closed instead, a drive from another terminal replaces its gone driver.
 func TestADriveWaitsOnAStepBackgroundedInItsShell(t *testing.T) {
 	const step = 5150
-	repo, runID, _, _ := awaitingLane(t)
-	home, _ := stopWorld(t, false)
-	tab := terminalProcs(time.Now(), machineload.Proc{PID: step, PPID: termShell, Name: "abcd", Age: 10 * time.Second})
-	takeOverFrom(t, repo.Root(), runID, home, tab, termShell)
-	err := driveClaims(t, repo.Root(), runID, home, tab, termShell, termDrive)
-	contendsOn(t, err, termLogin)
-	keptBy(t, err, step, "abcd")
-	if c := controlOf(t, repo.Root(), runID); c.Driver.PID != termLogin {
-		t.Fatalf("the drive took the run beside a step: %+v", c.Driver)
+	stepProc := machineload.Proc{PID: step, PPID: termShell, Name: "abcd", Age: 10 * time.Second}
+	for _, way := range []string{"the step ended", "the terminal closed"} {
+		t.Run(way, func(t *testing.T) {
+			repo, runID, _, _ := awaitingLane(t)
+			home, _ := stopWorld(t, false)
+			tab := terminalProcs(time.Now(), stepProc)
+			takeOverFrom(t, repo.Root(), runID, home, tab, termShell)
+			err := driveClaims(t, repo.Root(), runID, home, tab, termShell, termDrive)
+			contendsOn(t, err, termLogin)
+			keptBy(t, err, step, "abcd", termLogin, "login")
+			if c := controlOf(t, repo.Root(), runID); c.Driver.PID != termLogin {
+				t.Fatalf("the drive took the run beside a step: %+v", c.Driver)
+			}
+			if way == "the step ended" {
+				if err := driveClaims(t, repo.Root(), runID, home, withoutProc(tab, step), termShell, termDrive); err != nil {
+					t.Fatalf("the same claim with the step ended: %v", err)
+				}
+				if c := controlOf(t, repo.Root(), runID); c.Driver.PID != termDrive {
+					t.Fatalf("the drive did not take the run once the step ended: %+v", c.Driver)
+				}
+				return
+			}
+			closed := tab
+			for _, pid := range []int{termLogin, termShell, termDrive, step} {
+				closed = withoutProc(closed, pid)
+			}
+			if err := driveClaims(t, repo.Root(), runID, home, closed, otherShell, otherDrive); err != nil {
+				t.Fatalf("a drive from another terminal once the take-over's closed: %v", err)
+			}
+			if c := controlOf(t, repo.Root(), runID); c.Driver.PID != otherDrive {
+				t.Fatalf("the other terminal's drive did not take the run: %+v", c.Driver)
+			}
+			rec := entriesOf(t, repo.Root(), runID)
+			if e := rec[len(rec)-1]; !strings.Contains(e.Note, "the driver process 5100 is gone") {
+				t.Fatalf("the record's last entry: %+v", e)
+			}
+		})
 	}
 }
 
@@ -459,15 +512,22 @@ func TestADriveInASharedTerminalProcess(t *testing.T) {
 					t.Fatalf("the drive did not take the run: %+v", c.Driver)
 				}
 				rec := entriesOf(t, repo.Root(), runID)
-				if e := rec[len(rec)-1]; !strings.Contains(e.Note, "the recorded driver process 6000 is the process this drive's terminal runs under") {
+				if e := rec[len(rec)-1]; !strings.Contains(e.Note, "the recorded driver process 6000 is the process this drive's shell runs under") {
 					t.Fatalf("the record's last entry: %+v", e)
 				}
 				return
 			}
 			contendsOn(t, err, muxServer)
-			keptBy(t, err, muxPaneWork, tc.work)
+			keptBy(t, err, muxPaneWork, tc.work, muxServer, "tmux")
 			if c := controlOf(t, repo.Root(), runID); c.Driver.PID != muxServer {
 				t.Fatalf("the drive took the run: %+v", c.Driver)
+			}
+			// The named process ended, the same claim takes the run.
+			if err := driveClaims(t, repo.Root(), runID, home, withoutProc(tab, muxPaneWork), muxShell, muxDrive); err != nil {
+				t.Fatalf("the same claim with process %d ended: %v", muxPaneWork, err)
+			}
+			if c := controlOf(t, repo.Root(), runID); c.Driver.PID != muxDrive {
+				t.Fatalf("the drive did not take the run once the second pane's work ended: %+v", c.Driver)
 			}
 		})
 	}
@@ -495,7 +555,7 @@ func TestADriveUnderAHostWithNoMarkerWaitsOnItsAgent(t *testing.T) {
 	}
 	err := driveClaims(t, repo.Root(), runID, home, tab, hostShell, drive)
 	contendsOn(t, err, host)
-	keptBy(t, err, agent, "node")
+	keptBy(t, err, agent, "node", host, "claude")
 	if c := controlOf(t, repo.Root(), runID); c.Driver.PID != host {
 		t.Fatalf("the drive took a host's run: %+v", c.Driver)
 	}
@@ -503,7 +563,9 @@ func TestADriveUnderAHostWithNoMarkerWaitsOnItsAgent(t *testing.T) {
 
 // TestADriveWaitsWhereASessionMarkerCannotBeRead: one file in the markers' folder that
 // does not read as a marker may be the marker of a session above the drive, so the drive
-// waits on the take-over's terminal and says why, though the folder lists.
+// waits on the take-over's terminal and says why, though the folder lists, naming the
+// folder and the file to remove or repair; with the file removed, the same claim takes
+// the run.
 func TestADriveWaitsWhereASessionMarkerCannotBeRead(t *testing.T) {
 	repo, runID, _, _ := awaitingLane(t)
 	home, _ := stopWorld(t, false)
@@ -514,16 +576,32 @@ func TestADriveWaitsWhereASessionMarkerCannotBeRead(t *testing.T) {
 	if err := occupancy.Note(home, "s-elsewhere", repo.Root(), sessionname.Host{PID: otherLogin, StartUnix: now.Add(-time.Hour).Unix()}, tab); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, filepath.FromSlash(abcdhome.Rel("occupancy")), "s-unread.json"), []byte("not a marker\n"), 0o600); err != nil {
+	unread := filepath.Join(home, filepath.FromSlash(abcdhome.Rel("occupancy")), "s-unread.json")
+	if err := os.WriteFile(unread, []byte("not a marker\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	err := driveClaims(t, repo.Root(), runID, home, tab, termShell, termDrive)
 	contendsOn(t, err, termLogin)
-	if r, _ := AsRefusal(err); !strings.Contains(r.Reason, "1 file(s) in") || !strings.Contains(r.Reason, "could not be read as session markers") {
+	folder := abcdhome.Display("occupancy")
+	r, _ := AsRefusal(err)
+	if !strings.Contains(r.Reason, "1 file(s) in "+folder+" could not be read as session markers") {
 		t.Fatalf("the refusal does not say a marker could not be read: %v", err)
+	}
+	if want := "remove or repair each file in " + folder +
+		" that cannot be read as a session marker, s-unread.json first; this drive reads them again at its next look"; r.Remedy != want {
+		t.Fatalf("the remedy: %q, want %q", r.Remedy, want)
 	}
 	if c := controlOf(t, repo.Root(), runID); c.Driver.PID != termLogin {
 		t.Fatalf("the drive took the run past an unread marker: %+v", c.Driver)
+	}
+	if err := os.Remove(unread); err != nil {
+		t.Fatal(err)
+	}
+	if err := driveClaims(t, repo.Root(), runID, home, tab, termShell, termDrive); err != nil {
+		t.Fatalf("the same claim with the file removed: %v", err)
+	}
+	if c := controlOf(t, repo.Root(), runID); c.Driver.PID != termDrive {
+		t.Fatalf("the drive did not take the run once the file was removed: %+v", c.Driver)
 	}
 }
 
@@ -544,8 +622,12 @@ func TestADrivesPassingClaimLeavesTheTerminalsClaim(t *testing.T) {
 	standIn(t, tab, termShell, termDrive)
 	letGo, err := claimInPassing(repo.Root(), runID, Options{stopHome: home, driverIsSelf: true})
 	letGo()
-	if _, refused := AsRefusal(err); err != nil && !refused {
-		t.Fatal(err)
+	// The passing claim is refused as any claim over a live driver is, with the plain
+	// reason and remedy: it never asks what runs beneath the terminal.
+	contendsOn(t, err, termLogin)
+	if r, _ := AsRefusal(err); strings.Contains(r.Reason, "runs beneath it") || strings.Contains(r.Reason, "could not be read") ||
+		!strings.HasPrefix(r.Remedy, "back off: only one driver steps a run") {
+		t.Fatalf("the passing claim was judged by what runs beneath the terminal: %v", err)
 	}
 	after, err := os.ReadFile(path)
 	if err != nil {
@@ -556,10 +638,12 @@ func TestADrivesPassingClaimLeavesTheTerminalsClaim(t *testing.T) {
 	}
 }
 
-// TestADriveJudgesTheTableReadUnderTheLock: the table read before the run's lock shows
+// TestADriveJudgesTheTableReadUnderTheLock: the table read outside the run's lock shows
 // nothing beneath the terminal but the drive; the one read under the lock shows a step
 // started meanwhile, and the drive waits on it. A reading under the lock that fails makes
-// the drive wait too.
+// the drive wait too, saying its next look reads the table again, and that next look,
+// with the table read, takes the run. The stand-in answers by whether the run's lock is
+// held, so the test does not depend on how many readings the claim makes on either side.
 func TestADriveJudgesTheTableReadUnderTheLock(t *testing.T) {
 	const step = 5150
 	for _, tc := range []struct {
@@ -577,28 +661,46 @@ func TestADriveJudgesTheTableReadUnderTheLock(t *testing.T) {
 			takeOverFrom(t, repo.Root(), runID, home, clean, termShell)
 			later := terminalProcs(now, machineload.Proc{PID: step, PPID: termShell, Name: "abcd", Age: time.Second})
 			standIn(t, clean, termShell, termDrive)
-			reads := 0
+			underLock := 0
 			readProcs = func() (sessionname.Table, error) {
-				reads++
-				switch {
-				case reads == 1:
+				if !runLockHeld(t, repo.Root()) {
 					return clean, nil
-				case tc.fails:
+				}
+				underLock++
+				if tc.fails {
 					return sessionname.Table{}, errors.New("the stand-in table cannot be read")
 				}
 				return later, nil
 			}
 			err := ClaimDriver(repo.Root(), runID, Options{stopHome: home, driverIsSelf: true})
+			if underLock == 0 {
+				t.Fatal("the claim read no table under the run's lock")
+			}
 			contendsOn(t, err, termLogin)
 			if tc.fails {
-				if r, _ := AsRefusal(err); !strings.Contains(r.Reason, "could not be read again under the run's lock") {
+				r, _ := AsRefusal(err)
+				if !strings.Contains(r.Reason, "could not be read again under the run's lock") {
 					t.Fatalf("the refusal does not say the table could not be read: %v", err)
 				}
+				if want := "nothing to do: this drive reads the process table again at its next look"; r.Remedy != want {
+					t.Fatalf("the remedy: %q, want %q", r.Remedy, want)
+				}
 			} else {
-				keptBy(t, err, step, "abcd")
+				keptBy(t, err, step, "abcd", termLogin, "login")
 			}
 			if c := controlOf(t, repo.Root(), runID); c.Driver.PID != termLogin {
 				t.Fatalf("the drive took the run: %+v", c.Driver)
+			}
+			if !tc.fails {
+				return
+			}
+			// The next look reads the table under the lock and takes the run.
+			readProcs = func() (sessionname.Table, error) { return clean, nil }
+			if err := ClaimDriver(repo.Root(), runID, Options{stopHome: home, driverIsSelf: true}); err != nil {
+				t.Fatalf("the next look with the table read: %v", err)
+			}
+			if c := controlOf(t, repo.Root(), runID); c.Driver.PID != termDrive {
+				t.Fatalf("the next look did not take the run: %+v", c.Driver)
 			}
 		})
 	}
@@ -620,7 +722,7 @@ func TestTheListingSaysATerminalsRunIsTakenByADriveFromIt(t *testing.T) {
 		}
 		return l.Runs[0].Next
 	}
-	if got := next(); !strings.Contains(got, "names no session") || !strings.Contains(got, "`abcd drain --drive` started from that driver's terminal takes it when nothing else runs there") {
+	if got := next(); !strings.Contains(got, "names no session") || !strings.Contains(got, "leave it, unless you start `abcd drain --drive` from that driver's own terminal with nothing else running there, which takes it") {
 		t.Fatalf("the listing of a terminal's run: %q", got)
 	}
 	root, err := os.OpenRoot(repo.Root())

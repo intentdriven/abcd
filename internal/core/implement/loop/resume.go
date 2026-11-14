@@ -346,7 +346,7 @@ func listRun(checkout string, o Options, root *os.Root, st State, tab *sessionna
 	case c.Stop != nil && c.Stop.HaltedAt != nil:
 		out.Next = "a stop halted it, every lane has settled, and no agent is in its call: take it over with `abcd implement resume --take " + out.RunID + "`, in " + out.Checkout
 	case alive && c.Driver.Session == "":
-		out.Next = "its driver is alive and names no session: leave it; an `abcd drain --drive` started from that driver's terminal takes it when nothing else runs there"
+		out.Next = "its driver is alive and names no session: leave it, unless you start `abcd drain --drive` from that driver's own terminal with nothing else running there, which takes it"
 	case alive:
 		out.Next = "its driver is alive: leave it"
 	default:

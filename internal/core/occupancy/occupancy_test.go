@@ -452,9 +452,9 @@ func TestReadingASessionTellsNoneFromUnreadable(t *testing.T) {
 
 // TestACountedReadingNamesTheMarkersItPassedOver: in a folder that lists, a marker that
 // does not parse, one another account can write and one that is no regular file are each
-// counted as passed over, beside the session a readable marker names; ReadSessionOn over
-// the same folder still answers as before, and a folder holding only readable markers
-// counts none.
+// counted as passed over, beside the session a readable marker names, and the first of
+// their names in byte order is given, cleaned; ReadSessionOn over the same folder still
+// answers as before, and a folder holding only readable markers counts and names none.
 func TestACountedReadingNamesTheMarkersItPassedOver(t *testing.T) {
 	home := t.TempDir()
 	tab := table(time.Now(), 801, 802)
@@ -463,14 +463,14 @@ func TestACountedReadingNamesTheMarkersItPassedOver(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if s, passed, err := ReadSessionOnCounted(home, hostOf(tab, 801)); s != "a" || passed != 0 || err != nil {
-		t.Fatalf("readable markers only: %q, %d, %v", s, passed, err)
+	if s, passed, err := ReadSessionOnCounted(home, hostOf(tab, 801)); s != "a" || passed != (PassedOver{}) || err != nil {
+		t.Fatalf("readable markers only: %q, %+v, %v", s, passed, err)
 	}
 	if err := os.WriteFile(abcdhome.Path(home, dirLeaf, "c.json"), []byte("not a marker\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if s, passed, err := ReadSessionOnCounted(home, hostOf(tab, 801)); s != "a" || passed != 1 || err != nil {
-		t.Fatalf("one marker that does not parse: %q, %d, %v", s, passed, err)
+	if s, passed, err := ReadSessionOnCounted(home, hostOf(tab, 801)); s != "a" || passed != (PassedOver{Count: 1, First: "c.json"}) || err != nil {
+		t.Fatalf("one marker that does not parse: %q, %+v, %v", s, passed, err)
 	}
 	if err := os.Chmod(abcdhome.Path(home, dirLeaf, "b.json"), 0o666); err != nil {
 		t.Fatal(err)
@@ -482,11 +482,18 @@ func TestACountedReadingNamesTheMarkersItPassedOver(t *testing.T) {
 		t.Fatal(err)
 	}
 	s, passed, err := ReadSessionOnCounted(home, hostOf(tab, 802))
-	if s != "" || passed != 3 || err != nil {
-		t.Fatalf("three passed over, the host's own among them: %q, %d, %v", s, passed, err)
+	if s != "" || passed != (PassedOver{Count: 3, First: "b.json"}) || err != nil {
+		t.Fatalf("three passed over, the host's own among them: %q, %+v, %v", s, passed, err)
 	}
 	if s, err := ReadSessionOn(home, hostOf(tab, 802)); s != "" || err != nil {
 		t.Fatalf("ReadSessionOn over the same folder: %q, %v", s, err)
+	}
+	// A name carrying an escape sequence is given cleaned.
+	if err := os.WriteFile(abcdhome.Path(home, dirLeaf, "a\x1b[31m.json"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, passed, err := ReadSessionOnCounted(home, hostOf(tab, 802)); err != nil || passed.Count != 4 || strings.ContainsRune(passed.First, 0x1b) || !strings.HasPrefix(passed.First, "a") {
+		t.Fatalf("a name with an escape sequence: %+v, %v", passed, err)
 	}
 }
 

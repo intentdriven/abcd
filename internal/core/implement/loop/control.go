@@ -185,8 +185,9 @@ func procOf(tab sessionname.Table, pid int) (sessionname.Host, bool) {
 // the host process this call runs under as the run's live driver, and refuses at
 // exit 3 while another driver's process is alive (iss-2611022247128872). One gone
 // is replaced, with an entry in the run's record, and so, for a drive's claim, is the
-// process the drive's terminal runs under where only shells run beneath it besides the
-// drive (startedUnder). A table that cannot be read claims nothing and refuses nothing: a step is never stopped by the machine's
+// process the drive's shell runs under where only shells run beneath it besides the
+// drive, what it runs under and what it started (startedUnder). A table that cannot be
+// read claims nothing and refuses nothing: a step is never stopped by the machine's
 // process listing. A walk that names no host is a loop its session left behind
 // (iss-2611022247128872): it claims nothing, and backs off from a live driver.
 // Under a stop it claims nothing either: the stop is settled by the driver the run's
@@ -306,12 +307,16 @@ func claimDriverMade(repoRoot, runID string, o Options, overHalted bool) (made c
 			over := alive && overHalted && c.Stop != nil && c.Stop.HaltedAt != nil && !d.At.After(*c.Stop.HaltedAt)
 			terminal, kept := false, terminalKept{}
 			if alive && !over && hostErr == nil && o.takesFromTerminal(*d) {
-				// What runs beneath the terminal is judged as it stands under the lock:
-				// a step started while this drive waited for the lock is what is looked for.
+				// What runs beneath the recorded driver is judged as it stands under the
+				// lock: a step started while this drive waited for the lock is what is
+				// looked for.
 				if fresh, err := readProcs(); err != nil {
-					kept.why = "the process table could not be read again under the run's lock, so what runs beneath that process cannot be told"
+					kept = terminalKept{
+						why:    "the process table could not be read again under the run's lock, so what runs beneath that process cannot be told",
+						remedy: "nothing to do: this drive reads the process table again at its next look",
+					}
 				} else if alive = fresh.Alive(d.host()); alive {
-					terminal, kept = o.startedUnder(fresh, *d, st.RunID)
+					terminal, kept = o.startedUnder(fresh, *d)
 				}
 			}
 			if alive && !over && !terminal {
@@ -334,7 +339,7 @@ func claimDriverMade(repoRoot, runID string, o Options, overHalted bool) (made c
 			case over:
 				said = fmt.Sprintf("a stop halted the run, so its idle driver %s gave way", driverName(*d))
 			case terminal:
-				said = fmt.Sprintf("the recorded driver %s is the process this drive's terminal runs under, and only shells run beneath it besides this drive", driverName(*d))
+				said = fmt.Sprintf("the recorded driver %s is the process this drive's shell runs under, and only shells run beneath it besides this drive", driverName(*d))
 			}
 			st.Record = append(st.Record, Entry{At: now, Stage: StageDriver,
 				Note: fmt.Sprintf("%s; %s took the run", said, driverName(LiveDriver{Session: session, PID: here.PID}))})
@@ -366,7 +371,7 @@ func (o Options) takesFromTerminal(d LiveDriver) bool {
 }
 
 // startedUnder reports whether d, the run's live recorded driver, is the process this
-// drive's terminal runs under, with nothing but shells beneath it besides this drive
+// drive's shell runs under, with nothing but shells beneath it besides this drive
 // (iss-2611140902531015). A take-over run from a plain terminal records, through
 // driverOf with no session above it, the host walk's answer: the nearest process above it
 // that is not a shell or abcd, which lives as long as the drive does. tab is the table read
@@ -378,16 +383,30 @@ func (o Options) takesFromTerminal(d LiveDriver) bool {
 // file in the markers' folder was passed over unread (ReadSessionOnCounted); the walk's
 // answer is d (the same process id and a start time agreeing within each reading's slack;
 // the caller has already found d alive in tab, so this is the comparison Alive made, kept
-// so the answer stands without the caller's); and every live process beneath d, other than
-// this process, its ancestors and its descendants, is a shell (sessionname.IsShell).
+// so the answer stands without the caller's); and every live process beneath d is a shell
+// (sessionname.IsShell), leaving out this process, the processes it runs under (its
+// ancestors) and the ones it started (its descendants).
 //
 // What it does not establish: that the process is a terminal rather than a host that
-// left no marker and has nothing but this drive's shell in its call. Anything unsure
-// answers false, so the drive contends: no home, a marker passed over, a walk cut short or
-// that names no host, a process the table does not hold. kept, where it is set, says what
-// made the drive contend for the reader to act on: the process beneath d that is not a
-// shell, or the markers passed over, with the way on.
-func (o Options) startedUnder(tab sessionname.Table, d LiveDriver, runID string) (took bool, kept terminalKept) {
+// left no marker and has no other process beneath it. An agent a host runs inside its own
+// process is not in the table, so such a host at work reads as a terminal at rest.
+//
+// What it waits on that a person may not expect: a process beside the drive under the
+// same shell keeps it waiting for as long as that process lives, so a drive whose output
+// is piped to another program, or a long-lived helper under the same terminal, keeps the
+// drive from taking the run. What it does not see: a step whose shell ended after it
+// claimed is re-parented away from d and is no longer beneath it in the table.
+//
+// Anything unsure answers false, so the drive contends: no home, a marker passed over, a
+// walk cut short or that names no host, a process the table does not hold. kept, where it
+// is set, says what made the drive contend for the reader to act on, with the way on the
+// code accepts: for a process beneath d, ending that process (the drive's next look takes
+// the run where nothing else keeps it), or ending d itself by closing the terminal the run
+// was taken over from, after which any drive replaces it as a gone driver; for a marker
+// passed over, removing or repairing the file, which nothing else prunes. A take-over by
+// `abcd implement resume --take` is no way on: it claims through claimDriver, where a live
+// driver gives way only to a halted run's take-over, and this drive's driver is live.
+func (o Options) startedUnder(tab sessionname.Table, d LiveDriver) (took bool, kept terminalKept) {
 	if !o.takesFromTerminal(d) {
 		return false, kept
 	}
@@ -400,18 +419,18 @@ func (o Options) startedUnder(tab sessionname.Table, d LiveDriver, runID string)
 	if !walk.Finished {
 		return false, kept
 	}
-	takeOver := "take the run over with `abcd implement resume --take " + termsafe.Sanitize(runID) +
-		"` from a second terminal and close that terminal, so the drive replaces its gone driver"
 	for _, h := range walk.Hosts {
 		s, passed, err := occupancy.ReadSessionOnCounted(home, h)
 		if err != nil || s != "" {
 			return false, kept
 		}
-		if passed > 0 {
+		if passed.Count > 0 {
+			folder := abcdhome.Display("occupancy")
 			return false, terminalKept{
 				why: fmt.Sprintf("%d file(s) in %s could not be read as session markers, so whether a session runs above this drive cannot be told",
-					passed, abcdhome.Display("occupancy")),
-				remedy: "back off, or " + takeOver,
+					passed.Count, folder),
+				remedy: fmt.Sprintf("remove or repair each file in %s that cannot be read as a session marker, %s first; this drive reads them again at its next look",
+					folder, bounded(passed.First, maxProcNameShown)),
 			}
 		}
 	}
@@ -420,18 +439,31 @@ func (o Options) startedUnder(tab sessionname.Table, d LiveDriver, runID string)
 		return false, kept
 	}
 	if p, ok := besideTheDrive(tab, d.PID, self, walk); ok {
+		name := bounded(p.Name, maxProcNameShown)
 		return false, terminalKept{
 			why: fmt.Sprintf("process %d (%s) runs beneath it besides this drive, so this drive does not take the run from it",
-				p.PID, bounded(p.Name, maxProcNameShown)),
-			remedy: "end that process, or start the drive from a terminal with nothing else running; or " + takeOver,
+				p.PID, name),
+			remedy: fmt.Sprintf("end process %d (%s), and this drive's next look takes the run where nothing else runs beneath it; or close the terminal the run was taken over from, so that %s (%s) ends, and start the drive from another terminal",
+				p.PID, name, driverName(d), bounded(procName(tab, d.PID), maxProcNameShown)),
 		}
 	}
 	return true, kept
 }
 
-// terminalKept is what kept a drive from taking a run from its terminal (startedUnder),
-// for the contention to say: why, added to its reason, and the way on, in place of its
-// remedy. Either may be empty.
+// procName is the name tab gives process pid, "" where it holds none.
+func procName(tab sessionname.Table, pid int) string {
+	for _, p := range tab.Procs {
+		if p.PID == pid {
+			return p.Name
+		}
+	}
+	return ""
+}
+
+// terminalKept is what kept a drive from taking a run from the process its shell runs
+// under (startedUnder), or what it could not read under the run's lock, for the contention
+// to say: why, added to its reason, and the way on, in place of its remedy. Either may be
+// empty.
 type terminalKept struct {
 	why, remedy string
 }
@@ -667,8 +699,8 @@ var claimPassing = claimInPassing
 // let-go is a line there too, and where it named none it adds none, so a run saved this
 // way move after move does not grow its record. A let-go that fails leaves the claim,
 // which then stands until this session ends, as any driver's does. A claim in passing never
-// takes a run from the process a drive's terminal runs under (startedUnder): the drive does
-// not step the run, so the claim that terminal holds is left as it stands.
+// takes a run from the process a drive's shell runs under (startedUnder): the drive does
+// not step the run, so the claim that process holds is left as it stands.
 func claimInPassing(repoRoot, runID string, o Options) (letGo func(), err error) {
 	letGo = func() {}
 	if stated, err := statedAt(repoRoot, runID); err != nil || stated == SchemaVersion {

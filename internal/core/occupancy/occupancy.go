@@ -40,6 +40,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/localtier"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // dirLeaf is the markers' folder under abcd's home.
@@ -98,43 +99,69 @@ func readAll(dir *os.Root, home string) ([]found, error) {
 	return out, err
 }
 
-// readAllCounted is readAll, saying also how many files named as markers (ending in
-// .json) it passed over: not a regular file, failing a guard or its read, or not
-// parsing as the marker its name says.
-func readAllCounted(dir *os.Root, home string) ([]found, int, error) {
+// PassedOver is what a counted reading of the markers' folder passed over: how many
+// files named as markers (ending in .json) it could not read as one, and the first of
+// their names in byte order, cleaned for a terminal and bounded, "" where none was.
+type PassedOver struct {
+	Count int
+	First string
+}
+
+// maxPassedName bounds the name PassedOver gives.
+const maxPassedName = 96
+
+// readAllCounted is readAll, saying also what it passed over among the files named as
+// markers (ending in .json): one that is not a regular file, fails a guard or its read,
+// or does not parse as the marker its name says.
+func readAllCounted(dir *os.Root, home string) ([]found, PassedOver, error) {
 	f, err := dir.Open(".")
 	if err != nil {
-		return nil, 0, err
+		return nil, PassedOver{}, err
 	}
 	entries, err := f.ReadDir(-1)
 	f.Close()
 	if err != nil {
-		return nil, 0, err
+		return nil, PassedOver{}, err
 	}
 	var out []found
-	passed := 0
+	count, first := 0, ""
+	pass := func(leaf string) {
+		if count++; count == 1 || leaf < first {
+			first = leaf
+		}
+	}
 	for _, e := range entries {
 		leaf := e.Name()
 		if !strings.HasSuffix(leaf, ".json") {
 			continue
 		}
 		if !e.Type().IsRegular() {
-			passed++
+			pass(leaf)
 			continue
 		}
 		raw, refusal, err := fsutil.ReadHomeDeclarationDenyingIn(dir, home, abcdhome.Rel(dirLeaf, leaf), maxMarkerBytes, 0)
 		if err != nil || refusal != fsutil.DeclarationOK {
-			passed++
+			pass(leaf)
 			continue
 		}
 		var m marker
 		if json.Unmarshal(raw, &m) != nil || m.SessionID+".json" != leaf {
-			passed++
+			pass(leaf)
 			continue
 		}
 		out = append(out, found{leaf, raw, m})
 	}
-	return out, passed, nil
+	return out, PassedOver{Count: count, First: cleanName(first)}, nil
+}
+
+// cleanName is a file's name as a terminal may show it: control and escape sequences
+// stripped, and bounded to maxPassedName runes.
+func cleanName(leaf string) string {
+	s := termsafe.Sanitize(leaf)
+	if r := []rune(s); len(r) > maxPassedName {
+		s = string(r[:maxPassedName]) + "…"
+	}
+	return s
 }
 
 // removeIfUnchanged removes f's file only when it still holds the bytes f was
@@ -206,27 +233,28 @@ func ReadSessionOn(home string, host sessionname.Host) (string, error) {
 	return s, err
 }
 
-// ReadSessionOnCounted is ReadSessionOn, saying also how many marker files it passed
-// over: a file in the markers' folder named as a marker that is not a regular file,
-// fails a guard or its read, or does not parse as the marker its name says. Any of them
-// may be the marker of the session on host, so a caller that must not take a marker it
-// could not read for no session takes a count above zero as unsure. The count is of the
-// whole folder, the session found or not.
-func ReadSessionOnCounted(home string, host sessionname.Host) (session string, passed int, err error) {
+// ReadSessionOnCounted is ReadSessionOn, saying also what marker files it passed over: a
+// file in the markers' folder named as a marker that is not a regular file, fails a guard
+// or its read, or does not parse as the marker its name says. Any of them may be the
+// marker of the session on host, so a caller that must not take a marker it could not
+// read for no session takes a count above zero as unsure. The count is of the whole
+// folder, the session found or not, and First names one of them for the person to remove
+// or repair.
+func ReadSessionOnCounted(home string, host sessionname.Host) (session string, passed PassedOver, err error) {
 	cannot := func(err error) error {
 		return fmt.Errorf("the session markers in %s cannot be read: %w", abcdhome.Display(dirLeaf), err)
 	}
 	dir, err := open(home, false)
 	if err != nil {
-		return "", 0, cannot(err)
+		return "", PassedOver{}, cannot(err)
 	}
 	if dir == nil {
-		return "", 0, nil
+		return "", PassedOver{}, nil
 	}
 	defer dir.Close()
 	all, passed, err := readAllCounted(dir, home)
 	if err != nil {
-		return "", 0, cannot(err)
+		return "", PassedOver{}, cannot(err)
 	}
 	for _, f := range all {
 		if sessionname.SameHost(f.m.host(), host) {
