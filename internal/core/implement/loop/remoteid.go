@@ -469,7 +469,9 @@ func includePath(env *gitEnv, repoRoot, salt string, r scopedSetting, b readBoun
 	// What git says of a path it cannot resolve repeats the path, so only
 	// its status is named, and a read that failed otherwise names the path
 	// as the path.
-	a, err := env.readBy(b, repoRoot, what, 4096, "config", "--file", os.DevNull, "--type=path", "--default", r.value, "--get", "abcd.include")
+	// The value is the option's own word (--default=<value>), so a value that
+	// starts with a dash is never read as an option, by git or by abcd.
+	a, err := env.readBy(b, repoRoot, what, 4096, "config", "--file", os.DevNull, "--type=path", "--default="+r.value, "--get", "abcd.include")
 	if err != nil {
 		var rf *readFailure
 		if errors.As(err, &rf) && r.value != "" {

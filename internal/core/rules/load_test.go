@@ -150,9 +150,10 @@ func TestLoadDomainStaysQuietOnOrdinaryLoadWords(t *testing.T) {
 }
 
 // TestLoadDomainIdiomOwnsTheWholeGroup is the experiment behind the rule. A
-// real child spawns two real grandchildren (a uniquely named sleep, so the
-// test burns no CPU and its name probe can match nothing else). Recording the
-// child's pid and killing that pid alone — the incident's handle — leaves
+// real child spawns two real grandchildren (this test binary under a unique
+// name, sleeping, so the test burns no CPU and its name probe can match
+// nothing else). Recording the child's pid and killing that pid alone — the
+// incident's handle — leaves
 // both grandchildren running. The prescribed idiom runs the rule's own launch
 // text verbatim, keeps the group's handle in a file, and stops the load from
 // a SECOND shell, as an agent does, since its shell state does not survive
@@ -160,6 +161,33 @@ func TestLoadDomainStaysQuietOnOrdinaryLoadWords(t *testing.T) {
 // and afterwards "nothing" is established by the two process queries the rule
 // names, never by a list.
 func TestLoadDomainIdiomOwnsTheWholeGroup(t *testing.T) {
+	loadIdiomOwnsTheWholeGroup(t)
+}
+
+// TestLoadDomainIdiomNeedsNoSystemSleep runs the whole idiom test with a
+// multi-call sleep first on PATH: one program that picks its tool from the
+// name it runs under, as coreutils is on ubuntu-26.04. A burner that is the
+// system's sleep under another name exits at once there, and the idiom test
+// failed on that runner with exit status 4 (iss-2611141634129814); this keeps
+// the test from coming to depend on the system's sleep again. The script's own
+// `sleep 0.05` runs under its own name and still sleeps.
+func TestLoadDomainIdiomNeedsNoSystemSleep(t *testing.T) {
+	if _, err := os.Stat("/bin/sleep"); err != nil {
+		t.Skipf("no /bin/sleep for the multi-call sleep to run as sleep: %v", err)
+	}
+	bin := t.TempDir()
+	multiCall := `#!/bin/sh
+case "$(basename "$0")" in sleep) exec /bin/sleep "$@";; *) echo "unknown tool" >&2; exit 1;; esac
+`
+	if err := os.WriteFile(filepath.Join(bin, "sleep"), []byte(multiCall), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	loadIdiomOwnsTheWholeGroup(t)
+}
+
+func loadIdiomOwnsTheWholeGroup(t *testing.T) {
+	t.Helper()
 	bash, err := exec.LookPath("bash")
 	if err != nil {
 		t.Skip("bash not on PATH")
@@ -167,24 +195,28 @@ func TestLoadDomainIdiomOwnsTheWholeGroup(t *testing.T) {
 	if _, err := exec.LookPath("pgrep"); err != nil {
 		t.Skip("pgrep not on PATH")
 	}
-	sleep, err := exec.LookPath("sleep")
+	// The burner is this test binary, which TestMain turns into a sleeper
+	// when loadBurnerEnv is set, never the system's sleep: where coreutils is
+	// one multi-call binary, the system's sleep run under another name is not
+	// sleep and exits at once (iss-2611141634129814).
+	self, err := os.Executable()
 	if err != nil {
-		t.Skip("sleep not on PATH")
+		t.Fatalf("finding the test binary to run as the burner: %v", err)
 	}
 
 	dir := t.TempDir()
 	name := burnerName(t)
 	burnerPath := filepath.Join(dir, name)
-	// A symlink, not a copy: a copied platform binary is refused by the
-	// macOS kernel, while an exec through a symlink takes the link's name as
-	// the process name that pgrep -x matches.
-	if err := os.Symlink(sleep, burnerPath); err != nil {
+	// A symlink, not a copy: an exec through a symlink takes the link's name
+	// as the process name that pgrep -x matches, on Linux and on macOS, and
+	// leaves the binary's code signature where macOS checks it.
+	if err := os.Symlink(self, burnerPath); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { killBurners(t, name) })
 
 	// burner is the name the rule's launch text calls: each one execs the
-	// uniquely named sleep, detached from the script's output so the script
+	// uniquely named burner, detached from the script's output so the script
 	// returns while the load runs on.
 	burner := `burner() { exec "$B" 300 </dev/null >/dev/null 2>&1; }`
 	// detach points a launching script's own descriptors away from the
@@ -281,10 +313,10 @@ func burnerName(t *testing.T) string {
 	}
 	// Under the 15-character process-name limit Linux keeps, so pgrep -x
 	// matches the whole name on every host.
-	return "abcdburn" + hex.EncodeToString(b)[:6]
+	return loadBurnerPrefix + hex.EncodeToString(b)[:6]
 }
 
-var burnerNameRe = regexp.MustCompile(`^abcdburn[0-9a-f]{6}$`)
+var burnerNameRe = regexp.MustCompile(`^` + loadBurnerPrefix + `[0-9a-f]{6}$`)
 
 // killBurners is the test's safety net: it signals only processes whose name
 // is exactly this test's random burner name, and refuses any other operand.
@@ -299,7 +331,10 @@ func killBurners(t *testing.T, name string) {
 func runLoadScript(t *testing.T, bash, script, burner, name, dir string) string {
 	t.Helper()
 	cmd := exec.Command(bash, "-c", script)
-	cmd.Env = append(os.Environ(), "B="+burner, "N="+name, "D="+dir)
+	// loadBurnerEnv goes to this script's environment alone, never into the
+	// test process's own, so the burner the script execs sleeps and no
+	// process the tests start outside the script sees it.
+	cmd.Env = append(os.Environ(), "B="+burner, "N="+name, "D="+dir, loadBurnerEnv+"=1")
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	done := make(chan struct{})
