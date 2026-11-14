@@ -6,8 +6,8 @@ package sweep
 
 import "strings"
 
-// RowKind is what a row is about. This step renders worktrees, strays and the
-// embargo store; the branch, remote-branch, reservation and inbox kinds join
+// RowKind is what a row is about: worktrees, strays and the embargo store,
+// local branches and branches on origin; the reservation and inbox kinds join
 // them as the steps that judge those items land.
 type RowKind string
 
@@ -20,11 +20,16 @@ const (
 	RowStray RowKind = "stray"
 	// RowEmbargoStore is abcd's embargo store, never read, saved or removed.
 	RowEmbargoStore RowKind = "embargo-store"
+	// RowBranch is a local branch (branches.go).
+	RowBranch RowKind = "branch"
+	// RowRemoteBranch is a branch on origin, as this checkout last fetched it
+	// (remote.go).
+	RowRemoteBranch RowKind = "remote-branch"
 )
 
-// Action is what `--apply` does with a row's item. This step judges
-// worktrees, so it renders remove, save-patch and keep; delete, dispatch and
-// promote join them with the kinds they act on.
+// Action is what `--apply` does with a row's item: remove, save-patch and keep
+// for worktrees, delete for branches; dispatch and promote join them with the
+// kinds they act on.
 type Action string
 
 const (
@@ -34,6 +39,10 @@ const (
 	// ActionSavePatch is a dirty worktree nothing holds: its changes are saved
 	// as a patch and the worktree is kept.
 	ActionSavePatch Action = "save-patch"
+	// ActionDelete is a merged branch nothing holds: a local one deleted with
+	// `git branch -d`, a branch on origin deleted under a lease on the tip
+	// that was judged.
+	ActionDelete Action = "delete"
 	// ActionKeep leaves the item as it is, its reason saying why.
 	ActionKeep Action = "keep"
 )
@@ -47,6 +56,8 @@ const (
 	// OutcomeSaved is a dirty worktree whose changes were saved as a patch;
 	// the worktree itself is kept.
 	OutcomeSaved Outcome = "saved"
+	// OutcomeDeleted is a branch the delete took.
+	OutcomeDeleted Outcome = "deleted"
 	// OutcomeKept is an item left as it was, its reason saying why: one the
 	// dry run kept, or one a check at the moment of acting kept.
 	OutcomeKept Outcome = "kept"
@@ -67,6 +78,21 @@ const (
 	// KindCwd the sweep's own working directory.
 	KindLoop EvidenceKind = "loop"
 	KindCwd  EvidenceKind = "cwd"
+	// KindProtected is a branch on the never-delete list: the default branch,
+	// a release branch, a reservation or a status branch.
+	KindProtected EvidenceKind = "protected"
+	// KindUpstream is a local branch's standing against its upstream.
+	KindUpstream EvidenceKind = "upstream"
+	// KindPullRequest is the forge's word on a branch's pull requests: an
+	// open one proves it held, and a forge that could not be asked is a hint.
+	KindPullRequest EvidenceKind = "pull-request"
+	// KindDeleteProof is a check of the shell guard's delete proof that a
+	// branch fails: one of abcd's coordination branches, or one a worktree
+	// has checked out or a stopped rebase or bisect holds.
+	KindDeleteProof EvidenceKind = "delete-proof"
+	// KindRemote is origin's own answer at the last check before a delete:
+	// its default branch and the branch's tip there.
+	KindRemote EvidenceKind = "remote"
 )
 
 // Row is one item a sweep judged. Every string in it is display-ready: a path
