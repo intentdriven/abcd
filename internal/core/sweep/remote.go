@@ -494,7 +494,9 @@ func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail err
 	case !strings.HasPrefix(b.ref, "refs/heads/") || neverDeleted(b.name, head) != "" || !gitutil.IsFullSHA(b.tip):
 		return held("it is not a branch the sweep deletes")
 	}
-	prs, err := rj.forge("pr", "list", "--head", b.name, "--state", "all", "--limit", strconv.Itoa(proofPRLimit),
+	// The branch is passed as one argument, --head=<name>, so a name is never
+	// read as a flag of its own.
+	prs, err := rj.forge("pr", "list", "--head="+b.name, "--state", "all", "--limit", strconv.Itoa(proofPRLimit),
 		"--json", "number,headRefName,headRefOid,baseRefName,isCrossRepository,state")
 	if err != nil {
 		return held("the forge could not be asked again whether a pull request is open on it (" + answerText(err) + ")")
