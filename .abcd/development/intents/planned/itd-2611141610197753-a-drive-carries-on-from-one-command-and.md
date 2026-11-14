@@ -18,11 +18,11 @@ production_mode: hand-written
 
 ## Press Release
 
-> **A drive carries on from one command, and says in one line when it cannot.** A person starts a drive with `abcd drain --drive`, and that is the only command they type for it. After an interrupt, a closed terminal, a rebuild or a reboot, the same command carries on from where the drive stopped. A lane that cannot go on is set aside with its reason, and the drive opens the next one. While the drive runs, one line says whether it is working, waiting, stalled or stopped, since when, on what, and the one thing a person can do, or that there is nothing to do. `abcd implement status` and the board show the same line, so the answer to "is it working?" is the same wherever a person looks.
+> **A drive carries on from one command, and says in one line when it cannot.** A person starts a drive with `abcd drain --drive`. After an interrupt, with or without a rebuild of abcd in between, the same command carries on with the lanes its drain lists, and nothing else is typed for them. A lane the drive cannot take is set aside with its reason, and the drive opens the next one. While the drive runs, one line says whether it is working, waiting, stalled or stopped, since when, on what, and the one thing a person can do, or that there is nothing to do. `abcd implement status` and the board show the same line, so the answer to "is it working?" is the same wherever a person looks.
 
 > "I pressed Ctrl-C, rebuilt, and typed the same command the next morning. It took up the three lanes it had left and said so. I did not have to learn what a take-over is." — Iris, a product thinker (they/them)
 
-> "When I am asked whether the drive is working, I run the status command and read one line: stalled since 16:40 on a run another session holds. I no longer read the log for the last line that is not a wait." — Nia, a technical facilitator (they/them)
+> "When I am asked whether the drive is working, I run the status command and read one line: stalled since 16:40 on an outage, the runner has not started. I no longer read the log for the last line that is not a wait." — Nia, a technical facilitator (they/them)
 
 ## Why This Matters
 
@@ -51,7 +51,8 @@ The lab's two prototypes changed 121 lines between them, added no command, no fl
 ### What a person sees
 
 - When something cannot go on: that the lane was set aside, why, and that the drive went on.
-- When nothing can go on: `stalled`, since when, on what, and one act.
+- When the drive itself waits on something with no named end, an outage or a limit that names no reset, for longer than the bound: `stalled`, since when, on what, and one act or that it needs a look.
+- When every lane left is set aside: the drive ends and the line reads `stopped`. What the one act is then is open question 5.
 - Where output is not a terminal: a `state:` line each time the state changes.
 
 ### What a person never has to know
@@ -63,17 +64,17 @@ The lab's two prototypes changed 121 lines between them, added no command, no fl
 
 ## Mechanism
 
-We expect a person to bring a drive back with the start command alone, because every state the lab found a start stopping on is one the drive can read for itself: a recorded driver that is the drive's own terminal, a mark its own earlier interrupt left, and a lane that has waited a bounded time on something the drive cannot end. Shown wrong if, after this ships, a drive that a person interrupted, or whose terminal closed, needs any command but `abcd drain --drive` to take up the lanes its drain lists, or if one lane's wait still stops other lanes opening.
+We expect a person to bring a drive back with the start command alone, because every state the lab found a start stopping on is one the drive can read for itself: a recorded driver that is the drive's own terminal, a mark its own earlier interrupt left, and a lane that has waited a bounded time on something the drive cannot end. Shown wrong if, after this ships, a drive that a person interrupted needs any command but `abcd drain --drive` to take up the lanes its drain lists, or if one lane's wait still stops other lanes opening.
 
 We expect a person to stop asking whether the drive is working, because the loop already knows which wait it is in, since when, until when and the refusal's own remedy, and hands them to the surfaces as one value. Shown wrong if people still open the log, or ask a session to read it, to learn the drive's state.
 
 ## Scope Conditions
 
-- The lab's own test of the whole idea: it is shown wrong by any new command, any flag a person must remember, or any stored state a person must clear. The one new stored thing, the drive's state, is overwritten by the next drive and cleared by nobody. <!-- cond: cond-2611141617190715 -->
+- The lab's own test of the whole idea: it is shown wrong by any new command, any flag a person must remember, or any stored state a person must clear. The one new stored thing, the drive's state, is overwritten by the next drive and cleared by nobody. A lane handed back as stuck leaves a mark, a worktree and a branch that a person clears by command, so open questions 3 and 4 each have an answer this condition counts against the design. <!-- cond: cond-2611141617190715 -->
 - One drive per working copy on one machine, as the drain's lock already enforces. The state line is stored in the checkout the drive runs from, and a status surface run in that checkout shows it. Which other checkouts and sessions show it is the status line's question (itd-2611141507299828). <!-- cond: cond-2611141617198456 -->
 - Run files this build can read. The lab tried one earlier schema version (25); a file that states a version above this build's is refused by the read before any claim, as today. <!-- cond: cond-2611141617198101 -->
 - A process table the drive can read. Telling the drive's own terminal from another live session reads process ancestry and the session markers; where it cannot be read the drive leaves the run, as today, and the lane is set aside at the bound. <!-- cond: cond-2611141617194898 -->
-- A person's own stop is outside what a start lifts or takes over (decision 1). The single command covers interrupts, closed terminals, kills, rebuilds and reboots. <!-- cond: cond-2611141617192337 -->
+- A person's own stop is outside what a start lifts or takes over (decision 1). The single command is claimed for what the lab probed: an interrupt by signal, settled or not, and a run file at an earlier schema version written by the lab's test, which stands in for a rebuild. A closed terminal, a kill, a reboot and a file left by a real older build were not probed, and nothing here is evidence for them until a test or the live proof covers each. <!-- cond: cond-2611141617192337 -->
 - The lab measured on a fixture clock with a stand-in process table and a stand-in landing stage (F-3, F-5). No figure here comes from a live drive, and the live proof of the drive itself is still open under itd-2610222215485265. <!-- cond: cond-2611141617198387 -->
 
 ## What's Out of Scope
@@ -95,28 +96,52 @@ We expect a person to stop asking whether the drive is working, because the loop
   - Evidence: lab-261114145658-67e1f9b, F-4, F-8 and F-15.
 - **Given** a run whose recorded driver is alive and is not the starting drive's own terminal (another terminal, or a host session), **when** the drive starts, **then** it does not take the run, says who holds it, and goes on to other work. **Given** a run a person's own stop halted, **then** the drive does not take it either, whether or not the stop has been lifted, and names the take-over that is the person's to type (decision 1).
   - Evidence: lab-261114145658-67e1f9b, F-8 (the three refutation fixtures) and F-9.
-- **Given** a lane whose run the drive cannot claim or take up, or whose wait the stuck bounds do not count, for a reason the drive cannot end, **when** that has lasted the stuck bound's minutes, **then** the drive says the lane is set aside and why, writes nothing for that lane from then on, opens the next lane, and ends only when every lane left is set aside. The next start tries the lane again (decisions 3, 4 and 5).
+- **Given** a lane whose run the drive cannot claim or take up, or whose wait the stuck bounds do not count, for a reason the drive cannot end, **when** that has lasted the stuck bound's minutes, **then** the drive says the lane is set aside and why, opens the next lane, and ends only when every lane left is set aside (decision 3). What becomes of the lane's reservation waits on open question 1, whether the same drive tries the lane again on open question 2, and what the line gives as the one act when the drive ends on set-aside lanes on open question 5.
   - Evidence: lab-261114145658-67e1f9b, F-5 and F-9.
-- **Given** a step's refusal that names no lane, **when** the loop logs refusals for the stuck check, **then** it is counted as any other refusal of the lane in hand.
-  - Evidence: lab-261114145658-67e1f9b, F-14.
+- **Given** a landing's reservation refusal that names no lane, because the issue's record is in no status folder of the checkout, **when** the drive meets it, **then** the lane no longer holds the drive without bound: it is either counted as any other refusal of that lane and handed back as stuck, or set aside, as open question 4 is answered. A refusal built without a lane that is the machine's and not the lane's (the review set, the configuration, the remote's identity) is not counted against any lane.
+  - Evidence: lab-261114145658-67e1f9b, F-9 and F-14.
 - **Given** a drive in any state, **when** a person looks at its terminal, runs `abcd implement status` or reads the board in the drive's checkout, **then** one line says `working`, `waiting`, `stalled` or `stopped`; since when; on what; and one act or that there is nothing to do; and the three places show the same line, composed once from one stored value (decision 6).
   - Evidence: lab-261114145658-67e1f9b, F-7, F-11 and F-17.
-- **Given** a stored state whose drive ended without writing a last line, **when** a status surface reads it after the time the state itself says it would next be written, **then** the line says `stopped`, not heard from since the time it was last written, and never `working` (decision 6).
+- **Given** a stored state whose drive ended without writing a last line, **when** a status surface reads it, **then** the line says `stopped`, not heard from since the time it was last written, and never `working` (decision 6).
   - Evidence: lab-261114145658-67e1f9b, F-11 and F-17.
-- **Given** a wait with no named end, **when** it has lasted the stuck bound's minutes with no lane moving, **then** the line says `stalled` and its `since` is when anything last moved, whatever reasons the waits gave in between. A wait with a named end is never `stalled` before that end (decision 6).
+- **Given** a wait with no named end, **when** it has lasted the stuck bound's minutes with no lane moving, **then** the line says `stalled` and its `since` is when anything last moved, whatever reasons the waits gave in between. A wait with a named end, which is the pace window's next eligible time or a rate limit's named reset, is never `stalled` before that end. An outage's next try, a look at origin, a limit that names no reset and a look-again time are not ends, so an outage reads `stalled` once it has lasted the bound (decisions 3 and 6).
   - Evidence: lab-261114145658-67e1f9b, F-11.
-- **Given** lanes handed back one after another as stuck at the same stage and check, **when** the count reaches the stuck bound's refusals, **then** the line says `stalled` and names the reason, instead of `working`, and the drive goes on opening lanes (decision 6).
+- **Given** lanes handed back one after another for the same reason, **when** the count reaches the bound, **then** the line says `stalled` and names the reason, instead of `working`. The count, and whether the drive then goes on opening lanes or pauses, wait on open question 3; this criterion cannot be written more exactly until it is answered.
   - Evidence: lab-261114145658-67e1f9b, F-11 (events 1 and 2 of the incident note).
 - **Given** an interrupt, **when** the drive ends, **then** every lane it held either carries the stop's mark or keeps its reservation, whatever schema version the run's file states.
   - Evidence: lab-261114145658-67e1f9b, F-16.
 
 ## Open Questions
 
-_None left open: the product thinker asked for this intent to be planned without them, and each design question the lab raised for this part (DQ-1, DQ-2, DQ-3, DQ-4, DQ-5 and DQ-7 of the lab's brief) is answered under Decisions for their review._
+Each question below is the product thinker's to decide, and none is answered here. Questions 1 to 3 were first answered by the run and were withdrawn after the design review of 2026-11-14, because each answer differs in what a person sees or must do and no evidence settles it. Questions 1 to 3 are quoted as the lab met them, with the answers it can defend and what each costs. Questions 4 and 5 came out of that review.
+
+1. **DQ-4. "What becomes of a set-aside lane's reservation?"** (F-9)
+   - Left to lapse (the prototype): no push. Cost: the issue is hidden from every other session for up to two hours. Amendment it needs: itd-2610222215485265's press release says the drive never leaves an issue held while it waits for someone who is not coming, and its mechanism is shown wrong if a drive ends with an issue still reserved and no lane working on it. Both would have to say that a set-aside lane's reservation may stand until its lease lapses.
+   - Released at once with a note: others may take the issue. Cost: a push; the next drive must reserve again and may find it taken, with the lane's branch left behind. Amendment it needs: none to that press release or mechanism. That intent's decision 8, which releases a lane's reservation on a stop, would be extended to a set-aside, and would have to say what happens where the run is recorded as another live session's and the reservation may not be the drive's to release.
+   - Renewed while the drive runs: the lane is safe to resume. Cost: the issue is hidden for as long as the drive lives, which is the complaint of the incident note's event 10. Amendment it needs: the press release sentence and the mechanism's test above would both be reversed for a set-aside lane.
+
+2. **DQ-5. "Does a set-aside lane get another try in the same drive?"** (F-9)
+   - No, the next start tries it (the prototype). Cost: a block that clears in a minute still waits for a restart.
+   - Yes, once the other lanes are done or after a longer wait. Cost: a second timer, and a lane that flaps.
+   - It is handed back as stuck instead. Cost: a tombstone a person must clear before any drain takes the issue again, which is twenty commands for twenty lanes.
+
+   This is the same kind of choice that step 3 of spc-2611051628562376 keeps for the product thinker for a lane still paused when an outage runs out: hand it back as stuck, or leave it for the next drive. Neither record settles the other.
+
+3. **DQ-7, its second and third parts. "What counts as stalled when lanes are handed back one after another, and what does the drive do when it is?"** (F-11)
+   - Stalled after N lanes in a row handed back for one reason. Cost: this rule is the only way the incident note's events 1 and 2 show at all, and N is a guess: the lab measured no count, and the note says that eleven of the twenty stuck lanes fit one cause and eight another, not that they came one after another.
+   - When stalled on repeated hand-backs, keep opening lanes. Cost: agent runs spent on lanes that will fail, and each lane handed back as stuck leaves a mark, a worktree and a branch that a person clears by command, which this intent's first scope condition counts against the design.
+   - When stalled on repeated hand-backs, pause. Cost: a drive that stops itself on a coincidence, and a pause that something has to lift.
+
+4. **"Is a lane whose landing cannot find its record handed back as stuck, or set aside?"** (F-9, F-14)
+   - Counted as any other refusal and handed back as stuck, which is the lab brief's fifth criterion and the first step of its build order. Cost: the lane's finished and passed work is discarded with the hand-back, and the lane leaves a mark, a worktree and a branch that a person clears by command, which this intent's first scope condition counts against the design. The lab did not build this.
+   - Set aside, which is what the lab's prototype did and measured for this lane: set aside at +36m21s under `--until` and at +30m0s without it, both other lanes landed, and nothing was left to clear (F-9). Cost: the lane holds the drive for the bound, an hour under decision 3, where the stuck count would act within three looks; a drain that a host session steps has no set-aside, so the refusal still goes uncounted there (F-14); and questions 1 and 2 then apply to this lane.
+
+5. **"What is the one act when a drive ends because every lane left is set aside?"** (F-9; the lab did not try a second start over a block that still stands)
+   - What is known: the drive ends, the line reads `stopped`, and today's end for passed lanes names `abcd drain --drive` as the way on. A restart tries each set-aside lane again, and where the block still stands it waits the bound again and ends again. The line has room for one act, and no record says what that act is when the same command would only repeat the wait. No answer is proposed here.
 
 ## Decisions
 
-Recorded 2026-11-14 within an autonomous run, on the product thinker's delegation (dcn-2611141613199819). The product thinker asked for this intent to be planned without them and for every design decision the run takes to be recorded for their review. Each question is quoted as the lab met it. Each answer is the one the lab's evidence best supports and that changes least for a person. Each is decided by the run for owner review and is open to reversal at that review.
+Recorded 2026-11-14 within an autonomous run, on the product thinker's delegation (dcn-2611141613199819). The product thinker asked for this intent to be planned without them and for every design decision the run takes to be recorded for their review. Each question is quoted as the lab met it. Each answer is the one the lab's evidence best supports and that changes least for a person. Each is decided by the run for owner review and is open to reversal at that review. A design review on the same day found three of the six answers were not the run's to give: decisions 4 and 5 and part of decision 6 are withdrawn and are open questions 1 to 3. Decisions 1, 2 and 3 and the rest of decision 6 remain.
 
 1. **A person's own stop stays the person's to take over.**
    - Question (DQ-1): "After a person's own stop is lifted, does the next start take up the runs it halted?"
@@ -139,35 +164,24 @@ Recorded 2026-11-14 within an autonomous run, on the product thinker's delegatio
    - Evidence: F-9 and the probe p2-set-aside, where the lane is set aside at +30m0s and +36m21s and both other lanes then land. The mechanism is the prototype's and only the figure differs. The lab measured nothing that depends on 30 against 60 except the idle time. This departs from the prototype's figure, which the lab itself marks as the product thinker's to decide.
    - Reversed if: an hour idle per blocked lane is seen to cost a drive more than a second figure costs a reader.
    - Decided by the run for owner review.
-4. **A set-aside lane's reservation is left as it stands.**
-   - Question (DQ-4): "What becomes of a set-aside lane's reservation?"
-   - Answer: the drive neither releases nor renews it, which is what the prototype does. From the set-aside to the drive's end the drive writes nothing for the lane.
-   - Alternatives and what each costs: released at once with a note, which lets others take the issue, costs a push, and the next drive must reserve again and may find it taken with the lane's branch left behind. Renewed while the drive runs, which keeps the lane safe to resume and hides the issue for as long as the drive lives. The answer taken hides the issue from other sessions until the lease lapses, up to two hours, where nobody else renews it.
-   - Evidence: F-9 and the probe p2-set-aside. A lane is set aside where the drive could not claim or take up its run, so the reservation is not known to be the drive's to release: in the fixture of F-3 the run is recorded as another live driver's. A lane the drive drives and that keeps refusing is handed back as stuck and released, as today, once a refusal that names no lane is counted.
-   - Reversed if: issues are seen to wait on a set-aside lane's reservation. The release is then built for the lanes the drive itself reserved, and tested.
-   - Decided by the run for owner review.
-5. **A set-aside lane is tried again by the next start, not by the same drive.**
-   - Question (DQ-5): "Does a set-aside lane get another try in the same drive?"
-   - Answer: no. The next start tries it, which is what the prototype does.
-   - Alternatives and what each costs: yes, once the other lanes are done or after a longer wait, which adds a second timer and a lane that can flap. Handed back as stuck instead, which leaves a mark a person must clear before any drain takes the issue again. The answer taken means a block that clears a minute after the set-aside still waits for a restart.
-   - Evidence: F-9 and the probe p2-set-aside: a later drive takes the lane up again, and nothing is left for a person to clear. The lab did not try a block that clears just after the set-aside.
-   - Reversed if: set-aside lanes are seen to clear soon after and sit until a restart.
-   - Decided by the run for owner review.
-6. **The state is one small file in the local tier, stalled is one bound of minutes or one count of hand-backs, and a stalled drive keeps going.**
-   - Question (DQ-7): "Where is the state line kept, what counts as stalled, and what does the drive do when it is?"
-   - Answer, where it is kept: in a file in the checkout's local tier beside the drive's log, written whole by the drive each time a field changes and at each look. It carries the time it was written and the time by which it will next be written, so a reader tells a drive that ended without a last line by the clock alone and shows it as `stopped`. It is not part of a run's state, and nobody clears it.
-   - Answer, what counts as stalled: a wait with no named end that has lasted the stuck bound's minutes with no lane moving, or lanes handed back as stuck in a row at the same stage and check, as many as the stuck bound's refusals (`pace.stuck_refusals`, 3 as bundled).
-   - Answer, what the drive does: it goes on opening lanes, as it does today, and the line says `stalled` with the reason.
-   - Alternatives and what each costs: a stall bound of 30 minutes, the prototype's, which is a second figure beside decision 3's. A larger count of hand-backs, which shows the stall later; the incident note records runs of eleven and of eight, so any count up to eight shows both. Pausing on repeated hand-backs, which saves the agent runs spent on lanes that will fail, and costs a drive that stops itself on a coincidence and a pause that something has to lift. Keeping on costs those agent runs.
-   - Evidence: F-11 and the probes p4-state-line-mapping and p4-pinned-lines-with-times for the line and the time rule, with the prototype's first error (a stall that never registered while the wait's reason alternated) written into the criterion. F-17 for the surfaces. The count and the choice to keep going rest on no measurement: the lab built neither. The count reuses an existing figure and only changes a word on the line, so a wrong count costs a look. Keeping on changes nothing a drive does today.
-   - Reversed if: the product thinker prefers a drive that pauses to one that spends runs on failing lanes, or the count is seen to say `stalled` over a drive that is making progress.
+4. **Withdrawn 2026-11-14 after the design review.** The run had answered DQ-4 by leaving a set-aside lane's reservation as it stands. That contradicts the press release and the mechanism of itd-2610222215485265, which are the product thinker's, so it is open question 1.
+5. **Withdrawn 2026-11-14 after the design review.** The run had answered DQ-5 by leaving a set-aside lane to the next start. That is the same kind of choice spc-2611051628562376 keeps for the product thinker in its step 3, so it is open question 2.
+6. **The state is one small file in the local tier, and a wait with no named end is stalled at the stuck bound's minutes.**
+   - Question (DQ-7, its first part): "Where is the state line kept, what counts as stalled, and what does the drive do when it is?"
+   - Answer, where it is kept: in a file in the checkout's local tier beside the drive's log, written whole by the drive each time a field changes. It is not part of a run's state, and nobody clears it. It carries the drive's process id and start time and the time it was written, so a reader tells a drive that ended without a last line and shows it as `stopped`. How a reader tells is the spec's to say, and it is not the lab's: the lab's design reads "the drive's process gone", and nothing was stored in the lab.
+   - Answer, what counts as stalled by time: a wait with no named end that has lasted the stuck bound's minutes with no lane moving. This follows decision 3's one figure. The named ends are the pace window's next eligible time and a rate limit's named reset; an outage has none.
+   - Withdrawn 2026-11-14 after the design review: the count of lanes handed back in a row that reads `stalled`, and the answer that a stalled drive keeps opening lanes. Both rest on no measurement and are open question 3.
+   - Alternatives and what each costs: a stall bound of 30 minutes, the prototype's, which is a second figure beside decision 3's. The lab gives no other place to keep the line.
+   - Evidence: F-11 and the probes p4-state-line-mapping and p4-pinned-lines-with-times for the line's fields and the time rule, with the prototype's first error (a stall that never registered while the wait's reason alternated) written into the criterion. F-17 for the surfaces. The stored form rests on no measurement: the prototype stored nothing.
+   - Reversed if: a reader cannot tell a dead drive from a working one with what the file carries, or the product thinker wants a shorter stall bound than the stuck bound.
    - Decided by the run for owner review.
 
 ## Typed Links
 
-- builds_on: itd-2610222215485265 (`abcd drain --drive` works through the ledger from a plain terminal). That intent made the drive run without input, and this one changes how its stop, its start and its waits read to a person. Its eighth criterion and its decision 8 stand: an interrupt still releases what the drive can release, and this intent adds that a lane whose stop could not be applied keeps its reservation.
+- builds_on: itd-2610222215485265 (`abcd drain --drive` works through the ledger from a plain terminal). That intent made the drive run without input, and this one changes how its stop, its start and its waits read to a person. Its eighth criterion and its decision 8 are kept for an interrupt: the drive still releases what it can, and this intent adds that a lane whose stop could not be applied keeps its reservation. Whether its press release ("it never leaves an issue held while it waits for someone who isn't coming") and its mechanism's test stand as written depends on open question 1, and two of that question's three answers need them amended.
 - built on by: itd-2611141610192096 (the terminal output, whose first live line is this intent's state line) and itd-2611141610201875 (the merge queue and the checkout).
 - read by: itd-2611141507299828 (the status line), which shows the stored state and is blocked by this intent.
+- related: spc-2611051628562376, the drain intent's open spec, whose step 3 keeps for the product thinker the same kind of choice as open question 2.
 - related: iss-2611140902531015 (the take-over from the drive's own terminal), which the first criterion answers. adr-2611050740453233 (a stop is recorded state a person sets), which decision 1 keeps.
 - evidence: lab-261114145658-67e1f9b (findings F-3 to F-9, F-11 and F-14 to F-17) and `.abcd/development/research/notes/drive-operations-2026-11.md`.
 
