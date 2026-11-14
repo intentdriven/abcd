@@ -81,18 +81,47 @@ func TestOtherModel(t *testing.T) {
 		{"an unlisted family", "acme-turbo-2", "claude-opus-5-5", false},
 		{"a family written after a vendor alone", "fable", "claude-fable-5-2", false},
 		{"a version against a later one", "claude-opus-5-5", "claude-opus-4-6", true},
-		{"two versions of one family in the older order", "claude-3-opus", "claude-opus-4", true},
+		{"a number before the family is no version", "claude-3-opus", "claude-opus-4", false},
 		{"a version written fused against a dashed other", "opus5", "opus-4", true},
 		{"two families of two vendors", "claude-opus-5-5", "openai/gpt-5", true},
 		{"two o-series models", "o1", "openai/o3-mini", true},
 		{"an o-series model against gpt", "o3", "gpt-4o", true},
 		{"two gemini versions", "gemini-2.5-pro", "gemini-2.0-flash", true},
 		{"two llama versions at one size", "llama-3.1-70b", "llama-3.3-70b", true},
-		{"two deepseek versions", "deepseek-v3", "deepseek-v2", true},
+		{"a v before the number ends the version", "deepseek-v3", "deepseek-v2", false},
 		{"a local devstral against a dated one", "local/devstral", "devstral-small-2505", false},
 		{"two of Mistral's families", "local/devstral", "codestral-2501", true},
 		{"magistral against mistral", "magistral-medium-1", "mistral-medium-3", true},
 		{"ministral against pixtral", "ministral-8b", "pixtral-12b", true},
+		// A number that is not the model's version never joins it.
+		{"a Bedrock inference-profile ARN", "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-opus-5-5-v1:0", "anthropic/claude-opus-5-5", false},
+		{"a Bedrock ARN against another family", "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-opus-5-5-v1:0", "anthropic/claude-sonnet-5-5", true},
+		{"a numbered region before the family", "us-east-1:claude-opus-5-5", "claude-opus-5-5", false},
+		{"a region glued to its number in a path", "vertex_ai/us-central1/claude-opus-5-5", "anthropic/claude-opus-5-5", false},
+		{"a region number in a deployment path", "azure/eastus2/gpt-5", "openai/gpt-5", false},
+		{"a European region in a path", "vertex_ai/europe-west4/claude-opus-5-5", "claude-opus-5-5", false},
+		{"a region before the family in one segment", "google-vertex:us-east5:claude-opus-5-5@20261001", "claude-opus-5-5", false},
+		{"two dashed dates of one model", "claude-opus-5-5-2026-10-14", "claude-opus-5-5-2026-11-13", false},
+		{"two dashed dates with months and days past ten", "anthropic/claude-opus-5-5-2026-10-15", "claude-opus-5-5-2026-11-20", false},
+		{"two dashed dates of a dotted version", "gpt-5.1-2025-11-13", "gpt-5.1-2025-12-01", false},
+		{"two dashed dates after a family with no version", "claude-3-7-sonnet-2025-02-19", "claude-3-7-sonnet-2025-02-20", false},
+		{"two revision tags with no colon", "claude-opus-4-5-v2", "claude-opus-4-5-v3", false},
+		{"a revision tag against none", "claude-opus-5-5-v1:0", "claude-opus-5-5", false},
+		{"a vendor's p spelling", "accounts/fireworks/models/llama-v3p1-70b-instruct", "llama-3.1-70b", false},
+		{"an older order reads as any of its family", "claude-3-5-sonnet-20241022", "claude-sonnet-4-5", false},
+		// A carrier word that is itself a family stands before the slash.
+		{"a provider-prefixed codestral", "mistral/codestral-latest", "anthropic/claude-opus-5-5", true},
+		{"a provider-prefixed codestral against a dated one", "mistral/codestral-latest", "codestral-2501", false},
+		{"two provider-prefixed Mistral families", "mistral/devstral-medium", "mistral/pixtral-large", true},
+		{"ministral against magistral, both prefixed", "mistral/ministral-8b", "mistral/magistral-medium", true},
+		{"mistral against codestral, both prefixed", "mistral/mistral-large-latest", "mistral/codestral-latest", true},
+		// A family glued to another word is no family.
+		{"codellama is unknown", "codellama-70b", "llama-3.1-70b", false},
+		{"chatgpt is unknown", "chatgpt-4o-latest", "claude-opus-5-5", false},
+		// Pairs that stay other.
+		{"opus against sonnet of one version", "claude-opus-5-5", "claude-sonnet-5-5", true},
+		{"two versions of opus", "claude-opus-5-5", "claude-opus-4-8", true},
+		{"two versions of gpt", "gpt-5", "gpt-4", true},
 		{"the bundled top against the default", "anthropic/claude-opus-5-5", "anthropic/claude-sonnet-5-5", true},
 		{"the bundled research class against the small", "anthropic/claude-fable-5", "anthropic/claude-haiku-4-5", true},
 	} {
@@ -131,6 +160,21 @@ func (modelish) Generate(r *rand.Rand, size int) reflect.Value {
 // handed back for a class no comparison can read.
 func TestTheBundledClassesAreKnown(t *testing.T) {
 	for _, m := range []string{"anthropic/claude-fable-5", "anthropic/claude-opus-5-5", "anthropic/claude-sonnet-5-5", "anthropic/claude-haiku-4-5"} {
+		if !KnownModel(m) {
+			t.Errorf("KnownModel(%q) = false, want true", m)
+		}
+	}
+}
+
+// TestAFamilyGluedToAnotherWordIsUnknown: a name whose family stands only
+// inside a longer word names no family, and is unknown.
+func TestAFamilyGluedToAnotherWordIsUnknown(t *testing.T) {
+	for _, m := range []string{"codellama", "codellama-70b", "codegemma-7b", "chatgpt-4o-latest", "codex-mini-latest"} {
+		if KnownModel(m) {
+			t.Errorf("KnownModel(%q) = true, want false", m)
+		}
+	}
+	for _, m := range []string{"mistral/codestral-latest", "mistral/devstral-medium", "mistral/pixtral-large", "mistral/ministral-8b", "azure/eastus2/gpt-5"} {
 		if !KnownModel(m) {
 			t.Errorf("KnownModel(%q) = false, want true", m)
 		}

@@ -11,17 +11,17 @@ package matrix
 // substitution as the asked model, and it changes none of sameModel's answers.
 //
 // A name is read for one model family, from the closed list below, and its
-// short version numbers. Two names are other models only when each names
-// exactly one family and the families differ, or the family is the same and
-// both carry a version, and the versions differ with neither a prefix of the
-// other. Every other pair is the same model: a qualifier word (`thinking`,
-// `fast`, `mini`), a carrier or vendor, a snapshot or date stamp, an alias
-// with no family word (`default`, `best`, `opusplan`), and a name holding two
+// version: only the short numbers written straight after the family. Two
+// names are other models only when each names exactly one family and the
+// families differ, or the family is the same and both carry a version, and
+// the versions differ with neither a prefix of the other. Every other pair is
+// the same model: a qualifier word (`thinking`, `fast`, `mini`), a carrier,
+// vendor or region, a snapshot or date stamp, a revision tag, an alias with no
+// family word (`default`, `best`, `opusplan`), and a name holding two
 // families. A family not on the list reads as no family, so a name of it is
 // unknown and counts as the writer's own.
 
 import (
-	"regexp"
 	"slices"
 	"strings"
 )
@@ -34,8 +34,10 @@ const maxComparedModel = 200
 // Anthropic's (opus, sonnet, haiku, fable, mythos), OpenAI's gpt and the
 // o-series (written `o` and a digit, o1, o3, o4, read as the family "o"),
 // Google's gemini and gemma, Meta's llama, Mistral's mistral, mixtral,
-// codestral, devstral, magistral, ministral and pixtral, xAI's grok, deepseek, qwen, Moonshot's kimi, Zhipu's glm and
-// Microsoft's phi. A vendor word (claude, anthropic, openai) is no family:
+// codestral, devstral, magistral, ministral and pixtral, xAI's grok,
+// deepseek, qwen, Moonshot's kimi, Zhipu's glm and Microsoft's phi. A family
+// glued to another word is no family (`codellama`, `codegemma`,
+// `chatgpt-4o-latest`), so such a name is unknown. A vendor word (claude, anthropic, openai) is no family:
 // it names who serves the model, not which model it is. codex is left off:
 // OpenAI writes it beside gpt (gpt-5-codex), so a listed codex would make
 // those names hold two families, and a name of codex alone is unknown. A
@@ -53,20 +55,17 @@ var modelFamilies = []string{
 // oSeries is the family an `o` written straight before a digit names.
 const oSeries = "o"
 
-// cloudRevisionRe is a cloud's revision tag at the end of a name, as a
-// Bedrock id writes it (`-v1:0`): it numbers the listing, not the model.
-var cloudRevisionRe = regexp.MustCompile(`[-.]v[0-9]+:[0-9]+$`)
-
-// maxVersionDigits bounds a number read as a version; a longer one is a date
-// stamp or a snapshot tag, and is dropped.
+// maxVersionDigits bounds a number read as part of a version; a longer one is
+// a date stamp or a snapshot tag, and ends the version.
 const maxVersionDigits = 3
 
 // OtherModel reports whether reviewer is shown to name a model other than
 // writer: both names are known (KnownModel), and either their families
 // differ, or the family is the same and both carry a version, the versions
-// differ, and neither one's digits are a prefix of the other's. Every other pair, an unknown
-// name on either side included, counts as the same model. It is symmetric,
-// and OtherModel(s, s) is false for every s.
+// differ, and neither one's digits are a prefix of the other's. Every other
+// pair, an unknown name on either side included, counts as the same model, so
+// `opus-4` and `opus-4-6` are not told apart, nor `opus-5` and `opus-55`. It
+// is symmetric, and OtherModel(s, s) is false for every s.
 func OtherModel(writer, reviewer string) bool {
 	w, ok := readModel(writer)
 	if !ok {
@@ -88,7 +87,8 @@ func OtherModel(writer, reviewer string) bool {
 
 // KnownModel reports whether s is a name OtherModel can compare: ASCII, with
 // no control character, no longer than maxComparedModel, and naming exactly
-// one model family of modelFamilies. A space is a separator here, so `claude
+// one model family of modelFamilies in its last segment after a slash or, where
+// that segment names none or two, in the whole name (readModel). A space is a separator here, so `claude
 // opus` is known; the loop keeps no name holding a space as a writer's or a
 // reviewer's (its modelWritten), so for it such a name stays unknown.
 func KnownModel(s string) bool {
@@ -103,18 +103,21 @@ type readName struct {
 	version string
 }
 
+// nameToken is one token of a name: a run of ASCII letters or one of digits.
+// glued says the next token is written straight after it, with no separator
+// between (`opus5`, `70b`).
+type nameToken struct {
+	text  string
+	glued bool
+}
+
 // readModel reads s for its family and version, and false for an unknown
-// name. The name is lower-cased; a bracketed suffix (`[1m]`) is dropped, and
-// a cloud's trailing revision tag (`-v1:0`); the whole of what remains is
-// split on every character that is not an ASCII letter or digit and at each
-// boundary between letters and digits (`opus5` gives `opus`, `5`). A number
-// of more than three digits (a date stamp, a snapshot tag), one of two or
-// three digits opening with a zero (`001`), and one written straight before a
-// letter (a size or a tag: `1m`, `200k`, `70b`, `4o`) are dropped; the digits
-// of the rest, in order, are the version, so `gpt51` and `gpt-5-1` carry the
-// same one. The family is the one token on modelFamilies, or an `o` written
-// straight before a digit; a name with none, or with two different ones, is
-// unknown.
+// name. The name is lower-cased and a bracketed suffix (`[1m]`) is dropped.
+// The family is read from the last segment after a slash where that segment
+// names exactly one, else from the whole name where it names exactly one;
+// any other name is unknown. So `mistral/codestral-latest` is codestral, and
+// `azure/eastus2/gpt-5` is gpt. The version is read where the family was
+// (versionAfter): the numbers written straight after the family's token.
 func readModel(s string) (readName, bool) {
 	if s == "" || len(s) > maxComparedModel {
 		return readName{}, false
@@ -128,36 +131,83 @@ func readModel(s string) (readName, bool) {
 	if i := strings.IndexByte(s, '['); i >= 0 {
 		s = s[:i]
 	}
-	s = cloudRevisionRe.ReplaceAllString(s, "")
-	var out readName
-	families := 0
-	family := func(f string) {
-		if f != out.family {
-			families++
-			out.family = f
+	if i := strings.LastIndexByte(s, '/'); i >= 0 {
+		if out, ok := readSegment(s[i+1:]); ok {
+			return out, true
 		}
 	}
+	return readSegment(s)
+}
+
+// readSegment reads seg for its one family and that family's version, and
+// false where seg names no family or two different ones. seg is split into
+// tokens on every character that is not an ASCII letter or digit and at each
+// boundary between letters and digits (`opus5` gives `opus`, `5`). A family
+// is a token on modelFamilies, or an `o` written straight before a digit
+// (`o3`). Where the family's token stands more than once, no version is read.
+func readSegment(seg string) (readName, bool) {
+	toks := tokens(seg)
+	var out readName
+	at, seen := -1, 0
+	for i, t := range toks {
+		f := ""
+		switch {
+		case t.text == oSeries && t.glued && i+1 < len(toks) && isDigits(toks[i+1].text):
+			f = oSeries
+		case slices.Contains(modelFamilies, t.text):
+			f = t.text
+		default:
+			continue
+		}
+		if out.family != "" && f != out.family {
+			return readName{}, false
+		}
+		out.family, at = f, i
+		seen++
+	}
+	if out.family == "" {
+		return readName{}, false
+	}
+	if seen == 1 {
+		out.version = versionAfter(toks[at+1:])
+	}
+	return out, true
+}
+
+// versionAfter is the version the tokens straight after a family's token
+// carry: the digits, in order, of the run of numbers of at most three digits
+// that opens them, so `gpt51` and `gpt-5-1` carry the same one. The run ends
+// at the first token that is not such a number: a letter token (`v`, `p`, `b`,
+// `latest`), a number of four or more digits (a date stamp or a snapshot tag),
+// and a number written straight before a letter (a size or a tag: `1m`,
+// `200k`, `70b`, `4o`). So a number written before the family is never the
+// version (`us-east-1`, `eastus2`, `claude-3-5-sonnet`), nor one after a
+// revision tag (`-v1:0`, `-v2`) or a vendor's `v3p1`, nor any part of a date
+// after its year (`-2026-10-14`).
+func versionAfter(toks []nameToken) string {
+	v := ""
+	for _, t := range toks {
+		if !isDigits(t.text) || len(t.text) > maxVersionDigits || t.glued {
+			break
+		}
+		v += t.text
+	}
+	return v
+}
+
+// tokens splits s on every character that is not an ASCII letter or digit and
+// at each boundary between letters and digits.
+func tokens(s string) []nameToken {
+	var out []nameToken
 	for _, chunk := range strings.FieldsFunc(s, func(r rune) bool {
 		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
 	}) {
-		toks := splitDigits(chunk)
-		for i, t := range toks {
-			switch {
-			case isDigits(t):
-				if len(t) <= maxVersionDigits && (len(t) == 1 || t[0] != '0') && i+1 == len(toks) {
-					out.version += t
-				}
-			case t == oSeries && i+1 < len(toks) && isDigits(toks[i+1]):
-				family(oSeries)
-			case slices.Contains(modelFamilies, t):
-				family(t)
-			}
+		parts := splitDigits(chunk)
+		for i, p := range parts {
+			out = append(out, nameToken{text: p, glued: i+1 < len(parts)})
 		}
 	}
-	if families != 1 {
-		return readName{}, false
-	}
-	return out, true
+	return out
 }
 
 // splitDigits splits an alphanumeric chunk at each boundary between letters

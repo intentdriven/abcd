@@ -624,34 +624,47 @@ the lane and build again with an implementer whose model holds a family the
 comparison recognises, on a runner that reports such a model or with a receipt
 naming it as a plain id, since a verified receipt is not read again for its
 model before the landing. A host-run agent the loop restarted leaves no model
-among the writers, since nothing reported one.
+among the writers, since nothing reported one, and so does an agent of a runner
+on its harness's default model that left no receipt, since such a runner
+records no launched model.
 
 Two model names count as other models only when that is shown, and every
-doubtful pair counts as the same model. Each name is lower-cased; a bracketed
-suffix such as `[1m]` is dropped, and a cloud's trailing revision tag such as
-`-v1:0`; the whole of the rest is split into tokens on every character that is
-not an ASCII letter or digit and at each boundary between letters and digits,
-so `opus5` gives `opus` and `5`. A number of more than three digits (a date
-stamp or a snapshot tag), one of two or three digits opening with a zero, and
-one written straight before a letter (a size or a tag, as in `1m`, `200k`,
-`70b` or `4o`) are dropped; the digits of the numbers left, in order, are the
-name's version. A name is known only when it is ASCII with no control
-character, at most 200 bytes, and exactly one of its tokens names a model
-family on the closed list in `internal/core/matrix/samemodel.go`: `opus`,
+doubtful pair counts as the same model. Each name is lower-cased and a
+bracketed suffix such as `[1m]` is dropped; it is split into tokens on every
+character that is not an ASCII letter or digit and at each boundary between
+letters and digits, so `opus5` gives `opus` and `5`. A name is known only when
+it is ASCII with no control character, at most 200 bytes, and names exactly one
+model family on the closed list in `internal/core/matrix/samemodel.go`: `opus`,
 `sonnet`, `haiku`, `fable`, `mythos`, `gpt`, the o-series written as `o` and a
 digit, `gemini`, `gemma`, `llama`, `mistral`, `mixtral`, `codestral`,
 `devstral`, `magistral`, `ministral`, `pixtral`, `grok`, `deepseek`, `qwen`,
-`kimi`, `glm` and `phi`. A family not on that list reads as no family, so a
-name of it is unknown and counts as the writer's own model, and
-a writer or a class whose name is unknown hands the lane back. Two known names
-are other models only when their families differ, or the family is the same,
-both carry a version, and neither version's digits are a prefix of the
-other's. Every other pair is the same model: `opus` and `claude-opus-5-5`,
-`claude-opus-5-5-thinking` and `claude-opus-5-5-fast`, `gpt-4-0613` and
-`gpt-4-1106`, `gpt-5` and `gpt-5-mini`, `opus5.5` and `claude-opus-5-5`, an
-alias with no family word such as `default` or `opusplan` against any name,
-and a name holding two families. `claude-opus-5-5` and `claude-sonnet-5-5` are
-other models, and so are `claude-opus-5-5` and `claude-opus-4-6`. So a class map
+`kimi`, `glm` and `phi`. The family is read from the last segment after a slash
+where that segment names exactly one, else from the whole name, so
+`mistral/codestral-latest` is codestral and `azure/eastus2/gpt-5` is gpt. A
+family glued to another word is no family (`codellama`, `chatgpt-4o-latest`),
+and a family not on the list reads as no family, so a name of either is unknown
+and counts as the writer's own model, and a writer or a class whose name is
+unknown hands the lane back. The name's version is the run of numbers of at
+most three digits written straight after its family, in that segment, its
+digits in order; where the family is written with its digit, as in `o3`, that
+digit is the version's first. The run ends at the first token that is not such
+a number: a letter such as `v`, `p`, `b` or `latest`, a number of four or more
+digits, or a number written straight before a letter, a size or a tag such as
+`1m`, `70b` or `4o`. So a region number before the family (`us-east-1`,
+`eastus2`, `europe-west4`) is never part of the version, nor a date after its
+year (`claude-opus-5-5-2026-10-14` and `claude-opus-5-5-2026-11-13` are the
+same model), nor a revision tag (`-v1:0`, `-v2` and `-v3`), and a name with no
+number straight after its family carries no version: `llama-v3p1-70b` is the
+same model as any llama, and `claude-3-5-sonnet-20241022`, written in the older
+order, the same as any sonnet. Two known names are other models only when their
+families differ, or the family is the same, both carry a version, and neither
+version's digits are a prefix of the other's. Every other pair is the same
+model: `opus` and `claude-opus-5-5`, `claude-opus-5-5-thinking` and
+`claude-opus-5-5-fast`, `gpt-4-0613` and `gpt-4-1106`, `gpt-5` and
+`gpt-5-mini`, `opus5.5` and `claude-opus-5-5`, an alias with no family word such
+as `default` or `opusplan` against any name, and a name holding two families
+where its family is read. `claude-opus-5-5` and `claude-sonnet-5-5` are other models, and so are
+`claude-opus-5-5` and `claude-opus-4-8`, and `gpt-5` and `gpt-4`. So a class map
 whose classes are one family's nesting names, `gpt-5`, `gpt-5-mini` and
 `gpt-5-nano` with a writer on `gpt-5`, holds no class other than the writer's,
 and every lane is handed back.

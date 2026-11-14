@@ -3,12 +3,15 @@ package loop
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/matrix"
 )
 
 // The review set and the class map (itd-2610240922461281, spc-2610240951109420
@@ -578,4 +581,27 @@ func olderState(t *testing.T, data []byte, v int) []byte {
 		t.Fatal(err)
 	}
 	return out
+}
+
+// TestTheBundledMapReadsAsOtherClassByClass: every model the bundled class map
+// ships is a name the comparison reads, and the models of every two different
+// bundled classes are other models, as each pair was before the comparison
+// read a version only from the numbers straight after the family. So a run on
+// the bundled map is never handed back for a class no comparison can read,
+// and its reviewer moves to every class the map holds beside the writer's.
+func TestTheBundledMapReadsAsOtherClassByClass(t *testing.T) {
+	classes := slices.Sorted(maps.Keys(BundledClasses))
+	if len(classes) < 2 {
+		t.Fatalf("premise: the bundled map holds more than one class: %v", classes)
+	}
+	for _, a := range classes {
+		if !matrix.KnownModel(BundledClasses[a]) {
+			t.Errorf("the %s class's %q is not a name the comparison reads", a, BundledClasses[a])
+		}
+		for _, b := range classes {
+			if a != b && !matrix.OtherModel(BundledClasses[a], BundledClasses[b]) {
+				t.Errorf("the %s class's %q and the %s class's %q read as one model", a, BundledClasses[a], b, BundledClasses[b])
+			}
+		}
+	}
 }
