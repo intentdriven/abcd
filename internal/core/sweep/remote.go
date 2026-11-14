@@ -109,8 +109,8 @@ type remoteJudge struct {
 	// def is origin's default branch as last fetched, defName its name, and
 	// defTip the commit it named when the branches were judged.
 	def, defName, defTip string
-	wts          []gitutil.Worktree
-	held         gitutil.Held
+	wts                  []gitutil.Worktree
+	held                 gitutil.Held
 	// upstreams maps each local branch's ref to its upstream's ref.
 	upstreams map[string]string
 	// live judges a worktree's liveness, against one reading of the process
@@ -149,6 +149,11 @@ func sweepRemote(ctx context.Context, repoRoot string, o Options, apply bool) (R
 		res.ForgeNote = clean("no open pull request can be shown absent (" + rj.openUnread + "), so no branch on origin is deleted")
 	}
 	for _, b := range branches {
+		// A run whose context ended stops judging: a row judged after it
+		// could rest on reads git was killed for.
+		if err := ctx.Err(); err != nil {
+			return refused(fmt.Errorf("the run was stopped while judging origin's branches: %w", err))
+		}
 		res.Rows = append(res.Rows, rj.row(b))
 	}
 	if !apply {
@@ -166,6 +171,12 @@ func sweepRemote(ctx context.Context, repoRoot string, o Options, apply bool) (R
 		row := &res.Rows[i]
 		row.Outcome = OutcomeKept
 		if row.Action != ActionDelete {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			if fault == nil {
+				fault = fmt.Errorf("the run was stopped before every delete was made: %w", err)
+			}
 			continue
 		}
 		if !asked {

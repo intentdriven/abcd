@@ -511,3 +511,25 @@ func TestAPullRequestTargetingTheBranchSeenOnlyAtTheLastCheckHoldsIt(t *testing.
 		t.Fatal("origin no longer holds feat")
 	}
 }
+
+// TestARunWhoseContextEndsStopsJudging: a context that ends while the run is
+// under way refuses the run before any branch is judged deletable.
+func TestARunWhoseContextEndsStopsJudging(t *testing.T) {
+	repo, origin := originRepo(t)
+	tip := mergedOnOrigin(repo, "feat", "feat.txt")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f := &fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}
+	o := remoteOpts(f)
+	o.Forge = func(dir string, args ...string) (string, error) {
+		cancel()
+		return f.gh(dir, args...)
+	}
+	res, err := sweepRemote(ctx, repo.Root(), o, true)
+	if err == nil || res.ExitCode() != ExitRefused || len(res.Rows) != 0 {
+		t.Fatalf("a stopped run refuses: err %v, exit %d, rows %+v", err, res.ExitCode(), res.Rows)
+	}
+	if onOrigin(repo, origin, "feat") != tip {
+		t.Fatal("origin no longer holds feat")
+	}
+}

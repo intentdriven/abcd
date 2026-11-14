@@ -179,6 +179,11 @@ func sweepBranches(ctx context.Context, repoRoot string, apply bool) (Result, er
 	}
 	res := Result{Rows: make([]Row, 0, len(refs))}
 	for _, b := range refs {
+		// A run whose context ended stops judging: a row judged after it
+		// could rest on reads git was killed for.
+		if err := ctx.Err(); err != nil {
+			return refused(fmt.Errorf("the run was stopped while judging the local branches: %w", err))
+		}
 		res.Rows = append(res.Rows, bj.row(b))
 	}
 	if !apply {
@@ -190,6 +195,12 @@ func sweepBranches(ctx context.Context, repoRoot string, apply bool) (Result, er
 		row := &res.Rows[i]
 		row.Outcome = OutcomeKept
 		if row.Action != ActionDelete {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			if fault == nil {
+				fault = fmt.Errorf("the run was stopped before every delete was made: %w", err)
+			}
 			continue
 		}
 		if err := bj.delete(refs[i], row); err != nil && fault == nil {
