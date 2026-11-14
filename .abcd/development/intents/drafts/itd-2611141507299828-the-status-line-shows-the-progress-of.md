@@ -91,7 +91,7 @@ Two drafts already extend the row. itd-2610281253044600 adds one element, the ti
 
 ## Scope Conditions
 
-- A drive that keeps one stored line of state: working, waiting or stalled; since when; on what; and what a person can do. That line is defined by the drive-operations intent, which the lab on drive operations precedes and which is not yet filed; this intent reads the line and does not define it. The link is added to this record when that intent is filed. Until the line exists the drive part is absent, never derived from the log.
+- A drive that keeps one stored line of state: working, waiting or stalled; since when; on what; and what a person can do. That line is defined by itd-2611141610197753 (a drive carries on from one command, and says in one line when it cannot); this intent reads the line and does not define it. The link is added to this record when that intent is filed. Until the line exists the drive part is absent, never derived from the log.
 - The stored line carries the time it was last written, so that a drive that died without writing a final state can be told from one that is working. The row judges age from that time alone; it does not read the process table.
 - A host that runs the status command on a timer as well as on its own events (the refresh interval itd-2611031342000215 sets at install). On a host that refreshes only on events, "within one refresh" is as long as the gap between events, and a stall may sit unseen while the session is idle.
 - A host that passes the terminal's width to the status command in `COLUMNS` (itd-2611031342000215). Without the width the row cannot choose what to drop and renders in full, with the badge-first order as its only protection, as today.
@@ -191,7 +191,7 @@ Each question below is the owner's to decide and is not settled by any record. N
 - builds_on: itd-2611031342000215 (the row's views, its dropping order by width, its per-element settings, its warning style and the rule that the row never waits on the network).
 - builds_on: itd-2610281253044600 (the match between a session and the work it holds, which "this session's own pull requests" depends on; its second open question is the same question).
 - related: itd-2610222215485265 (the drive whose state the row shows), itd-200, itd-2609212130146198 and itd-2610111707085098 (the row, its badge and the session's name, all shipped), itd-2611031342011261 (the launch ledger, whose remaining spec has an open question on whether the status path may gain a second written file; this intent adds no write, so it does not wait on that answer, and it must not be read as settling it).
-- depends on: the drive-operations intent, not yet filed, which defines the drive's one stored line of state. To be added to `blocked_by` when it has an id.
+- depends on: itd-2611141610197753, which defines the drive's one stored line of state (in `blocked_by`).
 - evidence: `.abcd/development/research/notes/drive-operations-2026-11.md`, events 3, 4 and 5.
 
 ## Audit Notes
