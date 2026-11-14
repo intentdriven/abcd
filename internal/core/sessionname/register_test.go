@@ -1264,3 +1264,49 @@ func TestAClearIsNotAFork(t *testing.T) {
 	})
 	mustName(t, m.start(300, root, "c"), "Carol")
 }
+
+// TestAClearOfAPersonsOwnTitleReadsNoProcessTable: a clear is never read as
+// inheriting, so a title the person gave, cleared while no running session's
+// entry accounts for it, is theirs whoever else abcd once gave that name to.
+// The unlocked read settles it: the clear records the new id as given nothing
+// and reads no process table (iss-2610152329345301).
+func TestAClearOfAPersonsOwnTitleReadsNoProcessTable(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	if out := Start(m.at(m.launch(100)), Request{Root: root, SessionID: "p", Source: "startup", Title: "Bob"}); out.Name != "" {
+		t.Fatalf("a session the person named was named %q", out.Name)
+	}
+	// abcd gives Bob to another session, which ends; the next start prunes
+	// its entry, and the record of the given name stays.
+	mustName(t, m.start(200, root, "a"), "Alice")
+	mustName(t, m.start(300, root, "b"), "Bob")
+	resends(t, m, []struct{ sid, title, want string }{{"a", "", "Alice"}, {"b", "", "Bob"}})
+	m.end(300)
+	mustName(t, m.start(400, root, "c"), "Carol")
+
+	// The person clears their Bob: a new id, the same process.
+	clear := m.at(101)
+	reads := 0
+	read := clear.ReadTable
+	clear.ReadTable = func() (Table, error) {
+		reads++
+		return read()
+	}
+	if out := Start(clear, Request{Root: root, SessionID: "p2", Source: "clear", Title: "Bob"}); out.Name != "" || len(out.Notes) != 0 {
+		t.Fatalf("clearing the person's Bob: %+v, want nothing", out)
+	}
+	if reads != 0 {
+		t.Fatalf("clearing the person's own title read the process table %d time(s), want none", reads)
+	}
+	// The clear still recorded the title as the person's: resumed while
+	// abcd's Bob runs again, it is kept (C4).
+	m.end(100)
+	m.end(200)
+	m.end(400)
+	mustName(t, m.start(500, root, "d"), "Alice")
+	mustName(t, m.start(600, root, "e"), "Bob")
+	resends(t, m, []struct{ sid, title, want string }{{"d", "", "Alice"}, {"e", "", "Bob"}})
+	if out := Start(m.at(m.launch(700)), Request{Root: root, SessionID: "p2", Source: "resume", Title: "Bob"}); out.Name != "" {
+		t.Fatalf("resuming the person's cleared Bob reserved %q, want nothing", out.Name)
+	}
+}
