@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
 )
 
@@ -37,7 +38,7 @@ func TestIntentPageDocumentsTheRedraftsBound(t *testing.T) {
 		"`" + layered.InterviewRedraftsKey + "`",
 		"the repository's `.abcd/config.json`",
 		fmt.Sprintf("a whole number from 0 to %d, %d when no file sets it", layered.InterviewRedraftsMax, layered.InterviewRedraftsDefault),
-		"`~/.abcd.noindex/config.json`",
+		"`" + abcdhome.Display("config.json") + "`",
 	} {
 		if !strings.Contains(folded, want) {
 			t.Errorf("the intent page's %q section lacks %q", heading, want)
