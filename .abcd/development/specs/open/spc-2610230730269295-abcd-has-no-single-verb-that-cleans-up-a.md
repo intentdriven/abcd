@@ -82,7 +82,7 @@ Such a worktree is left in place and named "process check unavailable: <why>", a
 ### Patch salvage
 
 Patch salvage applies to a dirty worktree that no proof holds:
-- Its `git diff --binary` and `git diff --cached --binary`, and a tar of its untracked, non-ignored files, are written to `~/.abcd.noindex/notes/<root-sha>/<UTC>-<name>-salvage/`.
+- Its `git diff --binary` and `git diff --cached --binary`, and a tar of its untracked, non-ignored files, are written to `~/.abcd.noindex/notes/<root-sha>/<UTC>-<name>-salvage/`. A change that git writes as a binary patch is refused rather than saved, because the redaction pass cannot read it, so the worktree is kept with that reason.
 - The write goes through the store's directory primitive and redaction.
 - A manifest names the worktree, its branch, HEAD, the home-redacted source path and the file list.
 - The worktree is kept.
