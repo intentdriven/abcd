@@ -147,8 +147,18 @@ func Ancestors(t Table, from int) Ancestry {
 // shell (a login shell's name carries a leading dash) or abcd itself, under
 // its plain name or a release asset's (abcd-darwin-arm64).
 func passOver(name string) bool {
+	if IsShell(name) {
+		return true
+	}
 	name = strings.TrimPrefix(name, "-")
-	return slices.Contains(shells, name) || name == "abcd" || strings.HasPrefix(name, "abcd-")
+	return name == "abcd" || strings.HasPrefix(name, "abcd-")
+}
+
+// IsShell reports whether a process of this name is one of the shells the host walk
+// passes over (shells), a login shell's leading dash dropped. abcd, which the walk
+// also passes over, is not a shell.
+func IsShell(name string) bool {
+	return slices.Contains(shells, strings.TrimPrefix(name, "-"))
 }
 
 // host is the table's reading of p: its start time measured back from the
