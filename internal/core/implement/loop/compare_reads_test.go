@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -96,6 +97,149 @@ func TestTheComparisonsOwnReadsNeverAsk(t *testing.T) {
 				t.Fatalf("the comparison asked the check: %q", asked)
 			}
 		})
+	}
+}
+
+// dashLedIncludes are include paths that start with a dash: one git reads
+// as a word of its own of single-dash letters, one as a prefix of --edit.
+var dashLedIncludes = []string{"-local/extra.cfg", "--ed"}
+
+// includedRepo is a checkout whose own settings include value, a path
+// relative to .git/config that starts with a dash, naming a file there.
+// It returns the checkout and the included file.
+func includedRepo(t *testing.T, value string) (root, included string) {
+	t.Helper()
+	repo := briefRepo(t, agentsMarked)
+	included = filepath.Join(repo.Root(), ".git", value)
+	mkdirs(t, filepath.Dir(included))
+	writeMode(t, included, "[core]\n\teditor = /bin/true\n", 0o644)
+	cfg := filepath.Join(repo.Root(), ".git", "config")
+	f, err := os.OpenFile(cfg, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("[include]\n\tpath = " + value + "\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return repo.Root(), included
+}
+
+// TestTheComparisonIsAskedOnceWhateverAnIncludePathHolds: with an include
+// path that starts with a dash in the checkout's own settings, which every
+// environment the drive's git runs in reads, the drive's check, its
+// comparison of what it holds, is asked exactly once by a git from outside
+// and never by a read of its own; with the included file changed since the
+// drive started, the git is not run and the stop names the changed file, not
+// a comparison that did not finish. The check refuses a second ask, so a
+// comparison that asks itself ends at once. Watched failing on 5dd7deff:
+// the include read asked the check from inside.
+func TestTheComparisonIsAskedOnceWhateverAnIncludePathHolds(t *testing.T) {
+	for _, value := range dashLedIncludes {
+		t.Run(value, func(t *testing.T) {
+			root, included := includedRepo(t, value)
+			id, err := readRemoteIdentity(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeMode(t, included, "[core]\n\teditor = /bin/false\n", 0o644)
+			var mu sync.Mutex
+			calls := 0
+			unset, err := gitutil.SetBeforeHookedGit(func([]string) error {
+				mu.Lock()
+				calls++
+				n := calls
+				mu.Unlock()
+				if n > 1 {
+					return errors.New("the check was asked again while it compared")
+				}
+				return heldBeforeGit(root, id)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer unset()
+			_, err = gitutil.LocalGit(root, "status")
+			mu.Lock()
+			n := calls
+			mu.Unlock()
+			if n != 1 {
+				t.Fatalf("the check was asked %d times, want once from outside and never from inside: %v", n, err)
+			}
+			r := mustRefusal(t, err)
+			if r.Stage != StageConfig || !strings.Contains(r.Reason, filepath.Base(value)) || strings.Contains(r.Reason, "did not finish") {
+				t.Fatalf("the stop names the changed include file %q: %+v", value, r)
+			}
+		})
+	}
+}
+
+// TestAnIncludeReadAsksNothingInAnyEnvironment: the read of an include path
+// that starts with a dash, in each environment the drive's git runs in,
+// asks the drive's check nothing and resolves the path git names. Watched
+// failing on 5dd7deff: in abcd's isolated reads it asked.
+func TestAnIncludeReadAsksNothingInAnyEnvironment(t *testing.T) {
+	for _, value := range dashLedIncludes {
+		root, included := includedRepo(t, value)
+		for _, e := range driveEnvs() {
+			t.Run(value+" in "+e.name, func(t *testing.T) {
+				var mu sync.Mutex
+				var asked [][]string
+				unset, err := gitutil.SetBeforeHookedGit(func(args []string) error {
+					mu.Lock()
+					asked = append(asked, args)
+					mu.Unlock()
+					return nil
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer unset()
+				r := scopedSetting{scope: "local", origin: "file:.git/config", key: "include.path", value: value}
+				p, err := includePath(e, root, "salt", r, boundsNow(e))
+				mu.Lock()
+				defer mu.Unlock()
+				if len(asked) != 0 {
+					t.Fatalf("the include read asked the check: %q", asked)
+				}
+				if err != nil || p != filepath.Clean(included) {
+					t.Fatalf("the include read resolves %q: %q, %v", included, p, err)
+				}
+			})
+		}
+	}
+}
+
+// TestADashLedIdIsSearchedAsAPattern: the search of the decisions folder for
+// an id read from the run's state gives git the id as -e's own word, so an
+// id that starts with a dash is the pattern, never an option, to git or to
+// the check's reading of the command line: the search asks the drive's check
+// nothing and answers. Watched failing on 5dd7deff: the id was read as
+// --textconv, and the search asked.
+func TestADashLedIdIsSearchedAsAPattern(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	at := baseTree{root: repo.Root(), sha: strings.TrimSpace(repo.Git("rev-parse", "HEAD"))}
+	var mu sync.Mutex
+	var asked [][]string
+	unset, err := gitutil.SetBeforeHookedGit(func(args []string) error {
+		mu.Lock()
+		asked = append(asked, args)
+		mu.Unlock()
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unset()
+	if _, err := at.decisionsNaming(at.sha, at.blob, "--textconv"); err != nil {
+		t.Fatalf("the search answers: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(asked) != 0 {
+		t.Fatalf("the search asked the check: %q", asked)
 	}
 }
 

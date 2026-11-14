@@ -82,3 +82,23 @@ func TestANetworkedRunnersEarlyErrorKeepsItsLead(t *testing.T) {
 		t.Fatalf("Net's error is led by its command: %v", err)
 	}
 }
+
+// TestAnAncestryCheckRefusesANameGitWouldReadAsAnOption: IsAncestor, whose
+// callers pass names read from stored state, refuses a name that is empty or
+// starts with a dash before git runs, naming it, and answers a real pair as
+// before. Watched failing on 5dd7deff: git was run and its own usage error
+// came back.
+func TestAnAncestryCheckRefusesANameGitWouldReadAsAnOption(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write("a.txt", "a\n")
+	r.Commit("one")
+	for _, pair := range [][2]string{{"--all", "HEAD"}, {"HEAD", "-x"}, {"", "HEAD"}} {
+		ok, err := gitutil.IsAncestor(r.Root(), pair[0], pair[1])
+		if ok || err == nil || !strings.Contains(err.Error(), "refusing ref") {
+			t.Errorf("%q: the name is refused before git runs: %v %v", pair, ok, err)
+		}
+	}
+	if ok, err := gitutil.IsAncestor(r.Root(), "HEAD", "HEAD"); !ok || err != nil {
+		t.Fatalf("a real pair is answered: %v %v", ok, err)
+	}
+}

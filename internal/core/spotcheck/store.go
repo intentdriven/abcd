@@ -531,7 +531,7 @@ func Write(parent context.Context, root string, b Batch) Written {
 	ctx, cancel := context.WithTimeout(parent, WriteTimeout)
 	defer cancel()
 	if err := originPresent(ctx, root); err != nil {
-		w.Err = stopped("write", err)
+		w.Err = err
 		if !errors.Is(err, ErrNoOrigin) {
 			w.Failed = len(b.HandBacks) + len(b.Decisions)
 		}
@@ -566,7 +566,7 @@ func Write(parent context.Context, root string, b Batch) Written {
 		if errors.Is(err, errMoved) && attempt < maxTries {
 			continue
 		}
-		w.Kept, w.Failed, w.Err = kept, len(files)-kept, stopped("write", err)
+		w.Kept, w.Failed, w.Err = kept, len(files)-kept, err
 		return w
 	}
 }
@@ -943,10 +943,13 @@ func storeGit(ctx context.Context, root, index, stdin string, args ...string) (s
 	return strings.TrimSpace(stdout.b.String()), nil
 }
 
-// stopError is an error of the store's write or push (what) that holds a git
-// command the check gitutil.SetBeforeHookedGit set did not run (a
-// gitutil.NotRunError): it says the write or push was stopped before its git
-// ran, and keeps the stop underneath, for its cause.
+// stopError is an error of the store's push (what) that holds a git command
+// that was not run (a gitutil.NotRunError: the check
+// gitutil.SetBeforeHookedGit set refused it, or the read of core.sshCommand
+// that decides its ssh command failed): it says the push was stopped before
+// its git ran, and keeps the stop underneath, for its cause. A write's git
+// commands start no program and reach no network, so none of them asks that
+// check and a write is never stopped so.
 type stopError struct {
 	what string
 	err  error
@@ -958,7 +961,7 @@ func (e *stopError) Error() string {
 
 func (e *stopError) Unwrap() error { return e.err }
 
-// stopped is err said as a stop of the store's what (write or push) when it
+// stopped is err said as a stop of the store's what (the push) when it
 // holds a git that was not run, once; any other err as it is.
 func stopped(what string, err error) error {
 	var nr *gitutil.NotRunError
@@ -1160,9 +1163,11 @@ var beforePush func(attempt int)
 // and one plain push (claim.PushBranch), never forced. A push origin rejects
 // (a writer that pushed between the fetch and the push) is tried once more
 // after a fresh fetch; a second failure is an error, and every record stays
-// on the local copy for the next push. A fetch or a push the check
-// gitutil.SetBeforeHookedGit set stopped is not tried again: the error says
-// the push was stopped and carries the stop. The local copy is never moved: it
+// on the local copy for the next push. A fetch or a push whose git was not
+// run (a gitutil.NotRunError: the check gitutil.SetBeforeHookedGit set
+// refused it, or the read of core.sshCommand that decides its ssh command
+// failed) is not tried again: the error says the push was stopped and
+// carries the stop. The local copy is never moved: it
 // keeps only what this checkout wrote, whatever origin holds. A branch origin no longer holds
 // is no copy at all: its tracking ref is removed and the local copy pushed
 // whole. Nothing origin holds is removed, and only a file its name does not

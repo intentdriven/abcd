@@ -213,10 +213,11 @@ var ErrBeforeHookedGitSet = errors.New("a check before every hooked or networked
 // heldBeforeGit); it is given the command's arguments. One drive runs in a
 // process, so a check already set is not replaced: the call is refused with
 // ErrBeforeHookedGitSet. The returned clear removes this check and only this
-// one. The comparison's own reads never ask it: they run through
-// NetAskContext, WorkingTreeCommitCommand built directly, and isolated
-// `config`, `var` and `rev-parse` reads, which start no program. With no
-// check set nothing changes.
+// one. The comparison's own reads never ask it, by the route they take,
+// not by their command lines: they run through NetAskContext and
+// WorkingTreeCommitCommand built directly, which ask nothing, and the
+// isolated runners under a context WithinCheck marked, which do not ask.
+// With no check set nothing changes.
 func SetBeforeHookedGit(f func(args []string) error) (clear func(), err error) {
 	if f == nil {
 		return nil, errors.New("no check was given")

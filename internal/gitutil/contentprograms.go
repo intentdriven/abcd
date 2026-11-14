@@ -62,6 +62,9 @@ type gitArgs struct {
 	// dashdash is whether the command line holds a "--", so that what
 	// stands before it is read as revisions and options alone.
 	dashdash bool
+	// words are the options and revisions in the order given, for an
+	// option whose value can be the next word (--format, --pretty).
+	words []string
 }
 
 func readGitArgs(args []string) gitArgs {
@@ -83,6 +86,7 @@ func readGitArgs(args []string) gitArgs {
 			g.dashdash = true
 			break
 		}
+		g.words = append(g.words, a)
 		if strings.HasPrefix(a, "-") {
 			g.opts = append(g.opts, a)
 		} else {
@@ -108,7 +112,10 @@ func (g gitArgs) has(names ...string) bool {
 // prefix of name past "--", which git's option parser takes as name when no
 // other option of the subcommand shares it. others are options of their own
 // that are prefixes of name (--text of --textconv), which are not it. A
-// prefix git would refuse as ambiguous is counted too: that only asks more.
+// prefix git would refuse as ambiguous is counted too. Every judge reads
+// what hasAbbrev reports as a reason to ask, never as a reason not to (a
+// listing or a read is recognised by exact words: has), so counting more
+// asks more.
 func (g gitArgs) hasAbbrev(name string, others ...string) bool {
 	return slices.ContainsFunc(g.opts, func(o string) bool {
 		o, _, _ = strings.Cut(o, "=")
@@ -118,7 +125,9 @@ func (g gitArgs) hasAbbrev(name string, others ...string) bool {
 
 // hasShort reports whether any option gives the one-letter option c, alone
 // or in a bundle of short options (-tm). A bundle whose letter c is another
-// option's value is counted too: that only asks more.
+// option's value (-mfinal) is counted too. Every judge reads what hasShort
+// reports as a reason to ask, never as a reason not to, so counting more
+// asks more.
 func (g gitArgs) hasShort(c byte) bool {
 	return slices.ContainsFunc(g.opts, func(o string) bool {
 		return len(o) > 1 && o[0] == '-' && o[1] != '-' && strings.IndexByte(o[1:], c) >= 0
@@ -276,11 +285,11 @@ func StartsNothing(verb string) bool {
 // network, and the networked runners ask before it runs.
 var startsNothing = map[string]string{
 	"rev-parse":        "names objects and paths",
-	"rev-list":         "lists commits",
+	"rev-list":         "lists commits; a format that shows a signature check (%G) asks",
 	"merge-base":       "reads commits",
-	"config":           "reads settings (--get, --get-regexp, --list); --edit and -e, which open the editor, ask",
+	"config":           "reads settings (--get, --get-regexp, --list); --edit, -e and edit, which open the editor, ask",
 	"var":              "reads settings and identities",
-	"for-each-ref":     "lists refs",
+	"for-each-ref":     "lists refs; a format that shows a signature check (%(signature)) asks",
 	"symbolic-ref":     "reads a ref",
 	"update-ref":       "writes a ref",
 	"ls-tree":          "lists a tree",
@@ -289,14 +298,16 @@ var startsNothing = map[string]string{
 	"check-ref-format": "checks a name",
 	"commit-tree":      "writes a commit from a tree; ExecPins keeps commit signing off, and -S or --gpg-sign, which start the signing program, ask",
 	"write-tree":       "writes the index as a tree",
-	"init":             "makes an empty repository (init -q --template=); a template, whose hooks git copies in, asks",
+	"init": "makes an empty repository (init -q --template=); any other form, which copies a template's hooks in " +
+		"(git's own when none is named), asks",
 	"remote": "lists remotes, reads one's URL or removes one (remote, remote get-url, remote remove); " +
 		"a form that reaches the network (update, show, prune, add -f, set-head -a) or one not known asks",
-	"shortlog": "counts commits by author (shortlog -sne HEAD), with no diff",
+	"shortlog": "counts commits by author (shortlog -sne HEAD), with no diff; a format that shows a signature check asks",
 	"cherry":   "compares commits' patch ids (cherry <upstream> <head>), hashed from stored content with no textconv or external diff",
-	"branch":   "lists branches (branch --format=... --no-merged <rev>); --edit-description, which opens the editor, asks",
-	"tag": "lists tags (tag --list, with --sort, --contains or --merged); -v, which starts the signing program, -s and -u, " +
-		"which sign, and any form that makes a tag, which can open the editor, ask",
+	"branch": "lists branches (branch --format=... --no-merged <rev>); --edit-description, which opens the editor, " +
+		"and a format that shows a signature check, ask",
+	"tag": "lists tags (tag --list, with --sort, --contains or --merged); only a listing given in exact words, with no word " +
+		"that makes, signs, verifies or deletes a tag and no format that shows a signature check, does not ask",
 	"describe": "names a commit by a tag (describe --tags --match <pattern> --abbrev=0 <rev>); --dirty and --broken, " +
 		"which refresh the index through the content filters, ask",
 }
@@ -304,32 +315,39 @@ var startsNothing = map[string]string{
 // startsInForm judges, for a subcommand on the starts-nothing list that has
 // a form able to start a program (a signing program, the editor, a hook a
 // template copies in, the content filters) or reach the network, whether a
-// command line g is in such a form. An option is read in any prefix git
-// takes for it and a short one inside a bundle; a prefix git would refuse as
-// ambiguous counts too, which only asks more.
+// command line g is in such a form. An option that makes it ask is read in
+// any prefix git takes for it and a short one inside a bundle or glued to a
+// value; a prefix git would refuse as ambiguous counts too, so each reading
+// asks more, never less. A form that does not ask (a listing, the empty
+// template) is recognised by exact words alone.
 var startsInForm = map[string]func(g gitArgs) bool{
-	"tag": func(g gitArgs) bool {
-		if g.hasShort('v') || g.hasAbbrev("--verify") || g.hasShort('s') || g.hasAbbrev("--sign") ||
-			g.hasShort('u') || g.hasAbbrev("--local-user") {
-			return true
-		}
-		listing := g.hasShort('l') || g.hasAbbrev("--list") || g.hasShort('n') ||
-			g.has("--contains", "--no-contains", "--merged", "--no-merged", "--points-at") || len(g.revs) == 0
-		return !listing
+	"tag":          tagAsks,
+	"describe":     func(g gitArgs) bool { return g.hasAbbrev("--dirty") || g.hasAbbrev("--broken") },
+	"branch":       func(g gitArgs) bool { return g.hasAbbrev("--edit-description") || g.signatureShown() },
+	"rev-list":     func(g gitArgs) bool { return g.signatureShown() },
+	"shortlog":     func(g gitArgs) bool { return g.signatureShown() },
+	"for-each-ref": func(g gitArgs) bool { return g.signatureShown() },
+	"config": func(g gitArgs) bool {
+		return g.hasAbbrev("--edit") || g.hasShort('e') || len(g.revs) > 0 && g.revs[0] == "edit"
 	},
-	"describe": func(g gitArgs) bool { return g.hasAbbrev("--dirty") || g.hasAbbrev("--broken") },
-	"branch":   func(g gitArgs) bool { return g.hasAbbrev("--edit-description") },
-	"config":   func(g gitArgs) bool { return g.hasAbbrev("--edit") || g.hasShort('e') },
 	"commit-tree": func(g gitArgs) bool {
 		return g.hasShort('S') || g.hasAbbrev("--gpg-sign")
 	},
 	"init": func(g gitArgs) bool {
-		// --template= with no value copies none; --template given its value
-		// as the next word, or any directory, copies that one's hooks in.
-		return slices.ContainsFunc(g.opts, func(o string) bool {
+		// Only --template= with no value copies no template: with none
+		// named git copies its own, hooks included, and --template given
+		// its value as the next word, or any directory, copies that one's.
+		empty := false
+		for _, o := range g.opts {
 			name, value, valued := strings.Cut(o, "=")
-			return len(name) > 2 && strings.HasPrefix("--template", name) && (!valued || value != "")
-		})
+			if len(name) > 2 && strings.HasPrefix("--template", name) {
+				if !valued || value != "" {
+					return true
+				}
+				empty = true
+			}
+		}
+		return !empty
 	},
 	"remote": func(g gitArgs) bool {
 		if len(g.revs) == 0 {
@@ -345,6 +363,73 @@ var startsInForm = map[string]func(g gitArgs) bool{
 		}
 		return true
 	},
+}
+
+// tagMakes are the short options of tag that make, sign, verify or delete a
+// tag, or give its message (-a, -s, -u, -m, -F, -f, -d, -e, -v), and
+// tagMakesLong their long forms, with --trailer, which makes an annotated
+// tag.
+const tagMakes = "asumFfdev"
+
+var tagMakesLong = []string{"--annotate", "--sign", "--local-user", "--message", "--file", "--force", "--delete", "--edit", "--verify", "--trailer"}
+
+// tagAsks judges tag: it does not ask only for a listing, a command line
+// that holds a listing word of its own (-l, --list, -n, -n<digits>,
+// --contains, --no-contains, --merged, --no-merged, --points-at, each
+// exactly, the last five alone or with =value) or no argument at all, and
+// holds no option of tagMakes, alone, in a bundle or glued to a value
+// (-mfinal), none of tagMakesLong in any prefix, and no format that shows a
+// signature check. Anything else asks: a tag made can be signed through the
+// signing program the repository names (tag.gpgSign,
+// tag.forceSignAnnotated) or open the editor.
+func tagAsks(g gitArgs) bool {
+	for _, o := range g.opts {
+		if len(o) > 1 && o[0] == '-' && o[1] != '-' && strings.ContainsAny(o[1:], tagMakes) {
+			return true
+		}
+	}
+	if slices.ContainsFunc(tagMakesLong, func(n string) bool { return g.hasAbbrev(n) }) || g.signatureShown() {
+		return true
+	}
+	if len(g.words) == 0 && !g.dashdash {
+		return false
+	}
+	listing := slices.ContainsFunc(g.opts, func(o string) bool {
+		if o == "-l" || o == "--list" || o == "-n" {
+			return true
+		}
+		if digits, ok := strings.CutPrefix(o, "-n"); ok && strings.Trim(digits, "0123456789") == "" {
+			return true
+		}
+		return false
+	}) || g.has("--contains", "--no-contains", "--merged", "--no-merged", "--points-at")
+	return !listing
+}
+
+// signatureShown reports whether the command shows a check of a signature,
+// which runs the verifying program the repository names (gpg.program and
+// its kin): --show-signature in any prefix git takes for it, or a --format
+// or --pretty value, given after "=" or as the next word, the option in
+// any prefix, that holds a %G placeholder or a %(signature atom. One reading
+// for log, show, rev-list, shortlog, for-each-ref, branch and tag.
+func (g gitArgs) signatureShown() bool {
+	if g.hasAbbrev("--show-signature") {
+		return true
+	}
+	for i, w := range g.words {
+		name, value, valued := strings.Cut(w, "=")
+		if len(name) <= 2 || !strings.HasPrefix(name, "--") ||
+			!strings.HasPrefix("--format", name) && !strings.HasPrefix("--pretty", name) {
+			continue
+		}
+		if !valued && i+1 < len(g.words) {
+			value = g.words[i+1]
+		}
+		if strings.Contains(value, "%G") || strings.Contains(value, "%(signature") {
+			return true
+		}
+	}
+	return false
 }
 
 // contentJudges is LeavesContentProgramsOn by subcommand: each says whether
@@ -380,7 +465,7 @@ var contentJudges = map[string]func(g gitArgs, blanked bool) bool{
 			return strings.Contains(r, ":") && !strings.HasPrefix(r, ":/") && !strings.Contains(r, "^{/")
 		}
 		blobs := len(g.revs) > 0 && !slices.ContainsFunc(g.revs, func(r string) bool { return !blob(r) })
-		return g.diffProgramsAsked() || (!blobs && !g.noPatch() && !g.diffProgramsOff())
+		return g.diffProgramsAsked() || g.signatureShown() || (!blobs && !g.noPatch() && !g.diffProgramsOff())
 	},
 	"log":         logJudge,
 	"whatchanged": logJudge,
@@ -419,7 +504,7 @@ var contentJudges = map[string]func(g gitArgs, blanked bool) bool{
 }
 
 func logJudge(g gitArgs, _ bool) bool {
-	return g.diffProgramsAsked() || (g.patchy() && !g.diffProgramsOff())
+	return g.diffProgramsAsked() || g.signatureShown() || (g.patchy() && !g.diffProgramsOff())
 }
 
 func blameJudge(g gitArgs, blanked bool) bool {

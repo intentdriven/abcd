@@ -266,6 +266,65 @@ func TestASubcommandOnTheStartsNothingListAsksInAFormThatCanStartAProgram(t *tes
 	}
 }
 
+// TestAListingIsRecognisedOnlyByExactWords: a tag does not ask only for a
+// listing given in exact words with no word that makes, signs, verifies or
+// deletes a tag, bundled or glued to a value included; config's edit
+// subcommand asks as --edit does; a format that shows a signature check, or
+// --show-signature, asks on every subcommand that takes one; and init asks
+// unless the empty template is given. Watched failing on 5dd7deff: every row
+// wanting true got false.
+func TestAListingIsRecognisedOnlyByExactWords(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"tag", "-m", "-l", "v1"}, true},
+		{[]string{"tag", "-mfinal", "v1"}, true},
+		{[]string{"tag", "-f", "-n", "v1"}, true},
+		{[]string{"tag", "-d", "-l", "v1"}, true},
+		{[]string{"tag", "-e", "--list", "v1"}, true},
+		{[]string{"tag", "-Fmsg", "--contains", "abc", "v1"}, true},
+		{[]string{"tag", "--message=x", "--list", "v1"}, true},
+		{[]string{"tag", "--anno", "--list", "v1"}, true},
+		{[]string{"tag", "--trailer=k:v", "--list", "v1"}, true},
+		{[]string{"tag", "--lis", "v*"}, true},
+		{[]string{"tag", "-ln", "v*"}, true},
+		{[]string{"tag", "--list", "--format=%(signature)", "v*"}, true},
+		{[]string{"tag", "--list", "--format", "%(signature:grade)", "v*"}, true},
+		{[]string{"tag", "-n5", "-l", "v*"}, false},
+		{[]string{"tag", "-n", "v*"}, false},
+		{[]string{"tag", "--points-at=HEAD"}, false},
+		{[]string{"tag", "--list", "--format=%(refname:short)", "v*"}, false},
+		{[]string{"config", "edit"}, true},
+		{[]string{"config", "--local", "edit"}, true},
+		{[]string{"config", "--get", "core.editor"}, false},
+		{[]string{"log", "--format=%G?", "-1"}, true},
+		{[]string{"log", "--pretty", "format:%GS", "HEAD"}, true},
+		{[]string{"log", "--pre=%GK", "HEAD"}, true},
+		{[]string{"log", "--show-signature", "-1"}, true},
+		{[]string{"log", "--format=%H", "-1"}, false},
+		{[]string{"show", "-s", "--format=%G?", "HEAD"}, true},
+		{[]string{"show", "--show-sig", "-s", "HEAD"}, true},
+		{[]string{"show", "-s", "--format=%H", "HEAD"}, false},
+		{[]string{"rev-list", "--format=%G?", "HEAD"}, true},
+		{[]string{"rev-list", "--form", "%GG", "HEAD"}, true},
+		{[]string{"rev-list", "--format=%H", "HEAD"}, false},
+		{[]string{"shortlog", "--format", "%GS", "HEAD"}, true},
+		{[]string{"shortlog", "-sne", "HEAD"}, false},
+		{[]string{"for-each-ref", "--format=%(signature:grade)"}, true},
+		{[]string{"for-each-ref", "--format=%(refname)"}, false},
+		{[]string{"branch", "--format=%(signature)", "--list"}, true},
+		{[]string{"branch", "--format=%(refname:short)", "--no-merged", "abc"}, false},
+		{[]string{"init"}, true},
+		{[]string{"init", "-q", "x"}, true},
+		{[]string{"init", "-q", "--template=", "x"}, false},
+	} {
+		if got := gitutil.LeavesContentProgramsOn(tc.args); got != tc.want {
+			t.Errorf("%q: got %v, want %v", tc.args, got, tc.want)
+		}
+	}
+}
+
 // TestTheOptionsThatStartAProgramAreReadAsGitTakesThem: the options that
 // switch a program on are read in any prefix git takes for them and inside
 // a bundle of short options, --attr-source takes its value as the next

@@ -84,17 +84,39 @@ func isolatedGitContext(ctx context.Context, root string, args ...string) *exec.
 	return isolatedGitContextAsking(ctx, root, true, args)
 }
 
+// checkOwnRead is the key of the mark WithinCheck sets on a context.
+type checkOwnRead struct{}
+
+// WithinCheck is ctx marked as the context of a read the check
+// SetBeforeHookedGit set makes itself (implement/loop's comparison of what
+// a drive holds): an isolated runner bound to it does not ask that check,
+// whatever its command line is, so a change to what LeavesContentProgramsOn
+// reads, or a value in a read's command line, can never make the check ask
+// itself. The hooked and networked runners the check reads through
+// (NetAskContext, WorkingTreeCommitCommand built directly) ask nothing in
+// any case.
+func WithinCheck(ctx context.Context) context.Context {
+	return context.WithValue(ctx, checkOwnRead{}, true)
+}
+
+// withinCheck reports whether ctx carries WithinCheck's mark.
+func withinCheck(ctx context.Context) bool {
+	on, _ := ctx.Value(checkOwnRead{}).(bool)
+	return on
+}
+
 // isolatedGitContextAsking is isolatedGitContext, asking the check
 // SetBeforeHookedGit set for what the command can start only when ask is
-// set: a networked runner (RunLimitedNetContext) has asked it already, for
-// the command as a whole, and does not ask twice.
+// set and ctx is not one of the check's own reads (WithinCheck): a
+// networked runner (RunLimitedNetContext) has asked it already, for the
+// command as a whole, and does not ask twice.
 func isolatedGitContextAsking(ctx context.Context, root string, ask bool, args []string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", isolatedArgs(root, args)...)
 	cmd.Env = gitEnv()
 	if ctx.Done() != nil {
 		cmd.WaitDelay = contextWaitDelay
 	}
-	if ask {
+	if ask && !withinCheck(ctx) {
 		askIfContentRuns(cmd, args)
 	}
 	guardObjectRead(ctx, cmd, root, args)
@@ -402,7 +424,15 @@ func InRepo(root string) bool {
 // the informative 1 into a generic error. A caller deriving a release's content
 // commit from the receipts directory needs the three outcomes kept apart: "yes"
 // selects a candidate, "no" skips it, and only a genuine git failure is fatal.
+// Either name empty or starting with a dash, which git would read as an
+// option, is refused before git runs (RefIsSafe): callers pass names read
+// from stored state as well as from git.
 func IsAncestor(root, ancestor, descendant string) (bool, error) {
+	for _, ref := range []string{ancestor, descendant} {
+		if !RefIsSafe(ref) {
+			return false, fmt.Errorf("refusing ref %q: an empty or option-shaped ref would reach git as a flag", ref)
+		}
+	}
 	cmd := isolatedGit(root, "merge-base", "--is-ancestor", ancestor, descendant)
 	e := &capWriter{remaining: 4096}
 	cmd.Stderr = e

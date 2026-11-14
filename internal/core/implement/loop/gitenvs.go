@@ -449,7 +449,10 @@ func (e *gitEnv) readBy(b readBounds, dir, what string, limit int, args ...strin
 		if bound <= 0 {
 			bound = time.Millisecond
 		}
-		ctx, cancel := context.WithTimeout(b.ctx, bound)
+		// Every read the hold makes is the comparison's own: marked so no
+		// runner it goes through asks the drive's check, which is that
+		// comparison, whatever its command line holds (gitutil.WithinCheck).
+		ctx, cancel := context.WithTimeout(gitutil.WithinCheck(b.ctx), bound)
 		out, err := e.ask(ctx, env, dir, limit, args...)
 		late := err != nil && ctx.Err() != nil
 		cancel()

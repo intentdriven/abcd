@@ -1148,22 +1148,22 @@ func TestAPushTheChecksStopsIsNotTriedAgain(t *testing.T) {
 	}
 }
 
-// TestAStoppedWriteSaysSo: an error of the store's that holds a git the check
-// did not run says the write was stopped before its git ran and keeps the
-// stop; any other error is as it was. Watched failing before: no error said
-// so.
-func TestAStoppedWriteSaysSo(t *testing.T) {
-	stop := &gitutil.NotRunError{Verb: "hash-object", Err: errors.New("held setting changed: filter.x.clean")}
-	err := stopped("write", fmt.Errorf("writing the spot-check's record: %w", stop))
+// TestAStoppedPushIsSaidOnce: an error of the push's that holds a git that
+// was not run says the push was stopped before its git ran, once, and keeps
+// the stop; any other error is as it was. Watched failing before: no error
+// said so.
+func TestAStoppedPushIsSaidOnce(t *testing.T) {
+	stop := &gitutil.NotRunError{Verb: "fetch", Err: errors.New("held setting changed: core.sshCommand")}
+	err := stopped("push", fmt.Errorf("fetching the spot-check's record: %w", stop))
 	var nr *gitutil.NotRunError
-	if !errors.As(err, &nr) || !strings.HasPrefix(err.Error(), "the spot-check's write was stopped before its git ran: ") {
-		t.Fatalf("a stopped write says so: %v", err)
+	if !errors.As(err, &nr) || !strings.HasPrefix(err.Error(), "the spot-check's push was stopped before its git ran: ") {
+		t.Fatalf("a stopped push says so: %v", err)
 	}
-	if again := stopped("write", err); again.Error() != err.Error() {
+	if again := stopped("push", err); again.Error() != err.Error() {
 		t.Fatalf("said once: %v", again)
 	}
 	plain := errors.New("listing this checkout's remotes: exit status 128")
-	if stopped("write", plain) != plain {
+	if stopped("push", plain) != plain {
 		t.Fatal("another error is as it was")
 	}
 }
