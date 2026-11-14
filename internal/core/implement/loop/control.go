@@ -183,7 +183,8 @@ func procOf(tab sessionname.Table, pid int) (sessionname.Host, bool) {
 // ClaimDriver is the one call a driver makes before it steps a run: it records
 // the host process this call runs under as the run's live driver, and refuses at
 // exit 3 while another driver's process is alive (iss-2611022247128872). One gone
-// is replaced, with an entry in the run's record. A table that cannot be read
+// is replaced, with an entry in the run's record, and so is the terminal a drive was
+// started from, recorded by a take-over made there (startedUnder). A table that cannot be read
 // claims nothing and refuses nothing: a step is never stopped by the machine's
 // process listing. A walk that names no host is a loop its session left behind
 // (iss-2611022247128872): it claims nothing, and backs off from a live driver.
@@ -292,6 +293,7 @@ func claimDriverMade(repoRoot, runID string, o Options, overHalted bool) (made c
 			if hostErr == nil && d.PID == here.PID && alive {
 				return false, nil
 			}
+			seen := tab
 			if !alive {
 				// The table was read before the lock, so a driver that claimed
 				// since is not in it and is not gone.
@@ -299,10 +301,11 @@ func claimDriverMade(repoRoot, runID string, o Options, overHalted bool) (made c
 				if err != nil {
 					return false, nil
 				}
-				alive = fresh.Alive(d.host())
+				alive, seen = fresh.Alive(d.host()), fresh
 			}
 			over := alive && overHalted && c.Stop != nil && c.Stop.HaltedAt != nil && !d.At.After(*c.Stop.HaltedAt)
-			if alive && !over {
+			terminal := alive && !over && hostErr == nil && o.startedUnder(seen, *d)
+			if alive && !over && !terminal {
 				return false, contend(StageDriver, "", "", fmt.Sprintf("%s is driven by %s, which has been alive since it took the run at %s",
 					st.RunID, driverName(*d), d.At.UTC().Format(time.RFC3339)),
 					"back off: only one driver steps a run; once that driver is gone, `abcd implement resume` lists what it left")
@@ -311,8 +314,11 @@ func claimDriverMade(repoRoot, runID string, o Options, overHalted bool) (made c
 				return false, nil
 			}
 			said := fmt.Sprintf("the driver %s is gone", driverName(*d))
-			if over {
+			switch {
+			case over:
 				said = fmt.Sprintf("a stop halted the run, so its idle driver %s gave way", driverName(*d))
+			case terminal:
+				said = fmt.Sprintf("the recorded driver %s is the terminal this drive was started from, which steps nothing", driverName(*d))
 			}
 			st.Record = append(st.Record, Entry{At: now, Stage: StageDriver,
 				Note: fmt.Sprintf("%s; %s took the run", said, driverName(LiveDriver{Session: session, PID: here.PID}))})
@@ -334,6 +340,44 @@ func claimDriverMade(repoRoot, runID string, o Options, overHalted bool) (made c
 		return changed, nil
 	})
 	return made, err
+}
+
+// startedUnder reports whether d, the run's live recorded driver, is the terminal this
+// drive was started from (iss-2611140902531015): the process a take-over run from that
+// terminal records, since driverOf, with no session above it, answers with the host
+// walk's process, the terminal's login, which lives as long as the drive does and steps
+// nothing. It holds only for a drive's claim (driverIsSelf) over a driver that names no
+// session, where driverOf's answer from this process, walked as a step walks from its
+// own, finds no session on a walk that reaches the machine's first process, and names d
+// itself: the same process id, its start time agreeing within the slack each reading
+// carries, as Table.Alive judges. It reads the session markers as driverOf does, but a
+// marker read that fails is not taken for no session. Anything unsure answers false, so
+// the drive contends as it always has: no home to read sessions from, markers that
+// cannot be read, a walk cut short or that names no host, a process the table does not
+// hold.
+func (o Options) startedUnder(tab sessionname.Table, d LiveDriver) bool {
+	if !o.driverIsSelf || d.Session != "" {
+		return false
+	}
+	home := o.stopHomeOf()
+	if home == "" {
+		return false
+	}
+	from := hereFrom()
+	walk := sessionname.Ancestors(tab, from)
+	if !walk.Finished {
+		return false
+	}
+	for _, h := range walk.Hosts {
+		if s, err := occupancy.ReadSessionOn(home, h); err != nil || s != "" {
+			return false
+		}
+	}
+	h, err := sessionname.FindHost(tab, from)
+	if err != nil || h.PID == hereSelf() {
+		return false
+	}
+	return h.PID == d.PID && tab.Alive(d.host()) && sessionname.SameHost(h, d.host())
 }
 
 // driverHere is the process this call would claim a run as: a drive's own, or the host

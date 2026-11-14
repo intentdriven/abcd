@@ -1091,8 +1091,11 @@ crash left open drifts while nobody looks. Work it could not save is a
 refusal, exit 2: settle it and take again, never step over it. Exit 3 while a stop holds, while
 another driver's process is alive or a recorded driver cannot be judged, or when a peer has
 taken the work a stop released: back off. A run a person's stop halted waits for this take-over,
-also after the stop lifts: a new `abcd drain --drive` names it and passes over it. A run halted
-by the first interrupt to a drive's own terminal is the one a later drive takes up,
+also after the stop lifts: a new `abcd drain --drive` names it and passes over it. A take-over
+from a plain terminal records that terminal as the run's driver, and an `abcd drain --drive`
+started afterwards from the same terminal takes the run from it, with a line in the run's record
+saying so; one from another terminal, or beneath a session, waits on it as on any live driver.
+A run halted by the first interrupt to a drive's own terminal is the one a later drive takes up,
 unless its lane is parked on its pull request, which waits for this take-over.
 
 **One driver steps a run.** `implement step` records the session it runs under in
