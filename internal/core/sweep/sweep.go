@@ -70,7 +70,7 @@ type Options struct {
 // the error, and the result carries it as its Refusal, so ExitCode reads
 // ExitRefused. A run without Held or Cwd is refused the same way.
 func runDry(ctx context.Context, repoRoot string, o Options) (Result, error) {
-	res, _, err := judgeRepo(ctx, repoRoot, o)
+	res, _, err := judgeRepo(ctx, repoRoot, o, false)
 	return res, err
 }
 
@@ -85,8 +85,9 @@ type plan struct {
 }
 
 // judgeRepo is runDry, also answering with the plan behind the result's rows,
-// for runApply to act on.
-func judgeRepo(ctx context.Context, repoRoot string, o Options) (Result, plan, error) {
+// for runApply to act on. retain keeps each salvage's bytes for apply to
+// write; a dry run keeps only each salvage's manifest and identity.
+func judgeRepo(ctx context.Context, repoRoot string, o Options, retain bool) (Result, plan, error) {
 	fail := func(err error) (Result, plan, error) {
 		res, err := refused(err)
 		return res, plan{}, err
@@ -133,10 +134,11 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options) (Result, plan, e
 		ForgeNote:               listing.ForgeNote,
 	}
 	pl := plan{srcs: listing.Worktrees, salvages: map[int]salvage{}, lane: lane, j: j}
+	sv := &salvager{ctx: ctx, repoRoot: repoRoot, home: home, lane: lane, retain: retain}
 	for i, r := range listing.Worktrees {
 		row := j.row(r)
 		if row.Action == ActionSavePatch {
-			if s, ok := j.planSalvage(repoRoot, lane, r, &row); ok {
+			if s, ok := sv.plan(r, &row); ok {
 				pl.salvages[i] = s
 			}
 		}

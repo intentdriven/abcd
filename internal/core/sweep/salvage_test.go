@@ -11,7 +11,9 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -302,7 +304,7 @@ func TestAFailedSalvageKeepsTheWorktree(t *testing.T) {
 // TestTheEmbargoStoreAndAnOutsideWorktreeAreNeverSalvaged: dirty as each is,
 // the embargo store and a worktree outside the store are kept by the dry run
 // before any salvage is considered, so nothing is copied out of either; and
-// collectSalvage refuses either again, reading nothing.
+// the salvage's collect refuses either again, reading nothing.
 func TestTheEmbargoStoreAndAnOutsideWorktreeAreNeverSalvaged(t *testing.T) {
 	repo, home := sweepRepo(t)
 	l, err := store.LaneFor(repo.Root())
@@ -329,8 +331,9 @@ func TestTheEmbargoStoreAndAnOutsideWorktreeAreNeverSalvaged(t *testing.T) {
 		{Name: storepath.Name, Abs: emb, Where: store.WhereStore},
 		{Name: "beside", Branch: "beside", Abs: outside, Where: store.WhereOutside},
 	} {
-		if _, err := collectSalvage(repo.Root(), home, l, r); err == nil {
-			t.Errorf("collectSalvage(%s) = nil; want a refusal", r.Name)
+		sv := &salvager{ctx: context.Background(), repoRoot: repo.Root(), home: home, lane: l}
+		if _, err := sv.collect(r); err == nil {
+			t.Errorf("collect(%s) = nil; want a refusal", r.Name)
 		}
 	}
 }
@@ -366,7 +369,8 @@ func TestASalvageEntryIsKnownByItsNameAndKind(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := store.Row{Name: "wip", Branch: "wip", Abs: p, Where: store.WhereStore}
-	s, err := collectSalvage(repo.Root(), home, l, src)
+	sv := &salvager{ctx: context.Background(), repoRoot: repo.Root(), home: home, lane: l}
+	s, err := sv.collect(src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,4 +389,237 @@ func TestASalvageEntryIsKnownByItsNameAndKind(t *testing.T) {
 	if got, err := earlierSalvage(l, s); err != nil || got != "" {
 		t.Fatalf("earlierSalvage over an entry that is not a salvage = %q, %v; want none", got, err)
 	}
+}
+
+// keptUnsaved asserts that the dry run and the apply over repo both keep the
+// worktree name with a reason holding want, and that nothing is written and
+// the apply exits as one that acted on nothing.
+func keptUnsaved(t *testing.T, repo *gittest.Repo, home, name, want string) {
+	t.Helper()
+	dry := rowFor(t, dryRun(t, repo, sweepOpts()), name)
+	if dry.Action != ActionKeep || !strings.Contains(dry.Reason, dirtyUnsaved+want) {
+		t.Fatalf("the dry run: %+v; want it kept, its reason holding %q", dry, dirtyUnsaved+want)
+	}
+	res := apply(t, repo, sweepOpts())
+	if r := rowFor(t, res, name); r.Outcome != OutcomeKept || r.Reason != dry.Reason {
+		t.Fatalf("the apply: %+v; want it kept with the dry run's reason", r)
+	}
+	if got := salvageEntries(t, repo, home); got != nil {
+		t.Fatalf("nothing is written: %q", got)
+	}
+	if res.ExitCode() != ExitNothing {
+		t.Fatalf("a run that saved nothing exits %d; want %d", res.ExitCode(), ExitNothing)
+	}
+}
+
+// TestAChangeGitWritesAsABinaryPatchIsRefused: git writes a change to a path
+// it treats as binary as a binary patch, whose encoded lines the redaction
+// pass cannot read, so the worktree is kept with the reason an untracked
+// binary file gets, naming the path, and nothing is saved: a tracked file
+// changed to hold a NUL byte, and a staged text file its attributes mark
+// -diff.
+func TestAChangeGitWritesAsABinaryPatchIsRefused(t *testing.T) {
+	t.Run("a tracked file holding a NUL byte", func(t *testing.T) {
+		repo, home := sweepRepo(t)
+		p := laneAdd(t, repo, "nul")
+		if err := os.WriteFile(filepath.Join(p, "a.txt"), []byte("a\x00b\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		keptUnsaved(t, repo, home, "nul", "a.txt: "+notText)
+	})
+
+	t.Run("a text file marked -diff", func(t *testing.T) {
+		repo, home := sweepRepo(t)
+		repo.Write(".gitattributes", "doc.txt -diff\n")
+		repo.Write("doc.txt", "one\n")
+		repo.Commit("doc")
+		p := laneAdd(t, repo, "nodiff")
+		write(t, filepath.Join(p, "doc.txt"), "two\n")
+		repo.Git("-C", p, "add", "doc.txt")
+		keptUnsaved(t, repo, home, "nodiff", "doc.txt: "+notText)
+	})
+}
+
+// TestBinaryChangeFindsTheOpeningLineAndNamesAPlainPath: the binary patch is
+// known by a whole line, never by text inside a hunk, and its path is named
+// only from a plain header naming one path on both sides.
+func TestBinaryChangeFindsTheOpeningLineAndNamesAPlainPath(t *testing.T) {
+	for _, c := range []struct {
+		diff, path string
+		binary     bool
+	}{
+		{"diff --git a/x.bin b/x.bin\nindex 1..2 100644\nGIT binary patch\nliteral 3\nKc${\n", "x.bin", true},
+		{"diff --git a/a b/a\n+GIT binary patch\n GIT binary patch\n", "", false},
+		{"diff --git a/old b/new\nGIT binary patch\n", "", true},
+		{"diff --git \"a/q\\tx\" \"b/q\\tx\"\nGIT binary patch\n", "", true},
+		{"diff --git a/a b b/a b\nGIT binary patch\n", "a b", true},
+		{"GIT binary patch\n", "", true},
+	} {
+		p, ok := binaryChange(c.diff)
+		if p != c.path || ok != c.binary {
+			t.Errorf("binaryChange(%q) = %q, %v; want %q, %v", c.diff, p, ok, c.path, c.binary)
+		}
+	}
+}
+
+// markScript is a script under the test's temp dir that records each run in
+// a file there and passes its input through: a content filter whose running
+// the test can see.
+func markScript(t *testing.T) (script, mark string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX sentinel script")
+	}
+	dir := t.TempDir()
+	mark = filepath.Join(dir, "filter-ran")
+	script = filepath.Join(dir, "filter.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\necho ran >> "+mark+"\ncat\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return script, mark
+}
+
+// staleAt moves the file's times back by age, so its stat no longer matches
+// the index and git compares its content.
+func staleAt(t *testing.T, p string, age time.Duration) {
+	t.Helper()
+	old := time.Now().Add(-age)
+	if err := os.Chtimes(p, old, old); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// plainGit runs git in dir under the fixture's environment, outside every
+// abcd runner, for a test proving its fixture is live.
+func plainGit(t *testing.T, repo *gittest.Repo, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = repo.Env()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+// TestTheSalvageReadsChangesTheWayTheStatusReadDoes: the salvage reads a
+// worktree's changes as gitutil.Status reads its status, so over a file whose
+// stat no longer matches, neither a clean filter the repository names nor one
+// a checked-out nested repository's own config names is started, by the dry
+// run or the apply; and the changes are still saved.
+func TestTheSalvageReadsChangesTheWayTheStatusReadDoes(t *testing.T) {
+	check := func(t *testing.T, repo *gittest.Repo, p, stale, mark string) {
+		t.Helper()
+		// The fixture is live: a plain diff in the worktree starts the filter.
+		staleAt(t, stale, 48*time.Hour)
+		plainGit(t, repo, p, "diff")
+		if !exists(mark) {
+			t.Fatal("fixture: a plain git diff did not start the filter, so this test proves nothing")
+		}
+		if err := os.Remove(mark); err != nil {
+			t.Fatal(err)
+		}
+		staleAt(t, stale, 24*time.Hour)
+
+		if r := rowFor(t, dryRun(t, repo, sweepOpts()), "wip"); r.Action != ActionSavePatch {
+			t.Fatalf("the dry run: %+v; want save-patch", r)
+		}
+		if exists(mark) {
+			t.Fatal("the dry run started the filter")
+		}
+		if r := rowFor(t, apply(t, repo, sweepOpts()), "wip"); r.Outcome != OutcomeSaved {
+			t.Fatalf("the apply: %+v; want the changes saved", r)
+		}
+		if exists(mark) {
+			t.Fatal("the apply started the filter")
+		}
+	}
+
+	t.Run("the repository's clean filter", func(t *testing.T) {
+		repo, _ := sweepRepo(t)
+		p := laneAdd(t, repo, "wip")
+		write(t, filepath.Join(p, "new.txt"), "new\n")
+		script, mark := markScript(t)
+		repo.Git("config", "filter.mark.clean", script)
+		info := filepath.Join(repo.Root(), ".git", "info")
+		if err := os.MkdirAll(info, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		write(t, filepath.Join(info, "attributes"), "a.txt filter=mark\n")
+		check(t, repo, p, filepath.Join(p, "a.txt"), mark)
+	})
+
+	t.Run("a nested repository's own clean filter", func(t *testing.T) {
+		repo, _ := sweepRepo(t)
+		p := laneAdd(t, repo, "wip")
+		nested := filepath.Join(p, "nested")
+		if err := os.Mkdir(nested, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		repo.Git("-C", nested, "init", "-q")
+		write(t, filepath.Join(nested, "s.txt"), "s\n")
+		repo.Git("-C", nested, "add", "s.txt")
+		repo.Git("-C", nested, "commit", "-q", "-m", "nested seed")
+		repo.Git("-C", p, "-c", "advice.addEmbeddedRepo=false", "add", "nested")
+		script, mark := markScript(t)
+		repo.Git("-C", nested, "config", "filter.subevil.clean", script)
+		if err := os.MkdirAll(filepath.Join(nested, ".git", "info"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		write(t, filepath.Join(nested, ".git", "info", "attributes"), "* filter=subevil\n")
+		check(t, repo, p, filepath.Join(nested, "s.txt"), mark)
+	})
+}
+
+// TestADryRunLeavesTheWorktreesIndexAsItWas: a tracked file touched without
+// its bytes changing is compared without the index being refreshed, so a dry
+// run leaves the index's bytes and time as they were, and the apply judges
+// the worktree as the dry run did and saves its changes.
+func TestADryRunLeavesTheWorktreesIndexAsItWas(t *testing.T) {
+	repo, _ := sweepRepo(t)
+	p := laneAdd(t, repo, "wip")
+	write(t, filepath.Join(p, "new.txt"), "new\n")
+	staleAt(t, filepath.Join(p, "a.txt"), 48*time.Hour)
+	index := repo.Git("-C", p, "rev-parse", "--path-format=absolute", "--git-path", "index")
+	read := func() ([]byte, time.Time) {
+		b, err := os.ReadFile(index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fi, err := os.Stat(index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b, fi.ModTime()
+	}
+	before, beforeAt := read()
+
+	dry := rowFor(t, dryRun(t, repo, sweepOpts()), "wip")
+	after, afterAt := read()
+	if !bytes.Equal(after, before) || !afterAt.Equal(beforeAt) {
+		t.Fatalf("the dry run rewrote the worktree's index: %v -> %v", beforeAt, afterAt)
+	}
+	if dry.Action != ActionSavePatch {
+		t.Fatalf("the dry run: %+v; want save-patch", dry)
+	}
+	if r := rowFor(t, apply(t, repo, sweepOpts()), "wip"); r.Action != dry.Action || r.Outcome != OutcomeSaved {
+		t.Fatalf("the apply: %+v; want it judged as the dry run judged it, and saved", r)
+	}
+}
+
+// TestAWorktreeMidMergeIsKeptUnsaved: a worktree with unmerged paths holds
+// combined hunks `git apply` cannot apply, so it is kept, named, and nothing
+// is saved.
+func TestAWorktreeMidMergeIsKeptUnsaved(t *testing.T) {
+	repo, home := sweepRepo(t)
+	p := laneAdd(t, repo, "mid")
+	write(t, filepath.Join(p, "a.txt"), "wip side\n")
+	repo.Git("-C", p, "commit", "-q", "-am", "wip side")
+	repo.Write("a.txt", "main side\n")
+	repo.Commit("main side")
+	cmd := exec.Command("git", "-C", p, "-c", "user.name=F", "-c", "user.email=f@example.invalid",
+		"-c", "commit.gpgsign=false", "merge", "-q", "main")
+	cmd.Env = repo.Env()
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("fixture: the merge did not conflict:\n%s", out)
+	}
+	keptUnsaved(t, repo, home, "mid", mergeInProgress)
 }

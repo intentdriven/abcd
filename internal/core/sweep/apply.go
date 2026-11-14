@@ -38,7 +38,7 @@ import (
 // the error, so ExitCode reads ExitRefused; the other rows are still acted
 // on, each being its own judgement.
 func runApply(ctx context.Context, repoRoot string, o Options) (Result, error) {
-	res, pl, err := judgeRepo(ctx, repoRoot, o)
+	res, pl, err := judgeRepo(ctx, repoRoot, o, true)
 	if err != nil {
 		return res, err
 	}
