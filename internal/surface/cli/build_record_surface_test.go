@@ -27,8 +27,10 @@ func completedRun(t *testing.T, root string) string {
 			Branch: "build/" + id + "-lane-1", BaseSHA: strings.Repeat("a", 40), HeadSHA: head, PR: 7,
 			Receipts: []loop.ReceiptRecord{{Role: loop.RoleImplementer, Receipt: "receipt.json", Model: "a-model"}},
 			Validation: []loop.ValidationRound{{Round: 1, HeadSHA: head, Validators: []loop.ValidatorRun{
-				{Role: loop.RoleRuthless, Brief: "b.md", Return: "r.md", Verdict: "SHIP", Pass: true},
-				{Role: loop.RoleSecurity, Brief: "b.md", Return: "s.md", Verdict: "APPROVE", Pass: true},
+				{Role: loop.RoleRuthless, Brief: "b.md", Return: "r.md", Verdict: "SHIP", Pass: true,
+					WriterModels: []string{"a-model"}, ReviewerModel: "claude-sonnet-5-5"},
+				{Role: loop.RoleSecurity, Brief: "b.md", Return: "s.md", Verdict: "APPROVE", Pass: true,
+					WriterModels: []string{"a-model"}, ReviewerModel: "claude-sonnet-5-5"},
 			}}},
 			Resolves: []loop.Resolution{{Issue: "iss-5", Commit: head, Note: "n", Impact: "fix", Grounds: "pursued: g"}},
 			Landing:  &loop.Landing{RecordsDone: true, Records: head, Pushed: head, BodyChecked: true, Merge: "left open", Merged: head},
