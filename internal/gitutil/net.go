@@ -159,8 +159,13 @@ func runHooked(dir string, network bool, stdin string, args []string, sink io.Wr
 // beforeHooked is the check SetBeforeHookedGit sets, nil for none.
 var beforeHooked atomic.Pointer[func(args []string) error]
 
-// NotRunError is a git command the check SetBeforeHookedGit set refused: git
-// did not run. Verb is its subcommand; Err is the check's error.
+// NotRunError is a git command abcd did not run. It has two makers: the
+// check SetBeforeHookedGit set refused the command (askBeforeHooked, for a
+// hooked or networked runner, and askIfContentRuns, for an isolated one), or,
+// for a networked command, the read of core.sshCommand that decides the ssh
+// command it runs gave no answer of git's (hookedCommand). Verb is its
+// subcommand; Err is the check's refusal or the failed read. Whatever exit
+// status Err wraps is not the command's: ExitCode reads none.
 type NotRunError struct {
 	Verb string
 	Err  error
@@ -169,6 +174,22 @@ type NotRunError struct {
 func (e *NotRunError) Error() string { return "git " + e.Verb + " was not run: " + e.Err.Error() }
 
 func (e *NotRunError) Unwrap() error { return e.Err }
+
+// ExitCode is the exit status of the git err reports, -1 when there is none:
+// a git that was not run (a NotRunError) has none, whatever its cause wraps,
+// so a caller that reads a status as an answer (none, no, too old) reads it
+// as a failed read instead.
+func ExitCode(err error) int {
+	var nr *NotRunError
+	if errors.As(err, &nr) {
+		return -1
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return ee.ExitCode()
+	}
+	return -1
+}
 
 // ErrBeforeHookedGitSet is SetBeforeHookedGit's refusal of a second check
 // while one is set: one drive runs in a process.
@@ -192,10 +213,11 @@ var ErrBeforeHookedGitSet = errors.New("a check before every hooked or networked
 // heldBeforeGit); it is given the command's arguments. One drive runs in a
 // process, so a check already set is not replaced: the call is refused with
 // ErrBeforeHookedGitSet. The returned clear removes this check and only this
-// one. The comparison's own reads never ask it: they run through
-// NetAskContext, WorkingTreeCommitCommand built directly, and isolated
-// `config`, `var` and `rev-parse` reads, which start no program. With no
-// check set nothing changes.
+// one. The comparison's own reads never ask it, by the route they take,
+// not by their command lines: they run through NetAskContext and
+// WorkingTreeCommitCommand built directly, which ask nothing, and the
+// isolated runners under a context WithinCheck marked, which do not ask.
+// With no check set nothing changes.
 func SetBeforeHookedGit(f func(args []string) error) (clear func(), err error) {
 	if f == nil {
 		return nil, errors.New("no check was given")
@@ -232,7 +254,7 @@ func runHookedContext(parent context.Context, dir string, network bool, stdin st
 		if perr := parent.Err(); perr != nil {
 			return "", fmt.Errorf("git %s: %w", gitVerb(args), perr)
 		}
-		return "", cmd.Err
+		return "", notStarted(args, cmd.Err)
 	}
 	if parent.Done() != nil {
 		cmd.WaitDelay = netContextWaitDelay
@@ -267,6 +289,17 @@ func runHookedContext(parent context.Context, dir string, network bool, stdin st
 		return "", fmt.Errorf("%s wrote more than %d bytes", what, netOutputCap)
 	}
 	return stdout.String(), nil
+}
+
+// notStarted is the error of a hooked or networked command that never
+// started (err, its cmd.Err), led by the git command it is, as a failure of
+// cmd.Run is: a NotRunError already is, and is returned as it is.
+func notStarted(args []string, err error) error {
+	var nr *NotRunError
+	if errors.As(err, &nr) {
+		return err
+	}
+	return fmt.Errorf("git %s: %w", gitVerb(args), err)
 }
 
 // hookedCommand is the git command runHookedContext runs: Net's (network
@@ -313,7 +346,7 @@ func NetAskContext(ctx context.Context, dir string, limit int, args ...string) (
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return "", fmt.Errorf("git %s: %w", gitVerb(args), ctxErr)
 		}
-		return "", cmd.Err
+		return "", notStarted(args, cmd.Err)
 	}
 	cmd.WaitDelay = netContextWaitDelay
 	out := &capWriter{remaining: limit}
@@ -409,7 +442,8 @@ func netEnvFor(env []string, underTest bool) []string {
 // comparison), and reads git's answer to its end before Wait
 // (procgroup.RunToEOF), so a program git left holding the output delays the
 // answer and never cuts it. The default is composed only on git's own answer
-// that none is set: exit status 1, or exit 0 with nothing written. Any other
+// that none is set: exit status 1 with nothing written, or exit 0 with nothing
+// but white space (what a setting given an empty value answers). Any other
 // outcome (the context ended, another exit, an answer past its cap) is an
 // error naming the read, and the networked command is not started: exporting
 // the default then would run git through an ssh command other than the one the
@@ -432,15 +466,20 @@ func netSSHCommand(ctx context.Context, dir string) (string, error) {
 	case ctx.Err() != nil:
 		return "", fmt.Errorf("the read of core.sshCommand, which decides the ssh command git runs, did not finish: %w", ctx.Err())
 	case err == nil && out.overflowed:
-		return "", fmt.Errorf("the read of core.sshCommand, which decides the ssh command git runs, answered more than %d bytes", netSSHReadCap)
+		return "", fmt.Errorf("the read of core.sshCommand, which decides the ssh command git runs, answered more than %d bytes; remedy: %s", netSSHReadCap, netSSHReadRemedy)
 	case err == nil && strings.TrimSpace(string(out.buf)) != "":
 		return "", nil
 	case err == nil, errors.As(err, &ee) && ee.ExitCode() == 1 && len(out.buf) == 0:
 		return "ssh " + netSSHOptions, nil
 	}
-	return "", fmt.Errorf("the read of core.sshCommand, which decides the ssh command git runs, failed: %w (%s)",
-		err, ScrubURLCredentials(strings.TrimSpace(string(errOut.buf))))
+	return "", fmt.Errorf("the read of core.sshCommand, which decides the ssh command git runs, failed: %w (%s); remedy: %s",
+		err, ScrubURLCredentials(strings.TrimSpace(string(errOut.buf))), netSSHReadRemedy)
 }
+
+// netSSHReadRemedy is what to do about a read of core.sshCommand that failed
+// or answered past its cap.
+const netSSHReadRemedy = "check that git can read this repository's settings and your own " +
+	"(git config --show-origin --get core.sshCommand names where it is set), then run the command again"
 
 // netSSHReadCap bounds the answer of the read of core.sshCommand: one command
 // line.

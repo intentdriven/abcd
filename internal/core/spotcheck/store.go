@@ -895,7 +895,11 @@ func leftLock(ctx context.Context, root, ref string) string {
 // a ref, bound to ctx, and answers its trimmed output. It is the one way
 // this package writes: abcd's identity and UTC dates in the environment
 // (storeEnv), index the index the command uses ("" for the checkout's own),
-// and the program-starting settings pinned off (gitutil.ExecPins). When ctx
+// and the program-starting settings pinned off (gitutil.ExecPins). It passes
+// the lazy-fetch floor every isolated command of the git package passes
+// (gitutil.LazyFetchGuard): in a partial clone on a git too old to honour
+// GIT_NO_LAZY_FETCH, a command that can read an object is refused before git
+// starts. When ctx
 // ends, git and every process it started are told to stop with SIGTERM, on
 // which git removes its lock files, and are killed stopGrace later. A git
 // that succeeds is read by its answer. One that fails once ctx has ended is
@@ -905,6 +909,9 @@ func leftLock(ctx context.Context, root, ref string) string {
 func storeGit(ctx context.Context, root, index, stdin string, args ...string) (string, error) {
 	what := "git " + args[0]
 	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("writing the spot-check's record: %s: %w", what, err)
+	}
+	if err := gitutil.LazyFetchGuard(ctx, root, args); err != nil {
 		return "", fmt.Errorf("writing the spot-check's record: %s: %w", what, err)
 	}
 	full := append(append(gitutil.ExecPins(), "-c", "core.quotePath=false", "-c", "core.sparseCheckout=false", "-C", root), args...)
@@ -934,6 +941,35 @@ func storeGit(ctx context.Context, root, index, stdin string, args ...string) (s
 		return "", fmt.Errorf("writing the spot-check's record: %s wrote more than it may", what)
 	}
 	return strings.TrimSpace(stdout.b.String()), nil
+}
+
+// stopError is an error of the store's push (what) that holds a git command
+// that was not run (a gitutil.NotRunError: the check
+// gitutil.SetBeforeHookedGit set refused it, or the read of core.sshCommand
+// that decides its ssh command failed): it says the push was stopped before
+// its git ran, and keeps the stop underneath, for its cause. A write's git
+// commands start no program and reach no network, so none of them asks that
+// check and a write is never stopped so.
+type stopError struct {
+	what string
+	err  error
+}
+
+func (e *stopError) Error() string {
+	return "the spot-check's " + e.what + " was stopped before its git ran: " + e.err.Error()
+}
+
+func (e *stopError) Unwrap() error { return e.err }
+
+// stopped is err said as a stop of the store's what (the push) when it
+// holds a git that was not run, once; any other err as it is.
+func stopped(what string, err error) error {
+	var nr *gitutil.NotRunError
+	var se *stopError
+	if err == nil || !errors.As(err, &nr) || errors.As(err, &se) {
+		return err
+	}
+	return &stopError{what: what, err: err}
 }
 
 // storeEnv is the environment a store command runs with: the isolated one
@@ -1127,7 +1163,11 @@ var beforePush func(attempt int)
 // and one plain push (claim.PushBranch), never forced. A push origin rejects
 // (a writer that pushed between the fetch and the push) is tried once more
 // after a fresh fetch; a second failure is an error, and every record stays
-// on the local copy for the next push. The local copy is never moved: it
+// on the local copy for the next push. A fetch or a push whose git was not
+// run (a gitutil.NotRunError: the check gitutil.SetBeforeHookedGit set
+// refused it, or the read of core.sshCommand that decides its ssh command
+// failed) is not tried again: the error says the push was stopped and
+// carries the stop. The local copy is never moved: it
 // keeps only what this checkout wrote, whatever origin holds. A branch origin no longer holds
 // is no copy at all: its tracking ref is removed and the local copy pushed
 // whole. Nothing origin holds is removed, and only a file its name does not
@@ -1151,7 +1191,7 @@ func push(ctx context.Context, root string) (PushResult, error) {
 		}
 		found, err := claim.FetchBranch(ctx, root, BranchRef, TrackingRef)
 		if err != nil {
-			return PushResult{}, fmt.Errorf("the spot-check's record was not pushed: %w", err)
+			return PushResult{}, fmt.Errorf("the spot-check's record was not pushed: %w", stopped("push", err))
 		}
 		tracking := ""
 		if found {
@@ -1174,6 +1214,10 @@ func push(ctx context.Context, root string) (PushResult, error) {
 			beforePush(attempt)
 		}
 		if err := claim.PushBranch(ctx, root, res.Commit, BranchRef); err != nil {
+			var nr *gitutil.NotRunError
+			if errors.As(err, &nr) {
+				return PushResult{}, fmt.Errorf("the spot-check's record was not pushed, and stays on this copy for the next push: %w", stopped("push", err))
+			}
 			last = err
 			continue
 		}
