@@ -504,7 +504,7 @@ func RefreshScheduledRun(root string, lookup ScheduledRunLookup, o Options) stri
 	// Finding the store is local git work, not charged to the forge's budget.
 	paths, err := scheduledPaths(context.Background(), root, workflow, o)
 	if err != nil {
-		return notRead("the answer has nowhere to be kept: " + redacted(err))
+		return notRead("the answer has nowhere to be kept: " + redacted(err).text)
 	}
 	failed := func(class string) {
 		if data, err := json.Marshal(keptFailure{At: o.now().UTC(), Class: class}); err == nil {
@@ -521,7 +521,7 @@ func RefreshScheduledRun(root string, lookup ScheduledRunLookup, o Options) stri
 	runs, err := lookup(ctx, root, workflow, branch)
 	if err != nil {
 		failed(failedClass(err))
-		return notRead(redacted(err))
+		return notRead(redacted(err).text)
 	}
 	kept := keptScheduled{Workflow: workflow, Branch: branch, CheckedAt: o.now().UTC(), Listed: len(runs), Overdue: int64(overdueAfter(runs) / time.Second)}
 	for i, r := range runs {
@@ -539,7 +539,7 @@ func RefreshScheduledRun(root string, lookup ScheduledRunLookup, o Options) stri
 		return notRead(err.Error())
 	}
 	if err := paths.keep(paths.answer, data); err != nil {
-		return notRead("the answer could not be kept: " + redacted(err))
+		return notRead("the answer could not be kept: " + redacted(err).text)
 	}
 	return ""
 }

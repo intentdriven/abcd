@@ -95,7 +95,7 @@ const keptWalk = 256
 func keptHandBack(p *prepared, j judged) (kept *tip, why string) {
 	kept, err := standingBelow(p, j)
 	if err != nil {
-		return nil, "could not read whether the reservation on " + p.id + " was made over a hand-back (" + redacted(err) + "), so the tombstone keeps none"
+		return nil, "could not read whether the reservation on " + p.id + " was made over a hand-back (" + redacted(err).text + "), so the tombstone keeps none"
 	}
 	return kept, ""
 }

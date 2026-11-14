@@ -632,7 +632,7 @@ func holderFileRefusal(file string, refusal fsutil.DeclarationRefusal, err error
 		why = "is not to be trusted: another account can change a folder on its path"
 	}
 	if err != nil && refusal == fsutil.DeclarationUnreadable {
-		why += " (" + redacted(err) + ")"
+		why += " (" + redacted(err).text + ")"
 	}
 	return refuse("%s %s, so which holds are yours cannot be told; %s", file, why, nothingSent)
 }

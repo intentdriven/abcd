@@ -1990,6 +1990,9 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 	// The head the receipt names is pushed by its commit id, not the branch's
 	// ref, so a branch that moves after the check cannot change what is pushed.
 	if _, err := gitutil.Net(c.RepoRoot, "push", "--porcelain", Remote, lane.HeadSHA+":refs/heads/"+lane.Branch); err != nil {
+		if r, ok := heldStopOf(err); ok {
+			return Outcome{}, r
+		}
 		if r := netFailure(StageLand, lane.ID, "git push "+lane.Branch, err); r != nil {
 			return Outcome{}, r
 		}
@@ -2712,6 +2715,9 @@ func fetchDefault(c Context, lane Lane, def string) (string, error) {
 // fetchRefusal is a fetch of the default branch def that git refused: a lost
 // network waited out on the shared probe, anything else a refusal.
 func fetchRefusal(lane Lane, def string, err error) error {
+	if r, ok := heldStopOf(err); ok {
+		return r
+	}
 	if r := netFailure(StageLand, lane.ID, "git fetch "+def, err); r != nil {
 		return r
 	}

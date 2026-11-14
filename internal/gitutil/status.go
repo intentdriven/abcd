@@ -100,7 +100,12 @@ type StatusOptions struct {
 // reads (iss-2610090821548169). The person switches them back on for a
 // checkout by listing it in ~/.abcd.noindex/filter-roots (FiltersSwitchedOn).
 // With them off, a file a filter would have rewritten can read as modified,
-// and a filter the repository marks required fails the read.
+// and a filter the repository marks required fails the read. With them on,
+// the read asks the check SetBeforeHookedGit set before git runs, as every
+// isolated command that can start a filter does (isolatedGit); with them off
+// it carries the blanks and asks nothing, since it starts no program. Where
+// the repository names no filter there is nothing to blank, so the read asks
+// all the same: the command line alone cannot show that none is named.
 //
 // --ignore-submodules=dirty keeps git from starting a status inside each
 // checked-out submodule, which reads the submodule's own config and so runs a

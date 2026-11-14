@@ -113,7 +113,7 @@ func (ns namespace) dropOnce(root string, keep []string) (int, string) {
 		}
 	})
 	if err != nil {
-		return -1, redacted(err)
+		return -1, redacted(err).text
 	}
 	if len(stale) == 0 {
 		if cut > 0 {
@@ -145,7 +145,7 @@ func (ns namespace) dropOnce(root string, keep []string) (int, string) {
 		if _, err := storedGitCtx(context.Background(), root, 64<<10, "-c", "core.filesRefLockTimeout=0", "-c", "core.packedRefsTimeout=0",
 			"update-ref", "--no-deref", "-d", r[0], r[1]); err != nil {
 			if why == "" {
-				why = redacted(err)
+				why = redacted(err).text
 			}
 			n++
 		}

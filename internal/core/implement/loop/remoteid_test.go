@@ -169,7 +169,8 @@ func TestARemoteChangedDuringTheAskRefusesTheLane(t *testing.T) {
 
 // TestARemoteIdentityReadFailureHidesTheHome: git's own error, when the
 // settings cannot be read again, reaches the refusal with the home directory
-// written as ~, as the stage's other refusals write it.
+// written as ~, as the stage's other refusals write it. The read gave no
+// answer the hold can take, so the step stops at the config stage.
 func TestARemoteIdentityReadFailureHidesTheHome(t *testing.T) {
 	repo, _, _ := hookedOrigin(t)
 	id, err := readRemoteIdentity(repo.Root())
@@ -182,19 +183,22 @@ func TestARemoteIdentityReadFailureHidesTheHome(t *testing.T) {
 	writeMode(t, bad, "[[[\n", 0o644)
 	t.Setenv("GIT_CONFIG_GLOBAL", bad)
 	err = remoteUnchanged(Context{RepoRoot: repo.Root(), remote: id}, "lane-1")
-	r := worktreeRefused(t, err, "broken.gitconfig")
+	r := configRefused(t, err, "broken.gitconfig")
 	real, _ := filepath.EvalSymlinks(home)
 	if strings.Contains(r.Reason, home) || strings.Contains(r.Reason, real) || !strings.Contains(r.Reason, "~") {
 		t.Fatalf("the refusal writes the home as ~: %+v", r)
 	}
 }
 
-// TestADrivesRemoteIdentityReachesTheWorktreeStage: what the drive read as
-// it started is carried in the step's options to the worktree stage, so a
-// lane started after origin's URL changed is refused there although its run,
-// started after the change, records the new URL as its own starting point.
-// Without it (a step the host runs, a single build) the stage is as before.
-func TestADrivesRemoteIdentityReachesTheWorktreeStage(t *testing.T) {
+// TestAStepUnderAHoldWhoseOriginChangedStopsAtTheConfigStage: a step given
+// what a drive read as it started, of a run started after origin's URL
+// changed, whose own fingerprint records the new URL as its starting point,
+// is stopped by the step's comparison of what the drive holds, at the config
+// stage, naming the URL, before any git of the worktree stage runs. Given
+// nothing (a step the host runs, a single build) the lane opens as before.
+// That the hold reaches the worktree stage's own Context is held by
+// TestAChangeMadeDuringTheAskOfOriginIsMetAtTheWorktreeStage.
+func TestAStepUnderAHoldWhoseOriginChangedStopsAtTheConfigStage(t *testing.T) {
 	repo, _, _ := hookedOrigin(t)
 	id, err := readRemoteIdentity(repo.Root())
 	if err != nil {
@@ -208,7 +212,7 @@ func TestADrivesRemoteIdentityReachesTheWorktreeStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{remote: id})
-	worktreeRefused(t, err, "remote.origin.url")
+	configRefused(t, err, "what the drive holds changed since it started", "remote.origin.url")
 
 	res, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 	if err != nil || res.PerformedStage != StageWorktree {
@@ -230,13 +234,14 @@ func TestADriveReadsTheRemotesIdentityAsItStarts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tm.o.Options.remote == nil || len(tm.o.Options.remote.changed(want)) != 0 || len(want.keys) == 0 {
+	if tm.o.Options.remote == nil || len(tm.o.Options.remote.changed(repo.Root(), want)) != 0 || len(want.envs[personEnv]) == 0 || len(want.envs[stageEnv]) == 0 {
 		t.Fatalf("the drive holds origin's settings as it started: %+v, want %+v", tm.o.Options.remote, want)
 	}
-	// The checkout's hooks directory, .githooks here: pre-commit, the
-	// pre-merge-commit symlink and the lib subdirectory.
-	if got := len(tm.o.Options.remote.hooks); got != 3 {
-		t.Fatalf("the drive holds the checkout's three hook entries as it started: %d", got)
+	// The checkout's hooks directory, .githooks here, at every depth:
+	// pre-commit, the pre-merge-commit symlink, the lib subdirectory and its
+	// common.sh; the repository has no info/attributes.
+	if got := len(tm.o.Options.remote.hooks); got != 4 {
+		t.Fatalf("the drive holds the checkout's four hook entries as it started: %d", got)
 	}
 }
 
@@ -248,7 +253,9 @@ func TestADriveReadsTheRemotesIdentityAsItStarts(t *testing.T) {
 // core.sshCommand, core.gitProxy, core.hooksPath, http.proxy and
 // http.sslVerify), the system-scope case and the included case are regression
 // guards: they pass without a production change. The credential,
-// core.askPass and protocol cases were new in the last round.
+// core.askPass and protocol cases were new in the round before; the filter,
+// merge driver, editor, gpg program and include cases, the rest of the set
+// the run's fingerprint watches, were watched failing on the default branch.
 func TestEachKeyFamilyTheDriveHoldsIsReadAgain(t *testing.T) {
 	for _, tc := range []struct {
 		key, value, want string
@@ -271,6 +278,13 @@ func TestEachKeyFamilyTheDriveHoldsIsReadAgain(t *testing.T) {
 		{key: "core.askPass", value: "/bin/true", want: "core.askpass"},
 		{key: "protocol.allow", value: "always", want: "protocol.allow"},
 		{key: "protocol.ext.allow", value: "always", want: "protocol.ext.allow"},
+		{key: "filter.planted.clean", value: "cat", want: "filter.planted.clean"},
+		{key: "merge.planted.driver", value: "true", want: "merge.planted.driver"},
+		{key: "diff.planted.textconv", value: "cat", want: "diff.planted.textconv"},
+		{key: "core.editor", value: "/bin/true", want: "core.editor"},
+		{key: "gpg.program", value: "/bin/true", want: "gpg.program"},
+		{key: "include.path", value: "/nonexistent.gitconfig", want: "include.path"},
+		{key: "core.editor", value: "/bin/true", want: "core.editor", system: true},
 		{key: "http.proxy", value: "http://127.0.0.1:9", want: "http.proxy", system: true},
 		{key: "http.proxy", value: "http://127.0.0.1:9", want: "http.proxy", included: true},
 	} {
@@ -318,15 +332,13 @@ func TestEachKeyFamilyTheDriveHoldsIsReadAgain(t *testing.T) {
 // it started, so a post-checkout hook changed, added or removed in the
 // checkout between two lanes, or the directory made unreadable, refuses the
 // second at its worktree stage, naming what changed, before its add: no
-// worktree is made and the changed hook writes no marker. Unchanged, the
-// second lane opens. Two cases hold the limits the docs state, and open: a
-// file changed in a subdirectory of the hooks directory, which is compared by
-// its kind only, and a post-checkout hook changed where the relative
-// core.hooksPath is set only in global settings, which the drive does not
-// read; there the add runs the changed copy. The removed, unreadable,
-// subdirectory and global cases are new this round and are regression
-// guards: each passes without a production change, holding what the
-// comparison already did.
+// worktree is made and the changed hook writes no marker. So does a file
+// changed in a subdirectory of the hooks directory, and a post-checkout hook
+// changed where the relative core.hooksPath is set only in global settings,
+// since the drive reads the directory git takes at the checkout from every
+// scope; those two were watched failing on the default branch, where the
+// drive held top-level entries of the directory the repository's own
+// settings name. Unchanged, the second lane opens.
 func TestACheckoutHookChangedBetweenTwoLanesOfADriveRefusesTheSecond(t *testing.T) {
 	for name, tc := range map[string]struct {
 		committed, change, remove, unreadable, sub, global bool
@@ -337,8 +349,8 @@ func TestACheckoutHookChangedBetweenTwoLanesOfADriveRefusesTheSecond(t *testing.
 		"a post-checkout hook removed":     {committed: true, remove: true, want: "post-checkout (removed)"},
 		"the hooks directory unreadable":   {committed: true, unreadable: true, want: ".githooks (added)"},
 		"unchanged":                        {committed: true},
-		"a file in a subdirectory changed": {committed: true, sub: true},
-		"a hooks path set only globally":   {committed: true, change: true, global: true},
+		"a file in a subdirectory changed": {committed: true, sub: true, want: "common.sh (changed)"},
+		"a hooks path set only globally":   {committed: true, change: true, global: true, want: "post-checkout"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if tc.unreadable && os.Geteuid() == 0 {
@@ -399,11 +411,6 @@ func TestACheckoutHookChangedBetweenTwoLanesOfADriveRefusesTheSecond(t *testing.
 				if err != nil {
 					t.Fatalf("the second lane opens: %v", err)
 				}
-				if tc.global {
-					if _, err := os.Stat(marker); err != nil {
-						t.Fatalf("the add ran the changed copy the drive did not read: %v", err)
-					}
-				}
 				return
 			}
 			worktreeRefused(t, err, tc.want)
@@ -413,14 +420,15 @@ func TestACheckoutHookChangedBetweenTwoLanesOfADriveRefusesTheSecond(t *testing.
 	}
 }
 
-// TestADrivesHeldHooksReachANewRunsWorktreeStage: what the drive read of the
-// checkout's hooks as it started is carried in the step's options to the
-// worktree stage of a run started after the checkout's post-checkout hook
-// changed, whose own fingerprint records the changed copy as its starting
-// point, so the lane is refused before any add. Without it (a step the host
-// runs, a single build) the stage is as before: the lane opens and the add
-// runs the changed copy, the limit the docs state.
-func TestADrivesHeldHooksReachANewRunsWorktreeStage(t *testing.T) {
+// TestAStepUnderAHoldWhosePostCheckoutChangedStopsBeforeTheAdd: a step
+// given what a drive read of the checkout's hooks as it started, of a run
+// started after the checkout's post-checkout hook changed, whose own
+// fingerprint records the changed copy as its starting point, is stopped by
+// the step's comparison of what the drive holds, at the config stage, before
+// any add: the changed hook does not run. Given nothing (a step the host
+// runs, a single build) the lane opens and the add runs the changed copy,
+// the limit the docs state.
+func TestAStepUnderAHoldWhosePostCheckoutChangedStopsBeforeTheAdd(t *testing.T) {
 	repo, _, _ := hookedOrigin(t)
 	id, err := readRemoteIdentity(repo.Root())
 	if err != nil {
@@ -433,7 +441,7 @@ func TestADrivesHeldHooksReachANewRunsWorktreeStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{remote: id})
-	worktreeRefused(t, err, "post-checkout")
+	configRefused(t, err, "what the drive holds changed since it started", "post-checkout")
 	absent(t, marker, "no add ran")
 
 	res, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{})
@@ -446,10 +454,12 @@ func TestADrivesHeldHooksReachANewRunsWorktreeStage(t *testing.T) {
 }
 
 // TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly: the key match itself, on
-// canonical keys: each held name and a member of each held family is held,
-// and a key that only shares a prefix or a suffix with one, another remote's
-// key, protocol.version and a per-URL http key are not. A regression guard:
-// it passes without a production change.
+// canonical keys: each key the run's fingerprint watches (watchedKey) and
+// http.proxy and http.sslVerify are held, every remote's keys among them, and
+// a key that only shares a prefix or a suffix with one, protocol.version and
+// a per-URL http key are not. Another remote's url, core.editor and the filter
+// and driver cases were watched failing on the default branch, which held
+// origin's identity alone.
 func TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly(t *testing.T) {
 	for key, want := range map[string]bool{
 		"remote.origin.url":                           true,
@@ -470,15 +480,25 @@ func TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly(t *testing.T) {
 		"http.proxy":                                  true,
 		"http.sslverify":                              true,
 
-		"remote.upstream.url":  false,
-		"remote.originx.url":   false,
+		"remote.upstream.url":          true,
+		"remote.origin.receivepack":    true,
+		"core.editor":                  true,
+		"core.pager":                   true,
+		"filter.lfs.clean":             true,
+		"merge.x.driver":               true,
+		"diff.x.command":               true,
+		"gpg.ssh.program":              true,
+		"include.path":                 true,
+		"includeif.onbranch:main.path": true,
+
 		"remote.origin.urlx":   false,
 		"remote.origin.fetch":  false,
 		"url.insteadof":        false,
 		"url./x.insteadofx":    false,
 		"urlx./x.insteadof":    false,
 		"core.hookspathx":      false,
-		"core.editor":          false,
+		"core.editorx":         false,
+		"filterx.lfs.clean":    false,
 		"credentialfoo":        false,
 		"credentialfoo.helper": false,
 		"protocol.version":     false,

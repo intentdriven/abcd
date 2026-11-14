@@ -3,6 +3,7 @@ package gitutil
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/procgroup"
 )
 
 // Bounds on a git command that reaches the remote.
@@ -153,28 +156,86 @@ func runHooked(dir string, network bool, stdin string, args []string, sink io.Wr
 	return runHookedContext(context.Background(), dir, network, stdin, args, sink)
 }
 
-// runHookedContext is runHooked under parent.
+// beforeHooked is the check SetBeforeHookedGit sets, nil for none.
+var beforeHooked atomic.Pointer[func(args []string) error]
+
+// NotRunError is a git command the check SetBeforeHookedGit set refused: git
+// did not run. Verb is its subcommand; Err is the check's error.
+type NotRunError struct {
+	Verb string
+	Err  error
+}
+
+func (e *NotRunError) Error() string { return "git " + e.Verb + " was not run: " + e.Err.Error() }
+
+func (e *NotRunError) Unwrap() error { return e.Err }
+
+// ErrBeforeHookedGitSet is SetBeforeHookedGit's refusal of a second check
+// while one is set: one drive runs in a process.
+var ErrBeforeHookedGitSet = errors.New("a check before every hooked or networked git is already set in this process, and one drive runs in a process")
+
+// SetBeforeHookedGit sets a check every git command abcd starts with the
+// repository's hooks, merge drivers or content filters on, or that reaches a
+// remote, asks first, before the command is built: Net, NetEach, NetInput,
+// NetContext and LocalGit (runHookedContext), RunCommitCommandBounded and
+// RunCommitCommandBoundedAsStored (runCommitBounded), WorkingTreeCommand and
+// WorkingTreeCommandContext, and RunLimitedNetContext. An isolated command
+// (Run and its kin) has its hooks and the other programs ExecPins names
+// pinned off, but not content filters, textconv and external diff programs
+// or merge drivers, so one that can start one of those
+// (LeavesContentProgramsOn: a hash-object, a status with the filters left
+// on, a diff of the working tree that does not blank them, a subcommand it
+// does not know) asks too, and one that blanks them or reads no content
+// through them does not. An error from
+// the check is the command's, and git does not run. A drive sets it to its
+// comparison of what it holds while it runs (implement/loop's
+// heldBeforeGit); it is given the command's arguments. One drive runs in a
+// process, so a check already set is not replaced: the call is refused with
+// ErrBeforeHookedGitSet. The returned clear removes this check and only this
+// one. The comparison's own reads never ask it: they run through
+// NetAskContext, WorkingTreeCommitCommand built directly, and isolated
+// `config`, `var` and `rev-parse` reads, which start no program. With no
+// check set nothing changes.
+func SetBeforeHookedGit(f func(args []string) error) (clear func(), err error) {
+	if f == nil {
+		return nil, errors.New("no check was given")
+	}
+	p := &f
+	if !beforeHooked.CompareAndSwap(nil, p) {
+		return nil, ErrBeforeHookedGitSet
+	}
+	return func() { beforeHooked.CompareAndSwap(p, nil) }, nil
+}
+
+// askBeforeHooked asks the check SetBeforeHookedGit set, when one is set,
+// for the git command args would run: its error is a NotRunError naming the
+// subcommand.
+func askBeforeHooked(args []string) error {
+	if f := beforeHooked.Load(); f != nil {
+		if err := (*f)(args); err != nil {
+			return &NotRunError{Verb: gitVerb(args), Err: err}
+		}
+	}
+	return nil
+}
+
+// runHookedContext is runHooked under parent, after the check
+// SetBeforeHookedGit set, when one is set.
 func runHookedContext(parent context.Context, dir string, network bool, stdin string, args []string, sink io.Writer) (string, error) {
+	if err := askBeforeHooked(args); err != nil {
+		return "", err
+	}
 	ctx, cancel := context.WithTimeout(parent, NetTimeout)
 	defer cancel()
-	full := []string{"-c", "core.quotePath=false"}
-	if network {
-		full = append(full, "-c", "http.lowSpeedLimit="+netLowSpeedLimit, "-c", "http.lowSpeedTime="+netLowSpeedTime)
+	cmd := hookedCommand(ctx, dir, network, args)
+	if cmd.Err != nil {
+		if perr := parent.Err(); perr != nil {
+			return "", fmt.Errorf("git %s: %w", gitVerb(args), perr)
+		}
+		return "", cmd.Err
 	}
-	full = append(append(full, "-C", dir), args...)
-	cmd := exec.CommandContext(ctx, "git", full...)
 	if parent.Done() != nil {
 		cmd.WaitDelay = netContextWaitDelay
-	}
-	cmd.Env = append(ScrubbedEnv(), "GIT_TERMINAL_PROMPT=0")
-	if !network {
-		cmd.Env = narrowHooked(cmd.Env)
-	}
-	if network {
-		cmd.Env = netEnv(cmd.Env)
-		if ssh := netSSHCommand(dir); ssh != "" {
-			cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+ssh)
-		}
 	}
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
@@ -208,6 +269,74 @@ func runHookedContext(parent context.Context, dir string, network bool, stdin st
 	return stdout.String(), nil
 }
 
+// hookedCommand is the git command runHookedContext runs: Net's (network
+// true) or LocalGit's, bound to ctx, with no stdin or output set. A networked
+// command whose read of core.sshCommand gave no answer of git's carries that
+// as its Err (a NotRunError), so it never starts.
+func hookedCommand(ctx context.Context, dir string, network bool, args []string) *exec.Cmd {
+	full := []string{"-c", "core.quotePath=false"}
+	if network {
+		full = append(full, "-c", "http.lowSpeedLimit="+netLowSpeedLimit, "-c", "http.lowSpeedTime="+netLowSpeedTime)
+	}
+	full = append(append(full, "-C", dir), args...)
+	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd.Env = append(ScrubbedEnv(), "GIT_TERMINAL_PROMPT=0")
+	if !network {
+		cmd.Env = narrowHooked(cmd.Env)
+	}
+	if network {
+		cmd.Env = netEnv(cmd.Env)
+		ssh, err := netSSHCommand(ctx, dir)
+		if err != nil {
+			cmd.Err = &NotRunError{Verb: gitVerb(args), Err: err}
+		} else if ssh != "" {
+			cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+ssh)
+		}
+	}
+	return cmd
+}
+
+// NetAskContext runs one git command that reads and writes nothing (a
+// `config` listing, `var`, `rev-parse --git-path`) in exactly the
+// environment Net, NetEach and NetInput give git: the person's own home,
+// configuration and credentials, the repository's hooks not pinned off. It
+// is for a caller that must know what that environment reads (the settings,
+// the hooks directory a push runs, the attributes files), never for a
+// command that runs a hook or reaches a remote. It is bound to ctx, git is
+// killed when ctx ends, and its output past limit bytes is an error. The
+// error of a git that ran and failed wraps its *exec.ExitError, so the
+// caller can read the exit status; its stderr is bounded and scrubbed of
+// credentials.
+func NetAskContext(ctx context.Context, dir string, limit int, args ...string) (string, error) {
+	cmd := hookedCommand(ctx, dir, true, args)
+	if cmd.Err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", fmt.Errorf("git %s: %w", gitVerb(args), ctxErr)
+		}
+		return "", cmd.Err
+	}
+	cmd.WaitDelay = netContextWaitDelay
+	out := &capWriter{remaining: limit}
+	errOut := &capWriter{remaining: netStderrCap}
+	cmd.Stdout, cmd.Stderr = out, errOut
+	if err := cmd.Run(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", fmt.Errorf("git %s: %w", gitVerb(args), ctxErr)
+		}
+		return string(out.buf), fmt.Errorf("git %s: %w (%s)", gitVerb(args), err, ScrubURLCredentials(strings.TrimSpace(string(errOut.buf))))
+	}
+	if out.overflowed {
+		return "", fmt.Errorf("git %s: output exceeded the %d-byte cap", gitVerb(args), limit)
+	}
+	return string(out.buf), nil
+}
+
+// NetEnviron is the environment NetAskContext, Net, NetEach and NetInput
+// give git, less the ssh command Net composes: for a caller that must read
+// what that environment tells git (its home, its XDG_CONFIG_HOME,
+// GIT_ATTR_NOSYSTEM).
+func NetEnviron() []string { return netEnv(append(ScrubbedEnv(), "GIT_TERMINAL_PROMPT=0")) }
+
 // testTransportGuard is the configuration netEnv adds to a networked git
 // command run by a test binary, so a test can neither reach a real forge nor
 // ask anyone for a credential (iss-2610170718356567). An empty
@@ -230,8 +359,10 @@ var testTransportGuard = [][2]string{
 }
 
 // netGuardOff switches the guard off for a test of this package that drives
-// a transport through a fake (the ssh command Net composes).
-var netGuardOff bool
+// a transport through a fake (the ssh command Net composes). It is atomic,
+// since a networked read can run on a goroutine of its caller's (a drive's
+// comparison) while a test sets it back.
+var netGuardOff atomic.Bool
 
 // netEnv is the environment of every git command abcd runs that may reach a
 // remote, built on env, the environment it would otherwise run with: Net,
@@ -242,7 +373,7 @@ var netGuardOff bool
 // (testing.Testing) networked git is restricted to local transports with no
 // credential helper: testTransportGuard rides in the GIT_CONFIG_COUNT form,
 // after any entries env already carries, so it outranks every config file.
-func netEnv(env []string) []string { return netEnvFor(env, testing.Testing() && !netGuardOff) }
+func netEnv(env []string) []string { return netEnvFor(env, testing.Testing() && !netGuardOff.Load()) }
 
 // netEnvFor is netEnv with the test-binary question answered by underTest.
 func netEnvFor(env []string, underTest bool) []string {
@@ -272,27 +403,54 @@ func netEnvFor(env []string, underTest bool) []string {
 // netSSHCommand is the ssh command Net runs git's ssh transport through: ssh
 // in batch mode with the connect and keepalive bounds, or "" when the developer chose their
 // own (GIT_SSH_COMMAND, GIT_SSH, or core.sshCommand), which is left as it is.
-func netSSHCommand(dir string) string {
+//
+// Its read of core.sshCommand runs under ctx, the command's own, so it cannot
+// hold a caller past its deadline (NetAskContext's, inside a drive's
+// comparison), and reads git's answer to its end before Wait
+// (procgroup.RunToEOF), so a program git left holding the output delays the
+// answer and never cuts it. The default is composed only on git's own answer
+// that none is set: exit status 1, or exit 0 with nothing written. Any other
+// outcome (the context ended, another exit, an answer past its cap) is an
+// error naming the read, and the networked command is not started: exporting
+// the default then would run git through an ssh command other than the one the
+// repository or the person set, since GIT_SSH_COMMAND outranks
+// core.sshCommand.
+func netSSHCommand(ctx context.Context, dir string) (string, error) {
 	if os.Getenv("GIT_SSH_COMMAND") != "" || os.Getenv("GIT_SSH") != "" {
-		return ""
+		return "", nil
 	}
-	cmd := exec.Command("git", "-C", dir, "config", "--get", "core.sshCommand")
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "config", "--get", "core.sshCommand")
 	cmd.Env = ScrubbedEnv()
-	if out, err := cmd.Output(); err == nil && strings.TrimSpace(string(out)) != "" {
-		return ""
+	if ctx.Done() != nil {
+		cmd.WaitDelay = contextWaitDelay
 	}
-	return "ssh " + netSSHOptions
+	out := &capWriter{remaining: netSSHReadCap}
+	errOut := &capWriter{remaining: netStderrCap}
+	err := procgroup.RunToEOF(ctx, cmd, out, errOut)
+	var ee *exec.ExitError
+	switch {
+	case ctx.Err() != nil:
+		return "", fmt.Errorf("the read of core.sshCommand, which decides the ssh command git runs, did not finish: %w", ctx.Err())
+	case err == nil && out.overflowed:
+		return "", fmt.Errorf("the read of core.sshCommand, which decides the ssh command git runs, answered more than %d bytes", netSSHReadCap)
+	case err == nil && strings.TrimSpace(string(out.buf)) != "":
+		return "", nil
+	case err == nil, errors.As(err, &ee) && ee.ExitCode() == 1 && len(out.buf) == 0:
+		return "ssh " + netSSHOptions, nil
+	}
+	return "", fmt.Errorf("the read of core.sshCommand, which decides the ssh command git runs, failed: %w (%s)",
+		err, ScrubURLCredentials(strings.TrimSpace(string(errOut.buf))))
 }
 
-// gitVerb is the subcommand among args, past any leading -c options, for an
-// error to name.
+// netSSHReadCap bounds the answer of the read of core.sshCommand: one command
+// line.
+const netSSHReadCap = 64 << 10
+
+// gitVerb is the subcommand among args, past git's global options
+// (Subcommand), for an error to name.
 func gitVerb(args []string) string {
-	for i := 0; i < len(args); i++ {
-		if args[i] == "-c" {
-			i++
-			continue
-		}
-		return args[i]
+	if v := Subcommand(args); v != "" {
+		return v
 	}
 	return "git"
 }

@@ -116,7 +116,8 @@ type outageGate struct {
 // due, runs it first, outside every lock. A checkout with no shared run state
 // has no outage. The session the outage is recorded and probed for is the
 // caller's (Options.Session), or else the session whose claim names the run
-// as its lane (`abcd build --session`); with neither, the outage still holds
+// as its lane (`abcd build --session`; a drive's start names no run), or else
+// the drive's (Options.OutageSession); with none, the outage still holds
 // the lanes, and the probe and the record are left to `abcd implement outage`.
 func outageFor(repoRoot, runID string, o Options) (*outageGate, error) {
 	g := &outageGate{now: o.now()}
@@ -136,7 +137,7 @@ func outageFor(repoRoot, runID string, o Options) (*outageGate, error) {
 	run.Now = o.Now
 	g.run = run
 	g.session = o.Session
-	if g.session == "" {
+	if g.session == "" && runID != "" {
 		if claims, err := run.Claims(); err == nil {
 			for _, c := range claims {
 				if c.Lane == runID && c.Session != "" && !c.Unreadable {
@@ -340,9 +341,11 @@ func (g *outageGate) agentWait(st State, w want) *Refusal {
 // netFailure returns the lane-only contention a network failure of what makes,
 // carrying the report the call records; nil when err is not a network failure
 // (an authentication failure, a hook's refusal, a conflict), which stays the
-// stage's own refusal.
+// stage's own refusal. A git the drive's comparison did not run
+// (gitutil.NotRunError) is never one, whatever its text names: it is
+// recognised by its type before any text is read.
 func netFailure(stage Stage, lane, what string, err error) *Refusal {
-	if err == nil || !implement.IsNetworkFailure(err.Error()) {
+	if err == nil || gitNotRun(err) || !implement.IsNetworkFailure(err.Error()) {
 		return nil
 	}
 	r := contend(string(stage), "", lane, lane+" lost the network at "+what+": "+gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())),

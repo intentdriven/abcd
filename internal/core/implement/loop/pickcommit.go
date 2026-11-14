@@ -135,12 +135,13 @@ func commitGit(dir string, args ...string) (string, error) {
 // hooks directory there, and a relative core.hooksPath names the checkout's
 // own working-tree copy. The run's fingerprint records that copy at the run's
 // first check, and within a run a later change to it is refused; across the
-// lanes of one drive the drive holds it, within the limits
-// checkoutHooksUnchanged states (a change after its read and before git runs
-// the hook is not seen, nothing holds the directory through the add, the
-// directory read is the one the repository's own settings name, and only its
-// top-level entries are compared); elsewhere nothing does, so it must not
-// change between runs, and nothing enforces it.
+// lanes of one drive the drive holds it at every depth, read from the
+// directory git names at the checkout in the add's own environment, and
+// compares an in-tree copy with origin's tip as it starts (remoteid.go),
+// under the settings as they then stand; a change after the
+// drive's read and before git runs the hook is not seen, nothing holds the
+// directory through the add, and outside a drive nothing holds it, so it must
+// not change between runs, and nothing enforces it.
 func worktreeAddGit(dir string, args ...string) (string, error) {
 	return gitutil.RunCommitCommandBoundedAsStored(dir, worktreeAddTimeout, errCheckoutStalled, args...)
 }
@@ -164,6 +165,43 @@ func laneAddGit(hooksPath string) func(dir string, args ...string) (string, erro
 		}
 		return worktreeAddGit(dir, args...)
 	}
+}
+
+// heldStopOf is the refusal a git command of a drive gave without running,
+// because the drive's comparison (heldBeforeGit, asked by every gitutil
+// runner of a hooked or networked git) stopped it: gitutil makes no Refusal
+// of its own, so one inside its error is the comparison's. Its reason is
+// led by the git command that was not run (gitutil.NotRunError).
+func heldStopOf(err error) (*Refusal, bool) {
+	if err == nil {
+		return nil, false
+	}
+	r, ok := AsRefusal(err)
+	if !ok {
+		return nil, false
+	}
+	var notRun *gitutil.NotRunError
+	if errors.As(err, &notRun) {
+		named := *r
+		named.Reason = "git " + notRun.Verb + " was not run: " + r.Reason
+		return &named, true
+	}
+	return r, true
+}
+
+// gitNotRun reports whether err is, or wraps, a git the check SetBeforeHookedGit
+// set did not run, for a caller that classifies a git error by its text: the
+// type is read first, so a refusal whose text holds a file or setting name is
+// never read as git's own words.
+func gitNotRun(err error) bool {
+	var nr *gitutil.NotRunError
+	return errors.As(err, &nr)
+}
+
+// isHeldStop reports whether err is such a stop (heldStopOf).
+func isHeldStop(err error) bool {
+	_, ok := heldStopOf(err)
+	return ok
 }
 
 // errCommitStalled names a commitGit command stopped at its deadline.
@@ -260,7 +298,10 @@ func pickCommit(c Context, lane *Lane, wt, branch, base string) (string, error) 
 			"the lane's worktree holds changes the pick did not make, so its record-only commit is not made over them",
 			"clean the lane's worktree, then run `abcd implement step` again")
 	}
-	if _, err := commitGit(wt, "commit", "-q", "-m", pickMessage(st), "--", rel); errors.Is(err, errCommitStalled) {
+	if _, err := commitGit(wt, "commit", "-q", "-m", pickMessage(st), "--", rel); err != nil && isHeldStop(err) {
+		r, _ := heldStopOf(err)
+		return "", r
+	} else if errors.Is(err, errCommitStalled) {
 		return "", refuse(string(StageWorktree), "", lane.ID,
 			"git could not make the pick's record commit: "+err.Error(),
 			"answer the repository's signing prompt, or settle the hook that waits, then run `abcd implement step` again")

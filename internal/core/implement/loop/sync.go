@@ -174,14 +174,33 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 			return Outcome{}, false, err
 		}
 		msg := syncMessage(*lane, c.State.RunID, def, merged, siblings)
-		if err := syncMerge(lane.Worktree, msg, merged); errors.Is(err, errCommitStalled) {
+		if err := syncMerge(lane.Worktree, msg, merged); isHeldStop(err) {
+			// The merge asks the drive's comparison first and is not run on
+			// a difference, so there is nothing to abort or undo.
+			r, _ := heldStopOf(err)
+			return Outcome{}, false, r
+		} else if errors.Is(err, errCommitStalled) {
 			return Outcome{}, false, undoStalledSync(*lane, def, err)
 		} else if err != nil {
-			conflicted, _ := pickGit(lane.Worktree, "diff", "--name-only", "--diff-filter=U", "-z")
+			// The reads after a failed merge go through the working-tree
+			// runner, which asks the drive's comparison too: a stop there
+			// is the step's, never no conflict or no merge to abort, and
+			// what git's merge left in the lane is said.
+			conflicted, cerr := pickGit(lane.Worktree, "diff", "--name-only", "--diff-filter=U", "-z")
+			if r, ok := heldStopOf(cerr); ok {
+				return Outcome{}, false, mergeLeft(r, *lane, def)
+			}
 			// A merge the repository refused before it began (its
 			// merge.verifySignatures, say) left none to abort.
-			if _, err := pickGit(lane.Worktree, "rev-parse", "-q", "--verify", "MERGE_HEAD"); err == nil {
+			_, merr := pickGit(lane.Worktree, "rev-parse", "-q", "--verify", "MERGE_HEAD")
+			if r, ok := heldStopOf(merr); ok {
+				return Outcome{}, false, mergeLeft(r, *lane, def)
+			}
+			if merr == nil {
 				if _, aerr := pickGit(lane.Worktree, "merge", "--abort"); aerr != nil {
+					if r, ok := heldStopOf(aerr); ok {
+						return Outcome{}, false, mergeLeft(r, *lane, def)
+					}
 					return Outcome{}, false, fmt.Errorf("aborting the sync's merge in the lane's worktree: %w", aerr)
 				}
 			}
@@ -217,6 +236,19 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 	lane.Syncs = append(append([]Sync{}, lane.Syncs...), s)
 	return Outcome{Goto: StageValidate, LandLeft: true, Reservation: reserved, Note: fmt.Sprintf("synced %s with %s at %s, because %s: merge commit %s; a fresh round judges it, and counts no fix round",
 		lane.ID, termsafe.Sanitize(def), shortSHA(merged), syncCause(termsafe.Sanitize(def), termsafe.SanitizeAll(siblings)), shortSHA(tip))}, true, nil
+}
+
+// mergeLeft is the drive's comparison's stop r met after git's merge of def
+// into the lane failed: the step stopped there, and a merge git began may be
+// left in progress in the lane's worktree, which the step neither read nor
+// aborted.
+func mergeLeft(r *Refusal, lane Lane, def string) *Refusal {
+	left := *r
+	left.Lane = lane.ID
+	left.Reason = "git could not merge " + def + " into " + lane.Branch + ", and then " + r.Reason +
+		"; so the comparison stopped the step, and a merge may be left in progress in the lane's worktree (" + fsutil.RedactHome(lane.Worktree) + ")"
+	left.Remedy = strings.TrimSuffix(r.Remedy, "; nothing was made") + "; then, in the lane's worktree, run `git merge --abort` if `git rev-parse -q --verify MERGE_HEAD` names a merge, and run `abcd implement step` again"
+	return &left
 }
 
 // undeclared is the paths of ps that gen does not hold as generated files.

@@ -172,7 +172,6 @@ darwin internal/gitutil.configNames -> gitutil.configNamesContext(Background) x1
 darwin internal/gitutil.eachWorktree -> gitutil.isolatedGit x1
 darwin internal/gitutil.isolatedGit -> exec.Command x1
 darwin internal/gitutil.isolatedGit -> gitutil.guardObjectRead(Background) x1
-darwin internal/gitutil.netSSHCommand -> exec.Command x1
 darwin internal/gitutil.runBoundedBytes -> gitutil.isolatedGit x1
 darwin internal/gitutil.runBoundedBytes -> gitutil.runBoundedCmd(Background) x1
 darwin internal/localtier.LstatInRoot -> localtier.Untracked x1
@@ -347,7 +346,6 @@ linux internal/gitutil.configNames -> gitutil.configNamesContext(Background) x1
 linux internal/gitutil.eachWorktree -> gitutil.isolatedGit x1
 linux internal/gitutil.isolatedGit -> exec.Command x1
 linux internal/gitutil.isolatedGit -> gitutil.guardObjectRead(Background) x1
-linux internal/gitutil.netSSHCommand -> exec.Command x1
 linux internal/gitutil.runBoundedBytes -> gitutil.isolatedGit x1
 linux internal/gitutil.runBoundedBytes -> gitutil.runBoundedCmd(Background) x1
 linux internal/localtier.LstatInRoot -> localtier.Untracked x1

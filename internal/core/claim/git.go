@@ -27,9 +27,12 @@ func trace(args ...string) {
 // cap, matched on the cap's own words ("output exceeded the"). A read a
 // context ended is never one, though its error ends "context deadline
 // exceeded": a reader that folds an answer too big into an unreadable tip must
-// not fold the hook's deadline into one.
+// not fold the hook's deadline into one, and a git the drive's check did not
+// run (gitutil.NotRunError) is never one, whatever its text names: its type
+// is read before its text.
 func overCap(err error) bool {
-	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	var nr *gitutil.NotRunError
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.As(err, &nr) {
 		return false
 	}
 	return strings.Contains(err.Error(), "output exceeded the")

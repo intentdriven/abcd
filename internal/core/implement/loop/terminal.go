@@ -657,40 +657,71 @@ func (t *terminal) failed(ctx context.Context, judge bool, what string) bool {
 func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 	t.ctx = ctx
 	t.joinSharedRun()
-	// origin's identity and the checkout's hooks directory are read once,
-	// before the drive's first move, and held here for the lanes it opens
-	// (remoteid.go, with its limits): a lane's agent can rewrite the
-	// checkout's settings and hooks, and each lane's run records its own
-	// afresh. A restarted drive reads them afresh. The drive refuses to
-	// start when the settings cannot be listed, the repository's own
-	// settings cannot be read or the common git directory cannot be
-	// resolved (readRemoteIdentity); an unreadable hooks directory is held
-	// as such and does not stop it.
-	id, err := readRemoteIdentity(t.repoRoot)
+	// The settings the drive holds, the hooks directories its git runs and
+	// info/attributes are read once, before the drive's first move, and held
+	// here for the lanes it opens (remoteid.go, with what it cannot hold): a
+	// lane's agent can rewrite the checkout's settings and hooks, and each
+	// lane's run records its own afresh. A restarted drive reads them
+	// afresh, and so compares an in-tree hooks copy with the tip origin
+	// reports at that moment (proveCheckoutHooks). The drive refuses to start
+	// when a read the hold depends on gives no answer it can take, the hooks
+	// tree is past its bound (readRemoteIdentity), or the comparison finds a
+	// difference. The ask of origin is a lane's ask (startHold): it waits on
+	// the run's shared outage and reports a lost network to it, and its wait
+	// is the drive's own, ended by the bounds every pass of the loop below
+	// obeys (boundEnded) and by nothing moving for as long as a drive waits
+	// (idle), then asked again.
+	var id *remoteIdentity
+	for {
+		var err error
+		if id, err = t.startHold(); err == nil {
+			break
+		}
+		r, ok := AsRefusal(err)
+		if !ok || !r.Contention {
+			t.leaveSharedRun()
+			return TerminalResult{}, startRefusal(t.repoRoot, err)
+		}
+		if ended := t.boundEnded(ctx); ended != "" {
+			return t.ended(ended), nil
+		}
+		if t.idle(ctx, TerminalWaitFloor, r.Reason) {
+			return t.ended(TerminalWaited), nil
+		}
+		if ended := t.boundEnded(ctx); ended != "" {
+			return t.ended(ended), nil
+		}
+	}
+	t.o.Options.remote = id
+	// From here every git command of the drive that runs the repository's
+	// hooks, merge drivers or content filters, or reaches the network, first
+	// compares what the drive holds (heldBeforeGit): each runner gitutil has
+	// for such a command asks the check set here before it builds the
+	// command (gitutil.SetBeforeHookedGit names them), so one made inside a
+	// step (the lane's add, commit, merge and reset, the landing push) or
+	// outside one (a move's reservation, a renewal while an agent runs, the
+	// network probe) never runs under a setting or hook changed since the
+	// drive started; it fails instead, naming the difference. One drive runs
+	// in a process: a check already set refuses the start.
+	unset, err := gitutil.SetBeforeHookedGit(func([]string) error { return heldBeforeGit(t.repoRoot, id) })
 	if err != nil {
 		t.leaveSharedRun()
 		return TerminalResult{}, refuse(StageDrain, "", "", "the drive cannot start: "+err.Error(),
-			"settle what git reports for the repository's own settings (`git config --local --list --show-origin`) and for the settings the drive holds (`git config --list --show-origin`), then start the drive again")
+			"run one drive at a time in a process; nothing was made")
 	}
-	t.o.Options.remote = id
+	defer unset()
 	if t.o.Resumed {
 		t.reportHeldBack()
 	}
 	for {
-		if ctx.Err() != nil {
-			return t.ended(TerminalKilled), nil
+		if ended := t.boundEnded(ctx); ended != "" {
+			return t.ended(ended), nil
 		}
-		if t.stopped() {
-			return t.ended(TerminalStopped), nil
-		}
-		if t.stopHolds() {
-			return t.ended(TerminalHalted), nil
-		}
-		if t.pastBound() {
-			return t.ended(TerminalUntil), nil
-		}
-		if !t.wallHeld() {
-			return t.ended(TerminalWall), nil
+		// Each pass compares what the drive holds (heldBeforeGit): a
+		// difference ends the drive, which reads what it holds only as it
+		// starts, rather than have each git command of the pass refused.
+		if err := heldBeforeGit(t.repoRoot, t.o.Options.remote); err != nil {
+			return t.ended(TerminalRefused), err
 		}
 		if t.boundaryDue && t.o.AtBoundary != nil && !t.boundaryHeld() {
 			t.boundaryDue = false
@@ -811,6 +842,54 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		// release does not wait on it.
 		t.inHand = !t.passedLane(res.Lane.RunID) && t.laneInProgress(res.Lane.RunID)
 	}
+}
+
+// boundEnded is how the drive ends at the top of each pass, "" when it goes
+// on: killed, stopped from the terminal, halted by a stop set from outside,
+// past the person's bound, or held by the check before a stage. The start's
+// wait on origin obeys it too.
+func (t *terminal) boundEnded(ctx context.Context) string {
+	switch {
+	case ctx.Err() != nil:
+		return TerminalKilled
+	case t.stopped():
+		return TerminalStopped
+	case t.stopHolds():
+		return TerminalHalted
+	case t.pastBound():
+		return TerminalUntil
+	case !t.wallHeld():
+		return TerminalWall
+	}
+	return ""
+}
+
+// startHold is one try at what the drive holds as it starts
+// (readRemoteIdentity) and the start's comparison with origin's tip
+// (proveCheckoutHooks), the ask of origin made as a lane's is: through the
+// run's shared outage (outageFor, which runs the shared network probe when
+// it is due), so while the outage has the network down the ask is not made,
+// and a lost network is reported to it.
+func (t *terminal) startHold() (*remoteIdentity, error) {
+	id, err := readRemoteIdentity(t.repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	g, err := outageFor(t.repoRoot, "", t.o.Options)
+	if err != nil {
+		return nil, err
+	}
+	err = proveCheckoutHooks(t.repoRoot, id, g)
+	g.record()
+	if note := g.recordNote(); note != "" {
+		if r, ok := AsRefusal(err); ok {
+			r.Remedy += "; " + note
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return id, nil
 }
 
 // boundaryHeld reports whether a due boundary waits: for a skip the run gave and the next
@@ -2342,8 +2421,20 @@ func dropRun(repoRoot, runID, why, whose string, now time.Time, o Options) error
 // letGo releases what the run holds and no lane is working on: each lane in
 // progress, left on its branch, and a judgement's hold no lane opened on. A
 // lane parked at its pull request keeps its own.
+//
+// A release is a push, which a drive makes only under what it holds
+// (heldBeforeGit), so it compares first, before it takes the drain's lock,
+// whose wait other sessions keep short (lockTimeout): on a difference, a
+// read that gives no answer, or a comparison that does not finish, no
+// release is tried, and each reservation left is named with when its lease
+// lapses and how the person releases it (leftHeld). Each push inside the
+// lock asks the comparison again, as every networked git of a drive does.
 func (t *terminal) letGo() {
 	now := t.now()
+	if err := heldBeforeGit(t.repoRoot, t.o.Options.remote); err != nil {
+		t.leftHeld(err, now)
+		return
+	}
 	err := fsutil.WithFileLock(filepath.Join(t.repoRoot, filepath.FromSlash(drainLockRel)), lockTimeout, func() error {
 		// A drain that ended on an outage can have a lane still in progress, so
 		// its lanes are read whether it is live or not.
@@ -2386,6 +2477,52 @@ func (t *terminal) letGo() {
 	})
 	if err != nil {
 		t.say("what this run holds was not released, and lapses with its lease: %s", err.Error())
+	}
+}
+
+// leftHeld says, for a let-go the drive's comparison stopped (why), that
+// nothing was released, and names each reservation letGo would have
+// released, with when its lease lapses and how the person releases it once
+// what the drive holds is as it should be. It reads only: nothing is pushed
+// or written.
+func (t *terminal) leftHeld(why error, now time.Time) {
+	reason := why.Error()
+	if r, ok := AsRefusal(why); ok {
+		reason = r.Reason
+	}
+	t.say("nothing this drive holds was released: releasing is a push, and the drive runs none while %s", termsafe.Sanitize(fsutil.RedactHome(reason)))
+	st, live, err := readDrain(t.repoRoot)
+	if err != nil {
+		t.say("which reservations this drive holds could not be read, and each lapses with its lease: %s", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		return
+	}
+	var ids []string
+	for _, l := range st.Lanes {
+		if l.Outcome != DrainLaneInProgress || t.passedLane(l.RunID) {
+			continue
+		}
+		run, err := ReadState(t.repoRoot, l.RunID)
+		if err != nil || run.ReservedAt == nil || letGoByDrive(run) {
+			continue
+		}
+		if c, err := runControl(t.repoRoot, l.RunID); err == nil && c.Stop != nil {
+			continue
+		}
+		ids = append(ids, run.Key)
+	}
+	if j := st.Judging; j != nil && live && j.Hold != nil {
+		ids = append(ids, j.Issue)
+	}
+	snap, verr := claim.View(t.repoRoot, now)
+	for _, id := range ids {
+		lapses := "lapses with its lease"
+		if verr == nil {
+			if r, ok := snap.Lookup(id); ok && r.Copy == claim.CopyThis && r.State == claim.StateLive {
+				lapses = "lapses at " + stamp(r.EffectiveExpiry)
+			}
+		}
+		t.say("%s: its reservation was not released and %s; once what the drive holds is as it should be, release it with `abcd reserve %s --release`, or start the drive again, which takes the run up",
+			termsafe.Sanitize(id), lapses, termsafe.Sanitize(id))
 	}
 }
 

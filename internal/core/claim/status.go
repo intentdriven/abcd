@@ -311,8 +311,8 @@ func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, erro
 	}
 	names, skipped, past, err := listStatusBranches(root, "")
 	if err != nil {
-		noteFetchFailure(root, statusBranches, now, redacted(err))
-		return StatusFetch{}, &FetchError{Reason: redacted(err), what: statusBranches.noun, outcome: "nothing was fetched"}
+		noteFetchFailure(root, statusBranches, now, redacted(err).text)
+		return StatusFetch{}, &FetchError{Reason: redacted(err).text, cause: redacted(err).notRun, what: statusBranches.noun, outcome: "nothing was fetched"}
 	}
 	// Only the names origin lists, and of them only those the fetch reads,
 	// are kept: the named refspecs prune nothing, and a branch left from an
@@ -374,7 +374,7 @@ func listStatusBranches(root, own string) (names []string, skipped nameTally, pa
 		}
 	}, args...)
 	if err != nil {
-		return nil, nameTally{}, 0, errors.New(redacted(err))
+		return nil, nameTally{}, 0, redacted(err).err()
 	}
 	sort.Strings(names)
 	return names, skipped, past, nil
@@ -1564,7 +1564,7 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 			tips[strings.TrimPrefix(r.ref, StatusTrackingPrefix)] = r.sha
 		}
 	} else {
-		failed = append(failed, "the status branches held here could not be read ("+termsafe.Sanitize(redacted(err))+
+		failed = append(failed, "the status branches held here could not be read ("+termsafe.Sanitize(redacted(err).text)+
 			"), so whether the forge's record reaches each tip is not known, and a commit it does not name another account for stays claimed and is asked about again")
 	}
 	kept := keptAsked(root)
@@ -1592,7 +1592,7 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 		pushed, err := lookup(ctx, root, b)
 		partial := errors.Is(err, ErrPartialRecord)
 		if err != nil && !partial {
-			failed = append(failed, "abcd-status/"+b+": "+termsafe.Sanitize(redacted(err)))
+			failed = append(failed, "abcd-status/"+b+": "+termsafe.Sanitize(redacted(err).text))
 			continue
 		}
 		// The forge records a push some time after it lands: a record that
@@ -1613,7 +1613,7 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 		partial = partial || behind || !tipsKnown || !tipHeld
 		byCommit, err := placePushes(ctx, root, b, pushed)
 		if err != nil {
-			failed = append(failed, "abcd-status/"+b+": the forge's record of pushes was not placed in full: "+termsafe.Sanitize(redacted(err)))
+			failed = append(failed, "abcd-status/"+b+": the forge's record of pushes was not placed in full: "+termsafe.Sanitize(redacted(err).text))
 			continue
 		}
 		const askedAgain = ", so a commit it does not name another account for stays claimed and is asked about again"

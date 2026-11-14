@@ -31,10 +31,19 @@ import (
 //
 // Every isolated command passes lazyFetchGuard first: a refusal is set as the
 // command's Err, so Run, Output and Start return it and git never starts.
+//
+// ExecPins does not blank content filters, textconv and external diff
+// programs, or merge drivers, so a command that can start one of them
+// (LeavesContentProgramsOn) asks the check SetBeforeHookedGit set before it
+// is run, as the hooked runners do; its refusal is set as the command's Err
+// in the same way.
 func isolatedGit(root string, args ...string) *exec.Cmd {
 	cmd := exec.Command("git", isolatedArgs(root, args)...)
 	cmd.Env = gitEnv()
 	guardObjectRead(context.Background(), cmd, root, args)
+	if cmd.Err == nil {
+		askIfContentRuns(cmd, args)
+	}
 	return cmd
 }
 
@@ -69,13 +78,15 @@ const contextWaitDelay = 50 * time.Millisecond
 // isolatedGitContext is isolatedGit bound to ctx: when ctx ends, git is KILLED,
 // not abandoned. An abandoned git outlives its caller, and a caller on a
 // deadline that runs often — the status verb, on every refresh — would leave
-// one behind each time for as long as git hangs.
+// one behind each time for as long as git hangs. It asks the check
+// SetBeforeHookedGit set as isolatedGit does.
 func isolatedGitContext(ctx context.Context, root string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", isolatedArgs(root, args)...)
 	cmd.Env = gitEnv()
 	if ctx.Done() != nil {
 		cmd.WaitDelay = contextWaitDelay
 	}
+	askIfContentRuns(cmd, args)
 	guardObjectRead(ctx, cmd, root, args)
 	return cmd
 }
@@ -205,8 +216,23 @@ func ScrubbedEnv() []string {
 // GIT_NO_LAZY_FETCH=1 keeps a partial clone from fetching a missing object
 // through its promisor remote, and the command passes the lazy-fetch floor
 // guard every isolated command passes.
+//
+// Its content filters run, so the check SetBeforeHookedGit set is asked
+// first, before the command is built; an error from it is set as the
+// command's Err, so Run, Output and Start return it and git never starts.
 func WorkingTreeCommand(root string, args ...string) *exec.Cmd {
-	return workingTreeCommand(context.Background(), root, ExecPins(), args)
+	return filteredCommand(context.Background(), root, args)
+}
+
+// filteredCommand is WorkingTreeCommand bound to ctx, after the check
+// SetBeforeHookedGit set.
+func filteredCommand(ctx context.Context, root string, args []string) *exec.Cmd {
+	asked := askBeforeHooked(args)
+	cmd := workingTreeCommand(ctx, root, ExecPins(), args)
+	if asked != nil {
+		cmd.Err = asked
+	}
+	return cmd
 }
 
 // WorkingTreeCommandContext is WorkingTreeCommand bound to ctx, for a caller on
@@ -214,9 +240,10 @@ func WorkingTreeCommand(root string, args ...string) *exec.Cmd {
 // it is only for a command that writes nothing to the repository or the
 // working tree (a status read with --no-optional-locks, an ls-files listing),
 // whose interruption leaves nothing to repair. A command that removes or
-// rewrites files, `git worktree remove` among them, runs unbound.
+// rewrites files, `git worktree remove` among them, runs unbound. It asks
+// the check SetBeforeHookedGit set as WorkingTreeCommand does.
 func WorkingTreeCommandContext(ctx context.Context, root string, args ...string) *exec.Cmd {
-	return workingTreeCommand(ctx, root, ExecPins(), args)
+	return filteredCommand(ctx, root, args)
 }
 
 // WorkingTreeCommitCommand is WorkingTreeCommand for a git command that runs
@@ -766,9 +793,17 @@ func runLimitedContext(ctx context.Context, root string, maxBytes int, network b
 
 // runLimitedOverflow is runLimitedContext that also says whether the answer ran
 // past maxBytes, for a caller that must not read part of one as the whole.
+//
+// A networked one asks the check SetBeforeHookedGit set first, before the
+// command is built.
 func runLimitedOverflow(ctx context.Context, root string, maxBytes int, network bool, args []string) (string, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return "", false, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+	if network {
+		if err := askBeforeHooked(args); err != nil {
+			return "", false, err
+		}
 	}
 	cmd := isolatedGitContext(ctx, root, args...)
 	if network {
