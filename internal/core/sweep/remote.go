@@ -7,7 +7,9 @@ package sweep
 // default branch (the forge records its pull request merged at the tip, or
 // its content is on the default branch) and nothing still needs it:
 //
-//   - no open pull request heads it, as the forge lists them;
+//   - no open pull request heads it, or targets it as its base, as the forge
+//     lists them (a branch an open pull request merges into is still in use,
+//     which keeps more than "heads it" alone);
 //   - no reservation names it: a live reservation whose record id its name
 //     holds; a reservation that cannot be read, or reservations never
 //     fetched, hold every branch. A reservation carries no branch, and a
@@ -115,9 +117,10 @@ type remoteJudge struct {
 	// table.
 	live judge
 	// open maps a branch to the numbers of the open pull requests from it,
-	// and openUnread says why no listing can show a branch free of one.
-	open       map[string][]string
-	openUnread string
+	// openBases to those that target it as their base, and openUnread says
+	// why no listing can show a branch free of either.
+	open, openBases map[string][]string
+	openUnread      string
 	// merged is the forge's listing of merged pull requests, nil when it gave
 	// none.
 	merged []byte
@@ -289,15 +292,15 @@ func (rj *remoteJudge) forge(args ...string) (string, error) {
 // be whole to show a branch free of one, and the newest merged ones, the
 // forge's word on which branches landed.
 func (rj *remoteJudge) askForge() {
-	out, err := rj.forge("pr", "list", "--state", "open", "--limit", strconv.Itoa(openListLimit), "--json", "number,headRefName,state")
+	out, err := rj.forge("pr", "list", "--state", "open", "--limit", strconv.Itoa(openListLimit), "--json", "number,headRefName,baseRefName,state")
 	if err != nil {
 		rj.openUnread = "the forge could not be asked: " + answerText(err)
-	} else if open, n, perr := openByBranch(out); perr != nil {
+	} else if heads, bases, n, perr := openByBranch(out); perr != nil {
 		rj.openUnread = "the forge's listing of open pull requests does not parse"
 	} else if n >= openListLimit {
 		rj.openUnread = fmt.Sprintf("the forge listed %d open pull requests, its limit, so more may be open", n)
 	} else {
-		rj.open = open
+		rj.open, rj.openBases = heads, bases
 	}
 	if out, err := rj.forge("pr", "list", "--state", "merged", "--limit", strconv.Itoa(mergedListLimit),
 		"--json", "headRefName,headRefOid,baseRefName,isCrossRepository,state"); err == nil {
@@ -306,24 +309,30 @@ func (rj *remoteJudge) askForge() {
 }
 
 // openByBranch reads a listing of open pull requests into the numbers of the
-// open ones from each head branch, and how many the listing held. One from a
-// fork's branch of the same name counts too: this errs towards keeping.
-func openByBranch(listing string) (map[string][]string, int, error) {
+// open ones from each head branch and into each base branch, and how many the
+// listing held. One from a fork's branch of the same name counts too: this
+// errs towards keeping.
+func openByBranch(listing string) (heads, bases map[string][]string, n int, err error) {
 	var prs []struct {
 		Number      int    `json:"number"`
 		HeadRefName string `json:"headRefName"`
+		BaseRefName string `json:"baseRefName"`
 		State       string `json:"state"`
 	}
 	if err := json.Unmarshal([]byte(listing), &prs); err != nil {
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
-	open := map[string][]string{}
+	heads, bases = map[string][]string{}, map[string][]string{}
 	for _, pr := range prs {
 		if pr.State == "OPEN" {
-			open[pr.HeadRefName] = append(open[pr.HeadRefName], strconv.Itoa(pr.Number))
+			num := strconv.Itoa(pr.Number)
+			heads[pr.HeadRefName] = append(heads[pr.HeadRefName], num)
+			if pr.BaseRefName != "" {
+				bases[pr.BaseRefName] = append(bases[pr.BaseRefName], num)
+			}
 		}
 	}
-	return open, len(prs), nil
+	return heads, bases, len(prs), nil
 }
 
 // neverDeleted is why a branch on origin is on the never-delete list, "" when
@@ -374,7 +383,7 @@ func (rj *remoteJudge) row(b remoteBranch) Row {
 			Evidence{Kind: KindMerged, Strength: Proven, Detail: "unmerged"})
 	}
 	ev := []Evidence{{Kind: KindMerged, Strength: Proven, Detail: "merged, judged by " + by}}
-	holds := rj.holds(b, rj.open, rj.openUnread)
+	holds := rj.holds(b, rj.open, rj.openBases, rj.openUnread)
 	if len(holds) > 0 {
 		return keep("merged, judged by "+by+", but still needed: "+details(holds), append(ev, holds...)...)
 	}
@@ -392,15 +401,20 @@ func details(ev []Evidence) string {
 }
 
 // holds is everything that still needs the branch b: an open pull request
-// (from open, or every branch when openUnread says no listing can show one
-// absent), a reservation, the guard's checks, and the liveness of each local
-// worktree on the branch.
-func (rj *remoteJudge) holds(b remoteBranch, open map[string][]string, openUnread string) []Evidence {
+// from it (open) or targeting it (bases), or every branch when openUnread
+// says no listing can show one absent; a reservation; the guard's checks; and
+// the liveness of each local worktree on the branch.
+func (rj *remoteJudge) holds(b remoteBranch, open, bases map[string][]string, openUnread string) []Evidence {
 	var ev []Evidence
 	if openUnread != "" {
 		ev = append(ev, Evidence{Kind: KindPullRequest, Strength: Hint, Detail: "no open pull request can be shown absent: " + openUnread})
-	} else if nums := open[b.name]; len(nums) > 0 {
-		ev = append(ev, Evidence{Kind: KindPullRequest, Strength: Proven, Detail: "pull request #" + strings.Join(nums, ", #") + " is open on it"})
+	} else {
+		if nums := open[b.name]; len(nums) > 0 {
+			ev = append(ev, Evidence{Kind: KindPullRequest, Strength: Proven, Detail: "pull request #" + strings.Join(nums, ", #") + " is open on it"})
+		}
+		if nums := bases[b.name]; len(nums) > 0 {
+			ev = append(ev, Evidence{Kind: KindPullRequest, Strength: Proven, Detail: "open pull request #" + strings.Join(nums, ", #") + " targets it as its base"})
+		}
 	}
 	ev = append(ev, rj.reservationsNaming(b)...)
 	if pr, bad := branchHazard(rj.def, rj.wts, rj.held, b.name); bad {
@@ -505,6 +519,18 @@ func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail err
 	if err != nil {
 		return held("the forge's listing of its pull requests does not parse")
 	}
+	targeting, err := rj.forge("pr", "list", "--base="+b.name, "--state", "open", "--limit", strconv.Itoa(proofPRLimit),
+		"--json", "number,headRefName,baseRefName,state")
+	if err != nil {
+		return held("the forge could not be asked again whether an open pull request targets it (" + answerText(err) + ")")
+	}
+	_, bases, n, err := openByBranch(targeting)
+	switch {
+	case err != nil:
+		return held("the forge's listing of the pull requests targeting it does not parse")
+	case n >= proofPRLimit:
+		return held(fmt.Sprintf("the forge listed %d open pull requests targeting it, its limit, so more may be open", n))
+	}
 	if merged, _ := store.Merged(rj.root, rj.def, b.tracking, b.tip, []byte(prs)); !merged {
 		return held("it no longer reads as merged into " + displayRef(rj.def))
 	}
@@ -515,7 +541,7 @@ func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail err
 		return held(err.Error())
 	}
 	rj.live.probe = newProbe(rj.ctx, rj.o.Probe)
-	if ev := rj.holds(b, map[string][]string{b.name: open}, ""); len(ev) > 0 {
+	if ev := rj.holds(b, map[string][]string{b.name: open}, bases, ""); len(ev) > 0 {
 		return held(details(ev), ev...)
 	}
 	ctx, cancel := context.WithTimeout(rj.ctx, remoteNetTimeout)

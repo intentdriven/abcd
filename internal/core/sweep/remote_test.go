@@ -48,7 +48,7 @@ func (f *fakeForge) gh(_ string, args ...string) (string, error) {
 		}
 		return ""
 	}
-	state, head := value("--state"), value("--head")
+	state, head, base := value("--state"), value("--head"), value("--base")
 	if head != "" && f.onRecheck != nil {
 		f.onRecheck()
 		f.onRecheck = nil
@@ -59,7 +59,7 @@ func (f *fakeForge) gh(_ string, args ...string) (string, error) {
 	}
 	out := []pullRequest{}
 	for _, pr := range list {
-		if (state == "all" || strings.EqualFold(state, pr.State)) && (head == "" || head == pr.HeadRefName) {
+		if (state == "all" || strings.EqualFold(state, pr.State)) && (head == "" || head == pr.HeadRefName) && (base == "" || base == pr.BaseRefName) {
 			out = append(out, pr)
 		}
 	}
@@ -214,7 +214,8 @@ func TestABranchPushedToAfterTheLastCheckSurvivesTheLease(t *testing.T) {
 }
 
 // TestAMergedBranchSomethingStillNeedsIsKeptNamingIt is criterion 8's second
-// half: a merged branch held by an open pull request, by a reservation (its
+// half: a merged branch held by an open pull request from it or targeting it,
+// by a reservation (its
 // record in the name, or its footprint over a path a worktree tracking the
 // branch changes), or by a live session in a worktree tracking it is kept,
 // naming what holds it, and stands on origin after an applied run.
@@ -231,6 +232,9 @@ func TestAMergedBranchSomethingStillNeedsIsKeptNamingIt(t *testing.T) {
 		{"an open pull request", "feat", "feat.txt", func(_ *gittest.Repo, f *fakeForge, _ *Options, tip string) {
 			f.prs = append(f.prs, pullRequest{Number: 12, HeadRefName: "feat", HeadRefOid: tip, BaseRefName: "main", State: "OPEN"})
 		}, "pull request #12 is open on it"},
+		{"an open pull request targeting it", "feat", "feat.txt", func(_ *gittest.Repo, f *fakeForge, _ *Options, _ string) {
+			f.prs = append(f.prs, pullRequest{Number: 13, HeadRefName: "follow-up", HeadRefOid: strings.Repeat("a", 40), BaseRefName: "feat", State: "OPEN"})
+		}, "open pull request #13 targets it as its base"},
 		{"a reservation naming its record", "fix/iss-2610230000000001-x", "fix.txt", func(_ *gittest.Repo, _ *fakeForge, o *Options, _ string) {
 			o.Probe.Reservations.Reservations = []claim.Reservation{live("iss-2610230000000001")}
 		}, "reserved as iss-2610230000000001 by bob"},
@@ -481,6 +485,25 @@ func TestAWorktreeThatBeginsTrackingTheBranchBeforeTheDeleteHoldsIt(t *testing.T
 	if r.Action != ActionDelete || r.Outcome != OutcomeKept || !strings.Contains(r.Reason, "held at the last check before the delete") ||
 		!strings.Contains(r.Reason, "in use: process 100 works in it") {
 		t.Fatalf("%+v; want it judged deletable, then held at the last check by the new worktree's process", r)
+	}
+	if onOrigin(repo, origin, "feat") != tip {
+		t.Fatal("origin no longer holds feat")
+	}
+}
+
+// TestAPullRequestTargetingTheBranchSeenOnlyAtTheLastCheckHoldsIt: an open
+// pull request that comes to target the branch after the run's listing is
+// seen by the last check, and the branch is kept.
+func TestAPullRequestTargetingTheBranchSeenOnlyAtTheLastCheckHoldsIt(t *testing.T) {
+	repo, origin := originRepo(t)
+	tip := mergedOnOrigin(repo, "feat", "feat.txt")
+	f := &fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}
+	f.recheck = append(f.prs, pullRequest{Number: 21, HeadRefName: "follow-up", HeadRefOid: strings.Repeat("b", 40), BaseRefName: "feat", State: "OPEN"})
+	f.onRecheck = func() { f.prs = f.recheck }
+	res := sweepRemoteOK(t, repo, remoteOpts(f), true)
+	r := remoteRowFor(t, res, "feat")
+	if r.Outcome != OutcomeKept || !strings.Contains(r.Reason, "held at the last check before the delete") || !strings.Contains(r.Reason, "open pull request #21 targets it") {
+		t.Fatalf("%+v; want it held at the last check, naming the pull request", r)
 	}
 	if onOrigin(repo, origin, "feat") != tip {
 		t.Fatal("origin no longer holds feat")
