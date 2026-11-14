@@ -427,3 +427,26 @@ func TestOriginsAnswerIsScrubbedBeforeItIsShown(t *testing.T) {
 		t.Fatalf("the row's reason names origin's user or password: %q", r.Reason)
 	}
 }
+
+// TestADefaultBranchThatMovedOnOriginHoldsEveryDelete: when origin's default
+// branch has moved past the tip this checkout last fetched, the last check
+// holds the delete and asks for a fetch, though the branch's name matches.
+func TestADefaultBranchThatMovedOnOriginHoldsEveryDelete(t *testing.T) {
+	repo, origin := originRepo(t)
+	tip := mergedOnOrigin(repo, "feat", "feat.txt")
+	repo.Write("later.txt", "later\n")
+	repo.Git("add", "-A")
+	repo.Git("commit", "-q", "-m", "later")
+	// Pushed by path, not by the remote's name, so origin/main stays where
+	// the last fetch left it.
+	repo.Git("push", "-q", origin, "main")
+
+	res := sweepRemoteOK(t, repo, remoteOpts(&fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}), true)
+	r := remoteRowFor(t, res, "feat")
+	if r.Outcome != OutcomeKept || !strings.Contains(r.Reason, "fetch origin and run the sweep again") {
+		t.Fatalf("%+v; want it held until a fetch", r)
+	}
+	if onOrigin(repo, origin, "feat") != tip {
+		t.Fatal("origin no longer holds feat")
+	}
+}

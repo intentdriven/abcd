@@ -29,8 +29,9 @@ package sweep
 // The judgement reaches no remote: it reads origin's branches as the
 // caller's fetch left them, and the forge's listings through Options.Forge.
 // Under apply, each delete is preceded by a last check of everything that
-// could hold the branch, made again: origin's own default branch (asked of
-// origin, once per run), the worktrees and the guard's checks, a fresh
+// could hold the branch, made again: origin's own default branch and its tip
+// (asked of origin, once per run, and required to be the very branch and
+// commit the judgement read), the worktrees and the guard's checks, a fresh
 // liveness probe, the forge's pull requests from that branch, and origin's
 // tip of it now. Only then is it deleted, by one push of an empty ref with a
 // lease on the exact tip that was judged (the reservation sweep's pattern),
@@ -103,8 +104,9 @@ type remoteJudge struct {
 	ctx  context.Context
 	root string
 	o    Options
-	// def is origin's default branch as last fetched, defName its name.
-	def, defName string
+	// def is origin's default branch as last fetched, defName its name, and
+	// defTip the commit it named when the branches were judged.
+	def, defName, defTip string
 	wts          []gitutil.Worktree
 	held         gitutil.Held
 	// upstreams maps each local branch's ref to its upstream's ref.
@@ -154,6 +156,7 @@ func sweepRemote(ctx context.Context, repoRoot string, o Options, apply bool) (R
 		fault    error
 		asked    bool
 		head     string
+		headTip  string
 		headFail error
 	)
 	for i := range res.Rows {
@@ -166,9 +169,9 @@ func sweepRemote(ctx context.Context, repoRoot string, o Options, apply bool) (R
 			// The tracked default branch is a local reading and may be stale,
 			// so an act on origin asks origin which branch is its default.
 			asked = true
-			head, headFail = rj.originHead()
+			head, headTip, headFail = rj.originHead()
 		}
-		if err := rj.delete(branches[i], head, headFail, row); err != nil && fault == nil {
+		if err := rj.delete(branches[i], head, headTip, headFail, row); err != nil && fault == nil {
 			fault = err
 		}
 	}
@@ -195,6 +198,11 @@ func newRemoteJudge(ctx context.Context, root string, o Options) (*remoteJudge, 
 		return nil, nil, fmt.Errorf("reading origin's default branch: %w", err)
 	}
 	rj.defName = shortName(rj.def)
+	if rj.def != "" {
+		if rj.defTip, err = refTip(ctx, root, rj.def); err != nil {
+			return nil, nil, fmt.Errorf("reading origin's default branch: %w", err)
+		}
+	}
 	refs, err := listRefs(ctx, root, remotePrefix)
 	if err != nil {
 		return nil, nil, fmt.Errorf("listing origin's branches: %w", err)
@@ -442,23 +450,22 @@ func (rj *remoteJudge) reservationsNaming(b remoteBranch) []Evidence {
 	return ev
 }
 
-// originHead asks origin which branch is its default, bounded by the run's
-// context and remoteNetTimeout.
-func (rj *remoteJudge) originHead() (string, error) {
+// originHead asks origin which branch is its default and that branch's tip,
+// bounded by the run's context and remoteNetTimeout.
+func (rj *remoteJudge) originHead() (branch, tip string, err error) {
 	ctx, cancel := context.WithTimeout(rj.ctx, remoteNetTimeout)
 	defer cancel()
-	branch, _, err := gitutil.RemoteHeadTip(ctx, gitutil.NetContext, rj.root, claim.Remote)
-	return branch, err
+	return gitutil.RemoteHeadTip(ctx, gitutil.NetContext, rj.root, claim.Remote)
 }
 
 // delete makes the last check of the branch b on origin and, when nothing
 // holds it, deletes it under a lease on the tip that was judged, marking row
-// with the outcome. head is origin's default branch as origin named it, or
-// headFail why it could not be asked. A hold the last check finds keeps the
+// with the outcome. head is origin's default branch as origin named it and
+// headTip its tip there, or headFail why they could not be asked. A hold the last check finds keeps the
 // branch, naming it; so does origin refusing the lease because the branch
 // moved. Any other refusal of the delete keeps it, naming why, and is
 // returned as the run's fault.
-func (rj *remoteJudge) delete(b remoteBranch, head string, headFail error, row *Row) error {
+func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail error, row *Row) error {
 	held := func(reason string, ev ...Evidence) error {
 		row.Reason = clean("held at the last check before the delete: " + reason)
 		for _, e := range ev {
@@ -475,6 +482,13 @@ func (rj *remoteJudge) delete(b remoteBranch, head string, headFail error, row *
 	case head != rj.defName:
 		return held("origin's default branch is " + head + ", but it was judged against " + displayRef(rj.def) +
 			" as last fetched; fetch origin and run the sweep again")
+	case headTip != rj.defTip:
+		// Equality is the simple rule, and the safe one: a default branch
+		// that moved on origin since the fetch may hold, or have dropped,
+		// what the merged judgement read, so only the exact tip judged
+		// against lets a delete through.
+		return held("origin's default branch is at " + short(headTip) + ", but it was judged against " + displayRef(rj.def) +
+			" at " + short(rj.defTip) + " as last fetched; fetch origin and run the sweep again")
 	case !strings.HasPrefix(b.ref, "refs/heads/") || neverDeleted(b.name, head) != "" || !gitutil.IsFullSHA(b.tip):
 		return held("it is not a branch the sweep deletes")
 	}
