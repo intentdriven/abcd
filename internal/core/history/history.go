@@ -197,6 +197,19 @@ func Redact(repoRoot, text, label string) (Redacted, error) {
 	return redactWith(sc, text, label)
 }
 
+// Redactor is Redact with its scanner built once, for a caller that redacts
+// many texts of one repository in one pass (the sweep's patch salvage, file by
+// file): each call is Redact's two stages over one text, without building the
+// scanner again. A scanner that cannot be built, or is degraded, refuses here
+// as Redact refuses; one that degrades part-way refuses each later call.
+func Redactor(ctx context.Context, repoRoot string) (func(text, label string) (Redacted, error), error) {
+	sc, err := redactionScanner(ctx, repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	return func(text, label string) (Redacted, error) { return redactWith(sc, text, label) }, nil
+}
+
 // redactionScanner builds the per-repo merged scanner Redact runs, once, so a
 // caller that redacts a transcript in parts (resumable.go) builds it once per
 // pass rather than once per part. ctx bounds the identity probe's git calls; a
