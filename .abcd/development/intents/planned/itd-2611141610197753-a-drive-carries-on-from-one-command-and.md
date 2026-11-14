@@ -1,8 +1,8 @@
 ---
 id: itd-2611141610197753
 slug: a-drive-carries-on-from-one-command-and
-spec_id: null
-kind: null
+spec_id: spc-2611141617199772
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2610222215485265]
@@ -69,12 +69,12 @@ We expect a person to stop asking whether the drive is working, because the loop
 
 ## Scope Conditions
 
-- The lab's own test of the whole idea: it is shown wrong by any new command, any flag a person must remember, or any stored state a person must clear. The one new stored thing, the drive's state, is overwritten by the next drive and cleared by nobody.
-- One drive per working copy on one machine, as the drain's lock already enforces. The state line is stored in the checkout the drive runs from, and a status surface run in that checkout shows it. Which other checkouts and sessions show it is the status line's question (itd-2611141507299828).
-- Run files this build can read. The lab tried one earlier schema version (25); a file that states a version above this build's is refused by the read before any claim, as today.
-- A process table the drive can read. Telling the drive's own terminal from another live session reads process ancestry and the session markers; where it cannot be read the drive leaves the run, as today, and the lane is set aside at the bound.
-- A person's own stop is outside what a start lifts or takes over (decision 1). The single command covers interrupts, closed terminals, kills, rebuilds and reboots.
-- The lab measured on a fixture clock with a stand-in process table and a stand-in landing stage (F-3, F-5). No figure here comes from a live drive, and the live proof of the drive itself is still open under itd-2610222215485265.
+- The lab's own test of the whole idea: it is shown wrong by any new command, any flag a person must remember, or any stored state a person must clear. The one new stored thing, the drive's state, is overwritten by the next drive and cleared by nobody. <!-- cond: cond-2611141617190715 -->
+- One drive per working copy on one machine, as the drain's lock already enforces. The state line is stored in the checkout the drive runs from, and a status surface run in that checkout shows it. Which other checkouts and sessions show it is the status line's question (itd-2611141507299828). <!-- cond: cond-2611141617198456 -->
+- Run files this build can read. The lab tried one earlier schema version (25); a file that states a version above this build's is refused by the read before any claim, as today. <!-- cond: cond-2611141617198101 -->
+- A process table the drive can read. Telling the drive's own terminal from another live session reads process ancestry and the session markers; where it cannot be read the drive leaves the run, as today, and the lane is set aside at the bound. <!-- cond: cond-2611141617194898 -->
+- A person's own stop is outside what a start lifts or takes over (decision 1). The single command covers interrupts, closed terminals, kills, rebuilds and reboots. <!-- cond: cond-2611141617192337 -->
+- The lab measured on a fixture clock with a stand-in process table and a stand-in landing stage (F-3, F-5). No figure here comes from a live drive, and the live proof of the drive itself is still open under itd-2610222215485265. <!-- cond: cond-2611141617198387 -->
 
 ## What's Out of Scope
 
@@ -174,3 +174,7 @@ Recorded 2026-11-14 within an autonomous run, on the product thinker's delegatio
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+## Grounds
+
+- pursued: a person is expected to bring an interrupted or stalled drive back with the start command alone, and to learn its state from one line, because every state the lab found a start stopping on is one the drive can read for itself and the loop already knows its own wait; shown wrong if a drive a person interrupted needs any command but abcd drain --drive to take up the lanes its drain lists, if one lane's wait still stops other lanes opening, if people still read the log to learn the drive's state, or if the design needs a new command, a flag a person must remember or a stored state a person must clear
