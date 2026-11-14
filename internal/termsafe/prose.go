@@ -388,28 +388,11 @@ func CodeSpan(s string) string {
 	if s == "" {
 		return ""
 	}
-	fence := strings.Repeat("`", longestBacktickRun(s)+1)
+	fence := strings.Repeat("`", LongestFenceRun(s, FenceBacktick)+1)
 	pad := ""
 	if strings.HasPrefix(s, "`") || strings.HasSuffix(s, "`") ||
 		(strings.HasPrefix(s, " ") && strings.HasSuffix(s, " ") && strings.TrimSpace(s) != "") {
 		pad = " "
 	}
 	return fence + pad + s + pad + fence
-}
-
-// longestBacktickRun returns the length of the longest unbroken run of
-// backticks in s, or 0 when it holds none.
-func longestBacktickRun(s string) int {
-	best, run := 0, 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '`' {
-			run++
-			if run > best {
-				best = run
-			}
-			continue
-		}
-		run = 0
-	}
-	return best
 }
