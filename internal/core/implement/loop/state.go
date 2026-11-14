@@ -1847,26 +1847,23 @@ func storeState(root *os.Root, st State, right wholeSave) error {
 	if err := right.covers(root, st.RunID); err != nil {
 		return err
 	}
-	if err := writeStateIn(root, st); err != nil {
+	write := func() error {
+		data, err := stateData(st)
+		if err != nil {
+			return err
+		}
+		rel := StateRelPath(st.RunID)
+		if err := fsutil.WriteFileAtomicInRoot(root, rel, data, filePerm); err != nil {
+			return fmt.Errorf("writing %s: %w", rel, err)
+		}
+		return nil
+	}
+	if err := write(); err != nil {
 		return err
 	}
 	if step := st.written; step != nil {
 		st.written = nil
-		step(&st, func() error { return writeStateIn(root, st) })
-	}
-	return nil
-}
-
-// writeStateIn writes st whole at its state path (stateData), the caller
-// holding the lock and having judged the save.
-func writeStateIn(root *os.Root, st State) error {
-	data, err := stateData(st)
-	if err != nil {
-		return err
-	}
-	rel := StateRelPath(st.RunID)
-	if err := fsutil.WriteFileAtomicInRoot(root, rel, data, filePerm); err != nil {
-		return fmt.Errorf("writing %s: %w", rel, err)
+		step(&st, write)
 	}
 	return nil
 }
