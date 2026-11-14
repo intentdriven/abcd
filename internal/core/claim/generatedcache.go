@@ -134,7 +134,8 @@ func generatedKey(ref, tree string) string {
 
 // keptGitTimeout bounds the tracked check of the kept file for a reader whose
 // git holds no context (every reader but ViewContext's): a check it ends
-// reads as nothing kept, and nothing is written. The check lists what the
+// reads as nothing kept on a read, and on a write nothing is written; each
+// has its own. The check lists what the
 // checkout tracks, well under a second on a tree of 150,000 files. A
 // variable, so a test can reach it.
 var keptGitTimeout = 5 * time.Second

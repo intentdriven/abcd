@@ -354,8 +354,8 @@ its budget can (610,080), or that does not answer the key in hand, is read
 afresh; only a match that ran to its end, or past its budget, is kept, and
 a set past either cap is not (iss-2610170833428011). The check that git does
 not track the kept file runs under the stop check's deadline in that hook, and
-under five seconds of its own for every other reader; a check that runs out
-reads as nothing kept and writes nothing. A walled stage of a
+under five seconds of its own for every other reader; the read and the write each
+make that check, and one that runs out reads as nothing kept or writes nothing. A walled stage of a
 build or drain does not write the reservation state directory.
 Every misreading leans towards "not generated": a declaration that cannot be
 read, is over the cap, holds a NUL byte or passes the step budget its

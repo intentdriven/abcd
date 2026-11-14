@@ -456,7 +456,9 @@ func TestAKeptReadWithNoContextIsBounded(t *testing.T) {
 		t.Fatalf("the kept read made no tracked check; the test proves nothing:\n  %s", strings.Join(log, "\n  "))
 	}
 	defer func(was time.Duration) { keptGitTimeout = was }(keptGitTimeout)
-	keptGitTimeout = 200 * time.Millisecond
+	// Long enough that a loaded machine starts the stalled git inside it, and
+	// well under the stall.
+	keptGitTimeout = 3 * time.Second
 	_, stalled := gitOnPath(t, n, func() {})
 	matches := countMatches(t)
 	start := time.Now()
