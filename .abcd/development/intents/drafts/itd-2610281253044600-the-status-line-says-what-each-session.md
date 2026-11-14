@@ -14,6 +14,8 @@ production_mode: hand-written
 
 # The status line says what each session is working on
 
+Built on by: itd-2611141507299828 (the status line shows the progress of work that runs without the person: a drive's state, the session's pull requests and a running check).
+
 ## Press Release
 
 > The status line says what each session is working on. Beside a session's name, abcd's status line shows the piece of work that session holds: the title of the issue or intent it has reserved or is building, for example "Henry · Sweep stale reservations". A person running several sessions sees at a glance which one is on what, without asking each of them. The session's name itself does not change, so other sessions keep messaging it by the same short name however often its work moves on. A session that holds nothing shows nothing there, and the new element switches off like every other element of the status line.
