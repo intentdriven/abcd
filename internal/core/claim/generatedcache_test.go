@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/vintage"
 )
 
 // The generated set is kept between reads (iss-2610170833428011): a read
@@ -313,5 +315,125 @@ func TestTheKeptFileRoundTrips(t *testing.T) {
 		if _, _, ok := decodeKept(data, strings.Repeat("cd", 32)); ok {
 			t.Errorf("the file for %v read under another key", c.files)
 		}
+	}
+}
+
+// presentReader makes reader the running binary's name from here on.
+func presentReader(t *testing.T, reader string) {
+	t.Helper()
+	was := generatedReader
+	generatedReader = func() string { return reader }
+	t.Cleanup(func() { generatedReader = was })
+}
+
+// TestAnotherBuildDoesNotTakeTheKeptSet: an answer kept by one build is not
+// taken by a build of another version or source revision, though its path,
+// size and time written are the same; the same build takes it.
+func TestAnotherBuildDoesNotTakeTheKeptSet(t *testing.T) {
+	p := generatedWorld(t)
+	exe := filepath.Join(t.TempDir(), "abcd")
+	writeFile(t, exe, "a build")
+	fi, err := os.Stat(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := countMatches(t)
+	want := map[string]bool{"a.gen": true, "c.txt": false}
+	for i, c := range []struct {
+		version string
+		cur     vintage.Current
+		matches int
+	}{
+		{"v1.0.0", vintage.Current{Revision: "aaaa", Known: true}, 1},
+		{"v1.0.0", vintage.Current{Revision: "aaaa", Known: true}, 1},
+		{"v1.0.0", vintage.Current{Revision: "bbbb", Known: true}, 2},
+		{"v1.0.1", vintage.Current{Revision: "bbbb", Known: true}, 3},
+		{"v1.0.1", vintage.Current{Revision: "bbbb", Known: false}, 4},
+		// A build that stamped neither is named by the file alone.
+		{"dev", vintage.Current{}, 5},
+		{"dev", vintage.Current{}, 5},
+	} {
+		reader := readerOf(exe, fi, c.version, c.cur)
+		if reader == "" {
+			t.Fatalf("build %d has no name; want one from the file alone at least", i+1)
+		}
+		presentReader(t, reader)
+		wantGenerated(t, p.dir, want, "")
+		if *n != c.matches {
+			t.Fatalf("after build %d (%s, %+v) the match ran %d time(s); want %d", i+1, c.version, c.cur, *n, c.matches)
+		}
+	}
+}
+
+// TestTheReaderIsNamedAsItStarted: the binary is named from the file the
+// process found at start, so a binary put in place at the same path later is
+// not taken for the running one; a binary that cannot be named keeps nothing.
+func TestTheReaderIsNamedAsItStarted(t *testing.T) {
+	exe := filepath.Join(t.TempDir(), "abcd")
+	writeFile(t, exe, "the build that started")
+	atStart, err := os.Stat(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := readerOf(exe, atStart, "dev", vintage.Current{})
+	writeFile(t, exe, "a longer build put in place at the same path")
+	if after := readerOf(exe, atStart, "dev", vintage.Current{}); after != before {
+		t.Fatal("the name followed the binary put in place after start")
+	}
+	now, err := os.Stat(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readerOf(exe, now, "dev", vintage.Current{}) == before {
+		t.Fatal("the binary put in place reads as the one that started")
+	}
+	if readerOf(exe, nil, "dev", vintage.Current{}) != "" || readerOf("", atStart, "dev", vintage.Current{}) != "" {
+		t.Fatal("a binary that could not be read at start has a name")
+	}
+	presentReader(t, "")
+	p := generatedWorld(t)
+	n := countMatches(t)
+	for range 2 {
+		wantGenerated(t, p.dir, map[string]bool{"a.gen": true}, "")
+	}
+	if _, err := os.Lstat(keptPath(p.dir)); !os.IsNotExist(err) || *n != 2 {
+		t.Fatalf("with no name for the binary: kept %v, matched %d time(s); want nothing kept and 2", err, *n)
+	}
+}
+
+// TestTheEntryCapIsWhatAListingCanName: the cap is the most files a listing
+// within its budget names, each taking at least the bytes of the shortest
+// entry git writes.
+func TestTheEntryCapIsWhatAListingCanName(t *testing.T) {
+	shortest := "100644 blob " + strings.Repeat("0", 40) + "\tx\x00"
+	if minListingEntry != len(shortest) {
+		t.Fatalf("minListingEntry = %d; the shortest entry is %d bytes", minListingEntry, len(shortest))
+	}
+	if generatedKeptEntries != treeListCap/len(shortest) {
+		t.Fatalf("generatedKeptEntries = %d; want %d", generatedKeptEntries, treeListCap/len(shortest))
+	}
+}
+
+// TestAKeptFilePastTheEntryCapIsNotAnAnswer: a kept file naming more paths
+// than the cap reads as nothing kept, and a set past it is not kept.
+func TestAKeptFilePastTheEntryCapIsNotAnAnswer(t *testing.T) {
+	defer func(was int) { generatedKeptEntries = was }(generatedKeptEntries)
+	generatedKeptEntries = 2
+	key := strings.Repeat("ab", 32)
+	if _, _, ok := decodeKept(encodeKept(key, map[string]bool{"a": true, "b": true}, false), key); !ok {
+		t.Fatal("a file at the cap is not read")
+	}
+	if _, _, ok := decodeKept(encodeKept(key, map[string]bool{"a": true, "b": true, "c": true}, false), key); ok {
+		t.Fatal("a file past the cap is read")
+	}
+	w := newWorld(t)
+	w.declare("*.gen linguist-generated\n", "a.gen", "b.gen", "d.gen")
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	n := countMatches(t)
+	for range 2 {
+		wantGenerated(t, p.dir, map[string]bool{"a.gen": true, "b.gen": true, "d.gen": true}, "")
+	}
+	if _, err := os.Lstat(keptPath(p.dir)); !os.IsNotExist(err) || *n != 2 {
+		t.Fatalf("a set past the cap: kept %v, matched %d time(s); want nothing kept and 2", err, *n)
 	}
 }

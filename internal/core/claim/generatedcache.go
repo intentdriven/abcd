@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/intentdriven/abcd/internal/core"
+	"github.com/intentdriven/abcd/internal/core/vintage"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/localtier"
@@ -34,8 +36,11 @@ import (
 //   - the ref, whose name the reasons quote;
 //   - the matching budgets (generatedSteps, matchSteps), which decide whether
 //     the match finishes;
-//   - the running binary (generatedReader), so a build whose reader reads the
-//     declaration differently never takes another build's answer; and
+//   - the running binary as the process found it at start (generatedReader):
+//     its path, size and time written, with the version and the source
+//     revision its build stamped when it carries them, so a build whose reader
+//     reads the declaration differently never takes another build's answer;
+//     and
 //   - the format of the kept file.
 //
 // Nothing else is read: no checkout config, no case-folding of this file
@@ -50,14 +55,13 @@ import (
 // generatedKeptCap, never through a symbolic link, never when git tracks it
 // (localtier.ReadInRoot), and anything in it that is not an answer for the
 // key in hand reads as nothing kept, as any fault in reading it does, and
-// the answer is read afresh. A commit cannot supply it, since a tracked one
-// is refused. Whoever can write it as this account can write the checkout's
-// git directory too, and so can already move origin's default branch to a
-// tree whose declaration makes any file generated; the kept file gives them
-// nothing more. A path in it is taken only as the clean relative ASCII path
-// a listing gives, and the reason a kept overrun gives is written here, never
-// read from the file. Writing it is best-effort: atomic, owner-only, and a
-// failure leaves the reader's answer as it was.
+// the answer is read afresh. A tracked copy is refused, so only this checkout
+// supplies it, and it is held to no more than the checkout's own git
+// directory, which decides the tree it is keyed on. It holds at most
+// generatedKeptEntries paths, each taken only as the clean relative ASCII
+// path a listing gives, and the reason a kept overrun gives is written here,
+// never read from the file. Writing it is best-effort: atomic, owner-only,
+// and a failure leaves the reader's answer as it was.
 
 const (
 	// generatedKeptRel is the kept file, in the reservations' state.
@@ -74,20 +78,36 @@ const (
 	keptSpent = "spent"
 )
 
-// generatedReader names the running binary by its path, size and time
-// written, "" when it cannot be read: then nothing is kept or taken. A build
-// reads as itself until it is replaced.
+// minListingEntry is the fewest bytes one file takes in an ls-tree -r -z
+// listing: "100644 blob ", the shortest object name (40 hex digits), a tab,
+// a one-byte path and the NUL.
+const minListingEntry = len("100644 blob ") + 40 + len("\t") + 1 + 1
+
+// generatedKeptEntries bounds the paths a kept file holds, read or written:
+// the most files a listing within treeListCap can name, so no set a read
+// computes is past it, and a file naming more is not an answer. A variable,
+// so a test can reach its edge.
+var generatedKeptEntries = treeListCap / minListingEntry
+
+// generatedReader names the running binary (readerOf) as the process found it
+// at start, "" when it cannot be named: then nothing is kept or taken. A test
+// replaces it.
 var generatedReader = sync.OnceValue(func() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	fi, err := os.Stat(exe)
-	if err != nil || !fi.Mode().IsRegular() {
-		return ""
-	}
-	return fmt.Sprintf("%s\x00%d\x00%d", exe, fi.Size(), fi.ModTime().UnixNano())
+	exe, fi := vintage.ExecutableAtStart()
+	return readerOf(exe, fi, core.Version, vintage.CurrentBuildVintage())
 })
+
+// readerOf names the binary at exe, as fi describes it, built at version and
+// cur: its path, size and time written, and the version and source revision
+// its build stamped. A build without them (one made without its source
+// control stamped, say) is named by the rest; "" when fi is not a regular
+// file.
+func readerOf(exe string, fi os.FileInfo, version string, cur vintage.Current) string {
+	if exe == "" || fi == nil || !fi.Mode().IsRegular() {
+		return ""
+	}
+	return fmt.Sprintf("%s\x00%d\x00%d\x00%s\x00%s\x00%t", exe, fi.Size(), fi.ModTime().UnixNano(), version, cur.Revision, cur.Known)
+}
 
 // defaultTree is the tree ref names, read as stored, "" when it cannot be
 // named.
@@ -136,8 +156,11 @@ func keptGenerated(g viewGit, root, key string) (files map[string]bool, spent, o
 
 // keepGenerated keeps the answer under key, best-effort: nothing is kept in
 // a checkout without its local tier, where git tracks the kept file, or for
-// a set past the cap.
+// a set past either cap.
 func keepGenerated(g viewGit, root, key string, files map[string]bool, spent bool) {
+	if len(files) > generatedKeptEntries {
+		return
+	}
 	data := encodeKept(key, files, spent)
 	if len(data) > generatedKeptCap || tierPresent(root) != nil {
 		return
@@ -184,11 +207,16 @@ func encodeKept(key string, files map[string]bool, spent bool) []byte {
 }
 
 // decodeKept reads a kept file for key; ok is false for anything else: a
-// file of another form or key, a spent outcome with paths, or a path no
-// listing gives.
+// file of another form or key, a spent outcome with paths, more paths than
+// generatedKeptEntries, or a path no listing gives.
 func decodeKept(data []byte, key string) (files map[string]bool, spent, ok bool) {
 	text, ended := strings.CutSuffix(string(data), "\x00")
 	if !ended {
+		return nil, false, false
+	}
+	// The four fields before the paths, then the paths: a file naming more
+	// than generatedKeptEntries is refused before it is split.
+	if strings.Count(text, "\x00") > 3+generatedKeptEntries {
 		return nil, false, false
 	}
 	f := strings.Split(text, "\x00")
