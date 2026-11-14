@@ -72,7 +72,7 @@ func TestIssueKeyedBuildLaneCommitsItsIssue(t *testing.T) {
 		t.Fatalf("premise: the landing pushed its records commit: %+v", l.Landing)
 	}
 	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.Landing.Records)
-	want := []string{"Resolves: " + secondIssue, "Admitted-by: build " + secondIssue, "Assisted-by: Claude:claude-test-5"}
+	want := []string{"Resolves: " + secondIssue, "Admitted-by: build " + secondIssue, "Assisted-by: Claude:claude-mythos-5"}
 	if got := trailerBlock(msg); !slices.Equal(got, want) {
 		t.Fatalf("the records commit's trailers are %q, want %q:\n%s", got, want, msg)
 	}
