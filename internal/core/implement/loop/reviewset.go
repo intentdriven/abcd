@@ -203,11 +203,16 @@ const (
 func (j *ReviewJudge) Active() bool { return j != nil && j.Status == JudgeActive }
 
 // ReviewSet is a run's review set: each role's reviewers, the judge (nil for
-// none) and the ceiling the lists were held to.
+// none) and the ceiling the lists were held to; and Classes, the whole class
+// map the run started on, one entry per class in the order Classes gives,
+// from which a reviewer whose class holds the writer's model takes another
+// (reviewers.go). Classes is empty in a run started before version 27, which
+// chooses among the classes its set recorded.
 type ReviewSet struct {
 	Roles        []RoleReviewers `json:"roles"`
 	Judge        *ReviewJudge    `json:"judge"`
 	MaxReviewers PaceValue       `json:"max_reviewers"`
+	Classes      []ReviewClass   `json:"classes,omitempty"`
 }
 
 // Role returns the reviewers of role, and false when the set names none.
@@ -234,6 +239,21 @@ func classPhrase(class, model, effort string) string {
 
 // phrase is classPhrase for the class.
 func (c ReviewClass) phrase() string { return classPhrase(c.Class, c.Model, c.Effort) }
+
+// ClassMapPhrase is the class map the run started on as the text surfaces
+// show it, each class with its model, and what a reviewer whose class holds
+// the writer's model does; "" for a run started before the map was stored.
+func (rs ReviewSet) ClassMapPhrase() string {
+	if len(rs.Classes) == 0 {
+		return ""
+	}
+	cs := make([]string, 0, len(rs.Classes))
+	for _, c := range rs.Classes {
+		cs = append(cs, classPhrase(c.Class, shownModel(c.Model), c.Effort))
+	}
+	return strings.Join(cs, ", ") + "; a reviewer whose class holds the writer's model takes the next class that holds another, " +
+		"and the lane is handed back as stuck when none does"
+}
 
 // phrase is classPhrase for the judge.
 func (j ReviewJudge) phrase() string { return classPhrase(j.Class, j.Model, j.Effort) }
@@ -374,6 +394,15 @@ func (rs ReviewSet) written() bool {
 			}
 		}
 	}
+	if len(rs.Classes) > 0 && len(rs.Classes) != len(Classes) {
+		return false
+	}
+	for i, c := range rs.Classes {
+		if c.Class != Classes[i] || !mapLayer(c.MapLayer) || !validRoute(c.Model) || !clean(c.MapOrigin) ||
+			!effortWritten(c.Effort, c.EffortLayer, c.EffortOrigin) {
+			return false
+		}
+	}
 	if j := rs.Judge; j != nil {
 		if !slices.Contains(Classes, j.Class) || !mapLayer(j.MapLayer) || !validRoute(j.Model) ||
 			!slices.Contains(paceLayers, j.Layer) || !clean(j.Origin, j.MapOrigin) ||
@@ -496,6 +525,9 @@ func resolveReviewSet(roots layered.Roots, o Options) (ReviewSet, []string, erro
 	}
 	diags = append(diags, d...)
 	rs := ReviewSet{MaxReviewers: ceiling}
+	for _, c := range Classes {
+		rs.Classes = append(rs.Classes, cm[c])
+	}
 	clamped := map[string][]string{}
 	var clampOrder []string
 	for _, role := range reviewRoles {

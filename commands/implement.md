@@ -604,7 +604,36 @@ failing verdicts, `BLOCK` and `NEEDS-INPUT`, agree), and `none` when the role
 ran one reviewer, so no comparison was made. The comparison decides nothing: any
 failing reviewer fails the round, the stricter verdict. Keyed rounds are state
 schema version 20's; an older run's rounds read as one reviewer per role, index
-0, asked for no class. Each reviewer's record also carries its `located`
+0, asked for no class.
+
+A model other than the writer's reviews every change. Before a reviewer of
+either role is handed out, to the host or to a runner, the loop compares the
+model the lane's implementer reported on the receipt the round judges (the
+receipt's `model`, else its route's) with the model the reviewer's class holds.
+The comparison leans to "the same model": case is folded, a vendor prefix in
+either form (`anthropic/` or `Claude:`) is dropped, a name equal to the other
+followed by `-`, `@` or `:` and anything is the same model, and an empty or
+unreadable name on either side is the writer's. Where the class holds the
+writer's model, the reviewer is handed out on the next class, in the order
+`research`, `top`, `default`, `small` and wrapping round, whose model differs
+in the class map the run started on, which the run's `review` keeps as
+`classes`; a run started before that map was kept chooses among the classes its
+review set names. When no class differs, or the writer's model cannot be read,
+the lane is handed back as `stuck` with the reason `no reviewer model other
+than the writer's`. The choice is made once and recorded: each reviewer's
+record carries `writer_model` and `reviewer_model` (the model it was handed
+out on, or, for a reviewer no class was asked of, the model its return named),
+and a later step never decides it again from the files as they stand. A
+reviewer's brief asks its return to name the model it ran on in a line
+`Reviewer model: <model>` straight after its first line; the model a runner
+reported stands in its place. A return naming no model, or one that counts as
+the writer's, is refused and its verdict not recorded. The run record, its text
+output and the pull request's body name both models on each verdict, each
+name shown only as one plain token and otherwise described. These fields are
+state schema version 27's: a version-26 file carrying them is refused, one
+without them reads as version 27 and is written back at it, and an abcd that
+writes version 26 refuses a version-27 file as a newer abcd's, writes nothing
+to it, and leaves the run to the abcd that wrote it. Each reviewer's record also carries its `located`
 findings: the `file:line` each finding bullet under its Findings heading leads
 with (`- **file:line** — ...`) is one finding (`file`, `line`); a location cited
 in a bullet's text or its nested Evidence lines is not one, and a line inside a

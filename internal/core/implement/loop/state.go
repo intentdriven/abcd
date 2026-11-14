@@ -323,10 +323,27 @@ const lockFileName = ".lock"
 // refused naming it. Releases that write version 25 refuse a version-26 file as
 // a newer abcd's before any strict decode.
 //
+// Version 27 added the writer's and the reviewer's models
+// (itd-2610301750162657, spc-2610301925429250 step 4): a reviewer's
+// `writer_model`, the model the lane's implementer reported, and
+// `reviewer_model`, the model it was dispatched on, or for a reviewer no class
+// was asked of, the model its return named; and the review set's `classes`, the
+// whole class map the run started on, from which a reviewer whose class holds
+// the writer's model takes another. Version 26 is its strict subset, read as a
+// run whose reviewers were dispatched before the comparison, and written back
+// at version 27; a file of version 26 or lower carrying any of them is not one
+// its version wrote, and is refused naming it. Releases that write version 26
+// refuse a version-27 file as a newer abcd's before any strict decode, and
+// leave the run to the abcd that wrote it.
+//
 // A version raises when the abcd driving the run writes it. A lane's own abcd
 // may be a version ahead of its driver, and what it saves leaves the version
 // where it was (mutateReservation, iss-2611020719494343).
-const SchemaVersion = 26
+const SchemaVersion = 27
+
+// schemaVersionUnmodelled is the last version before a reviewer kept the
+// writer's model and its own: read, never written.
+const schemaVersionUnmodelled = 26
 
 // schemaVersionUnadmitted is the last version before a run kept the rule its lanes
 // were admitted under: read, never written.
@@ -852,6 +869,15 @@ type ValidatorRun struct {
 	// reviewer is out, and on a verdict recorded before version 24.
 	Located  *int      `json:"located,omitempty"`
 	Findings []Finding `json:"findings,omitempty"`
+	// WriterModel is the model the lane's implementer reported on the receipt
+	// the round judges (its record's model, else its route's), and
+	// ReviewerModel the model the reviewer was dispatched on: its class's, or
+	// the class the loop took instead when that class held the writer's model
+	// (reviewers.go); for a reviewer no class was asked of, the model its
+	// return named, once recorded. Both are written on the code-review roles
+	// alone, and empty on a round dispatched before version 27.
+	WriterModel   string `json:"writer_model,omitempty"`
+	ReviewerModel string `json:"reviewer_model,omitempty"`
 }
 
 // The statuses of a reviewer's model.
@@ -1325,6 +1351,7 @@ var versionChecks = []versionCheck{
 	{highest: schemaVersionUnrenamed, carries: State.renamed},
 	{highest: schemaVersionUnrenamed, carries: State.efforted},
 	{highest: schemaVersionUnadmitted, carries: carrying("an admission", func(s State) bool { return s.Admitted != nil })},
+	{highest: schemaVersionUnmodelled, carries: State.modelled},
 }
 
 // unwritten names the first thing the state carries that a file stating
@@ -1528,10 +1555,11 @@ func readListedStated(root *os.Root, runID string) (State, int, error) {
 				"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 		}
 		st.SchemaVersion = SchemaVersion
-	case st.SchemaVersion == schemaVersionUnadmitted:
-		// Read as the current version with no admission, its class labels
-		// already the names it wrote; the next write carries it, and this read
-		// writes nothing.
+	case st.SchemaVersion >= schemaVersionUnadmitted && st.SchemaVersion <= schemaVersionUnmodelled:
+		// Read as the current version, with no admission at version 25 and no
+		// reviewer's models or class map at either, its class labels already
+		// the names it wrote; the next write carries it, and this read writes
+		// nothing.
 		st.SchemaVersion = SchemaVersion
 	case st.SchemaVersion != SchemaVersion:
 		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d to %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),

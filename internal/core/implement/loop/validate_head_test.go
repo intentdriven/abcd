@@ -73,7 +73,7 @@ func TestARunnersReviewerIsRetriedWithTheLineNamed(t *testing.T) {
 		Run: func(c Context, l *Lane) (Outcome, error) {
 			if len(l.Validation) == 0 {
 				l.Validation = []ValidationRound{{Round: 1, HeadSHA: head,
-					Validators: []ValidatorRun{{Role: RoleRuthless, Brief: briefRel, Return: returnRel}}}}
+					Validators: []ValidatorRun{{Role: RoleRuthless, Brief: briefRel, Return: returnRel, WriterModel: "a-model"}}}}
 			}
 			return Outcome{Await: &Await{Role: RoleRuthless, Brief: briefRel, Receipt: returnRel}}, nil
 		},

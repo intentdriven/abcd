@@ -149,6 +149,7 @@ func (r ValidationRound) masked() ValidationRound {
 	r.Validators = maskEach(r.Validators, func(v ValidatorRun) ValidatorRun {
 		v.Role, v.Brief, v.Return, v.Verdict = line(v.Role), line(v.Brief), line(v.Return), line(v.Verdict)
 		v.Class, v.Model, v.ModelStatus, v.Effort = line(v.Class), line(v.Model), line(v.ModelStatus), line(v.Effort)
+		v.WriterModel, v.ReviewerModel = line(v.WriterModel), line(v.ReviewerModel)
 		v.Audit = maskPtr(v.Audit, func(a AuditRun) AuditRun {
 			a.ReceiptID, a.Request, a.BaseSHA, a.HeadSHA, a.Worst = line(a.ReceiptID), line(a.Request), line(a.BaseSHA), line(a.HeadSHA), line(a.Worst)
 			a.NotMet, a.Inconclusive = maskEach(a.NotMet, line), maskEach(a.Inconclusive, line)
@@ -199,15 +200,17 @@ func (p Pace) masked() Pace {
 // masked is State.masked for the review set a run started on.
 func (rs ReviewSet) masked() ReviewSet {
 	rs.MaxReviewers.Layer, rs.MaxReviewers.Origin = line(rs.MaxReviewers.Layer), line(rs.MaxReviewers.Origin)
+	class := func(c ReviewClass) ReviewClass {
+		c.Class, c.Model, c.MapLayer, c.MapOrigin = line(c.Class), line(c.Model), line(c.MapLayer), line(c.MapOrigin)
+		c.Effort, c.EffortLayer, c.EffortOrigin = line(c.Effort), line(c.EffortLayer), line(c.EffortOrigin)
+		return c
+	}
 	rs.Roles = maskEach(rs.Roles, func(r RoleReviewers) RoleReviewers {
 		r.Role, r.Layer, r.Origin = line(r.Role), line(r.Layer), line(r.Origin)
-		r.Reviewers = maskEach(r.Reviewers, func(c ReviewClass) ReviewClass {
-			c.Class, c.Model, c.MapLayer, c.MapOrigin = line(c.Class), line(c.Model), line(c.MapLayer), line(c.MapOrigin)
-			c.Effort, c.EffortLayer, c.EffortOrigin = line(c.Effort), line(c.EffortLayer), line(c.EffortOrigin)
-			return c
-		})
+		r.Reviewers = maskEach(r.Reviewers, class)
 		return r
 	})
+	rs.Classes = maskEach(rs.Classes, class)
 	rs.Judge = maskPtr(rs.Judge, func(j ReviewJudge) ReviewJudge {
 		j.Class, j.Model, j.MapLayer, j.MapOrigin = line(j.Class), line(j.Model), line(j.MapLayer), line(j.MapOrigin)
 		j.Layer, j.Origin, j.Status = line(j.Layer), line(j.Origin), line(j.Status)

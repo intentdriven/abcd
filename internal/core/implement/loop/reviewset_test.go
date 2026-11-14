@@ -365,6 +365,29 @@ func TestAStoredReviewSetTheLoopNeverWritesIsRefused(t *testing.T) {
 // schema_version an edit set below 15: a new run writes one, and no file of
 // an earlier version carries it, so a test that reads a run as an older
 // version reads it as that version would have written it.
+// unmodelOlder drops what version 27 added (validate_other_model_test.go): the
+// review set's class map and each reviewer's writer's and reviewer's models.
+func unmodelOlder(doc map[string]any) {
+	if rs, ok := doc["review"].(map[string]any); ok {
+		delete(rs, "classes")
+	}
+	lanes, _ := doc["lanes"].([]any)
+	for _, l := range lanes {
+		lm, _ := l.(map[string]any)
+		rounds, _ := lm["validation"].([]any)
+		for _, r := range rounds {
+			rm, _ := r.(map[string]any)
+			vs, _ := rm["validators"].([]any)
+			for _, v := range vs {
+				if vm, ok := v.(map[string]any); ok {
+					delete(vm, "writer_model")
+					delete(vm, "reviewer_model")
+				}
+			}
+		}
+	}
+}
+
 func unreviewOlder(doc map[string]any) {
 	var v int
 	switch n := doc["schema_version"].(type) {
@@ -380,6 +403,9 @@ func unreviewOlder(doc map[string]any) {
 	}
 	if v <= schemaVersionUnadmitted {
 		delete(doc, "admitted")
+	}
+	if v <= schemaVersionUnmodelled {
+		unmodelOlder(doc)
 	}
 	if v <= schemaVersionUnkeyed {
 		unkeyOlder(doc)

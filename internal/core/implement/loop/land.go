@@ -2124,6 +2124,15 @@ func prBodyParked(st State, lane Lane, assisted []string, parked bool) string {
 		} else {
 			p("- Validation round %d at %s passed: %s.\n", r.Round, shortSHA(r.HeadSHA), verdictsLine(r))
 		}
+		for _, v := range r.Validators {
+			if m := modelsPhrase(v.WriterModel, v.ReviewerModel); m != "" {
+				who := v.Role
+				if v.Class != "" {
+					who += fmt.Sprintf(", reviewer %d", v.Reviewer)
+				}
+				p("- %s: %s.\n", who, m)
+			}
+		}
 		if parked {
 			p("- No round read its records commit %s, so the lane is parked at this pull request for a person.\n", shortSHA(lane.HeadSHA))
 		}

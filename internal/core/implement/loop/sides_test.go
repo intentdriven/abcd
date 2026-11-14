@@ -54,11 +54,11 @@ func sidedRun(t *testing.T) (string, string, string) {
 // beside them, 17 a lane's auto-plan record, 18 an await's pause, 19 a
 // killed launch's spend, 20 a round keyed by reviewer, 21 what a round was shown,
 // 22 a run's profile, 23 a landing's settled spec, 24 a reviewer's located
-// findings, 25 the renamed classes and 26 a run's admission.
+// findings, 25 the renamed classes, 26 a run's admission and 27 a reviewer's models.
 func TestASidedRouteRoundTrips(t *testing.T) {
-	if SchemaVersion != 26 || schemaVersionUnadmitted != 25 || schemaVersionUnrenamed != 24 || schemaVersionUnlocated != 23 || schemaVersionUnsettled != 22 || schemaVersionUnprofiled != 21 || schemaVersionUnshown != 20 || schemaVersionUnkeyed != 19 || schemaVersionUnspent != 18 || schemaVersionUnpaused != 17 || schemaVersionUnplanned != 16 || schemaVersionUnpinned != 15 || schemaVersionUnreviewed != 14 || schemaVersionUnmetered != 13 || schemaVersionUnrefused != 12 {
-		t.Fatalf("both sides are version 14's, after a lane's refusal's 13, the review set 15's, a route's pins 16's, an auto-plan 17's, a pause 18's, a spend 19's, a keyed round 20's, what a round was shown 21's, a run's profile 22's, a settled spec 23's, located findings 24's, the renamed classes 25's and an admission 26's: %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d",
-			SchemaVersion, schemaVersionUnadmitted, schemaVersionUnrenamed, schemaVersionUnlocated, schemaVersionUnsettled, schemaVersionUnprofiled, schemaVersionUnshown, schemaVersionUnkeyed, schemaVersionUnspent, schemaVersionUnpaused, schemaVersionUnplanned, schemaVersionUnpinned, schemaVersionUnreviewed, schemaVersionUnmetered, schemaVersionUnrefused)
+	if SchemaVersion != 27 || schemaVersionUnmodelled != 26 || schemaVersionUnadmitted != 25 || schemaVersionUnrenamed != 24 || schemaVersionUnlocated != 23 || schemaVersionUnsettled != 22 || schemaVersionUnprofiled != 21 || schemaVersionUnshown != 20 || schemaVersionUnkeyed != 19 || schemaVersionUnspent != 18 || schemaVersionUnpaused != 17 || schemaVersionUnplanned != 16 || schemaVersionUnpinned != 15 || schemaVersionUnreviewed != 14 || schemaVersionUnmetered != 13 || schemaVersionUnrefused != 12 {
+		t.Fatalf("both sides are version 14's, after a lane's refusal's 13, the review set 15's, a route's pins 16's, an auto-plan 17's, a pause 18's, a spend 19's, a keyed round 20's, what a round was shown 21's, a run's profile 22's, a settled spec 23's, located findings 24's, the renamed classes 25's, an admission 26's and a reviewer's models 27's: %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d",
+			SchemaVersion, schemaVersionUnmodelled, schemaVersionUnadmitted, schemaVersionUnrenamed, schemaVersionUnlocated, schemaVersionUnsettled, schemaVersionUnprofiled, schemaVersionUnshown, schemaVersionUnkeyed, schemaVersionUnspent, schemaVersionUnpaused, schemaVersionUnplanned, schemaVersionUnpinned, schemaVersionUnreviewed, schemaVersionUnmetered, schemaVersionUnrefused)
 	}
 	root, id, _ := sidedRun(t)
 	st, err := ReadState(root, id)

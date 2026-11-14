@@ -82,9 +82,13 @@ func implemented(t *testing.T, repo *gittest.Repo, runID string, stages Stages, 
 
 // reviewerReturn is a validator's return in its agent definition's shape.
 func reviewerReturn(verdict string) string {
-	return "### Analysis\n\nRead the lane's diff; nothing else.\n\n### Findings\n\n- none survived refutation\n\n### Verdict\n\n- **" +
+	return testReviewerModelLine + "### Analysis\n\nRead the lane's diff; nothing else.\n\n### Findings\n\n- none survived refutation\n\n### Verdict\n\n- **" +
 		verdict + "** — as stated.\n"
 }
+
+// testReviewerModelLine is the model line a test reviewer's return names: a
+// model other than the fixtures' writer, a-model (goodReceipt).
+const testReviewerModelLine = ReviewerModelPrefix + " test-reviewer-model\n\n"
 
 var provenanceRe = regexp.MustCompile(`(?m)^- (rubric_hash|prompt_hash): (sha256:[0-9a-f]{64})$`)
 
@@ -163,7 +167,7 @@ func statingHeadAt(t *testing.T, root, runID, rel, body string) string {
 		for _, r := range l.Validation {
 			for _, v := range r.Validators {
 				if rel != "" && v.Return == rel {
-					return "Reviewed head: " + r.HeadSHA + "\n\n" + namingHead(body, r.HeadSHA)
+					return "Reviewed head: " + r.HeadSHA + "\n" + namingModel(body) + namingHead(body, r.HeadSHA)
 				}
 			}
 		}
@@ -174,7 +178,16 @@ func statingHeadAt(t *testing.T, root, runID, rel, body string) string {
 	}
 	v := st.Lanes[i].Validation
 	head := v[len(v)-1].HeadSHA
-	return "Reviewed head: " + head + "\n\n" + namingHead(body, head)
+	return "Reviewed head: " + head + "\n" + namingModel(body) + namingHead(body, head)
+}
+
+// namingModel is the model line a reviewer's return names after its first line,
+// testReviewerModelLine, unless body names one itself; a blank line when it does.
+func namingModel(body string) string {
+	if strings.Contains(body, ReviewerModelPrefix) {
+		return "\n"
+	}
+	return testReviewerModelLine
 }
 
 // namingHead is a return with its Verdict section naming head, directly under the
@@ -650,7 +663,13 @@ func TestAVersion4StateReadsAsOneNoValidatorHasJudged(t *testing.T) {
 	if err != nil || st.SchemaVersion != SchemaVersion {
 		t.Fatalf("a version-4 file reads as the current version: %d %v", st.SchemaVersion, err)
 	}
-	handBack(t, repo, id, stages, RoleRuthless, reviewerReturn("SHIP"))
+	// A version-4 file records no receipt, so no writer's model: the round it
+	// opens hands the lane back, since no reviewer can be told from the writer
+	// (reviewers.go), and that is the next mutation.
+	res, err := advance(repo.Root(), id, stages, Options{})
+	if err != nil || res.HandBack == nil || !strings.HasPrefix(res.HandBack.Reason, noOtherModel) {
+		t.Fatalf("the round opens and the lane, whose writer no receipt names, is handed back: %+v %v", res, err)
+	}
 	if !strings.Contains(string(stateBytes(t, repo.Root(), id)), cur) {
 		t.Fatalf("the next mutation writes the file back at version %d", SchemaVersion)
 	}

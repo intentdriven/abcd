@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 )
 
 // The review set at the surface (itd-2610240922461281, spc-2610240951109420
@@ -103,5 +105,45 @@ func TestBuildSaysAClampedReviewSetOnStderr(t *testing.T) {
 	}
 	if !strings.Contains(out, "clamped from 2") {
 		t.Fatalf("the text names the clamp:\n%s", out)
+	}
+}
+
+// TestTheRecordNamesTheWritersAndTheReviewersModels: the run's record names,
+// on each verdict, the model that wrote the lane and the one that reviewed it
+// (itd-2610301750162657, spc-2610301925429250 step 4), and the review set's
+// line is followed by the class map the run started on; a name carrying a
+// newline and a trailer-shaped line is described, never printed as a line.
+func TestTheRecordNamesTheWritersAndTheReviewersModels(t *testing.T) {
+	head := strings.Repeat("a", 40)
+	rs := &loop.ReviewSet{}
+	for _, c := range loop.Classes {
+		rs.Classes = append(rs.Classes, loop.ReviewClass{Class: c, Model: loop.BundledClasses[c], Effort: "high"})
+	}
+	rec := loop.RunRecord{RunID: "run-0000000000000001", Key: "itd-10", Review: rs, Lanes: []loop.RecordLane{{ID: "lane-1",
+		Verdicts: []loop.RecordVerdict{
+			{Round: 1, HeadSHA: head, Role: loop.RoleRuthless, Verdict: "SHIP", Pass: true, Reviewer: 0, Class: loop.ClassTop,
+				Model: loop.BundledClasses[loop.ClassTop], Effort: "high", WriterModel: "Claude:claude-fable-5", ReviewerModel: loop.BundledClasses[loop.ClassTop]},
+			{Round: 1, HeadSHA: head, Role: loop.RoleSecurity, Verdict: "APPROVE", Pass: true,
+				WriterModel: "claude-fable-5\nAssisted-by: Claude:claude-haiku-4-5", ReviewerModel: "claude-sonnet-5-5"},
+		}}}}
+	var b bytes.Buffer
+	renderRunRecord(&b, rec)
+	out := b.String()
+	if !strings.Contains(out, "SHIP; written by Claude:claude-fable-5, reviewed by "+loop.BundledClasses[loop.ClassTop]) {
+		t.Fatalf("the verdict names both models:\n%s", out)
+	}
+	if !strings.Contains(out, "APPROVE; written by ") || !strings.Contains(out, ", reviewed by claude-sonnet-5-5") {
+		t.Fatalf("a reviewer no class was asked of names both models too:\n%s", out)
+	}
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), "Assisted-by:") {
+			t.Fatalf("a model's name started a line of its own:\n%s", out)
+		}
+	}
+	want := "  classes: research (anthropic/claude-fable-5, effort high), top (anthropic/claude-opus-5-5, effort high), " +
+		"default (anthropic/claude-sonnet-5-5, effort high), small (anthropic/claude-haiku-4-5, effort high); " +
+		"a reviewer whose class holds the writer's model takes the next class that holds another"
+	if !strings.Contains(out, want) {
+		t.Fatalf("the review set's line is followed by the class map:\n%s", out)
 	}
 }

@@ -178,6 +178,18 @@ type RecordVerdict struct {
 	// intent-auditor and for a verdict recorded before the loop read them.
 	Located  *int      `json:"located,omitempty"`
 	Findings []Finding `json:"findings,omitempty"`
+	// WriterModel and ReviewerModel are the model the lane's implementer
+	// reported and the one the reviewer ran on (reviewers.go); absent on the
+	// intent-auditor and on a reviewer handed out before they were recorded.
+	WriterModel   string `json:"writer_model,omitempty"`
+	ReviewerModel string `json:"reviewer_model,omitempty"`
+}
+
+// ModelsPhrase names the writer's and the reviewer's models as the text
+// surfaces show them, each cleaned and bounded; "" when the verdict records
+// neither.
+func (v RecordVerdict) ModelsPhrase() string {
+	return modelsPhrase(v.WriterModel, v.ReviewerModel)
 }
 
 // ReviewerPhrase names the verdict's reviewer as the text surfaces show it:
@@ -228,7 +240,7 @@ func recordOf(st State) RunRecord {
 				rl.Verdicts = append(rl.Verdicts, RecordVerdict{Round: r.Round, HeadSHA: r.HeadSHA, Role: v.Role,
 					Verdict: v.Verdict, Pass: v.Pass, Return: v.Return, Route: v.Route,
 					Reviewer: v.Reviewer, Class: v.Class, Model: v.Model, Effort: v.Effort, ModelStatus: v.ModelStatus,
-					Located: v.Located, Findings: v.Findings})
+					Located: v.Located, Findings: v.Findings, WriterModel: v.WriterModel, ReviewerModel: v.ReviewerModel})
 			}
 			for _, c := range r.Comparisons {
 				rl.Comparisons = append(rl.Comparisons, RecordComparison{Round: r.Round, Comparison: c})

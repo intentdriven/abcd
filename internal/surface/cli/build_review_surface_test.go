@@ -11,6 +11,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/repoprompt"
 	"github.com/intentdriven/abcd/internal/adapter/repoprompt/mcptest"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -178,10 +179,15 @@ func verdictSection(text, verdict string) string {
 }
 
 // reviewedHeadLine is the first line a reviewer's brief or request asks its return to
-// open with, "" when text asks for none.
+// open with, "" when text asks for none, followed by the model line it asks for when it
+// asks for one: a model other than the fixtures' writer's.
 func reviewedHeadLine(text string) string {
-	if m := regexp.MustCompile("`(Reviewed head: [0-9a-f]+)`").FindStringSubmatch(text); m != nil {
-		return m[1] + "\n\n"
+	m := regexp.MustCompile("`(Reviewed head: [0-9a-f]+)`").FindStringSubmatch(text)
+	if m == nil {
+		return ""
 	}
-	return ""
+	if strings.Contains(text, "`"+loop.ReviewerModelPrefix+" <model>`") {
+		return m[1] + "\n" + loop.ReviewerModelPrefix + " test-reviewer-model\n\n"
+	}
+	return m[1] + "\n\n"
 }

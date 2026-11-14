@@ -28,7 +28,7 @@ func TestAReturnsVerdictNamesTheRoundsHead(t *testing.T) {
 	}
 	path := filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt))
 	head := currentLane(t, repo, id).HeadSHA
-	first := "Reviewed head: " + head + "\n\n"
+	first := "Reviewed head: " + head + "\n" + testReviewerModelLine
 	hand := func(body string) error {
 		if err := os.WriteFile(path, []byte(first+body), 0o600); err != nil {
 			t.Fatal(err)

@@ -305,7 +305,7 @@ func briefReturnIn(text, body string) string {
 
 // reviewReturn is a ruthless reviewer's return, the same bytes whichever route
 // wrote it.
-const reviewReturn = "# Review\n\nNothing to fix.\n\n### Verdict\n\nSHIP\n"
+const reviewReturn = testReviewerModelLine + "# Review\n\nNothing to fix.\n\n### Verdict\n\nSHIP\n"
 
 // driveEnv is one test's harness set-up: the fakes on a PATH of their own and
 // the log they write.
@@ -637,7 +637,7 @@ func TestAReviewThroughARunnerDiffersFromAHostReviewOnlyInItsRoute(t *testing.T)
 			Run: func(c Context, l *Lane) (Outcome, error) {
 				if len(l.Validation) == 0 {
 					l.Validation = []ValidationRound{{Round: 1, HeadSHA: head,
-						Validators: []ValidatorRun{{Role: RoleRuthless, Brief: briefRel, Return: returnRel}}}}
+						Validators: []ValidatorRun{{Role: RoleRuthless, Brief: briefRel, Return: returnRel, WriterModel: "a-model"}}}}
 				}
 				return Outcome{Await: &Await{Role: RoleRuthless, Brief: briefRel, Receipt: returnRel}}, nil
 			},
