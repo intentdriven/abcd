@@ -1128,20 +1128,7 @@ func FenceRuleBody(r string) string {
 	}
 	longest := 0
 	for _, line := range lines {
-		run, prev := 0, rune(0)
-		for _, c := range line {
-			if (c == '~' || c == '`') && c == prev {
-				run++
-			} else if c == '~' || c == '`' {
-				run = 1
-			} else {
-				run = 0
-			}
-			prev = c
-			if run > longest {
-				longest = run
-			}
-		}
+		longest = max(longest, termsafe.LongestFenceRun(line, termsafe.FenceTilde, termsafe.FenceBacktick))
 	}
 	fence := strings.Repeat("~", max(3, longest+1))
 	var b strings.Builder

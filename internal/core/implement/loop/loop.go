@@ -173,14 +173,18 @@ type Options struct {
 	// text that put it there; "" for the host. Drive sets it from the runner
 	// configuration, so a round's route names the runner it ran on.
 	runnerRoute func(role string) (name, override string)
-	// remote is origin's identity and the checkout's hooks directory as a
-	// drive read them when it started (remoteid.go): the worktree stage of
-	// each lane the drive opens reads the identity again before it asks origin
-	// anything, and the hooks directory just before its add, and refuses the
-	// lane when a held key, or a top-level entry of the hooks directory the
-	// repository's own settings name, differs at that read, within the limits
-	// remoteid.go states. Nil (a step the host runs, a single build) checks
-	// nothing.
+	// remote is what a drive read when it started (remoteid.go): the
+	// settings the run's fingerprint watches, at every scope, with http.proxy
+	// and http.sslVerify, the files include settings name and the attributes
+	// files, each as the ask of origin and the lane's add and commit read
+	// them, and the hooks directory git names at the checkout, at every
+	// depth, and info/attributes. The worktree stage of each lane the drive opens
+	// reads the settings again before it asks origin anything and once origin
+	// has answered, and the hooks directory just before its add, and refuses
+	// the lane when a held key or entry differs at that read, within what
+	// remoteid.go states it cannot hold; each step compares all of it before
+	// its git runs (heldBeforeGit). Nil (a step the host runs, a single
+	// build) checks nothing.
 	remote *remoteIdentity
 }
 
@@ -1213,6 +1217,13 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	// The run tripwire (configwatch.go) comes before anything that may start
 	// git: a program-naming setting changed during the run stops the call.
 	if err := configTripwire(repoRoot, runID); err != nil {
+		return StepResult{}, err
+	}
+	// Inside a drive the step also compares what the drive holds, in every
+	// environment its git runs in, before the step's git runs: the landing
+	// push and a reservation's push or fetch run in the person's own, after
+	// the lane's agent has run (heldBeforeGit).
+	if err := heldBeforeGit(repoRoot, o.remote); err != nil {
 		return StepResult{}, err
 	}
 	g, err := outageFor(repoRoot, runID, o)

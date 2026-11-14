@@ -100,6 +100,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runstop"
+	"github.com/intentdriven/abcd/internal/core/spotcheck"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/procgroup"
@@ -1485,6 +1486,14 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 	// the head, and in auto a review receipt naming it.
 	d, err := DecideMerge(MergeQuery{RepoRoot: dir, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
 		Rule: rule, Repo: nameWithOwner, PR: n, Head: res.Head, Forge: func(args ...string) (string, error) { return o.Forge(dir, args...) }})
+	if err == nil {
+		// The spot-check's record of the decision, made from the decision
+		// alone: a record that cannot be written changes nothing but the
+		// reason, which says so.
+		if note := recordGate(dir, spotcheck.SiteLand, n, res.Head, d); note != "" {
+			d.Why += "; " + note
+		}
+	}
 	if err != nil {
 		stop, unread, cerr := atHeadChecked()
 		if stop {
@@ -1840,4 +1849,52 @@ func shellQuote(s string) string {
 		return s
 	}
 	return shellquote.Single(s)
+}
+
+// recordGate is RecordMergeGate, the seam a test turns the record off
+// through to compare what land does without it.
+var recordGate = RecordMergeGate
+
+// RecordMergeGate keeps d, the merge gate's answer about pull request pr at
+// head, for the spot-check (spc-2610301925429250 step 1), when the answer is
+// one abcd took as the facilitator alone (takenAlone): read from the fields
+// the gate set as it decided, never from the words of its reason. The record
+// (spotcheck.Decision of kind merge-gate) names site, the pull request and
+// its head, the answer as the gate gave it (whether it armed, the method, the
+// reason and whether it rests on an answer the gate could not read) and the
+// three facts it was taken on: the mode, whether the author can write to the
+// repository and whether a person's approval counted. Nothing else is read
+// for it: no forge, no mode, no receipt. It is committed on the store's local
+// copy and reaches no network, and the gate asked again over the same head
+// with the same answer keeps the one record. A record that cannot be written
+// changes nothing: the reason is returned for the caller to add to the
+// decision's Why, "" when the record is kept or not taken.
+func RecordMergeGate(root, site, pr, head string, d MergeDecision) string {
+	if !takenAlone(d) {
+		return ""
+	}
+	n, _ := strconv.Atoi(pr)
+	ctx, cancel := context.WithTimeout(context.Background(), spotcheck.WriteTimeout)
+	defer cancel()
+	canWrite, counted := d.AuthorCanWrite, d.ApprovalCounted
+	w := spotcheck.Write(ctx, root, spotcheck.Batch{Decisions: []spotcheck.Decision{{Kind: spotcheck.KindMergeGate, At: time.Now(),
+		Holder: spotcheck.Holder(), Site: site, PR: n, Head: head, Arm: d.Arm, Method: d.Method, Why: d.Why, Unread: d.Unread,
+		Mode: d.Mode, AuthorCanWrite: &canWrite, ApprovalCounted: &counted}}})
+	switch {
+	case errors.Is(w.Err, spotcheck.ErrNoOrigin):
+		return ""
+	case w.Err != nil:
+		return "the spot-check's record of this decision was not written (" + termsafe.Sanitize(fsutil.RedactHome(w.Err.Error())) + "), and nothing the gate decided waits on it"
+	case len(w.Unkeepable) > 0:
+		return "the spot-check's store cannot keep a record of this decision (" + termsafe.Sanitize(w.Unkeepable[0]) + "), and nothing the gate decided waits on it"
+	}
+	return ""
+}
+
+// takenAlone reports whether d is an answer abcd took as the facilitator
+// with no person involved, by the fields the gate set as it decided: the
+// gate ran in auto mode, the pull request's author can write to the
+// repository, and no person's approval counted.
+func takenAlone(d MergeDecision) bool {
+	return d.Mode == ModeAuto && d.AuthorCanWrite && !d.ApprovalCounted
 }

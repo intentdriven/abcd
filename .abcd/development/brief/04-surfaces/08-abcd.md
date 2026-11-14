@@ -4,7 +4,8 @@ Type one word and see where you left off. The bare top-level command is the
 cross-verb re-orientation surface: not "what does `capture` think", but "what is
 the state of this project right now, and what should I do next". It is strictly
 read-only, so it is safe to type at any moment, including the moment you are
-least sure what is safe.
+least sure what is safe. The one exception is a file abcd's own home folder
+keeps to ignore itself, which [What ships today](#what-ships-today) states.
 
 It complements the per-verb bare renders (`/abcd:ahoy`, `/abcd:capture`, and the
 rest), each of which is scoped to its own surface. This one is the cross-verb
@@ -34,7 +35,14 @@ not a sub-verb.
 
 ## What ships today
 
-Two read-only forms, and no third.
+Two read-only forms, and no third. Read-only has one exception, and it is the
+CLI front door's, not either form's. Where `~/.abcd.noindex` exists without its
+`gitignore-laid` marker, the front door first writes
+`~/.abcd.noindex/.gitignore` and that marker beside it, as it does before every
+command but the status line
+(["`~/.abcd.noindex` ignores itself, once"](../05-internals/03-configuration.md#the-two-abcd-scopes)
+in the internals). Nothing is written in the repository, and nothing at all
+where the folder is absent or the marker already stands.
 
 **Bare `abcd`** draws the status board in one of two views
 (spc-2610031844142274), each opening on a line that names whose view it is.
@@ -468,7 +476,8 @@ not a verb (itd-2609212130136102); the appendix below lists it. It tells
 whether the abcd you are running is the one you think it is: its version, how
 it was installed, how old it is, and whether it has drifted from the reference
 it should match. The whole answer is read off disk, so it costs nothing, works
-offline, and writes nothing. The opt-in online check is a flag of the update
+offline, and writes nothing, the home ignore lay under
+[What ships today](#what-ships-today) the one exception. The opt-in online check is a flag of the update
 verb, which fetches the latest release exactly once, compares, and names the
 source it consulted: it lives with the verb that takes the update it finds
 ([`21-update.md`](21-update.md)), and it is the only network touch either

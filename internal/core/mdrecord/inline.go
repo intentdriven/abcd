@@ -51,7 +51,8 @@ import (
 // closes on its line, and reads every line whole from the line Unsure names.
 // Mask, and the readers that pair spans with CodeSpanRanges (the
 // scope-condition and hand-audit readers and the prose-citation rule), read
-// every line as a line read alone, sure or not.
+// every line as a line read alone, sure or not. SureCodeSpans, the reading the
+// docs lint's prose checks take, reports no span on a line below an open run.
 //
 // Older limits these readings keep: a backtick inside an HTML tag, an
 // autolink, an inline link's destination or title, or a processing
@@ -200,6 +201,33 @@ func blankLine(ln string) bool {
 		}
 	}
 	return true
+}
+
+// SureCodeSpans is CodeSpanRanges for each line of a body read top to bottom,
+// for a reader that blanks code spans where it is sure of them and reads the
+// rest whole: the docs lint's prose checks, which keep their own fence mask
+// and read comment text as text. A line below a backtick run a line above it
+// in its stretch leaves open, to the next blank line, reports no span, since
+// the page may pair that run with a backtick on the line; the run's own line
+// keeps its spans. A line skip marks (a fenced line the caller does not read)
+// is not walked and reports none, and a blank one still ends the stretch, as
+// in Read. HTML comments are not consulted.
+func SureCodeSpans(lines []string, skip []bool) [][][2]int {
+	out := make([][][2]int, len(lines))
+	loose := false
+	for i, raw := range lines {
+		ln := strings.TrimRight(raw, "\r")
+		if blankLine(ln) {
+			loose = false
+			continue
+		}
+		if loose || i < len(skip) && skip[i] {
+			continue
+		}
+		w := walkLine(ln, 0, false, false)
+		out[i], loose = w.spans, w.loose
+	}
+	return out
 }
 
 // walkHook, when set, is called once per step the line walk takes, each

@@ -466,6 +466,16 @@ type MergeDecision struct {
 	// not read: a forge read that failed, or receipts it could not judge. It is
 	// no refusal of the head, so nothing is withdrawn on it.
 	Unread bool
+	// Mode is the facilitator mode the gate ran in (ModeAuto or ModeHuman),
+	// as it read it.
+	Mode string
+	// AuthorCanWrite says the forge named the pull request's author as one
+	// who can write to the repository (RoleMaintainer); false for a
+	// contributor and for an author whose role is unverified.
+	AuthorCanWrite bool
+	// ApprovalCounted says a person's approval of the head counted in the
+	// answer: a forge review or a recorded approval the gate found standing.
+	ApprovalCounted bool
 }
 
 // ErrModeUnreadable wraps a facilitator.mode the gate could not read, whose
@@ -490,7 +500,16 @@ func DecideMerge(q MergeQuery) (MergeDecision, error) {
 		proof := readReviewProof(q.RepoRoot, q.Head, q.Tip)
 		f.reviewed, f.reviewNote, f.deltaWhy, f.reviewWhy, f.reviewUnread = proof.reviewed, proof.note, proof.deltaWhy, proof.unreadable, proof.unread
 	}
+	return decided(f), nil
+}
+
+// decided is the gate's answer over f (mergeGate) as a MergeDecision, with
+// the facts the gate decided on that a caller reads as fields, never from
+// the words of its reason: the mode, whether the author can write to the
+// repository and whether a person's approval counted.
+func decided(f gateFacts) MergeDecision {
 	d := mergeGate(f)
 	return MergeDecision{Arm: d.arm, Method: d.method, Why: d.why,
-		Unread: !d.arm && (f.role == RoleUnverified || f.reviewUnread || f.approvalUnread)}, nil
+		Unread: !d.arm && (f.role == RoleUnverified || f.reviewUnread || f.approvalUnread),
+		Mode:   f.mode.Mode, AuthorCanWrite: f.role == RoleMaintainer, ApprovalCounted: f.approvedBy != ""}
 }

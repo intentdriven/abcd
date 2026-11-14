@@ -1034,14 +1034,52 @@ whose landing opened one; a merge is a person's gate and is not counted),
 sum of `implementers`, each implementer's receipt the loop verified, and
 `validators`, each validator's return it read a verdict from, the unit the
 budget check counts in; `unread` names a lane's run whose state could not be
-read, which makes the spend a floor); `next` is the one move to make. A drain
+read, which makes the spend a floor), `hand_backs_by_pr` (one entry for each
+pull request the drain's lanes opened, one with no hand-back included: `pr`,
+the lane's `issue`, `hand_backs` its lane routed and their `kinds`) and
+`hand_backs_without_pr` (the judgement's, a reservation's, a field
+hand-back's, and a lane's that opened none); `next` is the one move to make. A drain
 that ends with every lane ended and none in a pull request says so in `next` as
 a normal ending; one that stops with a lane still in progress does not.
+
+Each move also keeps the spot-check's record of what the drain decided with no
+person involved: every hand-back it routed and every judgement a routed model
+answered, each as one file on this checkout's local copy of the spot-check's
+branch, all of one move's in one commit, written without touching the working
+tree and without reaching the network; a judgement a person answered is not
+recorded. The local copy is a ref of the repository, `refs/abcd/spotcheck`,
+outside its branches and tags: a push of branches or tags leaves it behind,
+and a push of every ref (`git push --mirror`) carries the records with it.
+Free text in a record is cleaned by one rule: the text holds no
+backslash and no tilde, and a word holding a slash is kept only when it begins
+with an ASCII letter or digit, every slash has one right before it, and every
+character of it is an ASCII letter, a digit, a dot, an underscore, a dash or a
+slash; any other word holding a slash is replaced whole by a placeholder. So a
+bare repository-relative path made only of letters, digits, dots, underscores,
+dashes and slashes stays, and every other word holding a slash goes: an
+absolute or home-relative path, an address, an option or a name written
+straight against a path, a path in quotes, brackets or backticks, a path with
+a line number or punctuation written against it, and a path that begins with a
+dot. A path under a top-level folder whose name begins with a dot (a workflow
+file under `.github`, a record under `.abcd`) reads as `<removed>` in every
+text a record keeps, a hand-back's reason and a merge-gate reason included;
+the gate's mode is kept in a field of its own. Control and invisible
+characters separate words and are removed. A text over its bound is cut
+between words: the word the cut falls in goes whole and the cut is marked by a
+word of its own, so a text cleaned twice reads the same as one cleaned once,
+and a text whose first word does not fit (one very long word, or a script
+written without spaces) is kept as the mark alone. A record that cannot be written never holds the move: `next` says how
+many records the move tried to write and could not, and why, and a later move
+tries them again; a record the store cannot keep at all (a hand-back with no
+time) is counted apart, the same number at every move. A merge-gate record that
+cannot be written is not written: the gate's decision stands, its reason says
+so, and nothing asks an armed gate again. A checkout with no remote named
+`origin` keeps no record.
 
 Tell the user any loosened floors first, then what this move did (the
 judgement asked or taken, the merged lanes finished, the lane opened, the
 hand-back routed, the pause or the end), then every hand-back with its route and what it wrote, then the
-counts and the spend, then `next`. Do not plan a promoted draft or write
+counts, the hand-backs per pull request and the spend, then `next`. Do not plan a promoted draft or write
 a flagged decision: those are a person's.
 
 ## Refusals

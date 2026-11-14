@@ -397,7 +397,7 @@ func siblingCopies(root, own string) (sibs map[string]siblingAt, unread string) 
 	sibs = map[string]siblingAt{}
 	wts, err := gitutil.ListWorktrees(root, gitutil.MaxWorktreeListing)
 	if err != nil {
-		return sibs, "this repository's worktrees could not be listed (" + redacted(err) + "), so holds from them count as made elsewhere"
+		return sibs, "this repository's worktrees could not be listed (" + redacted(err).text + "), so holds from them count as made elsewhere"
 	}
 	var paths []string
 	for _, wt := range wts {

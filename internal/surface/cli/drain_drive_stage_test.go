@@ -657,6 +657,57 @@ func TestAGateIssueIsPassedOverForAPersonsOwnSession(t *testing.T) {
 	}
 }
 
+// unreadableHooksPath sets a core.hooksPath git cannot expand in repo, so the
+// read of it exits non-zero: a home that does not exist.
+func unreadableHooksPath(t *testing.T, repo *gittest.Repo) {
+	t.Helper()
+	repo.Git("config", "core.hooksPath", "~abcdnosuchuser/hooks")
+	if _, err := loop.DriveHooksPath(repo.Root()); err == nil {
+		t.Fatal("the hooks path is read, so this test makes no unreadable one")
+	}
+}
+
+// TestALandingOverAHooksPathThatCannotBeReadDoesNotGoOnAndSaysWhatToDo: the
+// gate check at a lane's landing refuses when the hooks path cannot be read,
+// saying so, and its reason carries what the person does: look at what git
+// answers for the setting, settle it, and start the drive again. Watched failing
+// before the remedy was added: the reason said what failed and no more.
+func TestALandingOverAHooksPathThatCannotBeReadDoesNotGoOnAndSaysWhatToDo(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	repo.Write("a.go", "package a\n")
+	repo.Commit("base")
+	base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	repo.Write("b.go", "package a\n")
+	repo.Commit("code")
+	unreadableHooksPath(t, repo)
+	var refused *loop.PreflightRefused
+	if err := driveGateCheck()(repo.Root(), base); !errors.As(err, &refused) {
+		t.Fatalf("a hooks path that cannot be read holds the landing: %v", err)
+	}
+	for _, want := range []string{"the hooks path the lane's repository configures could not be read, so its landing does not go on",
+		"git config --show-scope --show-origin --get-all core.hooksPath", "then start the drive again"} {
+		if !strings.Contains(refused.Reason, want) {
+			t.Fatalf("the refusal says %q:\n%s", want, refused.Reason)
+		}
+	}
+}
+
+// TestAnIssueUnderAHooksPathThatCannotBeReadIsPassedOverSayingWhatToDo: a
+// hooks path that cannot be read passes over every issue, code included, and
+// the reason carries what the person does about it. Watched failing
+// before the remedy was added: the reason said what failed and no more.
+func TestAnIssueUnderAHooksPathThatCannotBeReadIsPassedOverSayingWhatToDo(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	unreadableHooksPath(t, repo)
+	why := drivePassOver(repo.Root())("iss-1", "internal/a.go")
+	for _, want := range []string{"the hooks path the repository configures could not be read, so whether its path is a gate cannot be told",
+		"git config --show-scope --show-origin --get-all core.hooksPath", "then start the drive again"} {
+		if !strings.Contains(why, want) {
+			t.Fatalf("the pass-over says %q:\n%s", want, why)
+		}
+	}
+}
+
 // TestTheConsentSaysALaneOnAGateIsHandedBack.
 func TestTheConsentSaysALaneOnAGateIsHandedBack(t *testing.T) {
 	w := newDriveWorld(t)

@@ -900,8 +900,10 @@ var notNetworkMarkers = []string{
 // NetworkProbeTimeout. The connection is back when the remote answers — with
 // HEAD (exit 0), without it (exit 2), or with a refusal that is not a network
 // failure, since a remote that refuses has been reached. It is down when git
-// prints a network failure or gives no answer in time. Credentials are never
-// asked for at a terminal: the probe's askpass fails at once.
+// prints a network failure or gives no answer in time. A probe a drive's
+// check did not run (gitutil.NotRunError) asked nothing and is not taken as
+// back. Credentials are never asked for at a terminal: the probe's askpass
+// fails at once.
 func RemoteProbe(repoRoot string) func() (bool, string) {
 	return func() (bool, string) {
 		ctx, cancel := context.WithTimeout(context.Background(), NetworkProbeTimeout)
@@ -913,6 +915,13 @@ func RemoteProbe(repoRoot string) func() (bool, string) {
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
 			return false, fmt.Sprintf("origin gave no answer within %s", NetworkProbeTimeout)
+		}
+		// A probe the drive's check did not run asked origin nothing, so it
+		// proves the network neither lost nor back; its type is read before
+		// its text, which can name a file or a setting.
+		var nr *gitutil.NotRunError
+		if errors.As(err, &nr) {
+			return false, "the probe of origin was not run: " + err.Error()
 		}
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && ee.ExitCode() == 2 {

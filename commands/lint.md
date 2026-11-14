@@ -140,6 +140,21 @@ receipt, none recorded broken, none whose recorded final address has drifted fro
 what the page cites, and a staleness warning past 180 days. Every one of these
 reads committed files only; nothing dials out.
 
+The link checks, the footnote and URL rules, and the record lint's
+forbidden-synonym check skip a link, footnote or word inside an inline code
+span that opens and closes on one line. Below a line that leaves a backtick
+open, to the next blank line, the page may pair that backtick with one further
+down, so there a use that can report something (a link, a word, a footnote
+marker or definition, a cited URL) reads each line both whole, spans included,
+and alone, and reports what either reading finds; the line that leaves the
+backtick open keeps its spans. These uses, which can make a finding go away,
+read each line alone, on every line: a marker that makes a definition count as
+referenced, a definition that makes a marker count as defined, a marker that
+makes a crosswalk table row count as cited, and a hand receipt for a cited
+address, so `abcd docs cite confirm` refuses a URL cited only inside such a
+span. The forbidden-synonym check's allow context, and a target page's headings
+and anchors, are read from the line as written, as before.
+
 `--release-gate` runs the same lint with one difference: a citation past the
 365-day threshold blocks instead of warning. It is for release machinery only —
 an ordinary commit is never blocked by the calendar.

@@ -85,6 +85,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/core/spec"
+	"github.com/intentdriven/abcd/internal/core/spotcheck"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -1989,6 +1990,9 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 	// The head the receipt names is pushed by its commit id, not the branch's
 	// ref, so a branch that moves after the check cannot change what is pushed.
 	if _, err := gitutil.Net(c.RepoRoot, "push", "--porcelain", Remote, lane.HeadSHA+":refs/heads/"+lane.Branch); err != nil {
+		if r, ok := heldStopOf(err); ok {
+			return Outcome{}, r
+		}
 		if r := netFailure(StageLand, lane.ID, "git push "+lane.Branch, err); r != nil {
 			return Outcome{}, r
 		}
@@ -2354,6 +2358,10 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	return armLane(c, lane, def, rule, d, held)
 }
 
+// recordLaneGate is landing.RecordMergeGate, the seam a test turns the
+// record off through to compare what the lane does without it.
+var recordLaneGate = landing.RecordMergeGate
+
 // askMergeGate asks the merge gate about the lane's pull request: the mode as
 // the default branch's tip just fetched and the machine layer declare it,
 // never the lane's checkout (dcn-2610230058333177), with the ruleset mirror's
@@ -2368,6 +2376,14 @@ func askMergeGate(c Context, lane Lane, def string, rule landing.MergeRule) (lan
 	unrecorded := recordOwnReview(c, lane, roots, tip, Remote+"/"+def)
 	d, err := landing.DecideMerge(landing.MergeQuery{RepoRoot: c.RepoRoot, Roots: roots, Tip: tip, TipName: Remote + "/" + def, Default: def,
 		Rule: rule, Repo: "{owner}/{repo}", PR: strconv.Itoa(lane.PR), Head: lane.Landing.Pushed, Forge: gateForge(c, lane)})
+	if err == nil {
+		// The spot-check's record of the decision, made from the decision
+		// alone: a record that cannot be written changes nothing but the
+		// reason, which says so.
+		if note := recordLaneGate(c.RepoRoot, spotcheck.SiteLane, strconv.Itoa(lane.PR), lane.Landing.Pushed, d); note != "" {
+			d.Why += "; " + note
+		}
+	}
 	if err != nil {
 		r := refuse(string(StageLand), "", lane.ID, termsafe.Sanitize(fsutil.RedactHome(err.Error()))+" at "+Remote+"/"+def+", so nothing was armed",
 			"correct the file it names, then run `abcd implement step` again")
@@ -2699,6 +2715,9 @@ func fetchDefault(c Context, lane Lane, def string) (string, error) {
 // fetchRefusal is a fetch of the default branch def that git refused: a lost
 // network waited out on the shared probe, anything else a refusal.
 func fetchRefusal(lane Lane, def string, err error) error {
+	if r, ok := heldStopOf(err); ok {
+		return r
+	}
 	if r := netFailure(StageLand, lane.ID, "git fetch "+def, err); r != nil {
 		return r
 	}

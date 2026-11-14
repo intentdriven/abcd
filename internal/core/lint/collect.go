@@ -36,9 +36,16 @@ type CitationSite struct {
 }
 
 // CitedURL is one distinct cited address and everywhere it is cited.
+//
+// ReadAlone is whether some line cites it as the line read alone reads it,
+// outside any code span on that line. A URL only the whole reading below a
+// backtick left open finds (pageCitations) is cited, so the refresh checks it
+// as the gate asks, but it does not admit a hand receipt, a use that makes a
+// finding go away (dcn-2611130921444350).
 type CitedURL struct {
-	URL   string         `json:"url"`
-	Sites []CitationSite `json:"sites"`
+	URL       string         `json:"url"`
+	Sites     []CitationSite `json:"sites"`
+	ReadAlone bool           `json:"-"`
 }
 
 // CollectCitedURLs walks cfg.Roots and returns the repo's distinct cited URLs,
@@ -49,6 +56,7 @@ type CitedURL struct {
 // root is skipped rather than an error, matching Lint.
 func CollectCitedURLs(cfg Config, repoRoot string) ([]CitedURL, error) {
 	sites := map[string][]CitationSite{}
+	alone := map[string]bool{}
 	for _, root := range cfg.Roots {
 		// Containment matters HERE in a way it does not for a reporting lint.
 		// What this collector returns is fetched over the network and then
@@ -107,6 +115,9 @@ func CollectCitedURLs(cfg Config, repoRoot string) ([]CitedURL, error) {
 			rel := repoRel(repoRoot, fileAbs)
 			lines := strings.Split(string(content), "\n")
 			page := parseCitations(rel, lines, fenceMask(lines))
+			for _, ref := range page.alone.urls {
+				alone[ref.url] = true
+			}
 			for _, ref := range page.urls {
 				site := CitationSite{File: ref.file, Line: ref.line}
 				// A URL repeated on one line (a source and its mirror) is one
@@ -121,7 +132,7 @@ func CollectCitedURLs(cfg Config, repoRoot string) ([]CitedURL, error) {
 
 	out := make([]CitedURL, 0, len(sites))
 	for u, s := range sites {
-		out = append(out, CitedURL{URL: u, Sites: s})
+		out = append(out, CitedURL{URL: u, Sites: s, ReadAlone: alone[u]})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].URL < out[j].URL })
 	return out, nil

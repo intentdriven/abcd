@@ -14,7 +14,7 @@ versions: null
 
 # librarian
 
-The **librarian** does the reading so that ideate and the research command start from evidence, not from memory. An agent runs it (`abcd library pack`); the person never types it. It keeps what it fetches privately, reads a private source alone, and hands back a reading pack.
+The librarian is a **design target**, not shipped: `abcd library` registers no `pack` sub-command, so nothing that ships today runs it. The draft intent itd-2610141646126492 records the design, and this section, the uses and the example below describe that design. In it, the **librarian** does the reading so that ideate and the research command start from evidence, not from memory. An agent runs it (`abcd library pack`); the person never types it. It keeps what it fetches privately, reads a private source alone, and hands back a reading pack.
 
 ## When to use
 

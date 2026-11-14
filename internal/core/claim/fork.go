@@ -123,7 +123,7 @@ func askFork(root, owner, name string, now time.Time) forkAnswer {
 func checkFork(root string, now time.Time, home string) (unchecked, allowed string, err error) {
 	targets, uerr := originPushURLs(root)
 	if uerr != nil {
-		return "could not read " + Remote + "'s push URL: " + redacted(uerr), "", nil
+		return "could not read " + Remote + "'s push URL: " + redacted(uerr).text, "", nil
 	}
 	var gaps []string
 	for _, url := range targets.urls {
