@@ -325,6 +325,52 @@ func TestAListingIsRecognisedOnlyByExactWords(t *testing.T) {
 	}
 }
 
+// TestAWordThatIsAnOptionsValueNeverMakesACommandNotAsk: a word that follows
+// an option git takes its value from as the next word is that value, so it
+// is never read as a word that makes the command not ask: a tag's listing
+// word, init's empty template, --cached, --soft, --no-filters, --stat, the
+// two words that switch the diff programs off, or a revision that keeps the
+// working tree or a commit's patch out. Watched failing on 73c7e73a: every
+// row wanting true got false.
+func TestAWordThatIsAnOptionsValueNeverMakesACommandNotAsk(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"tag", "--format", "-l", "v1"}, true},
+		{[]string{"tag", "--format", "--list", "v1"}, true},
+		{[]string{"tag", "--format", "-n", "v1"}, true},
+		{[]string{"tag", "--form", "-l", "v1"}, true},
+		{[]string{"tag", "--sort", "-l", "v1"}, true},
+		{[]string{"tag", "--cleanup", "--list", "v1"}, true},
+		{[]string{"init", "--separate-git-dir", "--template=", "x"}, true},
+		{[]string{"init", "-b", "--template=", "x"}, true},
+		{[]string{"init", "--initial-branch", "--template=", "x"}, true},
+		{[]string{"init", "--object-format", "--template=", "x"}, true},
+		{[]string{"init", "--ref-format", "--template=", "x"}, true},
+		{[]string{"diff-index", "--output", "--cached", "-p", "HEAD"}, true},
+		{[]string{"diff", "--name-only", "--output", "a", "b", "--"}, true},
+		{[]string{"show", "-O", "HEAD:a.txt"}, true},
+		{[]string{"log", "-p", "--output", "--no-textconv", "--no-ext-diff"}, true},
+		{[]string{"blame", "--no-textconv", "-L", "1,2", "--", "a"}, true},
+		{[]string{"hash-object", "--path", "--no-filters", "a"}, true},
+		{[]string{"hash-object", "--path", "-t", "tree", "a"}, true},
+		{[]string{"rm", "--pathspec-from-file", "--cached"}, true},
+		{[]string{"reset", "--pathspec-from-file", "--soft", "HEAD"}, true},
+		{[]string{"apply", "-p", "--cached"}, true},
+		{[]string{"apply", "--exclude", "--stat", "x.patch"}, true},
+		{[]string{"init", "--object-format", "sha1", "-q", "--template=", "x"}, false},
+		{[]string{"tag", "--sort", "v:refname", "--list", "v*"}, false},
+		{[]string{"blame", "--no-textconv", "-L", "1,2", "HEAD", "--", "a"}, false},
+		{[]string{"diff", "--name-only", "--output", "o", "a", "b", "--"}, false},
+		{[]string{"rm", "--pathspec-from-file", "f", "--cached"}, false},
+	} {
+		if got := gitutil.LeavesContentProgramsOn(tc.args); got != tc.want {
+			t.Errorf("%q: got %v, want %v", tc.args, got, tc.want)
+		}
+	}
+}
+
 // TestTheOptionsThatStartAProgramAreReadAsGitTakesThem: the options that
 // switch a program on are read in any prefix git takes for them and inside
 // a bundle of short options, --attr-source takes its value as the next
