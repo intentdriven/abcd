@@ -10,6 +10,7 @@ severity: minor
 impact: additive
 origin: researcher-authored
 production_mode: hand-written
+blocked_by: [itd-2611141610197753]
 ---
 
 # The status line shows the progress of work that runs without the person
