@@ -186,13 +186,17 @@ type RecordVerdict struct {
 	WriterModels  []string `json:"writer_models,omitempty"`
 	ReviewerModel string   `json:"reviewer_model,omitempty"`
 	ReviewerNamed string   `json:"reviewer_named,omitempty"`
+	// ModelsUnrecorded marks a reviewer handed out before reviewers' models
+	// were recorded, whose record says so in words.
+	ModelsUnrecorded bool `json:"models_unrecorded,omitempty"`
 }
 
 // ModelsPhrase names the writers' and the reviewer's models as the text
 // surfaces show them, each cleaned, bounded and in a code span where it is
-// shown; "" when the verdict records none.
+// shown; for a reviewer handed out before they were recorded, that they were
+// not; "" when the verdict records none.
 func (v RecordVerdict) ModelsPhrase() string {
-	return modelsPhrase(v.WriterModels, v.ReviewerModel, v.ReviewerNamed, v.ModelStatus)
+	return modelsPhrase(v.WriterModels, v.ReviewerModel, v.ReviewerNamed, v.ModelStatus, v.Class != "", v.ModelsUnrecorded)
 }
 
 // ReviewerPhrase names the verdict's reviewer as the text surfaces show it:
@@ -243,7 +247,8 @@ func recordOf(st State) RunRecord {
 				rl.Verdicts = append(rl.Verdicts, RecordVerdict{Round: r.Round, HeadSHA: r.HeadSHA, Role: v.Role,
 					Verdict: v.Verdict, Pass: v.Pass, Return: v.Return, Route: v.Route,
 					Reviewer: v.Reviewer, Class: v.Class, Model: v.Model, Effort: v.Effort, ModelStatus: v.ModelStatus,
-					Located: v.Located, Findings: v.Findings, WriterModels: v.WriterModels, ReviewerModel: v.ReviewerModel, ReviewerNamed: v.ReviewerNamed})
+					Located: v.Located, Findings: v.Findings, WriterModels: v.WriterModels, ReviewerModel: v.ReviewerModel, ReviewerNamed: v.ReviewerNamed,
+					ModelsUnrecorded: v.ModelsUnrecorded})
 			}
 			for _, c := range r.Comparisons {
 				rl.Comparisons = append(rl.Comparisons, RecordComparison{Round: r.Round, Comparison: c})

@@ -33,7 +33,9 @@ package loop
 // (answerCollected): the same bytes are answered, and a changed file is refused.
 //
 // The route records what is known. The state names the runner that was asked; no
-// report from it arrived, so what ran the agent is left empty until a report does.
+// report from it arrived, so what ran the agent is left empty until a report does,
+// and the model the runner was started on is a writer of the lane meanwhile
+// (Lane.Launched).
 //
 // A receipt that does not verify is left where it stands. While the claim stands
 // the agent may still be working, so the step says to wait. After a runner that
@@ -708,7 +710,12 @@ func (s State) collectedAt(repoRoot, path string) (int, string, string, bool) {
 // reads the file first: bytes other than those the step took are refused, and the
 // lane stays where it is. The same bytes are answered, and change nothing unless
 // the hand-in brings a runner's report, which replaces the route the step could
-// not know. It reports whether it changed the state.
+// not know. The model it reports is a writer of the lane from then on: the
+// reviewers handed out since the step collected the receipt are settled
+// against it in the same write (resettleWriters), each one no longer another
+// model than every writer withdrawn and handed out again, or the lane handed
+// back as stuck where its round cannot be judged again. It reports whether it
+// changed the state.
 func answerCollected(repoRoot string, root *os.Root, st *State, i int, taken, digest string, route *runner.RouteRecord, now time.Time) (StepResult, bool, error) {
 	l := st.Lanes[i]
 	if data, err := standingBytes(repoRoot, root, taken); err != nil || answerDigest(data) != digest {
@@ -718,6 +725,7 @@ func answerCollected(repoRoot string, root *os.Root, st *State, i int, taken, di
 	}
 	changed := false
 	if route != nil && route.Ran != "" {
+		before := l
 		l.Receipts = slices.Clone(l.Receipts)
 		for k := range l.Receipts {
 			r := l.Receipts[k]
@@ -727,6 +735,17 @@ func answerCollected(repoRoot string, root *os.Root, st *State, i int, taken, di
 				st.Record = append(st.Record, Entry{At: now, Lane: l.ID, Stage: StageRunner, Note: routeNote(RoleImplementer, reported)})
 				st.UpdatedAt = now
 				changed = true
+			}
+		}
+		// The model the report names is a writer from now: the reviewers
+		// already handed out are settled against it in the same write.
+		if changed {
+			if withdrawn, settled := resettleWriters(*st, before, &l); len(withdrawn) > 0 {
+				st.Record = append(st.Record, Entry{At: now, Lane: l.ID, Stage: string(StageValidate), Note: withdrawnNote(withdrawn, settled)})
+				if !settled && l.HandBack == nil && l.Stage != StageDone {
+					handBackLane(st, &l, *lateWriterHandBack(*st, l, withdrawn), "", now)
+					releaseOnHandBack(repoRoot, st, *l.HandBack, now)
+				}
 			}
 		}
 		st.Lanes[i] = l

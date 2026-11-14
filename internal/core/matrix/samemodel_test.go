@@ -9,10 +9,10 @@ import (
 )
 
 // TestOtherModel: a reviewer's model counts as other than the writer's only
-// where that is shown, both names known and neither one's tokens held in the
-// other's; every other pair reads as the same model, so a change is never
-// recorded as reviewed by another model when the writer's own reviewed it.
-// Each pair is asked both ways round.
+// where that is shown, both names naming one listed family each and the
+// families or their versions differing; every other pair reads as the same
+// model, so a change is never recorded as reviewed by another model when the
+// writer's own reviewed it. Each pair is asked both ways round.
 func TestOtherModel(t *testing.T) {
 	for _, c := range []struct {
 		name           string
@@ -56,8 +56,41 @@ func TestOtherModel(t *testing.T) {
 		{"two families, trailer form against route", "Claude:claude-fable-5", "anthropic/claude-haiku-4-5", true},
 		{"two families in cloud ids", "us.anthropic.claude-opus-5-5-v1:0", "eu.anthropic.claude-sonnet-5-5-v1:0", true},
 		{"a name split on a space is read", "claude opus", "claude-sonnet-5-5", true},
-		{"a prefix only up to a letter", "gpt-4", "openai/gpt-4o", true},
-		{"a prefix only up to a digit", "claude-opus-5", "claude-opus-55", true},
+		{"a letter after the version is a tag", "gpt-4", "openai/gpt-4o", false},
+		{"a prefix of the version's digits", "claude-opus-5", "claude-opus-55", false},
+		{"two mode suffixes after a colon", "openrouter/anthropic/claude-opus-5-5:thinking", "openrouter/anthropic/claude-opus-5-5:nitro", false},
+		{"two qualifier words", "claude-opus-5-5-thinking", "claude-opus-5-5-fast", false},
+		{"a fast against a preview", "claude-opus-5-5-fast", "claude-opus-5-5-preview", false},
+		{"a high against a low", "claude-opus-5-5-high", "claude-opus-5-5-low", false},
+		{"an exp against a latest", "gemini-2-5-pro-exp", "gemini-2.5-pro-latest", false},
+		{"two context sizes", "claude-opus-5-5-1m", "claude-opus-5-5-200k", false},
+		{"two four-digit snapshot tags", "gpt-4-0613", "gpt-4-1106", false},
+		{"two three-digit snapshot tags", "gemini-1.5-pro-001", "gemini-1.5-pro-002", false},
+		{"two cloud revisions", "us.anthropic.claude-opus-5-5-v1:0", "us.anthropic.claude-opus-5-5-v2:0", false},
+		{"a mode after the model's segment", "anthropic/claude-opus-5-5/thinking", "claude-opus-5-5", false},
+		{"two unlisted carriers before a colon", "fireworks:llama-3", "together:llama-3", false},
+		{"a run-together spelling", "opus5.5", "claude-opus-5-5", false},
+		{"fused digits against a dashed opus", "opus5", "opus-5", false},
+		{"fused digits against dashed ones", "gpt51", "gpt-5-1", false},
+		{"a carrier word with a latest alias", "claude-latest", "claude-sonnet-5-5", false},
+		{"an alias with no family word", "default", "claude-sonnet-5-5", false},
+		{"a best alias", "best", "claude-opus-5-5", false},
+		{"a planning alias run together", "opusplan", "claude-sonnet-5-5", false},
+		{"a name holding two families", "claude-opus-sonnet-5", "gpt-5", false},
+		{"names of one family that nest", "gpt-5", "gpt-5-mini", false},
+		{"an unlisted family", "acme-turbo-2", "claude-opus-5-5", false},
+		{"a family written after a vendor alone", "fable", "claude-fable-5-2", false},
+		{"a version against a later one", "claude-opus-5-5", "claude-opus-4-6", true},
+		{"two versions of one family in the older order", "claude-3-opus", "claude-opus-4", true},
+		{"a version written fused against a dashed other", "opus5", "opus-4", true},
+		{"two families of two vendors", "claude-opus-5-5", "openai/gpt-5", true},
+		{"two o-series models", "o1", "openai/o3-mini", true},
+		{"an o-series model against gpt", "o3", "gpt-4o", true},
+		{"two gemini versions", "gemini-2.5-pro", "gemini-2.0-flash", true},
+		{"two llama versions at one size", "llama-3.1-70b", "llama-3.3-70b", true},
+		{"two deepseek versions", "deepseek-v3", "deepseek-v2", true},
+		{"the bundled top against the default", "anthropic/claude-opus-5-5", "anthropic/claude-sonnet-5-5", true},
+		{"the bundled research class against the small", "anthropic/claude-fable-5", "anthropic/claude-haiku-4-5", true},
 	} {
 		if got := OtherModel(c.writer, c.review); got != c.other {
 			t.Errorf("%s: OtherModel(%q, %q) = %v, want %v", c.name, c.writer, c.review, got, c.other)
@@ -87,6 +120,17 @@ func (modelish) Generate(r *rand.Rand, size int) reflect.Value {
 		}
 	}
 	return reflect.ValueOf(modelish(b.String()))
+}
+
+// TestTheBundledClassesAreKnown: each model the bundled class map ships
+// names a family the comparison reads, so a run on the bundled map is never
+// handed back for a class no comparison can read.
+func TestTheBundledClassesAreKnown(t *testing.T) {
+	for _, m := range []string{"anthropic/claude-fable-5", "anthropic/claude-opus-5-5", "anthropic/claude-sonnet-5-5", "anthropic/claude-haiku-4-5"} {
+		if !KnownModel(m) {
+			t.Errorf("KnownModel(%q) = false, want true", m)
+		}
+	}
 }
 
 // TestOtherModelIsSymmetricAndNeverOtherThanItself: for any two strings,

@@ -129,7 +129,7 @@ func TestARefusingCommitMsgHookStopsTheLanding(t *testing.T) {
 	if r.Stage != string(StageLand) || !strings.Contains(r.Reason, "refused by the test") {
 		t.Fatalf("a refusing commit-msg hook stops the landing, naming what it said: %+v", r)
 	}
-	if b, err := os.ReadFile(seen); err != nil || !strings.Contains(string(b), "Assisted-by: Claude:claude-test-5") {
+	if b, err := os.ReadFile(seen); err != nil || !strings.Contains(string(b), "Assisted-by: Claude:claude-mythos-5") {
 		t.Fatalf("the hook judged the records commit's message: %q %v", b, err)
 	}
 	if got := currentLane(t, f.repo, f.runID); got.HeadSHA != head || got.Landing.RecordsDone {
@@ -146,7 +146,7 @@ func TestARefusingCommitMsgHookStopsTheLanding(t *testing.T) {
 		t.Fatalf("the landing resumes once the hook passes: %+v", l.Landing)
 	}
 	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
-	for _, want := range []string{"Delivers: itd-10", "Resolves: " + f.issue, "Assisted-by: Claude:claude-test-5"} {
+	for _, want := range []string{"Delivers: itd-10", "Resolves: " + f.issue, "Assisted-by: Claude:claude-mythos-5"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("the resumed records commit carries %q:\n%s", want, msg)
 		}

@@ -505,7 +505,9 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	// abcd's label instead (composed_attribution.go); what is staged settles that
 	// below, after the mark is written, and a refusal there leaves the mark in the
 	// worktree for the next call.
-	if note := rereadModels(c, lane); note != "" {
+	if note, hb := rereadModels(c, lane); hb != nil {
+		return Outcome{HandBack: hb, Note: note}, nil
+	} else if note != "" {
 		return Outcome{Stay: true, Note: note}, nil
 	}
 	assisted := []string{composedAssistedBy()}
@@ -1858,7 +1860,15 @@ func nameable(model string) bool {
 // everything else stays as it verified. It returns the run log's note naming
 // each receipt it changed, "" when it changed none; a receipt it could not
 // mend is still refused by assistedByTrailers.
-func rereadModels(c Context, lane *Lane) string {
+//
+// A model taken so is a writer of the lane as its trailer names it, and is
+// held to the lane's reviewers as one learned late (resettleWriters): the
+// writers each reviewer records are recomputed in the same change, and where
+// a reviewer is no longer another model than every writer, its review no
+// longer counts and the lane is handed back as stuck, hb carrying why.
+func rereadModels(c Context, lane *Lane) (string, *HandBack) {
+	before := *lane
+	lane.Receipts = slices.Clone(lane.Receipts)
 	var filled []string
 	var root *os.Root
 	defer func() {
@@ -1880,11 +1890,11 @@ func rereadModels(c Context, lane *Lane) string {
 		if root == nil {
 			var err error
 			if root, err = os.OpenRoot(c.RepoRoot); err != nil {
-				return ""
+				break
 			}
 		}
 		rc, err := readReceipt(c.RepoRoot, root, r.Receipt, lane.ID)
-		if err != nil || rc.Model == r.Model || !plainWritten(rc.Model) || !nameable(rc.Model) {
+		if err != nil || rc.Model == r.Model || !plainWritten(rc.Model) || !nameable(rc.Model) || !writerKnown(rc.Model) {
 			continue
 		}
 		r.Named = keptName(*r)
@@ -1892,20 +1902,29 @@ func rereadModels(c Context, lane *Lane) string {
 		filled = append(filled, r.Receipt+" from its file, read again")
 	}
 	if len(filled) == 0 {
-		return ""
+		return "", nil
 	}
-	return "took the model of " + strings.Join(filled, "; ") + ", since the receipt verified with none the trailer can name"
+	note := "took the model of " + strings.Join(filled, "; ") + ", since the receipt verified with none the trailer can name"
+	if withdrawn, _ := resettleWriters(c.State, before, lane); len(withdrawn) > 0 {
+		return note + "; " + withdrawnNote(withdrawn, false), lateWriterHandBack(c.State, *lane, withdrawn)
+	}
+	return note, nil
 }
 
 // keptName is the name a receipt record keeps as the one its receipt named
 // when its model is replaced: the one it kept from an earlier replacement,
 // else its model, so the lane's writers read the same before and after
-// (laneWriters). An empty model keeps nothing.
+// (laneWriters). Only a name the comparison reads is kept (writerKnown): any
+// other, an overlong or malformed one included, is kept as nothing, since it
+// was never a writer, and a stored name is bounded where it is stored.
 func keptName(r ReceiptRecord) string {
 	if r.Named != "" {
 		return r.Named
 	}
-	return r.Model
+	if writerKnown(r.Model) {
+		return r.Model
+	}
+	return ""
 }
 
 // modelGap is the refusal of a landing step whose text must name the models
@@ -2184,7 +2203,9 @@ func landPullRequest(c Context, lane *Lane) (Outcome, error) {
 		// The disclosure is settled before the forge is called. The records
 		// commit settled it already on a lane that records something; a lane
 		// that records nothing made no records commit, so it is settled here.
-		if note := rereadModels(c, lane); note != "" {
+		if note, hb := rereadModels(c, lane); hb != nil {
+			return Outcome{HandBack: hb, Note: note}, nil
+		} else if note != "" {
 			return Outcome{Stay: true, Note: note}, nil
 		}
 		assisted, gap := assistedByTrailers(lane.Receipts)

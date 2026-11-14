@@ -334,7 +334,8 @@ const lockFileName = ".lock"
 // from which a reviewer whose class holds a writer's model takes another, and
 // `unlaunchable`, the classes a drive's runners could not launch for each role
 // when the run started. A receipt record gained `named`, the model its receipt
-// named before the landing replaced it. Version 26 is its strict subset, read
+// named before the landing replaced it, and a lane `writers_launched`, each
+// model a runner was started on for a role that writes into it. Version 26 is its strict subset, read
 // as a run whose reviewers were dispatched before the comparison, and written
 // back at version 27; a file of version 26 or lower carrying any of them is not
 // one its version wrote, and is refused naming it. Releases that write version
@@ -714,6 +715,12 @@ type Lane struct {
 	// the implement stage's and each fix round's, with the model each runner
 	// reported (criterion 10).
 	Receipts []ReceiptRecord `json:"receipts,omitempty"`
+	// Launched are the models a runner was started on for the lane's
+	// implementer, fix and conflict-resolution roles, each with how many of
+	// the lane's receipts were verified before it was started (reviewers.go):
+	// every one is a writer of the lane from its next receipt on, whether or
+	// not a receipt came back from it.
+	Launched []LaunchedWriter `json:"writers_launched,omitempty"`
 	// Resolves are the captures the lane's receipts declared fixed, each with
 	// the lane's commit that fixed it; the landing resolves each (piece 9).
 	Resolves []Resolution `json:"resolves,omitempty"`
@@ -744,9 +751,19 @@ type ReceiptRecord struct {
 	// host ran it, so a host-run receipt reads as it always has.
 	Route *runner.RouteRecord `json:"route,omitempty"`
 	// Named is the model the receipt named when the landing replaced Model
-	// with one its trailer can name (rereadModels); empty while Model is the
-	// receipt's own. The writers of the lane are read from it (laneWriters).
+	// with one its trailer can name (rereadModels), kept only where the
+	// comparison can read it (keptName); empty while Model is the receipt's
+	// own. The writers of the lane are read from it and from Model alike
+	// (laneWriters).
 	Named string `json:"named,omitempty"`
+}
+
+// LaunchedWriter is one model a runner was started on for a role that writes
+// into the lane, and After how many of the lane's receipts were verified
+// before it was started.
+type LaunchedWriter struct {
+	Model string `json:"model"`
+	After int    `json:"after"`
 }
 
 // HandBack is a lane stopped and handed back to the person, with what the last
@@ -1841,6 +1858,9 @@ func storeState(root *os.Root, st State, right wholeSave) error {
 func stateData(st State) ([]byte, error) {
 	m := st.masked()
 	m.keepLatestFindings()
+	if err := modelsSavable(m); err != nil {
+		return nil, err
+	}
 	for {
 		data, err := json.MarshalIndent(m, "", "  ")
 		if err != nil {
@@ -1851,6 +1871,27 @@ func stateData(st State) ([]byte, error) {
 			return data, stateFits(st.RunID, data)
 		}
 	}
+}
+
+// modelsSavable refuses a save of a state whose stored models its own read
+// would refuse: the review set's checks (ReviewSet.written) and the
+// reviewers' (reviewersUnwritten, with modelsWritten and writersAt), run on
+// exactly what the save would write. The change that would leave such a file
+// is refused as that change, naming where, and the file already there
+// stands; it is never written to be refused later.
+func modelsSavable(m State) error {
+	what := ""
+	switch {
+	case m.Review != nil && !m.Review.written():
+		what = "its review set is one the loop never writes"
+	default:
+		what = m.reviewersUnwritten()
+	}
+	if what == "" {
+		return nil
+	}
+	return refuse("state", "", "", fmt.Sprintf("%s was not saved: the change would leave %s, which its own read refuses; nothing was written, and the file already there stands",
+		StateRelPath(m.RunID), what), "this is a fault in abcd, so report it")
 }
 
 // stateFits refuses a state file past maxStateBytes, the most its read

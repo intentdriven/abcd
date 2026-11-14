@@ -116,6 +116,10 @@ func (l Lane) masked() Lane {
 		r.Route = maskPtr(r.Route, maskRoute)
 		return r
 	})
+	l.Launched = maskEach(l.Launched, func(w LaunchedWriter) LaunchedWriter {
+		w.Model = line(w.Model)
+		return w
+	})
 	l.Resolves = maskEach(l.Resolves, func(r Resolution) Resolution {
 		r.Issue, r.Commit, r.Impact = line(r.Issue), line(r.Commit), line(r.Impact)
 		r.Note, r.Grounds = prose(r.Note), prose(r.Grounds)

@@ -70,7 +70,7 @@ func (f *landFixture) passToLand(t *testing.T, names ...string) Lane {
 	dir := filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), f.runID, l.ID)
 	sha := commitIn(t, repo, l, names...)
 	rc := goodReceipt(t, f.runID, l, dir, sha)
-	rc.Model = "claude-test-5"
+	rc.Model = "claude-mythos-5"
 	rc.Resolves = []Resolution{{Issue: f.issue, Commit: sha, Note: "the page names the flag", Impact: "fix",
 		Grounds: "pursued: the page names the flag; shown wrong if it still does not"}}
 	if _, err := Receipt(repo.Root(), f.runID, writeReceipt(t, dir, rc), f.stages, Options{}); err != nil {
@@ -217,7 +217,7 @@ func TestARegeneratedFileIsPushedAsAPullRequestThatMergesCleanly(t *testing.T) {
 	}
 	rc := LaneReceipt{SchemaVersion: ReceiptSchemaVersion, RunID: f.runID, Lane: l.ID, Branch: l.Branch, Commits: []string{merge},
 		DefinitionOfDone: &DoDRun{Command: "make check", ExitCode: zero(), Output: filepath.ToSlash(filepath.Join(rel, DoDFileName))},
-		Report:           filepath.ToSlash(filepath.Join(rel, ReportFileName)), Model: "claude-test-5"}
+		Report:           filepath.ToSlash(filepath.Join(rel, ReportFileName)), Model: "claude-mythos-5"}
 	data, err := json.Marshal(rc)
 	if err != nil {
 		t.Fatal(err)

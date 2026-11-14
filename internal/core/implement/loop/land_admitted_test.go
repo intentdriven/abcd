@@ -27,7 +27,7 @@ func TestBuildLaneCommitsItsSpecOrIssue(t *testing.T) {
 	f.step(t) // records
 	l := currentLane(t, f.repo, f.runID)
 	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
-	want := []string{"Delivers: itd-10", "Resolves: " + f.issue, "Admitted-by: build spc-1", "Assisted-by: Claude:claude-test-5"}
+	want := []string{"Delivers: itd-10", "Resolves: " + f.issue, "Admitted-by: build spc-1", "Assisted-by: Claude:claude-mythos-5"}
 	if got := trailerBlock(msg); !slices.Equal(got, want) {
 		t.Fatalf("the records commit's trailers are %q, want %q:\n%s", got, want, msg)
 	}
@@ -41,7 +41,7 @@ func TestBuildLaneCommitsItsSpecOrIssue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if body := prBody(st, l, []string{"Assisted-by: Claude:claude-test-5"}); !strings.Contains(body, "\nResolves: "+f.issue+"\nAdmitted-by: build spc-1\nAssisted-by: abcd:") {
+	if body := prBody(st, l, []string{"Assisted-by: Claude:claude-mythos-5"}); !strings.Contains(body, "\nResolves: "+f.issue+"\nAdmitted-by: build spc-1\nAssisted-by: abcd:") {
 		t.Fatalf("the body carries the admission among its trailers:\n%s", body)
 	}
 }
@@ -360,7 +360,7 @@ func TestAMarkLeftInTheWorktreeIsNotAbcdsWhenTheLandingMarksNoStep(t *testing.T)
 	}
 	l = f.wantsRecordsCommit(t)
 	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
-	if strings.Contains(msg, composedAssistedBy()) || !strings.Contains(msg, "Assisted-by: Claude:claude-test-5") || !strings.Contains(msg, "carried what else was left in the lane's worktree") {
+	if strings.Contains(msg, composedAssistedBy()) || !strings.Contains(msg, "Assisted-by: Claude:claude-mythos-5") || !strings.Contains(msg, "carried what else was left in the lane's worktree") {
 		t.Fatalf("a mark the landing does not write is carried under the lane's model: %q", msg)
 	}
 }

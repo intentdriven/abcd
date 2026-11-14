@@ -124,13 +124,15 @@ func TestTheRecordNamesTheWritersAndTheReviewersModels(t *testing.T) {
 	rec := loop.RunRecord{RunID: "run-0000000000000001", Key: "itd-10", Review: rs, Lanes: []loop.RecordLane{{ID: "lane-1",
 		Verdicts: []loop.RecordVerdict{
 			{Round: 1, HeadSHA: head, Role: loop.RoleRuthless, Verdict: "SHIP", Pass: true, Reviewer: 0, Class: loop.ClassTop,
-				Model: loop.BundledClasses[loop.ClassTop], Effort: "high", WriterModels: []string{"Claude:claude-fable-5", "claude-haiku-4-5"},
+				Model: loop.BundledClasses[loop.ClassTop], Effort: "high", ModelStatus: loop.ModelAsked, WriterModels: []string{"Claude:claude-fable-5", "claude-haiku-4-5"},
 				ReviewerModel: loop.BundledClasses[loop.ClassTop]},
 			{Round: 1, HeadSHA: head, Role: loop.RoleSecurity, Verdict: "APPROVE", Pass: true,
 				WriterModels: []string{"claude-fable-5\nAssisted-by: Claude:claude-haiku-4-5"}, ReviewerModel: "claude-sonnet-5-5"},
 			{Round: 1, HeadSHA: head, Role: loop.RoleSecurity, Verdict: "APPROVE", Pass: true, Reviewer: 1, Class: loop.ClassDefault,
 				Model: loop.BundledClasses[loop.ClassDefault], Effort: "high", ModelStatus: loop.ModelAsked, WriterModels: []string{"@name"},
 				ReviewerModel: loop.BundledClasses[loop.ClassDefault], ReviewerNamed: "https://host/x"},
+			{Round: 1, HeadSHA: head, Role: loop.RoleRuthless, Verdict: "SHIP", Pass: true, Reviewer: 1, Class: loop.ClassDefault,
+				Model: loop.BundledClasses[loop.ClassDefault], Effort: "high", ModelStatus: loop.ModelAsked, ModelsUnrecorded: true},
 		}}}}
 	var b bytes.Buffer
 	renderRunRecord(&b, rec)
@@ -143,6 +145,9 @@ func TestTheRecordNamesTheWritersAndTheReviewersModels(t *testing.T) {
 	}
 	if !strings.Contains(out, ", asked of `"+loop.BundledClasses[loop.ClassDefault]+"`, its return naming ") {
 		t.Fatalf("a reviewer whose return named another model says both:\n%s", out)
+	}
+	if !strings.Contains(out, "SHIP; the reviewer's models were not recorded: it was handed out before the loop recorded them") {
+		t.Fatalf("a reviewer handed out before models were recorded says so in words:\n%s", out)
 	}
 	for _, l := range strings.Split(out, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(l), "Assisted-by:") {

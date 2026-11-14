@@ -130,7 +130,7 @@ func TestReviewerDiffersFromWriter(t *testing.T) {
 
 	returnAt(t, repo, id, stages, first, reviewerReturn("SHIP"))
 	v = validatorAt(t, repo.Root(), id, first.Receipt)
-	if v.Class != ClassTop || v.ReviewerModel != BundledClasses[ClassTop] || v.ReviewerNamed != "test-reviewer-model" || v.Verdict != "SHIP" {
+	if v.Class != ClassTop || v.ReviewerModel != BundledClasses[ClassTop] || v.ReviewerNamed != "kimi-test-1" || v.Verdict != "SHIP" {
 		t.Fatalf("a recorded verdict keeps the class the reviewer was dispatched on, and the model its return named beside it: %+v", v)
 	}
 	if !strings.Contains(string(stateBytes(t, repo.Root(), id)), `"writer_models": [`) {
@@ -148,7 +148,7 @@ func TestReviewerDiffersFromWriter(t *testing.T) {
 			shown = rv.ModelsPhrase()
 		}
 	}
-	want := "written by `" + writer + "`, asked of `" + BundledClasses[ClassTop] + "`, its return naming `test-reviewer-model`"
+	want := "written by `" + writer + "`, asked of `" + BundledClasses[ClassTop] + "`, its return naming `kimi-test-1`"
 	if shown != want {
 		t.Fatalf("the record names every model it holds: %q, want %q", shown, want)
 	}
@@ -244,12 +244,12 @@ func TestOtherClassLeansToTheWritersModel(t *testing.T) {
 		t.Errorf("no model counts as other than no writer: %+v", got)
 	}
 	// The order is Classes', wrapping round: small's next is research.
-	rs.Classes[0].Model, rs.Classes[1].Model, rs.Classes[2].Model = "x/m", "x/m", "x/m"
-	if got, ok := otherClass(rs, RoleRuthless, rs.Classes[2], []string{"m"}, nil); !ok || got.Class != ClassSmall {
+	rs.Classes[0].Model, rs.Classes[1].Model, rs.Classes[2].Model = "x/gpt-5", "x/gpt-5", "x/gpt-5"
+	if got, ok := otherClass(rs, RoleRuthless, rs.Classes[2], []string{"gpt-5"}, nil); !ok || got.Class != ClassSmall {
 		t.Errorf("default takes small, the next class holding another model: %+v %v", got, ok)
 	}
-	rs.Classes[3].Model = "x/m"
-	if got, ok := otherClass(rs, RoleRuthless, rs.Classes[3], []string{"m"}, nil); ok {
+	rs.Classes[3].Model = "x/gpt-5"
+	if got, ok := otherClass(rs, RoleRuthless, rs.Classes[3], []string{"gpt-5"}, nil); ok {
 		t.Errorf("no class holds another model: %+v", got)
 	}
 }
@@ -420,10 +420,10 @@ func TestAReviewerReturnIsCheckedOnEveryModelItHolds(t *testing.T) {
 			t.Fatal(err)
 		}
 		v := validatorAt(t, repo.Root(), id, a.Receipt)
-		if v.Verdict != "SHIP" || v.ModelStatus != ModelReported || v.ReviewerModel != "claude-haiku-4-5" || v.ReviewerNamed != "test-reviewer-model" {
+		if v.Verdict != "SHIP" || v.ModelStatus != ModelReported || v.ReviewerModel != "claude-haiku-4-5" || v.ReviewerNamed != "kimi-test-1" {
 			t.Fatalf("the record keeps the runner's report and the named model beside it: %+v", v)
 		}
-		if got, want := v.models(), "written by `"+writer+"`, run on, as its runner reported, `claude-haiku-4-5`, its return naming `test-reviewer-model`"; got != want {
+		if got, want := v.models(), "written by `"+writer+"`, run on, as its runner reported, `claude-haiku-4-5`, its return naming `kimi-test-1`"; got != want {
 			t.Fatalf("the line says both: %q, want %q", got, want)
 		}
 	})
@@ -509,7 +509,7 @@ func TestHostValidatorMustNameItsModel(t *testing.T) {
 // answer that names no model is not counted, and the review falls back to the
 // host, with nothing recorded and nothing left at the return path.
 func TestARouteAnswerWithNoModelLineFallsBackToTheHost(t *testing.T) {
-	repo, id := otherModelRun(t, `{"review":{"reviewers":["top"]}}`, "a-model")
+	repo, id := otherModelRun(t, `{"review":{"reviewers":["top"]}}`, "grok-test-1")
 	unnamed := func(request string) string { return strings.TrimPrefix(verdictFor(request), testReviewerModelLine) }
 	fb := fellBack(t, repo, id, DefaultStages(), rpRoute(t, rpServer(unnamed)))
 	if !strings.Contains(fb.Detail, "names no model it ran on") {
@@ -642,7 +642,7 @@ func TestTheStoredModelsAreHeldToTheRestOfTheFile(t *testing.T) {
 		t.Run(name, func(t *testing.T) { stateRefusedOnRead(t, repo.Root(), id, orig, editedBytes(t, orig, edit)) })
 	}
 	t.Run("an earlier version's reviewer", func(t *testing.T) {
-		repo, id := otherModelRun(t, "", "a-model")
+		repo, id := otherModelRun(t, "", "grok-test-1")
 		first := stepAwait(t, repo, id, DefaultStages(), Options{})
 		claimAsDriver(t, repo.Root(), id, Options{})
 		path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(id)))
@@ -674,7 +674,7 @@ func TestTheStoredModelsAreHeldToTheRestOfTheFile(t *testing.T) {
 func TestTheModelsAreVersion27s(t *testing.T) {
 	// A writer whose model no class holds, so the reviewer keeps the set's
 	// class, which a version-26 file can carry.
-	repo, id := otherModelRun(t, "", "a-model")
+	repo, id := otherModelRun(t, "", "grok-test-1")
 	stepAwait(t, repo, id, DefaultStages(), Options{})
 	data := stateBytes(t, repo.Root(), id)
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(id)))
@@ -706,7 +706,7 @@ func TestAModelIsPrintedOnlyAsAPlainToken(t *testing.T) {
 		if got := shownModel(name); got == name || strings.Contains(got, name) {
 			t.Errorf("%q is printed: %q", name, got)
 		}
-		if got := modelsPhrase([]string{name}, "anthropic/claude-sonnet-5-5", "", ""); strings.Contains(got, name) {
+		if got := modelsPhrase([]string{name}, "anthropic/claude-sonnet-5-5", "", "", false, false); strings.Contains(got, name) {
 			t.Errorf("%q reaches the record: %q", name, got)
 		}
 	}
@@ -715,7 +715,7 @@ func TestAModelIsPrintedOnlyAsAPlainToken(t *testing.T) {
 			t.Errorf("%q is a plain token, shown %q", name, got)
 		}
 	}
-	if got := modelsPhrase([]string{"a-model"}, "anthropic/claude-sonnet-5-5", "", ""); got != "written by `a-model`, reviewed by `anthropic/claude-sonnet-5-5`" {
+	if got := modelsPhrase([]string{"grok-test-1"}, "anthropic/claude-sonnet-5-5", "", "", false, false); got != "written by `grok-test-1`, reviewed by `anthropic/claude-sonnet-5-5`" {
 		t.Errorf("a shown name stands in a code span: %q", got)
 	}
 }

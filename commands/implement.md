@@ -607,34 +607,53 @@ schema version 20's; an older run's rounds read as one reviewer per role, index
 0, asked for no class.
 
 A model other than every writer's reviews each change a code reviewer judges.
-The writers of a lane are every model that wrote into it up to the round: for
-each implementer's receipt on the lane, the first, each fix round's and each
-conflict resolver's alike, the model its runner reported and the model the
-receipt named, each where it is a known name. A receipt whose runner reported no
-model and whose own name is unknown leaves that writer unknown, and no reviewer
-can be shown to differ from it: the lane is handed back as `stuck` with the
-reason `no reviewer model other than the writer's`, and the remedy is to discard
-the lane and build again with an implementer whose receipt names its model as a
-plain id, or on a runner that reports its model, since a verified receipt is
-not read again for its model before the landing. A state file from before
-reviewers recorded their writers, whose receipts name no model, hands back the
-same way.
+The writers of a lane are every model that wrote into it up to the round: each
+model a runner was started on for the lane's implementer, a fix round or a
+conflict resolver, whether or not a receipt came back from it (kept on the lane
+as `writers_launched`, so a restarted lane keeps the gone agent's model among
+its writers where a runner started it), and, for each implementer's receipt on
+the lane, the model its runner reported, the model the receipt named and the
+model the landing took for its trailer, each where it is a known name. Where no
+runner reported, the receipt's own word is believed. A writer is unknown in two
+ways: a runner reported a model no comparison can read, or no runner reported
+and the receipt names no model the comparison reads. Either way no reviewer can
+be shown to differ from it, and the lane is handed back as `stuck` with the
+reason `no reviewer model other than the writer's`, naming which and saying the
+name holds no model family the comparison recognises; the remedy is to discard
+the lane and build again with an implementer whose model holds a family the
+comparison recognises, on a runner that reports such a model or with a receipt
+naming it as a plain id, since a verified receipt is not read again for its
+model before the landing. A host-run agent the loop restarted leaves no model
+among the writers, since nothing reported one.
 
 Two model names count as other models only when that is shown, and every
 doubtful pair counts as the same model. Each name is lower-cased; a bracketed
-suffix such as `[1m]` is dropped, and everything up to its last `/`; the rest is
-split into tokens on every character that is not an ASCII letter or digit; a
-trailing `v<digits>` token and what follows it (as in `-v1:0`) is dropped, then
-a trailing eight-digit date stamp, then every vendor, carrier, region or alias
-word on a short fixed list (`anthropic`, `claude`, `openai`, `google`, `vertex`,
-`bedrock`, `azure`, `aws`, `openrouter`, `us`, `eu`, `apac`, `global`,
-`latest`). A name holding a character outside ASCII or a control character, one
-longer than 200 bytes, or one that leaves no token is unknown. Two names are
-other models only when both are known and neither one's tokens are all among
-the other's: `opus` and `claude-opus-5-5` are the same model, so are
-`claude-opus-5-5[1m]` and `us.anthropic.claude-opus-5-5-v1:0`, and so are
-`claude-opus-5.5` and `claude_opus_5_5`, while `claude-opus-5-5` and
-`claude-sonnet-5-5` are other models.
+suffix such as `[1m]` is dropped, and a cloud's trailing revision tag such as
+`-v1:0`; the whole of the rest is split into tokens on every character that is
+not an ASCII letter or digit and at each boundary between letters and digits,
+so `opus5` gives `opus` and `5`. A number of more than three digits (a date
+stamp or a snapshot tag), one of two or three digits opening with a zero, and
+one written straight before a letter (a size or a tag, as in `1m`, `200k`,
+`70b` or `4o`) are dropped; the digits of the numbers left, in order, are the
+name's version. A name is known only when it is ASCII with no control
+character, at most 200 bytes, and exactly one of its tokens names a model
+family on the closed list in `internal/core/matrix/samemodel.go`: `opus`,
+`sonnet`, `haiku`, `fable`, `mythos`, `gpt`, the o-series written as `o` and a
+digit, `gemini`, `gemma`, `llama`, `mistral`, `mixtral`, `codestral`, `grok`,
+`deepseek`, `qwen`, `kimi`, `glm` and `phi`. A family not on that list reads as
+no family, so a name of it is unknown and counts as the writer's own model, and
+a writer or a class whose name is unknown hands the lane back. Two known names
+are other models only when their families differ, or the family is the same,
+both carry a version, and neither version's digits are a prefix of the
+other's. Every other pair is the same model: `opus` and `claude-opus-5-5`,
+`claude-opus-5-5-thinking` and `claude-opus-5-5-fast`, `gpt-4-0613` and
+`gpt-4-1106`, `gpt-5` and `gpt-5-mini`, `opus5.5` and `claude-opus-5-5`, an
+alias with no family word such as `default` or `opusplan` against any name,
+and a name holding two families. `claude-opus-5-5` and `claude-sonnet-5-5` are
+other models, and so are `claude-opus-5-5` and `claude-opus-4-6`. So a class map
+whose classes are one family's nesting names, `gpt-5`, `gpt-5-mini` and
+`gpt-5-nano` with a writer on `gpt-5`, holds no class other than the writer's,
+and every lane is handed back.
 
 Before a reviewer of either code-review role is handed out, to the host or to a
 runner, the loop compares every writer's model with the model the reviewer's
@@ -642,16 +661,26 @@ class holds. Where the class holds a writer's model, the reviewer is handed out
 on the next class, in the order `research`, `top`, `default`, `small` and
 wrapping round, whose model differs from every writer's in the class map the run
 started on (kept in the run's `review` as `classes`), passing over a class a
-drive's runners could not launch for that role when the run started (kept as
-`unlaunchable`, asked as the drive's start asks it of the listed reviewers) and,
-while a further class qualifies, a class whose model another reviewer of the
-same role holds. Nothing requires a role's two reviewers to be different models;
-the move only prefers a class no sibling holds. A run started before the map was
-kept chooses among the classes its review set names. When no class qualifies,
-the lane is handed back as `stuck` with the same reason. The choice is made once
-and recorded: each reviewer's record carries `writer_models`, every writer in
-the order they wrote, and `reviewer_model`, and a later step never decides it
-again.
+drive's runners could not launch for that role (kept as `unlaunchable`, for a
+run a drive started, asked at its start as the drive asks it of the listed
+reviewers; a run started on the host and driven later keeps none) and, while a
+further class qualifies, a class whose model another reviewer of the same role
+holds. Nothing requires a role's two reviewers to be different models; the move
+only prefers a class no sibling holds. A run started before the map was kept
+chooses among the classes its review set names. When no class qualifies, the
+lane is handed back as `stuck` with the same reason. The choice is made once and
+recorded: each reviewer's record carries `writer_models`, every writer in the
+order they wrote, and `reviewer_model`, and a later step never decides it again.
+
+A model the loop learns after a reviewer was handed out is a writer from that
+moment. Where a runner's report reaches a receipt a step collected before the
+report arrived, and where the landing takes a receipt's model for its trailer,
+the writers each reviewer records are recomputed in the same write; a reviewer
+of the open round that any model it holds (asked for, reported or named) no
+longer differs from is withdrawn as an uncounted return is, its verdict, if
+recorded, not counted, and the next step hands it out again by the same move,
+or hands the lane back as `stuck`. Where its round is settled or the lane has
+gone on to its landing, the lane is handed back as `stuck`.
 
 A reviewer's brief and a routed request ask its return to name the model it ran
 on in a line `Reviewer model: <model>`; the loop looks for that line among the
@@ -660,21 +689,34 @@ the reviewer: the class's model it asked for, the model its runner reported,
 and the model its return names. Each one present must be another model than
 every writer's, and a return naming no model is refused, so its verdict is not
 recorded. A reviewer route that answers without a model line is not counted, and
-that review falls back to the host. A reviewer an earlier build handed out is
-checked at its return in the same way, against the lane's writers, and records
-no model. The record keeps the model the runner reported, else the model asked
-for (or, where the reviewer route answered or no class was asked of the
-reviewer, the model its return named), and, where its return named another
-model than that one, keeps both, as asked and as named. The run record, its text
-output and the pull request's body name every writer and the reviewer's models
-on each verdict, saying both names where the return named another; each name is
+that review falls back to the host. The record keeps the model the runner
+reported, else the model asked for (or, where the reviewer route answered or no
+class was asked of the reviewer, the model its return named), and, where its
+return named another model than that one, keeps both. The run record, its text
+output and the pull request's body name every writer on each verdict, and the
+reviewer as `reviewed by` its model where a runner reported it or its return
+named the same model, as `asked of` its class's model only where the loop asked
+for one and holds no report or return, and by both names where its return named
+another. In the pull request's body, the run record and their text each name is
 printed only as one plain token of ASCII letters, digits, `.`, `_` and `-`, with
 a `/` or `:` only between two of those, in a code span, and any other name is
-described rather than printed. Reading a run's state file back, the loop holds
-each reviewer's stored writers to what the lane's own receipts give, each entry
-of the stored class map to the set's reviewer of that class, and a moved
-reviewer to the move recomputed from those, and refuses a version-27 file in
-which a reviewer that was handed out names no model.
+described rather than printed; the text output's `classes:` line prints each
+class's model as the plain token, outside a code span.
+
+A run read from a state file of an earlier version, whose reviewers were handed
+out before their models were recorded, keeps each such reviewer marked
+`models_unrecorded`. That reviewer is checked at its return against the lane's
+writers, records no model, and its verdict line in the pull request's body, the
+run record and the text says in words that the reviewer's models were not
+recorded, naming no model. A reviewer that run hands out after the read is
+compared and recorded as any other. Reading a run's state file back, the loop
+holds each reviewer's stored writers to what the lane's own receipts and
+launches give, each entry of the stored class map to the set's reviewer of that
+class, and a moved reviewer to the move recomputed from those; a reviewer that
+was handed out naming no model reads only with the mark, in a run that keeps no
+class map. Every save runs the same checks on what it would write, and a change
+that would fail them is refused, naming where, with the file already there left
+as it stands.
 
 What is not compared: the intent-auditor's verdict, and the plan-review stage's
 two reviewers of an automatic plan, are handed out with no comparison of models.

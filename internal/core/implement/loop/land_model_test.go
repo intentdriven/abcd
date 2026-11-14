@@ -147,10 +147,10 @@ func landsWithModel(t *testing.T, f *landFixture, from, trailer string) {
 // reports, and the run log says so.
 func TestALandingReadsACorrectedReceiptsModelAgain(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.model = "claude-test-5"
+	f.model = "claude-mythos-5"
 	f.validatedOnce(t)
 	setModel(t, f, "", nil, false)
-	landsWithModel(t, f, "from its file", "Assisted-by: Claude:claude-test-5")
+	landsWithModel(t, f, "from its file", "Assisted-by: Claude:claude-mythos-5")
 }
 
 // TestALandingTakesTheModelOfTheRouteThatRanIt: a receipt a runner's
@@ -167,10 +167,10 @@ func TestALandingTakesTheModelOfTheRouteThatRanIt(t *testing.T) {
 // corrected model, as the refusal's remedy says it will.
 func TestALandingReadsAnUnnameableModelAgain(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.model = "claude-test-5"
+	f.model = "claude-mythos-5"
 	f.validatedOnce(t)
 	setModel(t, f, "unprefixed-model", nil, false)
-	landsWithModel(t, f, "from its file", "Assisted-by: Claude:claude-test-5")
+	landsWithModel(t, f, "from its file", "Assisted-by: Claude:claude-mythos-5")
 }
 
 // TestAFixBriefAsksForTheModel: a fix round's implementer writes a receipt

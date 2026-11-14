@@ -87,8 +87,8 @@ func reviewerReturn(verdict string) string {
 }
 
 // testReviewerModelLine is the model line a test reviewer's return names: a
-// model other than the fixtures' writer, a-model (goodReceipt).
-const testReviewerModelLine = ReviewerModelPrefix + " test-reviewer-model\n\n"
+// model other than the fixtures' writer, grok-test-1 (goodReceipt).
+const testReviewerModelLine = ReviewerModelPrefix + " kimi-test-1\n\n"
 
 var provenanceRe = regexp.MustCompile(`(?m)^- (rubric_hash|prompt_hash): (sha256:[0-9a-f]{64})$`)
 
@@ -409,7 +409,7 @@ func fixed(t *testing.T, repo *gittest.Repo, runID string, stages Stages, report
 		}
 	}
 	rc := LaneReceipt{SchemaVersion: ReceiptSchemaVersion, RunID: runID, Lane: l.ID, Branch: l.Branch, Commits: commits,
-		DefinitionOfDone: &DoDRun{Command: "make check", ExitCode: zero(), Output: rel + "/" + DoDFileName}, Report: rel + "/" + ReportFileName, Model: "a-model"}
+		DefinitionOfDone: &DoDRun{Command: "make check", ExitCode: zero(), Output: rel + "/" + DoDFileName}, Report: rel + "/" + ReportFileName, Model: "grok-test-1"}
 	data, _ := json.Marshal(rc)
 	path := filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt))
 	if err := os.WriteFile(path, data, 0o600); err != nil {
