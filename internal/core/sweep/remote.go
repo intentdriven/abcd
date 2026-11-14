@@ -281,7 +281,7 @@ func (rj *remoteJudge) forge(args ...string) (string, error) {
 func (rj *remoteJudge) askForge() {
 	out, err := rj.forge("pr", "list", "--state", "open", "--limit", strconv.Itoa(openListLimit), "--json", "number,headRefName,state")
 	if err != nil {
-		rj.openUnread = "the forge could not be asked: " + firstLine(err.Error())
+		rj.openUnread = "the forge could not be asked: " + answerText(err)
 	} else if open, n, perr := openByBranch(out); perr != nil {
 		rj.openUnread = "the forge's listing of open pull requests does not parse"
 	} else if n >= openListLimit {
@@ -469,7 +469,7 @@ func (rj *remoteJudge) delete(b remoteBranch, head string, headFail error, row *
 	}
 	switch {
 	case headFail != nil:
-		return held("origin's default branch could not be asked (" + firstLine(headFail.Error()) + "), so nothing on origin is deleted")
+		return held("origin's default branch could not be asked (" + answerText(headFail) + "), so nothing on origin is deleted")
 	case b.name == head:
 		return held("it is origin's default branch", Evidence{Kind: KindRemote, Strength: Proven, Detail: "origin's default branch"})
 	case head != rj.defName:
@@ -485,7 +485,7 @@ func (rj *remoteJudge) delete(b remoteBranch, head string, headFail error, row *
 	prs, err := rj.forge("pr", "list", "--head", b.name, "--state", "all", "--limit", strconv.Itoa(proofPRLimit),
 		"--json", "number,headRefName,headRefOid,baseRefName,isCrossRepository,state")
 	if err != nil {
-		return held("the forge could not be asked again whether a pull request is open on it (" + firstLine(err.Error()) + ")")
+		return held("the forge could not be asked again whether a pull request is open on it (" + answerText(err) + ")")
 	}
 	open, err := openPullRequests(prs, b.name)
 	if err != nil {
@@ -502,7 +502,7 @@ func (rj *remoteJudge) delete(b remoteBranch, head string, headFail error, row *
 	tip, found, err := lsRemoteTipContext(ctx, rj.root, claim.Remote, b.name)
 	switch {
 	case err != nil:
-		return held("origin's tip of it could not be read (" + err.Error() + ")")
+		return held("origin's tip of it could not be read (" + answerText(err) + ")")
 	case !found:
 		return held("origin no longer holds it", Evidence{Kind: KindRemote, Strength: Proven, Detail: "not on origin"})
 	case tip != b.tip:
@@ -535,6 +535,14 @@ func (rj *remoteJudge) delete(b remoteBranch, head string, headFail error, row *
 	}
 	row.Reason = clean("the delete on origin failed, so the branch is kept: " + why)
 	return errors.New(clean("sweep: the delete of " + b.name + " on origin failed: " + why))
+}
+
+// answerText is the first line of an error origin or the forge gave, for a
+// row's reason: credentials a URL in it carries are scrubbed first, before
+// the cut, so a cut across a URL cannot leave part of one behind, and the
+// row's own pass (clean) then redacts the home and masks control bytes.
+func answerText(err error) string {
+	return firstLine(gitutil.ScrubURLCredentials(err.Error()))
 }
 
 // remoteDeleteArgs is the one push a delete makes: an empty ref pushed to ref

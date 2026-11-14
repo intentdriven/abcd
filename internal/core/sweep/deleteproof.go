@@ -452,7 +452,9 @@ func lsRemoteTipContext(ctx context.Context, dir, remote, branch string) (string
 	ref := "refs/heads/" + branch
 	out, err := gitutil.RunLimitedNetContext(ctx, dir, proofListCap, "ls-remote", "--", remote, ref)
 	if err != nil {
-		return "", false, errors.New(firstLine(err.Error()))
+		// origin's answer is scrubbed of the credentials a URL in it carries
+		// before it is kept, and before the cut to its first line.
+		return "", false, errors.New(firstLine(gitutil.ScrubURLCredentials(err.Error())))
 	}
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
 		sha, name, ok := strings.Cut(line, "\t")

@@ -404,3 +404,26 @@ func TestTheDeleteGoesThroughThePushTheRepositorysOwnHooksSee(t *testing.T) {
 		t.Fatal("origin no longer holds feat")
 	}
 }
+
+// TestOriginsAnswerIsScrubbedBeforeItIsShown: when origin's URL carries a
+// user and a password and the last check's ls-remote fails, the row's reason
+// and the tip reader's error name neither.
+func TestOriginsAnswerIsScrubbedBeforeItIsShown(t *testing.T) {
+	repo, _ := originRepo(t)
+	tip := mergedOnOrigin(repo, "feat", "feat.txt")
+	url := "file://" + filepath.Join(t.TempDir(), "https://user:s3cret@example.invalid/none.git")
+	repo.Git("remote", "set-url", "origin", url)
+
+	_, _, err := lsRemoteTipContext(context.Background(), repo.Root(), "origin", "feat")
+	if err == nil || strings.Contains(err.Error(), "s3cret") || strings.Contains(err.Error(), "user:") {
+		t.Fatalf("the tip reader's error: %v; want a failure naming neither the user nor the password", err)
+	}
+	res := sweepRemoteOK(t, repo, remoteOpts(&fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}), true)
+	r := remoteRowFor(t, res, "feat")
+	if r.Outcome != OutcomeKept || !strings.Contains(r.Reason, "held at the last check before the delete") {
+		t.Fatalf("%+v; want it kept at the last check", r)
+	}
+	if strings.Contains(r.Reason, "s3cret") || strings.Contains(r.Reason, "user:") {
+		t.Fatalf("the row's reason names origin's user or password: %q", r.Reason)
+	}
+}
