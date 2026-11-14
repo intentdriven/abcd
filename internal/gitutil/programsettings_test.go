@@ -2,7 +2,6 @@ package gitutil
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -17,17 +16,13 @@ import (
 // check asked. MergeDriverOverrides pins it off, and the command-line judge
 // takes a merge-tree as starting nothing only when it carries that pin too.
 func TestAReadOnlyMergeRunsNoFilterUnderRenormalize(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not on PATH")
-	}
 	repo := t.TempDir()
 	marker := filepath.Join(t.TempDir(), "ran")
+	// The isolated runner itself: ExecPins and no global or system settings.
 	git := func(args ...string) {
 		t.Helper()
-		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.invalid", "-C", repo}, args...)...)
-		cmd.Env = gitEnv()
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v: %s", args, err, out)
+		if _, err := Run(repo, append([]string{"-c", "user.name=t", "-c", "user.email=t@example.invalid"}, args...)...); err != nil {
+			t.Fatalf("git %v: %v", args, err)
 		}
 	}
 	write := func(body string) {
@@ -117,16 +112,11 @@ func TestALogOrShowWhoseFormatIsNotFixedAsks(t *testing.T) {
 // for that reason (remoteid.go), and this fails when the table gains a
 // subcommand git does not ship.
 func TestNoAliasStandsForASubcommandAbcdRuns(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not on PATH")
-	}
-	cmd := exec.Command("git", "--list-cmds=main,nohelpers")
-	cmd.Env = gitEnv()
-	out, err := cmd.Output()
+	out, err := Run(t.TempDir(), "--list-cmds=main,nohelpers")
 	if err != nil {
 		t.Fatalf("git --list-cmds: %v", err)
 	}
-	own := strings.Fields(string(out))
+	own := strings.Fields(out)
 	var verbs []string
 	for v := range startsNothing {
 		verbs = append(verbs, v)
