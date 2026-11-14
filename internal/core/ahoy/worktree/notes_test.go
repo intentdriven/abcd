@@ -291,3 +291,49 @@ func TestPruneStillJudgesWhatIsNotTheBuildInTheTiersBin(t *testing.T) {
 		}
 	})
 }
+
+// TestNotesDirReadsOrMakesTheLanesArchive: without create, an archive not yet
+// made is absent and nothing is made; with create, each level is made the
+// caller's alone and the lane's directory answered; a symlink standing in for
+// the lane's level refuses either way, and a Lane that is not LaneFor's answer
+// is refused before anything is read.
+func TestNotesDirReadsOrMakesTheLanesArchive(t *testing.T) {
+	repo, home := repoWithCommit(t)
+	l, err := worktree.LaneFor(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := abcdhome.Path(home, "notes", l.RootSHA)
+	if dir, present, err := l.NotesDir(false); err != nil || present || dir != want {
+		t.Fatalf("NotesDir(false) before the archive exists = %q, %v, %v; want %q, absent", dir, present, err, want)
+	}
+	if exists(abcdhome.Path(home)) {
+		t.Fatal("a read of the archive makes nothing")
+	}
+	dir, present, err := l.NotesDir(true)
+	if err != nil || !present || dir != want {
+		t.Fatalf("NotesDir(true) = %q, %v, %v; want %q, present", dir, present, err, want)
+	}
+	for _, level := range []string{abcdhome.Path(home), abcdhome.Path(home, "notes"), want} {
+		if fi, err := os.Lstat(level); err != nil || !fi.IsDir() || fi.Mode().Perm() != 0o700 {
+			t.Fatalf("%s is a 0700 directory: %v %v", level, fi, err)
+		}
+	}
+	if _, present, err := l.NotesDir(false); err != nil || !present {
+		t.Fatalf("NotesDir(false) once made = %v, %v; want present", present, err)
+	}
+
+	if err := os.Remove(want); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), want); err != nil {
+		t.Fatal(err)
+	}
+	for _, create := range []bool{false, true} {
+		if _, _, err := l.NotesDir(create); err == nil || strings.Contains(err.Error(), home) {
+			t.Fatalf("NotesDir(%v) over a symlinked level = %v; want a home-redacted refusal", create, err)
+		}
+	}
+	bad := worktree.Lane{Home: home, RootSHA: l.RootSHA, Rel: l.Rel, Dir: filepath.Join(home, "elsewhere")}
+	mustRefusal(t, func() error { _, _, err := bad.NotesDir(true); return err }())
+}
