@@ -94,32 +94,47 @@ func open(home string, create bool) (*os.Root, error) {
 // not, or that does not parse as the marker its name says, is skipped: it
 // names no session this package can vouch for.
 func readAll(dir *os.Root, home string) ([]found, error) {
+	out, _, err := readAllCounted(dir, home)
+	return out, err
+}
+
+// readAllCounted is readAll, saying also how many files named as markers (ending in
+// .json) it passed over: not a regular file, failing a guard or its read, or not
+// parsing as the marker its name says.
+func readAllCounted(dir *os.Root, home string) ([]found, int, error) {
 	f, err := dir.Open(".")
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	entries, err := f.ReadDir(-1)
 	f.Close()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	var out []found
+	passed := 0
 	for _, e := range entries {
 		leaf := e.Name()
-		if !e.Type().IsRegular() || !strings.HasSuffix(leaf, ".json") {
+		if !strings.HasSuffix(leaf, ".json") {
+			continue
+		}
+		if !e.Type().IsRegular() {
+			passed++
 			continue
 		}
 		raw, refusal, err := fsutil.ReadHomeDeclarationDenyingIn(dir, home, abcdhome.Rel(dirLeaf, leaf), maxMarkerBytes, 0)
 		if err != nil || refusal != fsutil.DeclarationOK {
+			passed++
 			continue
 		}
 		var m marker
 		if json.Unmarshal(raw, &m) != nil || m.SessionID+".json" != leaf {
+			passed++
 			continue
 		}
 		out = append(out, found{leaf, raw, m})
 	}
-	return out, nil
+	return out, passed, nil
 }
 
 // removeIfUnchanged removes f's file only when it still holds the bytes f was
@@ -187,27 +202,38 @@ func SessionOn(home string, host sessionname.Host) string {
 // ReadSessionOn is SessionOn for a caller that must know the difference: an error says
 // the markers cannot be read, and "" with none says no marker names host.
 func ReadSessionOn(home string, host sessionname.Host) (string, error) {
+	s, _, err := ReadSessionOnCounted(home, host)
+	return s, err
+}
+
+// ReadSessionOnCounted is ReadSessionOn, saying also how many marker files it passed
+// over: a file in the markers' folder named as a marker that is not a regular file,
+// fails a guard or its read, or does not parse as the marker its name says. Any of them
+// may be the marker of the session on host, so a caller that must not take a marker it
+// could not read for no session takes a count above zero as unsure. The count is of the
+// whole folder, the session found or not.
+func ReadSessionOnCounted(home string, host sessionname.Host) (session string, passed int, err error) {
 	cannot := func(err error) error {
 		return fmt.Errorf("the session markers in %s cannot be read: %w", abcdhome.Display(dirLeaf), err)
 	}
 	dir, err := open(home, false)
 	if err != nil {
-		return "", cannot(err)
+		return "", 0, cannot(err)
 	}
 	if dir == nil {
-		return "", nil
+		return "", 0, nil
 	}
 	defer dir.Close()
-	all, err := readAll(dir, home)
+	all, passed, err := readAllCounted(dir, home)
 	if err != nil {
-		return "", cannot(err)
+		return "", 0, cannot(err)
 	}
 	for _, f := range all {
 		if sessionname.SameHost(f.m.host(), host) {
-			return f.m.SessionID, nil
+			return f.m.SessionID, passed, nil
 		}
 	}
-	return "", nil
+	return "", passed, nil
 }
 
 // Session is one running session as its marker names it: its id and the

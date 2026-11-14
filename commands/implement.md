@@ -1092,9 +1092,15 @@ refusal, exit 2: settle it and take again, never step over it. Exit 3 while a st
 another driver's process is alive or a recorded driver cannot be judged, or when a peer has
 taken the work a stop released: back off. A run a person's stop halted waits for this take-over,
 also after the stop lifts: a new `abcd drain --drive` names it and passes over it. A take-over
-from a plain terminal records that terminal as the run's driver, and an `abcd drain --drive`
-started afterwards from the same terminal takes the run from it, with a line in the run's record
-saying so; one from another terminal, or beneath a session, waits on it as on any live driver.
+from a plain terminal records as the run's driver the nearest process above it that is not a
+shell or abcd; a terminal multiplexer, or a terminal program shared by several windows, is that
+one process for all of its panes and windows. An `abcd drain --drive` whose own nearest such
+process is the recorded driver takes the run from it, with a line in the run's record saying so,
+only when the recorded driver names no session, no process on the way up from the drive holds a
+session marker, every session marker could be read, and only shells run beneath that process
+besides the drive; in every other case it waits and says what kept it. A drive started through a
+program that stays as its parent, such as one that keeps the machine awake or a recorder, is not
+under the terminal by this rule and waits.
 A run halted by the first interrupt to a drive's own terminal is the one a later drive takes up,
 unless its lane is parked on its pull request, which waits for this take-over.
 

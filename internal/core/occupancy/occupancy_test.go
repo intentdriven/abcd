@@ -450,6 +450,46 @@ func TestReadingASessionTellsNoneFromUnreadable(t *testing.T) {
 	}
 }
 
+// TestACountedReadingNamesTheMarkersItPassedOver: in a folder that lists, a marker that
+// does not parse, one another account can write and one that is no regular file are each
+// counted as passed over, beside the session a readable marker names; ReadSessionOn over
+// the same folder still answers as before, and a folder holding only readable markers
+// counts none.
+func TestACountedReadingNamesTheMarkersItPassedOver(t *testing.T) {
+	home := t.TempDir()
+	tab := table(time.Now(), 801, 802)
+	for id, pid := range map[string]int{"a": 801, "b": 802} {
+		if err := Note(home, id, "/w", hostOf(tab, pid), tab); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if s, passed, err := ReadSessionOnCounted(home, hostOf(tab, 801)); s != "a" || passed != 0 || err != nil {
+		t.Fatalf("readable markers only: %q, %d, %v", s, passed, err)
+	}
+	if err := os.WriteFile(abcdhome.Path(home, dirLeaf, "c.json"), []byte("not a marker\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if s, passed, err := ReadSessionOnCounted(home, hostOf(tab, 801)); s != "a" || passed != 1 || err != nil {
+		t.Fatalf("one marker that does not parse: %q, %d, %v", s, passed, err)
+	}
+	if err := os.Chmod(abcdhome.Path(home, dirLeaf, "b.json"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(abcdhome.Path(home, dirLeaf, "d.json"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abcdhome.Path(home, dirLeaf, "notes.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, passed, err := ReadSessionOnCounted(home, hostOf(tab, 802))
+	if s != "" || passed != 3 || err != nil {
+		t.Fatalf("three passed over, the host's own among them: %q, %d, %v", s, passed, err)
+	}
+	if s, err := ReadSessionOn(home, hostOf(tab, 802)); s != "" || err != nil {
+		t.Fatalf("ReadSessionOn over the same folder: %q, %v", s, err)
+	}
+}
+
 // TestLiveNamesRunningSessionsAndWritesNothing: Live names each session whose
 // host still runs, with the checkout it started in, sorted by id; a session
 // whose host has ended is left out but keeps its marker (pruning is Note's);
