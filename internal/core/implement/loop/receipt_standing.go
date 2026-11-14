@@ -715,11 +715,14 @@ func (s State) collectedAt(repoRoot, path string) (int, string, string, bool) {
 // against it in the same write (resettleWriters), each one no longer another
 // model than every writer withdrawn and handed out again, or the lane handed
 // back as stuck where its round cannot be judged again. It reports whether it
-// changed the state.
-func answerCollected(repoRoot string, root *os.Root, st *State, i int, taken, digest string, route *runner.RouteRecord, now time.Time) (StepResult, bool, error) {
+// changed the state, and the hand-back it made, if any: the caller releases
+// the run's reservation for it only once the save that hands the lane back has
+// returned (releaseOnSaved), so a refused save leaves the reservation held.
+func answerCollected(repoRoot string, root *os.Root, st *State, i int, taken, digest string, route *runner.RouteRecord, now time.Time) (StepResult, *HandBack, bool, error) {
 	l := st.Lanes[i]
+	var handed *HandBack
 	if data, err := standingBytes(repoRoot, root, taken); err != nil || answerDigest(data) != digest {
-		return StepResult{}, false, refuse("receipt", "", l.ID,
+		return StepResult{}, nil, false, refuse("receipt", "", l.ID,
 			fmt.Sprintf("%s has changed since a step collected it, and %s went on from head %s", taken, l.ID, shortSHA(l.HeadSHA)),
 			"nothing was taken from it: restore the branch to that head if it has moved, and leave the file as it was collected")
 	}
@@ -744,11 +747,12 @@ func answerCollected(repoRoot string, root *os.Root, st *State, i int, taken, di
 				st.Record = append(st.Record, Entry{At: now, Lane: l.ID, Stage: string(StageValidate), Note: withdrawnNote(withdrawn, settled)})
 				if !settled && l.HandBack == nil && l.Stage != StageDone {
 					handBackLane(st, &l, *lateWriterHandBack(*st, l, withdrawn), "", now)
-					releaseOnHandBack(repoRoot, st, *l.HandBack, now)
+					hb := *l.HandBack
+					handed = &hb
 				}
 			}
 		}
 		st.Lanes[i] = l
 	}
-	return laneResult(*st, l, "", nil), changed, nil
+	return laneResult(*st, l, "", nil), handed, changed, nil
 }

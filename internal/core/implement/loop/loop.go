@@ -1512,14 +1512,22 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 	var res StepResult
 	var noted *runner.RouteRecord
 	renewNote := ""
+	// handed is the lane this hand-in hands back, and how: its reservation is
+	// released once the save has returned (releaseOnSaved), never inside it.
+	var handed *laneHandedBack
 	err := saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
+		handed = nil
 		i, k := st.findAwait(repoRoot, receipt)
 		if i < 0 {
 			if at, taken, digest, ok := st.collectedAt(repoRoot, receipt); ok {
 				var changed bool
+				var hb *HandBack
 				var err error
-				res, changed, err = answerCollected(repoRoot, root, st, at, taken, digest, route, now)
+				res, hb, changed, err = answerCollected(repoRoot, root, st, at, taken, digest, route, now)
+				if hb != nil && changed && err == nil {
+					handed = &laneHandedBack{lane: st.Lanes[at].ID, hb: *hb}
+				}
 				return changed, err
 			}
 			return false, unknownReceipt(*st)
@@ -1594,7 +1602,7 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 			// The lane's own receipt handed the work back: the verifier has
 			// discarded it, and the lane ends here, before the validators.
 			handBackLane(st, &lane, *lane.HandBack, "", now)
-			releaseOnHandBack(repoRoot, st, *lane.HandBack, now)
+			handed = &laneHandedBack{lane: lane.ID, hb: *lane.HandBack}
 			st.Lanes[i] = lane
 			st.UpdatedAt = now
 			res = laneResult(*st, lane, "", nil)
@@ -1641,7 +1649,39 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 	if err == nil && renewNote != "" {
 		res.Next += "; " + renewNote
 	}
+	if err == nil && handed != nil {
+		if rerr := releaseOnSaved(repoRoot, runID, o, *handed); rerr != nil {
+			res.Next = joinNext(res.Next, "the lane was handed back, and the release of its reservation could not be recorded: "+
+				termsafe.Sanitize(fsutil.RedactHome(rerr.Error())))
+		}
+	}
 	return res, err
+}
+
+// laneHandedBack is a lane a save handed back, and the hand-back.
+type laneHandedBack struct {
+	lane string
+	hb   HandBack
+}
+
+// releaseOnSaved releases the run's reservation for a lane a save has just
+// handed back (releaseOnHandBack), in a save of its own that records the
+// release. It is called only once the save that handed the lane back has
+// returned without error, so a save refused or failed leaves the reservation
+// held. A run that holds no reservation, or whose lane no longer stands handed
+// back, is left as it is.
+func releaseOnSaved(repoRoot, runID string, o Options, h laneHandedBack) error {
+	return saveRun(repoRoot, runID, o, func(_ *os.Root, st *State) (bool, error) {
+		if st.ReservedAt == nil || st.Issue() == "" {
+			return false, nil
+		}
+		at := slices.IndexFunc(st.Lanes, func(l Lane) bool { return l.ID == h.lane })
+		if at < 0 || st.Lanes[at].HandBack == nil {
+			return false, nil
+		}
+		releaseOnHandBack(repoRoot, st, h.hb, o.now())
+		return true, nil
+	})
 }
 
 // laneResult reports where a lane stands after a call: the await this call

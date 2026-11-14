@@ -1858,7 +1858,7 @@ func storeState(root *os.Root, st State, right wholeSave) error {
 func stateData(st State) ([]byte, error) {
 	m := st.masked()
 	m.keepLatestFindings()
-	if err := modelsSavable(m); err != nil {
+	if err := modelsCheck(m); err != nil {
 		return nil, err
 	}
 	for {
@@ -1872,6 +1872,11 @@ func stateData(st State) ([]byte, error) {
 		}
 	}
 }
+
+// modelsCheck is the models check every save makes (modelsSavable); a test
+// stands in for it to refuse a save the loop's own changes never leave
+// unreadable.
+var modelsCheck = modelsSavable
 
 // modelsSavable refuses a save of a state whose stored models its own read
 // would refuse: the review set's checks (ReviewSet.written) and the
