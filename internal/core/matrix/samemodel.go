@@ -179,15 +179,17 @@ func readSegment(seg string) (readName, bool) {
 // that opens them, so `gpt51` and `gpt-5-1` carry the same one. The run ends
 // at the first token that is not such a number: a letter token (`v`, `p`, `b`,
 // `latest`), a number of four or more digits (a date stamp or a snapshot tag),
-// and a number written straight before a letter (a size or a tag: `1m`,
-// `200k`, `70b`, `4o`). So a number written before the family is never the
-// version (`us-east-1`, `eastus2`, `claude-3-5-sonnet`), nor one after a
-// revision tag (`-v1:0`, `-v2`) or a vendor's `v3p1`, nor any part of a date
-// after its year (`-2026-10-14`).
+// a number written straight before a letter (a size or a tag: `1m`,
+// `200k`, `70b`, `4o`), and a number of two or three digits that starts with
+// `0` (a revision such as `-001`; a lone `0`, as in `gpt-4-0`, stays). So a
+// number written before the family is never the version (`us-east-1`,
+// `eastus2`, `claude-3-5-sonnet`), nor one after a revision tag (`-v1:0`,
+// `-v2`) or a vendor's `v3p1`, nor any part of a date after its year
+// (`-2026-10-14`), and `claude-opus-5-5-001` and `-002` carry one version.
 func versionAfter(toks []nameToken) string {
 	v := ""
 	for _, t := range toks {
-		if !isDigits(t.text) || len(t.text) > maxVersionDigits || t.glued {
+		if !isDigits(t.text) || len(t.text) > maxVersionDigits || t.glued || len(t.text) > 1 && t.text[0] == '0' {
 			break
 		}
 		v += t.text

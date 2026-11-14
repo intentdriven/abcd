@@ -647,10 +647,15 @@ and counts as the writer's own model, and a writer or a class whose name is
 unknown hands the lane back. The name's version is the run of numbers of at
 most three digits written straight after its family, in that segment, its
 digits in order; where the family is written with its digit, as in `o3`, that
-digit is the version's first. The run ends at the first token that is not such
+digit is the version's first, and a family written twice in the segment it is
+read from carries no version. The run ends at the first token that is not such
 a number: a letter such as `v`, `p`, `b` or `latest`, a number of four or more
-digits, or a number written straight before a letter, a size or a tag such as
-`1m`, `70b` or `4o`. So a region number before the family (`us-east-1`,
+digits, a number written straight before a letter, a size or a tag such as
+`1m`, `70b` or `4o`, or a number of two or three digits that starts with `0`,
+so `claude-opus-5-5-001` and `claude-opus-5-5-002` are the same model while
+`gpt-4-0` keeps its single `0`. A number glued to a letter is no version, so
+`gpt-4o` is the same model as `gpt-5` and any other gpt, and a class map of
+such names hands the review back. So a region number before the family (`us-east-1`,
 `eastus2`, `europe-west4`) is never part of the version, nor a date after its
 year (`claude-opus-5-5-2026-10-14` and `claude-opus-5-5-2026-11-13` are the
 same model), nor a revision tag (`-v1:0`, `-v2` and `-v3`), and a name with no
