@@ -310,6 +310,7 @@ func hookedCommand(ctx context.Context, dir string, network bool, args []string)
 	full := []string{"-c", "core.quotePath=false"}
 	if network {
 		full = append(full, "-c", "http.lowSpeedLimit="+netLowSpeedLimit, "-c", "http.lowSpeedTime="+netLowSpeedTime)
+		full = append(full, fetchRecursionOff(args)...)
 	}
 	full = append(append(full, "-C", dir), args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
@@ -327,6 +328,25 @@ func hookedCommand(ctx context.Context, dir string, network bool, args []string)
 		}
 	}
 	return cmd
+}
+
+// fetchRecursionOff is what a fetch abcd makes through a networked runner
+// carries on its command line, before the subcommand: submodule recursion
+// off (fetch.recurseSubmodules=false, submodule.recurse=false). git's default
+// for a fetch is on demand: a fetch that brings a changed submodule commit
+// runs `git fetch` inside each checked-out submodule, under that submodule's
+// own settings. With both off, git fetches the refs abcd names in the
+// repository it runs in and goes into no submodule, whatever any scope or the
+// tree's .gitmodules sets (command-line settings are read last). A person's
+// own fetch, pull and checkout read their settings as before. Any other
+// subcommand carries nothing: a push reads push.recurseSubmodules as the
+// person set it. A hook the fetch runs sees the two settings, as it sees the
+// low-speed bounds, through GIT_CONFIG_PARAMETERS.
+func fetchRecursionOff(args []string) []string {
+	if Subcommand(args) != "fetch" {
+		return nil
+	}
+	return []string{"-c", "fetch.recurseSubmodules=false", "-c", "submodule.recurse=false"}
 }
 
 // NetAskContext runs one git command that reads and writes nothing (a

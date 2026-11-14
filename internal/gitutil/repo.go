@@ -842,7 +842,11 @@ func runLimitedOverflow(ctx context.Context, root string, maxBytes int, network 
 			return "", false, err
 		}
 	}
-	cmd := isolatedGitContextAsking(ctx, root, !network, args)
+	run := args
+	if network {
+		run = append(fetchRecursionOff(args), args...)
+	}
+	cmd := isolatedGitContextAsking(ctx, root, !network, run)
 	if network {
 		cmd.Env = netEnv(cmd.Env)
 	}
