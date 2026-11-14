@@ -25,7 +25,9 @@ production_mode: hand-written
 
 ## What It Looks Like
 
-The mock-ups are the lab's prototype drawing one recorded fixture run (lab-261114145658-67e1f9b, probe p6-output-renders-2). The words and the short forms are illustrations. Which of the two running designs is built is an open question below.
+The mock-ups are the lab's prototype drawing one recorded fixture run (lab-261114145658-67e1f9b, probe p6-output-renders-2). The words and the short forms are illustrations, and the rendering is the lab's. Which of the two running designs is built is an open question below.
+
+The state line in them follows the lab's prototype, which read `stalled` after 30 minutes of one wait. itd-2611141610197753 sets that bound to the stuck bound's minutes, 60 as bundled, and says which waits have a named end: an outage has none, so it reads `waiting` up to the bound and `stalled` after it. At the moment drawn, two hours and three quarters into an outage, the line is the same under both rules. What differs is earlier in the run: between 30 and 60 minutes into the outage the lab's prototype says `stalled` and the planned rule says `waiting`.
 
 The start screen, the same at 50 and 80 columns:
 
@@ -180,7 +182,7 @@ We expect a person to learn the drive's state from the screen without scrolling,
 ## Scope Conditions
 
 - A terminal of 50 columns or more. The lab drew 50, 80 and 120 and nothing narrower.
-- A terminal that honours the three control sequences the prototype uses to redraw a region in place. Anywhere else (output that is not a terminal, `NO_COLOR`, `TERM=dumb`) the drive writes plain lines.
+- A terminal that honours the three control sequences the prototype uses to redraw a region in place. Where output is not a terminal, or `TERM=dumb`, the drive writes plain lines. `NO_COLOR` switches off colour and nothing else: the region is still redrawn.
 - The state line is the one itd-2611141610197753 defines and stores. This intent draws it and defines none of its words or rules.
 - The lab drew one recorded fixture run of three lanes and a set of hostile titles. It did not wire the renderers into `abcd drain --drive`, redraw on a resize or on a timer, or put the drive's two output streams through one writer; each is part of building this.
 - Without keys, "one step away" means `abcd implement status` in a second terminal and the log's path. Whether the drive reads keys is an open question below.
@@ -201,8 +203,8 @@ We expect a person to learn the drive's state from the screen without scrolling,
   - Evidence: lab-261114145658-67e1f9b, F-13 and F-20.
 - **Given** output that is a terminal, **when** the drive runs, **then** each event is one line no wider than the window, the region below is redrawn in place and its first live line is the state line of itd-2611141610197753, and no line wraps at 50, 80 or 120 columns.
   - Evidence: lab-261114145658-67e1f9b, F-13.
-- **Given** output that is not a terminal, or `NO_COLOR`, or `TERM=dumb`, **when** the drive runs, **then** it writes plain lines with no control code, whole ids, a `state:` line when the state changes, and nothing conveyed by colour alone. **Given** an issue title carrying control codes, **then** it is masked before it is measured or drawn.
-  - Evidence: lab-261114145658-67e1f9b, F-13; itd-2610030810370060, criteria B3, B4 and B7.
+- **Given** output that is not a terminal, or `TERM=dumb`, **when** the drive runs, **then** it writes plain lines with no control code, whole ids and a `state:` line when the state changes. **Given** `NO_COLOR` at a terminal, **then** the output carries no colour code and the region is still redrawn in place. **Given** any output, **then** nothing is conveyed by colour alone. **Given** an issue title carrying control codes, **then** it is masked before it is measured or drawn.
+  - Evidence: lab-261114145658-67e1f9b, F-13; itd-2610030810370060, criteria B3, B4 and B7. The lab's brief grouped `NO_COLOR` with the plain cases; the criterion it cites asks only for no colour codes, so this criterion keeps the redrawn region under `NO_COLOR`.
 - **Given** an event a person may have to act on, **when** the drive reports it, **then** its full sentence is in the log, the log's path is shown once at the start, the full sentence is one step away at the terminal, and no line shown to a person quotes a command meant for a host session.
   - Evidence: lab-261114145658-67e1f9b, F-13 (its condition) and F-21.
 
