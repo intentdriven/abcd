@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/reservation.go"
 remedy: "Once the drain-many-accounts change has landed in the same file, export claim's halfThrough and renewalTerm, have the loop call them and delete its own copies"
-resolution: "claim now exports HalfThrough and RenewalTerm, and the implement loop's renewals call them in place of the copies it kept in reservation.go, which are deleted. TestTheLoopTakesTheRenewalRuleFromClaim fails while any loop source reckons a reservation's term itself, and TestTheRenewalRule holds the two exported rules."
+resolution: "claim now exports HalfThrough and RenewalTerm, and the implement loop calls them (RenewalTerm at its four renewal sites, HalfThrough in renewalDue) in place of the copies it kept in reservation.go, which are deleted. TestTheLoopTakesTheRenewalRuleFromClaim fails while a non-test loop source works out a reservation's term from EffectiveExpiry and ClaimedAt in the spellings TestTermReckoningsSeesEachSpelling names, and TestTheRenewalRule holds the two exported rules."
 impact: fix
 resolved_by:
   commit: "33e5321a88fb5541605cf27f7ce81cd035f554e9"
