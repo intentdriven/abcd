@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -27,20 +26,33 @@ type pullRequest struct {
 // fakeForge answers `gh pr list` from prs, filtered by the call's --state and
 // --head as gh filters them; a per-branch listing (--head, the last check
 // before a delete) answers from recheck instead once it is set.
+//
+// onRecheck, when set, runs at the first per-branch listing: the moment the
+// last check begins, before it reads the repository's own state again.
 type fakeForge struct {
 	prs, recheck []pullRequest
 	calls        [][]string
+	onRecheck    func()
 }
 
 func (f *fakeForge) gh(_ string, args ...string) (string, error) {
 	f.calls = append(f.calls, args)
 	value := func(flag string) string {
-		if i := slices.Index(args, flag); i >= 0 && i+1 < len(args) {
-			return args[i+1]
+		for i, a := range args {
+			if v, ok := strings.CutPrefix(a, flag+"="); ok {
+				return v
+			}
+			if a == flag && i+1 < len(args) {
+				return args[i+1]
+			}
 		}
 		return ""
 	}
 	state, head := value("--state"), value("--head")
+	if head != "" && f.onRecheck != nil {
+		f.onRecheck()
+		f.onRecheck = nil
+	}
 	list := f.prs
 	if head != "" && f.recheck != nil {
 		list = f.recheck
@@ -445,6 +457,30 @@ func TestADefaultBranchThatMovedOnOriginHoldsEveryDelete(t *testing.T) {
 	r := remoteRowFor(t, res, "feat")
 	if r.Outcome != OutcomeKept || !strings.Contains(r.Reason, "fetch origin and run the sweep again") {
 		t.Fatalf("%+v; want it held until a fetch", r)
+	}
+	if onOrigin(repo, origin, "feat") != tip {
+		t.Fatal("origin no longer holds feat")
+	}
+}
+
+// TestAWorktreeThatBeginsTrackingTheBranchBeforeTheDeleteHoldsIt: a worktree
+// that starts tracking the branch under another local name after the
+// judgement, with a process working in it, is seen at the last check, and the
+// branch is kept, naming that process.
+func TestAWorktreeThatBeginsTrackingTheBranchBeforeTheDeleteHoldsIt(t *testing.T) {
+	repo, origin := originRepo(t)
+	tip := mergedOnOrigin(repo, "feat", "feat.txt")
+	wt := filepath.Join(t.TempDir(), "late")
+	f := &fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}
+	f.onRecheck = func() { repo.Git("worktree", "add", "-q", "--track", "-b", "late-feat", wt, "origin/feat") }
+	o := remoteOpts(f)
+	o.Probe.Processes = cwds(wt)
+
+	res := sweepRemoteOK(t, repo, o, true)
+	r := remoteRowFor(t, res, "feat")
+	if r.Action != ActionDelete || r.Outcome != OutcomeKept || !strings.Contains(r.Reason, "held at the last check before the delete") ||
+		!strings.Contains(r.Reason, "in use: process 100 works in it") {
+		t.Fatalf("%+v; want it judged deletable, then held at the last check by the new worktree's process", r)
 	}
 	if onOrigin(repo, origin, "feat") != tip {
 		t.Fatal("origin no longer holds feat")

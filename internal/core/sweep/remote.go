@@ -31,9 +31,9 @@ package sweep
 // Under apply, each delete is preceded by a last check of everything that
 // could hold the branch, made again: origin's own default branch and its tip
 // (asked of origin, once per run, and required to be the very branch and
-// commit the judgement read), the worktrees and the guard's checks, a fresh
-// liveness probe, the forge's pull requests from that branch, and origin's
-// tip of it now. Only then is it deleted, by one push of an empty ref with a
+// commit the judgement read), the forge's pull requests from that branch,
+// the worktrees, the local branches' upstreams and the guard's checks with a
+// fresh liveness probe, and origin's tip of it now. Only then is it deleted, by one push of an empty ref with a
 // lease on the exact tip that was judged (the reservation sweep's pattern),
 // so a branch someone pushed to meanwhile survives. The push runs through
 // gitutil.Net, so the repository's own pre-push hook sees it, as it sees the
@@ -207,16 +207,6 @@ func newRemoteJudge(ctx context.Context, root string, o Options) (*remoteJudge, 
 	if err != nil {
 		return nil, nil, fmt.Errorf("listing origin's branches: %w", err)
 	}
-	locals, err := listRefs(ctx, root, "refs/heads/")
-	if err != nil {
-		return nil, nil, fmt.Errorf("listing the local branches: %w", err)
-	}
-	rj.upstreams = map[string]string{}
-	for _, l := range locals {
-		if l.upstream != "" {
-			rj.upstreams[l.ref] = l.upstream
-		}
-	}
 	var branches []remoteBranch
 	for _, r := range refs {
 		if r.symref != "" {
@@ -236,8 +226,10 @@ func newRemoteJudge(ctx context.Context, root string, o Options) (*remoteJudge, 
 	return rj, branches, nil
 }
 
-// readLocal reads the worktrees and what a stopped rebase or bisect holds,
-// each time anew: the last check before a delete reads them again.
+// readLocal reads the worktrees, what a stopped rebase or bisect holds and
+// each local branch's upstream, each time anew: the last check before a
+// delete reads them again, so a worktree that began tracking the branch under
+// another name since the judgement is judged for liveness too.
 func (rj *remoteJudge) readLocal() error {
 	ctx, cancel := context.WithTimeout(rj.ctx, gitReadTimeout)
 	defer cancel()
@@ -249,7 +241,17 @@ func (rj *remoteJudge) readLocal() error {
 	if err != nil {
 		return fmt.Errorf("reading the checkout's common directory: %w", err)
 	}
-	rj.wts, rj.held = wts, gitutil.HeldBranches(common)
+	locals, err := listRefs(rj.ctx, rj.root, "refs/heads/")
+	if err != nil {
+		return fmt.Errorf("listing the local branches: %w", err)
+	}
+	upstreams := map[string]string{}
+	for _, l := range locals {
+		if l.upstream != "" {
+			upstreams[l.ref] = l.upstream
+		}
+	}
+	rj.wts, rj.held, rj.upstreams = wts, gitutil.HeldBranches(common), upstreams
 	return nil
 }
 
@@ -492,10 +494,6 @@ func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail err
 	case !strings.HasPrefix(b.ref, "refs/heads/") || neverDeleted(b.name, head) != "" || !gitutil.IsFullSHA(b.tip):
 		return held("it is not a branch the sweep deletes")
 	}
-	if err := rj.readLocal(); err != nil {
-		return held(err.Error())
-	}
-	rj.live.probe = newProbe(rj.ctx, rj.o.Probe)
 	prs, err := rj.forge("pr", "list", "--head", b.name, "--state", "all", "--limit", strconv.Itoa(proofPRLimit),
 		"--json", "number,headRefName,headRefOid,baseRefName,isCrossRepository,state")
 	if err != nil {
@@ -508,6 +506,13 @@ func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail err
 	if merged, _ := store.Merged(rj.root, rj.def, b.tracking, b.tip, []byte(prs)); !merged {
 		return held("it no longer reads as merged into " + displayRef(rj.def))
 	}
+	// The repository's own state is read last, closest to the push: the
+	// worktrees, their upstreams and the guard's checks, and a fresh process
+	// table.
+	if err := rj.readLocal(); err != nil {
+		return held(err.Error())
+	}
+	rj.live.probe = newProbe(rj.ctx, rj.o.Probe)
 	if ev := rj.holds(b, map[string][]string{b.name: open}, ""); len(ev) > 0 {
 		return held(details(ev), ev...)
 	}
