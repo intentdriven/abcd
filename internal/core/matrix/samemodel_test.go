@@ -89,6 +89,10 @@ func TestOtherModel(t *testing.T) {
 		{"two gemini versions", "gemini-2.5-pro", "gemini-2.0-flash", true},
 		{"two llama versions at one size", "llama-3.1-70b", "llama-3.3-70b", true},
 		{"two deepseek versions", "deepseek-v3", "deepseek-v2", true},
+		{"a local devstral against a dated one", "local/devstral", "devstral-small-2505", false},
+		{"two of Mistral's families", "local/devstral", "codestral-2501", true},
+		{"magistral against mistral", "magistral-medium-1", "mistral-medium-3", true},
+		{"ministral against pixtral", "ministral-8b", "pixtral-12b", true},
 		{"the bundled top against the default", "anthropic/claude-opus-5-5", "anthropic/claude-sonnet-5-5", true},
 		{"the bundled research class against the small", "anthropic/claude-fable-5", "anthropic/claude-haiku-4-5", true},
 	} {

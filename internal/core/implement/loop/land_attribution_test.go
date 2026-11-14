@@ -20,13 +20,13 @@ import (
 // lane's receipt reported, in the vendor form the attribution gate takes.
 func TestTheRecordsCommitTrailerIsTheReceiptsModel(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.model = "claude-test-7[1m]"
+	f.model = "claude-mythos-7[1m]"
 	f.validatedOnce(t)
 	f.step(t)
 	f.step(t)
 	l := currentLane(t, f.repo, f.runID)
 	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
-	if !slices.Contains(strings.Split(msg, "\n"), "Assisted-by: Claude:claude-test-7[1m]") || strings.Contains(msg, "Assisted-by: None") {
+	if !slices.Contains(strings.Split(msg, "\n"), "Assisted-by: Claude:claude-mythos-7[1m]") || strings.Contains(msg, "Assisted-by: None") {
 		t.Fatalf("the records commit discloses the receipt's model, never None:\n%s", msg)
 	}
 }

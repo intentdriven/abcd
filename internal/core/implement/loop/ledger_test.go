@@ -26,7 +26,7 @@ func TestARoutedRoleIsListedAgainstItsRunLaneAndAwait(t *testing.T) {
 	}
 	e := got.Entries[0]
 	if e.Role != RoleImplementer || e.Runner != runner.Claude || e.Run != id || e.Lane == "" || e.Await == "" ||
-		e.Repo != root || e.Outcome != runner.OutcomeFinished || e.Model != "fake-model" {
+		e.Repo != root || e.Outcome != runner.OutcomeFinished || e.Model != "gemma-test-1" {
 		t.Fatalf("entry = %+v", e)
 	}
 }

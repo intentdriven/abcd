@@ -128,7 +128,7 @@ func loopFakeHarness(mode string) int {
 		// rejected rate_limit_event and error result its stream carries.
 		_ = os.WriteFile("halfway.txt", []byte("half done\n"), 0o600)
 		_ = os.WriteFile(field("Receipt: "), []byte(`{"schema_version": 1, "run_id": "`), 0o600)
-		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-3","model":"fake-model"}`)
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-3","model":"gemma-test-1"}`)
 		resets := os.Getenv(terminalResetEnv)
 		if resets == "" {
 			resets = "1791000000"
@@ -140,7 +140,7 @@ func loopFakeHarness(mode string) int {
 	if mode == "spentcrash" || mode == "retrycrash" || mode == "apicrash" || mode == "accountzero" {
 		// A launch past its init event that failed: having spent, stuck
 		// retrying, naming an API status, or on a zero exit with nothing spent.
-		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-5","model":"fake-model","tools":[]}`)
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-5","model":"gemma-test-1","tools":[]}`)
 		switch mode {
 		case "spentcrash":
 			fmt.Println(`{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":10,"output_tokens":4}}}`)
@@ -156,7 +156,7 @@ func loopFakeHarness(mode string) int {
 	}
 	if mode == "startedcrash" {
 		// A launch that reached its init event and then failed.
-		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-4","model":"fake-model"}`)
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-4","model":"gemma-test-1"}`)
 		return 1
 	}
 	if mode == "notloggedin" {
@@ -234,7 +234,7 @@ func loopFakeHarness(mode string) int {
 			fmt.Println(`{"type":"step_finish","sessionID":"ses_fake2","part":{"type":"step-finish","reason":"length"}}`)
 			return 0
 		}
-		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-2","model":"fake-model"}`)
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-2","model":"gemma-test-1"}`)
 		fmt.Println(`{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"fake-session-2","stop_reason":"max_tokens"}`)
 		return 0
 	}
@@ -260,7 +260,7 @@ func loopFakeHarness(mode string) int {
 		fmt.Println(`{"type":"step_finish","sessionID":"ses_fake2","part":{"type":"step-finish"}}`)
 		return 0
 	}
-	model := "fake-model"
+	model := "gemma-test-1"
 	switch mode {
 	case "model-huge":
 		model = strings.Repeat("m", 5<<20)
@@ -497,7 +497,7 @@ func TestARoutedRoleRunsThroughItsRunner(t *testing.T) {
 	if res.PerformedStage != StageImplement || res.Stage != StageValidate || res.Awaiting != nil {
 		t.Fatalf("the runner's verified receipt completes the stage: %+v", res)
 	}
-	if res.Route == nil || res.Route.Asked != runner.Claude || res.Route.Ran != runner.Claude || res.Route.Model != "fake-model" {
+	if res.Route == nil || res.Route.Asked != runner.Claude || res.Route.Ran != runner.Claude || res.Route.Model != "gemma-test-1" {
 		t.Fatalf("the result names the route that ran: %+v", res.Route)
 	}
 	argv := strings.Join(env.argv(t, "claude"), "\n")

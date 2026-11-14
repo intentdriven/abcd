@@ -639,9 +639,10 @@ name's version. A name is known only when it is ASCII with no control
 character, at most 200 bytes, and exactly one of its tokens names a model
 family on the closed list in `internal/core/matrix/samemodel.go`: `opus`,
 `sonnet`, `haiku`, `fable`, `mythos`, `gpt`, the o-series written as `o` and a
-digit, `gemini`, `gemma`, `llama`, `mistral`, `mixtral`, `codestral`, `grok`,
-`deepseek`, `qwen`, `kimi`, `glm` and `phi`. A family not on that list reads as
-no family, so a name of it is unknown and counts as the writer's own model, and
+digit, `gemini`, `gemma`, `llama`, `mistral`, `mixtral`, `codestral`,
+`devstral`, `magistral`, `ministral`, `pixtral`, `grok`, `deepseek`, `qwen`,
+`kimi`, `glm` and `phi`. A family not on that list reads as no family, so a
+name of it is unknown and counts as the writer's own model, and
 a writer or a class whose name is unknown hands the lane back. Two known names
 are other models only when their families differ, or the family is the same,
 both carry a version, and neither version's digits are a prefix of the

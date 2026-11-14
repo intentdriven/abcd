@@ -101,7 +101,7 @@ func TestAVersion13FileReadsAsNotRecorded(t *testing.T) {
 	editState(t, root, id, func(doc map[string]any) {
 		doc["schema_version"] = schemaVersionUnmetered
 		doc["lanes"].([]any)[0].(map[string]any)["receipts"].([]any)[0].(map[string]any)["route"] =
-			map[string]any{"asked": "claude", "ran": "claude", "model": "fake-model"}
+			map[string]any{"asked": "claude", "ran": "claude", "model": "gemma-test-1"}
 	})
 	st, err := ReadState(root, id)
 	if err != nil || st.SchemaVersion != SchemaVersion {

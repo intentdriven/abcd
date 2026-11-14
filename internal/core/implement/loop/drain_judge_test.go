@@ -57,7 +57,7 @@ func TestARoutedDrainJudgesAnswerIsTakenWithAbcdComputingTheDigest(t *testing.T)
 	if j.RemedySHA256 != remedyDigest(issueRemedy) {
 		t.Fatalf("abcd computes the remedy's digest itself: %q", j.RemedySHA256)
 	}
-	if j.Route == nil || j.Route.Asked != runner.Claude || j.Route.Ran != runner.Claude || j.Route.Model != "fake-model" {
+	if j.Route == nil || j.Route.Asked != runner.Claude || j.Route.Ran != runner.Claude || j.Route.Model != "gemma-test-1" {
 		t.Fatalf("the judgement names the runner that ran it: %+v", j.Route)
 	}
 	if res.Start == nil || res.Lane == nil || res.Lane.Issue != eligibleIssue {

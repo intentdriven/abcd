@@ -33,8 +33,8 @@ const maxComparedModel = 200
 // modelFamilies is the closed list of model families a name is read for:
 // Anthropic's (opus, sonnet, haiku, fable, mythos), OpenAI's gpt and the
 // o-series (written `o` and a digit, o1, o3, o4, read as the family "o"),
-// Google's gemini and gemma, Meta's llama, Mistral's mistral, mixtral and
-// codestral, xAI's grok, deepseek, qwen, Moonshot's kimi, Zhipu's glm and
+// Google's gemini and gemma, Meta's llama, Mistral's mistral, mixtral,
+// codestral, devstral, magistral, ministral and pixtral, xAI's grok, deepseek, qwen, Moonshot's kimi, Zhipu's glm and
 // Microsoft's phi. A vendor word (claude, anthropic, openai) is no family:
 // it names who serves the model, not which model it is. codex is left off:
 // OpenAI writes it beside gpt (gpt-5-codex), so a listed codex would make
@@ -46,7 +46,7 @@ var modelFamilies = []string{
 	"gpt",
 	"gemini", "gemma",
 	"llama",
-	"mistral", "mixtral", "codestral",
+	"mistral", "mixtral", "codestral", "devstral", "magistral", "ministral", "pixtral",
 	"grok", "deepseek", "qwen", "kimi", "glm", "phi",
 }
 
