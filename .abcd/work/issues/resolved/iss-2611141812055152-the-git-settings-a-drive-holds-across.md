@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/gitenvs.go"
 remedy: "judge each such setting: pinned on the command line, held, or shown unread by any command the tree runs, with the table kept beside the held set"
-resolution: "A drive holds, beside the settings the run's fingerprint watches, each setting git 2.52 documents as naming a program git starts or as a mode that makes git start one (driveHeldConfig in internal/core/implement/loop/remoteid.go, with the settings left out and why beside it); a read-only merge pins merge.renormalize off; and a log, show or whatchanged whose format the command line does not fix asks the drive's check."
+resolution: "A drive holds, beside the settings the run's fingerprint watches, the settings a git command of the drive can read that name or start a program, or change where a networked git goes or whom it trusts (driveHeldConfig in internal/core/implement/loop/remoteid.go), and lists those no git command of the drive reads with the reason (driveUnreadSettings); where extensions.worktreeConfig is on it reads them at each lane worktree's own scope too; every fetch through the networked runners goes into no submodule; a read-only merge pins merge.renormalize off; and a log, show, reflog, rev-list, shortlog or diff-tree asks the drive's check when its last format word can show a signature check, or, for log and show, when it has none."
 impact: fix
 ---
 
