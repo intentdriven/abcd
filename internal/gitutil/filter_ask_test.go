@@ -110,10 +110,10 @@ func TestWhatAnIsolatedCommandCanStartIsReadFromItsCommandLine(t *testing.T) {
 		{append(blank, "--no-optional-locks", "status", "--porcelain=v1"), false},
 		{[]string{"diff", "--quiet"}, true},
 		{[]string{"diff", "--cached", "--raw", "--no-ext-diff", "HEAD", "--"}, false},
-		{[]string{"diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv", "HEAD", "--"}, false},
+		{[]string{"diff", "--cached", "--binary", "--full-index", "--no-renames", "--no-ext-diff", "--no-textconv", "--no-color", "HEAD", "--"}, false},
 		{[]string{"diff", "--cached", "--binary", "HEAD", "--"}, true},
 		{[]string{"diff", "--name-only", "a", "b", "--"}, false},
-		{[]string{"diff", "--text", "--no-ext-diff", "--no-textconv", "a..b", "--"}, false},
+		{[]string{"diff", "--text", "--ignore-submodules=none", "--no-ext-diff", "--no-textconv", "--no-color", "a..b", "--"}, false},
 		{[]string{"diff", "a..b"}, true},
 		{[]string{"diff-tree", "-r", "--raw", "a", "b"}, false},
 		{[]string{"diff-tree", "-p", "--textconv", "a", "b"}, true},
@@ -364,6 +364,48 @@ func TestAWordThatIsAnOptionsValueNeverMakesACommandNotAsk(t *testing.T) {
 		{[]string{"blame", "--no-textconv", "-L", "1,2", "HEAD", "--", "a"}, false},
 		{[]string{"diff", "--name-only", "--output", "o", "a", "b", "--"}, false},
 		{[]string{"rm", "--pathspec-from-file", "f", "--cached"}, false},
+	} {
+		if got := gitutil.LeavesContentProgramsOn(tc.args); got != tc.want {
+			t.Errorf("%q: got %v, want %v", tc.args, got, tc.want)
+		}
+	}
+}
+
+// TestAWordAfterAnOptionNotKnownToTakeNoValueNeverMakesACommandNotAsk: a
+// word that makes a command not ask counts only where the word before it is
+// known not to take it as a value: an option on no list (--default,
+// --encoding, --glob, --exclude-hidden, a made-up --zzz) may take the next
+// word, so the command asks. update-index --cacheinfo with a plain path
+// reads that path, and init with --no-template copies git's own template, so
+// each asks. The rows that do not ask hold each place a word counts: first
+// after the subcommand, after a word that is not an option, after an option
+// holding "=", after another counted word that makes it not ask, and after
+// an option on the list of those that take no value. Watched failing on
+// 6f65dbb7: every row wanting true got false. The two diff rows with
+// --binary and --text wanted false there; that test now holds the forms
+// abcd runs.
+func TestAWordAfterAnOptionNotKnownToTakeNoValueNeverMakesACommandNotAsk(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"log", "-p", "--default", "--no-textconv", "--no-ext-diff"}, true},
+		{[]string{"log", "-p", "--encoding", "--no-textconv", "--no-ext-diff"}, true},
+		{[]string{"log", "-p", "--glob", "--no-textconv", "--no-ext-diff"}, true},
+		{[]string{"log", "-p", "--exclude-hidden", "--no-textconv", "--no-ext-diff"}, true},
+		{[]string{"log", "-p", "--zzz", "--no-textconv", "--no-ext-diff"}, true},
+		{[]string{"diff", "--name-only", "--zzz", "a..b", "--"}, true},
+		{[]string{"rm", "--zzz", "--cached", "a"}, true},
+		{[]string{"diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv", "HEAD", "--"}, true},
+		{[]string{"diff", "--text", "--no-ext-diff", "--no-textconv", "a..b", "--"}, true},
+		{[]string{"update-index", "--cacheinfo", "100644,e69de29bb2d1d6434b8b29ae775ad8c2e48c5391,a.txt", "b.txt"}, true},
+		{[]string{"init", "-q", "--template=", "--no-template"}, true},
+		{[]string{"log", "--no-textconv", "--no-ext-diff", "-p"}, false},
+		{[]string{"diff", "--name-only", "a", "b", "--"}, false},
+		{[]string{"diff", "-p", "--ignore-submodules=none", "--no-ext-diff", "--no-textconv", "a..b", "--"}, false},
+		{[]string{"diff", "--no-renames", "--ignore-submodules=none", "--name-only", "-z", "a", "b", "--"}, false},
+		{[]string{"rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", "a"}, false},
+		{[]string{"update-index", "--cacheinfo", "100644,e69de29bb2d1d6434b8b29ae775ad8c2e48c5391,a.txt"}, false},
 	} {
 		if got := gitutil.LeavesContentProgramsOn(tc.args); got != tc.want {
 			t.Errorf("%q: got %v, want %v", tc.args, got, tc.want)

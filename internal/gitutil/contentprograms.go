@@ -66,9 +66,13 @@ type gitArgs struct {
 	// option whose value can be the next word (--format, --pretty).
 	words []string
 	// value says, for each of words, whether it is the value of the option
-	// before it (valuedNext), so that it is never read as a word that makes
-	// the command not ask (given, givenRevs).
+	// before it (valuedNext).
 	value []bool
+	// counted says, for each of words, whether it can be read as a word that
+	// makes the command not ask (given, givenOpts, givenRevs): it is not the
+	// value of the option before it, and the word before it is known not to
+	// take it as a value (counts).
+	counted []bool
 }
 
 // valued are the options of one subcommand that git takes a value for as
@@ -78,10 +82,28 @@ type gitArgs struct {
 // matches whole; the others are matched in any prefix git takes for them
 // (one git would refuse as ambiguous counts too), so more words are taken as
 // values, and more commands ask.
+//
+// noValue are the options known to take no value, matched whole: the ones
+// abcd's own calls give before a word that makes the command not ask, and no
+// others. quiet are the words the subcommand's judge reads as making it not
+// ask, alone or as name=value. Neither list can name every option git takes,
+// so the word after an option on neither list is not read as one that makes
+// the command not ask (counts), and the command asks.
 type valued struct {
-	long  []string
-	short string
-	exact bool
+	long    []string
+	short   string
+	exact   bool
+	noValue []string
+	quiet   []string
+}
+
+// counts reports whether the word after prev, a word that is not the first
+// after the subcommand, is known not to be prev's value: prev is not an
+// option, holds "=", is on noValue, or is a word of quiet that was counted
+// itself (prevCounted). The first word after the subcommand always is.
+func (v valued) counts(prev string, prevCounted bool) bool {
+	return !strings.HasPrefix(prev, "-") || strings.Contains(prev, "=") ||
+		slices.Contains(v.noValue, prev) || prevCounted && named(prev, v.quiet)
 }
 
 // takesNext reports whether option word a takes the word after it as its
@@ -109,30 +131,38 @@ var (
 	revValued = []string{"--max-count", "--skip", "--since", "--after", "--until", "--before", "--min-age", "--max-age",
 		"--since-as-filter", "--author", "--committer", "--grep", "--grep-reflog", "--exclude", "--date",
 		"--decorate-refs", "--decorate-refs-exclude"}
-	diffLog = valued{long: append(slices.Clip(diffValued), revValued...), short: "UlOSGInL", exact: true}
+	diffLog = valued{long: append(slices.Clip(diffValued), revValued...), short: "UlOSGInL", exact: true,
+		noValue: []string{"--no-renames", "-z", "--no-color", "-p", "--shortstat"},
+		quiet: []string{"--cached", "--staged", "-s", "--no-patch", "--name-only", "--name-status", "--raw", "--quiet",
+			"--no-textconv", "--no-ext-diff"}}
 )
 
 // valuedNext is valued by subcommand, for each subcommand whose judge reads
-// a word as one that makes it not ask. Where it is unclear whether an option
-// takes its value as the next word, it is listed, so the word after it is
-// read as its value and the command asks. Options whose value can only be
-// given after "=" (tag's --column and --color, init's --shared) are not.
+// a word as one that makes it not ask; a subcommand it does not hold has
+// empty lists. Where it is unclear whether an option takes its value as the
+// next word, it is listed, so the word after it is read as its value and the
+// command asks. Options whose value can only be given after "=" (tag's
+// --column and --color, init's --shared) are not.
 var valuedNext = map[string]valued{
 	"tag": {long: []string{"--format", "--sort", "--cleanup", "--contains", "--no-contains", "--merged", "--no-merged",
-		"--points-at", "--message", "--file", "--local-user", "--trailer"}, short: "mFu"},
-	"init":         {long: []string{"--template", "--separate-git-dir", "--object-format", "--ref-format", "--initial-branch"}, short: "b"},
-	"diff":         diffLog,
-	"diff-index":   diffLog,
-	"show":         diffLog,
-	"log":          diffLog,
-	"whatchanged":  diffLog,
-	"reflog":       diffLog,
-	"blame":        {long: append([]string{"--contents", "--ignore-rev", "--ignore-revs-file"}, revValued...), short: "LS"},
-	"hash-object":  {long: []string{"--path"}, short: "t"},
-	"update-index": {long: []string{"--cacheinfo", "--chmod", "--index-version"}},
-	"apply":        {long: []string{"--exclude", "--include", "--directory", "--whitespace", "--build-fake-ancestor"}, short: "pC"},
-	"rm":           {long: []string{"--pathspec-from-file"}},
-	"reset":        {long: []string{"--pathspec-from-file"}},
+		"--points-at", "--message", "--file", "--local-user", "--trailer"}, short: "mFu",
+		quiet: []string{"-l", "--list", "-n", "--contains", "--no-contains", "--merged", "--no-merged", "--points-at"}},
+	"init": {long: []string{"--template", "--separate-git-dir", "--object-format", "--ref-format", "--initial-branch"}, short: "b",
+		noValue: []string{"-q"}},
+	"diff":        diffLog,
+	"diff-index":  diffLog,
+	"show":        diffLog,
+	"log":         diffLog,
+	"whatchanged": diffLog,
+	"reflog":      diffLog,
+	"blame": {long: append([]string{"--contents", "--ignore-rev", "--ignore-revs-file"}, revValued...), short: "LS",
+		quiet: []string{"--no-textconv"}},
+	"hash-object":  {long: []string{"--path"}, short: "t", noValue: []string{"-w"}, quiet: []string{"--no-filters", "--stdin"}},
+	"update-index": {long: []string{"--cacheinfo", "--chmod", "--index-version"}, noValue: []string{"--add"}, quiet: []string{"--cacheinfo", "--index-info"}},
+	"apply": {long: []string{"--exclude", "--include", "--directory", "--whitespace", "--build-fake-ancestor"}, short: "pC",
+		noValue: []string{"--check"}, quiet: []string{"--cached", "--stat", "--numstat", "--summary"}},
+	"rm":    {long: []string{"--pathspec-from-file"}, noValue: []string{"-q"}, quiet: []string{"--cached"}},
+	"reset": {long: []string{"--pathspec-from-file"}, quiet: []string{"--soft"}},
 }
 
 func readGitArgs(args []string) gitArgs {
@@ -156,8 +186,13 @@ func readGitArgs(args []string) gitArgs {
 			g.dashdash = true
 			break
 		}
+		counted := !takes
+		if j > 0 {
+			counted = counted && v.counts(g.words[j-1], g.counted[j-1])
+		}
 		g.words = append(g.words, a)
 		g.value = append(g.value, takes)
+		g.counted = append(g.counted, counted)
 		takes = !takes && v.takesNext(a)
 		if strings.HasPrefix(a, "-") {
 			g.opts = append(g.opts, a)
@@ -178,46 +213,54 @@ func named(o string, names []string) bool {
 	return false
 }
 
-// has reports whether any option is one of names, alone or as name=value. A
-// word that is another option's value counts, so it is read only as a
+// has reports whether any option is one of names, alone or as name=value,
+// every word read, another option's value included, so it is read only as a
 // reason to ask; a reason not to is read by given.
 func (g gitArgs) has(names ...string) bool {
 	return slices.ContainsFunc(g.opts, func(o string) bool { return named(o, names) })
 }
 
-// given is has for a word that makes the command not ask: an option that is
-// not the value of the option before it.
+// given is has for a word that makes the command not ask: a counted option.
 func (g gitArgs) given(names ...string) bool {
 	for i, w := range g.words {
-		if !g.value[i] && strings.HasPrefix(w, "-") && named(w, names) {
+		if g.counted[i] && strings.HasPrefix(w, "-") && named(w, names) {
 			return true
 		}
 	}
 	return false
 }
 
-// givenOpts are the options that are not the value of the option before
-// them.
+// givenOpts are the counted options.
 func (g gitArgs) givenOpts() []string {
 	var out []string
 	for i, w := range g.words {
-		if !g.value[i] && strings.HasPrefix(w, "-") {
+		if g.counted[i] && strings.HasPrefix(w, "-") {
 			out = append(out, w)
 		}
 	}
 	return out
 }
 
-// givenRevs are the revisions that are not the value of the option before
-// them.
+// givenRevs are the counted revisions.
 func (g gitArgs) givenRevs() []string {
 	var out []string
 	for i, w := range g.words {
-		if !g.value[i] && !strings.HasPrefix(w, "-") {
+		if g.counted[i] && !strings.HasPrefix(w, "-") {
 			out = append(out, w)
 		}
 	}
 	return out
+}
+
+// plain reports whether any word that is not an option is not the value of
+// the option before it: a path, or a revision, as a reason to ask.
+func (g gitArgs) plain() bool {
+	for i, w := range g.words {
+		if !g.value[i] && !strings.HasPrefix(w, "-") {
+			return true
+		}
+	}
+	return false
 }
 
 // hasAbbrev reports whether any option is name, name=value, or a shorter
@@ -324,16 +367,16 @@ func (g gitArgs) twoTrees() bool {
 // is given can start a program or reach the network; any other asks. The four options that
 // switch a program on (--textconv, --ext-diff, --filters, --modified) are
 // read in any prefix git takes for them, and -m and -u inside a bundle of
-// short options. A word that makes a command not ask is never one that is
-// the value of the option before it (valuedNext).
+// short options. A word that makes a command not ask counts only where the
+// word before it is known not to take it as a value (valued.counts).
 //
 //   - hash-object of a blob from a path: unless --no-filters or
 //     FilterOverrides (standard input without --path, and a tree, commit or
 //     tag, are hashed as given).
 //   - cat-file: only with --filters (unless FilterOverrides) or --textconv.
-//   - status, archive, ls-files -m, update-index (but --cacheinfo and
-//     --index-info): unless FilterOverrides. A status without the blanks
-//     asks in any repository.
+//   - status, archive, ls-files -m, update-index (but --cacheinfo or
+//     --index-info with no path besides --cacheinfo's value): unless
+//     FilterOverrides. A status without the blanks asks in any repository.
 //   - diff: when a side is the working tree (no --cached or --staged, and
 //     neither a range nor two revisions before a "--") unless
 //     FilterOverrides, and when it shows content
@@ -433,9 +476,9 @@ var startsNothing = map[string]string{
 // command line g is in such a form. An option that makes it ask is read in
 // any prefix git takes for it and a short one inside a bundle or glued to a
 // value; a prefix git would refuse as ambiguous counts too, so each reading
-// asks more, never less. A form that does not ask is recognised by words
-// that are not the value of the option before them: a listing by exact
-// words, the empty template in any prefix git takes for --template=.
+// asks more, never less. A form that does not ask is recognised by counted
+// words (valued.counts): a listing by exact words, the empty template in any
+// prefix git takes for --template=.
 var startsInForm = map[string]func(g gitArgs) bool{
 	"tag":          tagAsks,
 	"describe":     func(g gitArgs) bool { return g.hasAbbrev("--dirty") || g.hasAbbrev("--broken") },
@@ -453,8 +496,13 @@ var startsInForm = map[string]func(g gitArgs) bool{
 		// Only --template= with no value copies no template: with none
 		// named git copies its own, hooks included, and --template given
 		// its value as the next word, or any directory, copies that one's.
-		// An empty template that is another option's value
-		// (--separate-git-dir --template=) is that option's, not one.
+		// An empty template that is not counted (--separate-git-dir
+		// --template=, where it is that option's value) is not one.
+		// --no-template takes back any template named before it, so git
+		// copies its own.
+		if g.hasAbbrev("--no-template") {
+			return true
+		}
 		empty := false
 		for _, o := range g.opts {
 			name, value, valued := strings.Cut(o, "=")
@@ -497,8 +545,8 @@ var tagMakesLong = []string{"--annotate", "--sign", "--local-user", "--message",
 // tagAsks judges tag: it does not ask only for a listing, a command line
 // that holds a listing word of its own (-l, --list, -n, -n<digits>,
 // --contains, --no-contains, --merged, --no-merged, --points-at, each
-// exactly, the last five alone or with =value, and none the value of the
-// option before it: tag --format -l v1 makes v1) or no argument at all, and
+// exactly, the last five alone or with =value, and each counted: tag
+// --format -l v1 makes v1) or no argument at all, and
 // holds no option of tagMakes, alone, in a bundle or glued to a value
 // (-mfinal), none of tagMakesLong in any prefix, and no format that shows a
 // signature check. Anything else asks: a tag made can be signed through the
@@ -559,11 +607,11 @@ func (g gitArgs) signatureShown() bool {
 var contentJudges = map[string]func(g gitArgs, blanked bool) bool{
 	"hash-object": func(g gitArgs, blanked bool) bool {
 		// git filters a blob read from a path alone: not standard input
-		// without --path, and not an object of another type (-t given its
-		// type as the next word, not as another option's value).
+		// without --path, and not an object of another type (a counted -t
+		// given its type as the next word).
 		other := g.given("--type=tree", "--type=commit", "--type=tag")
 		for i, w := range g.words {
-			if w == "-t" && !g.value[i] && i+1 < len(g.words) && slices.Contains([]string{"tree", "commit", "tag"}, g.words[i+1]) {
+			if w == "-t" && g.counted[i] && i+1 < len(g.words) && slices.Contains([]string{"tree", "commit", "tag"}, g.words[i+1]) {
 				other = true
 			}
 		}
@@ -576,7 +624,9 @@ var contentJudges = map[string]func(g gitArgs, blanked bool) bool{
 	"archive":  func(_ gitArgs, blanked bool) bool { return !blanked },
 	"ls-files": func(g gitArgs, blanked bool) bool { return (g.hasShort('m') || g.hasAbbrev("--modified")) && !blanked },
 	"update-index": func(g gitArgs, blanked bool) bool {
-		return !blanked && !g.given("--cacheinfo", "--index-info")
+		// A path besides --cacheinfo's value, or after "--", is read from the
+		// working tree.
+		return !blanked && (!g.given("--cacheinfo", "--index-info") || g.plain() || g.paths)
 	},
 	"diff": func(g gitArgs, blanked bool) bool {
 		worktree := !g.given("--cached", "--staged") && !g.twoTrees()
