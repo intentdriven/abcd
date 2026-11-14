@@ -39,7 +39,6 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -84,15 +83,10 @@ const watchedConfig = `^(` +
 	`|includeif\..+\.path` +
 	`)$`
 
-// watchedKeyRE is watchedConfig as a Go expression: git's extended syntax and
-// Go's agree on every construct the pattern uses.
-var watchedKeyRE = regexp.MustCompile(watchedConfig)
-
-// watchedKey says whether a canonical config key is one the run's fingerprint
-// watches (watchedConfig). It is the one predicate for "watched": git applies
-// the pattern for the fingerprint's read, and a drive's hold across its lanes
-// (remoteIdentityKey) applies this, so the two never hold different lists.
-func watchedKey(key string) bool { return watchedKeyRE.MatchString(key) }
+// git applies watchedConfig for the fingerprint's read. A drive's hold across
+// its lanes (remoteIdentityKey) applies a pattern built from it, less
+// core.pager and with driveHeldConfig beside it (heldPattern in remoteid.go):
+// git's extended syntax and Go's agree on every construct either uses.
 
 // maxHookEntries bounds the entries, at every depth, one read of a hooks
 // directory hashes. A tree past it is recorded by its first entries, in walk
