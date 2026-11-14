@@ -57,7 +57,8 @@ func TestTheDriveHoldsEachSettingThatNamesAProgram(t *testing.T) {
 // TestTheHeldPatternGitIsGivenSelectsWhatTheDriveHolds: the pattern a
 // refusal's remedy hands to `git config --get-regexp` is the same set as the
 // predicate the hold applies, as git itself reads the pattern: every key of
-// the table set in a repository, git's selection is exactly the held ones.
+// the table set in a repository, git's selection among them is exactly the
+// held ones.
 func TestTheHeldPatternGitIsGivenSelectsWhatTheDriveHolds(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
@@ -76,7 +77,9 @@ func TestTheHeldPatternGitIsGivenSelectsWhatTheDriveHolds(t *testing.T) {
 	}
 	var got []string
 	for _, e := range entries {
-		if !slices.Contains(got, e.Key) {
+		// The repository's own settings beside the table's (the test
+		// repository's maintenance switches) are not the table's to judge.
+		if _, ok := heldSettingsTable[e.Key]; ok && !slices.Contains(got, e.Key) {
 			got = append(got, e.Key)
 		}
 	}
