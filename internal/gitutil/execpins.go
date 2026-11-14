@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/procgroup"
@@ -231,8 +230,7 @@ func getRegexpContext(ctx context.Context, root, what, pattern string, extra ...
 		return nil, fmt.Errorf("reading the repository's %s config: %w", what, ctxErr)
 	}
 	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) && ee.ExitCode() == 1 && len(w.buf) == 0 {
+		if ExitCode(err) == 1 && len(w.buf) == 0 {
 			return nil, nil // no key matches at all
 		}
 		return nil, fmt.Errorf("reading the repository's %s config: %w (stderr: %q)", what, err, strings.TrimSpace(string(e.buf)))

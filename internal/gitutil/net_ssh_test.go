@@ -115,7 +115,8 @@ func TestTheSSHCommandsReadEndsWithItsContext(t *testing.T) {
 
 // TestTheSSHCommandIsComposedOnlyOnGitsAnswerOfNone: the networked command is
 // given the composed ssh command only when git answered that core.sshCommand
-// is not set (exit 1, or exit 0 with nothing written). A setting git answered
+// is not set (exit 1 with nothing written, or exit 0 with nothing but white
+// space). A setting git answered
 // while a program it left holds the output for a few hundred milliseconds is
 // still the person's, and the command is given no GIT_SSH_COMMAND over it; a
 // read that fails with any other exit starts no networked command. Watched
@@ -162,6 +163,11 @@ func TestTheSSHCommandIsComposedOnlyOnGitsAnswerOfNone(t *testing.T) {
 				var nr *gitutil.NotRunError
 				if readErr == nil || !errors.As(err, &nr) || !strings.Contains(err.Error(), "core.sshCommand") {
 					t.Fatalf("a failed read of core.sshCommand starts no networked git and names the read: ran=%v, err %v", readErr == nil, err)
+				}
+				// Its refusal says what to do (iss-2611140432160343).
+				// Watched failing before: it named no remedy.
+				if !strings.Contains(err.Error(), "remedy: ") || !strings.Contains(err.Error(), "git config --show-origin --get core.sshCommand") {
+					t.Fatalf("the refusal of a failed read of core.sshCommand names a remedy: %v", err)
 				}
 				return
 			}

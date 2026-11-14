@@ -327,6 +327,11 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 					// Its starting point is the critical check's to judge.
 					continue
 				}
+				if u.ok && facts.hooksUnread != "" {
+					// No path can be checked against the hooks directories
+					// git runs here, so none is approved.
+					return hooksUnreadRefusal(u, facts.hooksUnread)
+				}
 				if u.ok && u.glob != "" {
 					// A glob removal inside the working tree is approved
 					// unless a protected name could match it: its directory

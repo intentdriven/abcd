@@ -192,6 +192,80 @@ func TestASubcommandTheTableDoesNotKnowAsks(t *testing.T) {
 	}
 }
 
+// TestASubcommandOnTheStartsNothingListAsksInAFormThatCanStartAProgram: a
+// subcommand on the starts-nothing list is judged by the form it runs in, and
+// asks in one that can start a program (a signing program, an editor, a hook
+// a template copies in) or reach the network; in the form abcd runs it asks
+// nothing. ls-remote is on no list, so through an isolated runner it asks.
+// A diff of a revision and a path with no "--" between them asks, since git
+// may read the path as a second revision or as a path. Watched failing
+// before: every row wanting true got false.
+func TestASubcommandOnTheStartsNothingListAsksInAFormThatCanStartAProgram(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"tag", "-v", "v1"}, true},
+		{[]string{"tag", "--verify", "v1"}, true},
+		{[]string{"tag", "-s", "-m", "x", "v1"}, true},
+		{[]string{"tag", "-u", "key", "v1"}, true},
+		{[]string{"tag", "--local-user=key", "v1"}, true},
+		{[]string{"tag", "v1"}, true},
+		{[]string{"tag", "-a", "v1"}, true},
+		{[]string{"tag", "--list", "v*", "--sort=-v:refname"}, false},
+		{[]string{"tag", "-l", "v*"}, false},
+		{[]string{"tag", "--contains", "abc", "--list", "v*"}, false},
+		{[]string{"tag", "--list", "--merged", "abc", "v*"}, false},
+		{[]string{"tag"}, false},
+		{[]string{"tag", "--list", "-v", "v*"}, true},
+		{[]string{"describe", "--dirty"}, true},
+		{[]string{"describe", "--dirty=-x", "HEAD"}, true},
+		{[]string{"describe", "--broken"}, true},
+		{[]string{"describe", "--tags", "--match", "v*", "--abbrev=0", "HEAD"}, false},
+		{[]string{"branch", "--edit-description", "x"}, true},
+		{[]string{"branch", "--edit-desc"}, true},
+		{[]string{"branch", "--format=%(refname:short)", "--no-merged", "abc"}, false},
+		{[]string{"config", "--edit"}, true},
+		{[]string{"config", "-e"}, true},
+		{[]string{"config", "--local", "--edit"}, true},
+		{[]string{"config", "--get", "x"}, false},
+		{[]string{"config", "--null", "--list", "--show-scope", "--show-origin"}, false},
+		{[]string{"config", "-z", "--type=path", "--get-all", "core.hooksPath"}, false},
+		{[]string{"commit-tree", "-S", "t", "-m", "x"}, true},
+		{[]string{"commit-tree", "-Skey", "t", "-m", "x"}, true},
+		{[]string{"commit-tree", "--gpg-sign", "t", "-m", "x"}, true},
+		{[]string{"commit-tree", "--gpg-sign=key", "t", "-m", "x"}, true},
+		{[]string{"commit-tree", "t", "-p", "p", "-F", "-"}, false},
+		{[]string{"commit-tree", "--no-gpg-sign", "t", "-m", "x"}, false},
+		{[]string{"init", "-q", "--template=/some/dir"}, true},
+		{[]string{"init", "--template", "/some/dir", "x"}, true},
+		{[]string{"init", "-q", "--templ=/some/dir"}, true},
+		{[]string{"init", "-q", "--template="}, false},
+		{[]string{"init", "-q", "--template=", "--object-format=sha1"}, false},
+		{[]string{"remote", "update"}, true},
+		{[]string{"remote", "show", "origin"}, true},
+		{[]string{"remote", "prune", "origin"}, true},
+		{[]string{"remote", "add", "-f", "x", "u"}, true},
+		{[]string{"remote", "set-head", "-a", "origin"}, true},
+		{[]string{"remote"}, false},
+		{[]string{"remote", "-v"}, false},
+		{[]string{"remote", "get-url", "--all", "origin"}, false},
+		{[]string{"remote", "remove", "origin"}, false},
+		{[]string{"remote", "add", "x", "u"}, false},
+		{[]string{"ls-remote", "origin"}, true},
+		{[]string{"diff", "--name-only", "HEAD", "a.txt"}, true},
+		{[]string{"diff", "--name-only", "HEAD", "a.txt", "--"}, false},
+		{[]string{"diff", "--name-only", "HEAD~1..HEAD"}, false},
+	} {
+		if got := gitutil.LeavesContentProgramsOn(tc.args); got != tc.want {
+			t.Errorf("%q: got %v, want %v", tc.args, got, tc.want)
+		}
+	}
+	if gitutil.StartsNothing("ls-remote") {
+		t.Error("ls-remote reaches the network, so it is on no list")
+	}
+}
+
 // TestTheOptionsThatStartAProgramAreReadAsGitTakesThem: the options that
 // switch a program on are read in any prefix git takes for them and inside
 // a bundle of short options, --attr-source takes its value as the next

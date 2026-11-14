@@ -204,8 +204,12 @@ func TestTheExemptConstructorIsBuiltOnlyByTheComparison(t *testing.T) {
 // drive reaches of an isolated runner whose command line the walk can read
 // names a subcommand that gitutil.LeavesContentProgramsOn judges (so the
 // runner asks when the command leaves a program on) or one on gitutil's
-// starts-nothing list (gitutil.StartsNothing); a subcommand in neither would
-// ask at every run, so it fails here until it is looked at. Each call is logged with what it does: asks, blanks or reads
+// starts-nothing list (gitutil.StartsNothing), which asks only in a form
+// that can start a program; a subcommand in neither would ask at every run,
+// so it fails here until it is looked at, unless its runner reaches the
+// network and asks for that (isolatedRunnersThatAskByNetwork). A call through
+// a runner that does not ask (isolatedRunnersThatDoNotAsk) fails here in a
+// form that can start a program. Each call is logged with what it does: asks, blanks or reads
 // nothing through a program. A call whose subcommand is not a constant is
 // logged as not read: the runner still judges its command line when it runs.
 // Watched failing with "diff-tree" taken out of the judged subcommands.
@@ -234,7 +238,10 @@ func TestEveryIsolatedCallADriveMakesIsJudgedForWhatItCanStart(t *testing.T) {
 			switch {
 			case verb == "" || verb == "?":
 				lines = append(lines, "not read: "+at+" "+strings.Join(c.args, " "))
-			case gitutil.JudgesContentPrograms(verb) && gitutil.LeavesContentProgramsOn(c.args):
+			case isolatedRunnersThatAskByNetwork[c.callee]:
+				// It asks before it is built, for the command as a whole.
+				lines = append(lines, "asks before it reaches the network: "+at+" "+strings.Join(c.args, " "))
+			case gitutil.LeavesContentProgramsOn(c.args) && (gitutil.JudgesContentPrograms(verb) || gitutil.StartsNothing(verb)):
 				if _, own := isolatedRunnersThatDoNotAsk[c.callee]; own {
 					t.Errorf("%s runs git %s, which can start a program the repository names, through a runner that does not ask: run it through one of gitutil's isolated runners", at, strings.Join(c.args, " "))
 				}
@@ -627,6 +634,11 @@ var isolatedRunnersThatDoNotAsk = map[string]string{
 	"spotcheck.storeGit": "the spot-check store's writes (hash-object --no-filters, read-tree with no -u, " +
 		"update-index --index-info, write-tree, commit-tree, update-ref), none of which starts a program",
 }
+
+// isolatedRunnersThatAskByNetwork are the isolated rows that reach the
+// network, and so ask the check gitutil.SetBeforeHookedGit set before the
+// command is built, whatever its subcommand (ls-remote, which no list holds).
+var isolatedRunnersThatAskByNetwork = map[string]bool{"gitutil.RunLimitedNetContext": true}
 
 // gitutilCall records call when it calls a gitutil function whose last
 // parameter is a variadic string (a git command line) from outside gitutil,

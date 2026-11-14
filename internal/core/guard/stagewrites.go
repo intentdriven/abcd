@@ -623,6 +623,9 @@ func StageWriteRefusal(dirs, declared []string, path string) string {
 		}
 	}
 	facts := factsFor(NewFiles(dirs[0]).WithRunDirs(dirs[1:]...))
+	if facts.hooksUnread != "" {
+		return "a drive's stage writes nothing the guard cannot check against the hooks directories git runs here, and " + facts.hooksUnread
+	}
 	if name, ok := facts.protects(pathUse{path: clean, ok: true, written: path}); ok {
 		return "a drive's stage does not write " + fsutil.DisplayPath(name) + ", which is protected"
 	}

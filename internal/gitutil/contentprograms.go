@@ -19,7 +19,9 @@ import (
 // and no blob through a program does not ask. A status that does not carry
 // the filter blanks asks in any repository, one that names no filter
 // included: the command line cannot show that none is named. A subcommand
-// the table does not know asks (fix round 6).
+// the table does not know asks (fix round 6), and so does one on the
+// starts-nothing list in a form that can start a program or reach the network
+// (iss-2611140432160343).
 
 // globalValued are git's global options that take their value as the next
 // argument, before the subcommand.
@@ -57,6 +59,9 @@ type gitArgs struct {
 	opts     []string
 	revs     []string
 	paths    bool
+	// dashdash is whether the command line holds a "--", so that what
+	// stands before it is read as revisions and options alone.
+	dashdash bool
 }
 
 func readGitArgs(args []string) gitArgs {
@@ -75,6 +80,7 @@ func readGitArgs(args []string) gitArgs {
 	for j, a := range args[i+1:] {
 		if a == "--" {
 			g.paths = j+i+2 < len(args)
+			g.dashdash = true
 			break
 		}
 		if strings.HasPrefix(a, "-") {
@@ -177,9 +183,11 @@ func (g gitArgs) noPatch() bool {
 }
 
 // twoTrees reports whether a diff compares two revisions, so that no side
-// is the working tree.
+// is the working tree: a range, or two revisions before a "--". Without a
+// "--" git may read the second word as a path, which leaves the working tree
+// a side, so two words alone are not taken as two revisions.
 func (g gitArgs) twoTrees() bool {
-	return len(g.revs) >= 2 || slices.ContainsFunc(g.revs, func(r string) bool { return strings.Contains(r, "..") })
+	return len(g.revs) >= 2 && g.dashdash || slices.ContainsFunc(g.revs, func(r string) bool { return strings.Contains(r, "..") })
 }
 
 // LeavesContentProgramsOn reports whether a git command with args, run in
@@ -189,7 +197,8 @@ func (g gitArgs) twoTrees() bool {
 // content it reads or writes, a textconv or external diff program over
 // content it shows, or a merge driver. It is read from the command line
 // alone: a subcommand contentJudges holds is judged by its options as below;
-// one startsNothing holds does not ask; any other asks. The four options that
+// one startsNothing holds does not ask, unless startsInForm says the form it
+// is given can start a program or reach the network; any other asks. The four options that
 // switch a program on (--textconv, --ext-diff, --filters, --modified) are
 // read in any prefix git takes for them, and -m and -u inside a bundle of
 // short options.
@@ -201,8 +210,9 @@ func (g gitArgs) twoTrees() bool {
 //   - status, archive, ls-files -m, update-index (but --cacheinfo and
 //     --index-info): unless FilterOverrides. A status without the blanks
 //     asks in any repository.
-//   - diff: when a side is the working tree (no --cached or --staged, fewer
-//     than two revisions) unless FilterOverrides, and when it shows content
+//   - diff: when a side is the working tree (no --cached or --staged, and
+//     neither a range nor two revisions before a "--") unless
+//     FilterOverrides, and when it shows content
 //     unless --no-textconv and --no-ext-diff.
 //   - diff-files, and diff-index without --cached: a patch reads the working
 //     tree through its filters unless FilterOverrides; diff-tree, diff-index
@@ -231,7 +241,13 @@ func LeavesContentProgramsOn(args []string) bool {
 	if judge, ok := contentJudges[g.verb]; ok {
 		return judge(g, g.filtersBlanked())
 	}
-	return !StartsNothing(g.verb)
+	if !StartsNothing(g.verb) {
+		return true
+	}
+	if judge, ok := startsInForm[g.verb]; ok {
+		return judge(g)
+	}
+	return false
 }
 
 // JudgesContentPrograms reports whether verb is a subcommand
@@ -243,7 +259,8 @@ func JudgesContentPrograms(verb string) bool {
 }
 
 // StartsNothing reports whether verb is a subcommand startsNothing holds,
-// which LeavesContentProgramsOn lets run without asking.
+// which LeavesContentProgramsOn lets run without asking in the form abcd runs
+// it (startsInForm judges the others).
 func StartsNothing(verb string) bool {
 	_, ok := startsNothing[verb]
 	return ok
@@ -252,33 +269,82 @@ func StartsNothing(verb string) bool {
 // startsNothing are the subcommands, beyond those contentJudges reads, that
 // abcd runs through an isolated runner, each with the form run and why it
 // starts no program a repository's settings name. It holds only those: a
-// subcommand abcd does not run is in neither list, so it asks. config, var
-// and rev-parse are the drive's comparison's own reads, which must not ask.
+// subcommand abcd does not run is in neither list, so it asks. A subcommand
+// with a form that can start a program or reach the network is judged in that
+// form by startsInForm. config, var and rev-parse are the drive's comparison's
+// own reads, which must not ask. ls-remote is on neither list: it reaches the
+// network, and the networked runners ask before it runs.
 var startsNothing = map[string]string{
 	"rev-parse":        "names objects and paths",
 	"rev-list":         "lists commits",
 	"merge-base":       "reads commits",
-	"config":           "reads settings (--get, --get-regexp, --list); never --edit",
+	"config":           "reads settings (--get, --get-regexp, --list); --edit and -e, which open the editor, ask",
 	"var":              "reads settings and identities",
 	"for-each-ref":     "lists refs",
 	"symbolic-ref":     "reads a ref",
 	"update-ref":       "writes a ref",
 	"ls-tree":          "lists a tree",
-	"ls-remote":        "lists a remote's refs; the network is its runner's (RunLimitedNetContext)",
 	"check-attr":       "reads attributes",
 	"check-ignore":     "reads ignore rules",
 	"check-ref-format": "checks a name",
-	"commit-tree":      "writes a commit from a tree; ExecPins keeps commit signing off",
+	"commit-tree":      "writes a commit from a tree; ExecPins keeps commit signing off, and -S or --gpg-sign, which start the signing program, ask",
 	"write-tree":       "writes the index as a tree",
-	"init":             "makes an empty repository (init -q --template=)",
-	"remote":           "lists remotes, reads one's URL or removes one (remote, remote get-url, remote remove)",
-	"shortlog":         "counts commits by author (shortlog -sne HEAD), with no diff",
-	"cherry":           "compares commits' patch ids (cherry <upstream> <head>), hashed from stored content with no textconv or external diff",
-	"branch":           "lists branches (branch --format=... --no-merged <rev>); never --edit-description, which opens the editor",
-	"tag": "lists tags (tag --list, with --sort, --contains or --merged); never -v, which starts the signing program, " +
-		"or an annotation, which opens the editor",
-	"describe": "names a commit by a tag (describe --tags --match <pattern> --abbrev=0 <rev>); never --dirty or --broken, " +
-		"which refresh the index through the content filters",
+	"init":             "makes an empty repository (init -q --template=); a template, whose hooks git copies in, asks",
+	"remote": "lists remotes, reads one's URL or removes one (remote, remote get-url, remote remove); " +
+		"a form that reaches the network (update, show, prune, add -f, set-head -a) or one not known asks",
+	"shortlog": "counts commits by author (shortlog -sne HEAD), with no diff",
+	"cherry":   "compares commits' patch ids (cherry <upstream> <head>), hashed from stored content with no textconv or external diff",
+	"branch":   "lists branches (branch --format=... --no-merged <rev>); --edit-description, which opens the editor, asks",
+	"tag": "lists tags (tag --list, with --sort, --contains or --merged); -v, which starts the signing program, -s and -u, " +
+		"which sign, and any form that makes a tag, which can open the editor, ask",
+	"describe": "names a commit by a tag (describe --tags --match <pattern> --abbrev=0 <rev>); --dirty and --broken, " +
+		"which refresh the index through the content filters, ask",
+}
+
+// startsInForm judges, for a subcommand on the starts-nothing list that has
+// a form able to start a program (a signing program, the editor, a hook a
+// template copies in, the content filters) or reach the network, whether a
+// command line g is in such a form. An option is read in any prefix git
+// takes for it and a short one inside a bundle; a prefix git would refuse as
+// ambiguous counts too, which only asks more.
+var startsInForm = map[string]func(g gitArgs) bool{
+	"tag": func(g gitArgs) bool {
+		if g.hasShort('v') || g.hasAbbrev("--verify") || g.hasShort('s') || g.hasAbbrev("--sign") ||
+			g.hasShort('u') || g.hasAbbrev("--local-user") {
+			return true
+		}
+		listing := g.hasShort('l') || g.hasAbbrev("--list") || g.hasShort('n') ||
+			g.has("--contains", "--no-contains", "--merged", "--no-merged", "--points-at") || len(g.revs) == 0
+		return !listing
+	},
+	"describe": func(g gitArgs) bool { return g.hasAbbrev("--dirty") || g.hasAbbrev("--broken") },
+	"branch":   func(g gitArgs) bool { return g.hasAbbrev("--edit-description") },
+	"config":   func(g gitArgs) bool { return g.hasAbbrev("--edit") || g.hasShort('e') },
+	"commit-tree": func(g gitArgs) bool {
+		return g.hasShort('S') || g.hasAbbrev("--gpg-sign")
+	},
+	"init": func(g gitArgs) bool {
+		// --template= with no value copies none; --template given its value
+		// as the next word, or any directory, copies that one's hooks in.
+		return slices.ContainsFunc(g.opts, func(o string) bool {
+			name, value, valued := strings.Cut(o, "=")
+			return len(name) > 2 && strings.HasPrefix("--template", name) && (!valued || value != "")
+		})
+	},
+	"remote": func(g gitArgs) bool {
+		if len(g.revs) == 0 {
+			return false
+		}
+		switch g.revs[0] {
+		case "get-url", "remove", "rm", "rename", "set-url", "set-branches":
+			return false
+		case "add":
+			return g.hasShort('f') || g.hasAbbrev("--fetch")
+		case "set-head":
+			return g.hasShort('a') || g.hasAbbrev("--auto")
+		}
+		return true
+	},
 }
 
 // contentJudges is LeavesContentProgramsOn by subcommand: each says whether

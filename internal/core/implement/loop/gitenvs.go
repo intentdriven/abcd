@@ -131,6 +131,9 @@ var driveGitCommands = []driveGitCommand{
 	{"gitutil.EmptyTreeName", isolatedEnv, false},
 	{"gitutil.EmptyTreeNameContext", isolatedEnv, false},
 	{"gitutil.IsAncestor", isolatedEnv, false},
+	// The floor guard the spot-check store's git passes: git's version and
+	// the repository's promisor settings, read in the isolated environment.
+	{"gitutil.LazyFetchGuard", isolatedEnv, false},
 	{"gitutil.ListWorktrees", isolatedEnv, false},
 	{"gitutil.ListWorktreesContext", isolatedEnv, false},
 	{"gitutil.MergeDriverOverrides", isolatedEnv, false},
@@ -362,7 +365,14 @@ type readFailure struct{ what, why string }
 func (e *readFailure) Error() string { return e.what + ": " + e.why }
 
 // exitStatus is the exit status of the git a read ran, -1 when there is none.
+// A git that was not run (gitutil.NotRunError) has none, whatever exit status
+// its cause wraps (the read of core.sshCommand's own), so its read is a
+// readFailure, never git's "there is none" or a git too old to know a name.
 func exitStatus(err error) int {
+	var nr *gitutil.NotRunError
+	if errors.As(err, &nr) {
+		return -1
+	}
 	var ec interface{ ExitCode() int }
 	if errors.As(err, &ec) {
 		return ec.ExitCode()
@@ -399,8 +409,8 @@ func (e *gitStderr) Unwrap() error { return e.err }
 // so a git that did not finish is asked once more after heldReadRetryWait;
 // both asks together stay inside heldReadTimeout, the first given half of
 // what is left after the wait, the second the rest. A git that did not
-// finish either time, could not start, or answered past limit bytes is a
-// readFailure naming what, and the bound each ask had; a git that ran and
+// finish either time, could not start, was not run, or answered past limit
+// bytes is a readFailure naming what, and the bound each ask had; a git that ran and
 // exited non-zero is not, its status returned with what it wrote and said,
 // for the caller to judge.
 func (e *gitEnv) read(dir, what string, limit int, args ...string) (answer, error) {

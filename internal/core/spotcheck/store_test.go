@@ -3,6 +3,7 @@ package spotcheck
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand/v2"
 	"os"
 	"os/exec"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // clone is a checkout with one commit on main and origin at bare.
@@ -1089,5 +1091,79 @@ func TestALayOverComparesFilesAtAnyDepth(t *testing.T) {
 	}
 	if len(got) != 4 {
 		t.Fatalf("origin holds %v", got)
+	}
+}
+
+// TestTheStoresGitPassesTheLazyFetchFloor: in a repository that declares a
+// promisor remote, on a git older than the one that honours
+// GIT_NO_LAZY_FETCH, a store command that reads objects is refused before git
+// starts, as every isolated command of the git package is; past the floor it
+// runs. Watched failing before: the store's write-tree ran below the floor.
+func TestTheStoresGitPassesTheLazyFetchFloor(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write("a.txt", "a\n")
+	r.Commit("the base")
+	r.Git("config", "remote.origin.promisor", "true")
+	ctx := context.Background()
+	restore := gitutil.SwapGitVersionForTest(func() (string, error) { return "git version 2.39.5", nil })
+	t.Cleanup(restore)
+	if _, err := storeGit(ctx, r.Root(), "", "", "write-tree"); !errors.Is(err, gitutil.ErrLazyFetchFloor) {
+		t.Fatalf("below the floor the store's object read is refused: %v", err)
+	}
+	restore()
+	restore = gitutil.SwapGitVersionForTest(func() (string, error) { return "git version 2.44.0", nil })
+	if tree, err := storeGit(ctx, r.Root(), "", "", "write-tree"); err != nil || tree == "" {
+		t.Fatalf("past the floor it runs: %q, %v", tree, err)
+	}
+}
+
+// TestAPushTheChecksStopsIsNotTriedAgain: a push the check
+// gitutil.SetBeforeHookedGit set refuses is asked once, never tried a second
+// time, and its error says the push was stopped before its git ran and
+// carries the stop. Watched failing before: the push was asked twice and the
+// error said only that two tries failed.
+func TestAPushTheChecksStopsIsNotTriedAgain(t *testing.T) {
+	a, _, bare := twoClones(t)
+	write(t, a.Root(), hb(handBack("iss-1", at0)))
+	held := errors.New("held setting changed: core.sshcommand")
+	pushes := 0
+	unset, err := gitutil.SetBeforeHookedGit(func(args []string) error {
+		if gitutil.Subcommand(args) == "push" {
+			pushes++
+			return held
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(unset)
+	_, err = push(context.Background(), a.Root())
+	var nr *gitutil.NotRunError
+	if pushes != 1 || !errors.As(err, &nr) || !errors.Is(err, held) || !strings.Contains(err.Error(), "stopped before its git ran") {
+		t.Fatalf("a stopped push is asked once and says it was stopped: asked %d, %v", pushes, err)
+	}
+	if out, err := exec.Command("git", "-C", bare, "rev-parse", "-q", "--verify", BranchRef).Output(); err == nil || len(out) != 0 {
+		t.Fatalf("origin holds the store's branch: %s", out)
+	}
+}
+
+// TestAStoppedWriteSaysSo: an error of the store's that holds a git the check
+// did not run says the write was stopped before its git ran and keeps the
+// stop; any other error is as it was. Watched failing before: no error said
+// so.
+func TestAStoppedWriteSaysSo(t *testing.T) {
+	stop := &gitutil.NotRunError{Verb: "hash-object", Err: errors.New("held setting changed: filter.x.clean")}
+	err := stopped("write", fmt.Errorf("writing the spot-check's record: %w", stop))
+	var nr *gitutil.NotRunError
+	if !errors.As(err, &nr) || !strings.HasPrefix(err.Error(), "the spot-check's write was stopped before its git ran: ") {
+		t.Fatalf("a stopped write says so: %v", err)
+	}
+	if again := stopped("write", err); again.Error() != err.Error() {
+		t.Fatalf("said once: %v", again)
+	}
+	plain := errors.New("listing this checkout's remotes: exit status 128")
+	if stopped("write", plain) != plain {
+		t.Fatal("another error is as it was")
 	}
 }

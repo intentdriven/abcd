@@ -1328,7 +1328,10 @@ filters off, in any repository: in a checkout listed in
 `~/.abcd.noindex/filter-roots`, and in one whose settings name no filter,
 since the command cannot show that none is named. An isolated read that
 switches them off, or reads no file's content through them, starts no
-program and compares nothing; a kind of read abcd does not know compares.
+program and compares nothing; a kind of read abcd does not know compares, and
+so does a known one in a form that can start a program or reach the network
+(a tag verified or signed, a settings file opened in the editor, a remote
+updated or shown).
 On a difference the command is not run and fails naming it. A difference at a pass of the loop
 ends the drive, and so does a read there that gives no answer: the drive
 reads what it holds only as it starts, so a change of yours to a watched
