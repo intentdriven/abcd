@@ -3,8 +3,10 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -562,27 +564,113 @@ func flagIn(args []string) string {
 // so the synopsis scan must stay linear in it. One fenced line of repeated
 // invocations once rescanned the rest of the line per invocation (about two
 // minutes at the cap for a leaf command), and a run of backslash-wrapped lines
-// recopied the joined text per line (0.7s); each now takes milliseconds. The
-// bound is CPU time, which load cannot inflate, and it is not asserted under
-// -race, whose instrumentation multiplies a linear scan's cost tenfold.
+// recopied the joined text per line (0.7s). A linear scan's pages here reach
+// past the cap, about 1 MiB on a quick machine.
+//
+// The test judges growth, never a time: an absolute bound of 250ms failed on
+// a slow shared runner (333ms) with the scan linear (iss-2611121820123919).
+// scanGrowth times a page and one four times larger; a linear scan takes
+// about four times as long, a quadratic one about sixteen, and the bound sits
+// between them. Under -race it skips: nothing here is concurrent for the
+// detector to watch, and the CI step that runs the plain-only guards by name
+// is derived from this skip (internal/core/lint's plain-guard check).
 func TestSynopsisScanIsLinearInThePage(t *testing.T) {
-	const size = maxCommandPageBytes
+	if raceEnabled {
+		t.Skip("asserts only the scan's growth, which the plain lane holds; nothing here is concurrent for -race to watch")
+	}
 	fence := func(line string) string { return "```bash\n" + line + "\n```\n" }
 	for _, tc := range []struct {
 		name string
-		body string
+		body func(size int) string
 		skew usageSkew
 	}{
-		{"one line of leaf invocations", fence(strings.Repeat("abcd lint ", size/10)), usageSkew{known: []string{"lint"}, flag: "--frob"}},
-		{"one line of invocations with sub-verbs", fence(strings.Repeat("abcd build ", size/11)), usageSkew{known: []string{"build"}, flag: "--frob", subVerbs: true}},
-		{"a run of wrapped lines", fence(strings.Repeat("x \\\n", size/4) + "abcd lint"), usageSkew{known: []string{"lint"}, flag: "--frob"}},
+		{"one line of leaf invocations", func(n int) string { return fence(strings.Repeat("abcd lint ", n/10)) }, usageSkew{known: []string{"lint"}, flag: "--frob"}},
+		{"one line of invocations with sub-verbs", func(n int) string { return fence(strings.Repeat("abcd build ", n/11)) }, usageSkew{known: []string{"build"}, flag: "--frob", subVerbs: true}},
+		{"a run of wrapped lines", func(n int) string { return fence(strings.Repeat("x \\\n", n/4) + "abcd lint") }, usageSkew{known: []string{"lint"}, flag: "--frob"}},
 	} {
-		start := processCPU()
-		if synopsisCarriesFlag(tc.body, tc.skew) {
+		// The verdict is checked on every page the judge reads rather than on
+		// one more at the cap: a quadratic scan of the cap takes minutes, and
+		// the judge's own pages fail it in seconds.
+		found := false
+		g := scanGrowth(t, func(n int) func() {
+			body := tc.body(n)
+			return func() { found = synopsisCarriesFlag(body, tc.skew) || found }
+		})
+		if found {
 			t.Errorf("%s: no line names --frob, yet it was found", tc.name)
 		}
-		if took := processCPU() - start; !raceEnabled && took > 250*time.Millisecond {
-			t.Errorf("%s: a %d KiB page took %v of CPU to scan; the scan is not linear in the page", tc.name, len(tc.body)>>10, took)
+		t.Logf("%s: %d KiB in %v, %d KiB in %v: growth %.2f", tc.name, g.small>>10, g.smallTook, 4*g.small>>10, g.largeTook, g.ratio)
+		if g.ratio > scanGrowthBound {
+			t.Errorf("%s: a page four times larger (%d KiB against %d KiB) took %.1f times the CPU to scan (%v against %v), over %d; the scan is not linear in the page",
+				tc.name, 4*g.small>>10, g.small>>10, g.ratio, g.largeTook, g.smallTook, scanGrowthBound)
 		}
 	}
+}
+
+// scanGrowthBound is the most times longer a scan of four times the input may
+// take. A linear scan reads about 4 and a quadratic one about 16; 8 is their
+// geometric mean, so either side has a factor of two of room for noise before
+// the verdict turns. A quadratic scan reads below 16 only where a fixed cost
+// (compiling the patterns, splitting the lines) is a large part of the
+// smaller read, which scanGrowthFloor keeps it from being.
+const scanGrowthBound = 8
+
+// scanGrowthFloor is the least CPU time the smaller read must take. Below it
+// the clock's resolution and the fixed costs of a call are a large part of
+// the reading, and the ratio says little, so scanGrowth grows both inputs
+// instead of judging.
+const scanGrowthFloor = 10 * time.Millisecond
+
+// scanGrowthRounds is how many times each input is read; the least reading of
+// each size is the one the judge compares.
+const scanGrowthRounds = 5
+
+// growth is one scanGrowth reading: the smaller input's size and the least CPU
+// time a read of it and of the input four times larger took.
+type growth struct {
+	small                int
+	smallTook, largeTook time.Duration
+	ratio                float64
+}
+
+// scanGrowth finds an input size whose read takes at least scanGrowthFloor of
+// CPU, doubling from 4 KiB, then reads it and one four times larger
+// scanGrowthRounds times each, alternating, and compares the least time of
+// each size. build makes the input outside the timing and returns the read.
+//
+// Process CPU is the clock, so a core taken by another process is not
+// charged; another goroutine of this binary or the collector is, and the
+// least of several readings drops a read one of them ran beside. Alternating
+// the sizes keeps a burst of such work from covering every read of one size
+// and none of the other. Starting small keeps a quadratic scan's larger read
+// short: it reaches the floor at a small size, where sixteen times the floor
+// is still well under a second.
+func scanGrowth(t *testing.T, build func(size int) func()) growth {
+	t.Helper()
+	timed := func(read func()) time.Duration {
+		runtime.GC()
+		start := processCPU()
+		read()
+		return processCPU() - start
+	}
+	n := 4 << 10
+	for {
+		read := build(n)
+		read() // a warm-up: the first read pays one-time costs
+		if timed(read) >= scanGrowthFloor {
+			break
+		}
+		if n >= 64<<20 {
+			t.Fatalf("a read of %d MiB took under %v of CPU; the reading cannot be judged", n>>20, scanGrowthFloor)
+		}
+		n *= 2
+	}
+	small, large := build(n), build(4*n)
+	g := growth{small: n, smallTook: time.Duration(math.MaxInt64), largeTook: time.Duration(math.MaxInt64)}
+	for range scanGrowthRounds {
+		g.smallTook = min(g.smallTook, timed(small))
+		g.largeTook = min(g.largeTook, timed(large))
+	}
+	g.ratio = float64(g.largeTook) / float64(max(g.smallTook, time.Nanosecond))
+	return g
 }
