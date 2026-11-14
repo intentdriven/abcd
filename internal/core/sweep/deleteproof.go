@@ -438,9 +438,15 @@ func openPullRequests(listing, branch string) ([]string, error) {
 }
 
 // lsRemoteTip is the default RemoteTip: a bounded `git ls-remote` of the one
-// branch.
+// branch. The guard's prover reaches it with no context of its own to pass
+// (guard.DeleteProver takes none), so it keeps its own deadline here, made
+// in the call that runs git.
 func lsRemoteTip(dir, remote, branch string) (string, bool, error) {
-	return lsRemoteTipContext(context.Background(), dir, remote, branch)
+	ctx, cancel := context.WithTimeout(context.Background(), proofNetLimit)
+	defer cancel()
+	ref := "refs/heads/" + branch
+	out, err := gitutil.RunLimitedNetContext(ctx, dir, proofListCap, "ls-remote", "--", remote, ref)
+	return remoteTipAnswer(out, ref, err)
 }
 
 // lsRemoteTipContext is lsRemoteTip bound to ctx as well as proofNetLimit:
@@ -451,9 +457,15 @@ func lsRemoteTipContext(ctx context.Context, dir, remote, branch string) (string
 	defer cancel()
 	ref := "refs/heads/" + branch
 	out, err := gitutil.RunLimitedNetContext(ctx, dir, proofListCap, "ls-remote", "--", remote, ref)
+	return remoteTipAnswer(out, ref, err)
+}
+
+// remoteTipAnswer reads one `git ls-remote <remote> <ref>`: the tip origin
+// holds for ref, whether it holds ref at all, or why it could not be asked.
+// origin's answer is scrubbed of the credentials a URL in it carries before
+// it is kept, and before the cut to its first line.
+func remoteTipAnswer(out, ref string, err error) (string, bool, error) {
 	if err != nil {
-		// origin's answer is scrubbed of the credentials a URL in it carries
-		// before it is kept, and before the cut to its first line.
 		return "", false, errors.New(firstLine(gitutil.ScrubURLCredentials(err.Error())))
 	}
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
