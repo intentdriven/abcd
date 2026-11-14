@@ -408,7 +408,7 @@ func hooksDirAt(dir string) (string, error) { return hooksDirIn(stageEnv, dir) }
 // failing, not finishing, or answering with other than one path (a value
 // holding a newline among them) is a readFailure naming the read: the caller
 // stops rather than hash a directory git would not run.
-func hooksDirIn(e *gitEnv, dir string) (string, error) { return hooksDirBy(e, dir, boundsNow()) }
+func hooksDirIn(e *gitEnv, dir string) (string, error) { return hooksDirBy(e, dir, boundsNow(e)) }
 
 // hooksDirBy is hooksDirIn under the reading's bounds b (gitEnv.readBy).
 func hooksDirBy(e *gitEnv, dir string, b readBounds) (string, error) {

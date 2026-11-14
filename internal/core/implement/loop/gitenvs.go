@@ -256,16 +256,20 @@ type readBounds struct {
 	envs map[*gitEnv][]string
 }
 
-// boundsNow is the bounds of a reading starting now, outside a comparison.
-func boundsNow() readBounds {
-	envs := map[*gitEnv][]string{}
-	for _, e := range driveEnvs() {
-		envs[e] = e.environ()
+// boundsNow is the bounds of a reading starting now, outside a comparison,
+// with the variables of the environments it reads in (envs) and no others:
+// a reading in every environment (a comparison, the identity a drive takes
+// at its start) names them all (driveEnvs).
+func boundsNow(envs ...*gitEnv) readBounds {
+	vars := make(map[*gitEnv][]string, len(envs))
+	for _, e := range envs {
+		vars[e] = e.environ()
 	}
-	return readBounds{ctx: context.Background(), read: heldReadTimeout, wait: heldReadRetryWait, envs: envs}
+	return readBounds{ctx: context.Background(), read: heldReadTimeout, wait: heldReadRetryWait, envs: vars}
 }
 
-// environ is the variables e's git is given in this reading.
+// environ is the variables e's git is given in this reading: those taken as
+// it started, or, for an environment the reading did not name, e's own now.
 func (b readBounds) environ(e *gitEnv) []string {
 	if env, ok := b.envs[e]; ok {
 		return env
@@ -299,7 +303,7 @@ func (b readBounds) pause(d time.Duration) bool {
 // running once it has answered. A read compare makes that the deadline cut
 // is errCompareUnfinished too.
 func boundedCompare[T any](compare func(b readBounds) (T, error)) (T, error) {
-	b := boundsNow()
+	b := boundsNow(driveEnvs()...)
 	whole := heldCompareTimeout
 	b.by = time.Now().Add(whole)
 	ctx, cancel := context.WithDeadline(b.ctx, b.by)
@@ -400,7 +404,7 @@ func (e *gitStderr) Unwrap() error { return e.err }
 // exited non-zero is not, its status returned with what it wrote and said,
 // for the caller to judge.
 func (e *gitEnv) read(dir, what string, limit int, args ...string) (answer, error) {
-	return e.readBy(boundsNow(), dir, what, limit, args...)
+	return e.readBy(boundsNow(e), dir, what, limit, args...)
 }
 
 // readBy is read under b, the bounds of the reading it is part of: its
@@ -573,7 +577,7 @@ func gitBool(v string) (on, ok bool) {
 // system settings file the listing names (system), else none: it is then
 // not held. Any other answer is a readFailure.
 func attributesFiles(e *gitEnv, dir, system string) ([]string, error) {
-	b := boundsNow()
+	b := boundsNow(e)
 	return attributesFrom(e, dir, system, askAttributes(e, dir, b), b)
 }
 

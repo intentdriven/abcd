@@ -121,7 +121,7 @@ func readRemoteIdentity(repoRoot string) (*remoteIdentity, error) {
 		return nil, err
 	}
 	id := &remoteIdentity{salt: salt}
-	r, err := readHeld(repoRoot, salt, "", boundsNow())
+	r, err := readHeld(repoRoot, salt, "", boundsNow(driveEnvs()...))
 	if err != nil {
 		return nil, err
 	}
@@ -297,7 +297,7 @@ func commonDirBy(repoRoot string, b readBounds) (string, error) {
 // info/attributes. It fails when the common git directory cannot be resolved
 // or a tree is past maxHookEntries entries.
 func readCheckoutHooks(repoRoot, salt string, dirs ...string) (map[string]string, error) {
-	common, err := commonDirBy(repoRoot, boundsNow())
+	common, err := commonDirBy(repoRoot, boundsNow(isolatedEnv))
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +368,7 @@ func parseScopedList(out string) ([]scopedSetting, error) {
 // that gives no answer the hold can take is a readFailure naming it, which
 // stops the drive or the step.
 func readHeldSettings(env *gitEnv, repoRoot, salt string, files map[string]string) (map[string]string, error) {
-	return readHeldSettingsBy(env, repoRoot, salt, files, boundsNow())
+	return readHeldSettingsBy(env, repoRoot, salt, files, boundsNow(env))
 }
 
 // readHeldSettingsBy is readHeldSettings under the reading's bounds b: the

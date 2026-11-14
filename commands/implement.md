@@ -1348,7 +1348,9 @@ takes about as long as one read, or two where an include path is set. It is
 bounded as a whole at one minute, each
 read inside it keeping its own bound; at that bound every read still going
 is stopped and the comparison waits for each to end, a few seconds at most,
-so none is left running, then the step stops at the
+so no read of git is left running (a walk of a hooks directory or the
+hashing of an included file on a disk that does not answer can outlast that
+wait, and what it finds is not used), then the step stops at the
 stage `config` saying the comparison did not finish, never that anything
 changed or that nothing did. A drive on a loaded machine pays that on every
 such git command, so its lanes are slower; on one where git takes most of a
