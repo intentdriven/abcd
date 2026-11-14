@@ -211,13 +211,10 @@ func (rs ReviewSet) masked() ReviewSet {
 		return r
 	})
 	rs.Classes = maskEach(rs.Classes, class)
-	if rs.Unlaunchable != nil {
-		un := make(map[string][]string, len(rs.Unlaunchable))
-		for role, cs := range rs.Unlaunchable {
-			un[line(role)] = maskEach(cs, line)
-		}
-		rs.Unlaunchable = un
-	}
+	rs.Unlaunchable = maskEach(rs.Unlaunchable, func(u RoleClasses) RoleClasses {
+		u.Role, u.Classes = line(u.Role), maskEach(u.Classes, line)
+		return u
+	})
 	rs.Judge = maskPtr(rs.Judge, func(j ReviewJudge) ReviewJudge {
 		j.Class, j.Model, j.MapLayer, j.MapOrigin = line(j.Class), line(j.Model), line(j.MapLayer), line(j.MapOrigin)
 		j.Layer, j.Origin, j.Status = line(j.Layer), line(j.Origin), line(j.Status)

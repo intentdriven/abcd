@@ -214,11 +214,28 @@ func (j *ReviewJudge) Active() bool { return j != nil && j.Status == JudgeActive
 // every class launches, and on every run but a drive's, whose reviewers are
 // asked of the host.
 type ReviewSet struct {
-	Roles        []RoleReviewers     `json:"roles"`
-	Judge        *ReviewJudge        `json:"judge"`
-	MaxReviewers PaceValue           `json:"max_reviewers"`
-	Classes      []ReviewClass       `json:"classes,omitempty"`
-	Unlaunchable map[string][]string `json:"unlaunchable,omitempty"`
+	Roles        []RoleReviewers `json:"roles"`
+	Judge        *ReviewJudge    `json:"judge"`
+	MaxReviewers PaceValue       `json:"max_reviewers"`
+	Classes      []ReviewClass   `json:"classes,omitempty"`
+	Unlaunchable []RoleClasses   `json:"unlaunchable,omitempty"`
+}
+
+// RoleClasses is one review role's classes a drive's runners could not
+// launch when the run started, in the order Classes gives.
+type RoleClasses struct {
+	Role    string   `json:"role"`
+	Classes []string `json:"classes"`
+}
+
+// unlaunchableFor is the classes rs records as unlaunchable for role.
+func (rs ReviewSet) unlaunchableFor(role string) []string {
+	for _, u := range rs.Unlaunchable {
+		if u.Role == role {
+			return u.Classes
+		}
+	}
+	return nil
 }
 
 // Role returns the reviewers of role, and false when the set names none.
@@ -432,12 +449,15 @@ func (rs ReviewSet) written() bool {
 	if len(rs.Unlaunchable) > 0 && len(rs.Classes) == 0 {
 		return false
 	}
-	for role, cs := range rs.Unlaunchable {
-		if !slices.Contains(reviewRoles, role) || len(cs) == 0 || len(cs) > len(Classes) {
+	lastRole := -1
+	for _, u := range rs.Unlaunchable {
+		ri := slices.Index(reviewRoles, u.Role)
+		if ri <= lastRole || len(u.Classes) == 0 || len(u.Classes) > len(Classes) {
 			return false
 		}
+		lastRole = ri
 		last := -1
-		for _, c := range cs {
+		for _, c := range u.Classes {
 			i := slices.Index(Classes, c)
 			if i <= last {
 				return false
@@ -639,19 +659,20 @@ func resolveReviewSet(roots layered.Roots, o Options) (ReviewSet, []string, erro
 // refuse, asked with no host session as CheckReviewersLaunch asks it of the
 // listed reviewers; nil when every class launches, and for every other run,
 // whose reviewers are asked of the host.
-func unlaunchable(o Options, rs ReviewSet) map[string][]string {
+func unlaunchable(o Options, rs ReviewSet) []RoleClasses {
 	if o.Profile == "" || o.Runners == nil {
 		return nil
 	}
-	var out map[string][]string
+	var out []RoleClasses
 	for _, role := range reviewRoles {
+		u := RoleClasses{Role: role}
 		for _, c := range rs.Classes {
 			if o.Runners.CanLaunch(role, c.Model, false) != nil {
-				if out == nil {
-					out = map[string][]string{}
-				}
-				out[role] = append(out[role], c.Class)
+				u.Classes = append(u.Classes, c.Class)
 			}
+		}
+		if len(u.Classes) > 0 {
+			out = append(out, u)
 		}
 	}
 	return out

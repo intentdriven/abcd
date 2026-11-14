@@ -57,6 +57,9 @@ func setModel(t *testing.T, f *landFixture, model string, route *runner.RouteRec
 		t.Fatal(err)
 	}
 	i := st.current()
+	// A receipt verified before the model was required was judged by
+	// reviewers that recorded no models, in a run that stored no class map.
+	asBeforeModels(&st)
 	for j := range st.Lanes[i].Receipts {
 		r := &st.Lanes[i].Receipts[j]
 		r.Model, r.Route = model, route
@@ -91,6 +94,27 @@ func setModel(t *testing.T, f *landFixture, model string, route *runner.RouteRec
 	defer root.Close()
 	if err := writeState(root, st); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// asBeforeModels is st as a run started before version 27 leaves it once read
+// at version 27: no class map, and each reviewer it handed out marked as one
+// that recorded no models.
+func asBeforeModels(st *State) {
+	if st.Review != nil {
+		st.Review.Classes, st.Review.Unlaunchable = nil, nil
+	}
+	for li := range st.Lanes {
+		l := &st.Lanes[li]
+		for ri := range l.Validation {
+			for vi := range l.Validation[ri].Validators {
+				v := &l.Validation[ri].Validators[vi]
+				v.WriterModels, v.ReviewerModel, v.ReviewerNamed = nil, "", ""
+				if slices.Contains(reviewRoles, v.Role) && (v.Verdict != "" || l.awaited(v.Return)) {
+					v.ModelsUnrecorded = true
+				}
+			}
+		}
 	}
 }
 

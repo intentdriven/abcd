@@ -252,7 +252,7 @@ func otherClass(rs ReviewSet, role string, entry ReviewClass, writers, siblings 
 	for k := 1; k < len(Classes); k++ {
 		next := Classes[(from+k+len(Classes))%len(Classes)]
 		i := slices.IndexFunc(choosable, func(c ReviewClass) bool { return c.Class == next })
-		if i < 0 || !differsFromAll(writers, choosable[i].Model) || slices.Contains(rs.Unlaunchable[role], next) {
+		if i < 0 || !differsFromAll(writers, choosable[i].Model) || slices.Contains(rs.unlaunchableFor(role), next) {
 			continue
 		}
 		if !slices.ContainsFunc(siblings, func(s string) bool { return !matrix.OtherModel(s, choosable[i].Model) }) {

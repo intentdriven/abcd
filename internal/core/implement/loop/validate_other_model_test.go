@@ -551,8 +551,8 @@ func TestAMovedReviewerTakesALaunchableClassNoSiblingHolds(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := st.Review.Unlaunchable; !slices.Equal(got[RoleRuthless], []string{ClassTop}) || !slices.Equal(got[RoleSecurity], []string{ClassTop}) {
-			t.Fatalf("the run records the class its runners cannot launch: %+v", got)
+		if got := st.Review; !slices.Equal(got.unlaunchableFor(RoleRuthless), []string{ClassTop}) || !slices.Equal(got.unlaunchableFor(RoleSecurity), []string{ClassTop}) {
+			t.Fatalf("the run records the class its runners cannot launch: %+v", got.Unlaunchable)
 		}
 		implemented(t, repo, start.RunID, DefaultStages(), "one.txt")
 		setWriterModel(t, repo.Root(), start.RunID, "claude-haiku-4-5")
