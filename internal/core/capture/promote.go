@@ -16,6 +16,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/shellquote"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // PromoteRequest is the input to Promote: graduate an issue into an intent.
@@ -447,18 +448,7 @@ func orphanDraftError(stampErr error, recordID, itdID, intentPath string, g *gro
 // pads each end when s begins or ends with a backtick. What a renderer, a test
 // or a person reads between the fences is therefore always the whole of s.
 func codeSpan(s string) string {
-	longest, run := 0, 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '`' {
-			run++
-			if run > longest {
-				longest = run
-			}
-			continue
-		}
-		run = 0
-	}
-	fence := strings.Repeat("`", longest+1)
+	fence := strings.Repeat("`", termsafe.LongestFenceRun(s, termsafe.FenceBacktick)+1)
 	if strings.HasPrefix(s, "`") || strings.HasSuffix(s, "`") {
 		return fence + " " + s + " " + fence
 	}
