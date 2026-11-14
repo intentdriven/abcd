@@ -607,7 +607,10 @@ func TestSynopsisScanIsLinearInThePage(t *testing.T) {
 		for attempt := 1; attempt <= 2; attempt++ {
 			g := scanGrowth(t, build)
 			if !g.judged {
-				t.Logf("%s: the least read of %d KiB took %v, under the %v floor at the largest size; the growth is not judged",
+				// No scan of these bodies is this quick, so a page that
+				// stopped reaching the scan fails here rather than passing
+				// with nothing measured.
+				t.Errorf("%s: the least read of %d KiB took %v, under the %v floor at the largest size; the scan was not measured",
 					tc.name, g.small>>10, g.smallTook, scanGrowthFloor)
 				break
 			}
@@ -680,8 +683,9 @@ type growth struct {
 //
 // A reading left unjudged at scanGrowthLimit cannot come from a scan slower
 // than linear: even a linear scan would have to get through over 6 GiB per
-// second of CPU to keep 64 MiB under 10ms, and a scan whose cost grows faster than the
-// page reaches the floor at a smaller size than a linear one does.
+// second of CPU to keep 64 MiB under 10ms, and a scan whose cost grows faster
+// than the page reaches the floor at a smaller size than a linear one does.
+// The caller fails on it: it means the read did no scanning.
 func scanGrowth(t *testing.T, build func(size int) func()) growth {
 	t.Helper()
 	timed := func(read func()) time.Duration {
