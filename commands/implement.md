@@ -1289,14 +1289,25 @@ step another process of your account can still write in the lane; the pin
 holds what was proved, so that step's check names the change.
 
 A drive reads these settings once as it starts, before its first lane, and
-keeps hashes of their scopes and values in its own memory, never in a file:
-the settings the run's fingerprint watches (listed at the head of this
-section: each remote's URLs, uploadpack, receivepack, proxy and vcs, every URL
-rewrite, the hooks directory, ssh command, proxy program, askpass, fsmonitor,
-pager, editor and worktree settings, `extensions.worktreeConfig`, every
-`credential.*` key, the protocol allow rules, content filters, diff and merge
-drivers, signing programs and `gpg.ssh.defaultKeyCommand`, and include
-paths), the same list and no other, and `http.proxy` and `http.sslVerify`; the
+keeps hashes of their scopes and values in its own memory, never in a file.
+It holds the settings a git command of the drive can read that name or start
+a program, or change where a networked git goes or whom it trusts. By class:
+where a fetch or push goes and how it reaches the remote (each remote's URLs,
+uploadpack, receivepack, proxy and vcs, every URL rewrite, the ssh command and
+`ssh.variant`, the proxy program, the protocol allow rules, and
+`fetch.bundleURI`); whom it trusts (every `credential.*` key, askpass, and the
+proxy, certificate and resolve settings of `http.*`, each per-URL
+`http.<url>.*` form of them included, since git applies a per-URL value over
+the plain one); the programs a git command of the drive starts (the hooks
+directory, fsmonitor, the editor, content filters, diff and merge drivers and
+`diff.external`, every `gpg.*` key and the signing and verifying switches,
+`format.pretty` and `pretty.*`, whose format can check a signature,
+`core.alternateRefsCommand`, `uploadpack.packObjectsHook`,
+`gc.recentObjectsHook`, Git LFS's transfer and extension programs, `hook.*`
+and `init.templateDir`); the settings that change which of them run
+(`merge.renormalize`, `submodule.recurse` and `push.recurseSubmodules`,
+`status.submoduleSummary`, `core.attributesFile`, the worktree settings and
+`extensions.worktreeConfig`); and the include paths. It holds as well the
 bytes of each file an `include.path` or `includeIf.*.path` setting names,
 whether or not its condition holds at the checkout, since it can hold in a
 lane, its path resolved by git; and the global and system attributes files git
@@ -1306,7 +1317,12 @@ reservation's pushes and fetches run with the repository's hooks on and the
 ask of `origin` runs with them off; the lane's add, commit, merge and reset,
 which run with the stage's home and the stage's global settings file, so a
 home-form path there is under the stage's home; and abcd's isolated reads of
-refs and objects, which read no global or system settings. In each
+refs and objects, which read no global or system settings. Where
+`extensions.worktreeConfig` is on, git also reads the settings of the
+worktree it runs in (`config.worktree`), so the drive reads, in each of those
+environments, the keys it holds beyond the fingerprint's list at each lane
+worktree's own scope too, which the checkout's reading does not show; the
+fingerprint compares its own list there. In each
 environment whose commands run hooks it also holds the hooks directory git
 names there, at every depth, so a `core.hooksPath` set only in your global
 settings holds the directory your push's `pre-push` runs from. Every step of a
@@ -1334,7 +1350,9 @@ so does a known one in a form that can start a program or reach the network
 signature checked for a log or a listing, a repository made from a
 template, a remote updated or shown). The comparison's own reads never
 compare themselves, whatever the settings they read hold.
-On a difference the command is not run and fails naming it. A difference at a pass of the loop
+On a difference the command is not run and fails naming the key (with the
+lane worktree, for a key set at a lane's own scope) or the file; its remedy
+gives the git command that shows where each is set. A difference at a pass of the loop
 ends the drive, and so does a read there that gives no answer: the drive
 reads what it holds only as it starts, so a change of yours to a watched
 setting while a drive runs (a new credential helper, an editor, an include)
@@ -1384,11 +1402,35 @@ again before it asks `origin` anything and once more after `origin` has
 answered (a trial's lane, which asks `origin` nothing, once), and refuses the
 lane on any difference, naming the key or file (a URL in a key's name hidden,
 as below); a content filter set with an attributes line in the git directory
-during one lane stops the next before its add. Not held: any other `http.*`
-key, a per-URL one included; an `origin` defined only by a legacy remotes or
-branches file in the git directory, which has no key to compare; and a file
-named by an include inside a conditionally included file whose condition does
-not hold at the checkout. A step the host runs and a single build
+during one lane stops the next before its add.
+
+Not held, so a change to it leaves a drive running: a setting no git command
+of the drive reads. These are the pager settings (a drive gives its git no
+terminal); the editor of an interactive rebase, its instruction format and
+the filter of `git add -p`; the tool, browser and mail commands; trailer
+commands; the switches of automatic maintenance (the programs it can start,
+the hooks directory's `pre-auto-gc` and `gc.recentObjectsHook`, are held);
+`alias.*`, since git lets an alias stand only for a deprecated command and
+abcd runs none; `transfer.bundleURI`, which only a clone reads; and the
+submodule keys of the checkout's own settings, `fetch.recurseSubmodules` among
+them, which `git submodule init` writes. A submodule's own settings are not
+read either: every fetch of the drive carries `fetch.recurseSubmodules=false`
+and `submodule.recurse=false` on its command line, so it fetches the refs abcd
+asks for and goes into no submodule, whatever any scope or the tree's
+`.gitmodules` sets (your own fetch, pull and checkout are as before). Git
+still goes into a checked-out submodule in three places, under that
+submodule's own settings, which the drive does not hold: a status read of the
+checkout or a lane's worktree that does not leave submodules out runs
+`git status` inside each checked-out submodule, with your global settings and
+abcd's command-line settings beside the submodule's, so a content filter the
+submodule's settings name runs there; and where your settings turn recursion
+on (`push.recurseSubmodules`, `submodule.recurse`, which are held), the
+landing push and a lane's reset go into submodules too. Not held either: an
+`origin` defined only by a legacy remotes or branches file in the git
+directory, which has no key to compare; and a file named by an include inside
+a conditionally included file whose condition does not hold at the checkout.
+The shell guard judges a command against a list of settings of its own, which
+is not this one. A step the host runs and a single build
 carry no such record: there these settings must not change between one lane's
 run and the next, and nothing enforces it.
 
