@@ -427,7 +427,9 @@ func TestTheDeleteGoesThroughThePushTheRepositorysOwnHooksSee(t *testing.T) {
 func TestOriginsAnswerIsScrubbedBeforeItIsShown(t *testing.T) {
 	repo, _ := originRepo(t)
 	tip := mergedOnOrigin(repo, "feat", "feat.txt")
-	url := "file://" + filepath.Join(t.TempDir(), "https://user:s3cret@example.invalid/none.git")
+	// Joined by hand: filepath.Join would fold the URL's "//" into one, and
+	// git quotes the path back with the URL whole.
+	url := "file://" + t.TempDir() + "/https://user:s3cret@example.invalid/none.git"
 	repo.Git("remote", "set-url", "origin", url)
 
 	_, _, err := lsRemoteTipContext(context.Background(), repo.Root(), "origin", "feat")
