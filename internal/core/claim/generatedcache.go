@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/vintage"
@@ -131,12 +132,20 @@ func generatedKey(ref, tree string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// ctxOf is g's context, the background one when g holds none.
-func ctxOf(g viewGit) context.Context {
+// keptGitTimeout bounds the tracked check of the kept file for a reader whose
+// git holds no context (every reader but ViewContext's): a check it ends
+// reads as nothing kept, and nothing is written. The check lists what the
+// checkout tracks, well under a second on a tree of 150,000 files. A
+// variable, so a test can reach it.
+var keptGitTimeout = 5 * time.Second
+
+// keptCtx is the context the kept file's tracked check runs under: g's when
+// it holds one, else one that ends after keptGitTimeout.
+func keptCtx(g viewGit) (context.Context, context.CancelFunc) {
 	if g.bound() {
-		return g.ctx
+		return g.ctx, func() {}
 	}
-	return context.Background()
+	return context.WithTimeout(context.Background(), keptGitTimeout)
 }
 
 // keptGenerated is the answer kept under key: the set, or spent for a match
@@ -147,7 +156,9 @@ func keptGenerated(g viewGit, root, key string) (files map[string]bool, spent, o
 		return nil, false, false
 	}
 	defer r.Close()
-	data, err := localtier.ReadInRootContext(ctxOf(g), r, generatedKeptRel, generatedKeptCap)
+	ctx, cancel := keptCtx(g)
+	defer cancel()
+	data, err := localtier.ReadInRootContext(ctx, r, generatedKeptRel, generatedKeptCap)
 	if err != nil {
 		return nil, false, false
 	}
@@ -165,7 +176,9 @@ func keepGenerated(g viewGit, root, key string, files map[string]bool, spent boo
 	if len(data) > generatedKeptCap || tierPresent(root) != nil {
 		return
 	}
-	if localtier.UntrackedContext(ctxOf(g), root, generatedKeptRel) != nil {
+	ctx, cancel := keptCtx(g)
+	defer cancel()
+	if localtier.UntrackedContext(ctx, root, generatedKeptRel) != nil {
 		return
 	}
 	r, err := os.OpenRoot(root)

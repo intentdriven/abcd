@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/vintage"
 )
@@ -435,5 +436,39 @@ func TestAKeptFilePastTheEntryCapIsNotAnAnswer(t *testing.T) {
 	}
 	if _, err := os.Lstat(keptPath(p.dir)); !os.IsNotExist(err) || *n != 2 {
 		t.Fatalf("a set past the cap: kept %v, matched %d time(s); want nothing kept and 2", err, *n)
+	}
+}
+
+// TestAKeptReadWithNoContextIsBounded: a reader whose git holds no context
+// gives the kept file's tracked check a deadline of its own; a check that
+// hangs past it reads as nothing kept, and the set is read afresh rather than
+// waiting on the hung git.
+func TestAKeptReadWithNoContextIsBounded(t *testing.T) {
+	p := generatedWorld(t)
+	want := map[string]bool{"a.gen": true, "c.txt": false}
+	wantGenerated(t, p.dir, want, "")
+	calls, _ := gitOnPath(t, 0, nil)
+	calls()
+	wantGenerated(t, p.dir, want, "")
+	log := calls()
+	n := slices.IndexFunc(log, argvEnds(" ls-files -z")) + 1
+	if n == 0 {
+		t.Fatalf("the kept read made no tracked check; the test proves nothing:\n  %s", strings.Join(log, "\n  "))
+	}
+	defer func(was time.Duration) { keptGitTimeout = was }(keptGitTimeout)
+	keptGitTimeout = 200 * time.Millisecond
+	_, stalled := gitOnPath(t, n, func() {})
+	matches := countMatches(t)
+	start := time.Now()
+	wantGenerated(t, p.dir, want, "")
+	took := time.Since(start)
+	if !stalled() {
+		t.Fatalf("the tracked check (call %d) never came; the test proves nothing", n)
+	}
+	if took >= stallFor {
+		t.Errorf("the read waited out the hung tracked check (%s)", took)
+	}
+	if *matches != 1 {
+		t.Errorf("matched %d time(s) once the tracked check ran out; want the set read afresh once", *matches)
 	}
 }
