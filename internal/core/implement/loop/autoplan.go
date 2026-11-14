@@ -798,7 +798,9 @@ func autoPlanDoneMove(st State) string {
 }
 
 // releaseAutoPlan releases an auto-plan run's reservation once its lane is
-// done or handed back: the run builds nothing, so nothing else will.
+// done or handed back: the run builds nothing, so nothing else will. It runs
+// only in the step a save makes once it has written the lane so
+// (releaseAfterWrite), so a save refused or failed leaves it held.
 func releaseAutoPlan(repoRoot string, st *State, now time.Time) {
 	if st.ReservedAt == nil || !st.autoPlanning() {
 		return

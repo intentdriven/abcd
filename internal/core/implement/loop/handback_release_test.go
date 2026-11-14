@@ -213,7 +213,7 @@ func TestAHandBackWhoseReleaseFailsSaysNotReleased(t *testing.T) {
 		t.Fatalf("a release origin refused is not logged as made: %q", note)
 	}
 	for _, want := range []string{"the lane was handed back and its reservation not released", "could not push the tombstone",
-		"unless a drain routing the hand-back releases it", "its lease ends at ", "nothing renews a handed-back lane's reservation"} {
+		"unless a drain routing the hand-back releases it", "its lease ends at ", " as last fetched", "nothing renews a handed-back lane's reservation"} {
 		if !strings.Contains(res.Next, want) {
 			t.Fatalf("the answer says %q: %s", want, res.Next)
 		}
@@ -224,7 +224,12 @@ func TestAHandBackWhoseReleaseFailsSaysNotReleased(t *testing.T) {
 
 	undo()
 	later := Options{Now: func() time.Time { return time.Now().Add(90 * time.Minute) }}
-	_, _ = advance(repo.Root(), id, DefaultStages(), later)
+	// The step's answer is the move's, which comes after the renewal point: a
+	// refusal naming the hand-back, with no renewal's note on its remedy.
+	_, err = advance(repo.Root(), id, DefaultStages(), later)
+	if r := mustRefusal(t, err); r.Stage != string(StageHandedBack) || strings.Contains(r.Remedy, "renew") {
+		t.Fatalf("the step reached its move, past the renewal point: %+v", r)
+	}
 	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); tomb.commit != before.commit {
 		t.Fatalf("a step pushed to a handed-back lane's reservation: %+v, was %+v", tomb, before)
 	}
@@ -412,5 +417,132 @@ func TestAClosedHandBackSaveRefusedLeavesTheReservationHeld(t *testing.T) {
 	}
 	if note := recordNote(t, f.repo, f.runID, StageReservationReleased); !strings.Contains(note, "released the reservation on "+secondIssue) {
 		t.Fatalf("the run record says the reservation was released: %q", note)
+	}
+}
+
+// TestTheLeaseIsSaidAsLastFetched: the lease of a reservation the release did
+// not free is said as this checkout last fetched it, "ends at" a time to come
+// and "ended at" one already past.
+func TestTheLeaseIsSaidAsLastFetched(t *testing.T) {
+	repo, _, id, _ := handingBackAtImplementer(t)
+	st, err := ReadState(repo.Root(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range []struct {
+		name      string
+		at        time.Time
+		want, not string
+	}{
+		{"a lease to come", time.Now(), "; its lease ends at ", "ended at"},
+		{"a lease already past", time.Now().Add(48 * time.Hour), "; its lease ended at ", "ends at"},
+	} {
+		until, ended := leaseEnd(repo.Root(), st, row.at)
+		if until == "" {
+			t.Fatalf("%s: premise: this checkout's view shows the reservation as this copy's", row.name)
+		}
+		r := &handBackRelease{made: true, failed: true, clause: "could not push the tombstone", until: until, ended: ended}
+		next := r.next()
+		if !strings.Contains(next, row.want+until+" as last fetched") || strings.Contains(next, row.not) {
+			t.Fatalf("%s: the lease is said as %q, as last fetched: %s", row.name, row.want, next)
+		}
+	}
+}
+
+// reservingDraftRepo is draftRepo over the auto-plan's draft, with an origin
+// its run reserves the intent on, as the fixtures' person.
+func reservingDraftRepo(t *testing.T) (*gittest.Repo, string) {
+	t.Helper()
+	repo := draftRepo(t, draftIntent())
+	bare := filepath.Join(t.TempDir(), "origin.git")
+	gittest.InitBare(t, bare)
+	repo.Git("remote", "add", "origin", bare)
+	repo.Git("push", "-q", "origin", "main")
+	repo.Git("fetch", "-q", "origin")
+	asPat(t, repo)
+	return repo, bare
+}
+
+// TestAnAutoPlanHandBackSaveRefusedLeavesTheReservationHeld: a failing plan
+// review hands an auto-plan run's lane back (performMove); the step's save
+// refused, the intent's reservation stays held; stepped again and saved, it is
+// released.
+func TestAnAutoPlanHandBackSaveRefusedLeavesTheReservationHeld(t *testing.T) {
+	repo, bare := reservingDraftRepo(t)
+	root := repo.Root()
+	start, err := Start(root, "itd-10", Options{AutoPlan: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, ref := start.RunID, claim.RefPrefix+"itd-10"
+	if tomb := originReservation(t, bare, ref); tomb.commit == "" || tomb.released {
+		t.Fatalf("premise: the auto-plan run holds its reservation: %+v", tomb)
+	}
+	reviewBoth(t, root, id, "SHIP", "FIX FIRST")
+
+	restore := refuseHandingBack(t)
+	_, err = advance(root, id, DefaultStages(), Options{})
+	if r := mustRefusal(t, err); r.Stage != "state" || !strings.Contains(r.Reason, "was not saved") {
+		t.Fatalf("the step returns the save's refusal: %+v", r)
+	}
+	if tomb := originReservation(t, bare, ref); tomb.released {
+		t.Fatalf("a refused save leaves the auto-plan's reservation held: %+v", tomb)
+	}
+	if note := recordNote(t, repo, id, StageReservationReleased); note != "" {
+		t.Fatalf("a refused save logs no release: %q", note)
+	}
+
+	restore()
+	res, err := advance(root, id, DefaultStages(), Options{})
+	if err != nil || res.HandBack == nil {
+		t.Fatalf("the step's hand-back saved: %+v %v", res, err)
+	}
+	if tomb := originReservation(t, bare, ref); !tomb.released {
+		t.Fatalf("a saved hand-back releases the auto-plan's reservation: %+v", tomb)
+	}
+	if note := recordNote(t, repo, id, StageReservationReleased); !strings.Contains(note, "released the reservation on itd-10") {
+		t.Fatalf("the run record says the reservation was released: %q", note)
+	}
+}
+
+// TestAParkedLaneHandedBackUnreleasedSaysNotReleased: a parked lane's landing
+// step, as the drain's watch takes it (watchParked), hands the lane back and
+// origin refuses the tombstone: the watch's note says the reservation was not
+// released, and why, and origin still holds it.
+func TestAParkedLaneHandedBackUnreleasedSaysNotReleased(t *testing.T) {
+	f, _ := parkDrainLane(t)
+	was := parkedStages
+	t.Cleanup(func() { parkedStages = was })
+	parkedStages = func() Stages {
+		stages := DefaultStages()
+		for i := range stages {
+			if stages[i].Name == StageLand {
+				stages[i].Run = func(Context, *Lane) (Outcome, error) {
+					return Outcome{HandBack: &HandBack{Kind: HandBackStuck, Reason: "the landing cannot go on", Home: "a person"}}, nil
+				}
+			}
+		}
+		return stages
+	}
+	before := originReservation(t, f.bare, claim.RefPrefix+secondIssue)
+	if before.commit == "" || before.released {
+		t.Fatalf("premise: the parked run holds its reservation: %+v", before)
+	}
+	refuseReservationPush(t, f.bare, secondIssue)
+
+	note, _, _, err := watchParked(f.repo.Root(), f.runID, time.Now().UTC(), Options{}.laneSave(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"the lane was handed back and its reservation not released", "could not push the tombstone"} {
+		if !strings.Contains(note, want) {
+			t.Fatalf("the watch's note says %q: %s", want, note)
+		}
+	}
+	if tomb := originReservation(t, f.bare, claim.RefPrefix+secondIssue); tomb.released || tomb.commit != before.commit {
+		t.Fatalf("origin refused the tombstone, so the reservation is still held: %+v", tomb)
+	}
+	if st := stateOnDisk(t, f.repo.Root(), f.runID); st.Lanes[0].HandBack == nil {
+		t.Fatalf("the lane is handed back: %+v", st.Lanes[0])
 	}
 }

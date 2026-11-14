@@ -725,15 +725,13 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 	switch {
 	case out.HandBack != nil:
 		handBackLane(st, &lane, *out.HandBack, out.Note, now)
-		if lane.AutoPlan != nil {
-			releaseAutoPlan(repoRoot, st, now)
-		}
 		st.Lanes[i] = lane
 		st.UpdatedAt = now
 		res := laneResult(*st, lane, "", nil)
 		res.HandBack = lane.HandBack
-		// An issue run's reservation is released once the step's save has
-		// written the hand-back, under the same lock (releaseAfterWrite).
+		// An issue run's reservation, or an auto-plan run's, is released once
+		// the step's save has written the hand-back, under the same lock
+		// (releaseAfterWrite).
 		res.release = releaseAfterWrite(repoRoot, st, lane.ID, now)
 		return res, nil
 	case out.Stay:
@@ -763,14 +761,18 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 		lane.Stage = after(lane.Stage)
 	}
 	st.Lanes[i] = lane
+	var release *handBackRelease
 	if lane.Stage == StageDone {
 		openNext(st, now)
 		if lane.AutoPlan != nil {
-			releaseAutoPlan(repoRoot, st, now)
+			// An auto-plan run's reservation is released once the step's save
+			// has written the lane done, under the same lock (releaseAfterWrite).
+			release = releaseAfterWrite(repoRoot, st, lane.ID, now)
 		}
 	}
 	st.UpdatedAt = now
 	res := laneResult(*st, lane, performed, handed)
+	res.release = release
 	if out.Stay || out.Goto != "" {
 		res.stepNote = out.Note
 	}

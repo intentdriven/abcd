@@ -1873,7 +1873,9 @@ func storeState(root *os.Root, st State, right wholeSave) error {
 // callback refuses, writes nothing, or whose write fails, never runs it. The
 // step is handed the state as written; a change it makes is written only by
 // its own call of rewrite, a second write under the same hold, whose error the
-// step keeps. A second registration runs after the first. Only a whole save
+// step keeps: storeState returns nil whatever the step's rewrite did, so a
+// step that does not keep and report that error itself loses it
+// (releaseAfterWrite keeps it as handBackRelease.unwritten). A second registration runs after the first. Only a whole save
 // (saveRun, storeState) runs a step; a reservation save (saveRecord) does not.
 func (st *State) afterWritten(step func(st *State, rewrite func() error)) {
 	if prev := st.written; prev != nil {
