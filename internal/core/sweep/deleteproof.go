@@ -440,7 +440,14 @@ func openPullRequests(listing, branch string) ([]string, error) {
 // lsRemoteTip is the default RemoteTip: a bounded `git ls-remote` of the one
 // branch.
 func lsRemoteTip(dir, remote, branch string) (string, bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), proofNetLimit)
+	return lsRemoteTipContext(context.Background(), dir, remote, branch)
+}
+
+// lsRemoteTipContext is lsRemoteTip bound to ctx as well as proofNetLimit:
+// the sweep's last check before it deletes a branch on origin asks with its
+// run's context.
+func lsRemoteTipContext(ctx context.Context, dir, remote, branch string) (string, bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, proofNetLimit)
 	defer cancel()
 	ref := "refs/heads/" + branch
 	out, err := gitutil.RunLimitedNetContext(ctx, dir, proofListCap, "ls-remote", "--", remote, ref)
