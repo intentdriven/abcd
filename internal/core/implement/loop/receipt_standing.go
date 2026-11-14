@@ -717,7 +717,8 @@ func (s State) collectedAt(repoRoot, path string) (int, string, string, bool) {
 // back as stuck where its round cannot be judged again. It reports whether it
 // changed the state, and the hand-back it made, if any: the caller releases
 // the run's reservation for it only once the save that hands the lane back has
-// returned (releaseOnSaved), so a refused save leaves the reservation held.
+// written it, under the same lock (releaseAfterWrite), so a refused save leaves
+// the reservation held.
 func answerCollected(repoRoot string, root *os.Root, st *State, i int, taken, digest string, route *runner.RouteRecord, now time.Time) (StepResult, *HandBack, bool, error) {
 	l := st.Lanes[i]
 	var handed *HandBack

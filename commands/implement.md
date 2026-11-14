@@ -653,15 +653,15 @@ a number: a letter such as `v`, `p`, `b` or `latest`, a number of four or more
 digits, a number written straight before a letter, a size or a tag such as
 `1m`, `70b` or `4o`, or a number of two or three digits that starts with `0`,
 so `claude-opus-5-5-001` and `claude-opus-5-5-002` are the same model while
-`gpt-4-0` keeps its single `0`. A number glued to a letter is no version, so
-`gpt-4o` is the same model as `gpt-5` and any other gpt, and a class map of
-such names hands the review back. So a region number before the family (`us-east-1`,
+`gpt-4-0` keeps its single `0`. So a region number before the family (`us-east-1`,
 `eastus2`, `europe-west4`) is never part of the version, nor a date after its
 year (`claude-opus-5-5-2026-10-14` and `claude-opus-5-5-2026-11-13` are the
 same model), nor a revision tag (`-v1:0`, `-v2` and `-v3`), and a name with no
 number straight after its family carries no version: `llama-v3p1-70b` is the
 same model as any llama, and `claude-3-5-sonnet-20241022`, written in the older
-order, the same as any sonnet. Two known names are other models only when their
+order, the same as any sonnet. A number glued to a letter is no version, so
+`gpt-4o` is the same model as `gpt-5` and any other gpt, and a class map whose
+every name is such a name, with a writer of that family, hands the lane back. Two known names are other models only when their
 families differ, or the family is the same, both carry a version, and neither
 version's digits are a prefix of the other's. Every other pair is the same
 model: `opus` and `claude-opus-5-5`, `claude-opus-5-5-thinking` and
@@ -1075,7 +1075,8 @@ say on what merges before its tag, as contention (exit 3); the pull request
 stays open for the cutting session to merge or hold. A release whose tag is on
 `origin`, or whose holder released it, holds nothing. Past the fence the reservation holds only
 while something renews it at half its lease: each step of the run does,
-whatever its stage, an implementer's long stage included, so does handing an
+whatever its stage, an implementer's long stage included (but not a run keyed
+by an issue whose lane is handed back: nothing renews that reservation), so does handing an
 agent's receipt back with `receipt`, so does `status`, so does the load gate's
 waiter (`implement load --wait` or `--race-gate`) an agent's `go test` or
 `make preflight` runs under, while it waits and while its command runs, and
@@ -1090,9 +1091,14 @@ over for longer than its lease loses the reservation, and another person may
 then take the record over. A step or a receipt that finds the reservation held
 by another person or copy says so in its answer and logs `reservation_lost` in
 the run record, once. A run keyed by an issue whose lane is handed back
-releases its reservation as the step hands it back: it pushes the tombstone
+releases its reservation as the step hands it back, once the hand-back is
+written and under the same lock, so a save refused or failed releases nothing
+and hands nothing back: it pushes the tombstone
 while the reservation is still this copy's and logs `reservation_released`
-with the outcome, since the issue is the person's again; a fetch or push that
+with the outcome, since the issue is the person's again. A crash between the
+hand-back's write and the release leaves the lane handed back and the
+reservation held, with no line for it, until a drain routing the hand-back
+releases it or it lapses at its lease's end. A fetch or push that
 fails, and a release the reservation's tip refuses for a reason of its own (a
 tombstone it may not write, a tip it cannot read), is logged
 `reservation_release_failed` instead, never `reservation_released`. A

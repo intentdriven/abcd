@@ -597,6 +597,9 @@ type State struct {
 	// Frozen is a trial's frozen commit (Options.Frozen), which its lanes are
 	// cut from; "" on every other run.
 	Frozen string `json:"frozen,omitempty"`
+	// written is the step a save's callback registered (afterWritten) to run
+	// once storeState has written this state; it is never stored.
+	written func(st *State, rewrite func() error)
 }
 
 // Transcript is one transcript the run record captured into the history store.
@@ -1834,10 +1837,29 @@ func serialCarries(st State, version int) error {
 // The repository and tool text the state carries is stored masked
 // (State.masked, iss-2610121542240257), and no larger than its read accepts
 // (stateData).
+//
+// Once the write has returned without error, the step the save's callback
+// registered (afterWritten) runs, still under the caller's lock, and is handed
+// the state as written and a rewrite that writes it again in the same way; what
+// the step does after that write, and whether its rewrite is written, is the
+// step's to report, so the save itself has succeeded.
 func storeState(root *os.Root, st State, right wholeSave) error {
 	if err := right.covers(root, st.RunID); err != nil {
 		return err
 	}
+	if err := writeStateIn(root, st); err != nil {
+		return err
+	}
+	if step := st.written; step != nil {
+		st.written = nil
+		step(&st, func() error { return writeStateIn(root, st) })
+	}
+	return nil
+}
+
+// writeStateIn writes st whole at its state path (stateData), the caller
+// holding the lock and having judged the save.
+func writeStateIn(root *os.Root, st State) error {
 	data, err := stateData(st)
 	if err != nil {
 		return err
@@ -1847,6 +1869,24 @@ func storeState(root *os.Root, st State, right wholeSave) error {
 		return fmt.Errorf("writing %s: %w", rel, err)
 	}
 	return nil
+}
+
+// afterWritten registers step to run once, after storeState has written st
+// without error and before the lock the save took is let go: a save whose
+// callback refuses, writes nothing, or whose write fails, never runs it. The
+// step is handed the state as written; a change it makes is written only by
+// its own call of rewrite, a second write under the same hold, whose error the
+// step keeps. A second registration runs after the first. Only a whole save
+// (saveRun, storeState) runs a step; a reservation save (saveRecord) does not.
+func (st *State) afterWritten(step func(st *State, rewrite func() error)) {
+	if prev := st.written; prev != nil {
+		st.written = func(s *State, rewrite func() error) {
+			prev(s, rewrite)
+			step(s, rewrite)
+		}
+		return
+	}
+	st.written = step
 }
 
 // stateData is the file storeState stores for st: masked, with located
@@ -1875,7 +1915,8 @@ func stateData(st State) ([]byte, error) {
 
 // modelsCheck is the models check every save makes (modelsSavable); a test
 // stands in for it to refuse a save the loop's own changes never leave
-// unreadable.
+// unreadable. It is the package's, as its other seams are, so a test that swaps
+// it must not run in parallel.
 var modelsCheck = modelsSavable
 
 // modelsSavable refuses a save of a state whose stored models its own read

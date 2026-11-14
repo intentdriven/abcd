@@ -289,15 +289,18 @@ func times(n int) string {
 }
 
 // handBackStuck hands the run's lane in progress back as stuck by the bounds
-// b, and releases the issue's reservation with the hand-back's tombstone
-// (releaseOnHandBack), under the run's lock; it returns the run as written.
+// b, and releases the issue's reservation with the hand-back's tombstone once
+// the save has written the hand-back, under the same lock (releaseAfterWrite);
+// it returns the run as written, the release's line included.
 // The lane is judged again under the lock, so a step running at the same time
 // that succeeded, or handed the lane back itself, since the drain read it
 // leaves the lane as that step wrote it. The hand-back saves the run whole, through
 // save (Options.laneSave).
 func handBackStuck(repoRoot, runID string, b stuckBounds, now time.Time, save saveFrame) (State, error) {
 	var out State
+	var release *handBackRelease
 	err := save(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		release = nil
 		i := st.current()
 		why := stuckReason(*st, b)
 		if i < 0 || st.Lanes[i].HandBack != nil || why == "" {
@@ -309,11 +312,14 @@ func handBackStuck(repoRoot, runID string, b stuckBounds, now time.Time, save sa
 			Home: "a person: the issue stays open, and the lane's run " + st.RunID + " keeps its worktree and branch until `abcd implement step --run " +
 				st.RunID + " --discard " + lane.ID + "` discards them"}
 		handBackLane(st, &lane, hb, "", now)
-		releaseOnHandBack(repoRoot, st, *lane.HandBack, now)
 		st.Lanes[i] = lane
 		st.UpdatedAt = now
 		out = *st
+		release = releaseAfterWrite(repoRoot, st, lane.ID, now)
 		return true, nil
 	})
+	if err == nil && release != nil && release.ran {
+		out = release.state
+	}
 	return out, err
 }

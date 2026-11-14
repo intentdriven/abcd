@@ -552,13 +552,16 @@ func watchParked(repoRoot, runID string, now time.Time, save saveFrame) (note st
 
 // handBackClosed hands run's parked lane back as closed, its pull request
 // closed without merging, and releases the issue's reservation with the
-// hand-back's tombstone (releaseOnHandBack), under the run's lock. It returns
+// hand-back's tombstone once the save has written the hand-back, under the same
+// lock (releaseAfterWrite). It returns
 // the record's line, "" when the lane is no longer parked (a step running at
 // the same time moved it), or why save left the run as its file stands
 // (mayWholeSave), nothing handed back and nothing released.
 func handBackClosed(repoRoot, runID string, now time.Time, save saveFrame) (string, error) {
 	note := ""
+	var release *handBackRelease
 	err := save(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		release = nil
 		i := parkedAtLand(*st)
 		if i < 0 {
 			return false, nil
@@ -568,17 +571,17 @@ func handBackClosed(repoRoot, runID string, now time.Time, save saveFrame) (stri
 			Home: "a person: the issue stays open, and the lane's run " + st.RunID + " keeps its worktree and branch until `abcd implement step --run " +
 				st.RunID + " --discard " + lane.ID + "` discards them"}
 		handBackLane(st, &lane, hb, "", now)
-		releaseOnHandBack(repoRoot, st, *lane.HandBack, now)
 		st.Lanes[i] = lane
 		st.UpdatedAt = now
 		note = st.Record[len(st.Record)-1].Note
-		if k := len(st.Record) - 2; k >= 0 && st.Record[k].Stage == string(StageHandedBack) {
-			note = st.Record[k].Note + "; " + note
-		}
+		release = releaseAfterWrite(repoRoot, st, lane.ID, now)
 		return true, nil
 	})
 	if r, ok := leftAtVersion(err); ok {
 		return fsutil.RedactHome(r.Reason + "; " + r.Remedy), nil
+	}
+	if err == nil && release != nil && release.made {
+		note += "; " + release.clause + release.unwrittenNote("say so")
 	}
 	return note, err
 }

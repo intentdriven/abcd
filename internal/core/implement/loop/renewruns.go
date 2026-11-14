@@ -199,14 +199,22 @@ func renewsWhereItWaits(st State) bool {
 	if st.ReservedAt == nil || st.Complete() || parkedAtLand(st) >= 0 {
 		return false
 	}
-	if st.Issue() != "" {
-		for _, l := range st.Lanes {
-			if l.HandBack != nil || l.Stage == StageHandedBack {
-				return false
-			}
+	return !handedBackIssue(st)
+}
+
+// handedBackIssue reports whether st is an issue's run with a lane handed
+// back: its reservation is the person's to have released, so nothing renews
+// it, neither a waiter (renewsWhereItWaits) nor a step (advanceWith).
+func handedBackIssue(st State) bool {
+	if st.Issue() == "" {
+		return false
+	}
+	for _, l := range st.Lanes {
+		if l.HandBack != nil || l.Stage == StageHandedBack {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 // realPath is p with its symbolic links resolved, or cleaned when they cannot
