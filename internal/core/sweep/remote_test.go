@@ -371,3 +371,36 @@ func TestAFailedDeleteOnOriginIsTheRunsFault(t *testing.T) {
 		t.Fatal("origin no longer holds feat")
 	}
 }
+
+// TestTheDeleteGoesThroughThePushTheRepositorysOwnHooksSee: a pre-push hook
+// of the checkout that refuses deleting the branch is honoured: the branch
+// stands on origin, its row carries the refusal, and the run is a fault, as
+// for any other failed push.
+func TestTheDeleteGoesThroughThePushTheRepositorysOwnHooksSee(t *testing.T) {
+	repo, origin := originRepo(t)
+	tip := mergedOnOrigin(repo, "feat", "feat.txt")
+	hooks := repo.Git("rev-parse", "--git-path", "hooks")
+	if !filepath.IsAbs(hooks) {
+		hooks = filepath.Join(repo.Root(), hooks)
+	}
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hook := "#!/bin/sh\nwhile read local lsha remote rsha; do\n" +
+		"  case \"$lsha\" in 0000000000000000000000000000000000000000) echo \"pre-push: this checkout keeps $remote\" >&2; exit 1;; esac\n" +
+		"done\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(hooks, "pre-push"), []byte(hook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	res, err := sweepRemote(context.Background(), repo.Root(), remoteOpts(&fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}), true)
+	if err == nil || res.ExitCode() != ExitRefused {
+		t.Fatalf("a delete the hook refuses is the run's fault: err %v, exit %d", err, res.ExitCode())
+	}
+	r := remoteRowFor(t, res, "feat")
+	if r.Outcome != OutcomeKept || !strings.Contains(r.Reason, "the delete on origin failed") || !strings.Contains(r.Reason, "this checkout keeps refs/heads/feat") {
+		t.Fatalf("%+v; want it kept, naming the hook's refusal", r)
+	}
+	if onOrigin(repo, origin, "feat") != tip {
+		t.Fatal("origin no longer holds feat")
+	}
+}

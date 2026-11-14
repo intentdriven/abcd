@@ -34,11 +34,18 @@ package sweep
 // liveness probe, the forge's pull requests from that branch, and origin's
 // tip of it now. Only then is it deleted, by one push of an empty ref with a
 // lease on the exact tip that was judged (the reservation sweep's pattern),
-// so a branch someone pushed to meanwhile survives. Reservations are the ones
-// the caller read after its fetch, as the worktree apply reads them.
+// so a branch someone pushed to meanwhile survives. The push runs through
+// gitutil.Net, so the repository's own pre-push hook sees it, as it sees the
+// reservation sweep's; a hook that refuses it keeps the branch and is the
+// run's fault, as any other failed push is. Reservations are the ones the
+// caller read after its fetch, as the worktree apply reads them.
 //
-// Every git command runs through gitutil, bound to the run's context and a
-// deadline; every forge call is bounded by forgeTimeout and the context.
+// Every git command this file runs goes through gitutil. The reads are bound
+// to the run's context and a deadline; the delete's push is bound to
+// gitutil.NetTimeout, the hooked runner taking no context; and the shared
+// merged judgement (store.Merged) and the liveness probe's changed-paths
+// read run their own git reads with no deadline. Every forge call is bounded
+// by forgeTimeout and the context.
 //
 // sweepRemote is an entry point the surfaces (step 5) call, and so stays
 // unexported until then, as runDry does.
@@ -505,7 +512,18 @@ func (rj *remoteJudge) delete(b remoteBranch, head string, headFail error, row *
 	if beforeRemoteDelete != nil {
 		beforeRemoteDelete(b.ref)
 	}
-	out, err := gitutil.NetContext(ctx, rj.root, remoteDeleteArgs(b.ref, b.tip)...)
+	if err := rj.ctx.Err(); err != nil {
+		row.Reason = clean("the run was stopped before the delete, so the branch is kept")
+		return err
+	}
+	// The delete goes through the push the repository's own hooks see
+	// (gitutil.Net, the runner the reservation sweep's delete uses), so its
+	// pre-push hook judges this push as it judges the person's own. No
+	// exported hooked runner takes a context, so this one call is bounded by
+	// gitutil.NetTimeout rather than the run's context, which is checked just
+	// before it starts; bounding the wait here would leave git running past
+	// it.
+	out, err := gitutil.Net(rj.root, remoteDeleteArgs(b.ref, b.tip)...)
 	if err == nil {
 		row.Outcome = OutcomeDeleted
 		row.Reason = clean("deleted on origin under a lease on its judged tip " + short(b.tip) + "; " + row.Reason)

@@ -15,8 +15,11 @@ package sweep
 // HEAD when the upstream is unset or gone, not the default branch) is kept as
 // well, so the dry run never promises a delete git will refuse.
 //
-// Every git command runs through gitutil's isolated runner, bound to the run's
-// context and gitReadTimeout. The judgement reads refs and history and writes
+// Every git command this file runs goes through gitutil. Its reads use the
+// isolated runner, bound to the run's context and gitReadTimeout; apply's
+// `git branch -d` uses the runner for a local write (LocalGit), bound to
+// gitutil.NetTimeout; the shared merged judgement (store.Merged) runs its own
+// git reads with no deadline. The judgement reads refs and history and writes
 // nothing; only apply's `git branch -d` changes a ref.
 //
 // sweepBranches is an entry point the surfaces (step 5) call, and so stays
@@ -34,7 +37,7 @@ import (
 )
 
 const (
-	// gitReadTimeout bounds each git command a branch judgement or delete
+	// gitReadTimeout bounds each git read a branch judgement or a last check
 	// runs: a git that hangs is killed, and the branch kept, rather than
 	// holding the whole run.
 	gitReadTimeout = 2 * time.Minute
@@ -302,7 +305,17 @@ func (bj *branchJudge) delete(b branchRef, row *Row) error {
 		row.Reason = clean("it moved since it was judged, so it is kept for the next run to judge")
 		return nil
 	}
-	if _, err := gitRead(bj.ctx, bj.root, gitMessageCap, "branch", "-d", "--", name); err != nil {
+	if err := bj.ctx.Err(); err != nil {
+		row.Reason = clean("the run was stopped before the delete, so it is kept")
+		return err
+	}
+	// The delete runs the way the person's own `git branch -d` does, through
+	// gitutil's runner for a local write (LocalGit): under the person's own
+	// configuration, with the repository's hooks (a reference-transaction
+	// hook) running. That runner takes no context; it is bounded by
+	// gitutil.NetTimeout instead, and the run's context is checked just
+	// before it starts.
+	if _, err := gitutil.LocalGit(bj.root, "branch", "-d", "--", name); err != nil {
 		row.Reason = clean("`git branch -d` refused to delete it, so it is kept: " + err.Error())
 		return errors.New(clean("sweep: `git branch -d` refused to delete " + name + ": " + err.Error()))
 	}
