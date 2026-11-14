@@ -1282,7 +1282,7 @@ func (r *owedReader) landed(b *localBranch) landedness {
 		return landedUnknown
 	}
 	if overrides, err := gitutil.MergeDriverOverridesContext(r.ctx, r.root); err == nil {
-		args := append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriver(), "-c", "merge.renormalize=false",
+		args := append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriver(),
 			"merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", r.defTip, b.head)
 		out, conflicted, err := gitutil.RunCappedExitOneContext(r.ctx, r.root, maxLandedOutput, args...)
 		if err == nil && !conflicted {

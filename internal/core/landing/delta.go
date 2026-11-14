@@ -941,7 +941,7 @@ func provesCleanMerge(repoRoot, commit, first, second, tip string) error {
 	if err != nil {
 		return fmt.Errorf("the merge %s cannot be recomputed: %w", short(commit), notJudged{err})
 	}
-	args := append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriver(), "-c", "merge.renormalize=false",
+	args := append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriver(),
 		"merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", first, second)
 	out, conflicted, err := gitutil.RunCappedExitOneAsStored(repoRoot, maxDeltaGitOutput, args...)
 	if err != nil {
