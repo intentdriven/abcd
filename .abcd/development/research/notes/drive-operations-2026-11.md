@@ -41,7 +41,7 @@ What it shows: one lane that cannot proceed holds the whole drive. The wait had 
 
 ### 5. Nobody could tell whether it was working
 
-The person's question on return was "is the drain working?". Answering it took reading the log for the last line that was not a wait, comparing times, and counting. The drive prints its own state as a stream of similar lines. There is no one line that says: working, waiting on a limit, or stalled since a given time for a given reason.
+The person's question was "is the drain working?". Answering it took reading the log for the last line that was not a wait, comparing times, and counting. The drive prints its own state as a stream of similar lines. There is no one line that says: working, waiting on a limit, or stalled since a given time for a given reason.
 
 ### 6. Bringing it back took a rebuild by hand
 
