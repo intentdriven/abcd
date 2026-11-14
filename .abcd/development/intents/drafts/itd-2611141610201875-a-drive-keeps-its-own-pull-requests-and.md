@@ -17,7 +17,7 @@ production_mode: hand-written
 
 ## Press Release
 
-> **A drive keeps its own pull requests and its own checkout moving.** A person starts a drive and leaves. When the merge queue removes one of the drive's pull requests for a failure that is not the change's own, the drive arms it again, a stated number of times at most, and says so on one line. When the failure is the change's, the drive hands the lane back and names the check and the command that re-runs it. Between lanes the drive brings its own checkout up to the default branch whenever that is safe, and when it is not, the state line says what blocks it. Nobody watches the forge for the drive, and nobody moves a file aside so that its checkout can catch up.
+> **A drive keeps its own pull requests and its own checkout moving.** A person starts a drive and leaves. When the merge queue removes one of the drive's pull requests for a failure that is not the change's own, the drive arms it again, a stated number of times at most, and says so on one line. When the failure is the change's, the drive hands the lane back and names the check and the command that re-runs it. Between lanes the drive brings its own checkout up to the default branch whenever that is safe, and when it is not, the drive says what blocks it. Nobody watches the forge for the drive, and nobody moves a file aside so that its checkout can catch up.
 
 > "Four of its pull requests fell out of the queue on a test that fails now and then. I found out from the line that said it had armed each one again." — Iris, a product thinker (they/them)
 
@@ -48,7 +48,7 @@ The note makes a third point that the lab did not probe. Two fixes reached the d
 
 - One line when a pull request is armed again, saying which and how many times so far.
 - A hand-back that names the failed check and the command that re-runs it.
-- On the state line: what blocks the checkout from catching up, when something does.
+- What blocks the checkout from catching up, when something does. Where that is shown is the fifth open question.
 
 ### What a person never has to know
 
@@ -75,7 +75,7 @@ We expect the drive's checkout to stay near the default branch, because the driv
 - The drive rebuilding itself from source. The lab did not probe it, and the fourth open question asks what the drive should do instead.
 - Re-running a forge check the forge refuses to re-run (the incident's fifth pull request, whose workflow runs were created and never started).
 - A surface for what the drive's reservations cover, and a way to clear many handed-back lanes at once (the note's event 10).
-- The state line itself, the set-aside of a blocked lane and the claim at the start. Those are itd-2611141610197753, which this intent builds on: its one-line reports and its "what blocks it" use that intent's state line.
+- The state line itself, the set-aside of a blocked lane and the claim at the start. Those are itd-2611141610197753, which this intent builds on: its one-line reports follow that intent's state line, and where a blocked fast-forward is shown is the fifth open question.
 - The terminal's drawing of these lines (itd-2611141610192096).
 - Any new command, any flag a person must remember, and any stored state a person must clear.
 
@@ -83,7 +83,7 @@ We expect the drive's checkout to stay near the default branch, because the driv
 
 - **Given** a pull request the merge queue removed, **when** the rule the product thinker chooses says the failure is not the change's, **then** the drive re-arms it, at most a stated number of times at one head, and says so on one line; otherwise it hands the lane back naming the check and the command that re-runs it. This criterion cannot be written more exactly until the first open question is answered.
   - Evidence: lab-261114145658-67e1f9b, F-6, F-10 and F-18.
-- **Given** a drive's checkout behind origin's default branch, whose every dirty path is a record the drive wrote and none of which an incoming commit changes, and no lane in progress, **when** a lane ends, **then** the checkout is fast-forwarded; **given** any other dirty path, **then** it is not, and the state line says what blocks it. This criterion depends on the second and third open questions.
+- **Given** a drive's checkout behind origin's default branch, whose every dirty path is a record the drive wrote and none of which an incoming commit changes, and no lane in progress, **when** a lane ends, **then** the checkout is fast-forwarded; **given** any other dirty path, **then** it is not, and the drive says what blocks it. This criterion depends on the second and third open questions, and where the block is shown on the fifth.
   - Evidence: lab-261114145658-67e1f9b, F-12 and F-19.
 
 ## Open Questions
@@ -108,14 +108,17 @@ Each question below is the product thinker's to decide, and none is answered her
    - Yes, and re-read its hold at that boundary, as it already re-executes for a new release. Cost: the hold's guarantee (nothing the drive's git runs changed since the start) becomes "since the last boundary".
 
 4. **"What should a drive do when the default branch carries a fix it lacks?"** (the incident note's events 1 and 2; not probed by the lab)
-   - Nothing more than itd-2611141610197753 gives: the state line says `stalled` when lanes are handed back in a row for one reason. Cost: the line cannot say that a fix exists, so a person has to work out that a rebuild is the remedy.
+   - Nothing more than itd-2611141610197753 would give: its state line says `stalled` when lanes are handed back in a row for one reason, once that intent's own open question on the count is answered. Cost: the line cannot say that a fix exists, so a person has to work out that a rebuild is the remedy.
    - Say how far its own build is behind the default branch, on the state line or at the start. Cost: a source build is behind after every merge, so the line says so nearly always, and being behind is not the same as lacking a fix it needs.
    - Rely on releases: a release build already takes each new release at a lane boundary (itd-2611062149308723), and a source build never updates itself. Cost: a fix reaches a drive only when a release is cut, and a drive on a source build, which the incident's was, is not covered.
    - A source build rebuilds itself from its fast-forwarded checkout between lanes. Cost: a binary with no release, no checksum and no signed provenance replaces the running one, which adr-2611062149324491 rules out as written; that record would have to change, and the lab tested none of it.
 
+5. **"Where does a person see that the checkout's fast-forward is blocked?"** (F-12; the lab's brief put it on the state line)
+   - What is known: the state line of itd-2611141610197753 has one `on` field, for what the drive is working or waiting on, and one act. A drive whose fast-forward is declined is usually working on a lane, so the block is not what the line is on. The lab's brief says "the state line says what blocks it" and its state-line design has no field for it. No answer is proposed here.
+
 ## Typed Links
 
-- builds_on: itd-2611141610197753 (a drive carries on from one command, and says in one line when it cannot). The one-line reports and the "what blocks it" of both criteria are that intent's state line, and its set-aside is what keeps a lane that cannot land from holding the others while this intent is unbuilt.
+- builds_on: itd-2611141610197753 (a drive carries on from one command, and says in one line when it cannot). The one-line reports of both criteria follow that intent's state line, and its set-aside is what keeps a lane that cannot land from holding the others while this intent is unbuilt.
 - related: itd-2610222215485265 (the drive itself). itd-2611062149308723 (a drive takes each release itself) and adr-2611062149324491, which bound the fourth open question. itd-2611141610192096 (the terminal output).
 - context: dcn-2611062201286033 (a merge-queue entry dropped with no failing test is re-armed until it lands, and a real failure gets fixed).
 - evidence: lab-261114145658-67e1f9b (findings F-6, F-10, F-12, F-18 and F-19) and `.abcd/development/research/notes/drive-operations-2026-11.md`, events 1 to 4 and 6.
