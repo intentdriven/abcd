@@ -25,7 +25,7 @@ blocked_by: [itd-2611141610197753]
 
 ## What It Looks Like
 
-The examples show the row without colour. The words, the counts' labels and the order in which parts are dropped are illustrations: the order is an open question below, and the examples show one of its defensible answers (the drive first). `Henry` is the session's name; the figures are those of the drive described in the incident note.
+The examples show the row without colour. The words, the counts' labels and the order in which parts are dropped are illustrations: the order is an open question below, and the examples show one of its defensible answers (the drive first). `Henry` is the session's name. The examples are illustrative: 20 landed and 79 handed back are the figures of the drive described in the incident note, and every other figure (lanes in flight and set aside, the pull-request counts, the times and the preflight's steps) is made up to show the layout.
 
 A drive that is working, at 120, 80 and 40 columns:
 
@@ -61,7 +61,7 @@ abcd-managed · PRs 1 dropped out
 
 ## Why This Matters
 
-An unattended drive (`abcd drain --drive`, itd-2610222215485265) ran for three days on one machine. Twice the person who started it had to ask "is the drain working?", and answering took reading the log for the last line that was not a wait, comparing times and counting (event 5 of the incident note, `.abcd/development/research/notes/drive-operations-2026-11.md`). For 23 of its first 52 hours the drive did no new work and said so nowhere a person would notice (event 4). Its pull requests left the merge queue four times and stayed out until a second session noticed (event 3). The drive prints its state as a stream of similar lines, and there is no one place that says working, waiting or stalled.
+An unattended drive (`abcd drain --drive`, itd-2610222215485265) ran for three days on one machine. The person had to ask "is the drain working?", and answering took reading the log for the last line that was not a wait, comparing times and counting (event 5 of the incident note, `.abcd/development/research/notes/drive-operations-2026-11.md`). For 23 of its first 52 hours the drive did no new work and said so nowhere a person would notice (event 4). Its pull requests left the merge queue four times and stayed out until a second session noticed (event 3). The drive prints its state as a stream of similar lines, and there is no one place that says working, waiting or stalled.
 
 abcd already writes a row into the host's status line, and the person already looks there: it leads with the badge that says whose answer is owed (itd-200, itd-2609212130146198) and names the session (itd-2610111707085098). It is the one surface a person sees without typing. Work that runs without the person belongs on it for that reason: the person is by definition not watching that work, so its state has to reach them where they already look.
 
@@ -91,8 +91,8 @@ Two drafts already extend the row. itd-2610281253044600 adds one element, the ti
 
 ## Scope Conditions
 
-- A drive that keeps one stored line of state: working, waiting or stalled; since when; on what; and what a person can do. That line is defined by itd-2611141610197753 (a drive carries on from one command, and says in one line when it cannot); this intent reads the line and does not define it. The link is added to this record when that intent is filed. Until the line exists the drive part is absent, never derived from the log.
-- The stored line carries the time it was last written, so that a drive that died without writing a final state can be told from one that is working. The row judges age from that time alone; it does not read the process table.
+- A drive that keeps one stored line of state: working, waiting, stalled or stopped; since when; on what; and what a person can do. That line is defined by itd-2611141610197753 (a drive carries on from one command, and says in one line when it cannot); this intent reads the line and does not define it. Until the line exists the drive part is absent, never derived from the log.
+- The stored line carries the time it was last written, so that a drive that died without writing a final state can be told from one that is working. The row judges age from that time alone; it does not read the process table. The spec of itd-2611141610197753 stores a next-write time for such a reader and says what it costs: a drive that died during a long wait can read as waiting for up to an hour.
 - A host that runs the status command on a timer as well as on its own events (the refresh interval itd-2611031342000215 sets at install). On a host that refreshes only on events, "within one refresh" is as long as the gap between events, and a stall may sit unseen while the session is idle.
 - A host that passes the terminal's width to the status command in `COLUMNS` (itd-2611031342000215). Without the width the row cannot choose what to drop and renders in full, with the badge-first order as its only protection, as today.
 - A session open in a checkout of the repository on the machine where the drive runs. A drive on another machine or a hosted runner, and a person with no session open, are outside what a status line can reach.
@@ -101,7 +101,7 @@ Two drafts already extend the row. itd-2610281253044600 adds one element, the ti
 
 ## What's Out of Scope
 
-- Defining the drive's state, its words or when a drive counts as stalled. That is the drive-operations intent's.
+- Defining the drive's state, its words or when a drive counts as stalled. That is itd-2611141610197753's.
 - Acting on what the row shows: re-arming a pull request, restarting a drive, setting a lane aside. The row reports.
 - The drive's own terminal output and its log.
 - The product thinker's dashboard (itd-2610032150577708) and any view outside the terminal.
@@ -114,6 +114,7 @@ Two drafts already extend the row. itd-2610281253044600 adds one element, the ti
 - **Given** a drive whose stored state says working, **when** the status line refreshes in a session in that repository, **then** the row shows the word `working` for the drive and the counts of lanes landed, in flight, set aside and handed back, and no command was typed to produce them.
 - **Given** a drive whose stored state says waiting, **when** the row renders, **then** it shows `waiting`, what the drive waits on and the time since when, each taken from the stored state.
 - **Given** a drive whose stored state changes to stalled, **when** the status line next refreshes, **then** the row shows `stalled`, the time since when and what it stalled on, and, where the stored state says a person can act, that it needs the person; the change is visible within one refresh of the state being written.
+- **Given** a drive whose stored state says stopped, **when** the row renders, **then** it shows `stopped` and the time since when, and, where the stored state names an act, that the drive needs the person.
 - **Given** a stored drive state whose last-written time is older than the freshness bound the state declares, **when** the row renders, **then** it says the drive has not been heard from since that time and never shows `working`.
 - **Given** a drive state file that is missing, unreadable, malformed or of an unknown schema version, **when** the row renders, **then** the drive part is absent, one line on stderr names why, the rest of the row renders, and the row never shows a drive state it could not read.
 - **Given** pull requests this session armed, **when** the row renders, **then** it shows how many are armed, in the merge queue, merged and dropped out, counts only this session's own, and shows a state with a count of zero not at all.
@@ -129,7 +130,7 @@ Two drafts already extend the row. itd-2610281253044600 adds one element, the ti
 - **Given** `COLUMNS` in the environment and a row wider than it allows, **when** the row renders, **then** it fits, every prefix of it still begins with the badge, the parts drop in the order the table declares, and within the drive part the state word outlasts its counts and its detail.
 - **Given** `COLUMNS` absent, **when** the row renders, **then** nothing is dropped and the row renders in full.
 - **Given** one of the three parts switched off in the person's status-line setting, or in the repository's configuration, **when** the row renders, **then** that part is absent, its state is not read, and the other two parts and every existing element are unchanged.
-- **Given** the same payload, checkout and settings, **when** the bare board and `abcd statusline --json` render, **then** they carry the same three parts in the same words as the row, from the one composition, each with its plain form.
+- **Given** the same payload, checkout and settings, **when** the bare board and `abcd statusline --json` render, **then** they carry this session's pull requests and the running check in the same words as the row, from the one composition, each with its plain form. For the drive this draft yields to itd-2611141610197753: the board shows the drive's state as the one line that intent composes (its sixth criterion), and the row's shorter phrase is the row's own, drawn from the same stored value.
 - **Given** a checkout abcd does not manage, **when** the status command runs, **then** the person's previous status command runs as it does today and none of the three parts is read or shown.
 
 ## Open Questions
