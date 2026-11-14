@@ -35,7 +35,7 @@ What it shows: the drive can tell a removal that follows a real failure of the c
 
 ### 4. The drive's checkout fell behind, and one missing record stopped everything
 
-The drive runs from a checkout it never updates. After two days that checkout was 692 commits behind the default branch. The drive judged an issue it read from origin, built its lane, and at the landing looked the issue's record up in its own checkout to find the path to reserve. The record was not there. It waited and looked again 47 times over 23 hours, and opened no other lane in between.
+The drive runs from a checkout it never updates. After two days that checkout was 692 commits behind the default branch. The drive judged an issue it read from origin, built its lane, and at the landing looked the issue's record up in its own checkout to find the path to reserve. The record was not there. It printed that wait 47 times over 23 hours, and opened no other lane in between.
 
 What it shows: one lane that cannot proceed holds the whole drive. The wait had no bound and no escalation. The log line said what was missing and never said that nothing had moved for 23 hours.
 
@@ -94,4 +94,4 @@ The lab on drive operations (lab-261114145658-67e1f9b) checked this note against
 
 - Event 3 says the drive "printed the same paragraph every thirty seconds". The lab could not reproduce that (F-6). Thirty seconds is the shortest wait the drive makes between looks. It prints a wait's line when the reason changes, and again every thirty minutes while the wait stands.
 - Event 3 also says "the drive can tell a removal that follows a real failure of the change from one that does not". The lab refuted this (F-10). The forge data the code parses holds a removal's reason, workflow runs and check names with their conclusions, and none of it names a file or a test, so a failure that is the change's and one that is not read identically.
-- Event 4 first said the drive "waited fifteen minutes and looked again, 47 times". Forty-seven looks fifteen minutes apart come to under twelve hours, and the stall lasted 23. The waits lengthened as the stall went on, up to fifteen minutes between looks. The sentence now says 47 times over 23 hours.
+- Event 4 first said the drive "waited fifteen minutes and looked again, 47 times". Forty-seven looks fifteen minutes apart come to under twelve hours, and the stall lasted 23, so 47 is not a count of looks. A wait's line is printed when its reason changes and every thirty minutes while it stands, and 47 is the count of printed wait lines. In its own reproduction of the stall, which is not the incident, the lab (lab-261114145658-67e1f9b, F-5) measured 119 waits and 46 printed lines of that one sentence in 23 hours. The sentence now says the drive printed that wait 47 times over 23 hours.
