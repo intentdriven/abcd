@@ -35,7 +35,7 @@ What it shows: the drive can tell a removal that follows a real failure of the c
 
 ### 4. The drive's checkout fell behind, and one missing record stopped everything
 
-The drive runs from a checkout it never updates. After two days that checkout was 692 commits behind the default branch. The drive judged an issue it read from origin, built its lane, and at the landing looked the issue's record up in its own checkout to find the path to reserve. The record was not there. It waited fifteen minutes and looked again, 47 times, and opened no other lane in between.
+The drive runs from a checkout it never updates. After two days that checkout was 692 commits behind the default branch. The drive judged an issue it read from origin, built its lane, and at the landing looked the issue's record up in its own checkout to find the path to reserve. The record was not there. It waited and looked again 47 times over 23 hours, and opened no other lane in between.
 
 What it shows: one lane that cannot proceed holds the whole drive. The wait had no bound and no escalation. The log line said what was missing and never said that nothing had moved for 23 hours.
 
@@ -87,3 +87,11 @@ Over the three days the drive needed, from a person or a session acting for one:
 4. When a lane cannot proceed, can the drive set it aside and open the next one, and after how long?
 5. Can the drive re-run a check and re-arm a pull request the forge removed for a reason that is not the change's own, and how does it tell?
 6. What is the one line that answers "is it working?", and where does a person see it without reading the log?
+
+## Since the lab
+
+The lab on drive operations (lab-261114145658-67e1f9b) checked this note against the pinned build. Three statements above are corrected here, and the text above is otherwise left as it was written.
+
+- Event 3 says the drive "printed the same paragraph every thirty seconds". The lab could not reproduce that (F-6). Thirty seconds is the shortest wait the drive makes between looks. It prints a wait's line when the reason changes, and again every thirty minutes while the wait stands.
+- Event 3 also says "the drive can tell a removal that follows a real failure of the change from one that does not". The lab refuted this (F-10). The forge data the code parses holds a removal's reason, workflow runs and check names with their conclusions, and none of it names a file or a test, so a failure that is the change's and one that is not read identically.
+- Event 4 first said the drive "waited fifteen minutes and looked again, 47 times". Forty-seven looks fifteen minutes apart come to under twelve hours, and the stall lasted 23. The waits lengthened as the stall went on, up to fifteen minutes between looks. The sentence now says 47 times over 23 hours.
