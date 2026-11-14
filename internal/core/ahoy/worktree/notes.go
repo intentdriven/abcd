@@ -244,6 +244,25 @@ func namesSurvive(repoRoot string, notes []note) error {
 	return nil
 }
 
+// NotesDir is the lane's directory in the notes archive,
+// ~/.abcd.noindex/notes/<root-sha>, its levels walked by the one maker the
+// store and the archive share: made when create is set, and otherwise read
+// only, present false at the first absent level. Each level is held to
+// Ensure's two tests, so a caller writing into the archive (the sweep's patch
+// salvage) or reading what it holds trusts it as the store trusts its own. A
+// Lane that is not LaneFor's answer for its own root commit is refused.
+func (l Lane) NotesDir(create bool) (dir string, present bool, err error) {
+	if err := l.shaped(); err != nil {
+		return "", false, err
+	}
+	rel := NotesRel + "/" + l.RootSHA
+	present, err = levels(l.Home, rel, "notes archive", create)
+	if err != nil {
+		return "", false, err
+	}
+	return filepath.Join(l.Home, filepath.FromSlash(rel)), present, nil
+}
+
 // writeNotes writes notes into a new entry of the archive for the lane, and
 // the manifest beside them. The entry is made exclusively, so two runs in one
 // second never share one, and each file is written inside an os.Root on it.
