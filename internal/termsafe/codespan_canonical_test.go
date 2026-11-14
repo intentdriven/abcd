@@ -27,23 +27,23 @@ type backtickScanner struct {
 // a second pairer. The count is pinned, so a scan added to a file already on
 // the list is a new claim too: a pairer written into an allowlisted file
 // changes its count and fails until a reviewer reads the new reason. The
-// default for a file this test names is to pair through PairCodeSpan.
+// default for a file this test names is to pair through PairCodeSpan. A writer
+// that sizes a span or a fence one longer than the text it wraps counts the
+// text's longest run through LongestFenceRun, so it seeks no backtick itself
+// and has no entry here (iss-2610140739284100).
 var backtickScanners = map[string]backtickScanner{
-	"internal/adapter/scanner/identity.go":        {2, "two delimiter sets: a backtick is one of the characters that may end an identity token, and one of those that bounds the path token an owner slug is judged in; nothing is paired"},
-	"internal/core/assistedby/body.go":            {2, "stripFencedBlocks is the Go copy of scripts/check-attribution.sh's strip_fenced_blocks, held to that gate by TestJudgeBodyMatchesTheGate: a backtick there is a fence opener's character, and an opener whose info string carries one is no fence, as the gate reads it; nothing is paired"},
-	"internal/core/capture/promote.go":            {1, "a WRITER: codeSpan measures the longest backtick run to choose a fence the value cannot close; nothing is paired"},
-	"internal/core/guard/tokenize.go":             {25, "the shell tokenizer: a backtick there is command substitution, a shell grammar, not markdown"},
-	"internal/core/guard/payload.go":              {3, "targetsAnExpansion reads a shell line's raw text for an assignment target that holds an expansion: a backtick there opens or closes a command substitution, a shell grammar, not markdown; nothing is paired"},
-	"internal/core/guard/varpath.go":              {1, "emptiedInside reads whether a default's text opens with a backquote, a command substitution the shell string's own shell runs and which can print nothing: a shell grammar, not markdown; nothing is paired"},
-	"internal/core/guard/unknown.go":              {2, "spellWord spells a default's or an alternative's shell word, and readPattern reads a trim's or a replacement's pattern: a backtick in either opens a command substitution, whose output the spelling drops or the pattern reads as unknown text; nothing is paired"},
-	"internal/core/history/reconstruct_render.go": {1, "a WRITER: longestBacktickRun sizes a fence longer than any run in the body; nothing is paired"},
-	"internal/core/lifeboat/mdrender.go":          {1, "escapeLeadingMarker asks whether a value opens with a backtick, then asks OpensBalancedCodeSpan, which pairs through PairCodeSpan"},
-	"internal/core/mdrecord/inline.go":            {2, "walkLine, Read's walk of one line, hands each run it meets to one CodeSpanPairer, which pairs by PairCodeSpan's rule; the other scan asks whether the line holds a backtick at all before building one; nothing is paired by hand"},
-	"internal/core/mdrecord/mdrecord.go":          {3, "MaskCodeSpans walks to each run and pairs it through PairCodeSpan, runEnd steps over an unpaired run, and the fence opener refuses an info string holding a backtick"},
-	"internal/core/mdrender/render.go":            {2, "the site renderer's inline walk hands each run to PairCodeSpan; the other is the escapable-punctuation range, which names a backtick among the ASCII punctuation"},
-	"internal/core/question/check.go":             {2, "the question check's register rule walks to each run and pairs it through PairCodeSpan, stepping over an unpaired run whole"},
-	"internal/core/rules/rules.go":                {2, "a WRITER: FenceRuleBody measures the longest tilde or backtick run in an override's rule body to size a tilde fence one longer, so no body line can close it; nothing is paired"},
-	"internal/core/surface/appendix.go":           {2, "codeRegions walks to each run and pairs it through PairCodeSpan, stepping over an unpaired run whole"},
+	"internal/adapter/scanner/identity.go": {2, "two delimiter sets: a backtick is one of the characters that may end an identity token, and one of those that bounds the path token an owner slug is judged in; nothing is paired"},
+	"internal/core/assistedby/body.go":     {2, "stripFencedBlocks is the Go copy of scripts/check-attribution.sh's strip_fenced_blocks, held to that gate by TestJudgeBodyMatchesTheGate: a backtick there is a fence opener's character, and an opener whose info string carries one is no fence, as the gate reads it; nothing is paired"},
+	"internal/core/guard/tokenize.go":      {25, "the shell tokenizer: a backtick there is command substitution, a shell grammar, not markdown"},
+	"internal/core/guard/payload.go":       {3, "targetsAnExpansion reads a shell line's raw text for an assignment target that holds an expansion: a backtick there opens or closes a command substitution, a shell grammar, not markdown; nothing is paired"},
+	"internal/core/guard/varpath.go":       {1, "emptiedInside reads whether a default's text opens with a backquote, a command substitution the shell string's own shell runs and which can print nothing: a shell grammar, not markdown; nothing is paired"},
+	"internal/core/guard/unknown.go":       {2, "spellWord spells a default's or an alternative's shell word, and readPattern reads a trim's or a replacement's pattern: a backtick in either opens a command substitution, whose output the spelling drops or the pattern reads as unknown text; nothing is paired"},
+	"internal/core/lifeboat/mdrender.go":   {1, "escapeLeadingMarker asks whether a value opens with a backtick, then asks OpensBalancedCodeSpan, which pairs through PairCodeSpan"},
+	"internal/core/mdrecord/inline.go":     {2, "walkLine, Read's walk of one line, hands each run it meets to one CodeSpanPairer, which pairs by PairCodeSpan's rule; the other scan asks whether the line holds a backtick at all before building one; nothing is paired by hand"},
+	"internal/core/mdrecord/mdrecord.go":   {3, "MaskCodeSpans walks to each run and pairs it through PairCodeSpan, runEnd steps over an unpaired run, and the fence opener refuses an info string holding a backtick"},
+	"internal/core/mdrender/render.go":     {2, "the site renderer's inline walk hands each run to PairCodeSpan; the other is the escapable-punctuation range, which names a backtick among the ASCII punctuation"},
+	"internal/core/question/check.go":      {2, "the question check's register rule walks to each run and pairs it through PairCodeSpan, stepping over an unpaired run whole"},
+	"internal/core/surface/appendix.go":    {2, "codeRegions walks to each run and pairs it through PairCodeSpan, stepping over an unpaired run whole"},
 }
 
 // TestNoSecondCodeSpanPairer is the one-canonical-primitive detector for the
