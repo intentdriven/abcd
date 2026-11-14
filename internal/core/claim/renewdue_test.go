@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -93,6 +94,35 @@ func TestRenewDueWithNothingHeldDoesNothing(t *testing.T) {
 	got, err := RenewDue(p.dir, p.opts())
 	if err != nil || len(got) != 0 {
 		t.Fatalf("renewals %+v, err %v; want none", got, err)
+	}
+}
+
+// TestTheRenewalRule: a reservation is due for renewal from the half of its
+// term on, and a renewal pushes its own term, kept within the default and a
+// day. The loop's renewals call the same two functions (iss-2610171047088861).
+func TestTheRenewalRule(t *testing.T) {
+	held := func(term time.Duration) Reservation {
+		return Reservation{ClaimedAt: t0, EffectiveExpiry: t0.Add(term)}
+	}
+	r := held(4 * time.Hour)
+	for _, c := range []struct {
+		at  time.Duration
+		due bool
+	}{{0, false}, {2*time.Hour - time.Second, false}, {2 * time.Hour, true}, {5 * time.Hour, true}} {
+		if got := HalfThrough(r, t0.Add(c.at)); got != c.due {
+			t.Errorf("HalfThrough of a four-hour hold %s in = %v, want %v", c.at, got, c.due)
+		}
+	}
+	for _, c := range []struct{ term, want time.Duration }{
+		{time.Minute, lease.Default},
+		{lease.Default, lease.Default},
+		{6 * time.Hour, 6 * time.Hour},
+		{lease.Max, lease.Max},
+		{3 * lease.Max, lease.Max},
+	} {
+		if got := RenewalTerm(held(c.term)); got != c.want {
+			t.Errorf("RenewalTerm of a %s hold = %s, want %s", c.term, got, c.want)
+		}
 	}
 }
 
