@@ -715,10 +715,16 @@ answer:
 The file is one JSON object: `{"schema_version": 1, "interview": "setup",
 "answers": [{"id": "approve.plan", "value": "proceed"}, {"id": "visibility", "value":
 "private", "note": "<optional>"}]}`. Each answer names its question by id
-(a value question's key, `approve.plan` for the plan screen, `abcd.download`
-for the download, or the offer's gap id) and gives one of the values the
+(a value question's key, `approve.plan` for the plan screen, `adopt` for the
+adoption where the run puts no plan screen, `abcd.download` for the download,
+`history.lineage` for the re-founding lineage question, or the offer's gap
+id, such as `statusline.offered`) and gives one of the values the
 question offers, or `later` to decide later; an unknown or repeated key is
-refused. The plan answers every kind of change at once, so an
+refused. `history.lineage` answers "Re-founded from <commit>? Link lineage?",
+which a run asks when it first registers a repository whose name or GitHub
+repository this machine's session store already holds under another root
+commit: `yes` records that this repository supersedes that one, and `no` and
+`later` both register it unlinked. The plan answers every kind of change at once, so an
 `approve.<category>` id an earlier release asked for is refused with exit 2,
 naming `approve.plan`, before anything is written; from a file, `proceed` and
 `customise` both approve every kind of change, and each value still comes
@@ -730,7 +736,8 @@ target, deep scanning), stops the run with exit 2 before anything is
 written, naming the question's id, the flag that answers it, if any, and the
 line to add; nothing is recorded. Put that question to the user, add their
 answer, and run again. The questions the run itself decides to ask (the
-status line's elements, the offers, the artefact kind) are checked when
+status line's elements, the offers, the re-founding lineage question
+`history.lineage`, the artefact kind) are checked when
 they are asked: a stop there leaves the steps before it done, says so, and
 the next run asks only what is still open. The git identity, the identity
 record, the drain rule and installing a tool are never answered from a file. `--answers`

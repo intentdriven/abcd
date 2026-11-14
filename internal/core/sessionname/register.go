@@ -505,12 +505,16 @@ func (reg *register) beforeClear(req Request, host Host) int {
 		return -1
 	}
 	return slices.IndexFunc(reg.Live, func(e entry) bool {
-		if !sameHost(e.host(), host) {
-			return false
-		}
-		return (e.Name == req.Title && reg.Given.gave(e.SessionID, req.Title)) ||
-			(!e.Sent && e.Replaces == req.Title)
+		return sameHost(e.host(), host) && reg.accountsFor(e, req.Title)
 	})
+}
+
+// accountsFor reports whether the live entry e accounts for title as abcd's:
+// e holds title as the name given to its id, or e is a name reserved to
+// replace title that the first prompt has not set yet.
+func (reg *register) accountsFor(e entry, title string) bool {
+	return (e.Name == title && reg.Given.gave(e.SessionID, title)) ||
+		(!e.Sent && e.Replaces == title)
 }
 
 // onHost is the index of the live entry recorded for host (sameHost, with
@@ -658,9 +662,17 @@ func hold(m Machine, req Request) Outcome {
 }
 
 // mayHold reads the register without the lock and reports whether abcd may
-// have given req's title to its session: the name given to its id, or, on a
-// clear or for an id with no record of its own (a new id), to any session. A
-// register that cannot be read answers yes, so the locked read names the
+// have given req's title to its session: the name given to its id, or, for an
+// id with no record of its own (a new id), to any session.
+//
+// A clear never inherits, so a name given to some other session says nothing
+// about it: only a live entry can account for its title, as the session it was
+// before the clear (accountsFor). Which host this session runs on is not known
+// without the process table, so an entry on any host admits it and the locked
+// read tells this host's from another's (beforeClear); with no such entry the
+// title is the person's own, and hold records it without reading the table.
+//
+// A register that cannot be read answers yes, so the locked read names the
 // refusal; no register answers no.
 func (m Machine) mayHold(req Request) bool {
 	dir, reg, err := m.peek()
@@ -674,8 +686,11 @@ func (m Machine) mayHold(req Request) bool {
 	if reg.Given.gave(req.SessionID, req.Title) {
 		return true
 	}
+	if req.Source == "clear" {
+		return slices.ContainsFunc(reg.Live, func(e entry) bool { return reg.accountsFor(e, req.Title) })
+	}
 	_, own := reg.Given.of(req.SessionID)
-	return (req.Source == "clear" || !own) && slices.ContainsFunc(reg.Given, func(n givenName) bool { return n.Name == req.Title })
+	return !own && slices.ContainsFunc(reg.Given, func(n givenName) bool { return n.Name == req.Title })
 }
 
 // peek opens the sessions folder without creating it and reads the register
