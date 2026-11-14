@@ -255,7 +255,9 @@ func TestADriveReadsTheRemotesIdentityAsItStarts(t *testing.T) {
 // guards: they pass without a production change. The credential,
 // core.askPass and protocol cases were new in the round before; the filter,
 // merge driver, editor, gpg program and include cases, the rest of the set
-// the run's fingerprint watches, were watched failing on the default branch.
+// the run's fingerprint watches, were watched failing on the default branch,
+// and so were the settings past that set that name a program or make git
+// start one (driveHeldConfig: format.pretty to the per-URL proxy).
 func TestEachKeyFamilyTheDriveHoldsIsReadAgain(t *testing.T) {
 	for _, tc := range []struct {
 		key, value, want string
@@ -284,6 +286,24 @@ func TestEachKeyFamilyTheDriveHoldsIsReadAgain(t *testing.T) {
 		{key: "core.editor", value: "/bin/true", want: "core.editor"},
 		{key: "gpg.program", value: "/bin/true", want: "gpg.program"},
 		{key: "include.path", value: "/nonexistent.gitconfig", want: "include.path"},
+		{key: "format.pretty", value: "%G?", want: "format.pretty"},
+		{key: "pretty.planted", value: "%G?", want: "pretty.planted"},
+		{key: "diff.external", value: "/bin/true", want: "diff.external"},
+		{key: "merge.renormalize", value: "true", want: "merge.renormalize"},
+		{key: "sequence.editor", value: "/bin/true", want: "sequence.editor"},
+		{key: "pager.log", value: "/bin/true", want: "pager.log"},
+		{key: "trailer.planted.command", value: "true", want: "trailer.planted.command"},
+		{key: "gpg.format", value: "ssh", want: "gpg.format"},
+		{key: "push.gpgSign", value: "true", want: "push.gpgsign"},
+		{key: "ssh.variant", value: "simple", want: "ssh.variant"},
+		{key: "core.alternateRefsCommand", value: "true", want: "core.alternaterefscommand"},
+		{key: "uploadpack.packObjectsHook", value: "true", want: "uploadpack.packobjectshook"},
+		{key: "submodule.planted.update", value: "!true", want: "submodule.planted.update"},
+		{key: "fetch.recurseSubmodules", value: "false", want: "fetch.recursesubmodules"},
+		{key: "lfs.customtransfer.planted.path", value: "/bin/true", want: "lfs.customtransfer.planted.path"},
+		{key: "hook.planted.command", value: "true", want: "hook.planted.command"},
+		{key: "gc.recentObjectsHook", value: "true", want: "gc.recentobjectshook"},
+		{key: "http.https://example.invalid/.proxy", value: "http://127.0.0.1:9", want: "http.<hidden-"},
 		{key: "core.editor", value: "/bin/true", want: "core.editor", system: true},
 		{key: "http.proxy", value: "http://127.0.0.1:9", want: "http.proxy", system: true},
 		{key: "http.proxy", value: "http://127.0.0.1:9", want: "http.proxy", included: true},
@@ -457,7 +477,7 @@ func TestAStepUnderAHoldWhosePostCheckoutChangedStopsBeforeTheAdd(t *testing.T) 
 // canonical keys: each key the run's fingerprint watches (watchedKey) and
 // http.proxy and http.sslVerify are held, every remote's keys among them, and
 // a key that only shares a prefix or a suffix with one, protocol.version and
-// a per-URL http key are not. Another remote's url, core.editor and the filter
+// a per-URL http key other than proxy and sslVerify are not. Another remote's url, core.editor and the filter
 // and driver cases were watched failing on the default branch, which held
 // origin's identity alone.
 func TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly(t *testing.T) {
@@ -491,23 +511,25 @@ func TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly(t *testing.T) {
 		"include.path":                 true,
 		"includeif.onbranch:main.path": true,
 
-		"remote.origin.urlx":   false,
-		"remote.origin.fetch":  false,
-		"url.insteadof":        false,
-		"url./x.insteadofx":    false,
-		"urlx./x.insteadof":    false,
-		"core.hookspathx":      false,
-		"core.editorx":         false,
-		"filterx.lfs.clean":    false,
-		"credentialfoo":        false,
-		"credentialfoo.helper": false,
-		"protocol.version":     false,
-		"protocol.ext.allowx":  false,
-		"protocolx.ext.allow":  false,
-		"http.proxyx":          false,
-		"http.https://x.proxy": false,
-		"http.postbuffer":      false,
-		"":                     false,
+		"remote.origin.urlx":         false,
+		"remote.origin.fetch":        false,
+		"url.insteadof":              false,
+		"url./x.insteadofx":          false,
+		"urlx./x.insteadof":          false,
+		"core.hookspathx":            false,
+		"core.editorx":               false,
+		"filterx.lfs.clean":          false,
+		"credentialfoo":              false,
+		"credentialfoo.helper":       false,
+		"protocol.version":           false,
+		"protocol.ext.allowx":        false,
+		"protocolx.ext.allow":        false,
+		"http.proxyx":                false,
+		"http.https://x.proxy":       true,
+		"http.https://x.proxyx":      false,
+		"http.https://x.extraheader": false,
+		"http.postbuffer":            false,
+		"":                           false,
 	} {
 		if got := remoteIdentityKey(key); got != want {
 			t.Errorf("remoteIdentityKey(%q) = %v, want %v", key, got, want)

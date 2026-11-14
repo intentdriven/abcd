@@ -58,7 +58,7 @@ func TestFilterOverridesBlanksEveryConfiguredFilter(t *testing.T) {
 }
 
 // TestMergeDriverOverridesReplaceEveryConfiguredDriver: with no driver
-// configured only merge.default is pinned; each configured name (a dotted one
+// configured only merge.default and merge.renormalize are pinned; each configured name (a dotted one
 // included, and one with no driver line) gets git's built-in merge once; a key
 // with no name (merge.ff) names nothing; a name -c cannot carry intact is
 // refused.
@@ -81,8 +81,8 @@ func TestMergeDriverOverridesReplaceEveryConfiguredDriver(t *testing.T) {
 	git("init", "-q")
 
 	got, err := gitutil.MergeDriverOverrides(repo)
-	if err != nil || strings.Join(got, " ") != "-c merge.default=text" {
-		t.Fatalf("no driver configured: got %q, %v; want only merge.default pinned", got, err)
+	if err != nil || strings.Join(got, " ") != "-c merge.default=text -c merge.renormalize=false" {
+		t.Fatalf("no driver configured: got %q, %v; want only merge.default and merge.renormalize pinned", got, err)
 	}
 
 	git("config", "merge.ff", "false")
@@ -93,7 +93,7 @@ func TestMergeDriverOverridesReplaceEveryConfiguredDriver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "-c merge.default=text -c merge.evil.driver=" + gitutil.BuiltinMergeDriver() + " -c merge.a.b.driver=" + gitutil.BuiltinMergeDriver()
+	want := "-c merge.default=text -c merge.renormalize=false -c merge.evil.driver=" + gitutil.BuiltinMergeDriver() + " -c merge.a.b.driver=" + gitutil.BuiltinMergeDriver()
 	if strings.Join(got, " ") != want {
 		t.Fatalf("got %q\nwant %q", strings.Join(got, " "), want)
 	}

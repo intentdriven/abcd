@@ -312,9 +312,43 @@ func (g gitArgs) filtersBlanked() bool {
 }
 
 // driversBuiltin reports whether the command carries MergeDriverOverrides'
-// settings, which make every merge driver git's built-in text merge.
+// settings, which make every merge driver git's built-in text merge and pin
+// merge.renormalize off, under which a content merge runs the filters.
 func (g gitArgs) driversBuiltin() bool {
-	return slices.ContainsFunc(g.settings, func(s string) bool { return strings.HasPrefix(s, "merge.default=") })
+	return slices.ContainsFunc(g.settings, func(s string) bool { return strings.HasPrefix(s, "merge.default=") }) &&
+		slices.Contains(g.settings, "merge.renormalize=false")
+}
+
+// builtinFormats are git's own pretty formats, which a pretty.<name> alias
+// of the same name cannot shadow (git-config(1), pretty.<name>).
+var builtinFormats = []string{"oneline", "short", "medium", "full", "fuller", "reference", "email", "raw", "mboxrd"}
+
+// formatFixed reports whether a log, show or whatchanged command line fixes
+// the format git writes, so neither format.pretty (the default format of
+// those commands) nor a pretty.<name> alias decides it (git-config(1)): either
+// can name a format holding %G, whose signature check starts gpg.program. It
+// is fixed by a counted --oneline, or a counted --format= or --pretty= whose
+// value is empty, starts format: or tformat:, holds a %, or is a built-in
+// name. Any other form, a bare --pretty and an abbreviated option among them,
+// is read as not fixing it, so the command asks.
+func (g gitArgs) formatFixed() bool {
+	for i, w := range g.words {
+		if !g.counted[i] {
+			continue
+		}
+		if w == "--oneline" {
+			return true
+		}
+		name, v, valued := strings.Cut(w, "=")
+		if !valued || name != "--format" && name != "--pretty" {
+			continue
+		}
+		if v == "" || strings.HasPrefix(v, "format:") || strings.HasPrefix(v, "tformat:") || strings.Contains(v, "%") ||
+			slices.Contains(builtinFormats, v) {
+			return true
+		}
+	}
+	return false
 }
 
 // diffProgramsOff reports whether textconv and external diff programs are
@@ -388,17 +422,20 @@ func (g gitArgs) twoTrees() bool {
 //   - show: with --textconv or --ext-diff, or showing a commit's patch
 //     unless --no-textconv and --no-ext-diff (a blob, rev:path, is shown as
 //     stored unless --textconv is given; :/text and rev^{/text} name
-//     commits, not blobs).
+//     commits, not blobs), or showing a commit in a format the command line
+//     does not fix (formatFixed).
 //   - log, whatchanged and reflog: with --textconv or --ext-diff, or with a
 //     patch, a stat or a content search unless --no-textconv and
-//     --no-ext-diff.
+//     --no-ext-diff; log and whatchanged also in a format the command line
+//     does not fix (formatFixed).
 //   - blame and annotate: unless --no-textconv and, for the working tree's
 //     file, FilterOverrides.
 //   - grep: only with --textconv.
 //   - apply: with --3way, which merges through the merge drivers, whatever
 //     else it carries; otherwise unless --cached, a stat alone, or
 //     FilterOverrides.
-//   - merge-tree: unless MergeDriverOverrides.
+//   - merge-tree: unless MergeDriverOverrides, which pin merge.renormalize
+//     off as well as every driver.
 //   - add, stash, checkout, switch, restore, checkout-index, commit, rm
 //     (but --cached), reset (but --soft), read-tree -u, worktree add, am,
 //     clone: unless FilterOverrides; merge, cherry-pick, revert, rebase and
@@ -645,10 +682,10 @@ var contentJudges = map[string]func(g gitArgs, blanked bool) bool{
 		// at least one that is not a value must be given: show -O HEAD:a
 		// shows HEAD's patch.
 		blobs := len(g.givenRevs()) > 0 && !slices.ContainsFunc(g.revs, func(r string) bool { return !blob(r) })
-		return g.diffProgramsAsked() || g.signatureShown() || (!blobs && !g.noPatch() && !g.diffProgramsOff())
+		return g.diffProgramsAsked() || g.signatureShown() || (!blobs && (!g.noPatch() && !g.diffProgramsOff() || !g.formatFixed()))
 	},
-	"log":         logJudge,
-	"whatchanged": logJudge,
+	"log":         formattedLogJudge,
+	"whatchanged": formattedLogJudge,
 	"reflog":      logJudge,
 	"blame":       blameJudge,
 	"annotate":    blameJudge,
@@ -686,6 +723,11 @@ var contentJudges = map[string]func(g gitArgs, blanked bool) bool{
 func logJudge(g gitArgs, _ bool) bool {
 	return g.diffProgramsAsked() || g.signatureShown() || (g.patchy() && !g.diffProgramsOff())
 }
+
+// formattedLogJudge is logJudge for log and whatchanged, which also take
+// their format from format.pretty or a pretty.<name> alias unless the command
+// line fixes it (formatFixed). reflog's show defaults to the built-in oneline.
+func formattedLogJudge(g gitArgs, blanked bool) bool { return logJudge(g, blanked) || !g.formatFixed() }
 
 func blameJudge(g gitArgs, blanked bool) bool {
 	revs := g.givenRevs()

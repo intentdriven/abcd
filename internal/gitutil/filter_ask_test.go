@@ -95,7 +95,7 @@ func TestAnIsolatedReadThatCanRunAFilterAsksTheCheck(t *testing.T) {
 // can start.
 func TestWhatAnIsolatedCommandCanStartIsReadFromItsCommandLine(t *testing.T) {
 	blank := []string{"-c", "filter.lfs.clean=", "-c", "filter.lfs.smudge=", "-c", "filter.lfs.process="}
-	drivers := []string{"-c", "merge.default=git merge-file %A %O %B"}
+	drivers := []string{"-c", "merge.default=git merge-file %A %O %B", "-c", "merge.renormalize=false"}
 	for _, tc := range []struct {
 		args []string
 		want bool
@@ -123,9 +123,9 @@ func TestWhatAnIsolatedCommandCanStartIsReadFromItsCommandLine(t *testing.T) {
 		{[]string{"show", "HEAD:a.txt"}, false},
 		{[]string{"show", "--textconv", "HEAD:a.txt"}, true},
 		{[]string{"show", "HEAD"}, true},
-		{[]string{"show", "--no-textconv", "--no-ext-diff", "HEAD"}, false},
+		{[]string{"show", "--no-textconv", "--no-ext-diff", "--format=%H", "HEAD"}, false},
 		{[]string{"log", "--format=%H", "-n", "1"}, false},
-		{[]string{"log", "-p", "--no-ext-diff", "--no-textconv"}, false},
+		{[]string{"log", "-p", "--no-ext-diff", "--no-textconv", "--format=%H"}, false},
 		{[]string{"log", "-p"}, true},
 		{[]string{"log", "-Gneedle"}, true},
 		{[]string{"cat-file", "--batch"}, false},
@@ -400,7 +400,7 @@ func TestAWordAfterAnOptionNotKnownToTakeNoValueNeverMakesACommandNotAsk(t *test
 		{[]string{"diff", "--text", "--no-ext-diff", "--no-textconv", "a..b", "--"}, true},
 		{[]string{"update-index", "--cacheinfo", "100644,e69de29bb2d1d6434b8b29ae775ad8c2e48c5391,a.txt", "b.txt"}, true},
 		{[]string{"init", "-q", "--template=", "--no-template"}, true},
-		{[]string{"log", "--no-textconv", "--no-ext-diff", "-p"}, false},
+		{[]string{"log", "--no-textconv", "--no-ext-diff", "-p", "--format=%H"}, false},
 		{[]string{"diff", "--name-only", "a", "b", "--"}, false},
 		{[]string{"diff", "-p", "--ignore-submodules=none", "--no-ext-diff", "--no-textconv", "a..b", "--"}, false},
 		{[]string{"diff", "--no-renames", "--ignore-submodules=none", "--name-only", "-z", "a", "b", "--"}, false},

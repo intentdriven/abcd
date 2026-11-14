@@ -42,9 +42,9 @@ package loop
 // origin is not seen; what a hook runs from elsewhere (a script, make, a
 // program on PATH) is not hashed; and a hooks directory outside the tree, or a
 // repository with no origin, has nothing a drive's start can compare it with.
-// Not held either: any other http.* key (a per-URL http.<url>.* among them),
-// and an origin defined only by a legacy remotes or branches file in the git
-// directory, which has no key to compare.
+// Not held either: any other http.* key (the per-URL http.<url>.proxy and
+// http.<url>.sslVerify are held), and an origin defined only by a legacy
+// remotes or branches file in the git directory, which has no key to compare.
 
 import (
 	"context"
@@ -55,6 +55,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -69,12 +70,64 @@ import (
 // remoteIdentityHeld names, for a refusal and the docs, what settings a drive
 // holds across its lanes (remoteIdentityKey), as each environment its git
 // runs in reads them.
-const remoteIdentityHeld = "the settings the run's fingerprint watches, at every scope, as each environment the drive's git runs in reads them (origin's and every remote's url, pushurl, uploadpack, receivepack, proxy and vcs; every url rewrite; core.hooksPath, core.sshCommand, core.gitProxy, core.askPass, core.fsmonitor, core.pager, core.editor and core.worktree; extensions.worktreeConfig; every credential.*; the protocol allow rules; content filters, diff and merge drivers, gpg programs and gpg.ssh.defaultKeyCommand, include and includeIf paths and the files they name), http.proxy and http.sslVerify, and the global and system attributes files"
+const remoteIdentityHeld = "the settings the run's fingerprint watches, at every scope, as each environment the drive's git runs in reads them (origin's and every remote's url, pushurl, uploadpack, receivepack, proxy and vcs; every url rewrite; core.hooksPath, core.sshCommand, core.gitProxy, core.askPass, core.fsmonitor, core.pager, core.editor and core.worktree; extensions.worktreeConfig; every credential.*; the protocol allow rules; content filters, diff and merge drivers, gpg programs and gpg.ssh.defaultKeyCommand, include and includeIf paths and the files they name), " +
+	"and beside them every other setting git documents as naming a program it starts or a mode that makes it start one (every gpg.* and the signing and verifying switches, diff.external, merge.renormalize, sequence.editor, pager.*, trailer commands, format.pretty and pretty.*, ssh.variant, core.alternateRefsCommand, uploadpack.packObjectsHook, submodule.* and the submodule recursion switches, the Git LFS transfer and extension programs, hook.*, automatic maintenance and gc.recentObjectsHook, init.templateDir, core.attributesFile, and the tool, browser and mail commands), http.proxy and http.sslVerify (per URL too), and the global and system attributes files"
+
+// driveHeldConfig matches, as watchedConfig does, the keys a drive holds
+// across its lanes (remoteIdentityKey) beyond those the run's fingerprint
+// watches: each setting git 2.52's git-config(1) documents as naming a
+// program git starts, or as a mode that makes git start one (a signing or
+// verifying switch, merge.renormalize, which runs the content filters on a
+// merge, submodule recursion, which runs git under a submodule's own
+// settings, automatic maintenance, which runs gc.recentObjectsHook), and the
+// network's proxy and certificate check, per URL as well. The fingerprint of a
+// run outside a drive keeps to watchedConfig, so nothing outside a drive
+// refuses more. hook.* is held though git 2.52 defines no such setting: a
+// later git's configured hooks would be one.
+//
+// Left out, as no git command the drive or an isolated abcd command runs
+// reads them: alias.* (git ignores an alias that hides one of its own
+// commands, and abcd runs only git's own: TestNoAliasStandsForASubcommandAbcdRuns
+// in internal/gitutil). Left out as naming no program: core.excludesFile,
+// fetch.fsckObjects and the other fsck and transfer checks, and every other
+// http.* key.
+const driveHeldConfig = `^(` +
+	`http\.(.+\.)?(proxy|sslverify)` +
+	`|core\.(alternaterefscommand|attributesfile)` +
+	`|sequence\.editor` +
+	`|pager\..+` +
+	`|diff\.external` +
+	`|merge\.(renormalize|verifysignatures)` +
+	`|trailer\..+\.(command|cmd)` +
+	`|format\.pretty` +
+	`|pretty\..+` +
+	`|gpg\..+` +
+	`|(commit|tag|push)\.gpgsign` +
+	`|tag\.forcesignannotated` +
+	`|log\.showsignature` +
+	`|ssh\.variant` +
+	`|uploadpack\.packobjectshook` +
+	`|submodule\..+` +
+	`|(fetch|push)\.recursesubmodules` +
+	`|status\.submodulesummary` +
+	`|lfs\.(customtransfer\..+|extension\..+|standalonetransferagent)` +
+	`|hook\..+` +
+	`|gc\.(auto|autodetach|recentobjectshook)` +
+	`|maintenance\..+` +
+	`|init\.templatedir` +
+	`|(difftool|mergetool|browser|man)\..+\.(cmd|path)` +
+	`|guitool\..+\.cmd` +
+	`|web\.browser` +
+	`|interactive\.difffilter` +
+	`|sendemail\.(smtpserver|sendmailcmd|tocmd|cccmd)` +
+	`)$`
+
+// driveHeldKeyRE is driveHeldConfig as a Go expression.
+var driveHeldKeyRE = regexp.MustCompile(driveHeldConfig)
 
 // heldPattern is the extended regular expression a refusal's remedy names
-// for remoteIdentityHeld's keys: watchedConfig with http.proxy and
-// http.sslVerify.
-var heldPattern = strings.TrimSuffix(watchedConfig, ")$") + `|http\.(proxy|sslverify))$`
+// for remoteIdentityHeld's keys: watchedConfig and driveHeldConfig as one.
+var heldPattern = strings.TrimSuffix(watchedConfig, ")$") + "|" + strings.TrimPrefix(driveHeldConfig, "^(")
 
 // remoteIdentity is what a drive read as it started: in each environment
 // its git runs in (driveEnvs), each held key's hash (envs); each file an
@@ -99,10 +152,9 @@ const maxSettingsBytes = 1 << 20
 
 // remoteIdentityKey says whether a canonical config key is one a drive holds
 // across its lanes: every key the run's fingerprint watches (watchedKey, the
-// one predicate for both), and http.proxy and http.sslVerify, which choose how
-// origin is reached without naming a program.
+// one predicate for both), and every key of driveHeldConfig.
 func remoteIdentityKey(key string) bool {
-	return watchedKey(key) || key == "http.proxy" || key == "http.sslverify"
+	return watchedKey(key) || driveHeldKeyRE.MatchString(key)
 }
 
 // readRemoteIdentity is what a drive holds as it starts: its settings in
