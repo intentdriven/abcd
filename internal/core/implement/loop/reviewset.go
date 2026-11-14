@@ -207,12 +207,18 @@ func (j *ReviewJudge) Active() bool { return j != nil && j.Status == JudgeActive
 // map the run started on, one entry per class in the order Classes gives,
 // from which a reviewer whose class holds the writer's model takes another
 // (reviewers.go). Classes is empty in a run started before version 27, which
-// chooses among the classes its set recorded.
+// chooses among the classes its set recorded. Unlaunchable is, for a run a
+// drive started, each role's classes of that map its runners could not launch
+// when the run started, by the admission CheckReviewersLaunch asks of the
+// listed reviewers, so a reviewer is never moved to one of them; empty when
+// every class launches, and on every run but a drive's, whose reviewers are
+// asked of the host.
 type ReviewSet struct {
-	Roles        []RoleReviewers `json:"roles"`
-	Judge        *ReviewJudge    `json:"judge"`
-	MaxReviewers PaceValue       `json:"max_reviewers"`
-	Classes      []ReviewClass   `json:"classes,omitempty"`
+	Roles        []RoleReviewers     `json:"roles"`
+	Judge        *ReviewJudge        `json:"judge"`
+	MaxReviewers PaceValue           `json:"max_reviewers"`
+	Classes      []ReviewClass       `json:"classes,omitempty"`
+	Unlaunchable map[string][]string `json:"unlaunchable,omitempty"`
 }
 
 // Role returns the reviewers of role, and false when the set names none.
@@ -242,7 +248,7 @@ func (c ReviewClass) phrase() string { return classPhrase(c.Class, c.Model, c.Ef
 
 // ClassMapPhrase is the class map the run started on as the text surfaces
 // show it, each class with its model, and what a reviewer whose class holds
-// the writer's model does; "" for a run started before the map was stored.
+// a writer's model does; "" for a run started before the map was stored.
 func (rs ReviewSet) ClassMapPhrase() string {
 	if len(rs.Classes) == 0 {
 		return ""
@@ -251,8 +257,8 @@ func (rs ReviewSet) ClassMapPhrase() string {
 	for _, c := range rs.Classes {
 		cs = append(cs, classPhrase(c.Class, shownModel(c.Model), c.Effort))
 	}
-	return strings.Join(cs, ", ") + "; a reviewer whose class holds the writer's model takes the next class that holds another, " +
-		"and the lane is handed back as stuck when none does"
+	return strings.Join(cs, ", ") + "; a reviewer whose class holds a writer's model takes the next class that holds another, " +
+		"that the run can launch and, while one remains, that no other reviewer of its role holds, and the lane is handed back as stuck when none does"
 }
 
 // phrase is classPhrase for the judge.
@@ -401,6 +407,42 @@ func (rs ReviewSet) written() bool {
 		if c.Class != Classes[i] || !mapLayer(c.MapLayer) || !validRoute(c.Model) || !clean(c.MapOrigin) ||
 			!effortWritten(c.Effort, c.EffortLayer, c.EffortOrigin) {
 			return false
+		}
+	}
+	// The class map and the set were resolved from one map at the start, so
+	// each reviewer and the judge carry exactly the entry of their class; an
+	// entry that disagrees is a hand edit, which would move a reviewer onto a
+	// model the run never resolved.
+	if len(rs.Classes) > 0 {
+		for _, r := range rs.Roles {
+			for _, c := range r.Reviewers {
+				if rs.Classes[slices.Index(Classes, c.Class)] != c {
+					return false
+				}
+			}
+		}
+		if j := rs.Judge; j != nil && slices.Contains(Classes, j.Class) {
+			want := rs.Classes[slices.Index(Classes, j.Class)]
+			if (ReviewClass{Class: j.Class, Model: j.Model, MapLayer: j.MapLayer, MapOrigin: j.MapOrigin,
+				Effort: j.Effort, EffortLayer: j.EffortLayer, EffortOrigin: j.EffortOrigin}) != want {
+				return false
+			}
+		}
+	}
+	if len(rs.Unlaunchable) > 0 && len(rs.Classes) == 0 {
+		return false
+	}
+	for role, cs := range rs.Unlaunchable {
+		if !slices.Contains(reviewRoles, role) || len(cs) == 0 || len(cs) > len(Classes) {
+			return false
+		}
+		last := -1
+		for _, c := range cs {
+			i := slices.Index(Classes, c)
+			if i <= last {
+				return false
+			}
+			last = i
 		}
 	}
 	if j := rs.Judge; j != nil {
@@ -588,7 +630,31 @@ func resolveReviewSet(roots layered.Roots, o Options) (ReviewSet, []string, erro
 	if d := topNote(named, cm); d != "" {
 		diags = append(diags, d)
 	}
+	rs.Unlaunchable = unlaunchable(o, rs)
 	return rs, diags, nil
+}
+
+// unlaunchable is, for a run a drive starts (one with a profile and the
+// drive's runners), each review role's classes of rs's map that those runners
+// refuse, asked with no host session as CheckReviewersLaunch asks it of the
+// listed reviewers; nil when every class launches, and for every other run,
+// whose reviewers are asked of the host.
+func unlaunchable(o Options, rs ReviewSet) map[string][]string {
+	if o.Profile == "" || o.Runners == nil {
+		return nil
+	}
+	var out map[string][]string
+	for _, role := range reviewRoles {
+		for _, c := range rs.Classes {
+			if o.Runners.CanLaunch(role, c.Model, false) != nil {
+				if out == nil {
+					out = map[string][]string{}
+				}
+				out[role] = append(out[role], c.Class)
+			}
+		}
+	}
+	return out
 }
 
 // renamed reports the first thing, in a state, that only version 25 and later

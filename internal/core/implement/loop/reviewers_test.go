@@ -513,11 +513,12 @@ func TestARunnerRunReviewerIsHandedItsClassModel(t *testing.T) {
 			t.Fatal(err)
 		}
 		v := ValidatorRun{Role: RoleRuthless, Brief: briefRel, Return: returnRel, Reviewer: 1, Class: ClassDefault, Model: model, Effort: BundledEffort,
-			WriterModel: "a-model", ReviewerModel: model}
+			WriterModels: []string{"a-model"}, ReviewerModel: model}
 		steps[2] = StageDef{Name: StageImplement, Piece: 7,
 			Run: func(c Context, l *Lane) (Outcome, error) {
 				if len(l.Validation) == 0 {
 					l.Validation = []ValidationRound{{Round: 1, HeadSHA: strings.Repeat("a", 40), Validators: []ValidatorRun{v}}}
+					l.Receipts = []ReceiptRecord{{Role: RoleImplementer, Receipt: "review/receipt.json", Model: "a-model"}}
 				}
 				aw := v.await()
 				return Outcome{Await: &aw}, nil

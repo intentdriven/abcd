@@ -323,17 +323,22 @@ const lockFileName = ".lock"
 // refused naming it. Releases that write version 25 refuse a version-26 file as
 // a newer abcd's before any strict decode.
 //
-// Version 27 added the writer's and the reviewer's models
+// Version 27 added the writers' and the reviewer's models
 // (itd-2610301750162657, spc-2610301925429250 step 4): a reviewer's
-// `writer_model`, the model the lane's implementer reported, and
-// `reviewer_model`, the model it was dispatched on, or for a reviewer no class
-// was asked of, the model its return named; and the review set's `classes`, the
-// whole class map the run started on, from which a reviewer whose class holds
-// the writer's model takes another. Version 26 is its strict subset, read as a
-// run whose reviewers were dispatched before the comparison, and written back
-// at version 27; a file of version 26 or lower carrying any of them is not one
-// its version wrote, and is refused naming it. Releases that write version 26
-// refuse a version-27 file as a newer abcd's before any strict decode, and
+// `writer_models`, every model that wrote into the lane up to the round, in the
+// order they wrote; `reviewer_model`, the model it was asked for, or the one
+// its runner reported once it returned; `reviewer_named`, the model its return
+// named where that is not the same model; and `models_unrecorded`, set when a
+// file of an earlier version is read on a reviewer it had already handed out.
+// The review set gained `classes`, the whole class map the run started on,
+// from which a reviewer whose class holds a writer's model takes another, and
+// `unlaunchable`, the classes a drive's runners could not launch for each role
+// when the run started. A receipt record gained `named`, the model its receipt
+// named before the landing replaced it. Version 26 is its strict subset, read
+// as a run whose reviewers were dispatched before the comparison, and written
+// back at version 27; a file of version 26 or lower carrying any of them is not
+// one its version wrote, and is refused naming it. Releases that write version
+// 26 refuse a version-27 file as a newer abcd's before any strict decode, and
 // leave the run to the abcd that wrote it.
 //
 // A version raises when the abcd driving the run writes it. A lane's own abcd
@@ -738,6 +743,10 @@ type ReceiptRecord struct {
 	// asked for, the one that ran and the model it reported. Absent when the
 	// host ran it, so a host-run receipt reads as it always has.
 	Route *runner.RouteRecord `json:"route,omitempty"`
+	// Named is the model the receipt named when the landing replaced Model
+	// with one its trailer can name (rereadModels); empty while Model is the
+	// receipt's own. The writers of the lane are read from it (laneWriters).
+	Named string `json:"named,omitempty"`
 }
 
 // HandBack is a lane stopped and handed back to the person, with what the last
@@ -869,15 +878,23 @@ type ValidatorRun struct {
 	// reviewer is out, and on a verdict recorded before version 24.
 	Located  *int      `json:"located,omitempty"`
 	Findings []Finding `json:"findings,omitempty"`
-	// WriterModel is the model the lane's implementer reported on the receipt
-	// the round judges (its record's model, else its route's), and
-	// ReviewerModel the model the reviewer was dispatched on: its class's, or
-	// the class the loop took instead when that class held the writer's model
-	// (reviewers.go); for a reviewer no class was asked of, the model its
-	// return named, once recorded. Both are written on the code-review roles
-	// alone, and empty on a round dispatched before version 27.
-	WriterModel   string `json:"writer_model,omitempty"`
-	ReviewerModel string `json:"reviewer_model,omitempty"`
+	// WriterModels are every model that wrote into the lane up to the round
+	// the reviewer judges, in the order they wrote (laneWriters): for each
+	// implementer's receipt, the model its runner reported and the one the
+	// receipt named, where each is known. ReviewerModel is the model the
+	// reviewer was asked for, its class's or the class the loop took instead
+	// when that class held a writer's model (reviewers.go), and once it
+	// returned the model its runner reported, where one did; for a reviewer no
+	// class was asked of, the model its runner reported, else the one its
+	// return named. ReviewerNamed is the model its return named, kept only
+	// where that is not the same model as ReviewerModel. All three are written
+	// on the code-review roles alone. ModelsUnrecorded marks a reviewer an
+	// earlier version had handed out before any of them were recorded: it is
+	// set only as such a file is read, and keeps none of them.
+	WriterModels     []string `json:"writer_models,omitempty"`
+	ReviewerModel    string   `json:"reviewer_model,omitempty"`
+	ReviewerNamed    string   `json:"reviewer_named,omitempty"`
+	ModelsUnrecorded bool     `json:"models_unrecorded,omitempty"`
 }
 
 // The statuses of a reviewer's model.
@@ -1605,9 +1622,15 @@ func readListedStated(root *os.Root, runID string) (State, int, error) {
 	// names for its role at its index, so a hand edit never reaches a
 	// runner's request or an awaiting payload with a model the run did not
 	// resolve for that class.
+	// A reviewer an earlier version handed out records no models: it is
+	// marked so as such a file is read, and only then (markUnrecorded).
+	if stated < SchemaVersion {
+		st.markUnrecorded()
+	}
 	if !st.reviewersWritten() {
 		return State{}, 0, refuse("state", "", "", rel+" carries a reviewer the loop never writes: an index past its role's reviewers, "+
-			"a class or model other than the one the run's review set names for that reviewer, "+
+			"a class or model other than the one the run's review set names for that reviewer or the move from it takes, "+
+			"writers other than the lane's receipts give, a reviewer's model that counts as a writer's or names no model where one is due, "+
 			"or a model status other than asked, reported, or unsent on a review the reviewer route answered",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}

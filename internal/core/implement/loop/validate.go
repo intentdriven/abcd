@@ -185,7 +185,7 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 		// The model the reviewer is handed out on, to the host or to a
 		// runner (the await carries it), is settled before either: never the
 		// writer's (reviewers.go).
-		if hb := chooseReviewerModel(c.State, *lane, v); hb != nil {
+		if hb := chooseReviewerModel(c.State, *lane, *cur, v); hb != nil {
 			return Outcome{HandBack: hb}, nil
 		}
 		route, moved, err := routeRound(c, *lane, cur, v.Role, failedBefore(*lane, cur.Round))
@@ -911,14 +911,16 @@ func verifyValidation(c Context, lane *Lane, receiptRel string) error {
 		if c.Route != nil {
 			reported = c.Route.Model
 		}
-		if err := v.recordReviewerModel(*lane, receiptRel, reported, string(raw)); err != nil {
-			return err
-		}
-		v.Verdict, v.Pass = word.word, word.pass
 		// The route's answer, as its step placed and recorded it, is the
 		// route's review: judged on the bytes this verifier read, once.
 		// Only a reviewer's verdict parses, so only a reviewer reaches here.
-		if a := c.Await.Answered; a != nil && a.Route == oracle.ReviewRP && a.SHA256 == answerDigest(raw) {
+		a := c.Await.Answered
+		unsent := a != nil && a.Route == oracle.ReviewRP && a.SHA256 == answerDigest(raw)
+		if err := v.recordReviewerModel(*lane, receiptRel, reported, string(raw), unsent); err != nil {
+			return err
+		}
+		v.Verdict, v.Pass = word.word, word.pass
+		if unsent {
 			v.Route = &runner.RouteRecord{Asked: a.Route, Ran: a.Route}
 		}
 		v.recordModelStatus(reported)
@@ -1179,7 +1181,7 @@ func validationNote(lane Lane, receipt string) string {
 		if p := v.phrase(); p != "" {
 			note += " (" + p + "; " + modelStatusPhrase(v.ModelStatus) + ")"
 		}
-		if m := modelsPhrase(v.WriterModel, v.ReviewerModel); m != "" {
+		if m := v.models(); m != "" {
 			note += "; " + m
 		}
 		if v.Audit != nil {

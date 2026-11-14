@@ -606,34 +606,83 @@ failing reviewer fails the round, the stricter verdict. Keyed rounds are state
 schema version 20's; an older run's rounds read as one reviewer per role, index
 0, asked for no class.
 
-A model other than the writer's reviews every change. Before a reviewer of
-either role is handed out, to the host or to a runner, the loop compares the
-model the lane's implementer reported on the receipt the round judges (the
-receipt's `model`, else its route's) with the model the reviewer's class holds.
-The comparison leans to "the same model": case is folded, a vendor prefix in
-either form (`anthropic/` or `Claude:`) is dropped, a name equal to the other
-followed by `-`, `@` or `:` and anything is the same model, and an empty or
-unreadable name on either side is the writer's. Where the class holds the
-writer's model, the reviewer is handed out on the next class, in the order
-`research`, `top`, `default`, `small` and wrapping round, whose model differs
-in the class map the run started on, which the run's `review` keeps as
-`classes`; a run started before that map was kept chooses among the classes its
-review set names. When no class differs, or the writer's model cannot be read,
-the lane is handed back as `stuck` with the reason `no reviewer model other
-than the writer's`. The choice is made once and recorded: each reviewer's
-record carries `writer_model` and `reviewer_model` (the model it was handed
-out on, or, for a reviewer no class was asked of, the model its return named),
-and a later step never decides it again from the files as they stand. A
-reviewer's brief asks its return to name the model it ran on in a line
-`Reviewer model: <model>` straight after its first line; the model a runner
-reported stands in its place. A return naming no model, or one that counts as
-the writer's, is refused and its verdict not recorded. The run record, its text
-output and the pull request's body name both models on each verdict, each
-name shown only as one plain token and otherwise described. These fields are
-state schema version 27's: a version-26 file carrying them is refused, one
-without them reads as version 27 and is written back at it, and an abcd that
-writes version 26 refuses a version-27 file as a newer abcd's, writes nothing
-to it, and leaves the run to the abcd that wrote it. Each reviewer's record also carries its `located`
+A model other than every writer's reviews each change a code reviewer judges.
+The writers of a lane are every model that wrote into it up to the round: for
+each implementer's receipt on the lane, the first, each fix round's and each
+conflict resolver's alike, the model its runner reported and the model the
+receipt named, each where it is a known name. A receipt whose runner reported no
+model and whose own name is unknown leaves that writer unknown, and no reviewer
+can be shown to differ from it: the lane is handed back as `stuck` with the
+reason `no reviewer model other than the writer's`, and the remedy is to discard
+the lane and build again with an implementer whose receipt names its model as a
+plain id, or on a runner that reports its model, since a verified receipt is
+not read again for its model before the landing. A state file from before
+reviewers recorded their writers, whose receipts name no model, hands back the
+same way.
+
+Two model names count as other models only when that is shown, and every
+doubtful pair counts as the same model. Each name is lower-cased; a bracketed
+suffix such as `[1m]` is dropped, and everything up to its last `/`; the rest is
+split into tokens on every character that is not an ASCII letter or digit; a
+trailing `v<digits>` token and what follows it (as in `-v1:0`) is dropped, then
+a trailing eight-digit date stamp, then every vendor, carrier, region or alias
+word on a short fixed list (`anthropic`, `claude`, `openai`, `google`, `vertex`,
+`bedrock`, `azure`, `aws`, `openrouter`, `us`, `eu`, `apac`, `global`,
+`latest`). A name holding a character outside ASCII or a control character, one
+longer than 200 bytes, or one that leaves no token is unknown. Two names are
+other models only when both are known and neither one's tokens are all among
+the other's: `opus` and `claude-opus-5-5` are the same model, so are
+`claude-opus-5-5[1m]` and `us.anthropic.claude-opus-5-5-v1:0`, and so are
+`claude-opus-5.5` and `claude_opus_5_5`, while `claude-opus-5-5` and
+`claude-sonnet-5-5` are other models.
+
+Before a reviewer of either code-review role is handed out, to the host or to a
+runner, the loop compares every writer's model with the model the reviewer's
+class holds. Where the class holds a writer's model, the reviewer is handed out
+on the next class, in the order `research`, `top`, `default`, `small` and
+wrapping round, whose model differs from every writer's in the class map the run
+started on (kept in the run's `review` as `classes`), passing over a class a
+drive's runners could not launch for that role when the run started (kept as
+`unlaunchable`, asked as the drive's start asks it of the listed reviewers) and,
+while a further class qualifies, a class whose model another reviewer of the
+same role holds. Nothing requires a role's two reviewers to be different models;
+the move only prefers a class no sibling holds. A run started before the map was
+kept chooses among the classes its review set names. When no class qualifies,
+the lane is handed back as `stuck` with the same reason. The choice is made once
+and recorded: each reviewer's record carries `writer_models`, every writer in
+the order they wrote, and `reviewer_model`, and a later step never decides it
+again.
+
+A reviewer's brief and a routed request ask its return to name the model it ran
+on in a line `Reviewer model: <model>`; the loop looks for that line among the
+return's first seven lines. At the return the loop holds up to three names for
+the reviewer: the class's model it asked for, the model its runner reported,
+and the model its return names. Each one present must be another model than
+every writer's, and a return naming no model is refused, so its verdict is not
+recorded. A reviewer route that answers without a model line is not counted, and
+that review falls back to the host. A reviewer an earlier build handed out is
+checked at its return in the same way, against the lane's writers, and records
+no model. The record keeps the model the runner reported, else the model asked
+for (or, where the reviewer route answered or no class was asked of the
+reviewer, the model its return named), and, where its return named another
+model than that one, keeps both, as asked and as named. The run record, its text
+output and the pull request's body name every writer and the reviewer's models
+on each verdict, saying both names where the return named another; each name is
+printed only as one plain token of ASCII letters, digits, `.`, `_` and `-`, with
+a `/` or `:` only between two of those, in a code span, and any other name is
+described rather than printed. Reading a run's state file back, the loop holds
+each reviewer's stored writers to what the lane's own receipts give, each entry
+of the stored class map to the set's reviewer of that class, and a moved
+reviewer to the move recomputed from those, and refuses a version-27 file in
+which a reviewer that was handed out names no model.
+
+What is not compared: the intent-auditor's verdict, and the plan-review stage's
+two reviewers of an automatic plan, are handed out with no comparison of models.
+
+These fields are state schema version 27's: a version-26 file carrying them is
+refused, one without them reads as version 27 and is written back at it, and an
+abcd that writes version 26 refuses a version-27 file as a newer abcd's, writes
+nothing to it, and leaves the run to the abcd that wrote it. Each reviewer's record also carries its `located`
 findings: the `file:line` each finding bullet under its Findings heading leads
 with (`- **file:line** — ...`) is one finding (`file`, `line`); a location cited
 in a bullet's text or its nested Evidence lines is not one, and a line inside a

@@ -112,7 +112,7 @@ func (l Lane) masked() Lane {
 	l.Validation = maskEach(l.Validation, ValidationRound.masked)
 	l.HandBack = maskPtr(l.HandBack, HandBack.masked)
 	l.Receipts = maskEach(l.Receipts, func(r ReceiptRecord) ReceiptRecord {
-		r.Role, r.Receipt, r.Model = line(r.Role), line(r.Receipt), line(r.Model)
+		r.Role, r.Receipt, r.Model, r.Named = line(r.Role), line(r.Receipt), line(r.Model), line(r.Named)
 		r.Route = maskPtr(r.Route, maskRoute)
 		return r
 	})
@@ -149,7 +149,7 @@ func (r ValidationRound) masked() ValidationRound {
 	r.Validators = maskEach(r.Validators, func(v ValidatorRun) ValidatorRun {
 		v.Role, v.Brief, v.Return, v.Verdict = line(v.Role), line(v.Brief), line(v.Return), line(v.Verdict)
 		v.Class, v.Model, v.ModelStatus, v.Effort = line(v.Class), line(v.Model), line(v.ModelStatus), line(v.Effort)
-		v.WriterModel, v.ReviewerModel = line(v.WriterModel), line(v.ReviewerModel)
+		v.WriterModels, v.ReviewerModel, v.ReviewerNamed = maskEach(v.WriterModels, line), line(v.ReviewerModel), line(v.ReviewerNamed)
 		v.Audit = maskPtr(v.Audit, func(a AuditRun) AuditRun {
 			a.ReceiptID, a.Request, a.BaseSHA, a.HeadSHA, a.Worst = line(a.ReceiptID), line(a.Request), line(a.BaseSHA), line(a.HeadSHA), line(a.Worst)
 			a.NotMet, a.Inconclusive = maskEach(a.NotMet, line), maskEach(a.Inconclusive, line)
@@ -211,6 +211,13 @@ func (rs ReviewSet) masked() ReviewSet {
 		return r
 	})
 	rs.Classes = maskEach(rs.Classes, class)
+	if rs.Unlaunchable != nil {
+		un := make(map[string][]string, len(rs.Unlaunchable))
+		for role, cs := range rs.Unlaunchable {
+			un[line(role)] = maskEach(cs, line)
+		}
+		rs.Unlaunchable = un
+	}
 	rs.Judge = maskPtr(rs.Judge, func(j ReviewJudge) ReviewJudge {
 		j.Class, j.Model, j.MapLayer, j.MapOrigin = line(j.Class), line(j.Model), line(j.MapLayer), line(j.MapOrigin)
 		j.Layer, j.Origin, j.Status = line(j.Layer), line(j.Origin), line(j.Status)

@@ -1872,6 +1872,7 @@ func rereadModels(c Context, lane *Lane) string {
 			continue
 		}
 		if r.Route != nil && r.Route.Model != "" && plainWritten(r.Route.Model) && nameable(r.Route.Model) {
+			r.Named = keptName(*r)
 			r.Model = r.Route.Model
 			filled = append(filled, r.Receipt+" from the route that ran it")
 			continue
@@ -1886,6 +1887,7 @@ func rereadModels(c Context, lane *Lane) string {
 		if err != nil || rc.Model == r.Model || !plainWritten(rc.Model) || !nameable(rc.Model) {
 			continue
 		}
+		r.Named = keptName(*r)
 		r.Model = rc.Model
 		filled = append(filled, r.Receipt+" from its file, read again")
 	}
@@ -1893,6 +1895,17 @@ func rereadModels(c Context, lane *Lane) string {
 		return ""
 	}
 	return "took the model of " + strings.Join(filled, "; ") + ", since the receipt verified with none the trailer can name"
+}
+
+// keptName is the name a receipt record keeps as the one its receipt named
+// when its model is replaced: the one it kept from an earlier replacement,
+// else its model, so the lane's writers read the same before and after
+// (laneWriters). An empty model keeps nothing.
+func keptName(r ReceiptRecord) string {
+	if r.Named != "" {
+		return r.Named
+	}
+	return r.Model
 }
 
 // modelGap is the refusal of a landing step whose text must name the models
@@ -2125,7 +2138,7 @@ func prBodyParked(st State, lane Lane, assisted []string, parked bool) string {
 			p("- Validation round %d at %s passed: %s.\n", r.Round, shortSHA(r.HeadSHA), verdictsLine(r))
 		}
 		for _, v := range r.Validators {
-			if m := modelsPhrase(v.WriterModel, v.ReviewerModel); m != "" {
+			if m := v.models(); m != "" {
 				who := v.Role
 				if v.Class != "" {
 					who += fmt.Sprintf(", reviewer %d", v.Reviewer)

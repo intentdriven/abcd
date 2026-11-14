@@ -366,22 +366,32 @@ func TestAStoredReviewSetTheLoopNeverWritesIsRefused(t *testing.T) {
 // an earlier version carries it, so a test that reads a run as an older
 // version reads it as that version would have written it.
 // unmodelOlder drops what version 27 added (validate_other_model_test.go): the
-// review set's class map and each reviewer's writer's and reviewer's models.
+// review set's class map and unlaunchable classes, each receipt's named model,
+// and each reviewer's writers' and reviewer's models and its mark.
 func unmodelOlder(doc map[string]any) {
 	if rs, ok := doc["review"].(map[string]any); ok {
 		delete(rs, "classes")
+		delete(rs, "unlaunchable")
 	}
 	lanes, _ := doc["lanes"].([]any)
 	for _, l := range lanes {
 		lm, _ := l.(map[string]any)
+		receipts, _ := lm["receipts"].([]any)
+		for _, r := range receipts {
+			if rm, ok := r.(map[string]any); ok {
+				delete(rm, "named")
+			}
+		}
 		rounds, _ := lm["validation"].([]any)
 		for _, r := range rounds {
 			rm, _ := r.(map[string]any)
 			vs, _ := rm["validators"].([]any)
 			for _, v := range vs {
 				if vm, ok := v.(map[string]any); ok {
-					delete(vm, "writer_model")
+					delete(vm, "writer_models")
 					delete(vm, "reviewer_model")
+					delete(vm, "reviewer_named")
+					delete(vm, "models_unrecorded")
 				}
 			}
 		}
