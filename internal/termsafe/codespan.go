@@ -127,9 +127,11 @@ func (p *CodeSpanPairer) Pair(i, end int) (PairedSpan, bool) {
 // and fenced blocks from backticks, and fenced blocks from tildes too. They
 // are named here so a writer outside this package asks for a backtick run
 // without spelling a backtick, which TestNoSecondCodeSpanPairer reads as a
-// hand-written scan. Outside this package they are LongestFenceRun's
-// arguments and nothing else: the same test fails on any other use, so a
-// comparison against one cannot become a scan the spelling check misses.
+// hand-written scan. In a production file outside this package they are
+// LongestFenceRun's arguments and nothing else: the same test parses each
+// such file and fails on any other use, under every name the file imports
+// this package by, and refuses a dot import, so a comparison against one
+// cannot become a scan the spelling check misses.
 const (
 	FenceBacktick byte = '`'
 	FenceTilde    byte = '~'

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -65,11 +66,14 @@ var backtickScanners = map[string]backtickScanner{
 //
 // The check is spelling-only, as the fence detector's is: every file that seeks
 // a backtick is named with a reason, which is a short list because most of the
-// tree never seeks one. A backtick assembled at run time, or spelled as a
-// number, is outside its reach and is left to review. The one spelling this
-// package itself hands out, the FenceBacktick and FenceTilde constants, is
-// judged by fenceConstantMisuses: outside termsafe a constant may only be an
-// argument of LongestFenceRun, so it cannot become a scan the regex misses.
+// tree never seeks one. A backtick it cannot see spelled, for example one
+// assembled at run time or written as a number, is outside its reach and is
+// left to review. The one spelling this package itself hands out, the
+// FenceBacktick and FenceTilde constants, is judged by fenceConstantMisuses:
+// in a production file outside termsafe, through every name the file imports
+// termsafe under, a constant may only be written as an argument of
+// LongestFenceRun, and a dot import of termsafe is refused, so neither
+// constant can become a scan the regex misses.
 func TestNoSecondCodeSpanPairer(t *testing.T) {
 	root := filepath.Join("..", "..") // internal/termsafe -> repository root
 	self := filepath.Join(root, "internal", "termsafe")
@@ -160,21 +164,27 @@ func fenceConstantMisuses(rel string, src []byte) ([]string, error) {
 		return nil, fmt.Errorf("parse %s: %w", rel, err)
 	}
 	var out []string
-	name := ""
+	// Every name the file imports termsafe under is judged: a file may import
+	// the path more than once, and a use through any of those names counts.
+	names := map[string]bool{}
 	for _, imp := range f.Imports {
-		if strings.Trim(imp.Path.Value, `"`) != termsafeImportPath {
+		path, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			return nil, fmt.Errorf("%s: import path %s: %w", fset.Position(imp.Pos()), imp.Path.Value, err)
+		}
+		if path != termsafeImportPath {
 			continue
 		}
 		switch {
 		case imp.Name == nil:
-			name = "termsafe"
+			names["termsafe"] = true
 		case imp.Name.Name == ".":
 			out = append(out, fmt.Sprintf("%s (dot-imports termsafe, which hides its fence constants from this check)", fset.Position(imp.Pos())))
-		default:
-			name = imp.Name.Name
+		case imp.Name.Name != "_":
+			names[imp.Name.Name] = true
 		}
 	}
-	if name == "" || name == "_" {
+	if len(names) == 0 {
 		return out, nil
 	}
 	isTermsafe := func(e ast.Expr, sel func(string) bool) bool {
@@ -183,7 +193,7 @@ func fenceConstantMisuses(rel string, src []byte) ([]string, error) {
 			return false
 		}
 		x, ok := s.X.(*ast.Ident)
-		return ok && x.Name == name && sel(s.Sel.Name)
+		return ok && names[x.Name] && sel(s.Sel.Name)
 	}
 	isConstant := func(e ast.Expr) bool {
 		return isTermsafe(e, func(n string) bool { return fenceConstantNames[n] })
@@ -202,7 +212,7 @@ func fenceConstantMisuses(rel string, src []byte) ([]string, error) {
 	ast.Inspect(f, func(n ast.Node) bool {
 		if e, ok := n.(ast.Expr); ok && isConstant(e) && !allowed[e] {
 			sel := e.(*ast.SelectorExpr)
-			out = append(out, fmt.Sprintf("%s (uses %s.%s outside a LongestFenceRun argument list)", fset.Position(sel.Pos()), name, sel.Sel.Name))
+			out = append(out, fmt.Sprintf("%s (uses %s.%s outside a LongestFenceRun argument list)", fset.Position(sel.Pos()), sel.X.(*ast.Ident).Name, sel.Sel.Name))
 		}
 		return true
 	})
@@ -213,27 +223,39 @@ func fenceConstantMisuses(rel string, src []byte) ([]string, error) {
 // constants written directly as LongestFenceRun's arguments, under any import
 // name, and nothing else.
 func TestFenceConstantMisuses(t *testing.T) {
-	const header = "package p\n\nimport %s \"" + termsafeImportPath + "\"\n\n"
+	plain := `"` + termsafeImportPath + `"`
+	raw := "`" + termsafeImportPath + "`"
+	escaped := `"\x67` + strings.TrimPrefix(termsafeImportPath, "g") + `"` // \x67 is "g"
 	for _, c := range []struct {
-		name  string
-		alias string // the import's name, "" for the default
-		body  string
-		want  int
+		name    string
+		imports string // the file's import declarations; "" imports termsafe plainly
+		alias   string // the import's name, "" for the default, used when imports is ""
+		body    string
+		want    int
 	}{
-		{"passed to LongestFenceRun", "", "func f(s string) int { return termsafe.LongestFenceRun(s, termsafe.FenceBacktick) }", 0},
-		{"both constants passed", "", "func f(s string) int { return termsafe.LongestFenceRun(s, termsafe.FenceTilde, termsafe.FenceBacktick) }", 0},
-		{"comparison outside a call", "", "func f(s string, i int) bool { return s[i] == termsafe.FenceBacktick }", 1},
-		{"assigned to a variable", "", "func f() byte { c := termsafe.FenceTilde; return c }", 1},
-		{"package-level variable", "", "var tick = termsafe.FenceBacktick", 1},
-		{"inside a slice handed to the call", "", "func f(s string) int { return termsafe.LongestFenceRun(s, []byte{termsafe.FenceBacktick}...) }", 1},
-		{"argument of another call", "", "func f(s string) int { return strings.IndexByte(s, termsafe.FenceBacktick) }", 1},
-		{"one clean use, one comparison", "", "func f(s string, i int) bool { return termsafe.LongestFenceRun(s, termsafe.FenceBacktick) > 0 && s[i] == termsafe.FenceTilde }", 1},
-		{"imported under another name, passed", "ts", "func f(s string) int { return ts.LongestFenceRun(s, ts.FenceBacktick) }", 0},
-		{"imported under another name, compared", "ts", "func f(s string, i int) bool { return s[i] == ts.FenceBacktick }", 1},
-		{"another package's constant of the same name", "", "func f(s string, i int) bool { return s[i] == other.FenceBacktick || termsafe.CodeSpan(s) == \"\" }", 0},
-		{"dot import", ".", "func f(s string, i int) bool { return s[i] == FenceBacktick }", 1},
+		{"passed to LongestFenceRun", "", "", "func f(s string) int { return termsafe.LongestFenceRun(s, termsafe.FenceBacktick) }", 0},
+		{"both constants passed", "", "", "func f(s string) int { return termsafe.LongestFenceRun(s, termsafe.FenceTilde, termsafe.FenceBacktick) }", 0},
+		{"comparison outside a call", "", "", "func f(s string, i int) bool { return s[i] == termsafe.FenceBacktick }", 1},
+		{"assigned to a variable", "", "", "func f() byte { c := termsafe.FenceTilde; return c }", 1},
+		{"package-level variable", "", "", "var tick = termsafe.FenceBacktick", 1},
+		{"inside a slice handed to the call", "", "", "func f(s string) int { return termsafe.LongestFenceRun(s, []byte{termsafe.FenceBacktick}...) }", 1},
+		{"argument of another call", "", "", "func f(s string) int { return strings.IndexByte(s, termsafe.FenceBacktick) }", 1},
+		{"one clean use, one comparison", "", "", "func f(s string, i int) bool { return termsafe.LongestFenceRun(s, termsafe.FenceBacktick) > 0 && s[i] == termsafe.FenceTilde }", 1},
+		{"imported under another name, passed", "", "ts", "func f(s string) int { return ts.LongestFenceRun(s, ts.FenceBacktick) }", 0},
+		{"imported under another name, compared", "", "ts", "func f(s string, i int) bool { return s[i] == ts.FenceBacktick }", 1},
+		{"another package's constant of the same name", "", "", "func f(s string, i int) bool { return s[i] == other.FenceBacktick || termsafe.CodeSpan(s) == \"\" }", 0},
+		{"dot import", "", ".", "func f(s string, i int) bool { return s[i] == FenceBacktick }", 1},
+		{"alias plus plain import, compared through the alias", "import ts " + plain + "\nimport " + plain, "", "func f(s string, i int) bool { return termsafe.CodeSpan(s) == \"\" || s[i] == ts.FenceBacktick }", 1},
+		{"named import then a blank one, compared", "import ts " + plain + "\nimport _ " + plain, "", "func f(s string, i int) bool { return s[i] == ts.FenceTilde }", 1},
+		{"backquoted import path, compared", "import " + raw, "", "func f(s string, i int) bool { return s[i] == termsafe.FenceBacktick }", 1},
+		{"backquoted import path, passed", "import " + raw, "", "func f(s string) int { return termsafe.LongestFenceRun(s, termsafe.FenceBacktick) }", 0},
+		{"escaped import path, compared", "import " + escaped, "", "func f(s string, i int) bool { return s[i] == termsafe.FenceBacktick }", 1},
 	} {
-		src := fmt.Sprintf(header, c.alias) + c.body + "\n"
+		imports := c.imports
+		if imports == "" {
+			imports = "import " + c.alias + " " + plain
+		}
+		src := "package p\n\n" + imports + "\n\n" + c.body + "\n"
 		got, err := fenceConstantMisuses("fixture.go", []byte(src))
 		if err != nil {
 			t.Fatalf("%s: %v", c.name, err)
