@@ -3,7 +3,9 @@ package sweep
 // sweep.go is the dry run (spc-2610230730269295, step 1): one row per
 // worktree git lists, in the store or outside it, per stray in the store's
 // lane and for the embargo store, each with the action `--apply` would take
-// or the reason it leaves the item. It writes nothing.
+// or the reason it leaves the item. It writes nothing: a dirty worktree's
+// salvage is collected here, so the row says what apply would save, and
+// written only by apply (salvage.go).
 //
 // The store's list is the one reading of the worktrees, their state and the
 // merged judgement, and its Held is the build loop's hold as prune reads it:
@@ -29,11 +31,6 @@ import (
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
-
-// dirtyKept is the reason on a dirty worktree nothing holds, the dry run's and
-// the apply's alike: patch salvage is not built, so it is kept and its
-// changes are not saved.
-const dirtyKept = "dirty, and nothing holds it: kept, since the sweep does not yet save uncommitted changes"
 
 // changesCap bounds each read of a worktree's changed paths: past it the
 // changes read as unknown, which keeps the worktree.
@@ -73,16 +70,26 @@ type Options struct {
 // the error, and the result carries it as its Refusal, so ExitCode reads
 // ExitRefused. A run without Held or Cwd is refused the same way.
 func runDry(ctx context.Context, repoRoot string, o Options) (Result, error) {
-	res, _, _, err := judgeRepo(ctx, repoRoot, o)
+	res, _, err := judgeRepo(ctx, repoRoot, o)
 	return res, err
 }
 
-// judgeRepo is runDry, also answering with the store's row behind each of the
-// result's rows, in order, and the judge that made them, for runApply to act on.
-func judgeRepo(ctx context.Context, repoRoot string, o Options) (Result, []store.Row, judge, error) {
-	fail := func(err error) (Result, []store.Row, judge, error) {
+// plan is what runApply acts on beside the result: the store's row behind
+// each of the result's rows, in order, the salvage each save-patch row would
+// write, by the row's index, and the lane and judge that made them.
+type plan struct {
+	srcs     []store.Row
+	salvages map[int]salvage
+	lane     store.Lane
+	j        judge
+}
+
+// judgeRepo is runDry, also answering with the plan behind the result's rows,
+// for runApply to act on.
+func judgeRepo(ctx context.Context, repoRoot string, o Options) (Result, plan, error) {
+	fail := func(err error) (Result, plan, error) {
 		res, err := refused(err)
-		return res, nil, judge{}, err
+		return res, plan{}, err
 	}
 	if o.Held == nil {
 		return fail(errors.New("sweep: a dry run needs a reader of what the build loop holds"))
@@ -97,6 +104,12 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options) (Result, []store
 	held, err := o.Held(repoRoot)
 	if err != nil {
 		return fail(fmt.Errorf("reading what the build loop holds: %w", err))
+	}
+	// The lane List derived, again: its Listing carries only the redacted
+	// path, and a salvage is written into the lane's notes archive.
+	lane, err := store.LaneFor(repoRoot)
+	if err != nil {
+		return fail(err)
 	}
 	home, _ := os.UserHomeDir()
 	p := newProbe(ctx, o.Probe)
@@ -119,10 +132,17 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options) (Result, []store
 		RunsUnread:              clean(p.runsUnread),
 		ForgeNote:               listing.ForgeNote,
 	}
-	for _, r := range listing.Worktrees {
-		res.Rows = append(res.Rows, j.row(r))
+	pl := plan{srcs: listing.Worktrees, salvages: map[int]salvage{}, lane: lane, j: j}
+	for i, r := range listing.Worktrees {
+		row := j.row(r)
+		if row.Action == ActionSavePatch {
+			if s, ok := j.planSalvage(repoRoot, lane, r, &row); ok {
+				pl.salvages[i] = s
+			}
+		}
+		res.Rows = append(res.Rows, row)
 	}
-	return res, listing.Worktrees, j, nil
+	return res, pl, nil
 }
 
 // refused is the result and error of a run that refused before judging. The
@@ -233,7 +253,7 @@ func (j judge) row(r store.Row) Row {
 		return keep("outside the store; never touched", ev...)
 	case r.State == "dirty":
 		row.Action = ActionSavePatch
-		return keep(dirtyKept, ev...)
+		return keep(dirtyToSave, ev...)
 	case r.Merged == "unmerged":
 		return keep("unmerged", ev...)
 	}

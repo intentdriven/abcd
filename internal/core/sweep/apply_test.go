@@ -188,8 +188,12 @@ func TestApplyNeverActsOnALockedAnEmbargoOrAnOutsideWorktree(t *testing.T) {
 	res := apply(t, repo, o)
 	for name, p := range map[string]string{"locked": locked, storepath.Name: emb, "beside": outside, "dirty": dirty} {
 		r := rowFor(t, res, name)
-		if r.Outcome != OutcomeKept || r.Reason == "" {
-			t.Errorf("%s: %+v; want it kept, saying why", name, r)
+		want := OutcomeKept
+		if name == "dirty" {
+			want = OutcomeSaved
+		}
+		if r.Outcome != want || r.Reason == "" {
+			t.Errorf("%s: %+v; want it %s, saying why", name, r, want)
 		}
 		if !exists(p) {
 			t.Errorf("%s: the worktree stands", name)
@@ -198,11 +202,14 @@ func TestApplyNeverActsOnALockedAnEmbargoOrAnOutsideWorktree(t *testing.T) {
 	kept(t, rowFor(t, res, "locked"), "locked by git: on a removable disk")
 	kept(t, rowFor(t, res, storepath.Name), "embargo store")
 	kept(t, rowFor(t, res, "beside"), "outside the store")
+	if !strings.Contains(rowFor(t, res, "dirty").Reason, "the worktree is kept") {
+		t.Errorf("the dirty worktree is saved and kept: %+v", rowFor(t, res, "dirty"))
+	}
 	if len(*asked) != 0 {
 		t.Fatalf("the store's prune is never asked about a kept worktree: asked %q", *asked)
 	}
-	if res.ExitCode() != ExitNothing {
-		t.Fatalf("a run that acted on nothing exits %d; want %d", res.ExitCode(), ExitNothing)
+	if res.ExitCode() != ExitActed {
+		t.Fatalf("a run that saved a salvage exits %d; want %d", res.ExitCode(), ExitActed)
 	}
 }
 
@@ -212,6 +219,7 @@ func TestApplyNeverActsOnALockedAnEmbargoOrAnOutsideWorktree(t *testing.T) {
 func TestApplyExitCodes(t *testing.T) {
 	keptRemove := Row{Kind: RowWorktree, Action: ActionRemove, Outcome: OutcomeKept}
 	removed := Row{Kind: RowWorktree, Action: ActionRemove, Outcome: OutcomeRemoved}
+	saved := Row{Kind: RowWorktree, Action: ActionSavePatch, Outcome: OutcomeSaved}
 	for _, c := range []struct {
 		name string
 		res  Result
@@ -219,6 +227,7 @@ func TestApplyExitCodes(t *testing.T) {
 	}{
 		{"a removal kept at the last check is no act", Result{Applied: true, Rows: []Row{keptRemove}}, ExitNothing},
 		{"a removal", Result{Applied: true, Rows: []Row{keptRemove, removed}}, ExitActed},
+		{"a salvage saved", Result{Applied: true, Rows: []Row{keptRemove, saved}}, ExitActed},
 		{"a fault outranks a removal", Result{Applied: true, Rows: []Row{removed}, Refusal: "fault"}, ExitRefused},
 	} {
 		if got := c.res.ExitCode(); got != c.want {
@@ -301,25 +310,6 @@ func TestApplyNeverAsksThePruneAboutAWorktreeTheDryRunKeeps(t *testing.T) {
 	}
 	if res.ExitCode() != ExitNothing {
 		t.Fatalf("a run that acted on nothing exits %d; want %d", res.ExitCode(), ExitNothing)
-	}
-}
-
-// TestADirtyWorktreeIsKeptAndSaidToBeUnsaved: patch salvage is not built, so
-// the dry run says a dirty worktree is kept with its changes unsaved, never
-// that they are saved, and the apply says the same.
-func TestADirtyWorktreeIsKeptAndSaidToBeUnsaved(t *testing.T) {
-	repo, _ := sweepRepo(t)
-	p := laneAdd(t, repo, "dirty")
-	write(t, filepath.Join(p, "scratch.txt"), "wip\n")
-
-	dry := rowFor(t, dryRun(t, repo, sweepOpts()), "dirty")
-	if dry.Action != ActionSavePatch || strings.Contains(dry.Reason, "saved as a patch") ||
-		!strings.Contains(dry.Reason, "kept") || !strings.Contains(dry.Reason, "does not yet save") {
-		t.Fatalf("the dry run's dirty row: %+v; want it kept, saying its changes are not saved yet", dry)
-	}
-	applied := rowFor(t, apply(t, repo, sweepOpts()), "dirty")
-	if applied.Outcome != OutcomeKept || applied.Reason != dry.Reason {
-		t.Fatalf("the apply's dirty row: %+v; want it kept with the dry run's reason %q", applied, dry.Reason)
 	}
 }
 

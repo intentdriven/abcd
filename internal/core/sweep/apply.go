@@ -3,10 +3,12 @@ package sweep
 // apply.go is `--apply` for worktrees (spc-2610230730269295, step 2): the dry
 // run's judgement, then each row acted on. A remove row is reclaimed through
 // the store's PruneOne, the one reclaim primitive, whose last check before
-// `git worktree remove` is a fresh liveness probe of that one worktree. Every
-// other row is kept. Nothing is forced, no process is stopped, and the
-// embargo store and a worktree outside the store are never acted on: the dry
-// run keeps both, and PruneOne refuses a name its lane does not hold.
+// `git worktree remove` is a fresh liveness probe of that one worktree. A
+// save-patch row has the salvage the judgement collected written to the notes
+// archive, and the worktree kept. Every other row is kept. Nothing is forced,
+// no process is stopped, and the embargo store and a worktree outside the
+// store are never acted on: the dry run keeps both, PruneOne refuses a name
+// its lane does not hold, and the salvage refuses either.
 
 import (
 	"context"
@@ -24,19 +26,19 @@ import (
 //     makes a fresh probe of that one worktree immediately before removal: a
 //     new process listing, the reservations the caller read, the build
 //     loop's runs and the owner check. Any hold keeps it, naming the hold;
-//   - a save-patch row is kept, with the dry run's reason: patch salvage is
-//     not built yet, so its changes are not saved;
+//   - a save-patch row has its salvage written (plan.save), its outcome
+//     saved and its reason naming the entry; the worktree is kept;
 //   - every other row is kept, with the dry run's reason.
 //
 // A dry run that refuses is returned as runDry returns it. A prune that
 // refuses or faults, or whose reclaim fails (the store keeps such a worktree
-// with no error, as it keeps one it chose to; see failedReclaim), keeps that
-// worktree, naming why, and the run carries the first such fault as its
-// Refusal, which is also returned as the error, so ExitCode reads
-// ExitRefused; the other rows are still acted on, each prune being its own
-// judgement.
+// with no error, as it keeps one it chose to; see failedReclaim), or a
+// salvage that cannot be written, keeps that worktree, naming why, and the
+// run carries the first such fault as its Refusal, which is also returned as
+// the error, so ExitCode reads ExitRefused; the other rows are still acted
+// on, each being its own judgement.
 func runApply(ctx context.Context, repoRoot string, o Options) (Result, error) {
-	res, srcs, j, err := judgeRepo(ctx, repoRoot, o)
+	res, pl, err := judgeRepo(ctx, repoRoot, o)
 	if err != nil {
 		return res, err
 	}
@@ -51,7 +53,11 @@ func runApply(ctx context.Context, repoRoot string, o Options) (Result, error) {
 		row.Outcome = OutcomeKept
 		switch row.Action {
 		case ActionRemove:
-			if err := j.remove(ctx, repoRoot, srcs[i], o, prune, row); err != nil && fault == nil {
+			if err := pl.j.remove(ctx, repoRoot, pl.srcs[i], o, prune, row); err != nil && fault == nil {
+				fault = err
+			}
+		case ActionSavePatch:
+			if err := pl.save(i, row); err != nil && fault == nil {
 				fault = err
 			}
 		}
