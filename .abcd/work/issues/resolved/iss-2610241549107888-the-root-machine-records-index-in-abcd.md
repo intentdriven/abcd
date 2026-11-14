@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/README.md"
 remedy: "Add a row to the root machine records table in .abcd/README.md for each optional config/ record the binary reads, oracle-routing.json first, naming its reader and its owning record, proven by a check that every .abcd/config/ path named in non-test code under internal/ has a row."
+resolution: "The root machine records table in .abcd/README.md now has a row for each optional config record the binary reads (oracle-routing.json, dependency-reauthor.conf, provenance.json, history.json, gitleaks.json) and gives the legacy identity.json its own row. TestEveryConfigRecordNamedInInternalHasAnIndexRow fails before the change and passes after."
+impact: fix
+resolved_by:
+  commit: "e70a47ff4b76c5b80d6f36e3d74dbbb4ed4cf366"
 ---
 
 The root machine records index in .abcd/README.md lists five config/ records and two optional absent ones (pii.json, scripts-closure.json) but not config/oracle-routing.json, an optional record the shipped binary reads and ahoy offers to write (internal/core/ahoy/oracle_routing.go:14, :51), nor the other optional config/ records added since, so the index a reader starts from lags the directory it indexes.

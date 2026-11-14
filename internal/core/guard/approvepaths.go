@@ -49,6 +49,11 @@ type approveFacts struct {
 	// removable is where a removal may reach: the launched working tree, the
 	// run's own directories and the temporary directories, each spelling.
 	removable []string
+	// hooksUnread, when git could not answer the read of the hooks
+	// directories it runs here (gitutil.HooksPaths), names that read and why:
+	// no path can then be checked against them, so no write or removal is
+	// approved (hooksUnreadRefusal).
+	hooksUnread string
 }
 
 // approveTempDirs is the temporary directories a removal may reach: the
@@ -128,7 +133,12 @@ func factsFor(f *Files) approveFacts {
 					tops = append(tops, p)
 				}
 			}
-			if hooks, err := gitutil.HooksPaths(top); err == nil {
+			hooks, err := gitutil.HooksPaths(top)
+			if err != nil {
+				facts.hooksUnread = "the read of core.hooksPath (git config --get-all core.hooksPath) failed: " +
+					termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+			}
+			if err == nil {
 				for _, h := range hooks {
 					switch {
 					case h == "":
@@ -481,6 +491,19 @@ func unfixedRefusal(u pathUse) Approval {
 	return refusal(unfixedPathEntryID,
 		"this "+verb+" "+what+" that the line does not spell out (a variable, a substitution's output, a glob, or a name after a change of directory the line leaves unknown), so the guard cannot say which file it is.",
 		"the same command with the path spelled out in full.")
+}
+
+// hooksUnreadRefusal is the refusal of a write or a removal u where git could
+// not answer the read of the hooks directories it runs (why, the facts'
+// hooksUnread): the path cannot be shown not to be one of them.
+func hooksUnreadRefusal(u pathUse, why string) Approval {
+	what := "a path"
+	if u.written != "" {
+		what = termsafe.Sanitize(u.written)
+	}
+	return refusal(protectedPathEntryID,
+		"this line writes or removes "+what+", and git could not say which hooks directories it runs here ("+why+"), so the guard cannot show the path is not one of them, and abcd does not approve it unattended.",
+		"check that git can read this repository's settings and your own (git config --show-origin --get-all core.hooksPath), then run the line again.")
 }
 
 // parenRefusal is the refusal of a command with an unquoted ( in one of its

@@ -370,3 +370,166 @@ func TestOnlyALandingMayWait(t *testing.T) {
 		}
 	}
 }
+
+// TestPredictHandAgreesWithTheRealStageBodies holds the prediction to the
+// stage bodies this build runs (iss-2610222212301498): the table above pairs
+// predictHand with paritySteps' copy of them, and the walk meets only a run
+// in which every round passes, with at most two agents out. Here one lane of
+// a real run stands at each validate state the walk never reaches (a verdict
+// that did not pass, a fix round and its cap, a conflicting sync, the
+// landing's records round, a third validator out, a later validator after an
+// earlier one passed), and validateStage, as DefaultStages carries it, makes
+// the move. A body that hands out another role than laneWant reads from the
+// state, or stays, goes elsewhere or completes where it reads an agent,
+// fails here. The states the walk does reach are left to it.
+func TestPredictHandAgreesWithTheRealStageBodies(t *testing.T) {
+	f := newParFixture(t, "1. One\n", Options{})
+	stages := DefaultStages()
+	gate := &outageGate{now: f.now}
+	root := f.repo.Root()
+	step := func(st State) (StepResult, State, error) {
+		moving := cloneState(st)
+		res, _, err := move(root, &moving, stages, f.now, gate, nil, nil, nil)
+		return res, moving, err
+	}
+	// only is the run's one lane in a state that is the test's own to change.
+	only := func(st State) (State, *Lane) {
+		c := cloneState(st)
+		if len(c.Lanes) != 1 {
+			t.Fatalf("the fixture's run has one lane: %+v", c.Lanes)
+		}
+		l := &c.Lanes[0]
+		l.Awaits, l.Validation, l.Syncs = slices.Clone(l.Awaits), slices.Clone(l.Validation), slices.Clone(l.Syncs)
+		return c, l
+	}
+
+	f.stepUntil(t, "the lane is at its implement stage", func(st State) bool {
+		return len(st.Lanes) == 1 && st.Lanes[0].Stage == StageImplement
+	})
+	f.step(t)
+	f.implement(t, "lane-1", "one.txt")
+	atValidate := f.state(t)
+	if l := atValidate.Lanes[0]; l.Stage != StageValidate || len(l.Validation) != 0 || len(l.Awaits) != 0 {
+		t.Fatalf("the lane is at its validate stage with no round: %+v", l)
+	}
+	head, base := atValidate.Lanes[0].HeadSHA, atValidate.Lanes[0].BaseSHA
+
+	// The round validateStage opens, as openRound lists its validators.
+	_, opened, err := step(atValidate)
+	if err != nil {
+		t.Fatalf("opening the round: %v", err)
+	}
+	if len(opened.Lanes[0].Validation) != 1 || len(opened.Lanes[0].Validation[0].Validators) < 3 {
+		t.Fatalf("the closing lane's round has both reviewers and the auditor: %+v", opened.Lanes[0].Validation)
+	}
+	// round is that round, with a verdict on each validator verdicts names:
+	// true passes it, false fails it, and a validator past its end has none.
+	round := func(verdicts ...bool) ValidationRound {
+		r := opened.Lanes[0].Validation[0]
+		r.Validators = slices.Clone(r.Validators)
+		for i, pass := range verdicts {
+			r.Validators[i].Verdict, r.Validators[i].Pass = "SHIP", pass
+			if !pass {
+				r.Validators[i].Verdict = "FIX FIRST"
+			}
+		}
+		return r
+	}
+	ceiling := func(st *State, n int) {
+		p := Pace{}
+		if st.Pace != nil {
+			p = *st.Pace
+		}
+		p.SubAgents.Value = n
+		st.Pace = &p
+	}
+	// at is the run with its lane at the validate stage, changed by edit.
+	at := func(edit func(st *State, l *Lane)) State {
+		st, l := only(atValidate)
+		edit(&st, l)
+		return st
+	}
+	validators := opened.Lanes[0].Validation[0].Validators
+
+	cases := []struct {
+		name string
+		st   State
+		// role is the role the real body hands out, "" for none; performed is
+		// the stage the move completes; handBack is whether it hands the lane
+		// back.
+		role      string
+		performed Stage
+		handBack  bool
+		// says is a phrase the prediction's reason for handing none carries.
+		says string
+	}{
+		{name: "the second validator once the first has passed", role: RoleSecurity, st: at(func(st *State, l *Lane) {
+			l.Validation = []ValidationRound{round(true)}
+		})},
+		{name: "the next validator, not a fix, after a verdict that did not pass", role: RoleSecurity, st: at(func(st *State, l *Lane) {
+			l.Validation = []ValidationRound{round(false)}
+		})},
+		{name: "the auditor while both reviewers are out", role: RoleAuditor, st: at(func(st *State, l *Lane) {
+			ceiling(st, 3)
+			l.Validation = []ValidationRound{round()}
+			l.Awaits = []Await{validators[0].await(), validators[1].await()}
+		})},
+		{name: "a round that did not pass goes to a fix implementer", role: RoleImplementer, st: at(func(st *State, l *Lane) {
+			l.Validation = []ValidationRound{round(true, false, true)}
+		})},
+		{name: "the fix implementer already out", says: "already out", st: at(func(st *State, l *Lane) {
+			l.Validation = []ValidationRound{round(true, false, true)}
+			l.Awaits = []Await{{Role: RoleImplementer, Receipt: "fix-receipt"}}
+		})},
+		{name: "a round that did not pass at the fix-round cap hands the lane back", handBack: true, says: "abcd runs itself", st: at(func(st *State, l *Lane) {
+			ceiling(st, 1)
+			st.Pace.FixRounds = PaceValue{Value: 0, Layer: "test"}
+			l.Validation = []ValidationRound{round(true, false, true)}
+		})},
+		{name: "a fixed round opens the next at its first validator", role: RoleRuthless, st: at(func(st *State, l *Lane) {
+			r := round(true, false, true)
+			r.Fix = l.Receipt
+			l.Validation = []ValidationRound{r}
+		})},
+		{name: "a conflicting sync goes to an implementer", role: RoleImplementer, st: at(func(st *State, l *Lane) {
+			l.Validation = []ValidationRound{round(true, true, true)}
+			l.Syncs = []Sync{{Conflicted: true, Brief: "sync-brief", Receipt: "sync-receipt"}}
+		})},
+		{name: "the landing's records commit opens a round at its first validator", role: RoleRuthless, st: at(func(st *State, l *Lane) {
+			r := round(true, true, true)
+			r.HeadSHA = base
+			l.Validation = []ValidationRound{r}
+			l.Landing = &Landing{Records: head}
+		})},
+		{name: "a records round that did not pass completes the stage", performed: StageValidate, says: "abcd runs itself", st: at(func(st *State, l *Lane) {
+			l.Validation = []ValidationRound{round(true, false, true)}
+			l.Landing = &Landing{Records: head}
+		})},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := predictHand(tc.st, gate, f.now)
+			if tc.says != "" && !strings.Contains(h.none, tc.says) {
+				t.Fatalf("the prediction says %q, not %q: %+v", h.none, tc.says, h)
+			}
+			res, _, err := step(tc.st)
+			if err != nil {
+				t.Fatalf("the move refused: %v; the prediction said %+v", err, h)
+			}
+			handed := ""
+			if res.handed && res.Awaiting != nil {
+				handed = res.Awaiting.Role
+			}
+			if handed != h.role || (handed != "" && res.Lane != h.lane) {
+				t.Fatalf("the stage's own body handed %q on %s (%+v); the prediction said %+v", handed, res.Lane, res, h)
+			}
+			assertAgrees(t, h, res, err)
+			// What the case is of, so one that stops reaching its state fails
+			// rather than agreeing about another.
+			if handed != tc.role || res.PerformedStage != tc.performed || (res.HandBack != nil) != tc.handBack {
+				t.Fatalf("the move handed %q, performed %q and handed back %v; the case is of %q, %q and %v: %+v",
+					handed, res.PerformedStage, res.HandBack != nil, tc.role, tc.performed, tc.handBack, res)
+			}
+		})
+	}
+}

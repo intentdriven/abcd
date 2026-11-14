@@ -2,10 +2,14 @@ package termsafe
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -27,23 +31,26 @@ type backtickScanner struct {
 // a second pairer. The count is pinned, so a scan added to a file already on
 // the list is a new claim too: a pairer written into an allowlisted file
 // changes its count and fails until a reviewer reads the new reason. The
-// default for a file this test names is to pair through PairCodeSpan.
+// default for a file this test names is to pair through PairCodeSpan. A writer
+// that sizes a span or a fence one longer than the text it wraps counts the
+// text's longest run through LongestFenceRun, so it seeks no backtick itself
+// and has no entry here (iss-2610140739284100). It names the characters it
+// wants through FenceBacktick and FenceTilde, and fenceConstantMisuses fails
+// the test on any other use of those constants outside this package, so they
+// are no way round the count.
 var backtickScanners = map[string]backtickScanner{
-	"internal/adapter/scanner/identity.go":        {2, "two delimiter sets: a backtick is one of the characters that may end an identity token, and one of those that bounds the path token an owner slug is judged in; nothing is paired"},
-	"internal/core/assistedby/body.go":            {2, "stripFencedBlocks is the Go copy of scripts/check-attribution.sh's strip_fenced_blocks, held to that gate by TestJudgeBodyMatchesTheGate: a backtick there is a fence opener's character, and an opener whose info string carries one is no fence, as the gate reads it; nothing is paired"},
-	"internal/core/capture/promote.go":            {1, "a WRITER: codeSpan measures the longest backtick run to choose a fence the value cannot close; nothing is paired"},
-	"internal/core/guard/tokenize.go":             {25, "the shell tokenizer: a backtick there is command substitution, a shell grammar, not markdown"},
-	"internal/core/guard/payload.go":              {3, "targetsAnExpansion reads a shell line's raw text for an assignment target that holds an expansion: a backtick there opens or closes a command substitution, a shell grammar, not markdown; nothing is paired"},
-	"internal/core/guard/varpath.go":              {1, "emptiedInside reads whether a default's text opens with a backquote, a command substitution the shell string's own shell runs and which can print nothing: a shell grammar, not markdown; nothing is paired"},
-	"internal/core/guard/unknown.go":              {2, "spellWord spells a default's or an alternative's shell word, and readPattern reads a trim's or a replacement's pattern: a backtick in either opens a command substitution, whose output the spelling drops or the pattern reads as unknown text; nothing is paired"},
-	"internal/core/history/reconstruct_render.go": {1, "a WRITER: longestBacktickRun sizes a fence longer than any run in the body; nothing is paired"},
-	"internal/core/lifeboat/mdrender.go":          {1, "escapeLeadingMarker asks whether a value opens with a backtick, then asks OpensBalancedCodeSpan, which pairs through PairCodeSpan"},
-	"internal/core/mdrecord/inline.go":            {2, "walkLine, Read's walk of one line, hands each run it meets to one CodeSpanPairer, which pairs by PairCodeSpan's rule; the other scan asks whether the line holds a backtick at all before building one; nothing is paired by hand"},
-	"internal/core/mdrecord/mdrecord.go":          {3, "MaskCodeSpans walks to each run and pairs it through PairCodeSpan, runEnd steps over an unpaired run, and the fence opener refuses an info string holding a backtick"},
-	"internal/core/mdrender/render.go":            {2, "the site renderer's inline walk hands each run to PairCodeSpan; the other is the escapable-punctuation range, which names a backtick among the ASCII punctuation"},
-	"internal/core/question/check.go":             {2, "the question check's register rule walks to each run and pairs it through PairCodeSpan, stepping over an unpaired run whole"},
-	"internal/core/rules/rules.go":                {2, "a WRITER: FenceRuleBody measures the longest tilde or backtick run in an override's rule body to size a tilde fence one longer, so no body line can close it; nothing is paired"},
-	"internal/core/surface/appendix.go":           {2, "codeRegions walks to each run and pairs it through PairCodeSpan, stepping over an unpaired run whole"},
+	"internal/adapter/scanner/identity.go": {2, "two delimiter sets: a backtick is one of the characters that may end an identity token, and one of those that bounds the path token an owner slug is judged in; nothing is paired"},
+	"internal/core/assistedby/body.go":     {2, "stripFencedBlocks is the Go copy of scripts/check-attribution.sh's strip_fenced_blocks, held to that gate by TestJudgeBodyMatchesTheGate: a backtick there is a fence opener's character, and an opener whose info string carries one is no fence, as the gate reads it; nothing is paired"},
+	"internal/core/guard/tokenize.go":      {25, "the shell tokenizer: a backtick there is command substitution, a shell grammar, not markdown"},
+	"internal/core/guard/payload.go":       {3, "targetsAnExpansion reads a shell line's raw text for an assignment target that holds an expansion: a backtick there opens or closes a command substitution, a shell grammar, not markdown; nothing is paired"},
+	"internal/core/guard/varpath.go":       {1, "emptiedInside reads whether a default's text opens with a backquote, a command substitution the shell string's own shell runs and which can print nothing: a shell grammar, not markdown; nothing is paired"},
+	"internal/core/guard/unknown.go":       {2, "spellWord spells a default's or an alternative's shell word, and readPattern reads a trim's or a replacement's pattern: a backtick in either opens a command substitution, whose output the spelling drops or the pattern reads as unknown text; nothing is paired"},
+	"internal/core/lifeboat/mdrender.go":   {1, "escapeLeadingMarker asks whether a value opens with a backtick, then asks OpensBalancedCodeSpan, which pairs through PairCodeSpan"},
+	"internal/core/mdrecord/inline.go":     {2, "walkLine, Read's walk of one line, hands each run it meets to one CodeSpanPairer, which pairs by PairCodeSpan's rule; the other scan asks whether the line holds a backtick at all before building one; nothing is paired by hand"},
+	"internal/core/mdrecord/mdrecord.go":   {3, "MaskCodeSpans walks to each run and pairs it through PairCodeSpan, runEnd steps over an unpaired run, and the fence opener refuses an info string holding a backtick"},
+	"internal/core/mdrender/render.go":     {2, "the site renderer's inline walk hands each run to PairCodeSpan; the other is the escapable-punctuation range, which names a backtick among the ASCII punctuation"},
+	"internal/core/question/check.go":      {2, "the question check's register rule walks to each run and pairs it through PairCodeSpan, stepping over an unpaired run whole"},
+	"internal/core/surface/appendix.go":    {2, "codeRegions walks to each run and pairs it through PairCodeSpan, stepping over an unpaired run whole"},
 }
 
 // TestNoSecondCodeSpanPairer is the one-canonical-primitive detector for the
@@ -59,8 +66,14 @@ var backtickScanners = map[string]backtickScanner{
 //
 // The check is spelling-only, as the fence detector's is: every file that seeks
 // a backtick is named with a reason, which is a short list because most of the
-// tree never seeks one. A backtick assembled at run time, or spelled as a
-// number, is outside its reach and is left to review.
+// tree never seeks one. A backtick it cannot see spelled, for example one
+// assembled at run time or written as a number, is outside its reach and is
+// left to review. The one spelling this package itself hands out, the
+// FenceBacktick and FenceTilde constants, is judged by fenceConstantMisuses:
+// in a production file outside termsafe, through every name the file imports
+// termsafe under, a constant may only be written as an argument of
+// LongestFenceRun, and a dot import of termsafe is refused, so neither
+// constant can become a scan the regex misses.
 func TestNoSecondCodeSpanPairer(t *testing.T) {
 	root := filepath.Join("..", "..") // internal/termsafe -> repository root
 	self := filepath.Join(root, "internal", "termsafe")
@@ -84,12 +97,17 @@ func TestNoSecondCodeSpanPairer(t *testing.T) {
 			if err != nil {
 				return err
 			}
+			rel, _ := filepath.Rel(root, path)
+			rel = filepath.ToSlash(rel)
+			misuses, err := fenceConstantMisuses(rel, data)
+			if err != nil {
+				return err
+			}
+			offenders = append(offenders, misuses...)
 			n := len(backtickScanRe.FindAllIndex(data, -1))
 			if n == 0 {
 				return nil
 			}
-			rel, _ := filepath.Rel(root, path)
-			rel = filepath.ToSlash(rel)
 			seen[rel] = true
 			w, ok := backtickScanners[rel]
 			switch {
@@ -106,7 +124,7 @@ func TestNoSecondCodeSpanPairer(t *testing.T) {
 	}
 	if len(offenders) > 0 {
 		sort.Strings(offenders)
-		t.Errorf("backtick scans outside termsafe (pair through PairCodeSpan, or allowlist with a reason and the count):\n  %s",
+		t.Errorf("backtick scans outside termsafe (pair through PairCodeSpan, count a run through LongestFenceRun, or allowlist with a reason and the count):\n  %s",
 			strings.Join(offenders, "\n  "))
 	}
 	// An allowlist entry for a file that no longer seeks a backtick is a stale
@@ -114,6 +132,136 @@ func TestNoSecondCodeSpanPairer(t *testing.T) {
 	for rel := range backtickScanners {
 		if !seen[rel] {
 			t.Errorf("%s is allowlisted but no longer seeks a backtick; remove the entry", rel)
+		}
+	}
+}
+
+// termsafeImportPath is the import path fenceConstantMisuses resolves the
+// constants' package by, whatever name a file imports it under.
+const termsafeImportPath = "github.com/intentdriven/abcd/internal/termsafe"
+
+// fenceConstantNames are the exported fence characters a file outside this
+// package may hand to LongestFenceRun and to nothing else.
+var fenceConstantNames = map[string]bool{"FenceBacktick": true, "FenceTilde": true}
+
+// fenceConstantMisuses reports each use, in the Go file src read from rel, of
+// termsafe.FenceBacktick or termsafe.FenceTilde that is not an argument
+// written directly in a termsafe.LongestFenceRun call. The constants exist so
+// a writer can ask for a run without spelling a backtick; compared against a
+// byte or held in a variable they would give a hand-written scan a spelling
+// backtickScanRe cannot see. The file is parsed rather than matched, because
+// whether a constant sits in that call's argument list is a question about the
+// syntax tree, and the package is found by its import path, so an alias is
+// judged too. A dot import of termsafe is refused outright, since it would let
+// a bare FenceBacktick stand for the selector this check looks for.
+func fenceConstantMisuses(rel string, src []byte) ([]string, error) {
+	if !strings.Contains(string(src), "FenceBacktick") && !strings.Contains(string(src), "FenceTilde") {
+		return nil, nil
+	}
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", rel, err)
+	}
+	var out []string
+	// Every name the file imports termsafe under is judged: a file may import
+	// the path more than once, and a use through any of those names counts.
+	names := map[string]bool{}
+	for _, imp := range f.Imports {
+		path, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			return nil, fmt.Errorf("%s: import path %s: %w", fset.Position(imp.Pos()), imp.Path.Value, err)
+		}
+		if path != termsafeImportPath {
+			continue
+		}
+		switch {
+		case imp.Name == nil:
+			names["termsafe"] = true
+		case imp.Name.Name == ".":
+			out = append(out, fmt.Sprintf("%s (dot-imports termsafe, which hides its fence constants from this check)", fset.Position(imp.Pos())))
+		case imp.Name.Name != "_":
+			names[imp.Name.Name] = true
+		}
+	}
+	if len(names) == 0 {
+		return out, nil
+	}
+	isTermsafe := func(e ast.Expr, sel func(string) bool) bool {
+		s, ok := e.(*ast.SelectorExpr)
+		if !ok {
+			return false
+		}
+		x, ok := s.X.(*ast.Ident)
+		return ok && names[x.Name] && sel(s.Sel.Name)
+	}
+	isConstant := func(e ast.Expr) bool {
+		return isTermsafe(e, func(n string) bool { return fenceConstantNames[n] })
+	}
+	allowed := map[ast.Expr]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		if call, ok := n.(*ast.CallExpr); ok && isTermsafe(call.Fun, func(n string) bool { return n == "LongestFenceRun" }) {
+			for _, arg := range call.Args {
+				if isConstant(arg) {
+					allowed[arg] = true
+				}
+			}
+		}
+		return true
+	})
+	ast.Inspect(f, func(n ast.Node) bool {
+		if e, ok := n.(ast.Expr); ok && isConstant(e) && !allowed[e] {
+			sel := e.(*ast.SelectorExpr)
+			out = append(out, fmt.Sprintf("%s (uses %s.%s outside a LongestFenceRun argument list)", fset.Position(sel.Pos()), sel.X.(*ast.Ident).Name, sel.Sel.Name))
+		}
+		return true
+	})
+	return out, nil
+}
+
+// TestFenceConstantMisuses pins what fenceConstantMisuses lets through: the
+// constants written directly as LongestFenceRun's arguments, under any import
+// name, and nothing else.
+func TestFenceConstantMisuses(t *testing.T) {
+	plain := `"` + termsafeImportPath + `"`
+	raw := "`" + termsafeImportPath + "`"
+	escaped := `"\x67` + strings.TrimPrefix(termsafeImportPath, "g") + `"` // \x67 is "g"
+	for _, c := range []struct {
+		name    string
+		imports string // the file's import declarations; "" imports termsafe plainly
+		alias   string // the import's name, "" for the default, used when imports is ""
+		body    string
+		want    int
+	}{
+		{"passed to LongestFenceRun", "", "", "func f(s string) int { return termsafe.LongestFenceRun(s, termsafe.FenceBacktick) }", 0},
+		{"both constants passed", "", "", "func f(s string) int { return termsafe.LongestFenceRun(s, termsafe.FenceTilde, termsafe.FenceBacktick) }", 0},
+		{"comparison outside a call", "", "", "func f(s string, i int) bool { return s[i] == termsafe.FenceBacktick }", 1},
+		{"assigned to a variable", "", "", "func f() byte { c := termsafe.FenceTilde; return c }", 1},
+		{"package-level variable", "", "", "var tick = termsafe.FenceBacktick", 1},
+		{"inside a slice handed to the call", "", "", "func f(s string) int { return termsafe.LongestFenceRun(s, []byte{termsafe.FenceBacktick}...) }", 1},
+		{"argument of another call", "", "", "func f(s string) int { return strings.IndexByte(s, termsafe.FenceBacktick) }", 1},
+		{"one clean use, one comparison", "", "", "func f(s string, i int) bool { return termsafe.LongestFenceRun(s, termsafe.FenceBacktick) > 0 && s[i] == termsafe.FenceTilde }", 1},
+		{"imported under another name, passed", "", "ts", "func f(s string) int { return ts.LongestFenceRun(s, ts.FenceBacktick) }", 0},
+		{"imported under another name, compared", "", "ts", "func f(s string, i int) bool { return s[i] == ts.FenceBacktick }", 1},
+		{"another package's constant of the same name", "", "", "func f(s string, i int) bool { return s[i] == other.FenceBacktick || termsafe.CodeSpan(s) == \"\" }", 0},
+		{"dot import", "", ".", "func f(s string, i int) bool { return s[i] == FenceBacktick }", 1},
+		{"alias plus plain import, compared through the alias", "import ts " + plain + "\nimport " + plain, "", "func f(s string, i int) bool { return termsafe.CodeSpan(s) == \"\" || s[i] == ts.FenceBacktick }", 1},
+		{"named import then a blank one, compared", "import ts " + plain + "\nimport _ " + plain, "", "func f(s string, i int) bool { return s[i] == ts.FenceTilde }", 1},
+		{"backquoted import path, compared", "import " + raw, "", "func f(s string, i int) bool { return s[i] == termsafe.FenceBacktick }", 1},
+		{"backquoted import path, passed", "import " + raw, "", "func f(s string) int { return termsafe.LongestFenceRun(s, termsafe.FenceBacktick) }", 0},
+		{"escaped import path, compared", "import " + escaped, "", "func f(s string, i int) bool { return s[i] == termsafe.FenceBacktick }", 1},
+	} {
+		imports := c.imports
+		if imports == "" {
+			imports = "import " + c.alias + " " + plain
+		}
+		src := "package p\n\n" + imports + "\n\n" + c.body + "\n"
+		got, err := fenceConstantMisuses("fixture.go", []byte(src))
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if len(got) != c.want {
+			t.Errorf("%s: %d misuse(s) %q, want %d", c.name, len(got), got, c.want)
 		}
 	}
 }
