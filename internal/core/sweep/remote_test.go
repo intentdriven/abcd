@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,13 +30,21 @@ type pullRequest struct {
 //
 // onRecheck, when set, runs at the first per-branch listing: the moment the
 // last check begins, before it reads the repository's own state again.
+//
+// mu guards the fake's state while a call runs: the sweep runs each forge
+// call in a goroutine and abandons one that outlives its bound, so an
+// abandoned call may still be inside the fake when the next one begins. A
+// test sets the fields before the run starts.
 type fakeForge struct {
+	mu           sync.Mutex
 	prs, recheck []pullRequest
 	calls        [][]string
 	onRecheck    func()
 }
 
 func (f *fakeForge) gh(_ string, args ...string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.calls = append(f.calls, args)
 	value := func(flag string) string {
 		for i, a := range args {

@@ -235,7 +235,9 @@ func newRemoteJudge(ctx context.Context, root string, o Options) (*remoteJudge, 
 		rj.live.changes = changedPaths
 	}
 	if len(branches) > 0 {
-		rj.askForge()
+		if err := rj.askForge(); err != nil {
+			return nil, nil, err
+		}
 	}
 	return rj, branches, nil
 }
@@ -274,9 +276,21 @@ var errForgeTimedOut = errors.New("the forge did not answer in time")
 
 // forge asks the forge, bounded by forgeTimeout and the run's context. A call
 // still running at the deadline is abandoned, and its answer is no answer.
+//
+// An abandoned call may still be running in its goroutine when forge
+// returns. That is safe: the channel is buffered, so the goroutine's one send
+// never blocks and it ends as soon as the call does, and nothing it shares
+// with forge is written after forge returns; its answer is dropped. Once the
+// run's context has ended no call starts at all, here or at the callers, which
+// check the context first, so a stopped run never has two forge calls in
+// flight. After a timeout alone the next call may overlap the abandoned one,
+// so Options.Forge must not rely on its calls being serialised.
 func (rj *remoteJudge) forge(args ...string) (string, error) {
 	if rj.o.Forge == nil {
 		return "", errors.New("no forge was asked")
+	}
+	if err := rj.ctx.Err(); err != nil {
+		return "", err
 	}
 	type answer struct {
 		out string
@@ -301,8 +315,12 @@ func (rj *remoteJudge) forge(args ...string) (string, error) {
 
 // askForge reads the run's two listings: every open pull request, which must
 // be whole to show a branch free of one, and the newest merged ones, the
-// forge's word on which branches landed.
-func (rj *remoteJudge) askForge() {
+// forge's word on which branches landed. A run whose context ended asks
+// nothing further and is refused, as judging is.
+func (rj *remoteJudge) askForge() error {
+	if err := rj.ctx.Err(); err != nil {
+		return fmt.Errorf("the run was stopped before the forge was asked: %w", err)
+	}
 	out, err := rj.forge("pr", "list", "--state", "open", "--limit", strconv.Itoa(openListLimit), "--json", "number,headRefName,baseRefName,state")
 	if err != nil {
 		rj.openUnread = "the forge could not be asked: " + answerText(err)
@@ -313,10 +331,17 @@ func (rj *remoteJudge) askForge() {
 	} else {
 		rj.open, rj.openBases = heads, bases
 	}
+	if err := rj.ctx.Err(); err != nil {
+		return fmt.Errorf("the run was stopped while the forge was asked: %w", err)
+	}
 	if out, err := rj.forge("pr", "list", "--state", "merged", "--limit", strconv.Itoa(mergedListLimit),
 		"--json", "headRefName,headRefOid,baseRefName,isCrossRepository,state"); err == nil {
 		rj.merged = []byte(out)
 	}
+	if err := rj.ctx.Err(); err != nil {
+		return fmt.Errorf("the run was stopped while the forge was asked: %w", err)
+	}
+	return nil
 }
 
 // openByBranch reads a listing of open pull requests into the numbers of the
@@ -501,6 +526,16 @@ func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail err
 		}
 		return nil
 	}
+	// stopped keeps the branch once the run's context has ended: no further
+	// forge call or delete is made, and the stop is the run's fault.
+	stopped := func() error {
+		err := rj.ctx.Err()
+		if err != nil {
+			row.Reason = clean("the run was stopped before the delete, so the branch is kept")
+			return fmt.Errorf("the run was stopped before every delete was made: %w", err)
+		}
+		return nil
+	}
 	switch {
 	case headFail != nil:
 		return held("origin's default branch could not be asked (" + answerText(headFail) + "), so nothing on origin is deleted")
@@ -519,10 +554,16 @@ func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail err
 	case !strings.HasPrefix(b.ref, "refs/heads/") || neverDeleted(b.name, head) != "" || !gitutil.IsFullSHA(b.tip):
 		return held("it is not a branch the sweep deletes")
 	}
+	if err := stopped(); err != nil {
+		return err
+	}
 	// The branch is passed as one argument, --head=<name>, so a name is never
 	// read as a flag of its own.
 	prs, err := rj.forge("pr", "list", "--head="+b.name, "--state", "all", "--limit", strconv.Itoa(proofPRLimit),
 		"--json", "number,headRefName,headRefOid,baseRefName,isCrossRepository,state")
+	if serr := stopped(); serr != nil {
+		return serr
+	}
 	if err != nil {
 		return held("the forge could not be asked again whether a pull request is open on it (" + answerText(err) + ")")
 	}
@@ -532,6 +573,9 @@ func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail err
 	}
 	targeting, err := rj.forge("pr", "list", "--base="+b.name, "--state", "open", "--limit", strconv.Itoa(proofPRLimit),
 		"--json", "number,headRefName,baseRefName,state")
+	if serr := stopped(); serr != nil {
+		return serr
+	}
 	if err != nil {
 		return held("the forge could not be asked again whether an open pull request targets it (" + answerText(err) + ")")
 	}
@@ -570,8 +614,7 @@ func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail err
 	if beforeRemoteDelete != nil {
 		beforeRemoteDelete(b.ref)
 	}
-	if err := rj.ctx.Err(); err != nil {
-		row.Reason = clean("the run was stopped before the delete, so the branch is kept")
+	if err := stopped(); err != nil {
 		return err
 	}
 	// The delete goes through the push the repository's own hooks see
