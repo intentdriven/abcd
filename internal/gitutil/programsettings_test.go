@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -207,17 +208,39 @@ func TestAFormatThatCanShowASignatureCheckAsks(t *testing.T) {
 // deprecatedCommands are the commands git 2.52 documents as deprecated
 // (git-whatchanged(1), git-pack-redundant(1)). git-config(1) says of alias.*:
 // "To avoid confusion and troubles with script usage, aliases that hide
-// existing Git commands are ignored except for deprecated commands." A
-// command in git's exec path that is not built in needs no entry: git tries
-// it before any alias, so an alias does not stand for it either.
+// existing Git commands are ignored except for deprecated commands."
 var deprecatedCommands = []string{"whatchanged", "pack-redundant"}
 
-// TestNoAliasStandsForASubcommandAbcdJudges: an alias stands for a git
-// command only when the command is deprecated (deprecatedCommands), so no
-// subcommand the table of what an isolated command can start judges, or the
-// networked runners run, is one: the hold leaves alias.* out for that reason
-// (driveUnreadSettings in internal/core/implement/loop). A deprecated
-// subcommand is on neither list and asks as one the table does not know.
+// builtinCommands are the commands built into git 2.52
+// (`git --list-cmds=builtins`), copied here so the test does not depend on the
+// installed git.
+var builtinCommands = strings.Fields(`add am annotate apply archive backfill bisect blame branch
+bugreport bundle cat-file check-attr check-ignore check-mailmap check-ref-format checkout
+checkout--worker checkout-index cherry cherry-pick clean clone column commit commit-graph
+commit-tree config count-objects credential credential-cache credential-cache--daemon
+credential-store describe diagnose diff diff-files diff-index diff-pairs diff-tree difftool
+fast-export fast-import fetch fetch-pack fmt-merge-msg for-each-ref for-each-repo
+format-patch fsck fsck-objects fsmonitor--daemon gc get-tar-commit-id grep hash-object help
+hook index-pack init init-db interpret-trailers last-modified log ls-files ls-remote ls-tree
+mailinfo mailsplit maintenance merge merge-base merge-file merge-index merge-ours
+merge-recursive merge-recursive-ours merge-recursive-theirs merge-subtree merge-tree mktag
+mktree multi-pack-index mv name-rev notes pack-objects pack-redundant pack-refs patch-id
+pickaxe prune prune-packed pull push range-diff read-tree rebase receive-pack reflog refs
+remote remote-ext remote-fd repack replace replay repo rerere reset restore rev-list
+rev-parse revert rm send-pack shortlog show show-branch show-index show-ref sparse-checkout
+stage stash status stripspace submodule--helper switch symbolic-ref tag unpack-file
+unpack-objects update-index update-ref update-server-info upload-archive
+upload-archive--writer upload-pack var verify-commit verify-pack verify-tag version
+whatchanged worktree write-tree`)
+
+// TestNoAliasStandsForASubcommandAbcdJudges: git-config(1) ignores an alias
+// named as an existing Git command unless the command is deprecated
+// (deprecatedCommands). So every subcommand the table of what an isolated
+// command can start judges, or the networked runners run, must be a command
+// built into git (builtinCommands), and none a deprecated one: the hold
+// leaves alias.* out for that reason (driveUnreadSettings in
+// internal/core/implement/loop). A deprecated subcommand is on neither list
+// and asks as one the table does not know.
 func TestNoAliasStandsForASubcommandAbcdJudges(t *testing.T) {
 	var verbs []string
 	for v := range startsNothing {
@@ -235,6 +258,9 @@ func TestNoAliasStandsForASubcommandAbcdJudges(t *testing.T) {
 	for _, v := range slices.Compact(verbs) {
 		if slices.Contains(deprecatedCommands, v) {
 			t.Errorf("%q is a deprecated git command, for which git lets an alias stand, so the table must not judge it", v)
+		}
+		if !slices.Contains(builtinCommands, v) {
+			t.Errorf("%q is not a command built into git, so git-config(1)'s rule on aliases named as existing Git commands is not shown to cover it, and the table must not judge it", v)
 		}
 	}
 }
