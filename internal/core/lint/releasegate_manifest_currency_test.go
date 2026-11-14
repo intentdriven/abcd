@@ -75,15 +75,9 @@ func TestReleaseGateManifestIsCurrent(t *testing.T) {
 	assertRoster(t, "commands", m.Commands, listMarkdown(t, root, "commands", "README"))
 	assertRoster(t, "agents", m.Agents, listMarkdown(t, root, "agents", "README", "CHANGELOG"))
 
-	// The detector is what turns the placeholders into names. A manifest that
-	// moved the rosters out of the context while the script still sent the
-	// context unfilled would hand every checker a literal ${commands}.
-	js := readRepoFile(t, root, ".abcd/development/release-gate/brief-surface-crosscheck.js")
-	for _, want := range []string{"commands: input.commands.join(', ')", "agents: input.agents.join(', ')"} {
-		if !strings.Contains(js, want) {
-			t.Errorf("brief-surface-crosscheck.js does not fill the context's placeholders from the manifest's rosters (no %q)", want)
-		}
-	}
+	// The detector is what turns the placeholders into names;
+	// TestReleaseGateDetectorFillsEveryCheckerPrompt runs it over this manifest
+	// and reads the prompts it renders (iss-2610151050390126).
 }
 
 // releaseGateManifest is the part of the release-gate manifest these tests read.

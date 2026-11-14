@@ -46,6 +46,47 @@ func TestBuildLaneCommitsItsSpecOrIssue(t *testing.T) {
 	}
 }
 
+// TestIssueKeyedBuildLaneCommitsItsIssue (iss-2611121820113703): the person's own
+// `abcd build <iss-N>` run, landed, makes a records commit whose trailers are its
+// resolution, `Admitted-by: build <iss-N>` and its disclosure, in that order. The
+// admission is the one the start wrote into the run's state, read back off the
+// commit; the issue it names is the one the lane resolves, so no `Refs:` line
+// declares it twice. The pull request's body carries the same line.
+func TestIssueKeyedBuildLaneCommitsItsIssue(t *testing.T) {
+	f := drainLandFixture(t)
+	start, err := f.startOnce(t, secondIssue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.runID, f.issue = start.RunID, secondIssue
+	l := f.parkIssueLaneOnce(t)
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admitted := Admitted{Kind: landings.KindBuild, Record: secondIssue}
+	if st.Issue() != secondIssue || st.Spec != "" || st.Admitted == nil || *st.Admitted != admitted {
+		t.Fatalf("premise: the run is keyed on the issue and admitted under it: issue %q, spec %q, %+v", st.Issue(), st.Spec, st.Admitted)
+	}
+	if l.Landing.Records == "" || l.Landing.Records != l.Landing.Pushed {
+		t.Fatalf("premise: the landing pushed its records commit: %+v", l.Landing)
+	}
+	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.Landing.Records)
+	want := []string{"Resolves: " + secondIssue, "Admitted-by: build " + secondIssue, "Assisted-by: Claude:claude-test-5"}
+	if got := trailerBlock(msg); !slices.Equal(got, want) {
+		t.Fatalf("the records commit's trailers are %q, want %q:\n%s", got, want, msg)
+	}
+	if a, ok := landings.ParseAdmitted(msg); !ok || a != admitted {
+		t.Fatalf("the trailer reads back as the run's admission: %+v %v", a, ok)
+	}
+	if tip := f.repo.Git("--git-dir", f.bare, "rev-parse", "refs/heads/"+l.Branch); tip != l.Landing.Records {
+		t.Fatalf("the branch the remote holds ends at the records commit %s: %s", l.Landing.Records, tip)
+	}
+	if body := f.prBodyOf(t, l); !strings.Contains(body, "\nResolves: "+secondIssue+"\nAdmitted-by: build "+secondIssue+"\nAssisted-by: ") || strings.Contains(body, "Refs:") {
+		t.Fatalf("the body carries the admission among its trailers, and no Refs: line:\n%s", body)
+	}
+}
+
 // TestAdmittedTrailersDeclareAnIssueTheyName: an admission naming an issue the
 // lane does not resolve is declared by a Refs: line, which RS004's message half
 // asks of every issue id a message names; one it resolves needs none.
