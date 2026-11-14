@@ -348,8 +348,9 @@ func TestEachKeyFamilyTheDriveHoldsIsReadAgain(t *testing.T) {
 
 // TestASettingNoGitOfTheDriveReadsLeavesItRunning: a setting no git command
 // a drive runs reads (driveUnreadSettings: a pager, an interactive editor, a
-// trailer command, automatic maintenance, a submodule's own keys, which a
-// fetch of the drive no longer reaches, a tool, browser or mail command)
+// trailer command, automatic maintenance, the per-submodule keys, which no
+// fetch abcd makes and no status the drive makes reads, a tool, browser or
+// mail command)
 // changed between two lanes leaves the next lane's comparison unchanged, so
 // a lane's `git submodule init` or a global edit of a pager does not end the
 // drive. Each was held on the default branch, and stopped it.
@@ -596,7 +597,8 @@ func TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly(t *testing.T) {
 		"http.proxyx":                false,
 		"http.https://x.proxy":       true,
 		"http.https://x.proxyx":      false,
-		"http.https://x.extraheader": false,
+		"http.https://x.extraheader": true,
+		"http.https://x.useragent":   false,
 		"http.postbuffer":            false,
 		"":                           false,
 	} {

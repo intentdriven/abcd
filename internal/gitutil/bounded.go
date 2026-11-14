@@ -90,7 +90,7 @@ func RunCommitCommandBoundedAsStored(dir string, limit time.Duration, stalled er
 // It asks the check SetBeforeHookedGit set first, before the command is
 // built: the command runs the repository's hooks, merge drivers and filters.
 func runCommitBounded(dir string, limit time.Duration, stalled error, stored bool, args []string) (string, error) {
-	if err := askBeforeHooked(args); err != nil {
+	if err := askBeforeHooked(dir, args); err != nil {
 		return "", err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), limit)

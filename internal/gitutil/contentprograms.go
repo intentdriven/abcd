@@ -781,12 +781,13 @@ func mergerJudge(g gitArgs, blanked bool) bool { return !blanked || !g.driversBu
 // askIfContentRuns asks the check SetBeforeHookedGit set before an isolated
 // command that LeavesContentProgramsOn says can start a program the
 // repository names, setting its error as cmd.Err so Run, Output and Start
-// return it and git never starts. With no check set it does nothing.
-func askIfContentRuns(cmd *exec.Cmd, args []string) {
+// return it and git never starts; root is the directory the command runs
+// in. With no check set it does nothing.
+func askIfContentRuns(cmd *exec.Cmd, root string, args []string) {
 	if cmd.Err != nil || !LeavesContentProgramsOn(args) {
 		return
 	}
-	if err := askBeforeHooked(args); err != nil {
+	if err := askBeforeHooked(root, args); err != nil {
 		cmd.Err = err
 	}
 }

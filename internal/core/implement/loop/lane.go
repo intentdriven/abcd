@@ -489,6 +489,11 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 				"git could not add the lane's worktree: "+fsutil.RedactHome(err.Error()),
 				"settle what git reports, then run `abcd implement step` again")
 		}
+		// A drive reads the new worktree's own settings scope now, before
+		// any agent runs in it, and holds that as the lane's (laneMade).
+		if err := laneMade(c, lane.ID, lw.Path); err != nil {
+			return Outcome{}, err
+		}
 		if LaneOpened != nil {
 			LaneOpened()
 		}

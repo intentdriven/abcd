@@ -156,8 +156,8 @@ func runHooked(dir string, network bool, stdin string, args []string, sink io.Wr
 	return runHookedContext(context.Background(), dir, network, stdin, args, sink)
 }
 
-// beforeHooked is the check SetBeforeHookedGit sets, nil for none.
-var beforeHooked atomic.Pointer[func(args []string) error]
+// beforeHooked is the check SetBeforeHookedGitAt sets, nil for none.
+var beforeHooked atomic.Pointer[func(dir string, args []string) error]
 
 // NotRunError is a git command abcd did not run. It has two makers: the
 // check SetBeforeHookedGit set refused the command (askBeforeHooked, for a
@@ -222,6 +222,18 @@ func SetBeforeHookedGit(f func(args []string) error) (clear func(), err error) {
 	if f == nil {
 		return nil, errors.New("no check was given")
 	}
+	return SetBeforeHookedGitAt(func(_ string, args []string) error { return f(args) })
+}
+
+// SetBeforeHookedGitAt is SetBeforeHookedGit for a check that is also given
+// the directory the command runs in, as its runner was given it (the
+// directory of a WorkingTreeCommand, the root of an isolated command, the
+// dir of Net): a drive's comparison reads a lane worktree's own settings
+// only for a git that runs in that worktree.
+func SetBeforeHookedGitAt(f func(dir string, args []string) error) (clear func(), err error) {
+	if f == nil {
+		return nil, errors.New("no check was given")
+	}
 	p := &f
 	if !beforeHooked.CompareAndSwap(nil, p) {
 		return nil, ErrBeforeHookedGitSet
@@ -229,12 +241,12 @@ func SetBeforeHookedGit(f func(args []string) error) (clear func(), err error) {
 	return func() { beforeHooked.CompareAndSwap(p, nil) }, nil
 }
 
-// askBeforeHooked asks the check SetBeforeHookedGit set, when one is set,
-// for the git command args would run: its error is a NotRunError naming the
-// subcommand.
-func askBeforeHooked(args []string) error {
+// askBeforeHooked asks the check SetBeforeHookedGitAt set, when one is set,
+// for the git command args would run in dir: its error is a NotRunError
+// naming the subcommand.
+func askBeforeHooked(dir string, args []string) error {
 	if f := beforeHooked.Load(); f != nil {
-		if err := (*f)(args); err != nil {
+		if err := (*f)(dir, args); err != nil {
 			return &NotRunError{Verb: gitVerb(args), Err: err}
 		}
 	}
@@ -244,7 +256,7 @@ func askBeforeHooked(args []string) error {
 // runHookedContext is runHooked under parent, after the check
 // SetBeforeHookedGit set, when one is set.
 func runHookedContext(parent context.Context, dir string, network bool, stdin string, args []string, sink io.Writer) (string, error) {
-	if err := askBeforeHooked(args); err != nil {
+	if err := askBeforeHooked(dir, args); err != nil {
 		return "", err
 	}
 	ctx, cancel := context.WithTimeout(parent, NetTimeout)

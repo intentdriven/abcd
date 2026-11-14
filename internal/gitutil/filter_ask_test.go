@@ -8,8 +8,10 @@ package gitutil_test
 // not, and with no check set nothing changes.
 
 import (
+	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -456,5 +458,53 @@ func TestTheOptionsThatStartAProgramAreReadAsGitTakesThem(t *testing.T) {
 	}
 	if v := gitutil.Subcommand([]string{"--attr-source", "HEAD", "status"}); v != "status" {
 		t.Errorf("--attr-source takes the next argument as its value: read %q as the subcommand", v)
+	}
+}
+
+// TestTheCheckIsGivenTheDirectoryEachGitRunsIn: the check
+// SetBeforeHookedGitAt sets is given, with the command's arguments, the
+// directory each runner was given for it: a hooked one (LocalGit, Net), a
+// bounded commit one (RunCommitCommandBounded), a working-tree one
+// (WorkingTreeCommand, WorkingTreeCommandContext), a networked limited one
+// (RunLimitedNetContext) and an isolated one that can start a filter (Run of
+// a hash-object), so a drive's comparison reads the own settings of the lane
+// worktree that git runs in. The check refuses, so no git runs. Watched
+// failing on the branch before, whose check was given no directory.
+func TestTheCheckIsGivenTheDirectoryEachGitRunsIn(t *testing.T) {
+	refused := errors.New("refused")
+	var dirs []string
+	unset, err := gitutil.SetBeforeHookedGitAt(func(dir string, _ []string) error {
+		dirs = append(dirs, dir)
+		return refused
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unset()
+	dir := t.TempDir()
+	for name, run := range map[string]func() error{
+		"LocalGit": func() error { _, err := gitutil.LocalGit(dir, "commit", "-q", "-m", "x"); return err },
+		"Net":      func() error { _, err := gitutil.Net(dir, "fetch", "origin"); return err },
+		"RunCommitCommandBounded": func() error {
+			_, err := gitutil.RunCommitCommandBounded(dir, time.Second, refused, "commit", "-q", "-m", "x")
+			return err
+		},
+		"WorkingTreeCommand": func() error { return gitutil.WorkingTreeCommand(dir, "status").Run() },
+		"WorkingTreeCommandContext": func() error {
+			return gitutil.WorkingTreeCommandContext(context.Background(), dir, "status").Run()
+		},
+		"RunLimitedNetContext": func() error {
+			_, err := gitutil.RunLimitedNetContext(context.Background(), dir, 1<<10, "fetch", "origin")
+			return err
+		},
+		"Run": func() error { _, err := gitutil.Run(dir, "hash-object", "a.txt"); return err },
+	} {
+		dirs = nil
+		if err := run(); !errors.Is(err, refused) {
+			t.Errorf("%s: the refusing check did not stop the git: %v", name, err)
+		}
+		if len(dirs) != 1 || dirs[0] != dir {
+			t.Errorf("%s: the check was given %q, want [%q]", name, dirs, dir)
+		}
 	}
 }
