@@ -71,7 +71,11 @@ func TestAReadOnlyMergeRunsNoFilterUnderRenormalize(t *testing.T) {
 // runner, as written at its call site, is judged by the format git reads from
 // it (formatAsks: the last format word, the options before it stepped over by
 // the subcommand's table), so a call that fixes its format does not ask.
-// dates.go's history asks for its merge diff (patchy), not its format.
+// Two ask for their diff, not their format: dates.go's history for its merge
+// diff and graveyard_archaeology.go's count of changed files for its
+// --shortstat, each of which the log judge counts as content a textconv
+// program is run for (patchy); with textconv and external diffs switched off
+// on the command line, each asks nothing.
 func TestTheTreesOwnFormattedReadsDoNotAsk(t *testing.T) {
 	const sha, ref, rng = "0123456789abcdef0123456789abcdef01234567", "refs/heads/x", "a..b"
 	for _, tc := range []struct {
@@ -102,7 +106,7 @@ func TestTheTreesOwnFormattedReadsDoNotAsk(t *testing.T) {
 		{"lifeboat/graveyard_archaeology.go:245", []string{"log", "--format=%h", "--", "m"}, false},
 		{"lifeboat/graveyard_archaeology.go:254", []string{"log", "--format=%H", "--reverse", "--", "m"}, false},
 		{"lifeboat/graveyard_archaeology.go:258", []string{"show", sha + ":m"}, false},
-		{"lifeboat/graveyard_archaeology.go:390", []string{"log", "--no-merges", "--format=%H%x00%P%x00%s", "--shortstat"}, false},
+		{"lifeboat/graveyard_archaeology.go:390", []string{"log", "--no-merges", "--format=%H%x00%P%x00%s", "--shortstat"}, true},
 		{"lifeboat/sources_git.go:37", []string{"log", "--format=%s"}, false},
 		{"lifeboat/sources_git.go:49", []string{"log", "--diff-filter=D", "--name-only", "--format="}, false},
 		{"lifeboat/sources_git.go:157", []string{"log", "--format=%h", "--", "m"}, false},
@@ -128,6 +132,13 @@ func TestTheTreesOwnFormattedReadsDoNotAsk(t *testing.T) {
 	} {
 		if got := LeavesContentProgramsOn(tc.args); got != tc.want {
 			t.Errorf("%s: LeavesContentProgramsOn(%q) = %v, want %v", tc.at, tc.args, got, tc.want)
+		}
+		if !tc.want {
+			continue
+		}
+		off := append([]string{tc.args[0], "--no-textconv", "--no-ext-diff"}, tc.args[1:]...)
+		if LeavesContentProgramsOn(off) {
+			t.Errorf("%s: %q asks with textconv and external diffs off, so its format, not its diff, asks", tc.at, off)
 		}
 	}
 }
