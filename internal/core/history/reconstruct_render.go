@@ -448,7 +448,7 @@ func safeInline(s string) string {
 // one trailing space are stripped by the reader, so the value survives.
 func inlineCode(s string) string {
 	s = safeInline(s)
-	delim := strings.Repeat("`", longestBacktickRun(s)+1)
+	delim := strings.Repeat("`", termsafe.LongestFenceRun(s, termsafe.FenceBacktick)+1)
 	pad := ""
 	if strings.HasPrefix(s, "`") || strings.HasSuffix(s, "`") {
 		pad = " "
@@ -479,7 +479,7 @@ func tableCell(s string) string {
 // inside it, so transcript content that itself contains fences cannot break out
 // of the block it is in.
 func writeFenced(b *strings.Builder, lang, body string) {
-	fence := strings.Repeat("`", longestBacktickRun(body)+1)
+	fence := strings.Repeat("`", termsafe.LongestFenceRun(body, termsafe.FenceBacktick)+1)
 	if len(fence) < 3 {
 		fence = "```"
 	}
@@ -492,21 +492,6 @@ func writeFenced(b *strings.Builder, lang, body string) {
 	}
 	b.WriteString(fence)
 	b.WriteString("\n")
-}
-
-func longestBacktickRun(s string) int {
-	best, run := 0, 0
-	for _, c := range s {
-		if c == '`' {
-			run++
-			if run > best {
-				best = run
-			}
-			continue
-		}
-		run = 0
-	}
-	return best
 }
 
 // compactJSON renders a tool call's input readably, falling back to the raw
