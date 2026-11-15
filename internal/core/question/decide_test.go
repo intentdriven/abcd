@@ -303,6 +303,9 @@ func TestNumberHeaderRegisterFollowsTheModeAtTheCore(t *testing.T) {
 	if !slices.Equal(v.Addressees, []Person{Facilitator, ProductThinker}) {
 		t.Errorf("addressees = %v, want the mode's facilitator, then the chip's product thinker", v.Addressees)
 	}
+	if v.ModeAfter != Facilitator || v.ModeChanges {
+		t.Errorf("refused mixed call: mode after %v (changes %v); a refusal leaves the mode in force", v.ModeAfter, v.ModeChanges)
+	}
 	tech := product
 	tech.Header = "Tech Q2"
 	v = Decide(Fields{Tabs: []Tab{clean, tech}}, State{Repo: true, Badge: true, Mode: ProductThinker}, Default)
@@ -312,10 +315,34 @@ func TestNumberHeaderRegisterFollowsTheModeAtTheCore(t *testing.T) {
 	if !slices.Equal(v.Addressees, []Person{ProductThinker, Facilitator}) {
 		t.Errorf("addressees = %v, want the mode's product thinker, then the chip's facilitator", v.Addressees)
 	}
+	// The Q1 tab is the product thinker's, so the badge must name them:
+	// the status line never names only the facilitator while the product
+	// thinker owes an answer too.
+	if v.ModeAfter != ProductThinker || v.ModeChanges {
+		t.Errorf("admitted Q1 and Tech Q2 under the product thinker's mode: mode after %v (changes %v); want the product thinker, unchanged", v.ModeAfter, v.ModeChanges)
+	}
+	techFirst := wellBuiltTab()
+	techFirst.Header = "Tech Q1"
+	second := wellBuiltTab()
+	second.Header = "Q2"
+	v = Decide(Fields{Tabs: []Tab{techFirst, second}}, State{Repo: true, Badge: true, Mode: ProductThinker}, Default)
+	if v.Outcome != OutcomeAdmit || !slices.Equal(v.Addressees, []Person{Facilitator, ProductThinker}) {
+		t.Errorf("Tech Q1 and Q2 under the product thinker's mode: outcome %q, addressees %v; want admitted for the facilitator, then the product thinker", v.Outcome, v.Addressees)
+	}
+	if v.ModeAfter != ProductThinker || v.ModeChanges {
+		t.Errorf("Tech Q1 and Q2 under the product thinker's mode: mode after %v (changes %v); want the product thinker, unchanged", v.ModeAfter, v.ModeChanges)
+	}
+	v = Decide(Fields{Tabs: []Tab{techFirst, second}}, State{Repo: true, Badge: true, Mode: Facilitator}, Default)
+	if v.Outcome != OutcomeAdmit || v.ModeAfter != Facilitator || v.ModeChanges {
+		t.Errorf("Tech Q1 and Q2 under the facilitator's mode: outcome %q, mode after %v (changes %v); want admitted, the facilitator, unchanged", v.Outcome, v.ModeAfter, v.ModeChanges)
+	}
 	numberProduct := product
 	numberProduct.Header = "Q2"
 	v = Decide(Fields{Tabs: []Tab{numberProduct, tech}}, State{Repo: true, Badge: true, Mode: ProductThinker}, Default)
 	if v.Outcome != OutcomeRefuse || len(v.Findings) != 1 || v.Findings[0].Tab != 1 {
 		t.Errorf("product thinker's mode, Q2 naming a record and Tech Q2: outcome %q, findings %v; want tab 1 refused on the register", v.Outcome, v.Findings)
+	}
+	if v.ModeAfter != ProductThinker || v.ModeChanges {
+		t.Errorf("refused Q2 and Tech Q2: mode after %v (changes %v); a refusal leaves the mode in force", v.ModeAfter, v.ModeChanges)
 	}
 }

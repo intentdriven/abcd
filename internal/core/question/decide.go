@@ -1,5 +1,7 @@
 package question
 
+import "slices"
+
 // The one decision the question gate makes (spc-2610301917245442, step 1;
 // itd-2610230756259215 decisions 2 and 3). The guard hook and the read-only
 // `abcd guard question` both call Decide over the same field view and the same
@@ -167,7 +169,8 @@ type Verdict struct {
 	// an older-form tab, the mode's person otherwise.
 	Addressees []Person
 	// ModeAfter is the mode an admitted question leaves where the badge
-	// shows: the chip's person for an older-form chipped question, the
+	// shows: for a call with an older-form chip, the product thinker when any
+	// checked tab's addressee is, else the facilitator (callPerson); the
 	// current mode otherwise, so a number-form question leaves the mode the
 	// agent set before asking (decision 37). ModeChanges is true when it
 	// differs from State.Mode (decision 15).
@@ -242,18 +245,18 @@ func ChipPerson(role string) Person {
 	return Facilitator
 }
 
-// callPerson is the person a chipped call names as a whole: the product
-// thinker when any tab's chip names them, else the technical facilitator, so
-// the status line never says only the facilitator is owed an answer the
-// product thinker owes too.
-func callPerson(f Fields, l Limits) Person {
-	p := Facilitator
-	for _, t := range f.Tabs {
-		if role, ok := chipRole(t.Header, l); ok && ChipPerson(role) == ProductThinker {
-			p = ProductThinker
-		}
+// callPerson is the person a chipped call names as a whole, read from the
+// addressee of every checked tab: the product thinker when any tab is theirs,
+// whether by its own chip or, for a number-form tab, by the mode in force,
+// else the technical facilitator. So the status line never names only the
+// facilitator while the product thinker owes an answer too: under the
+// product thinker's mode, "Tech Q1" beside "Q2" leaves the badge on the
+// product thinker, whom the Q2 tab is for.
+func callPerson(addressees []Person) Person {
+	if slices.Contains(addressees, ProductThinker) {
+		return ProductThinker
 	}
-	return p
+	return Facilitator
 }
 
 // checkedTabs is the tabs the limits check reads field by field.
@@ -331,15 +334,15 @@ func Decide(f Fields, s State, l Limits) Verdict {
 	if s.Badge && modeErr == nil {
 		who = s.Mode
 	}
+	v.Addressees = addressees(f, l, who)
 	if v.Chipped {
-		v.ModeAfter = callPerson(f, l)
+		v.ModeAfter = callPerson(v.Addressees)
 		v.ModeChanges = s.Badge && v.ModeAfter != s.Mode
 	}
 	if modeErr != nil {
 		// The mode cannot be read, so the hook sets none from the chip.
 		v.ModeAfter, v.ModeChanges = s.Mode, false
 	}
-	v.Addressees = addressees(f, l, who)
 	if s.LimitsRefused != nil {
 		v.Outcome, v.Refused = OutcomeRefuse, s.LimitsRefused
 		v.ModeAfter, v.ModeChanges = s.Mode, false

@@ -236,6 +236,8 @@ func presentQuestionGate(cmd *cobra.Command, reads questionReads, raw json.RawMe
 	stderr := cmd.ErrOrStderr()
 	fields, err := decodeQuestions(raw)
 	if err != nil {
+		// No marker is written here: the host's own schema rejects such an
+		// input before the hook runs, so no question reaches the person.
 		return questionFailOpen(stderr, "the question tool's input could not be read (%s)", err)
 	}
 	v := question.Decide(fields, reads.state, reads.state.Limits)
@@ -301,7 +303,8 @@ func modeUnreadLine(st question.State, u question.Unread) string {
 }
 
 // actOnQuestionVerdict does what the hook does with a decision: a deny for a
-// refusal, the marker and the mode for an admission where the badge shows,
+// refusal, marked open under a mode naming somebody with no mode written
+// (markRefusedOpen), the marker and the mode for an admission where the badge shows,
 // the rows note for an admission with rows findings, and, for a question
 // that is not abcd's, only the marker under a mode naming somebody
 // (markUncheckedOpen). A marker or mode it cannot write fails open loudly
@@ -313,12 +316,14 @@ func actOnQuestionVerdict(cmd *cobra.Command, reads questionReads, v question.Ve
 	case question.OutcomeAdmitUnchecked:
 		return markUncheckedOpen(stderr, reads)
 	case question.OutcomeRefuse:
-		if v.Refused != nil {
-			return denyCall(lead + limitsRefusedReason(v.Refused.Reason))
-		}
 		var reason strings.Builder
 		reason.WriteString(lead)
-		writeLimitsRefusal(&reason, v.Findings)
+		if v.Refused != nil {
+			reason.WriteString(limitsRefusedReason(v.Refused.Reason))
+		} else {
+			writeLimitsRefusal(&reason, v.Findings)
+		}
+		reason.WriteString(markRefusedOpen(reads))
 		return denyCall(reason.String())
 	}
 	if !v.Abcds {
@@ -366,13 +371,43 @@ func actOnQuestionVerdict(cmd *cobra.Command, reads questionReads, v question.Ve
 // inherit. Under managed, or with no badge, nothing is written. A marker that
 // cannot be written is said loudly, since the mode then stays parked.
 func markUncheckedOpen(stderr io.Writer, reads questionReads) error {
-	if !reads.state.Badge || reads.state.ModeErr != nil || addresseeOf(reads.mode) == question.Unnamed {
+	if !namesSomebody(reads) {
 		return nil
 	}
 	if err := mode.MarkQuestionOpen(reads.root, reads.mode); err != nil {
-		return questionFailOpen(stderr, "the question could not be marked open, so the mode will not reset on the answer (%s)", err)
+		// The question was never abcd's to check, so it ran as any other
+		// tool's does; what failed is the reset, and only that is said, on
+		// exit 1, loud and never blocking.
+		fmt.Fprintf(stderr, "abcd guard: this question was not abcd's (no header in abcd's number grammar), so it ran as normal; but the mode, %s, could not be marked for reset at %s, so the answer will not return it to managed (%s).\n",
+			reads.mode, mode.QuestionOpenRelPath, termsafe.Sanitize(scrubPaths(err)))
+		return &exitError{Code: 1}
 	}
 	return nil
+}
+
+// namesSomebody reports whether the badge shows and the mode, read, names a
+// person: the only place the gate marks a question open under the mode in
+// force with no mode written.
+func namesSomebody(reads questionReads) bool {
+	return reads.state.Badge && reads.state.ModeErr == nil && addresseeOf(reads.mode) != question.Unnamed
+}
+
+// markRefusedOpen marks abcd's refused question open under the mode in force
+// where it names somebody, and writes no mode. The agent sets the mode before
+// asking (decision 37), so a refusal it then abandons would leave the mode
+// parked; the marker lets the next human message's reset return it to
+// managed (the host runs no PostToolUse for a denied call). It returns the
+// line the deny's reason ends with when the marker cannot be written, and ""
+// otherwise: the call is refused either way.
+func markRefusedOpen(reads questionReads) string {
+	if !namesSomebody(reads) {
+		return ""
+	}
+	if err := mode.MarkQuestionOpen(reads.root, reads.mode); err != nil {
+		return "\nabcd guard: the mode, " + string(reads.mode) + ", could not be marked for reset at " + mode.QuestionOpenRelPath +
+			", so the next message will not return it to managed (" + termsafe.Sanitize(scrubPaths(err)) + ")."
+	}
+	return ""
 }
 
 // stateOf is the mode a person names: the inverse of addresseeOf.
