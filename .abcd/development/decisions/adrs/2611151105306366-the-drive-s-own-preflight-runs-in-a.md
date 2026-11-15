@@ -42,4 +42,4 @@ We will run the drive's own preflight in a fresh checkout that the drive makes, 
 - Every lane's preflight in a drive is a full run with no reuse carried over from the stage's worktree. It needs the disk and the time of a fresh checkout and a full test run, once per lane head.
 - A repository whose filters change content and are defined only in a global configuration that the drive's comparison does not read may hold every lane. The hold names the file that differs.
 - The receipt for a drive's lane now sits in the main checkout's local tier, not in the lane's worktree.
-- A stage can no longer make the preflight read files the head does not hold. Still out of scope, and recorded separately: the Go build and module caches the stages share with the preflight, a process a stage leaves running, and the stage's Go environment file beyond GOENV=off for the preflight.
+- A stage can no longer make the preflight read files the head does not hold. What the preflight shares with the stages outside the checkout is outside this decision.
