@@ -269,7 +269,7 @@ func TestTheLandedRangePassesTheAttributionGate(t *testing.T) {
 	t.Run("a drain's lane", func(t *testing.T) {
 		f := drainLandFixture(t)
 		l, msg := landed(t, f, f.walkIssueLaneToLand(t))
-		want := []string{"Resolves: " + f.issue, drainRule.Trailer(), "Assisted-by: Claude:claude-test-5"}
+		want := []string{"Resolves: " + f.issue, drainRule.Trailer(), "Assisted-by: Claude:" + issueLaneWriterModel}
 		if got := trailerBlock(msg); !slices.Equal(got, want) {
 			t.Fatalf("the drain lane's records commit's trailers are %q, want %q:\n%s", got, want, msg)
 		}
@@ -329,7 +329,7 @@ func TestADrainLanesRecordsCommitPassesTheRepositorysCommitMsgHook(t *testing.T)
 		t.Fatalf("the records commit is made through the hook: %+v", l.Landing)
 	}
 	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
-	want := []string{"Resolves: " + f.issue, drainRule.Trailer(), "Assisted-by: Claude:claude-test-5"}
+	want := []string{"Resolves: " + f.issue, drainRule.Trailer(), "Assisted-by: Claude:" + issueLaneWriterModel}
 	if got := trailerBlock(msg); !slices.Equal(got, want) {
 		t.Fatalf("the records commit's trailers are %q, want %q:\n%s", got, want, msg)
 	}
