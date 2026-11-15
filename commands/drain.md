@@ -794,7 +794,10 @@ what it did in `next`:
   as any drive with nothing moving does (eight hours with no `--until`, the
   bound with one): a drive that ended sooner would stop renewing the
   reservation kept while the pull request is armed, and going on to the next
-  issue would put two lanes in hand past the drain's cap. The person's act
+  issue would put two lanes in hand past the drain's cap. Once the drive has
+  ended, only a step someone runs or a load-gate waiter in this copy renews
+  the reservation, so it can lapse at its lease while the pull request is
+  still armed. The person's act
   ends it: once they disarm the pull request with the `gh pr merge <n>
   --disable-auto` the refusal names, the next step records it and releases the
   reservation, and the next move routes the hand-back. Before its records and its push, the lane's sync
