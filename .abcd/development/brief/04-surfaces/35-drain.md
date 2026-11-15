@@ -578,7 +578,7 @@ rather than any a stage left in that home; its network commands, its other filte
 forge calls keep the person's environment. A preflight runs
 with what a stage carries too, with Go's own settings file off (`GOENV=off`) and
 `GOWORK` left unset when the head tracks a `go.work` at its root, so Go finds the
-nearest one the head tracks and never looks above the checkout, and off (`GOWORK=off`)
+nearest one the head tracks, never above the checkout for a Go command started in it, and off (`GOWORK=off`)
 otherwise, and never in the lane's worktree: just before it the drive
 reads again the settings it holds, those that change what a checkout writes among them,
 then adds its own checkout of the lane's head as stored, in a directory of a random name

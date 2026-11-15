@@ -925,8 +925,9 @@ func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, che
 // settings file of its own (GOENV=off), which lies under the stage's home;
 // GOWORK is then off unless head tracks a go.work at the checkout's root
 // (headTracksRootGoWork), when it is left unset, so Go's own search upward
-// from where the preflight runs finds the nearest go.work the head tracks and
-// stops at the checkout's root at the latest. GOFLAGS is stated, empty, when
+// from a directory inside the checkout finds the nearest go.work the head
+// tracks and stops at the checkout's root at the latest; a Go command started
+// outside the checkout searches from where it starts, as it does in any run. GOFLAGS is stated, empty, when
 // env carries none, so nothing else supplies it.
 func preflightGoEnv(env []string, checkout, head string) []string {
 	out := make([]string, 0, len(env)+3)

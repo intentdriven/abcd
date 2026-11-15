@@ -215,7 +215,9 @@ func (c *preflightCheckout) differs(head string, after bool) string {
 // own .gitignore files ignore as a whole: `ls-files --others --ignored
 // --directory --exclude-per-directory=.gitignore` names such a directory
 // alone, with its trailing slash, and nothing below it. A directory that holds
-// a tracked file is never named so. git also names, with its trailing slash, a
+// a tracked file is never named so while git matches paths with the case the
+// filesystem folds (core.ignoreCase, a held setting, true by default on a
+// case-folding filesystem). git also names, with its trailing slash, a
 // directory every file of which is ignored only from inside it (a .gitignore
 // of `*` there), and then names those files as well; a directory with any
 // entry below it is therefore not one. The listing reads every .gitignore in
