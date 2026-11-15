@@ -2,6 +2,7 @@ package sessionname
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,6 +61,10 @@ type Machine struct {
 	From int
 	// ReadTable reads the process table once.
 	ReadTable func() (Table, error)
+	// ReadTableContext is ReadTable bound to ctx, which the prompt hook reads
+	// through so that its read ends at maxReadTook (Prompt). Nil reads
+	// through ReadTable, unbounded but for the reader's own limit.
+	ReadTableContext func(ctx context.Context) (Table, error)
 	// LockTimeout bounds the wait for the register's lock.
 	LockTimeout time.Duration
 }
@@ -72,13 +77,19 @@ func Live() Machine {
 	if err != nil || !filepath.IsAbs(home) {
 		home = ""
 	}
-	return Machine{Home: home, From: os.Getppid(), ReadTable: readLiveTable, LockTimeout: lockTimeout}
+	return Machine{Home: home, From: os.Getppid(), ReadTable: readLiveTable, ReadTableContext: readLiveTableContext, LockTimeout: lockTimeout}
 }
 
 // readLiveTable reads the machine's process table and notes when the read
 // began, which is what each process's age is measured back from, and how long
 // it took.
 func readLiveTable() (Table, error) { return readTable(machineload.Read, time.Now) }
+
+// readLiveTableContext is readLiveTable bound to ctx: a ctx that ends while
+// ps runs kills it, and the read fails.
+func readLiveTableContext(ctx context.Context) (Table, error) {
+	return readTable(func() (machineload.Snapshot, error) { return machineload.ReadContext(ctx) }, time.Now)
+}
 
 // readTable is readLiveTable with its reader and clock passed in.
 //
@@ -121,11 +132,15 @@ type Request struct {
 }
 
 // Outcome is what a hook does with naming: the name (from Start, the name
-// reserved; from Resend, the title to set on this prompt; "" for none) and the
+// reserved; from Prompt, the title to set on this prompt; "" for none) and the
 // notes for stderr, raw (the front door masks them as it prints).
 type Outcome struct {
 	Name  string
 	Notes []string
+	// Notice is the one line the prompt that sets a name in place of the
+	// title the session carried says to the session and the person: which
+	// name it now has, and why. Empty on every other outcome.
+	Notice string
 }
 
 // entry is one running named session.
@@ -547,6 +562,37 @@ func (reg *register) reserve(personas []string, sessionID string, host Host, rep
 	return "", errors.New("every name of this repository's persona sequence, through its ninth round, is held while a named session runs")
 }
 
+// claim holds title, the name abcd gave the session, for sessionID under host,
+// the process now running it. It returns "" when the session holds title, and
+// otherwise the next free name reserved in its place, owed to the prompt with
+// title as the one it replaces (decision 10).
+//
+// Every entry whose session has ended is dropped first (prune), so a name is
+// free only when the process that last held it is proven gone, by its id and
+// its start time together. This session's own entry, and an entry of title
+// under this same host (the session before a clear gave it a new id, the same
+// process), are this session and are replaced. When another running session
+// still holds title, this claim is the later one, so it is the one that takes
+// the next free name: the holder keeps its name (RFC 6762, section 9).
+func (reg *register) claim(personas []string, sessionID, title string, host Host, tab Table) (string, error) {
+	reg.prune(tab)
+	reg.Live = slices.DeleteFunc(reg.Live, func(e entry) bool {
+		return e.SessionID == sessionID || (e.Name == title && sameHost(e.host(), host))
+	})
+	if slices.ContainsFunc(reg.Live, func(e entry) bool { return e.Name == title }) {
+		return reg.reserve(personas, sessionID, host, title)
+	}
+	// Sent: the session already carries the title, so the session list shows
+	// it and the prompt hook owes nothing.
+	e := newEntry(title, sessionID, host)
+	e.Sent = true
+	reg.Live = append(reg.Live, e)
+	if !slices.Contains(reg.Handed, title) {
+		reg.Handed = append(reg.Handed, title)
+	}
+	return "", nil
+}
+
 // hold keeps a resumed session's name held for the process now running it.
 // Only a name abcd gave is held, which Given records by session id: any other
 // title is the person's own, a persona name the person typed included, and
@@ -578,7 +624,10 @@ func (reg *register) reserve(personas []string, sessionID string, host Host, rep
 // every named session had ended and naming restarted while this one was away,
 // or when a fork's parent is still running, the session reserves the next free
 // name instead, which its first prompt sets in place of the title it carries
-// (decision 10): two running sessions never share a name.
+// (decision 10): two running sessions never share a name (claim).
+//
+// A hold that cannot be made here (the lock or the process table not read in
+// time) is made at the session's next prompt instead (Prompt).
 func hold(m Machine, req Request) Outcome {
 	personas, note := personasOf(req.Root)
 	var out Outcome
@@ -624,32 +673,16 @@ func hold(m Machine, req Request) Outcome {
 				return false, nil
 			}
 		}
-		reg.prune(tab)
-		// An entry under this same host is this session before a clear gave
-		// it a new id: the same process, so the same session.
-		reg.Live = slices.DeleteFunc(reg.Live, func(e entry) bool {
-			return e.SessionID == req.SessionID ||
-				(e.Name == req.Title && sameHost(e.host(), host))
-		})
-		if slices.ContainsFunc(reg.Live, func(e entry) bool { return e.Name == req.Title }) {
-			var err error
-			out.Name, err = reg.reserve(personas, req.SessionID, host, req.Title)
-			return err == nil, err
-		}
-		// Sent: the host kept the title as the session's own, so the session
-		// list already shows it and the prompt hook owes nothing.
-		e := newEntry(req.Title, req.SessionID, host)
-		e.Sent = true
-		reg.Live = append(reg.Live, e)
-		if !slices.Contains(reg.Handed, req.Title) {
-			reg.Handed = append(reg.Handed, req.Title)
+		var err error
+		if out.Name, err = reg.claim(personas, req.SessionID, req.Title, host, tab); err != nil {
+			return false, err
 		}
 		// An inherited name the fork now holds is recorded as given to the
 		// fork as well, so a later resume of the fork holds it under its own
 		// id. The parent's record is copied, not moved: the parent still
 		// carries the name and may be resumed, and its own record is what
 		// makes that resume abcd's.
-		if inherited {
+		if inherited && out.Name == "" {
 			reg.Given.give(req.SessionID, req.Title)
 		}
 		return true, nil
@@ -722,8 +755,17 @@ func (m Machine) peek() (*os.Root, register, error) {
 	return dir, reg, nil
 }
 
-// Resend is the prompt hook's naming: the title to set on this prompt, or "".
-// title is the session's current title from the prompt's payload.
+// Resend is Prompt for a session whose repository is not named: a session
+// that has to take a new name takes it from the bundled list.
+func Resend(m Machine, sessionID, title string) Outcome {
+	return Prompt(m, Request{SessionID: sessionID, Title: title})
+}
+
+// Prompt is the prompt hook's naming: the title to set on this prompt (Name,
+// "" for none) and, when that title replaces the one the session carries, the
+// notice that says so. req.Title is the session's current title from the
+// prompt's payload, and req.Root the repository whose persona list names a
+// session that has to take a new name here.
 //
 // The name session start reserved is owed once, at the first prompt (C1, C3,
 // decision 9), and only to a session that has no title yet: a title equal to
@@ -731,63 +773,183 @@ func (m Machine) peek() (*os.Root, register, error) {
 // always wins (C4). Either way the entry is marked sent, and no later prompt
 // sets anything. The one title replaced is a name abcd gave that a running
 // session now holds, carried by a resumed session abcd named or by a fork
-// (decision 10). A
-// name set is recorded in Given, so a later resume or clear knows the title is
+// (decision 10), and the prompt that replaces it carries the notice. A name
+// set is recorded in Given, so a later resume or clear knows the title is
 // abcd's; the person's own name is recorded as "", so a later resume never
 // reads it as inherited.
 //
-// A machine with no register touches nothing, nor does one whose sessions
-// folder is a symlink: session start refuses that with its note, and the
-// prompt hook does not repeat it on every prompt. The register is first read
-// without the lock, which is enough to learn that nothing is owed, the answer
-// on every prompt but one: the file is only ever replaced by a rename, so an
-// unlocked read sees one whole version of it. The lock is taken only to mark
-// the title sent.
-func Resend(m Machine, sessionID, title string) Outcome {
-	if sessionID == "" {
+// Every prompt also re-asserts the session's hold on its name, so a hold that
+// session start could not make (its lock or its process-table read not done
+// in time) is made at a later prompt instead of never, as a client re-creates
+// its ephemeral state once its session is lost. Two cases call for it, and
+// both are settled by claim under the register's lock:
+//
+//   - the session has no entry while it carries the name abcd gave it (Given):
+//     the entry is made again for the process now running the session;
+//   - the session carries the name of its entry, and an earlier live entry
+//     holds the same name: two sessions hold one name.
+//
+// In either case, when another running session holds the name, this session
+// is the later claim and takes the next free name, which this prompt sets in
+// place of the title, with the notice. The register's live entries are kept in
+// the order their names were claimed (reserve, claim and rekey append), and
+// both sessions read that one order under the lock, so exactly one of them is
+// the later claim: the other keeps its name, is told nothing, and is never
+// displaced while its host runs (prune, by process id and start time).
+//
+// The register is first read without the lock: the file is only ever replaced
+// by a rename, so an unlocked read sees one whole version of it, and on every
+// prompt but the rare one it is all that is needed. A session whose entry is
+// there, its own and first of its name, with nothing owed, costs that one read:
+// no lock and no process table. A title owed takes the lock; only a missing or
+// shared hold reads the process table, bounded at maxReadTook, and then takes
+// the lock. A machine with no register touches nothing, nor does one whose
+// sessions folder is a symlink: session start refuses that with its note, and
+// the prompt hook does not repeat it on every prompt.
+//
+// Nothing here fails the hook. A register that cannot be read or written, a
+// lock not free within LockTimeout, or a process table not read, or read more
+// slowly than maxReadTook, changes nothing: the title is kept, no name is
+// allocated, no notice is given, and one note says why. The next prompt tries
+// again.
+func Prompt(m Machine, req Request) Outcome {
+	if req.SessionID == "" || req.AgentID != "" {
 		return Outcome{}
 	}
 	dir, reg, err := m.peek()
 	if err != nil {
-		return Outcome{Notes: []string{failed(err)}}
+		return Outcome{Notes: []string{unchanged(err)}}
 	}
 	if dir == nil {
 		return Outcome{}
 	}
 	defer dir.Close()
-	if i, _ := reg.owed(sessionID, title); i < 0 {
+	need := reg.needs(req.SessionID, req.Title)
+	if need == needNothing {
 		return Outcome{}
 	}
-	var send string
+	var out Outcome
+	var personas []string
+	var tab *Table
+	var host Host
+	if need == needClaim {
+		var note string
+		if personas, note = personasOf(req.Root); note != "" {
+			out.Notes = append(out.Notes, note)
+		}
+		t, h, err := m.promptHost()
+		if err != nil {
+			out.Notes = append(out.Notes, unchanged(err))
+			return out
+		}
+		tab, host = &t, h
+	}
 	err = lockRegister(dir, m.LockTimeout, func() error {
 		reg, err := readRegister(dir, m.Home)
 		if err != nil {
 			return err
 		}
-		i, owed := reg.owed(sessionID, title)
-		if i < 0 {
-			return nil
-		}
-		reg.Live[i].Sent = true
-		switch {
-		case owed:
-			send = reg.Live[i].Name
-			reg.Given.give(sessionID, send)
-		case title != reg.Live[i].Name:
-			// The person's own name, given before this first prompt: abcd
-			// gave this session nothing, so a later resume never reads the
-			// title as inherited.
-			reg.Given.give(sessionID, "")
-		}
-		if err := writeRegister(dir, reg); err != nil {
+		changed, err := reg.assert(personas, req.SessionID, req.Title, tab, host, &out)
+		if err != nil || !changed {
 			return err
 		}
-		return nil
+		return writeRegister(dir, reg)
 	})
 	if err != nil {
-		return Outcome{Notes: []string{failed(err)}}
+		out.Name, out.Notice = "", ""
+		out.Notes = append(out.Notes, unchanged(err))
 	}
-	return Outcome{Name: send}
+	return out
+}
+
+// promptNeed is what a prompt has to do for its session's hold.
+type promptNeed int
+
+const (
+	// needNothing: the hold is in place and nothing is owed.
+	needNothing promptNeed = iota
+	// needSend: a title is owed or to be marked dealt with; the lock alone.
+	needSend
+	// needClaim: the hold is missing or shared; the process table, then the
+	// lock (claim).
+	needClaim
+)
+
+// needs is what a prompt from sessionID carrying title has to do (Prompt).
+func (reg *register) needs(sessionID, title string) promptNeed {
+	i := slices.IndexFunc(reg.Live, func(e entry) bool { return e.SessionID == sessionID })
+	switch {
+	case i < 0:
+		if title != "" && reg.Given.gave(sessionID, title) {
+			return needClaim
+		}
+		return needNothing
+	case reg.Live[i].Sent && title == reg.Live[i].Name &&
+		slices.ContainsFunc(reg.Live[:i], func(e entry) bool { return e.Name == title }):
+		return needClaim
+	case !reg.Live[i].Sent:
+		return needSend
+	}
+	return needNothing
+}
+
+// assert does what a prompt from sessionID carrying title needs, under the
+// lock, and reports whether it changed the register. tab is nil when the
+// prompt read no process table: a hold found missing or shared only now, under
+// the lock, is then left for a later prompt, and nothing is changed for it.
+func (reg *register) assert(personas []string, sessionID, title string, tab *Table, host Host, out *Outcome) (bool, error) {
+	changed := false
+	switch reg.needs(sessionID, title) {
+	case needNothing:
+		return false, nil
+	case needClaim:
+		if tab == nil {
+			return false, nil
+		}
+		if _, err := reg.claim(personas, sessionID, title, host, *tab); err != nil {
+			return false, err
+		}
+		changed = true
+	}
+	i, owed := reg.owed(sessionID, title)
+	if i < 0 {
+		return changed, nil
+	}
+	e := &reg.Live[i]
+	e.Sent = true
+	switch {
+	case owed:
+		out.Name = e.Name
+		reg.Given.give(sessionID, e.Name)
+		if e.Replaces != "" && title == e.Replaces {
+			out.Notice = renamed(e.Name, e.Replaces)
+		}
+	case title != e.Name:
+		// The person's own name, given before this first prompt: abcd
+		// gave this session nothing, so a later resume never reads the
+		// title as inherited.
+		reg.Given.give(sessionID, "")
+	}
+	return true, nil
+}
+
+// promptHost reads the process table for a prompt, bounded at maxReadTook, and
+// finds this session's host in it. A read slower than that is refused, as
+// prune would refuse to judge by it: a prompt changes nothing on it.
+func (m Machine) promptHost() (Table, Host, error) {
+	read := m.ReadTable
+	if m.ReadTableContext != nil {
+		read = func() (Table, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), maxReadTook)
+			defer cancel()
+			return m.ReadTableContext(ctx)
+		}
+	}
+	tab, host, err := m.tableAndHost(read)
+	if err == nil && tab.Took > maxReadTook {
+		return Table{}, Host{}, fmt.Errorf("the process table took longer than %s to read, so a running session cannot be told from an ended one", maxReadTook)
+	}
+	return tab, host, err
 }
 
 // owed finds this session's live entry not yet marked sent (-1 when there is
@@ -839,21 +1001,31 @@ func (m Machine) update(fn func(reg *register, tab Table, host Host) (bool, erro
 	if m.Home == "" || !filepath.IsAbs(m.Home) {
 		return errors.New("there is no home folder to keep the name register in")
 	}
-	if m.ReadTable == nil {
-		return errors.New("the process table could not be read")
-	}
-	tab, err := m.ReadTable()
-	if errors.Is(err, machineload.ErrUnsupported) {
-		return errors.New("abcd reads the process table on macOS and Linux only, so on this platform it cannot tell a running session from an ended one")
-	}
-	if err != nil {
-		return fmt.Errorf("the process table could not be read (%v), so a running session cannot be told from an ended one", err)
-	}
-	host, err := FindHost(tab, m.From)
+	tab, host, err := m.tableAndHost(m.ReadTable)
 	if err != nil {
 		return err
 	}
 	return m.locked(func(reg *register) (bool, error) { return fn(reg, tab, host) })
+}
+
+// tableAndHost reads the process table once through read and finds this
+// session's host in it.
+func (m Machine) tableAndHost(read func() (Table, error)) (Table, Host, error) {
+	if read == nil {
+		return Table{}, Host{}, errors.New("the process table could not be read")
+	}
+	tab, err := read()
+	if errors.Is(err, machineload.ErrUnsupported) {
+		return Table{}, Host{}, errors.New("abcd reads the process table on macOS and Linux only, so on this platform it cannot tell a running session from an ended one")
+	}
+	if err != nil {
+		return Table{}, Host{}, fmt.Errorf("the process table could not be read (%v), so a running session cannot be told from an ended one", err)
+	}
+	host, err := FindHost(tab, m.From)
+	if err != nil {
+		return Table{}, Host{}, err
+	}
+	return tab, host, nil
 }
 
 // locked reads, changes and writes the register under its lock, reading no
@@ -978,4 +1150,16 @@ func folderError(err error) error {
 // failed is the note for a naming that could not complete.
 func failed(err error) string {
 	return notePrefix + err.Error() + "; this session is not named"
+}
+
+// unchanged is the note for a prompt whose naming could not complete: it
+// changed nothing, and the next prompt tries again.
+func unchanged(err error) string {
+	return notePrefix + err.Error() + "; the session's name is left as it is on this prompt"
+}
+
+// renamed is the notice for a prompt that sets name in place of the title
+// replaced, which another running session holds.
+func renamed(name, replaced string) string {
+	return notePrefix + "another running session holds the name " + replaced + ", so this session is now " + name + "."
 }

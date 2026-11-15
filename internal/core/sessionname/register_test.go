@@ -2,6 +2,7 @@ package sessionname
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -668,20 +669,28 @@ func TestNamingNeverFailsASession(t *testing.T) {
 // until the test ends: flock conflicts between two opens even in one process.
 func holdLock(t *testing.T, home string) {
 	t.Helper()
+	t.Cleanup(lockRegisterFor(t, home))
+}
+
+// lockRegisterFor takes the register's lock from another descriptor and
+// returns the function that lets it go.
+func lockRegisterFor(t *testing.T, home string) (release func()) {
+	t.Helper()
 	dir, err := fsutil.EnsureHomeScope(home, abcdhome.Rel("sessions"), abcdhome.DirMode)
 	if err != nil {
 		t.Fatal(err)
 	}
-	held, release := make(chan struct{}), make(chan struct{})
+	held, done, gone := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	go func() {
+		defer close(gone)
 		_ = fsutil.WithFileLockIn(dir, lockName, time.Second, func() error {
 			close(held)
-			<-release
+			<-done
 			return nil
 		})
 	}()
 	<-held
-	t.Cleanup(func() { close(release); dir.Close() })
+	return func() { close(done); <-gone; dir.Close() }
 }
 
 // TestLiveWaitsTwoSecondsForTheLock pins the production machine: the lock's
@@ -1308,5 +1317,285 @@ func TestAClearOfAPersonsOwnTitleReadsNoProcessTable(t *testing.T) {
 	resends(t, m, []struct{ sid, title, want string }{{"d", "", "Alice"}, {"e", "", "Bob"}})
 	if out := Start(m.at(m.launch(700)), Request{Root: root, SessionID: "p2", Source: "resume", Title: "Bob"}); out.Name != "" {
 		t.Fatalf("resuming the person's cleared Bob reserved %q, want nothing", out.Name)
+	}
+}
+
+// counted makes mm count its process-table reads in reads.
+func counted(mm Machine, reads *int) Machine {
+	read := mm.ReadTable
+	mm.ReadTable = func() (Table, error) {
+		*reads++
+		return read()
+	}
+	return mm
+}
+
+// prompt runs the prompt hook's naming for session sid, carrying title, from
+// the hook shell from, in root.
+func (m *machine) prompt(from int, root, sid, title string) Outcome {
+	m.t.Helper()
+	return Prompt(m.at(from), Request{Root: root, SessionID: sid, Title: title})
+}
+
+// resumeWithTheLockHeld resumes session sid, carrying title, under a new host
+// at pid while another process holds the register's lock, so the hold is not
+// made: session start notes the lock and holds nothing. It returns the new
+// host's hook shell.
+func resumeWithTheLockHeld(t *testing.T, m *machine, root string, pid int, sid, title string) int {
+	t.Helper()
+	release := lockRegisterFor(t, m.home)
+	timeout := m.timeout
+	m.timeout = 50 * time.Millisecond
+	from := m.launch(pid)
+	out := Start(m.at(from), Request{Root: root, SessionID: sid, Source: "resume", Title: title})
+	m.timeout = timeout
+	release()
+	if out.Name != "" || len(out.Notes) != 1 || !strings.Contains(out.Notes[0], "lock") {
+		t.Fatalf("the resume under a held lock: %+v, want no hold and one note on the lock", out)
+	}
+	return from
+}
+
+// TestAPromptHoldsAResumeWhoseHoldFailed is iss-2611141504101439's first
+// proof: Bob is resumed in a new process while the register's lock is held, so
+// session start holds nothing, and the next session start drops Bob's entry,
+// whose old process has ended. Bob's next prompt makes the entry again for the
+// process now running it, so Bob is held: when every other session has ended,
+// naming does not restart and hand Bob to a new session while Bob runs.
+func TestAPromptHoldsAResumeWhoseHoldFailed(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	mustName(t, m.start(100, root, "a"), "Alice")
+	mustName(t, m.start(200, root, "b"), "Bob")
+	resends(t, m, []struct{ sid, title, want string }{{"a", "", "Alice"}, {"b", "", "Bob"}})
+	m.end(200)
+	from := resumeWithTheLockHeld(t, m, root, 300, "b", "Bob")
+	mustName(t, m.start(400, root, "c"), "Carol")
+	if bytes.Contains(m.register(), []byte(`"session_id": "b"`)) {
+		t.Fatalf("the fixture did not lose Bob's entry:\n%s", m.register())
+	}
+
+	out := m.prompt(from, root, "b", "Bob")
+	if out.Name != "" || out.Notice != "" || len(out.Notes) != 0 {
+		t.Fatalf("Bob's prompt: %+v, want the name held with nothing set or said", out)
+	}
+	if reg := m.register(); !bytes.Contains(reg, []byte(`"session_id": "b"`)) || !bytes.Contains(reg, []byte(`"host_pid": 300`)) {
+		t.Fatalf("Bob is not held for the process now running it:\n%s", reg)
+	}
+	m.end(100)
+	m.end(400)
+	mustName(t, m.start(500, root, "d"), "Dave")
+
+	// Held, a later prompt is the common case: no process table, no write.
+	before := m.register()
+	reads := 0
+	if out := Prompt(counted(m.at(from), &reads), Request{Root: root, SessionID: "b", Title: "Bob"}); out.Name != "" || out.Notice != "" || len(out.Notes) != 0 {
+		t.Fatalf("Bob's next prompt: %+v, want nothing", out)
+	}
+	if reads != 0 || !bytes.Equal(m.register(), before) {
+		t.Fatalf("a held session's prompt read the process table %d time(s) or changed the register:\n%s", reads, m.register())
+	}
+}
+
+// TestTwoRunningSessionsWithOneNameEndWithTwoNamesAndOneNotice is the record's
+// sequence and its second proof: Alice is resumed while the lock is held, so
+// her hold is not made; every other session having ended, a new session starts
+// and is given Alice. Alice's next prompt finds a running session holding her
+// name: hers is the later claim, so she takes Bob, the prompt sets it with one
+// notice, and the new session keeps Alice. No later prompt of either renames
+// or says anything.
+func TestTwoRunningSessionsWithOneNameEndWithTwoNamesAndOneNotice(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	mustName(t, m.start(100, root, "x"), "Alice")
+	resends(t, m, []struct{ sid, title, want string }{{"x", "", "Alice"}})
+	m.end(100)
+	xFrom := resumeWithTheLockHeld(t, m, root, 200, "x", "Alice")
+	mustName(t, m.start(300, root, "y"), "Alice")
+	yFrom := 301
+	resends(t, m, []struct{ sid, title, want string }{{"y", "", "Alice"}})
+
+	notices := 0
+	for i, c := range []struct {
+		from       int
+		sid, title string
+		want       string
+	}{
+		{xFrom, "x", "Alice", "Bob"},
+		{xFrom, "x", "Bob", ""},
+		{yFrom, "y", "Alice", ""},
+		{xFrom, "x", "Alice", ""}, // a title the host has not updated yet
+		{yFrom, "y", "Alice", ""},
+		{xFrom, "x", "Bob", ""},
+	} {
+		out := m.prompt(c.from, root, c.sid, c.title)
+		if out.Name != c.want || len(out.Notes) != 0 {
+			t.Fatalf("prompt %d (%s carrying %q): %+v, want %q\n%s", i+1, c.sid, c.title, out, c.want, m.register())
+		}
+		if out.Notice != "" {
+			notices++
+			if !strings.Contains(out.Notice, "Alice") || !strings.Contains(out.Notice, "now Bob") {
+				t.Fatalf("the notice %q does not say Alice is held and the session is now Bob", out.Notice)
+			}
+		}
+	}
+	if notices != 1 {
+		t.Fatalf("%d notices, want exactly one", notices)
+	}
+	reg := m.register()
+	if !bytes.Contains(reg, []byte(`"x": "Bob"`)) || !bytes.Contains(reg, []byte(`"y": "Alice"`)) || bytes.Count(reg, []byte(`"session_id"`)) != 2 {
+		t.Fatalf("the register does not hold Bob for x and Alice for y:\n%s", reg)
+	}
+	mustName(t, m.start(400, root, "z"), "Carol")
+}
+
+// plantTwoHolders writes a register in which two running sessions, x then y,
+// each hold Alice, the title both carry: what nothing in abcd writes, and the
+// one shape whose later claim the register's own order alone decides.
+func plantTwoHolders(t *testing.T, m *machine) {
+	t.Helper()
+	m.launch(100)
+	m.launch(200)
+	start := readAt.Add(-time.Hour).Unix()
+	reg := fmt.Sprintf(`{"schema_version":1,"handed":["Alice"],"live":[`+
+		`{"name":"Alice","session_id":"x","host_pid":100,"host_start_unix":%d,"sent":true},`+
+		`{"name":"Alice","session_id":"y","host_pid":200,"host_start_unix":%d,"sent":true}],`+
+		`"given":{"x":"Alice","y":"Alice"}}`, start, start)
+	if err := os.MkdirAll(abcdhome.Path(m.home, "sessions"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abcdhome.Path(m.home, "sessions", "names.json"), []byte(reg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestTheLaterOfTwoHoldersIsTheOneRenamed: whichever of two running sessions
+// holding one name prompts first, the later entry in the register is the one
+// that takes the next free name, once, with one notice; the earlier keeps its
+// name and its prompts never touch the register.
+func TestTheLaterOfTwoHoldersIsTheOneRenamed(t *testing.T) {
+	for name, order := range map[string][]string{"earlier first": {"x", "y", "x", "y"}, "later first": {"y", "x", "y", "x"}} {
+		t.Run(name, func(t *testing.T) {
+			m := newMachine(t)
+			root := t.TempDir()
+			plantTwoHolders(t, m)
+			from := map[string]int{"x": 101, "y": 201}
+			title := map[string]string{"x": "Alice", "y": "Alice"}
+			notices := 0
+			for i, sid := range order {
+				before := m.register()
+				out := m.prompt(from[sid], root, sid, title[sid])
+				if len(out.Notes) != 0 {
+					t.Fatalf("prompt %d (%s): notes %q", i+1, sid, out.Notes)
+				}
+				if sid == "x" && (out.Name != "" || out.Notice != "" || !bytes.Equal(m.register(), before)) {
+					t.Fatalf("prompt %d: the earlier holder was displaced or told something: %+v\n%s", i+1, out, m.register())
+				}
+				if out.Name != "" {
+					title[sid] = out.Name
+				}
+				if out.Notice != "" {
+					notices++
+				}
+			}
+			if notices != 1 || title["x"] != "Alice" || title["y"] != "Bob" {
+				t.Fatalf("%d notices, titles %v; want one notice, x Alice and y Bob", notices, title)
+			}
+		})
+	}
+}
+
+// TestAPromptThatTimesOutChangesNothing is the record's third proof: a prompt
+// whose hold has to be made again, or whose session has to take a new name,
+// and whose lock wait or process-table read runs out, keeps the title,
+// allocates nothing, gives no notice, and leaves the register byte for byte
+// as it was, with one note. The next prompt that completes does the work.
+func TestAPromptThatTimesOutChangesNothing(t *testing.T) {
+	for name, c := range map[string]struct {
+		arrange func(t *testing.T, m *machine, mm *Machine)
+		mention string
+	}{
+		"the lock is held": {func(t *testing.T, m *machine, mm *Machine) {
+			mm.LockTimeout = 50 * time.Millisecond
+			holdLock(t, m.home)
+		}, "lock"},
+		"the table read runs out": {func(t *testing.T, m *machine, mm *Machine) {
+			mm.ReadTableContext = func(ctx context.Context) (Table, error) {
+				deadline, ok := ctx.Deadline()
+				if !ok || time.Until(deadline) > maxReadTook {
+					t.Errorf("the prompt's table read is not bounded at %s (deadline %v, %v)", maxReadTook, deadline, ok)
+				}
+				return Table{}, context.DeadlineExceeded
+			}
+		}, "process table"},
+		"the table read is slow": {func(t *testing.T, m *machine, mm *Machine) {
+			*mm = slowly(*mm, maxReadTook+time.Millisecond)
+		}, "process table"},
+	} {
+		for _, route := range []string{"hold lost", "name shared"} {
+			t.Run(name+", "+route, func(t *testing.T) {
+				m := newMachine(t)
+				root := t.TempDir()
+				sid, from := "x", 0
+				if route == "hold lost" {
+					mustName(t, m.start(100, root, "x"), "Alice")
+					resends(t, m, []struct{ sid, title, want string }{{"x", "", "Alice"}})
+					m.end(100)
+					from = resumeWithTheLockHeld(t, m, root, 200, "x", "Alice")
+					mustName(t, m.start(300, root, "y"), "Alice")
+				} else {
+					plantTwoHolders(t, m)
+					sid, from = "y", 201
+				}
+				before := m.register()
+				mm := m.at(from)
+				c.arrange(t, m, &mm)
+				out := Prompt(mm, Request{Root: root, SessionID: sid, Title: "Alice"})
+				if out.Name != "" || out.Notice != "" || len(out.Notes) != 1 || !strings.Contains(out.Notes[0], c.mention) {
+					t.Fatalf("a prompt that ran out: %+v, want nothing set or said and one note on the %s", out, c.mention)
+				}
+				if !bytes.Equal(m.register(), before) {
+					t.Fatalf("a prompt that ran out changed the register:\n%s\nwant\n%s", m.register(), before)
+				}
+			})
+		}
+	}
+}
+
+// TestAPromptJudgesAHolderByItsStartTime: a name is free only when its last
+// holder's process is proven gone, by its id and its start time together.
+// The holder's id now belonging to a process started at another time is a
+// holder gone, so a session whose hold was lost takes its name back with no
+// notice; the holder alive with its own start time is never displaced, and
+// the session whose hold was lost takes the next free name instead.
+func TestAPromptJudgesAHolderByItsStartTime(t *testing.T) {
+	for name, reused := range map[string]bool{"id reused": true, "holder running": false} {
+		t.Run(name, func(t *testing.T) {
+			m := newMachine(t)
+			root := t.TempDir()
+			mustName(t, m.start(100, root, "x"), "Alice")
+			resends(t, m, []struct{ sid, title, want string }{{"x", "", "Alice"}})
+			m.end(100)
+			from := resumeWithTheLockHeld(t, m, root, 200, "x", "Alice")
+			mustName(t, m.start(300, root, "y"), "Alice")
+			resends(t, m, []struct{ sid, title, want string }{{"y", "", "Alice"}})
+			if reused {
+				m.end(300)
+				m.procs = append(m.procs, proc(300, 1, "vim", 10*time.Minute))
+			}
+			out := m.prompt(from, root, "x", "Alice")
+			reg := m.register()
+			switch {
+			case reused && (out.Name != "" || out.Notice != "" || bytes.Contains(reg, []byte(`"session_id": "y"`))):
+				t.Fatalf("a holder whose id was reused kept the name: %+v\n%s", out, reg)
+			case !reused && (out.Name != "Bob" || out.Notice == "" || !bytes.Contains(reg, []byte(`"session_id": "y"`))):
+				t.Fatalf("a running holder was displaced: %+v\n%s", out, reg)
+			}
+			if !reused {
+				if out := m.prompt(301, root, "y", "Alice"); out.Name != "" || out.Notice != "" {
+					t.Fatalf("the running holder's prompt: %+v, want nothing", out)
+				}
+			}
+		})
 	}
 }

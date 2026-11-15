@@ -1755,7 +1755,9 @@ type routerView struct {
 	SessionTitle string `json:"session_title,omitempty"`
 	// SystemMessage is the one line the person is shown while the away
 	// record holds, or once it lapsed unclosed with anything unread
-	// (spc-2610180914469489 step 2), and absent otherwise.
+	// (spc-2610180914469489 step 2), with naming's notice on the prompt
+	// that gives the session a new name (hook_session_name.go), and absent
+	// otherwise.
 	SystemMessage string `json:"system_message,omitempty"`
 }
 
@@ -1972,11 +1974,13 @@ outside the dedup ledger.`,
 				// The title owed on this prompt is set even so: naming does
 				// not depend on the rules (hook_session_name.go). The status
 				// block, when there is one, is the context it is set with.
-				if title := resendSessionTitle(cmd, in); title != "" {
+				title, notice := promptSessionName(cmd, in, root)
+				if title != "" {
+					text, message := withNotice(text, away.Message, notice)
 					if *asJSON {
-						return routerEmit(cmd, routerView{Text: text, Injected: []string{}, Recalled: []string{}, Error: err.Error(), SessionTitle: title, SystemMessage: away.Message})
+						return routerEmit(cmd, routerView{Text: text, Injected: []string{}, Recalled: []string{}, Error: err.Error(), SessionTitle: title, SystemMessage: message})
 					}
-					emitPrompt(cmd, text, title, away.Message)
+					emitPrompt(cmd, text, title, message)
 					return nil
 				}
 				if (text != "" || away.Message != "") && !*asJSON {
@@ -2068,8 +2072,11 @@ outside the dedup ledger.`,
 			text = joinBlocks(text, status.Text)
 			text = joinBlocks(text, away.Block)
 			// The name this session's start reserved, set once at its first
-			// prompt (hook_session_name.go).
-			title := resendSessionTitle(cmd, in)
+			// prompt, and the session's hold on its name re-asserted, with
+			// the one notice when it now has a new name
+			// (hook_session_name.go).
+			title, notice := promptSessionName(cmd, in, root)
+			text, message := withNotice(text, away.Message, notice)
 			if *asJSON {
 				injected := res.Injected
 				if injected == nil {
@@ -2080,9 +2087,9 @@ outside the dedup ledger.`,
 					recalled = []string{}
 				}
 				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Fill: &fill, Bracket: bracket.String(),
-					Active: &res.Active, SessionTitle: title, SystemMessage: away.Message})
+					Active: &res.Active, SessionTitle: title, SystemMessage: message})
 			}
-			emitPrompt(cmd, text, title, away.Message)
+			emitPrompt(cmd, text, title, message)
 			return nil
 		},
 	})

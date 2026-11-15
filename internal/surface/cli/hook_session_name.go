@@ -15,6 +15,12 @@ package cli
 // which the host injects exactly as it injects plain stdout. Every other
 // prompt leaves stdout as it was: the plain form is the default and the object
 // is the exception.
+//
+// Every prompt also re-asserts the session's hold on its name in the register
+// (sessionname.Prompt): a hold session start could not make is made then, and
+// a session that finds another running session holding its name takes the
+// next free name. That prompt sets the new name as the title and carries one
+// notice saying so, in the context and in the person's line.
 
 import (
 	"bytes"
@@ -54,18 +60,36 @@ func startSessionName(cmd *cobra.Command, in hookInput, cwd string) {
 	}
 }
 
-// resendSessionTitle is the prompt hook's naming: the title owed on this
-// prompt, or "". Its notes go to stderr; it never fails the hook.
-func resendSessionTitle(cmd *cobra.Command, in hookInput) string {
+// promptSessionName is the prompt hook's naming: the title owed on this
+// prompt, or "", and the notice that says the session now has a new name, or
+// "". Every prompt re-asserts the session's hold on its name
+// (sessionname.Prompt); root is the repository the rules loader already
+// resolved, whose persona list names a session that has to take a new name,
+// so naming asks git nothing of its own. Its notes go to stderr; it never
+// fails the hook.
+func promptSessionName(cmd *cobra.Command, in hookInput, root string) (title, notice string) {
 	m, ok := sessionNameMachine()
 	if !ok {
-		return ""
+		return "", ""
 	}
-	out := sessionname.Resend(m, in.SessionID, in.SessionTitle)
+	out := sessionname.Prompt(m, sessionname.Request{Root: root, SessionID: in.SessionID, Title: in.SessionTitle})
 	for _, n := range out.Notes {
 		diagnosticLine(cmd.ErrOrStderr(), "%s", n)
 	}
-	return out.Name
+	return out.Name, out.Notice
+}
+
+// withNotice carries naming's notice on the prompt that sets a new name: in
+// the context, so the agent knows the name it now answers to, and in the
+// person's line beside any other.
+func withNotice(text, message, notice string) (string, string) {
+	if notice == "" {
+		return text, message
+	}
+	if message != "" {
+		message += " "
+	}
+	return joinBlocks(text, notice), message + notice
 }
 
 // titledOutput is the hook output object that sets a session's title. The
