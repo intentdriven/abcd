@@ -30,8 +30,14 @@ package sweep
 //
 // The judgement reaches no remote: it reads origin's branches as the
 // caller's fetch left them, and the forge's listings through Options.Forge.
-// Under apply, each delete is preceded by a last check of everything that
-// could hold the branch, made again: origin's own default branch and its tip
+// Under apply, origin's fetch and push addresses are read once, before the
+// first delete, with the person's own configuration (the one the push runs
+// under): when they differ, because a push URL or a push rewrite is
+// configured, origin is read from one address and pushed to another, the
+// last check below cannot see the repository the push would change, and
+// every delete is held. Each delete is then preceded by a last check of
+// everything that could hold the branch, made again: origin's own default
+// branch and its tip
 // (asked of origin before the first delete, and required to be the very
 // branch and commit the judgement read), the forge's pull requests from that
 // branch, the worktrees, the local branches' upstreams and the guard's checks
@@ -165,6 +171,7 @@ func sweepRemote(ctx context.Context, repoRoot string, o Options, apply bool) (R
 	var (
 		fault    error
 		asked    bool
+		addrHold string
 		head     string
 		headTip  string
 		headFail error
@@ -185,9 +192,10 @@ func sweepRemote(ctx context.Context, repoRoot string, o Options, apply bool) (R
 			// The tracked default branch is a local reading and may be stale,
 			// so an act on origin asks origin which branch is its default.
 			asked = true
+			addrHold = rj.addressHold()
 			head, headTip, headFail = rj.originHead()
 		}
-		if err := rj.delete(branches[i], head, headTip, headFail, row); err != nil && fault == nil {
+		if err := rj.delete(branches[i], addrHold, head, headTip, headFail, row); err != nil && fault == nil {
 			fault = err
 		}
 	}
@@ -512,6 +520,31 @@ func (rj *remoteJudge) originHead() (branch, tip string, err error) {
 	return gitutil.RemoteHeadTip(ctx, gitutil.NetContext, rj.root, claim.Remote)
 }
 
+// addressHold is why origin's addresses hold every delete, "" when they do
+// not: its fetch addresses and its push addresses, each as git resolves them
+// under the person's own configuration (the one the delete's push runs
+// under, rewrites included), must be the same list. When they differ, the
+// last check's reads of origin are answered by one repository and the push
+// changes another, so nothing the sweep read shows the delete safe. A read
+// that fails holds every delete too. Neither address is shown: one may
+// carry credentials, and the reason needs neither.
+func (rj *remoteJudge) addressHold() string {
+	ctx, cancel := context.WithTimeout(rj.ctx, remoteNetTimeout)
+	defer cancel()
+	fetch, err := gitutil.NetContext(ctx, rj.root, "remote", "get-url", "--all", claim.Remote)
+	if err != nil {
+		return "origin's fetch address could not be read (" + answerText(err) + "), so nothing on origin is deleted"
+	}
+	push, err := gitutil.NetContext(ctx, rj.root, "remote", "get-url", "--push", "--all", claim.Remote)
+	if err != nil {
+		return "origin's push address could not be read (" + answerText(err) + "), so nothing on origin is deleted"
+	}
+	if strings.TrimSpace(fetch) != strings.TrimSpace(push) {
+		return "origin is read from one address and pushed to another, so the sweep cannot check what it would delete"
+	}
+	return ""
+}
+
 // headHold is why origin's default branch, as origin named it, holds the
 // delete of the branch b, "" when it does not: head is that branch and
 // headTip its tip there, or headFail why they could not be asked. Only the
@@ -538,13 +571,14 @@ func (rj *remoteJudge) headHold(b remoteBranch, head, headTip string, headFail e
 
 // delete makes the last check of the branch b on origin and, when nothing
 // holds it, deletes it under a lease on the tip that was judged, marking row
-// with the outcome. head is origin's default branch as origin named it before
-// the run's first delete and headTip its tip there, or headFail why they
-// could not be asked; the last check asks origin for both again just before
-// the push. A hold the last check finds keeps the branch, naming it; so does
+// with the outcome. addrHold is why origin's addresses hold every delete
+// (addressHold), "" when they do not. head is origin's default branch as
+// origin named it before the run's first delete and headTip its tip there, or
+// headFail why they could not be asked; the last check asks origin for both
+// again just before the push. A hold the last check finds keeps the branch, naming it; so does
 // origin refusing the lease because the branch moved. Any other refusal of
 // the delete keeps it, naming why, and is returned as the run's fault.
-func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail error, row *Row) error {
+func (rj *remoteJudge) delete(b remoteBranch, addrHold, head, headTip string, headFail error, row *Row) error {
 	held := func(reason string, ev ...Evidence) error {
 		row.Reason = clean("held at the last check before the delete: " + reason)
 		for _, e := range ev {
@@ -565,6 +599,9 @@ func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail err
 	}
 	if reason, ev := rj.headHold(b, head, headTip, headFail); reason != "" {
 		return held(reason, ev...)
+	}
+	if addrHold != "" {
+		return held(addrHold)
 	}
 	if !strings.HasPrefix(b.ref, "refs/heads/") || neverDeleted(b.name, head) != "" || !gitutil.IsFullSHA(b.tip) {
 		return held("it is not a branch the sweep deletes")

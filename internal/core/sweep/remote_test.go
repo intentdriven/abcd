@@ -635,3 +635,35 @@ func TestARunWhoseContextEndsStopsJudging(t *testing.T) {
 		t.Fatal("origin no longer holds feat")
 	}
 }
+
+// TestAPushAddressOtherThanOriginsFetchAddressHoldsEveryDelete: with a push
+// URL configured for origin, the push would change a repository other than
+// the one the last check read, so every delete is held, naming why, and
+// neither repository loses the branch. The dry run's judgement is unchanged.
+func TestAPushAddressOtherThanOriginsFetchAddressHoldsEveryDelete(t *testing.T) {
+	repo, origin := originRepo(t)
+	tip := mergedOnOrigin(repo, "feat", "feat.txt")
+	mirror := filepath.Join(t.TempDir(), "mirror.git")
+	repo.Git("clone", "-q", "--bare", origin, mirror)
+	repo.Git("config", "remote.origin.pushurl", mirror)
+	f := &fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}
+
+	if r := remoteRowFor(t, sweepRemoteOK(t, repo, remoteOpts(f), false), "feat"); r.Action != ActionDelete {
+		t.Fatalf("the dry run: %+v; want feat judged deletable", r)
+	}
+	res := sweepRemoteOK(t, repo, remoteOpts(f), true)
+	r := remoteRowFor(t, res, "feat")
+	if r.Outcome != OutcomeKept || !strings.Contains(r.Reason, "held at the last check before the delete") ||
+		!strings.Contains(r.Reason, "origin is read from one address and pushed to another, so the sweep cannot check what it would delete") {
+		t.Fatalf("%+v; want it held because origin's fetch and push addresses differ", r)
+	}
+	if strings.Contains(r.Reason, mirror) || strings.Contains(r.Reason, origin) {
+		t.Fatalf("the reason shows an address: %q", r.Reason)
+	}
+	if onOrigin(repo, origin, "feat") != tip || onOrigin(repo, mirror, "feat") != tip {
+		t.Fatal("a repository lost feat")
+	}
+	if res.Refusal != "" || res.ExitCode() != ExitNothing {
+		t.Fatalf("a held delete is no fault: refusal %q, exit %d", res.Refusal, res.ExitCode())
+	}
+}
