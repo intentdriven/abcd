@@ -66,6 +66,40 @@ func TestAnAbsoluteHooksPathIsPlacedByWhereItReallyIs(t *testing.T) {
 	}
 }
 
+// TestAHooksPathIsPlacedAsTheFilesystemComparesNames: an absolute value that
+// spells the checkout in another case names the directory inside it where the
+// filesystem folds case, and a relative value is taken from the checkout's top
+// and cleaned, so one that leaves the tree and comes back names the directory
+// it reaches; one that stays outside is none.
+func TestAHooksPathIsPlacedAsTheFilesystemComparesNames(t *testing.T) {
+	parent := fsutil.RealExistingPath(t.TempDir())
+	repo := filepath.Join(parent, "Repo")
+	mkdirs(t, repo)
+	git := func(args ...string) {
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		cmd.Env = gittest.Env(t)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "-q")
+	variant := ""
+	if fsutil.CaseFoldingFS() {
+		variant = "tools/hooks"
+	}
+	for _, c := range []struct{ value, want string }{
+		{filepath.Join(parent, "REPO", "tools", "hooks"), variant},
+		{filepath.Join("..", "Repo", "tools", "h"), "tools/h"},
+		{filepath.Join("tools", "..", "tools", "h"), "tools/h"},
+		{filepath.Join("..", "elsewhere", "h"), ""},
+	} {
+		git("config", "core.hooksPath", c.value)
+		if p, err := DriveHooksPath(repo); p != c.want || err != nil {
+			t.Errorf("%s: %q %v, want %q", c.value, p, err, c.want)
+		}
+	}
+}
+
 // TestDriveGateNamesTheWorkflowFolderAndFoldsCase: the forge's workflow folder
 // is a gate, and every gate, the configured hooks path among them, is named
 // whatever the case of each part, on any filesystem; an ordinary path, or a

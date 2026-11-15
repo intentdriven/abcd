@@ -51,13 +51,16 @@ func DriveGate(path, hooksPath string) bool {
 }
 
 // DriveHooksPath is the hooks path the repository at dir configures, relative to
-// dir, "" for none or one outside it; an absolute one is placed by the paths as
-// written and, failing that, as resolved on both sides (relInside). It is read in
-// the person's own environment, where what lands is pushed (personEnv): git
-// saying the key is not set (exit 1, nothing written) is none; any other
-// failure, a read that did not finish, or an answer abcd does not take is an
-// error naming the read, so a caller never takes a hooks directory it could not
-// read for none.
+// dir, "" for none or one outside it. A relative value is taken from dir, where
+// git runs hooks from, and cleaned; each value is then placed by the paths as
+// written and, failing that, as resolved on both sides, both compared as this
+// machine's filesystem compares names (fsutil.RelWithin), so a value that
+// leaves the tree and comes back, or spells the checkout in another case, names
+// the directory it reaches. It is read in the person's own environment, where
+// what lands is pushed (personEnv): git saying the key is not set (exit 1,
+// nothing written) is none; any other failure, a read that did not finish, or an
+// answer abcd does not take is an error naming the read, so a caller never takes
+// a hooks directory it could not read for none.
 func DriveHooksPath(dir string) (string, error) {
 	what := "asking git for the core.hooksPath settings (git config --type=path --get-all core.hooksPath)"
 	a, err := personEnv.read(dir, what, 1<<16, "config", "-z", "--type=path", "--get-all", "core.hooksPath")
@@ -79,27 +82,19 @@ func DriveHooksPath(dir string) (string, error) {
 	if path == "" {
 		return "", nil
 	}
-	if filepath.IsAbs(path) {
-		// Placed as written on both sides, then as resolved on both sides,
-		// so a checkout reached through a linked parent, with the value in
-		// the other form, is placed by where each really is.
-		rel, ok := relInside(filepath.Clean(dir), filepath.Clean(path))
-		if !ok {
-			rel, ok = relInside(fsutil.RealExistingPath(filepath.Clean(dir)), fsutil.RealExistingPath(filepath.Clean(path)))
-		}
-		if !ok {
-			return "", nil
-		}
-		path = rel
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(dir, path)
 	}
-	return filepath.ToSlash(filepath.Clean(path)), nil
-}
-
-// relInside is path relative to dir, and whether it lies at or inside dir.
-func relInside(dir, path string) (string, bool) {
-	rel, err := filepath.Rel(dir, path)
-	if err != nil || filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", false
+	// Placed as written on both sides, then as resolved on both sides, so a
+	// checkout reached through a linked parent, with the value in the other
+	// form, is placed by where each really is.
+	fold := fsutil.CaseFoldingFS()
+	rel, ok := fsutil.RelWithin(dir, path, fold)
+	if !ok {
+		rel, ok = fsutil.RelWithin(fsutil.RealExistingPath(filepath.Clean(dir)), fsutil.RealExistingPath(filepath.Clean(path)), fold)
 	}
-	return rel, true
+	if !ok {
+		return "", nil
+	}
+	return filepath.ToSlash(rel), nil
 }
