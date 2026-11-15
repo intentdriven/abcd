@@ -1086,3 +1086,64 @@ func TestAStageWithAReplacedHeadChecksTheStoredTree(t *testing.T) {
 		}
 	}
 }
+
+// receiptScript runs the committed scripts/preflight-receipt.sh in dir.
+func receiptScript(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	script, err := filepath.Abs(filepath.Join("..", "..", "scripts", "preflight-receipt.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", append([]string{script}, args...)...)
+	cmd.Dir, cmd.Env = dir, gittest.Env(t)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("preflight-receipt.sh %v: %v\n%s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// TestAReceiptReadsTheCommitAsStored: the receipt names a commit, so the
+// script reads that commit as stored, whatever refs/replace/* ref stands
+// another in for it. A worktree holding HEAD as stored is clean, and a
+// receipt is minted when both stages checked the stored tree; a worktree
+// holding the replacement's tree is not HEAD, and nothing a stage reported on
+// that tree mints a receipt for HEAD.
+func TestAReceiptReadsTheCommitAsStored(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		checkout bool // the worktree and index hold the replacement's tree
+		state    string
+		minted   bool
+	}{
+		{"the worktree holds HEAD as stored", false, "clean", true},
+		{"the worktree holds the replacement", true, "dirty", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := newGitRepo(t)
+			r.write(".gitignore", ".abcd/.work.local/\n")
+			r.write("a.txt", "stored\n")
+			head := r.commit("one")
+			other := replaceHead(t, r.root, "a.txt", "the replacement\n")
+			tested := r.git("--no-replace-objects", "rev-parse", head+"^{tree}")
+			if c.checkout {
+				r.git("read-tree", "--reset", "-u", other)
+				tested = r.git("rev-parse", other+"^{tree}")
+			}
+			for _, stage := range []string{"unit", "race"} {
+				body := "commit " + head + "\ntree " + tested + "\nstage " + stage + "\nmode reuse\nreused 1\npackages 1\nresult pass\n"
+				writeFile(t, filepath.Join(r.root, ".abcd", ".work.local", "preflight-reuse", head, stage+"-aaaaaaaaaaaa"), body, 0o644)
+			}
+
+			began := receiptScript(t, r.root, "state")
+			if began != head+" "+c.state {
+				t.Errorf("state = %q, want %q", began, head+" "+c.state)
+			}
+			out := receiptScript(t, r.root, "mint", began)
+			_, err := os.Stat(filepath.Join(r.root, ".abcd", ".work.local", "preflight-receipts", head))
+			if minted := err == nil; minted != c.minted {
+				t.Errorf("a receipt minted = %v, want %v:\n%s", minted, c.minted, out)
+			}
+		})
+	}
+}

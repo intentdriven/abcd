@@ -59,6 +59,15 @@
 # Exit 0 on success; `check` exits 1 when there is no receipt; 2 on a usage fault.
 set -euo pipefail
 
+# Every git here reads objects as stored, and so does scripts/records-only.sh,
+# which mint runs: no refs/replace/* ref stands another commit, tree or blob in
+# for one HEAD stores, and no graft file gives it other parents. The state, the
+# tree the stage reports are checked against and the records-only verdict are
+# then all read from the commit the receipt names. The graft path is the one
+# internal/gitutil uses (noGraftFile): it names nothing, so git reads no graft
+# file, and git prints no hint for it as it does for /dev/null.
+export GIT_NO_REPLACE_OBJECTS=1 GIT_GRAFT_FILE=/dev/null/none
+
 cd "$(git rev-parse --show-toplevel)"
 
 receipts_rel=".abcd/.work.local/preflight-receipts"
