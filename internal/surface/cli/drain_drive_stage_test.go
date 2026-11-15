@@ -277,6 +277,53 @@ func TestALaneInALinkedWorktreeIsJudgedAgainstTheMainCheckoutsHooks(t *testing.T
 	}
 }
 
+// TestALaneOnALinkedHooksDirectoryIsHandedBack: where the hooks path is a link
+// to another directory in the tree, a change to the link and a change below
+// where it leads each hand the lane back, and an issue on either is passed
+// over; code still lands.
+func TestALaneOnALinkedHooksDirectoryIsHandedBack(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	repo.Write("a.go", "package a\n")
+	repo.Write("tools/real/pre-push", "x\n")
+	if err := os.Symlink(filepath.Join("tools", "real"), filepath.Join(repo.Root(), "h")); err != nil {
+		t.Fatal(err)
+	}
+	repo.Commit("base")
+	repo.Git("config", "core.hooksPath", "h")
+	change := func(what string, edit func()) {
+		t.Helper()
+		base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+		edit()
+		repo.Commit(what)
+		var refused *loop.PreflightRefused
+		if err := driveGateCheck(repo.Root())(repo.Root(), base); !errors.As(err, &refused) || !strings.Contains(refused.Reason, "a person's own session") {
+			t.Fatalf("%s landed: %v", what, err)
+		}
+	}
+	change("the link", func() {
+		repo.Remove("h")
+		if err := os.Symlink("tools/real/", filepath.Join(repo.Root(), "h")); err != nil {
+			t.Fatal(err)
+		}
+	})
+	change("where it leads", func() { repo.Write("tools/real/pre-push", "y\n") })
+	base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	repo.Write("a.go", "package a\n\n// more\n")
+	repo.Commit("code")
+	if err := driveGateCheck(repo.Root())(repo.Root(), base); err != nil {
+		t.Fatalf("code is no gate: %v", err)
+	}
+	pass := drivePassOver(repo.Root())
+	for _, found := range []string{"h", "tools/real/pre-push:3"} {
+		if why := pass("iss-1", found); !strings.Contains(why, "a person's own session") {
+			t.Errorf("%s: %q", found, why)
+		}
+	}
+	if why := pass("iss-1", "a.go"); why != "" {
+		t.Errorf("code is passed over: %q", why)
+	}
+}
+
 // TestAMergedDefaultBranchIsNotTheLanesChange: read from what the lane merged, a
 // Makefile the default branch changed hands nothing back.
 func TestAMergedDefaultBranchIsNotTheLanesChange(t *testing.T) {
@@ -700,7 +747,7 @@ func TestAGateIssueIsPassedOverForAPersonsOwnSession(t *testing.T) {
 func unreadableHooksPath(t *testing.T, repo *gittest.Repo) {
 	t.Helper()
 	repo.Git("config", "core.hooksPath", "~abcdnosuchuser/hooks")
-	if _, err := loop.DriveHooksPath(repo.Root()); err == nil {
+	if _, err := loop.DriveHooksPaths(repo.Root()); err == nil {
 		t.Fatal("the hooks path is read, so this test makes no unreadable one")
 	}
 }

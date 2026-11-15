@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -17,16 +18,16 @@ import (
 // failing: the failed read answered none.
 func TestAHooksPathThatCannotBeReadIsNotNone(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	if p, err := DriveHooksPath(repo.Root()); p != "" || err != nil {
+	if p, err := DriveHooksPaths(repo.Root()); len(p) != 0 || err != nil {
 		t.Fatalf("no core.hooksPath is none: %q %v", p, err)
 	}
 	repo.Git("config", "core.hooksPath", ".githooks")
-	if p, err := DriveHooksPath(repo.Root()); p != ".githooks" || err != nil {
+	if p, err := DriveHooksPaths(repo.Root()); !slices.Equal(p, []string{".githooks"}) || err != nil {
 		t.Fatalf("a relative core.hooksPath is named: %q %v", p, err)
 	}
 	standInGit(t, `*"--get-all core.hooksPath"*) echo "fatal: bad config line 3 in file .git/config" >&2; exit 128 ;;`)
-	p, err := DriveHooksPath(repo.Root())
-	if err == nil || p != "" || !strings.Contains(err.Error(), "git config --type=path --get-all core.hooksPath") {
+	p, err := DriveHooksPaths(repo.Root())
+	if err == nil || len(p) != 0 || !strings.Contains(err.Error(), "git config --type=path --get-all core.hooksPath") {
 		t.Fatalf("a read git failed is an error naming it: %q %v", p, err)
 	}
 }
@@ -60,7 +61,7 @@ func TestAnAbsoluteHooksPathIsPlacedByWhereItReallyIs(t *testing.T) {
 		{viaLink, filepath.Join(t.TempDir(), "hooks"), ""},
 	} {
 		git("config", "core.hooksPath", c.value)
-		if p, err := DriveHooksPath(c.dir); p != c.want || err != nil {
+		if p, err := DriveHooksPaths(c.dir); !slices.Equal(p, hooksList(c.want)) || err != nil {
 			t.Fatalf("%s read from %s: %q %v, want %q", c.value, c.dir, p, err, c.want)
 		}
 	}
@@ -94,7 +95,7 @@ func TestAHooksPathIsPlacedAsTheFilesystemComparesNames(t *testing.T) {
 		{filepath.Join("..", "elsewhere", "h"), ""},
 	} {
 		git("config", "core.hooksPath", c.value)
-		if p, err := DriveHooksPath(repo); p != c.want || err != nil {
+		if p, err := DriveHooksPaths(repo); !slices.Equal(p, hooksList(c.want)) || err != nil {
 			t.Errorf("%s: %q %v, want %q", c.value, p, err, c.want)
 		}
 	}
@@ -175,9 +176,51 @@ func TestAHooksPathAtTheTopMakesEveryPathAGate(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
 	for _, value := range []string{".", "./"} {
 		repo.Git("config", "core.hooksPath", value)
-		p, err := DriveHooksPath(repo.Root())
-		if err != nil || !DriveGate("internal/x.go", p) {
+		p, err := DriveHooksPaths(repo.Root())
+		if err != nil || !DriveGate("internal/x.go", p...) {
 			t.Fatalf("core.hooksPath %q reads as %q (%v), which leaves internal/x.go no gate", value, p, err)
 		}
+	}
+}
+
+// hooksList is the paths DriveHooksPaths gives for one expected place, none for "".
+func hooksList(want string) []string {
+	if want == "" {
+		return nil
+	}
+	return []string{want}
+}
+
+// TestALinkedHooksDirectoryNamesTheLinkAndWhereItLeads: a hooks path that is a
+// link to another directory in the tree names both, the link once however the
+// value reaches it, and each is a gate; a link that leads outside the tree
+// names only itself.
+func TestALinkedHooksDirectoryNamesTheLinkAndWhereItLeads(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	mkdirs(t, filepath.Join(repo.Root(), "tools", "real"))
+	if err := os.Symlink(filepath.Join("tools", "real"), filepath.Join(repo.Root(), "h")); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"h", "./h", filepath.Join(repo.Root(), "h")} {
+		repo.Git("config", "core.hooksPath", value)
+		p, err := DriveHooksPaths(repo.Root())
+		if err != nil || !slices.Equal(p, []string{"h", "tools/real"}) {
+			t.Fatalf("core.hooksPath %q: %q %v", value, p, err)
+		}
+		for _, path := range []string{"h", "tools/real/pre-push"} {
+			if !DriveGate(path, p...) {
+				t.Errorf("%s is no gate under %q", path, p)
+			}
+		}
+		if DriveGate("internal/x.go", p...) {
+			t.Errorf("internal/x.go is a gate under %q", p)
+		}
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(repo.Root(), "out")); err != nil {
+		t.Fatal(err)
+	}
+	repo.Git("config", "core.hooksPath", "out")
+	if p, err := DriveHooksPaths(repo.Root()); err != nil || !slices.Equal(p, []string{"out"}) {
+		t.Fatalf("a link out of the tree: %q %v", p, err)
 	}
 }

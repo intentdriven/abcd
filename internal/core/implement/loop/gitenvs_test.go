@@ -18,7 +18,7 @@ package loop
 //
 // NOT FOLLOWED (a static walk cannot follow every route a value takes): a
 // function reached only through a function-typed struct field set outside
-// the walked code (the drive's surface sets several, DriveHooksPath's caller
+// the walked code (the drive's surface sets several, DriveHooksPaths's caller
 // among them), reflection, and a call the standard library makes back into
 // the module through an interface. A program named by anything but the
 // constant "git" is named in nonGitPrograms below with what it is, so a new
