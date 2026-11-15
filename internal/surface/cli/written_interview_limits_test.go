@@ -65,8 +65,9 @@ func TestWrittenInterviewTakesTheResolvedLimits(t *testing.T) {
 		t.Errorf("unread: limits %v, err %v; want the defaults and no error", l.Configurable(), err)
 	}
 	line := errOut.String()
-	if !strings.HasPrefix(line, "abcd guard: NOT CHECKED — ") || !strings.Contains(line, abcdhome.Display("config.json")) ||
-		!strings.HasSuffix(line, "The question runs UNGATED.\n") {
-		t.Errorf("unread: stderr %q, want the gate's fail-open line naming the machine file", line)
+	if !strings.HasPrefix(line, "abcd guard: NOT CHECKED at this repository's question limits — they were not read (") ||
+		!strings.Contains(line, abcdhome.Display("config.json")) ||
+		!strings.HasSuffix(line, "so the questions are measured at abcd's defaults instead.\n") || strings.Contains(line, "UNGATED") {
+		t.Errorf("unread: stderr %q, want decision 8's limits line naming the machine file, never UNGATED", line)
 	}
 }

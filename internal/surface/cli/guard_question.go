@@ -785,8 +785,15 @@ func limitsRefusalOf(err error) *question.LimitsRefusal {
 // the file, and saying what was done instead, since the question is not let
 // through unchecked but held to abcd's defaults.
 func limitsUnreadLine(err error) string {
+	return limitsUnreadLineFor(err, "the question is checked")
+}
+
+// limitsUnreadLineFor is that line for the binary's own composers (setup
+// and the written interviews), which measure their questions at abcd's
+// defaults rather than let them run ungated: subject says what was measured.
+func limitsUnreadLineFor(err error, subject string) string {
 	return "abcd guard: NOT CHECKED at this repository's question limits — they were not read (" +
-		termsafe.SanitizeLine(scrubPaths(err)) + "), so the question is checked at abcd's defaults instead.\n"
+		termsafe.SanitizeLine(scrubPaths(err)) + "), so " + subject + " at abcd's defaults instead.\n"
 }
 
 // limitsRefusedReason is the deny for abcd's question while a question limit

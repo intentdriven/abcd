@@ -240,7 +240,7 @@ func questionLimitsFor(roots layered.Roots, errOut io.Writer) (question.Limits, 
 		return v.V, v.Note(), nil
 	case errors.As(err, &unread):
 		// The resolver hands back the defaults with an unread layer.
-		_ = questionFailOpen(errOut, "%s; the questions are measured at abcd's defaults", err)
+		fmt.Fprint(errOut, limitsUnreadLineFor(err, "the questions are measured"))
 		return v.V, question.LimitsNote{}, nil
 	}
 	return question.Limits{}, question.LimitsNote{}, errors.New(termsafe.SanitizeLine(fsutil.RedactHome(err.Error())))
