@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/landing"
@@ -78,9 +79,7 @@ func worktreeCheckout() (string, error) {
 func newAhoyWorktreeCommand(asJSON *bool) *cobra.Command {
 	list := func(cmd *cobra.Command, all bool) error {
 		if all {
-			// The registry's labels have no exported reader yet, so every
-			// lane is shown under its root commit.
-			got, err := worktree.ListAll(worktree.AllOptions{Here: hereOrNone(), Forge: worktreeForge})
+			got, err := worktree.ListAll(worktree.AllOptions{Labels: registryLabels(), Here: hereOrNone(), Forge: worktreeForge})
 			if err != nil {
 				return worktreeFault("list", err)
 			}
@@ -416,6 +415,24 @@ func renderDossier(w io.Writer, d worktree.Dossier) {
 
 // hereOrNone is the checkout the caller stands in, or "" outside one: --all
 // reads the whole store from anywhere.
+// registryLabels is the registry's name for each registered root commit, the
+// label `list --all` shows a lane under (itd-2609091014076309's criterion 7).
+// The labels only name rows, so a registry that is absent, cannot be read or
+// is refused passes none and every lane stays under its root commit; its error
+// never fails the listing. The registry's path label is passed through but
+// never read: each worktree's own .git file says which checkout it belongs to.
+func registryLabels() map[string]worktree.Label {
+	reg, err := ahoy.RegistryLabels()
+	if err != nil {
+		return nil
+	}
+	out := make(map[string]worktree.Label, len(reg))
+	for sha, l := range reg {
+		out[sha] = worktree.Label{Name: l.Name, Path: l.Path}
+	}
+	return out
+}
+
 func hereOrNone() string {
 	root, err := worktreeCheckout()
 	if err != nil {
