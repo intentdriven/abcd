@@ -121,8 +121,9 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 		// and the renewal says so. Below, its claim is renewed at the version its
 		// file states while an agent may still be in its call, or while that check
 		// has left work a save could not take (stopEndsRenewal). Otherwise it is
-		// neither renewed nor let go, and lapses at its lease with its work on
-		// its branch and in its worktree, none of it saved aside.
+		// neither renewed nor let go, and lapses at its lease unless a load-gate
+		// waiter in this copy renews it (claim.RenewDue, gateWaiterRenews), with
+		// its work on its branch and in its worktree, none of it saved aside.
 		_, left := settleDueStop(root, st.RunID)
 		r := RunRenewal{Root: root, RunID: st.RunID, Key: st.Key}
 		err := mutateReservation(root, st.RunID, func(st *State) (bool, error) {
@@ -206,7 +207,8 @@ func renewsWhereItWaits(st State) bool {
 // back: its reservation is the person's to have released, so no run renewal
 // renews it, neither a waiter's (renewsWhereItWaits) nor a step's
 // (advanceWith). A load-gate waiter's renewal of this copy's own reservations
-// (claim.RenewDue) reads no run, and still renews it while the waiter waits.
+// (claim.RenewDue) reads no run, and may still renew it, as gateWaiterRenews
+// says.
 func handedBackIssue(st State) bool {
 	if st.Issue() == "" {
 		return false

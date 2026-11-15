@@ -1,7 +1,9 @@
 package loop
 
 import (
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -188,9 +190,10 @@ func TestALateWriterHandBackSaveRefusedLeavesTheReservationHeld(t *testing.T) {
 // TestAHandBackWhoseReleaseFailsSaysNotReleased: the hand-back is written and
 // origin refuses the tombstone, so the hand-in succeeds, the lane is handed
 // back, the reservation is still held, the record logs the release owed, and
-// the answer says "not released", why, and when the lease ends. A plain step
-// on the run then renews nothing, though the lease is past its half: nothing
-// renews a handed-back lane's reservation.
+// the answer says "not released", why, and the lease as last fetched, with
+// what a load-gate waiter in this copy still renews (gateWaiterRenews). A plain
+// step on the run then renews nothing, though the lease is past its half: no
+// step renews a handed-back lane's reservation.
 func TestAHandBackWhoseReleaseFailsSaysNotReleased(t *testing.T) {
 	repo, bare, id, path := handingBackAtImplementer(t)
 	before := originReservation(t, bare, claim.RefPrefix+secondIssue)
@@ -213,14 +216,14 @@ func TestAHandBackWhoseReleaseFailsSaysNotReleased(t *testing.T) {
 		t.Fatalf("a release origin refused is not logged as made: %q", note)
 	}
 	for _, want := range []string{"the lane was handed back and its reservation not released", "could not push the tombstone",
-		"unless a drain routing the hand-back releases it", "its lease runs to ", " as last fetched, longer if a load-gate waiter in this copy renews it",
-		"no step and no run renewal renews a handed-back lane's reservation",
-		"but a load-gate waiter in this copy (`abcd implement load --wait`, which `make preflight` and gated test runs use) renews every reservation this copy pushed while it waits"} {
+		", so it lapses with its lease unless a load-gate waiter in this copy renews it or a drain routing the hand-back releases it",
+		"its lease runs to ", " as last fetched, longer if a load-gate waiter in this copy renews it",
+		"no step and no run renewal renews a handed-back lane's reservation", "but " + gateWaiterRenews} {
 		if !strings.Contains(res.Next, want) {
 			t.Fatalf("the answer says %q: %s", want, res.Next)
 		}
 	}
-	for _, not := range []string{"nothing renews", "its lease ends at "} {
+	for _, not := range []string{"nothing renews", "its lease ends at ", "renews every reservation"} {
 		if strings.Contains(res.Next, not) {
 			t.Fatalf("the answer promises no end the load gate's waiter can move (%q): %s", not, res.Next)
 		}
@@ -428,9 +431,11 @@ func TestAClosedHandBackSaveRefusedLeavesTheReservationHeld(t *testing.T) {
 }
 
 // TestTheLeaseIsSaidAsLastFetched: the lease of a reservation the release did
-// not free is said as this checkout last fetched it, "runs to" a time to come,
-// longer if a load-gate waiter in this copy renews it, and "ended at" one
-// already past; either way the answer says the waiter still renews it.
+// not free is said as this checkout last fetched it: "runs to" a time to come,
+// longer if a load-gate waiter in this copy renews it, with what the waiter
+// renews; "lapsed at" one already past, that nothing revives it, and no
+// waiter's clause, since the waiter renews only a live reservation
+// (claim.RenewDue).
 func TestTheLeaseIsSaidAsLastFetched(t *testing.T) {
 	repo, _, id, _ := handingBackAtImplementer(t)
 	st, err := ReadState(repo.Root(), id)
@@ -441,9 +446,10 @@ func TestTheLeaseIsSaidAsLastFetched(t *testing.T) {
 		name      string
 		at        time.Time
 		want, not string
+		waiter    bool
 	}{
-		{"a lease to come", time.Now(), "; its lease runs to ", "ended at"},
-		{"a lease already past", time.Now().Add(48 * time.Hour), "; its lease ended at ", "runs to"},
+		{"a lease to come", time.Now(), "; its lease runs to ", "lapsed at", true},
+		{"a lease already past", time.Now().Add(48 * time.Hour), "; its lease lapsed at ", "runs to", false},
 	} {
 		until, ended := leaseEnd(repo.Root(), st, row.at)
 		if until == "" {
@@ -454,8 +460,14 @@ func TestTheLeaseIsSaidAsLastFetched(t *testing.T) {
 		if !strings.Contains(next, row.want+until+" as last fetched") || strings.Contains(next, row.not) {
 			t.Fatalf("%s: the lease is said as %q, as last fetched: %s", row.name, row.want, next)
 		}
-		if !strings.Contains(next, "a load-gate waiter in this copy (`abcd implement load --wait`") || strings.Contains(next, "nothing renews") {
-			t.Fatalf("%s: the answer says the load gate's waiter still renews it: %s", row.name, next)
+		if strings.Contains(next, "nothing renews") || strings.Contains(next, "ended at") {
+			t.Fatalf("%s: the answer says neither that nothing renews it nor that it ended: %s", row.name, next)
+		}
+		if got := strings.Contains(next, gateWaiterRenews); got != row.waiter {
+			t.Fatalf("%s: the answer says what a load-gate waiter renews: %v, want %v: %s", row.name, got, row.waiter, next)
+		}
+		if !row.waiter && (strings.Contains(next, "load-gate waiter") || !strings.Contains(next, " as last fetched, and nothing revives it")) {
+			t.Fatalf("%s: a lapsed lease is said to have lapsed, with nothing to revive it: %s", row.name, next)
 		}
 	}
 }
@@ -519,7 +531,7 @@ func TestAnAutoPlanHandBackSaveRefusedLeavesTheReservationHeld(t *testing.T) {
 // TestAnAutoPlanReleaseRefusedSaysTheWaiterRenewsIt: an auto-plan run's lane
 // handed back whose release origin refuses logs reservation_release_failed,
 // and the line promises no lapse the load gate's waiter can put off: it says
-// the waiter in this copy renews every reservation this copy pushed.
+// what the waiter in this copy renews (gateWaiterRenews).
 func TestAnAutoPlanReleaseRefusedSaysTheWaiterRenewsIt(t *testing.T) {
 	repo, bare := reservingDraftRepo(t)
 	root := repo.Root()
@@ -540,8 +552,7 @@ func TestAnAutoPlanReleaseRefusedSaysTheWaiterRenewsIt(t *testing.T) {
 		t.Fatalf("origin refused the tombstone, so the reservation is still held: %+v", tomb)
 	}
 	note := recordNote(t, repo, id, StageReservationReleaseFailed)
-	for _, want := range []string{", so it lapses with its lease once nothing renews it; ",
-		"a load-gate waiter in this copy (`abcd implement load --wait`, which `make preflight` and gated test runs use) renews every reservation this copy pushed while it waits"} {
+	for _, want := range []string{", so it lapses with its lease once nothing renews it; ", gateWaiterRenews} {
 		if !strings.Contains(note, want) {
 			t.Fatalf("the failed release's line says %q: %q", want, note)
 		}
@@ -587,5 +598,82 @@ func TestAParkedLaneHandedBackUnreleasedSaysNotReleased(t *testing.T) {
 	}
 	if st := stateOnDisk(t, f.repo.Root(), f.runID); st.Lanes[0].HandBack == nil {
 		t.Fatalf("the lane is handed back: %+v", st.Lanes[0])
+	}
+}
+
+// handedBackUnreleased hands a run's lane back while origin refuses the
+// tombstone, so the run's reservation stays live on origin with this copy's
+// own push at its tip, then lets origin take pushes again. It returns the
+// reservation as the hand-back left it.
+func handedBackUnreleased(t *testing.T) (repo *gittest.Repo, bare string, before reservation) {
+	t.Helper()
+	repo, bare, id, path := handingBackAtImplementer(t)
+	before = originReservation(t, bare, claim.RefPrefix+secondIssue)
+	undo := refuseReservationPush(t, bare, secondIssue)
+	if _, err := Receipt(repo.Root(), id, path, DefaultStages(), Options{}); err != nil {
+		t.Fatalf("the hand-back is written, so the hand-in succeeds: %v", err)
+	}
+	if note := recordNote(t, repo, id, StageReservationReleaseFailed); note == "" {
+		t.Fatal("premise: origin refused the tombstone, and the run logs the release owed")
+	}
+	undo()
+	return repo, bare, before
+}
+
+// TestTheGateWaiterRenewsAHandedBackReservationWhileLive ties gateWaiterRenews
+// to the code: claim.RenewDue, the renewal the load gate's waiter runs
+// (startHoldRenewal), renews a handed-back lane's reservation whose release
+// failed once it is half through its lease, since it is live, not a release,
+// and its tip is this copy's last push, though no step and no run renewal
+// renews it (TestAHandBackWhoseReleaseFailsSaysNotReleased).
+func TestTheGateWaiterRenewsAHandedBackReservationWhileLive(t *testing.T) {
+	repo, bare, before := handedBackUnreleased(t)
+	half := time.Now().Add(90 * time.Minute)
+	got, err := claim.RenewDue(repo.Root(), claimOptions(half))
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := slices.IndexFunc(got, func(r claim.Renewal) bool { return r.Record == secondIssue })
+	if at < 0 || got[at].Err != nil || !got[at].Until.After(half) {
+		t.Fatalf("the waiter's renewal renews the handed-back lane's live reservation: %+v", got)
+	}
+	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); tomb.released || tomb.commit == before.commit {
+		t.Fatalf("origin holds the renewal: %+v, was %+v", tomb, before)
+	}
+}
+
+// TestTheGateWaiterRevivesNoLapsedHandedBackReservation: the same reservation
+// read once its lease has lapsed is left alone by claim.RenewDue, which renews
+// only a live reservation, so the answer's "lapsed at ..., and nothing revives
+// it" (TestTheLeaseIsSaidAsLastFetched) holds against the waiter too.
+func TestTheGateWaiterRevivesNoLapsedHandedBackReservation(t *testing.T) {
+	repo, bare, before := handedBackUnreleased(t)
+	lapsed := time.Now().Add(72 * time.Hour)
+	got, err := claim.RenewDue(repo.Root(), claimOptions(lapsed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.ContainsFunc(got, func(r claim.Renewal) bool { return r.Record == secondIssue }) {
+		t.Fatalf("the waiter's renewal leaves a lapsed reservation alone: %+v", got)
+	}
+	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); tomb.commit != before.commit {
+		t.Fatalf("nothing was pushed over the lapsed reservation: %+v, was %+v", tomb, before)
+	}
+}
+
+// TestThePageSaysWhatTheGateWaiterRenews: commands/implement.md says what a
+// load-gate waiter renews in gateWaiterRenews's own words, and no longer that
+// it renews every reservation this copy pushed.
+func TestThePageSaysWhatTheGateWaiterRenews(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "commands", "implement.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := strings.Join(strings.Fields(string(raw)), " ")
+	if !strings.Contains(page, gateWaiterRenews) {
+		t.Fatalf("commands/implement.md says what a load-gate waiter renews as %q", gateWaiterRenews)
+	}
+	if strings.Contains(page, "renews every reservation") {
+		t.Fatal("commands/implement.md still says the waiter renews every reservation")
 	}
 }

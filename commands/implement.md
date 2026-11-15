@@ -1077,7 +1077,8 @@ stays open for the cutting session to merge or hold. A release whose tag is on
 while something renews it at half its lease: each step of the run does,
 whatever its stage, an implementer's long stage included (but not a run keyed
 by an issue whose lane is handed back: no step and no run renewal renews that reservation, though
-the load gate's waiter below still renews every reservation this copy pushed), so does handing an
+the load gate's waiter below may still renew it, as it renews each live reservation that is not a
+release, is half through its lease, and whose tip is the commit this copy last pushed), so does handing an
 agent's receipt back with `receipt`, so does `status`, so does the load gate's
 waiter (`implement load --wait` or `--race-gate`) an agent's `go test` or
 `make preflight` runs under, while it waits and while its command runs, and
@@ -1100,9 +1101,13 @@ with the outcome, since the issue is the person's again. A crash between the
 hand-back's write and the release leaves the lane handed back and the
 reservation held, with no line for it, until a drain routing the hand-back
 releases it or its lease runs out. No step and no run renewal renews it, but a
-load-gate waiter in this copy (`implement load --wait`, which `make preflight`
-and gated test runs use) renews every reservation this copy pushed while it
-waits, so the lease can run past the time the answer gives. A fetch or push that
+load-gate waiter in this copy (`abcd implement load --wait`, and `--race-gate`,
+which preflight's race stage uses) renews, while it waits and while its command
+runs, each live reservation that is not a release, is half through its lease,
+and whose tip is the commit this copy last pushed, and it never revives one that
+has lapsed or been released, so the lease can run past the time the answer
+gives; an answer whose lease has already lapsed says so, and that nothing
+revives it. A fetch or push that
 fails, and a release the reservation's tip refuses for a reason of its own (a
 tombstone it may not write, a tip it cannot read), is logged
 `reservation_release_failed` instead, never `reservation_released`. A
@@ -1110,7 +1115,7 @@ tombstone that would pass the message cap with its hand-back on it is pushed
 plain, and the logged line says the hand-back was not published, and why. For a lane a drain
 opened, the drain routing the hand-back pushes the tombstone again. A run
 `build <iss-N>` started has no drain routing it, so nothing retries a failed
-release: its reservation lapses with its lease. An intent's run keeps
+release: its reservation lapses with its lease unless a load-gate waiter in this copy renews it. An intent's run keeps
 its reservation through a hand-back, for the lanes it still holds. A run whose state records no
 reservation is neither renewed nor fenced.
 
@@ -1153,7 +1158,7 @@ directory in the shared folder, naming the stop and every run of this account's 
 page that cannot be written changes nothing about the stop: its answer and the listing say so. A
 pull request armed before the stop can still merge under it: the page and the listing's text name each
 with its disarm command, and nothing disarms it on its own. A drain's move does nothing for a parked run
-with the stop's mark, a merged lane's last step included, until the take-over or the lift that lets it go on. A save that fails holds the lane and keeps the claims only while something renews them, and under a stop in force only a drive still in an agent's call or a preflight renews a parked run's, which otherwise lapses at its lease with the work it could not take still uncommitted in its worktree and nowhere else. A stop file any
+with the stop's mark, a merged lane's last step included, until the take-over or the lift that lets it go on. A save that fails holds the lane and keeps the claims only while something renews them, and under a stop in force only a drive still in an agent's call or a preflight renews a parked run's, which otherwise lapses at its lease unless a load-gate waiter in this copy renews it, with the work it could not take still uncommitted in its worktree and nowhere else. A stop file any
 other account wrote, a symlink or an oversized file is no stop, and each step's answer names it.
 A run fixes the shared folder at its start and reads it before each move, with the
 platform's shared folder for the account it expects. A setting that cannot be read, that has gone or changed during the run, or a folder the run
@@ -1186,7 +1191,7 @@ may make it: one that falls due under a stop settles the run first only where it
 renewing abcd's version, and otherwise names the run it left unsettled for its own driver's check. Its
 claim is still renewed, with a line in its record and its file left at its own version, while an agent
 may be in its call or while that check has left work a save could not take; otherwise it is neither
-renewed nor let go, and lapses at its lease with the lane's work on its branch and in its worktree, none
+renewed nor let go, and lapses at its lease unless a load-gate waiter in this copy renews it, with the lane's work on its branch and in its worktree, none
 of it saved aside. A drain's move judges each whole save the same way. Under a stop it halts only the
 runs it may save, its refusal naming each run it leaves and that the run's own driver's next check takes
 the stop. With no stop, a run it finishes, syncs again, watches in the merge queue or hands back closed,
@@ -1507,7 +1512,7 @@ reads what it holds only as it starts, so a change of yours to a watched
 setting while a drive runs (a new credential helper, an editor, an include)
 ends it too. Look at the change and start it again. When a drive ends that
 way it releases nothing, since releasing is a push: it names each
-reservation it leaves and when its lease lapses, and once the setting is as it
+reservation it leaves and when its lease lapses unless a load-gate waiter in this copy renews it, and once the setting is as it
 should be you release one with `abcd reserve <id> --release`, or start the
 drive again, which takes the run up. What changes between a comparison and
 git's own run of the command is not seen.

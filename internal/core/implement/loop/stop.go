@@ -304,7 +304,7 @@ func stopRefusal(runID string, rec RunStop) error {
 // run (drive_stop.go). They are two things, and neither answers for the other. Nothing
 // is settled while both stand, since what the run says is not known to be the driver's:
 // its work is not saved aside and its reservation is not released, which lapses with its
-// lease. Lifting the stop leaves the drive's stop, and removing that leaves the stop, which
+// lease unless a load-gate waiter in this copy renews it (gateWaiterRenews). Lifting the stop leaves the drive's stop, and removing that leaves the stop, which
 // the run then takes in its order.
 func stopOverDriveStop(runID string, s runstop.Stop) error {
 	return contend(StageStop, "", "", fmt.Sprintf("a stop set by %s at %s holds, and a drive stopped on %s because its state changed, so nothing is settled from what it now says",
@@ -721,7 +721,7 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 		clause, failed := releaseReservation(repoRoot, st.Key, "", now)
 		stage := StageReservationReleased
 		if failed {
-			clause += ", so it lapses with its lease"
+			clause += ", so it lapses with its lease " + unlessWaiterRenews
 			stage = StageReservationReleaseFailed
 		}
 		// A run a drive already let go keeps the note made then, which is what its lane

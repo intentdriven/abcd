@@ -340,7 +340,7 @@ what it still holds, a lane parked at its open pull request included, read from 
 and only when its renewal is due. A claim that lapsed anyway, a machine asleep past its
 lease, is reserved again on waking; a peer who took the issue meanwhile keeps it, and the
 lane goes back as stuck, as it does when its reservation was released during the wait.
-A judge's hold is the one thing left to lapse in a wait that long: the next move drops the
+A judge's hold is the one thing left to lapse in a wait that long, unless a load-gate waiter in this copy renews it: the next move drops the
 request and asks again, after the drain's other eligible work.
 
 With no `--until` no probe runs: the lane's own launch finds out, as the yes said.
@@ -368,7 +368,7 @@ holds it. A preflight queued at the load gate or running ends at the next look t
 start. A run that stop halted waits for `abcd implement resume --take <run-id>`, also
 after the stop lifts: a new drive names it, passes over it and goes on to other work. A take-over made from a plain terminal records as the run's driver the nearest process above it that is not a shell or abcd; a terminal multiplexer, or a terminal program shared by several windows, is that one process for all of its panes and windows. A drive whose own nearest such process is the recorded driver takes the run from it, with a line in the run's record saying so, only when the recorded driver names no session, no process on the way up from the drive holds a session marker, every session marker could be read, and only shells run beneath that process besides the drive, the processes the drive runs under and the ones it started. Otherwise it waits. Where another process runs beneath the recorded driver, a session marker could not be read, or the process table could not be read again under the run's lock, its wait says which, naming the process or the number of files, and it looks again later. In every other case it gives the plain reason that the run is driven by that process. A drive whose output is piped to another program, or a long-lived helper under the same terminal, is such another process and keeps the drive waiting while it runs. A drive started through a program that stays as its parent, such as one that keeps the machine awake or a recorder, is not under the terminal by this rule and waits. The rule cannot tell a terminal from a host that left no marker and has no other process beneath it: an agent a host runs inside its own process is not in the process table. Nor does it see a step whose shell ended after it claimed, which the process table no longer shows beneath the terminal. A lane parked on its pull request that a signal halted waits the same way: the drive's end names that take-over and no resume command, and a new drive names it and passes over it. A stop and a drive's stop on a run whose state changed are two things: while both
 stand the run is not settled, its work is not saved aside and its reservation lapses with
-its lease. Lifting the stop leaves the other, and removing the other leaves the stop.
+its lease unless a load-gate waiter in this copy renews it. Lifting the stop leaves the other, and removing the other leaves the stop.
 
 ## The rule
 
@@ -606,7 +606,8 @@ what it did in `next`:
   once, as it would any program, which is the way out of a move waiting on a
   network act, and releases nothing then. A drain killed outright
   (`SIGKILL`) releases
-  nothing, and its reservation lapses after one lease (two hours by default).
+  nothing, and its reservation lapses after one lease (two hours by default)
+  unless a load-gate waiter in this copy renews it.
   Each release is a fetch and one tombstone push over the commit the drain's
   reservation made, made only while that commit is still the tip, so a
   reservation you made or renewed with `abcd reserve` since is left as it

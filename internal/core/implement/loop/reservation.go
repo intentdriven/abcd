@@ -1249,7 +1249,8 @@ func (e *footprintEntryError) Error() string {
 }
 
 // releaseKey releases a reservation a start took and then could not create
-// its run for, best effort: a failure leaves it to lapse with its lease.
+// its run for, best effort: a failure leaves it to lapse with its lease
+// unless a load-gate waiter in this copy renews it (gateWaiterRenews).
 func releaseKey(repoRoot, key string, now time.Time) {
 	_, _ = claim.Reserve(repoRoot, claim.Request{Record: key, Release: true}, claimOptions(now))
 }
@@ -1280,7 +1281,7 @@ func releaseOnHandBack(repoRoot string, st *State, hb HandBack, now time.Time) {
 	clause, failed := releaseReservation(repoRoot, st.Key, tombstoneKind(hb), now)
 	stage := StageReservationReleased
 	if failed {
-		clause += ", so it lapses with its lease unless a drain routing the hand-back releases it"
+		clause += ", so it lapses with its lease " + unlessWaiterRenews + " or a drain routing the hand-back releases it"
 		stage = StageReservationReleaseFailed
 	}
 	st.Record = append(st.Record, Entry{At: now, Stage: stage, Note: clause})
@@ -1333,7 +1334,7 @@ func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) s
 	}
 	clause, failed := releaseReservation(repoRoot, run.Key, tombstoneKind(hb), now)
 	if failed {
-		return clause + ", so it lapses with its lease"
+		return clause + ", so it lapses with its lease " + unlessWaiterRenews
 	}
 	// The retry released it: the run's record says so (iss-2610150616434848),
 	// so its last reservation entry is no longer the failure, and a later

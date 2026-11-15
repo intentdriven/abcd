@@ -23,9 +23,10 @@ type handBackRelease struct {
 	autoPlan bool
 	// clause is the run record's line for the release (releaseOnHandBack).
 	clause string
-	// until is when a reservation the release failed to free lapses, as this
-	// checkout last fetched it, "" where that view does not show it as this
-	// copy's; ended is set when that time is already past.
+	// until is the end of the lease of a reservation the release failed to
+	// free, as this checkout last fetched it, "" where that view does not show
+	// it as this copy's; ended is set when that time is already past: the
+	// reservation has lapsed, and nothing revives it.
 	until string
 	ended bool
 	// unwritten is the second write's error: the line is not in the record.
@@ -58,8 +59,8 @@ type handBackRelease struct {
 // releases it (releaseHandedBack), and otherwise it lapses once its lease runs
 // out unrenewed. No step and no run renewal renews a handed-back issue run's
 // reservation (handedBackIssue), but a load-gate waiter in this copy
-// (claim.RenewDue, which reads no run) renews every reservation this copy
-// pushed while it waits, so the lease can run past the time the answer gives.
+// (claim.RenewDue, which reads no run) may still renew it, as gateWaiterRenews
+// says, so the lease can run past the time the answer gives.
 func releaseAfterWrite(repoRoot string, st *State, lane string, now time.Time) *handBackRelease {
 	out := &handBackRelease{}
 	st.afterWritten(func(s *State, rewrite func() error) {
@@ -109,9 +110,11 @@ func releasedThisHold(st State) bool {
 	return false
 }
 
-// leaseEnd is when the run's reservation lapses, as this checkout last
-// fetched it (claim.View reads no remote), "" where that view does not show
-// it as this copy's; ended is set when that time is not after now.
+// leaseEnd is the end of the run's reservation's lease as this checkout last
+// fetched it (claim.View reads no remote), which a load-gate waiter in this
+// copy may put off while the reservation is live (gateWaiterRenews), "" where
+// that view does not show it as this copy's; ended is set when that time is
+// not after now: the reservation has lapsed, and nothing revives it.
 func leaseEnd(repoRoot string, st State, now time.Time) (until string, ended bool) {
 	snap, err := claim.View(repoRoot, now)
 	if err != nil {
@@ -129,7 +132,8 @@ func leaseEnd(repoRoot string, st State, now time.Time) (until string, ended boo
 // did not take it; "released, not recorded" where it did and the record's
 // second write failed. An issue run's lease is told as this checkout last
 // fetched it: "runs to" a time to come, which a load-gate waiter in this copy
-// may extend (waiterRenews), "ended at" one already past.
+// may put off (waiterRenews), "lapsed at" one already past, which nothing
+// revives, so it gets no waiter's clause.
 func (r *handBackRelease) next() string {
 	if r == nil || !r.made {
 		return ""
@@ -152,7 +156,7 @@ func (r *handBackRelease) next() string {
 	s := "the lane was handed back and its reservation not released: " + r.clause
 	switch {
 	case r.until != "" && r.ended:
-		s += "; its lease ended at " + r.until + " as last fetched; " + waiterRenews
+		s += "; its lease lapsed at " + r.until + " as last fetched, and nothing revives it"
 	case r.until != "":
 		s += "; its lease runs to " + r.until + " as last fetched, longer if a load-gate waiter in this copy renews it: " + waiterRenews
 	default:
@@ -166,11 +170,22 @@ func (r *handBackRelease) next() string {
 // waiter (gateWaiterRenews).
 const waiterRenews = "no step and no run renewal renews a handed-back lane's reservation, but " + gateWaiterRenews
 
-// gateWaiterRenews says the renewal no run governs: the load gate's waiter
-// renews this copy's own reservations half through their lease whatever the
-// run says (claim.RenewDue), a reservation whose release failed included.
-const gateWaiterRenews = "a load-gate waiter in this copy " +
-	"(`abcd implement load --wait`, which `make preflight` and gated test runs use) renews every reservation this copy pushed while it waits"
+// gateWaiterRenews says the renewal no run governs, as claim.RenewDue makes
+// it (renewdue.go: live, not a release, half through, the tip this copy's last
+// push; renew-only and live-only) and the waiter runs it (startHoldRenewal in
+// implement_load.go, at once and every round until the command exits), a
+// reservation whose release failed included. Every text that says what the
+// waiter renews uses it, and commands/implement.md says the same words
+// (TestThePageSaysWhatTheGateWaiterRenews).
+const gateWaiterRenews = "a load-gate waiter in this copy (`abcd implement load --wait`, and `--race-gate`, which preflight's race stage uses) " +
+	"renews, while it waits and while its command runs, each live reservation that is not a release, is half through its lease, " +
+	"and whose tip is the commit this copy last pushed, and it never revives one that has lapsed or been released"
+
+// unlessWaiterRenews is the clause a lapse said of a reservation that may still
+// be live and this copy's last push takes: a load-gate waiter in this copy may
+// renew it (gateWaiterRenews), so the lapse is not promised. A reservation that
+// is certainly not live (lapsed, or released) takes no such clause.
+const unlessWaiterRenews = "unless a load-gate waiter in this copy renews it"
 
 // said is note, the run record's last line a caller read in the save's
 // callback, as the caller says it once the save has returned: where a release

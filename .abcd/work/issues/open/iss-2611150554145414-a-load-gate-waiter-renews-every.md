@@ -12,4 +12,4 @@ found_at: "internal/core/claim/renewdue.go"
 remedy: "renew from the waiter only reservations whose run the loop reads as still needing them, or skip a reservation whose record logs a failed release"
 ---
 
-A load-gate waiter renews every reservation the copy last pushed, including one whose lane was handed back and whose release failed, so that reservation does not lapse while the copy runs gated tests
+A load-gate waiter renews each live, non-release reservation half through its lease whose tip the copy last pushed, including one whose lane was handed back and whose release failed, so that reservation does not lapse while the copy runs gated tests

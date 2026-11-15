@@ -54,7 +54,8 @@ const (
 	// TerminalUntil: the bound the person set with --until has passed.
 	TerminalUntil = "until"
 	// TerminalKilled: the context ended, a second signal: the agent's process
-	// group was killed, and what it held lapses on its own.
+	// group was killed, and what it held lapses on its own unless a load-gate
+	// waiter in this copy renews it (gateWaiterRenews).
 	TerminalKilled = "killed"
 	// TerminalPassedLanes: the only lanes the drain has left in progress are ones the
 	// drive passed over, since it may not save them (PassedLane): the drain stays open,
@@ -2061,7 +2062,7 @@ func dropMovedRun(repoRoot string, run State, why string, now time.Time, o Optio
 		clause, failed := releaseReservationAt(repoRoot, run.Key, tip, "", now)
 		why += "; " + clause
 		if failed {
-			why += ", so it lapses with its lease"
+			why += ", so it lapses with its lease " + unlessWaiterRenews
 		} else if err := mutateReservation(repoRoot, run.RunID, func(st *State) (bool, error) {
 			st.Record = append(st.Record, Entry{At: now, Stage: StageReservationReleased, Note: clause})
 			st.UpdatedAt = now
@@ -2476,7 +2477,7 @@ func (t *terminal) letGo() {
 		return nil
 	})
 	if err != nil {
-		t.say("what this run holds was not released, and lapses with its lease: %s", err.Error())
+		t.say("what this run holds was not released, and lapses with its lease "+unlessWaiterRenews+": %s", err.Error())
 	}
 }
 
@@ -2493,7 +2494,7 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 	t.say("nothing this drive holds was released: releasing is a push, and the drive runs none while %s", termsafe.Sanitize(fsutil.RedactHome(reason)))
 	st, live, err := readDrain(t.repoRoot)
 	if err != nil {
-		t.say("which reservations this drive holds could not be read, and each lapses with its lease: %s", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		t.say("which reservations this drive holds could not be read, and each lapses with its lease "+unlessWaiterRenews+": %s", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 		return
 	}
 	var ids []string
@@ -2521,6 +2522,7 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 				lapses = "lapses at " + stamp(r.EffectiveExpiry)
 			}
 		}
+		lapses += " " + unlessWaiterRenews
 		t.say("%s: its reservation was not released and %s; once what the drive holds is as it should be, release it with `abcd reserve %s --release`, or start the drive again, which takes the run up",
 			termsafe.Sanitize(id), lapses, termsafe.Sanitize(id))
 	}

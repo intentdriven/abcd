@@ -37,7 +37,7 @@ func TestADriveEndedByAHeldChangeSaysWhatItLeftAndHowToReleaseIt(t *testing.T) {
 	if !strings.Contains(said, "nothing this drive holds was released: releasing is a push, and the drive runs none while what the drive holds changed since it started (core.sshcommand") {
 		t.Fatalf("the person is told nothing was released, and why:\n%s", said)
 	}
-	left := regexp.MustCompile("(?m)^(\\S+): its reservation was not released and lapses at (\\S+); once what the drive holds is as it should be, release it with `abcd reserve (\\S+) --release`, or start the drive again, which takes the run up$").FindStringSubmatch(said)
+	left := regexp.MustCompile("(?m)^(\\S+): its reservation was not released and lapses at (\\S+) unless a load-gate waiter in this copy renews it; once what the drive holds is as it should be, release it with `abcd reserve (\\S+) --release`, or start the drive again, which takes the run up$").FindStringSubmatch(said)
 	if left == nil || left[1] != res.Issue || left[3] != res.Issue {
 		t.Fatalf("the reservation left is named with when it lapses and how to release it (issue %q):\n%s", res.Issue, said)
 	}

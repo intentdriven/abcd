@@ -1326,7 +1326,8 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		// An issue run whose lane is handed back is not renewed here: the
 		// issue is a person's again, and a reservation its release left held
 		// lapses once nothing renews it, though a load-gate waiter in this
-		// copy still renews it while it waits (claim.RenewDue reads no run).
+		// copy may still renew it, as gateWaiterRenews says (claim.RenewDue
+		// reads no run).
 		logged := len(st.Record)
 		renewNote := ""
 		if !handedBackIssue(*st) {

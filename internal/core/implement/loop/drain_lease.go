@@ -22,13 +22,13 @@ import (
 // progress at half its lease, judged on view (as the move fetched it; read
 // from disk when nil), and logs it in the lane's run record. A lane parked at
 // land is the merged-lane finish's to renew (finishMerged), and a lane its run
-// has handed back, by its own step or as stuck, is renewed by nothing: the
+// has handed back, by its own step or as stuck, is not renewed by this pass: the
 // drain has not routed it yet, as a paused move does not, and its
 // reservation, released or left holding by a release origin refused, is
 // the routing's (releaseHandedBack). It returns the
 // notes of renewals that failed or found the hold another's, for the move's
 // next step; a lane whose run cannot be read is left to the routing below,
-// which names it. A run a drive let go is renewed by nothing here either: the tip of
+// which names it. A run a drive let go is not renewed by this pass either: the tip of
 // a release that did not reach origin is the take-up's, which compares the record first.
 func renewInProgress(repoRoot string, st DrainState, view *claim.Snapshot, now time.Time) []string {
 	var notes []string
@@ -72,7 +72,8 @@ func renewInProgress(repoRoot string, st DrainState, view *claim.Snapshot, now t
 // lease, or read as another's, as a drain's move does (finishMerged), for a wait
 // long enough that no move comes: otherwise a peer could redo work that only awaits
 // its merge, and the land fence would not arm. The forge is read first, and only
-// when one is due, so a closed or conflicting pull request's lane is left to lapse.
+// when one is due, so a closed or conflicting pull request's lane is left to lapse
+// unless a load-gate waiter in this copy renews it (gateWaiterRenews).
 // It returns what a renewal that did not go through said. The save is the
 // reservation's alone, as every renewal's is, so a run another driver wrote at
 // another version stays at it. A run whose lane the drive passed over (passed,
