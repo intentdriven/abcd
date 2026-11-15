@@ -243,5 +243,5 @@ func questionLimitsFor(roots layered.Roots, errOut io.Writer) (question.Limits, 
 		_ = questionFailOpen(errOut, "%s; the questions are measured at abcd's defaults", err)
 		return v.V, question.LimitsNote{}, nil
 	}
-	return question.Limits{}, question.LimitsNote{}, errors.New(termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+	return question.Limits{}, question.LimitsNote{}, errors.New(termsafe.SanitizeLine(fsutil.RedactHome(err.Error())))
 }

@@ -2,12 +2,14 @@ package cli
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/core/rules"
 )
@@ -285,6 +287,33 @@ func TestHostileQuestionConfigNeverReachesGrill(t *testing.T) {
 			}
 			if strings.ContainsAny(errb, "\u2028\u2029") {
 				t.Errorf("stderr carries a raw line separator: %q", errb)
+			}
+		})
+	}
+}
+
+// TestHostileQuestionConfigNeverSplitsARefusalLine (spc-2610301950037469,
+// approach 7): the refusal a refused question setting draws is one line
+// wherever abcd writes it, so the verb's text, its exit message and the
+// written interviews' front door carry none of the file's line separators.
+func TestHostileQuestionConfigNeverSplitsARefusalLine(t *testing.T) {
+	for name, body := range hostileQuestionConfigs(t) {
+		t.Run(name, func(t *testing.T) {
+			repo := unmanagedRepo(t)
+			writeRepoQuestionConfig(t, repo, body)
+			stdout, stderr, code := runGuard("", "guard", "question", corpusPath(t, "clean-number"))
+			if code != 2 || !strings.Contains(stdout, "limits: refused: ") {
+				t.Fatalf("guard question: exit %d, want 2 with the refusal line\n%s\n%s", code, stdout, stderr)
+			}
+			if strings.ContainsAny(stdout+stderr, "\u2028\u2029") {
+				t.Errorf("the verb's output carries a raw line separator:\n%q\n%q", stdout, stderr)
+			}
+			_, _, err := questionLimitsFor(layered.Roots{Repo: repo, Home: t.TempDir()}, io.Discard)
+			if err == nil {
+				t.Fatal("the written interviews' front door admitted a refused setting")
+			}
+			if strings.ContainsAny(err.Error(), "\u2028\u2029") {
+				t.Errorf("the front door's refusal carries a raw line separator: %q", err)
 			}
 		})
 	}
