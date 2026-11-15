@@ -5,11 +5,14 @@
 // use, and never beside the user's own projects (adr-2609091248200336, whose
 // location adr-2610031751065746 spells under the renamed home).
 //
-// It is the only code that makes a directory in the store. The lane for a
-// repository is LaneFor's answer, its levels are made by Lane.Ensure, a
-// worktree already there is found by Adopt, and a new one is made by Add; the
-// build loop's lane step calls these rather than a copy of them, so there is
-// one way a worktree enters the store.
+// The lane for a repository is LaneFor's answer, its levels are made by
+// Lane.Ensure, a worktree already there is found by Adopt, and a new one is
+// made by Add; the build loop's lane step calls these rather than a copy of
+// them, so a session's or a lane's worktree enters the store one way. The one
+// other directory made in a lane is abcd's embargo store
+// (<lane>/embargo/), which internal/core/embargo makes as a detached worktree
+// of its own; this package lists it as a sibling store and never judges,
+// archives or removes it.
 //
 // The package never prints. It returns values and a typed *Refusal, whose
 // text is home-redacted, and a front door formats them.
