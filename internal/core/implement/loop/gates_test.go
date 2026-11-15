@@ -117,3 +117,27 @@ func TestDriveGateNamesTheWorkflowFolderAndFoldsCase(t *testing.T) {
 		}
 	}
 }
+
+// TestAHooksPathAtTheTopMakesEveryPathAGate: a configured hooks path that is
+// the tree's own top, however written, makes every path a gate, as a hooks
+// directory counts with all below it; an empty path still names nothing.
+func TestAHooksPathAtTheTopMakesEveryPathAGate(t *testing.T) {
+	for _, hooks := range []string{".", "./", "a/.."} {
+		for _, path := range []string{"pre-push", "internal/x.go"} {
+			if !DriveGate(path, hooks) {
+				t.Errorf("DriveGate(%q, %q) is false", path, hooks)
+			}
+		}
+		if DriveGate("", hooks) {
+			t.Errorf("an empty path is a gate under hooks path %q", hooks)
+		}
+	}
+	repo := briefRepo(t, agentsMarked)
+	for _, value := range []string{".", "./"} {
+		repo.Git("config", "core.hooksPath", value)
+		p, err := DriveHooksPath(repo.Root())
+		if err != nil || !DriveGate("internal/x.go", p) {
+			t.Fatalf("core.hooksPath %q reads as %q (%v), which leaves internal/x.go no gate", value, p, err)
+		}
+	}
+}

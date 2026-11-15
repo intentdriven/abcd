@@ -23,19 +23,31 @@ var DriveGates = []string{"Makefile", "GNUmakefile", "makefile", "scripts/", ".g
 // or under the hooks path the repository configures, hooksPath (DriveHooksPath).
 // A directory counts with or without its trailing slash. Each part of the name is
 // compared as a case-folding filesystem compares it, whatever this machine's
-// filesystem does (fsutil.FoldedPathMatch).
+// filesystem does (fsutil.FoldedPathMatch). A hooks path of the tree's top
+// makes every path a gate, as a hooks directory counts with all below it. An
+// empty path names nothing.
 func DriveGate(path, hooksPath string) bool {
 	path = filepath.ToSlash(filepath.Clean(path))
+	if path == "." {
+		return false
+	}
 	for _, gate := range DriveGates {
 		dir := strings.TrimSuffix(gate, "/")
 		if fsutil.FoldedPathMatch(path, dir, dir != gate) {
 			return true
 		}
 	}
-	if hooksPath = strings.Trim(hooksPath, "/"); hooksPath != "" {
-		return fsutil.FoldedPathMatch(path, hooksPath, true)
+	if hooksPath == "" {
+		return false
 	}
-	return false
+	switch hooks := strings.Trim(filepath.ToSlash(filepath.Clean(hooksPath)), "/"); hooks {
+	case "":
+		return false
+	case ".":
+		return true
+	default:
+		return fsutil.FoldedPathMatch(path, hooks, true)
+	}
 }
 
 // DriveHooksPath is the hooks path the repository at dir configures, relative to
