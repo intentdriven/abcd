@@ -12,8 +12,9 @@ package sweep
 // the sweep composes those judgements with the liveness probe and never
 // re-makes them.
 //
-// runDry, runApply, newProbe and hostProcesses are the package's entry points
-// and stay unexported until the surfaces (step 5) call them: an exported core
+// runSweep, which runs every half of a sweep in the spec's order, runDry,
+// runApply, newProbe and hostProcesses are the package's entry points and
+// stay unexported until the surfaces (step 5) call them: an exported core
 // function no front door reaches is scaffolding the reach audit refuses.
 
 import (
@@ -27,6 +28,9 @@ import (
 
 	store "github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
+	"github.com/intentdriven/abcd/internal/core/record/match"
+	"github.com/intentdriven/abcd/internal/core/report"
+	"github.com/intentdriven/abcd/internal/core/reservesweep"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -43,8 +47,11 @@ type Options struct {
 	// Probe is what the liveness probe reads: the reservations already
 	// fetched, the build loop's runs, the process lister and the clock.
 	Probe ProbeOptions
-	// Forge is the store's forge client for the merged judgement; nil asks
-	// none, and merged is judged from git alone.
+	// Forge is the forge client every half asks: the store's merged
+	// judgement, the pull requests on origin's branches and the reservation
+	// workflow's dispatch. nil asks none, and merged is judged from git
+	// alone. Every call is pinned to origin's repository (forge.go); when it
+	// cannot be, none is made.
 	Forge store.GH
 	// Held reads what the build loop holds, as the store's prune reads it. It
 	// is required: like prune, a sweep that cannot tell what the loop holds
@@ -54,6 +61,10 @@ type Options struct {
 	// kept, as prune keeps its own. It is required, as Held is: a sweep that
 	// does not know where it runs could remove the worktree it runs in.
 	Cwd string
+	// Match is the filing-time match each promoted inbox report's record
+	// runs, configured as the inbox's promote verb configures it; nil files
+	// each unmatched.
+	Match *match.Config
 
 	// changes reads the paths a worktree changes, running git in it; nil is
 	// changedPaths. A test sets it to see which worktrees git ran in.
@@ -62,6 +73,26 @@ type Options struct {
 	// PruneOne. A test sets it to see which worktrees the prune was asked
 	// about.
 	pruneOne func(repoRoot, name string, opts store.PruneOptions) (store.Pruned, error)
+	// reservations is the reservation sweep's judgement; nil is
+	// reservesweep.Sweep. It is always asked with Apply false. A test sets
+	// it to judge reservations without a fetch.
+	reservations func(root string, o reservesweep.Options) (reservesweep.Report, error)
+	// inbox lists the reports waiting in abcd's inbox; nil is report.List.
+	// promote files one of them; nil is report.Promote. A test sets either
+	// to see what was asked, or to have a promotion fail.
+	inbox   func() ([]report.Entry, error)
+	promote func(ledgerRoot, id string, mc *match.Config) (report.Promoted, error)
+	// onLastCheck, when set, is told each stage the last check before a
+	// delete on origin has passed (lastCheckWorktrees, lastCheckProbe). A
+	// test sets it to end the run's context at that point.
+	onLastCheck func(stage string)
+
+	// forgeChecked says Forge was pinned to origin's repository already
+	// (pinnedForge), forgeKey is that repository's key, and forgeUnmatched
+	// is why it could not be, when Forge was given and now is nil.
+	forgeChecked   bool
+	forgeKey       string
+	forgeUnmatched string
 }
 
 // runDry judges every worktree of the repository at repoRoot and every entry
@@ -76,12 +107,14 @@ func runDry(ctx context.Context, repoRoot string, o Options) (Result, error) {
 
 // plan is what runApply acts on beside the result: the store's row behind
 // each of the result's rows, in order, the salvage each save-patch row would
-// write, by the row's index, and the lane and judge that made them.
+// write, by the row's index, the lane and judge that made them, and the
+// options they were made with, the forge pinned.
 type plan struct {
 	srcs     []store.Row
 	salvages map[int]salvage
 	lane     store.Lane
 	j        judge
+	o        Options
 }
 
 // judgeRepo is runDry, also answering with the plan behind the result's rows,
@@ -92,12 +125,10 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options, retain bool) (Re
 		res, err := refused(err)
 		return res, plan{}, err
 	}
-	if o.Held == nil {
-		return fail(errors.New("sweep: a dry run needs a reader of what the build loop holds"))
+	if err := o.required(); err != nil {
+		return fail(err)
 	}
-	if o.Cwd == "" {
-		return fail(errors.New("sweep: a dry run needs its own working directory, to keep the worktree holding it"))
-	}
+	o = o.pinnedForge(ctx, repoRoot)
 	listing, err := store.List(repoRoot, store.ListOptions{Forge: o.Forge})
 	if err != nil {
 		return fail(err)
@@ -125,6 +156,10 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options, retain bool) (Re
 		j.changes = changedPaths
 	}
 	j.cwd = fsutil.RealExistingPath(o.Cwd)
+	if o.forgeUnmatched != "" {
+		// The store asked no forge, and would say none was given.
+		listing.ForgeNote = clean(o.forgeUnmatched + "; merged is judged from git alone")
+	}
 	res := Result{
 		Lane:                    listing.Lane,
 		Rows:                    make([]Row, 0, len(listing.Worktrees)),
@@ -133,7 +168,7 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options, retain bool) (Re
 		RunsUnread:              clean(p.runsUnread),
 		ForgeNote:               listing.ForgeNote,
 	}
-	pl := plan{srcs: listing.Worktrees, salvages: map[int]salvage{}, lane: lane, j: j}
+	pl := plan{srcs: listing.Worktrees, salvages: map[int]salvage{}, lane: lane, j: j, o: o}
 	sv := &salvager{ctx: ctx, repoRoot: repoRoot, home: home, lane: lane, retain: retain}
 	for i, r := range listing.Worktrees {
 		row := j.row(r)
@@ -145,6 +180,87 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options, retain bool) (Re
 		res.Rows = append(res.Rows, row)
 	}
 	return res, pl, nil
+}
+
+// required is why the options cannot run a sweep, nil when they can: Held
+// and Cwd are required, as the store's prune requires them.
+func (o Options) required() error {
+	if o.Held == nil {
+		return errors.New("sweep: a dry run needs a reader of what the build loop holds")
+	}
+	if o.Cwd == "" {
+		return errors.New("sweep: a dry run needs its own working directory, to keep the worktree holding it")
+	}
+	return nil
+}
+
+// runSweep is one whole sweep of the repository at repoRoot, a dry run or,
+// with apply, an applied one: its halves in the order of the spec's Rows,
+// the worktrees with the strays and the embargo store (runDry or runApply),
+// the local branches (sweepBranches), the branches on origin (sweepRemote),
+// the reservations (sweepReservations) and the inbox (sweepInbox), each
+// half's rows after the one before. Options without Held or Cwd refuse the
+// whole run before any half runs.
+//
+// Every other half runs whatever the one before it answered: each judges its
+// own items, keeps what its own reads cannot clear, and refuses or faults on
+// its own, and once the run's context has ended each later half refuses
+// itself before it reads anything. The result's Refusal is every half's
+// refusal or fault, each distinct one once, named by its half, in the order
+// the halves ran, and the error carries the same text and wraps every
+// half's error, so ExitCode reads ExitRefused when any half refused or
+// faulted. Each failed-closed check is said once: the first half's note for
+// each, and every distinct forge note.
+func runSweep(ctx context.Context, repoRoot string, o Options, apply bool) (Result, error) {
+	if err := o.required(); err != nil {
+		return refused(err)
+	}
+	// One pin serves every half: origin's repository is asked of the forge
+	// once a run.
+	o = o.pinnedForge(ctx, repoRoot)
+	halves := []struct {
+		name string
+		run  func() (Result, error)
+	}{
+		{"worktrees", func() (Result, error) {
+			if apply {
+				return runApply(ctx, repoRoot, o)
+			}
+			return runDry(ctx, repoRoot, o)
+		}},
+		{"local branches", func() (Result, error) { return sweepBranches(ctx, repoRoot, apply) }},
+		{"origin's branches", func() (Result, error) { return sweepRemote(ctx, repoRoot, o, apply) }},
+		{"reservations", func() (Result, error) { return sweepReservations(ctx, repoRoot, o, apply) }},
+		{"inbox", func() (Result, error) { return sweepInbox(ctx, repoRoot, o, apply) }},
+	}
+	out := Result{Rows: []Row{}, Applied: apply}
+	var (
+		errs     []error
+		refusals []string
+	)
+	for _, half := range halves {
+		res, err := half.run()
+		out.Rows = append(out.Rows, res.Rows...)
+		out.Lane = firstNonEmpty(out.Lane, res.Lane)
+		out.ProcessCheckUnavailable = firstNonEmpty(out.ProcessCheckUnavailable, res.ProcessCheckUnavailable)
+		out.ReservationsUnread = firstNonEmpty(out.ReservationsUnread, res.ReservationsUnread)
+		out.RunsUnread = firstNonEmpty(out.RunsUnread, res.RunsUnread)
+		out.Workflow = firstNonEmpty(out.Workflow, res.Workflow)
+		if res.ForgeNote != "" && !strings.Contains(out.ForgeNote, res.ForgeNote) {
+			out.ForgeNote = strings.TrimPrefix(out.ForgeNote+"; "+res.ForgeNote, "; ")
+		}
+		if err != nil {
+			errs = append(errs, err)
+			if r := half.name + ": " + firstNonEmpty(res.Refusal, clean(err.Error())); !slices.Contains(refusals, r) {
+				refusals = append(refusals, r)
+			}
+		}
+	}
+	if len(errs) == 0 {
+		return out, nil
+	}
+	out.Refusal = strings.Join(refusals, "; ")
+	return out, &refusal{msg: out.Refusal, cause: errors.Join(errs...)}
 }
 
 // refused is the result and error of a run that refused before judging. The

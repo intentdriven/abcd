@@ -982,7 +982,8 @@ same person's other copy holds it and no take-over was asked for, or a
 footprint path that is not a generated file is in another person's live
 reservation's footprint (or, for a build's or a drain's reservation, the same
 person's from another copy), or a drain's reservation meets a hand-back that stands,
-or the record is finished (resolved, won't-fixed, shipped or superseded) on
+or a release is reserved while another release is still being cut (see "One
+release at a time"), the same person's and copy's included, or the record is finished (resolved, won't-fixed, shipped or superseded) on
 origin's default branch. Exit 2 on the cap,
 on a fork origin, on the embargo store's refusal, and on every other refusal
 and failure. The sweep exits 0 when it ran (a branch that moved since it was

@@ -23,8 +23,9 @@ const (
 )
 
 // stageGateFiles are the first parts of a path, below a stage's working tree, that
-// decide how its lane is judged. No work's footprint opens them.
-var stageGateFiles = []string{".githooks", "hooks", "Makefile", "GNUmakefile", "makefile"}
+// decide how its lane is judged, the forge's workflow folder among them. No work's
+// footprint opens them.
+var stageGateFiles = []string{".githooks", "hooks", "Makefile", "GNUmakefile", "makefile", ".github"}
 
 // stageAbcdGates are the files under .abcd that do the same, by path below the
 // tree: each, and all below each. The reservation state (the copy's key, its
@@ -523,25 +524,21 @@ func StageProgramRefusal(f *Files, line string) string {
 // stageGateFile is the gate file path lands in below tree, "" when it lands in
 // none or tree does not hold it. What decides how a lane is judged is never
 // opened by a declaration; a record under .abcd is, where declared names it.
+// path is placed below tree as PathWithin places it (fsutil.RelWithin), and
+// each part below tree compares as a case-folding filesystem compares names,
+// whatever this machine's does (fsutil.FoldedPathMatch), since the tree is
+// checked out on machines whose filesystems may fold it.
 func stageGateFile(tree, path string, declared []string, fold bool) string {
-	if !fsutil.PathWithin(path, tree, fold) {
-		return ""
-	}
-	rel, err := filepath.Rel(tree, path)
-	if err != nil {
+	rel, ok := fsutil.RelWithin(tree, path, fold)
+	if !ok {
 		return ""
 	}
 	rel = filepath.ToSlash(rel)
-	below := func(top string) bool {
-		if fold {
-			return strings.EqualFold(rel, top) || (len(rel) > len(top) && strings.EqualFold(rel[:len(top)+1], top+"/"))
-		}
-		return rel == top || strings.HasPrefix(rel, top+"/")
-	}
+	below := func(top string) bool { return fsutil.FoldedPathMatch(rel, top, true) }
 	if name := firstOf(stageAbcdGates, below); name != "" {
 		return name
 	}
-	if name := nestedLocalGate(rel, fold); name != "" {
+	if name := nestedLocalGate(rel); name != "" {
 		return name
 	}
 	if name := firstOf(stageGateFiles, below); name != "" {
@@ -560,19 +557,18 @@ func stageGateFile(tree, path string, declared []string, fold bool) string {
 
 // nestedLocalGate is the local tier's gate rel lands in deeper in the tree, judged
 // the same as the tier at the top.
-func nestedLocalGate(rel string, fold bool) string {
-	if fold {
-		rel = strings.ToLower(rel)
-	}
+func nestedLocalGate(rel string) string {
+	parts := strings.Split(rel, "/")
 	return firstOf(stageAbcdGates, func(gate string) bool {
 		if !strings.HasPrefix(gate, stageLocalTier+"/") {
 			return false
 		}
-		g := "/" + gate
-		if fold {
-			g = strings.ToLower(g)
+		for i := 1; i < len(parts); i++ {
+			if fsutil.FoldedPathMatch(strings.Join(parts[i:], "/"), gate, true) {
+				return true
+			}
 		}
-		return strings.Contains(rel+"/", g+"/")
+		return false
 	})
 }
 
@@ -637,8 +633,8 @@ func StageWriteRefusal(dirs, declared []string, path string) string {
 // protectedComponent is the first part of path below dir that is a protected
 // name, "" for none.
 func protectedComponent(path, dir string, fold bool) string {
-	rel, err := filepath.Rel(dir, path)
-	if err != nil {
+	rel, ok := fsutil.RelWithin(dir, path, fold)
+	if !ok {
 		return ""
 	}
 	for _, part := range strings.Split(rel, string(filepath.Separator)) {

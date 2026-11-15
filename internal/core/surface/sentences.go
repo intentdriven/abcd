@@ -52,7 +52,7 @@ var sentences = map[string]string{
 	"abcd ahoy worktree add": "Add a worktree in this repository's lane of the worktree store: " +
 		"Writes the worktree, its start record and its local tier; refuses a taken or reserved name.",
 	"abcd ahoy worktree list": "List this repository's worktrees and its lane, or every lane with --all: " +
-		"Writes nothing; refuses a store it cannot trust or a directory outside a checkout.",
+		"Writes nothing; refuses a store it cannot trust, or outside a checkout without --all.",
 	"abcd ahoy worktree prune": "Reclaim this lane's merged, clean worktrees and trim the Go cache to its limit: " +
 		"Writes the notes archive and removes both; refuses a store it cannot trust.",
 	"abcd ahoy worktree trim-cache": "Delete the Go build cache's oldest entries down to its size limit: " +
@@ -160,6 +160,9 @@ var sentences = map[string]string{
 		"Writes only shadow pairs to the lab home; refuses a lifeboat that fails its manifest.",
 	"abcd embark probe": "Report what a lifeboat would write into a target, coverage blanks first: " +
 		"Writes nothing; refuses a lifeboat whose manifest does not verify.",
+
+	"abcd explain": "Print how to call one command, or the shape of one input it reads: " +
+		"Writes nothing; refuses a command path the tree does not have.",
 
 	"abcd guard": "Judge a shell command against the hazard registry before it runs: " +
 		"Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.",

@@ -140,11 +140,13 @@ var helpPlacements = map[string]helpPlacement{
 
 	// The agents-and-hosts block. rules names the page that installs the rule
 	// loader, and spec the user-facing half of the spec lifecycle (the spec's
-	// decision 2).
+	// decision 2). explain is the agents' answer to how a command is called
+	// (spc-2610301431075964 approach 3).
 	"announce":            {group: groupAgents, page: "commands/announce.md"},
 	"banlist":             {group: groupAgents, page: "commands/banlist.md"},
 	"checklist":           {group: groupAgents, page: "commands/checklist.md"},
 	"docs":                {group: groupAgents, page: "commands/docs.md"},
+	"explain":             {group: groupAgents, page: "commands/explain.md"},
 	"guard":               {group: groupAgents, page: "commands/guard.md"},
 	"guard hook":          {page: "commands/guard.md"},
 	"guard approve":       {page: "commands/guard.md"},

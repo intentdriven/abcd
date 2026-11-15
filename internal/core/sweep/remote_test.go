@@ -1,10 +1,12 @@
 package sweep
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -26,7 +28,8 @@ type pullRequest struct {
 
 // fakeForge answers `gh pr list` from prs, filtered by the call's --state and
 // --head as gh filters them; a per-branch listing (--head, the last check
-// before a delete) answers from recheck instead once it is set.
+// before a delete) answers from recheck instead once it is set. It answers
+// `gh repo view` with view, or hostedView when that is empty.
 //
 // onRecheck, when set, runs at the first per-branch listing: the moment the
 // last check begins, before it reads the repository's own state again.
@@ -38,6 +41,7 @@ type pullRequest struct {
 type fakeForge struct {
 	mu           sync.Mutex
 	prs, recheck []pullRequest
+	view         string
 	calls        [][]string
 	onRecheck    func()
 }
@@ -46,6 +50,9 @@ func (f *fakeForge) gh(_ string, args ...string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, args)
+	if isRepoView(args) {
+		return cmp.Or(f.view, hostedView), nil
+	}
 	value := func(flag string) string {
 		for i, a := range args {
 			if v, ok := strings.CutPrefix(a, flag+"="); ok {
@@ -77,7 +84,9 @@ func (f *fakeForge) gh(_ string, args ...string) (string, error) {
 }
 
 // originRepo is sweepRepo with an origin that holds main, kept under HOME so
-// a path git prints of it reads home-redacted, and fetched.
+// a path git prints of it reads home-redacted, and fetched. The sweep reads
+// origin's address as the forge's (hostedOrigin), while git reaches the
+// local repository.
 func originRepo(t *testing.T) (*gittest.Repo, string) {
 	t.Helper()
 	repo, home := sweepRepo(t)
@@ -85,6 +94,7 @@ func originRepo(t *testing.T) (*gittest.Repo, string) {
 	gittest.InitBare(t, origin)
 	repo.Git("remote", "add", "origin", origin)
 	publish(repo)
+	hostedOrigin(t, origin)
 	return repo, origin
 }
 
@@ -95,6 +105,18 @@ func mergedOnOrigin(repo *gittest.Repo, branch, rel string) string {
 	branchWith(repo, branch, rel)
 	repo.Git("push", "-q", "origin", branch)
 	repo.Git("merge", "-q", "--ff-only", branch)
+	publish(repo)
+	return repo.Git("rev-parse", branch)
+}
+
+// squashedOnOrigin cuts branch from main with one commit at rel, pushes it to
+// origin, merges it into main by a squash and publishes main: merged by
+// content, which git alone shows. It answers the branch's tip.
+func squashedOnOrigin(repo *gittest.Repo, branch, rel string) string {
+	branchWith(repo, branch, rel)
+	repo.Git("push", "-q", "origin", branch)
+	repo.Git("merge", "-q", "--squash", branch)
+	repo.Git("commit", "-q", "-m", "squash "+branch)
 	publish(repo)
 	return repo.Git("rev-parse", branch)
 }
@@ -440,6 +462,7 @@ func TestOriginsAnswerIsScrubbedBeforeItIsShown(t *testing.T) {
 	// git quotes the path back with the URL whole.
 	url := "file://" + t.TempDir() + "/https://user:s3cret@example.invalid/none.git"
 	repo.Git("remote", "set-url", "origin", url)
+	hostedOrigin(t, url)
 
 	_, _, err := lsRemoteTipContext(context.Background(), repo.Root(), "origin", "feat")
 	if err == nil || strings.Contains(err.Error(), "s3cret") || strings.Contains(err.Error(), "user:") {
@@ -495,7 +518,9 @@ func TestADefaultBranchThatMovedOnOriginHoldsEveryDelete(t *testing.T) {
 // TestADefaultBranchThatMovesOnOriginBetweenDeletesHoldsTheLaterOne: the last
 // check before each delete asks origin for its default branch again, so when
 // another clone moves origin's main after the first of two deletes passed its
-// last check, the first is deleted and the second is held until a fetch.
+// last check, the first is deleted and the second is held until a fetch. The
+// question to origin after the first delete sees the move too, so the first
+// row notes how to restore that branch; that is no fault.
 func TestADefaultBranchThatMovesOnOriginBetweenDeletesHoldsTheLaterOne(t *testing.T) {
 	repo, origin := originRepo(t)
 	first := mergedOnOrigin(repo, "first", "first.txt")
@@ -519,7 +544,7 @@ func TestADefaultBranchThatMovesOnOriginBetweenDeletesHoldsTheLaterOne(t *testin
 	t.Cleanup(func() { beforeRemoteDelete = nil })
 	f := &fakeForge{prs: []pullRequest{mergedPR(4, "first", first), mergedPR(5, "second", second)}}
 
-	res := sweepRemoteOK(t, repo, remoteOpts(f), true)
+	res, err := sweepRemote(context.Background(), repo.Root(), remoteOpts(f), true)
 	moved := onOrigin(repo, origin, "main")
 	if moved == fetched || repo.Git("rev-parse", "refs/remotes/origin/main") != fetched {
 		t.Fatalf("the fixture: origin's main is at %s and origin/main here at %s; want origin moved past %s and origin/main left there",
@@ -528,8 +553,9 @@ func TestADefaultBranchThatMovesOnOriginBetweenDeletesHoldsTheLaterOne(t *testin
 	if len(hooked) == 0 || hooked[0] != "refs/heads/first" {
 		t.Fatalf("the deletes reached the push in the order %v; want first's first", hooked)
 	}
-	if r := remoteRowFor(t, res, "first"); r.Outcome != OutcomeDeleted {
-		t.Fatalf("first: %+v; want it deleted before origin's main moved", r)
+	restore := "git push origin " + first + ":refs/heads/first"
+	if r := remoteRowFor(t, res, "first"); r.Outcome != OutcomeDeleted || !strings.Contains(r.Reason, "`"+restore+"` restores it") {
+		t.Fatalf("first: %+v; want it deleted as origin's main moved, naming %q", r, restore)
 	}
 	if got := onOrigin(repo, origin, "first"); got != "" {
 		t.Fatalf("origin still holds first at %s", got)
@@ -543,8 +569,8 @@ func TestADefaultBranchThatMovesOnOriginBetweenDeletesHoldsTheLaterOne(t *testin
 	if onOrigin(repo, origin, "second") != second {
 		t.Fatal("origin no longer holds second")
 	}
-	if res.ExitCode() != ExitActed {
-		t.Fatalf("a run that deleted one branch exits %d", res.ExitCode())
+	if err != nil || res.Refusal != "" || res.ExitCode() != ExitActed {
+		t.Fatalf("a delete origin's main moved under is a note, no fault: err %v, exit %d, refusal %q", err, res.ExitCode(), res.Refusal)
 	}
 }
 
@@ -633,5 +659,293 @@ func TestARunWhoseContextEndsStopsJudging(t *testing.T) {
 	}
 	if onOrigin(repo, origin, "feat") != tip {
 		t.Fatal("origin no longer holds feat")
+	}
+}
+
+// TestAPushAddressOtherThanOriginsFetchAddressHoldsEveryDelete: with a push
+// URL configured for origin that names another repository, the push would
+// change a repository other than the one the sweep reads, so origin is not
+// one repository: the forge is asked nothing, every branch is kept, naming
+// why, in the dry run and under apply, and neither repository loses the
+// branch.
+func TestAPushAddressOtherThanOriginsFetchAddressHoldsEveryDelete(t *testing.T) {
+	repo, origin := originRepo(t)
+	tip := squashedOnOrigin(repo, "feat", "feat.txt")
+	mirror := filepath.Join(t.TempDir(), "mirror.git")
+	gittest.CloneBare(t, origin, mirror)
+	repo.Git("config", "remote.origin.pushurl", mirror)
+	f := &fakeForge{}
+
+	for _, apply := range []bool{false, true} {
+		res := sweepRemoteOK(t, repo, remoteOpts(f), apply)
+		r := remoteRowFor(t, res, "feat")
+		if r.Action != ActionKeep || !strings.Contains(r.Reason, "the forge's repository could not be matched to origin") ||
+			!strings.Contains(r.Reason, "origin is read from one repository and pushed to another") {
+			t.Fatalf("apply %v: %+v; want it kept because origin's fetch and push addresses name two repositories", apply, r)
+		}
+		if strings.Contains(r.Reason, mirror) || strings.Contains(r.Reason, origin) {
+			t.Fatalf("the reason shows an address: %q", r.Reason)
+		}
+		if res.Refusal != "" || res.ExitCode() != ExitNothing {
+			t.Fatalf("a kept branch is no fault: refusal %q, exit %d", res.Refusal, res.ExitCode())
+		}
+	}
+	if len(f.calls) != 0 {
+		t.Fatalf("the forge was asked %v", f.calls)
+	}
+	if onOrigin(repo, origin, "feat") != tip || onOrigin(repo, mirror, "feat") != tip {
+		t.Fatal("a repository lost feat")
+	}
+}
+
+// TestARunStoppedWhileOriginsTipIsReadIsReportedStopped: a run whose context
+// ends while the last check reads origin's tip of the branch is reported as
+// stopped, the run's fault, not as a branch whose tip could not be read; the
+// branch stands on origin.
+func TestARunStoppedWhileOriginsTipIsReadIsReportedStopped(t *testing.T) {
+	repo, origin := originRepo(t)
+	tip := mergedOnOrigin(repo, "feat", "feat.txt")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	readRemoteTip = func(rctx context.Context, dir, remote, branch string) (string, bool, error) {
+		cancel()
+		return lsRemoteTipContext(rctx, dir, remote, branch)
+	}
+	t.Cleanup(func() { readRemoteTip = lsRemoteTipContext })
+	f := &fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}
+
+	res, err := sweepRemote(ctx, repo.Root(), remoteOpts(f), true)
+	r := remoteRowFor(t, res, "feat")
+	if err == nil || res.ExitCode() != ExitRefused || !strings.Contains(res.Refusal, "the run was stopped before every delete was made") {
+		t.Fatalf("a run stopped at the last check is the run's fault: err %v, exit %d, refusal %q", err, res.ExitCode(), res.Refusal)
+	}
+	if r.Outcome != OutcomeKept || r.Reason != "the run was stopped before the delete, so the branch is kept" {
+		t.Fatalf("%+v; want it kept as stopped, not held on an unread tip", r)
+	}
+	if onOrigin(repo, origin, "feat") != tip {
+		t.Fatal("origin no longer holds feat")
+	}
+}
+
+// TestADefaultBranchThatMovesAfterADeleteNamesTheRestore: when another clone
+// moves origin's main after origin took a delete, as an ordinary merge does,
+// the question to origin after the delete sees it; the outcome stays deleted,
+// and the row notes the judged tip and the exact command that restores the
+// branch, with no fault. The command, run as printed, puts the branch back.
+func TestADefaultBranchThatMovesAfterADeleteNamesTheRestore(t *testing.T) {
+	repo, origin := originRepo(t)
+	tip := mergedOnOrigin(repo, "feat", "feat.txt")
+	fetched := repo.Git("rev-parse", "refs/remotes/origin/main")
+	// Another clone moves origin's main, pushing by the remote's name; see
+	// TestADefaultBranchThatMovedOnOriginHoldsEveryDelete for why a push from
+	// this checkout cannot stand in for it.
+	other := filepath.Join(t.TempDir(), "other")
+	repo.Git("clone", "-q", origin, other)
+	write(t, filepath.Join(other, "later.txt"), "later\n")
+	repo.Git("-C", other, "add", "-A")
+	repo.Git("-C", other, "commit", "-q", "-m", "later")
+	afterRemoteDelete = func(string) { repo.Git("-C", other, "push", "-q", "origin", "main") }
+	t.Cleanup(func() { afterRemoteDelete = nil })
+	f := &fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}
+
+	res, err := sweepRemote(context.Background(), repo.Root(), remoteOpts(f), true)
+	moved := onOrigin(repo, origin, "main")
+	if moved == fetched {
+		t.Fatal("the fixture: origin's main did not move")
+	}
+	r := remoteRowFor(t, res, "feat")
+	restore := "git push origin " + tip + ":refs/heads/feat"
+	if r.Outcome != OutcomeDeleted ||
+		!strings.Contains(r.Reason, "; note: origin's default branch is main at "+short(moved)+" after the delete, but the branch was judged against origin/main at "+short(fetched)) ||
+		!strings.Contains(r.Reason, "in case the branch's work is no longer on main, its judged tip was "+tip+", and `"+restore+"` restores it") {
+		t.Fatalf("%+v; want it deleted, noting its judged tip and %q", r, restore)
+	}
+	if err != nil || res.Refusal != "" || res.ExitCode() != ExitActed {
+		t.Fatalf("a delete origin's default branch moved after is a note, no fault: err %v, exit %d, refusal %q", err, res.ExitCode(), res.Refusal)
+	}
+	if onOrigin(repo, origin, "feat") != "" {
+		t.Fatal("origin still holds feat")
+	}
+	repo.Git(strings.Fields(restore)[1:]...)
+	if onOrigin(repo, origin, "feat") != tip {
+		t.Fatalf("%q did not put feat back at %s", restore, tip)
+	}
+}
+
+// TestAnUnansweredQuestionAfterADeleteIsANoteNotAFault: when origin cannot
+// name its default branch after it took a delete, the row says origin could
+// not be asked after the delete, prints no restore line, and the run does
+// not fault.
+func TestAnUnansweredQuestionAfterADeleteIsANoteNotAFault(t *testing.T) {
+	repo, origin := originRepo(t)
+	tip := mergedOnOrigin(repo, "feat", "feat.txt")
+	afterRemoteDelete = func(string) { repo.Git("--git-dir", origin, "symbolic-ref", "HEAD", "refs/heads/gone") }
+	t.Cleanup(func() { afterRemoteDelete = nil })
+	f := &fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}
+
+	res, err := sweepRemote(context.Background(), repo.Root(), remoteOpts(f), true)
+	r := remoteRowFor(t, res, "feat")
+	if r.Outcome != OutcomeDeleted || !strings.Contains(r.Reason, "origin could not be asked for its default branch after the delete") ||
+		strings.Contains(r.Reason, "git push") {
+		t.Fatalf("%+v; want it deleted, with a note that origin could not be asked and no restore line", r)
+	}
+	if err != nil || res.Refusal != "" || res.ExitCode() != ExitActed {
+		t.Fatalf("an unanswered question after a delete is no fault: err %v, refusal %q, exit %d", err, res.Refusal, res.ExitCode())
+	}
+	if onOrigin(repo, origin, "feat") != "" {
+		t.Fatal("origin still holds feat")
+	}
+}
+
+// shellWords splits a printed command as a POSIX shell reads its words:
+// blanks separate words, single quotes hold everything literally, and a
+// backslash outside them takes the next character literally. Any other
+// character a shell acts on unquoted (; | & < > ( ) $ ` " and the like) is
+// refused, so a line this reads is words and nothing else.
+func shellWords(t *testing.T, line string) []string {
+	t.Helper()
+	var (
+		words []string
+		cur   strings.Builder
+		in    bool
+	)
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case c == '\'':
+			end := strings.IndexByte(line[i+1:], '\'')
+			if end < 0 {
+				t.Fatalf("an unclosed quote in %q", line)
+			}
+			cur.WriteString(line[i+1 : i+1+end])
+			i += end + 1
+			in = true
+		case c == '\\' && i+1 < len(line):
+			cur.WriteByte(line[i+1])
+			i++
+			in = true
+		case c == ' ':
+			if in {
+				words = append(words, cur.String())
+				cur.Reset()
+				in = false
+			}
+		case strings.IndexByte(";|&<>()$`\"!{}#*?[]~\t\n", c) >= 0:
+			t.Fatalf("%q holds %q unquoted", line, c)
+		default:
+			cur.WriteByte(c)
+			in = true
+		}
+	}
+	if in {
+		words = append(words, cur.String())
+	}
+	return words
+}
+
+// TestTheRestoreCommandIsOneWordPerArgument: whatever a branch name holds
+// that git allows, the printed restore command reads back as exactly
+// `git push origin <tip>:refs/heads/<name>`, the refspec one shell word; a
+// name holding a backquote or a character outside printable ASCII gets no
+// command.
+func TestTheRestoreCommandIsOneWordPerArgument(t *testing.T) {
+	sha := strings.Repeat("a", 40)
+	for _, name := range []string{"plain/name-1.2", "a;b", "a|b", "$(touch x)", "a&b", "it's", `say"hi"`, "a!b", "{x,y}", "a#b", "x>y<z", "end'"} {
+		ref := "refs/heads/" + name
+		cmd, ok := remoteRestoreCommand(ref, sha)
+		if !ok {
+			t.Fatalf("%q: no command", name)
+		}
+		got := shellWords(t, cmd)
+		want := []string{"git", "push", "origin", sha + ":" + ref}
+		if !slices.Equal(got, want) {
+			t.Fatalf("%q: %q reads as %q; want %q", name, cmd, got, want)
+		}
+	}
+	if cmd, _ := remoteRestoreCommand("refs/heads/plain/name-1.2", sha); cmd != "git push origin "+sha+":refs/heads/plain/name-1.2" {
+		t.Fatalf("a plain name is quoted: %q", cmd)
+	}
+	for _, name := range []string{"with`tick", "café", "bell\x07"} {
+		if cmd, ok := remoteRestoreCommand("refs/heads/"+name, sha); ok || cmd != "" {
+			t.Fatalf("%q: printed %q; want no command", name, cmd)
+		}
+	}
+}
+
+// TestARestoreNoteForANameNoCommandCarries: when origin's default branch
+// moves after the delete of a branch whose name holds a backquote, the note
+// gives the judged tip and says to quote the name by hand, with no command.
+func TestARestoreNoteForANameNoCommandCarries(t *testing.T) {
+	repo, origin := originRepo(t)
+	name := "odd`name"
+	tip := mergedOnOrigin(repo, name, "odd.txt")
+	other := filepath.Join(t.TempDir(), "other")
+	repo.Git("clone", "-q", origin, other)
+	write(t, filepath.Join(other, "later.txt"), "later\n")
+	repo.Git("-C", other, "add", "-A")
+	repo.Git("-C", other, "commit", "-q", "-m", "later")
+	afterRemoteDelete = func(string) { repo.Git("-C", other, "push", "-q", "origin", "main") }
+	t.Cleanup(func() { afterRemoteDelete = nil })
+
+	res := sweepRemoteOK(t, repo, remoteOpts(&fakeForge{prs: []pullRequest{mergedPR(4, name, tip)}}), true)
+	r := remoteRowFor(t, res, name)
+	if r.Outcome != OutcomeDeleted || !strings.Contains(r.Reason, "its judged tip was "+tip+"; its name holds a character no printed command carries safely, so quote the name by hand") ||
+		strings.Contains(r.Reason, "git push") {
+		t.Fatalf("%+v; want the judged tip and no command", r)
+	}
+}
+
+// TestARunStoppedDuringTheLastCheckIsReportedStopped: a run whose context
+// ends just after the last check reads the worktrees again reads no process
+// table after it, and one whose context ends just after the liveness probe
+// reads no tip of origin's after it; each keeps the branch, reported as
+// stopped and the run's fault.
+func TestARunStoppedDuringTheLastCheckIsReportedStopped(t *testing.T) {
+	for _, stage := range []string{lastCheckWorktrees, lastCheckProbe} {
+		t.Run(stage, func(t *testing.T) {
+			repo, origin := originRepo(t)
+			tip := mergedOnOrigin(repo, "feat", "feat.txt")
+			f := &fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var (
+				stopped          bool
+				listed, tipsRead int
+				prevTip          = readRemoteTip
+			)
+			o := remoteOpts(f)
+			o.Probe.Processes = func(context.Context) ([]Process, error) {
+				if stopped {
+					listed++
+				}
+				return nil, nil
+			}
+			readRemoteTip = func(ctx context.Context, dir, remote, branch string) (string, bool, error) {
+				if stopped {
+					tipsRead++
+				}
+				return prevTip(ctx, dir, remote, branch)
+			}
+			t.Cleanup(func() { readRemoteTip = prevTip })
+			o.onLastCheck = func(s string) {
+				if s == stage {
+					stopped = true
+					cancel()
+				}
+			}
+
+			res, err := sweepRemote(ctx, repo.Root(), o, true)
+			r := remoteRowFor(t, res, "feat")
+			if err == nil || res.ExitCode() != ExitRefused || !strings.Contains(res.Refusal, "the run was stopped before every delete was made") ||
+				r.Outcome != OutcomeKept || !strings.Contains(r.Reason, "the run was stopped before the delete") {
+				t.Fatalf("err %v, exit %d, refusal %q, row %+v; want feat kept and the run stopped", err, res.ExitCode(), res.Refusal, r)
+			}
+			if !stopped || listed != 0 || tipsRead != 0 {
+				t.Fatalf("stopped %v; after the stop the process table was read %d times and origin's tip %d times", stopped, listed, tipsRead)
+			}
+			if onOrigin(repo, origin, "feat") != tip {
+				t.Fatal("origin no longer holds feat")
+			}
+		})
 	}
 }
