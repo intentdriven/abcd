@@ -52,7 +52,7 @@ The lab's two prototypes changed 121 lines between them, added no command, no fl
 
 - When something cannot go on: that the lane was set aside, why, and that the drive went on.
 - When the drive itself waits on something with no named end, an outage or a limit that names no reset, for longer than the bound: `stalled`, since when, on what, and one act or that it needs a look.
-- When every lane left is set aside: the drive ends and the line reads `stopped`. What the one act is then is open question 5.
+- When every lane left is set aside: the drive does not end. It keeps waiting, tries the set-aside lanes again every hour until its end time, and the line reads `waiting` (decision 9).
 - Where output is not a terminal: a `state:` line each time the state changes.
 
 ### What a person never has to know
@@ -96,7 +96,7 @@ We expect a person to stop asking whether the drive is working, because the loop
   - Evidence: lab-261114145658-67e1f9b, F-4, F-8 and F-15.
 - **Given** a run whose recorded driver is alive and is not the starting drive's own terminal (another terminal, or a host session), **when** the drive starts, **then** it does not take the run, says who holds it, and goes on to other work. **Given** a run a person's own stop halted, **then** the drive does not take it while the stop stands and names it, and once the person has lifted the stop the next start takes it up (decision 1).
   - Evidence: lab-261114145658-67e1f9b, F-8 (the three refutation fixtures) and F-9.
-- **Given** a lane whose run the drive cannot claim or take up, or whose wait the stuck bounds do not count, for a reason the drive cannot end, **when** that has lasted the stuck bound's minutes, **then** the drive says the lane is set aside and why, opens the next lane, and ends only when every lane left is set aside (decision 3). The lane's reservation is left to lapse (decision 4), and the same drive tries the lane again after the other lanes are done (decision 5). What the line gives as the one act when the drive ends on set-aside lanes waits on open question 5.
+- **Given** a lane whose run the drive cannot claim or take up, or whose wait the stuck bounds do not count, for a reason the drive cannot end, **when** that has lasted the stuck bound's minutes, **then** the drive says the lane is set aside and why, opens the next lane, and, when every lane left is set aside, does not end: it keeps waiting and retries the set-aside lanes every hour until its end time (decisions 3 and 9). The lane's reservation is left to lapse (decision 4), and the same drive tries the lane again after the other lanes are done (decision 5).
   - Evidence: lab-261114145658-67e1f9b, F-5 and F-9.
 - **Given** a landing's reservation refusal that names no lane, because the issue's record is in no status folder of the checkout, **when** the drive meets it, **then** the lane no longer holds the drive without bound: it is set aside, not handed back as stuck (decision 8). A refusal built without a lane that is the machine's and not the lane's (the review set, the configuration, the remote's identity) is not counted against any lane.
   - Evidence: lab-261114145658-67e1f9b, F-9 and F-14.
@@ -113,14 +113,11 @@ We expect a person to stop asking whether the drive is working, because the loop
 
 ## Open Questions
 
-Questions 1 to 4 are resolved by the product thinker on 2026-11-15 (decisions 4, 5, 7 and 8). Question 5 is the product thinker's to decide, and it is not answered here.
-
-5. **"What is the one act when a drive ends because every lane left is set aside?"** (F-9; the lab did not try a second start over a block that still stands)
-   - What is known: the drive ends, the line reads `stopped`, and today's end for passed lanes names `abcd drain --drive` as the way on. A restart tries each set-aside lane again, and where the block still stands it waits the bound again and ends again. The line has room for one act, and no record says what that act is when the same command would only repeat the wait. No answer is proposed here.
+All resolved by the product thinker on 2026-11-15 (decisions 4, 5, 7, 8 and 9).
 
 ## Decisions
 
-Recorded 2026-11-14 within an autonomous run, on the product thinker's delegation (dcn-2611141613199819). The product thinker asked for this intent to be planned without them and for every design decision the run takes to be recorded for their review. Each question is quoted as the lab met it. Each answer is the one the lab's evidence best supports and that changes least for a person. Each is decided by the run for owner review and is open to reversal at that review. A design review on the same day found three of the six answers were not the run's to give, and the product thinker answered them on 2026-11-15, together with the lab's first two decisions: decisions 1 and 2 are reversed by them, decision 3 is kept, decisions 4, 5, 7 and 8 are theirs, and decision 6 stands as the run's, for review.
+Recorded 2026-11-14 within an autonomous run, on the product thinker's delegation (dcn-2611141613199819). The product thinker asked for this intent to be planned without them and for every design decision the run takes to be recorded for their review. Each question is quoted as the lab met it. Each answer is the one the lab's evidence best supports and that changes least for a person. Each is decided by the run for owner review and is open to reversal at that review. A design review on the same day found three of the six answers were not the run's to give, and the product thinker answered them on 2026-11-15, together with the lab's first two decisions: decisions 1 and 2 are reversed by them, decision 3 is kept, decisions 4, 5, 7, 8 and 9 are theirs, and decision 6 stands as the run's, for review.
 
 1. **After a person's own stop is lifted, the next drive start takes up the runs it halted** (product thinker, 2026-11-15, reversing the run's answer of 2026-11-14).
    - Question (DQ-1): "After a person's own stop is lifted, does the next start take up the runs it halted?"
@@ -168,6 +165,11 @@ Recorded 2026-11-14 within an autonomous run, on the product thinker's delegatio
    - Question: "Is a lane whose landing cannot find its record handed back as stuck, or set aside?"
    - Answer: set aside, not handed back as stuck. The lab's prototype measured this lane set aside with both other lanes landing and nothing left to clear (F-9), so step 3 of the spec is dropped and the set-aside gains the fourth call site.
    - What it costs: the lane holds the drive for the bound, an hour under decision 3, and a drain that a host session steps has no set-aside, so the refusal still goes uncounted there (F-14).
+
+9. **When every lane left is set aside, the drive does not end** (product thinker, 2026-11-15; formerly open question 5, "What is the one act when a drive ends because every lane left is set aside?").
+   - Answer: the drive keeps waiting. It tries the set-aside lanes again every hour until its end time (`--until`, or its other end conditions), and the line reads `waiting`, not `stopped`. It does not read `stalled` while those hourly retries are its named next try.
+   - Reconciling with decision 6: decision 6 says a look-again time is not a named end, and the stall rule by time treats only the pace window's next eligible time and a rate limit's named reset as ends. This decision makes the hourly retry of set-aside lanes a named end, so a drive waiting on it reads `waiting` and not `stalled`. The planning step must reconcile the two, and says in the stall rule which look-again times are ends.
+   - What it costs, which the product thinker accepted: a drive process stays running, mostly idle, until its end time. A lane whose block still stands is tried again every hour and set aside again.
 
 ## Typed Links
 
