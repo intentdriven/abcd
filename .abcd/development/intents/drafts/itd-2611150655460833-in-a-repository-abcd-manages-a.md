@@ -5,7 +5,7 @@ spec_id: null
 kind: null
 suggested_kind: null
 reclassification_history: []
-builds_on: [itd-2610112239022766]
+builds_on: []
 severity: minor
 origin: researcher-authored
 production_mode: hand-written
@@ -19,7 +19,7 @@ production_mode: hand-written
 
 ## Why This Matters
 
-> _Why this matters to the user — replace before planning._
+itd-2610112239022766 keeps reports others file privately until their fix ships. Findings abcd's own development and review raise and do not fix before landing have no such route yet: they sit in a file on one machine, where one lost machine or session loses them.
 
 ## Mechanism
 
