@@ -1289,32 +1289,37 @@ step another process of your account can still write in the lane; the pin
 holds what was proved, so that step's check names the change.
 
 A drive reads these settings once as it starts, before its first lane, and
-keeps hashes of their scopes and values in its own memory, never in a file.
-It holds the settings a git command of the drive can read that name or start
-a program, or change where a networked git goes or whom it trusts. By class:
-where a fetch or push goes and how it reaches the remote (each remote's URLs,
-uploadpack, receivepack, proxy and vcs, every URL rewrite, the ssh command and
-`ssh.variant`, the proxy program, the protocol allow rules, and
-`fetch.bundleURI`); whom it trusts and what it sends (every `credential.*`
-key, askpass, each remote's proxy authentication method and the server options
-a fetch from it sends, and the `http.*` settings that decide where an https
-fetch or push connects, whom it takes as the remote and what it sends there:
-the proxy and its authentication, certificate and key, the resolve and
-redirect settings, the TLS version, ciphers, backend, certificate authorities
-and pinned key, the client certificate and key, cookies, extra headers, the
-delegation of credentials and the authentication switches, each per-URL
-`http.<url>.*` form of them included, since git applies a per-URL value over
-the plain one; the other `http.*` settings tune speed, buffers, the user agent
-and the protocol version, start no program and change no trust); the programs
-a git command of the drive starts (the hooks directory, fsmonitor, the editor,
-content filters, diff and merge drivers and `diff.external`, every `gpg.*` key
-and the signing and verifying switches, `format.pretty` and `pretty.*`, whose
-format can check a signature, `core.alternateRefsCommand`,
-`uploadpack.packObjectsHook`, `gc.recentObjectsHook`, Git LFS's transfer and
-extension programs, `hook.*` and `init.templateDir`); the settings that change
-which of them run (`merge.renormalize`, `submodule.recurse` and
-`push.recurseSubmodules`, `status.submoduleSummary`, `core.attributesFile`,
-the worktree settings and `extensions.worktreeConfig`); and the include paths.
+keeps hashes of their scopes and values in its own memory, never in a file. It
+holds the settings a git command of the drive can read that name or start a
+program, or change where a networked git goes, whom it trusts or what it
+sends. By class: where a fetch or push goes and how it reaches the remote
+(each remote's URLs, uploadpack, receivepack, proxy and vcs, every URL
+rewrite, the ssh command and `ssh.variant`, the proxy program, the protocol
+allow rules, `fetch.bundleURI`, and each remote's promisor switch and
+partial-clone filter, which make a git that reads a missing object fetch it
+from that remote and say what it asks for); whom it trusts and what it sends
+(every `credential.*` key, askpass, each remote's proxy authentication method
+and the server options a fetch from it sends, the push options a push sends
+(`push.pushOption`), the switch that has a fetch or push send the server git's
+session id (`transfer.advertiseSID`), and the `http.*` settings that decide
+where an https fetch or push connects, whom it takes as the remote and what it
+sends there: the proxy and its authentication, certificate and key, the
+resolve and redirect settings, the TLS version, ciphers, backend, certificate
+authorities and pinned key, the client certificate and key, cookies, extra
+headers, the user agent, the delegation of credentials and the authentication
+switches, each per-URL `http.<url>.*` form of them included, since git applies
+a per-URL value over the plain one; the other `http.*` settings tune speed,
+buffers and the protocol version, start no program, change no trust and send
+nothing); the programs a git command of the drive starts (the hooks directory,
+fsmonitor, the editor, content filters, diff and merge drivers and
+`diff.external`, every `gpg.*` key and the signing and verifying switches,
+`format.pretty` and `pretty.*`, whose format can check a signature,
+`core.alternateRefsCommand`, `uploadpack.packObjectsHook`,
+`gc.recentObjectsHook`, Git LFS's transfer and extension programs, `hook.*`
+and `init.templateDir`); the settings that change which of them run
+(`merge.renormalize`, `submodule.recurse` and `push.recurseSubmodules`,
+`status.submoduleSummary`, `core.attributesFile`, the worktree settings and
+`extensions.worktreeConfig`); and the include paths.
 It holds as well the bytes of each file an `include.path` or
 `includeIf.*.path` setting names, whether or not its condition holds at the
 checkout, since it can hold in a lane, its path resolved by git; and the
@@ -1428,6 +1433,17 @@ lane on any difference, naming the key or file (a URL in a key's name hidden,
 as below); a content filter set with an attributes line in the git directory
 during one lane stops the next before its add.
 
+The drive's pushes, the landing push and each push of the reservation code
+while a drive runs, pass `--no-follow-tags`, which git-config(1) documents as
+overriding `push.followTags`, so an annotated tag a lane made that points into
+the pushed history is never sent with them; `abcd land`, run by you, pushes as
+before. The other `push.*`, `remote.<name>.*`, `fetch.*`, `transfer.*` and
+`url.*` settings git documents are decided by the drive's own command line
+(its pushes name `origin` and a refspec, and git refuses a mirror push given
+one; its fetches name `origin` and their refspecs and pass `--no-tags`), are
+read by no git of the drive, or start no program, change no trust and send no
+value from the settings.
+
 Not held, so a change to it leaves a drive running: a setting no git command
 of the drive reads. These are the pager settings (a drive gives its git no
 terminal; a change to `core.pager` during a lane's run still stops that run's
@@ -1440,38 +1456,42 @@ stand only for a deprecated command and abcd runs none; `transfer.bundleURI`,
 which only a clone reads; `fetch.recurseSubmodules`, which every fetch abcd
 makes through its networked runners, in a drive or not, sets to false on its
 command line beside `submodule.recurse=false`; and the per-submodule keys of
-the checkout's own settings (`submodule.<name>.*`, the ones
-`git submodule init` writes among them). The git commands of the drive that
-compare a working tree with the index start no status inside a checked-out
-submodule whose commit is the one the index records, where git would otherwise
-read that submodule's own settings: each status read and each diff of a
-working tree passes `--ignore-submodules=dirty`, which outranks
-`submodule.<name>.ignore` and `diff.ignoreSubmodules`; the staging of a lane's
-worktree, and of the tree a restart saves or a plan's digest reads
-(`git add -A`, which takes no such option and reads neither setting), leaves
-each such submodule out by pathspec, which changes nothing it stages; and a
-sync's merge, which first saves the lane's uncommitted changes and so compares
-the tree, names `submodule.<name>.ignore=dirty` on its command line for each
-submodule name the lane's `.gitmodules` declares, in its working tree, index
-or HEAD, and is refused for a name holding `=`, which git's command line
-cannot carry. A submodule whose checked-out commit is not the one the index
-records still reads as changed and is still staged; uncommitted changes inside
-a submodule's working tree are not counted. A commit given its message looks
-inside a submodule only when it has nothing to commit, and the drive's commits
-always have their record to commit or are made with `--allow-empty`; the
-removal of a merged lane's worktree is refused by git, for a worktree that
-holds a checked-out submodule, before git reads that worktree's status. A
-fetch abcd makes goes into no submodule either, whatever any scope or the
-tree's `.gitmodules` sets (your own fetch, pull, checkout and status are as
-before). What remains: a submodule moved, or a `.gitmodules` changed, between
-the drive's read of it and git's own command is not seen; and where your
-settings turn recursion on (`push.recurseSubmodules`, or `submodule.recurse`,
-which git documents as read by checkout, fetch, grep, pull, push, read-tree,
-reset, restore and switch; both are held), the drive's commands among those
-that recurse, its push and reset, go into each checked-out submodule (the
-reset into each submodule git counts active, which `submodule.<name>.active`
-can decide), under that submodule's own settings, which the drive does not
-hold.
+the checkout's own settings (`submodule.<name>.*`, the ones `git submodule
+init` writes among them). The git commands of the drive that compare a working
+tree with the index start no status inside a checked-out submodule whose
+commit is the one the index records, where git would otherwise read that
+submodule's own settings: each status read and each diff of a working tree
+passes `--ignore-submodules=dirty`, which outranks `submodule.<name>.ignore`
+and `diff.ignoreSubmodules`; the staging of a lane's worktree, and of the tree
+a restart saves or a plan's digest reads (`git add -A`, which takes no such
+option and reads neither setting), leaves each such submodule out by pathspec,
+which changes nothing it stages, with its pathspecs given to git on its
+standard input, so no number of submodules bounds it, and read as abcd writes
+them whatever `GIT_LITERAL_PATHSPECS` says. A sync's merge, which first saves
+the lane's uncommitted changes and so can look inside a submodule, is not made
+where the lane's index records a submodule with a repository checked out at
+its path, whether or not `.gitmodules` names it: the lane is handed back,
+naming the path, before anything changes, with the remedy to merge the default
+branch in by hand or to remove that checkout; a submodule with nothing checked
+out merges as before. Nothing is added to the merge's command line for this,
+so the hooks the merge runs read each submodule's `ignore` setting as the
+repository sets it. A submodule whose checked-out commit is not the one the
+index records still reads as changed and is still staged; uncommitted changes
+inside a submodule's working tree are not counted. A commit given its message looks inside a
+submodule only when it has nothing to commit, and the drive's commits always
+have their record to commit or are made with `--allow-empty`; the removal of a
+merged lane's worktree is refused by git, for a worktree that holds a
+checked-out submodule, before git reads that worktree's status. A fetch abcd
+makes goes into no submodule either, whatever any scope or the tree's
+`.gitmodules` sets (your own fetch, pull, checkout and status are as before).
+What remains: a submodule moved, or checked out, between the drive's read of
+it and git's own command is not seen; and where your settings turn recursion
+on (`push.recurseSubmodules`, or `submodule.recurse`, which git documents as
+read by checkout, fetch, grep, pull, push, read-tree, reset, restore and
+switch; both are held), the drive's commands among those that recurse, its
+push and reset, go into each checked-out submodule (the reset into each
+submodule git counts active, which `submodule.<name>.active` can decide),
+under that submodule's own settings, which the drive does not hold.
 Not held either: an
 `origin` defined only by a legacy remotes or branches file in the git
 directory, which has no key to compare; and a file named by an include inside
