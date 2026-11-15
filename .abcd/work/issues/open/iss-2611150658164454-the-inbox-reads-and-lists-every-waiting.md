@@ -8,8 +8,8 @@ source: "user-observation"
 found_during: "manual-capture"
 origin: researcher-authored
 production_mode: hand-written
-found_at: "internal/core/report"
-remedy: "Decide a bound for one listing and one run, show the count beyond it, and have the reporting command refuse when the sender already has that many waiting."
+found_at: "internal/core/report/inbox.go"
+remedy: "Have List read the file names first, as Count does, read whole only the newest 200 waiting reports, and end the listing with a line counting the reports it left out."
 ---
 
-The inbox reads and lists every waiting report with no bound on how many there are, so one listing or one sweep run can grow without limit.
+`List` in `internal/core/report/inbox.go` reads every waiting report whole before it drops their bodies, so the cost of one `abcd inbox` listing grows with the number of reports waiting, with no bound on that number. `Count` in the same file already reads file names only.
