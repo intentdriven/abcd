@@ -105,7 +105,7 @@ func AskingRulesFrom(l Limits, n LimitsNote) []string {
 
 		"The thing being decided is quoted in full in the question itself, in paragraphs and lists, never referred to: The criterion before \"does it stand?\", the paragraph before \"confirm or change?\", the open question before \"resolve or defer?\". " +
 			"Prose written between tool calls is invisible while the question shows, so a question about text the person cannot see cannot be answered. " +
-			"Material too long for one question is put one part per question, never into a message before the question or into a preview.",
+			"Material too long for one question never goes into a message before the question or into a preview: One decision's material is quoted shorter and faithfully, keeping every answer's gain and cost, and only material holding several decisions or too many answers is split into parts.",
 
 		fmt.Sprintf("Every question has one layout, and abcd's question check refuses a question that breaks it, naming the part, the value, and the limit; fix each part and ask again. "+
 			"The header is at most %s columns and is abcd's number for the question: %s, a letter after the number for one part of a question split in parts, and a total after the slash only when the interview's length is known; the header is what the check knows abcd's question by, and the older form with a role word first (%s, the role one of %s) is still read. "+

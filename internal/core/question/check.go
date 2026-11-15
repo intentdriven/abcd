@@ -79,8 +79,11 @@ const RecommendedRemedy = "The host's own instruction for this tool asks for a r
 // previewRemedy is rule 14's remedy (itd-2610030810350727 decision 20).
 const previewRemedy = "abcd's questions carry no side preview (decision 20): put the option's meaning, gain and cost in its description."
 
-// splitRemedy is rule 13's remedy (itd-2610030810350727 decision 9).
-const splitRemedy = "Split the material into parts: up to four parts of one thing as tabs, or successive questions, one part per question. Never move it into a message before the question, or into a preview."
+// splitRemedy is rule 13's remedy (itd-2610030810350727 decision 9). One
+// decision spread over parts would ask the same choice twice, so its material
+// is quoted shorter, and only material holding several decisions or too many
+// answers is split (itd-2610230756259215 decision 33).
+const splitRemedy = "Bring the whole tab within the limit: one decision's material is quoted shorter and faithfully, keeping every answer's gain and cost, and only material holding several decisions (up to four as tabs, a dependent one as its own question after the answer it turns on) or too many answers (the first answers and \"None of these\", the rest in the next part) is split into parts. Material never goes into a message before the question, or into a preview."
 
 // The header grammar (spc-2610301917245442, step 3; itd-2610230756259215
 // decision 36): Q and the question's number, an optional part letter and an

@@ -124,7 +124,7 @@ func TestGrillTextCarriesTheAmendments(t *testing.T) {
 		amendment string
 		phrases   []string
 	}{
-		{"quoted in full", []string{"quoted in full in the question itself", "in paragraphs and lists", "never referred to", "one part per question"}},
+		{"quoted in full", []string{"quoted in full in the question itself", "in paragraphs and lists", "never referred to", "quoted shorter and faithfully", "several decisions or too many answers"}},
 		{"the layout", []string{"at most twelve columns", `"Q1"`, `"Q2/5"`, `"Product Q2"`, "is still read", `"Now:"`, `"Change later:"`, "ends with the question", "two to four options", "at most five words", "at most two sentences", `"Decide later"`, "no bold", "thirty-two rows at eighty columns", "question check refuses"}},
 		{"examples", []string{"one example of the thing being decided", "in the question text", "description says what choosing", "carries no side preview", "hides every option's description"}},
 		{"gain and cost", []string{"description names its gain and its cost", "never one option's alone", "trade-offs"}},
