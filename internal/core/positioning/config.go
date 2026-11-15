@@ -68,8 +68,8 @@ type Config struct {
 type Surface struct {
 	ID string `json:"id"`
 	// Files are candidate locations, in order; the first that exists is the one
-	// checked. A surface whose candidates are all absent is skipped, never
-	// reported as drifted.
+	// checked. A surface whose candidates are all absent is reported absent,
+	// never drifted.
 	Files []string `json:"files"`
 	Kind  string   `json:"kind"`
 	// Patterns (KindRegexp) are tried in order; the first that matches wins.
