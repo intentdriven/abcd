@@ -23,8 +23,11 @@ const (
 )
 
 // stageGateFiles are the first parts of a path, below a stage's working tree, that
-// decide how its lane is judged. No work's footprint opens them.
-var stageGateFiles = []string{".githooks", "hooks", "Makefile", "GNUmakefile", "makefile"}
+// decide how its lane is judged, the forge's workflow folder among them. No work's
+// footprint opens them, and each compares with case folded whatever the
+// filesystem does, since the tree is checked out on machines whose filesystems
+// may fold it.
+var stageGateFiles = []string{".githooks", "hooks", "Makefile", "GNUmakefile", "makefile", ".github"}
 
 // stageAbcdGates are the files under .abcd that do the same, by path below the
 // tree: each, and all below each. The reservation state (the copy's key, its
@@ -544,7 +547,8 @@ func stageGateFile(tree, path string, declared []string, fold bool) string {
 	if name := nestedLocalGate(rel, fold); name != "" {
 		return name
 	}
-	if name := firstOf(stageGateFiles, below); name != "" {
+	top, _, _ := strings.Cut(rel, "/")
+	if name := firstOf(stageGateFiles, func(g string) bool { return strings.EqualFold(top, g) }); name != "" {
 		return name
 	}
 	if !below(stageAbcd) || below(stageLocalTier) {

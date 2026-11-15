@@ -479,3 +479,37 @@ func TestAStageOnOneProfileWritesNoSiblingProfile(t *testing.T) {
 		}
 	}
 }
+
+// TestAStageDoesNotWriteTheWorkflowFolderOrACaseVariantOfAGate: the forge's
+// workflow folder is a gate file to a stage's file tool, and a gate file is
+// named whatever the case of its first part, on any filesystem; a name that
+// only starts with a gate's letters stays open.
+func TestAStageDoesNotWriteTheWorkflowFolderOrACaseVariantOfAGate(t *testing.T) {
+	tree := t.TempDir()
+	for _, rel := range []string{
+		".github/workflows/x.yml",
+		".github",
+		".GitHub/workflows/x.yml",
+		".GitHooks/pre-push",
+		"HOOKS/pre-push",
+		"MAKEFILE",
+	} {
+		if StageWriteRefusal([]string{tree}, nil, filepath.Join(tree, rel)) == "" {
+			t.Errorf("a stage may write %s", rel)
+		}
+		if StageWriteRefusal([]string{tree}, []string{rel}, filepath.Join(tree, rel)) == "" {
+			t.Errorf("a footprint naming %s opens it", rel)
+		}
+	}
+	for _, rel := range []string{".githubx/a.yml", "docs/.github/a.yml", "Makefile.bak"} {
+		if why := StageWriteRefusal([]string{tree}, nil, filepath.Join(tree, rel)); why != "" {
+			t.Errorf("%s is refused: %s", rel, why)
+		}
+	}
+	stage := NewFiles(tree).WithStage(filepath.Join(t.TempDir(), "stage"), nil, nil)
+	for _, line := range []string{`printf x > .github/workflows/x.yml`, `printf x > .GitHooks/pre-push`} {
+		if a := approveShell(clean(), stage, line); a.Allow {
+			t.Errorf("a stage's line was approved: %s", line)
+		}
+	}
+}
