@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -127,6 +128,37 @@ func decodeTitled(t *testing.T, stdout string) titled {
 		t.Fatalf("stdout carries more than one JSON value:\n%s", stdout)
 	}
 	return out
+}
+
+// renamedPrompt is the prompt hook's output on the prompt that gives a session
+// a new name: the title, and the notice in the person's line and the context.
+type renamedPrompt struct {
+	SystemMessage      string `json:"systemMessage"`
+	HookSpecificOutput struct {
+		HookEventName     string `json:"hookEventName"`
+		AdditionalContext string `json:"additionalContext"`
+		SessionTitle      string `json:"sessionTitle"`
+	} `json:"hookSpecificOutput"`
+}
+
+// decodeRenamed reads stdout as exactly one object of the renamed shape and
+// fails unless it sets title with a notice, in both places, that says so.
+func decodeRenamed(t *testing.T, stdout, title, replaced string) {
+	t.Helper()
+	dec := json.NewDecoder(strings.NewReader(stdout))
+	dec.DisallowUnknownFields()
+	var out renamedPrompt
+	if err := dec.Decode(&out); err != nil || dec.More() {
+		t.Fatalf("stdout is not one hook-output object (%v):\n%s", err, stdout)
+	}
+	if out.HookSpecificOutput.SessionTitle != title {
+		t.Fatalf("the prompt set the title %q, want %q", out.HookSpecificOutput.SessionTitle, title)
+	}
+	for where, text := range map[string]string{"person's line": out.SystemMessage, "context": out.HookSpecificOutput.AdditionalContext} {
+		if strings.Count(text, "abcd session name:") != 1 || !strings.Contains(text, "holds the name "+replaced) || !strings.Contains(text, "now "+title) {
+			t.Fatalf("the %s does not carry the one notice that the session is now %s in place of %s: %q", where, title, replaced, text)
+		}
+	}
 }
 
 // unnamedStart is what session start prints when naming does not run at all:
@@ -323,9 +355,7 @@ func TestPromptRouterReplacesAResumedNameARunningSessionHolds(t *testing.T) {
 		t.Fatalf("resume set a title at start: %q", stdout)
 	}
 	out, _ := runHook(t, promptJSON(t, "s1", f.cwd, "paint a landscape", "Alice"), "hook", "prompt-router")
-	if got := decodeTitled(t, out).HookSpecificOutput.SessionTitle; got != "Bob" {
-		t.Fatalf("the resumed session was titled %q, want Bob", got)
-	}
+	decodeRenamed(t, out, "Bob", "Alice")
 	out, _ = runHook(t, promptJSON(t, "s2", f.cwd, "paint a landscape", ""), "hook", "prompt-router")
 	if got := decodeTitled(t, out).HookSpecificOutput.SessionTitle; got != "Alice" {
 		t.Fatalf("the new session was titled %q, want Alice", got)
@@ -354,9 +384,7 @@ func TestPromptRouterRenamesAForkOfARunningSession(t *testing.T) {
 			if !strings.HasPrefix(out, "{") {
 				t.Fatalf("the fork's first prompt set no title: %q", out)
 			}
-			if got := decodeTitled(t, out).HookSpecificOutput.SessionTitle; got != "Bob" {
-				t.Fatalf("the fork was titled %q, want Bob", got)
-			}
+			decodeRenamed(t, out, "Bob", "Alice")
 			if out, _ := runHook(t, promptJSON(t, "p", f.cwd, "paint a landscape", "Alice"), "hook", "prompt-router"); strings.HasPrefix(out, "{") {
 				t.Fatalf("the parent was retitled: %q", out)
 			}
@@ -426,5 +454,118 @@ func TestAResumeBeforeTheFirstPromptKeepsTheName(t *testing.T) {
 		if got != c.want {
 			t.Fatalf("%s was titled %q, want %q", c.sid, got, c.want)
 		}
+	}
+}
+
+// TestPromptRouterRenamesTheLaterOfTwoSessionsWithOneName is
+// iss-2611141504101439 through the hooks: s1 is named Alice, its host ends,
+// and its resume cannot read the process table, so its hold is not made. A new
+// session, s2, starts and is given Alice. s1's next prompt finds s2 holding
+// its name and takes Bob: that one prompt sets Bob with the notice, and no
+// later prompt of either session sets a title or says anything.
+func TestPromptRouterRenamesTheLaterOfTwoSessionsWithOneName(t *testing.T) {
+	f := newNameFixture(t)
+	f.launch(1000)
+	runSessionStart(startJSON(t, "s1", f.cwd, map[string]string{"source": "startup"}), "hook", "session-start")
+	runHook(t, promptJSON(t, "s1", f.cwd, "paint a landscape", ""), "hook", "prompt-router")
+	f.launch(2000) // s1's first host has ended, and it is resumed here
+	f.tableErr = errors.New("ps failed")
+	if _, stderr, _ := runSessionStart(startJSON(t, "s1", f.cwd, map[string]string{"source": "resume", "session_title": "Alice"}), "hook", "session-start"); !strings.Contains(stderr, "abcd session name:") {
+		t.Fatalf("the resume's failed hold was not noted:\n%s", stderr)
+	}
+	f.tableErr = nil
+	on := func(host, other int) {
+		f.launch(host)
+		f.procs = append(f.procs, machineload.Proc{PID: other, PPID: 1, Name: "claude", Age: time.Hour})
+	}
+	on(3000, 2000)
+	runSessionStart(startJSON(t, "s2", f.cwd, map[string]string{"source": "startup"}), "hook", "session-start")
+	out, _ := runHook(t, promptJSON(t, "s2", f.cwd, "paint a landscape", ""), "hook", "prompt-router")
+	if got := decodeTitled(t, out).HookSpecificOutput.SessionTitle; got != "Alice" {
+		t.Fatalf("the new session was titled %q, want Alice", got)
+	}
+
+	on(2000, 3000)
+	out, _ = runHook(t, promptJSON(t, "s1", f.cwd, "paint a landscape", "Alice"), "hook", "prompt-router")
+	decodeRenamed(t, out, "Bob", "Alice")
+	for _, c := range []struct {
+		host, other int
+		sid, title  string
+	}{{2000, 3000, "s1", "Bob"}, {3000, 2000, "s2", "Alice"}, {2000, 3000, "s1", "Bob"}} {
+		on(c.host, c.other)
+		out, _ := runHook(t, promptJSON(t, c.sid, f.cwd, "paint a landscape", c.title), "hook", "prompt-router")
+		if strings.Contains(out, "sessionTitle") || strings.Contains(out, "abcd session name:") {
+			t.Fatalf("a later prompt of %s set a title or carried a notice: %q", c.sid, out)
+		}
+	}
+}
+
+// TestPromptRouterThatCannotReadTheTableChangesNothing: the same two sessions,
+// but s1's prompt cannot read the process table. It keeps its title, sets
+// none, carries no notice, leaves the register as it was, and says why in one
+// line on stderr; the hook still succeeds.
+func TestPromptRouterThatCannotReadTheTableChangesNothing(t *testing.T) {
+	f := newNameFixture(t)
+	f.launch(1000)
+	runSessionStart(startJSON(t, "s1", f.cwd, map[string]string{"source": "startup"}), "hook", "session-start")
+	runHook(t, promptJSON(t, "s1", f.cwd, "paint a landscape", ""), "hook", "prompt-router")
+	f.launch(2000)
+	f.tableErr = errors.New("ps failed")
+	runSessionStart(startJSON(t, "s1", f.cwd, map[string]string{"source": "resume", "session_title": "Alice"}), "hook", "session-start")
+	f.tableErr = nil
+	f.launch(3000)
+	f.procs = append(f.procs, machineload.Proc{PID: 2000, PPID: 1, Name: "claude", Age: time.Hour})
+	runSessionStart(startJSON(t, "s2", f.cwd, map[string]string{"source": "startup"}), "hook", "session-start")
+	runHook(t, promptJSON(t, "s2", f.cwd, "paint a landscape", ""), "hook", "prompt-router")
+
+	f.launch(2000)
+	f.procs = append(f.procs, machineload.Proc{PID: 3000, PPID: 1, Name: "claude", Age: time.Hour})
+	names := abcdhome.Path(f.home, "sessions", "names.json")
+	before, err := os.ReadFile(names)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.tableErr = context.DeadlineExceeded
+	stdout, stderr := runHook(t, promptJSON(t, "s1", f.cwd, "paint a landscape", "Alice"), "hook", "prompt-router")
+	if strings.Contains(stdout, "sessionTitle") || strings.Contains(stdout, "abcd session name:") {
+		t.Fatalf("a prompt that could not read the table set a title or carried a notice: %q", stdout)
+	}
+	if n := strings.Count(stderr, "abcd session name:"); n != 1 || !strings.Contains(stderr, "left as it is") {
+		t.Fatalf("stderr carries %d naming notes, want one saying nothing changed:\n%s", n, stderr)
+	}
+	if after, err := os.ReadFile(names); err != nil || string(after) != string(before) {
+		t.Fatalf("the register changed (%v):\n%s\nwant\n%s", err, after, before)
+	}
+}
+
+// TestPromptRouterLeavesNamingAloneForASubAgent: a prompt payload carrying an
+// agent id is a sub-agent's. Its session's title is owed (its start reserved
+// Alice), yet the sub-agent's prompt sets no title and writes nothing to the
+// register; the session's own first prompt still sets Alice.
+func TestPromptRouterLeavesNamingAloneForASubAgent(t *testing.T) {
+	f := newNameFixture(t)
+	f.launch(1000)
+	runSessionStart(startJSON(t, "s1", f.cwd, map[string]string{"source": "startup"}), "hook", "session-start")
+	names := abcdhome.Path(f.home, "sessions", "names.json")
+	before, err := os.ReadFile(names)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(map[string]string{
+		"session_id": "s1", "cwd": f.cwd, "prompt": "paint a landscape",
+		"hook_event_name": "UserPromptSubmit", "agent_id": "ag-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := runHook(t, string(payload), "hook", "prompt-router"); strings.Contains(out, "sessionTitle") {
+		t.Fatalf("a sub-agent's prompt set a title: %q", out)
+	}
+	if after, err := os.ReadFile(names); err != nil || string(after) != string(before) {
+		t.Fatalf("a sub-agent's prompt changed the register (%v):\n%s", err, after)
+	}
+	out, _ := runHook(t, promptJSON(t, "s1", f.cwd, "paint a landscape", ""), "hook", "prompt-router")
+	if got := decodeTitled(t, out).HookSpecificOutput.SessionTitle; got != "Alice" {
+		t.Fatalf("the session's own first prompt was titled %q, want Alice", got)
 	}
 }
