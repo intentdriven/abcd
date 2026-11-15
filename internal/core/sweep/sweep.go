@@ -82,6 +82,10 @@ type Options struct {
 	// to see what was asked, or to have a promotion fail.
 	inbox   func() ([]report.Entry, error)
 	promote func(ledgerRoot, id string, mc *match.Config) (report.Promoted, error)
+	// onLastCheck, when set, is told each stage the last check before a
+	// delete on origin has passed (lastCheckWorktrees, lastCheckProbe). A
+	// test sets it to end the run's context at that point.
+	onLastCheck func(stage string)
 
 	// forgeChecked says Forge was pinned to origin's repository already
 	// (pinnedForge), forgeKey is that repository's key, and forgeUnmatched

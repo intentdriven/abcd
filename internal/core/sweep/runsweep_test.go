@@ -3,6 +3,7 @@ package sweep
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -151,5 +152,45 @@ func TestEveryHalfsRefusalIsCarried(t *testing.T) {
 	}
 	if !errors.Is(err, fetchFailed) || !errors.Is(err, inboxFailed) {
 		t.Fatalf("the error %v does not wrap both halves' causes", err)
+	}
+}
+
+// TestAWholeDryRunChangesNothing: a whole dry run leaves the checkout, and
+// HOME with origin, the store's worktrees and abcd's inbox under it, byte for
+// byte as they were, and asks the forge nothing that changes anything: only
+// for the repository and its pull requests.
+func TestAWholeDryRunChangesNothing(t *testing.T) {
+	repo, o, wf := everyKind(t)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := &recorder{}
+	o.Forge = rec.wrap(o.Forge)
+	roots := []string{repo.Root(), home}
+	before := treeHash(t, roots...)
+
+	res, err := runSweep(context.Background(), repo.Root(), o, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := treeHash(t, roots...)
+	for p, h := range before {
+		if after[p] != h {
+			t.Errorf("the dry run changed %s", p)
+		}
+	}
+	for p := range after {
+		if _, ok := before[p]; !ok {
+			t.Errorf("the dry run made %s", p)
+		}
+	}
+	for _, c := range rec.all() {
+		if !isRepoView(c) && !(len(c) >= 2 && c[0] == "pr" && c[1] == "list") {
+			t.Errorf("the dry run asked gh %s", strings.Join(c, " "))
+		}
+	}
+	if len(wf.dispatches()) != 0 || res.ExitCode() != ExitActed || len(res.Rows) == 0 {
+		t.Fatalf("dispatches %d, exit %d, rows %d", len(wf.dispatches()), res.ExitCode(), len(res.Rows))
 	}
 }

@@ -305,6 +305,22 @@ func (rj *remoteJudge) readLocal() error {
 	return nil
 }
 
+// The stages of the last check before a delete on origin that
+// Options.onLastCheck is told of: the worktrees and local branches read
+// again, and the liveness probe made again.
+const (
+	lastCheckWorktrees = "worktrees"
+	lastCheckProbe     = "probe"
+)
+
+// passed tells Options.onLastCheck, when set, that the last check passed
+// stage.
+func (o Options) passed(stage string) {
+	if o.onLastCheck != nil {
+		o.onLastCheck(stage)
+	}
+}
+
 // errForgeTimedOut is a forge call that did not answer within forgeTimeout.
 var errForgeTimedOut = errors.New("the forge did not answer in time")
 
@@ -683,6 +699,7 @@ func (rj *remoteJudge) delete(b remoteBranch, addrHold, head, headTip string, he
 	// worktrees, their upstreams and the guard's checks, and a fresh process
 	// table.
 	lerr := rj.readLocal()
+	rj.o.passed(lastCheckWorktrees)
 	if err := stopped(); err != nil {
 		return err
 	}
@@ -691,6 +708,7 @@ func (rj *remoteJudge) delete(b remoteBranch, addrHold, head, headTip string, he
 	}
 	rj.live.probe = newProbe(rj.ctx, rj.o.Probe)
 	ev := rj.holds(b, map[string][]string{b.name: open}, bases, "")
+	rj.o.passed(lastCheckProbe)
 	if err := stopped(); err != nil {
 		return err
 	}

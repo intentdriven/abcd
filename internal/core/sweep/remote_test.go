@@ -894,3 +894,58 @@ func TestARestoreNoteForANameNoCommandCarries(t *testing.T) {
 		t.Fatalf("%+v; want the judged tip and no command", r)
 	}
 }
+
+// TestARunStoppedDuringTheLastCheckIsReportedStopped: a run whose context
+// ends just after the last check reads the worktrees again reads no process
+// table after it, and one whose context ends just after the liveness probe
+// reads no tip of origin's after it; each keeps the branch, reported as
+// stopped and the run's fault.
+func TestARunStoppedDuringTheLastCheckIsReportedStopped(t *testing.T) {
+	for _, stage := range []string{lastCheckWorktrees, lastCheckProbe} {
+		t.Run(stage, func(t *testing.T) {
+			repo, origin := originRepo(t)
+			tip := mergedOnOrigin(repo, "feat", "feat.txt")
+			f := &fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var (
+				stopped          bool
+				listed, tipsRead int
+				prevTip          = readRemoteTip
+			)
+			o := remoteOpts(f)
+			o.Probe.Processes = func(context.Context) ([]Process, error) {
+				if stopped {
+					listed++
+				}
+				return nil, nil
+			}
+			readRemoteTip = func(ctx context.Context, dir, remote, branch string) (string, bool, error) {
+				if stopped {
+					tipsRead++
+				}
+				return prevTip(ctx, dir, remote, branch)
+			}
+			t.Cleanup(func() { readRemoteTip = prevTip })
+			o.onLastCheck = func(s string) {
+				if s == stage {
+					stopped = true
+					cancel()
+				}
+			}
+
+			res, err := sweepRemote(ctx, repo.Root(), o, true)
+			r := remoteRowFor(t, res, "feat")
+			if err == nil || res.ExitCode() != ExitRefused || !strings.Contains(res.Refusal, "the run was stopped before every delete was made") ||
+				r.Outcome != OutcomeKept || !strings.Contains(r.Reason, "the run was stopped before the delete") {
+				t.Fatalf("err %v, exit %d, refusal %q, row %+v; want feat kept and the run stopped", err, res.ExitCode(), res.Refusal, r)
+			}
+			if !stopped || listed != 0 || tipsRead != 0 {
+				t.Fatalf("stopped %v; after the stop the process table was read %d times and origin's tip %d times", stopped, listed, tipsRead)
+			}
+			if onOrigin(repo, origin, "feat") != tip {
+				t.Fatal("origin no longer holds feat")
+			}
+		})
+	}
+}
