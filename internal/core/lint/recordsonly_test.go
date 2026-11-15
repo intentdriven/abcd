@@ -2,6 +2,7 @@ package lint_test
 
 import (
 	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -307,5 +308,59 @@ func TestPreflightRecordsRuleRunsPrechecksTests(t *testing.T) {
 	}
 	if last := body[len(body)-1]; last != `@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)" records-only` {
 		t.Errorf("the records-only recipe ends %q; want the records-only receipt minted", last)
+	}
+}
+
+// TestRecordsOnlyReadsTheCommitsAsStored: the verdict is about HEAD's own
+// commits, so a refs/replace/* ref standing a records-only commit in for a
+// code change, with the worktree holding the stand-in's tree, and a graft file
+// that moves the merge base past a code change, each still take the full run.
+func TestRecordsOnlyReadsTheCommitsAsStored(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		setup func(r *gittest.Repo)
+	}{
+		{"a replaced HEAD", func(r *gittest.Repo) {
+			base := r.Git("rev-parse", "HEAD")
+			r.Write(".abcd/work/issues/open/iss-2.md", "two\n")
+			r.Commit("records")
+			standIn := r.Git("rev-parse", "HEAD")
+			r.Git("reset", "-q", "--hard", base)
+			r.Write("internal/x/x.go", "package x\n\nvar Y = 1\n")
+			r.Commit("code")
+			r.Git("replace", r.Git("rev-parse", "HEAD"), standIn)
+			r.Git("read-tree", "--reset", "-u", standIn)
+		}},
+		{"a graft", func(r *gittest.Repo) {
+			base := r.Git("rev-parse", "HEAD")
+			r.Write("internal/x/x.go", "package x\n\nvar Y = 1\n")
+			r.Commit("code")
+			code := r.Git("rev-parse", "HEAD")
+			r.Write(".abcd/work/issues/open/iss-2.md", "two\n")
+			r.Commit("records")
+			moved := r.Git("commit-tree", base+"^{tree}", "-p", base, "-m", "origin moves on")
+			r.Git("update-ref", "refs/remotes/origin/main", moved)
+			writeGrafts(t, r, moved+" "+base+" "+code+"\n")
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := recordsRepo(t)
+			c.setup(r)
+			if out, ok := recordsOnly(t, r); ok {
+				t.Fatalf("records-only = %v, %q; want the full run", ok, out)
+			}
+		})
+	}
+}
+
+// writeGrafts writes body to r's .git/info/grafts.
+func writeGrafts(t *testing.T, r *gittest.Repo, body string) {
+	t.Helper()
+	dir := filepath.Join(r.Root(), ".git", "info")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "grafts"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

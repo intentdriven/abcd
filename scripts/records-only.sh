@@ -28,6 +28,14 @@
 #                      can redo the check
 set -uo pipefail
 
+# Every git here reads objects as stored, as scripts/preflight-receipt.sh does:
+# no refs/replace/* ref stands another commit, tree or blob in for one HEAD or
+# origin's default branch stores, and no graft file moves the merge base, so the
+# verdict is about the commits a receipt names. The graft path is the one
+# internal/gitutil uses (noGraftFile): it names nothing, so git reads no graft
+# file.
+export GIT_NO_REPLACE_OBJECTS=1 GIT_GRAFT_FILE=/dev/null/none
+
 verdict=false
 reason='the classifier did not reach a verdict'
 # The reason can carry a changed path, which a writer chose, so only printable
