@@ -360,9 +360,13 @@ people sets the product thinker. A chip naming someone other than the mode
 names re-sets the mode, because the status line names whom the question on
 screen is for. The gate writes a `question_open` marker in
 `.abcd/.work.local/` first and sets the state second, so a failure between the
-two leaves a marker whose reset costs nothing rather than a parked state with
+two leaves a marker that no longer matches the state in force, which the
+answer clears with the state left alone, rather than a parked state with
 nothing left to reset it. The answer resets the state to managed and clears the
-marker: the plugin's `PostToolUse` hook on the question tool runs the reset when the
+marker only when the marker's word matches the state in force (or the state
+store cannot be read); a marker naming another state is cleared and the state
+left as set, and `abcd mode <state>` clears a marker naming another state,
+keeping one naming the state it sets. The plugin's `PostToolUse` hook on the question tool runs the reset when the
 answer comes back, and the rules loader's prompt
 hook runs the same reset on the next human message, the fallback for a host
 that does not run `PostToolUse`; whichever runs first clears the marker, so

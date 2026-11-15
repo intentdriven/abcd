@@ -724,26 +724,37 @@ func TestGuardQuestionRefusesCollidingKeys(t *testing.T) {
 	}
 }
 
-// TestHookFailsOpenOnCollidingKeys: the hook reads the same drafts as
-// tool_input it cannot read: the question runs on the loud, non-blocking
-// status (exit 1, nothing on stdout) naming the collision, never judged on
-// one of the colliding values.
-func TestHookFailsOpenOnCollidingKeys(t *testing.T) {
-	root := unmanagedRepo(t)
-	cwd, err := json.Marshal(root)
-	if err != nil {
-		t.Fatal(err)
+// TestHookDeniesCollidingKeys: the hook refuses the same drafts the verb
+// exits 2 on, naming the colliding key and saying to drop it, after the away
+// check: a collision is known for certain, so no question is shown that the
+// check judged on one value while the host could show another. Under a mode
+// naming somebody the refusal is marked open, so the next message resets the
+// mode like any refusal's.
+func TestHookDeniesCollidingKeys(t *testing.T) {
+	keys := map[string]string{
+		"question under another case":  `"Question"`,
+		"header twice":                 `"header"`,
+		"an option's label twice":      `"label"`,
+		"questions under another case": `"Questions"`,
 	}
 	for name, draft := range collidingDrafts(t) {
 		t.Run(name, func(t *testing.T) {
+			root := managedCheckout(t)
+			setMode(t, root, mode.ProductThinker)
+			cwd, err := json.Marshal(root)
+			if err != nil {
+				t.Fatal(err)
+			}
 			payload := `{"session_id":"s1","hook_event_name":"PreToolUse","cwd":` + string(cwd) +
 				`,"tool_name":"` + questionTools[0] + `","tool_input":` + draft + `}`
 			stdout, stderr, code := runGuard(payload, "guard", "hook")
-			if code != 1 || stdout != "" {
-				t.Fatalf("exit %d, stdout %q, stderr %q; want exit 1 and nothing on stdout", code, stdout, stderr)
+			reason := mustDeny(t, stdout, stderr, code)
+			if !strings.Contains(reason, "the key "+keys[name]) || !strings.Contains(reason, "Drop ") {
+				t.Errorf("the deny must name the key %s and say to drop it; reason = %q", keys[name], reason)
 			}
-			if !strings.Contains(stderr, "NOT CHECKED") || !strings.Contains(stderr, "only in case") {
-				t.Errorf("the fail-open must say NOT CHECKED and name the collision; stderr = %q", stderr)
+			mustBeMarkedUnder(t, root, mode.ProductThinker)
+			if got, _ := mode.ReadAt(root); got != mode.ProductThinker {
+				t.Errorf("mode = %q, want product-thinker left as it was", got)
 			}
 		})
 	}

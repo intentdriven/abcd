@@ -56,8 +56,9 @@ back, and on a host that does not run that hook the prompt hook resets it on
 the next human message. Either says so once on stderr, so you do not set it
 back yourself. The reset applies only while the state is still the one the
 question was asked under: a state set again since, by this verb or by hand,
-is left as set, and setting a state with this verb clears any question still
-marked open. A question you abandon after the question writer refused it
+is left as set, and setting a state with this verb clears a question still
+marked open under another state, keeping one marked under the state it sets,
+which the answer then still resets. A question you abandon after the question writer refused it
 reached nobody, so set the state back yourself with `abcd mode managed`. While the away mode below holds, the guard refuses every
 question instead, whatever its chip, and sets nothing: its reason says which
 acts to queue and that every other question is decided with `abcd decide`.

@@ -253,7 +253,13 @@ and any other runs with no mode set and nothing marked open, under one loud
 line saying the mode store could not be read. Where the state cannot
 be written or the question cannot be marked open, such as a local tier that is
 not writable, the question runs with a loud `NOT CHECKED` warning. A questions field the hook cannot read is the same case: the question runs, and the hook
-warns loudly. So is a payload the hook cannot decode at all: where it names the
+warns loudly. One exception is refused instead: an object of the input that
+carries a key twice, or a key the check reads (`questions`, `header`,
+`question`, `options`, `label`, `description`, `preview`) under another case,
+is denied, naming the key and saying to drop it, as `abcd guard question`
+exits 2 on it, since the check would judge one value while the host could
+show the other; under a state naming somebody it is marked open like any
+refusal. So is a payload the hook cannot decode at all: where it names the
 question tool the warning says the question runs, and where no tool name can be
 read the warning names no tool.
 

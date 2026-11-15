@@ -26,8 +26,10 @@ only where the host gives it no shell). It makes at most five checks to a
 part. It never refuses for length: material that does not fit is split into
 numbered parts, returned in a new `next` list that replaces `remaining`. It
 refuses for three causes only, each to the calling agent: a missing or
-contradictory part of the brief (the mode in force among them, though an
-`unnamed` addressee, where no mode store is read, is no disagreement), the
+contradictory part of the brief (the mode in force among them: an
+`unnamed` addressee where the badge shows and the mode reads `managed` means
+the caller did not set the mode, while one where no mode store is read is no
+disagreement), the
 check giving no ready input (its exit 2, or `refuse-away`), and five checks
 spent, with the check's last findings; a caller that then abandons the
 question runs `abcd mode managed`. The draft is piped as one line of JSON,

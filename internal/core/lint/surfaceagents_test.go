@@ -199,8 +199,9 @@ func handWritten(page string) string {
 // TestWriterPageStatesItsRefusalsAndFallbacks (spc-2610301917245442, step 4;
 // approach 9): the hand-written part of the question-writing agent's page
 // states its three refusals, each returned to the calling agent only (a
-// missing or contradictory part of the brief, the mode in force among them
-// but never an `unnamed` addressee; the check giving no ready input, on its
+// missing or contradictory part of the brief, the mode in force among them,
+// an `unnamed` addressee where the mode reads `managed` under the badge
+// included, but not one where no mode store is read; the check giving no ready input, on its
 // exit 2 or a `refuse-away`; five checks spent with the last findings), and
 // the caller's `abcd mode managed` when it abandons a question after one;
 // the draft piped as one line of JSON; the `questions` array of `ready` as
@@ -217,7 +218,7 @@ func TestWriterPageStatesItsRefusalsAndFallbacks(t *testing.T) {
 	for name, phrases := range map[string][]string{
 		"the refusal of a missing or contradictory part": {"a part of the brief is missing or contradicts another"},
 		"the refusal when no ready input comes back":     {"cannot give a ready input", "exits 2", "`refuse-away`", "never a reason to count by hand"},
-		"unnamed is no disagreement":                     {"names a person (`product-thinker` or `facilitator`) other than the one you were handed", "`unnamed` is no disagreement", "`unnamed` means no mode store is read here"},
+		"unnamed: an unset mode, or no mode store":       {"names a person (`product-thinker` or `facilitator`) other than the one you were handed", "prints `managed` in a repository abcd manages", "the caller did not set the mode", "That is refusal cause 1", "Only where no mode store is read", "is `unnamed` no disagreement"},
 		"the abandoned question's mode":                  {"abandons the question after your refusal", "`abcd mode managed`"},
 		"the draft's one line of JSON":                   {"valid JSON on one line", "written as `\\n`", "can never be the delimiter line"},
 		"the questions array, not ready":                 {"the `questions` array of the check's `ready` input"},

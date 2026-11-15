@@ -1376,3 +1376,29 @@ func TestModeSetSupersedesAnAbandonedRefusal(t *testing.T) {
 		t.Errorf("the next message moved the hand-set mode to %q; reset said %q", got, reset.String())
 	}
 }
+
+// TestModeSetAgainBesideTheQuestionStillResets: an agent that sets the mode
+// again in the same batch as the question it asks (a retry after a refusal)
+// must not clear the question's marker: `abcd mode <state>` clears only a
+// marker naming another state, so the answer still returns the mode to
+// managed.
+func TestModeSetAgainBesideTheQuestionStillResets(t *testing.T) {
+	root := managedCheckout(t)
+	setMode(t, root, mode.ProductThinker)
+	q := wellBuilt()
+	q.Header = "Q1"
+	stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
+	if code != 0 || strings.Contains(stdout, "deny") {
+		t.Fatalf("a well-built question was not admitted: exit %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	mustBeMarkedUnder(t, root, mode.ProductThinker)
+	if _, stderr, err := runSplit(t, "", "mode", "product-thinker"); err != nil {
+		t.Fatalf("abcd mode product-thinker: %v\n%s", err, stderr)
+	}
+	mustBeMarkedUnder(t, root, mode.ProductThinker)
+	var reset strings.Builder
+	resetModeOnAnswer(&reset, root)
+	if got, _ := mode.ReadAt(root); got != mode.Managed {
+		t.Errorf("mode after the answer = %q, want managed; reset said %q", got, reset.String())
+	}
+}

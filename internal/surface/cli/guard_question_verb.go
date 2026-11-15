@@ -277,8 +277,8 @@ func decodeQuestionDraft(raw []byte, ask bool) (form string, f question.Fields, 
 		if json.Unmarshal(raw, &in) != nil || len(in.Questions) == 0 {
 			return "", f, nil, nil, errQuestionDraftShape
 		}
-		if collidingKeys(raw, []string{"questions"}) {
-			return "", f, nil, nil, errQuestionKeyCollision
+		if c := collidingKeys(raw, []string{"questions"}); c != nil {
+			return "", f, nil, nil, c
 		}
 		if f, err = decodeQuestions(in.Questions); err != nil {
 			if errors.Is(err, errQuestionKeyCollision) {

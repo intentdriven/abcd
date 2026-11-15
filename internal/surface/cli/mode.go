@@ -93,11 +93,14 @@ func newModeCommand(asJSON *bool) *cobra.Command {
 			if err := mode.Set(cwd, st); err != nil {
 				return modeRefusal(err)
 			}
-			// An explicit set supersedes any question still marked open, so the
-			// next message's reset never undoes it. The state is already set;
-			// a marker that cannot be cleared is said, never a refusal.
+			// An explicit set supersedes a question still marked open under
+			// another state, so the next message's reset never undoes it; a
+			// marker naming the state just set is kept, so a retry that sets
+			// the mode again beside the question still resets on the answer.
+			// The state is already set; a marker that cannot be cleared is
+			// said, never a refusal.
 			if root, err := mode.Root(cwd); err == nil {
-				if err := mode.ClearQuestionOpen(root); err != nil {
+				if err := mode.ClearQuestionOpenOtherThan(root, st); err != nil {
 					fmt.Fprintf(cmd.ErrOrStderr(), "abcd mode: the state is set, but %s\n", termsafe.Sanitize(scrubPaths(err)))
 				}
 			}

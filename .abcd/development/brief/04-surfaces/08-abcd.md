@@ -222,10 +222,15 @@ unchecked, but where the state names somebody it is marked open under that
 state too, with nothing written to the state, so an abcd question whose header
 missed the grammar does not leave the state parked. The answer resets it: the question tool's `PostToolUse`
 hook, when the answer comes back, or the prompt hook on the next human message
-where the host runs no `PostToolUse`, finds the marker, resets the state to
-managed, clears the marker and says so in one line on stderr. With no marker
-neither hook changes anything, so a state the human set by hand survives the
-message they type next. At a stop that is not a question the agent sets the
+where the host runs no `PostToolUse`, finds the marker and, when its word
+matches the state in force, resets the state to managed, clears the marker and
+says so in one line on stderr. A marker naming another state is stale (its
+question was refused and abandoned, and the state set again since): it is
+cleared and the state left as set. A state store the reset cannot read is no
+evidence of a state set since, so it is reset to managed all the same. With no
+marker neither hook changes anything, so a state the human set by hand survives
+the message they type next, and `abcd mode <state>` clears a marker naming
+another state, keeping one naming the state it sets. At a stop that is not a question the agent sets the
 state itself with `abcd mode`, naming whom it addresses. A repository abcd
 does not manage, or one without the local tier, has no badge, and its
 questions are not gated.
