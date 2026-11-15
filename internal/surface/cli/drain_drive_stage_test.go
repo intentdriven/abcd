@@ -217,12 +217,12 @@ func TestALaneThatChangesItsGatesIsRefused(t *testing.T) {
 	repo.Write("a.go", "package a\n")
 	repo.Commit("base")
 	base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
-	if err := driveGateCheck(repo.Root())(repo.Root(), base); err != nil {
+	if err := driveGateCheck(repo.Root())(repo.Root(), base, checkedOutHead(t, repo.Root())); err != nil {
 		t.Fatalf("nothing changed: %v", err)
 	}
 	repo.Write("a.go", "package a\n\n// more\n")
 	repo.Commit("code")
-	if err := driveGateCheck(repo.Root())(repo.Root(), base); err != nil {
+	if err := driveGateCheck(repo.Root())(repo.Root(), base, checkedOutHead(t, repo.Root())); err != nil {
 		t.Fatalf("code is no gate: %v", err)
 	}
 	for _, path := range []string{"Makefile", "scripts/check.sh", ".github/workflows/x.yml", ".abcd/guard.json"} {
@@ -230,7 +230,7 @@ func TestALaneThatChangesItsGatesIsRefused(t *testing.T) {
 		repo.Write(path, "x\n")
 		repo.Commit(path)
 		var refused *loop.PreflightRefused
-		if err := driveGateCheck(repo.Root())(repo.Root(), base); !errors.As(err, &refused) || !strings.Contains(refused.Reason, path) || !strings.Contains(refused.Reason, "a person's own session") {
+		if err := driveGateCheck(repo.Root())(repo.Root(), base, checkedOutHead(t, repo.Root())); !errors.As(err, &refused) || !strings.Contains(refused.Reason, path) || !strings.Contains(refused.Reason, "a person's own session") {
 			t.Fatalf("%s: %v", path, err)
 		}
 	}
@@ -241,12 +241,18 @@ func TestALaneThatChangesItsGatesIsRefused(t *testing.T) {
 	repo.Git("update-index", "--add", "--cacheinfo", "100644,"+blob+",Scripts/run.sh")
 	repo.Git("commit", "-q", "-m", "a case variant")
 	var folded *loop.PreflightRefused
-	if err := driveGateCheck(repo.Root())(repo.Root(), base); !errors.As(err, &folded) || !strings.Contains(folded.Reason, "Scripts/run.sh") {
+	if err := driveGateCheck(repo.Root())(repo.Root(), base, checkedOutHead(t, repo.Root())); !errors.As(err, &folded) || !strings.Contains(folded.Reason, "Scripts/run.sh") {
 		t.Fatalf("a case variant of scripts/: %v", err)
 	}
 	var refused *loop.PreflightRefused
-	if err := driveGateCheck(repo.Root())(repo.Root(), "not-a-commit"); !errors.As(err, &refused) {
+	if err := driveGateCheck(repo.Root())(repo.Root(), "not-a-commit", checkedOutHead(t, repo.Root())); !errors.As(err, &refused) {
 		t.Fatalf("a diff that cannot be read refuses: %v", err)
+	}
+	if err := driveGateCheck(repo.Root())(repo.Root(), base, strings.Repeat("0", 40)); !errors.As(err, &refused) {
+		t.Fatalf("a head the repository does not hold refuses: %v", err)
+	}
+	if err := driveGateCheck(repo.Root())(repo.Root(), base, ""); !errors.As(err, &refused) {
+		t.Fatalf("no head refuses: %v", err)
 	}
 }
 
@@ -266,13 +272,13 @@ func TestALaneInALinkedWorktreeIsJudgedAgainstTheMainCheckoutsHooks(t *testing.T
 	lane.Write("tools/hooks/pre-push", "x\n")
 	lane.Commit("the hooks")
 	var refused *loop.PreflightRefused
-	if err := driveGateCheck(repo.Root())(wt, base); !errors.As(err, &refused) || !strings.Contains(refused.Reason, "tools/hooks/pre-push") {
+	if err := driveGateCheck(repo.Root())(wt, base, checkedOutHead(t, wt)); !errors.As(err, &refused) || !strings.Contains(refused.Reason, "tools/hooks/pre-push") {
 		t.Fatalf("a change to the main checkout's hooks path landed: %v", err)
 	}
 	base = strings.TrimSpace(lane.Git("rev-parse", "HEAD"))
 	lane.Write("b.go", "package a\n")
 	lane.Commit("code")
-	if err := driveGateCheck(repo.Root())(wt, base); err != nil {
+	if err := driveGateCheck(repo.Root())(wt, base, checkedOutHead(t, wt)); err != nil {
 		t.Fatalf("code is no gate: %v", err)
 	}
 }
@@ -296,7 +302,7 @@ func TestALaneOnALinkedHooksDirectoryIsHandedBack(t *testing.T) {
 		edit()
 		repo.Commit(what)
 		var refused *loop.PreflightRefused
-		if err := driveGateCheck(repo.Root())(repo.Root(), base); !errors.As(err, &refused) || !strings.Contains(refused.Reason, "a person's own session") {
+		if err := driveGateCheck(repo.Root())(repo.Root(), base, checkedOutHead(t, repo.Root())); !errors.As(err, &refused) || !strings.Contains(refused.Reason, "a person's own session") {
 			t.Fatalf("%s landed: %v", what, err)
 		}
 	}
@@ -310,7 +316,7 @@ func TestALaneOnALinkedHooksDirectoryIsHandedBack(t *testing.T) {
 	base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
 	repo.Write("a.go", "package a\n\n// more\n")
 	repo.Commit("code")
-	if err := driveGateCheck(repo.Root())(repo.Root(), base); err != nil {
+	if err := driveGateCheck(repo.Root())(repo.Root(), base, checkedOutHead(t, repo.Root())); err != nil {
 		t.Fatalf("code is no gate: %v", err)
 	}
 	pass := drivePassOver(repo.Root())
@@ -356,13 +362,37 @@ func TestALaneThatRetargetsALinkOnTheWayToTheHooksIsHandedBack(t *testing.T) {
 			}
 			repo.Commit("retarget")
 			var refused *loop.PreflightRefused
-			if err := driveGateCheck(repo.Root())(repo.Root(), base); !errors.As(err, &refused) || !strings.Contains(refused.Reason, strconv.Quote(c.retarget)) {
+			if err := driveGateCheck(repo.Root())(repo.Root(), base, checkedOutHead(t, repo.Root())); !errors.As(err, &refused) || !strings.Contains(refused.Reason, strconv.Quote(c.retarget)) {
 				t.Fatalf("retargeting %s landed: %v", c.retarget, err)
 			}
 			if why := drivePassOver(repo.Root())("iss-1", c.retarget); !strings.Contains(why, "a person's own session") {
 				t.Errorf("an issue on %s is opened: %q", c.retarget, why)
 			}
 		})
+	}
+}
+
+// TestALaneIsJudgedAtItsHeadWhereverItsWorktreeStands: the landing's check reads
+// what the lane's judged head changes, from the repository, so a worktree left
+// detached at the base, or on another branch, does not hide a change to a gate
+// the branch holds.
+func TestALaneIsJudgedAtItsHeadWhereverItsWorktreeStands(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	repo.Write("a.go", "package a\n")
+	repo.Commit("base")
+	base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	wt := filepath.Join(t.TempDir(), "lane")
+	repo.Git("worktree", "add", "-q", "-b", "lane", wt)
+	lane := gittest.OpenRepo(t, wt)
+	lane.Write(".github/workflows/x.yml", "x\n")
+	lane.Commit("the workflow")
+	head := checkedOutHead(t, wt)
+	for _, move := range [][]string{{"checkout", "-q", "--detach", base}, {"switch", "-q", "-c", "elsewhere", base}} {
+		lane.Git(move...)
+		var refused *loop.PreflightRefused
+		if err := driveGateCheck(repo.Root())(wt, base, head); !errors.As(err, &refused) || !strings.Contains(refused.Reason, ".github/workflows/x.yml") {
+			t.Fatalf("after git %s the lane's change to a gate was not seen: %v", strings.Join(move, " "), err)
+		}
 	}
 }
 
@@ -381,7 +411,7 @@ func TestAMergedDefaultBranchIsNotTheLanesChange(t *testing.T) {
 	merged := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
 	repo.Git("checkout", "-q", "lane")
 	repo.Git("merge", "-q", "--no-edit", merged)
-	if err := driveGateCheck(repo.Root())(repo.Root(), merged); err != nil {
+	if err := driveGateCheck(repo.Root())(repo.Root(), merged, checkedOutHead(t, repo.Root())); err != nil {
 		t.Fatalf("the lane did not change the Makefile: %v", err)
 	}
 }
@@ -750,13 +780,13 @@ func TestAGateChangeIsReadExactly(t *testing.T) {
 	repo.Git("mv", "scripts/old.sh", "elsewhere.sh")
 	repo.Commit("rename out of the gate")
 	var refused *loop.PreflightRefused
-	if err := driveGateCheck(repo.Root())(repo.Root(), base); !errors.As(err, &refused) {
+	if err := driveGateCheck(repo.Root())(repo.Root(), base, checkedOutHead(t, repo.Root())); !errors.As(err, &refused) {
 		t.Fatalf("a rename out of a gate path is a change to it: %v", err)
 	}
 	base = strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
 	repo.Write("tools/hooks/commit-msg", "x\n")
 	repo.Commit("the configured hooks")
-	if err := driveGateCheck(repo.Root())(repo.Root(), base); !errors.As(err, &refused) {
+	if err := driveGateCheck(repo.Root())(repo.Root(), base, checkedOutHead(t, repo.Root())); !errors.As(err, &refused) {
 		t.Fatalf("the configured hooks are gates: %v", err)
 	}
 	if !strings.Contains(refused.Reason, strconv.Quote("tools/hooks/commit-msg")) {
@@ -808,7 +838,7 @@ func TestALandingOverAHooksPathThatCannotBeReadDoesNotGoOnAndSaysWhatToDo(t *tes
 	repo.Commit("code")
 	unreadableHooksPath(t, repo)
 	var refused *loop.PreflightRefused
-	if err := driveGateCheck(repo.Root())(repo.Root(), base); !errors.As(err, &refused) {
+	if err := driveGateCheck(repo.Root())(repo.Root(), base, checkedOutHead(t, repo.Root())); !errors.As(err, &refused) {
 		t.Fatalf("a hooks path that cannot be read holds the landing: %v", err)
 	}
 	for _, want := range []string{"the hooks path the lane's repository configures could not be read, so its landing does not go on",
@@ -922,4 +952,11 @@ func TestADrivesLogKeepsItsStartLines(t *testing.T) {
 	if !strings.Contains(string(raw), line) {
 		t.Fatalf("the log keeps the line:\n%s", raw)
 	}
+}
+
+// checkedOutHead is the commit the checkout at dir has checked out, the head a
+// test's lane judged where nothing moved it.
+func checkedOutHead(t *testing.T, dir string) string {
+	t.Helper()
+	return strings.TrimSpace(gittest.OpenRepo(t, dir).Git("rev-parse", "HEAD"))
 }

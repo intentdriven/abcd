@@ -133,15 +133,21 @@ const hooksPathRemedy = "look at what git answers for the setting with `git conf
 
 // driveGateCheck says whether a lane's landing may go on: not over a lane that
 // changes what judges it, which a person's own session handles, and not when what
-// the lane changed cannot be read. The hooks path is placed both in the lane's
+// the lane changed cannot be read. What the lane changed is read from the
+// repository at repoRoot, from base to head, the commit its landing lands, and
+// never from what the lane's worktree has checked out, which anything run there
+// can move. The hooks path is placed both in the lane's
 // worktree and in the checkout at repoRoot, since a value that names a directory
 // inside that checkout is where git runs hooks from whichever worktree it runs
 // in, and the lane's change reaches it there once landed; each place is the same
 // path relative to its tree, so it is read against the lane's change list as it
 // stands.
-func driveGateCheck(repoRoot string) func(worktree, base string) error {
-	return func(worktree, base string) error {
-		out, err := gitutil.Run(worktree, "diff", "--name-only", "-z", "--no-renames", base, "HEAD", "--")
+func driveGateCheck(repoRoot string) func(worktree, base, head string) error {
+	return func(worktree, base, head string) error {
+		if !gitutil.IsFullSHA(base) || !gitutil.IsFullSHA(head) {
+			return &loop.PreflightRefused{Reason: "the lane records no base and head to read what it changed, so its landing does not go on"}
+		}
+		out, err := gitutil.Run(repoRoot, "diff", "--name-only", "-z", "--no-renames", base, head, "--")
 		if err != nil {
 			return &loop.PreflightRefused{Reason: "what the lane changed could not be read, so its landing does not go on"}
 		}

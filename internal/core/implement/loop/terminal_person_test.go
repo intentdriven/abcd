@@ -82,7 +82,7 @@ func TestTheGateCheckReadsFromTheLastSync(t *testing.T) {
 		}
 	}
 	got := ""
-	o.PreflightAllowed = func(_, base string) error {
+	o.PreflightAllowed = func(_, base, _ string) error {
 		got = base
 		return nil
 	}
@@ -92,6 +92,37 @@ func TestTheGateCheckReadsFromTheLastSync(t *testing.T) {
 	}
 	if got != merged {
 		t.Fatalf("the check read from %q, want the last sync's %q: %+v\n%s", got, merged, res.Ended, strings.Join(w.lines, "\n"))
+	}
+}
+
+// TestTheGateCheckIsGivenTheHeadTheLandingLands: the check is handed the lane's
+// recorded head, the one its validators judged, so it never reads what the
+// worktree happens to have checked out.
+func TestTheGateCheckIsGivenTheHeadTheLandingLands(t *testing.T) {
+	w := newTerminalWorld(t)
+	o := oneLane(t, w)
+	const judged = "3333333333333333333333333333333333333333"
+	for i := range w.stages {
+		if w.stages[i].Name == StageValidate {
+			run := w.stages[i].Run
+			w.stages[i].Run = func(c Context, l *Lane) (Outcome, error) {
+				out, err := run(c, l)
+				l.HeadSHA = judged
+				return out, err
+			}
+		}
+	}
+	var heads []string
+	o.PreflightAllowed = func(_, _, head string) error {
+		heads = append(heads, head)
+		return nil
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(heads) == 0 || heads[0] != judged {
+		t.Fatalf("the check was given %q, want the judged head %q: %+v\n%s", heads, judged, res.Ended, strings.Join(w.lines, "\n"))
 	}
 }
 

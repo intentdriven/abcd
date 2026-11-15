@@ -106,8 +106,10 @@ type TerminalOptions struct {
 	// the load gate.
 	Preflight func(ctx context.Context, worktree string) error
 	// PreflightAllowed says whether a lane's preflight may run, given its
-	// worktree and base; a *PreflightRefused hands the lane back. Nil allows all.
-	PreflightAllowed func(worktree, base string) error
+	// worktree, base and head: the head its landing lands, the judged head or
+	// the landing's records commit on it, never what the worktree has checked
+	// out. A *PreflightRefused hands the lane back. Nil allows all.
+	PreflightAllowed func(worktree, base, head string) error
 	// Stop is closed when a stop is asked for. The context stays live, so a
 	// call in flight finishes.
 	Stop <-chan struct{}
@@ -1113,7 +1115,7 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 			}
 			if lane.Stage == StageLand && t.o.PreflightAllowed != nil {
 				var refused *PreflightRefused
-				if perr := t.o.PreflightAllowed(lane.Worktree, diffBase(lane)); errors.As(perr, &refused) {
+				if perr := t.o.PreflightAllowed(lane.Worktree, diffBase(lane), lane.HeadSHA); errors.As(perr, &refused) {
 					_, ended, err := t.laneRefused(ctx, runID, lane.ID, refused.Reason, refused.Reason)
 					return ended, err
 				} else if perr != nil {
