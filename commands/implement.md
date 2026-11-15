@@ -701,6 +701,23 @@ recorded, not counted, and the next step hands it out again by the same move,
 or hands the lane back as `stuck`. Where its round is settled or the lane has
 gone on to its landing, the lane is handed back as `stuck`.
 
+The landing does not arm a lane's pull request while a runner that ran one of
+its implementers has not reported which model ran it: the lane waits at its
+arming, and the run record says once which receipt it waits for. That wait is
+no refusal. Once `pace.stuck_minutes` have passed since that record line, the
+lane is handed back as `stuck`, naming the receipt; a line of the lane at
+another stage, or a change of the receipt waited for, starts the minutes
+again. A lane already armed when such a wait applies has its arming withdrawn
+first and then waits the same way. When a late report hands back a lane whose
+pull request is armed, the arming is withdrawn once the hand-back is written:
+the record says what came of it, a pull request already merged is said as
+merged, and one with no arming left is said to have none. A withdrawal that
+does not take (the forge unread, refusing, or still reporting the arming) is
+tried again by each later `abcd implement step`, and an issue run's
+reservation is released only once the forge reports no arming. The review
+receipt this checkout holds for that pull request's head is removed, so no
+re-arm of that head counts the pair that judged it.
+
 A reviewer's brief and a routed request ask its return to name the model it ran
 on in a line `Reviewer model: <model>`; the loop looks for that line among the
 return's first seven lines. At the return the loop holds up to three names for
@@ -1104,8 +1121,8 @@ releases it or its lease runs out. No step and no run renewal renews it, but a
 load-gate waiter in this copy (`abcd implement load --wait`, and `--race-gate`,
 which preflight's race stage uses) renews, while it waits and while its command
 runs, each live reservation that is not a release, is half through its lease,
-and whose tip is the commit this copy last pushed, and it never revives one that
-has lapsed or been released, so the lease can run past the time the answer
+and whose tip is the commit this copy last pushed; that renewal, which reads no
+run, never revives one that has lapsed or been released, so the lease can run past the time the answer
 gives; an answer whose lease has already lapsed says so, and that nothing
 revives it. A fetch or push that
 fails, and a release the reservation's tip refuses for a reason of its own (a

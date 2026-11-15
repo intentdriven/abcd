@@ -1274,18 +1274,32 @@ func ReleaseReservation(repoRoot, key string, o Options) (claim.Result, error) {
 // failed, at reservation_release_failed, which the drain routing the
 // hand-back tries again (releaseHandedBack). An intent's run keeps its
 // reservation: its held lanes may still land.
-func releaseOnHandBack(repoRoot string, st *State, hb HandBack, now time.Time) {
+//
+// A failed release's line ends by what the lease as this checkout last
+// fetched it (leaseEnd) leaves: a lease still to run lapses unless a load-gate
+// waiter in this copy renews it or a drain routing the hand-back releases it;
+// one already lapsed gets no waiter's clause, since the waiter renews only a
+// live reservation. It returns that lease's end and whether it has passed,
+// "" and false where the release was made or that view does not show the
+// reservation as this copy's.
+func releaseOnHandBack(repoRoot string, st *State, hb HandBack, now time.Time) (until string, ended bool) {
 	if st.ReservedAt == nil || st.Issue() == "" {
-		return
+		return "", false
 	}
 	clause, failed := releaseReservation(repoRoot, st.Key, tombstoneKind(hb), now)
 	stage := StageReservationReleased
 	if failed {
-		clause += ", so it lapses with its lease " + unlessWaiterRenews + " or a drain routing the hand-back releases it"
+		until, ended = leaseEnd(repoRoot, *st, now)
+		if ended {
+			clause += "; its lease lapsed at " + until + " as last fetched"
+		} else {
+			clause += ", so it lapses with its lease " + unlessWaiterRenews + " or a drain routing the hand-back releases it"
+		}
 		stage = StageReservationReleaseFailed
 	}
 	st.Record = append(st.Record, Entry{At: now, Stage: stage, Note: clause})
 	st.UpdatedAt = now
+	return until, ended
 }
 
 // issueFootprint is the footprint a drain reserves an issue with: the
@@ -1323,6 +1337,13 @@ func noFoundAtHandBack(issue string, now time.Time) DrainRoute {
 func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) string {
 	if run.ReservedAt == nil || run.Issue() == "" {
 		return ""
+	}
+	// A lane handed back with its pull request still armed keeps the
+	// reservation until a step has withdrawn the arming (releaseAfterWrite).
+	for _, l := range run.Lanes {
+		if armingOwed(l) {
+			return fmt.Sprintf("the reservation on %s is kept while pull request #%d is armed: `abcd implement step --run %s` tries the withdrawal again and then releases it", run.Key, l.PR, run.RunID)
+		}
 	}
 	// The step that handed the lane back has already released it, and its
 	// record says how (releaseOnHandBack). A failed release is a different

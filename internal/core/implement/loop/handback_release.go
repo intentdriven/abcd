@@ -29,6 +29,12 @@ type handBackRelease struct {
 	// reservation has lapsed, and nothing revives it.
 	until string
 	ended bool
+	// arming is the record's line on the withdrawal of the arming the
+	// hand-back owed (armingOwed), "" where it owed none; armed is set when
+	// that withdrawal did not take, so the pull request may still merge and
+	// nothing was released.
+	arming string
+	armed  bool
 	// unwritten is the second write's error: the line is not in the record.
 	unwritten error
 	// state is the run as the step left it, the release's line included.
@@ -61,13 +67,40 @@ type handBackRelease struct {
 // reservation (handedBackIssue), but a load-gate waiter in this copy
 // (claim.RenewDue, which reads no run) may still renew it, as gateWaiterRenews
 // says, so the lease can run past the time the answer gives.
+//
+// A lane handed back with its pull request still armed (armingOwed) has the
+// arming withdrawn first, here, after the write, so a refused save leaves the
+// forge as it was (withdrawLateArming), and the record says what came of it.
+// Until the forge reports no arming nothing is released: the lane stays where
+// each later step tries the withdrawal again (laneWant), and that step's own
+// release is made once it has.
 func releaseAfterWrite(repoRoot string, st *State, lane string, now time.Time) *handBackRelease {
 	out := &handBackRelease{}
 	st.afterWritten(func(s *State, rewrite func() error) {
 		out.ran = true
 		defer func() { out.state = *s }()
 		at := slices.IndexFunc(s.Lanes, func(l Lane) bool { return l.ID == lane })
-		if at < 0 || releasedThisHold(*s) {
+		if at < 0 {
+			return
+		}
+		if armingOwed(s.Lanes[at]) {
+			l := s.Lanes[at]
+			c := Context{RepoRoot: repoRoot, RunDir: runRel(s.RunID), State: *s, Now: now}
+			note, err := withdrawLateArming(c, &l, StageHandedBack, lateHandBack(l), "it merges only if a person arms or merges it")
+			if r, ok := AsRefusal(err); ok {
+				note = r.Reason + "; " + r.Remedy
+			} else if err != nil {
+				note = termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+			}
+			s.Lanes[at] = l
+			s.Record = append(s.Record, Entry{At: now, Lane: l.ID, Stage: string(StageHandedBack), Note: note})
+			s.UpdatedAt = now
+			out.arming, out.armed = note, armingOwed(l)
+		}
+		if out.armed || releasedThisHold(*s) {
+			if out.arming != "" {
+				out.unwritten = rewrite()
+			}
 			return
 		}
 		l := s.Lanes[at]
@@ -77,19 +110,17 @@ func releaseAfterWrite(repoRoot string, st *State, lane string, now time.Time) *
 			out.autoPlan = true
 			releaseAutoPlan(repoRoot, s, now)
 		case l.HandBack != nil:
-			releaseOnHandBack(repoRoot, s, *l.HandBack, now)
-		default:
-			return
+			out.until, out.ended = releaseOnHandBack(repoRoot, s, *l.HandBack, now)
 		}
 		if len(s.Record) == logged {
 			// No reservation, or an intent's run: nothing to release.
+			if out.arming != "" {
+				out.unwritten = rewrite()
+			}
 			return
 		}
 		e := s.Record[len(s.Record)-1]
 		out.made, out.failed, out.clause = true, e.Stage == StageReservationReleaseFailed, e.Note
-		if out.failed && !out.autoPlan {
-			out.until, out.ended = leaseEnd(repoRoot, *s, now)
-		}
 		out.unwritten = rewrite()
 	})
 	return out
@@ -133,9 +164,30 @@ func leaseEnd(repoRoot string, st State, now time.Time) (until string, ended boo
 // second write failed. An issue run's lease is told as this checkout last
 // fetched it: "runs to" a time to come, which a load-gate waiter in this copy
 // may put off (waiterRenews), "lapsed at" one already past, which nothing
-// revives, so it gets no waiter's clause.
+// revives, so it gets no waiter's clause; the record's line already says when
+// it lapsed (releaseOnHandBack), and the answer adds only that nothing revives
+// it. An arming the hand-back owed is said first: what its withdrawal came to,
+// and, where it did not take, that nothing was released.
 func (r *handBackRelease) next() string {
-	if r == nil || !r.made {
+	if r == nil {
+		return ""
+	}
+	if r.arming != "" {
+		s := r.arming
+		if r.armed {
+			return s + "; the run's reservation is not released while it is armed" + r.unwrittenNote("say so")
+		}
+		if !r.made {
+			return s + r.unwrittenNote("say so")
+		}
+		return joinNext(s, r.releaseNext())
+	}
+	return r.releaseNext()
+}
+
+// releaseNext is next's word on the release alone.
+func (r *handBackRelease) releaseNext() string {
+	if !r.made {
 		return ""
 	}
 	if r.autoPlan {
@@ -156,7 +208,7 @@ func (r *handBackRelease) next() string {
 	s := "the lane was handed back and its reservation not released: " + r.clause
 	switch {
 	case r.until != "" && r.ended:
-		s += "; its lease lapsed at " + r.until + " as last fetched, and nothing revives it"
+		s += ", and nothing revives it"
 	case r.until != "":
 		s += "; its lease runs to " + r.until + " as last fetched, longer if a load-gate waiter in this copy renews it: " + waiterRenews
 	default:
@@ -174,12 +226,14 @@ const waiterRenews = "no step and no run renewal renews a handed-back lane's res
 // it (renewdue.go: live, not a release, half through, the tip this copy's last
 // push; renew-only and live-only) and the waiter runs it (startHoldRenewal in
 // implement_load.go, at once and every round until the command exits), a
-// reservation whose release failed included. Every text that says what the
+// reservation whose release failed included. "Never revives" is that
+// renewal's alone: the same waiter's run renewal (renewruns.go) revives a
+// lapsed reservation still this copy's of a run it governs. Every text that says what the
 // waiter renews uses it, and commands/implement.md says the same words
 // (TestThePageSaysWhatTheGateWaiterRenews).
 const gateWaiterRenews = "a load-gate waiter in this copy (`abcd implement load --wait`, and `--race-gate`, which preflight's race stage uses) " +
 	"renews, while it waits and while its command runs, each live reservation that is not a release, is half through its lease, " +
-	"and whose tip is the commit this copy last pushed, and it never revives one that has lapsed or been released"
+	"and whose tip is the commit this copy last pushed; that renewal, which reads no run, never revives one that has lapsed or been released"
 
 // unlessWaiterRenews is the clause a lapse said of a reservation that may still
 // be live and this copy's last push takes: a load-gate waiter in this copy may
@@ -190,9 +244,16 @@ const unlessWaiterRenews = "unless a load-gate waiter in this copy renews it"
 // said is note, the run record's last line a caller read in the save's
 // callback, as the caller says it once the save has returned: where a release
 // was made, the release's own line where it was recorded, and what it came to
-// (next) where it was not released or not recorded; note where none was made.
+// (next) where it was not released or not recorded; note where none was made,
+// and what the withdrawal of an arming the hand-back owed came to beside it.
 func (r *handBackRelease) said(note string) string {
-	if r == nil || !r.made {
+	if r == nil {
+		return note
+	}
+	if !r.made {
+		if r.arming != "" {
+			return joinNext(note, r.next())
+		}
 		return note
 	}
 	if n := r.next(); n != "" {

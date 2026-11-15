@@ -2516,13 +2516,15 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 	}
 	snap, verr := claim.View(t.repoRoot, now)
 	for _, id := range ids {
+		// Only a live reservation this copy's last push takes can be renewed by
+		// a load-gate waiter here (claim.RenewDue), so only its lapse takes the
+		// waiter's clause.
 		lapses := "lapses with its lease"
 		if verr == nil {
 			if r, ok := snap.Lookup(id); ok && r.Copy == claim.CopyThis && r.State == claim.StateLive {
-				lapses = "lapses at " + stamp(r.EffectiveExpiry)
+				lapses = "lapses at " + stamp(r.EffectiveExpiry) + " " + unlessWaiterRenews
 			}
 		}
-		lapses += " " + unlessWaiterRenews
 		t.say("%s: its reservation was not released and %s; once what the drive holds is as it should be, release it with `abcd reserve %s --release`, or start the drive again, which takes the run up",
 			termsafe.Sanitize(id), lapses, termsafe.Sanitize(id))
 	}

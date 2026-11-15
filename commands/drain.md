@@ -767,7 +767,10 @@ what it did in `next`:
   counts toward the bound of minutes alone, and the hand-back names the path
   and the record whose hold it is.
   The bounds are `pace.stuck_refusals` and `pace.stuck_minutes` in
-  `.abcd/config.json` or `~/.abcd.noindex/config.json`, read at every move that reads a lane in progress. A
+  `.abcd/config.json` or `~/.abcd.noindex/config.json`, read at every move that reads a lane in progress.
+  `pace.stuck_minutes` also bounds a landing's wait at its arming for a
+  runner's report, and past it hands that lane back as stuck, an intent
+  run's lane as well as a drain's (`commands/implement.md`). A
   stuck lane keeps its worktree and branch:
   `abcd implement step --run <run-id> --discard <lane-id>` removes them, closes
   its pull request if it opened one, and ends the run. The run ended this way

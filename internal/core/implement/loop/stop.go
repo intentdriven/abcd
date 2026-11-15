@@ -286,7 +286,7 @@ func stopRefusal(runID string, rec RunStop) error {
 	case rec.HaltedAt != nil:
 		state = "and has let its claims go"
 	case heldBySave(&rec):
-		state = "with work that could not be saved aside left uncommitted in its worktree and nowhere else; its claims lapse at their lease unless renewed, which a gated waiter or `abcd implement status` does and neither does for a run parked at land; the run record names it"
+		state = "with work that could not be saved aside left uncommitted in its worktree and nowhere else; its claims lapse at their lease unless renewed, which a gated waiter or `abcd implement status` does; neither does for a run parked at land, whose claims lapse at their lease " + unlessWaiterRenews + "; the run record names it"
 	}
 	remedy := "the person's own `abcd implement stop --lift` lifts it; hand back any receipt you hold with `abcd implement receipt`, then stop"
 	if !rec.FromFile {

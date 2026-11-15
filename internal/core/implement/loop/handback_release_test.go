@@ -435,13 +435,15 @@ func TestAClosedHandBackSaveRefusedLeavesTheReservationHeld(t *testing.T) {
 // longer if a load-gate waiter in this copy renews it, with what the waiter
 // renews; "lapsed at" one already past, that nothing revives it, and no
 // waiter's clause, since the waiter renews only a live reservation
-// (claim.RenewDue).
+// (claim.RenewDue). Each row's line is the one releaseOnHandBack writes when
+// origin refuses the tombstone.
 func TestTheLeaseIsSaidAsLastFetched(t *testing.T) {
-	repo, _, id, _ := handingBackAtImplementer(t)
-	st, err := ReadState(repo.Root(), id)
+	repo, bare, id, _ := handingBackAtImplementer(t)
+	read, err := ReadState(repo.Root(), id)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer refuseReservationPush(t, bare, secondIssue)()
 	for _, row := range []struct {
 		name      string
 		at        time.Time
@@ -451,11 +453,21 @@ func TestTheLeaseIsSaidAsLastFetched(t *testing.T) {
 		{"a lease to come", time.Now(), "; its lease runs to ", "lapsed at", true},
 		{"a lease already past", time.Now().Add(48 * time.Hour), "; its lease lapsed at ", "runs to", false},
 	} {
-		until, ended := leaseEnd(repo.Root(), st, row.at)
+		until, ended := leaseEnd(repo.Root(), read, row.at)
 		if until == "" {
 			t.Fatalf("%s: premise: this checkout's view shows the reservation as this copy's", row.name)
 		}
-		r := &handBackRelease{made: true, failed: true, clause: "could not push the tombstone", until: until, ended: ended}
+		st := read
+		st.Record = slices.Clone(read.Record)
+		releaseOnHandBack(repo.Root(), &st, HandBack{Kind: HandBackDesignFinding}, row.at)
+		line := st.Record[len(st.Record)-1]
+		if line.Stage != StageReservationReleaseFailed {
+			t.Fatalf("%s: premise: origin refuses the tombstone: %+v", row.name, line)
+		}
+		if got := strings.Contains(line.Note, "load-gate waiter"); got != row.waiter {
+			t.Fatalf("%s: the record's line says a load-gate waiter may renew it: %v, want %v: %s", row.name, got, row.waiter, line.Note)
+		}
+		r := &handBackRelease{made: true, failed: true, clause: line.Note, until: until, ended: ended}
 		next := r.next()
 		if !strings.Contains(next, row.want+until+" as last fetched") || strings.Contains(next, row.not) {
 			t.Fatalf("%s: the lease is said as %q, as last fetched: %s", row.name, row.want, next)

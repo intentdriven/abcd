@@ -714,14 +714,15 @@ func (s State) collectedAt(repoRoot, path string) (int, string, string, bool) {
 // reviewers handed out since the step collected the receipt are settled
 // against it in the same write (resettleWriters), each one no longer another
 // model than every writer withdrawn and handed out again, or the lane handed
-// back as stuck where its round cannot be judged again; a lane so handed back
-// whose pull request was armed has the arming withdrawn through the forge
-// (withdrawLateArming), the record saying what came of it, though a landing
-// arms no lane while such a report is still to come (land_runner_wait.go). It
-// reports whether it changed the state, and the hand-back it made, if any: the
-// caller releases the run's reservation for it only once the save that hands
-// the lane back has written it, under the same lock (releaseAfterWrite), so a
-// refused save leaves the reservation held.
+// back as stuck where its round cannot be judged again. It reports whether it
+// changed the state, and the hand-back it made, if any: the caller's step
+// after the save that hands the lane back has written it, under the same lock
+// (releaseAfterWrite), first withdraws through the forge the arming of a lane
+// so handed back whose pull request was armed (withdrawLateArming), and
+// releases the run's reservation only once the forge reports no arming; a
+// refused save leaves the forge and the reservation as they were. A landing
+// whose lane is armed while such a report is still to come withdraws the
+// arming itself and waits (land_runner_wait.go).
 func answerCollected(repoRoot string, root *os.Root, st *State, i int, taken, digest string, route *runner.RouteRecord, now time.Time) (StepResult, *HandBack, bool, error) {
 	l := st.Lanes[i]
 	var handed *HandBack
@@ -753,11 +754,6 @@ func answerCollected(repoRoot string, root *os.Root, st *State, i int, taken, di
 					handBackLane(st, &l, *lateWriterHandBack(*st, l, withdrawn), "", now)
 					hb := *l.HandBack
 					handed = &hb
-					// A lane armed before the arming waited for its runners'
-					// reports (land_runner_wait.go) has the arming withdrawn.
-					if l.Landing != nil && l.Landing.Armed && l.PR > 0 {
-						st.Record = append(st.Record, Entry{At: now, Lane: l.ID, Stage: string(StageHandedBack), Note: withdrawLateArming(repoRoot, *st, &l, now)})
-					}
 				}
 			}
 		}

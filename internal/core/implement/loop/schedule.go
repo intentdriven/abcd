@@ -286,15 +286,17 @@ const (
 )
 
 // want is one lane's next move: nothing, a stage the binary performs, or an
-// agent in a role. hold marks the binary move that holds the lane (DR6c); new
-// marks the first implementer of a lane not yet handed to one, or of a lane to
-// open, ordered by its spec step.
+// agent in a role. hold marks the binary move that holds the lane (DR6c);
+// withdraw the one that withdraws the arming a handed-back lane's pull request
+// still carries (armingOwed); new marks the first implementer of a lane not
+// yet handed to one, or of a lane to open, ordered by its spec step.
 type want struct {
-	lane int
-	kind wantKind
-	role string
-	hold bool
-	new  bool
+	lane     int
+	kind     wantKind
+	role     string
+	hold     bool
+	withdraw bool
+	new      bool
 	// open is the index of the pending step a new lane opens for, or -1;
 	// step is the spec step a new lane's work is ordered by.
 	open int
@@ -421,6 +423,12 @@ func laneWant(st State, i int) want {
 		w.kind = wantBinary
 	case StagePlan:
 		w.kind = wantBinary
+	case StageHandedBack:
+		// A hand-back whose withdrawal of the lane's arming did not take is
+		// tried again on each step until the forge reports no arming.
+		if armingOwed(l) {
+			w.kind, w.withdraw = wantBinary, true
+		}
 	case StageLand:
 		if st.handedBack() && (l.Hold == nil || !l.Hold.Released) {
 			w.kind, w.hold = wantBinary, true
@@ -558,11 +566,12 @@ func binaryMoves(st State) []want {
 
 // mayWait reports whether binary move w may end waiting on someone else's
 // hold, the forge or the network, so that the call moves the next lane: only
-// a landing (or the hold a hand-back makes at it) does. move treats a wait from
-// any other move as the call's answer, so checkRoutes, which reads a move
-// mayWait denies as one that runs, cannot be wrong about it.
+// a landing (or the hold a hand-back makes at it) and the withdrawal of a
+// handed-back lane's arming do. move treats a wait from any other move as the
+// call's answer, so checkRoutes, which reads a move mayWait denies as one that
+// runs, cannot be wrong about it.
 func mayWait(st State, w want) bool {
-	return st.Lanes[w.lane].Stage == StageLand
+	return st.Lanes[w.lane].Stage == StageLand || w.withdraw
 }
 
 // agentPick is the kind of move agentChoice makes.
@@ -671,6 +680,9 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 	i := w.lane
 	lane := st.Lanes[i]
 	c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now, router: rt, planGuard: guard, remote: remote}
+	if w.withdraw {
+		return withdrawOwed(repoRoot, st, i, c, now)
+	}
 	var out Outcome
 	var err error
 	if w.hold {
