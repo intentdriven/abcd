@@ -171,7 +171,9 @@ func TestExplainAnswersAHiddenCommandMarked(t *testing.T) {
 
 // A path the tree does not have is refused with exit 2, naming the nearest
 // real path, or the sub-commands where the path went wrong, and nothing goes
-// to stdout. The refusal does not repeat the word.
+// to stdout. The refusal does not repeat the word, except where the word is
+// part of a real command name the refusal names, which is abcd's own text and
+// comes through the error boundary whole.
 func TestExplainRefusesAPathTheTreeDoesNotHave(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	for _, tc := range []struct {
@@ -184,6 +186,9 @@ func TestExplainRefusesAPathTheTreeDoesNotHave(t *testing.T) {
 		{[]string{"ideate", "zzzzzzzzzz"}, "its sub-commands are record", "zzzzzzzzzz"},
 		{[]string{"decide", "something-else"}, "`abcd decide` takes no sub-command", "something-else"},
 		{[]string{"explainz"}, "the nearest real path is `abcd explain`", "explainz"},
+		{[]string{"library", "cite-chec"}, "the nearest real path is `abcd library cite-check`", ""},
+		{[]string{"hook", "session-star"}, "the nearest real path is `abcd hook session-start`", ""},
+		{[]string{"hook", "session-s"}, "session-end, session-start", ""},
 	} {
 		code, out, errOut := explainRun(t, tc.args...)
 		if code != 2 {
@@ -195,7 +200,10 @@ func TestExplainRefusesAPathTheTreeDoesNotHave(t *testing.T) {
 		if !strings.Contains(errOut, tc.want) {
 			t.Errorf("%v: the refusal does not say %q: %q", tc.args, tc.want, errOut)
 		}
-		if strings.Contains(errOut, tc.typed) {
+		if strings.Contains(errOut, "not repeated here") {
+			t.Errorf("%v: the error boundary withheld part of the refusal: %q", tc.args, errOut)
+		}
+		if tc.typed != "" && strings.Contains(errOut, tc.typed) {
 			t.Errorf("%v: the refusal repeats the word typed: %q", tc.args, errOut)
 		}
 	}
