@@ -99,6 +99,9 @@ Then read the JSON (`_type` `abcd/question-check/v1`):
 - `findings` — every finding at once, each with its `tab`, `part`, `rule`,
   `value`, `limit`, `remedy` and whether it `refuses` (the rows limit alone
   never does).
+- `by_rule` — the findings folded one entry per rule and tab, in the order the
+  first of each appeared, with its first `value` and a `count`: the lines the
+  hook's refusal names.
 - `rows` — each tab's rows at 80 columns, as `header_and_frame`,
   `question_text`, `options` and `total`, against `rows_limit`. Report these
   figures; never count rows by hand.
@@ -122,6 +125,12 @@ Then read the JSON (`_type` `abcd/question-check/v1`):
   could not read with the rules it could not apply.
 - `addressee`, `addressee_changes` — whom each tab is for, and where an
   admitted chip would re-set the mode.
+
+Without `--json` the verb prints what the hook would do, the limits, each
+tab's rows, then one line per rule and tab, written by the renderer the
+hook's refusal uses, so each line is the line the hook would refuse with,
+and, where there is a finding, the refusal's closing line pointing at this
+verb and the `abcd:question-drafter` agent.
 
 Exit codes: `0` when the draft has no finding and every store was read,
 whatever the hook would do with it; `1` on any finding, a tab over the rows
@@ -194,14 +203,20 @@ the file is fixed; a file the hook cannot read, such as a symlinked
 abcd's defaults instead, with a loud `NOT CHECKED` line naming it. A question that breaks any of them is refused with the host's
 deny, whose reason is one head line, "Blocked by the abcd guard (question tool): N part(s)
 of this question break abcd's asking rules; fix each and ask again.", then one
-line per part naming the tab, the part, the value, the limit and the remedy, so
-one retry fixes them all. At most ten parts are named, and a closing line counts
-the rest, so a refusal stays a few lines however large the question; the head
-line keeps the full count. The rows limit is the exception: a question whose
+line per rule and tab naming the tab, the first part that broke the rule, its
+value, the limit and the remedy, and how many more such lines the rule drew on
+that tab, so one retry fixes them all. Every rule on every tab is named, and
+the head line counts every part. A refusal stays a few lines however large the
+question, because the check reads at most four tabs and four options, and a
+rule broken a thousand times on one tab, an em dash on each of a thousand list
+lines, is still one line. Its last line is "Check the next draft with `abcd
+guard question` before asking it, or draft it through the
+abcd:question-drafter agent, which does.", the words of the `question` section
+above. The rows limit is the exception: a question whose
 only finding is that a tab runs past the rows limit is shown, and the hook tells
-the agent afterwards which tab ran over, by how much, and to draft the next
-question through the `abcd:question-drafter` agent, which counts rows the way
-the check does. In a question refused for another part, a tab over the rows
+the agent afterwards which tab ran over, by how much, and to check the next
+question with `abcd guard question` or draft it through the
+`abcd:question-drafter` agent, which runs that check. In a question refused for another part, a tab over the rows
 limit is not one of the parts to fix and the head line does not count it: it
 follows them, under a line saying the rows limit does not refuse on its own and
 that the question would have been shown. A question with no abcd chip, held to the limits

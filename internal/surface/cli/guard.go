@@ -280,11 +280,14 @@ func newGuardHookCommand() *cobra.Command {
 			"question is another tool's and runs unchecked. abcd's question is held to\n" +
 			"the asking rules' field limits wherever the hook runs, and one that breaks\n" +
 			"them is refused with the host's deny, whose reason is a head line counting\n" +
-			"the parts, then one line per part naming the tab, the part, the value, the\n" +
-			"limit and the remedy. The rows limit is the exception: a question whose\n" +
-			"only finding is its height is shown, and the hook's stdout carries a note\n" +
-			"for the agent (additionalContext, no permission decision) naming each tab\n" +
-			"over the limit and the agent that drafts a question to fit. The hook never\n" +
+			"the parts, then one line per rule and tab naming the first part that broke\n" +
+			"it, the value, the limit and the remedy and counting the rest, every rule\n" +
+			"on every tab named, then one line pointing at `abcd guard question` and the\n" +
+			"abcd:question-drafter agent. The rows limit is the exception: a question\n" +
+			"whose only finding is its height is shown, and the hook's stdout carries a\n" +
+			"note for the agent (additionalContext, no permission decision) naming each\n" +
+			"tab over the limit, the verb that checks the next draft and the agent that\n" +
+			"drafts a question to fit. The hook never\n" +
 			"rewrites a question. In a checkout abcd manages, an admitted question\n" +
 			"carrying abcd's chip sets `abcd mode` from the chip's role (Product to\n" +
 			"product-thinker, Tech and Setup to facilitator), so it is never refused on\n" +

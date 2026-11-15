@@ -13,7 +13,6 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/question"
-	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The verb and the hook decide alike (spc-2610301917245442, step 1): on every
@@ -149,8 +148,9 @@ func hookOutcome(t *testing.T, stdout, stderr string, code int, root string, bad
 	return nil, "", ""
 }
 
-func findingLine(f questionFindingJSON) string {
-	return termsafe.Sanitize(question.Finding{Tab: f.Tab, Part: f.Part, Rule: question.Rule(f.Rule), Value: f.Value, Limit: f.Limit, Remedy: f.Remedy}.String())
+// findingOf is a finding of the verb's JSON as the check made it.
+func findingOf(f questionFindingJSON) question.Finding {
+	return question.Finding{Tab: f.Tab, Part: f.Part, Rule: question.Rule(f.Rule), Value: f.Value, Limit: f.Limit, Remedy: f.Remedy}
 }
 
 // TestGuardQuestionAndHookDecideAlike: for every draft of the corpus in every
@@ -221,13 +221,19 @@ func TestGuardQuestionAndHookDecideAlike(t *testing.T) {
 					if n, _ := strconv.Atoi(m[1]); n != len(refusing) {
 						t.Errorf("the deny counts %d parts, the verb %d", n, len(refusing))
 					}
-					for _, f := range refusing[:min(len(refusing), maxRefusalParts)] {
-						if !strings.Contains(reason, findingLine(f)) {
-							t.Errorf("the deny lacks the verb's finding %q:\n%s", findingLine(f), reason)
+					// One line per rule and tab, every group named, none
+					// cut (spc-2610301917245442, step 2).
+					fs := make([]question.Finding, len(refusing))
+					for i, f := range refusing {
+						fs[i] = findingOf(f)
+					}
+					for _, g := range question.GroupFindings(fs) {
+						if !strings.Contains(reason, g.String()+"\n") {
+							t.Errorf("the deny lacks the verb's group line %q:\n%s", g.String(), reason)
 						}
 					}
-					if more := len(refusing) - maxRefusalParts; more > 0 && !strings.Contains(reason, fmt.Sprintf("... and %d more part(s)", more)) {
-						t.Errorf("the deny does not count the %d findings it leaves out:\n%s", more, reason)
+					if strings.Contains(reason, "more part(s)") {
+						t.Errorf("the deny cuts its list short:\n%s", reason)
 					}
 				case res.Hook == question.OutcomeAdmitWithRowsNote:
 					if len(refusing) != 0 || len(rows) == 0 {

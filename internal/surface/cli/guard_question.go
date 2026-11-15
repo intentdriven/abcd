@@ -376,20 +376,18 @@ func chipRoleState(role string) mode.State {
 }
 
 // rowsNote is what the agent is told when a question ran over the rows limit
-// and was shown anyway: each tab over it, its rows and the limit, at most
-// maxRefusalParts of them, and how to keep the next question within it. It
-// never tells the agent to ask again, because the person may already have
-// answered the question it was shown.
+// and was shown anyway: each tab over it, its rows and the limit, and how to
+// keep the next question within it. The rows rule draws at most one finding
+// per tab, and the check reads at most four tabs, so the note is bounded by
+// the limits, not the payload. It never tells the agent to ask again, because
+// the person may already have answered the question it was shown.
 func rowsNote(findings []question.Finding) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "abcd guard (question tool): this question was shown, but %d tab(s) run past abcd's rows limit, so the host may cut them in a narrow window.\n", len(findings))
-	for _, f := range findings[:min(len(findings), maxRefusalParts)] {
+	for _, f := range findings {
 		fmt.Fprintf(&b, "tab %d is %s; limit: %s.\n", f.Tab, f.Value, f.Limit)
 	}
-	if more := len(findings) - maxRefusalParts; more > 0 {
-		fmt.Fprintf(&b, "... and %d more tab(s).\n", more)
-	}
-	b.WriteString("The question was shown this time; keep the next question within the limit by drafting it through the abcd:question-drafter agent, which counts rows as this check does.")
+	b.WriteString("The question was shown this time; keep the next question within the limit by checking it with `abcd guard question` before asking it, or by drafting it through the abcd:question-drafter agent, which runs that check.")
 	return b.String()
 }
 
@@ -462,12 +460,6 @@ func verbsOf(root *cobra.Command) []string {
 	return out
 }
 
-// maxRefusalParts bounds the finding lines one refusal names. The host
-// replays the refusal to the agent, so its size must follow the limits, not
-// the payload: a question of thousands of broken fields is still refused in a
-// few lines (review-askGuard-security finding 1).
-const maxRefusalParts = 10
-
 // modeMadeAbcds is the line a refusal carries when the question carries no abcd
 // chip and is abcd's only because the mode names somebody (itd-201 decision
 // 10): it says why, so an agent that did not write the question, another
@@ -482,54 +474,66 @@ func modeMadeAbcds(st mode.State) string {
 		"; another tool's question asked now is held to abcd's rules."
 }
 
-// writeLimitsRefusal writes the refusal the host's deny carries: one head line
-// counting the parts that refuse, then, when why is set, the one line saying
-// why a question without abcd's chip is abcd's, then one line per refusing
-// finding naming the tab, the part, the value, the limit and the remedy, at
-// most maxRefusalParts of them, and one closing line counting the parts not
-// named. Every line passes termsafe.Sanitize, so no value the agent wrote
-// reaches the terminal raw.
+// writeLimitsRefusal writes the refusal the host's deny carries
+// (spc-2610301917245442, step 2): one head line counting every finding that
+// refuses, then, when why is set, the one line saying why a question without
+// abcd's chip is abcd's, then one line per refusing rule and tab
+// (question.GroupFindings, written by question.RenderGroups, the renderer the
+// verb's text shares), then the rows findings under rowsNotRefusingLine, and
+// last the pointer at the verb and the question-writing agent
+// (questionPointerLine). Every line passes termsafe.Sanitize, so no value the
+// agent wrote reaches the terminal raw.
+//
+// The refusal names every rule on every tab it hits: there is no cut. Its
+// size follows the limits, not the payload, because the check reads at most
+// QuestionsPerCall[1] tabs and OptionsPerQ[1] options, and a rule that breaks
+// many times on one tab (an em dash on each of a thousand list lines) is one
+// line naming the first and counting the rest. So the lines are at most the
+// rules times the checked tabs, the call's count finding, and the three fixed
+// lines (review-askGuard-security finding 1).
 //
 // The rows limit alone never refuses (rowsOnly), so a rows finding is never
 // one of the parts to fix and is not counted among them
 // (iss-2610100626327722): listed among them, the agent read it as a cause and
 // cut a question the gate would have shown. It follows the refusing parts
-// instead, after rowsNotRefusingLine, bounded as they are. It is called only
-// with at least one refusing finding.
+// instead, after rowsNotRefusingLine. It is called only with at least one
+// refusing finding.
 func writeLimitsRefusal(w io.Writer, findings []question.Finding, why string) {
-	var refusing, rows []question.Finding
-	for _, f := range findings {
-		if f.Rule == question.RuleRows {
-			rows = append(rows, f)
-		} else {
-			refusing = append(refusing, f)
-		}
-	}
+	refusing, rows := splitRefusing(findings)
 	fmt.Fprintf(w, "Blocked by the abcd guard (question tool): %d part(s) of this question break abcd's asking rules; fix each and ask again.\n", len(refusing))
 	if why != "" {
 		fmt.Fprintln(w, why)
 	}
-	for _, f := range refusing[:min(len(refusing), maxRefusalParts)] {
-		fmt.Fprintln(w, termsafe.Sanitize(f.String()))
+	question.RenderGroups(w, question.GroupFindings(refusing))
+	if len(rows) > 0 {
+		fmt.Fprintln(w, rowsNotRefusingLine)
+		question.RenderGroups(w, question.GroupFindings(rows))
 	}
-	if more := len(refusing) - maxRefusalParts; more > 0 {
-		fmt.Fprintf(w, "... and %d more part(s); fix these and ask again to see the rest.\n", more)
+	fmt.Fprint(w, questionPointerLine)
+}
+
+// splitRefusing parts findings into those that refuse the call and those that
+// do not: the rows limit's (question.RefusingFinding).
+func splitRefusing(findings []question.Finding) (refusing, rest []question.Finding) {
+	for _, f := range findings {
+		if question.RefusingFinding(f) {
+			refusing = append(refusing, f)
+		} else {
+			rest = append(rest, f)
+		}
 	}
-	if len(rows) == 0 {
-		return
-	}
-	fmt.Fprintln(w, rowsNotRefusingLine)
-	for _, f := range rows[:min(len(rows), maxRefusalParts)] {
-		fmt.Fprintln(w, termsafe.Sanitize(f.String()))
-	}
-	if more := len(rows) - maxRefusalParts; more > 0 {
-		fmt.Fprintf(w, "... and %d more tab(s) over the rows limit.\n", more)
-	}
+	return refusing, rest
 }
 
 // rowsNotRefusingLine opens the rows findings a refusal names but does not
 // refuse on.
 const rowsNotRefusingLine = "The rows limit does not refuse on its own: with only the rows finding(s) below, this question would have been shown, and a narrow window might cut it."
+
+// questionPointerLine closes a refusal on the asking rules, and the verb's
+// text render of a draft with findings: where the next draft is checked
+// before it is asked, and the agent that drafts one through that check
+// (spc-2610301917245442, step 2).
+const questionPointerLine = "Check the next draft with `abcd guard question` before asking it, or draft it through the abcd:question-drafter agent, which does."
 
 // questionLimitsAt puts the question limits in force for the repository
 // holding cwd on st, through the one resolver (layered.QuestionLimits) at the

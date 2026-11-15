@@ -288,26 +288,38 @@ refused, because the host hides every option's description while a preview
 shows (the layout intent's decision 20). Every finding refuses at once with
 the host's deny, whose reason is one head line, "Blocked by the abcd guard (question tool):
 N part(s) of this question break abcd's asking rules; fix each and ask again.",
-then one line per finding naming the tab, the part, the value, the limit and
-the remedy, each line through `termsafe.Sanitize`. The refusal's size follows
-the limits, not the payload: past the count findings, `CheckLimits` checks only
-the first `QuestionsPerCall[1]` tabs and the first `OptionsPerQ[1]` options of
-each, and the hook names at most ten findings and closes with one line counting
-the rest, the head line keeping the full count. The rows limit is the one
+counting every refusing finding, then one line per rule and tab
+(spc-2610301917245442, step 2): `question.GroupFindings` folds the findings
+into one group per rule and tab, in the order the first of each appeared,
+keeping the first finding and a count, and `question.RenderGroups` writes each
+group as the first finding's line (the tab, the part, the value, the limit and
+the remedy) closed by "(and N more such lines)" when the rule broke more than
+once on that tab, each line through `termsafe.Sanitize`. The last line points
+at the question check and the writer: it says to check the next draft with
+the question check, naming its command, before asking it, or to draft it
+through the `abcd:question-drafter` agent, which does. Every rule on every tab is named, with no cut. The refusal's size
+follows the limits, not the payload: past the count findings, `CheckLimits`
+checks only the first `QuestionsPerCall[1]` tabs and the first `OptionsPerQ[1]`
+options of each, and a rule that adds one finding per line of question text,
+the em dash in a list item, is one line per tab, so a refusal is at most the
+rules times the checked tabs, the call's count finding and three fixed lines.
+The ten-line cut it replaced named only the first findings of a refusal past
+ten, and the agent fixed those, asked again, and was refused for the rest. The rows limit is the one
 finding that does not refuse on its own (iss-2610070637562567): a question
 whose only findings are tabs over the rows limit is admitted as any admitted
 question is, marked open where the badge shows, and the hook prints one object
 on stdout whose `additionalContext` tells the agent, after the question
 returns, which tabs ran over, their rows and the limit, that the question was
-shown, and to draft the next one through the `abcd:question-drafter` agent
-(`question-drafter`, `agents/question-drafter.md`). It
+shown, and to check the next one with the question check before asking it
+or draft it through the `abcd:question-drafter` agent
+(`question-drafter`, `agents/question-drafter.md`), which runs that check. It
 sets no `permissionDecision`, which would bypass the host's own permission
 flow, and never tells the agent to ask again, because the person may already
 have answered. A refusal for that question was a redraft of a question the
 person was ready to answer, and a tab cut at the foot of a short window costs
 less. Beside any other finding, the rows finding is named in the deny but is not one of the parts to fix
 (iss-2610100626327722): the head line counts only the findings that refuse,
-and the rows findings follow them, bounded the same way, under one line saying
+and the rows findings follow them, one line per tab, under one line saying
 the rows limit does not refuse on its own and the question would have been
 shown. Listed among the parts to fix, it read as a cause, and the agent cut a
 question the gate would have shown. A question with no abcd chip,
@@ -387,7 +399,9 @@ because a store could not be read, abcd's question checked all the same);
 the ask could change that; `partial` and `unread`, naming each store the
 decision needed and could not read and the rules it therefore could not
 apply; each tab's `addressee` and, where an admitted chip would re-set the
-mode, `addressee_changes`; every finding with whether it `refuses`; `rows`
+mode, `addressee_changes`; every finding with whether it `refuses`;
+`by_rule`, the findings folded one entry per rule and tab with the first
+echoed value and a count, the groups the deny names one line each; `rows`
 per tab (`header_and_frame`, `question_text`, `options`, `total`, the split
 the rows rule computes) with `rows_limit`; `limits` and `limits_source`, the
 three figures the draft was judged at (`rows`, `label_words`,
@@ -401,7 +415,12 @@ it (itd-2610301914350541); and `ready`, the input to ask, left
 out when the hook would refuse or a limit is refused: the draft's own value, every key the check
 does not read (such as `multiSelect`) kept, for the host form, and the
 composition for the structured form. The verdict holds between a verb and a hook of the
-same version, which is why the version is reported.
+same version, which is why the version is reported. Its text render prints
+the outcome, the rows of each tab, the finding lines written by
+`question.RenderGroups` from the groups the deny writes, the refusing ones
+first and those the hook does not refuse on after them, and the deny's
+pointer line, so a line the check shows is the line the hook would refuse
+with, byte for byte.
 
 **While the person is away** (spc-2610180914469489, "The question reroute";
 dcn-2610180937177502, dcn-2610181003477194), the gate reads the away record
