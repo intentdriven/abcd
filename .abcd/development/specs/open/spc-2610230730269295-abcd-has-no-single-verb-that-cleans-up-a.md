@@ -107,6 +107,8 @@ Under `--apply`, a branch on origin is deleted when the forge records its pull r
 - no reservation names it;
 - no running session works on it, judged by the liveness proof against any local worktree on that branch.
 
+An open pull request that targets the branch as its base holds it too, so the sweep keeps more than the pull requests that head it.
+
 The deletion is a push of an empty ref carrying a lease on the tip that was judged (the reservation sweep's pattern), made through the guard, and each branch it deletes is named.
 
 These are never deleted:
@@ -168,6 +170,7 @@ An entry in the store lane that is neither a worktree nor a directory failing th
    - criteria: 2, 4
    - packages: internal/core/sweep/salvage.go, internal/core/sweep/sweep.go
    - tests: a patch-equivalent merge reclaimed through prune; salvage content, manifest and idempotence; a failed salvage keeping the worktree. Waits on the store's prune (itd-2609091014076309 step 4).
+   - landed: f9df29257851
 3. Local and merged origin branches
    - criteria: 8
    - packages: internal/core/sweep/branches.go, internal/core/sweep/remote.go
