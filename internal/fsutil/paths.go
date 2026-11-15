@@ -115,6 +115,26 @@ func FoldPath(p string, fold bool) string {
 	return p
 }
 
+// FoldedPathMatch reports whether path, a clean slash path relative to a tree,
+// is name, or, with under set, lies below it, each part compared as a
+// case-folding filesystem compares names (FoldPath with fold set), whatever this
+// machine's filesystem does: a tree is checked out on machines whose
+// filesystems may fold it, so a gate on a path holds for every spelling such a
+// filesystem resolves to it. It is the one comparison the drive's gate list and
+// a stage's gate files share.
+func FoldedPathMatch(path, name string, under bool) bool {
+	parts, nameParts := strings.Split(path, "/"), strings.Split(name, "/")
+	if len(parts) < len(nameParts) || (!under && len(parts) != len(nameParts)) {
+		return false
+	}
+	for i, n := range nameParts {
+		if FoldPath(parts[i], true) != FoldPath(n, true) {
+			return false
+		}
+	}
+	return true
+}
+
 // PathWithin reports whether child is equal to or nested inside parent. With
 // fold set the comparison is case-insensitive: otherwise a destination like
 // ".../REPO/dist" computes as an out-of-tree sibling of ".../repo" and slips a
@@ -137,6 +157,32 @@ func PathWithin(child, parent string, fold bool) bool {
 		return true
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// RelWithin is child relative to parent, in child's own spelling, and whether
+// child lies at or inside parent, both compared as PathWithin compares them:
+// with fold set, a child whose parent part differs from parent only in case or
+// normalisation is placed below parent rather than read as a sibling of it.
+func RelWithin(parent, child string, fold bool) (string, bool) {
+	parent, child = filepath.Clean(parent), filepath.Clean(child)
+	if !PathWithin(child, parent, fold) {
+		return "", false
+	}
+	rel, err := filepath.Rel(FoldPath(parent, fold), FoldPath(child, fold))
+	if err != nil {
+		return "", false
+	}
+	if rel == "." {
+		return rel, true
+	}
+	// Folding changes no separator, so the folded rel has as many parts as
+	// child has below parent; they are taken from child as written.
+	n := len(strings.Split(rel, string(filepath.Separator)))
+	parts := strings.Split(child, string(filepath.Separator))
+	if n > len(parts) {
+		return "", false
+	}
+	return filepath.Join(parts[len(parts)-n:]...), true
 }
 
 // PathsOverlap reports whether a and b are the same directory or one contains

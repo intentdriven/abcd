@@ -3,6 +3,7 @@ package testreuse
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // gitRepo is a small repository for the sync's tests.
@@ -593,5 +595,191 @@ func TestASyncRemovesWhatItDoesNotKnowBesideTheTree(t *testing.T) {
 		if _, err := os.Lstat(filepath.Join(dir, kept)); err != nil {
 			t.Errorf("%s was removed: %v", kept, err)
 		}
+	}
+}
+
+// TestASyncReadsTheCommitAsStored: a refs/replace/* ref can stand another commit,
+// or another blob, in for the one a commit stores, and git honours it on every
+// read unless told not to. The check directory and the tree its report names are
+// the commit as stored, the tree the receipt vouches for, whatever replace refs
+// the repository holds.
+func TestASyncReadsTheCommitAsStored(t *testing.T) {
+	for name, replace := range map[string]func(r *gitRepo, head string){
+		"a replaced commit": func(r *gitRepo, head string) {
+			replaceHead(t, r.root, "a.txt", "the replacement, longer\n")
+		},
+		"a replaced blob": func(r *gitRepo, head string) {
+			path := filepath.Join(t.TempDir(), "other")
+			writeFile(t, path, "the replacement, longer\n", 0o644)
+			r.git("replace", r.git("rev-parse", head+":a.txt"), r.git("hash-object", "-w", path))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newGitRepo(t)
+			r.write("a.txt", "stored\n")
+			head := r.commit("one")
+			tree := r.git("rev-parse", "HEAD^{tree}")
+			replace(r, head)
+			if got := r.git("show", "HEAD:a.txt"); got == "stored" {
+				t.Fatalf("the replace ref does not take: git reads %q", got)
+			}
+
+			if gotHead, gotTree := headAndTree(context.Background(), r.root); gotHead != head || gotTree != tree {
+				t.Errorf("headAndTree = %s %s, want the stored %s %s", gotHead, gotTree, head, tree)
+			}
+			dir := t.TempDir()
+			if _, err := Sync(context.Background(), r.root, head, dir); err != nil {
+				t.Fatal(err)
+			}
+			if raw, err := os.ReadFile(filepath.Join(dir, treeDirName, "a.txt")); err != nil || string(raw) != "stored\n" {
+				t.Errorf("the check directory holds a.txt = %q, %v; want the commit's stored %q", raw, err, "stored\n")
+			}
+		})
+	}
+}
+
+// replaceHead stands in for HEAD, through a refs/replace/* ref, a commit with
+// HEAD's parents whose tree has body at rel, and leaves the index and worktree
+// at HEAD as stored. It returns the stand-in. The stand-in is no descendant of
+// HEAD, so the replacement makes no cycle a history walk would refuse.
+func replaceHead(t *testing.T, dir, rel, body string) string {
+	t.Helper()
+	head := runGit(t, dir, "rev-parse", "HEAD")
+	writeFile(t, filepath.Join(dir, rel), body, 0o644)
+	runGit(t, dir, "add", "-A")
+	args := []string{"commit-tree", runGit(t, dir, "write-tree"), "-m", "another tree"}
+	for _, p := range strings.Fields(runGit(t, dir, "rev-list", "--no-walk", "--parents", "HEAD"))[1:] {
+		args = append(args, "-p", p)
+	}
+	other := runGit(t, dir, args...)
+	runGit(t, dir, "reset", "-q", "--hard", head)
+	runGit(t, dir, "replace", head, other)
+	return other
+}
+
+// forgeGraphHead writes the repository's commit-graph and alters it to claim
+// for HEAD a tree with body at rel, leaving the index and worktree at HEAD as
+// stored. It returns the tree the graph claims.
+func forgeGraphHead(t *testing.T, dir, rel, body string) string {
+	t.Helper()
+	head := runGit(t, dir, "rev-parse", "HEAD")
+	writeFile(t, filepath.Join(dir, rel), body, 0o644)
+	runGit(t, dir, "add", "-A")
+	forged := runGit(t, dir, "write-tree")
+	runGit(t, dir, "reset", "-q", "--hard", head)
+	runGit(t, dir, "commit-graph", "write", "--reachable")
+	gittest.ForgeCommitGraphTree(t, runGit(t, dir, "rev-parse", "--absolute-git-dir"), head, forged)
+	if got := runGit(t, dir, "-c", "core.commitGraph=true", "log", "-1", "--format=%T", head); got != forged {
+		t.Fatalf("the altered commit-graph does not take: HEAD reads as tree %s", got)
+	}
+	return forged
+}
+
+// TestTheReuseReadsNoCommitGraph: a commit-graph file is a cache git takes a
+// commit's tree from in place of the commit, so one altered by hand can claim
+// another tree for HEAD, and git status then compares the worktree with that
+// tree. The reuse's git reads the commit's own tree, whatever the environment
+// asks of the graph: a `git -c core.commitGraph=true` the stage inherited, or
+// git's test switch for a graph.
+func TestTheReuseReadsNoCommitGraph(t *testing.T) {
+	for name, env := range map[string][2]string{
+		"plain":                  {},
+		"a caller asking for it": {"GIT_CONFIG_PARAMETERS", "'core.commitgraph'='true'"},
+		"test switch turned on":  {"GIT_TEST_COMMIT_GRAPH", "1"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newGitRepo(t)
+			r.write("a.txt", "stored\n")
+			r.commit("one")
+			tree := r.git("rev-parse", "HEAD^{tree}")
+			forgeGraphHead(t, r.root, "a.txt", "forged\n")
+			if env[0] != "" {
+				t.Setenv(env[0], env[1])
+			}
+			ctx := context.Background()
+			if out, err := gitOutput(ctx, r.root, "log", "-1", "--format=%T", "HEAD"); err != nil || strings.TrimSpace(string(out)) != tree {
+				t.Errorf("HEAD's tree reads as %q, %v; want the stored %s", out, err, tree)
+			}
+			if out, err := gitOutput(ctx, r.root, "status", "--porcelain"); err != nil || len(out) != 0 {
+				t.Errorf("git status over a worktree that is HEAD as stored says %q, %v; want nothing", out, err)
+			}
+		})
+	}
+}
+
+// swapLooseBlob overwrites the loose object file of the blob oid with that of a
+// blob holding body, so git answers a read of oid with body.
+func swapLooseBlob(t *testing.T, dir, oid, body string) {
+	t.Helper()
+	src := filepath.Join(t.TempDir(), "swapped")
+	writeFile(t, src, body, 0o644)
+	swapLooseObject(t, dir, oid, runGit(t, dir, "hash-object", "-w", src))
+	if got := runGit(t, dir, "cat-file", "blob", oid); got+"\n" != body {
+		t.Fatalf("the swapped object does not take: %s reads as %q", oid, got)
+	}
+}
+
+// swapLooseObject overwrites the loose object file of oid with that of other,
+// another loose object, so git answers a read of oid with other's content.
+func swapLooseObject(t *testing.T, dir, oid, other string) {
+	t.Helper()
+	objects := filepath.Join(runGit(t, dir, "rev-parse", "--absolute-git-dir"), "objects")
+	raw, err := os.ReadFile(filepath.Join(objects, other[:2], other[2:]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(objects, oid[:2], oid[2:])
+	if err := os.Chmod(dst, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestASyncRefusesABlobThatDoesNotHashToItsID: git answers a read of a loose
+// object with whatever its file holds, so a blob's content is checked against
+// its id before it is placed in the check directory, and one that does not
+// hash to it fails the sync with nothing of it placed.
+func TestASyncRefusesABlobThatDoesNotHashToItsID(t *testing.T) {
+	r := newGitRepo(t)
+	r.write("a.txt", "stored\n")
+	head := r.commit("one")
+	swapLooseBlob(t, r.root, r.git("rev-parse", head+":a.txt"), "swapped\n")
+	dir := t.TempDir()
+	_, err := Sync(context.Background(), r.root, head, dir)
+	if !errors.Is(err, gitutil.ErrObjectMismatch) {
+		t.Fatalf("Sync = %v, want %v", err, gitutil.ErrObjectMismatch)
+	}
+	if raw, err := os.ReadFile(filepath.Join(dir, treeDirName, "a.txt")); err == nil {
+		t.Errorf("the check directory holds a.txt = %q from an object that does not hash to its id", raw)
+	}
+}
+
+// TestASyncRefusesATreeThatDoesNotHashToItsID: git checks a commit's root tree
+// against its id but reads the trees below it as their object files hold them,
+// so a subtree holding another tree's content lists other blobs, each a real
+// one. Every tree the commit names is checked against its id before anything
+// is placed, and one that does not hash to it fails the sync.
+func TestASyncRefusesATreeThatDoesNotHashToItsID(t *testing.T) {
+	r := newGitRepo(t)
+	r.write("d/a.txt", "stored\n")
+	head := r.commit("one")
+	r.write("d/a.txt", "other\n")
+	r.git("add", "-A")
+	other := r.git("rev-parse", r.git("write-tree")+":d")
+	r.git("reset", "-q", "--hard", head)
+	sub := r.git("rev-parse", head+":d")
+	swapLooseObject(t, r.root, sub, other)
+	if got := r.git("ls-tree", "-r", head); !strings.Contains(got, r.git("rev-parse", other+":a.txt")) {
+		t.Fatalf("the swapped tree does not take: HEAD lists\n%s", got)
+	}
+	dir := t.TempDir()
+	_, err := Sync(context.Background(), r.root, head, dir)
+	if !errors.Is(err, gitutil.ErrObjectMismatch) {
+		t.Fatalf("Sync = %v, want %v", err, gitutil.ErrObjectMismatch)
+	}
+	if raw, err := os.ReadFile(filepath.Join(dir, treeDirName, "d", "a.txt")); err == nil {
+		t.Errorf("the check directory holds d/a.txt = %q from a tree that does not hash to its id", raw)
 	}
 }

@@ -33,6 +33,7 @@ it does not order the table.
 | 35 | `/abcd:drain` | shipped | Work the open ledger unattended: preview with `--dry-run` which open issues a machine may fix alone and in what order, then run it one lane at a time, routing every hand-back by its kind | [`35-drain.md`](35-drain.md) |
 | 37 | `/abcd:embargo` | shipped | Keep a privately reported security advisory off the public ledger until its fix ships, then close or publish it on your approval of exactly what it shows | [`37-embargo.md`](37-embargo.md) |
 | 3 | `/abcd:embark` | shipped | Unpack a lifeboat's records into another repository, refusing the whole write on any conflict | [`03-embark.md`](03-embark.md) |
+| 41 | `/abcd:explain` | shipped | Ask the running binary how to call one of its commands, or what shape an input must take at the schema version it reads, instead of trusting a page that may be older | [`41-explain.md`](41-explain.md) |
 | 17 | `/abcd:guard` | shipped | Find out whether a shell command is safe to run, and what to run instead | [`17-guard.md`](17-guard.md) |
 | 11 | `/abcd:history` | shipped | Keep session transcripts as a local, redacted corpus this project can study | [`11-history.md`](11-history.md) |
 | 18 | `/abcd:ideate` | shipped | Put a big, unproven idea through an admission gauntlet and record the verdict either way | [`18-ideate.md`](18-ideate.md) |
@@ -58,7 +59,7 @@ it does not order the table.
 | 22 | `/abcd:site` | shipped | Render the project website from the repository's own text, and gate what it publishes | [`22-site.md`](22-site.md) |
 | 39 | `/abcd:status` | shipped | Read everyone's status on the shared remote: the announcements every session posted, who holds which reservation and each release being cut | [`39-status.md`](39-status.md) |
 | 21 | `/abcd:update` | shipped | Complete a chosen update of the installed binary, verified and atomic | [`21-update.md`](21-update.md) |
-| 25 | `/abcd:worktree` | staged | Keep session and agent worktrees in a machine-scoped store rather than beside the checkout; no `/abcd:worktree` page exists, and the store's verbs ship as `ahoy worktree add`, `list` and `prune` ([`01-ahoy.md`](01-ahoy.md), [itd-2609091014076309](../../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md)) | [`../05-internals/03-configuration.md` § The worktree store](../05-internals/03-configuration.md#the-worktree-store) |
+| 25 | `/abcd:worktree` | staged | Keep session and agent worktrees in a machine-scoped store rather than beside the checkout; no `/abcd:worktree` page exists, and the store's verbs ship as `ahoy worktree add`, `list`, `prune`, which reclaims merged, clean worktrees and a quiet one the person names, and `trim-cache`, which keeps the Go build cache under its limit ([itd-2609091014076309](../../intents/shipped/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md)); its layout is in [`../05-internals/03-configuration.md` § The worktree store](../05-internals/03-configuration.md#the-worktree-store) | [`01-ahoy.md` § The worktree store](01-ahoy.md#the-worktree-store) |
 
 ## How much of this table a machine keeps honest
 
@@ -174,6 +175,7 @@ and `help` are the framework's own commands, filed under set-up.
 | `drain` | agents and hosts | — |
 | `embargo` | people | release |
 | `embark` | people | portability |
+| `explain` | agents and hosts | — |
 | `guard` | agents and hosts | — |
 | `guard approve` | agents and hosts | — |
 | `guard hook` | agents and hosts | — |
@@ -287,6 +289,7 @@ It is a convention rather than a universal, and the exceptions are where the
 tree does not yet meet its own discipline. Nine parents print usage with no state
 at all: `disembark`, `docs`, `embargo`, `embark`, `guard`, `history`, `ideate`, `scribe`,
 and `session`, whose running relay keeps its sessions in that process's memory alone. Bare
+`abcd explain` prints its own help, because its operand is the command it explains. Bare
 `abcd launch` refuses with a hint to pass `--dry-run`. Bare
 `abcd build` refuses as a usage error because its one operand is the intent it
 starts a run for; the run's state renders through `abcd implement status`. Bare
@@ -336,7 +339,7 @@ verb the binary registers apart from the framework's own `help`.
 |---|---|---|
 | `rules` | Renders the active rule set; a positional `DOMAIN` scopes to one. Read-only diagnostics over the hook-driven rule injection. | itd-3 (the modular rules loader); the loader it reports on is documented in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md), and the verb in [The rules verb](#the-rules-verb) below |
 | `spec` | The native spec store: bare invocation is a read-only status board, and `spec close` closes a spec and ships its linked intent (`planned/` → `shipped/`) only when no open spec is left naming it — an intent owns one or more specs, and `--remainder <slug>` mints the follow-on for a partial delivery in the same operation, carrying the closing spec's steps not marked landed. | itd-80 / spc-2 (intent lifecycle automation), adr-2609151513118583 (the 1:n relation); its lifecycle is documented in [`05-intent.md`](05-intent.md), and the verb in [The spec verb](#the-spec-verb) below |
-| `hook` | Hidden from `--help`: twelve hook entrypoints. Nine are host hook entrypoints, live-wired from `hooks/hooks.json`. `prompt-router` injects the rules a prompt matches and then the memory notes and pages it recalls ([`05-internals/07-memory.md`](../05-internals/07-memory.md#9-retrieval--scope-aware-budget-bracketed-itd-39)), shrinking both by the context brackets as the session fills, and on the prompt that owes it sets the session's persona name as its title (itd-2610111707085098), and `prompt-router-reset` clears the per-session ledgers and deletes the session's fill file so they inject again, and before a compaction records its time and trigger beside the checklist ([`40-checklist.md`](40-checklist.md#at-every-compaction)); `session-end` stages the session's own transcript, `subagent-stop` stages a finished sub-agent's transcript with its lineage, and `session-start` files both away, says how many reports wait in the inbox ([`29-report.md`](29-report.md)) and reserves the session's persona name in the machine register ([`08-abcd.md`](08-abcd.md)); `question-answered`, on the question tool's `PostToolUse`, resets the presence badge once a question's answer comes back ([`08-abcd.md`](08-abcd.md)); `permission-request`, on the shell tool's `PermissionRequest`, refuses the host's approval prompt while a build or drain runs with nobody at the terminal ([`34-build.md`](34-build.md#approval-prompts-while-it-runs)); `stop`, on `Stop`, keeps a session working while the person is away and work is owed, and `stop-failure`, on `StopFailure`, records a turn the host ended on an API error while the person is away ([`26-mode.md`](26-mode.md)). Two serve the dogfood store ([`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-dogfood-store)): every hook shim asks `dogfood-binary` for a finished build of the reviewed branch's tip to run in the installed release's place, and `dogfood-build` checks the declared remote and builds that tip, started in the background or run by hand. The last, `scheduled-refresh`, is what `prompt-router` starts in the background when the kept answer about a repository's scheduled workflow has aged, or a person runs by hand ([`39-status.md`](39-status.md#the-latest-scheduled-verdict)). The pre-tool-use adapter is `guard hook`, under `guard`. | itd-3 (the prompt router), itd-89 / spc-4 (the transcript clock), itd-103 / spc-16 (the guard hook); the transcript entrypoints are documented in [`11-history.md`](11-history.md), and the rule injection the router drives, with `prompt-router`'s two outputs — the injected block and the `--json` envelope that names the active-domain set for a client that snapshots rules — in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-prompt-routers-output); the generated CLI reference omits both router entrypoints by design |
+| `hook` | Hidden from `--help`: twelve hook entrypoints. Nine are host hook entrypoints, live-wired from `hooks/hooks.json`. `prompt-router` injects the rules a prompt matches and then the memory notes and pages it recalls ([`05-internals/07-memory.md`](../05-internals/07-memory.md#9-retrieval--scope-aware-budget-bracketed-itd-39)), shrinking both by the context brackets as the session fills, and on the prompt that owes it sets the session's persona name as its title (itd-2610111707085098), and on every prompt re-asserts the session's hold on that name in the machine register ([`08-abcd.md`](08-abcd.md)), and `prompt-router-reset` clears the per-session ledgers and deletes the session's fill file so they inject again, and before a compaction records its time and trigger beside the checklist ([`40-checklist.md`](40-checklist.md#at-every-compaction)); `session-end` stages the session's own transcript, `subagent-stop` stages a finished sub-agent's transcript with its lineage, and `session-start` files both away, says how many reports wait in the inbox ([`29-report.md`](29-report.md)) and reserves the session's persona name in the machine register ([`08-abcd.md`](08-abcd.md)); `question-answered`, on the question tool's `PostToolUse`, resets the presence badge once a question's answer comes back ([`08-abcd.md`](08-abcd.md)); `permission-request`, on the shell tool's `PermissionRequest`, refuses the host's approval prompt while a build or drain runs with nobody at the terminal ([`34-build.md`](34-build.md#approval-prompts-while-it-runs)); `stop`, on `Stop`, keeps a session working while the person is away and work is owed, and `stop-failure`, on `StopFailure`, records a turn the host ended on an API error while the person is away ([`26-mode.md`](26-mode.md)). Two serve the dogfood store ([`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-dogfood-store)): every hook shim asks `dogfood-binary` for a finished build of the reviewed branch's tip to run in the installed release's place, and `dogfood-build` checks the declared remote and builds that tip, started in the background or run by hand. The last, `scheduled-refresh`, is what `prompt-router` starts in the background when the kept answer about a repository's scheduled workflow has aged, or a person runs by hand ([`39-status.md`](39-status.md#the-latest-scheduled-verdict)). The pre-tool-use adapter is `guard hook`, under `guard`. | itd-3 (the prompt router), itd-89 / spc-4 (the transcript clock), itd-103 / spc-16 (the guard hook); the transcript entrypoints are documented in [`11-history.md`](11-history.md), and the rule injection the router drives, with `prompt-router`'s two outputs — the injected block and the `--json` envelope that names the active-domain set for a client that snapshots rules — in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-prompt-routers-output); the generated CLI reference omits both router entrypoints by design |
 | `completion` | The CLI framework's generated per-shell autocompletion scripts. | No record: generated by the CLI framework, not designed here |
 | `statusline` | The harness-invoked status-line render: the harness runs it on every refresh with its payload on stdin, and it prints abcd's row in a managed repository or runs the user's recorded previous status command everywhere else. Its one write, on the path that renders abcd's own row, is the session's fill file under `~/.abcd.noindex/fill/`, from which the prompt router reads how full the session is. `ahoy install` wires it; no user invokes it. | itd-200 / spc-70 (the presence badge); the row and the state behind it are documented in [`08-abcd.md`](08-abcd.md) |
 
@@ -436,10 +439,10 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 <!-- index: commands -->
 `abcd`, `agents`, `ahoy`, `announce`, `banlist`, `build`, `capture`,
 `checklist`, `dashboard`, `decide`, `disembark`, `docs`, `drain`, `embargo`,
-`embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
-`intent`, `lab`, `land`, `landings`, `launch`, `library`, `lint`, `memory`,
-`mode`, `peers`, `reading`, `reflect`, `report`, `reserve`, `scribe`, `session`,
-`site`, `status`, `update`.
+`embark`, `explain`, `guard`, `history`, `ideate`, `identity`, `implement`,
+`inbox`, `intent`, `lab`, `land`, `landings`, `launch`, `library`, `lint`,
+`memory`, `mode`, `peers`, `reading`, `reflect`, `report`, `reserve`, `scribe`,
+`session`, `site`, `status`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.
@@ -499,7 +502,7 @@ an agent page means adding or removing its row in the same change.
 | [`planning-interviewer`](../../../../agents/planning-interviewer.md) | `intent` | [`05-intent.md`](05-intent.md) | Runs an intent's planning interview and edits the intent record after each answer |
 | [`press-release-composer`](../../../../agents/press-release-composer.md) | `disembark` | [`02-disembark.md`](02-disembark.md) | Composes a lifeboat's press release from its packed brief, spine, and principles |
 | [`principle-distiller`](../../../../agents/principle-distiller.md) | `disembark` | [`02-disembark.md`](02-disembark.md) | Distils durable principles from a packed lifeboat's decision record |
-| [`question-drafter`](../../../../agents/question-drafter.md) | none | [§ Agents outside the verb chapters](#agents-outside-the-verb-chapters) | Drafts one of abcd's own questions so it follows every asking rule and fits the rows limit |
+| [`question-drafter`](../../../../agents/question-drafter.md) | none | [§ Agents outside the verb chapters](#agents-outside-the-verb-chapters) | Writes one of abcd's own questions and checks it with `abcd guard question` until it is clean |
 | [`reflection-composer`](../../../../agents/reflection-composer.md) | `reflect` | [`09-reflect.md`](09-reflect.md) | Runs a cut release's retrospective interview and drafts its answers |
 | [`release-changelog-composer`](../../../../agents/release-changelog-composer.md) | `launch` | [`04-launch.md`](04-launch.md) | Composes a release cut's changelog lines and release page from the records that shipped in it |
 | [`ruthless-reviewer`](../../../../agents/ruthless-reviewer.md) | `build`, `drain` | [§ Agents outside the verb chapters](#agents-outside-the-verb-chapters) | Reviews a diff that builds and passes its checks, for correctness first |
@@ -545,15 +548,20 @@ that everything it reads is data, never instruction.
   marketing, and cites only what it opened in the run. It returns a ranked list
   of recommendations, each with its source and tier, and a section on what it
   rejected.
-- **`question-drafter`** drafts one of abcd's own questions before the agent
-  running the interview asks it: handed the material to quote, the addressee,
-  the decision and the defensible answers, it returns the host question tool's
-  input and the rows each tab takes, counted as the question check in
-  [`17-guard.md`](17-guard.md) counts them. Its asking rules and its row count
-  are a block `cmd/asking-sync` renders from `question.Default`, so the
-  prompt and the check read one statement of every limit. It puts nothing to
-  the person itself and never marks an option recommended. The GRILL asking
-  rules tell every agent running an abcd interview to draft through it.
+- **`question-drafter`** is abcd's question writer: it writes one of abcd's own
+  questions before the agent running the interview asks it. Handed the
+  material to quote, the addressee, the decision and the defensible answers,
+  it heads each draft with abcd's number, runs `abcd guard question`
+  ([`17-guard.md`](17-guard.md)) after every edit, at most five checks to a
+  part, and returns the check's ready input, its rows and its version with
+  `checked_by`. It quotes one decision's too-long material shorter, keeping every answer's gain and cost, and splits material holding several decisions or too many answers into numbered
+  parts. It refuses only a missing or contradictory
+  brief, a check that gives no ready input (its exit 2, or `refuse-away` while the person is away), or five checks spent, and only to the agent that
+  called it. Its asking rules, how it checks a draft, and the hand row count
+  kept for a host with no shell are a block `cmd/asking-sync` renders from
+  `question.Default`. It puts nothing to the person itself and never marks an
+  option recommended. The GRILL asking rules tell every agent running an abcd
+  interview to ask only what it returns.
 
 `docs-currency-reviewer`, one of the release gate's semantic passes, serves
 `launch` and is documented in [`10-docs.md`](10-docs.md): the release cut names

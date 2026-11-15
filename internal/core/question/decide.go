@@ -1,5 +1,7 @@
 package question
 
+import "slices"
+
 // The one decision the question gate makes (spc-2610301917245442, step 1;
 // itd-2610230756259215 decisions 2 and 3). The guard hook and the read-only
 // `abcd guard question` both call Decide over the same field view and the same
@@ -9,6 +11,12 @@ package question
 // the writes an admission makes (the open-question marker, the mode set from
 // a chip) stay in the hook, after the decision, where the verb never reaches
 // them.
+//
+// A question is abcd's by its header alone (spc-2610301917245442, step 3;
+// itd-2610230756259215 decision 36): a header in abcd's grammar, the number
+// form ("Q1", "Q1a", "Q2/5") or the older form opened by a role word
+// ("Product Q2"). The mode no longer makes a question abcd's: a question with
+// no header in the grammar is another tool's in every mode state.
 
 // Outcome is what the guard hook does with a question-tool call.
 type Outcome string
@@ -28,8 +36,9 @@ const (
 	// OutcomeRefuseAway is any question while the person is away: the hook
 	// denies it before any rule is read (spc-2610180914469489).
 	OutcomeRefuseAway Outcome = "refuse-away"
-	// OutcomeAdmitUnchecked is a question that is not abcd's: the hook lets it
-	// run unchecked and unmarked.
+	// OutcomeAdmitUnchecked is a question that is not abcd's, no header being
+	// in abcd's grammar, whatever the mode: the hook lets it run unchecked and
+	// unmarked.
 	OutcomeAdmitUnchecked Outcome = "admit-unchecked"
 	// OutcomeUnchecked is a question the hook admits on its loud,
 	// non-blocking status because a store the decision needed could not be
@@ -51,8 +60,8 @@ const (
 	// refused, so it decides whether any rule is read at all.
 	StoreAway Store = "away"
 	// StoreMode is the waiting-on mode, read where the badge shows: it decides
-	// whether a question without abcd's chip is abcd's and, for one, the
-	// product thinker's register rule.
+	// whom a number-form header is for, and so the product thinker's register
+	// rule on its tab, and an older-form chip sets it.
 	StoreMode Store = "mode"
 	// StoreLimits is the question limits a repository's .abcd/config.json
 	// and the person's own ~/.abcd.noindex/config.json set
@@ -147,21 +156,24 @@ type Unread struct {
 // read.
 type Verdict struct {
 	Outcome Outcome
-	// Abcds is true when the question is abcd's: a header in the chip
-	// grammar, or a mode naming somebody.
+	// Abcds is true when the question is abcd's: a header in abcd's grammar,
+	// either form.
 	Abcds bool
-	// Chipped is true when a header is in abcd's chip grammar.
+	// Chipped is true when a header is in the older form, a role word before
+	// the number, which names its tab's person and sets the mode.
 	Chipped bool
 	// Findings is every finding of the limits check, in CheckLimits's order;
 	// empty when no rule was read (away, or not abcd's question).
 	Findings []Finding
 	// Addressees is the person each checked tab is for: the chip's role for
-	// a chipped tab, the mode's person otherwise.
+	// an older-form tab, the mode's person otherwise.
 	Addressees []Person
 	// ModeAfter is the mode an admitted question leaves where the badge
-	// shows: the chip's person for a chipped question, the current mode
-	// otherwise. ModeChanges is true when it differs from State.Mode
-	// (decision 15).
+	// shows: for a call with an older-form chip, the product thinker when any
+	// checked tab's addressee is, else the facilitator (callPerson); the
+	// current mode otherwise, so a number-form question leaves the mode the
+	// agent set before asking (decision 37). ModeChanges is true when it
+	// differs from State.Mode (decision 15).
 	ModeAfter   Person
 	ModeChanges bool
 	// Rows is the row split of every checked tab, in tab order.
@@ -191,10 +203,31 @@ func allRules() []Rule {
 // every rule but the rows limit (iss-2610070637562567).
 func RefusingFinding(f Finding) bool { return f.Rule != RuleRows }
 
-// chipped reports whether any tab's header is in abcd's chip grammar.
+// abcds reports whether any tab's header is in abcd's grammar, either form.
+func abcds(f Fields, l Limits) bool {
+	for _, t := range f.Tabs {
+		if isAbcds(t.Header, l) {
+			return true
+		}
+	}
+	return false
+}
+
+// chipped reports whether any tab's header is in the older form.
 func chipped(f Fields, l Limits) bool {
 	for _, t := range f.Tabs {
 		if _, ok := chipRole(t.Header, l); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// numbered reports whether any tab's header is in the number form, whose
+// person is the one the mode names.
+func numbered(f Fields, l Limits) bool {
+	for _, t := range f.Tabs {
+		if _, ok := chipRole(t.Header, l); isAbcds(t.Header, l) && !ok {
 			return true
 		}
 	}
@@ -212,18 +245,18 @@ func ChipPerson(role string) Person {
 	return Facilitator
 }
 
-// callPerson is the person a chipped call names as a whole: the product
-// thinker when any tab's chip names them, else the technical facilitator, so
-// the status line never says only the facilitator is owed an answer the
-// product thinker owes too.
-func callPerson(f Fields, l Limits) Person {
-	p := Facilitator
-	for _, t := range f.Tabs {
-		if role, ok := chipRole(t.Header, l); ok && ChipPerson(role) == ProductThinker {
-			p = ProductThinker
-		}
+// callPerson is the person a chipped call names as a whole, read from the
+// addressee of every checked tab: the product thinker when any tab is theirs,
+// whether by its own chip or, for a number-form tab, by the mode in force,
+// else the technical facilitator. So the status line never names only the
+// facilitator while the product thinker owes an answer too: under the
+// product thinker's mode, "Tech Q1" beside "Q2" leaves the badge on the
+// product thinker, whom the Q2 tab is for.
+func callPerson(addressees []Person) Person {
+	if slices.Contains(addressees, ProductThinker) {
+		return ProductThinker
 	}
-	return p
+	return Facilitator
 }
 
 // checkedTabs is the tabs the limits check reads field by field.
@@ -233,10 +266,10 @@ func checkedTabs(f Fields, l Limits) []Tab {
 
 // Decide judges one question-tool call as the guard hook judges it, in the
 // hook's order: the away record first (refuse-away before any limit), then
-// the mode store where the badge shows, then whether the question is abcd's,
-// then the limits. It writes nothing and reads no store: s carries what the
-// surface read, and l is the limits the call is judged at, s.Limits as the
-// surface resolved them.
+// whether the question is abcd's, by its header alone, then the mode store
+// where a number header needs it, then the limits. It writes nothing and
+// reads no store: s carries what the surface read, and l is the limits the
+// call is judged at, s.Limits as the surface resolved them.
 //
 // The question limits' outcome is read only for abcd's question
 // (itd-2610301914350541): another tool's runs unchecked whatever either file
@@ -244,15 +277,16 @@ func checkedTabs(f Fields, l Limits) []Tab {
 // Refused set, and an unread layer leaves the call checked at l (the
 // defaults, on that path), partial and naming the file, so a configuration
 // that cannot be read never lets a question through unchecked. A mode store
-// that cannot be read is the same for a chipped question: its chip names whom
-// it is for, so it is checked at l, partial and naming the store, and only a
-// question without a chip, which the mode alone could make abcd's, runs
-// unchecked.
+// that cannot be read leaves abcd's question checked too, partial and naming
+// the store: an older-form chip names whom its tab is for and needs no mode,
+// and a number header loses only the register rule, which follows the mode
+// (spc-2610301917245442, step 3).
 func Decide(f Fields, s State, l Limits) Verdict {
 	v := Verdict{DependsOnState: s.Repo, ModeAfter: s.Mode}
 	for _, t := range checkedTabs(f, l) {
 		v.Rows = append(v.Rows, tabRows(t, l))
 	}
+	v.Abcds = abcds(f, l)
 	v.Chipped = chipped(f, l)
 	if s.Away {
 		v.Outcome = OutcomeRefuseAway
@@ -265,50 +299,50 @@ func Decide(f Fields, s State, l Limits) Verdict {
 		v.Partial = true
 		v.Unread = append(v.Unread, Unread{Store: StoreAway, Err: s.AwayErr, Rules: allRules()})
 	}
-	modeUnread := s.Badge && s.ModeErr != nil
-	if modeUnread {
-		// For a question without a chip, whether it is abcd's at all is
-		// unknown, so no rule is applied and the hook fails open. A chipped
-		// question's chip already names whom it is for, so it needs no mode
-		// for its rules: it is checked at the limits in force like any other
-		// of abcd's, and only the mode the hook would set from its chip, and
-		// the marker, are left unwritten.
-		v.Partial = true
-		if !v.Chipped {
-			v.Unread = append(v.Unread, Unread{Store: StoreMode, Err: s.ModeErr, Rules: allRules()})
-			v.Outcome = OutcomeUnchecked
-			return v
-		}
-		v.Unread = append(v.Unread, Unread{Store: StoreMode, Err: s.ModeErr})
-	}
-	if !v.Chipped && s.Mode == Unnamed {
-		// A question without a chip is abcd's only through the mode. Where
-		// the mode store was never read because the root could not be found,
-		// whether the mode names somebody is unknown (iss-2610110432159652).
-		if s.RootErr != nil {
-			v.Partial = true
-			v.Unread = append(v.Unread, Unread{Store: StoreMode, Err: s.RootErr, Rules: allRules()})
-			v.Outcome = OutcomeUnchecked
-			return v
-		}
+	if !v.Abcds {
+		// No header in abcd's grammar: another tool's question, whatever the
+		// mode names (decision 36), so the mode store is not consulted.
 		v.Outcome = OutcomeAdmitUnchecked
 		return failedOpen(v)
 	}
-	v.Abcds = true
-	// A chip names the addressee of its own tab, and the mode the gate sets
-	// follows the chip, so a chipped question is checked against its chips
-	// and not against a mode it is about to replace.
-	who := s.Mode
+	numbered := numbered(f, l)
+	// The mode store matters to abcd's question in two ways: an older-form
+	// chip sets it on admission, and a number header's register rule follows
+	// it. Where the badge shows and the store cannot be read, or where the
+	// root could not be found for a number header, the verdict is partial,
+	// naming the register rule only for a number header.
+	var modeErr error
+	switch {
+	case s.Badge && s.ModeErr != nil:
+		modeErr = s.ModeErr
+	case numbered && s.RootErr != nil:
+		modeErr = s.RootErr
+	}
+	if modeErr != nil {
+		v.Partial = true
+		u := Unread{Store: StoreMode, Err: modeErr}
+		if numbered {
+			u.Rules = []Rule{RuleRegister}
+		}
+		v.Unread = append(v.Unread, u)
+	}
+	// The register rule is decided per tab (forProductThinker): an
+	// older-form tab by its own role word, never by a mode it is about to
+	// replace, and every other tab by the mode's person, passed where the
+	// badge shows and the store was read; elsewhere nobody is named.
+	who := Unnamed
+	if s.Badge && modeErr == nil {
+		who = s.Mode
+	}
+	v.Addressees = addressees(f, l, who)
 	if v.Chipped {
-		who = Unnamed
-		v.ModeAfter = callPerson(f, l)
+		v.ModeAfter = callPerson(v.Addressees)
 		v.ModeChanges = s.Badge && v.ModeAfter != s.Mode
 	}
-	if modeUnread {
+	if modeErr != nil {
 		// The mode cannot be read, so the hook sets none from the chip.
 		v.ModeAfter, v.ModeChanges = s.Mode, false
 	}
-	v.Addressees = addressees(f, l, s.Mode)
 	if s.LimitsRefused != nil {
 		v.Outcome, v.Refused = OutcomeRefuse, s.LimitsRefused
 		v.ModeAfter, v.ModeChanges = s.Mode, false
@@ -364,8 +398,9 @@ func failedOpen(v Verdict) Verdict {
 	return v
 }
 
-// addressees is the person each checked tab is for: its chip's role where it
-// carries one, else the person the mode names.
+// addressees is the person each checked tab is for, as its register rule was
+// judged: its older-form chip's role where it carries one, else the person
+// the mode names (who, Unnamed where the mode was not read).
 func addressees(f Fields, l Limits, mode Person) []Person {
 	tabs := checkedTabs(f, l)
 	out := make([]Person, len(tabs))

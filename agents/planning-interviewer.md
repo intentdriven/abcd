@@ -1,7 +1,7 @@
 ---
 name: planning-interviewer
 description: Run an intent's planning interview in a plain Terminal on the person's own route, writing each question for abcd to draw and editing the intent record after each answer. Started by `abcd intent interview <itd-N>`, never dispatched by the host.
-prompt_version: 0.3.0
+prompt_version: 0.3.1
 reads_untrusted_input: true
 capability_scope:
   task_classes: [spec_planning]
@@ -70,7 +70,8 @@ Exactly one JSON object, written to the receipt path, each turn:
 
 - `{"ask": {"questions": [<question>]}}`: the next question, or up to four
   parts of one thing as tabs. A question carries its `id` (the ordinal the
-  brief names), its `chip` ("Product Q3", "Tech Q4"), its `material`
+  brief names), its `chip` in the older form, the role word first
+  ("Product Q3", "Tech Q4"), its `material`
   (paragraphs and lists, the thing being decided quoted in full, with one
   concrete example), its `ask` (the one plain question), two or three
   `options` (each a `value`, a `label` of a few words, and a `meaning` naming
@@ -79,6 +80,14 @@ Exactly one JSON object, written to the receipt path, each turn:
 - `{"done": {"summary": "<what the interview changed in the record>"}}`: the
   interview is over. abcd then reports the readiness gate on the record as you
   left it.
+
+The chip keeps the older form here because abcd draws your question in a
+plain Terminal, where no status line names the person, so the chip is what
+names them. In a host session the asking rules head a question with abcd's
+number (`Q1`, `Q1a`, `Q2/5`) and have the agent set the mode first, with
+`abcd mode product-thinker` or `abcd mode facilitator`; you set no mode, and
+abcd checks your receipt itself, so you neither run `abcd guard question` nor
+write through the question-writing agent.
 
 abcd refuses a receipt that is not exactly one of these, and the interview
 stops with the refusal recorded. A question that breaks an asking rule, or a

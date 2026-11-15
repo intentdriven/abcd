@@ -115,6 +115,21 @@ func TestDefaultBranchRootsListsEveryRoot(t *testing.T) {
 			t.Fatalf("DefaultBranchRoots = %q, %v; want the stored [%s], not the grafted tip %s", got, err, root, tip)
 		}
 	})
+	t.Run("a commit-graph does not change the answer", func(t *testing.T) {
+		r, root := setup(t)
+		r.Write("NEXT.md", "more\n")
+		r.Commit("c1")
+		tip := r.Git("rev-parse", "HEAD")
+		r.Git("commit-graph", "write", "--reachable")
+		gittest.ForgeCommitGraphRoot(t, r.Git("rev-parse", "--absolute-git-dir"), tip)
+		if got := r.Git("-c", "core.commitGraph=true", "rev-list", "--max-parents=0", "HEAD"); got != tip {
+			t.Fatalf("the altered commit-graph does not take: the root reads as %s", got)
+		}
+		got, err := gitutil.DefaultBranchRoots(r.Root())
+		if err != nil || !slices.Equal(got, []string{root}) {
+			t.Fatalf("DefaultBranchRoots = %q, %v; want the stored [%s], not the tip %s the graph calls a root", got, err, root, tip)
+		}
+	})
 	t.Run("a repository with no commits lists none", func(t *testing.T) {
 		r := gittest.NewRepo(t)
 		got, err := gitutil.DefaultBranchRoots(r.Root())

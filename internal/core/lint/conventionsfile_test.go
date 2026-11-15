@@ -290,38 +290,39 @@ func TestVerifierCopyGoesOutsideEveryWorkingTree(t *testing.T) {
 }
 
 // worktreeStoreIntent is the intent that carries the worktree store's own verbs
-// (add, list, reclaim), which the CONCURRENCY rule names as the reason the
-// store has none yet.
+// (add, list, prune), which the CONCURRENCY rule names as the record they
+// shipped with.
 const worktreeStoreIntent = "itd-2609091014076309"
 
 // TestWorktreeStoreRuleNamesTheIntentsActualState holds every present-state
-// sentence that says why the worktree store has no verbs to the lifecycle folder
-// its intent actually sits in (iss-2610090744073409). The CONCURRENCY rule of
-// .abcd/rules.json said the intent was in drafts/ while its own link pointed at
-// planned/, so the prose contradicted the link beside it; the build surface page
-// and the lane's worktree code repeated the claim as "a draft". The rule must
-// name the folder the record is in and say the store has no verbs because that
-// intent has not shipped; no site may call a planned intent a draft. The
-// planning records that wait on the store (itd-148, its spec spc-42, and
+// sentence that names the worktree store's intent to the lifecycle folder the
+// intent actually sits in (iss-2610090744073409). The CONCURRENCY rule of
+// .abcd/rules.json once said the intent was in drafts/ while its own link
+// pointed at planned/, so the prose contradicted the link beside it; the build
+// surface page and the lane's worktree code repeated the claim as "a draft".
+// The intent has shipped (spc-2609301811532881 closed), so the rule must link
+// the shipped/ record, say the store's verbs ship, and no longer say the intent
+// has not shipped; and no site may call it a draft or say it is still to ship.
+// The planning records that wait on the store (itd-148, its spec spc-42, and
 // iss-213, which itd-148 carries) went on calling it "the store draft" after it
 // was planned (iss-2610111926302792), so they are sites too, found by id in
-// whichever lifecycle folder holds them. A site is the list item, prose
+// whichever lifecycle folder holds them; so are the users-directory principle
+// and itd-2610222214476887, whose prose called the store planned and unbuilt
+// beside a link the close had repointed to shipped/. A site is the list item, prose
 // sentence or front-matter line that names the intent or says "store draft"
-// (worktreeStoreSites), never the whole paragraph, so a draft word said of
-// another intent in the same list is not blamed on this one
-// (iss-2610111926302443). Dated records (ADRs, the decision log, research
-// notes) and the dated "## Deferral" sections inside a record say what was true
-// when they were written and are not held here.
+// (worktreeStoreSites), never the whole paragraph, so a word said of another
+// intent in the same list is not blamed on this one (iss-2610111926302443).
+// Dated records (ADRs, the decision log, research notes) and the dated
+// "## Deferral" sections inside a record say what was true when they were
+// written and are not held here.
 func TestWorktreeStoreRuleNamesTheIntentsActualState(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	matches, err := filepath.Glob(filepath.Join(root, ".abcd", "development", "intents", "*", worktreeStoreIntent+"-*.md"))
 	if err != nil || len(matches) != 1 {
 		t.Fatalf("want exactly one record of %s in the intent store, got %v (err=%v)", worktreeStoreIntent, matches, err)
 	}
-	bucket := filepath.Base(filepath.Dir(matches[0]))
-	if bucket == "shipped" {
-		t.Fatalf("%s has shipped: the store has verbs now, so the CONCURRENCY rule's \"no verbs yet\" is stale "+
-			"and this test's premise with it", worktreeStoreIntent)
+	if bucket := filepath.Base(filepath.Dir(matches[0])); bucket != "shipped" {
+		t.Fatalf("%s is in %s/, but its spec closed and its verbs ship; this test holds the shipped state", worktreeStoreIntent, bucket)
 	}
 
 	var repo rules.RuleSet
@@ -337,10 +338,9 @@ func TestWorktreeStoreRuleNamesTheIntentsActualState(t *testing.T) {
 	if rule == "" {
 		t.Fatalf("the CONCURRENCY domain of .abcd/rules.json has no rule naming %s", worktreeStoreIntent)
 	}
-	for _, want := range []string{"/intents/" + bucket + "/" + worktreeStoreIntent + "-", bucket, "has not shipped"} {
+	for _, want := range []string{"/intents/shipped/" + worktreeStoreIntent + "-", "The store's verbs ship."} {
 		if !strings.Contains(rule, want) {
-			t.Errorf("the CONCURRENCY rule naming %s does not say %q; the intent is in %s/ and has not shipped, "+
-				"which is why the store has no verbs yet", worktreeStoreIntent, want, bucket)
+			t.Errorf("the CONCURRENCY rule naming %s does not say %q; the intent has shipped", worktreeStoreIntent, want)
 		}
 	}
 
@@ -348,12 +348,14 @@ func TestWorktreeStoreRuleNamesTheIntentsActualState(t *testing.T) {
 	sites := map[string][]string{"the CONCURRENCY rule": {rule}}
 	rels := []string{
 		".abcd/development/brief/04-surfaces/34-build.md",
+		".abcd/development/principles/the-users-directory-is-theirs.md",
 		"internal/core/implement/loop/lane.go",
 	}
-	// The planning records waiting on the store, wherever their lifecycle
-	// folder puts them.
+	// The planning records waiting on the store, or building on its reclaim,
+	// wherever their lifecycle folder puts them.
 	for _, pattern := range []string{
 		".abcd/development/intents/*/itd-148-*.md",
+		".abcd/development/intents/*/itd-2610222214476887-*.md",
 		".abcd/development/specs/*/spc-42-*.md",
 		".abcd/work/issues/*/iss-213-*.md",
 	} {
@@ -373,16 +375,25 @@ func TestWorktreeStoreRuleNamesTheIntentsActualState(t *testing.T) {
 			t.Errorf("%s no longer names %s; update this test's list of sites", rel, worktreeStoreIntent)
 		}
 	}
-	if bucket == "drafts" {
-		return
-	}
 	for name, paras := range sites {
 		for _, p := range paras {
-			for _, stale := range staleDraftWords(p) {
-				t.Errorf("%s calls %s %q, but the intent is in %s/:\n%s", name, worktreeStoreIntent, stale, bucket, p)
+			for _, stale := range append(staleDraftWords(p), staleUnshippedWords(p)...) {
+				t.Errorf("%s says %s is %q, but the intent has shipped:\n%s", name, worktreeStoreIntent, stale, p)
 			}
 		}
 	}
+}
+
+// staleUnshippedWords returns the words in one site that say the store intent
+// is still to ship, which a shipped intent is not.
+func staleUnshippedWords(site string) []string {
+	var found []string
+	for _, stale := range []string{"has not shipped", "not yet shipped", "no verbs yet", "still sits in `planned/`", "planned and unbuilt", "planned but not built", "intents/planned/" + worktreeStoreIntent} {
+		if strings.Contains(site, stale) {
+			found = append(found, stale)
+		}
+	}
+	return found
 }
 
 // withoutDeferralSections drops each dated "## Deferral <date>" section of a

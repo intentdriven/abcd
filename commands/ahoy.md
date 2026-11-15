@@ -576,9 +576,9 @@ taken from the persistent plugin data directory a session's hooks provision.
 Before writing it, install verifies that binary's signed build provenance with
 the same in-process check `abcd update` makes, bound to the commit of the
 release the cache attestation names; when the check fails or cannot
-reach GitHub's attestations API or the Sigstore TUF repository, install writes
-no entry and its note names what failed and how to check the release by hand
-with `gh attestation verify`. Relay that note verbatim.
+reach GitHub's attestations or git API or the Sigstore TUF repository, install
+writes no entry and its note names what failed and how to check the release by
+hand with `gh attestation verify`. Relay that note verbatim.
 When no verified copy is there, install writes no symlink into the plugin root,
 which stops working at the next plugin update: where nothing is at the `PATH`
 target it asks the download question above instead, and on a no (or under
@@ -1733,6 +1733,136 @@ stored secret. The abcd home is refused when `~/.abcd.noindex` lies inside a git
 working tree (the keychain and an external home stay open
 there), and a platform with no keychain tool refuses the keychain home and
 names the other two.
+
+## `worktree` — a checkout of its own in the worktree store
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy worktree add <name> --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy worktree list --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy worktree list --all --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy worktree prune --dry-run --json
+```
+
+**The host-run step.** When you need an isolated checkout, for a lane, a
+subagent or a peer session, run `abcd ahoy worktree add <name>` and work in the
+path it prints. Do not use the place your host would put a worktree by default,
+and do not make one beside the checkout or inside it. The store is
+`~/.abcd.noindex/worktrees/<root-sha>/<name>/`, keyed on the full object name of
+the repository's root commit, and this verb is how a worktree gets there.
+`add` and `prune` write; say so before you run them. `list` writes nothing.
+
+`add` makes the worktree in this repository's lane of the store. The name is
+one plain path segment of letters, digits, `.`, `_` and `-`, not led by `-` or
+`.`, with no `..`, and not `embargo`, which abcd's embargo store holds in the
+same lane. Without `--branch` it makes a new branch named `<name>`, cut from the
+default branch; when a branch of that name already exists it refuses and names
+`--branch <name>` as the way to check that branch out. `--branch <branch>`
+checks out an existing local branch and makes no new one. git checks the tree
+out as it does for the person, so the repository's content filters and checkout
+hook run, and a checkout still running after 60 minutes is stopped. The new
+directory is made private to the account (`0700`) and gets its local tier,
+`.abcd/.work.local/`. Text output is the path alone, with the home shown as
+`~`; `--json` gives `name`, `branch` and `path`. A refusal made before git runs
+writes nothing: a name that is not a plain segment, a path already occupied, a
+repository with no commits, or a store level that is a symbolic link, belongs to
+another account or that others can write. If git made the worktree and the
+checkout hook then failed, the refusal says the worktree stands. It exits 0 on
+success and 2 on a refusal or fault.
+
+`list`, and bare `abcd ahoy worktree`, show one row for each worktree git reports
+for the repository, the main checkout excepted, and one for each directory in the
+lane git does not list. A row gives the name, the branch (`detached` for a
+detached HEAD), `clean` or `dirty`, `merged` or `unmerged` with how a merged
+branch was judged (`forge`, `ancestry` or `content`), where it sits (`store` for
+the lane, `outside` for anywhere else, `sibling` for the embargo store), and
+the path. A store path is shown under `~` so you can `cd` into it; an outside
+path is shown under `~` when it is in the home and by its last name otherwise.
+Clean means `git status` reports nothing, untracked files included, so the
+ignored local tier never makes a tree dirty. A row that fails the proof of
+belonging below shows its reason in place of the clean and merged columns:
+"checkout not found; run `git worktree repair` from the checkout", "directory
+gone; git still lists it", "not a worktree of this repository", or that its
+common directory is another checkout's. A directory in the store whose name
+abbreviates this repository's root commit is "not a lane": its row names the
+full-key lane and says its worktrees are retired by hand with
+`git worktree remove`. git's lock and prune reasons follow the row. `--json`
+gives `lane` and the rows under `worktrees`.
+
+`list --all` walks every directory under `~/.abcd.noindex/worktrees/` and runs
+from any folder. Each lane is shown under its repository's name where its root
+commit is registered in `~/.abcd.noindex/history/index.json`, and under its
+root commit where it is not (`label` then repeats `key`). The registry is read
+from the same home as the lanes, so inside a walled stage both are the
+person's. An absent registry leaves every lane under its root commit; one that
+is there but cannot be read, or is refused, does the same and adds one `note:`
+line (`forge_note` in the JSON form) saying so, without naming a path. Neither
+stops the listing. A lane's worktrees are judged from the checkout each one's
+own `.git` file names, never from the path the registry recorded. A lane whose
+every worktree names a checkout that is gone shows as "checkout not found".
+`--json` gives `store` and `lanes`, each lane with `key`, `label`, `path`,
+`reason` and `worktrees`.
+
+**The forge read.** `list` and `prune` each ask the forge once a run, through
+the person's own `gh`, for the repository's pull requests: one read-only
+`gh pr list`. `list --all` asks once for each checkout its lanes' worktrees
+name. That read is part of what both verbs do. A branch counts as merged
+when its pull request merged into the default branch with the local tip as its
+head commit, when its tip is an ancestor of the default branch and it holds a
+commit of its own, when every commit on it has an equivalent on the default
+branch (a rebase merge), or when its whole change matches one commit there by
+patch id (a squash merge). A branch that was cut and never committed to is not
+merged, so a worktree just added is never reclaimed. When no forge answers (no
+`gh`, no login, no GitHub remote, or no answer in time) the verbs judge from git
+alone and say so once, on a `note:` line or in `forge_note`.
+
+`prune` reclaims the lane's merged, clean worktrees and gives each worktree one
+row: `reclaimed`, `quiet`, or `kept` with its reason. It removes only a worktree
+that passes the store's proof of belonging: git lists it from this checkout, its
+real path is directly inside this repository's lane, and its own common
+directory is this checkout's. It keeps, and says why, a worktree outside the
+store (never touched), one that fails the proof, one git has locked, the one
+prune runs from, one a build loop run that has not finished holds, one another
+account owns, a dirty one, an unmerged one, and one whose notes could not be
+archived. Before it removes a worktree it copies the worktree's
+`.abcd/.work.local/`, redacted, to
+`~/.abcd.noindex/notes/<root-sha>/<UTC time>-<name>/` beside a `manifest.json`,
+and the row names that entry; a file the redaction cannot vouch for (not text,
+over 4 MiB, or a secret it cannot mask) fails the archive and keeps the
+worktree. It then runs `git worktree remove` without `--force`, so git checks
+the tree and the lock again and refuses a tree that changed. Files git ignores
+outside the local tier go with the worktree and are not archived. `prune` never
+deletes a branch and never runs the repository-wide `git worktree prune`. After
+it removes a worktree it trims the Go build cache, as `worktree trim-cache`
+below does, and a trim that fails never fails the prune.
+
+An unmerged worktree is `quiet` when its last activity is older than the quiet
+window and no pull request for its branch is open; one on a detached HEAD never
+is. The window is `worktrees.quiet_days` in the repository's `.abcd/config.json`
+or in `~/.abcd.noindex/config.json`, 14 days by default, and a misspelt key or a
+value below 1 is refused. A quiet row carries a dossier: its uncommitted changes
+first, then the ignored paths outside the local tier that a removal would
+delete, the branch's commits not on the default branch, the diff summary, the
+record ids they cite, the last activity and a next step. A quiet worktree stays
+unless it is named with `--yes <name>` (repeatable), and a named one goes
+through the same archive and refusals as a merged one, so a dirty one still
+stays. Relay each dossier and pass `--yes` only for a worktree the person names.
+Every `--yes` name is checked before anything is removed: a name the lane does
+not hold refuses the whole run, and a name that is not quiet this run is kept
+with the reason.
+
+`prune` exits 0 when it reclaimed at least one worktree, 1 when the run finished
+and reclaimed nothing (an empty lane included), and 2 on a refusal or fault: a
+store level it cannot trust, a quiet window the configuration refuses, or a
+`--yes` name the lane does not hold. `--dry-run` archives, removes and trims
+nothing, shows `would reclaim` in place of `reclaimed`, and exits as the real
+run would. `--json` gives `lane`, `dry_run`, `rows` (each with `name`,
+`branch`, `path`, `where`, `outcome`, `reason`, `notes`, `archive` and
+`dossier`), `forge_note` and `cache_trim`.
+
+The `/abcd` board's `worktrees` line counts the worktrees in this repository's
+lane and how many can be cleared, from the scan the board already runs and
+without asking the forge. That second number is an estimate; the rows `prune`
+reports are what was cleared.
 
 ## `worktree trim-cache` — keep the Go build cache under its limit
 

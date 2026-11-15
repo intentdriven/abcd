@@ -48,8 +48,8 @@ Eighteen agent prompts ship in `agents/` today, in five groups:
 - **The cold-reading instrument**: the four position definitions and the ledger
   `scribe` (below).
 - **The question drafter**, `question-drafter`, which the agent running one of
-  abcd's interviews dispatches to draft each question to the asking rules and
-  the rows limit; no verb dispatches it
+  abcd's interviews dispatches to write each question to the asking rules and
+  check it with `abcd guard question` until it is clean; no verb dispatches it
   ([`04-surfaces/README.md`](../04-surfaces/README.md#agents-outside-the-verb-chapters)).
 
 Fourteen of them return JSON, and the schemas are the core's rather than the

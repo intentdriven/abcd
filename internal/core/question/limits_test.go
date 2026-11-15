@@ -247,9 +247,10 @@ func TestRecommendedOrStarredOptionIsRefused(t *testing.T) {
 // TestProductThinkerQuestionNamesNoRecordOrCommand is R4 at the core: for the
 // product thinker a record handle, a backtick span, a `go run`, a slash command
 // and abcd followed by one of the binary's verbs are each refused, in any field
-// previews included; the same question for the facilitator is admitted; with
-// no mode naming anyone the "Product" chip stands in, and a "Tech" chip does
-// not.
+// previews included; the same question headed with a number is admitted for
+// the facilitator; an older-form chip names its own tab's person whatever the
+// caller passes, so the "Product" chip draws the rule and a "Tech" chip does
+// not, with or without a mode (spc-2610301917245442, step 3).
 func TestProductThinkerQuestionNamesNoRecordOrCommand(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -268,26 +269,35 @@ func TestProductThinkerQuestionNamesNoRecordOrCommand(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			tab := wellBuiltTab()
 			c.edit(&tab)
-			fs := CheckLimits(one(tab), Default, productThinker())
+			number := tab
+			number.Header = "Q2"
+			fs := CheckLimits(one(number), Default, productThinker())
 			onlyRule(t, fs, RuleRegister)
 			if fs[0].Value != c.value {
 				t.Errorf("value = %q, want %q", fs[0].Value, c.value)
 			}
-			if fs := CheckLimits(one(tab), Default, facilitator()); len(fs) != 0 {
+			if fs := CheckLimits(one(number), Default, facilitator()); len(fs) != 0 {
 				t.Errorf("facilitator refused:\n%s", render(fs))
 			}
-			if fs := CheckLimits(one(tab), Default, unnamed()); len(fs) == 0 || fs[0].Rule != RuleRegister {
-				t.Errorf("no mode and a Product chip: want a register finding, got:\n%s", render(fs))
+			if fs := CheckLimits(one(number), Default, unnamed()); len(fs) != 0 {
+				t.Errorf("no mode and a number header refused:\n%s", render(fs))
 			}
-			tab.Header = "Tech Q2"
-			if fs := CheckLimits(one(tab), Default, unnamed()); len(fs) != 0 {
-				t.Errorf("no mode and a Tech chip refused:\n%s", render(fs))
+			for name, who := range map[string]Addressee{"no mode": unnamed(), "the facilitator's mode": facilitator(), "the product thinker's mode": productThinker()} {
+				if fs := CheckLimits(one(tab), Default, who); len(fs) == 0 || fs[0].Rule != RuleRegister {
+					t.Errorf("%s and a Product chip: want a register finding, got:\n%s", name, render(fs))
+				}
+				tech := tab
+				tech.Header = "Tech Q2"
+				if fs := CheckLimits(one(tech), Default, who); len(fs) != 0 {
+					t.Errorf("%s and a Tech chip refused:\n%s", name, render(fs))
+				}
 			}
 		})
 	}
 	// A preview is still read for the register (previews included), beside
 	// the refusal every preview draws (rule 14).
 	tab := wellBuiltTab()
+	tab.Header = "Q2"
 	tab.Options[1].Preview = "It runs go run ./cmd/abcd."
 	if got := rulesOf(CheckLimits(one(tab), Default, productThinker())); !slices.Equal(got, []Rule{RuleRegister, RuleNoPreview}) {
 		t.Errorf("go run in a preview for the product thinker: findings %v, want register then no-preview", got)
@@ -561,6 +571,46 @@ func TestChipRole(t *testing.T) {
 		if _, ok := chipRole(h, Default); ok {
 			t.Errorf("chipRole(%q) read a role", h)
 		}
+	}
+}
+
+// TestHeaderGrammarReadsNumberAndOlderForms (spc-2610301917245442, step 3):
+// abcd's header is Q and the question's number, with an optional part letter
+// and an optional total, and the older form that opens with a role word is
+// still read. Only the older form carries a role word; rule 1's limit and
+// remedy name the number form and say the older form is still read.
+func TestHeaderGrammarReadsNumberAndOlderForms(t *testing.T) {
+	for _, h := range []string{"Q1", "Q1a", "Q2/5", "Q1a/4", "Product Q2", "Setup Q1/4"} {
+		if !isAbcds(h, Default) {
+			t.Errorf("isAbcds(%q) = false, want abcd's", h)
+		}
+	}
+	for _, h := range []string{"Q0", "q1", "Q1A", "Builder Q1", "Pick a theme", "", "Q1/", "Q1/0", " Q1", "Q1 "} {
+		if isAbcds(h, Default) {
+			t.Errorf("isAbcds(%q) = true, want not abcd's", h)
+		}
+	}
+	for h, want := range map[string]string{"Product Q2": "Product", "Setup Q1/4": "Setup", "Tech Q1a": "Tech"} {
+		if got, ok := chipRole(h, Default); !ok || got != want {
+			t.Errorf("chipRole(%q) = %q, %v; want %q", h, got, ok, want)
+		}
+	}
+	for _, h := range []string{"Q1", "Q1a", "Q2/5"} {
+		if got, ok := chipRole(h, Default); ok {
+			t.Errorf("chipRole(%q) read the role %q from the number form", h, got)
+		}
+	}
+	tab := wellBuiltTab()
+	tab.Header = "Pick"
+	fs := CheckLimits(one(tab), Default, facilitator())
+	if len(fs) != 1 || fs[0].Rule != RuleHeader {
+		t.Fatalf("want one header finding, got:\n%s", render(fs))
+	}
+	if !strings.Contains(fs[0].Limit, `"Q1"`) || !strings.Contains(fs[0].Remedy, `"Q1"`) {
+		t.Errorf("rule 1 must name the number form, \"Q1\": limit %q, remedy %q", fs[0].Limit, fs[0].Remedy)
+	}
+	if !strings.Contains(fs[0].Limit+" "+fs[0].Remedy, "still read") {
+		t.Errorf("rule 1 must say the older form is still read: limit %q, remedy %q", fs[0].Limit, fs[0].Remedy)
 	}
 }
 

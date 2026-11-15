@@ -6,9 +6,8 @@ package sweep
 
 import "strings"
 
-// RowKind is what a row is about. This step renders worktrees, strays and the
-// embargo store; the branch, remote-branch, reservation and inbox kinds join
-// them as the steps that judge those items land.
+// RowKind is what a row is about: worktrees, strays and the embargo store,
+// local branches, branches on origin, reservations and inbox reports.
 type RowKind string
 
 const (
@@ -20,11 +19,21 @@ const (
 	RowStray RowKind = "stray"
 	// RowEmbargoStore is abcd's embargo store, never read, saved or removed.
 	RowEmbargoStore RowKind = "embargo-store"
+	// RowBranch is a local branch (branches.go).
+	RowBranch RowKind = "branch"
+	// RowRemoteBranch is a branch on origin, as this checkout last fetched it
+	// (remote.go).
+	RowRemoteBranch RowKind = "remote-branch"
+	// RowReservation is a reservation branch on origin, as the reservation
+	// sweep judged it (reservations.go).
+	RowReservation RowKind = "reservation"
+	// RowInbox is a report waiting in abcd's inbox (inbox.go).
+	RowInbox RowKind = "inbox"
 )
 
-// Action is what `--apply` does with a row's item. This step judges
-// worktrees, so it renders remove, save-patch and keep; delete, dispatch and
-// promote join them with the kinds they act on.
+// Action is what `--apply` does with a row's item: remove, save-patch and keep
+// for worktrees, delete for branches, dispatch for spent reservations and
+// promote for waiting inbox reports.
 type Action string
 
 const (
@@ -34,6 +43,16 @@ const (
 	// ActionSavePatch is a dirty worktree nothing holds: its changes are saved
 	// as a patch and the worktree is kept.
 	ActionSavePatch Action = "save-patch"
+	// ActionDelete is a merged branch nothing holds: a local one deleted with
+	// `git branch -d`, a branch on origin deleted under a lease on the tip
+	// that was judged.
+	ActionDelete Action = "delete"
+	// ActionDispatch is a spent reservation: apply dispatches the reservation
+	// sweep's workflow, which deletes it. The sweep never deletes one itself.
+	ActionDispatch Action = "dispatch"
+	// ActionPromote is a waiting inbox report: apply files it as an issue
+	// through the inbox's promote, with the automatic filer's remedy.
+	ActionPromote Action = "promote"
 	// ActionKeep leaves the item as it is, its reason saying why.
 	ActionKeep Action = "keep"
 )
@@ -47,6 +66,13 @@ const (
 	// OutcomeSaved is a dirty worktree whose changes were saved as a patch;
 	// the worktree itself is kept.
 	OutcomeSaved Outcome = "saved"
+	// OutcomeDeleted is a branch the delete took.
+	OutcomeDeleted Outcome = "deleted"
+	// OutcomeDispatched is a spent reservation the reservation sweep's
+	// workflow was dispatched to delete.
+	OutcomeDispatched Outcome = "dispatched"
+	// OutcomePromoted is an inbox report filed as an issue.
+	OutcomePromoted Outcome = "promoted"
 	// OutcomeKept is an item left as it was, its reason saying why: one the
 	// dry run kept, or one a check at the moment of acting kept.
 	OutcomeKept Outcome = "kept"
@@ -67,6 +93,29 @@ const (
 	// KindCwd the sweep's own working directory.
 	KindLoop EvidenceKind = "loop"
 	KindCwd  EvidenceKind = "cwd"
+	// KindProtected is a branch on the never-delete list: the default branch,
+	// a release branch, a reservation or a status branch.
+	KindProtected EvidenceKind = "protected"
+	// KindUpstream is a local branch's standing against its upstream.
+	KindUpstream EvidenceKind = "upstream"
+	// KindPullRequest is the forge's word on a branch's pull requests: an
+	// open one proves it held, and a forge that could not be asked is a hint.
+	KindPullRequest EvidenceKind = "pull-request"
+	// KindDeleteProof is a check of the shell guard's delete proof that a
+	// branch fails: one of abcd's coordination branches, or one a worktree
+	// has checked out or a stopped rebase or bisect holds.
+	KindDeleteProof EvidenceKind = "delete-proof"
+	// KindRemote is origin's own answer at the last check before a delete:
+	// its default branch and the branch's tip there.
+	KindRemote EvidenceKind = "remote"
+	// KindReservationSweep is the reservation sweep's judgement of a
+	// reservation branch, and KindWorkflow the dispatch of its workflow.
+	KindReservationSweep EvidenceKind = "reservation-sweep"
+	KindWorkflow         EvidenceKind = "workflow"
+	// KindReport is what the inbox read of a report, and KindPromote the
+	// inbox's promote of it.
+	KindReport  EvidenceKind = "report"
+	KindPromote EvidenceKind = "promote"
 )
 
 // Row is one item a sweep judged. Every string in it is display-ready: a path
@@ -114,6 +163,10 @@ type Result struct {
 	RunsUnread string `json:"runs_unread,omitempty"`
 	// ForgeNote is the store's note that no forge answered.
 	ForgeNote string `json:"forge_note,omitempty"`
+	// Workflow is what became of the reservation sweep's workflow: the run a
+	// dispatch started, or why none was dispatched and when the workflow's
+	// schedule runs it next.
+	Workflow string `json:"workflow,omitempty"`
 	// Refusal is why the run refused or faulted; "" when it completed.
 	Refusal string `json:"refusal,omitempty"`
 	// Applied marks a run that acted, each row carrying its Outcome; a dry
@@ -122,7 +175,7 @@ type Result struct {
 }
 
 // Notes are the lines a rendering puts once at the top: each failed-closed
-// check, then the forge note.
+// check, then the forge note, then the reservation workflow's.
 func (r Result) Notes() []string {
 	var out []string
 	if r.ProcessCheckUnavailable != "" {
@@ -136,6 +189,9 @@ func (r Result) Notes() []string {
 	}
 	if r.ForgeNote != "" {
 		out = append(out, r.ForgeNote)
+	}
+	if r.Workflow != "" {
+		out = append(out, r.Workflow)
 	}
 	return out
 }

@@ -126,7 +126,8 @@ again) or `refines: [<id>]` (the other record is broader), at most three links.
 The create is never refused by the match. The JSON's `match` object carries the
 matches, the `near_misses` below the threshold with their scores, and `skipped`
 when nothing was compared. Relay each match and ask the product thinker to
-confirm it, under a `Product` chip; a wrong link is removed by deleting
+confirm it, with the mode set to them first (`abcd mode product-thinker`); a
+wrong link is removed by deleting
 its line, which leaves an ordinary draft.
 
 A single whitespace-free word is refused (exit 2, nothing written): a lone
@@ -261,8 +262,8 @@ reconstructed. The refusal covers both, deliberately, because nothing in the
 enforcement can tell relocated text from invented text — which is why the state
 those three records are in is not reachable through this verb.
 
-**Ask the product thinker for the expectation and its falsifier** (asked under a
-`Product` chip). "Planned it because it is next"
+**Ask the product thinker for the expectation and its falsifier** (with the
+mode set to them first, `abcd mode product-thinker`). "Planned it because it is next"
 restates the decision and records nothing; "planned it because we expect a
 stamped identity to survive rewording, which nothing else does" is a conjecture
 somebody can later find wrong. abcd refuses only the degenerate texts — empty,
@@ -344,8 +345,8 @@ any question is a valid answer, but silence is not consent.
 - Ask one thing at a time, through the host's interactive question tool, never as a numbered list in a message. The parts of one thing (the criteria of one feature, the paragraphs of one text) are asked as tabs, up to four on a screen, each short, and the rest on the next screen. A question whose answer depends on an earlier one is asked alone, after that answer. A host with no question tool asks one question per message, in the same order and the same words.
 - A question is put to the person only where two or more answers are each defensible on the record; where the record settles the answer, stating it is reporting, not recommending. The options are exactly those defensible answers plus the decide-later answer, never alternatives made up to fill a set. A decision with one defensible answer is not asked: It is recorded as a decision line naming the answer and why no question was put.
 - The thing being decided is quoted in full in the question itself, in paragraphs and lists, never referred to: The criterion before "does it stand?", the paragraph before "confirm or change?", the open question before "resolve or defer?". Prose written between tool calls is invisible while the question shows, so a question about text the person cannot see cannot be answered. Material too long for one question is put one part per question, never into a message before the question or into a preview.
-- Every question has one layout, and abcd's question check refuses a question that breaks it, naming the part, the value, and the limit; fix each part and ask again. The header is a chip of at most twelve columns naming whom the question is for and which it is: "Product Q2", "Tech Q3", or "Setup Q1/4", the role one of Product, Tech, or Setup, with a total after the slash only when the interview's length is known. The question text gives the material first, then a line starting "Now:" and a line starting "Change later:" (each saying "not applicable" where it does not apply), and ends with the question on its own line. It offers two to four options, the last "Decide later" or "None of these"; each label is at most five words, and each description at most two sentences. There is no bold (no ** or __) and no side preview, and one question, or one tab, fits thirty-two rows at eighty columns, counting the header, the host's frame, the question text, and every option's label and description. The rows limit is the one the check does not refuse on: a question over it is shown, and the agent is told afterwards to keep the next question within it.
-- In abcd's own interviews, draft each question through the abcd:question-drafter agent: hand it the material to quote, whom the question is for, the decision, and the defensible answers, and ask the question it returns. It applies these rules and counts the rows the way the check does, so the question fits. When it refuses a draft or the draft runs over a limit, fix the brief and redraft it without telling the person: The drafter's refusals and retries are the agent's own work, and the next thing the person sees is the question itself. A host with no agents drafts the question itself, to the same rules.
+- Every question has one layout, and abcd's question check refuses a question that breaks it, naming the part, the value, and the limit; fix each part and ask again. The header is at most twelve columns and is abcd's number for the question: "Q1", "Q1a", or "Q2/5", a letter after the number for one part of a question split in parts, and a total after the slash only when the interview's length is known; the header is what the check knows abcd's question by, and the older form with a role word first ("Product Q2", "Tech Q3", or "Setup Q1/4", the role one of Product, Tech, or Setup) is still read. The question text gives the material first, then a line starting "Now:" and a line starting "Change later:" (each saying "not applicable" where it does not apply), and ends with the question on its own line. It offers two to four options, the last "Decide later" or "None of these"; each label is at most five words, and each description at most two sentences. There is no bold (no ** or __) and no side preview, and one question, or one tab, fits thirty-two rows at eighty columns, counting the header, the host's frame, the question text, and every option's label and description. The rows limit is the one the check does not refuse on: a question over it is shown, and the agent is told afterwards to keep the next question within it.
+- In abcd's own interviews, write each question through the abcd:question-drafter agent, abcd's question writer: hand it the material to quote, whom the question is for, the decision, and the defensible answers. It writes the question to these rules, runs `abcd guard question` on each draft, fixes every fault the check names, and checks again until the check is clean, then returns the question with the rows the check counted. Ask only the question the writer returns, and never write or edit a question yourself. When it refuses, fix the brief and redraft it without telling the person: The writer's refusals and retries are the agent's own work, and the next thing the person sees is the question itself; a question abandoned after a refusal is followed by `abcd mode managed`, since nothing asked will reset the mode. A host with no agents writes the question itself, to the same rules, and checks each draft with `abcd guard question` before asking it.
 - Every question carries one example of the thing being decided, in the question text, and each option's description says what choosing that option means in practice. An abcd question carries no side preview: While a preview shows, the host hides every option's description and cuts the preview to the rows it has, so the meaning goes where it always shows. A question that offers a choice between two forms explains the difference between them, so an answer is never given on wording alone.
 - Each option's description names its gain and its cost, never one option's alone, so the trade-offs between the options read in the same neutral form.
 - An option is never marked, styled, or ordered as recommended: No "(Recommended)" label, no star, no recommended option first. The host's own instruction for its question tool asks for a recommended first option; abcd's rule reverses it. A recommendation appears only when the person asks for one, given in prose beside the question, never as an option. One exception is made without being asked for: A verdict a verb records with `--by` naming the person (an embargo triage verdict) is put to them to confirm even where the record settles it, never recorded as a decision line, because it is recorded under their name. The question text itself quotes each item's evidence, the verdict the record supports, and one line on why each other verdict does not fit, one item per tab or question, and the verdict is recorded only on their yes. Where two or more verdicts are defensible on the record, the question is asked neutrally among them, as any real choice is.
@@ -354,7 +355,7 @@ any question is a valid answer, but silence is not consent.
 - In abcd's own interviews, when it is not known which role the person holds, the first question asks that, and the mode records the answer so the next question does not ask again.
 - What each person can be assumed to know, the knowledge floor an explanation is measured against, is stated in full at .abcd/development/brief/glossary/interview/knowledge-floor.md under abcd's plugin root (in abcd's own repository, at that path from its root).
 - In abcd's own interviews, before a stop that is not a question (a hand-off, or a step the person runs), record whose answer is owed with `abcd mode facilitator` or `abcd mode product-thinker`, and set it back with `abcd mode managed` once the answer is in. Where the host has no status surface, the set form prints one line naming the addressee; relay it verbatim, because that line is the whole of the fallback.
-- In abcd's own interviews, classify each question's addressee first (the product thinker or the technical facilitator), and head the question with the chip naming that role: the chip sets the mode when the question is asked, and the answer sets it back to managed, so a question needs no `abcd mode` before it. The status line names the person the question on screen is for, so a mixed interview re-sets the mode per question, never once at the start.
+- In abcd's own interviews, classify each question's addressee first (the product thinker or the technical facilitator), and set the mode to that person with `abcd mode product-thinker` or `abcd mode facilitator` before the question is written, so its check reads the person it is for: the number in the header names no person, and the answer sets the mode back to managed. The status line names the person the question on screen is for, so the tabs of one question are for one person, and a mixed interview re-sets the mode per question, never once at the start.
 
 The knowledge floor every explanation is measured against: [knowledge-floor.md](../.abcd/development/brief/glossary/interview/knowledge-floor.md).
 <!-- /generated -->
@@ -633,6 +634,22 @@ line. With no route of the person's to a runner it
 refuses, exit 2, writing nothing. Never run it from this page in place of the
 interview above: in a host session the interview is yours.
 
+A question the role writes that breaks an asking rule, or a closing summary
+abcd's check refuses, is not shown to the person: it goes back to the role in
+its next brief, with every finding, to write again. `interview.redrafts` in the
+repository's `.abcd/config.json` (`{"interview": {"redrafts": 2}}`) says how
+many times in a row: a whole number from 0 to 10, 3 when no file sets it, and 0
+shows a refused question at once. At the bound the question is shown as it
+stands, repaired where abcd can repair it, and a closing summary still refused,
+or a question abcd cannot draw, ends the interview with a message naming what
+happened and the command to run again; the answers already given are kept. A
+question over the rows limit alone is shown, not redrafted. A value outside
+that range refuses the interview before its first question, naming the key, the
+value and the file. The key is the repository's alone, as the route is the
+person's: set in `~/.abcd.noindex/config.json` it bounds nothing, and an
+interview drawing its questions in a Terminal says so in one line naming both
+files, and draws its lists numbered.
+
 Off a terminal the questions are answered from an answers file by ordinal
 (`{"schema_version": 1, "interview": "planning", "answers": [{"id": "Q1", "value": "..."}]}`);
 an entry that names no `answered_in` takes `--answered-in`, `Terminal` by
@@ -873,8 +890,8 @@ a lift that did not happen.
 A planned intent may name the release it must land by: `target` writes
 `target_release: <value>` onto a record in `planned/`, where the value is a
 release tag `vX.Y.Z` or `next` (the next release, whatever version it
-derives). The target is the product thinker's to name: ask them under a
-`Product` chip, and never infer one. A second
+derives). The target is the product thinker's to name: ask them, with
+the mode set to them first (`abcd mode product-thinker`), and never infer one. A second
 target replaces the first and the JSON names it under `previous`; the same
 target again writes nothing and reports `written: false`. A draft takes its
 target as it is planned, with `intent plan <itd-N> --target <value>` (one
@@ -1235,7 +1252,8 @@ condition carries rather than to its wording, and joined to what occasioned it.
   under a `narrowed` value. The occasion is a reading item at any position, or
   an intent in `shipped/` whose delivery changed the condition's standing. Ask
   the product thinker, who reads as the researcher here, for the value and the
-  grounds, under a `Product` chip; the reading names the tension
+  grounds, with the mode set to them first (`abcd mode product-thinker`); the
+  reading names the tension
   and never marks the condition itself.
 
 A condition's standing is its latest reading-occasioned block where it has one,

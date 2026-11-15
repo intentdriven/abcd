@@ -110,6 +110,21 @@ func markerIn(root *os.Root) (bool, error) {
 // state on every message that follows while the cause stayed put
 // (iss-2609260100393814). The refusal changes nothing and names the path. A
 // file, a symlink or a FIFO is removed as itself, as before.
+//
+// The reset applies only to the mode the question was asked under: the
+// marker's word is that mode, and the state is reset only while it still
+// reads the same. A marker left by a question that never reached an answer
+// (one refused and abandoned) whose mode has since been set again, by
+// `abcd mode` or by hand, is stale: it is cleared and the mode is left as it
+// was set, so a stale marker never resets a state somebody set after it. A
+// marker the reset cannot read as one word (a symlink, a FIFO, an oversize or
+// unknown word) is nothing the gate wrote, and is cleared the same way.
+//
+// That comparison needs the store read. A store that cannot be read (an
+// unknown word in it, a store git tracks, one that is not a regular file) is
+// no evidence of a mode set since, so the reset goes ahead as it always did:
+// it writes Managed, and a write that fails is returned, the marker kept, for
+// the hook to name.
 func ResetOnAnswer(repoRoot string) (bool, error) {
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
@@ -127,6 +142,12 @@ func ResetOnAnswer(repoRoot string) (bool, error) {
 	case fi.IsDir():
 		return false, fmt.Errorf("a directory stands at the question marker's path %s, which the gate never writes and the reset cannot clear, so the mode was not reset; remove it by hand", QuestionOpenRelPath)
 	}
+	if markerStale(root, repoRoot) {
+		if err := root.Remove(QuestionOpenRelPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return false, fmt.Errorf("a stale question marker at %s, left under a mode since set again, could not be cleared: %w", QuestionOpenRelPath, err)
+		}
+		return false, nil
+	}
 	if err := SetAt(repoRoot, Managed); err != nil {
 		return false, fmt.Errorf("the mode was not reset: %w", err)
 	}
@@ -134,4 +155,72 @@ func ResetOnAnswer(repoRoot string) (bool, error) {
 		return true, fmt.Errorf("the mode was reset to managed, but the question marker at %s could not be cleared, so the next message resets it again: %w", QuestionOpenRelPath, err)
 	}
 	return true, nil
+}
+
+// markerStale reports whether the marker is stale: the store reads, and the
+// marker is not one word naming the state it reads. A store that cannot be
+// read leaves nothing to compare against, so the marker is not stale and the
+// reset goes ahead.
+func markerStale(root *os.Root, repoRoot string) bool {
+	current, err := ReadAt(repoRoot)
+	if err != nil {
+		return false
+	}
+	marked, ok := markerWord(root)
+	return !ok || marked != current
+}
+
+// markerWord is the marker's one word, read as a regular file within the
+// store's cap; ok is false for anything else (no marker, a symlink, a FIFO,
+// an oversize file or a word outside the vocabulary).
+func markerWord(root *os.Root) (State, bool) {
+	data, err := fsutil.ReadGuardedInRoot(root, QuestionOpenRelPath, maxStoreBytes)
+	if err != nil {
+		return "", false
+	}
+	marked, err := ParseState(string(data))
+	return marked, err == nil
+}
+
+// ClearQuestionOpenOtherThan removes the open-question marker unless it names
+// s, and changes no mode. An explicit `abcd mode <state>` calls it with the
+// state it set: a state set by hand supersedes a question still marked open
+// under another, so the next message's reset never undoes it, while a marker
+// naming the state just set is kept, since it then matches at the reset (a
+// retry that sets the mode again in the same batch as the question it asks
+// still resets on the answer).
+//
+// It acts only where the tier is a real directory, the test MarkQuestionOpen
+// writes behind: a missing tier, or a symlink standing in for it, holds no
+// marker the gate wrote and is left as it is. At the marker's path it removes
+// only a regular file or a symlink (the symlink as itself, never what it
+// points at); anything else there, a directory among them, is nothing the gate
+// wrote, and is named and left, as is a marker git tracks.
+func ClearQuestionOpenOtherThan(repoRoot string, s State) error {
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return fmt.Errorf("opening the checkout to clear the question marker: %w", err)
+	}
+	defer root.Close()
+	if !tierIn(root) {
+		return nil
+	}
+	// A marker git tracks came with a commit, and is named, never removed.
+	fi, err := localtier.LstatInRoot(root, QuestionOpenRelPath)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	case err != nil:
+		return fmt.Errorf("reading the question marker at %s, so it was left: %w", QuestionOpenRelPath, err)
+	case fi.Mode().IsRegular():
+		if marked, ok := markerWord(root); ok && marked == s {
+			return nil
+		}
+	case fi.Mode()&fs.ModeSymlink == 0:
+		return fmt.Errorf("something other than a file stands at the question marker's path %s, which the gate never writes, so it was left; remove it by hand", QuestionOpenRelPath)
+	}
+	if err := root.Remove(QuestionOpenRelPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("clearing the question marker at %s: %w", QuestionOpenRelPath, err)
+	}
+	return nil
 }

@@ -301,3 +301,45 @@ func TestOwnerUIDReportsTheCallersOwnUID(t *testing.T) {
 		t.Error("OwnerUID must report an error for an absent path, never a uid the caller could read as its own")
 	}
 }
+
+// TestFoldedPathMatchComparesAsAFoldingFilesystemDoes: case, the full folds
+// that spell one rune as several letters, and composed and decomposed forms
+// all compare equal, on any host; a different letter does not.
+func TestFoldedPathMatchComparesAsAFoldingFilesystemDoes(t *testing.T) {
+	for _, c := range []struct {
+		path, name  string
+		under, want bool
+	}{
+		{"Make\ufb01le", "Makefile", false, true},
+		{"STRA\u00dfE/x", "strasse", true, true},
+		{"caf\u00e9/x", "cafe\u0301", true, true},
+		{"\u017fcripts/a", "scripts", true, true},
+		{"scripts/a", "scripts", false, false},
+		{"scriptsx/a", "scripts", true, false},
+		{"caf\u00e9/x", "cafe", true, false},
+	} {
+		if got := fsutil.FoldedPathMatch(c.path, c.name, c.under); got != c.want {
+			t.Errorf("FoldedPathMatch(%q, %q, %v) = %v, want %v", c.path, c.name, c.under, got, c.want)
+		}
+	}
+}
+
+// TestRelWithinPlacesAFoldedParentPartBelowTheParent: with fold set, a child
+// whose parent part differs only in case is below the parent and keeps its own
+// spelling below it; without fold it is outside, as is a sibling either way.
+func TestRelWithinPlacesAFoldedParentPartBelowTheParent(t *testing.T) {
+	parent := filepath.FromSlash("/x/Tree")
+	child := filepath.FromSlash("/x/TREE/Docs/Make.md")
+	if rel, ok := fsutil.RelWithin(parent, child, true); !ok || rel != filepath.FromSlash("Docs/Make.md") {
+		t.Fatalf("folded: %q %v", rel, ok)
+	}
+	if rel, ok := fsutil.RelWithin(parent, child, false); ok {
+		t.Fatalf("unfolded is outside: %q", rel)
+	}
+	if rel, ok := fsutil.RelWithin(parent, parent, true); !ok || rel != "." {
+		t.Fatalf("the parent itself: %q %v", rel, ok)
+	}
+	if rel, ok := fsutil.RelWithin(parent, filepath.FromSlash("/x/Treehouse/a"), true); ok {
+		t.Fatalf("a sibling is outside: %q", rel)
+	}
+}

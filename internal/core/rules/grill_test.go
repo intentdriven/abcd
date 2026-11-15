@@ -125,7 +125,7 @@ func TestGrillTextCarriesTheAmendments(t *testing.T) {
 		phrases   []string
 	}{
 		{"quoted in full", []string{"quoted in full in the question itself", "in paragraphs and lists", "never referred to", "one part per question"}},
-		{"the layout", []string{"at most twelve columns", `"Product Q2"`, `"Now:"`, `"Change later:"`, "ends with the question", "two to four options", "at most five words", "at most two sentences", `"Decide later"`, "no bold", "thirty-two rows at eighty columns", "question check refuses"}},
+		{"the layout", []string{"at most twelve columns", `"Q1"`, `"Q2/5"`, `"Product Q2"`, "is still read", `"Now:"`, `"Change later:"`, "ends with the question", "two to four options", "at most five words", "at most two sentences", `"Decide later"`, "no bold", "thirty-two rows at eighty columns", "question check refuses"}},
 		{"examples", []string{"one example of the thing being decided", "in the question text", "description says what choosing", "carries no side preview", "hides every option's description"}},
 		{"gain and cost", []string{"description names its gain and its cost", "never one option's alone", "trade-offs"}},
 		{"recommendation only on request", []string{"never marked, styled, or ordered as recommended", "only when the person asks for one", "in prose beside the question"}},
@@ -150,7 +150,8 @@ func TestGrillTextCarriesTheAmendments(t *testing.T) {
 	}
 
 	text := strings.Join(rules, "\n")
-	for _, gone := range []string{"one sentence of context", "a checkout, a branch", "a symbolic link", "(recommended)", "ONE AT A TIME"} {
+	for _, gone := range []string{"one sentence of context", "a checkout, a branch", "a symbolic link", "(recommended)", "ONE AT A TIME",
+		"the chip sets the mode", "needs no `abcd mode` before it", "drafts the question itself, to the same rules"} {
 		if strings.Contains(text, gone) {
 			t.Errorf("the generated text still says %q, which an amendment replaced", gone)
 		}
@@ -158,9 +159,11 @@ func TestGrillTextCarriesTheAmendments(t *testing.T) {
 }
 
 // TestGrillTextScopesRegisterToAbcdInterviews (itd-201 decision 10): the
-// register rule, the ask-the-role-first rule and the mode rules hold for
-// abcd's own interviews only, and the mode rule names the mode verb with no
-// checkout-specific form.
+// register rule, the ask-the-role-first rule, the mode rules and the writer
+// rule hold for abcd's own interviews only, and the mode rules name the mode
+// verb with no checkout-specific form: the agent sets the mode to the
+// question's addressee before asking it, and the answer sets it back
+// (spc-2610301917245442, step 4).
 func TestGrillTextScopesRegisterToAbcdInterviews(t *testing.T) {
 	const scope = "In abcd's own interviews"
 	rules := grillRules(t)
@@ -171,8 +174,9 @@ func TestGrillTextScopesRegisterToAbcdInterviews(t *testing.T) {
 		{"register", []string{"in their register", "outcomes and choices in product terms", "the mechanism, the ids, and the trade-offs"}},
 		{"role first", []string{"which role the person holds", "the first question asks that"}},
 		{"mode verb", []string{"`abcd mode facilitator`", "`abcd mode product-thinker`", "`abcd mode managed`", "relay it verbatim", "a stop that is not a question"}},
-		{"chip sets the mode", []string{"the chip sets the mode", "the answer sets it back to managed", "needs no `abcd mode` before it"}},
+		{"mode set before the question", []string{"`abcd mode product-thinker` or `abcd mode facilitator` before the question is written", "the answer sets the mode back to managed"}},
 		{"addressee first", []string{"classify each question's addressee first", "a mixed interview re-sets the mode per question"}},
+		{"the writer", []string{"abcd:question-drafter", "`abcd guard question`", "only the question the writer returns"}},
 	} {
 		r := ruleWith(rules, c.phrases...)
 		if r == "" {

@@ -236,6 +236,9 @@ func TestGuardQuestionWritesNothing(t *testing.T) {
 		"clean-product-chip": question.OutcomeAdmit,
 		"rule-no-bold":       question.OutcomeRefuse,
 		"rule-rows":          question.OutcomeAdmitWithRowsNote,
+		// The hook marks an unlabelled question open under a named mode;
+		// the verb, which never asks, marks nothing.
+		"clean-unchipped": question.OutcomeAdmitUnchecked,
 	} {
 		res, _, _ := runQuestionVerb(t, name)
 		if res.Hook != want {
@@ -281,8 +284,9 @@ func TestGuardQuestionReportsRefuseAwayWhileAway(t *testing.T) {
 }
 
 // TestGuardQuestionMarksAPartialResult: a mode store the verb cannot read
-// makes the hook fail open for a draft without a chip, so the verb says
-// unchecked, marks the result partial and names the store; a chipped draft is
+// leaves a number-form draft checked by every rule but the register, which
+// follows the mode, so the verb says unchecked, marks the result partial and
+// names the store and that rule; an older-form chipped draft is
 // judged on its chip all the same, refused on a rule it breaks, partial and
 // naming the store with no rule left unapplied; an away record it cannot read
 // marks the result partial too, naming every rule, since it decides whether
@@ -293,9 +297,9 @@ func TestGuardQuestionMarksAPartialResult(t *testing.T) {
 		if err := os.WriteFile(modeFile(root), []byte("sideways\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		res, _, _ := runQuestionVerb(t, "clean-unchipped")
-		if res.Hook != question.OutcomeUnchecked || !res.Partial || len(res.Unread) != 1 || res.Unread[0].Store != string(question.StoreMode) || len(res.Unread[0].Rules) != len(questionRules) {
-			t.Errorf("hook %q, partial %v, unread %+v", res.Hook, res.Partial, res.Unread)
+		res, _, code := runQuestionVerb(t, "clean-number")
+		if res.Hook != question.OutcomeUnchecked || !res.Abcds || code != 2 || !res.Partial || len(res.Unread) != 1 || res.Unread[0].Store != string(question.StoreMode) || !slices.Equal(res.Unread[0].Rules, []string{string(question.RuleRegister)}) {
+			t.Errorf("hook %q, abcds %v, exit %d, partial %v, unread %+v; want unchecked, abcd's, exit 2, the mode store with the register rule", res.Hook, res.Abcds, code, res.Partial, res.Unread)
 		}
 		if strings.Contains(res.Unread[0].Why, root) {
 			t.Errorf("the unread reason leaks the checkout's path: %q", res.Unread[0].Why)
@@ -354,26 +358,33 @@ func TestGuardQuestionPartialNeverExitsZero(t *testing.T) {
 	}
 }
 
-// TestGuardQuestionSaysAnUnlabelledDraftIsNotAbcds: a draft without abcd's
-// chip, asked while the mode names nobody, is another tool's question to the
-// hook: the verb says so in its hook field and its text, checks nothing, and
-// exits 0, since no finding was made (decision 8); the text names the missing
-// label so it is caught before the ask.
+// TestGuardQuestionSaysAnUnlabelledDraftIsNotAbcds: a draft with no header in
+// abcd's grammar is another tool's question to the hook whatever the mode,
+// the product thinker's included (decision 36): the verb says so in its hook
+// field and its text, checks nothing, and exits 0, since no finding was made
+// (decision 8); the text names the missing header so it is caught before the
+// ask.
 func TestGuardQuestionSaysAnUnlabelledDraftIsNotAbcds(t *testing.T) {
-	managedCheckout(t)
-	res, _, code := runQuestionVerb(t, "clean-unchipped")
-	if res.Hook != question.OutcomeAdmitUnchecked || res.Abcds || len(res.Findings) != 0 || code != 0 {
-		t.Errorf("hook %q, abcds %v, %d findings, exit %d", res.Hook, res.Abcds, len(res.Findings), code)
-	}
-	stdout, _, _ := runGuard("", "guard", "question", corpusPath(t, "clean-unchipped"))
-	if !strings.Contains(stdout, "not abcd's question") {
-		t.Errorf("the text render does not say the draft is not abcd's:\n%s", stdout)
+	for _, st := range []mode.State{mode.Managed, mode.ProductThinker} {
+		t.Run(string(st), func(t *testing.T) {
+			root := managedCheckout(t)
+			setMode(t, root, st)
+			res, _, code := runQuestionVerb(t, "clean-unchipped")
+			if res.Hook != question.OutcomeAdmitUnchecked || res.Abcds || len(res.Findings) != 0 || code != 0 {
+				t.Errorf("hook %q, abcds %v, %d findings, exit %d", res.Hook, res.Abcds, len(res.Findings), code)
+			}
+			stdout, _, _ := runGuard("", "guard", "question", corpusPath(t, "clean-unchipped"))
+			if !strings.Contains(stdout, "not abcd's question") || !strings.Contains(stdout, `"Q1"`) {
+				t.Errorf("the text render does not say the draft is not abcd's and name the number header:\n%s", stdout)
+			}
+		})
 	}
 }
 
 // TestGuardQuestionListsAllTwentyOneFindings: the 2026-10-23 case, four
-// issues as four tabs asked while the mode named the product thinker, is
-// listed whole: all 21 findings, every one refusing.
+// issues as four tabs asked while the mode named the product thinker, rebuilt
+// with four number headers so it is abcd's under decision 36, is listed
+// whole: all 21 findings, every one refusing.
 func TestGuardQuestionListsAllTwentyOneFindings(t *testing.T) {
 	root := managedCheckout(t)
 	setMode(t, root, mode.ProductThinker)
@@ -652,5 +663,148 @@ func TestGuardQuestionTextStatesTheLimitsInForce(t *testing.T) {
 	stdout, _, code := runGuard("", "guard", "question", corpusPath(t, "clean-product-chip"))
 	if code != 2 || !strings.Contains(stdout, "limits: refused: .abcd/config.json (repo layer): question.rows is 100: outside 24 to 60") || strings.Contains(stdout, "ready:") {
 		t.Errorf("a refused value: exit %d; the render must state the refusal and no ready input:\n%s", code, stdout)
+	}
+}
+
+// collidingDrafts are host-form drafts whose objects carry a key twice, or a
+// key equal to one the check reads only under case folding: encoding/json
+// would judge one value while a host reading exact keys shows another. Each
+// is built from a well-built question's JSON with one key added.
+func collidingDrafts(t *testing.T) map[string]string {
+	t.Helper()
+	q := wellBuilt()
+	q.Header = "Q1"
+	one, err := json.Marshal(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.TrimSuffix(string(one), "}")
+	opts, err := json.Marshal(q.Options[1:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	optionDup := `{"label":"Keep it","label":"Keep it (Recommended)","description":"It says whom it is for. It costs a few characters."}`
+	return map[string]string{
+		"question under another case":  `{"questions":[` + body + `,"Question":"Ship it?"}]}`,
+		"header twice":                 `{"questions":[` + body + `,"header":"Q2"}]}`,
+		"an option's label twice":      `{"questions":[` + body[:strings.Index(body, `"options":`)] + `"options":[` + optionDup + `,` + strings.TrimPrefix(string(opts), "[") + `}]}`,
+		"questions under another case": `{"questions":[` + string(one) + `],"Questions":[` + string(one) + `]}`,
+	}
+}
+
+// TestGuardQuestionRefusesCollidingKeys: the verb exits 2 on a host-form
+// draft whose objects carry a key twice or a read key under another case,
+// naming the collision, since the check would judge one value and the host
+// could show another. An unknown key that collides with nothing is kept.
+func TestGuardQuestionRefusesCollidingKeys(t *testing.T) {
+	unmanagedRepo(t)
+	for name, draft := range collidingDrafts(t) {
+		t.Run(name, func(t *testing.T) {
+			if !json.Valid([]byte(draft)) {
+				t.Fatalf("the fixture is not JSON: %s", draft)
+			}
+			stdout, stderr, code := runGuard(draft, "guard", "question", "-")
+			if code != 2 || stdout != "" {
+				t.Fatalf("exit %d, stdout %q, stderr %q; want exit 2 and nothing on stdout", code, stdout, stderr)
+			}
+			if !strings.Contains(stderr, "only in case") {
+				t.Errorf("stderr does not name the collision: %q", stderr)
+			}
+		})
+	}
+	q := wellBuilt()
+	q.Header = "Q1"
+	one, err := json.Marshal(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := `{"questions":[` + strings.TrimSuffix(string(one), "}") + `,"x-note":"kept","X-Other":1}]}`
+	if _, stderr, code := runGuard(kept, "guard", "question", "-"); code != 0 {
+		t.Errorf("a draft with unknown keys that collide with nothing: exit %d, stderr %q; want 0", code, stderr)
+	}
+}
+
+// TestHookDeniesCollidingKeys: the hook refuses the same drafts the verb
+// exits 2 on, naming the colliding key and saying to drop it, after the away
+// check: a collision is known for certain, so no question is shown that the
+// check judged on one value while the host could show another. Under a mode
+// naming somebody the refusal is marked open, so the next message resets the
+// mode like any refusal's.
+func TestHookDeniesCollidingKeys(t *testing.T) {
+	keys := map[string]string{
+		"question under another case":  `"Question"`,
+		"header twice":                 `"header"`,
+		"an option's label twice":      `"label"`,
+		"questions under another case": `"Questions"`,
+	}
+	for name, draft := range collidingDrafts(t) {
+		t.Run(name, func(t *testing.T) {
+			root := managedCheckout(t)
+			setMode(t, root, mode.ProductThinker)
+			cwd, err := json.Marshal(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			payload := `{"session_id":"s1","hook_event_name":"PreToolUse","cwd":` + string(cwd) +
+				`,"tool_name":"` + questionTools[0] + `","tool_input":` + draft + `}`
+			stdout, stderr, code := runGuard(payload, "guard", "hook")
+			reason := mustDeny(t, stdout, stderr, code)
+			if !strings.Contains(reason, "the key "+keys[name]) || !strings.Contains(reason, "Drop ") {
+				t.Errorf("the deny must name the key %s and say to drop it; reason = %q", keys[name], reason)
+			}
+			mustBeMarkedUnder(t, root, mode.ProductThinker)
+			if got, _ := mode.ReadAt(root); got != mode.ProductThinker {
+				t.Errorf("mode = %q, want product-thinker left as it was", got)
+			}
+		})
+	}
+}
+
+// TestGuardQuestionReportsWhetherTheBadgeShows: the verb's JSON carries
+// badge, the State value the hook decides with, so the writer can tell a tab
+// for nobody under a badge that shows (the caller did not set the mode) from
+// one where no mode is read at all: true in a managed checkout with the local
+// tier, false once the tier is gone, as in a fresh clone, and false in a
+// checkout abcd does not manage. The text render says the same.
+func TestGuardQuestionReportsWhetherTheBadgeShows(t *testing.T) {
+	q := wellBuilt()
+	q.Header = "Q1"
+	raw, err := json.Marshal(map[string]any{"questions": []hostQuestion{q}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	badge := func(t *testing.T) any {
+		t.Helper()
+		stdout, stderr, code := runGuard(string(raw), "guard", "question", "-", "--json")
+		var res map[string]any
+		if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+			t.Fatalf("the verb's output is not its JSON (exit %d): %v\nstderr %q", code, err, stderr)
+		}
+		return res["badge"]
+	}
+	text := func(t *testing.T) string {
+		t.Helper()
+		stdout, _, _ := runGuard(string(raw), "guard", "question", "-")
+		return stdout
+	}
+	root := managedCheckout(t)
+	if got := badge(t); got != true {
+		t.Errorf("badge in a managed checkout with the tier = %v, want true", got)
+	}
+	if !strings.Contains(text(t), "badge: shown") {
+		t.Errorf("the text render does not say the badge shows: %q", text(t))
+	}
+	if err := os.RemoveAll(filepath.Join(root, filepath.FromSlash(mode.TierRelPath))); err != nil {
+		t.Fatal(err)
+	}
+	if got := badge(t); got != false {
+		t.Errorf("badge in a managed checkout with no tier = %v, want false", got)
+	}
+	if !strings.Contains(text(t), "badge: not shown") {
+		t.Errorf("the text render does not say the badge is not shown: %q", text(t))
+	}
+	unmanagedRepo(t)
+	if got := badge(t); got != false {
+		t.Errorf("badge in a checkout abcd does not manage = %v, want false", got)
 	}
 }

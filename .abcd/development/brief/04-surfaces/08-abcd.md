@@ -193,7 +193,9 @@ an unmanaged repository the line is absent and the field omitted. It is not
 `presence:` line and the JSON a `statusline` object, both the plain form of the
 same row the host's status line shows — the badge first (`abcd-managed`,
 `waiting on the technical facilitator`, `waiting on the product thinker`), then
-the repository, the branch and the record's counts. The state behind the badge is what `abcd mode` stores at
+the repository, the branch, the `autonomous merging` element (key `merging`)
+while the repository's `facilitator.mode` is `auto`, and the record's counts;
+[`26-mode.md`](26-mode.md) says how that element is read and when it drops. The state behind the badge is what `abcd mode` stores at
 `.abcd/.work.local/mode`; the board reads it and never writes it. In an
 unmanaged repository the line is absent and the field omitted. The board is the
 fallback for a host with no status surface, so it renders the line even where
@@ -205,17 +207,30 @@ spc-2609212139593041). The badge reads exactly one of its three labels and
 never the bare tool name, and its colour ends at the badge: the closing
 sequence restores the default foreground and background and nothing else, so
 the rest of the row keeps whatever styling the host gives it. The two moments
-the badge must change are two moments the hooks already see. When the
-guard hook, on the host's question tool, admits abcd's own question (one headed
-in abcd's chip grammar, [`17-guard.md`](17-guard.md)), it sets the state from
-the chip's role, naming whom the question is for, and writes a `question_open`
-marker beside the state in `.abcd/.work.local/`; a chipped question is never
-refused on the mode. The answer resets it: the question tool's `PostToolUse`
+the badge must change are two moments the hooks already see. Before abcd's
+question, which is headed with its number (`Q1`, `Q1a`, `Q2/5`) and names no
+person, the agent sets the state to the person it is for with `abcd mode`
+(itd-2610230756259215 decision 37). When the guard hook, on the host's
+question tool, admits abcd's own question (one with a header in abcd's
+grammar, [`17-guard.md`](17-guard.md)), it writes a `question_open` marker
+beside the state in `.abcd/.work.local/`: a number-form header sets no state
+and is marked open under the state the agent set, and a header in the older
+form, a role word first (`Product Q2`), still sets the state from its role,
+naming whom the question is for. abcd's question is never refused on the
+mode. A question with no header in abcd's grammar is another tool's and runs
+unchecked, but where the state names somebody it is marked open under that
+state too, with nothing written to the state, so an abcd question whose header
+missed the grammar does not leave the state parked. The answer resets it: the question tool's `PostToolUse`
 hook, when the answer comes back, or the prompt hook on the next human message
-where the host runs no `PostToolUse`, finds the marker, resets the state to
-managed, clears the marker and says so in one line on stderr. With no marker
-neither hook changes anything, so a state the human set by hand survives the
-message they type next. At a stop that is not a question the agent sets the
+where the host runs no `PostToolUse`, finds the marker and, when its word
+matches the state in force, resets the state to managed, clears the marker and
+says so in one line on stderr. A marker naming another state is stale (its
+question was refused and abandoned, and the state set again since): it is
+cleared and the state left as set. A state store the reset cannot read is no
+evidence of a state set since, so it is reset to managed all the same. With no
+marker neither hook changes anything, so a state the human set by hand survives
+the message they type next, and `abcd mode <state>` clears a marker naming
+another state, keeping one naming the state it sets. At a stop that is not a question the agent sets the
 state itself with `abcd mode`, naming whom it addresses. A repository abcd
 does not manage, or one without the local tier, has no badge, and its
 questions are not gated.
@@ -240,7 +255,36 @@ session was given it since; a fork takes the next free name at its first
 prompt while the session it came from runs. A name is not handed out again
 while any named session runs, except that of a session resumed after its
 record aged out of the newest 512, and naming restarts at the first persona once
-every named session's host process has ended. The board's presence
+every named session's host process has ended. A session's name is free only
+when the process that last held it is gone, judged by its process id and its
+start time together, so a process id the system has given to a later process
+does not keep a name held. A register holding any name that is not a persona
+name, alone or with one of the round suffixes Two to Nine, is refused as an
+unreadable one is. Every prompt re-asserts the
+session's hold on its name. When the register has no entry for a session that
+carries the name abcd gave it (its start could not take the register's lock or
+read the process table in time), the prompt makes the entry again for the
+process now running the session. A fork whose start cannot read the process
+table is recorded as given its inherited name all the same, so its prompt does
+this too. A cleared session whose start could not hold its name, and which has
+no record of its own, takes the record and the name of the session before the
+clear when that session's entry is on the same host process; when the only
+entry accounting for its title is on another host, the title is recorded as
+the person's own. When another running session holds the same name, the
+session whose claim on it came later in the register takes the next free name,
+and that prompt sets it as the title and says, to the session and to the
+person, which name it now has; the other session keeps its name and is told
+nothing. Two sessions run by one host process that were both given a name are
+two claims, so the later is renamed in the same way. The host discards a
+hook's whole output when the hook overruns, so a prompt that still carries the
+old title after a rename is sent the new name and the notice once more, and
+after that the old title is left to the person. A prompt whose session's entry
+is in place, its own and first of its name, with nothing owed, reads the
+register once without its lock and reads no process table. A prompt that
+cannot take the lock within two seconds, or cannot read the process table
+within one, keeps the title, takes no name, gives no notice and writes
+nothing, with one line on stderr, and the next prompt tries again. A
+sub-agent's prompt does none of this. The board's presence
 line carries no name: it has no host payload to read one from.
 
 **The peers line and `/abcd:peers`** (itd-2609091416295622,

@@ -84,7 +84,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -98,6 +97,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/forgerepo"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/core/spotcheck"
@@ -633,12 +633,7 @@ func checkOrigin(o Options, dir, branch string) (originURLs, string, error) {
 	if json.Unmarshal([]byte(out), &repo) != nil {
 		return originURLs{}, "", refuse("the forge client's view of the repository does not parse", "check the forge client (gh --version), then run abcd land again; nothing was pushed")
 	}
-	keys := map[string]bool{}
-	for _, u := range []string{repo.URL, repo.SSHURL} {
-		if k := repoKey(u); k != "" {
-			keys[k] = true
-		}
-	}
+	keys := forgerepo.Keys(repo.URL, repo.SSHURL)
 	urls, err := readOriginURLs(dir, repo, keys)
 	if err != nil {
 		return originURLs{}, "", err
@@ -693,11 +688,7 @@ func readOriginURLs(dir string, repo forgeRepo, keys map[string]bool) (originURL
 		} else {
 			got.fetch = urls
 		}
-		for _, u := range urls {
-			k := repoKey(u)
-			if k != "" && keys[k] {
-				continue
-			}
+		if u, k, found := forgerepo.Stranger(urls, keys); found {
 			return got, otherOrigin(u, k, what, push, repo, keys)
 		}
 	}
@@ -741,7 +732,7 @@ func otherOrigin(u, k, what string, push bool, repo forgeRepo, keys map[string]b
 		return refuse(fmt.Sprintf("%s's %s (%s) is on the host %s, but the forge's repository is on %s, a different host", Remote, what, display(k), alias, real),
 			fmt.Sprintf("point %s at the forge's repository (%s), or the forge client at %s (gh repo set-default), then run abcd land again; nothing was pushed", Remote, setURL, Remote))
 	}
-	return refuse(fmt.Sprintf("%s's %s (%s) is not the repository the forge client resolves here (%s)", Remote, what, display(k), display(repoKey(repo.URL))),
+	return refuse(fmt.Sprintf("%s's %s (%s) is not the repository the forge client resolves here (%s)", Remote, what, display(k), display(forgerepo.Key(repo.URL))),
 		"point every "+Remote+" URL at the forge's repository, or the forge client at "+Remote+" (gh repo set-default), then run abcd land again; nothing was pushed")
 }
 
@@ -753,12 +744,12 @@ func sshAlias(u, k string, keys map[string]bool) (alias, real string) {
 	if !scp && !strings.HasPrefix(strings.ToLower(u), "ssh://") {
 		return "", ""
 	}
-	host, path := splitKey(k)
+	host, path := forgerepo.SplitKey(k)
 	if host == "" {
 		return "", ""
 	}
 	for fk := range keys {
-		if fh, fp := splitKey(fk); fp == path && fh != "" && fh != host {
+		if fh, fp := forgerepo.SplitKey(fk); fp == path && fh != "" && fh != host {
 			return host, fh
 		}
 	}
@@ -810,65 +801,6 @@ func display(k string) string {
 		return "unreadable"
 	}
 	return strings.TrimPrefix(k, ":")
-}
-
-// defaultPorts are the ports a URL scheme takes when it names none.
-var defaultPorts = map[string]string{"ssh": "22", "git+ssh": "22", "https": "443", "http": "80", "git": "9418"}
-
-// repoKey is a repository URL's comparable form, "host[:port]:/path" with the
-// host and (on a host) the path lower-cased, any user, trailing slash and .git
-// suffix dropped, and a port kept unless it is the scheme's own; a local path
-// or file URL has an empty host. "" when the URL cannot be read.
-func repoKey(u string) string {
-	u = strings.TrimSpace(u)
-	var host, path string
-	switch c := strings.Index(u, ":"); {
-	case u == "":
-		return ""
-	case strings.Contains(u, "://"):
-		p, err := url.Parse(u)
-		if err != nil {
-			return ""
-		}
-		host, path = strings.ToLower(p.Hostname()), p.Path
-		if port := p.Port(); port != "" && port != defaultPorts[strings.ToLower(p.Scheme)] {
-			host += ":" + port
-		}
-		if p.Scheme == "file" {
-			host = ""
-		}
-	case c > 1 && !strings.Contains(u[:c], "/"):
-		h := u[:c]
-		if at := strings.LastIndex(h, "@"); at >= 0 {
-			h = h[at+1:]
-		}
-		host, path = strings.ToLower(h), "/"+strings.TrimPrefix(u[c+1:], "/")
-	default:
-		path = u
-	}
-	if host == "" {
-		path = filepath.Clean(path)
-	}
-	path = strings.TrimSuffix(strings.TrimSuffix(path, "/"), ".git")
-	path = strings.TrimSuffix(path, "/")
-	if host != "" {
-		path = strings.ToLower(path)
-	}
-	if path == "" || path == "/" || path == "." {
-		return ""
-	}
-	return host + ":" + path
-}
-
-// splitKey splits a repoKey into its host (with any port) and its path.
-func splitKey(k string) (host, path string) {
-	if p, ok := strings.CutPrefix(k, ":"); ok {
-		return "", p
-	}
-	if i := strings.Index(k, ":/"); i >= 0 {
-		return k[:i], k[i+1:]
-	}
-	return "", k
 }
 
 // noForgeClient is the refusal when the forge client is not installed.
