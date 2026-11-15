@@ -1007,10 +1007,13 @@ loop's lanes are made through it, so a worktree enters the store one way. The
 one exception is abcd's embargo store, a detached worktree that `core/embargo`
 makes at `<root-sha>/embargo/`; the store lists it as a sibling and never judges,
 archives or removes it. Before
-`prune` removes a worktree it moves the worktree's git-ignored
+`prune` removes a worktree it copies the worktree's git-ignored
 `.abcd/.work.local/` into `~/.abcd.noindex/notes/<root-sha>/<UTC timestamp>-<name>/`
-beside a manifest, redacted on write by the transcript store's pass; nothing
-reclaims the archive.
+beside a manifest, each file redacted on write by the transcript store's pass.
+The binary a source checkout's `scripts/abcd.sh` builds into the tier is left
+out. The original tier goes with the worktree when `git worktree remove`
+deletes it; when git refuses the removal, the worktree and its tier stay and the
+archive entry already written stays beside them. Nothing reclaims the archive.
 
 **The Go build cache is kept under a size limit.** Go trims only entries unused
 for five days, and every store worktree adds entries, so a machine running many of
