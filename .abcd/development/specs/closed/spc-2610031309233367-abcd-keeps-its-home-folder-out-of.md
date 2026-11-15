@@ -84,9 +84,9 @@ In:
   [`the-users-directory-is-theirs`](../../principles/the-users-directory-is-theirs.md)
   (its Enforcement paragraph names the store's path).
 - The store records this intent refines:
-  [itd-2609091014076309](../../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md)
+  [itd-2609091014076309](../../intents/shipped/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md)
   and its open spec
-  [spc-2609301811532881](../open/spc-2609301811532881-session-and-agent-worktrees-live-in-a.md)
+  [spc-2609301811532881](spc-2609301811532881-session-and-agent-worktrees-live-in-a.md)
   spell the store's path; the spelling follows the superseding record, and
   nothing else in them changes.
 - The D6 receipt, a dated research note.

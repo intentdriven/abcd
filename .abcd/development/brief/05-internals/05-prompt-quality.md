@@ -119,9 +119,14 @@ gated on the research files besides, which do not exist for any shipped agent.
   calibration delta are recorded at lock, not at each bump. Every shipped prompt
   sits in the `0.x` band. Most changelog entries say so outright, recording the
   delta as unmeasured either in the entry itself or in its dated section's
-  preamble; the entries for the five prompts hardened on 2026-08-19, and one
-  cold-reading bump, say it nowhere, which is a gap in the record rather than a
-  measurement somebody took.
+  preamble. Ten entries say it nowhere, which is a gap in the record rather than
+  a measurement somebody took: the five that hardened `ruthless-reviewer`,
+  `security-reviewer`, `docs-currency-reviewer`, `intent-auditor` and
+  `sota-researcher` at `0.2.0` on 2026-08-19; `cold-reading-widening` `0.2.0`;
+  `cold-reading-entailment` `0.1.3` and `cold-reading-detection` `0.1.4`, which
+  only point at widening's `0.2.3` entry; and the two renames,
+  `intent-auditor` `0.1.1` and `lifeboat-reviewer` `0.1.1`, which say only
+  that nothing was re-measured.
 - **One-shot oracle self-improvement pre-flight (staged).** Before a prompt locks
   at `1.0.0`, the author submits it to a reviewer with a rewrite-for-clarity
   directive, runs the goldens against both variants, and accepts the reviewer's

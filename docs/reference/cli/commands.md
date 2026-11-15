@@ -265,7 +265,7 @@ abcd ahoy worktree add example-lane
 
 ##### `abcd ahoy worktree list`
 
-List this repository's worktrees and its lane, or every lane with --all: Writes nothing; refuses a store it cannot trust or a directory outside a checkout.
+List this repository's worktrees and its lane, or every lane with --all: Writes nothing; refuses a store it cannot trust, or outside a checkout without --all.
 
 **Usage:** `abcd ahoy worktree list [flags]`
 
@@ -1557,9 +1557,11 @@ another subscription, and a limit waits for that profile's reset. Nothing moves 
 from one profile to another. It then judges each eligible issue,
 drives each lane to its landing, every role on that separate login, and runs each
 landing's preflight behind the load gate, printing one line per step and logging them
-under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/ or the active
-hooks is handed back at its landing, and an issue that names one is passed over: that
-change needs a person's own session. The driver's commit, merge and reset hooks, and any
+under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/, the active
+hooks, the forge's workflow folder (.github/) or abcd's configuration, receipts or
+approvals is handed back at its landing, and an issue that names one is passed over,
+whatever the case of the name: that change needs a person's own session. The driver's
+commit, merge and reset hooks, and any
 filter run inside those commands, get the stage's variables, while its network commands,
 its other filters and its forge calls keep the person's environment. It ends at the cap,
 when nothing is eligible, or on a stop. With no --until, eight hours of runner failures

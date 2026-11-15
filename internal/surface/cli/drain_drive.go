@@ -133,19 +133,28 @@ const hooksPathRemedy = "look at what git answers for the setting with `git conf
 
 // driveGateCheck says whether a lane's landing may go on: not over a lane that
 // changes what judges it, which a person's own session handles, and not when what
-// the lane changed cannot be read.
-func driveGateCheck() func(worktree, base string) error {
+// the lane changed cannot be read. The hooks path is placed both in the lane's
+// worktree and in the checkout at repoRoot, since a value that names a directory
+// inside that checkout is where git runs hooks from whichever worktree it runs
+// in, and the lane's change reaches it there once landed; each place is the same
+// path relative to its tree, so it is read against the lane's change list as it
+// stands.
+func driveGateCheck(repoRoot string) func(worktree, base string) error {
 	return func(worktree, base string) error {
 		out, err := gitutil.Run(worktree, "diff", "--name-only", "-z", "--no-renames", base, "HEAD", "--")
 		if err != nil {
 			return &loop.PreflightRefused{Reason: "what the lane changed could not be read, so its landing does not go on"}
 		}
-		hooks, err := loop.DriveHooksPath(worktree)
-		if err != nil {
-			return &loop.PreflightRefused{Reason: "the hooks path the lane's repository configures could not be read, so its landing does not go on: " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "; " + hooksPathRemedy}
+		var hooks []string
+		for _, dir := range []string{worktree, repoRoot} {
+			h, err := loop.DriveHooksPaths(dir)
+			if err != nil {
+				return &loop.PreflightRefused{Reason: "the hooks path the lane's repository configures could not be read, so its landing does not go on: " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "; " + hooksPathRemedy}
+			}
+			hooks = append(hooks, h...)
 		}
 		for _, path := range strings.Split(out, "\x00") {
-			if loop.DriveGate(path, hooks) {
+			if loop.DriveGate(path, hooks...) {
 				return &loop.PreflightRefused{Reason: "the lane changes " + strconv.Quote(termsafe.Sanitize(path)) + ", a gate file, so it needs a person's own session and its landing does not go on: review the branch there"}
 			}
 		}
@@ -159,7 +168,7 @@ func driveGateCheck() func(worktree, base string) error {
 // A hooks path that cannot be read passes over every issue, saying so: which
 // paths are gates cannot then be told.
 func drivePassOver(repoRoot string) func(id, foundAt string) string {
-	hooks, err := loop.DriveHooksPath(repoRoot)
+	hooks, err := loop.DriveHooksPaths(repoRoot)
 	if err != nil {
 		why := "the hooks path the repository configures could not be read, so whether its path is a gate cannot be told: " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "; " + hooksPathRemedy
 		return func(string, string) string { return why }
@@ -169,7 +178,7 @@ func drivePassOver(repoRoot string) func(id, foundAt string) string {
 		if !ok {
 			path, _, _ = strings.Cut(foundAt, ":")
 		}
-		if !loop.DriveGate(path, hooks) {
+		if !loop.DriveGate(path, hooks...) {
 			return ""
 		}
 		return "it needs a person's own session, since it changes a gate file: " + strconv.Quote(termsafe.Sanitize(path))
@@ -787,7 +796,7 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 		Runners:          loop.Runners{Config: o.Runners, Transcripts: d.Transcripts},
 		Review:           review,
 		Preflight:        drivePreflight(detail, p),
-		PreflightAllowed: driveGateCheck(),
+		PreflightAllowed: driveGateCheck(repoRoot),
 		Say:              say,
 		Stop:             sig.stop,
 		Until:            until,

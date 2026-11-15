@@ -16,7 +16,8 @@ import (
 )
 
 // proofRepo is sweepRepo with an origin that holds main, fetched, so origin's
-// default branch is tracked as a checkout's is.
+// default branch is tracked as a checkout's is. The prover reads origin's
+// address as the forge's (hostedOrigin).
 func proofRepo(t *testing.T) (*gittest.Repo, string) {
 	t.Helper()
 	repo, _ := sweepRepo(t)
@@ -25,6 +26,7 @@ func proofRepo(t *testing.T) (*gittest.Repo, string) {
 	repo.Git("remote", "add", "origin", origin)
 	repo.Git("push", "-q", "origin", "main")
 	repo.Git("fetch", "-q", "origin")
+	hostedOrigin(t, origin)
 	return repo, origin
 }
 
@@ -44,9 +46,10 @@ func branchWith(repo *gittest.Repo, branch, rel string) {
 	repo.Git("switch", "-q", "main")
 }
 
-// forgeSaying is a forge client that answers every listing with out.
+// forgeSaying is a forge client that answers every listing with out, and
+// `gh repo view` as origin's repository (viewing).
 func forgeSaying(out string) func(string, ...string) (string, error) {
-	return func(string, ...string) (string, error) { return out, nil }
+	return viewing(func(string, ...string) (string, error) { return out, nil })
 }
 
 // idleProbe is the liveness probe's options for a world nothing holds.
@@ -127,7 +130,7 @@ func TestDeleteProofJudgesARemoteBranchAtOriginsTip(t *testing.T) {
 	none := forgeSaying(`[]`)
 	proofRefused(t, prove(t, DeleteProofOptions{Forge: none}, remote("feat")), "holds work origin/main does not")
 	proofRefused(t, prove(t, DeleteProofOptions{}, remote("feat")), "no forge was asked")
-	failing := func(string, ...string) (string, error) { return "", errors.New("gh: not signed in") }
+	failing := viewing(func(string, ...string) (string, error) { return "", errors.New("gh: not signed in") })
 	proofRefused(t, prove(t, DeleteProofOptions{Forge: failing}, remote("feat")), "could not be asked")
 	open := forgeSaying(`[{"number":7,"headRefName":"feat","headRefOid":"` + tip + `","baseRefName":"main","state":"OPEN"}]`)
 	proofRefused(t, prove(t, DeleteProofOptions{Forge: open}, remote("feat")), "pull request #7 is open")
@@ -246,8 +249,10 @@ func TestDeleteProofRefusesOnceItsTimeRunsOut(t *testing.T) {
 	repo.Git("push", "-q", "origin", "feat")
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
-	slow := func(string, ...string) (string, error) { <-release; return `[]`, nil }
-	p := NewDeleteProver(DeleteProofOptions{Forge: slow, Budget: 50 * time.Millisecond})
+	slow := viewing(func(string, ...string) (string, error) { <-release; return `[]`, nil })
+	// The budget leaves time for origin's addresses to be read and the
+	// forge's repository matched, and none for the slow listing.
+	p := NewDeleteProver(DeleteProofOptions{Forge: slow, Budget: 2 * time.Second})
 	target := guard.DeleteTarget{Kind: guard.DeleteRemoteBranch, Dir: repo.Root(), Remote: "origin", Branch: "feat"}
 	proofRefused(t, p.ProveDelete(target), "could not be asked")
 	later := target
@@ -264,7 +269,7 @@ func TestDeleteProofProvesEachTargetOnce(t *testing.T) {
 	branchWith(repo, "feat", "f.txt")
 	repo.Git("push", "-q", "origin", "feat")
 	asked := 0
-	counting := func(string, ...string) (string, error) { asked++; return `[]`, nil }
+	counting := viewing(func(string, ...string) (string, error) { asked++; return `[]`, nil })
 	p := NewDeleteProver(DeleteProofOptions{Forge: counting})
 	target := guard.DeleteTarget{Kind: guard.DeleteRemoteBranch, Dir: repo.Root(), Remote: "origin", Branch: "feat"}
 	first, second := p.ProveDelete(target), p.ProveDelete(target)
@@ -358,4 +363,55 @@ func TestDeleteProofRefusesABranchAStoppedRebaseOrBisectHolds(t *testing.T) {
 		t.Fatal(err)
 	}
 	proofRefused(t, prove(t, o, local("free")), "could not be read")
+}
+
+// TestARemoteBranchProofRestsOnOriginBeingOneRepository: origin fetched from
+// one repository and pushed to another, with the branch only in the one the
+// push reaches, fails the proof before origin's tip is read, so no answer of
+// the proof, a branch origin's fetch address does not hold among them, comes
+// before the check that origin is one repository.
+func TestARemoteBranchProofRestsOnOriginBeingOneRepository(t *testing.T) {
+	repo, _ := proofRepo(t)
+	other := filepath.Join(t.TempDir(), "other.git")
+	gittest.InitBare(t, other)
+	repo.Git("config", "remote.origin.pushurl", other)
+	branchWith(repo, "topic", "topic.txt")
+	repo.Git("push", "-q", other, "topic")
+	read := false
+	o := DeleteProofOptions{Forge: forgeSaying(`[]`), RemoteTip: func(dir, remote, branch string) (string, bool, error) {
+		read = true
+		return lsRemoteTip(dir, remote, branch)
+	}}
+	target := guard.DeleteTarget{Kind: guard.DeleteRemoteBranch, Dir: repo.Root(), Remote: "origin", Branch: "topic"}
+	proofRefused(t, prove(t, o, target), "origin is read from one repository and pushed to another")
+	if read {
+		t.Error("origin's tip was read before origin was shown to be one repository")
+	}
+}
+
+// TestARemoteDeleteRefusedForItsOwnReasonAsksNoForge: a delete on another
+// remote, and a delete of a reservation branch on origin, are refused for
+// their own reasons, with their own advice, whether no forge client is given
+// or one answers for another repository, and no forge call is made.
+func TestARemoteDeleteRefusedForItsOwnReasonAsksNoForge(t *testing.T) {
+	repo, _ := proofRepo(t)
+	rec := &recorder{}
+	foreign := rec.wrap(func(_ string, args ...string) (string, error) {
+		if isRepoView(args) {
+			return otherView, nil
+		}
+		return `[]`, nil
+	})
+	for name, o := range map[string]DeleteProofOptions{"no forge": {}, "a forge for another repository": {Forge: foreign}} {
+		p := prove(t, o, guard.DeleteTarget{Kind: guard.DeleteRemoteBranch, Dir: repo.Root(), Remote: "upstream", Branch: "feat"})
+		proofRefused(t, p, "only a delete on origin can be proven")
+		r := prove(t, o, guard.DeleteTarget{Kind: guard.DeleteRemoteBranch, Dir: repo.Root(), Remote: "origin", Branch: "abcd-reserved/iss-1"})
+		proofRefused(t, r, "reservation branch")
+		if !strings.Contains(r.Settle, "abcd reserve --sweep --apply") {
+			t.Errorf("%s: the reservation refusal's advice %q does not name the sweep", name, r.Settle)
+		}
+	}
+	if calls := rec.all(); len(calls) != 0 {
+		t.Fatalf("the forge was asked %v", calls)
+	}
 }

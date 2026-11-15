@@ -42,6 +42,9 @@ func runApply(ctx context.Context, repoRoot string, o Options) (Result, error) {
 	if err != nil {
 		return res, err
 	}
+	// The prune asks the forge too, so it is handed the client the judgement
+	// pinned to origin's repository.
+	o = pl.o
 	res.Applied = true
 	prune := o.pruneOne
 	if prune == nil {
