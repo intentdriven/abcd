@@ -493,6 +493,14 @@ func TestAStageDoesNotWriteTheWorkflowFolderOrACaseVariantOfAGate(t *testing.T) 
 		".GitHooks/pre-push",
 		"HOOKS/pre-push",
 		"MAKEFILE",
+		"Make\ufb01le",
+		"GNUmake\ufb01le",
+		"hoo\u212as/pre-push",
+		".ABCD/guard.json",
+		".Abcd/Rules.json",
+		".abcd/CONFIG.json",
+		".abcd/.WORK.local/approvals/abc",
+		"nested/.ABCD/.work.local/review-receipts/abc",
 	} {
 		if StageWriteRefusal([]string{tree}, nil, filepath.Join(tree, rel)) == "" {
 			t.Errorf("a stage may write %s", rel)
@@ -501,13 +509,13 @@ func TestAStageDoesNotWriteTheWorkflowFolderOrACaseVariantOfAGate(t *testing.T) 
 			t.Errorf("a footprint naming %s opens it", rel)
 		}
 	}
-	for _, rel := range []string{".githubx/a.yml", "docs/.github/a.yml", "Makefile.bak"} {
+	for _, rel := range []string{".githubx/a.yml", "docs/.github/a.yml", "Makefile.bak", "Make\ufb02le", ".abcd/.work.local/scratch/a"} {
 		if why := StageWriteRefusal([]string{tree}, nil, filepath.Join(tree, rel)); why != "" {
 			t.Errorf("%s is refused: %s", rel, why)
 		}
 	}
 	stage := NewFiles(tree).WithStage(filepath.Join(t.TempDir(), "stage"), nil, nil)
-	for _, line := range []string{`printf x > .github/workflows/x.yml`, `printf x > .GitHooks/pre-push`} {
+	for _, line := range []string{`printf x > .github/workflows/x.yml`, `printf x > .GitHooks/pre-push`, `printf x > .ABCD/guard.json`} {
 		if a := approveShell(clean(), stage, line); a.Allow {
 			t.Errorf("a stage's line was approved: %s", line)
 		}

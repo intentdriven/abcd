@@ -91,6 +91,17 @@ func TestDriveGateNamesTheWorkflowFolderAndFoldsCase(t *testing.T) {
 		{"docs/.github/x.yml", "", false},
 		{"tools/hooksx/a", "tools/hooks", false},
 		{"tools", "tools/hooks", false},
+		{"Make\ufb01le", "", true},
+		{"GNUmake\ufb01le", "", true},
+		{"MAKE\ufb01LE", "", true},
+		{"\u017fcripts/x.sh", "", true},
+		{"hoo\u212as/pre-push", "", true},
+		{"tools/cla\u00df-hooks/x", "tools/class-hooks", true},
+		{"tools/CLA\u1e9e-HOOKS/x", "tools/class-hooks", true},
+		{"tools/\ufb01xups/a", "tools/fixups", true},
+		{"tools/class-hooks/x", "tools/cla\u00df-hooks", true},
+		{"Make\ufb02le", "", false},
+		{"", "", false},
 	} {
 		if got := DriveGate(c.path, c.hooks); got != c.gate {
 			t.Errorf("DriveGate(%q, %q) = %v, want %v", c.path, c.hooks, got, c.gate)

@@ -115,6 +115,54 @@ func FoldPath(p string, fold bool) string {
 	return p
 }
 
+// FoldedPathMatch reports whether path, a clean slash path relative to a tree,
+// is name, or, with under set, lies below it, each part compared as a
+// case-folding filesystem compares names, whatever this machine's filesystem
+// does: a tree is checked out on machines whose filesystems may fold it, so a
+// gate on a path holds for every spelling such a filesystem resolves to it.
+// It is the one comparison the drive's gate list and a stage's gate files
+// share.
+func FoldedPathMatch(path, name string, under bool) bool {
+	parts, nameParts := strings.Split(path, "/"), strings.Split(name, "/")
+	if len(parts) < len(nameParts) || (!under && len(parts) != len(nameParts)) {
+		return false
+	}
+	for i, n := range nameParts {
+		if !strings.EqualFold(expandFolds(parts[i]), expandFolds(n)) {
+			return false
+		}
+	}
+	return true
+}
+
+// foldExpansions are the runes a case-folding filesystem resolves to more
+// than strings.EqualFold matches them to: the full case folds that spell one
+// rune as two or three letters, and the runes whose canonical decomposition is
+// a single ASCII character. strings.EqualFold already takes the rest of the
+// single-rune folds, the long s and the Kelvin sign among them.
+var foldExpansions = map[rune]string{
+	'\u00df': "ss", '\u1e9e': "ss",
+	'\ufb00': "ff", '\ufb01': "fi", '\ufb02': "fl", '\ufb03': "ffi", '\ufb04': "ffl",
+	'\ufb05': "st", '\ufb06': "st",
+	'\u037e': ";", '\u1fef': "`",
+}
+
+// expandFolds is name with each rune of foldExpansions spelled out.
+func expandFolds(name string) string {
+	if !strings.ContainsFunc(name, func(r rune) bool { _, ok := foldExpansions[r]; return ok }) {
+		return name
+	}
+	var b strings.Builder
+	for _, r := range name {
+		if e, ok := foldExpansions[r]; ok {
+			b.WriteString(e)
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 // PathWithin reports whether child is equal to or nested inside parent. With
 // fold set the comparison is case-insensitive: otherwise a destination like
 // ".../REPO/dist" computes as an out-of-tree sibling of ".../repo" and slips a
