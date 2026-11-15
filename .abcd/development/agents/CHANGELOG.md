@@ -14,6 +14,15 @@ unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
 ## 2026-11-15 (itd-2610230756259215 — abcd's question writer checks every draft)
 
+### question-drafter 0.2.1
+
+PATCH: on a rows finding the writer cuts the whole excess the finding names in
+one edit, never a row or two at a time, starting with option descriptions that
+wrap onto a second row and blank lines the layout does not need. Forced by the
+step 5 lab on the 25-row material (spc-2610301917245442): at 24 rows two of
+three runs trimmed 31, 27, 25, 24 and 30, 29, 25, 23, four checks each against
+the criterion's three. Unmeasured, in the `0.x` band.
+
 ### question-drafter 0.2.0
 
 MINOR, a schema change in the `0.x` band: the drafter becomes abcd's question
