@@ -324,6 +324,48 @@ func TestALaneOnALinkedHooksDirectoryIsHandedBack(t *testing.T) {
 	}
 }
 
+// TestALaneThatRetargetsALinkOnTheWayToTheHooksIsHandedBack: a link between the
+// hooks value and its last target, and a link above the hooks directory, are
+// each a gate, so a lane that points one elsewhere is handed back.
+func TestALaneThatRetargetsALinkOnTheWayToTheHooksIsHandedBack(t *testing.T) {
+	for _, c := range []struct {
+		name, value, retarget, to string
+		links                     [][2]string
+	}{
+		{name: "a chain", value: "h", retarget: "a", to: "c",
+			links: [][2]string{{"b", "a"}, {"a", "h"}}},
+		{name: "a link above", value: "tools/hooks", retarget: "tools", to: "x",
+			links: [][2]string{{"real-tools", "tools"}}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			repo := gittest.NewRepo(t)
+			repo.Write("a.go", "package a\n")
+			repo.Write("b/pre-push", "x\n")
+			repo.Write("real-tools/hooks/pre-push", "x\n")
+			for _, l := range c.links {
+				if err := os.Symlink(l[0], filepath.Join(repo.Root(), l[1])); err != nil {
+					t.Fatal(err)
+				}
+			}
+			repo.Commit("base")
+			repo.Git("config", "core.hooksPath", c.value)
+			base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+			repo.Remove(c.retarget)
+			if err := os.Symlink(c.to, filepath.Join(repo.Root(), c.retarget)); err != nil {
+				t.Fatal(err)
+			}
+			repo.Commit("retarget")
+			var refused *loop.PreflightRefused
+			if err := driveGateCheck(repo.Root())(repo.Root(), base); !errors.As(err, &refused) || !strings.Contains(refused.Reason, strconv.Quote(c.retarget)) {
+				t.Fatalf("retargeting %s landed: %v", c.retarget, err)
+			}
+			if why := drivePassOver(repo.Root())("iss-1", c.retarget); !strings.Contains(why, "a person's own session") {
+				t.Errorf("an issue on %s is opened: %q", c.retarget, why)
+			}
+		})
+	}
+}
+
 // TestAMergedDefaultBranchIsNotTheLanesChange: read from what the lane merged, a
 // Makefile the default branch changed hands nothing back.
 func TestAMergedDefaultBranchIsNotTheLanesChange(t *testing.T) {

@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -125,7 +126,7 @@ func TestDriveGateNamesTheWorkflowFolderAndFoldsCase(t *testing.T) {
 		{"makefile/x", "", false},
 		{"docs/.github/x.yml", "", false},
 		{"tools/hooksx/a", "tools/hooks", false},
-		{"tools", "tools/hooks", false},
+		{"tools", "tools/hooks", true},
 		{"Make\ufb01le", "", true},
 		{"GNUmake\ufb01le", "", true},
 		{"MAKE\ufb01LE", "", true},
@@ -223,4 +224,105 @@ func TestALinkedHooksDirectoryNamesTheLinkAndWhereItLeads(t *testing.T) {
 	if p, err := DriveHooksPaths(repo.Root()); err != nil || !slices.Equal(p, []string{"out"}) {
 		t.Fatalf("a link out of the tree: %q %v", p, err)
 	}
+}
+
+// TestAHooksPathThroughLinksNamesEveryPlaceItPasses: the hooks value is walked
+// one link at a time, so each link in a chain, a link above the hooks directory
+// and the place a ".." after a link reaches are gates, and a change to any of
+// them is handed back; a loop, or more links than the walk follows, ends with
+// every link met a gate.
+func TestAHooksPathThroughLinksNamesEveryPlaceItPasses(t *testing.T) {
+	link := func(t *testing.T, root, target, name string) {
+		t.Helper()
+		if err := os.Symlink(filepath.FromSlash(target), filepath.Join(root, filepath.FromSlash(name))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hooksOf := func(t *testing.T, root, value string) []string {
+		t.Helper()
+		gittest.OpenRepo(t, root).Git("config", "core.hooksPath", value)
+		p, err := DriveHooksPaths(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	holds := func(t *testing.T, p []string, want ...string) {
+		t.Helper()
+		for _, w := range want {
+			if !slices.Contains(p, w) {
+				t.Errorf("%q does not hold %q", p, w)
+			}
+		}
+	}
+	t.Run("a chain of links", func(t *testing.T) {
+		root := briefRepo(t, agentsMarked).Root()
+		mkdirs(t, filepath.Join(root, "b"))
+		link(t, root, "b", "a")
+		link(t, root, "a", "h")
+		p := hooksOf(t, root, "h")
+		holds(t, p, "h", "a", "b")
+		for _, path := range []string{"h", "a", "b/pre-push"} {
+			if !DriveGate(path, p...) {
+				t.Errorf("%s is no gate under %q", path, p)
+			}
+		}
+		if DriveGate("internal/x.go", p...) {
+			t.Errorf("internal/x.go is a gate under %q", p)
+		}
+	})
+	t.Run("a link above the hooks directory", func(t *testing.T) {
+		root := briefRepo(t, agentsMarked).Root()
+		mkdirs(t, filepath.Join(root, "real-tools", "hooks"))
+		link(t, root, "real-tools", "tools")
+		p := hooksOf(t, root, "tools/hooks")
+		holds(t, p, "tools/hooks", "tools", "real-tools/hooks")
+		for _, path := range []string{"tools", "real-tools", "real-tools/hooks/pre-push"} {
+			if !DriveGate(path, p...) {
+				t.Errorf("%s is no gate under %q", path, p)
+			}
+		}
+		if !DriveGate("tools", "tools/hooks") || DriveGate("toolsx", "tools/hooks") || DriveGate("tools/other", "tools/hooks") {
+			t.Error("a path above a hooks path is a gate, and no other is")
+		}
+	})
+	t.Run("a .. after a link", func(t *testing.T) {
+		root := briefRepo(t, agentsMarked).Root()
+		mkdirs(t, filepath.Join(root, "sub", "deep"))
+		link(t, root, "sub/deep", "x")
+		p := hooksOf(t, root, "x/../h")
+		holds(t, p, "x", "sub/h")
+		if !DriveGate("sub/h/pre-push", p...) {
+			t.Errorf("sub/h/pre-push is no gate under %q", p)
+		}
+	})
+	t.Run("a loop", func(t *testing.T) {
+		root := briefRepo(t, agentsMarked).Root()
+		link(t, root, "g", "h")
+		link(t, root, "h", "g")
+		p := hooksOf(t, root, "h")
+		holds(t, p, "h", "g")
+	})
+	t.Run("more links than the walk follows", func(t *testing.T) {
+		root := briefRepo(t, agentsMarked).Root()
+		mkdirs(t, filepath.Join(root, "real"))
+		const n = maxHooksLinks + 5
+		for i := 0; i < n; i++ {
+			next := "real"
+			if i+1 < n {
+				next = fmt.Sprintf("l%d", i+1)
+			}
+			link(t, root, next, fmt.Sprintf("l%d", i))
+		}
+		p := hooksOf(t, root, "l0")
+		holds(t, p, "l0", fmt.Sprintf("l%d", maxHooksLinks))
+		// The walk stops at its bound; the as-resolved placement may still
+		// reach the end of the chain, which only adds a gate.
+		if slices.Contains(p, fmt.Sprintf("l%d", maxHooksLinks+1)) {
+			t.Errorf("the walk went past its bound: %q", p)
+		}
+		if !DriveGate(fmt.Sprintf("l%d", maxHooksLinks), p...) {
+			t.Errorf("the last link met is no gate under %q", p)
+		}
+	})
 }
