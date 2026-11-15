@@ -9,6 +9,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -490,6 +491,12 @@ func TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly(t *testing.T) {
 		"gpg.ssh.program":              true,
 		"include.path":                 true,
 		"includeif.onbranch:main.path": true,
+		"core.attributesfile":          true,
+		"core.autocrlf":                true,
+		"core.sparsecheckout":          true,
+		"submodule.recurse":            true,
+		"core.autocrlfx":               false,
+		"submodule.x.recurse":          false,
 
 		"remote.origin.urlx":   false,
 		"remote.origin.fetch":  false,
@@ -511,6 +518,17 @@ func TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly(t *testing.T) {
 	} {
 		if got := remoteIdentityKey(key); got != want {
 			t.Errorf("remoteIdentityKey(%q) = %v, want %v", key, got, want)
+		}
+	}
+}
+
+// TestTheRemedyNamesEveryCheckoutContentKey: the pattern a refusal's remedy
+// gives matches each setting held for what a checkout writes.
+func TestTheRemedyNamesEveryCheckoutContentKey(t *testing.T) {
+	re := regexp.MustCompile(heldPattern)
+	for key := range checkoutContentKeys {
+		if !re.MatchString(key) {
+			t.Errorf("the remedy's pattern does not match %s", key)
 		}
 	}
 }

@@ -1296,7 +1296,13 @@ rewrite, the hooks directory, ssh command, proxy program, askpass, fsmonitor,
 pager, editor and worktree settings, `extensions.worktreeConfig`, every
 `credential.*` key, the protocol allow rules, content filters, diff and merge
 drivers, signing programs and `gpg.ssh.defaultKeyCommand`, and include
-paths), the same list and no other, and `http.proxy` and `http.sslVerify`; the
+paths), the same list and no other, `http.proxy` and `http.sslVerify`, and the
+settings that change what a checkout writes or how its files are read
+(`core.attributesFile`, `core.autocrlf`, `core.eol`, `core.symlinks`,
+`core.fileMode`, `core.ignoreCase`, `core.precomposeUnicode`,
+`core.checkRoundtripEncoding`, `core.sparseCheckout`, `core.sparseCheckoutCone`
+and `submodule.recurse`), since the drive's own preflight checkout is made and
+compared under them; the
 bytes of each file an `include.path` or `includeIf.*.path` setting names,
 whether or not its condition holds at the checkout, since it can hold in a
 lane, its path resolved by git; and the global and system attributes files git

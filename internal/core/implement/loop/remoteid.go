@@ -69,12 +69,14 @@ import (
 // remoteIdentityHeld names, for a refusal and the docs, what settings a drive
 // holds across its lanes (remoteIdentityKey), as each environment its git
 // runs in reads them.
-const remoteIdentityHeld = "the settings the run's fingerprint watches, at every scope, as each environment the drive's git runs in reads them (origin's and every remote's url, pushurl, uploadpack, receivepack, proxy and vcs; every url rewrite; core.hooksPath, core.sshCommand, core.gitProxy, core.askPass, core.fsmonitor, core.pager, core.editor and core.worktree; extensions.worktreeConfig; every credential.*; the protocol allow rules; content filters, diff and merge drivers, gpg programs and gpg.ssh.defaultKeyCommand, include and includeIf paths and the files they name), http.proxy and http.sslVerify, and the global and system attributes files"
+const remoteIdentityHeld = "the settings the run's fingerprint watches, at every scope, as each environment the drive's git runs in reads them (origin's and every remote's url, pushurl, uploadpack, receivepack, proxy and vcs; every url rewrite; core.hooksPath, core.sshCommand, core.gitProxy, core.askPass, core.fsmonitor, core.pager, core.editor and core.worktree; extensions.worktreeConfig; every credential.*; the protocol allow rules; content filters, diff and merge drivers, gpg programs and gpg.ssh.defaultKeyCommand, include and includeIf paths and the files they name), http.proxy and http.sslVerify, the settings that change what a checkout writes (core.attributesFile, core.autocrlf, core.eol, core.symlinks, core.fileMode, core.ignoreCase, core.precomposeUnicode, core.checkRoundtripEncoding, core.sparseCheckout, core.sparseCheckoutCone and submodule.recurse), and the global and system attributes files"
 
 // heldPattern is the extended regular expression a refusal's remedy names
-// for remoteIdentityHeld's keys: watchedConfig with http.proxy and
-// http.sslVerify.
-var heldPattern = strings.TrimSuffix(watchedConfig, ")$") + `|http\.(proxy|sslverify))$`
+// for remoteIdentityHeld's keys: watchedConfig with http.proxy,
+// http.sslVerify and checkoutContentKeys.
+var heldPattern = strings.TrimSuffix(watchedConfig, ")$") + `|http\.(proxy|sslverify)` +
+	`|core\.(attributesfile|autocrlf|eol|symlinks|filemode|ignorecase|precomposeunicode|checkroundtripencoding|sparsecheckout|sparsecheckoutcone)` +
+	`|submodule\.recurse)$`
 
 // remoteIdentity is what a drive read as it started: in each environment
 // its git runs in (driveEnvs), each held key's hash (envs); each file an
@@ -99,10 +101,33 @@ const maxSettingsBytes = 1 << 20
 
 // remoteIdentityKey says whether a canonical config key is one a drive holds
 // across its lanes: every key the run's fingerprint watches (watchedKey, the
-// one predicate for both), and http.proxy and http.sslVerify, which choose how
-// origin is reached without naming a program.
+// one predicate for both), http.proxy and http.sslVerify, which choose how
+// origin is reached without naming a program, and the settings that change
+// what a checkout writes or how its files are read without starting a program
+// (checkoutContentKeys), since the drive's own preflight checkout is made and
+// compared under them.
 func remoteIdentityKey(key string) bool {
-	return watchedKey(key) || key == "http.proxy" || key == "http.sslverify"
+	return watchedKey(key) || key == "http.proxy" || key == "http.sslverify" || checkoutContentKeys[key]
+}
+
+// checkoutContentKeys are the canonical keys that change what a checkout
+// writes, or how git reads its files back, with no program named: the
+// attributes file (which can set eol, text and working-tree-encoding for any
+// path), line endings, links, the file mode and case, Unicode precomposition,
+// a working-tree encoding's round trip, a sparse checkout, and a checkout's
+// recursion into submodules.
+var checkoutContentKeys = map[string]bool{
+	"core.attributesfile":         true,
+	"core.autocrlf":               true,
+	"core.eol":                    true,
+	"core.symlinks":               true,
+	"core.filemode":               true,
+	"core.ignorecase":             true,
+	"core.precomposeunicode":      true,
+	"core.checkroundtripencoding": true,
+	"core.sparsecheckout":         true,
+	"core.sparsecheckoutcone":     true,
+	"submodule.recurse":           true,
 }
 
 // readRemoteIdentity is what a drive holds as it starts: its settings in
