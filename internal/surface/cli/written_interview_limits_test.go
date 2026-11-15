@@ -46,7 +46,7 @@ func TestWrittenInterviewTakesTheResolvedLimits(t *testing.T) {
 	if err != nil || l.Rows != 40 || l.LabelWords != 4 || errOut.Len() != 0 {
 		t.Errorf("in force: limits %v, err %v, stderr %q", l.Configurable(), err, errOut.String())
 	}
-	if want := []string{".abcd/config.json", abcdhome.Display("config.json"), "bundled"}; !reflect.DeepEqual(n.SetBy, want) || n.Refused != "" {
+	if want := []string{".abcd/config.json", abcdhome.Display("config.json"), "bundled"}; !reflect.DeepEqual(n.SetBy, want) || n.Refused != nil {
 		t.Errorf("in force: note %+v, want SetBy %q", n, want)
 	}
 

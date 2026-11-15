@@ -43,13 +43,37 @@ func AskingRules(l Limits) []string { return AskingRulesFrom(l, LimitsNote{}) }
 // layout rule to say so (spc-2610301950037469, approach 7). SetBy is one
 // origin per configurable key, in Bounds' order, as the question check's
 // limits_source carries them: "bundled", the repository's file, or the
-// person's own file where it tightened the figure. Refused is the resolver's
-// refusal in its own words, set when a value was read and refused; the
-// figures are then abcd's defaults. The zero value adds nothing to the text
-// every repository reads.
+// person's own file where it tightened the figure; any other origin is not
+// named. Refused is set when a value was read and refused; the figures are
+// then abcd's defaults. The zero value adds nothing to the text every
+// repository reads.
 type LimitsNote struct {
 	SetBy   []string
-	Refused string
+	Refused *RefusedLimit
+}
+
+// RefusedLimit is a refused question limit, in the closed fields the layout
+// rule states it from (spc-2610301950037469, approach 7). The rule names Key
+// only when it is one of Bounds' keys, File and LimitFile only when each is
+// one of the two configuration files (LimitFile "bundled" reads as abcd's
+// default), and states the bounds from Bounds and Limit as a number; any
+// other key or file is stated by a fixed phrase. Reason is the resolver's
+// refusal in its own words, for the loader's out-of-band note alone: the
+// asking rules never render it.
+type RefusedLimit struct {
+	// Key is the refused key; "" or any key not in Bounds is a setting abcd
+	// does not read (an unknown key, or a question that is not an object).
+	Key string
+	// File is the file that holds the refused value, as the resolver names it.
+	File string
+	// NotInteger marks a value that is not a whole number.
+	NotInteger bool
+	// Limit and LimitFile are set for a personal value looser than the limit
+	// in force: that limit, and the file that set it.
+	Limit     int
+	LimitFile string
+	// Reason is the resolver's words, never rendered into a rule.
+	Reason string
 }
 
 // repoConfigFile and machineConfigFile are the two files that set the
@@ -152,9 +176,9 @@ func boundsSentences() string {
 // each figure a file set, key by key, the person's own file as having
 // tightened it. It is "" where no file set a figure and nothing was refused.
 func (n LimitsNote) sentence() string {
-	if n.Refused != "" {
-		return " In this repository, the figures stated here are abcd's defaults, because a question limit is refused: " +
-			strings.TrimSuffix(n.Refused, ".") + ". Until that file is fixed, abcd's question check refuses every abcd question."
+	if n.Refused != nil {
+		return " In this repository, the figures stated here are abcd's defaults, because " + n.Refused.clause() +
+			". Until that file is fixed, abcd's question check refuses every abcd question."
 	}
 	type group struct {
 		origin string
@@ -162,7 +186,7 @@ func (n LimitsNote) sentence() string {
 	}
 	var groups []group
 	for i, origin := range n.SetBy {
-		if i >= len(limitNames) || origin == "" || origin == "bundled" {
+		if i >= len(limitNames) || !isConfigFile(origin) {
 			continue
 		}
 		j := 0
@@ -198,6 +222,54 @@ func (n LimitsNote) sentence() string {
 		joined = clauses[0] + ", and " + clauses[1]
 	}
 	return " In this repository, " + joined + "."
+}
+
+// isConfigFile reports whether origin is one of the two files that set the
+// configurable limits, the only origins the layout rule names.
+func isConfigFile(origin string) bool { return origin == repoConfigFile || origin == machineConfigFile }
+
+// fileClause names the config file origin in the layout rule's words, the
+// person's own file as theirs; "" for any other origin.
+func fileClause(origin string) string {
+	switch origin {
+	case repoConfigFile:
+		return "`" + repoConfigFile + "`"
+	case machineConfigFile:
+		return "the person's own `" + machineConfigFile + "`"
+	}
+	return ""
+}
+
+// clause states the refusal from r's closed fields alone: the key when it is
+// one of Bounds' keys, the file when it is a configuration file, the bounds
+// in words, and for a personal value that loosens, the limit in force in
+// words with the file that set it or abcd's default. No other text of r
+// reaches it.
+func (r *RefusedLimit) clause() string {
+	where := fileClause(r.File)
+	b, known := boundFor(r.Key)
+	if !known {
+		if where == "" {
+			where = "`" + repoConfigFile + "` or the person's own `" + machineConfigFile + "`"
+		}
+		return where + " holds a setting under `question` that abcd does not read"
+	}
+	key := "`" + b.Key + "`"
+	if where != "" {
+		key += " in " + where
+	}
+	bounds := "from " + numberWord(b.Floor) + " to " + numberWord(b.Ceiling)
+	switch {
+	case r.NotInteger:
+		return key + " is not a whole number " + bounds
+	case r.Limit > 0:
+		limit := "abcd's default"
+		if isConfigFile(r.LimitFile) {
+			limit = "the limit `" + r.LimitFile + "` sets"
+		}
+		return key + " is looser than " + numberWord(r.Limit) + ", " + limit + ", and a personal value may only tighten"
+	}
+	return key + " is outside " + numberWord(b.Floor) + " to " + numberWord(b.Ceiling)
 }
 
 // numberExamples are the headers the layout rule shows in abcd's number form:

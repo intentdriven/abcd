@@ -323,7 +323,8 @@ func TestGrillDomainObeysTheLoaderContracts(t *testing.T) {
 // bundled; and every other bundled domain loads as before.
 func TestLoadWithARefusalWritesItIntoGrillAndTheNotes(t *testing.T) {
 	const reason = ".abcd/config.json (repo layer): question.rows is 100: outside 24 to 60"
-	rs, err := LoadWith(t.TempDir(), question.Default, question.LimitsNote{Refused: reason})
+	note := question.LimitsNote{Refused: &question.RefusedLimit{Key: question.RowsKey, File: ".abcd/config.json", Reason: reason}}
+	rs, err := LoadWith(t.TempDir(), question.Default, note)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,11 +332,11 @@ func TestLoadWithARefusalWritesItIntoGrillAndTheNotes(t *testing.T) {
 	if !ok || d.Source != SourceBundled {
 		t.Fatalf("Lookup(%s) = %+v, %v; want the bundled domain", GrillDomain, d, ok)
 	}
-	if want := question.AskingRulesFrom(question.Default, question.LimitsNote{Refused: reason}); !reflect.DeepEqual(d.Rules, want) {
+	if want := question.AskingRulesFrom(question.Default, note); !reflect.DeepEqual(d.Rules, want) {
 		t.Fatalf("GRILL under a refusal is not the asking rules with the refusal written in:\n got %q\nwant %q", d.Rules, want)
 	}
 	layout := ruleWith(d.Rules, "Every question has one layout")
-	for _, want := range []string{"thirty-two rows", "abcd's defaults", "question.rows is 100", "refuses every abcd question"} {
+	for _, want := range []string{"thirty-two rows", "abcd's defaults", "`question.rows` in `.abcd/config.json` is outside", "refuses every abcd question"} {
 		if !strings.Contains(layout, want) {
 			t.Errorf("the layout rule under a refusal does not say %q:\n%s", want, layout)
 		}
@@ -348,6 +349,13 @@ func TestLoadWithARefusalWritesItIntoGrillAndTheNotes(t *testing.T) {
 	}
 	if len(lines) != 1 || strings.Contains(lines[0], "\n") || !strings.Contains(lines[0], GrillDomain) {
 		t.Errorf("the notes must carry the refusal as one line naming %s; got %q of %q", GrillDomain, lines, rs.Notes())
+	}
+	// The note says nothing of what GRILL states: a rules.json layer, a
+	// dormant state or the kill switch decide that, not the refusal.
+	for _, n := range lines {
+		if strings.Contains(n, "states abcd's defaults") {
+			t.Errorf("the note claims what GRILL states: %q", n)
+		}
 	}
 	for name := range Defaults().Domains {
 		if _, ok := rs.Domains[name]; !ok {

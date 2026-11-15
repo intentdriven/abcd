@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/intentdriven/abcd/internal/core/question"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // GrillDomain is the bundled domain that carries the asking rules every abcd
@@ -41,7 +42,9 @@ func grillDomain() Domain {
 // question limits in force for one repository and the note saying where they
 // came from (spc-2610301950037469, approach 8). Its state and recall stay the
 // bundled domain's, and its provenance is not touched: no override layer named
-// it. A refusal in n is appended to the notes as one line.
+// it. A refusal in n is appended to the notes as one line, in the resolver's
+// words, masked to one line; it says nothing of what GRILL states, which a
+// rules.json layer, a dormant state or the kill switch may still decide.
 func withRepoGrillDomain(rs RuleSet, l question.Limits, n question.LimitsNote) RuleSet {
 	d, ok := rs.Domains[GrillDomain]
 	if !ok {
@@ -49,10 +52,10 @@ func withRepoGrillDomain(rs RuleSet, l question.Limits, n question.LimitsNote) R
 	}
 	d.Rules = question.AskingRulesFrom(l, n)
 	rs.Domains[GrillDomain] = d
-	if n.Refused != "" {
+	if n.Refused != nil {
 		rs.notes = append(rs.notes, fmt.Sprintf(
-			"rules: %s: a question limit is refused (%s); %s states abcd's defaults, and abcd's question check refuses every abcd question until the file is fixed",
-			GrillDomain, n.Refused, GrillDomain))
+			"rules: %s: a question limit is refused (%s); abcd's question check refuses every abcd question until the file is fixed",
+			GrillDomain, termsafe.Sanitize(n.Refused.Reason)))
 	}
 	return rs
 }

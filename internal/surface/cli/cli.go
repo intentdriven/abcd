@@ -1638,12 +1638,17 @@ func rulesForHook(root string, errOut io.Writer) (rules.RuleSet, error) {
 // question limits in force there, resolved through the one resolver at the
 // rules root, the file the question check reads (spc-2610301950037469,
 // approach 9). In force, GRILL states them and names the file that set each.
-// Refused, it states abcd's defaults with the refusal written in, and the
-// loader's notes carry it. Unread, it states the defaults, and one line on
-// errOut names the file. Every other domain loads as before, and a
-// configuration fault never injects nothing.
+// Refused, it states abcd's defaults and the refusal in closed fields
+// (refusedLimitOf), and the loader's notes carry the resolver's words.
+// Unread, it states the defaults, and one line on errOut names the file. A
+// home MachineRoots declines is named on errOut, since the person's own file
+// is then not read. Every other domain loads as before, and a configuration
+// fault never injects nothing.
 func rulesWithLimits(root string, errOut io.Writer) (rules.RuleSet, error) {
-	roots, _ := layered.HomeRoots()
+	roots, note := layered.HomeRoots()
+	if note != "" {
+		diagnosticLine(errOut, "abcd: %s", note)
+	}
 	roots.Repo = root
 	v, err := layered.QuestionLimits(roots)
 	var unread *layered.UnreadError
@@ -1651,11 +1656,28 @@ func rulesWithLimits(root string, errOut io.Writer) (rules.RuleSet, error) {
 	case err == nil:
 		return rules.LoadWith(root, v.V, v.Note())
 	case errors.As(err, &unread):
-		diagnosticLine(errOut, "abcd rules: %s: the question limits were not read (%s); %s states abcd's defaults",
-			rules.GrillDomain, scrubPaths(err), rules.GrillDomain)
+		diagnosticLine(errOut, "abcd rules: %s: the question limits were not read (%s)", rules.GrillDomain, scrubPaths(err))
 		return rules.LoadWith(root, v.V, question.LimitsNote{})
 	}
-	return rules.LoadWith(root, question.Default, question.LimitsNote{Refused: termsafe.Sanitize(fsutil.RedactHome(err.Error()))})
+	return rules.LoadWith(root, question.Default, question.LimitsNote{Refused: refusedLimitOf(err)})
+}
+
+// refusedLimitOf is the resolver's refusal in the closed fields the layout
+// rule states it from: the key, the file, whether the value is a whole
+// number, and for a personal value that loosens, the limit in force and its
+// file, each from *layered.KeyRefusedError; any other refusal (an unclaimed
+// key, a question that is not an object) carries none of them. The
+// resolver's words go in Reason, sanitised, for the loader's note alone.
+func refusedLimitOf(err error) *question.RefusedLimit {
+	r := &question.RefusedLimit{Reason: termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+	var kr *layered.KeyRefusedError
+	if errors.As(err, &kr) {
+		r.Key, r.File, r.NotInteger = kr.Key, kr.Origin, kr.NotInteger
+		if kr.Loosens() {
+			r.Limit, r.LimitFile = kr.Limit, kr.LimitOrigin
+		}
+	}
+	return r
 }
 
 // maxHookStdinBytes caps the hook payload read from stdin (trust boundary).
