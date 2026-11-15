@@ -1789,11 +1789,13 @@ full-key lane and says its worktrees are retired by hand with
 gives `lane` and the rows under `worktrees`.
 
 `list --all` walks every directory under `~/.abcd.noindex/worktrees/` and runs
-from any folder. Each lane is shown under its root commit (`label` repeats `key`
-until the registry's names are read), and its worktrees are judged from the
-checkout each one's own `.git` file names, never from a recorded path. A lane
-whose every worktree names a checkout that is gone shows as "checkout not
-found". `--json` gives `store` and `lanes`, each lane with `key`, `label`,
+from any folder. Each lane is shown under its repository's name where its root
+commit is registered in `~/.abcd.noindex/history/index.json`, and under its root
+commit where it is not (`label` then repeats `key`). A registry that is absent
+or cannot be read leaves every lane under its root commit and does not stop the
+listing. A lane's worktrees are judged from the checkout each one's own `.git`
+file names, never from the path the registry recorded. A lane whose every
+worktree names a checkout that is gone shows as "checkout not found". `--json` gives `store` and `lanes`, each lane with `key`, `label`,
 `path`, `reason` and `worktrees`.
 
 **The forge read.** `list` and `prune` each ask the forge once a run, through
