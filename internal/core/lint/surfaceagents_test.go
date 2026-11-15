@@ -207,8 +207,12 @@ func handWritten(page string) string {
 // the draft piped as one line of JSON; the `questions` array of `ready` as
 // what is returned; the `checked_by` field with its three values;
 // the five-check bound; that it never refuses for length, splitting into
-// numbered parts with every answer's gain and cost kept; and, in abcd's own
-// source checkout, the verb run from the source tree.
+// numbered parts with every answer's gain and cost kept; in abcd's own
+// source checkout, the verb run from the source tree; that a hand count is
+// made at abcd's defaults, reading neither the repository's values nor the
+// person's, and the output says so (spc-2610301950037469, approach 10;
+// itd-2610301914350541 decision 10); and that an exit 0 is done only with
+// `abcds` true, an `admit-unchecked` pass being a header to fix.
 func TestWriterPageStatesItsRefusalsAndFallbacks(t *testing.T) {
 	page, err := os.ReadFile(filepath.Join(repoRootFromPackage, "agents", "question-drafter.md"))
 	if err != nil {
@@ -231,6 +235,8 @@ func TestWriterPageStatesItsRefusalsAndFallbacks(t *testing.T) {
 		"never refused for length":                       {"never refuse for length", "numbered parts", `"None of these"`, "Q1b", "every answer's gain and cost"},
 		"the source tree in abcd's checkout":             {"abcd's own source checkout", "`scripts/abcd.sh guard question`", "`version` it reports"},
 		"what it returns":                                {"`questions`", "`rows`", "`version`", "`ready`"},
+		"a hand count is at abcd's defaults":             {"A hand count is made at abcd's defaults", "neither the repository's values nor the person's were read", "Say so in a `note` beside `checked_by`"},
+		"an unchecked pass is not done":                  {"exits 0 with a `ready` input and `abcds` `true`", "An exit 0 with `hook` `admit-unchecked` is not done", "`abcds` is `false`", "Fix the header to abcd's number"},
 	} {
 		for _, p := range phrases {
 			if !strings.Contains(text, p) {

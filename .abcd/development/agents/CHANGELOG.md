@@ -20,9 +20,17 @@ PATCH: the generated asking-rules block now ends its layout rule with the three
 keys a repository may set in `.abcd/config.json`, `question.rows`,
 `question.label_words` and `question.description_sentences`, each with its
 bounds, and says a person's own `~/.abcd.noindex/config.json` may set each
-lower, never higher (spc-2610301950037469, step 3). The figures the block
-states are still abcd's defaults, and the drafter's own behaviour is
-unchanged. Unmeasured, in the `0.x` band.
+lower, never higher (spc-2610301950037469, step 3). After the rules the block
+says the figures it states are abcd's defaults and that the writer takes the
+values in force from the check's `limits`, never from either file; the rule
+on material too long for one question, and the check's rows remedy, now say
+that one decision's material is quoted shorter, keeping every answer's gain
+and cost, and only material holding several decisions or too many answers is
+split into parts (step 4; itd-2610230756259215 decision 33). The hand-written
+part says when an exit 0 of the check counts as done, and that a hand count,
+made only where the host gives no shell, is made at abcd's defaults, reading
+neither the repository's values nor the person's, with a `note` saying so
+(decision 10). Unmeasured, in the `0.x` band.
 
 ## 2026-11-15 (itd-2610230756259215 — abcd's question writer checks every draft)
 

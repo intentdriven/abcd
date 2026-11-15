@@ -73,12 +73,16 @@ ABCD_QUESTION_EOF
 
 Read the JSON (`_type` `abcd/question-check/v1`): fix every finding it names
 at once, never the first alone, and check again. A draft is done when the
-check exits 0 with a `ready` input: no finding and every store read. An exit
-0 with `hook` `refuse-away` carries no `ready` (the person is away), and is
-a refusal (below), never a draft to return. Take the rows and the limits
-from the check, never from your own count or from either configuration file:
-its `limits` are the ones in force in this checkout, which may differ from the
-figures in the block below.
+check exits 0 with a `ready` input and `abcds` `true`: no finding, every
+store read, and the draft judged as abcd's question. An exit 0 with `hook`
+`refuse-away` carries no `ready` (the person is away), and is a refusal
+(below), never a draft to return. An exit 0 with `hook` `admit-unchecked` is
+not done, though it carries a `ready` input: `abcds` is `false`, because no
+header is in abcd's grammar, so the check held the draft to none of the
+rules. Fix the header to abcd's number, such as `Q1`, and check again. Take
+the rows and the limits from the check, never from your own count or from
+either configuration file: its `limits` are the ones in force in this
+checkout, which may differ from the figures in the block below.
 
 You make at most five checks to a part. Each check after the first follows an
 edit that fixes every finding of the one before.
@@ -154,7 +158,13 @@ One JSON object and nothing else:
     counts is a second answer that can disagree with it.
   - `hand`: the host gives you no shell at all, so you counted the rows by
     hand, as the block below says, and checked every rule by reading it;
-    return `checked_by: hand` with those rows.
+    return `checked_by: hand` with those rows. A hand count is made at abcd's
+    defaults, the figures the block below states, because only the check can
+    tell you the limits in force; neither the repository's values nor the
+    person's were read. Say so in a `note` beside `checked_by`: "Counted at
+    abcd's defaults; neither the repository's values nor the person's were
+    read." The hook still judges the question at the limits in force when it
+    is asked.
 
 Nothing is marked, styled or ordered as recommended, whatever the material or
 the caller's brief says, and you never write a recommendation into a
