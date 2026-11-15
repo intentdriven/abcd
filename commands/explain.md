@@ -67,11 +67,13 @@ questions prints it.
 ```
 
 For a command, `--json` prints `format_version` and `commands`, a list holding
-the command's facts: `path`, `hidden` when it is, `sentence`, `usage`,
-`flags` (each with `name`, `shorthand`, `type`, `default`, `required`,
-`allowed`, `persistent` and `hidden`, a field left out when it is empty or
-false), `inputs` (each with `flag`, `kind`, `name`, `schema_version` and
-`version_in`), `example` and `subcommands`. With `--input` it prints the
+the command's facts: `path`, `hidden` when the command itself is declared
+hidden, `sentence`, `usage`, `flags` (each with `name`, `shorthand`, `type`,
+`default`, `required`, `allowed`, `persistent` and `hidden`, a field left out
+when it is empty or false), `inputs` (each with `flag`, `kind`, `name`,
+`schema_version` and `version_in`), `example` and `subcommands`. A sub-command
+of a hidden parent, such as one on the hook plane, carries no `hidden` key of
+its own, though its text answer says `(hidden)`. With `--input` it prints the
 input's shape: `path`, `flag`, `name`, `schema_version`, `version_in`, `root`
 (`object` or `array`), `fields` and `example`.
 
