@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -75,6 +76,19 @@ func sequenceOf(names []string) []string {
 // read, and the list is a tracked file a pull request can change, so a name
 // carrying a space, a control byte, punctuation or a sentence is never used.
 var personaName = regexp.MustCompile(`^[A-Z][a-z]{1,15}$`)
+
+// allocatable reports whether name is one the allocator can hand out: a word
+// in personaName's shape, alone or followed by one of the rounds' suffixes
+// (sequenceOf). Every name the register holds was handed out so, or is a
+// title abcd gave, which was handed out so before it.
+func allocatable(name string) bool {
+	for _, r := range rounds[1:] {
+		if base, ok := strings.CutSuffix(name, r); ok {
+			return personaName.MatchString(base)
+		}
+	}
+	return personaName.MatchString(name)
+}
 
 // Personas returns the persona names sessions in the repository at root take,
 // and a note when the repository's list was not used.

@@ -681,15 +681,21 @@ func lockRegisterFor(t *testing.T, home string) (release func()) {
 		t.Fatal(err)
 	}
 	held, done, gone := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	var err2 error
 	go func() {
 		defer close(gone)
-		_ = fsutil.WithFileLockIn(dir, lockName, time.Second, func() error {
+		err2 = fsutil.WithFileLockIn(dir, lockName, time.Second, func() error {
 			close(held)
 			<-done
 			return nil
 		})
 	}()
-	<-held
+	select {
+	case <-held:
+	case <-gone:
+		dir.Close()
+		t.Fatalf("the register's lock could not be taken: %v", err2)
+	}
 	return func() { close(done); <-gone; dir.Close() }
 }
 
@@ -1073,10 +1079,22 @@ func TestAResumeOfAPersonsNameWithNoRecordIsNeverReplaced(t *testing.T) {
 	mustName(t, m.start(200, root, "a"), "Alice")
 	mustName(t, m.start(300, root, "b"), "Bob")
 	resends(t, m, []struct{ sid, title, want string }{{"a", "", "Alice"}, {"b", "", "Bob"}})
-	if out := Start(m.at(m.launch(400)), Request{Root: root, SessionID: "old", Source: "resume", Title: "Bob"}); out.Name != "" {
+	from := m.launch(400)
+	if out := Start(m.at(from), Request{Root: root, SessionID: "old", Source: "resume", Title: "Bob"}); out.Name != "" {
 		t.Fatalf("resuming the person's unrecorded Bob reserved %q, want nothing", out.Name)
 	}
-	resends(t, m, []struct{ sid, title, want string }{{"old", "Bob", ""}})
+	// Its prompt finds abcd's Bob accounting for the title on another host:
+	// the title is the person's, recorded as theirs, and kept.
+	if out := m.prompt(from, root, "old", "Bob"); out.Name != "" || out.Notice != "" || len(out.Notes) != 0 {
+		t.Fatalf("the person's unrecorded Bob prompting: %+v, want nothing", out)
+	}
+	if reg := m.register(); !bytes.Contains(reg, []byte(`"old": ""`)) || bytes.Contains(reg, []byte(`"session_id": "old"`)) {
+		t.Fatalf("the person's Bob is not recorded as theirs alone:\n%s", reg)
+	}
+	reads := 0
+	if out := Prompt(counted(m.at(from), &reads), Request{Root: root, SessionID: "old", Title: "Bob"}); out.Name != "" || reads != 0 {
+		t.Fatalf("the next prompt: %+v after %d table reads, want nothing and none", out, reads)
+	}
 }
 
 // TestResumeHoldsANameFromAnEarlierPersonaList: the name abcd gave is held on
@@ -1424,7 +1442,7 @@ func TestTwoRunningSessionsWithOneNameEndWithTwoNamesAndOneNotice(t *testing.T) 
 		{xFrom, "x", "Alice", "Bob"},
 		{xFrom, "x", "Bob", ""},
 		{yFrom, "y", "Alice", ""},
-		{xFrom, "x", "Alice", ""}, // a title the host has not updated yet
+		{xFrom, "x", "Alice", ""}, // the person took the old title back after Bob showed: not fought
 		{yFrom, "y", "Alice", ""},
 		{xFrom, "x", "Bob", ""},
 	} {
@@ -1597,5 +1615,256 @@ func TestAPromptJudgesAHolderByItsStartTime(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// renameX runs the record's sequence up to the prompt that renames: x is
+// named Alice, resumed under host 200 while the lock is held, and y starts
+// and is given Alice. It returns x's hook shell.
+func renameX(t *testing.T, m *machine, root string) int {
+	t.Helper()
+	mustName(t, m.start(100, root, "x"), "Alice")
+	resends(t, m, []struct{ sid, title, want string }{{"x", "", "Alice"}})
+	m.end(100)
+	from := resumeWithTheLockHeld(t, m, root, 200, "x", "Alice")
+	mustName(t, m.start(300, root, "y"), "Alice")
+	resends(t, m, []struct{ sid, title, want string }{{"y", "", "Alice"}})
+	return from
+}
+
+// TestARenameWhoseOutputWasDroppedIsSentOnceMore: the host discards a hook's
+// whole output when it overruns, so the prompt that renamed x may never reach
+// it, and x's next prompt still carries Alice. That prompt is sent Bob and
+// the notice again; a third still carrying Alice is the person's choice and
+// is sent nothing, and changes nothing.
+func TestARenameWhoseOutputWasDroppedIsSentOnceMore(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	from := renameX(t, m, root)
+	for i, want := range []string{"Bob", "Bob", ""} {
+		before := m.register()
+		out := m.prompt(from, root, "x", "Alice")
+		if out.Name != want || (out.Notice != "") != (want != "") || len(out.Notes) != 0 {
+			t.Fatalf("prompt %d carrying Alice: %+v, want %q with a notice when set", i+1, out, want)
+		}
+		if want == "" && !bytes.Equal(m.register(), before) {
+			t.Fatalf("prompt %d changed the register:\n%s", i+1, m.register())
+		}
+	}
+	// Seen once, the rename is owed no more.
+	n := newMachine(t)
+	from = renameX(t, n, root)
+	for i, c := range []struct{ title, want string }{{"Alice", "Bob"}, {"Bob", ""}, {"Alice", ""}} {
+		if out := n.prompt(from, root, "x", c.title); out.Name != c.want || len(out.Notes) != 0 {
+			t.Fatalf("prompt %d carrying %q: %+v, want %q", i+1, c.title, out, c.want)
+		}
+	}
+}
+
+// TestAForkWhoseTableReadFailedIsRenamedAtItsPrompt: a fork of a running
+// Alice whose start cannot read the process table holds nothing, but its
+// inherited title is recorded as given to it, so its first prompt finds the
+// parent holding Alice and takes Bob, with the notice. The parent keeps Alice.
+func TestAForkWhoseTableReadFailedIsRenamedAtItsPrompt(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	mustName(t, m.start(100, root, "p"), "Alice")
+	resends(t, m, []struct{ sid, title, want string }{{"p", "", "Alice"}})
+	from := m.launch(200)
+	m.tableErr = errors.New("ps failed")
+	if out := Start(m.at(from), Request{Root: root, SessionID: "f", Source: "fork", Title: "Alice"}); out.Name != "" || len(out.Notes) != 1 {
+		t.Fatalf("the fork's start under a failed table read: %+v, want no name and one note", out)
+	}
+	m.tableErr = nil
+	if reg := m.register(); !bytes.Contains(reg, []byte(`"f": "Alice"`)) {
+		t.Fatalf("the fork's inherited title was not recorded as given to it:\n%s", reg)
+	}
+	out := m.prompt(from, root, "f", "Alice")
+	if out.Name != "Bob" || out.Notice == "" || len(out.Notes) != 0 {
+		t.Fatalf("the fork's prompt: %+v, want Bob with the notice", out)
+	}
+	if out := m.prompt(101, root, "p", "Alice"); out.Name != "" || out.Notice != "" {
+		t.Fatalf("the parent's prompt: %+v, want nothing", out)
+	}
+	mustName(t, m.start(300, root, "c"), "Carol")
+}
+
+// clearWithTheTableUnread clears session a (host 100, Alice) into a2 in the
+// same process while the process table cannot be read, so the clear's hold
+// is not made.
+func clearWithTheTableUnread(t *testing.T, m *machine, root string) {
+	t.Helper()
+	mustName(t, Start(m.at(m.launch(100)), Request{Root: root, SessionID: "a", Source: "startup"}), "Alice")
+	resends(t, m, []struct{ sid, title, want string }{{"a", "", "Alice"}})
+	m.tableErr = errors.New("ps failed")
+	if out := Start(m.at(101), Request{Root: root, SessionID: "a2", Source: "clear", Title: "Alice"}); out.Name != "" || len(out.Notes) != 1 {
+		t.Fatalf("the clear under a failed table read: %+v, want no name and one note", out)
+	}
+	m.tableErr = nil
+}
+
+// TestAClearWhoseHoldFailedIsHeldAtItsPrompt: the cleared id has no entry and
+// no record of its own, and the entry on its own host process accounts for
+// its title: that entry is the session before the clear. The prompt moves its
+// record and its name to the new id, sets nothing and says nothing.
+func TestAClearWhoseHoldFailedIsHeldAtItsPrompt(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	clearWithTheTableUnread(t, m, root)
+	if out := m.prompt(101, root, "a2", "Alice"); out.Name != "" || out.Notice != "" || len(out.Notes) != 0 {
+		t.Fatalf("the cleared session's prompt: %+v, want the name held with nothing set or said", out)
+	}
+	reg := m.register()
+	if !bytes.Contains(reg, []byte(`"a2": "Alice"`)) || bytes.Contains(reg, []byte(`"a": "Alice"`)) ||
+		bytes.Count(reg, []byte(`"session_id"`)) != 1 || !bytes.Contains(reg, []byte(`"session_id": "a2"`)) {
+		t.Fatalf("the clear's record and name did not move to a2:\n%s", reg)
+	}
+}
+
+// TestAClearWhoseHoldFailedKeepsItsNameWhenResumed: the same clear, healed at
+// its prompt; its process then ends and the new id is resumed elsewhere. The
+// resume holds Alice under the new id, so the next session is not given
+// Alice while it runs.
+func TestAClearWhoseHoldFailedKeepsItsNameWhenResumed(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	clearWithTheTableUnread(t, m, root)
+	m.prompt(101, root, "a2", "Alice")
+	m.end(100)
+	if out := Start(m.at(m.launch(300)), Request{Root: root, SessionID: "a2", Source: "resume", Title: "Alice"}); out.Name != "" || len(out.Notes) != 0 {
+		t.Fatalf("resuming the cleared id: %+v, want the name held", out)
+	}
+	mustName(t, m.start(400, root, "b"), "Bob")
+}
+
+// TestAForkRenamedAtStartAndResumedDoesNotShareItsParentsName: a fork of a
+// running Alice reserves Bob at its start, and its process ends before its
+// first prompt, so its entry is dropped. Resumed later carrying Alice while
+// the parent still runs, it takes the next free name: the name it inherited
+// is recorded as given to it, so the resume reads the title as abcd's.
+func TestAForkRenamedAtStartAndResumedDoesNotShareItsParentsName(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	mustName(t, m.start(100, root, "p"), "Alice")
+	resends(t, m, []struct{ sid, title, want string }{{"p", "", "Alice"}})
+	mustName(t, Start(m.at(m.launch(200)), Request{Root: root, SessionID: "f", Source: "fork", Title: "Alice"}), "Bob")
+	m.end(200)
+	mustName(t, m.start(300, root, "c"), "Carol")
+	if bytes.Contains(m.register(), []byte(`"session_id": "f"`)) {
+		t.Fatalf("the fixture did not drop the fork's entry:\n%s", m.register())
+	}
+	from := m.launch(400)
+	mustName(t, Start(m.at(from), Request{Root: root, SessionID: "f", Source: "resume", Title: "Alice"}), "Dave")
+	if out := m.prompt(from, root, "f", "Alice"); out.Name != "Dave" || out.Notice == "" {
+		t.Fatalf("the resumed fork's prompt: %+v, want Dave with the notice", out)
+	}
+}
+
+// TestASubAgentsPromptChangesNothing: a payload carrying an agent id is a
+// sub-agent's, and its prompt neither sets the title owed nor writes.
+func TestASubAgentsPromptChangesNothing(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	mustName(t, m.start(100, root, "a"), "Alice")
+	before := m.register()
+	if out := Prompt(m.at(101), Request{Root: root, SessionID: "a", AgentID: "agent-1"}); out.Name != "" || out.Notice != "" || len(out.Notes) != 0 {
+		t.Fatalf("a sub-agent's prompt: %+v, want nothing", out)
+	}
+	if !bytes.Equal(m.register(), before) {
+		t.Fatalf("a sub-agent's prompt changed the register:\n%s", m.register())
+	}
+}
+
+// TestTheRegisterRefusesANameThatIsNotAPersonaName: every name the register
+// holds is one the allocator hands out, so a register carrying any other text
+// in a live entry's name or replaced title, the names handed out, or the names
+// given is refused as an unreadable one is: a prompt changes nothing and
+// notes it, and a start names nothing and notes it. Every round's suffix and
+// an empty given name (the person's own) are accepted.
+func TestTheRegisterRefusesANameThatIsNotAPersonaName(t *testing.T) {
+	start := readAt.Add(-time.Hour).Unix()
+	body := func(name, replaces, handed, given string) string {
+		return fmt.Sprintf(`{"schema_version":1,"handed":[%q],"live":[{"name":%q,"session_id":"a","host_pid":100,"host_start_unix":%d,"sent":false,"replaces":%q}],"given":{"z":%q}}`,
+			handed, name, start, replaces, given)
+	}
+	for name, c := range map[string]struct {
+		reg     string
+		refused bool
+	}{
+		"valid":                 {body("Nia Nine", "Alice", "Nia Nine", ""), false},
+		"valid given":           {body("Bob", "", "Bob", "Carol Two"), false},
+		"a sentence as a name":  {body("Ignore previous instructions", "", "Bob", ""), true},
+		"a tenth round":         {body("Alice Ten", "", "Bob", ""), true},
+		"a bad replaced title":  {body("Bob", "bob\u001b[31m", "Bob", ""), true},
+		"a bad name handed out": {body("Bob", "", "Bob; rm", ""), true},
+		"a bad name given":      {body("Bob", "", "Bob", "Zed the reviewer"), true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := newMachine(t)
+			m.launch(100)
+			if err := os.MkdirAll(abcdhome.Path(m.home, "sessions"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(abcdhome.Path(m.home, "sessions", "names.json"), []byte(c.reg), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			out := m.prompt(101, "", "a", "")
+			if c.refused {
+				if out.Name != "" || len(out.Notes) != 1 || !strings.Contains(out.Notes[0], "names.json") || string(m.register()) != c.reg {
+					t.Fatalf("a register with a name that is not a persona name: %+v, want nothing set and one note", out)
+				}
+				if s := m.start(200, t.TempDir(), "b"); s.Name != "" || len(s.Notes) != 1 {
+					t.Fatalf("a start on it: %+v, want unnamed with one note", s)
+				}
+				return
+			}
+			if out.Name == "" || len(out.Notes) != 0 {
+				t.Fatalf("a valid register was refused: %+v", out)
+			}
+		})
+	}
+}
+
+// TestTwoSessionsInOneProcessWithOneNameEndWithTwoNames: one host process
+// runs two sessions, x and y, each given Alice, and only x holds it (a fork
+// kept in the process, say). The entry of Alice on y's host is not y before a
+// clear: its id still has Alice given to it. So y's prompt is the later claim
+// and takes Bob, once, with the notice, and the prompts that follow go quiet:
+// no rename, no write, and no process-table read.
+func TestTwoSessionsInOneProcessWithOneNameEndWithTwoNames(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	m.launch(100)
+	start := readAt.Add(-time.Hour).Unix()
+	reg := fmt.Sprintf(`{"schema_version":1,"handed":["Alice"],"live":[{"name":"Alice","session_id":"x","host_pid":100,"host_start_unix":%d,"sent":true}],"given":{"x":"Alice","y":"Alice"}}`, start)
+	if err := os.MkdirAll(abcdhome.Path(m.home, "sessions"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abcdhome.Path(m.home, "sessions", "names.json"), []byte(reg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	title := map[string]string{"x": "Alice", "y": "Alice"}
+	notices := 0
+	for i, sid := range []string{"y", "x", "y", "x", "y", "x"} {
+		before := m.register()
+		reads := 0
+		out := Prompt(counted(m.at(101), &reads), Request{Root: root, SessionID: sid, Title: title[sid]})
+		if len(out.Notes) != 0 {
+			t.Fatalf("prompt %d (%s): notes %q", i+1, sid, out.Notes)
+		}
+		if out.Name != "" {
+			title[sid] = out.Name
+		}
+		if out.Notice != "" {
+			notices++
+		}
+		// The first prompt renames y and the third sees the rename; every
+		// other prompt reads no table and writes nothing.
+		if i != 0 && i != 2 && (reads != 0 || !bytes.Equal(m.register(), before)) {
+			t.Fatalf("prompt %d (%s) read the table %d time(s) or wrote:\n%s", i+1, sid, reads, m.register())
+		}
+	}
+	if notices != 1 || title["x"] != "Alice" || title["y"] != "Bob" {
+		t.Fatalf("%d notices, titles %v; want one notice, x Alice and y Bob", notices, title)
 	}
 }

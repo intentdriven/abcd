@@ -537,3 +537,35 @@ func TestPromptRouterThatCannotReadTheTableChangesNothing(t *testing.T) {
 		t.Fatalf("the register changed (%v):\n%s\nwant\n%s", err, after, before)
 	}
 }
+
+// TestPromptRouterLeavesNamingAloneForASubAgent: a prompt payload carrying an
+// agent id is a sub-agent's. Its session's title is owed (its start reserved
+// Alice), yet the sub-agent's prompt sets no title and writes nothing to the
+// register; the session's own first prompt still sets Alice.
+func TestPromptRouterLeavesNamingAloneForASubAgent(t *testing.T) {
+	f := newNameFixture(t)
+	f.launch(1000)
+	runSessionStart(startJSON(t, "s1", f.cwd, map[string]string{"source": "startup"}), "hook", "session-start")
+	names := abcdhome.Path(f.home, "sessions", "names.json")
+	before, err := os.ReadFile(names)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(map[string]string{
+		"session_id": "s1", "cwd": f.cwd, "prompt": "paint a landscape",
+		"hook_event_name": "UserPromptSubmit", "agent_id": "ag-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := runHook(t, string(payload), "hook", "prompt-router"); strings.Contains(out, "sessionTitle") {
+		t.Fatalf("a sub-agent's prompt set a title: %q", out)
+	}
+	if after, err := os.ReadFile(names); err != nil || string(after) != string(before) {
+		t.Fatalf("a sub-agent's prompt changed the register (%v):\n%s", err, after)
+	}
+	out, _ := runHook(t, promptJSON(t, "s1", f.cwd, "paint a landscape", ""), "hook", "prompt-router")
+	if got := decodeTitled(t, out).HookSpecificOutput.SessionTitle; got != "Alice" {
+		t.Fatalf("the session's own first prompt was titled %q, want Alice", got)
+	}
+}

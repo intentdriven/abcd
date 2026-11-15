@@ -72,7 +72,7 @@ func promptSessionName(cmd *cobra.Command, in hookInput, root string) (title, no
 	if !ok {
 		return "", ""
 	}
-	out := sessionname.Prompt(m, sessionname.Request{Root: root, SessionID: in.SessionID, Title: in.SessionTitle})
+	out := sessionname.Prompt(m, sessionname.Request{Root: root, SessionID: in.SessionID, Title: in.SessionTitle, AgentID: in.AgentID})
 	for _, n := range out.Notes {
 		diagnosticLine(cmd.ErrOrStderr(), "%s", n)
 	}
