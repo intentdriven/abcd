@@ -103,9 +103,9 @@ type TerminalOptions struct {
 	// Review is the reviewer route, as `implement step` hands it.
 	Review *ReviewRoute
 	// Preflight runs the repository's preflight behind the load gate in
-	// checkout, the drive's own checkout of a lane's head
-	// (preflightcheckout.go), never the lane's worktree.
-	Preflight func(ctx context.Context, checkout string) error
+	// checkout, the drive's own checkout of a lane's head, whose full commit
+	// id is head (preflightcheckout.go), never the lane's worktree.
+	Preflight func(ctx context.Context, checkout, head string) error
 	// PreflightAllowed says whether a lane's preflight may run, given its
 	// worktree, base and head: the head its landing lands, the judged head or
 	// the landing's records commit on it, never what the worktree has checked
@@ -1866,7 +1866,7 @@ func (t *terminal) stepRefused(ctx context.Context, runID string, err error) (ag
 
 // preflight runs a lane's preflight on a context a stop also ends, this terminal's or one
 // set from outside it, so one queued at the load gate or running does not outlast it.
-func (t *terminal) preflight(ctx context.Context, checkout string) error {
+func (t *terminal) preflight(ctx context.Context, checkout, head string) error {
 	pctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	looked := make(chan struct{})
@@ -1891,7 +1891,7 @@ func (t *terminal) preflight(ctx context.Context, checkout string) error {
 	}()
 	var err error
 	t.beginCall("the preflight")
-	t.renewing(func() { err = t.o.Preflight(pctx, checkout) })
+	t.renewing(func() { err = t.o.Preflight(pctx, checkout, head) })
 	cancel()
 	<-looked
 	return err

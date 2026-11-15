@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -164,7 +165,7 @@ func TestAPreflightRunsInTheStagesEnvironment(t *testing.T) {
 	if _, err := runner.WriteWallSettings(p, runner.SelfBinary()); err != nil {
 		t.Fatal(err)
 	}
-	if err := drivePreflight(os.Stderr, p)(context.Background(), dir); err != nil {
+	if err := drivePreflight(os.Stderr, p)(context.Background(), dir, ""); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(out)
@@ -463,8 +464,10 @@ func TestThereIsNoFlagThatOpensAGate(t *testing.T) {
 
 // TestAPreflightReadsNoGoWorkspaceOrGoSettingsFile: the preflight runs with
 // GOENV=off, whatever the environment carries, with GOFLAGS stated, and with
-// GOWORK naming the checkout's own go.work when its commit tracks one at its
-// root, and off otherwise.
+// GOWORK left unset when the lane's head tracks a go.work at its root, so a
+// preflight step in a directory with a nearer tracked go.work uses that one,
+// and GOWORK=off otherwise. Whether the head tracks one is read from the
+// head named, not from what the checkout has checked out.
 func TestAPreflightReadsNoGoWorkspaceOrGoSettingsFile(t *testing.T) {
 	w := newDriveWorld(t)
 	p, err := runner.DriveProfile(w.home, "")
@@ -477,43 +480,60 @@ func TestAPreflightReadsNoGoWorkspaceOrGoSettingsFile(t *testing.T) {
 	}
 	t.Setenv("GOWORK", "/elsewhere/go.work")
 	t.Setenv("GOENV", "/elsewhere/env")
+	goBin, _ := exec.LookPath("go")
 	was := drivePreflightProgram
 	t.Cleanup(func() { drivePreflightProgram = was })
 	for _, c := range []struct {
 		name   string
 		commit func(r *gittest.Repo)
-		gowork func(dir string) string
+		unset  bool
 	}{
 		{name: "no go.work tracked",
 			commit: func(r *gittest.Repo) {
-				r.Write("go.mod", "module example.invalid/m\n")
+				r.Write("go.mod", "module example.invalid/m\n\ngo 1.22\n")
 				r.Commit("a module")
-			},
-			gowork: func(string) string { return "off" }},
-		{name: "a go.work tracked at the root",
+			}},
+		{name: "a go.work tracked at the root and one in tools",
 			commit: func(r *gittest.Repo) {
 				r.Write("go.work", "go 1.22\n\nuse ./m\n")
-				r.Write("m/go.mod", "module example.invalid/m\n")
-				r.Commit("a workspace")
+				r.Write("m/go.mod", "module example.invalid/m\n\ngo 1.22\n")
+				r.Write("tools/go.work", "go 1.22\n\nuse .\n")
+				r.Write("tools/go.mod", "module example.invalid/tools\n\ngo 1.22\n")
+				r.Commit("two workspaces")
 			},
-			gowork: func(dir string) string { return filepath.Join(dir, "go.work") }},
+			unset: true},
 		{name: "a go.work tracked below the root alone",
 			commit: func(r *gittest.Repo) {
 				r.Write("m/go.work", "go 1.22\n\nuse .\n")
-				r.Write("m/go.mod", "module example.invalid/m\n")
+				r.Write("m/go.mod", "module example.invalid/m\n\ngo 1.22\n")
 				r.Commit("a nested workspace")
-			},
-			gowork: func(string) string { return "off" }},
+			}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r := gittest.NewRepo(t)
 			c.commit(r)
-			dir := r.Root()
-			env := filepath.Join(t.TempDir(), "env")
-			drivePreflightProgram = func() (string, []string, error) {
-				return "/bin/sh", []string{"-c", "/usr/bin/env > '" + env + "'"}, nil
+			head := strings.TrimSpace(r.Git("rev-parse", "HEAD"))
+			// The checkout's own HEAD is moved to a commit that answers the
+			// other way (the root go.work taken out, or one put in), so the
+			// answer must come from the head named.
+			if c.unset {
+				r.Git("rm", "-q", "go.work")
+			} else {
+				r.Write("go.work", "go 1.22\n")
+				r.Git("add", "go.work")
 			}
-			if err := drivePreflight(os.Stderr, p)(context.Background(), dir); err != nil {
+			r.Commit("not the head")
+			dir := r.Root()
+			scratch := t.TempDir()
+			env, gowork := filepath.Join(scratch, "env"), filepath.Join(scratch, "gowork")
+			script := "/usr/bin/env > '" + env + "'"
+			if goBin != "" && c.unset {
+				script += " && cd tools && '" + goBin + "' env GOWORK > '" + gowork + "'"
+			}
+			drivePreflightProgram = func() (string, []string, error) {
+				return "/bin/sh", []string{"-c", script}, nil
+			}
+			if err := drivePreflight(os.Stderr, p)(context.Background(), dir, head); err != nil {
 				t.Fatal(err)
 			}
 			raw, err := os.ReadFile(env)
@@ -521,16 +541,28 @@ func TestAPreflightReadsNoGoWorkspaceOrGoSettingsFile(t *testing.T) {
 				t.Fatal(err)
 			}
 			lines := strings.Split(string(raw), "\n")
-			for _, want := range []string{"GOWORK=" + c.gowork(dir), "GOENV=off"} {
-				if !slices.Contains(lines, want) {
-					t.Errorf("the preflight's environment lacks %s:\n%s", want, raw)
-				}
+			stated := slices.DeleteFunc(slices.Clone(lines), func(l string) bool { return !strings.HasPrefix(l, "GOWORK=") })
+			switch {
+			case c.unset && len(stated) != 0:
+				t.Errorf("the preflight's environment states %q, want GOWORK unset:\n%s", stated, raw)
+			case !c.unset && !slices.Equal(stated, []string{"GOWORK=off"}):
+				t.Errorf("the preflight's environment states %q, want GOWORK=off alone:\n%s", stated, raw)
 			}
-			if n := len(slices.DeleteFunc(slices.Clone(lines), func(l string) bool { return !strings.HasPrefix(l, "GOWORK=") })); n != 1 {
-				t.Errorf("the preflight's environment states GOWORK %d times:\n%s", n, raw)
+			if !slices.Contains(lines, "GOENV=off") {
+				t.Errorf("the preflight's environment lacks GOENV=off:\n%s", raw)
 			}
 			if !slices.ContainsFunc(lines, func(l string) bool { return strings.HasPrefix(l, "GOFLAGS=") }) {
 				t.Errorf("the preflight's environment states no GOFLAGS:\n%s", raw)
+			}
+			if goBin != "" && c.unset {
+				got, err := os.ReadFile(gowork)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want, _ := filepath.EvalSymlinks(filepath.Join(dir, "tools", "go.work"))
+				if have, _ := filepath.EvalSymlinks(strings.TrimSpace(string(got))); have != want {
+					t.Errorf("go in tools/ reads the workspace %q, want %q", strings.TrimSpace(string(got)), want)
+				}
 			}
 		})
 	}
@@ -556,7 +588,7 @@ func TestAPreflightLeavesNoProcessBehind(t *testing.T) {
 			drivePreflightProgram = func() (string, []string, error) {
 				return "/bin/sh", []string{"-c", "/bin/sleep 60 >/dev/null 2>&1 & echo $! > '" + left + "'; exit " + exit}, nil
 			}
-			_ = drivePreflight(os.Stderr, p)(context.Background(), dir)
+			_ = drivePreflight(os.Stderr, p)(context.Background(), dir, "")
 			pid := waitPidFile(t, left)
 			if !pidGone(pid, 5*time.Second) {
 				t.Fatalf("process %d outlived the preflight", pid)

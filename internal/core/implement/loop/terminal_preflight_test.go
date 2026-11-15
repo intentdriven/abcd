@@ -55,7 +55,7 @@ func TestAStopReachesAPreflight(t *testing.T) {
 	w.needsPreflight = true
 	o := oneLane(t, w)
 	ended := make(chan bool, 1)
-	o.Preflight = func(ctx context.Context, _ string) error {
+	o.Preflight = func(ctx context.Context, _, _ string) error {
 		close(w.stop)
 		select {
 		case <-ctx.Done():

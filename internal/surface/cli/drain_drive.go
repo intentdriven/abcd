@@ -895,12 +895,12 @@ func driveLog(repoRoot string, w io.Writer) (say func(string), detail io.Writer,
 }
 
 // drivePreflight runs the repository's preflight in checkout, the drive's own
-// checkout of a lane's head, behind the load gate, as a process group of its
+// checkout of a lane's head, whose full commit id is head, behind the load gate, as a process group of its
 // own, so the terminal's interrupt does not reach it, and with only what a
 // stage carries of the environment, since the lane's own files decide what it
 // runs (preflightGoEnv).
-func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, checkout string) error {
-	return func(ctx context.Context, checkout string) error {
+func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, checkout, head string) error {
+	return func(ctx context.Context, checkout, head string) error {
 		program, args, err := drivePreflightProgram()
 		if err != nil {
 			return err
@@ -911,7 +911,7 @@ func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, che
 		// #nosec G204 -- program is the running binary; the arguments are fixed.
 		cmd := exec.CommandContext(ctx, program, args...)
 		cmd.Dir = checkout
-		cmd.Env = preflightGoEnv(runner.PreflightEnv(p), checkout)
+		cmd.Env = preflightGoEnv(runner.PreflightEnv(p), checkout, head)
 		cmd.Stdout, cmd.Stderr = w, w
 		procgroup.Lead(cmd)
 		cmd.Cancel = func() error { return procgroup.Kill(cmd) }
@@ -921,11 +921,14 @@ func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, che
 	}
 }
 
-// preflightGoEnv is env with Go told which workspace file to read
-// (preflightGoWork), so none outside the checkout is, and to read no settings
-// file of its own (GOENV=off), which lies under the stage's home; GOFLAGS is
-// stated, empty, when env carries none, so nothing else supplies it.
-func preflightGoEnv(env []string, checkout string) []string {
+// preflightGoEnv is env with no GOWORK of its own and Go told to read no
+// settings file of its own (GOENV=off), which lies under the stage's home;
+// GOWORK is then off unless head tracks a go.work at the checkout's root
+// (headTracksRootGoWork), when it is left unset, so Go's own search upward
+// from where the preflight runs finds the nearest go.work the head tracks and
+// stops at the checkout's root at the latest. GOFLAGS is stated, empty, when
+// env carries none, so nothing else supplies it.
+func preflightGoEnv(env []string, checkout, head string) []string {
 	out := make([]string, 0, len(env)+3)
 	flags := false
 	for _, kv := range env {
@@ -938,29 +941,31 @@ func preflightGoEnv(env []string, checkout string) []string {
 		}
 		out = append(out, kv)
 	}
-	out = append(out, "GOWORK="+preflightGoWork(checkout), "GOENV=off")
+	if !headTracksRootGoWork(checkout, head) {
+		out = append(out, "GOWORK=off")
+	}
+	out = append(out, "GOENV=off")
 	if !flags {
 		out = append(out, "GOFLAGS=")
 	}
 	return out
 }
 
-// preflightGoWork is the GOWORK value of a preflight in checkout: the
-// checkout's own go.work when the commit checked out there tracks one at its
-// root as a regular file, whose content the drive has just compared with the
-// commit's, and "off" otherwise, or when that cannot be read, so Go reads no
-// workspace file from a directory above the checkout.
-func preflightGoWork(checkout string) string {
-	out, err := gitutil.RunCappedAsStored(checkout, 4096, "ls-tree", "-z", "HEAD", "--", "go.work")
+// headTracksRootGoWork says whether head, a full commit id, tracks go.work at
+// its root as a regular file, read as stored in the repository of checkout,
+// whose content the drive has just compared with the head's. A read that
+// fails, or a head that is not a full commit id, answers no.
+func headTracksRootGoWork(checkout, head string) bool {
+	if !gitutil.IsFullSHA(head) {
+		return false
+	}
+	out, err := gitutil.RunCappedAsStored(checkout, 4096, "ls-tree", "-z", head, "--", "go.work")
 	if err != nil {
-		return "off"
+		return false
 	}
 	meta, name, ok := strings.Cut(out, "\t")
 	f := strings.Fields(meta)
-	if !ok || strings.TrimRight(name, "\x00") != "go.work" || len(f) != 3 || f[1] != "blob" || (f[0] != "100644" && f[0] != "100755") {
-		return "off"
-	}
-	return filepath.Join(checkout, "go.work")
+	return ok && strings.TrimRight(name, "\x00") == "go.work" && len(f) == 3 && f[1] == "blob" && (f[0] == "100644" || f[0] == "100755")
 }
 
 // driveWhy is what stopped a drive, as a clause to follow its end words.

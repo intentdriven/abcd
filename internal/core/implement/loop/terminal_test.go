@@ -262,7 +262,7 @@ func (w *terminalWorld) options(t *testing.T) TerminalOptions {
 		Stages:  w.stages,
 		Stop:    w.stop,
 		Say:     func(s string) { w.lines = append(w.lines, s) },
-		Preflight: func(_ context.Context, checkout string) error {
+		Preflight: func(_ context.Context, checkout, _ string) error {
 			w.preflights = append(w.preflights, checkout)
 			if w.onPreflight != nil {
 				if err := w.onPreflight(checkout); err != nil {

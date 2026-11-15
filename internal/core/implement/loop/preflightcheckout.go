@@ -24,8 +24,11 @@ package loop
 // ignored ones included, is a difference. After it, an untracked file is a
 // difference unless the head's own .gitignore files ignore it, read with no
 // other ignore source, or it is under the local tier; and an untracked
-// .gitignore or .gitattributes anywhere is a difference, ignored or not, since
-// either changes how the checkout reads. Any difference holds the landing and
+// .gitignore or .gitattributes is a difference, ignored or not, since either
+// changes how the checkout reads, unless a directory above it is one the
+// head's own .gitignore files ignore as a whole (headIgnoredDirs), where it
+// changes how nothing but that directory's own untracked files read. Any
+// difference holds the landing and
 // marks nothing. A passing preflight's receipt is taken into the main
 // checkout's local tier, where the pre-push hook and the landing find it; that
 // the drive saw it pass is held in the drive's own memory (terminal.minted),
@@ -168,9 +171,12 @@ func (c *preflightCheckout) remove(repoRoot string) error {
 // such file outside preflightOutputs is a difference, ignored or not. After
 // it, a file is a difference when it is outside preflightOutputs and the
 // head's own .gitignore files do not ignore it, read with no other ignore
-// source (no info/exclude, no core.excludesFile); and any untracked
+// source (no info/exclude, no core.excludesFile); and an untracked
 // .gitignore or .gitattributes is, ignored or not, since either changes what
-// the listing ignores or how the tracked files are read.
+// the listing ignores or how the tracked files are read, unless it lies below
+// a directory the head's own .gitignore files ignore as a whole
+// (headIgnoredDirs), which holds no tracked file and nothing the first
+// listing judged.
 func (c *preflightCheckout) differs(head string, after bool) string {
 	index := filepath.Join(c.tmp, "index")
 	if err := os.Remove(index); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -196,7 +202,66 @@ func (c *preflightCheckout) differs(head string, after bool) string {
 	if why := c.strayUntracked(index, outside, "--exclude-per-directory=.gitignore"); why != "" {
 		return why
 	}
-	return c.strayUntracked(index, ignoreOrAttributesFile)
+	ignored, why := c.headIgnoredDirs(index)
+	if why != "" {
+		return why
+	}
+	return c.strayUntracked(index, func(name string) bool {
+		return ignoreOrAttributesFile(name) && !belowAny(name, ignored)
+	})
+}
+
+// headIgnoredDirs lists, against index, the untracked directories the head's
+// own .gitignore files ignore as a whole: `ls-files --others --ignored
+// --directory --exclude-per-directory=.gitignore` names such a directory
+// alone, with its trailing slash, and nothing below it. A directory that holds
+// a tracked file is never named so. git also names, with its trailing slash, a
+// directory every file of which is ignored only from inside it (a .gitignore
+// of `*` there), and then names those files as well; a directory with any
+// entry below it is therefore not one. The listing reads every .gitignore in
+// the checkout, an untracked one too; a directory ignored by an untracked one
+// leaves that file to be counted itself, since it lies above the directory and
+// so below none git named alone. A read that fails is said as why.
+func (c *preflightCheckout) headIgnoredDirs(index string) (map[string]bool, string) {
+	var names []string
+	w := &nulNames{each: func(name string) { names = append(names, name) }}
+	if err := gitutil.StreamWithIndexAsCheckedOut(c.dir, index, w, "ls-files", "-z", "--others", "--ignored", "--directory", "--exclude-per-directory=.gitignore"); err != nil {
+		return nil, readWhy("the directories the head ignores could not be listed", err)
+	}
+	w.flush()
+	dirs := map[string]bool{}
+	for _, n := range names {
+		if strings.HasSuffix(n, "/") {
+			dirs[n] = true
+		}
+	}
+	for _, n := range names {
+		for d := parentDir(n); d != ""; d = parentDir(d) {
+			delete(dirs, d)
+		}
+	}
+	return dirs, ""
+}
+
+// parentDir is the directory, with its trailing slash, that holds name, a
+// slash path relative to the checkout whose own trailing slash marks a
+// directory; "" at the checkout's root.
+func parentDir(name string) string {
+	i := strings.LastIndexByte(strings.TrimSuffix(name, "/"), '/')
+	if i < 0 {
+		return ""
+	}
+	return name[:i+1]
+}
+
+// belowAny says whether name lies below one of dirs.
+func belowAny(name string, dirs map[string]bool) bool {
+	for d := parentDir(name); d != ""; d = parentDir(d) {
+		if dirs[d] {
+			return true
+		}
+	}
+	return false
 }
 
 // strayUntracked lists the checkout's untracked files against index, with
@@ -316,7 +381,7 @@ func (t *terminal) ownPreflight(ctx context.Context, runID string, lane Lane) (h
 		return "the drive's own checkout does not hold the head " + shortSHA(lane.HeadSHA) + " (" + why + "), so its preflight is not run", false, nil
 	}
 	t.say("%s %s: running the preflight in the drive's own checkout of %s", runID, lane.ID, shortSHA(lane.HeadSHA))
-	if perr := t.preflight(ctx, c.dir); perr != nil {
+	if perr := t.preflight(ctx, c.dir, lane.HeadSHA); perr != nil {
 		return "", false, perr
 	}
 	if why := c.differs(lane.HeadSHA, true); why != "" {

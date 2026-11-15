@@ -187,6 +187,20 @@ func ownCheckoutHome(t *testing.T) string {
 	return abcdhome.Path(home, preflightCheckoutsDir)
 }
 
+// ignoreInHead commits lines added to the lane's .gitignore as the lane's
+// head.
+func ignoreInHead(t *testing.T, w *terminalWorld, lines string) {
+	t.Helper()
+	wt := gittest.OpenRepo(t, w.worktree)
+	was, err := os.ReadFile(filepath.Join(w.worktree, ".gitignore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt.Write(".gitignore", string(was)+lines)
+	wt.Commit("ignore more")
+	w.head = strings.TrimSpace(wt.Git("rev-parse", "HEAD"))
+}
+
 // checkoutGone fails t unless the drive's checkout dir, inside parent, is
 // gone from disk and from git's worktrees, and parent holds nothing.
 func checkoutGone(t *testing.T, w *terminalWorld, parent, dir string) {
@@ -211,33 +225,46 @@ func checkoutGone(t *testing.T, w *terminalWorld, parent, dir string) {
 // TestAPreflightThatChangesTheCheckoutLeavesNoReceiptTaken: a checkout that no
 // longer holds the head's content once the preflight ran (a tracked file
 // changed, an untracked file the head's own .gitignore files do not ignore
-// left, though the repository's info/exclude does, or an untracked .gitignore
-// or .gitattributes left, though it is ignored) holds the landing, the lane
+// left, though the repository's info/exclude does, an untracked .gitignore
+// that ignores itself and its directory, or an untracked .gitattributes the
+// head ignores as a file in a directory it does not ignore) holds the landing, the lane
 // does not land, the preflight is not run again on the same head, and the
 // checkout is removed.
 func TestAPreflightThatChangesTheCheckoutLeavesNoReceiptTaken(t *testing.T) {
-	for name, change := range map[string]func(dir string) error{
-		"a tracked file changed": func(dir string) error {
+	for name, c := range map[string]struct {
+		ignore string
+		change func(dir string) error
+	}{
+		"a tracked file changed": {change: func(dir string) error {
 			return os.WriteFile(filepath.Join(dir, "a.go"), []byte("package a\n\nvar later = 1\n"), 0o644)
-		},
-		"an untracked file the head does not ignore": func(dir string) error {
+		}},
+		"an untracked file the head does not ignore": {change: func(dir string) error {
 			return os.WriteFile(filepath.Join(dir, "zz_x.go"), []byte("package a\n"), 0o644)
-		},
-		"an untracked .gitignore": func(dir string) error {
+		}},
+		"an untracked .gitignore": {change: func(dir string) error {
 			if err := os.MkdirAll(filepath.Join(dir, "sub"), 0o755); err != nil {
 				return err
 			}
+			if err := os.WriteFile(filepath.Join(dir, "sub", "f"), []byte("f\n"), 0o644); err != nil {
+				return err
+			}
 			return os.WriteFile(filepath.Join(dir, "sub", ".gitignore"), []byte("*\n"), 0o644)
-		},
-		"an untracked .gitattributes": func(dir string) error {
-			return os.WriteFile(filepath.Join(dir, filepath.FromSlash(landing.TierRelDir), ".gitattributes"), []byte("*.go -text\n"), 0o644)
-		},
+		}},
+		"an untracked .gitattributes": {ignore: "/sub/.gitattributes\n", change: func(dir string) error {
+			if err := os.MkdirAll(filepath.Join(dir, "sub"), 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(filepath.Join(dir, "sub", ".gitattributes"), []byte("*.go -text\n"), 0o644)
+		}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			parent := ownCheckoutHome(t)
 			w := newTerminalWorld(t)
 			w.plantedReceipt = true
-			w.onPreflight = change
+			if c.ignore != "" {
+				ignoreInHead(t, w, c.ignore)
+			}
+			w.onPreflight = c.change
 			exclude := filepath.Join(strings.TrimSpace(w.repo.Git("rev-parse", "--path-format=absolute", "--git-common-dir")), "info", "exclude")
 			if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
 				t.Fatal(err)
@@ -264,15 +291,34 @@ func TestAPreflightThatChangesTheCheckoutLeavesNoReceiptTaken(t *testing.T) {
 	}
 }
 
-// TestAnIgnoredBuildOutputLeftByThePreflightPasses: a file the preflight
-// leaves that the head's own .gitignore ignores (go.work here) holds nothing,
-// and the lane lands on the receipt the drive took.
+// TestAnIgnoredBuildOutputLeftByThePreflightPasses: what the preflight leaves
+// that the head's own .gitignore ignores holds nothing (go.work, and a tool's
+// cache directory the head ignores, which holds a .gitignore of `*` and a
+// .gitattributes of its own), and the lane lands on the receipt the drive
+// took.
 func TestAnIgnoredBuildOutputLeftByThePreflightPasses(t *testing.T) {
 	parent := ownCheckoutHome(t)
 	w := newTerminalWorld(t)
 	w.plantedReceipt = true
+	ignoreInHead(t, w, ".pytest_cache/\n")
 	w.onPreflight = func(dir string) error {
-		return os.WriteFile(filepath.Join(dir, "go.work"), []byte("go 1.22\n"), 0o644)
+		if err := os.WriteFile(filepath.Join(dir, "go.work"), []byte("go 1.22\n"), 0o644); err != nil {
+			return err
+		}
+		cache := filepath.Join(dir, ".pytest_cache")
+		if err := os.MkdirAll(filepath.Join(cache, "v", "cache"), 0o755); err != nil {
+			return err
+		}
+		for name, body := range map[string]string{
+			".gitignore":             "# Created by pytest automatically.\n*\n",
+			"README.md":              "# pytest cache directory #\n",
+			"v/cache/.gitattributes": "* -text\n",
+		} {
+			if err := os.WriteFile(filepath.Join(cache, filepath.FromSlash(name)), []byte(body), 0o644); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	o := oneLane(t, w)
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
