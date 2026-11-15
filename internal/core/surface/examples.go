@@ -66,6 +66,8 @@ var examples = map[string]string{
 	"abcd embark lessons": "abcd embark lessons ../lifeboat",
 	"abcd embark probe":   "abcd embark probe ../lifeboat",
 
+	"abcd explain": "abcd explain ideate record --input verdict-json",
+
 	"abcd history discard":     "abcd history discard 0123abcd-session.raw --yes",
 	"abcd history reconstruct": "abcd history reconstruct 0123abcd-session",
 	"abcd history show":        "abcd history show 0123abcd-session",

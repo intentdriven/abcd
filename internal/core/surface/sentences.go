@@ -161,6 +161,9 @@ var sentences = map[string]string{
 	"abcd embark probe": "Report what a lifeboat would write into a target, coverage blanks first: " +
 		"Writes nothing; refuses a lifeboat whose manifest does not verify.",
 
+	"abcd explain": "Print how to call one command, or the shape of one input it reads: " +
+		"Writes nothing; refuses a command path the tree does not have.",
+
 	"abcd guard": "Judge a shell command against the hazard registry before it runs: " +
 		"Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.",
 	"abcd guard check": "Judge one shell command against the hazard registry: " +

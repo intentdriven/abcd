@@ -1820,6 +1820,22 @@
       "flags": []
     },
     {
+      "path": "abcd explain",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Print how to call one command, or the shape of one input it reads: Writes nothing; refuses a command path the tree does not have.",
+      "flags": [
+        {
+          "name": "input",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd guard",
       "hidden": false,
       "group": "agents",
