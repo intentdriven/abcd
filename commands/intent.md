@@ -357,6 +357,8 @@ any question is a valid answer, but silence is not consent.
 - In abcd's own interviews, before a stop that is not a question (a hand-off, or a step the person runs), record whose answer is owed with `abcd mode facilitator` or `abcd mode product-thinker`, and set it back with `abcd mode managed` once the answer is in. Where the host has no status surface, the set form prints one line naming the addressee; relay it verbatim, because that line is the whole of the fallback.
 - In abcd's own interviews, classify each question's addressee first (the product thinker or the technical facilitator), and set the mode to that person with `abcd mode product-thinker` or `abcd mode facilitator` before the question is written, so its check reads the person it is for: the number in the header names no person, and the answer sets the mode back to managed. The status line names the person the question on screen is for, so the tabs of one question are for one person, and a mixed interview re-sets the mode per question, never once at the start.
 
+The figures stated here are abcd's defaults, in force where neither `.abcd/config.json` nor the person's own `~/.abcd.noindex/config.json` sets `question.rows`, `question.label_words`, or `question.description_sentences` within the bounds named above; `abcd guard question` reports the values in force in its `limits` field, and whoever writes a question takes them from there, never from either file.
+
 The knowledge floor every explanation is measured against: [knowledge-floor.md](../.abcd/development/brief/glossary/interview/knowledge-floor.md).
 <!-- /generated -->
 

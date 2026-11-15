@@ -890,12 +890,13 @@ func TestTabsStayFixedAtTheCeilings(t *testing.T) {
 }
 
 // TestBoundsAreStatedOnce: no reader of a configurable limit writes a bound
-// of its own; each renders question.Bounds. The resolver is checked here; the
-// loader's note and the generated page sentence join the list as they land
+// of its own; each renders question.Bounds. The resolver, the asking rules
+// and the generated page sentence (asking.go), the renderers that write the
+// pages (cmd/asking-sync), and the loader's GRILL domain are checked here
 // (spc-2610301950037469 steps 3 and 4).
 func TestBoundsAreStatedOnce(t *testing.T) {
 	literal := regexp.MustCompile(`\b(24|60|4|8|2) to (60|8|4)\b|Floor:\s*\d|Ceiling:\s*\d`)
-	for _, rel := range []string{"../layered/question.go"} {
+	for _, rel := range []string{"../layered/question.go", "asking.go", "../../../cmd/asking-sync/main.go", "../rules/grill.go"} {
 		data, err := os.ReadFile(filepath.FromSlash(rel))
 		if err != nil {
 			t.Fatal(err)

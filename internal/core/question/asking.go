@@ -170,6 +170,25 @@ func boundsSentences() string {
 		"A person's own `" + machineConfigFile + "` may set each lower, never higher."
 }
 
+// PageLimitsSentence is the sentence the two generated pages carry after the
+// asking rules (spc-2610301950037469, approach 10; itd-2610301914350541
+// decisions 10 and 12). The pages are rendered from Default at build time and
+// ship with the plugin, so they cannot state a repository's values: the
+// sentence says the figures stated are abcd's defaults, names the keys from
+// Bounds without restating their bounds, which the layout rule already
+// states, and sends whoever writes a question to the check's `limits` for the
+// values in force, never to either file.
+func PageLimitsSentence() string {
+	keys := make([]string, len(Bounds))
+	for i, b := range Bounds {
+		keys[i] = "`" + b.Key + "`"
+	}
+	return "The figures stated here are abcd's defaults, in force where neither `" + repoConfigFile +
+		"` nor the person's own `" + machineConfigFile + "` sets " + joinList(keys, "or") +
+		" within the bounds named above; `abcd guard question` reports the values in force in its `limits` field," +
+		" and whoever writes a question takes them from there, never from either file."
+}
+
 // sentence is the layout rule's last sentence for n: under a refusal, that
 // the figures are abcd's defaults, the refusal, and that the check refuses
 // every abcd question until the file is fixed; otherwise the file that set
