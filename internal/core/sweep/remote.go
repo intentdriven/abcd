@@ -101,6 +101,11 @@ const remotePrefix = "refs/remotes/" + claim.Remote + "/"
 // branch on origin and its delete: the window another writer's push lands in.
 var beforeRemoteDelete func(ref string)
 
+// readRemoteTip reads origin's tip of a branch for the last check before a
+// delete: lsRemoteTipContext, which a test replaces to end the run's context
+// while the read is under way.
+var readRemoteTip = lsRemoteTipContext
+
 // remoteBranch is one branch on origin as this checkout last fetched it.
 type remoteBranch struct {
 	// name is the branch's name on origin, ref its full ref there, and
@@ -597,6 +602,13 @@ func (rj *remoteJudge) delete(b remoteBranch, addrHold, head, headTip string, he
 		}
 		return nil
 	}
+	// The run's questions to origin before its first delete may have been
+	// cut short by the run's end, which reads as no answer: a stopped run is
+	// reported as stopped, never as a hold. Every read below is followed by
+	// the same check, before its answer is judged.
+	if err := stopped(); err != nil {
+		return err
+	}
 	if reason, ev := rj.headHold(b, head, headTip, headFail); reason != "" {
 		return held(reason, ev...)
 	}
@@ -644,16 +656,27 @@ func (rj *remoteJudge) delete(b remoteBranch, addrHold, head, headTip string, he
 	// The repository's own state is read last, closest to the push: the
 	// worktrees, their upstreams and the guard's checks, and a fresh process
 	// table.
-	if err := rj.readLocal(); err != nil {
-		return held(err.Error())
+	lerr := rj.readLocal()
+	if err := stopped(); err != nil {
+		return err
+	}
+	if lerr != nil {
+		return held(lerr.Error())
 	}
 	rj.live.probe = newProbe(rj.ctx, rj.o.Probe)
-	if ev := rj.holds(b, map[string][]string{b.name: open}, bases, ""); len(ev) > 0 {
+	ev := rj.holds(b, map[string][]string{b.name: open}, bases, "")
+	if err := stopped(); err != nil {
+		return err
+	}
+	if len(ev) > 0 {
 		return held(details(ev), ev...)
 	}
 	ctx, cancel := context.WithTimeout(rj.ctx, remoteNetTimeout)
 	defer cancel()
-	tip, found, err := lsRemoteTipContext(ctx, rj.root, claim.Remote, b.name)
+	tip, found, err := readRemoteTip(ctx, rj.root, claim.Remote, b.name)
+	if serr := stopped(); serr != nil {
+		return serr
+	}
 	switch {
 	case err != nil:
 		return held("origin's tip of it could not be read (" + answerText(err) + ")")

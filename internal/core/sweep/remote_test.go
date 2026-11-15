@@ -667,3 +667,32 @@ func TestAPushAddressOtherThanOriginsFetchAddressHoldsEveryDelete(t *testing.T) 
 		t.Fatalf("a held delete is no fault: refusal %q, exit %d", res.Refusal, res.ExitCode())
 	}
 }
+
+// TestARunStoppedWhileOriginsTipIsReadIsReportedStopped: a run whose context
+// ends while the last check reads origin's tip of the branch is reported as
+// stopped, the run's fault, not as a branch whose tip could not be read; the
+// branch stands on origin.
+func TestARunStoppedWhileOriginsTipIsReadIsReportedStopped(t *testing.T) {
+	repo, origin := originRepo(t)
+	tip := mergedOnOrigin(repo, "feat", "feat.txt")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	readRemoteTip = func(rctx context.Context, dir, remote, branch string) (string, bool, error) {
+		cancel()
+		return lsRemoteTipContext(rctx, dir, remote, branch)
+	}
+	t.Cleanup(func() { readRemoteTip = lsRemoteTipContext })
+	f := &fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}
+
+	res, err := sweepRemote(ctx, repo.Root(), remoteOpts(f), true)
+	r := remoteRowFor(t, res, "feat")
+	if err == nil || res.ExitCode() != ExitRefused || !strings.Contains(res.Refusal, "the run was stopped before every delete was made") {
+		t.Fatalf("a run stopped at the last check is the run's fault: err %v, exit %d, refusal %q", err, res.ExitCode(), res.Refusal)
+	}
+	if r.Outcome != OutcomeKept || r.Reason != "the run was stopped before the delete, so the branch is kept" {
+		t.Fatalf("%+v; want it kept as stopped, not held on an unread tip", r)
+	}
+	if onOrigin(repo, origin, "feat") != tip {
+		t.Fatal("origin no longer holds feat")
+	}
+}
