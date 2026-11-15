@@ -30,6 +30,7 @@ package loop
 import (
 	"errors"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -102,11 +103,16 @@ func pickGit(dir string, args ...string) (string, error) {
 // pickGitInput is pickGit with stdin given to git on its standard input (""
 // for none).
 func pickGitInput(dir, stdin string, args ...string) (string, error) {
+	return gitutil.RunTreeCommand(pickGitCommand(dir, stdin, args), args)
+}
+
+// pickGitCommand is the command pickGitInput runs.
+func pickGitCommand(dir, stdin string, args []string) *exec.Cmd {
 	cmd := gitutil.WorkingTreeCommand(dir, args...)
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
 	}
-	return gitutil.RunTreeCommand(cmd, args)
+	return cmd
 }
 
 // commitGit is pickGit for a command that runs the repository's hooks on the
@@ -247,15 +253,24 @@ func pickGitIndex(dir, index string, args ...string) (string, error) {
 // pickGitIndexInput is pickGitIndex with stdin given to git on its standard
 // input ("" for none).
 func pickGitIndexInput(dir, index, stdin string, args ...string) (string, error) {
+	cmd, err := pickGitIndexCommand(dir, index, stdin, args)
+	if err != nil {
+		return "", err
+	}
+	return gitutil.RunTreeCommand(cmd, args)
+}
+
+// pickGitIndexCommand is the command pickGitIndexInput runs.
+func pickGitIndexCommand(dir, index, stdin string, args []string) (*exec.Cmd, error) {
 	if !filepath.IsAbs(index) {
-		return "", fmt.Errorf("the scratch index %q is not an absolute path", index)
+		return nil, fmt.Errorf("the scratch index %q is not an absolute path", index)
 	}
 	cmd := gitutil.WorkingTreeCommand(dir, append([]string{"-c", "core.splitIndex=false"}, args...)...)
 	cmd.Env = append(cmd.Env, "GIT_INDEX_FILE="+index)
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
 	}
-	return gitutil.RunTreeCommand(cmd, args)
+	return cmd, nil
 }
 
 // pickCommit makes, or finds, the pick's record-only commit on the lane's

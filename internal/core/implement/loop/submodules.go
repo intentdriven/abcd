@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 
@@ -14,25 +16,52 @@ import (
 )
 
 // addAllGit runs `git add -A` in dir, the root of a lane's worktree or of the
-// checkout, on its own index (pickGitInput), limited to pathspec ("." when
+// checkout, on its own index (addCommand), limited to pathspec ("." when
 // none), with each checked-out submodule left out whose commit is the one the
 // index records (addAllArgs).
 func addAllGit(dir string, pathspec ...string) (string, error) {
-	args, stdin, err := addAllArgs(dir, "", pathspec)
-	if err != nil {
-		return "", err
-	}
-	return pickGitInput(dir, stdin, args...)
+	return addAll(dir, "", pathspec)
 }
 
-// addAllGitIndex is addAllGit on the scratch index at index
-// (pickGitIndexInput).
+// addAllGitIndex is addAllGit on the scratch index at index (addCommand).
 func addAllGitIndex(dir, index string, pathspec ...string) (string, error) {
+	return addAll(dir, index, pathspec)
+}
+
+// addAll runs addAllArgs's add through addCommand.
+func addAll(dir, index string, pathspec []string) (string, error) {
 	args, stdin, err := addAllArgs(dir, index, pathspec)
 	if err != nil {
 		return "", err
 	}
-	return pickGitIndexInput(dir, index, stdin, args...)
+	cmd, err := addCommand(dir, index, stdin, args)
+	if err != nil {
+		return "", err
+	}
+	return gitutil.RunTreeCommand(cmd, args)
+}
+
+// addCommand is the command the drive's add runs: pickGitCommand at dir, or,
+// on the scratch index at index, pickGitIndexCommand, with
+// GIT_ICASE_PATHSPECS taken out of its environment. git has no option that
+// undoes that variable, and with it set every pathspec matches without regard
+// to case, so an exclude would also leave out a path that differs from the
+// submodule's only in case; without it an exclude matches the submodule's own
+// path alone. No program the add starts sees the variable.
+func addCommand(dir, index, stdin string, args []string) (*exec.Cmd, error) {
+	var cmd *exec.Cmd
+	if index == "" {
+		cmd = pickGitCommand(dir, stdin, args)
+	} else {
+		var err error
+		if cmd, err = pickGitIndexCommand(dir, index, stdin, args); err != nil {
+			return nil, err
+		}
+	}
+	cmd.Env = slices.DeleteFunc(cmd.Env, func(kv string) bool {
+		return strings.HasPrefix(kv, "GIT_ICASE_PATHSPECS=")
+	})
+	return cmd, nil
 }
 
 // addAllArgs is the command line, and the standard input, of a `git add -A`
@@ -43,7 +72,10 @@ func addAllGitIndex(dir, index string, pathspec ...string) (string, error) {
 // is the one the index records, each NUL-terminated. On standard input the
 // pathspecs are bounded by nothing the system's limit on a command line's
 // length sets, and --no-literal-pathspecs keeps a GIT_LITERAL_PATHSPECS in
-// the environment from reading the excludes as file names.
+// the environment from reading the excludes as file names: git then sets
+// GIT_LITERAL_PATHSPECS=0 for every program the add starts (a content filter;
+// the add runs no hook, since WorkingTreeCommand pins core.hooksPath to
+// /dev/null).
 //
 // git's add compares the index with the working tree, and for such a
 // submodule starts a status inside it, under that submodule's own settings,

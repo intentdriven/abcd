@@ -90,7 +90,7 @@ import (
 // remoteIdentityHeld names, for a refusal and the docs, what settings a drive
 // holds across its lanes (remoteIdentityKey), as each environment its git
 // runs in reads them.
-const remoteIdentityHeld = "at every scope, as each environment the drive's git runs in reads them: where a networked git goes and how it reaches the remote (origin's and every remote's url, pushurl, uploadpack, receivepack, proxy, proxy authentication method, server options, promisor switch, partial-clone filter, mirror switch and vcs; extensions.partialClone and every promisor.*; every url rewrite; core.sshCommand, core.gitProxy and ssh.variant; the protocol allow rules; fetch.bundleURI), whom it trusts and what it sends (every credential.*; core.askPass; push.pushOption; transfer.advertiseSID; the http.* settings that decide where an https fetch or push connects, whom it takes as the remote and what it sends there: the proxy and its authentication, certificate and key, the resolve and redirect settings, the TLS version, ciphers, backend, certificate authorities and pinned key, the client certificate and key, cookies, extra headers, the user agent, credential delegation and the authentication switches, per URL too); " +
+const remoteIdentityHeld = "at every scope, as each environment the drive's git runs in reads them: where a networked git goes and how it reaches the remote (origin's and every remote's url, pushurl, uploadpack, receivepack, proxy, proxy authentication method, server options, promisor switch, partial-clone filter, token, mirror switch and vcs; extensions.partialClone and every promisor.*; every url rewrite; core.sshCommand, core.gitProxy and ssh.variant; the protocol allow rules; fetch.bundleURI), whom it trusts and what it sends (every credential.*; core.askPass; push.pushOption; transfer.advertiseSID; the http.* settings that decide where an https fetch or push connects, whom it takes as the remote and what it sends there: the proxy and its authentication, certificate and key, the resolve and redirect settings, the TLS version, ciphers, backend, certificate authorities and pinned key, the client certificate and key, cookies, extra headers, the user agent, credential delegation and the authentication switches, per URL too); " +
 	"the programs a command of the drive starts (core.hooksPath, core.fsmonitor, core.editor, core.alternateRefsCommand, uploadpack.packObjectsHook and gc.recentObjectsHook; content filters, diff and merge drivers and diff.external; every gpg.* and the signing and verifying switches; format.pretty and pretty.*, whose format can check a signature; the Git LFS transfer and extension programs; hook.*; init.templateDir); " +
 	"the settings that change which of them run (merge.renormalize, submodule.recurse and push.recurseSubmodules, status.submoduleSummary, core.attributesFile, core.worktree and extensions.worktreeConfig); include and includeIf paths and the files they name; and the global and system attributes files"
 
@@ -121,7 +121,11 @@ const remoteIdentityHeld = "at every scope, as each environment the drive's git 
 //     remote.<name>.serverOption, what a fetch from that remote sends the
 //     server; remote.<name>.promisor and partialclonefilter, which make a
 //     git that reads a missing object fetch it from that remote, and say
-//     what it asks for; remote.<name>.mirror, which makes a push to that
+//     what it asks for; remote.<name>.token, which a fetch compares with
+//     the token a server sends before it accepts a promisor remote the
+//     server names, where promisor.checkFields names the token (git
+//     help --config does not list it; git-config(1) documents it under
+//     promisor.checkFields); remote.<name>.mirror, which makes a push to that
 //     remote behave as if --mirror were given (git-config(1));
 //     remote.<name>.proxy and the remote's other program and destination
 //     keys are watched by the run's fingerprint.
@@ -172,7 +176,7 @@ const remoteIdentityHeld = "at every scope, as each environment the drive's git 
 // driveUnreadSettings beside this.
 const driveHeldConfig = `^(` +
 	`http\.(.+\.)?(proxy|proxyauthmethod|proxysslcainfo|proxysslcert|proxysslkey|proxysslcertpasswordprotected|sslverify|sslversion|sslcipherlist|sslcainfo|sslcapath|pinnedpubkey|sslbackend|schannelcheckrevoke|schannelusesslcainfo|ssltry|sslcert|sslcerttype|sslkey|sslkeytype|sslcertpasswordprotected|curloptresolve|followredirects|cookiefile|savecookies|extraheader|useragent|delegation|emptyauth|proactiveauth)` +
-	`|remote\..+\.(proxyauthmethod|serveroption|promisor|partialclonefilter|mirror)` +
+	`|remote\..+\.(proxyauthmethod|serveroption|promisor|partialclonefilter|token|mirror)` +
 	`|extensions\.partialclone` +
 	`|promisor\..+` +
 	`|push\.pushoption` +

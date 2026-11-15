@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -164,6 +165,159 @@ func TestTheDrivesAddReadsItsPathspecsAsAbcdWritesThem(t *testing.T) {
 	}
 	if got := r.Git("diff", "--cached", "--name-only"); got != "b.txt" {
 		t.Errorf("the drive's add stages the change beside the submodule: %q", got)
+	}
+}
+
+// TestTheAddsProgramsSeeLiteralPathspecsOffAndNoICase: git given
+// --no-literal-pathspecs sets GIT_LITERAL_PATHSPECS=0 for every program it
+// starts, as a post-index-change hook of git's own add on the drive's add's
+// command line records with the variable set to 1. The drive's add runs no
+// hook (core.hooksPath is pinned to /dev/null) and starts a content filter,
+// which sees GIT_LITERAL_PATHSPECS=0 and no GIT_ICASE_PATHSPECS (addCommand).
+// Watched failing with addAllArgs passing no --no-literal-pathspecs (the hook
+// and the filter saw 1) and with addCommand keeping GIT_ICASE_PATHSPECS (the
+// filter saw it).
+func TestTheAddsProgramsSeeLiteralPathspecsOffAndNoICase(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX sentinel script")
+	}
+	t.Setenv("HOME", t.TempDir())
+	r := gittest.NewRepo(t)
+	r.Git("config", "commit.gpgsign", "false")
+	r.Write("a.txt", "a\n")
+	r.Commit("seed")
+	dir := t.TempDir()
+	hookMark, filterMark := filepath.Join(dir, "hook"), filepath.Join(dir, "filter")
+	hooks := filepath.Join(r.Root(), ".git", "hooks")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hook := "#!/bin/sh\nprintf %s \"$GIT_LITERAL_PATHSPECS\" > " + hookMark + "\n"
+	if err := os.WriteFile(filepath.Join(hooks, "post-index-change"), []byte(hook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	filter := filepath.Join(dir, "clean.sh")
+	script := "#!/bin/sh\nprintf '%s %s' \"$GIT_LITERAL_PATHSPECS\" \"${GIT_ICASE_PATHSPECS-unset}\" > " + filterMark + "\ncat\n"
+	if err := os.WriteFile(filter, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r.Git("config", "filter.rec.clean", filter)
+	if err := os.MkdirAll(filepath.Join(r.Root(), ".git", "info"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(r.Root(), ".git", "info", "attributes"), []byte("c.txt filter=rec\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	read := func(p string) string {
+		b, err := os.ReadFile(p)
+		if errors.Is(err, os.ErrNotExist) {
+			return "(did not run)"
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = os.Remove(p)
+		return string(b)
+	}
+
+	r.Write("b.txt", "b\n")
+	args, stdin, err := addAllArgs(r.Root(), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	own := exec.Command("git", append([]string{"-C", r.Root()}, args...)...)
+	own.Env = append(r.Env(), "GIT_LITERAL_PATHSPECS=1")
+	own.Stdin = strings.NewReader(stdin)
+	if out, err := own.CombinedOutput(); err != nil {
+		t.Fatalf("git's own add on the drive's add's command line: %v\n%s", err, out)
+	}
+	if got := read(hookMark); got != "0" {
+		t.Errorf("a hook of git's own add on the drive's add's command line saw GIT_LITERAL_PATHSPECS=%s, want 0", got)
+	}
+	r.Git("reset", "-q")
+	_ = read(hookMark)
+
+	t.Setenv("GIT_LITERAL_PATHSPECS", "1")
+	t.Setenv("GIT_ICASE_PATHSPECS", "1")
+	r.Write("c.txt", "c\n")
+	if _, err := addAllGit(r.Root(), "."); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(filterMark); got != "0 unset" {
+		t.Errorf("the drive's add's content filter saw GIT_LITERAL_PATHSPECS and GIT_ICASE_PATHSPECS as %q, want \"0 unset\"", got)
+	}
+	if got := read(hookMark); got != "(did not run)" {
+		t.Errorf("the drive's add ran the repository's post-index-change hook (it saw %q)", got)
+	}
+}
+
+// TestTheDrivesAddExcludesTheSubmodulesOwnPathAlone: with
+// GIT_ICASE_PATHSPECS set, git matches every pathspec without regard to case,
+// so the exclude of an unmoved submodule at lib also leaves out LIB/f.txt.
+// The drive's add runs without the variable (addCommand), so the exclude
+// matches lib alone, as git's own answer shows: ls-files given the add's
+// pathspecs, under the add's command and environment, on its own index and
+// on a scratch one, lists LIB/f.txt. The index is checked with
+// core.ignoreCase off, so no filesystem's folding of case decides it.
+// Watched failing with addCommand keeping GIT_ICASE_PATHSPECS: LIB/f.txt was
+// left out.
+func TestTheDrivesAddExcludesTheSubmodulesOwnPathAlone(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := gittest.NewRepo(t)
+	r.Git("config", "commit.gpgsign", "false")
+	r.Git("config", "core.ignoreCase", "false")
+	r.Write("a.txt", "a\n")
+	r.Commit("seed")
+	r.AddSubmodule("lib")
+	blob := filepath.Join(t.TempDir(), "f.txt")
+	if err := os.WriteFile(blob, []byte("f\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	oid := r.Git("hash-object", "-w", blob)
+	r.Git("update-index", "--add", "--cacheinfo", "100644,"+oid+",LIB/f.txt")
+	scratch := filepath.Join(t.TempDir(), "index")
+	own, err := os.ReadFile(filepath.Join(r.Root(), ".git", "index"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(scratch, own, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_ICASE_PATHSPECS", "1")
+
+	for _, index := range []string{"", scratch} {
+		args, stdin, err := addAllArgs(r.Root(), index, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		specs := strings.Split(strings.TrimSuffix(stdin, "\x00"), "\x00")
+		if !slices.Contains(specs, ":(top,exclude,literal)lib") {
+			t.Fatalf("fixture: the add does not exclude the unmoved submodule (%q), so this test proves nothing", specs)
+		}
+		ls := append([]string{args[0], "ls-files", "-z", "--"}, specs...)
+		plain := exec.Command("git", append([]string{"-C", r.Root()}, ls...)...)
+		plain.Env = append(r.Env(), "GIT_ICASE_PATHSPECS=1")
+		if index != "" {
+			plain.Env = append(plain.Env, "GIT_INDEX_FILE="+index)
+		}
+		kept, err := gitutil.RunTreeCommand(plain, ls)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(kept, "LIB/f.txt\x00") {
+			t.Fatalf("fixture: with GIT_ICASE_PATHSPECS set, git's ls-files kept LIB/f.txt (%q), so this test proves nothing", kept)
+		}
+		cmd, err := addCommand(r.Root(), index, "", ls)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := gitutil.RunTreeCommand(cmd, ls)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(got, "LIB/f.txt\x00") || strings.Contains(got, "\x00lib\x00") || strings.HasPrefix(got, "lib\x00") {
+			t.Errorf("index %q: the drive's add's pathspecs leave out LIB/f.txt, or keep lib: %q", index, got)
+		}
 	}
 }
 
