@@ -130,6 +130,10 @@ var driveGitCommands = []driveGitCommand{
 	{"gitutil.EmptyTree", isolatedEnv, false},
 	{"gitutil.EmptyTreeName", isolatedEnv, false},
 	{"gitutil.EmptyTreeNameContext", isolatedEnv, false},
+	// The index listing the drive's staging reads to leave unmoved
+	// submodules out (addAllArgs).
+	{"gitutil.Gitlinks", isolatedEnv, false},
+	{"gitutil.GitlinksWithIndex", isolatedEnv, false},
 	{"gitutil.IsAncestor", isolatedEnv, false},
 	// The floor guard the spot-check store's git passes: git's version and
 	// the repository's promisor settings, read in the isolated environment.
