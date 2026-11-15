@@ -1648,13 +1648,7 @@ func rulesWithLimits(root string, errOut io.Writer) (rules.RuleSet, error) {
 	var unread *layered.UnreadError
 	switch {
 	case err == nil:
-		var n question.LimitsNote
-		if v.SetByFile() {
-			for _, src := range v.Sources {
-				n.SetBy = append(n.SetBy, src.Origin)
-			}
-		}
-		return rules.LoadWith(root, v.V, n)
+		return rules.LoadWith(root, v.V, v.Note())
 	case errors.As(err, &unread):
 		diagnosticLine(errOut, "abcd rules: %s: the question limits were not read (%s); %s states abcd's defaults",
 			rules.GrillDomain, scrubPaths(err), rules.GrillDomain)

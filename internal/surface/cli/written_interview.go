@@ -95,11 +95,11 @@ func runWrittenInterview(cmd *cobra.Command, w *interview.Written, f writtenFlag
 	if !interview.Reaches(cfg, w.Role) {
 		return interview.WrittenResult{}, &exitError{Code: 2, Msg: termsafe.SanitizeBlock(w.NoRoute().Error())}
 	}
-	limits, err := questionLimitsFor(roots, errOut)
+	limits, note, err := questionLimitsFor(roots, errOut)
 	if err != nil {
 		return interview.WrittenResult{}, &exitError{Code: 2, Msg: w.Verb + ": " + err.Error() + " (nothing was run)"}
 	}
-	w.Limits = limits
+	w.Limits, w.LimitsNote = limits, note
 	w.Config = cfg
 	w.Transcripts = &lazyHistoryStore{cmd: cmd}
 	w.Verbs = verbsOf(cmd.Root())
@@ -228,16 +228,20 @@ func labelOf(q question.Question, value string) string {
 // returned as the error, sanitised, for the door to refuse before any
 // question; a layer that could not be read fails open and loud: one line on
 // errOut in the question gate's own form, naming the file, and the defaults.
-func questionLimitsFor(roots layered.Roots, errOut io.Writer) (question.Limits, error) {
+// The note is where the limits in force came from, for the asking rules to
+// name the file that set each figure (spc-2610301950037469, approach 6); it
+// is empty at the defaults, an unread layer's included, and a refusal never
+// reaches it, since the door refuses before any question.
+func questionLimitsFor(roots layered.Roots, errOut io.Writer) (question.Limits, question.LimitsNote, error) {
 	v, err := layered.QuestionLimits(roots)
 	var unread *layered.UnreadError
 	switch {
 	case err == nil:
-		return v.V, nil
+		return v.V, v.Note(), nil
 	case errors.As(err, &unread):
 		// The resolver hands back the defaults with an unread layer.
 		_ = questionFailOpen(errOut, "%s; the questions are measured at abcd's defaults", err)
-		return v.V, nil
+		return v.V, question.LimitsNote{}, nil
 	}
-	return question.Limits{}, errors.New(termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+	return question.Limits{}, question.LimitsNote{}, errors.New(termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 }
