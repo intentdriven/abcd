@@ -1,10 +1,13 @@
 package lint
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/question"
 )
 
 // The register sweep reaches agents/ as well as commands/ and skills/
@@ -165,6 +168,21 @@ func TestGuardPageDocumentsTheQuestionVerb(t *testing.T) {
 			t.Errorf("the guard page's `question` section does not name %s", want)
 		}
 	}
+	// Where the limits are set and that the check reports them
+	// (spc-2610301950037469, approach 10).
+	flat := strings.Join(strings.Fields(section), " ")
+	for _, want := range []string{
+		"`limits`, `limits_source`",
+		"`.abcd/config.json` sets them under `question`",
+		"`~/.abcd.noindex/config.json` may set each lower",
+		"refused where it sets one higher",
+		"within the bounds the asking rules state",
+		"Take the limits from here, never from either file",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("the guard page's `question` section does not say where the limits are set and that the check reports them: missing %q", want)
+		}
+	}
 	ref, err := os.ReadFile(filepath.Join(repoRootFromPackage, "docs", "reference", "cli", "commands.md"))
 	if err != nil {
 		t.Fatal(err)
@@ -249,5 +267,74 @@ func TestWriterPageStatesItsRefusalsAndFallbacks(t *testing.T) {
 	}
 	if strings.Contains(text, "prints `managed`") || strings.Contains(text, "carries abcd's block") {
 		t.Error("the writer page still judges an `unnamed` tab by `abcd mode` or abcd's block in a root file; the check's `badge` is the State value the hook decides with")
+	}
+}
+
+// TestConfigurationChapterListsTheQuestionKeys (spc-2610301950037469,
+// approach 10; itd-2610301914350541 decisions 1, 3, 5 and 14): the brief's
+// configuration chapter carries `### The question keys` after the interview
+// key, whose JSON block names the three keys under `question`, each with its
+// bounds and its bundled default as internal/core/question states them; its
+// prose gives the layering (the repository sets a key, and the person's own
+// file may set it lower and is refused where it sets it higher), what a
+// refused value does to the hook and to `abcd guard question`, and that the
+// check reports the values in force.
+func TestConfigurationChapterListsTheQuestionKeys(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRootFromPackage, ".abcd", "development", "brief", "05-internals", "03-configuration.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	interview := strings.Index(text, "\n### The interview key\n")
+	at := strings.Index(text, "\n### The question keys\n")
+	if interview < 0 || at < 0 || at < interview {
+		t.Fatalf("the configuration chapter must carry `### The question keys` after `### The interview key` (interview at %d, question keys at %d)", interview, at)
+	}
+	section := text[at+1:]
+	if end := strings.Index(section[1:], "\n### "); end >= 0 {
+		section = section[:end+1]
+	}
+	open := strings.Index(section, "```json\n")
+	if open < 0 {
+		t.Fatal("the question keys section carries no JSON block")
+	}
+	block := section[open:]
+	block = block[:strings.Index(block[len("```json\n"):], "```")+len("```json\n")]
+	if !strings.Contains(block, `"question": {`) {
+		t.Errorf("the JSON block does not open the `question` object:\n%s", block)
+	}
+	defaults := question.Default.Configurable()
+	for i, b := range question.Bounds {
+		name := strings.TrimPrefix(b.Key, "question.")
+		line := ""
+		for _, l := range strings.Split(block, "\n") {
+			if strings.Contains(l, `"`+name+`":`) {
+				line = l
+				break
+			}
+		}
+		if line == "" {
+			t.Errorf("the JSON block does not name %s", b.Key)
+			continue
+		}
+		for _, want := range []string{b.String(), fmt.Sprintf("bundled default %d", defaults[i])} {
+			if !strings.Contains(line, want) {
+				t.Errorf("the JSON block's %s line does not state %q: %s", name, want, line)
+			}
+		}
+	}
+	prose := strings.Join(strings.Fields(section), " ")
+	for _, want := range []string{
+		"The repository sets them",
+		"`~/.abcd.noindex/config.json`",
+		"may only tighten it",
+		"one above it is refused",
+		"`abcd guard question` exits 2",
+		"`limits`",
+		"`limits_source`",
+	} {
+		if !strings.Contains(prose, want) {
+			t.Errorf("the question keys section does not state %q", want)
+		}
 	}
 }

@@ -737,7 +737,17 @@ only set them lower:
 - **A refused value falls through to nothing.** Nothing is passed over for the
   default: the binary's own interviews (`abcd intent interview`, `abcd reflect
   interview`) and `abcd ahoy install` refuse before their first question, exit
-  2, naming the key, the value, the bounds and the file.
+  2, naming the key, the value, the bounds and the file; the question gate in
+  `abcd guard hook` refuses every question carrying abcd's header; and
+  `abcd guard question` exits 2 with `refused` and no `ready` input, whatever
+  the draft.
+- **The check reports the values in force.** `abcd guard question` returns
+  them as `limits` and the file that set each as `limits_source` (`bundled`,
+  `.abcd/config.json` or `~/.abcd.noindex/config.json`), and the GRILL
+  domain's layout rule states them in words, naming the file. The pages abcd
+  ships state the bundled defaults, since they are written before any
+  repository sets a value, and send the question writer to `limits` for the
+  values in force, never to either file.
 - **A file the resolver cannot read fails open and loud.** A `.abcd/config.json`
   that is a symlink or not a regular file, and a `~/.abcd.noindex/config.json`
   behind a symlinked `~/.abcd.noindex`, writable by group or other, or owned by
