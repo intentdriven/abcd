@@ -245,8 +245,13 @@ surface) and decides whether the question is abcd's by its header alone
 abcd's grammar, which is `Q` and the question's number with
 an optional part letter and an optional total (`Q1`, `Q1a`, `Q2/5`), or the
 older form opened by a role word from `Limits.ChipRoles` (`Product Q2`, `Setup
-Q1/4`), still read. Any other question is another tool's and runs, unchecked
-and unmarked, exit 0, wherever it is asked and whatever the mode names. The
+Q1/4`), still read. Any other question is another tool's and runs unchecked,
+exit 0, wherever it is asked and whatever the mode names. It is unmarked too,
+except where the badge shows and the mode names somebody: there it is marked
+open under that mode, with no mode written and no rule read, so the answer
+resets a mode the agent set before a question whose header then missed the
+grammar (`Q 1`, `q1`, `Q1A`, or none), rather than leaving it parked for the
+next question to inherit. The
 mode once made a question without a header abcd's too (itd-201 decision 10),
 and so held another tool's question, asked while it named somebody, to abcd's
 rules; the header alone draws the line now, and the compensating control for an
@@ -281,11 +286,13 @@ repository's question limits", naming the file and saying the question is
 checked at the defaults instead, leads a deny's reason or a rows note, and
 otherwise goes to stderr with exit 1, so the question is never admitted
 silently. Another tool's question runs unchecked whatever either file says. The
-addressee the product thinker's register rule reads is the mode's person for
-a call headed with abcd's number, where the badge shows, since a number names
-no person and the agent sets the mode before asking (decision 37), and nobody
-elsewhere; a call of older-form headers is read by each tab's role word, since
-the mode the gate then sets follows it; the binary's verb list
+addressee the product thinker's register rule reads is decided tab by tab: a
+tab with an older-form header by its own role word, never by a mode the gate
+is about to replace with it, and every other tab by the mode's person where
+the badge shows and the store was read, since a number names no person and
+the agent sets the mode before asking (decision 37), and by nobody elsewhere;
+each tab's `addressee` in the verdict is the person it was judged for; the
+binary's verb list
 is read from the command tree and passed in. The row limit is estimated with
 the host's frame measured at 80 by 24, and a side preview on any option is
 refused, because the host hides every option's description while a preview

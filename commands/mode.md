@@ -44,7 +44,9 @@ question in a repository abcd manages, it leaves the state as you set it and
 marks the question open. A question headed in the older form, a role word
 first (`Product Q2`), still sets the state from its role (`Product` names the
 product thinker; `Tech` and `Setup` name the technical facilitator). Either
-way abcd's question is never refused on the mode. The answer resets the state to `managed`: the
+way abcd's question is never refused on the mode. A question whose header
+misses abcd's grammar (`Q 1`, `q1`, or none) is not checked, but it is still
+marked open under the state you set, so the answer resets it. The answer resets the state to `managed`: the
 plugin's hook on the question tool's result resets it when the answer comes
 back, and on a host that does not run that hook the prompt hook resets it on
 the next human message. Either says so once on stderr, so you do not set it

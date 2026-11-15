@@ -115,7 +115,9 @@ var denyHeadRe = regexp.MustCompile(`^Blocked by the abcd guard \(question tool\
 
 // hookOutcome reads what the hook did with a call as one of Decide's
 // outcomes. A silent admission is admit or admit-unchecked; it is told apart
-// only where the badge shows, by whether the question was marked open.
+// only where the badge shows and the mode reads managed, by whether the
+// question was marked open: under a mode naming somebody an unchecked
+// question is marked open too, so the answer resets that mode.
 func hookOutcome(t *testing.T, stdout, stderr string, code int, root string, badge bool) (outs []question.Outcome, reason, note string) {
 	t.Helper()
 	switch {
@@ -137,10 +139,13 @@ func hookOutcome(t *testing.T, stdout, stderr string, code int, root string, bad
 		return []question.Outcome{question.OutcomeAdmitWithRowsNote}, "", out.HookSpecificOutput.AdditionalContext
 	case code == 0:
 		if badge {
-			if markedOpen(t, root) {
+			if !markedOpen(t, root) {
+				return []question.Outcome{question.OutcomeAdmitUnchecked}, "", ""
+			}
+			if st, err := mode.ReadAt(root); err == nil && st == mode.Managed {
 				return []question.Outcome{question.OutcomeAdmit}, "", ""
 			}
-			return []question.Outcome{question.OutcomeAdmitUnchecked}, "", ""
+			return []question.Outcome{question.OutcomeAdmit, question.OutcomeAdmitUnchecked}, "", ""
 		}
 		return []question.Outcome{question.OutcomeAdmit, question.OutcomeAdmitUnchecked}, "", ""
 	case code == 1:

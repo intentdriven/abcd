@@ -236,6 +236,9 @@ func TestGuardQuestionWritesNothing(t *testing.T) {
 		"clean-product-chip": question.OutcomeAdmit,
 		"rule-no-bold":       question.OutcomeRefuse,
 		"rule-rows":          question.OutcomeAdmitWithRowsNote,
+		// The hook marks an unlabelled question open under a named mode;
+		// the verb, which never asks, marks nothing.
+		"clean-unchipped": question.OutcomeAdmitUnchecked,
 	} {
 		res, _, _ := runQuestionVerb(t, name)
 		if res.Hook != want {

@@ -404,19 +404,17 @@ func (c checker) isLater(label string) bool {
 	return false
 }
 
-// forProductThinker reports whether rule 9 applies: the mode names the product
-// thinker, or no mode names anyone and an older-form header's role word is the
-// product thinker's. A number-form header carries no role word, so its
-// register follows the mode alone (spc-2610301917245442, step 3).
+// forProductThinker reports whether rule 9 applies to one tab, decided per
+// tab (spc-2610301917245442, step 3): a header in the older form names its
+// tab's person in its role word, so the rule applies when that word is the
+// product thinker's, whatever the caller passed; any other header, the number
+// form included, carries no role word, so the rule follows the person the
+// caller passed, the mode's.
 func (c checker) forProductThinker(header string) bool {
-	switch c.who.Person {
-	case ProductThinker:
-		return true
-	case Facilitator:
-		return false
+	if m := c.chip.FindStringSubmatch(header); m != nil && m[1] != "" {
+		return m[1] == ProductRole
 	}
-	m := c.chip.FindStringSubmatch(header)
-	return m != nil && m[1] == ProductRole
+	return c.who.Person == ProductThinker
 }
 
 var (

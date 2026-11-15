@@ -323,13 +323,12 @@ func Decide(f Fields, s State, l Limits) Verdict {
 		}
 		v.Unread = append(v.Unread, u)
 	}
-	// The register rule follows the mode for a number header, where the
-	// badge shows and the store was read; elsewhere nobody is named, and an
-	// older-form chip's role word stands in (forProductThinker). A call of
-	// older-form chips alone is judged on its chips, not on a mode it is
-	// about to replace.
+	// The register rule is decided per tab (forProductThinker): an
+	// older-form tab by its own role word, never by a mode it is about to
+	// replace, and every other tab by the mode's person, passed where the
+	// badge shows and the store was read; elsewhere nobody is named.
 	who := Unnamed
-	if numbered && s.Badge && modeErr == nil {
+	if s.Badge && modeErr == nil {
 		who = s.Mode
 	}
 	if v.Chipped {
@@ -340,7 +339,7 @@ func Decide(f Fields, s State, l Limits) Verdict {
 		// The mode cannot be read, so the hook sets none from the chip.
 		v.ModeAfter, v.ModeChanges = s.Mode, false
 	}
-	v.Addressees = addressees(f, l, s.Mode)
+	v.Addressees = addressees(f, l, who)
 	if s.LimitsRefused != nil {
 		v.Outcome, v.Refused = OutcomeRefuse, s.LimitsRefused
 		v.ModeAfter, v.ModeChanges = s.Mode, false
@@ -396,8 +395,9 @@ func failedOpen(v Verdict) Verdict {
 	return v
 }
 
-// addressees is the person each checked tab is for: its older-form chip's role
-// where it carries one, else the person the mode names.
+// addressees is the person each checked tab is for, as its register rule was
+// judged: its older-form chip's role where it carries one, else the person
+// the mode names (who, Unnamed where the mode was not read).
 func addressees(f Fields, l Limits, mode Person) []Person {
 	tabs := checkedTabs(f, l)
 	out := make([]Person, len(tabs))

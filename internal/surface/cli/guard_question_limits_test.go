@@ -520,6 +520,7 @@ func TestQuestionRefusalIsBoundedOnAFlood(t *testing.T) {
 	q := wellBuilt()
 	flood := map[string]any{"header": q.Header, "question": strings.Repeat("- a \u2014\n", 1000) + q.Question, "options": q.Options}
 	maxLines := len(questionRules)*question.Default.QuestionsPerCall[1] + 1 + 3
+	const maxLineBytes = 1024
 	for name, input := range map[string]any{
 		"40,000 tabs":       map[string]any{"questions": tabs},
 		"30,000 options":    map[string]any{"questions": []any{map[string]any{"header": "Product Q1", "question": q.Question, "options": opts}}},
@@ -533,11 +534,14 @@ func TestQuestionRefusalIsBoundedOnAFlood(t *testing.T) {
 			stdout, stderr, code := runGuard(payload, "guard", "hook")
 			reason := mustDeny(t, stdout, stderr, code)
 			lines := strings.Split(strings.TrimRight(reason, "\n"), "\n")
+			if len(reason) > maxLines*maxLineBytes {
+				t.Fatalf("the refusal is %d bytes; it must stay within %d (the line bound times the per-line cap):\n%.600s", len(reason), maxLines*maxLineBytes, reason)
+			}
 			if len(lines) > maxLines {
 				t.Fatalf("the refusal is %d lines; it must stay within %d (the rules times the checked tabs, the call's finding and the fixed lines):\n%.2000s", len(lines), maxLines, reason)
 			}
 			for _, l := range lines {
-				if len(l) > 1024 {
+				if len(l) > maxLineBytes {
 					t.Errorf("a refusal line is %d bytes; each line is bounded by the echo cap:\n%.300s", len(l), l)
 				}
 				if strings.Contains(l, "more part(s)") {
@@ -739,9 +743,11 @@ func TestVerbTextAndDenyShareTheirLines(t *testing.T) {
 // step 3; decision 36): a question is abcd's only when a header is in abcd's
 // grammar, so one without, asked while the mode names the product thinker,
 // the facilitator or nobody, or with the mode store unreadable, is another
-// tool's: it runs unchecked, unmarked, with nothing said and the mode left
-// where it was, however it breaks abcd's rules. It replaces the line that said
-// a mode had made such a question abcd's.
+// tool's: it runs unchecked, with nothing said and the mode left where it
+// was, however it breaks abcd's rules. It replaces the line that said a mode
+// had made such a question abcd's. Under a mode naming somebody it is marked
+// open, so the answer resets that mode (TestUnlabelledQuestionUnderANamedModeResetsOnTheAnswer);
+// under managed it is not.
 func TestUnlabelledQuestionRunsUncheckedWhateverTheMode(t *testing.T) {
 	foreign := hostQuestion{Header: "Ship", Question: "Ship it?", Options: []hostOption{{Label: "Yes (Recommended)"}, {Label: "No"}}}
 	for _, st := range []mode.State{mode.Managed, mode.ProductThinker, mode.Facilitator} {
@@ -750,8 +756,8 @@ func TestUnlabelledQuestionRunsUncheckedWhateverTheMode(t *testing.T) {
 			setMode(t, root, st)
 			stdout, stderr, code := runGuard(askPayload(t, root, foreign), "guard", "hook")
 			mustRunSilently(t, stdout, stderr, code)
-			if markedOpen(t, root) {
-				t.Error("another tool's question was marked open")
+			if open := markedOpen(t, root); open != (st != mode.Managed) {
+				t.Errorf("marked open %v; want it marked open only under a mode naming somebody", open)
 			}
 			if got, _ := mode.ReadAt(root); got != st {
 				t.Errorf("mode = %q, want it left at %q", got, st)
@@ -765,7 +771,76 @@ func TestUnlabelledQuestionRunsUncheckedWhateverTheMode(t *testing.T) {
 		}
 		stdout, stderr, code := runGuard(askPayload(t, root, foreign), "guard", "hook")
 		mustRunSilently(t, stdout, stderr, code)
+		if markedOpen(t, root) {
+			t.Error("a question was marked open beside a mode store the gate could not read")
+		}
 	})
+}
+
+// TestUnlabelledQuestionUnderANamedModeResetsOnTheAnswer: the agent sets the
+// mode before asking (decision 37), and a question whose header then misses
+// abcd's grammar (no header, "Q 1", "q1", "Q1A") is not abcd's, so it runs
+// unchecked; but it is marked open under the mode in force, with no mode
+// written, so the answer resets the mode to managed rather than leaving it
+// parked for the next question to inherit.
+func TestUnlabelledQuestionUnderANamedModeResetsOnTheAnswer(t *testing.T) {
+	for _, header := range []string{"", "Q 1", "q1", "Q1A"} {
+		t.Run("header "+strconv.Quote(header), func(t *testing.T) {
+			root := managedCheckout(t)
+			setMode(t, root, mode.ProductThinker)
+			q := wellBuilt()
+			q.Header = header
+			q.Options[0].Label = "Keep it (Recommended)"
+			stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
+			mustRunSilently(t, stdout, stderr, code)
+			if got, _ := mode.ReadAt(root); got != mode.ProductThinker {
+				t.Errorf("mode = %q, want the product thinker the agent set, unwritten", got)
+			}
+			data, err := os.ReadFile(questionMarker(root))
+			if err != nil {
+				t.Fatalf("the unchecked question was not marked open, so the answer cannot reset the mode: %v", err)
+			}
+			if strings.TrimSpace(string(data)) != string(mode.ProductThinker) {
+				t.Errorf("marker = %q, want %q", data, mode.ProductThinker)
+			}
+			answered := `{"session_id":"s-unl","hook_event_name":"PostToolUse","tool_name":"` + questionTools[0] +
+				`","tool_input":{"questions":[]},"tool_response":{"answers":{}},"cwd":"` + root + `"}`
+			if _, stderr, err := runSplit(t, answered, "hook", "question-answered"); err != nil {
+				t.Fatalf("question-answered: %v\n%s", err, stderr)
+			}
+			if got, _ := mode.ReadAt(root); got != mode.Managed {
+				t.Errorf("mode after the answer = %q, want managed", got)
+			}
+			if markedOpen(t, root) {
+				t.Error("the marker survived the answer")
+			}
+		})
+	}
+}
+
+// TestMixedCallJudgesEachTabByItsOwnPerson (spc-2610301917245442, step 3): a
+// call of a number tab and an older-form tab is judged tab by tab at the
+// hook: under the facilitator's mode, a Product Q2 tab naming a record is
+// refused on the register though the Q1 tab beside it is the facilitator's,
+// and nothing is marked open or set.
+func TestMixedCallJudgesEachTabByItsOwnPerson(t *testing.T) {
+	root := managedCheckout(t)
+	setMode(t, root, mode.Facilitator)
+	clean := wellBuilt()
+	clean.Header = "Q1"
+	product := wellBuilt()
+	product.Options[0].Description = "It closes iss-2609202058058301. It costs a few characters."
+	stdout, stderr, code := runGuard(askPayload(t, root, clean, product), "guard", "hook")
+	reason := mustDeny(t, stdout, stderr, code)
+	if _, parts, _ := refusal(t, reason); len(parts) != 1 || parts[0].Rule != "register" || parts[0].Tab != 2 {
+		t.Errorf("want one register finding on tab 2; got %v:\n%s", parts, reason)
+	}
+	if got, _ := mode.ReadAt(root); got != mode.Facilitator {
+		t.Errorf("mode = %q, want it left at the facilitator", got)
+	}
+	if markedOpen(t, root) {
+		t.Error("a refused question was marked open")
+	}
 }
 
 // numberCommandQuestion is wellBuilt headed with abcd's number and naming a

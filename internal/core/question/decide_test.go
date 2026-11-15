@@ -289,4 +289,33 @@ func TestNumberHeaderRegisterFollowsTheModeAtTheCore(t *testing.T) {
 	if !slices.Equal(v.Addressees, []Person{Facilitator}) {
 		t.Errorf("addressees = %v, want the mode's facilitator", v.Addressees)
 	}
+
+	// A mixed call is judged tab by tab: a number tab by the mode, an
+	// older-form tab by its own role word, and the addressees say so.
+	clean := wellBuiltTab()
+	clean.Header = "Q1"
+	product := wellBuiltTab()
+	product.Options[0].Description = "It closes iss-2609202058058301. It costs a few characters."
+	v = Decide(Fields{Tabs: []Tab{clean, product}}, State{Repo: true, Badge: true, Mode: Facilitator}, Default)
+	if v.Outcome != OutcomeRefuse || len(v.Findings) != 1 || v.Findings[0].Rule != RuleRegister || v.Findings[0].Tab != 2 {
+		t.Errorf("facilitator's mode, Q1 and Product Q2 naming a record: outcome %q, findings %v; want tab 2 refused on the register", v.Outcome, v.Findings)
+	}
+	if !slices.Equal(v.Addressees, []Person{Facilitator, ProductThinker}) {
+		t.Errorf("addressees = %v, want the mode's facilitator, then the chip's product thinker", v.Addressees)
+	}
+	tech := product
+	tech.Header = "Tech Q2"
+	v = Decide(Fields{Tabs: []Tab{clean, tech}}, State{Repo: true, Badge: true, Mode: ProductThinker}, Default)
+	if v.Outcome != OutcomeAdmit || len(v.Findings) != 0 {
+		t.Errorf("product thinker's mode, Q1 and Tech Q2 naming a record: outcome %q, findings %v; want admitted, the Tech tab being the facilitator's", v.Outcome, v.Findings)
+	}
+	if !slices.Equal(v.Addressees, []Person{ProductThinker, Facilitator}) {
+		t.Errorf("addressees = %v, want the mode's product thinker, then the chip's facilitator", v.Addressees)
+	}
+	numberProduct := product
+	numberProduct.Header = "Q2"
+	v = Decide(Fields{Tabs: []Tab{numberProduct, tech}}, State{Repo: true, Badge: true, Mode: ProductThinker}, Default)
+	if v.Outcome != OutcomeRefuse || len(v.Findings) != 1 || v.Findings[0].Tab != 1 {
+		t.Errorf("product thinker's mode, Q2 naming a record and Tech Q2: outcome %q, findings %v; want tab 1 refused on the register", v.Outcome, v.Findings)
+	}
 }

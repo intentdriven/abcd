@@ -74,14 +74,17 @@ func isQuestionTool(name string) bool {
 // whether the question is abcd's by its header alone (spc-2610301917245442,
 // step 3; itd-2610230756259215 decision 36): a header in abcd's grammar, the
 // number form ("Q1", "Q1a", "Q2/5") or the older form opened by a role word
-// ("Product Q2"). Anything else is another tool's question and runs, unchecked
-// and unmarked, wherever it is asked and whatever the mode names.
+// ("Product Q2"). Anything else is another tool's question and runs unchecked
+// wherever it is asked and whatever the mode names; where the badge shows and
+// the mode names somebody it is marked open under that mode, with nothing
+// else written (markUncheckedOpen), so the answer resets a mode the agent set
+// before a question whose header then missed the grammar.
 //
 // abcd's question is held to the field limits wherever the hook runs, managed
 // or not: the setup interview asks before a repository is managed, and the
-// limits need no store. An older-form tab is checked against the person its
-// chip names, and a call of number headers against the person the mode names
-// where the badge shows, which decides the product thinker's register rule.
+// limits need no store. The product thinker's register rule is decided tab by
+// tab: an older-form tab against the person its chip names, and every other
+// tab against the person the mode names where the badge shows.
 // Only the field findings refuse: abcd's question is never refused on the
 // mode (iss-2610100626211810). Where the badge shows (a checkout abcd
 // manages, with the local tier the mode verb writes to), an admitted question
@@ -299,15 +302,16 @@ func modeUnreadLine(st question.State, u question.Unread) string {
 
 // actOnQuestionVerdict does what the hook does with a decision: a deny for a
 // refusal, the marker and the mode for an admission where the badge shows,
-// the rows note for an admission with rows findings, and questionFailOpen
-// for a question the decision could not tell is abcd's because a store it
-// needed could not be read. lead, when set, opens the deny's reason and the
-// rows note.
+// the rows note for an admission with rows findings, and, for a question
+// that is not abcd's, only the marker under a mode naming somebody
+// (markUncheckedOpen). A marker or mode it cannot write fails open loudly
+// (questionFailOpen). lead, when set, opens the deny's reason and the rows
+// note.
 func actOnQuestionVerdict(cmd *cobra.Command, reads questionReads, v question.Verdict, lead string) error {
 	stderr := cmd.ErrOrStderr()
 	switch v.Outcome {
 	case question.OutcomeAdmitUnchecked:
-		return nil
+		return markUncheckedOpen(stderr, reads)
 	case question.OutcomeRefuse:
 		if v.Refused != nil {
 			return denyCall(lead + limitsRefusedReason(v.Refused.Reason))
@@ -319,8 +323,8 @@ func actOnQuestionVerdict(cmd *cobra.Command, reads questionReads, v question.Ve
 	}
 	if !v.Abcds {
 		// Not abcd's question, unchecked because the away record was not
-		// read: the caller's loud status is the whole answer.
-		return nil
+		// read: the caller's loud status is the rest of the answer.
+		return markUncheckedOpen(stderr, reads)
 	}
 	if reads.state.Badge && reads.state.ModeErr == nil {
 		// With the mode store unread abcd's question was still judged, and
@@ -349,6 +353,24 @@ func actOnQuestionVerdict(cmd *cobra.Command, reads questionReads, v question.Ve
 		if err := writeHookNote(cmd.OutOrStdout(), lead+rowsNote(v.Findings)); err != nil {
 			return questionFailOpen(stderr, "the note on the question's height could not be written (%s)", err)
 		}
+	}
+	return nil
+}
+
+// markUncheckedOpen marks a question that is not abcd's open where the badge
+// shows and the mode, read, names somebody, under that mode, and writes
+// nothing else: no mode, and no rule is read. The agent sets the mode before
+// asking abcd's question (decision 37), so a question whose header then
+// missed abcd's grammar ("Q 1", "q1", "Q1A", or none) would otherwise leave
+// the mode parked, never reset by the answer, for the next question to
+// inherit. Under managed, or with no badge, nothing is written. A marker that
+// cannot be written is said loudly, since the mode then stays parked.
+func markUncheckedOpen(stderr io.Writer, reads questionReads) error {
+	if !reads.state.Badge || reads.state.ModeErr != nil || addresseeOf(reads.mode) == question.Unnamed {
+		return nil
+	}
+	if err := mode.MarkQuestionOpen(reads.root, reads.mode); err != nil {
+		return questionFailOpen(stderr, "the question could not be marked open, so the mode will not reset on the answer (%s)", err)
 	}
 	return nil
 }

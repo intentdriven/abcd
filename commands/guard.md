@@ -182,7 +182,8 @@ grammar: `Q` and the question's number, with an optional part letter and an
 optional total (`Q1`, `Q1a`, `Q2/5`), or the older form with a role word first
 (`Product Q2`, `Setup Q1/4`), which is still read. Any other question belongs
 to another tool and runs unchecked, whatever `/abcd:mode` names, in a
-repository abcd manages or not: the header is what the hook checks a question
+repository abcd manages or not (where the mode names somebody it is still
+marked open, with nothing else written, so the answer resets the mode): the header is what the hook checks a question
 by, so the pages that teach it are what keep abcd's questions under the
 check. abcd's question is held to the field limits of the asking
 rules wherever the hook runs, in a repository abcd manages or not: the header,
@@ -226,7 +227,10 @@ A number header names no person, so the agent sets `/abcd:mode` to the person
 the question is for, `product-thinker` or `facilitator`, before asking it, and
 the product thinker's register rule (no record number and no command) follows
 that mode: a `Q1` tab naming a command is refused while the mode names the
-product thinker and admitted while it names the facilitator. In a repository
+product thinker and admitted while it names the facilitator. A tab headed in
+the older form is judged by its own role word, so in one call a `Product Q2`
+tab is held to the product thinker's register beside a `Q1` tab asked while
+the mode names the facilitator. In a repository
 abcd manages, abcd's question is never refused on the mode. An admitted
 question with a number header sets nothing, leaving the mode the agent set; one
 with an older-form header sets `/abcd:mode` from its role word: `Product` to
