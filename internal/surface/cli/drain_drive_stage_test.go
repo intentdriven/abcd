@@ -225,7 +225,7 @@ func TestALaneThatChangesItsGatesIsRefused(t *testing.T) {
 	if err := driveGateCheck()(repo.Root(), base); err != nil {
 		t.Fatalf("code is no gate: %v", err)
 	}
-	for _, path := range []string{"Makefile", "scripts/check.sh"} {
+	for _, path := range []string{"Makefile", "scripts/check.sh", ".github/workflows/x.yml"} {
 		base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
 		repo.Write(path, "x\n")
 		repo.Commit(path)
@@ -233,6 +233,16 @@ func TestALaneThatChangesItsGatesIsRefused(t *testing.T) {
 		if err := driveGateCheck()(repo.Root(), base); !errors.As(err, &refused) || !strings.Contains(refused.Reason, path) || !strings.Contains(refused.Reason, "a person's own session") {
 			t.Fatalf("%s: %v", path, err)
 		}
+	}
+	// A tree entry whose name differs from a gate only in case is the gate once
+	// checked out where the filesystem folds case, so it is one here too.
+	base = strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	blob := strings.TrimSpace(repo.Git("hash-object", "-w", "a.go"))
+	repo.Git("update-index", "--add", "--cacheinfo", "100644,"+blob+",Scripts/run.sh")
+	repo.Git("commit", "-q", "-m", "a case variant")
+	var folded *loop.PreflightRefused
+	if err := driveGateCheck()(repo.Root(), base); !errors.As(err, &folded) || !strings.Contains(folded.Reason, "Scripts/run.sh") {
+		t.Fatalf("a case variant of scripts/: %v", err)
 	}
 	var refused *loop.PreflightRefused
 	if err := driveGateCheck()(repo.Root(), "not-a-commit"); !errors.As(err, &refused) {
@@ -647,7 +657,8 @@ func TestAGateIssueIsPassedOverForAPersonsOwnSession(t *testing.T) {
 	repo.Git("config", "core.hooksPath", "tools/hooks")
 	pass := drivePassOver(repo.Root())
 	for _, found := range []string{"Makefile", "scripts/check.sh:12", "tools/hooks/pre-push", ".githooks/commit-msg",
-		"scripts", "scripts/", "./scripts", "hooks", "hooks/", ".githooks", ".githooks/", "tools/hooks", "tools/hooks/"} {
+		"scripts", "scripts/", "./scripts", "hooks", "hooks/", ".githooks", ".githooks/", "tools/hooks", "tools/hooks/",
+		".github/workflows/ci.yml:3", ".github", "Scripts/check.sh", "Tools/Hooks/pre-push"} {
 		if why := pass("iss-1", found); !strings.Contains(why, "a person's own session") {
 			t.Errorf("%s: %q", found, why)
 		}
