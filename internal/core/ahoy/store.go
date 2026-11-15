@@ -727,7 +727,7 @@ func historyRoot() (string, error) {
 }
 
 // historyDir opens ~/.abcd.noindex/history as an *os.Root through
-// fsutil.OpenHomeScope, after historyRoot's check, so the registry's files are
+// fsutil.OpenHomeScope, after historyDirIn's link check, so the registry's files are
 // read and written relative to the descriptor of the directory that was judged
 // and never through a link swapped in after the judgement
 // (iss-2609281310017733). create makes each missing level first
