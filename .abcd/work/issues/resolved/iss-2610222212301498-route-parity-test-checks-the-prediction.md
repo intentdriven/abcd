@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/route_parity_test.go"
 remedy: "Add a parity case that drives the real validateStage and implementStage on a fixture lane and compares the role each hands out with predictHand's, so a change to either side fails the test"
+resolution: "Added TestPredictHandAgreesWithTheRealStageBodies, which drives the real validateStage at each state the existing real-run walk never reaches (a failed verdict, a fix round and its cap, a conflicting sync, the landing's records round, three validators out) and compares the role it hands out with predictHand's. A change to either side on those branches now fails the test; the states the walk already covers are left to it."
+impact: fix
+resolved_by:
+  commit: "0ca3e269d170d0433ab18eac9a46f6253969b46d"
 ---
 
 The --route prediction parity test (internal/core/implement/loop/route_parity_test.go) checks predictHand against fake stage bodies, not the real validateStage and implementStage. If validateStage's hand-out order changed (openRound's roles reordered, or a Stay or Goto returned before its Await), a --route for a reviewer role would be accepted and then silently not used: no refusal, and no route_unused entry, since nothing is unsure without a landing ahead. The real bodies agree with the prediction today; the gap is that no test would notice them drifting apart.

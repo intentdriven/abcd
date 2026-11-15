@@ -62,15 +62,35 @@ func GeneratedFiles(root string) (Generated, string) {
 // generatedFilesAt is GeneratedFiles read from ref, origin's default branch as
 // the caller resolved it ("" for none), so an operation that has named the
 // branch once reads it under that one name. Its git runs through g.
+//
+// The answer is read from the tree ref names, resolved once, so the
+// declaration and the listing are one tree's, and it is kept in the local
+// tier under that tree (generatedcache.go): while origin's default branch
+// stays on it, a later read takes the kept answer instead of listing and
+// matching again. When the tree cannot be named the read goes by ref and
+// keeps nothing.
 func generatedFilesAt(g viewGit, root, ref string) (Generated, string) {
 	if ref == "" {
 		return Generated{}, ""
 	}
-	text, why := rootAttributes(g, root, ref)
+	short := gitutil.ShortRef(ref)
+	tooLong := fmt.Sprintf(".gitattributes on %s takes too long to match against the files there", short)
+	at, key := ref, ""
+	if tree := defaultTree(g, root, ref); tree != "" {
+		at, key = tree, generatedKey(ref, tree)
+	}
+	if key != "" {
+		if files, spent, ok := keptGenerated(g, root, key); ok {
+			if spent {
+				return Generated{}, tooLong
+			}
+			return Generated{files: files}, ""
+		}
+	}
+	text, why := rootAttributes(g, root, short, at)
 	if why != "" {
 		return Generated{}, why
 	}
-	short := gitutil.ShortRef(ref)
 	if why := plainDeclaration(text); why != "" {
 		return Generated{}, ".gitattributes on " + short + " " + why
 	}
@@ -78,20 +98,27 @@ func generatedFilesAt(g viewGit, root, ref string) (Generated, string) {
 	if !rules.any() {
 		return Generated{}, ""
 	}
-	out, err := g.stored(root, treeListCap, "ls-tree", "-r", "-z", "--full-tree", ref)
+	out, err := g.stored(root, treeListCap, "ls-tree", "-r", "-z", "--full-tree", at)
 	if err != nil {
-		return Generated{}, fmt.Sprintf("the files on %s could not be listed: %s", gitutil.ShortRef(ref), redacted(err))
+		return Generated{}, fmt.Sprintf("the files on %s could not be listed: %s", short, redacted(err))
 	}
 	candidates, why := candidatesOf(strings.Split(out, "\x00"))
 	if why != "" {
 		return Generated{}, short + " " + why
 	}
-	files, spent := rules.generatedAmong(candidates)
+	files, spent := generatedMatch(rules, candidates)
+	if key != "" {
+		keepGenerated(g, root, key, files, spent)
+	}
 	if spent {
-		return Generated{}, fmt.Sprintf(".gitattributes on %s takes too long to match against the files there", short)
+		return Generated{}, tooLong
 	}
 	return Generated{files: files}, ""
 }
+
+// generatedMatch is the match generatedFilesAt makes, a variable so a test
+// can count how often a read reaches it.
+var generatedMatch = attrRules.generatedAmong
 
 // plainDeclaration is why the root declaration is not plain, "" when it is:
 // abcd shares a generated file only on a declaration whose every line git
@@ -262,11 +289,11 @@ func asciiLower(s string) string {
 	return s
 }
 
-// rootAttributes is the root .gitattributes on ref, "" when there is none,
-// with the reason when it is there but was not read.
-func rootAttributes(g viewGit, root, ref string) (string, string) {
-	short := gitutil.ShortRef(ref)
-	out, err := g.stored(root, 4096, "ls-tree", "-l", "-z", "--full-tree", ref, "--", ".gitattributes")
+// rootAttributes is the root .gitattributes in at, the tree or the ref of the
+// branch short names, "" when there is none, with the reason when it is there
+// but was not read.
+func rootAttributes(g viewGit, root, short, at string) (string, string) {
+	out, err := g.stored(root, 4096, "ls-tree", "-l", "-z", "--full-tree", at, "--", ".gitattributes")
 	if err != nil {
 		return "", fmt.Sprintf(".gitattributes on %s could not be read: %s", short, redacted(err))
 	}

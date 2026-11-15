@@ -35,12 +35,12 @@ and staleness it reports are unchanged.
 **Flags:**
 
 ```
-      --agent           with --help, list the verbs agents and hosts call as well, each naming the page to read next
-      --format string   the board's form: text (the default) or markdown, a list a host session pastes unchanged
-      --json            emit machine-readable JSON on stdout; a refusal is a {"abcd":"error","error":…,"exit_code":…} object on stdout too, and exits non-zero
-      --no-color        render the banner and the board without color
-      --version         print abcd's version, install mode, and vintage, from disk alone (the release check is: abcd update --check)
-      --view string     the board's view: product (the default) or facilitator
+      --agent[=true|false]      with --help, list the verbs agents and hosts call as well, each naming the page to read next
+      --format string           the board's form: text (the default) or markdown, a list a host session pastes unchanged
+      --json[=true|false]       emit machine-readable JSON on stdout; a refusal is a {"abcd":"error","error":…,"exit_code":…} object on stdout too, and exits non-zero
+      --no-color[=true|false]   render the banner and the board without color
+      --version[=true|false]    print abcd's version, install mode, and vintage, from disk alone (the release check is: abcd update --check)
+      --view string             the board's view: product (the default) or facilitator
 ```
 
 ### `abcd agents`
@@ -67,9 +67,9 @@ refusal: launches on record and no session or scope to say whose, or two scopes 
 **Flags:**
 
 ```
-      --all              list every launch the ledger holds
-      --run string       list the launches of this run
-      --session string   list the launches this session asked for
+      --all[=true|false]   list every launch the ledger holds
+      --run string         list the launches of this run
+      --session string     list the launches this session asked for
 ```
 
 ### `abcd ahoy`
@@ -81,10 +81,10 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 **Flags:**
 
 ```
-      --dry-run     print the detection result as its JSON envelope, whether or not --json is passed
-      --identity    check git's commit author and committer against the identity you recorded on this machine, exiting non-zero when either diverges or is a machine identity (for a pre-commit hook or CI)
-      --providers   explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live
-      --remote      audit this repository's GitHub settings against abcd's baseline, one line per setting, and say what the remote apply sub-verb would change
+      --dry-run[=true|false]     print the detection result as its JSON envelope, whether or not --json is passed
+      --identity[=true|false]    check git's commit author and committer against the identity you recorded on this machine, exiting non-zero when either diverges or is a machine identity (for a pre-commit hook or CI)
+      --providers[=true|false]   explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live
+      --remote[=true|false]      audit this repository's GitHub settings against abcd's baseline, one line per setting, and say what the remote apply sub-verb would change
 ```
 
 #### `abcd ahoy connect`
@@ -96,17 +96,17 @@ Verify a provider and configure it, or guide setup: Writes ~/.abcd.noindex/ and 
 **Flags:**
 
 ```
-      --answer string       with --guide and --resume: the answer to the question the resume object leaves open
-      --base-url string     the provider's OpenAI-compatible base URL: https, or http to a server on this machine
-      --env string          for --home external: the environment variable that holds the value
-      --field string        for --home external: the dotted field of --file that holds the value (auth.token)
-      --file string         for --home external: a tool's JSON configuration file under the home directory, written from ~/
-      --guide               work the values out one question a turn and print the command to paste into a terminal; writes nothing, and the provider name is optional
-      --home string         where the key lives: external (--env, or --file and --field) | abcd (read from stdin, hidden at a terminal, into the owner-only ~/.abcd.noindex/credentials.json) | keychain (read from stdin, hidden at a terminal, into the platform keychain) | none (a server that takes no key)
-      --key string          the credential's name (default: the provider's name)
-      --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first); omitted at a terminal, the service's models are listed with the key and you pick one
-      --resume string       with --guide: the last turn's resume object, or - to read it from stdin
-      --stream-usage        whether calls ask the server for usage in the stream (stream_options.include_usage), written into the block as stream_usage; omitted, the verification asks, and a server that refuses it is asked once more without it and the block is written with false (default true)
+      --answer string               with --guide and --resume: the answer to the question the resume object leaves open
+      --base-url string             the provider's OpenAI-compatible base URL: https, or http to a server on this machine
+      --env string                  for --home external: the environment variable that holds the value
+      --field string                for --home external: the dotted field of --file that holds the value (auth.token)
+      --file string                 for --home external: a tool's JSON configuration file under the home directory, written from ~/
+      --guide[=true|false]          work the values out one question a turn and print the command to paste into a terminal; writes nothing, and the provider name is optional
+      --home string                 where the key lives: external (--env, or --file and --field) | abcd (read from stdin, hidden at a terminal, into the owner-only ~/.abcd.noindex/credentials.json) | keychain (read from stdin, hidden at a terminal, into the platform keychain) | none (a server that takes no key)
+      --key string                  the credential's name (default: the provider's name)
+      --model stringArray           a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first); omitted at a terminal, the service's models are listed with the key and you pick one
+      --resume string               with --guide: the last turn's resume object, or - to read it from stdin
+      --stream-usage[=true|false]   whether calls ask the server for usage in the stream (stream_options.include_usage), written into the block as stream_usage; omitted, the verification asks, and a server that refuses it is asked once more without it and the block is written with false (default true)
 ```
 
 **Example:**
@@ -145,25 +145,25 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
 **Flags:**
 
 ```
-      --adopt                   adopt an unmanaged repo without prompting
-      --allow-stale-binary      proceed even when the running binary is stale against its source tip or its vintage cannot be determined; the default is to refuse before any write and name the rebuild fix
-      --answered-in string      where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer (default "Terminal")
-      --answers string          answer the setup questions from this answers file (JSON: schema_version, interview "setup", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key
-      --attribution             opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook
-      --bin-dir string          directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges
-      --details                 print the full record after the report: core's summary of every write and every note, each path written, the declined kinds of change and the gaps left
-      --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
-      --docs-target string      whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change
-      --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
-      --live-sessions string    answer the live brief session question: where sessions may run, local, cloud or both, or none, which answers no and is not asked again; stored in .abcd/config.json as sessions.live and honoured in any run, the approve-everything flag included; abcd session setup then does the setting up
-      --only-waiting            ask only the setup that waits after an abcd update: the questions this repository never answered and the settings whose default changed, never one answered or deferred with decide later; every kind of change is approved up front, as the yes to the offer abcd update news makes approves them; with the approve-everything flag no question is answered, so each still waits
-      --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
-      --outbound                opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge, which also refuses a pull request body (gh pr create, new or edit) with no Assisted-by line in an accepted form, or one carrying a Co-authored-by line; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both
-      --readme-parts string     answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included
-      --refuse-adopt            decline to adopt an unmanaged repo
-      --scan-deep string        enable deep scan: true | false
-      --visibility string       repo visibility: private | public
-      --yes                     approve every resolvable change category without prompting; excludes recording who you commit as on this machine (asked only at a terminal), the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal
+      --adopt[=true|false]                adopt an unmanaged repo without prompting
+      --allow-stale-binary[=true|false]   proceed even when the running binary is stale against its source tip or its vintage cannot be determined; the default is to refuse before any write and name the rebuild fix
+      --answered-in string                where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer (default "Terminal")
+      --answers string                    answer the setup questions from this answers file (JSON: schema_version, interview "setup", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key
+      --attribution[=true|false]          opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook
+      --bin-dir string                    directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges
+      --details[=true|false]              print the full record after the report: core's summary of every write and every note, each path written, the declined kinds of change and the gaps left
+      --dev[=true|false]                  track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
+      --docs-target string                whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change
+      --install-tool strings              answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
+      --live-sessions string              answer the live brief session question: where sessions may run, local, cloud or both, or none, which answers no and is not asked again; stored in .abcd/config.json as sessions.live and honoured in any run, the approve-everything flag included; abcd session setup then does the setting up
+      --only-waiting[=true|false]         ask only the setup that waits after an abcd update: the questions this repository never answered and the settings whose default changed, never one answered or deferred with decide later; every kind of change is approved up front, as the yes to the offer abcd update news makes approves them; with the approve-everything flag no question is answered, so each still waits
+      --oracle-backend string             oracle backend: host-delegated | native | cli | api | mcp
+      --outbound[=true|false]             opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge, which also refuses a pull request body (gh pr create, new or edit) with no Assisted-by line in an accepted form, or one carrying a Co-authored-by line; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both
+      --readme-parts string               answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included
+      --refuse-adopt[=true|false]         decline to adopt an unmanaged repo
+      --scan-deep string                  enable deep scan: true | false
+      --visibility string                 repo visibility: private | public
+      --yes[=true|false]                  approve every resolvable change category without prompting; excludes recording who you commit as on this machine (asked only at a terminal), the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal
 ```
 
 #### `abcd ahoy remote`
@@ -181,7 +181,7 @@ Apply every GitHub setting the remote audit finds differing: Writes those settin
 **Flags:**
 
 ```
-      --yes   confirm the remote change without being asked (never the install of a missing gh); without it an unanswered run declines and changes nothing
+      --yes[=true|false]   confirm the remote change without being asked (never the install of a missing gh); without it an unanswered run declines and changes nothing
 ```
 
 #### `abcd ahoy shared-folder`
@@ -272,7 +272,7 @@ List this repository's worktrees and its lane, or every lane with --all: Writes 
 **Flags:**
 
 ```
-      --all   walk every lane in the worktree store on this machine
+      --all[=true|false]   walk every lane in the worktree store on this machine
 ```
 
 ##### `abcd ahoy worktree prune`
@@ -284,8 +284,8 @@ Reclaim this lane's merged, clean worktrees and trim the Go cache to its limit: 
 **Flags:**
 
 ```
-      --dry-run           archive, remove and trim nothing; report what a real run would
-      --yes stringArray   reclaim this quiet candidate too (repeatable); a name not in the lane refuses the run
+      --dry-run[=true|false]   archive, remove and trim nothing; report what a real run would
+      --yes stringArray        reclaim this quiet candidate too (repeatable); a name not in the lane refuses the run
 ```
 
 ##### `abcd ahoy worktree trim-cache`
@@ -318,7 +318,7 @@ nothing refused, 1 when it was skipped or an entry could not be read or removed.
 **Flags:**
 
 ```
-      --dry-run   delete nothing; report what a real run would
+      --dry-run[=true|false]   delete nothing; report what a real run would
 ```
 
 ### `abcd announce`
@@ -394,10 +394,10 @@ Add one banned-name entry to the layer a flag names: Writes that layer's store; 
 **Flags:**
 
 ```
-      --private            the gitignored per-machine layer (.abcd/.work.local/private-names.txt)
-      --public             the committed, CI-enforced layer (.abcd/docs-lint.json)
-      --severity string    public entry severity: blocker (default) | warn
-      --successor string   public entry's replacement, cited in the finding (default "a generic term")
+      --private[=true|false]   the gitignored per-machine layer (.abcd/.work.local/private-names.txt)
+      --public[=true|false]    the committed, CI-enforced layer (.abcd/docs-lint.json)
+      --severity string        public entry severity: blocker (default) | warn
+      --successor string       public entry's replacement, cited in the finding (default "a generic term")
 ```
 
 **Example:**
@@ -415,8 +415,8 @@ Render the banned-names layers, private entries by key only: Writes nothing; ref
 **Flags:**
 
 ```
-      --private   the gitignored per-machine layer (.abcd/.work.local/private-names.txt)
-      --public    the committed, CI-enforced layer (.abcd/docs-lint.json)
+      --private[=true|false]   the gitignored per-machine layer (.abcd/.work.local/private-names.txt)
+      --public[=true|false]    the committed, CI-enforced layer (.abcd/docs-lint.json)
 ```
 
 #### `abcd banlist migrate`
@@ -441,8 +441,8 @@ Remove one banned-name entry from the layer a flag names: Writes that layer's st
 **Flags:**
 
 ```
-      --private   the gitignored per-machine layer (.abcd/.work.local/private-names.txt)
-      --public    the committed, CI-enforced layer (.abcd/docs-lint.json)
+      --private[=true|false]   the gitignored per-machine layer (.abcd/.work.local/private-names.txt)
+      --public[=true|false]    the committed, CI-enforced layer (.abcd/docs-lint.json)
 ```
 
 **Example:**
@@ -601,13 +601,13 @@ Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is loc
 **Flags:**
 
 ```
-      --auto-plan           plan a draft intent with no person present, after two plan reviews, on adr-2610310235000654's substitute for the sign-off
-      --fix-rounds string   the fix rounds a lane of this run may take before it is handed back, a whole number from 0 (bundled: 3); wins over every configured layer
-      --pace string         this run's working window and pause, <work-minutes>/<pause-minutes> (e.g. 90/240); wins over every configured layer
-      --release             push the tombstone over this copy's reservation on the key, changing nothing in the run's state
-      --session string      the host session's id in the shared run state; a new run claims the intent for it
-      --sub-agents string   this run's ceiling on lanes and validators alive at once, a whole number; wins over every configured layer
-      --take-over           move your own live reservation on the key from another copy to this one; never another person's
+      --auto-plan[=true|false]   plan a draft intent with no person present, after two plan reviews, on adr-2610310235000654's substitute for the sign-off
+      --fix-rounds string        the fix rounds a lane of this run may take before it is handed back, a whole number from 0 (bundled: 3); wins over every configured layer
+      --pace string              this run's working window and pause, <work-minutes>/<pause-minutes> (e.g. 90/240); wins over every configured layer
+      --release[=true|false]     push the tombstone over this copy's reservation on the key, changing nothing in the run's state
+      --session string           the host session's id in the shared run state; a new run claims the intent for it
+      --sub-agents string        this run's ceiling on lanes and validators alive at once, a whole number; wins over every configured layer
+      --take-over[=true|false]   move your own live reservation on the key from another copy to this one; never another person's
 ```
 
 **Example:**
@@ -677,12 +677,12 @@ state or the series is locked.
 **Flags:**
 
 ```
-      --fix-rounds string   the fix rounds a lane of the new run may take before it is handed back; wins over every configured layer
-      --max int             how many picks to make, one at a time under the pace rule; above 1 begins a series (default one pick)
-      --pace string         the new run's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
-      --session string      the host session's id in the shared run state; the new run claims the picked intent for it
-      --sub-agents string   the new run's ceiling on lanes and validators alive at once; wins over every configured layer
-      --until-empty         pick one at a time under the pace rule until no candidate is left; begins a series
+      --fix-rounds string          the fix rounds a lane of the new run may take before it is handed back; wins over every configured layer
+      --max int                    how many picks to make, one at a time under the pace rule; above 1 begins a series (default one pick)
+      --pace string                the new run's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
+      --session string             the host session's id in the shared run state; the new run claims the picked intent for it
+      --sub-agents string          the new run's ceiling on lanes and validators alive at once; wins over every configured layer
+      --until-empty[=true|false]   pick one at a time under the pace rule until no candidate is left; begins a series
 ```
 
 ### `abcd capture`
@@ -795,10 +795,10 @@ List the issues in one status folder or all three: Writes nothing; refuses when 
 **Flags:**
 
 ```
-      --all        issues across all three states
-      --open       issues currently in open/
-      --resolved   issues currently in resolved/
-      --wontfix    issues currently in wontfix/
+      --all[=true|false]        issues across all three states
+      --open[=true|false]       issues currently in open/
+      --resolved[=true|false]   issues currently in resolved/
+      --wontfix[=true|false]    issues currently in wontfix/
 ```
 
 #### `abcd capture mentions`
@@ -822,7 +822,7 @@ Rewrite retired promote back-links as related_intents and related_issues: Writes
 **Flags:**
 
 ```
-      --apply   write the rewritten records (default: report only)
+      --apply[=true|false]   write the rewritten records (default: report only)
 ```
 
 #### `abcd capture promote`
@@ -857,7 +857,7 @@ Record a reframe a reading occasioned: Writes one rfm-N fingerprinting the frame
       --complete string        the open reframe record (rfm-N) to finish once the rewrite is committed
       --grounds string         why the frame moved (free text, held to the grounds floor)
       --occasioned-by string   the record that occasioned the reframe: a reading item (rdi-N), a disposition (dsp-N) or a surprise (srp-N)
-      --open                   record the first half before the rewrite is committed; complete it after with --complete
+      --open[=true|false]      record the first half before the rewrite is committed; complete it after with --complete
 ```
 
 **Example:**
@@ -1076,7 +1076,7 @@ You will need to start a new shell for this setup to take effect.
 **Flags:**
 
 ```
-      --no-descriptions   disable completion descriptions
+      --no-descriptions[=true|false]   disable completion descriptions
 ```
 
 #### `abcd completion fish`
@@ -1100,7 +1100,7 @@ You will need to start a new shell for this setup to take effect.
 **Flags:**
 
 ```
-      --no-descriptions   disable completion descriptions
+      --no-descriptions[=true|false]   disable completion descriptions
 ```
 
 #### `abcd completion powershell`
@@ -1121,7 +1121,7 @@ to your powershell profile.
 **Flags:**
 
 ```
-      --no-descriptions   disable completion descriptions
+      --no-descriptions[=true|false]   disable completion descriptions
 ```
 
 #### `abcd completion zsh`
@@ -1156,7 +1156,7 @@ You will need to start a new shell for this setup to take effect.
 **Flags:**
 
 ```
-      --no-descriptions   disable completion descriptions
+      --no-descriptions[=true|false]   disable completion descriptions
 ```
 
 ### `abcd dashboard`
@@ -1252,7 +1252,7 @@ author sets `accepted`.
 **Flags:**
 
 ```
-      --adr   mint an architecture decision record from the operand as its title, instead of recording a decision
+      --adr[=true|false]   mint an architecture decision record from the operand as its title, instead of recording a decision
 ```
 
 **Example:**
@@ -1288,9 +1288,9 @@ Validate host-produced lesson JSON against a packed lifeboat: Writes the lessons
 **Flags:**
 
 ```
-      --dry-run               check the input and report what would be written; write nothing
-      --lessons-json string   path to the host-produced lesson JSON (or - for stdin)
-      --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+      --dry-run[=true|false]   check the input and report what would be written; write nothing
+      --lessons-json string    path to the host-produced lesson JSON (or - for stdin)
+      --route stringArray      route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 **Example:**
@@ -1308,7 +1308,7 @@ Pack a lifeboat from a repository into a destination directory: Writes the desti
 **Flags:**
 
 ```
-      --include-ignored   also read files git ignores (widens the scan; the report says so)
+      --include-ignored[=true|false]   also read files git ignores (widens the scan; the report says so)
 ```
 
 **Example:**
@@ -1326,7 +1326,7 @@ Show the file set a pack would write: Writes nothing; refuses a repository path 
 **Flags:**
 
 ```
-      --include-ignored   also read files git ignores (widens the scan; the report says so)
+      --include-ignored[=true|false]   also read files git ignores (widens the scan; the report says so)
 ```
 
 #### `abcd disembark press-release`
@@ -1338,7 +1338,7 @@ Compose a lifeboat's press release, or validate the host's: Writes the press-rel
 **Flags:**
 
 ```
-      --dry-run                     check the input and report what would be written; write nothing
+      --dry-run[=true|false]        check the input and report what would be written; write nothing
       --press-release-json string   path to host-produced press-release JSON (or - for stdin); absent runs deterministic mode
       --route stringArray           route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
@@ -1358,7 +1358,7 @@ Distil a lifeboat's principles from its ADRs, or validate the host's: Writes the
 **Flags:**
 
 ```
-      --dry-run                  check the input and report what would be written; write nothing
+      --dry-run[=true|false]     check the input and report what would be written; write nothing
       --principles-json string   path to host-produced principle JSON (or - for stdin); absent runs deterministic mode
       --route stringArray        route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
@@ -1378,7 +1378,7 @@ Report which brief sections a lifeboat could ground from a repository: Writes no
 **Flags:**
 
 ```
-      --include-ignored   also read files git ignores (widens the scan; the report says so)
+      --include-ignored[=true|false]   also read files git ignores (widens the scan; the report says so)
 ```
 
 #### `abcd disembark review`
@@ -1390,9 +1390,9 @@ Review a packed lifeboat against its source repository, or validate the host's v
 **Flags:**
 
 ```
-      --dry-run              check the input and report what would be written; write nothing
-      --review-json string   path to the host-produced review verdict JSON (or - for stdin); absent runs deterministic mode
-      --route stringArray    route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+      --dry-run[=true|false]   check the input and report what would be written; write nothing
+      --review-json string     path to the host-produced review verdict JSON (or - for stdin); absent runs deterministic mode
+      --route stringArray      route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 **Example:**
@@ -1457,10 +1457,10 @@ Judge the brief against every shipped surface and the saved docs review: Writes 
 **Flags:**
 
 ```
-      --apply            write the reviewer's drafted corrections into the brief and flag each for review
-      --autonomous       an unattended run: apply the drafted corrections, list every applied edit, and hand the routine the reviewer's request; the refusals stay
-      --intent strings   the intent(s) whose delivery is judged, named in every finding (repeatable)
-      --report           the per-task pass: state every finding, refuse nothing, exit 0
+      --apply[=true|false]        write the reviewer's drafted corrections into the brief and flag each for review
+      --autonomous[=true|false]   an unattended run: apply the drafted corrections, list every applied edit, and hand the routine the reviewer's request; the refusals stay
+      --intent strings            the intent(s) whose delivery is judged, named in every finding (repeatable)
+      --report[=true|false]       the per-task pass: state every finding, refuse nothing, exit 0
 ```
 
 ##### `abcd docs fidelity record`
@@ -1472,8 +1472,8 @@ Save a docs review's verdict as the receipt for HEAD: Writes the receipt in the 
 **Flags:**
 
 ```
-      --dry-run               check the input and report what would be written; write nothing
-      --verdict-json string   the reviewer's verdict JSON (a file, or - for stdin)
+      --dry-run[=true|false]   check the input and report what would be written; write nothing
+      --verdict-json string    the reviewer's verdict JSON (a file, or - for stdin)
 ```
 
 **Example:**
@@ -1750,21 +1750,21 @@ drain or run holds the state lock.
 **Flags:**
 
 ```
-      --drive                make every move from this terminal, starting each agent on a separate login, until the cap, an empty ledger or a stop
-      --dry-run              show every open issue's disposition and the order a drain takes them; writes nothing
-      --fix-rounds string    the fix rounds a lane may take before it is handed back; wins over every configured layer
-      --judgement string     the host's answer to the judgement the drain awaits, at the path its request names
-      --max int              cap the lanes this drain opens; the default is all
-      --no-self-update       with --drive: take no new release of abcd during the run, and ask the release origin nothing
-      --pace string          the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
-      --profile string       with --drive: the profile directory to run on, by name; needed when there are several
-      --reason string        why --skip holds its issues back, shown in each pass-over
-      --skip stringArray     hold an issue (iss-N), or every issue whose found_at lies in a path, back for now; needs --reason; cleared when the drain ends
-      --sub-agents string    the ceiling on lanes and validators alive at once; wins over every configured layer
-      --take-over            move your own live reservation of each issue this move reaches from another copy to this one; never another person's
-      --unskip stringArray   take an issue or path off the drain's skip list
-      --until string         with --drive: end the run at this time, a date or an RFC 3339 instant, and wait through limits, outages and stuck queues until then; the default is eight hours on each wait
-      --yes                  with --drive: the scripted yes to its one question
+      --drive[=true|false]            make every move from this terminal, starting each agent on a separate login, until the cap, an empty ledger or a stop
+      --dry-run[=true|false]          show every open issue's disposition and the order a drain takes them; writes nothing
+      --fix-rounds string             the fix rounds a lane may take before it is handed back; wins over every configured layer
+      --judgement string              the host's answer to the judgement the drain awaits, at the path its request names
+      --max int                       cap the lanes this drain opens; the default is all
+      --no-self-update[=true|false]   with --drive: take no new release of abcd during the run, and ask the release origin nothing
+      --pace string                   the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
+      --profile string                with --drive: the profile directory to run on, by name; needed when there are several
+      --reason string                 why --skip holds its issues back, shown in each pass-over
+      --skip stringArray              hold an issue (iss-N), or every issue whose found_at lies in a path, back for now; needs --reason; cleared when the drain ends
+      --sub-agents string             the ceiling on lanes and validators alive at once; wins over every configured layer
+      --take-over[=true|false]        move your own live reservation of each issue this move reaches from another copy to this one; never another person's
+      --unskip stringArray            take an issue or path off the drain's skip list
+      --until string                  with --drive: end the run at this time, a date or an RFC 3339 instant, and wait through limits, outages and stuck queues until then; the default is eight hours on each wait
+      --yes[=true|false]              with --drive: the scripted yes to its one question
 ```
 
 **Example:**
@@ -2066,8 +2066,8 @@ when it was allowed and when it was used, and never who.
 **Flags:**
 
 ```
-      --command string   the exact command line to allow
-      --once             allow the line for one use (required)
+      --command string      the exact command line to allow
+      --once[=true|false]   allow the line for one use (required)
 ```
 
 **Example:**
@@ -2455,7 +2455,7 @@ finding.
 **Flags:**
 
 ```
-      --ask   read the draft as abcd's structured question type and judge it as composed into the host's input
+      --ask[=true|false]   read the draft as abcd's structured question type and judge it as composed into the host's input
 ```
 
 ### `abcd help`
@@ -2482,10 +2482,10 @@ Redact and store a session transcript, or a whole session with --all: Writes one
 **Flags:**
 
 ```
-      --all              capture every transcript of the --session named — its main thread and each sub-agent — found under the paths given (default: ingest_roots)
-      --kind string      source route: native (abcd's own capture of the host's transcript) | import (another tool's export) (default native)
-      --session string   session id for the record (default: transcript filename; required for stdin)
-      --tool string      source tool: the tool that produced the transcript, a lowercase slug (default host on a native capture; required on an import)
+      --all[=true|false]   capture every transcript of the --session named — its main thread and each sub-agent — found under the paths given (default: ingest_roots)
+      --kind string        source route: native (abcd's own capture of the host's transcript) | import (another tool's export) (default native)
+      --session string     session id for the record (default: transcript filename; required for stdin)
+      --tool string        source tool: the tool that produced the transcript, a lowercase slug (default host on a native capture; required on an import)
 ```
 
 #### `abcd history discard`
@@ -2497,9 +2497,9 @@ Delete one staged or quarantined raw transcript for good: Writes the deletion; r
 **Flags:**
 
 ```
-      --pending           discard a transcript session-end left pending that no session start could file in a store
-      --root-sha string   discard from the repository with this root-commit SHA, with no checkout to stand in (one whose checkout is gone)
-      --yes               confirm the irreversible deletion of an unredacted transcript
+      --pending[=true|false]   discard a transcript session-end left pending that no session start could file in a store
+      --root-sha string        discard from the repository with this root-commit SHA, with no checkout to stand in (one whose checkout is gone)
+      --yes[=true|false]       confirm the irreversible deletion of an unredacted transcript
 ```
 
 **Example:**
@@ -2548,7 +2548,7 @@ Repair records filed under a composite session id: Writes a missing store, and t
 **Flags:**
 
 ```
-      --apply                      write the repaired records (default: report only)
+      --apply[=true|false]         write the repaired records (default: report only)
       --sidecar-root stringArray   directory to search for the harness's per-agent metadata (repeatable; default: ingest_roots from .abcd/config/history.json)
 ```
 
@@ -2604,8 +2604,8 @@ List the ended transcripts not yet redacted into the store: Writes only a missin
 **Flags:**
 
 ```
-      --all-repos         survey every repository in the store, not just this one
-      --root-sha string   list the pile of the repository with this root-commit SHA, with no checkout to stand in (one whose checkout is gone)
+      --all-repos[=true|false]   survey every repository in the store, not just this one
+      --root-sha string          list the pile of the repository with this root-commit SHA, with no checkout to stand in (one whose checkout is gone)
 ```
 
 ### `abcd ideate`
@@ -2630,10 +2630,10 @@ Validate a host-composed gauntlet verdict: Writes the dated record, private unle
 **Flags:**
 
 ```
-      --dry-run               check the input and report what would be written; write nothing
-      --private               the idea is private, the default: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision pointing at it (exclusive with --public)
-      --public                the idea is public, on the person's word only: commit the verdict under .abcd/development/research/ideas/<root-sha>/ and record a decision pointing at it (exclusive with --private)
-      --verdict-json string   path to the host-composed verdict JSON (or - for stdin)
+      --dry-run[=true|false]   check the input and report what would be written; write nothing
+      --private[=true|false]   the idea is private, the default: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision pointing at it (exclusive with --public)
+      --public[=true|false]    the idea is public, on the person's word only: commit the verdict under .abcd/development/research/ideas/<root-sha>/ and record a decision pointing at it (exclusive with --private)
+      --verdict-json string    path to the host-composed verdict JSON (or - for stdin)
 ```
 
 **Example:**
@@ -3105,11 +3105,11 @@ code still shows it; with --json that line is the last on stderr.
 **Flags:**
 
 ```
-      --narrow             with --wait and a go test naming at most three packages, wait at the narrow gate instead of behind whole runs
-      --race-gate          wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor or memory pressure is at or above its floor, and above that shut by another go test -race run, a race waiter ahead, the load, memory pressure and the race gate's hold
-      --site string        where the check runs: preflight | eval-harness
-      --timeout duration   with --wait or --race-gate, give up after this long and exit 1 (default 6h0m0s)
-      --wait               wait until the load is below the wait limit and no other go test -race run is live
+      --narrow[=true|false]      with --wait and a go test naming at most three packages, wait at the narrow gate instead of behind whole runs
+      --race-gate[=true|false]   wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor or memory pressure is at or above its floor, and above that shut by another go test -race run, a race waiter ahead, the load, memory pressure and the race gate's hold
+      --site string              where the check runs: preflight | eval-harness
+      --timeout duration         with --wait or --race-gate, give up after this long and exit 1 (default 6h0m0s)
+      --wait[=true|false]        wait until the load is below the wait limit and no other go test -race run is live
 ```
 
 **Example:**
@@ -3749,13 +3749,13 @@ refusal, exit 3 on a pause or a locked run state.
 **Flags:**
 
 ```
-      --accept-config-change   accept, once you have looked, a change to the repository's git settings that the run tripwire stopped, then take the step
-      --discard string         discard a held lane (lane-<n>), or one a drain handed back as stuck or closed: remove its worktree and branch, then close its pull request
-      --release string         land a held lane as it is (lane-<n>), once no lane has work left
-      --restart string         restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside
-      --route stringArray      route one role this step hands to an agent to a runner, for this invocation alone: <role>=runner:<name>[@<provider>/<model>], the runner one this machine enables and the model one its provider lists (else the runner's own model); one per role (implementer, ruthless-reviewer, security-reviewer, intent-auditor); wins over every configured route for this step alone, and the role's receipt records it verbatim
-      --run string             the run to step (run-<16 digits>); the one run in progress when omitted
-      --yielded string         with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying
+      --accept-config-change[=true|false]   accept, once you have looked, a change to the repository's git settings that the run tripwire stopped, then take the step
+      --discard string                      discard a held lane (lane-<n>), or one a drain handed back as stuck or closed: remove its worktree and branch, then close its pull request
+      --release string                      land a held lane as it is (lane-<n>), once no lane has work left
+      --restart string                      restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside
+      --route stringArray                   route one role this step hands to an agent to a runner, for this invocation alone: <role>=runner:<name>[@<provider>/<model>], the runner one this machine enables and the model one its provider lists (else the runner's own model); one per role (implementer, ruthless-reviewer, security-reviewer, intent-auditor); wins over every configured route for this step alone, and the role's receipt records it verbatim
+      --run string                          the run to step (run-<16 digits>); the one run in progress when omitted
+      --yielded string                      with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying
 ```
 
 #### `abcd implement stop`
@@ -3793,7 +3793,7 @@ No network request.
 **Flags:**
 
 ```
-      --lift   lift the stop; a halted run then waits for a take-over (abcd implement resume --take)
+      --lift[=true|false]   lift the stop; a halted run then waits for a take-over (abcd implement resume --take)
 ```
 
 **Example:**
@@ -3913,11 +3913,11 @@ List or drain owed fidelity reviews, emit an intent's request, or check issue dr
 **Flags:**
 
 ```
-      --issue-drift         walk the intent store and the issue ledger for promote joins that do not read the same from both ends (related_issues ↔ related_intents); warns on stderr, exits 0
-      --max int             with --owed: list at most n owed reviews (0: no cap); the summary names how many remain
-      --owed                drain the owed fidelity reviews: list them oldest shipped first and emit the oldest's request; writes (parks an OWED stub in a markerless intent, a committed record, and rewrites its request); runs no reviewer
-      --route stringArray   route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
-      --strict              with --issue-drift: exit 1 when any finding is reported (the CI mode)
+      --issue-drift[=true|false]   walk the intent store and the issue ledger for promote joins that do not read the same from both ends (related_issues ↔ related_intents); warns on stderr, exits 0
+      --max int                    with --owed: list at most n owed reviews (0: no cap); the summary names how many remain
+      --owed[=true|false]          drain the owed fidelity reviews: list them oldest shipped first and emit the oldest's request; writes (parks an OWED stub in a markerless intent, a committed record, and rewrites its request); runs no reviewer
+      --route stringArray          route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+      --strict[=true|false]        with --issue-drift: exit 1 when any finding is reported (the CI mode)
 ```
 
 **Example:**
@@ -3935,9 +3935,9 @@ Ingest an intent-audit verdict into the shipped intent: Writes its Audit Notes; 
 **Flags:**
 
 ```
-      --dry-run               check the input and report what would be written; write nothing
-      --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
-      --verdict-json string   path to the intent-audit verdict JSON, in the shape the Verdict shape section of its review request states
+      --dry-run[=true|false]   check the input and report what would be written; write nothing
+      --route stringArray      route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+      --verdict-json string    path to the intent-audit verdict JSON, in the shape the Verdict shape section of its review request states
 ```
 
 **Example:**
@@ -3989,7 +3989,7 @@ Ingest consistency findings as a dated review and a capture per finding: Writes 
 **Flags:**
 
 ```
-      --dry-run                     check the input and report what would be written; write nothing
+      --dry-run[=true|false]        check the input and report what would be written; write nothing
       --findings-json stringArray   path to the consistency findings JSON the intent-auditor returned; give it once per chunk of an overflowing corpus
       --route stringArray           route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
@@ -4107,7 +4107,7 @@ Print a draft's pre-pass input, or write its planning brief from the host's find
 **Flags:**
 
 ```
-      --dry-run                check the input and report what would be written; write nothing
+      --dry-run[=true|false]   check the input and report what would be written; write nothing
       --findings-json string   path to the host's findings over the input; validates them and writes the planning brief
 ```
 
@@ -4545,9 +4545,9 @@ author's approval of their own): the shell guard refuses it to an agent.
 **Flags:**
 
 ```
-      --approve                     record the technical facilitator's approval of the branch's head, a person's act the shell guard refuses to an agent; lands nothing
-      --no-enqueue                  do not arm or queue the pull request this run
-      --no-push                     do not push the branch this run; print the push command instead
+      --approve[=true|false]        record the technical facilitator's approval of the branch's head, a person's act the shell guard refuses to an agent; lands nothing
+      --no-enqueue[=true|false]     do not arm or queue the pull request this run
+      --no-push[=true|false]        do not push the branch this run; print the push command instead
       --record-review stringArray   record the review pair's verdicts for the branch's head from this reviewer's return (give it once per return, at least two); lands nothing
       --rests-on string             make --record-review a delta review resting on the full pair recorded for this commit, given by its full object name; each return also states Reviewed delta: <base>..<head>
 ```
@@ -4625,9 +4625,9 @@ commit object is absent reads as no default branch.
 **Flags:**
 
 ```
-      --reverted       list the reverted rows grouped by the rule that admitted them
-      --since string   start the range after this tag, or at the first first-parent commit on this date (YYYY-MM-DD); default: the last release tag (v*)
-      --unattended     keep only the rows no evidence places with a person
+      --reverted[=true|false]     list the reverted rows grouped by the rule that admitted them
+      --since string              start the range after this tag, or at the first first-parent commit on this date (YYYY-MM-DD); default: the last release tag (v*)
+      --unattended[=true|false]   keep only the rows no evidence places with a person
 ```
 
 ### `abcd launch`
@@ -4656,10 +4656,10 @@ configuration names runs; a submodule moved to a different commit still does.
 **Flags:**
 
 ```
-      --baseline string   the release tag the payload parity diff measures against (default: the newest release tag)
-      --deep-smoke        also run the installability smoke's deep tier: render every command, skill and agent page's help in an isolated subprocess (always on in the cut)
-      --dry-run           preview the launch bundle, its gates and the release cut without publishing
-      --fetch-baseline    read the parity baseline from the tag's published plugin archive, verified against the release's checksums.txt (a network fetch; default: a fresh render at the tag)
+      --baseline string               the release tag the payload parity diff measures against (default: the newest release tag)
+      --deep-smoke[=true|false]       also run the installability smoke's deep tier: render every command, skill and agent page's help in an isolated subprocess (always on in the cut)
+      --dry-run[=true|false]          preview the launch bundle, its gates and the release cut without publishing
+      --fetch-baseline[=true|false]   read the parity baseline from the tag's published plugin archive, verified against the release's checksums.txt (a network fetch; default: a fresh render at the tag)
 ```
 
 #### `abcd launch archive`
@@ -4680,10 +4680,10 @@ is written to --out.
 **Flags:**
 
 ```
-      --out string          existing directory to write <plugin>-plugin-v<version>.zip into
-      --repository string   refuse (exit 1) unless the archive's address is this GitHub owner/name's release download for the tag
-      --tag string          refuse unless the newest dated CHANGELOG version is this tag
-      --verify              refuse (exit 1) unless the committed catalog pins this archive's address and digest; without it, a tree with an uncommitted change refuses (exit 2)
+      --out string            existing directory to write <plugin>-plugin-v<version>.zip into
+      --repository string     refuse (exit 1) unless the archive's address is this GitHub owner/name's release download for the tag
+      --tag string            refuse unless the newest dated CHANGELOG version is this tag
+      --verify[=true|false]   refuse (exit 1) unless the committed catalog pins this archive's address and digest; without it, a tree with an uncommitted change refuses (exit 2)
 ```
 
 **Example:**
@@ -4732,8 +4732,8 @@ Scaffold the release gate for the declared artefact kind: Writes its workflows a
 **Flags:**
 
 ```
-      --confirm               overwrite a hand-edited scaffolded file with the current machinery
-      --dependency-reauthor   opt in to re-authoring bot-opened dependency bumps as the repository owner (seeds .abcd/config/dependency-reauthor.conf)
+      --confirm[=true|false]               overwrite a hand-edited scaffolded file with the current machinery
+      --dependency-reauthor[=true|false]   opt in to re-authoring bot-opened dependency bumps as the repository owner (seeds .abcd/config/dependency-reauthor.conf)
 ```
 
 #### `abcd launch ship`
@@ -4767,12 +4767,12 @@ checkout, so --fetch-baseline is refused beside it.
 **Flags:**
 
 ```
-      --allow-dirty             cut from a working tree with uncommitted changes; the pre-flight report records the override and every path it carried (waives the dirty-tree gate only — never lockstep, the archive pin's clean-payload refusal, the cut's uncommitted-records refusal, or the findings gate's refusal of an uncommitted open/ issue record)
-      --changelog-json string   path to the host-composed changelog JSON (or - for stdin); absent runs the deterministic emit step
-      --dry-run                 check the input and report what would be written; write nothing
-      --fetch-baseline          read the parity baseline from the anchor tag's published plugin archive, verified against the release's checksums.txt (a network fetch; default: a fresh render at the tag)
-      --payload-dir string      stage the versioned release payload in this directory (must be empty and outside the repository)
-      --route stringArray       route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+      --allow-dirty[=true|false]      cut from a working tree with uncommitted changes; the pre-flight report records the override and every path it carried (waives the dirty-tree gate only — never lockstep, the archive pin's clean-payload refusal, the cut's uncommitted-records refusal, or the findings gate's refusal of an uncommitted open/ issue record)
+      --changelog-json string         path to the host-composed changelog JSON (or - for stdin); absent runs the deterministic emit step
+      --dry-run[=true|false]          check the input and report what would be written; write nothing
+      --fetch-baseline[=true|false]   read the parity baseline from the anchor tag's published plugin archive, verified against the release's checksums.txt (a network fetch; default: a fresh render at the tag)
+      --payload-dir string            stage the versioned release payload in this directory (must be empty and outside the repository)
+      --route stringArray             route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 ### `abcd library`
@@ -4832,21 +4832,21 @@ history.
 **Flags:**
 
 ```
-      --alias stringArray      another identifying name for a confidential source (repeatable)
-      --author stringArray     an author, "Family, Given" or a literal name (repeatable)
-      --ban-authors            also ban the authors' names (a confidential source whose authorship is itself identifying)
-      --key string             the source key: lowercase, opaque for a confidential source (e.g. conf2026a)
-      --keywords stringArray   retrieval keywords, comma-separated (repeatable)
-      --meta string            a JSON file (or - for stdin) with "title", "aliases", "author" and "keywords"
-      --permission string      permission_status: citable | no-public-citation | internal-never-cite | ai-generated-never-cite | ask-author (default by class)
-      --private                the source is private: file it under confidential/ (exclusive with --public)
-      --public                 the source is public: file it under public/ (exclusive with --private)
-      --text string            the extracted text of a non-text document
-      --title string           the exact title (for a confidential source prefer --meta)
-      --type string            the CSL item type (default document)
-      --url string             the canonical URL (recorded, never fetched)
-      --venue string           the container title (journal, site, publisher)
-      --year int               the year of issue
+      --alias stringArray          another identifying name for a confidential source (repeatable)
+      --author stringArray         an author, "Family, Given" or a literal name (repeatable)
+      --ban-authors[=true|false]   also ban the authors' names (a confidential source whose authorship is itself identifying)
+      --key string                 the source key: lowercase, opaque for a confidential source (e.g. conf2026a)
+      --keywords stringArray       retrieval keywords, comma-separated (repeatable)
+      --meta string                a JSON file (or - for stdin) with "title", "aliases", "author" and "keywords"
+      --permission string          permission_status: citable | no-public-citation | internal-never-cite | ai-generated-never-cite | ask-author (default by class)
+      --private[=true|false]       the source is private: file it under confidential/ (exclusive with --public)
+      --public[=true|false]        the source is public: file it under public/ (exclusive with --private)
+      --text string                the extracted text of a non-text document
+      --title string               the exact title (for a confidential source prefer --meta)
+      --type string                the CSL item type (default document)
+      --url string                 the canonical URL (recorded, never fetched)
+      --venue string               the container title (journal, site, publisher)
+      --year int                   the year of issue
 ```
 
 #### `abcd library ask`
@@ -4858,10 +4858,10 @@ Query memory and synthesise a cited answer: Writes a memory page only with --fil
 **Flags:**
 
 ```
-      --dry-run            with --file-back: check the input and report what would be written; write nothing
-      --file-back          file the synthesised answer back as a new memory page
-      --page-json string   the answer page dict as JSON (file path, or - for stdin)
-      --top-n int          retrieval depth (0 uses the pinned default)
+      --dry-run[=true|false]     with --file-back: check the input and report what would be written; write nothing
+      --file-back[=true|false]   file the synthesised answer back as a new memory page
+      --page-json string         the answer page dict as JSON (file path, or - for stdin)
+      --top-n int                retrieval depth (0 uses the pinned default)
 ```
 
 **Example:**
@@ -4921,9 +4921,9 @@ Distil a local file or an https source into cited memory pages: Writes the pages
 **Flags:**
 
 ```
-      --dry-run             check the input and report what would be written; write nothing
-      --keep-original       store the original at .abcd/memory/sources/<sha256>.<ext>
-      --pages-json string   DistilledPage JSON array (file path, or - for stdin)
+      --dry-run[=true|false]         check the input and report what would be written; write nothing
+      --keep-original[=true|false]   store the original at .abcd/memory/sources/<sha256>.<ext>
+      --pages-json string            DistilledPage JSON array (file path, or - for stdin)
 ```
 
 **Example:**
@@ -4968,7 +4968,7 @@ names it.
       --decision string       the decision influenced: a decision id, an ADR or intent id, or free text
       --flip int              cite line N publicly (the person's act; checks the source's permission first)
       --influence string      the influence: supports | contradicts | method | background
-      --list                  print the ledger, numbered (read-only)
+      --list[=true|false]     print the ledger, numbered (read-only)
       --locator string        where in the source (pp., §)
       --repo string           the ledger's repository handle (default: this checkout's root commit, 12 hex digits)
       --source string         the source key
@@ -5001,7 +5001,7 @@ exits 0.
 **Flags:**
 
 ```
-      --refresh   the guard's mode: update an existing store only; an absent corpus or store is a one-line notice and exit 0
+      --refresh[=true|false]   the guard's mode: update an existing store only; an absent corpus or store is a one-line notice and exit 0
 ```
 
 ### `abcd lint`
@@ -5025,9 +5025,9 @@ Lint the docs for change-narration, broken links, citations, and stray root mark
 **Flags:**
 
 ```
-      --config string   path to docs-lint.json (default: <root>/.abcd/docs-lint.json)
-      --release-gate    run as the release gate: a citation past its staleness threshold blocks instead of warning (release-time only)
-      --root string     repo root to lint (default: current working directory)
+      --config string               path to docs-lint.json (default: <root>/.abcd/docs-lint.json)
+      --release-gate[=true|false]   run as the release gate: a citation past its staleness threshold blocks instead of warning (release-time only)
+      --root string                 repo root to lint (default: current working directory)
 ```
 
 #### `abcd lint identity`
@@ -5066,9 +5066,9 @@ Gate the built website, rendering it first when absent: Writes only inside the o
 **Flags:**
 
 ```
-      --base-path string   path the site is served below on its host, such as /widgets/ for a project's GitHub Pages address; every root-absolute link is placed under it (default "/")
-      --out string         built output directory to check (rendered first if absent) (default "site")
-      --project            gate a project site, every page built from what abcd writes to the repository and the interface words, styles and scripts taken from the binary; .abcd/site.json then holds the site's settings only
+      --base-path string       path the site is served below on its host, such as /widgets/ for a project's GitHub Pages address; every root-absolute link is placed under it (default "/")
+      --out string             built output directory to check (rendered first if absent) (default "site")
+      --project[=true|false]   gate a project site, every page built from what abcd writes to the repository and the interface words, styles and scripts taken from the binary; .abcd/site.json then holds the site's settings only
 ```
 
 ### `abcd memory`
@@ -5114,12 +5114,12 @@ a private name, a session shaped like a link — with nothing written.
 **Flags:**
 
 ```
-      --by string            the writer, in the Assisted-by form <Vendor>:<model-version>
-      --everywhere           recall the note in every repository, not only this one
-      --moved-from-host      stamp a lesson the person pointed at in the host's own memory files
-      --recall stringArray   a word or short phrase a later prompt would use (repeatable, 1 to 12)
-      --session string       the host's id for this session; without it the session is recorded as unknown
-      --title string         the note's title, one line of at most 120 characters
+      --by string                      the writer, in the Assisted-by form <Vendor>:<model-version>
+      --everywhere[=true|false]        recall the note in every repository, not only this one
+      --moved-from-host[=true|false]   stamp a lesson the person pointed at in the host's own memory files
+      --recall stringArray             a word or short phrase a later prompt would use (repeatable, 1 to 12)
+      --session string                 the host's id for this session; without it the session is recorded as unknown
+      --title string                   the note's title, one line of at most 120 characters
 ```
 
 **Example:**
@@ -5242,8 +5242,8 @@ nothing written. No network request.
 **Flags:**
 
 ```
-      --hold-pushes    the person's word that pushes wait for their return (grants nothing)
-      --until string   when the mode ends: a clock time (09:00) or a timestamp; open-ended (seven days at most) when omitted
+      --hold-pushes[=true|false]   the person's word that pushes wait for their return (grants nothing)
+      --until string               when the mode ends: a clock time (09:00) or a timestamp; open-ended (seven days at most) when omitted
 ```
 
 #### `abcd mode back`
@@ -5400,18 +5400,18 @@ and its hash, so a run is reproducible from the commit it names.
 **Flags:**
 
 ```
-      --dry-run           write nothing; with --out the two artefacts still land in that directory
-      --out string        an empty or absent directory the assembled input and the manifest are written to,
-                          for inspection: reading ingest finds a run only in the local-tier run directory,
-                          so a run written here cannot be ingested (default: the local-tier run directory)
-      --position string   the reading position: widening, entailment, comparative, detection
-                          (comparative derives its candidate set from the record: the one committed
-                          widening run at the target whose items carry no disposition and no
-                          admission — at the target, or at an ancestor of it across which only the
-                          readings store and the issue ledger changed, so a run's own records can be
-                          committed between its ingest and this assembly. None, or more than one,
-                          refuses and lists the runs)
-      --target string     the commit the assembly describes: HEAD, or a hexadecimal sha of 7 to 40 digits
+      --dry-run[=true|false]   write nothing; with --out the two artefacts still land in that directory
+      --out string             an empty or absent directory the assembled input and the manifest are written to,
+                               for inspection: reading ingest finds a run only in the local-tier run directory,
+                               so a run written here cannot be ingested (default: the local-tier run directory)
+      --position string        the reading position: widening, entailment, comparative, detection
+                               (comparative derives its candidate set from the record: the one committed
+                               widening run at the target whose items carry no disposition and no
+                               admission — at the target, or at an ancestor of it across which only the
+                               readings store and the issue ledger changed, so a run's own records can be
+                               committed between its ingest and this assembly. None, or more than one,
+                               refuses and lists the runs)
+      --target string          the commit the assembly describes: HEAD, or a hexadecimal sha of 7 to 40 digits
 ```
 
 **Example:**
@@ -5466,10 +5466,10 @@ the ingest would record says where instead.
 **Flags:**
 
 ```
-      --dispatch string       send the parked run <rdg-N> to the provider its position is pointed at (oracle.roles.cold-reading-<position>) and ingest the answer
-      --dry-run               check the input and report what would be written; write nothing
-      --reading-json string   path to the JSON the cold reading returned
-      --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+      --dispatch string        send the parked run <rdg-N> to the provider its position is pointed at (oracle.roles.cold-reading-<position>) and ingest the answer
+      --dry-run[=true|false]   check the input and report what would be written; write nothing
+      --reading-json string    path to the JSON the cold reading returned
+      --route stringArray      route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 **Example:**
@@ -5513,9 +5513,9 @@ terminal the questions are answered from --answers, by ordinal (Q1, Q2, ...).
 **Flags:**
 
 ```
-      --answered-in string   where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer (default "Terminal")
-      --answers string       answer the questions from this answers file (JSON: schema_version, interview "retrospective", answers by ordinal Q1, Q2, ...) instead of drawing them; the run refuses at the first question the file does not answer
-      --proceed              run although intents targeted at the release are unshipped (the person's confirmation)
+      --answered-in string     where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer (default "Terminal")
+      --answers string         answer the questions from this answers file (JSON: schema_version, interview "retrospective", answers by ordinal Q1, Q2, ...) instead of drawing them; the run refuses at the first question the file does not answer
+      --proceed[=true|false]   run although intents targeted at the release are unshipped (the person's confirmation)
 ```
 
 **Example:**
@@ -5539,8 +5539,8 @@ are unshipped and --proceed was not given, and when the retrospective already ex
 **Flags:**
 
 ```
-      --answers string   the interview's answers, a JSON file
-      --proceed          write although intents targeted at the release are unshipped (the person's confirmation)
+      --answers string         the interview's answers, a JSON file
+      --proceed[=true|false]   write although intents targeted at the release are unshipped (the person's confirmation)
 ```
 
 **Example:**
@@ -5581,7 +5581,7 @@ nothing filed. After the editor ran, both name where what was written is kept.
 **Flags:**
 
 ```
-      --template   print the report skeleton to fill (writes nothing)
+      --template[=true|false]   print the report skeleton to fill (writes nothing)
 ```
 
 ### `abcd reserve`
@@ -5757,15 +5757,15 @@ exit 2 when it could not run or origin refused a deletion.
 **Flags:**
 
 ```
-      --admit int               on a release reservation, from the copy cutting it: re-arm this withdrawn pull request and record it admitted
-      --apply                   with --sweep, delete the spent branches, each only while its tip is the one judged
-      --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
-      --holder                  say which GitHub account an act would reserve as, and from where, and your holder id; reserves nothing
-      --lease duration          how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)
-      --older-than int          with --sweep, the days a tip other than a release must have been untouched past its lease (at least 1) (default 7)
-      --release                 release your reservation from this copy by pushing a tombstone
-      --sweep                   list the spent reservation branches on origin, which --apply deletes; a dry run without it
-      --take-over               move your own live reservation from another copy to this one
+      --admit int                on a release reservation, from the copy cutting it: re-arm this withdrawn pull request and record it admitted
+      --apply[=true|false]       with --sweep, delete the spent branches, each only while its tip is the one judged
+      --footprint stringArray    a repository-relative path the work will change; repeat once per path (never split on commas)
+      --holder[=true|false]      say which GitHub account an act would reserve as, and from where, and your holder id; reserves nothing
+      --lease duration           how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)
+      --older-than int           with --sweep, the days a tip other than a release must have been untouched past its lease (at least 1) (default 7)
+      --release[=true|false]     release your reservation from this copy by pushing a tombstone
+      --sweep[=true|false]       list the spent reservation branches on origin, which --apply deletes; a dry run without it
+      --take-over[=true|false]   move your own live reservation from another copy to this one
 ```
 
 **Example:**
@@ -5913,11 +5913,11 @@ the durable record is touched. Both carry the scribe's per-run context stamp.
 **Flags:**
 
 ```
-      --dispositions string   the researcher's dispositions text, read whole and carried verbatim
-      --dry-run               write nothing; with --out the two artefacts still land in that directory
-      --out string            an empty or absent directory the context and the manifest are written to
-                              (default: the local-tier scribe run directory)
-      --run string            the ingested reading run the session transcribes for (rdg-N)
+      --dispositions string    the researcher's dispositions text, read whole and carried verbatim
+      --dry-run[=true|false]   write nothing; with --out the two artefacts still land in that directory
+      --out string             an empty or absent directory the context and the manifest are written to
+                               (default: the local-tier scribe run directory)
+      --run string             the ingested reading run the session transcribes for (rdg-N)
 ```
 
 **Example:**
@@ -5958,11 +5958,11 @@ The capture verbs' own redaction and refusals are made only when they write.
 **Flags:**
 
 ```
-      --context string        the context the session was handed, when assemble wrote it under --out
-                              (default: the local-tier scribe run directory of the output's run)
-      --dispositions string   the researcher's dispositions text, the file assemble was handed
-      --dry-run               check the input and report what would be written; write nothing
-      --scribe-json string    path to the JSON the scribe session returned
+      --context string         the context the session was handed, when assemble wrote it under --out
+                               (default: the local-tier scribe run directory of the output's run)
+      --dispositions string    the researcher's dispositions text, the file assemble was handed
+      --dry-run[=true|false]   check the input and report what would be written; write nothing
+      --scribe-json string     path to the JSON the scribe session returned
 ```
 
 **Example:**
@@ -6117,12 +6117,12 @@ Exit 2 on a refusal, with nothing started.
 **Flags:**
 
 ```
-      --behind-proxy         trust the last X-Forwarded-For entry as the client's address; only for the team relay behind its host's proxy
-      --client-id string     the team's GitHub sign-in app's public client id (default: ABCD_SESSION_GITHUB_CLIENT_ID)
-      --listen string        the address to listen on: an IP address (or localhost) and a port; anything but loopback is listening beyond this computer (default "127.0.0.1:8787")
-      --origin stringArray   a page origin to admit, as scheme://host[:port], followed by the page's base path when it is served below one, as https://host/base/ (repeatable; also ABCD_SESSION_ORIGINS); given, it replaces the default of https://abcdesign.app and loopback pages
-      --owner stringArray    a GitHub user or organisation whose every repository to serve sessions for (repeatable)
-      --repo stringArray     a repository to serve sessions for, as owner/name (repeatable; also ABCD_SESSION_REPOS)
+      --behind-proxy[=true|false]   trust the last X-Forwarded-For entry as the client's address; only for the team relay behind its host's proxy
+      --client-id string            the team's GitHub sign-in app's public client id (default: ABCD_SESSION_GITHUB_CLIENT_ID)
+      --listen string               the address to listen on: an IP address (or localhost) and a port; anything but loopback is listening beyond this computer (default "127.0.0.1:8787")
+      --origin stringArray          a page origin to admit, as scheme://host[:port], followed by the page's base path when it is served below one, as https://host/base/ (repeatable; also ABCD_SESSION_ORIGINS); given, it replaces the default of https://abcdesign.app and loopback pages
+      --owner stringArray           a GitHub user or organisation whose every repository to serve sessions for (repeatable)
+      --repo stringArray            a repository to serve sessions for, as owner/name (repeatable; also ABCD_SESSION_REPOS)
 ```
 
 #### `abcd session setup`
@@ -6227,13 +6227,13 @@ Render the website into the output directory: Writes there, plus a missing label
 **Flags:**
 
 ```
-      --base-path string   path the site is served below on its host, such as /widgets/ for a project's GitHub Pages address; every root-absolute link is placed under it (default "/")
-      --commit string      commit for the footer and the build stamp (default: git HEAD)
-      --date string        date for the build stamp (default: the newest release's date)
-      --out string         directory to render into (default "site")
-      --preview            stamp the build as unreleased at this commit, for a preview deployment of an untagged tree
-      --project            build a project site, every page built from what abcd writes to the repository and the interface words, styles and scripts taken from the binary; .abcd/site.json then holds the site's settings only
-      --version string     version for the footer and the build stamp (default: the newest dated CHANGELOG heading)
+      --base-path string       path the site is served below on its host, such as /widgets/ for a project's GitHub Pages address; every root-absolute link is placed under it (default "/")
+      --commit string          commit for the footer and the build stamp (default: git HEAD)
+      --date string            date for the build stamp (default: the newest release's date)
+      --out string             directory to render into (default "site")
+      --preview[=true|false]   stamp the build as unreleased at this commit, for a preview deployment of an untagged tree
+      --project[=true|false]   build a project site, every page built from what abcd writes to the repository and the interface words, styles and scripts taken from the binary; .abcd/site.json then holds the site's settings only
+      --version string         version for the footer and the build stamp (default: the newest dated CHANGELOG heading)
 ```
 
 #### `abcd site setup`
@@ -6245,13 +6245,13 @@ Take the website from this checkout to a live address: Writes its files, and the
 **Flags:**
 
 ```
-      --confirm            replace a workflow or host configuration that differs from what setup writes
-      --domain string      custom domain to route to the host when the composition names none
-      --name string        host name when the composition names none (default: the repository's name)
-      --project            set up a project site; where .abcd/site.json is a composition, its settings and workflow go beside it, in .abcd/project-site.json and .github/workflows/project-site.yml, and the composed site is left as it is
-      --provider string    hosting provider when the composition names none: cloudflare or github-pages (default cloudflare); github-pages asks whether to switch the project site on
-      --replace-existing   publish over a site the host already serves for this repository without asking; with --yes and no --replace-existing, setup refuses when such a site exists
-      --yes                confirm the forge and host changes without being asked (never the install of a missing gh, nor publishing over a site already live, which takes --replace-existing); without it an unanswered run declines them
+      --confirm[=true|false]            replace a workflow or host configuration that differs from what setup writes
+      --domain string                   custom domain to route to the host when the composition names none
+      --name string                     host name when the composition names none (default: the repository's name)
+      --project[=true|false]            set up a project site; where .abcd/site.json is a composition, its settings and workflow go beside it, in .abcd/project-site.json and .github/workflows/project-site.yml, and the composed site is left as it is
+      --provider string                 hosting provider when the composition names none: cloudflare or github-pages (default cloudflare); github-pages asks whether to switch the project site on
+      --replace-existing[=true|false]   publish over a site the host already serves for this repository without asking; with --yes and no --replace-existing, setup refuses when such a site exists
+      --yes[=true|false]                confirm the forge and host changes without being asked (never the install of a missing gh, nor publishing over a site already live, which takes --replace-existing); without it an unanswered run declines them
 ```
 
 ### `abcd spec`
@@ -6448,8 +6448,8 @@ install's shape, and swaps nothing.
 **Flags:**
 
 ```
-      --check   fetch the latest release once and compare it with this binary, swapping nothing (it reaches the network only when invoked; abcd never fetches implicitly — adr-38); names its source and the command that takes the update
-      --yes     skip the TTY confirmation of a freshly resolved tag
+      --check[=true|false]   fetch the latest release once and compare it with this binary, swapping nothing (it reaches the network only when invoked; abcd never fetches implicitly — adr-38); names its source and the command that takes the update
+      --yes[=true|false]     skip the TTY confirmation of a freshly resolved tag
 ```
 
 #### `abcd update news`
@@ -6463,7 +6463,7 @@ After an abcd update, print what the agent relays at the start of its first repl
 **Flags:**
 
 ```
-      --answer string   record the person's reply to the offer, yes or not-now, once for this repository and release; run it only with their reply
-      --full            print the full summary of the releases since the last update and what waits here; writes nothing
-      --seen            record that the person read the news where no offer was made; run it only after they were shown it
+      --answer string       record the person's reply to the offer, yes or not-now, once for this repository and release; run it only with their reply
+      --full[=true|false]   print the full summary of the releases since the last update and what waits here; writes nothing
+      --seen[=true|false]   record that the person read the news where no offer was made; run it only after they were shown it
 ```

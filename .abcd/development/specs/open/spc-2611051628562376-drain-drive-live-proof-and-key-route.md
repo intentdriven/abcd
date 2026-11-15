@@ -38,5 +38,5 @@ What spc-2610230813348813 did not deliver for itd-2610222215485265: the live pro
    - needs: none
    - packages: internal/core/implement/loop/terminal.go
    - tests: internal/core/implement/loop/terminal_outage_test.go
-   What the drive does with a lane still paused when its outage runs out: hand it back as stuck with the runner's reason and release it, as the intent's decision 7 was written, or leave it paused on its branch for the next drive, as a stop leaves a lane. Both are on the record; the product thinker settles it before this step is built, and the intent's decision 7 is amended to the answer.
+   What the drive does with a lane still paused when its outage runs out: hand it back as stuck with the runner's reason and release it, as the intent's decision 7 was written, or leave it paused on its branch for the next drive, as a stop leaves a lane. Both are on the record; the product thinker settles it before this step is built, and the intent's decision 7 is amended to the answer. Open question 2 of itd-2611141610197753 (whether a lane a drive set aside is tried again, left for the next drive or handed back as stuck) is the same kind of choice for another cause; neither record settles the other.
 

@@ -2195,13 +2195,20 @@ outside the dedup ledger.`,
 	//
 	// The session-end hook cannot say this at session end — SessionEnd ignores a
 	// hook's exit code and stdout, so a not-installed session captures nothing and
-	// no one is told. SessionStart is the one session hook with a user-visible
-	// channel: it renders a hook's stderr as a notice ONLY on a non-zero exit, and
-	// never blocks the session on it. So the "loud" path here deliberately exits 2
-	// — the only way the warning reaches the user — while every other path stays
-	// silent at exit 0. `ahoy install` and `ahoy doctor` already handle the
-	// installed and health-check cases; this covers the plugin-enabled-but-never-
-	// installed gap that was otherwise silent.
+	// no one is told. SessionStart is the session hook whose output is read, so
+	// the warning is raised here.
+	//
+	// The entrypoint exits 0 on every path and delivers its notices on stderr
+	// with a constant count line on stdout: a fixed sentence and the number of
+	// notices, which says they exist and names the verbs that hold the detail.
+	// A path with nothing to report prints neither. A notice is not a hook
+	// failure, and the host shows a failing SessionStart hook as an error banner
+	// with the stderr text dropped; the comment where the notices are written
+	// out, further down, carries the whole reason (iss-2608241115201044).
+	//
+	// `ahoy install` and `ahoy doctor` already handle the installed and
+	// health-check cases; this covers the plugin-enabled-but-never-installed gap
+	// that was otherwise silent.
 	hookCmd.AddCommand(&cobra.Command{
 		Use:   "session-start",
 		Short: "SessionStart: drain staged transcripts into the store, and warn about an unbootstrapped store or a stale binary",
