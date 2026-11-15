@@ -163,6 +163,9 @@ func withdrawLateArming(c Context, lane *Lane, stage Stage, why, then string, vo
 	if void {
 		voided = voidOwnReview(c.RepoRoot, *lane)
 	}
+	// The reason's leading words, up to reason itself, are what owedSince matches
+	// (owedRetryPrefix) to find a hand-back's first try that did not take, so a
+	// change to them moves the clock an owed withdrawal's bound counts from.
 	retry := func(reason string) error {
 		return contend(string(stage), "", lane.ID, "pull request #"+n+" is armed and "+why+", and "+reason+"; until the forge reports no arming it can still merge"+voided,
 			"run `abcd implement step` again: the step tries the withdrawal again, and releases an issue run's reservation only once the forge reports no arming; or withdraw it yourself with `gh pr merge "+n+
@@ -226,8 +229,8 @@ func withdrawOwed(repoRoot string, st *State, i int, c Context, now time.Time) (
 		if r, ok := AsRefusal(err); ok && strings.HasPrefix(r.Reason, owedRetryPrefix(lane)) {
 			roots, _ := layered.RootsFor(repoRoot)
 			if b, berr := resolveStuckBounds(roots); berr == nil {
-				if mins, past := owedPast(*st, lane, b, now); past {
-					r.Remedy = owedToPerson(lane, mins, b)
+				if mins, tried, past := owedPast(*st, lane, b, now); past {
+					r.Remedy = owedToPerson(lane, mins, tried, b)
 				}
 			}
 		}
@@ -252,40 +255,47 @@ func owedRetryPrefix(lane Lane) string {
 // owedSince is when lane, handed back with its pull request still armed
 // (armingOwed), began owing the withdrawal, which its bound counts from, as the
 // runner wait counts from its record line (runnerWaitSince): the lane's first
-// record line of a withdrawal that did not take since it was handed back, or
-// the hand-back's own time where the record holds none. ok is false where
-// neither is known.
-func owedSince(st State, lane Lane) (since time.Time, ok bool) {
+// record line of a withdrawal that did not take since it was handed back
+// (tried), or the hand-back's own time where the record holds none, as for a
+// lane an older build handed back. ok is false where neither is known.
+func owedSince(st State, lane Lane) (since time.Time, tried, ok bool) {
 	if lane.HandBack != nil {
 		since = lane.HandBack.At
 	}
 	prefix := owedRetryPrefix(lane)
 	for _, e := range st.Record {
 		if e.Lane == lane.ID && e.Stage == string(StageHandedBack) && !e.At.Before(since) && strings.HasPrefix(e.Note, prefix) {
-			return e.At, true
+			return e.At, true, true
 		}
 	}
-	return since, !since.IsZero()
+	return since, false, !since.IsZero()
 }
 
 // owedPast is how many whole minutes lane has owed its withdrawal (owedSince),
-// and whether that is at or past the stuck bound's minutes in b.
-func owedPast(st State, lane Lane, b stuckBounds, now time.Time) (mins int, past bool) {
-	since, ok := owedSince(st, lane)
+// whether they count from a try that did not take (tried) or from the
+// hand-back, and whether they are at or past the stuck bound's minutes in b.
+func owedPast(st State, lane Lane, b stuckBounds, now time.Time) (mins int, tried, past bool) {
+	since, tried, ok := owedSince(st, lane)
 	if !ok {
-		return 0, false
+		return 0, false, false
 	}
 	mins = int(now.Sub(since) / time.Minute)
-	return mins, mins >= b.minutes.Value
+	return mins, tried, mins >= b.minutes.Value
 }
 
 // owedToPerson is what a step's refusal and a drain's next say of a lane whose
 // withdrawal has not taken past the bound (owedPast): a person withdraws the
-// arming or decides the lane, and the reservation is kept and renewed.
-func owedToPerson(lane Lane, mins int, b stuckBounds) string {
+// arming or decides the lane, and the reservation is kept and renewed. The
+// minutes are of tries where they count from one (tried), and otherwise the
+// minutes since the lane was handed back.
+func owedToPerson(lane Lane, mins int, tried bool, b stuckBounds) string {
 	n := strconv.Itoa(lane.PR)
-	return fmt.Sprintf("the withdrawal of pull request #%s's arming has not taken in %d minutes of tries, past the bound of %d (%s), so a person withdraws it with `gh pr merge %s --disable-auto`, taking it out of the merge queue on its page if it is there, or decides the lane; until the forge reports no arming the run's reservation is kept and renewed, and each `abcd implement step` still tries the withdrawal again",
-		n, mins, b.minutes.Value, describeOrigin(b.minutes), n)
+	clock := fmt.Sprintf("%d minutes of tries", mins)
+	if !tried {
+		clock = fmt.Sprintf("the %d minutes since it was handed back", mins)
+	}
+	return fmt.Sprintf("the withdrawal of pull request #%s's arming has not taken in %s, past the bound of %d (%s), so a person withdraws it with `gh pr merge %s --disable-auto`, taking it out of the merge queue on its page if it is there, or decides the lane; until the forge reports no arming the run's reservation is kept and renewed, and each `abcd implement step` still tries the withdrawal again",
+		n, clock, b.minutes.Value, describeOrigin(b.minutes), n)
 }
 
 // landWithdrawal is a landing's withdrawal of an armed lane's arming while a

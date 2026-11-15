@@ -726,10 +726,19 @@ since the record's first line of a try that did not take (the hand-back's
 time where it holds none), the step's refusal and the drain's `next` say a
 person withdraws the arming (`gh pr merge <n> --disable-auto`, taking it out of
 the merge queue on its page if it is there) or decides the lane, naming the
-pull request; the reservation is still kept and renewed, and each step still
-tries the withdrawal. A person's stop of the run leaves such a lane as it is:
-its record line and its answer say the pull request is still armed and that a
-person withdraws it. The review receipt the loop itself recorded for that pull
+pull request, and the minutes they count are of tries, or since the lane was
+handed back where the record holds no try; the reservation is still kept and
+renewed, and each step still tries the withdrawal. Past the bound a drain
+whose only lane in progress is this one opens no new lane, and `abcd drain
+--drive` keeps stepping it, thirty seconds apart at least, ending as any
+drive with nothing moving does, so the reservation stays renewed and no
+second lane is in hand past the drain's cap (`commands/drain.md`). The
+person's act ends it: once they disarm the pull request with the command the
+refusal names, the next step records that and releases the reservation. A
+person's stop of the run leaves such a lane as it is: its record line says the
+pull request is still armed and that a person withdraws it, and its answer,
+the stop's page and the run's listing name the pull request once, with its
+disarm. The review receipt the loop itself recorded for that pull
 request's head, from the lane's round, is moved aside in this checkout (to the
 head's name with `.voided` after it), so no re-arm of that head counts the pair
 that judged it, and the line of the first try and that of the try that takes

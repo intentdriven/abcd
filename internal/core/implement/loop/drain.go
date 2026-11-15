@@ -1531,9 +1531,9 @@ func capPhrase(max int) string {
 // and renewed all the while.
 func owedNext(l DrainLane, run State, b stuckBounds, now time.Time) string {
 	lane := run.Lanes[run.current()]
-	if mins, past := owedPast(run, lane, b, now); past {
+	if mins, tried, past := owedPast(run, lane, b, now); past {
 		return fmt.Sprintf("%s's lane, run %s, needs a person: %s; run `abcd drain` again routes the hand-back once the forge reports no arming",
-			l.Issue, l.RunID, owedToPerson(lane, mins, b))
+			l.Issue, l.RunID, owedToPerson(lane, mins, tried, b))
 	}
 	return fmt.Sprintf("drive %s's lane, run %s: `abcd implement step --run %s`; its lane is handed back with pull request #%d still armed, so each step tries the withdrawal again, the drain renews its reservation, and run `abcd drain` again routes the hand-back once the forge reports no arming",
 		l.Issue, l.RunID, l.RunID, lane.PR)

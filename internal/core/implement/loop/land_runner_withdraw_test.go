@@ -541,7 +541,7 @@ func TestAnOwedWithdrawalPastTheBoundIsAPersonsToWithdraw(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"needs a person", "pull request #7", "a person withdraws it with `gh pr merge 7 --disable-auto`", "or decides the lane", "past the bound of 60", "kept and renewed"} {
+	for _, want := range []string{"needs a person", "pull request #7", "minutes of tries", "a person withdraws it with `gh pr merge 7 --disable-auto`", "or decides the lane", "past the bound of 60", "kept and renewed"} {
 		if !strings.Contains(res.Next, want) {
 			t.Fatalf("past the bound the drain's next names the person's act (%q): %s", want, res.Next)
 		}
@@ -556,6 +556,49 @@ func TestAnOwedWithdrawalPastTheBoundIsAPersonsToWithdraw(t *testing.T) {
 	}
 	if got := drainLaneOutcome(t, root, f.runID); got != DrainLaneInProgress {
 		t.Fatalf("the lane stays in progress past the bound: %s", got)
+	}
+}
+
+// TestAnOwedWithdrawalWithNoTryLineCountsFromTheHandBack: a lane whose record
+// holds no line of a try that did not take, as one an older build handed back,
+// counts its bound from the hand-back, and past it the drain's next and the
+// step's refusal say the minutes since it was handed back, not minutes of
+// tries.
+func TestAnOwedWithdrawalWithNoTryLineCountsFromTheHandBack(t *testing.T) {
+	f, path, report := lateReportArmed(t)
+	root := f.repo.Root()
+	f.ghFile(t, "refuse-disarm", "")
+	f.handInLate(t, path, report)
+	back := 2 * time.Hour
+	if err := mutate(root, f.runID, func(_ *os.Root, st *State) (bool, error) {
+		i := st.current()
+		lane := st.Lanes[i]
+		hb := *lane.HandBack
+		hb.At = hb.At.Add(-back)
+		st.Lanes[i].HandBack = &hb
+		prefix := owedRetryPrefix(lane)
+		st.Record = slices.DeleteFunc(st.Record, func(e Entry) bool {
+			return e.Lane == lane.ID && strings.HasPrefix(e.Note, prefix)
+		})
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if recordSays(t, root, f.runID, string(StageHandedBack), "pull request #7 is armed and") {
+		t.Fatal("premise: the record holds no line of a try that did not take")
+	}
+	const since = "minutes since it was handed back, past the bound of 60"
+	res, err := Drain(root, Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.Next, "needs a person") || !strings.Contains(res.Next, since) || strings.Contains(res.Next, "minutes of tries") {
+		t.Fatalf("past the bound the drain's next counts the minutes since the hand-back: %s", res.Next)
+	}
+	_, err = advance(root, f.runID, f.stages, Options{})
+	r := mustRefusal(t, err)
+	if !r.Contention || !strings.Contains(r.Remedy, since) || strings.Contains(r.Remedy, "minutes of tries") {
+		t.Fatalf("past the bound the step's refusal counts the minutes since the hand-back: %+v", r)
 	}
 }
 
@@ -588,15 +631,18 @@ func TestEachLineOfAWithdrawalNamesTheReceiptsMoveAlike(t *testing.T) {
 }
 
 // TestAStopSaysALaneOwingItsWithdrawalIsStillArmed: a person's stop of a run
-// whose lane owes its arming's withdrawal releases what it released before,
-// and its record line and its answer say the pull request is still armed and
-// that a person withdraws it.
+// whose lane owes its arming's withdrawal releases what it released before;
+// its record line says the pull request is still armed and that a person
+// withdraws it, and its answer and its page name the armed pull request and
+// its disarm once each.
 func TestAStopSaysALaneOwingItsWithdrawalIsStillArmed(t *testing.T) {
 	f, path, report := lateReportArmed(t)
 	root := f.repo.Root()
 	f.ghFile(t, "refuse-disarm", "")
 	f.handInLate(t, path, report)
-	o, _, _ := stopped(t)
+	o, _, folder := stopped(t)
+	at := time.Now()
+	o.Now = func() time.Time { return at }
 	r := wantStopRefusal(t, checkOnce(root, f.runID, o))
 	c := controlOf(t, root, f.runID)
 	if c.Stop == nil || c.Stop.HaltedAt == nil {
@@ -606,12 +652,17 @@ func TestAStopSaysALaneOwingItsWithdrawalIsStillArmed(t *testing.T) {
 	if !recordSays(t, root, f.runID, StageStop, armed, person) {
 		t.Fatal("the stop's record line says the pull request is still armed and a person withdraws it")
 	}
-	if !strings.Contains(r.Reason, armed) || !strings.Contains(r.Reason, person) {
-		t.Fatalf("the stop's answer says the pull request is still armed and a person withdraws it: %s", r.Reason)
+	const named, disarm = "pull request #7", "gh pr merge 7 --disable-auto"
+	if strings.Count(r.Reason, named) != 1 || strings.Count(r.Reason, disarm) != 1 || !strings.Contains(r.Reason, "can still merge") {
+		t.Fatalf("the stop's answer names the armed pull request and its disarm once: %s", r.Reason)
 	}
-	i := slices.IndexFunc(c.Stop.Left, func(l StopLeft) bool { return l.ArmedPR == 7 && strings.Contains(l.Note, armed) })
-	if i < 0 || !c.Stop.Left[i].Settled {
-		t.Fatalf("what the stop left names the armed pull request, settled: %+v", c.Stop.Left)
+	page := pageOf(t, folder, at)
+	if strings.Count(page, named) != 1 || strings.Count(page, disarm) != 1 || !strings.Contains(page, "the withdrawal of its arming not yet taken") {
+		t.Fatalf("the stop's page names the lane's state, and the armed pull request and its disarm once:\n%s", page)
+	}
+	i := slices.IndexFunc(c.Stop.Left, func(l StopLeft) bool { return l.ArmedPR == 7 && l.Stage == StageHandedBack })
+	if i < 0 || !c.Stop.Left[i].Settled || strings.Contains(c.Stop.Left[i].Note, named) {
+		t.Fatalf("what the stop left names the armed pull request through ArmedPR alone, settled: %+v", c.Stop.Left)
 	}
 	if !f.reservationReleased(t) {
 		t.Fatal("the stop releases the reservation as it did")

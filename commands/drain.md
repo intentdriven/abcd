@@ -784,9 +784,20 @@ what it did in `next`:
   arming's withdrawal again (`abcd implement step --run <run-id>`, which
   `abcd drain --drive` takes), each move renews its reservation at half its
   lease, and the hand-back is routed only once the forge reports no arming. A
-  newer lane in progress is driven first; past `pace.stuck_minutes` of tries,
+  newer lane in progress is driven first; past `pace.stuck_minutes` of tries
+  (or since the hand-back, where the record holds no try),
   `next` says a person withdraws the arming or decides the lane, naming the
-  pull request, and the reservation is still kept and renewed. Before its records and its push, the lane's sync
+  pull request, and the reservation is still kept and renewed. Past it, while
+  that lane is the only one in progress, the drain opens no new lane and
+  `abcd drain --drive` keeps stepping it, each try that does not take waited
+  out, thirty seconds at least, as any wait on a person is, and the drive ends
+  as any drive with nothing moving does (eight hours with no `--until`, the
+  bound with one): a drive that ended sooner would stop renewing the
+  reservation kept while the pull request is armed, and going on to the next
+  issue would put two lanes in hand past the drain's cap. The person's act
+  ends it: once they disarm the pull request with the `gh pr merge <n>
+  --disable-auto` the refusal names, the next step records it and releases the
+  reservation, and the next move routes the hand-back. Before its records and its push, the lane's sync
   fetches `origin`'s default branch and merges it whenever it has moved, a fresh
   round judging the merge (`commands/implement.md`): a conflict confined to
   files `origin` declares `linguist-generated` goes back to an implementer to

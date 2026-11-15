@@ -298,10 +298,11 @@ func stopRefusal(runID string, rec RunStop) error {
 		reason += "; " + termsafe.Sanitize(rec.PageFailed)
 	}
 	// A lane the stop left handed back with its pull request still armed
-	// (settleStop) is named, with the person's withdrawal.
+	// (settleStop) is named, and the pull request once, with the person's
+	// disarm (ArmedLine), as the stop's page and the run's listing name it.
 	for _, l := range rec.Left {
 		if l.Stage == StageHandedBack && l.ArmedPR > 0 {
-			reason += "; " + termsafe.Sanitize(l.Note)
+			reason += "; " + termsafe.Sanitize(l.Lane+" was "+l.Note) + "; " + ArmedLine(l.ArmedPR)
 		}
 	}
 	return contend(StageStop, "", "", reason, remedy)
@@ -678,16 +679,17 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 		if stopFinished(lane) {
 			// A lane handed back with its pull request still armed (armingOwed)
 			// is left as it is, its arming with it: the stop withdraws nothing,
-			// so it says once, in the record and in what it left, that the pull
-			// request is still armed and a person withdraws it.
+			// so its record line says once that the pull request is still armed
+			// and a person withdraws it. What it left names the lane's state,
+			// and ArmedPR the pull request, which every account of the stop
+			// names once (ArmedLine).
 			if armingOwed(lane) {
 				if p, ok := prior[lane.ID]; ok {
 					left = append(left, p)
 					continue
 				}
-				note := owedAtStop(lane)
-				st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageStop, Note: note})
-				left = append(left, StopLeft{Lane: lane.ID, Stage: lane.Stage, Settled: true, Note: note, ArmedPR: lane.PR})
+				st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageStop, Note: owedAtStop(lane)})
+				left = append(left, StopLeft{Lane: lane.ID, Stage: lane.Stage, Settled: true, Note: owedLeft, ArmedPR: lane.PR})
 			}
 			continue
 		}
@@ -766,6 +768,11 @@ func owedAtStop(lane Lane) string {
 	return fmt.Sprintf("pull request #%d is still armed: %s and the withdrawal has not taken, and the stop withdraws nothing, so it can still merge until a person withdraws it with `gh pr merge %d --disable-auto`, taking it out of the merge queue on its page if it is there",
 		lane.PR, lateHandBack(lane), lane.PR)
 }
+
+// owedLeft is what a stop left says of a lane handed back with its pull
+// request still armed (armingOwed), the pull request itself named apart
+// (ArmedLine).
+const owedLeft = "handed back with the withdrawal of its arming not yet taken, and the stop withdraws nothing"
 
 // newestAside is the newest aside holding files saved for the lane. An aside that cannot
 // be read is passed over.
