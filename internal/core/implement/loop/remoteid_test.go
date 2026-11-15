@@ -255,7 +255,9 @@ func TestADriveReadsTheRemotesIdentityAsItStarts(t *testing.T) {
 // guards: they pass without a production change. The credential,
 // core.askPass and protocol cases were new in the round before; the filter,
 // merge driver, editor, gpg program and include cases, the rest of the set
-// the run's fingerprint watches, were watched failing on the default branch.
+// the run's fingerprint watches, were watched failing on the default branch,
+// and so were the settings past that set that a git of the drive reads
+// (driveHeldConfig: format.pretty to submodule.recurse).
 func TestEachKeyFamilyTheDriveHoldsIsReadAgain(t *testing.T) {
 	for _, tc := range []struct {
 		key, value, want string
@@ -284,6 +286,25 @@ func TestEachKeyFamilyTheDriveHoldsIsReadAgain(t *testing.T) {
 		{key: "core.editor", value: "/bin/true", want: "core.editor"},
 		{key: "gpg.program", value: "/bin/true", want: "gpg.program"},
 		{key: "include.path", value: "/nonexistent.gitconfig", want: "include.path"},
+		{key: "format.pretty", value: "%G?", want: "format.pretty"},
+		{key: "pretty.planted", value: "%G?", want: "pretty.planted"},
+		{key: "diff.external", value: "/bin/true", want: "diff.external"},
+		{key: "merge.renormalize", value: "true", want: "merge.renormalize"},
+		{key: "gpg.format", value: "ssh", want: "gpg.format"},
+		{key: "push.gpgSign", value: "true", want: "push.gpgsign"},
+		{key: "ssh.variant", value: "simple", want: "ssh.variant"},
+		{key: "core.alternateRefsCommand", value: "true", want: "core.alternaterefscommand"},
+		{key: "uploadpack.packObjectsHook", value: "true", want: "uploadpack.packobjectshook"},
+		{key: "lfs.customtransfer.planted.path", value: "/bin/true", want: "lfs.customtransfer.planted.path"},
+		{key: "hook.planted.command", value: "true", want: "hook.planted.command"},
+		{key: "gc.recentObjectsHook", value: "true", want: "gc.recentobjectshook"},
+		{key: "http.https://example.invalid/.proxy", value: "http://127.0.0.1:9", want: "http.<hidden-"},
+		{key: "http.sslCAInfo", value: "/nonexistent.pem", want: "http.sslcainfo"},
+		{key: "http.https://example.invalid/.sslCAInfo", value: "/nonexistent.pem", want: "http.<hidden-"},
+		{key: "http.curloptResolve", value: "example.invalid:443:127.0.0.1", want: "http.curloptresolve"},
+		{key: "fetch.bundleURI", value: "https://example.invalid/b", want: "fetch.bundleuri"},
+		{key: "submodule.recurse", value: "true", want: "submodule.recurse"},
+		{key: "push.recurseSubmodules", value: "on-demand", want: "push.recursesubmodules"},
 		{key: "core.editor", value: "/bin/true", want: "core.editor", system: true},
 		{key: "http.proxy", value: "http://127.0.0.1:9", want: "http.proxy", system: true},
 		{key: "http.proxy", value: "http://127.0.0.1:9", want: "http.proxy", included: true},
@@ -322,6 +343,74 @@ func TestEachKeyFamilyTheDriveHoldsIsReadAgain(t *testing.T) {
 				t.Fatalf("the refusal hides a URL in a key's name: %+v", r)
 			}
 		})
+	}
+}
+
+// TestASettingNoGitOfTheDriveReadsLeavesItRunning: a setting no git command
+// a drive runs reads (driveUnreadSettings: a pager, an interactive editor, a
+// trailer command, automatic maintenance, the per-submodule keys, which no
+// fetch abcd makes and no status the drive makes reads, a tool, browser or
+// mail command)
+// changed between two lanes leaves the next lane's comparison unchanged, so
+// a lane's `git submodule init` or a global edit of a pager does not end the
+// drive. Each was held on the default branch, and stopped it.
+func TestASettingNoGitOfTheDriveReadsLeavesItRunning(t *testing.T) {
+	repo, _, _ := hookedOrigin(t)
+	id, err := readRemoteIdentity(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kv := range [][2]string{
+		{"core.pager", "/bin/true"}, {"pager.log", "/bin/true"}, {"sequence.editor", "/bin/true"},
+		{"trailer.planted.command", "true"}, {"maintenance.auto", "false"}, {"gc.auto", "0"},
+		{"fetch.recurseSubmodules", "false"}, {"submodule.lib.url", "/elsewhere"}, {"submodule.lib.active", "true"},
+		{"submodule.lib.update", "!true"}, {"web.browser", "/bin/true"}, {"sendemail.smtpServer", "/bin/true"},
+		{"difftool.planted.cmd", "true"}, {"rebase.instructionFormat", "%G?"},
+	} {
+		repo.Git("config", kv[0], kv[1])
+	}
+	if err := remoteUnchanged(Context{RepoRoot: repo.Root(), remote: id}, "lane-1"); err != nil {
+		t.Fatalf("a setting no git of the drive reads stopped the lane: %v", err)
+	}
+}
+
+// TestADriveOnlyKeyInALaneWorktreesOwnScopeEndsTheDrive: where
+// extensions.worktreeConfig is on, git reads config.worktree of the worktree
+// it runs in, so the lane's commit, merge and reset and abcd's reads there
+// read a key a lane's agent wrote with `git config --worktree`, which the
+// checkout's own reading does not see. The drive lists the keys of
+// driveHeldConfig at each lane worktree's own scope, and one set there after
+// it started ends it at the next comparison, naming the key and the worktree;
+// one set in a worktree that is not a lane's (the person's own) does not.
+// Watched failing on the branch before, where the hold read the checkout's
+// settings alone.
+func TestADriveOnlyKeyInALaneWorktreesOwnScopeEndsTheDrive(t *testing.T) {
+	repo, _, _ := hookedOrigin(t)
+	repo.Git("config", "extensions.worktreeConfig", "true")
+	lane := filepath.Join(t.TempDir(), "run-2611140000000001-lane-1")
+	repo.Git("worktree", "add", "-q", "--detach", lane, "HEAD")
+	own := filepath.Join(t.TempDir(), "elsewhere")
+	repo.Git("worktree", "add", "-q", "--detach", own, "HEAD")
+	id, err := readRemoteIdentity(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := heldBeforeGit(repo.Root(), id); err != nil {
+		t.Fatalf("nothing changed, and the comparison stopped the drive: %v", err)
+	}
+	repo.Git("-C", own, "config", "--worktree", "gc.recentObjectsHook", "true")
+	if err := heldBeforeGit(repo.Root(), id); err != nil {
+		t.Fatalf("a key in a worktree no lane runs in stopped the drive: %v", err)
+	}
+	repo.Git("-C", lane, "config", "--worktree", "gc.recentObjectsHook", "true")
+	r := mustRefusal(t, heldBeforeGit(repo.Root(), id))
+	if r.Stage != StageConfig || !strings.Contains(r.Reason, "gc.recentobjectshook in the worktree") ||
+		!strings.Contains(r.Reason, "run-2611140000000001-lane-1") {
+		t.Fatalf("the drive's comparison names the lane's key and worktree: %+v", r)
+	}
+	r = worktreeRefused(t, remoteUnchanged(Context{RepoRoot: repo.Root(), remote: id}, "lane-2"), "gc.recentobjectshook in the worktree")
+	if strings.Contains(r.Reason, "elsewhere") {
+		t.Fatalf("the refusal names a worktree no lane runs in: %+v", r)
 	}
 }
 
@@ -454,12 +543,13 @@ func TestAStepUnderAHoldWhosePostCheckoutChangedStopsBeforeTheAdd(t *testing.T) 
 }
 
 // TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly: the key match itself, on
-// canonical keys: each key the run's fingerprint watches (watchedKey) and
-// http.proxy and http.sslVerify are held, every remote's keys among them, and
-// a key that only shares a prefix or a suffix with one, protocol.version and
-// a per-URL http key are not. Another remote's url, core.editor and the filter
-// and driver cases were watched failing on the default branch, which held
-// origin's identity alone.
+// canonical keys: each key the run's fingerprint watches but core.pager, and
+// the http keys that choose where a fetch connects and which certificate it
+// takes, plain and per URL, are held, every remote's keys among them; a key
+// that only shares a prefix or a suffix with one, protocol.version, core.pager
+// and another per-URL http key are not. Another remote's url, core.editor and
+// the filter and driver cases were watched failing on the default branch,
+// which held origin's identity alone.
 func TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly(t *testing.T) {
 	for key, want := range map[string]bool{
 		"remote.origin.url":                           true,
@@ -483,7 +573,7 @@ func TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly(t *testing.T) {
 		"remote.upstream.url":          true,
 		"remote.origin.receivepack":    true,
 		"core.editor":                  true,
-		"core.pager":                   true,
+		"core.pager":                   false,
 		"filter.lfs.clean":             true,
 		"merge.x.driver":               true,
 		"diff.x.command":               true,
@@ -491,26 +581,79 @@ func TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly(t *testing.T) {
 		"include.path":                 true,
 		"includeif.onbranch:main.path": true,
 
-		"remote.origin.urlx":   false,
-		"remote.origin.fetch":  false,
-		"url.insteadof":        false,
-		"url./x.insteadofx":    false,
-		"urlx./x.insteadof":    false,
-		"core.hookspathx":      false,
-		"core.editorx":         false,
-		"filterx.lfs.clean":    false,
-		"credentialfoo":        false,
-		"credentialfoo.helper": false,
-		"protocol.version":     false,
-		"protocol.ext.allowx":  false,
-		"protocolx.ext.allow":  false,
-		"http.proxyx":          false,
-		"http.https://x.proxy": false,
-		"http.postbuffer":      false,
-		"":                     false,
+		"remote.origin.urlx":         false,
+		"remote.origin.fetch":        false,
+		"url.insteadof":              false,
+		"url./x.insteadofx":          false,
+		"urlx./x.insteadof":          false,
+		"core.hookspathx":            false,
+		"core.editorx":               false,
+		"filterx.lfs.clean":          false,
+		"credentialfoo":              false,
+		"credentialfoo.helper":       false,
+		"protocol.version":           false,
+		"protocol.ext.allowx":        false,
+		"protocolx.ext.allow":        false,
+		"http.proxyx":                false,
+		"http.https://x.proxy":       true,
+		"http.https://x.proxyx":      false,
+		"http.https://x.extraheader": true,
+		"http.https://x.useragent":   true,
+		"http.postbuffer":            false,
+		"":                           false,
 	} {
 		if got := remoteIdentityKey(key); got != want {
 			t.Errorf("remoteIdentityKey(%q) = %v, want %v", key, got, want)
+		}
+	}
+}
+
+// TestAHeldChangeIsNamedWithNoControlCharacter: a key's name is the
+// settings' text (a subsection holds any byte but a newline and NUL) and a
+// lane's path git's listing of the lanes, so each name the held comparison
+// gives a refusal (changed, laneChanged) goes through termsafe.Sanitize.
+// laneChanged's own names are checked apart from changed's, since changed
+// sanitizes each name again and laneMade prints laneChanged's as they are: a
+// lane the drive holds and one it does not (compared with checkoutOwn).
+// Watched failing with the names given raw, and, for laneChanged's own
+// names, with its termsafe.Sanitize removed.
+func TestAHeldChangeIsNamedWithNoControlCharacter(t *testing.T) {
+	lane := filepath.Join(t.TempDir(), "lane\x1b[2J")
+	if err := os.Mkdir(lane, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(t.TempDir(), "other\x1b[1m\nlane")
+	if err := os.Mkdir(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	env := driveEnvs()[0]
+	was := &remoteIdentity{
+		salt:        "salt",
+		envs:        map[*gitEnv]map[string]string{env: {"remote.o\x1b]0;x.vcs": "a"}},
+		lanes:       map[string]map[string]string{lane: {"remote.l\x1b[31m.vcs": "a"}},
+		checkoutOwn: map[string]string{"remote.c\x1b[32m.vcs": "a"},
+	}
+	now := &remoteIdentity{
+		envs:      map[*gitEnv]map[string]string{env: {}},
+		lanes:     map[string]map[string]string{lane: {}, other: {}},
+		lanesRead: everyLane,
+	}
+	names := was.changed(t.TempDir(), now)
+	if len(names) != 3 {
+		t.Fatalf("every change is named: %q", names)
+	}
+	for _, n := range names {
+		if strings.ContainsAny(n, "\x1b\n") {
+			t.Errorf("a held change is named with a control character: %q", n)
+		}
+	}
+	own := was.laneChanged(t.TempDir(), now)
+	if len(own) != 2 {
+		t.Fatalf("both lanes' changes are named: %q", own)
+	}
+	for _, n := range own {
+		if strings.ContainsAny(n, "\x1b\n") {
+			t.Errorf("laneChanged names a lane's change with a control character: %q", n)
 		}
 	}
 }

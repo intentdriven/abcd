@@ -42,7 +42,7 @@ func isolatedGit(root string, args ...string) *exec.Cmd {
 	cmd.Env = gitEnv()
 	guardObjectRead(context.Background(), cmd, root, args)
 	if cmd.Err == nil {
-		askIfContentRuns(cmd, args)
+		askIfContentRuns(cmd, root, args)
 	}
 	return cmd
 }
@@ -117,7 +117,7 @@ func isolatedGitContextAsking(ctx context.Context, root string, ask bool, args [
 		cmd.WaitDelay = contextWaitDelay
 	}
 	if ask && !withinCheck(ctx) {
-		askIfContentRuns(cmd, args)
+		askIfContentRuns(cmd, root, args)
 	}
 	guardObjectRead(ctx, cmd, root, args)
 	return cmd
@@ -259,7 +259,7 @@ func WorkingTreeCommand(root string, args ...string) *exec.Cmd {
 // filteredCommand is WorkingTreeCommand bound to ctx, after the check
 // SetBeforeHookedGit set.
 func filteredCommand(ctx context.Context, root string, args []string) *exec.Cmd {
-	asked := askBeforeHooked(args)
+	asked := askBeforeHooked(root, args)
 	cmd := workingTreeCommand(ctx, root, ExecPins(), args)
 	if asked != nil {
 		cmd.Err = asked
@@ -838,11 +838,15 @@ func runLimitedOverflow(ctx context.Context, root string, maxBytes int, network 
 		return "", false, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
 	if network {
-		if err := askBeforeHooked(args); err != nil {
+		if err := askBeforeHooked(root, args); err != nil {
 			return "", false, err
 		}
 	}
-	cmd := isolatedGitContextAsking(ctx, root, !network, args)
+	run := args
+	if network {
+		run = append(fetchRecursionOff(args), args...)
+	}
+	cmd := isolatedGitContextAsking(ctx, root, !network, run)
 	if network {
 		cmd.Env = netEnv(cmd.Env)
 	}
