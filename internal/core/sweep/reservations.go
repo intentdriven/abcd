@@ -31,8 +31,7 @@ package sweep
 // is checked before and after it, and a run stopped at any point reports as
 // stopped.
 //
-// sweepReservations is an entry point the surfaces (step 5) call, and so
-// stays unexported until then, as runDry does.
+// sweepReservations is the reservation half of runSweep.
 
 import (
 	"context"

@@ -19,8 +19,7 @@ package sweep
 // them. The sender's name is not shown; the sender is named by its
 // root-commit key, as the record Promote files names it.
 //
-// sweepInbox is an entry point the surfaces (step 5) call, and so stays
-// unexported until then, as runDry does.
+// sweepInbox is the inbox half of runSweep.
 
 import (
 	"context"

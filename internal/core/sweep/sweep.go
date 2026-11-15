@@ -12,8 +12,9 @@ package sweep
 // the sweep composes those judgements with the liveness probe and never
 // re-makes them.
 //
-// runDry, runApply, newProbe and hostProcesses are the package's entry points
-// and stay unexported until the surfaces (step 5) call them: an exported core
+// runSweep, which runs every half of a sweep in the spec's order, runDry,
+// runApply, newProbe and hostProcesses are the package's entry points and
+// stay unexported until the surfaces (step 5) call them: an exported core
 // function no front door reaches is scaffolding the reach audit refuses.
 
 import (
@@ -108,11 +109,8 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options, retain bool) (Re
 		res, err := refused(err)
 		return res, plan{}, err
 	}
-	if o.Held == nil {
-		return fail(errors.New("sweep: a dry run needs a reader of what the build loop holds"))
-	}
-	if o.Cwd == "" {
-		return fail(errors.New("sweep: a dry run needs its own working directory, to keep the worktree holding it"))
+	if err := o.required(); err != nil {
+		return fail(err)
 	}
 	listing, err := store.List(repoRoot, store.ListOptions{Forge: o.Forge})
 	if err != nil {
@@ -161,6 +159,70 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options, retain bool) (Re
 		res.Rows = append(res.Rows, row)
 	}
 	return res, pl, nil
+}
+
+// required is why the options cannot run a sweep, nil when they can: Held
+// and Cwd are required, as the store's prune requires them.
+func (o Options) required() error {
+	if o.Held == nil {
+		return errors.New("sweep: a dry run needs a reader of what the build loop holds")
+	}
+	if o.Cwd == "" {
+		return errors.New("sweep: a dry run needs its own working directory, to keep the worktree holding it")
+	}
+	return nil
+}
+
+// runSweep is one whole sweep of the repository at repoRoot, a dry run or,
+// with apply, an applied one: its halves in the order of the spec's Rows,
+// the worktrees with the strays and the embargo store (runDry or runApply),
+// the local branches (sweepBranches), the branches on origin (sweepRemote),
+// the reservations (sweepReservations) and the inbox (sweepInbox), each
+// half's rows after the one before. Options without Held or Cwd refuse the
+// whole run before any half runs.
+//
+// Every other half runs whatever the one before it answered: each judges its
+// own items, keeps what its own reads cannot clear, and refuses or faults on
+// its own, and once the run's context has ended each later half refuses
+// itself before it reads anything. The result's Refusal and the error are
+// the first half's refusal or fault, so ExitCode reads ExitRefused when any
+// half refused or faulted. Each failed-closed check is said once: the first
+// half's note for each, and every distinct forge note.
+func runSweep(ctx context.Context, repoRoot string, o Options, apply bool) (Result, error) {
+	if err := o.required(); err != nil {
+		return refused(err)
+	}
+	halves := []func() (Result, error){
+		func() (Result, error) {
+			if apply {
+				return runApply(ctx, repoRoot, o)
+			}
+			return runDry(ctx, repoRoot, o)
+		},
+		func() (Result, error) { return sweepBranches(ctx, repoRoot, apply) },
+		func() (Result, error) { return sweepRemote(ctx, repoRoot, o, apply) },
+		func() (Result, error) { return sweepReservations(ctx, repoRoot, o, apply) },
+		func() (Result, error) { return sweepInbox(ctx, repoRoot, o, apply) },
+	}
+	out := Result{Rows: []Row{}, Applied: apply}
+	var first error
+	for _, half := range halves {
+		res, err := half()
+		out.Rows = append(out.Rows, res.Rows...)
+		out.Lane = firstNonEmpty(out.Lane, res.Lane)
+		out.ProcessCheckUnavailable = firstNonEmpty(out.ProcessCheckUnavailable, res.ProcessCheckUnavailable)
+		out.ReservationsUnread = firstNonEmpty(out.ReservationsUnread, res.ReservationsUnread)
+		out.RunsUnread = firstNonEmpty(out.RunsUnread, res.RunsUnread)
+		out.Workflow = firstNonEmpty(out.Workflow, res.Workflow)
+		if res.ForgeNote != "" && !strings.Contains(out.ForgeNote, res.ForgeNote) {
+			out.ForgeNote = strings.TrimPrefix(out.ForgeNote+"; "+res.ForgeNote, "; ")
+		}
+		if err != nil && first == nil {
+			first = err
+			out.Refusal = firstNonEmpty(res.Refusal, clean(err.Error()))
+		}
+	}
+	return out, first
 }
 
 // refused is the result and error of a run that refused before judging. The
