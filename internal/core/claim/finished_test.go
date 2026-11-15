@@ -149,3 +149,45 @@ func TestAReleaseOrRenewalOfAFinishedRecordKeepsItsOwnRow(t *testing.T) {
 		}
 	})
 }
+
+// TestOnlyAFinishedRecordsRefusalIsErrFinished: the back-off of a reservation
+// whose record is finished on origin's default branch, and the renewal told the
+// default branch released it, are ErrFinished, so a caller tells that one
+// refusal from every other by its class; another person's hold, a renewal of
+// another's reservation and a release subject's tag are not.
+func TestOnlyAFinishedRecordsRefusalIsErrFinished(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	q := w.clone("99+quinn@users.noreply.github.com", "")
+	if _, err := p.reserve("iss-5", "a.go"); err != nil {
+		t.Fatal(err)
+	}
+	_, held := q.reserve("iss-5", "b.go")
+	_, others := q.do(Request{Record: "iss-5", Renew: true})
+	w.finishOnMain("iss-5", "resolved")
+	_, finished := q.reserve("iss-5", "b.go")
+	_, renewed := p.do(Request{Record: "iss-5", Renew: true})
+	pr, err := prepare(p.dir, Request{Record: "rel-v0.16.0"}, p.opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, tagged := decideReserve(pr, judged{derived: true})
+	for _, c := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"another person's hold", held, false},
+		{"a renewal of another's reservation", others, false},
+		{"a reservation of a finished record", finished, true},
+		{"a renewal of a finished record", renewed, true},
+		{"a release subject already tagged", tagged, false},
+	} {
+		if c.err == nil || !errors.Is(c.err, ErrBackOff) {
+			t.Fatalf("premise: %s backs off: %v", c.name, c.err)
+		}
+		if got := errors.Is(c.err, ErrFinished); got != c.want {
+			t.Errorf("%s: errors.Is(ErrFinished) = %v, want %v (%v)", c.name, got, c.want, c.err)
+		}
+	}
+}

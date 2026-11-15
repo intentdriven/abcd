@@ -963,6 +963,7 @@ func TestADiscardedHeldLaneLeavesItsStepUnlanded(t *testing.T) {
 // `awaiting`, are refused naming the version and the key.
 func TestASerialStateMigratesItsAwaitAndVersion9IsHeldToItsShape(t *testing.T) {
 	f := newParFixture(t, "", Options{})
+	claimAsDriver(t, f.repo.Root(), f.runID, Options{})
 	f.stepUntil(t, "the implementer is out", func(st State) bool { return len(st.Lanes[0].Awaits) == 1 })
 	path := f.abs(StateRelPath(f.runID))
 	v8, err := os.ReadFile(path)

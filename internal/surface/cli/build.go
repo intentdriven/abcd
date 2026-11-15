@@ -112,9 +112,10 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 		Long: "Start the implement loop for one intent, or resume the run already in progress for it.\n" +
 			"An issue id starts the loop's issue-keyed lane instead (below).\n" +
 			"A new run's checks run first, and every one must pass:\n" +
-			"the intent is READY (planned, criteria written, its spec linked and written), asks no\n" +
-			"open question, has no unanswered claim section, is not held, names no unsettled blocker\n" +
-			"in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling\n" +
+			"the intent is READY (planned, criteria written, its spec linked and written, and the spec\n" +
+			"says nothing against being built), asks no open question, has no unanswered claim section,\n" +
+			"is not held, names no unsettled blocker in its own or its spec's `blocked_by`, its spec\n" +
+			"leaves a step to build, and no peer holds it (no sibling\n" +
 			"worktree or local branch holds it in another bucket having changed it since its\n" +
 			"merge-base with this checkout, so a branch holding this checkout's older copy\n" +
 			"untouched does not count, nor does a branch no worktree has checked out, which the\n" +
@@ -281,12 +282,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			}
 			warnOffProfileWhileAway(cmd, prefix, root)
 			if err := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
-				verb := "started"
-				if res.Resumed {
-					verb = "resumed"
-				}
-				fmt.Fprintf(w, "build %s: %s run %s\n", termsafe.Sanitize(args[0]), verb, res.RunID)
-				fmt.Fprintf(w, "  state:   %s\n", res.State)
+				renderStartHead(w, args[0], res)
 				renderPace(w, res.Pace)
 				renderReview(w, res.Review)
 				renderBudget(w, res.Checks)
@@ -366,8 +362,9 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 		Use: "next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--max <n>] [--until-empty]",
 		Long: "Pick the readiest planned intent, write down why, and start its run.\n\n" +
 			"The candidates are the planned intents that pass every check `abcd build <itd-N>` runs\n" +
-			"(READY, no open question, no unanswered claim section, not held, no unsettled blocker in\n" +
-			"`blocked_by`, a step left to build, no peer holding it), less one this checkout already has\n" +
+			"(READY, its spec saying nothing against being built, no open question, no unanswered claim\n" +
+			"section, not held, no unsettled blocker in its own or its spec's `blocked_by`, a step left\n" +
+			"to build, no peer holding it), less one this checkout already has\n" +
 			"a run in progress for. Each is scored from its record, three parts at equal weight, each 0\n" +
 			"to 100: criteria clarity (the share of its acceptance criteria in Given-When-Then form), a\n" +
 			"test path (its spec's `## Footprint` names tests) and the expected footprint (100 divided by\n" +
@@ -586,6 +583,31 @@ func renderReview(w io.Writer, rs *loop.ReviewSet) {
 		return
 	}
 	fmt.Fprintf(w, "  review:  %s\n", termsafe.Sanitize(rs.String()))
+}
+
+// renderStartHead renders a build's first lines: what it did with the run
+// (started, resumed, or finished, when closing its merged lanes left nothing
+// to build), the run's state, and each lane it closed.
+func renderStartHead(w io.Writer, key string, res loop.StartResult) {
+	verb := "started"
+	if res.Resumed {
+		verb = "resumed"
+	}
+	if res.Finished {
+		verb = "finished"
+	}
+	fmt.Fprintf(w, "build %s: %s run %s\n", termsafe.Sanitize(key), verb, res.RunID)
+	fmt.Fprintf(w, "  state:   %s\n", res.State)
+	renderClosed(w, res.Closed)
+}
+
+// renderClosed renders each lane a resumed build closed because its pull
+// request had merged, one line each.
+func renderClosed(w io.Writer, closed []loop.ClosedLane) {
+	for _, c := range closed {
+		fmt.Fprintf(w, "  closed:  %s, its pull request #%d merged at %s; its worktree and branch were removed\n",
+			termsafe.Sanitize(c.Lane), c.PR, shortSHA(c.Merged))
+	}
 }
 
 // printReviewDiagnostics says the review set's non-fatal reports (a list

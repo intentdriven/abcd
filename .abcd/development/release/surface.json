@@ -3315,6 +3315,36 @@
       ]
     },
     {
+      "path": "abcd landings",
+      "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "List how each change landed on the default branch and what admitted it: Writes only its forge cache in the local tier; refuses no default branch or no range.",
+      "flags": [
+        {
+          "name": "reverted",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "since",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "unattended",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd launch",
       "hidden": false,
       "group": "release",

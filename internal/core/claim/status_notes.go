@@ -230,7 +230,7 @@ func PromptNotes(ctx context.Context, root string, now time.Time, o Options) (No
 				fmt.Errorf("%w: %s", ErrStatusUnavailable, why)
 		}
 		return Notes{Text: NotesHeading + "\n\nstatus unavailable: it could not be read here; `abcd status` says why\n"},
-			fmt.Errorf("%w: it could not be read: %s", ErrStatusUnavailable, termsafe.Sanitize(redacted(got.err)))
+			fmt.Errorf("%w: it could not be read: %s", ErrStatusUnavailable, termsafe.Sanitize(redacted(got.err).text))
 	}
 	n := got.n
 	if bounded {

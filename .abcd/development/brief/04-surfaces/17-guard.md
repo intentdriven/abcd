@@ -467,7 +467,23 @@ A broken guard never bricks a session and never silently stops protecting one.
 The installed hook wraps the binary in a shim: the binary's own three statuses
 pass through untouched, and anything else means the binary did not run at all,
 which the shim reports as an unmissable `UNGUARDED` warning while letting the
-call through. The warning names the tool whose call went through unchecked —
+call through. One state is the exception, and it blocks on purpose: while
+anything stands at `~/.abcd`, the name abcd's folder had before
+`~/.abcd.noindex`, the hook exits 2, the host's blocking status, on every call
+the matcher hands it, with the stop's line on stderr. The reason is that abcd
+reads and writes nothing in either folder while the old one stands, so a call
+let through would run unguarded for as long as the folder stayed, and a session
+that does nothing else until the rename was the cost accepted instead
+(spc-2610031309233367, open question 3). The rename clears it:
+`mv ~/.abcd ~/.abcd.noindex`, the one shell command the binary still admits, and
+only while the old folder stands alone. With no plugin-root binary, the state a
+plugin update leaves, the shim blocks the rename too, and with both folders
+standing the binary refuses it, since it would move the old folder into the new
+one; either way the move is the person's, in a plain terminal
+([`../05-internals/03-configuration.md`](../05-internals/03-configuration.md)
+gives the stop's whole account).
+
+The warning names the tool whose call went through unchecked —
 shell commands, or questions through the host's question tool — read from the
 hook payload. The shim reads that payload once, through a command
 substitution, and hands the binary what the substitution kept: the payload

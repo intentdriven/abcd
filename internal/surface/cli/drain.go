@@ -593,6 +593,24 @@ func renderDrainCounts(w io.Writer, c loop.DrainCounts) {
 		fmt.Fprintf(w, "; the state of %s could not be read", termsafe.Sanitize(strings.Join(c.Spend.Unread, ", ")))
 	}
 	fmt.Fprintln(w)
+	renderHandBacksByPR(w, c)
+}
+
+// renderHandBacksByPR is the hand-backs per pull request the drain opened:
+// one line for each pull request, its hand-back count and kinds, none left
+// out for having none, then the hand-backs no pull request carries. A drain
+// that opened no pull request and routed no hand-back has no lines.
+func renderHandBacksByPR(w io.Writer, c loop.DrainCounts) {
+	for _, p := range c.HandBacksByPR {
+		kinds := ""
+		if len(p.Kinds) > 0 {
+			kinds = " (" + termsafe.Sanitize(strings.Join(p.Kinds, ", ")) + ")"
+		}
+		fmt.Fprintf(w, "  pull request #%d, %s: %d hand-back(s)%s\n", p.PR, termsafe.Sanitize(p.Issue), p.HandBacks, kinds)
+	}
+	if c.HandBacksNoPR > 0 || len(c.HandBacksByPR) > 0 {
+		fmt.Fprintf(w, "  no pull request: %d hand-back(s)\n", c.HandBacksNoPR)
+	}
 }
 
 // isDrainRuleRefusal reports whether err is the rule load refusing: every one

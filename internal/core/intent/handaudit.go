@@ -110,14 +110,25 @@ func HandAudited(content string) bool {
 
 // proseOf is one line with what is not prose taken out: each HTML comment
 // closed on the line, and each inline code span, since a verdict word quoted
-// as code is vocabulary under discussion, not a verdict given.
+// as code is vocabulary under discussion, not a verdict given. The spans are
+// paired on the line alone (mdrecord.CodeSpanRanges), whatever the lines
+// above it leave open, so a verdict quoted on its line is not read as given
+// even where the page may pair a backtick over the line break. Each span is
+// blanked with spaces rather than cut out, so the text on either side of one
+// cannot join into a word.
 func proseOf(line string) string {
 	line = auditInlineCommentRe.ReplaceAllString(line, "")
 	spans := mdrecord.CodeSpanRanges(line)
-	for k := len(spans) - 1; k >= 0; k-- {
-		line = line[:spans[k][0]] + line[spans[k][1]:]
+	if len(spans) == 0 {
+		return line
 	}
-	return line
+	b := []byte(line)
+	for _, sp := range spans {
+		for j := sp[0]; j < sp[1]; j++ {
+			b[j] = ' '
+		}
+	}
+	return string(b)
 }
 
 // blockJudges reports whether one block names a criterion and gives a verdict.

@@ -2,6 +2,7 @@ package lint_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -665,22 +666,9 @@ func TestPlainTestStepRunsTheWholeModule(t *testing.T) {
 	if len(cmds) != 1 {
 		t.Fatalf("%s step Test: want one `go test` command, found %d", where, len(cmds))
 	}
-	var pkgs []string
-	timeout := ""
-	words := strings.Fields(cmds[0])[2:]
-	for i := 0; i < len(words); i++ {
-		switch w := words[i]; {
-		case w == "-timeout" && i+1 < len(words):
-			i++
-			timeout = words[i]
-		case w == "-p":
-			i++ // its value is the next word
-		case strings.HasPrefix(w, "-timeout="):
-			timeout = strings.TrimPrefix(w, "-timeout=")
-		case strings.HasPrefix(w, "-"):
-		default:
-			pkgs = append(pkgs, w)
-		}
+	pkgs, timeout, err := plainTestStepWords(cmds[0])
+	if err != nil {
+		t.Fatalf("%s step Test: %v", where, err)
 	}
 	if len(pkgs) == 0 {
 		t.Fatalf("%s step Test: `%s` names no packages", where, cmds[0])
@@ -707,6 +695,81 @@ func TestPlainTestStepRunsTheWholeModule(t *testing.T) {
 	if d < local {
 		t.Errorf("%s step Test runs under -timeout %s, below the %s make preflight's unit stage scales "+
 			"from; CI would fail a package the local gate passes", where, d, local)
+	}
+}
+
+// plainTestStepWords reads the plain test step's `go test` command into the
+// packages it names and its -timeout value. The step's flags are pinned: one
+// -count=1 and one -timeout, and every other word starting with - is refused,
+// so a -short, -run or -skip that narrows the required lane's only test pass
+// cannot hide behind a package set that still reads as the whole module
+// (iss-2610151050411986).
+func plainTestStepWords(cmd string) (pkgs []string, timeout string, err error) {
+	words := strings.Fields(cmd)[2:]
+	counts, timeouts := 0, 0
+	for i := 0; i < len(words); i++ {
+		switch w := words[i]; {
+		case w == "-count=1":
+			counts++
+		case w == "-timeout":
+			if i+1 >= len(words) {
+				return nil, "", fmt.Errorf("`%s` ends on -timeout, with no value", cmd)
+			}
+			i++
+			timeout = words[i]
+			timeouts++
+		case strings.HasPrefix(w, "-timeout="):
+			timeout = strings.TrimPrefix(w, "-timeout=")
+			timeouts++
+		case strings.HasPrefix(w, "-"):
+			return nil, "", fmt.Errorf("`%s` carries %s; the plain step's flags are -count=1 and "+
+				"-timeout alone, so nothing narrows or reshapes the required lane's only test pass", cmd, w)
+		default:
+			pkgs = append(pkgs, w)
+		}
+	}
+	if counts > 1 || timeouts > 1 {
+		return nil, "", fmt.Errorf("`%s` repeats a flag; the plain step carries -count=1 and -timeout once each", cmd)
+	}
+	return pkgs, timeout, nil
+}
+
+// TestPlainTestStepRefusesAnUnpinnedFlag: the plain step is the required
+// lane's only test pass on an inert change, so a flag that narrows it (-short,
+// -run, -skip) or reshapes it (-p, -race, another -count) is refused, as the
+// exact match was before the step named its slowest packages first
+// (iss-2610151050411986). The step's own command is read clean.
+func TestPlainTestStepRefusesAnUnpinnedFlag(t *testing.T) {
+	const pinned = "go test -count=1 -timeout 70m ./internal/core/implement/loop ./internal/surface/cli ./..."
+	pkgs, timeout, err := plainTestStepWords(pinned)
+	if err != nil {
+		t.Fatalf("`%s` is refused: %v", pinned, err)
+	}
+	if want := []string{"./internal/core/implement/loop", "./internal/surface/cli", "./..."}; !slices.Equal(pkgs, want) || timeout != "70m" {
+		t.Fatalf("`%s` reads as packages %q under -timeout %q; want %q under 70m", pinned, pkgs, timeout, want)
+	}
+	if _, timeout, err := plainTestStepWords("go test -count=1 -timeout=70m ./..."); err != nil || timeout != "70m" {
+		t.Errorf("-timeout=70m reads as %q, %v; want 70m", timeout, err)
+	}
+	for _, cmd := range []string{
+		"go test -short -run=TestA -count=1 -timeout 70m ./...",
+		"go test -count=1 -short -timeout 70m ./...",
+		"go test -count=1 -timeout 70m -run TestA ./...",
+		"go test -count=1 -timeout 70m -run=TestA ./...",
+		"go test -count=1 -timeout 70m -skip=TestA ./...",
+		"go test -count=1 -timeout 70m ./... -short",
+		"go test -count=1 -timeout 70m -p 1 ./...",
+		"go test -count=1 -timeout 70m -race ./...",
+		"go test -count=2 -timeout 70m ./...",
+		"go test -count 1 -timeout 70m ./...",
+		"go test --short -count=1 -timeout 70m ./...",
+		"go test -count=1 -timeout 70m -timeout 1s ./...",
+		"go test -count=1 -count=1 -timeout 70m ./...",
+		"go test -count=1 ./... -timeout",
+	} {
+		if pkgs, _, err := plainTestStepWords(cmd); err == nil {
+			t.Errorf("`%s` is read as a run of %q; want it refused for its flags", cmd, pkgs)
+		}
 	}
 }
 

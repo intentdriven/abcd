@@ -45,6 +45,9 @@ var gqlSchema, gqlUnions = func() (map[string]map[string]gqlField, map[string]ma
 	return s, u
 }()
 
+// typenameField is GraphQL's meta-field naming a selection's concrete type.
+const typenameField = "__typename"
+
 // GraphQLField reports the named type of field on the forge's GraphQL type
 // typ, and whether the pinned schema has that field.
 func GraphQLField(typ, field string) (string, bool) {
@@ -57,9 +60,12 @@ func GraphQLField(typ, field string) (string, bool) {
 // abcd's queries take, and refuses any other: an optional `query` keyword,
 // name and variable definitions, then nested selections of plain fields, each
 // with optional arguments, and inline fragments (`... on Type { }`) on a
-// union the type is pinned to be, or on the selection's own type. An alias, a
-// named fragment, a directive or a mutation is refused as not parsed rather
-// than passed unchecked; arguments are not checked.
+// union the type is pinned to be, or on the selection's own type. An alias
+// (`p12: pullRequest(number:12)`) is read past to the field it names, which is
+// checked as any other. `__typename`, the meta-field every selection may take,
+// is read bare (no alias, arguments or selection). A named fragment, a
+// directive or a mutation is refused as not parsed rather than passed
+// unchecked; arguments are not checked.
 func CheckGraphQL(query string) error {
 	p := &gqlParser{s: query}
 	p.skip()
@@ -185,10 +191,26 @@ func (p *gqlParser) selection(typ string) error {
 			continue
 		}
 		name := p.name()
+		if name == typenameField {
+			// The meta-field every selection may take, on a union too: a
+			// type's name, a String, with no arguments and no selection.
+			if p.skip(); p.peek() == ':' || p.peek() == '(' || p.peek() == '{' || p.peek() == '@' {
+				return p.unparsed()
+			}
+			n++
+			continue
+		}
 		if union != nil && name != "" {
 			return fmt.Errorf("graphql: %q is selected directly on the union %s, which takes only fragments on its types", name, typ)
 		}
-		if p.skip(); name == "" || p.peek() == ':' {
+		if p.skip(); name != "" && p.peek() == ':' {
+			// An alias: the field it names is the one read and checked.
+			p.i++
+			p.skip()
+			name = p.name()
+			p.skip()
+		}
+		if name == "" || p.peek() == ':' {
 			return p.unparsed()
 		}
 		f, ok := fields[name]

@@ -248,9 +248,13 @@ bound: the refusal says so and gives the push to run by hand.
    merges is the spec's step 9 and is not done yet.
    With no
    pull request the step stops with the `gh pr create` command; the verb never opens one (ruling R2), and the next run
-   queues it. The command names a body land composed from the branch's commits (iss-220): each subject, then their
-   `Refs:`, `Resolves:` and `Delivers:` lines once each, then abcd's own `Assisted-by: abcd:<version>` label and the
-   models the commits' `Assisted-by:` lines name (ruling R4), written to the checkout's local tier (land makes none) and
+   queues it. The command names a body land composed from the branch's commits, merge commits left out (iss-220): each subject, then,
+   once each, the trailer lines that name record ids and nothing else, which are a `Resolves:` or `Refs:` line
+   naming only issue ids (`iss-N`, several separated by commas) and a `Delivers:` line naming only intent ids
+   (`itd-N`, likewise). Every other `Refs:`, `Resolves:` or `Delivers:` line is dropped: `Refs: spc-9 step 3`,
+   `Refs: itd-N` and `Refs: #12` are among them, and the announce step's reading of those trailers is its own,
+   not this one. Then come abcd's own `Assisted-by: abcd:<version>` label and the
+   models the commits' `Assisted-by:` lines name (ruling R4). The body is written to the checkout's local tier (land makes none) and
    judged with the shell guard's checks of a posted body, the failing check named in the stop's note, so the body
    the hosted checks read was checked before it was posted.
 

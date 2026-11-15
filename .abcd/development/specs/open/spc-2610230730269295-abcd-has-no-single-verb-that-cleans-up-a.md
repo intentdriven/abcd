@@ -82,7 +82,7 @@ Such a worktree is left in place and named "process check unavailable: <why>", a
 ### Patch salvage
 
 Patch salvage applies to a dirty worktree that no proof holds:
-- Its `git diff --binary` and `git diff --cached --binary`, and a tar of its untracked, non-ignored files, are written to `~/.abcd.noindex/notes/<root-sha>/<UTC>-<name>-salvage/`.
+- Its `git diff --binary` and `git diff --cached --binary`, and a tar of its untracked, non-ignored files, are written to `~/.abcd.noindex/notes/<root-sha>/<UTC>-<name>-salvage/`. A change that git writes as a binary patch is refused rather than saved, because the redaction pass cannot read it, so the worktree is kept with that reason.
 - The write goes through the store's directory primitive and redaction.
 - A manifest names the worktree, its branch, HEAD, the home-redacted source path and the file list.
 - The worktree is kept.
@@ -106,6 +106,8 @@ Under `--apply`, a branch on origin is deleted when the forge records its pull r
 - no open pull request heads it;
 - no reservation names it;
 - no running session works on it, judged by the liveness proof against any local worktree on that branch.
+
+An open pull request that targets the branch as its base holds it too, so the sweep keeps more than the pull requests that head it.
 
 The deletion is a push of an empty ref carrying a lease on the tip that was judged (the reservation sweep's pattern), made through the guard, and each branch it deletes is named.
 
@@ -168,6 +170,7 @@ An entry in the store lane that is neither a worktree nor a directory failing th
    - criteria: 2, 4
    - packages: internal/core/sweep/salvage.go, internal/core/sweep/sweep.go
    - tests: a patch-equivalent merge reclaimed through prune; salvage content, manifest and idempotence; a failed salvage keeping the worktree. Waits on the store's prune (itd-2609091014076309 step 4).
+   - landed: f9df29257851
 3. Local and merged origin branches
    - criteria: 8
    - packages: internal/core/sweep/branches.go, internal/core/sweep/remote.go

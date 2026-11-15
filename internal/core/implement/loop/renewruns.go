@@ -100,8 +100,7 @@ var runsView = claim.View
 func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []RunRenewal {
 	runs, out := renewalRuns(root, runID)
 	var view *claim.Snapshot
-	for _, run := range runs {
-		st := run.State
+	for _, st := range runs {
 		if (runID != "" && st.RunID != runID) || !renewsWhereItWaits(st) || (serves != nil && !serves(st)) {
 			continue
 		}
@@ -116,16 +115,15 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 			continue
 		}
 		// A renewal due under a stop settles the run first: what a stop lets go
-		// is let go, and what it cannot save keeps its lease below. A run whose
-		// file states another version is not settled: it is left to its own
-		// driver's check. Below, its claim is renewed at the version its file
-		// states while an agent may still be in its call, or while that check has
-		// left work a save could not take (stopEndsRenewal). Otherwise it is
+		// is let go, and what it cannot save keeps its lease below. A renewal is
+		// never the run's driver (Options.afar), so a run whose file states
+		// another version is not settled: it is left to its own driver's check,
+		// and the renewal says so. Below, its claim is renewed at the version its
+		// file states while an agent may still be in its call, or while that check
+		// has left work a save could not take (stopEndsRenewal). Otherwise it is
 		// neither renewed nor let go, and lapses at its lease with its work on
 		// its branch and in its worktree, none of it saved aside.
-		if settlesHere(run.stated) {
-			settleDueStop(root, st.RunID)
-		}
+		_, left := settleDueStop(root, st.RunID)
 		r := RunRenewal{Root: root, RunID: st.RunID, Key: st.Key}
 		err := mutateReservation(root, st.RunID, func(st *State) (bool, error) {
 			if !renewsWhereItWaits(*st) {
@@ -147,19 +145,15 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 		case err != nil:
 			r.Renewed, r.Note = false, "could not renew the reservation on "+st.Key+": "+err.Error()
 		}
+		if left != "" {
+			// Said, so a run left unsettled under a stop is never passed over in silence.
+			r.Note = joinNext("left unsettled under the stop for its own driver's check: "+left, r.Note)
+		}
 		if r.Renewed || r.Note != "" {
 			out = append(out, r)
 		}
 	}
 	return out
-}
-
-// renewalRun is a run a renewal may look at, with the version its file states:
-// the read takes an older version to this abcd's in memory, and only the file
-// says whose driver wrote it (settlesHere).
-type renewalRun struct {
-	State
-	stated int
 }
 
 // renewalRuns reads the runs in root that a renewal may look at (the one runID
@@ -168,7 +162,7 @@ type renewalRun struct {
 // not this abcd's to rewrite, so it is said rather than passed over in silence,
 // and it holds no other run's renewal back. A checkout whose runs cannot even
 // be listed gives nothing, as it always has.
-func renewalRuns(root, runID string) ([]renewalRun, []RunRenewal) {
+func renewalRuns(root, runID string) ([]State, []RunRenewal) {
 	dir, err := os.OpenRoot(root)
 	if err != nil {
 		return nil, nil
@@ -178,20 +172,20 @@ func renewalRuns(root, runID string) ([]renewalRun, []RunRenewal) {
 	if err != nil {
 		return nil, nil
 	}
-	var runs []renewalRun
+	var runs []State
 	var notes []RunRenewal
 	for _, id := range ids {
 		if runID != "" && id != runID {
 			continue
 		}
-		st, stated, err := readListedStated(dir, id)
+		st, err := readListedState(dir, id)
 		if err != nil {
 			notes = append(notes, RunRenewal{Root: root, RunID: id, Note: "could not read the run to renew its reservation: " + err.Error()})
 			continue
 		}
-		runs = append(runs, renewalRun{State: st, stated: stated})
+		runs = append(runs, st)
 	}
-	slices.SortStableFunc(runs, func(a, b renewalRun) int { return a.CreatedAt.Compare(b.CreatedAt) })
+	slices.SortStableFunc(runs, func(a, b State) int { return a.CreatedAt.Compare(b.CreatedAt) })
 	return runs, notes
 }
 

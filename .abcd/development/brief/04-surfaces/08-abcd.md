@@ -4,7 +4,8 @@ Type one word and see where you left off. The bare top-level command is the
 cross-verb re-orientation surface: not "what does `capture` think", but "what is
 the state of this project right now, and what should I do next". It is strictly
 read-only, so it is safe to type at any moment, including the moment you are
-least sure what is safe.
+least sure what is safe. The one exception is a file abcd's own home folder
+keeps to ignore itself, which [What ships today](#what-ships-today) states.
 
 It complements the per-verb bare renders (`/abcd:ahoy`, `/abcd:capture`, and the
 rest), each of which is scoped to its own surface. This one is the cross-verb
@@ -34,7 +35,14 @@ not a sub-verb.
 
 ## What ships today
 
-Two read-only forms, and no third.
+Two read-only forms, and no third. Read-only has one exception, and it is the
+CLI front door's, not either form's. Where `~/.abcd.noindex` exists without its
+`gitignore-laid` marker, the front door first writes
+`~/.abcd.noindex/.gitignore` and that marker beside it, as it does before every
+command but the status line
+(["`~/.abcd.noindex` ignores itself, once"](../05-internals/03-configuration.md#the-two-abcd-scopes)
+in the internals). Nothing is written in the repository, and nothing at all
+where the folder is absent or the marker already stands.
 
 **Bare `abcd`** draws the status board in one of two views
 (spc-2610031844142274), each opening on a line that names whose view it is.
@@ -185,7 +193,9 @@ an unmanaged repository the line is absent and the field omitted. It is not
 `presence:` line and the JSON a `statusline` object, both the plain form of the
 same row the host's status line shows — the badge first (`abcd-managed`,
 `waiting on the technical facilitator`, `waiting on the product thinker`), then
-the repository, the branch and the record's counts. The state behind the badge is what `abcd mode` stores at
+the repository, the branch, the `autonomous merging` element (key `merging`)
+while the repository's `facilitator.mode` is `auto`, and the record's counts;
+[`26-mode.md`](26-mode.md) says how that element is read and when it drops. The state behind the badge is what `abcd mode` stores at
 `.abcd/.work.local/mode`; the board reads it and never writes it. In an
 unmanaged repository the line is absent and the field omitted. The board is the
 fallback for a host with no status surface, so it renders the line even where
@@ -316,7 +326,12 @@ commit dropped), `settled` (each ended release of the reader's whose
 withdrawals the listing re-armed or skipped, with `not_read`, `unplaced` and
 `not_ended`, each once for each tip, `not_ended_claimed` (true when that
 holder is a holder id that is not the reader's), and `failures`, a comment not
-posted as sent among them, iss-2610222014550692) and `view`
+posted as sent among them, iss-2610222014550692), `ceiling` (the reader's own
+live reservations against this machine's `reservation.max_live`, counted by
+copy, with its warning from four fifths of the limit, present only when the
+reader's identity is known without the network and the limit is one a
+reservation would not be refused on; `commands/peers.md` lists its fields,
+iss-2610231004140527) and `view`
 (`origin`, `fetched_at`, `age_seconds`). When the fetch fails, the listing renders the view as last
 fetched with its age, names the failure on stderr and in `fetch_error`, and
 exits 1; the peer rows are unchanged. When `~/.abcd.noindex/holder-ids` is
@@ -463,7 +478,8 @@ not a verb (itd-2609212130136102); the appendix below lists it. It tells
 whether the abcd you are running is the one you think it is: its version, how
 it was installed, how old it is, and whether it has drifted from the reference
 it should match. The whole answer is read off disk, so it costs nothing, works
-offline, and writes nothing. The opt-in online check is a flag of the update
+offline, and writes nothing, the home ignore lay under
+[What ships today](#what-ships-today) the one exception. The opt-in online check is a flag of the update
 verb, which fetches the latest release exactly once, compares, and names the
 source it consulted: it lives with the verb that takes the update it finds
 ([`21-update.md`](21-update.md)), and it is the only network touch either

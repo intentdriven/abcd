@@ -249,7 +249,7 @@ func absIn(repoRoot, p string) string {
 // write. A review whose placed return the verifier refused relies on it: the
 // return is taken back without the lock, and this is the drop.
 func recordFallback(repoRoot, runID, laneID, receipt string, fb runner.FallbackReceipt, o Options) error {
-	return mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	return saveRun(repoRoot, runID, o, func(_ *os.Root, st *State) (bool, error) {
 		now := o.now()
 		if receipt != "" {
 			st.dropAnswer(repoRoot, receipt)

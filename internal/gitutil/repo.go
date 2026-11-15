@@ -31,10 +31,19 @@ import (
 //
 // Every isolated command passes lazyFetchGuard first: a refusal is set as the
 // command's Err, so Run, Output and Start return it and git never starts.
+//
+// ExecPins does not blank content filters, textconv and external diff
+// programs, or merge drivers, so a command that can start one of them
+// (LeavesContentProgramsOn) asks the check SetBeforeHookedGit set before it
+// is run, as the hooked runners do; its refusal is set as the command's Err
+// in the same way.
 func isolatedGit(root string, args ...string) *exec.Cmd {
 	cmd := exec.Command("git", isolatedArgs(root, args)...)
 	cmd.Env = gitEnv()
 	guardObjectRead(context.Background(), cmd, root, args)
+	if cmd.Err == nil {
+		askIfContentRuns(cmd, args)
+	}
 	return cmd
 }
 
@@ -69,12 +78,46 @@ const contextWaitDelay = 50 * time.Millisecond
 // isolatedGitContext is isolatedGit bound to ctx: when ctx ends, git is KILLED,
 // not abandoned. An abandoned git outlives its caller, and a caller on a
 // deadline that runs often — the status verb, on every refresh — would leave
-// one behind each time for as long as git hangs.
+// one behind each time for as long as git hangs. It asks the check
+// SetBeforeHookedGit set as isolatedGit does.
 func isolatedGitContext(ctx context.Context, root string, args ...string) *exec.Cmd {
+	return isolatedGitContextAsking(ctx, root, true, args)
+}
+
+// checkOwnRead is the key of the mark WithinCheck sets on a context.
+type checkOwnRead struct{}
+
+// WithinCheck is ctx marked as the context of a read the check
+// SetBeforeHookedGit set makes itself (implement/loop's comparison of what
+// a drive holds): an isolated runner bound to it does not ask that check,
+// whatever its command line is, so a change to what LeavesContentProgramsOn
+// reads, or a value in a read's command line, can never make the check ask
+// itself. The hooked and networked runners the check reads through
+// (NetAskContext, WorkingTreeCommitCommand built directly) ask nothing in
+// any case.
+func WithinCheck(ctx context.Context) context.Context {
+	return context.WithValue(ctx, checkOwnRead{}, true)
+}
+
+// withinCheck reports whether ctx carries WithinCheck's mark.
+func withinCheck(ctx context.Context) bool {
+	on, _ := ctx.Value(checkOwnRead{}).(bool)
+	return on
+}
+
+// isolatedGitContextAsking is isolatedGitContext, asking the check
+// SetBeforeHookedGit set for what the command can start only when ask is
+// set and ctx is not one of the check's own reads (WithinCheck): a
+// networked runner (RunLimitedNetContext) has asked it already, for the
+// command as a whole, and does not ask twice.
+func isolatedGitContextAsking(ctx context.Context, root string, ask bool, args []string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", isolatedArgs(root, args)...)
 	cmd.Env = gitEnv()
 	if ctx.Done() != nil {
 		cmd.WaitDelay = contextWaitDelay
+	}
+	if ask && !withinCheck(ctx) {
+		askIfContentRuns(cmd, args)
 	}
 	guardObjectRead(ctx, cmd, root, args)
 	return cmd
@@ -205,8 +248,34 @@ func ScrubbedEnv() []string {
 // GIT_NO_LAZY_FETCH=1 keeps a partial clone from fetching a missing object
 // through its promisor remote, and the command passes the lazy-fetch floor
 // guard every isolated command passes.
+//
+// Its content filters run, so the check SetBeforeHookedGit set is asked
+// first, before the command is built; an error from it is set as the
+// command's Err, so Run, Output and Start return it and git never starts.
 func WorkingTreeCommand(root string, args ...string) *exec.Cmd {
-	return workingTreeCommand(context.Background(), root, ExecPins(), args)
+	return filteredCommand(context.Background(), root, args)
+}
+
+// filteredCommand is WorkingTreeCommand bound to ctx, after the check
+// SetBeforeHookedGit set.
+func filteredCommand(ctx context.Context, root string, args []string) *exec.Cmd {
+	asked := askBeforeHooked(args)
+	cmd := workingTreeCommand(ctx, root, ExecPins(), args)
+	if asked != nil {
+		cmd.Err = asked
+	}
+	return cmd
+}
+
+// WorkingTreeCommandContext is WorkingTreeCommand bound to ctx, for a caller on
+// a deadline: git is killed when ctx ends (exec.CommandContext's default), so
+// it is only for a command that writes nothing to the repository or the
+// working tree (a status read with --no-optional-locks, an ls-files listing),
+// whose interruption leaves nothing to repair. A command that removes or
+// rewrites files, `git worktree remove` among them, runs unbound. It asks
+// the check SetBeforeHookedGit set as WorkingTreeCommand does.
+func WorkingTreeCommandContext(ctx context.Context, root string, args ...string) *exec.Cmd {
+	return filteredCommand(ctx, root, args)
 }
 
 // WorkingTreeCommitCommand is WorkingTreeCommand for a git command that runs
@@ -355,7 +424,15 @@ func InRepo(root string) bool {
 // the informative 1 into a generic error. A caller deriving a release's content
 // commit from the receipts directory needs the three outcomes kept apart: "yes"
 // selects a candidate, "no" skips it, and only a genuine git failure is fatal.
+// Either name empty or starting with a dash, which git would read as an
+// option, is refused before git runs (RefIsSafe): callers pass names read
+// from stored state as well as from git.
 func IsAncestor(root, ancestor, descendant string) (bool, error) {
+	for _, ref := range []string{ancestor, descendant} {
+		if !RefIsSafe(ref) {
+			return false, fmt.Errorf("refusing ref %q: an empty or option-shaped ref would reach git as a flag", ref)
+		}
+	}
 	cmd := isolatedGit(root, "merge-base", "--is-ancestor", ancestor, descendant)
 	e := &capWriter{remaining: 4096}
 	cmd.Stderr = e
@@ -363,8 +440,7 @@ func IsAncestor(root, ancestor, descendant string) (bool, error) {
 	if err == nil {
 		return true, nil
 	}
-	var ee *exec.ExitError
-	if errors.As(err, &ee) && ee.ExitCode() == 1 {
+	if ExitCode(err) == 1 {
 		return false, nil
 	}
 	return false, fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
@@ -437,8 +513,7 @@ func RootCommitContext(ctx context.Context, root string) (string, error) {
 // 128 for that and for a repository it will not answer for alike, so its
 // message and the shape decide.
 func notARepository(root string, lookupErr error) bool {
-	var ee *exec.ExitError
-	if errors.As(lookupErr, &ee) && ee.ExitCode() == 128 &&
+	if ExitCode(lookupErr) == 128 &&
 		strings.Contains(lookupErr.Error(), `(stderr: "fatal: not a git repository`) {
 		// git's own answer, in the C locale gitEnv pins: a .git entry that
 		// holds no repository (an empty folder, a stale gitfile) is still not
@@ -467,12 +542,11 @@ func notARepository(root string, lookupErr error) bool {
 // exits 1, quietly, for an unborn HEAD in a repository git answers for. Any
 // other outcome, including git not running at all, is not an empty history.
 func emptyHistory(ctx context.Context, root string, lookupErr error) bool {
-	var ee *exec.ExitError
-	if !errors.As(lookupErr, &ee) || ee.ExitCode() != 128 {
+	if ExitCode(lookupErr) != 128 {
 		return false
 	}
 	_, err := RunLimitedContext(ctx, root, 4096, "rev-parse", "--verify", "-q", "HEAD")
-	return errors.As(err, &ee) && ee.ExitCode() == 1
+	return ExitCode(err) == 1
 }
 
 // fullSHARe is a full object name: forty hex digits under SHA-1, sixty-four
@@ -756,11 +830,19 @@ func runLimitedContext(ctx context.Context, root string, maxBytes int, network b
 
 // runLimitedOverflow is runLimitedContext that also says whether the answer ran
 // past maxBytes, for a caller that must not read part of one as the whole.
+//
+// A networked one asks the check SetBeforeHookedGit set first, before the
+// command is built, and only then: what it can start is asked with it.
 func runLimitedOverflow(ctx context.Context, root string, maxBytes int, network bool, args []string) (string, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return "", false, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
-	cmd := isolatedGitContext(ctx, root, args...)
+	if network {
+		if err := askBeforeHooked(args); err != nil {
+			return "", false, err
+		}
+	}
+	cmd := isolatedGitContextAsking(ctx, root, !network, args)
 	if network {
 		cmd.Env = netEnv(cmd.Env)
 	}
@@ -821,8 +903,7 @@ func RunCappedExitOneContext(ctx context.Context, root string, maxBytes int, arg
 	}
 	one := false
 	if err != nil {
-		var ee *exec.ExitError
-		if !errors.As(err, &ee) || ee.ExitCode() != 1 {
+		if ExitCode(err) != 1 {
 			return nil, false, fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
 		}
 		one = true
@@ -856,8 +937,7 @@ func runCappedExitOneCmd(cmd *exec.Cmd, maxBytes int, args []string) ([]byte, bo
 	cmd.Stdout, cmd.Stderr = w, e
 	one := false
 	if err := cmd.Run(); err != nil {
-		var ee *exec.ExitError
-		if !errors.As(err, &ee) || ee.ExitCode() != 1 {
+		if ExitCode(err) != 1 {
 			return nil, false, fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
 		}
 		one = true

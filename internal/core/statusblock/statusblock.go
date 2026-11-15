@@ -50,9 +50,8 @@
 package statusblock
 
 import (
-	"errors"
+	"context"
 	"fmt"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"slices"
@@ -378,30 +377,44 @@ func inFlight(repoRoot string, store spec.Store, specID, branch string) bool {
 const stageLand = "land"
 
 // landed reports whether a lane has left the build though the state file still
-// shows it: its recorded branch is gone, or the lane is at its land stage and
-// its branch's tip is on the default branch as last fetched (the pull request
-// merged). It reads only local refs, never the forge. A lane with no branch
-// yet, and a lane git cannot answer for, have not landed.
+// shows it (LandedContext), with no deadline, as the board has always read it.
 func landed(repoRoot string, l Lane) bool {
-	if l.Branch == "" || !gitutil.RefIsSafe(l.Branch) {
+	return LandedContext(context.Background(), repoRoot, l.Branch, l.Stage == stageLand)
+}
+
+// LandedContext is the one reading of whether a lane's pull request merged from
+// local refs alone, never the forge: the board's, and the loop's when a build of
+// the intent resumes a run whose lane merged (iss-2611101317510356). It holds
+// when the lane's recorded branch is gone, or when the lane is at its land stage
+// (atLand) and its branch's tip is on the default branch as last fetched
+// (gitutil.DefaultRefContext). A lane with no branch yet, a branch name git
+// would not take as safe, and a lane git cannot answer for, within ctx or at
+// all, have not landed. A squash or rebase merge writes new commits, so the
+// branch's tip is not on the default branch after one: such a lane reads as
+// landed only once its branch is gone.
+func LandedContext(ctx context.Context, repoRoot, branch string, atLand bool) bool {
+	if branch == "" || !gitutil.RefIsSafe(branch) {
 		return false
 	}
-	tip, err := gitutil.Run(repoRoot, "rev-parse", "--verify", "--quiet", "refs/heads/"+l.Branch+"^{commit}", "--")
+	out, gone, err := gitutil.RunCappedExitOneContext(ctx, repoRoot, 4096, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch+"^{commit}", "--")
 	if err != nil {
+		return false
+	}
+	if gone {
 		// rev-parse --verify --quiet exits 1, saying nothing, for a ref that
 		// names no commit; any other failure is git unable to answer.
-		var ee *exec.ExitError
-		return errors.As(err, &ee) && ee.ExitCode() == 1
+		return true
 	}
-	if l.Stage != stageLand || !gitutil.IsFullSHA(tip) {
+	tip := strings.TrimSpace(string(out))
+	if !atLand || !gitutil.IsFullSHA(tip) {
 		return false
 	}
-	def := gitutil.DefaultRef(repoRoot)
+	def := gitutil.DefaultRefContext(ctx, repoRoot)
 	if def == "" {
 		return false
 	}
-	on, err := gitutil.IsAncestor(repoRoot, tip, def)
-	return err == nil && on
+	_, notOn, err := gitutil.RunCappedExitOneContext(ctx, repoRoot, 4096, "merge-base", "--is-ancestor", tip, def)
+	return err == nil && !notOn
 }
 
 // issueID reports whether id names an issue record (iss-N).

@@ -322,6 +322,18 @@ plugin surface, and a future MCP server share one engine.
   hands it the width, its own colour rungs and the locale, so it imports no
   terminal code. The view label is painted through `statusline.PaintRole`,
   and titles are fitted through `textwidth.Fit`.
+- **`core/landings/`** — the reader of how each change landed
+  (itd-2610301850454860): `List` classes every commit on the default branch's
+  first-parent line in a range (`Resolve` names it from a tag or a date) by the
+  approval, the committed facilitator mode and the lane's `Admitted-by:`
+  trailer, asking the forge through `core/landing`'s client about each pull
+  request whose answer its local-tier cache does not keep, and keeping only
+  the answers that cannot change;
+  `TraceCommit` follows one commit to the row that brought it, and
+  `RevertedGroups` groups the rows a later commit reverts. It is a core package
+  before it is a verb, since the spot-check reads it at landing time with no
+  terminal to print to; `abcd landings` is its front door, and it fetches
+  nothing.
 - **`core/question/`** — what a question abcd puts to a person may contain
   (spc-2610030944505997). `Limits` and its one value `Default` are the only
   statement of the field limits in the tree: the question check, the GRILL rule

@@ -336,6 +336,7 @@ func TestAVersionOneStateIsReadAsAnUnpacedRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(start.RunID)))
+	claimAsDriver(t, repo.Root(), start.RunID, Options{})
 	v1 := `{
   "schema_version": 1,
   "run_id": "` + start.RunID + `",

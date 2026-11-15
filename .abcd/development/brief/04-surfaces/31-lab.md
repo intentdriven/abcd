@@ -172,10 +172,12 @@ nothing. A harvest written by hand is never overwritten.
 
 ## Exit codes
 
-`0` done; `1` a gate refused (the preflight, the sweep, the harvest's citation
-check) or a halted lab refused a probe, with the artefact rendered and the
-finding recorded; `2` the request was refused — no checkout, an unknown or
-malformed lab id, a bad probe name, question or pin — with nothing written. The
+`0` done; `1` a gate refused or a halted lab refused a probe: the preflight and
+the sweep refuse with the artefact rendered and the finding recorded, while the
+harvest's citation check writes nothing and sets no halt, and a halted lab
+refusing a probe writes nothing and names the standing finding; `2` the request
+was refused — no checkout, an unknown or malformed lab id, a bad probe name,
+question or pin — with nothing written. The
 JSON output carries each result whole, and a refusal is the `{"abcd":"error",…}`
 envelope on stdout. Every path is written in tilde form.
 

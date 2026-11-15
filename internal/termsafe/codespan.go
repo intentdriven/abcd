@@ -1,6 +1,9 @@
 package termsafe
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // PairedSpan is where one CommonMark code span sits in the string it was paired
 // in: s[Start:End] is the whole span, delimiters included, and
@@ -63,6 +66,109 @@ func PairCodeSpan(s string, i int) (span PairedSpan, ok bool) {
 		j = k
 	}
 	return PairedSpan{}, false
+}
+
+// CodeSpanPairer pairs every backtick run of one string by PairCodeSpan's
+// rule, for a walk that asks about its runs left to right: the page readers'
+// walk of one line (mdrecord). Asking PairCodeSpan at each run costs
+// a scan to the closer, and to the end of the string for a run nothing closes,
+// so a string of runs that never close costs the square of its length; the
+// pairer lists the string's runs once, by length, and answers each question by
+// moving that length's cursor forward, so a whole walk costs time in line with
+// the string.
+type CodeSpanPairer struct {
+	runs  map[int][]int // each maximal run's start, by its length, in order
+	next  map[int]int   // per length, the first listed run not yet passed
+	steps int
+}
+
+// Steps is the pairer's whole cost so far: one step per byte it listed and
+// per run a cursor passed, for a caller that holds its own cost to a bound.
+func (p *CodeSpanPairer) Steps() int { return p.steps }
+
+// NewCodeSpanPairer lists the runs of s.
+func NewCodeSpanPairer(s string) *CodeSpanPairer {
+	p := &CodeSpanPairer{runs: map[int][]int{}, next: map[int]int{}}
+	for i := 0; i < len(s); {
+		p.steps++
+		if s[i] != '`' {
+			i++
+			continue
+		}
+		j := backtickRunEnd(s, i)
+		p.runs[j-i] = append(p.runs[j-i], i)
+		i = j
+	}
+	return p
+}
+
+// Pair reports the span opened by the backticks s[i:end], where end is the end
+// of the maximal run they sit in and i may sit inside it (a run whose first
+// backtick is escaped opens past it): the first maximal run starting at or
+// after end of exactly end-i backticks closes it, as PairCodeSpan pairs it.
+// Calls must come in rising order of end.
+func (p *CodeSpanPairer) Pair(i, end int) (PairedSpan, bool) {
+	n := end - i
+	starts := p.runs[n]
+	k := p.next[n]
+	for k < len(starts) && starts[k] < end {
+		p.steps++
+		k++
+	}
+	p.next[n] = k
+	if k == len(starts) {
+		return PairedSpan{}, false
+	}
+	j := starts[k]
+	return PairedSpan{Start: i, ContentStart: end, ContentEnd: j, End: j + n}, true
+}
+
+// The fence characters LongestFenceRun counts: CommonMark builds code spans
+// and fenced blocks from backticks, and fenced blocks from tildes too. They
+// are named here so a writer outside this package asks for a backtick run
+// without spelling a backtick, which TestNoSecondCodeSpanPairer reads as a
+// hand-written scan. In a production file outside this package they are
+// LongestFenceRun's arguments and nothing else: the same test parses each
+// such file and fails on any other use, under every name the file imports
+// this package by, and refuses a dot import, so a comparison against one
+// cannot become a scan the spelling check misses.
+const (
+	FenceBacktick byte = '`'
+	FenceTilde    byte = '~'
+)
+
+// LongestFenceRun returns the length of the longest unbroken run of one fence
+// character in s, counting only the characters listed in fences, or 0 when s
+// holds none of them. It is the tree's one counter for a writer that sizes a
+// code span or a fence one longer than anything in the text it wraps, so the
+// text cannot close it.
+//
+// A run is one character repeated: a backtick followed by a tilde starts a new
+// run rather than lengthening the old one. That is CommonMark's own reading,
+// since a closing fence must repeat its opener's character, so a mixed stretch
+// can close nothing longer than its longest single-character part. Every
+// writer today wants exactly that, so there is no mixed-run mode.
+//
+// The scan is bytewise and fences must be ASCII. Every byte of a multi-byte
+// UTF-8 sequence is at or above 0x80, so text around a run never matches a
+// fence character, and the result equals a rune-by-rune count.
+func LongestFenceRun(s string, fences ...byte) int {
+	best, run := 0, 0
+	var prev byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case run > 0 && c == prev:
+			run++
+		case slices.Contains(fences, c):
+			run = 1
+		default:
+			run = 0
+		}
+		prev = c
+		best = max(best, run)
+	}
+	return best
 }
 
 // backtickRunEnd returns the index just past the run of backticks at i.

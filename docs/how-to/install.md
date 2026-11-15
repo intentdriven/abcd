@@ -81,8 +81,8 @@ the binary resolves it the same way the command files do — the plugin root
 first, then an `abcd` on `PATH` — and when the plugin root is empty it first
 attempts the bootstrap itself, at most once per ten-minute window. The attempt
 made when you send a message has two minutes before the host gives up on it;
-the attempt made before a command or a compaction has the host's own ten-minute
-limit. While any bootstrap runs, the one at session start included, the host
+the attempt made before a command, after a question is answered or before a
+compaction has the host's own ten-minute limit. While any bootstrap runs, the one at session start included, the host
 shows a one-line abcd status message in place of its usual spinner text, so a
 slow first download reads as a wait rather than a hang.
 Session end is one deliberate exception: it resolves the plugin root then

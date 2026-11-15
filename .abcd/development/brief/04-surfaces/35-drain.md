@@ -352,6 +352,32 @@ outlives the release. A person's stop during the wait halts the run as ever, its
 what the limit saved aside, and the take-over then reserves it again, since the run still names
 a reservation.
 
+A take-up the judge of a whole save refuses, since the run's file states another schema version
+and this drive may not save it, passes the lane over (iss-2611120957377169), and so does a
+take-over of a run the drive's own signal halted, which that judge refuses. Where the checkout
+has an origin and the halt released the issue, the judge refuses the take-over at its
+reservation, before anything is pushed, and the stop's mark stays; a reservation pushed in the
+window before the save, which a lock or a driver taken in between then refuses, is released
+again. Where there is no origin, the halt held no reservation, or the record has already
+finished on the default branch, the judge refuses the take-over at its save, after it has
+cleared the stop's mark (iss-2611121517368816). In neither case does the lane keep a
+reservation the take-over made. The drive
+says once what it left, in the judge's reason and remedy, and keeps the lane's run id in its own
+memory alone, never in the run's file, its control record or the drain's state. The pass lasts the rest of the drive
+whatever the judge's reason, one that could change while it runs, such as a process table that
+could not be read, among them. From the pass on, the drive writes nothing for the lane: every
+move is given the list and leaves the lane, reading no outcome of it and neither pacing,
+halting, renewing nor finishing it, and does not pick it as the lane in progress; the drive's
+waits leave a passed lane's reservation and record alone; its halt, its signal's halt and its
+let-go at the end pass the lane by; and no agent starts for it. Where the move would stop the
+drain at its cap or as empty with such a lane in progress, it leaves the drain open and names
+the lanes, and the drive ends on `passed-lanes`, exit 3, listing each with why and naming the
+command that starts a drive. The drain's other stops, on an outage a run gave up on and on
+origin it cannot read, end it as before, a passed lane in progress or not. A passed lane another
+session finishes still reads as in progress, so it keeps the drain open until a later drive
+routes it. A later drive starts with an empty list, so its own claim and the same judge decide
+the lane again.
+
 An agent that goes silent cannot be told from a hung one on what is known today. It
 is treated as a hang: its role's deadline kills its process group, its worktree is left
 as it stood, and the role is retried; it counts against its lane only if a probe answers.
@@ -554,7 +580,11 @@ with what a stage carries too, and only a receipt from a preflight the drive ran
 lands a lane. A lane at its landing that changes the Makefile, `scripts/` or the active
 hooks, measured from what it last merged of the default branch, is handed back, and an
 issue that names one is passed over before a lane opens: that change needs a person's own
-session, and the drive's last lines name each one. What the driver wrote of a run is compared after each agent's call, and a
+session, and the drive's last lines name each one. A stage's shell has no credential for
+origin, so a stage reserves nothing: the driver, which holds it, reserves every path a
+lane's branch changes beyond the issue's hold once the implementer hands its receipt back,
+before it judges the receipt and before the validators start, again before each step at
+the validators and at the fence before the landing's push (the implement verb's page). What the driver wrote of a run is compared after each agent's call, and a
 difference, or a read that keeps failing, stops the drive, and a later drive, step or
 hand-in refuses that run until a person discards its lanes or restores its state. One drive holds a checkout at a time, and each checkout has
 its stage's home to itself. A credential variable the harness would bill
@@ -645,8 +675,13 @@ on origin's default branch backs off, with a tip or without one
    conflicting in a file not declared generated. A wait by design
    is no refusal and is never counted: the landing's wait for its preflight
    receipt, every outage wait, a land fence that cannot read origin, and a
-   release being cut that holds merges
-   (dcn-2610170116582725). The drain hands a stuck lane back as
+   release being cut that holds merges (dcn-2610170116582725). A lane whose
+   hold the loop could not widen to a path its branch changes because another
+   copy holds that path live waits before its validators or at the fence until
+   the hold ends (iss-2611110638266241); that wait is never counted toward the
+   bound of identical refusals, but is counted toward the bound of minutes, so
+   two lanes each waiting on a path the other holds are handed back as stuck,
+   the reason naming the path and the record whose hold it is. The drain hands a stuck lane back as
    `stuck`, naming the refusal, releases its reservation with the hand-back's
    tombstone, and goes on to the next issue in the same move. The lane keeps
    its worktree and branch until the person discards it through the step verb,
@@ -862,7 +897,25 @@ reservation is released. The summary names each in `finished`, and a lane of
 this drain's takes the outcome done. A lane the landing refuses to finish (a
 branch moved past what landed, a worktree with changes), or a default branch the
 move cannot fetch, is named there with the reason and stops nothing; the next
-move looks again.
+move looks again. The landing's step saves the run's whole state, as do a parked lane's
+sync, its merge-queue watch and a closed pull request's hand-back, so a run whose state
+file states another version than this binary's is saved only by its driver, the live
+session its control record names. The drain claims such a run first, as a step claims a
+run, whether it is a lane of this drain's, an ended drain's or a build's, so a drain run by a
+newer binary finishes the merged lanes a gone driver left; a run another live session
+drives, or that the claim cannot take, is left as its file stands and named with why. A
+parked run that is not one of this drain's lanes is claimed for that save alone, as it is
+for the check that takes up a lifted stop's mark on it where its control record names a
+driver, and the claim that save made is let go once the
+save is made, with a line in the run's record where the claim named a driver it replaced,
+so the person's own step from another
+session claims the run after the move. A let-go that fails leaves the claim standing until
+the drain's session ends. After a let-go the run's control record names no driver, so a
+lifted stop's mark on it is not taken up by a drain, which reads it as a run that
+names none (iss-2611120545484783). A
+lane in progress the move admits, takes a new pace into or hands back as stuck is claimed
+the same way, and one another live session drives is named as left to that session, once
+each move, without refusing the move.
 
 Unless the move is waiting on origin, the host's answer is taken once the ledger is read, before the window clock and the
 lane's routing: an invocation given the answer's path validates it and records
@@ -1101,6 +1154,95 @@ summary. Whether a pull request merges is outside the drain's part, so it counts
 the pull requests its lanes opened, not the ones merged; a drain that ends with every lane ended and
 none in a pull request says so as a normal ending and exits 0, and one that
 stops with a lane still in progress (an outage give-up) claims no such ending.
+
+The summary also states the hand-backs per pull request the drain's lanes
+opened (itd-2610301750162657), the measure of the load the agents hand back to
+people: one line for each pull request, one with no hand-back included, with
+its lane's issue, how many hand-backs that lane routed and their kinds, then
+the hand-backs no pull request carries (the judgement's, a reservation's, a
+field hand-back's, and a lane's that opened none). A hand-back belongs to the
+lane on its issue that opened latest before it was routed, so an issue taken
+up again is counted against each of its lanes in turn; a lane whose pull
+request number is zero or below has no line, and two lanes that name one pull
+request share its line. The drain's state file is unchanged by it: the count
+is read from the lanes and hand-backs the state already keeps.
+
+### The spot-check's record
+
+Each move keeps the spot-check's record of what the drain decided with no
+person involved (itd-2610301750162657): every hand-back the drain has routed,
+and every judgement a routed model answered, each as a file of its own on this
+checkout's local copy of the spot-check's branch, all of one move's records in
+one commit. A judgement a person answered is not the automated facilitator's
+and is not recorded. The write touches no working tree, index or HEAD and
+reaches no network, and every worktree of the checkout shares the copy, so a
+lane's worktree removed after its landing takes no record with it. A
+hand-back's record names its issue, where it came from, its kind and route,
+the rule it names, the drain's rule record, the reason, the lane's pull
+request and run when it had them, the blob of the issue's record, and the
+writer by holder id; a judgement's names the issue, the question, the answer,
+the model, the rule record and the reason. Each file's name ends in a short
+hash of its content, so two records that differ in anything are two files, and
+a record counts as kept only when the local copy holds a file of its name with
+that content. Each commit of the copy names abcd's fixed identity as its
+author and committer, with its dates in UTC. The local copy is a ref of the
+repository outside its branches and tags, so a push of branches or tags leaves
+it behind, and a mirror push, which sends every ref, carries the records with
+it.
+
+Free text is cleaned before it is kept, by one rule that reads nothing of the
+machine or the account. The text holds no backslash and no tilde, and a word
+that holds a slash is kept only when all three hold: it begins with an ASCII
+letter or digit; every slash has an ASCII letter or digit right before it;
+and every character of it is an ASCII letter, a digit, a dot, an underscore,
+a dash or a slash. Any other word holding a slash is replaced whole by one
+fixed placeholder. So a bare repository-relative path made only of letters,
+digits, dots, underscores, dashes and slashes stays, and every other word
+holding a slash goes: an absolute or home-relative path, an address such as
+a file or web address, an option or a name written straight against a path,
+a path in quotes, brackets or backticks, a path with a line number or
+punctuation written against it, and a path that begins with a dot. A path
+under a top-level folder whose name begins with a dot (a workflow file under
+`.github`, a record under `.abcd`) reads as the placeholder in every text a
+record keeps, a hand-back's reason and a merge-gate reason included; the
+gate's mode is kept in a field of its own. Control and invisible characters
+separate words and are removed. A text over its bound is cut between words:
+the word the cut falls in goes whole and the cut is marked by a word of its
+own, so a text cleaned twice reads the same as one cleaned once, and a text
+whose first word does not fit (one very long word, or a script written without
+spaces) is kept as the mark alone. A record read back is checked with the same rule, so two readers agree on what the copy
+holds.
+
+The records are rebuilt from the drain's state at every move, and only those
+the copy does not yet hold are written, so a record one move could not write
+is tried again by a later one. A write that fails never fails, holds or changes
+the move: the move goes on as it would, and its `next` says how many records
+it tried to write and could not, and why. A record the store cannot keep at all
+(a hand-back with no time, an id outside the store's form) is counted apart, in
+a number that stays the same from move to move while the state holds it. Each
+write is bounded in time; a git command its deadline cuts off is told to stop
+in a way that lets git remove its lock, and is killed shortly after. A write
+whose git was cut off is counted as written when the copy, read back within a
+short bound, points at the commit the write made; when that read fails, runs
+out, or finds the copy moved on, the write is counted as failed. A record such
+a write did keep stays on the copy and the next write finds it kept, so it is
+neither lost nor written twice. A lock git leaves behind is named in the
+failure and never removed.
+
+A lane's landing whose merge gate decides in auto mode over a pull request
+whose author can write to the repository, with no person's approval counted,
+records that decision on the same copy, made from the gate's answer alone: the
+site, the pull request and its head, whether it armed, the method, the reason,
+whether it rests on an answer the gate could not read, and the three facts the
+gate set as it decided, by which the record is chosen: the mode, whether the
+author can write, and whether an approval counted. It is kept once for each
+head and answer however often the gate is asked again, since whether this
+checkout holds a record is read from what this checkout wrote alone. A
+decision that waits for a person, or that a person's approval decided, is not
+recorded. A record of the gate that cannot be written is not written: the
+decision stands as the gate gave it, its reason says the record was not
+written, and nothing asks an armed gate again to write it. A checkout with no
+remote named origin keeps no record.
 
 ## The trust boundary
 

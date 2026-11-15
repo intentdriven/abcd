@@ -51,6 +51,9 @@ type Options struct {
 	// driverIsSelf has a claim on the run name this process, where a drive runs the
 	// run itself, rather than the session above it.
 	driverIsSelf bool
+	// afar marks a renewal's save, whose waiter may run a lane's own abcd under the
+	// driver's own host session: it is never the run's driver (mayWholeSave).
+	afar bool
 	// stopHome is the home a stop is read from; "" is the account's own
 	// (defaultStopHome). A test names a fixture home.
 	stopHome string
@@ -170,14 +173,18 @@ type Options struct {
 	// text that put it there; "" for the host. Drive sets it from the runner
 	// configuration, so a round's route names the runner it ran on.
 	runnerRoute func(role string) (name, override string)
-	// remote is origin's identity and the checkout's hooks directory as a
-	// drive read them when it started (remoteid.go): the worktree stage of
-	// each lane the drive opens reads the identity again before it asks origin
-	// anything, and the hooks directory just before its add, and refuses the
-	// lane when a held key, or a top-level entry of the hooks directory the
-	// repository's own settings name, differs at that read, within the limits
-	// remoteid.go states. Nil (a step the host runs, a single build) checks
-	// nothing.
+	// remote is what a drive read when it started (remoteid.go): the
+	// settings the run's fingerprint watches, at every scope, with http.proxy
+	// and http.sslVerify, the files include settings name and the attributes
+	// files, each as the ask of origin and the lane's add and commit read
+	// them, and the hooks directory git names at the checkout, at every
+	// depth, and info/attributes. The worktree stage of each lane the drive opens
+	// reads the settings again before it asks origin anything and once origin
+	// has answered, and the hooks directory just before its add, and refuses
+	// the lane when a held key or entry differs at that read, within what
+	// remoteid.go states it cannot hold; each step compares all of it before
+	// its git runs (heldBeforeGit). Nil (a step the host runs, a single
+	// build) checks nothing.
 	remote *remoteIdentity
 }
 
@@ -246,6 +253,10 @@ type Context struct {
 	// the receipt's model and the runner's: the runner's taken for a receipt
 	// that names none, or the receipt's kept over a runner's that differs.
 	modelNote *string
+	// widened, when set, receives the run record's lines of the loop's own
+	// widening of the lane's hold that an implementer's receipt verifier made
+	// (receiptHoldGaps), which the hand-in writes with the receipt it takes.
+	widened *[]Entry
 	// standingReceipt is the bytes of a receipt a step read itself, which the
 	// verifier decodes in place of reading the file again; nil for a hand-in.
 	standingReceipt []byte
@@ -422,7 +433,13 @@ type StartResult struct {
 	// through on because reservation.fork_origin names it (claim's
 	// Result.ForkAllowed); "" when none was.
 	ForkAllowed string `json:"fork_allowed,omitempty"`
-	Next        string `json:"next"`
+	// Closed is each lane a resumed build closed because its pull request had
+	// merged (closeOnResume); empty when it closed none.
+	Closed []ClosedLane `json:"closed,omitempty"`
+	// Finished is true when that closing left the run nothing to build: the
+	// run is complete, and the invocation started nothing more.
+	Finished bool   `json:"finished,omitempty"`
+	Next     string `json:"next"`
 }
 
 // StepResult is what advance and Receipt return.
@@ -630,7 +647,7 @@ func admitResumed(repoRoot, runID string, o Options) error {
 	default:
 		return nil
 	}
-	return admitLate(repoRoot, runID, a, o.now())
+	return admitLate(repoRoot, runID, a, o.now(), o.saver())
 }
 
 // drainsLane reports whether the drain's state lists runID as one of its lanes.
@@ -642,11 +659,13 @@ func drainsLane(repoRoot, runID string) bool {
 
 // admitLate writes a into a run's state that names no admission, with a record
 // entry saying it was recorded after the start; a state that names one keeps it.
-func admitLate(repoRoot, runID string, a Admitted, now time.Time) error {
+// save is the frame: saveRun for the run's driver resuming it, a drain's laneSave for
+// one of its lanes.
+func admitLate(repoRoot, runID string, a Admitted, now time.Time, save saveFrame) error {
 	if why := a.Check(); why != "" {
 		return fmt.Errorf("admitting run %s: %s", runID, why)
 	}
-	return mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	return save(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
 		if st.Admitted != nil {
 			return false, nil
 		}
@@ -678,16 +697,40 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		if err == nil && flags.set {
 			err = resumeWithFlags(res, flags)
 		}
+		// A resumed run whose file states another version is claimed before
+		// anything saves it, so its saves are its driver's: one whose recorded
+		// driver is gone, or that names none, is this session's from here, and one
+		// another live session drives refuses the start at exit 3 (claimToSave).
 		if err == nil {
-			err = reserveResumed(repoRoot, &res, o)
+			err = claimToSave(repoRoot, res.RunID, o)
+		}
+		// A reservation refused because the record sits finished on origin's
+		// default branch (claim.ErrFinished, and that refusal alone) has nothing
+		// to reserve: a build whose closing of merged lanes then finishes the run
+		// says so, and any other resume of it is refused as before
+		// (closeOnResume). Every other refusal of the reservation stands.
+		var unreserved error
+		if err == nil {
+			if err = reserveResumed(repoRoot, &res, o); err != nil {
+				if rf, ok := AsRefusal(err); ok && rf.recordFinished {
+					unreserved, err = err, nil
+				}
+			}
 		}
 		if err == nil {
+			res, err = closeOnResume(repoRoot, res, o, unreserved != nil)
+			if err == nil && unreserved != nil && !res.Finished {
+				err = unreserved
+			}
+		}
+		// A run the closing finished admits nothing late: it is complete.
+		if err == nil && !res.Finished {
 			err = admitResumed(repoRoot, res.RunID, o)
 		}
 		if err != nil {
 			if rf, ok := AsRefusal(err); ok && rf.recordMoved {
 				if st, rerr := ReadState(repoRoot, res.RunID); rerr == nil {
-					if _, derr := dropMovedRun(repoRoot, st, rf.Reason, o.now()); derr != nil {
+					if _, derr := dropMovedRun(repoRoot, st, rf.Reason, o.now(), o); derr != nil {
 						return StartResult{}, derr
 					}
 				}
@@ -871,7 +914,9 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 			st.Record = append(st.Record, Entry{At: now, Lane: rp.Lane, Stage: StagePick,
 				Note: pickNote(rp)})
 		}
-		if err := writeState(root, st); err != nil {
+		// The run's directory was made for it above, so its file is new and takes no
+		// right (wholeSave.covers).
+		if err := storeState(root, st, wholeSave{}); err != nil {
 			if claim != nil && !claim.Renewed {
 				_, _ = shared.Release(o.Session, chk.record())
 			}
@@ -1174,6 +1219,13 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	if err := configTripwire(repoRoot, runID); err != nil {
 		return StepResult{}, err
 	}
+	// Inside a drive the step also compares what the drive holds, in every
+	// environment its git runs in, before the step's git runs: the landing
+	// push and a reservation's push or fetch run in the person's own, after
+	// the lane's agent has run (heldBeforeGit).
+	if err := heldBeforeGit(repoRoot, o.remote); err != nil {
+		return StepResult{}, err
+	}
 	g, err := outageFor(repoRoot, runID, o)
 	if err != nil {
 		return StepResult{}, err
@@ -1202,7 +1254,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	var res StepResult
 	var wait error
 	counted := false
-	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err = saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		// A stop may have come since the check: under the lock nothing acts on a
 		// run that took one.
 		if c, err := readControl(root, runID); err != nil {
@@ -1457,7 +1509,7 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 	var res StepResult
 	var noted *runner.RouteRecord
 	renewNote := ""
-	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err := saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
 		i, k := st.findAwait(repoRoot, receipt)
 		if i < 0 {
@@ -1477,8 +1529,9 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 				"the %s stage's receipt verifier is not built in this abcd (piece %d of %s delivers it)", lane.Stage, def.Piece, specOf(*st))
 		}
 		modelNote := ""
+		var widened []Entry
 		c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now, Await: &await,
-			Route: route, modelNote: &modelNote}
+			Route: route, modelNote: &modelNote, widened: &widened}
 		took := ""
 		if stood {
 			// One read: the check here and the verifier work from these bytes,
@@ -1523,6 +1576,9 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 		// the receipt renews the run's reservation as a step would
 		// (reservation.go), and every path below writes the state.
 		renewNote = renewReservation(repoRoot, st, now, nil)
+		// The loop's own widening of the lane's hold, made before the receipt
+		// was judged (receiptHoldGaps), is recorded with it.
+		st.Record = append(st.Record, widened...)
 		if route != nil {
 			stampRoute(&lane, await.Receipt, route)
 			note := routeNote(await.Role, *route)
@@ -1773,27 +1829,8 @@ func withLock(repoRoot string, fn func(root *os.Root) error) error {
 	return err
 }
 
-// mutate is every in-run mutation's frame: resolve nothing, check the tier,
-// take the lock, read the state, let fn change it, and write it only when fn
-// says it changed. The write takes the file to this abcd's own version, which
-// only the abcd driving the run may do: a writer that may be running a lane's
-// abcd uses mutateReservation (reservation_save.go).
-func mutate(repoRoot, runID string, fn func(root *os.Root, st *State) (bool, error)) error {
-	return withRun(repoRoot, runID, func(root *os.Root) error {
-		st, err := readStateIn(root, runID)
-		if err != nil {
-			return err
-		}
-		changed, err := fn(root, &st)
-		if err != nil || !changed {
-			return err
-		}
-		return writeState(root, st)
-	})
-}
-
 // withRun is a save's frame: resolve nothing, check the tier and the run, and
-// take the lock. mutate and mutateReservation are what is done under it.
+// take the lock. saveRun and saveRecord are what is done under it.
 func withRun(repoRoot, runID string, fn func(root *os.Root) error) error {
 	if err := tierPresent(repoRoot); err != nil {
 		return err

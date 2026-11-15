@@ -16,6 +16,7 @@ import (
 // says of a test the classifier sends to the always-rerun line.
 const (
 	whyProgram = "runs a program through go, make or a shell, whose reads the test cache never sees"
+	whyUnnamed = "runs a program whose name is not written where it starts, so it may be go, make or a shell, whose reads the test cache never sees"
 	whyTree    = "reaches the repository tree in a package that starts subprocesses, whose reads the test cache never sees"
 	whyNetwork = "reads the network"
 	whyClock   = "compares the clock with a fixed date"
@@ -39,6 +40,9 @@ var (
 // date, in one test's reach, compare nothing.
 type evidence struct {
 	program, tree, network, loopback, now, date bool
+	// unnamed is a program started under a name the call does not write: a
+	// variable, a parameter, an expression. It may hold go, make or a shell.
+	unnamed bool
 	// spawn is any exec.Command, whatever it names: Audits stops at one, and the
 	// always-rerun verdict, which asks what the program can read, does not use it.
 	spawn bool
@@ -46,11 +50,12 @@ type evidence struct {
 
 // reached is what a test reaches through every declaration it names.
 type reached struct {
-	program, tree, network, loopback, clock bool
+	program, unnamed, tree, network, loopback, clock bool
 }
 
 func (r *reached) merge(o reached) {
 	r.program = r.program || o.program
+	r.unnamed = r.unnamed || o.unnamed
 	r.tree = r.tree || o.tree
 	r.network = r.network || o.network
 	r.loopback = r.loopback || o.loopback
@@ -59,6 +64,7 @@ func (r *reached) merge(o reached) {
 
 func (r *reached) add(e evidence) {
 	r.program = r.program || e.program
+	r.unnamed = r.unnamed || e.unnamed
 	r.tree = r.tree || e.tree
 	r.network = r.network || e.network
 	r.loopback = r.loopback || e.loopback
@@ -71,6 +77,8 @@ func (r reached) why(spawns bool) string {
 	switch {
 	case r.program:
 		return whyProgram
+	case r.unnamed:
+		return whyUnnamed
 	case r.tree && spawns:
 		return whyTree
 	case r.network && !r.loopback:
@@ -718,8 +726,9 @@ func readSkip(call *ast.CallExpr, e *evidence) {
 	}
 }
 
-// readSpawn reads exec.Command and exec.CommandContext: the program named, and
-// a relative path handed to it.
+// readSpawn reads exec.Command and exec.CommandContext: the program named, a
+// program the call does not name in a string literal, and a relative path
+// handed to it.
 func readSpawn(fn string, call *ast.CallExpr, e *evidence) {
 	first := 0
 	switch fn {
@@ -742,7 +751,13 @@ func readSpawn(fn string, call *ast.CallExpr, e *evidence) {
 	if first >= len(call.Args) {
 		return
 	}
-	name, named := stringArg(call.Args[first])
+	name, named := stringArg(ast.Unparen(call.Args[first]))
+	if !named {
+		// A name held in a variable, a parameter or an expression is not
+		// followed to what it holds: any program can stand behind it, a shell
+		// among them, so the test runs.
+		e.unnamed = true
+	}
 	sub := ""
 	if first+1 < len(call.Args) {
 		sub, _ = stringArg(call.Args[first+1])

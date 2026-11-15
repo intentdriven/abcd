@@ -700,7 +700,7 @@ func (f mergeForge) postCommentOnce(root string, w Withdrawal, body string) (tak
 	case len(findings) > 0:
 		return false, fail(what + " was not posted: it carries " + findings[0].Kind + ", which public text may not carry")
 	case err != nil:
-		return false, fail(what + " was not posted: it could not be judged against the outbound policy (" + redacted(err) + ")")
+		return false, fail(what + " was not posted: it could not be judged against the outbound policy (" + redacted(err).text + ")")
 	}
 	posted, read, err := f.comments.Comment(root, w.ID, body)
 	switch {

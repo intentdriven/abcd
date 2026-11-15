@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -485,12 +486,91 @@ func push(root string, args []string) error {
 	return nil
 }
 
+// The spot-check's store branch (internal/core/spotcheck), the one branch
+// PushBranch and FetchBranch carry.
+const (
+	SpotcheckBranch      = "abcd-spotcheck"
+	spotcheckBranchRef   = "refs/heads/" + SpotcheckBranch
+	spotcheckTrackingRef = "refs/remotes/" + Remote + "/" + SpotcheckBranch
+)
+
+// spotcheckNetTimeout bounds FetchBranch's networked git commands together,
+// under the caller's own context. A test lowers it.
+var spotcheckNetTimeout = time.Minute
+
+// PushBranch pushes commit sha to ref, which must be the spot-check's store
+// branch (refs/heads/abcd-spotcheck), by the one push this package makes
+// (pushTo): plain, never forced, with the repository's hooks running, so
+// origin takes it only as a fast-forward. A push origin refused comes back as
+// git's own words (pushRejection). A ctx already ended pushes nothing; the
+// push itself is bounded by gitutil.NetTimeout, since no runner of gitutil's
+// runs the repository's hooks under a caller's context.
+func PushBranch(ctx context.Context, root, sha, ref string) error {
+	if !gitutil.IsFullSHA(sha) || ref != spotcheckBranchRef {
+		return refuse("%s is not a commit and the spot-check's branch to push; %s", echoName(ref), nothingPushed)
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("%s: %w", nothingPushed, err)
+	}
+	return push(root, pushTo(sha, ref))
+}
+
+// FetchBranch fetches ref, which must be the spot-check's store branch, into
+// tracking, its own remote-tracking ref (refs/remotes/origin/abcd-spotcheck),
+// forced as a remote-tracking ref always is. found is false when origin holds
+// no such branch, which a listing of origin's branches then confirms: a fetch
+// that fails for any other reason is an error, never a branch read as absent.
+// Each command runs under ctx and its own bound (spotcheckNetTimeout).
+func FetchBranch(ctx context.Context, root, ref, tracking string) (found bool, err error) {
+	if ref != spotcheckBranchRef || tracking != spotcheckTrackingRef {
+		return false, refuse("%s is not the spot-check's branch fetched to its own remote-tracking ref; nothing was fetched", echoName(ref))
+	}
+	ctx, cancel := context.WithTimeout(ctx, spotcheckNetTimeout)
+	defer cancel()
+	args := []string{"fetch", "--no-tags", "--no-write-fetch-head", Remote, "+" + ref + ":" + tracking}
+	trace(args...)
+	_, ferr := gitutil.NetContext(ctx, root, args...)
+	if ferr == nil {
+		return true, nil
+	}
+	// A fetch the drive's check stopped is that stop: git was not run, so
+	// origin is not listed, which would ask again.
+	if r := redacted(ferr); r.notRun != nil {
+		return false, &FetchError{Reason: r.text, cause: r.notRun, what: echoName(ref), outcome: "nothing was fetched"}
+	}
+	list := []string{"ls-remote", "--heads", Remote, ref}
+	trace(list...)
+	out, lerr := gitutil.NetContext(ctx, root, list...)
+	if lerr == nil && strings.TrimSpace(out) == "" {
+		return false, nil
+	}
+	return false, &FetchError{Reason: redacted(ferr).text, cause: redacted(ferr).notRun, what: echoName(ref), outcome: "nothing was fetched"}
+}
+
+// KeptHolderID is this account's holder id as a record names its writer: the
+// one HolderIDEnv names, else the one kept in the account's home, read
+// through the guarded read (readHolderID) and never minted; "" when neither
+// reads. It runs no git and reaches no network.
+func KeptHolderID() string {
+	if id, set, err := envHolderID(); err == nil && set {
+		return id
+	}
+	home := Options{}.home()
+	if home == "" {
+		return ""
+	}
+	if id, kept, err := readHolderID(home); err == nil && kept {
+		return id
+	}
+	return ""
+}
+
 // lostRace explains a rejected push. When the branch moved while the push was
 // on its way and now holds a reservation this act cannot take, the refusal
 // names its holder with the back-off; otherwise the push failure is reported
 // as itself.
 func lostRace(p *prepared, tree string, before judged, perr error) error {
-	pushFailed := &PushError{Reason: redacted(perr)}
+	pushFailed := &PushError{Reason: redacted(perr).text, cause: redacted(perr).notRun}
 	gap, err := fetch(p.root, p.now, noReservation, reservations)
 	if err != nil {
 		return pushFailed
@@ -575,8 +655,8 @@ func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 	case j.derived:
 		// A record finished on origin's default branch is not reserved, with
 		// a tip or without one: the work it names is done (iss-2610160957404827).
-		return Result{}, message{}, "", backOff("%s, so there is nothing to reserve; take other work; %s",
-			derivedWhy(p.id), nothingPushed)
+		return Result{}, message{}, "", &refusal{msg: fmt.Sprintf("%s, so there is nothing to reserve; take other work; %s",
+			derivedWhy(p.id), nothingPushed), kind: ErrBackOff, also: finishedMark(p.id)}
 	case !j.present:
 		res.Act = ActReserved
 		return res, m, "", nil
@@ -957,7 +1037,7 @@ func judge(p *prepared, tree string) (judged, error) {
 		case ref == "":
 			j.blobUnread = "this checkout names no default branch of " + Remote
 		case err != nil:
-			j.blobUnread = p.derivedGap + "; " + redacted(err)
+			j.blobUnread = p.derivedGap + "; " + redacted(err).text
 		}
 		j.derived = p.derivedGap == "" && terminal(recs[p.id], p.id)
 		j.blob = blobOf(recs[p.id])
@@ -1011,7 +1091,7 @@ func remoteDefault(root string) (string, error) {
 	trace(args...)
 	out, err := gitutil.Net(root, args...)
 	if err != nil {
-		return "", errors.New(redacted(err))
+		return "", redacted(err).err()
 	}
 	for _, line := range strings.Split(out, "\n") {
 		rest, ok := strings.CutPrefix(line, "ref: ")
@@ -1137,8 +1217,10 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 			trace(withDefault...)
 			_, ferr = gitutil.NetInput(root, stdin, withDefault...)
 		}
-		if ferr != nil && ref != "" {
-			gap = "could not read " + gitutil.ShortRef(ref) + " from " + Remote + ": " + redacted(ferr)
+		// A fetch the drive's check stopped is not tried again without the
+		// default branch: git was not run, and a second try asks again.
+		if ferr != nil && ref != "" && redacted(ferr).notRun == nil {
+			gap = "could not read " + gitutil.ShortRef(ref) + " from " + Remote + ": " + redacted(ferr).text
 			ferr = nil
 			if len(args) > bare || len(listed) > 0 {
 				trace(args...)
@@ -1150,9 +1232,9 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 		// Each namespace keeps that its fetch failed, and why, for every
 		// reader to say rather than show the last view as current (C10).
 		for _, ns := range spaces {
-			noteFetchFailure(root, ns, now, redacted(ferr))
+			noteFetchFailure(root, ns, now, redacted(ferr).text)
 		}
-		e := &FetchError{Reason: redacted(ferr)}
+		e := &FetchError{Reason: redacted(ferr).text, cause: redacted(ferr).notRun}
 		if what := nouns(spaces); what != reservations.noun || outcome != noReservation {
 			e.what, e.outcome = what, outcome
 		}
@@ -1160,7 +1242,7 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 	}
 	for _, ns := range spaces {
 		if err := stampFetch(root, ns, now); err != nil {
-			noteFetchFailure(root, ns, now, "fetched, but could not record when: "+redacted(err))
+			noteFetchFailure(root, ns, now, "fetched, but could not record when: "+redacted(err).text)
 			return "", refuse("fetched %s, but could not record when: %s; %s", ns.noun, redacted(err), outcome)
 		}
 		clearFetchFailure(root, ns)
@@ -1189,6 +1271,10 @@ func stdinFetchFloor() error {
 type FetchError struct {
 	Reason string
 
+	// cause is the git the drive's check did not run, when that is why the
+	// fetch failed (redacted), reachable through errors.As; nil otherwise.
+	cause error
+
 	// what is what the fetch read and outcome what was not done; "" for the
 	// reservations' fetch, whose words are fixed.
 	what, outcome string
@@ -1202,18 +1288,23 @@ func (e *FetchError) Error() string {
 	return fmt.Sprintf("could not read %s from %s: %s; %s", what, Remote, e.Reason, outcome)
 }
 func (e *FetchError) Is(target error) bool { return target == ErrRefused }
+func (e *FetchError) Unwrap() error        { return e.cause }
 
 // PushError is a reservation push origin refused, for a reason other than a
 // tip the act cannot take: Reason is git's own rejection, home-redacted. It is
 // an ErrRefused refusal: no reservation was made.
 type PushError struct {
 	Reason string
+
+	// cause is as FetchError's.
+	cause error
 }
 
 func (e *PushError) Error() string {
 	return fmt.Sprintf("%s refused the reservation push: %s; %s", Remote, e.Reason, noReservation)
 }
 func (e *PushError) Is(target error) bool { return target == ErrRefused }
+func (e *PushError) Unwrap() error        { return e.cause }
 
 // HasOrigin reports whether the checkout at root has a remote named origin,
 // the one reservations live on, reading only its configuration.
@@ -1245,4 +1336,13 @@ func stampFetch(root string, ns namespace, at time.Time) error {
 		return err
 	}
 	return fsutil.WriteFileAtomicInRoot(r, ns.stampRel(), []byte(stamp(at)+"\n"), stateMode)
+}
+
+// finishedMark is ErrFinished for an issue or an intent and nil for a release,
+// which has no finished state on the default branch.
+func finishedMark(id string) error {
+	if isRelease(id) {
+		return nil
+	}
+	return ErrFinished
 }

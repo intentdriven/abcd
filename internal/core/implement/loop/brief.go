@@ -127,7 +127,7 @@ func briefStage(c Context, lane *Lane) (Outcome, error) {
 		if err != nil {
 			return Outcome{}, err
 		}
-		body = renderIssueBrief(c.State, *lane, c.RepoRoot, laneDir, src)
+		body = renderIssueBrief(c.State, *lane, laneDir, src)
 		from = fmt.Sprintf("%s and %s (%s)", c.State.Issue(), ConventionsFile, src.conventionsFrom)
 	} else {
 		src, err := readBriefSources(c.RepoRoot, c.State, lane)
@@ -464,7 +464,9 @@ func (b baseTree) decisionsNaming(base string, read func(baseEntry, int64) ([]by
 	args := []string{"grep", "-z", "-l", "-F"}
 	for _, id := range ids {
 		if id != "" {
-			args = append(args, "-e", id)
+			// The pattern is -e's own word (-e<id>), so an id that starts
+			// with a dash is never read as an option, by git or by abcd.
+			args = append(args, "-e"+id)
 		}
 	}
 	if len(args) == 4 {

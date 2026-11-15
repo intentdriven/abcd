@@ -250,9 +250,15 @@ var repoLockTimeout = 2 * time.Minute
 // fn's own error passes through unchanged. Ports the two-domain lock model from
 // history_store.py.
 func withRepoLock(tdir string, fn func() error) error {
+	return withRepoLockFor(tdir, repoLockTimeout, fn)
+}
+
+// withRepoLockFor is withRepoLock with the wait bounded by timeout instead:
+// a drain under a hook's deadline waits no longer than the deadline leaves.
+func withRepoLockFor(tdir string, timeout time.Duration, fn func() error) error {
 	lockPath := filepath.Join(tdir, ".lock")
 	ran := false
-	err := fsutil.WithFileLock(lockPath, repoLockTimeout, func() error {
+	err := fsutil.WithFileLock(lockPath, timeout, func() error {
 		ran = true
 		return fn()
 	})

@@ -173,6 +173,7 @@ func judgedRunAtReview(t *testing.T) (repoRoot, runID string, data []byte) {
 // the run goes on with the reviewers it started with.
 func TestAnEarlierStateTakesTheNewClassNames(t *testing.T) {
 	root, id, data := judgedRunAtReview(t)
+	claimAsDriver(t, root, id, Options{})
 	current, err := ReadState(root, id)
 	if err != nil {
 		t.Fatal(err)

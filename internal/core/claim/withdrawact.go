@@ -517,7 +517,7 @@ func (p *prepared) withdrawArmed(tree, sha string, m message, again bool) (commi
 		rec, err = p.pushRecord(tree, sha, first)
 	}
 	if err != nil {
-		reason := redacted(err)
+		reason := redacted(err).text
 		for _, pr := range due {
 			fails = append(fails, ForgeFailure{Number: pr.Number, Act: ForgeRecord,
 				Reason: "was not withdrawn: the reservation recording it first was not pushed (" + reason + "), so it was left armed as it was; the launch check refuses the cut while it is armed"})
@@ -568,7 +568,7 @@ func (p *prepared) withdrawArmed(tree, sha string, m message, again bool) (commi
 	fixed.Withdrawn = actual
 	next, err := p.pushRecord(tree, rec, fixed)
 	if err != nil {
-		reason := redacted(err)
+		reason := redacted(err).text
 		for _, n := range changed {
 			fails = append(fails, ForgeFailure{Number: n, Act: ForgeRecord,
 				Reason: "the reservation records it as withdrawn in the form it was armed in, but the correction saying what the forge did was not pushed (" + reason +
@@ -1034,7 +1034,7 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 	s = Settle{Subject: id, Settled: []Withdrawal{}, Person: a.holder}
 	links, complete, err := releaseChain(a.root, id, t.Commit, tree)
 	if err != nil {
-		s.Failed = "could not read the history of " + id + "'s branch to tell which withdrawals are yours (" + redacted(err) + "), so none was re-armed"
+		s.Failed = "could not read the history of " + id + "'s branch to tell which withdrawals are yours (" + redacted(err).text + "), so none was re-armed"
 		return s, true
 	}
 	// An act that ends the release reads it whatever it holds: the holder's
@@ -1384,18 +1384,18 @@ func asCut(root string, r Reservation, now time.Time, reader Self) (cut Reservat
 	}
 	tagged, err := taggedOnOrigin(root, r.Record)
 	if err != nil {
-		return r, true, "whether " + releaseTag(r.Record) + " is on " + Remote + " could not be read (" + redacted(err) + ")"
+		return r, true, "whether " + releaseTag(r.Record) + " is on " + Remote + " could not be read (" + redacted(err).text + ")"
 	}
 	if tagged {
 		return r, false, ""
 	}
 	tree, err := emptyTree(root)
 	if err != nil {
-		return r, true, "the history of its branch could not be read (" + redacted(err) + ")"
+		return r, true, "the history of its branch could not be read (" + redacted(err).text + ")"
 	}
 	links, complete, err := releaseChain(root, r.Record, r.Commit, tree)
 	if err != nil {
-		return r, true, "the history of its branch could not be read (" + redacted(err) + ")"
+		return r, true, "the history of its branch could not be read (" + redacted(err).text + ")"
 	}
 	if complete && !slices.ContainsFunc(links, func(l chainLink) bool { return slices.ContainsFunc(l.m.Withdrawn, Withdrawal.unsettled) }) {
 		return r, false, ""
@@ -1739,11 +1739,11 @@ func readerRecord(root, id, tip string, reader Self, ws *[]Withdrawal) (ownRecor
 	}
 	tree, err := emptyTree(root)
 	if err != nil {
-		return unread(ownRecord{why: "the history of " + id + "'s branch could not be read (" + redacted(err) + ")"})
+		return unread(ownRecord{why: "the history of " + id + "'s branch could not be read (" + redacted(err).text + ")"})
 	}
 	links, complete, err := releaseChain(root, id, tip, tree)
 	if err != nil {
-		return unread(ownRecord{why: "the history of " + id + "'s branch could not be read (" + redacted(err) + ")"})
+		return unread(ownRecord{why: "the history of " + id + "'s branch could not be read (" + redacted(err).text + ")"})
 	}
 	k := &asker{c: pushCheck{root, id, []string{tip}}, links: links, complete: complete, reading: true, self: reader}
 	defer k.save()

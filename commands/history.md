@@ -69,7 +69,49 @@ How long a staged file lives is bounded on four fronts, because for a while it
 was not bounded at all: the drain ran only from a hook of the repository the
 file belongs to, so a repository nobody opened again kept its raw transcripts
 indefinitely. A small drain now also runs on **every prompt of a live session**,
-so a session redacts its own sub-agent transcripts as it goes. A staged file
+so a session redacts its own sub-agent transcripts as it goes. It starts once
+the prompt's root commit is known and runs beside the prompt's rules and
+notices. It redacts in parts between transcript records and keeps each
+finished part beside the staging lane. A part is whole records and has no
+upper size, so one long record (a pasted file, an image) is one part. A
+transcript it begins is finished at that prompt, part after part: a part after
+the first starts until 110 seconds after abcd started, ten under the host's
+120-second limit for the hook, and none starts after that; the next prompt
+continues from the parts kept. The first part always runs, whatever its size
+and whatever the time, so a transcript that cannot be split (not
+line-delimited records, or any transcript where gitleaks is armed) is redacted
+whole at the prompt that reaches it. A part, the first or a later one, that
+runs past the host's limit ends the hook there without its output, as
+redacting the transcript whole did; nothing of that part is kept, and at the
+next prompt it is the first part. So the hook's output is delivered when the
+part in progress at 110 seconds ends inside the ten seconds left. A transcript
+whose drain would have ended before 110 seconds is stored at the same prompt
+as when the drain redacted it whole; one whose drain would have ended in the
+last ten seconds before the host's limit is stored at the next prompt; and one
+that needs longer is finished over several prompts. Redacted whole, one that
+outlasted the limit ended the hook and its output at every prompt and was
+never finished. The session-start drain does the same, until
+220 seconds after abcd started, twenty under that hook's 240, and a transcript
+it would have finished in the last twenty seconds waits for the next prompt or
+session start. Both bounds count from abcd's own start, while the host counts
+from the hook's script, so each margin assumes the script started abcd well
+inside it; a first run that downloads abcd is outside that assumption, and a
+drain that then uses its whole bound can still lose the hook's output. Parts are reused only under the configuration that made them
+(the binary, the home path and the scanner settings), so parts kept by a
+session on another build or with other settings are redone, and the
+transcript is still stored as one record; two builds draining in turn redo
+each other's parts, so a transcript neither could finish within one prompt
+waits for a session start that can, for `drain`, or for the builds to stop
+alternating. When a part cannot be kept
+(its folder refused or unwritable, the disk full), abcd cannot read its own
+binary to name it, or gitleaks is armed, a later prompt could not continue
+from that point, so the drain finishes that transcript in memory past the
+bound and waits for the store's lock as long as a capture does, as it did
+before parts; a hook that then outlasts the host's limit loses its output, as
+it did then. It says once when a part could not be kept. The record is written once,
+whole, and the staged copy stays until it is; `discard` removes a staged
+file's kept parts with it. One stderr line says what was left, and `drain`
+finishes it now. A staged file
 older than **seven days** is reported OVERDUE and drained first — age buys
 priority and nothing else, and no transcript is ever deleted or degraded for
 being old. A **session start reports every repository in the store**, and
@@ -217,7 +259,11 @@ SessionStart drains a bounded number so it cannot stall the first prompt; this
 verb runs the backlog to completion. A staged file is removed **only** once its
 transcript is in the store: anything that fails to capture is reported in
 `failed` and its raw copy is deliberately kept, because it is then the only copy
-abcd holds. Exits non-zero when anything failed.
+abcd holds. Exits non-zero when anything failed. `keep_fault`, when present,
+names the first fault the drain met keeping a redacted part on disk (its folder
+refused or unwritable, the disk full): the drain finished that transcript in
+memory instead, so nothing was lost, but a drain the hooks stop could not
+continue it later until the fault is fixed.
 
 A failure reports whether it is `permanent`. A transient one — an unwritable
 store path, a sidecar an operator can repair — stays staged and stays queued. A

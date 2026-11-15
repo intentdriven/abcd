@@ -439,13 +439,13 @@ const (
 // maxStateBytes caps a state file, read and written. A run's record grows by
 // one entry per stage, and a reviewer's located findings, which grow with its
 // return, are kept on each lane's latest round only and dropped from a state
-// that would pass stateRoomBytes (stateData); writeState and a reservation
+// that would pass stateRoomBytes (stateData); storeState and a reservation
 // save write no file past this, so a file past it is not one the loop wrote.
 const maxStateBytes = 4 << 20
 
-// stateRoomBytes is the size past which writeState drops located findings,
+// stateRoomBytes is the size past which storeState drops located findings,
 // below maxStateBytes by the room a reservation save, which grows the record
-// without writeState, takes between two writes.
+// without storeState, takes between two writes.
 const stateRoomBytes = maxStateBytes - 256<<10
 
 // lockTimeout bounds how long a mutation waits for another invocation's
@@ -1435,10 +1435,38 @@ func ReadState(repoRoot, runID string) (State, error) {
 }
 
 func readStateIn(root *os.Root, runID string) (State, error) {
+	st, _, err := readStatedIn(root, runID)
+	return st, err
+}
+
+// readStatedIn is readStateIn with the version the file states (readListedStated),
+// which a save by a session that may not be the run's driver judges (mayWholeSave).
+func readStatedIn(root *os.Root, runID string) (State, int, error) {
 	if rf := tierRefusal("state", "", localtier.Untracked(root.Name(), StateRelPath(runID))); rf != nil {
-		return State{}, rf
+		return State{}, 0, rf
 	}
-	return readListedState(root, runID)
+	return readListedStated(root, runID)
+}
+
+// statedOnDisk is the version the run's state file states, peeked as decodeState
+// peeks it; present is false when there is no file.
+func statedOnDisk(root *os.Root, runID string) (stated int, present bool, err error) {
+	rel := StateRelPath(runID)
+	data, err := fsutil.ReadGuardedInRoot(root, rel, maxStateBytes)
+	if errors.Is(err, fs.ErrNotExist) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, true, fmt.Errorf("reading %s: %w", rel, err)
+	}
+	var peek struct {
+		SchemaVersion int `json:"schema_version"`
+	}
+	if err := json.Unmarshal(data, &peek); err != nil {
+		return 0, true, refuse("state", "", "", rel+" does not parse as a run state, so it is not replaced",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	return peek.SchemaVersion, true, nil
 }
 
 // readListedState is readStateIn for a run runIDs listed: the listing asked
@@ -1725,14 +1753,23 @@ func serialCarries(st State, version int) error {
 	return nil
 }
 
-// writeState is the state file's one writer: a whole-file atomic replacement
+// storeState is the state file's one whole writer: a whole-file atomic replacement
 // inside the checkout's os.Root, so a reader sees the old state or the new one,
 // never half of either. The caller holds the lock.
+//
+// The write takes the file to this abcd's version, so a file there that states
+// another is replaced only under the right mayWholeSave mints for that run and that
+// version (wholeSave.covers); without it the save is refused and nothing is written
+// (iss-2611110933196955). A new run's file, and one at this abcd's version, need no
+// right. The one other writer of the file, saveRecord, keeps the version it states.
 //
 // The repository and tool text the state carries is stored masked
 // (State.masked, iss-2610121542240257), and no larger than its read accepts
 // (stateData).
-func writeState(root *os.Root, st State) error {
+func storeState(root *os.Root, st State, right wholeSave) error {
+	if err := right.covers(root, st.RunID); err != nil {
+		return err
+	}
 	data, err := stateData(st)
 	if err != nil {
 		return err
@@ -1744,7 +1781,7 @@ func writeState(root *os.Root, st State) error {
 	return nil
 }
 
-// stateData is the file writeState stores for st: masked, with located
+// stateData is the file storeState stores for st: masked, with located
 // findings kept on each lane's latest round only (keepLatestFindings) and
 // dropped a round at a time, the oldest first, their counts kept, while the
 // file would pass stateRoomBytes (trimOldestFindings). A state still past

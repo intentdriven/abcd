@@ -48,9 +48,53 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   brief is the issue with its remedy as the work.
 - **ready** — the implement-readiness gate the intent verb reports: planned,
   criteria written, the spec linked both ways and written past its stub. Its
-  advisory rows stay advisory.
-- **open questions** — no open question under the record's `## Open Questions`.
-  The reader fails closed and knows the record's two settled markers: a section
+  advisory rows stay advisory. A spec is held by its own `blocked_by` or by
+  an open item under its `## Open Questions` or a sub-heading of it (named by
+  its text) (iss-2611101318042398). A spec that says it is not ready in prose
+  fails this check too, as a filter for that mistake, on exactly these forms:
+  "Not READY" or "NOT READY", READY in capitals, at a line's or a table cell's
+  start (after any blockquote, heading `#`, list marker, task box `[ ]`,
+  emphasis or opening bracket), after a ".", "!", "?", ":" or ";" and a
+  space, after a dash with a space on each side, after an opening bracket, or
+  with a line break between the two words; a bold "Open:" label
+  (`**Open:**`, `**Open**:`, `__Open:__`, or the same with "question(s)",
+  "point(s)" or "design question(s)" after the word, in any letter case) on
+  any line but the one an open question's item opens on, a paragraph or a
+  table row under `## Open Questions` included; a fence or HTML comment that
+  never closes; and fences or comments whose extent turns on the layout around
+  them, such as a fence indented four columns or more, or a line inside a list
+  item's fence nearer the margin than the item's text (each named by its line,
+  and the text from there on is read). Lower-case "not READY", "Not ready",
+  and the phrase elsewhere in a sentence are not matched. The frontmatter,
+  inline code spans that open and close on one line, fenced blocks (one at
+  up to three columns under a list item included) and HTML comments are not
+  read; an indented code block is read. A comment opener inside a one-line
+  code span opens no comment, and a backtick behind an odd run of backslashes
+  opens no span. A line that leaves a backtick run with no closer of its
+  length later on that line may pair it, on the page, with a backtick on a
+  line below, so on the lines below it, to the next blank line (a line of
+  nothing but spaces and tabs), inside a fence or comment as well as outside,
+  the reader blanks no span, and it reads a span over a line break as prose;
+  the run's own line keeps its spans. On those lines a comment opener that is
+  the first thing on its line, at up to three columns, opens a comment
+  whatever the lines above leave open. Any other opener there, or after the
+  run on its own line, has its comment read as text when it closes on its
+  line, and when it does not, the line is named and the text from there on is
+  read; on the lines below the run, a comment opener quoted in a one-line code
+  span with no closer after it on its line has its line named the same way. So
+  a phrase quoted rather than said goes in an inline code span that opens and
+  closes on one line. The reader pairs a backtick inside an HTML tag, an autolink, an inline
+  link's destination or title, or a processing instruction, declaration or
+  CDATA section in the middle of a line, as if it stood in text; opens a
+  comment at an opener inside a tag's attribute; reads a one-line comment
+  whose text holds two hyphens as a comment; blanks a one-line span or comment
+  inside an indented code block or an HTML block and a span over a table
+  cell's `|`; takes a backslash before a backtick inside an indented code
+  block, an HTML block or a tag, where the page shows the backslash, as making
+  the backtick literal; and does not end a line at a carriage return alone. A closed spec, and a record in `shipped/`,
+  `superseded/` or `disciplines/`, is not judged.
+- **open questions** — no open question under the record's `## Open Questions`
+  or a sub-heading of it. The reader fails closed and knows the record's two settled markers: a section
   that opens with an italic `_All resolved …_` line (or `_All four resolved …_`)
   is settled whole, and an item explicitly marked resolved or deferred — a bold
   span opening with the word (`**Resolved — …**`, `**Deferred**`, `**explicitly
@@ -62,13 +106,25 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   that only points to another record, and one that merely mentions deferral
   all count (the 2026-09-25 decision [dcn-2609250000000028](../../../work/decisions/dcn-2609250000000028-the-build-s-open-question-check-reads.md), and its
   2026-09-28 correction [dcn-2609280000000008](../../../work/decisions/dcn-2609280000000008-correction-to-the-2026-09-25-entry-on.md)).
+  The record's text must read whole: a fence or HTML comment that never
+  closes, or fences or comments whose extent turns on the layout around them,
+  fails this check too (named by its line); record-lint's `intent_layout`
+  rule names the same lines in a draft or planned intent, at warn, where they
+  are written (an intent over the intent store's size cap is refused for its
+  size before its layout is read, and the rule still names its lines, up to record-lint's own file cap). Only an ATX heading (`#`) opens
+  or ends the section; a setext or HTML heading does not. The reader reads
+  ATX headings, fences, HTML comments and inline code spans that open and
+  close on one line, below a backtick run a line leaves open as the spec
+  body check does; any other raw HTML block is read as ordinary text, line
+  by line.
 - **claim sections** — the mechanism prompt is answered or the section absent,
   and the scope conditions are recorded. The readiness gate reports both as
   advisory; a run is where they bind, because an autonomous lane has nobody to
   ask what the record meant.
 - **hold** — the record carries no `held:`, well formed or not
   (iss-2609200830076665).
-- **blocked** — nothing the record names in `blocked_by` is unsettled: an
+- **blocked** — nothing the record, or its open spec, names in `blocked_by`
+  is unsettled (an edge the spec names is reported with the spec's id): an
   intent in `shipped/` or `disciplines/` is settled (ruling CF2 of 2026-09-30:
   a discipline is a standing rule, not work that ships), and an intent anywhere
   else, or one this checkout's store does not hold, blocks it
@@ -175,7 +231,13 @@ reserves it again, judged for overlap, once the spec has widened it; either
 way it keeps the reservation's term, so a resume never cuts the day the land
 fence gave a waiting pull request. It reserves anew one a release released
 or a run started before reservations never took, recording it in the run's
-state; a run handed back reserves nothing. A release asked of the
+state; a run handed back reserves nothing. An issue run's reservation follows
+what its lane changes (iss-2611110638266241): once the implementer hands its
+receipt back, the loop reserves every path the lane's branch changes beyond
+the `found_at` before it judges the receipt, and again before each step at the
+lane's validators and before its landing's push, judged for overlap and
+against the cap, and another copy's live hold on one is a wait until that hold
+ends (the implement verb's page). A release asked of the
 verb pushes the tombstone over this copy's reservation on the key and changes
 nothing in the run's state (C36); the run's next step meets it at the land fence. A run whose
 issue lane is handed back releases its reservation as the step hands it back,
@@ -434,6 +496,75 @@ and the checks run only when a run is created: they judged the record at the
 start, and the run's own lanes then change what they read (a lane's worktree
 moves the intent to `shipped/`, a lane claims it), so judging again would refuse
 the run as its own peer. Only the key's shape is checked before the lookup.
+
+A build that finds the live run closes each of its lanes whose pull request has
+merged before it resumes the run (iss-2611101317510356), so the work goes on in
+a new lane on a new branch cut from origin's default branch tip, never on the
+merged lane's worktree, branch and range. It does so only once the resume's own
+checks have passed (a pick that chose a run already in progress, a pace that
+differs from the run's, a reservation another holds): a resume they refuse
+removes nothing. The one exception is the record already finished: a resume
+whose reservation is refused because the record is finished on origin's default
+branch still closes its merged lanes when that finishes the run. It is told by
+the reservation's own refusal, never by a read of the checkout; any other
+refusal of the reservation (another holder, origin unreachable, a lock error, an
+unreadable record) stands and removes nothing. A lane is a candidate when it is
+parked at its landing with no agent awaited and no hold, its pull request opened
+and its head pushed. The build fetches the default branch from origin, as the
+land step does, and resolves it to a commit straight after the fetch; it reads
+the lane as merged only when what it pushed is on that commit and the status
+board reads it as landed (its branch is gone, or its branch's tip is on the
+default branch). A remote-tracking ref as it stands in the checkout may be out
+of date, so it is never the proof. A fetch that fails or does not finish in time
+is a merge not seen: nothing is closed, and a line on stderr says why. The forge
+is not asked, so a squash or rebase merge, which leaves the pushed head off the
+default branch, is not read as merged here (iss-2610150827113191), and a lane
+that has left its landing is not closed either. A lane whose branch holds a
+commit past the default branch is not read as merged and resumes as before.
+
+A resumed run whose state file states another version than this binary's is
+claimed before anything of it is saved, as a step claims a run: one whose driver
+is gone, or that names none, becomes this session's, and one another live session
+drives refuses the build with nothing changed. A claim that takes nothing (the
+process table unread, or the session the build runs under not found) leaves the
+save that records the reservation refused, and that save is judged before the
+reservation is pushed, so such a build reserves nothing on origin. Under the run's lock, immediately
+before anything is removed, the run is left as it stands, with a line saying why,
+when its state file states another version than this binary's and this session is
+not the driver its control record names, a drive stopped on it, its control record holds a stop, or
+the stop read for the shared folder the run started under finds a stop or
+cannot be trusted; and what each lane pushed is checked on the fetched commit
+again. Each merged lane's worktree is then read for files its removal would
+lose: an uncommitted or untracked file, or an ignored one that is neither in
+the worktree's own local tier nor one of abcd's own artefacts. Those artefacts are
+matched by their exact paths from the worktree's root, as this repository's
+`.gitignore` names them: the issue ledger's allocator lock
+(`.abcd/work/issues/.iss-alloc.lock`, which a landing that resolves an issue
+leaves behind), and the plugin bootstrap's `abcd`, `.binary-meta`,
+`.bootstrap.lock/`, `.bootstrap.attempt` and `.bootstrap.tmp.<pid>/`. A
+worktree that holds any other is refused at the `resume` stage, naming the lane,
+its worktree, the count and the first files, and nothing is closed. The
+worktree's local tier and abcd's artefacts go with it, as they always have with
+the land step's cleanup. The closing is the land stage's own cleanup, against
+the fetched commit: the branch's tip must be on it, the worktree is removed, the
+branch deleted, the landing records that commit as merged, the lane is done and
+the run's next lane opens; a refusal on this route names the `resume` stage and
+the build to run again, and a refusal met after an earlier lane closed keeps
+that lane's closing. One deadline bounds the closing's own git: the fetch, the
+ref reads and ancestry checks it makes, the worktree listing, the derivation of
+each lane's worktree and the reads of each worktree. A closing already out of
+time when it takes the run's lock is refused with nothing removed; one that runs
+out later keeps the lanes it has closed, its refusal says it ran out of time,
+and the next build closes the rest. Once a lane's worktree removal has begun,
+nothing of that lane is cut off: the removal is not bound, since git stopped
+part-way through it leaves a half-removed worktree, and the branch's deletion
+after it is not cut off by the deadline. Neither is the reservation's release,
+which keeps the release's own network bound. When the closing leaves the run
+with no step to build, the run's state is written first and its reservation
+released after, the result says the run finished and names the lanes closed,
+the text says the lane was closed and the run finished, no late admission is
+recorded, and the invocation starts nothing more. A drain's start and a trial's
+close nothing here: the drain finishes its merged lanes on its own move.
 
 ## The step interface
 

@@ -122,7 +122,8 @@ contention naming the file's full path, and after the grace the claim logs
 ## The bounds
 
 A session joined as `second` is refused at exit 2, with a `refusal` line naming
-the condition, when it claims while holding another live claim
+the condition, when it sets the window's mode (`second_session_sets_no_mode`),
+claims while holding another live claim
 (`second_session_lane_cap`), claims or checks a lane in a `split-roles` window
 (`split_roles_second_builds_nothing`), declares a path in the reading corpus
 (`reading_corpus_lane`), or reaches the release stage (`second_session_release`).
@@ -578,37 +579,54 @@ the run's transcripts into the history store, one capture per path; a
 transcript stored without the scanner coverage the repository armed carries its
 scan gap on the record, as the history verb reports it for a capture.
 
-An issue lane widens its hold before it edits a path beyond it
-(iss-2610311224444576; dcn-2610311251002713, dcn-2610311544325397). Its brief
-names the widen verb, run from the run's checkout with the run, the lane and
-each further path: the issue is reserved again with the footprint its
-reservation holds and the paths it does not cover, judged for overlap and
-against the cap like any reservation, and the run record names the paths
-widened to; a path already covered adds nothing, and a run holding no
-reservation has nothing to widen. Only the run's current lane widens, at its
-implement or validate stage, and an intent's run, whose footprint is its
-spec's, is refused. Another copy's live hold on one of the paths is
-contention: nothing is pushed, the record line says the widening backed off,
-and the implementer edits none of them and stops without a receipt, the lane
-handed to an implementer again on a later step. As the backstop, an
-implementer's receipt is refused while the lane's branch changes a path the
-reservation does not cover, naming the paths and the widen verb, so a
-widening forgotten or an edit made through the shell is caught before the
-lane moves on. The landing's narrowing keeps a path the lane widened to and
-changed, a resume at land renews that narrowing as it stands, a resume that
-reserves again over this copy's live or lapsed hold keeps the paths that hold
-names beside the found_at, and a lane leaving land for a fresh round reserves
-its found_at again beside the paths its narrowed hold names. The run record
-keeps each path widened to in a `reservation_widened_to` line of its own, so a
+An issue lane's hold follows what its branch changes (iss-2610311224444576,
+iss-2611110638266241, iss-2611101316537446; dcn-2610311251002713,
+dcn-2610311544325397). The loop widens it itself, from the process that drives
+the run, which holds the credential for origin a drive's walled stage is kept
+from: once an implementer hands its receipt back, and before the receipt is
+judged, the issue is reserved again with the footprint its reservation holds
+and every path the lane's branch changes that the footprint does not cover,
+judged for overlap and against the cap like any reservation, and the run
+record names the paths widened to. The run's own records are reserved the same
+way: a decision record the implementer wrote, and the issue's record the
+landing's records commit moves. The widening is made again before each step at
+the lane's validators, so a path a fix round changed is held before a
+validator judges it, and at the fence before a landing's push and its arming,
+since no receipt stands between a lane at its validators and its landing; the
+fence reads a reservation made by hand for a run that recorded none as well.
+Another copy's live hold on one of the paths is contention and a wait by
+design: nothing is pushed, the receipt is taken all the same with a record
+line naming the path and the hold, and the lane waits before its validators,
+or at the fence, until that hold ends. It is never a failed launch, and a
+drain never counts it toward its bound of identical refusals; it counts it
+toward its bound of minutes alone, so two lanes each waiting on a path the
+other holds, each renewing its own hold, are handed back as stuck once that
+bound passes, the reason naming the path and the record whose hold it is. An
+origin the widening cannot reach is a wait too, as at the fence's other reads.
+Each path is reserved by its own name. A receipt is refused on the hold only
+when the widening could not be made: a path no reservation may carry, naming
+it, or paths too many for one reservation message, naming the message's cap. A footprint path carries no leading or
+trailing space, and the writer reads each message it composes back before it
+writes it, writing nothing when the footprint does not read back as composed. The lane's brief tells the implementer that the loop reserves what its
+commits change, and what is still refused or waited for; it names no widen
+step. A landing's narrowing that would leave the reservation message no room
+for the record paths the land fence adds before the push is declined, the hold
+left as it stands. The landing's narrowing keeps a path the lane widened to and changed, a
+resume at land renews that narrowing as it stands, a resume that reserves
+again over this copy's live or lapsed hold keeps the paths that hold names
+beside the found_at, and a lane leaving land for a fresh round reserves its
+found_at again beside the paths its narrowed hold names. The run record keeps
+each path widened to in a `reservation_widened_to` line of its own, so a
 reservation made again names it even when the reservation branch was deleted.
-The fence before a landing's push and its arming judges the lane's branch the
-same way, since no receipt stands between a lane at its validators and its
-landing: a path the reservation does not cover is reserved there, judged for
-overlap and against the cap, and another's hold on it stops the lane at its
-landing, naming that hold, with nothing pushed or armed. Only the records the
-landing moves are left out of that reading, so anything else its records commit
-holds is judged, and so is a reservation made by hand for a run that recorded
-none. An origin it cannot reach is a wait, as at the fence's other reads.
+
+The widen verb is for a session of a person's own that wants a path held
+before its edit, run from the run's checkout with the run, the lane and each
+further path; it is the same widening. A path already covered adds nothing,
+and a run holding no reservation has nothing to widen. Only the run's current
+lane widens, at its implement or validate stage, and an intent's run, whose
+footprint is its spec's, is refused. Another copy's live hold on one of the
+paths is contention: nothing is pushed and the record line says the widening
+backed off.
 
 A run that holds a reservation on the shared remote (itd-2609091034175565;
 the state's `reserved_at`) holds it for the copy the run lives in. The step
@@ -751,9 +769,31 @@ whose stop cannot be looked at, holds the run: it moves
 nothing and lets nothing go until the setting is put back, and only a read that saw
 clearly and found no stop counts as a lift, or lets a run be taken over. A home that
 cannot be found holds the run the same way. The chosen folder does not move while a stop
-stands in it. A renewal that falls due under a stop settles the run first, unless the run's state
-file states another version than the renewing abcd's, which leaves the run unsettled to its own driver's
-check. Its claim is still renewed, at the version its file states, while an agent may be in its call or
+stands in it. A save of a run's whole state writes the file at the saving abcd's version, so the state
+file's one whole writer replaces a file that states another version only for the run's driver, the live
+session its control record names, and every route that saves a run whole goes through it; any other
+session leaves the run as its file stands and names it, the file and both versions with it, and the way
+on. A session takes such a run up by claiming it: a step claims it while no stop's mark stands on it, a
+take-over while one does, since a signal's stop leaves no file to lift, a resumed build before it saves
+anything and a drain over a run it takes up. A claim replaces a driver that is gone and names it in the
+run's record, refuses while another is alive, and claims nothing where the process table or the
+session it runs under cannot be read, after which the save is refused the same way. A caller with no
+host session to find, a scheduler or a detached script, is the second case: after an upgrade its whole
+saves of a run whose file states the older version are refused until one step from a session claims the
+run; the claim keeps the version the file states, and that step's whole save writes this binary's
+version, after which any session saves it; a drive claims as its
+own process, so it is not such a caller. A drain's claim on a parked run that is not one of its lanes
+lasts for one save, and the claim that save made is let go once the save is made; a let-go that fails
+leaves the claim standing until the drain's session ends. After a let-go the run's control record names
+no driver, so a lifted stop's mark on it is not taken up by a drain, which reads it as a run that
+names none (iss-2611120545484783). The driver is told
+by its host process, not by the abcd it runs, so a newer abcd run under the driver's own session counts
+as the driver. Lines a claim, a cleared mark, the stop's page note and a drive's release add to a run's
+record keep the version its file states. A step under a stop claims nothing, so it halts such a run
+only where this session already drives it.
+A renewal is never the driver, since a lane's own abcd may make it: one that falls due under a stop
+settles the run first only where the run's state file states the renewing abcd's version, and otherwise
+leaves the run unsettled to its own driver's check and says so. Its claim is still renewed, at the version its file states, while an agent may be in its call or
 while that check has left work a save could not take; otherwise it is neither renewed nor let go, and
 lapses at its lease with the lane's work on its branch and in its worktree, none of it saved aside. With no agent left in its
 call and its work saved, a run under a stop no longer renews its reservation; a run with work a save

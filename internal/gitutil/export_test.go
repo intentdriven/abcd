@@ -35,8 +35,8 @@ var NetEnvFor = netEnvFor
 // the length of t, for a test that drives a transport through a fake.
 func AllowNetTransportsForTest(t *testing.T) {
 	t.Helper()
-	netGuardOff = true
-	t.Cleanup(func() { netGuardOff = false })
+	netGuardOff.Store(true)
+	t.Cleanup(func() { netGuardOff.Store(false) })
 }
 
 // ColdGitVersionForTest clears the cached `git version` answer and puts the

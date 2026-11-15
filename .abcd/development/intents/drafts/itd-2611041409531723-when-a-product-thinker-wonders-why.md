@@ -21,7 +21,7 @@ production_mode: hand-written
 ## Why This Matters
 
 Typed links: `builds_on`
-[itd-2610301850454860](../planned/itd-2610301850454860-abcd-writes-down-how-each-change-landed.md)
+[itd-2610301850454860](../shipped/itd-2610301850454860-abcd-writes-down-how-each-change-landed.md)
 (how each change landed, the source for review and queue time that no record
 holds today). The one constraint this repository has written down sits inside a
 stage, [iss-2610161639025702](../../../work/issues/open/iss-2610161639025702-preflight-throughput-sets-the-pace-of.md),

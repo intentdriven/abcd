@@ -89,8 +89,8 @@ var statusBranches = namespace{remote: StatusRefPrefix, tracking: StatusTracking
 func fetchStatus(root string, now time.Time, ref, branch string) (gap string, listed bool, err error) {
 	names, skipped, past, err := listStatusBranches(root, branch)
 	if err != nil {
-		noteFetchFailure(root, statusBranches, now, redacted(err))
-		return "", false, &FetchError{Reason: redacted(err), what: statusBranches.noun, outcome: noAnnouncement}
+		noteFetchFailure(root, statusBranches, now, redacted(err).text)
+		return "", false, &FetchError{Reason: redacted(err).text, cause: redacted(err).notRun, what: statusBranches.noun, outcome: noAnnouncement}
 	}
 	keepSkipped(root, skipped, past, now)
 	statusBranches.dropUnlisted(root, names)
@@ -534,7 +534,7 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 		if perr == nil {
 			return sent(sha, attempt), nil
 		}
-		refused = Remote + " refused the push: " + redacted(perr)
+		refused = Remote + " refused the push: " + redacted(perr).text
 		// The tip check runs first, on every attempt, the last included: a lost
 		// race shows as a tip that moved, and a push refused while the tip
 		// stands was refused for another reason, so it is not retried and is
@@ -653,7 +653,7 @@ func statusHolds(root, commit, tip string) (bool, error) {
 // withoutOutcome is a refusal's text without the closing words that say what
 // was not done, for quoting inside a message that says it instead.
 func withoutOutcome(err error) string {
-	msg := redacted(err)
+	msg := redacted(err).text
 	for _, end := range []string{nothingPushed, noAnnouncement} {
 		msg = strings.TrimSuffix(msg, "; "+end)
 	}

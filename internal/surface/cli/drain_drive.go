@@ -126,44 +126,10 @@ var drivePreflightProgram = func() (string, []string, error) {
 	return self, []string{"implement", "load", "--wait", "--", "make", "preflight"}, nil
 }
 
-// driveGates are what a lane's preflight and the driver's own git run, as paths: a
-// change to one is a change to what judges the lane.
-var driveGates = []string{"Makefile", "GNUmakefile", "makefile", "scripts/", ".githooks/", "hooks/"}
-
-// driveGate reports whether path, relative to the checkout, is one of those, or
-// under the hooks path the repository configures. A directory counts with or
-// without its trailing slash.
-func driveGate(path, hooksPath string) bool {
-	path = filepath.ToSlash(filepath.Clean(path))
-	for _, gate := range driveGates {
-		dir := strings.TrimSuffix(gate, "/")
-		if path == dir || (dir != gate && strings.HasPrefix(path, gate)) {
-			return true
-		}
-	}
-	if hooksPath = strings.Trim(hooksPath, "/"); hooksPath != "" {
-		return path == hooksPath || strings.HasPrefix(path, hooksPath+"/")
-	}
-	return false
-}
-
-// driveHooksPath is the hooks path the repository at dir configures, relative to
-// dir, "" for none or one outside it.
-func driveHooksPath(dir string) string {
-	paths, err := gitutil.HooksPaths(dir)
-	if err != nil || len(paths) == 0 {
-		return ""
-	}
-	path := paths[len(paths)-1]
-	if filepath.IsAbs(path) {
-		rel, err := filepath.Rel(dir, path)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
-			return ""
-		}
-		path = rel
-	}
-	return filepath.ToSlash(filepath.Clean(path))
-}
+// hooksPathRemedy is what a person does about a hooks path that cannot be
+// read, which holds a lane's landing (driveGateCheck) and passes over every
+// issue (drivePassOver).
+const hooksPathRemedy = "look at what git answers for the setting with `git config --show-scope --show-origin --get-all core.hooksPath` in the repository, settle the value it names (a path git cannot expand, such as one under a home that does not exist, cannot be read), then start the drive again"
 
 // driveGateCheck says whether a lane's landing may go on: not over a lane that
 // changes what judges it, which a person's own session handles, and not when what
@@ -174,9 +140,12 @@ func driveGateCheck() func(worktree, base string) error {
 		if err != nil {
 			return &loop.PreflightRefused{Reason: "what the lane changed could not be read, so its landing does not go on"}
 		}
-		hooks := driveHooksPath(worktree)
+		hooks, err := loop.DriveHooksPath(worktree)
+		if err != nil {
+			return &loop.PreflightRefused{Reason: "the hooks path the lane's repository configures could not be read, so its landing does not go on: " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "; " + hooksPathRemedy}
+		}
 		for _, path := range strings.Split(out, "\x00") {
-			if driveGate(path, hooks) {
+			if loop.DriveGate(path, hooks) {
 				return &loop.PreflightRefused{Reason: "the lane changes " + strconv.Quote(termsafe.Sanitize(path)) + ", a gate file, so it needs a person's own session and its landing does not go on: review the branch there"}
 			}
 		}
@@ -186,14 +155,21 @@ func driveGateCheck() func(worktree, base string) error {
 
 // drivePassOver says why an issue is passed over rather than opened: its own path
 // is one of the gates, so a lane on it could only be handed back.
+//
+// A hooks path that cannot be read passes over every issue, saying so: which
+// paths are gates cannot then be told.
 func drivePassOver(repoRoot string) func(id, foundAt string) string {
-	hooks := driveHooksPath(repoRoot)
+	hooks, err := loop.DriveHooksPath(repoRoot)
+	if err != nil {
+		why := "the hooks path the repository configures could not be read, so whether its path is a gate cannot be told: " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "; " + hooksPathRemedy
+		return func(string, string) string { return why }
+	}
 	return func(_, foundAt string) string {
 		path, ok := capture.FoundAtPath(foundAt)
 		if !ok {
 			path, _, _ = strings.Cut(foundAt, ":")
 		}
-		if !driveGate(path, hooks) {
+		if !loop.DriveGate(path, hooks) {
 			return ""
 		}
 		return "it needs a person's own session, since it changes a gate file: " + strconv.Quote(termsafe.Sanitize(path))
@@ -835,22 +811,33 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 	if rerr := render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) { renderDriveEnd(w, res) }); rerr != nil {
 		return rerr
 	}
+	return driveEndExit(res)
+}
+
+// driveEndExit is the exit of a drive that ended as res says, once its end is rendered.
+func driveEndExit(res loop.TerminalResult) error {
 	if len(res.HeldBack) > 0 && res.Ended != loop.TerminalKilled && res.Ended != loop.TerminalWall {
-		return driveHeldBackExit(res.HeldBack)
+		err := driveHeldBackExit(res.HeldBack)
+		// A drive that also ended on the lanes it passed over names both.
+		if res.Ended == loop.TerminalPassedLanes {
+			err.Msg += "; and " + driveEndWords(res.Ended)
+		}
+		return err
 	}
 	switch res.Ended {
 	case loop.TerminalKilled:
 		return &exitError{Code: driveKilledExit, Msg: "abcd drain --drive: killed"}
 	case loop.TerminalWall:
 		return &exitError{Code: 2, Msg: "abcd drain --drive: " + driveEndWords(res.Ended) + driveWhy(res), wall: true}
-	case loop.TerminalStopped, loop.TerminalOutage, loop.TerminalLimited, loop.TerminalWaited, loop.TerminalHalted, loop.DrainStoppedOutage, loop.DrainStoppedOrigin:
+	case loop.TerminalStopped, loop.TerminalOutage, loop.TerminalLimited, loop.TerminalWaited, loop.TerminalHalted, loop.DrainStoppedOutage, loop.DrainStoppedOrigin,
+		loop.TerminalPassedLanes:
 		return &exitError{Code: 3, Msg: "abcd drain --drive: stopped short: " + driveEndWords(res.Ended) + driveWhy(res)}
 	}
 	return nil
 }
 
 // driveHeldBackExit is the exit of a run that held issues back.
-func driveHeldBackExit(held []string) error {
+func driveHeldBackExit(held []string) *exitError {
 	return &exitError{Code: 3, Msg: "abcd drain --drive: stopped short: it held back " + termsafe.Sanitize(strings.Join(held, ", "))}
 }
 
@@ -931,6 +918,9 @@ func renderDriveEnd(w io.Writer, res loop.TerminalResult) {
 	for _, p := range res.PassedOver {
 		fmt.Fprintf(w, "  passed over: %s: %s\n", termsafe.Sanitize(p.ID), termsafe.Sanitize(p.Reason))
 	}
+	for _, p := range res.PassedLanes {
+		fmt.Fprintf(w, "  passed over, since this drive may not save it: %s, run %s: %s\n", termsafe.Sanitize(p.Issue), termsafe.Sanitize(p.Run), termsafe.Sanitize(p.Reason))
+	}
 	if res.Run != "" {
 		fmt.Fprintf(w, "  left on its branch: %s, run %s, %s\n", termsafe.Sanitize(res.Issue), termsafe.Sanitize(res.Run), termsafe.Sanitize(res.Lane))
 		if res.Resume != "" {
@@ -939,6 +929,8 @@ func renderDriveEnd(w io.Writer, res loop.TerminalResult) {
 		if res.Lapses != nil {
 			fmt.Fprintf(w, "  its reservation lapses at %s\n", res.Lapses.UTC().Format(time.RFC3339))
 		}
+	} else if res.Resume != "" {
+		fmt.Fprintf(w, "  to resume: %s\n", res.Resume)
 	}
 }
 
@@ -958,6 +950,8 @@ func driveEndWords(ended string) string {
 		loop.TerminalWall:       "a check before a stage no longer holds",
 		loop.TerminalRefused:    "a move was refused",
 		loop.TerminalKilled:     "killed",
+		loop.TerminalPassedLanes: "the only lanes left in progress are ones this drive passed over, since it may not save them; " +
+			"the drain stays open for a drive that may",
 	}[ended]
 	if why == "" {
 		return ended

@@ -232,8 +232,25 @@ type citedRef struct {
 }
 
 // pageCitations is one page's citation parse, produced once and shared by every
-// citation rule so a page is never scanned twice for the same thing.
+// citation rule so no rule scans a page again for the same thing.
+//
+// markers, defs, urls and dois are what a use that can report a finding reads:
+// all the page read line by line alone yields, then what the whole reading
+// below a backtick left open yields beyond it (readProse), a second scan made
+// only where the two readings differ on some line. alone is the page
+// read line by line alone, on every line, for a use that can make a finding go
+// away: a marker counting a definition as referenced, a definition counting a
+// marker as defined, a cited URL admitting a hand receipt.
 type pageCitations struct {
+	markers []footnoteRef
+	defs    []footnoteRef
+	urls    []citedRef
+	dois    []citedRef
+	alone   citationReading
+}
+
+// citationReading is one reading's footnote structure and citation corpus.
+type citationReading struct {
 	markers []footnoteRef
 	defs    []footnoteRef
 	urls    []citedRef
@@ -242,19 +259,36 @@ type pageCitations struct {
 
 // parseCitations reads a page's footnote structure and citation corpus.
 //
-// mask excludes fenced code; stripInlineCode (shared with the banned-token
-// family) excludes backticked spans. Between them, a regexp character class
-// like [^A-Za-z] in documentation is not mistaken for a citation — which matters
-// because this repo's own records contain exactly that decoy.
+// mask excludes fenced code; readProse (shared with the forbidden-synonym and
+// link checks) excludes backticked spans, and below a backtick left open adds
+// the whole reading beside the line read alone. Between them, a regexp
+// character class like [^A-Za-z] in documentation is not mistaken for a
+// citation — which matters because this repo's own records contain exactly
+// that decoy.
 func parseCitations(rel string, lines []string, mask []bool) pageCitations {
-	var p pageCitations
+	pr := readProse(lines, mask)
+	alone := readCitations(rel, lines, mask, pr.alone)
+	p := pageCitations{markers: alone.markers, defs: alone.defs, urls: alone.urls, dois: alone.dois, alone: alone}
+	if pr.differs {
+		whole := readCitations(rel, lines, mask, pr.whole)
+		p.markers = beyond(alone.markers, whole.markers)
+		p.defs = beyond(alone.defs, whole.defs)
+		p.urls = beyond(alone.urls, whole.urls)
+		p.dois = beyond(alone.dois, whole.dois)
+	}
+	return p
+}
+
+// readCitations is parseCitations over one reading of each line, prose.
+func readCitations(rel string, lines []string, mask []bool, prose []string) citationReading {
+	var p citationReading
 	inDef := false
 	for i, raw := range lines {
 		if mask[i] {
 			inDef = false
 			continue
 		}
-		line := stripInlineCode(raw)
+		line := prose[i]
 		lineNo := i + 1
 
 		// A definition line contributes its id, and its TAIL is citation corpus.
@@ -353,22 +387,32 @@ func trimCitedURL(s string) string {
 func checkCitationFootnotes(rel string, p pageCitations, cfg RuleConfig) []Finding {
 	var out []Finding
 
-	defined := map[string]int{}
+	// What makes a finding go away reads each line alone (pageCitations):
+	// a definition the page may show as code defines no marker, and a marker
+	// it may show as code references no definition.
+	defined := map[string]bool{}
+	for _, d := range p.alone.defs {
+		defined[d.id] = true
+	}
+	referenced := map[string]bool{}
+	for _, m := range p.alone.markers {
+		referenced[m.id] = true
+	}
+
+	declared := map[string]int{}
 	for _, d := range p.defs {
-		if n := defined[d.id]; n > 0 {
+		if n := declared[d.id]; n > 0 {
 			out = append(out, Finding{
 				File: rel, Line: d.line, RuleID: ruleCitationFootnotes, Severity: cfg.Severity,
 				Message: "footnote definition [^" + d.id + "] is declared more than once; one definition per citation",
 			})
 		}
-		defined[d.id]++
+		declared[d.id]++
 	}
 
-	referenced := map[string]bool{}
 	seen := map[string]bool{}
 	for _, m := range p.markers {
-		referenced[m.id] = true
-		if defined[m.id] == 0 && !seen[m.id] {
+		if !defined[m.id] && !seen[m.id] {
 			seen[m.id] = true
 			out = append(out, Finding{
 				File: rel, Line: m.line, RuleID: ruleCitationFootnotes, Severity: cfg.Severity,
@@ -425,7 +469,11 @@ func checkCitationCrosswalkRows(rel string, lines []string, mask []bool, cfg Rul
 			if len(tableCells(lines[r])) == 0 {
 				continue
 			}
-			if footnoteMarkerRe.MatchString(stripInlineCode(lines[r])) {
+			// A row is read alone, as every use that can make a finding go
+			// away is (readProse): a marker read inside a span the page may
+			// show as code would let an uncited row through, so no line above
+			// a row changes the row's spans.
+			if footnoteMarkerRe.MatchString(stripInlineCodeLine(lines[r])) {
 				continue
 			}
 			out = append(out, Finding{

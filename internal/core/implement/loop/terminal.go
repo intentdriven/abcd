@@ -56,7 +56,23 @@ const (
 	// TerminalKilled: the context ended, a second signal: the agent's process
 	// group was killed, and what it held lapses on its own.
 	TerminalKilled = "killed"
+	// TerminalPassedLanes: the only lanes the drain has left in progress are ones the
+	// drive passed over, since it may not save them (PassedLane): the drain stays open,
+	// and a drive that may save them takes them up.
+	TerminalPassedLanes = "passed-lanes"
 )
+
+// PassedLane is a lane a drive passed over: its run's file states another schema
+// version, and the judge of a whole save (mayWholeSave) refused this drive the save
+// taking it up or taking it over needs. Reason is that judge's reason and remedy. From
+// the pass to the drive's end, whatever the reason, the drive writes nothing for the
+// lane: no save, claim, reservation pushed or renewed, or line in its record, and no
+// agent runs for it.
+type PassedLane struct {
+	Issue  string `json:"issue"`
+	Run    string `json:"run"`
+	Reason string `json:"reason"`
+}
 
 // TerminalResumeCommand resumes a run that left a lane.
 const TerminalResumeCommand = "abcd drain --drive"
@@ -190,6 +206,8 @@ type TerminalResult struct {
 	HeldBack []string `json:"held_back,omitempty"`
 	// PassedOver names each issue the run did not open, with why.
 	PassedOver []Excluded `json:"passed_over,omitempty"`
+	// PassedLanes names each lane the run passed over, with why.
+	PassedLanes []PassedLane `json:"passed_lanes,omitempty"`
 	// Why is what stopped the run when a check did.
 	Why string `json:"why,omitempty"`
 }
@@ -207,6 +225,9 @@ type terminal struct {
 	last  DrainResult
 	// heldToProfile is set when the drive ended on a run's profile (holdToProfile).
 	heldToProfile bool
+	// unmarked names the runs whose profile markProfile said it could not mark, so it says
+	// so once a drive.
+	unmarked []string
 	// idleSince is when the run last stopped moving, zero while it moves.
 	idleSince time.Time
 	// ranClean names the lane and head a preflight last exited 0 on.
@@ -265,6 +286,9 @@ type terminal struct {
 	holdToSay bool
 	// passedOver are the issues said to need a person, each once.
 	passedOver []Excluded
+	// passedLanes are the lanes passed over because the drive may not save them, each
+	// said once, and given to every move after (DrainOptions.PassedLanes).
+	passedLanes []PassedLane
 	// why is what stopped the run, when a check did, and wallEnded the reason a wait
 	// inside that check ended it for, when one did.
 	why       string
@@ -477,7 +501,7 @@ func (t *terminal) settleHalted() {
 	st, _, err := readDrain(t.repoRoot)
 	if err == nil {
 		for _, l := range st.Lanes {
-			if l.Outcome != DrainLaneInProgress {
+			if l.Outcome != DrainLaneInProgress || t.passedLane(l.RunID) {
 				continue
 			}
 			if _, err := stopCheck(t.repoRoot, l.RunID, t.o.Stages, t.o.Options); t.why == "" {
@@ -509,7 +533,7 @@ func (t *terminal) haltOnSignal() {
 	}
 	now := t.now()
 	for _, l := range st.Lanes {
-		if l.Outcome != DrainLaneInProgress || driveStopped(l.RunID) {
+		if l.Outcome != DrainLaneInProgress || driveStopped(l.RunID) || t.passedLane(l.RunID) {
 			continue
 		}
 		s := runstop.Stop{SetBy: "a signal to the drive", SetAt: now}
@@ -577,15 +601,17 @@ func (t *terminal) sayWait(d time.Duration, why string) {
 
 // renewHeld renews each due reservation of a run in progress, but one a drive
 // let go, as it ended or for a limit, and of a lane parked at its pull request, and says
-// what failed.
+// what failed. A lane this drive passed over is renewed by neither, whatever its file
+// says (DrainOptions.PassedLanes): a drive's waits leave a passed lane's reservation and
+// record alone.
 func (t *terminal) renewHeld() {
 	now := t.now()
-	for _, r := range renewRunsAt(t.repoRoot, "", func(st State) bool { return !letGoByDrive(st) }, now) {
+	for _, r := range renewRunsAt(t.repoRoot, "", func(st State) bool { return !letGoByDrive(st) && !t.passedLane(st.RunID) }, now) {
 		if !r.Renewed {
 			t.say("%s: %s", r.Key, r.Note)
 		}
 	}
-	for _, note := range renewParkedDue(t.repoRoot, now) {
+	for _, note := range renewParkedDue(t.repoRoot, now, t.o.Drain.PassedLanes) {
 		t.say("%s", note)
 	}
 }
@@ -631,40 +657,71 @@ func (t *terminal) failed(ctx context.Context, judge bool, what string) bool {
 func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 	t.ctx = ctx
 	t.joinSharedRun()
-	// origin's identity and the checkout's hooks directory are read once,
-	// before the drive's first move, and held here for the lanes it opens
-	// (remoteid.go, with its limits): a lane's agent can rewrite the
-	// checkout's settings and hooks, and each lane's run records its own
-	// afresh. A restarted drive reads them afresh. The drive refuses to
-	// start when the settings cannot be listed, the repository's own
-	// settings cannot be read or the common git directory cannot be
-	// resolved (readRemoteIdentity); an unreadable hooks directory is held
-	// as such and does not stop it.
-	id, err := readRemoteIdentity(t.repoRoot)
+	// The settings the drive holds, the hooks directories its git runs and
+	// info/attributes are read once, before the drive's first move, and held
+	// here for the lanes it opens (remoteid.go, with what it cannot hold): a
+	// lane's agent can rewrite the checkout's settings and hooks, and each
+	// lane's run records its own afresh. A restarted drive reads them
+	// afresh, and so compares an in-tree hooks copy with the tip origin
+	// reports at that moment (proveCheckoutHooks). The drive refuses to start
+	// when a read the hold depends on gives no answer it can take, the hooks
+	// tree is past its bound (readRemoteIdentity), or the comparison finds a
+	// difference. The ask of origin is a lane's ask (startHold): it waits on
+	// the run's shared outage and reports a lost network to it, and its wait
+	// is the drive's own, ended by the bounds every pass of the loop below
+	// obeys (boundEnded) and by nothing moving for as long as a drive waits
+	// (idle), then asked again.
+	var id *remoteIdentity
+	for {
+		var err error
+		if id, err = t.startHold(); err == nil {
+			break
+		}
+		r, ok := AsRefusal(err)
+		if !ok || !r.Contention {
+			t.leaveSharedRun()
+			return TerminalResult{}, startRefusal(t.repoRoot, err)
+		}
+		if ended := t.boundEnded(ctx); ended != "" {
+			return t.ended(ended), nil
+		}
+		if t.idle(ctx, TerminalWaitFloor, r.Reason) {
+			return t.ended(TerminalWaited), nil
+		}
+		if ended := t.boundEnded(ctx); ended != "" {
+			return t.ended(ended), nil
+		}
+	}
+	t.o.Options.remote = id
+	// From here every git command of the drive that runs the repository's
+	// hooks, merge drivers or content filters, or reaches the network, first
+	// compares what the drive holds (heldBeforeGit): each runner gitutil has
+	// for such a command asks the check set here before it builds the
+	// command (gitutil.SetBeforeHookedGit names them), so one made inside a
+	// step (the lane's add, commit, merge and reset, the landing push) or
+	// outside one (a move's reservation, a renewal while an agent runs, the
+	// network probe) never runs under a setting or hook changed since the
+	// drive started; it fails instead, naming the difference. One drive runs
+	// in a process: a check already set refuses the start.
+	unset, err := gitutil.SetBeforeHookedGit(func([]string) error { return heldBeforeGit(t.repoRoot, id) })
 	if err != nil {
 		t.leaveSharedRun()
 		return TerminalResult{}, refuse(StageDrain, "", "", "the drive cannot start: "+err.Error(),
-			"settle what git reports for the repository's own settings (`git config --local --list --show-origin`) and for the settings the drive holds (`git config --list --show-origin`), then start the drive again")
+			"run one drive at a time in a process; nothing was made")
 	}
-	t.o.Options.remote = id
+	defer unset()
 	if t.o.Resumed {
 		t.reportHeldBack()
 	}
 	for {
-		if ctx.Err() != nil {
-			return t.ended(TerminalKilled), nil
+		if ended := t.boundEnded(ctx); ended != "" {
+			return t.ended(ended), nil
 		}
-		if t.stopped() {
-			return t.ended(TerminalStopped), nil
-		}
-		if t.stopHolds() {
-			return t.ended(TerminalHalted), nil
-		}
-		if t.pastBound() {
-			return t.ended(TerminalUntil), nil
-		}
-		if !t.wallHeld() {
-			return t.ended(TerminalWall), nil
+		// Each pass compares what the drive holds (heldBeforeGit): a
+		// difference ends the drive, which reads what it holds only as it
+		// starts, rather than have each git command of the pass refused.
+		if err := heldBeforeGit(t.repoRoot, t.o.Options.remote); err != nil {
+			return t.ended(TerminalRefused), err
 		}
 		if t.boundaryDue && t.o.AtBoundary != nil && !t.boundaryHeld() {
 			t.boundaryDue = false
@@ -717,6 +774,9 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		t.sayMove(res)
 		if res.Stopped != "" {
 			return t.ended(res.Stopped), nil
+		}
+		if len(res.passedOnly) > 0 {
+			return t.ended(TerminalPassedLanes), nil
 		}
 		if res.Judged != nil {
 			t.moved()
@@ -778,8 +838,58 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		if ended != "" {
 			return t.ended(ended), nil
 		}
-		t.inHand = t.laneInProgress(res.Lane.RunID)
+		// A lane the take-up in driveLane has just passed over is not in hand, so a new
+		// release does not wait on it.
+		t.inHand = !t.passedLane(res.Lane.RunID) && t.laneInProgress(res.Lane.RunID)
 	}
+}
+
+// boundEnded is how the drive ends at the top of each pass, "" when it goes
+// on: killed, stopped from the terminal, halted by a stop set from outside,
+// past the person's bound, or held by the check before a stage. The start's
+// wait on origin obeys it too.
+func (t *terminal) boundEnded(ctx context.Context) string {
+	switch {
+	case ctx.Err() != nil:
+		return TerminalKilled
+	case t.stopped():
+		return TerminalStopped
+	case t.stopHolds():
+		return TerminalHalted
+	case t.pastBound():
+		return TerminalUntil
+	case !t.wallHeld():
+		return TerminalWall
+	}
+	return ""
+}
+
+// startHold is one try at what the drive holds as it starts
+// (readRemoteIdentity) and the start's comparison with origin's tip
+// (proveCheckoutHooks), the ask of origin made as a lane's is: through the
+// run's shared outage (outageFor, which runs the shared network probe when
+// it is due), so while the outage has the network down the ask is not made,
+// and a lost network is reported to it.
+func (t *terminal) startHold() (*remoteIdentity, error) {
+	id, err := readRemoteIdentity(t.repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	g, err := outageFor(t.repoRoot, "", t.o.Options)
+	if err != nil {
+		return nil, err
+	}
+	err = proveCheckoutHooks(t.repoRoot, id, g)
+	g.record()
+	if note := g.recordNote(); note != "" {
+		if r, ok := AsRefusal(err); ok {
+			r.Remedy += "; " + note
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return id, nil
 }
 
 // boundaryHeld reports whether a due boundary waits: for a skip the run gave and the next
@@ -1771,7 +1881,7 @@ func (t *terminal) laneRefused(ctx context.Context, runID, laneID, reason, final
 	why := refuse(string(StageLand), "", laneID, reason, "see the reason")
 	why.final = final
 	now := t.now()
-	if err := mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	if err := saveRun(t.repoRoot, runID, t.o.Options, func(_ *os.Root, st *State) (bool, error) {
 		return noteRefusal(st, why, now), nil
 	}); err != nil {
 		return false, "", err
@@ -1839,7 +1949,7 @@ func (t *terminal) takeUpOptions() Options {
 // reservation after all. A failure is said, and the next move tries again.
 func (t *terminal) retellLimit(runID string) {
 	now := t.now()
-	err := mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	err := saveRun(t.repoRoot, runID, t.o.Options, func(_ *os.Root, st *State) (bool, error) {
 		told := retellKept(st, limitKept, now)
 		if len(told) > 0 {
 			st.UpdatedAt = now
@@ -1946,13 +2056,13 @@ func recordMovedOn(repoRoot string, run State, now time.Time) recordSince {
 // the reason it goes back for. Only a release of the run's own that did not reach origin is
 // tried again, and only over the tip it left, so a reservation anyone made since stands,
 // and the reason says which.
-func dropMovedRun(repoRoot string, run State, why string, now time.Time) (string, error) {
+func dropMovedRun(repoRoot string, run State, why string, now time.Time, o Options) (string, error) {
 	if tip := failedReleaseTip(run); tip != "" {
 		clause, failed := releaseReservationAt(repoRoot, run.Key, tip, "", now)
 		why += "; " + clause
 		if failed {
 			why += ", so it lapses with its lease"
-		} else if err := mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+		} else if err := mutateReservation(repoRoot, run.RunID, func(st *State) (bool, error) {
 			st.Record = append(st.Record, Entry{At: now, Stage: StageReservationReleased, Note: clause})
 			st.UpdatedAt = now
 			return true, nil
@@ -1964,7 +2074,7 @@ func dropMovedRun(repoRoot string, run State, why string, now time.Time) (string
 			why += "; the reservation made on it from this copy since it was let go stands"
 		}
 	}
-	return why, dropRun(repoRoot, run.RunID, why, recordMovedOnWith, now)
+	return why, dropRun(repoRoot, run.RunID, why, recordMovedOnWith, now, o)
 }
 
 // passOverHalted leaves a run a person's stop halted to its explicit take-over, names it and
@@ -1992,6 +2102,26 @@ func (t *terminal) passOverHalted(run State) (bool, string) {
 	return true, ""
 }
 
+// passLane passes over the lane of run, whose file states another version this drive may
+// not save (r, the judge's refusal): every move after leaves it (DrainOptions.PassedLanes),
+// and so do the drive's waits, its halts and its let-go at the end; the line saying what
+// was left and why, the judge's reason and remedy, is said once.
+func (t *terminal) passLane(run State, r *Refusal) {
+	if t.passedLane(run.RunID) {
+		return
+	}
+	p := PassedLane{Issue: termsafe.Sanitize(run.Key), Run: run.RunID,
+		Reason: termsafe.Sanitize(fsutil.RedactHome(r.Reason + "; " + r.Remedy))}
+	t.passedLanes = append(t.passedLanes, p)
+	t.o.Drain.PassedLanes = append(t.o.Drain.PassedLanes, run.RunID)
+	t.say("passed over %s's lane, run %s, and going on with the drain's other work: %s", p.Issue, p.Run, p.Reason)
+}
+
+// passedLane reports whether the drive passed the lane of runID over.
+func (t *terminal) passedLane(runID string) bool {
+	return t.o.Drain.passedLane(runID)
+}
+
 // notePassedOver says an issue needs a person, once.
 func (t *terminal) notePassedOver(p Excluded) {
 	if slices.ContainsFunc(t.passedOver, func(e Excluded) bool { return e.ID == p.ID }) {
@@ -2017,11 +2147,15 @@ func (t *terminal) takeOver(ctx context.Context, run State) (bool, string) {
 		return true, TerminalHalted
 	}
 	if r, ok := AsRefusal(err); ok {
-		switch r.Stage {
-		case StageResume:
+		switch {
+		// The refusal of a whole save is at the driver's stage, and the lane is passed
+		// over as the take-up passes it (tookUp), not waited on as a driver is.
+		case r.leftAtVersion:
+			return t.tookUp(ctx, run, err)
+		case r.Stage == StageResume:
 			t.stoppedBy(fmt.Errorf("%s; %s", r.Reason, r.Remedy))
 			return true, TerminalWall
-		case StageDriver:
+		case r.Stage == StageDriver:
 			if t.idle(ctx, TerminalWaitFloor, r.Reason) {
 				return true, TerminalWaited
 			}
@@ -2042,8 +2176,16 @@ func (t *terminal) tookUp(ctx context.Context, run State, err error) (bool, stri
 	if !ok {
 		r = refuse(StageReservation, "", "", err.Error(), "see the reason")
 	}
+	// The run's file states another version and this drive may not save it: no other
+	// drive took the issue up, and nothing the drive saves of the lane would be kept, so
+	// the drive passes the lane over, once, saying what was left and why, and goes on
+	// with its other work (passLane).
+	if r.leftAtVersion {
+		t.passLane(run, r)
+		return true, ""
+	}
 	if r.recordMoved {
-		reason, derr := dropMovedRun(t.repoRoot, run, r.Reason, t.now())
+		reason, derr := dropMovedRun(t.repoRoot, run, r.Reason, t.now(), t.o.Options)
 		t.sayDropped(run, reason, derr)
 		return true, ""
 	}
@@ -2078,7 +2220,7 @@ func (t *terminal) tookUp(ctx context.Context, run State, err error) (bool, stri
 func (t *terminal) stayAsItIs(runID, key string, r *Refusal) {
 	t.say("%s, run %s, stays as it is: %s", key, runID, r.Reason)
 	now := t.now()
-	_ = mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	_ = saveRun(t.repoRoot, runID, t.o.Options, func(_ *os.Root, st *State) (bool, error) {
 		i := st.current()
 		if i < 0 {
 			return false, nil
@@ -2122,7 +2264,7 @@ func (t *terminal) letGoForLimit(runID string) {
 	}
 	now := t.now()
 	key, held, clause, failed := "", "", "", false
-	err := mutate(t.repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err := saveRun(t.repoRoot, runID, t.o.Options, func(root *os.Root, st *State) (bool, error) {
 		if st.ReservedAt == nil || letGoByDrive(*st) {
 			return false, nil
 		}
@@ -2212,7 +2354,7 @@ func limitKeepsHold(st State, c control, now time.Time) string {
 
 // dropLane ends a lane whose reservation backed off, naming who the issue is with now.
 func (t *terminal) dropLane(run State, r *Refusal) {
-	t.sayDropped(run, r.Reason, dropRun(t.repoRoot, run.RunID, r.Reason, t.issueIsWith(run.Key), t.now()))
+	t.sayDropped(run, r.Reason, dropRun(t.repoRoot, run.RunID, r.Reason, t.issueIsWith(run.Key), t.now(), t.o.Options))
 }
 
 // sayDropped says what became of dropping run's lane for reason.
@@ -2255,9 +2397,9 @@ func (t *terminal) issueIsWith(key string) string {
 // release is pushed and no hand-back is published over an issue that is no person's
 // question, and the next move routes it and takes the next issue. What the lane left stays
 // where the hand-back says.
-func dropRun(repoRoot, runID, why, whose string, now time.Time) error {
+func dropRun(repoRoot, runID, why, whose string, now time.Time, o Options) error {
 	reason := termsafe.Sanitize(fsutil.RedactHome(why))
-	return mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	return saveRun(repoRoot, runID, o, func(_ *os.Root, st *State) (bool, error) {
 		i := st.current()
 		if i < 0 || st.Lanes[i].HandBack != nil {
 			return false, nil
@@ -2279,8 +2421,20 @@ func dropRun(repoRoot, runID, why, whose string, now time.Time) error {
 // letGo releases what the run holds and no lane is working on: each lane in
 // progress, left on its branch, and a judgement's hold no lane opened on. A
 // lane parked at its pull request keeps its own.
+//
+// A release is a push, which a drive makes only under what it holds
+// (heldBeforeGit), so it compares first, before it takes the drain's lock,
+// whose wait other sessions keep short (lockTimeout): on a difference, a
+// read that gives no answer, or a comparison that does not finish, no
+// release is tried, and each reservation left is named with when its lease
+// lapses and how the person releases it (leftHeld). Each push inside the
+// lock asks the comparison again, as every networked git of a drive does.
 func (t *terminal) letGo() {
 	now := t.now()
+	if err := heldBeforeGit(t.repoRoot, t.o.Options.remote); err != nil {
+		t.leftHeld(err, now)
+		return
+	}
 	err := fsutil.WithFileLock(filepath.Join(t.repoRoot, filepath.FromSlash(drainLockRel)), lockTimeout, func() error {
 		// A drain that ended on an outage can have a lane still in progress, so
 		// its lanes are read whether it is live or not.
@@ -2289,7 +2443,7 @@ func (t *terminal) letGo() {
 			return err
 		}
 		for _, l := range st.Lanes {
-			if l.Outcome != DrainLaneInProgress {
+			if l.Outcome != DrainLaneInProgress || t.passedLane(l.RunID) {
 				continue
 			}
 			run, err := ReadState(t.repoRoot, l.RunID)
@@ -2302,7 +2456,8 @@ func (t *terminal) letGo() {
 			}
 			clause, failed := releaseReservation(t.repoRoot, run.Key, "", now)
 			t.say("%s: %s", run.Key, clause)
-			_ = mutate(t.repoRoot, l.RunID, func(_ *os.Root, st *State) (bool, error) {
+			// Lines in the run's record alone: its file keeps the version it states.
+			_ = mutateReservation(t.repoRoot, l.RunID, func(st *State) (bool, error) {
 				noteRecordReleased(t.repoRoot, st, failed, now)
 				st.Record = append(st.Record, Entry{At: now, Stage: StageDriveReleased, Note: clause})
 				st.UpdatedAt = now
@@ -2325,6 +2480,52 @@ func (t *terminal) letGo() {
 	}
 }
 
+// leftHeld says, for a let-go the drive's comparison stopped (why), that
+// nothing was released, and names each reservation letGo would have
+// released, with when its lease lapses and how the person releases it once
+// what the drive holds is as it should be. It reads only: nothing is pushed
+// or written.
+func (t *terminal) leftHeld(why error, now time.Time) {
+	reason := why.Error()
+	if r, ok := AsRefusal(why); ok {
+		reason = r.Reason
+	}
+	t.say("nothing this drive holds was released: releasing is a push, and the drive runs none while %s", termsafe.Sanitize(fsutil.RedactHome(reason)))
+	st, live, err := readDrain(t.repoRoot)
+	if err != nil {
+		t.say("which reservations this drive holds could not be read, and each lapses with its lease: %s", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		return
+	}
+	var ids []string
+	for _, l := range st.Lanes {
+		if l.Outcome != DrainLaneInProgress || t.passedLane(l.RunID) {
+			continue
+		}
+		run, err := ReadState(t.repoRoot, l.RunID)
+		if err != nil || run.ReservedAt == nil || letGoByDrive(run) {
+			continue
+		}
+		if c, err := runControl(t.repoRoot, l.RunID); err == nil && c.Stop != nil {
+			continue
+		}
+		ids = append(ids, run.Key)
+	}
+	if j := st.Judging; j != nil && live && j.Hold != nil {
+		ids = append(ids, j.Issue)
+	}
+	snap, verr := claim.View(t.repoRoot, now)
+	for _, id := range ids {
+		lapses := "lapses with its lease"
+		if verr == nil {
+			if r, ok := snap.Lookup(id); ok && r.Copy == claim.CopyThis && r.State == claim.StateLive {
+				lapses = "lapses at " + stamp(r.EffectiveExpiry)
+			}
+		}
+		t.say("%s: its reservation was not released and %s; once what the drive holds is as it should be, release it with `abcd reserve %s --release`, or start the drive again, which takes the run up",
+			termsafe.Sanitize(id), lapses, termsafe.Sanitize(id))
+	}
+}
+
 // ended is the run's result as it ends: unless a kill or a stop from elsewhere
 // ended it, what no lane is working on is released, so a peer may take it up; the
 // lane left in progress is named, with the command that resumes it, or, after a
@@ -2343,16 +2544,22 @@ func (t *terminal) ended(why string) TerminalResult {
 	if why != TerminalKilled && why != TerminalHalted {
 		t.letGo()
 	}
-	res := TerminalResult{Ended: why, Last: t.last, HeldBack: t.heldBack, PassedOver: t.passedOver}
+	res := TerminalResult{Ended: why, Last: t.last, HeldBack: t.heldBack, PassedOver: t.passedOver, PassedLanes: t.passedLanes}
 	if why == TerminalWall || why == TerminalHalted {
 		res.Why = t.why
+	}
+	// The lanes passed over are a later drive's to take up, so the command that starts one
+	// is named, as it is for a lane left on its branch.
+	if why == TerminalPassedLanes {
+		res.Resume = TerminalResumeCommand
 	}
 	st, _, err := readDrain(t.repoRoot)
 	if err != nil {
 		return res
 	}
 	for _, l := range st.Lanes {
-		if l.Outcome != DrainLaneInProgress {
+		// A lane passed over is named among PassedLanes, not as the lane left.
+		if l.Outcome != DrainLaneInProgress || t.passedLane(l.RunID) {
 			continue
 		}
 		res.Run, res.Issue = l.RunID, l.Issue

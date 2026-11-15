@@ -114,7 +114,13 @@ no program it makes itself. The driver's commit, merge and
 reset hooks, and any filter run inside those commands, get the stage's variables, while its
 network commands, its other filters and its forge calls keep the person's environment. A lane that changes the Makefile, `scripts/` or the active
 hooks is handed back at its landing, and an issue that names one is passed over: that change
-needs a person's own session, and the drive's last lines name each one. Where
+needs a person's own session, and the drive's last lines name each one. A stage's
+shell holds no credential for origin, so a stage reserves nothing: once an
+implementer hands its receipt back, the drive itself reserves every path the
+lane's branch changes beyond the issue's hold, before it judges the receipt and
+before the validators start, and a path another copy holds live makes the lane
+wait for that hold to end, which is neither a failed launch nor a step counted
+toward handing the lane back as stuck (`commands/implement.md`). Where
 `facilitator.mode` is `auto`, a lane's records commit takes a short review round of its own
 and a lane whose reviewers passed it arms its own merge, as `abcd build`'s and any drain's
 lane does. One that moves an issue's record its full round was not told of, or holds more
@@ -126,6 +132,24 @@ hand-in refuses that run until you discard its lanes (`abcd implement step --run
 
 It prints one line per step and logs them under `.abcd/.work.local/logs/`. It ends
 at the cap, when nothing is eligible, at the bound below, or on a stop.
+
+**A lane it may not save.** A lane the drive let go, or halted on a signal, and comes back to,
+whose run's file states another schema version than this abcd's and that this drive may not
+save, is passed over rather than ending the run. The drive says once what it left and why, in
+the words of the refusal and its remedy, and goes on with its other lanes and issues. The pass
+lasts the rest of the run whatever the reason, one that could change while the drive runs, such
+as a process table that could not be read, among them. For the rest of the run the drive writes
+nothing for that lane: no save, no claim, no reservation pushed or renewed, no line in its
+record, and no agent starts for it. Each move leaves the lane, the drive's waits leave a passed
+lane's reservation and record alone, and its halts and its release at the end pass it by. Where
+the drive would have ended at the cap or with nothing eligible left and such a lane is still in
+progress, the drain stays open, and the drive ends instead on an ending of its own, at exit 3,
+naming each lane it passed over with why and the command to resume with. The drain's other
+stops, on a connection a run gave up on and on origin it cannot read, end it as before. A
+passed lane another session finishes still counts as in progress, so it keeps the drain open
+until a later drive routes it. A later drive comes to the lane again, where its own claim and
+the same judge decide whether it may take it up. The drive keeps the lanes it passed over in
+its own memory, not in the run or the drain's state.
 
 **A new release during the run.** The yes covers one more thing, and the question says so
 on a line of its own: about once an hour, at a lane boundary and never during a stage, the
@@ -668,9 +692,13 @@ what it did in `next`:
   read as holding every issue, and the drain would pass each over and end.
   The lane's run then renews the reservation, fences its landing on it, before
   its push and again before arming, and tombstones it once it lands
-  (`commands/implement.md`). Each fence also reserves any path the lane's branch
-  changes that the reservation does not cover, judged for overlap; another's hold
-  on one stops the lane there, naming that hold. Every drain move that neither waits on origin nor stops at a given-up outage also renews the lane in
+  (`commands/implement.md`). The run also reserves any path the lane's branch
+  changes that the reservation does not cover, judged for overlap: once the
+  lane's implementer hands a receipt back, before each step at its validators,
+  and at each fence. Another's live hold on one makes the lane wait there,
+  naming that hold. The wait is never counted toward the bound of identical
+  refusals, but it is counted toward the bound of minutes, so two lanes each
+  waiting on a path the other holds go back as stuck once it passes. Every drain move that neither waits on origin nor stops at a given-up outage also renews the lane in
   progress at half its lease, waiting on the pace or a judgement or not, though no step of the lane ran,
   so a lane the host paused past its lease is not taken over (a lane handed
   back is renewed by no move). Once the lane's validators have passed and it
@@ -733,7 +761,10 @@ what it did in `next`:
   another person's, or its sync's merge conflicting in a file not declared
   generated. A wait is not a refusal and is never counted: the landing's wait
   for its preflight receipt, the wait through an outage, a land fence that
-  cannot read `origin`, and a release being cut that holds merges.
+  cannot read `origin`, and a release being cut that holds merges. A lane
+  waiting for another copy's live hold on a path its branch changes to end
+  counts toward the bound of minutes alone, and the hand-back names the path
+  and the record whose hold it is.
   The bounds are `pace.stuck_refusals` and `pace.stuck_minutes` in
   `.abcd/config.json` or `~/.abcd.noindex/config.json`, read at every move that reads a lane in progress. A
   stuck lane keeps its worktree and branch:
@@ -773,7 +804,25 @@ what it did in `next`:
   only while such a lane is parked. A lane the landing will not finish (its branch moved past what
   landed, a worktree with changes, its branch checked out in another
   checkout, which the drain names, or a pushed head git cannot read) is named
-  in `next` and the move goes on. A run a stop's mark stands on is not finished, synced
+  in `next` and the move goes on. Finishing a lane, entering its sync again, watching its
+  pull request in the merge queue and handing a closed one back each save the lane's whole
+  run, so a run whose file states another version than this abcd's is saved only by its
+  driver: the drain claims it first, as a step claims a run, whether it is this drain's lane,
+  an ended drain's or a build's, so a drain run by a newer abcd finishes the merged lanes a
+  gone driver left. A parked run that is not this drain's lane is the drain's for that save
+  alone, and so, where its control record names a driver, for the check that takes up a
+  lifted stop's mark on it: the claim that save made is let go
+  once the save is made, with a line in the run's record where the claim named a driver it
+  replaced, so the person's own step from
+  another session claims it after the move. A let-go that fails leaves the claim standing
+  until the drain's session ends. After a let-go the run's control record names no driver,
+  so a lifted stop's mark on it is not taken up by a drain, which reads it as a run
+  that names none. A run another live session drives, or that the claim cannot take (the
+  process table unread, the session not found), is left as its file stands and named with
+  why. A lane in progress the move admits, takes a new pace into or hands back as stuck is
+  claimed the same way, and one another live session drives is named in `next` as left to
+  that session, once each move: the move is not refused for it, and ends as it does over
+  any lane in progress. A run a stop's mark stands on is not finished, synced
   or queued, whatever its pull request says: it is named in `next` and in `parked` as
   `stop-holds`, with what takes it up. While the read refuses a stop file, a
   run with work a save could not take has its reservation renewed. A read that holds the run
@@ -985,14 +1034,52 @@ whose landing opened one; a merge is a person's gate and is not counted),
 sum of `implementers`, each implementer's receipt the loop verified, and
 `validators`, each validator's return it read a verdict from, the unit the
 budget check counts in; `unread` names a lane's run whose state could not be
-read, which makes the spend a floor); `next` is the one move to make. A drain
+read, which makes the spend a floor), `hand_backs_by_pr` (one entry for each
+pull request the drain's lanes opened, one with no hand-back included: `pr`,
+the lane's `issue`, `hand_backs` its lane routed and their `kinds`) and
+`hand_backs_without_pr` (the judgement's, a reservation's, a field
+hand-back's, and a lane's that opened none); `next` is the one move to make. A drain
 that ends with every lane ended and none in a pull request says so in `next` as
 a normal ending; one that stops with a lane still in progress does not.
+
+Each move also keeps the spot-check's record of what the drain decided with no
+person involved: every hand-back it routed and every judgement a routed model
+answered, each as one file on this checkout's local copy of the spot-check's
+branch, all of one move's in one commit, written without touching the working
+tree and without reaching the network; a judgement a person answered is not
+recorded. The local copy is a ref of the repository, `refs/abcd/spotcheck`,
+outside its branches and tags: a push of branches or tags leaves it behind,
+and a push of every ref (`git push --mirror`) carries the records with it.
+Free text in a record is cleaned by one rule: the text holds no
+backslash and no tilde, and a word holding a slash is kept only when it begins
+with an ASCII letter or digit, every slash has one right before it, and every
+character of it is an ASCII letter, a digit, a dot, an underscore, a dash or a
+slash; any other word holding a slash is replaced whole by a placeholder. So a
+bare repository-relative path made only of letters, digits, dots, underscores,
+dashes and slashes stays, and every other word holding a slash goes: an
+absolute or home-relative path, an address, an option or a name written
+straight against a path, a path in quotes, brackets or backticks, a path with
+a line number or punctuation written against it, and a path that begins with a
+dot. A path under a top-level folder whose name begins with a dot (a workflow
+file under `.github`, a record under `.abcd`) reads as `<removed>` in every
+text a record keeps, a hand-back's reason and a merge-gate reason included;
+the gate's mode is kept in a field of its own. Control and invisible
+characters separate words and are removed. A text over its bound is cut
+between words: the word the cut falls in goes whole and the cut is marked by a
+word of its own, so a text cleaned twice reads the same as one cleaned once,
+and a text whose first word does not fit (one very long word, or a script
+written without spaces) is kept as the mark alone. A record that cannot be written never holds the move: `next` says how
+many records the move tried to write and could not, and why, and a later move
+tries them again; a record the store cannot keep at all (a hand-back with no
+time) is counted apart, the same number at every move. A merge-gate record that
+cannot be written is not written: the gate's decision stands, its reason says
+so, and nothing asks an armed gate again. A checkout with no remote named
+`origin` keeps no record.
 
 Tell the user any loosened floors first, then what this move did (the
 judgement asked or taken, the merged lanes finished, the lane opened, the
 hand-back routed, the pause or the end), then every hand-back with its route and what it wrote, then the
-counts and the spend, then `next`. Do not plan a promoted draft or write
+counts, the hand-backs per pull request and the spend, then `next`. Do not plan a promoted draft or write
 a flagged decision: those are a person's.
 
 ## Refusals

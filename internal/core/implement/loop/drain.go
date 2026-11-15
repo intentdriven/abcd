@@ -264,6 +264,41 @@ type DrainOptions struct {
 	Skip       []string
 	SkipReason string
 	Unskip     []string
+	// PassedLanes are the run ids of lanes a drive passed over this run, each a run
+	// whose file states another schema version that the drive may not save
+	// (terminal.go): the move writes nothing for such a lane, neither halting it
+	// under a stop, admitting, pacing, renewing, finishing nor handing it back as
+	// stuck, never picks it as the lane in progress, and does not stop the drain at
+	// its cap or as empty while one is in progress, so a later drive takes it up.
+	// The outage and origin stops end the drain as before. Held in the drive's
+	// memory alone, never written.
+	PassedLanes []string
+}
+
+// passedLane reports whether the drive passed the lane of runID over this run.
+func (d DrainOptions) passedLane(runID string) bool {
+	return slices.Contains(d.PassedLanes, runID)
+}
+
+// withoutPassed is st less the lanes the drive passed over, for the acts over its
+// lanes in progress that save or reserve: the drain's own record keeps them.
+func (st DrainState) withoutPassed(d DrainOptions) DrainState {
+	if len(d.PassedLanes) == 0 {
+		return st
+	}
+	st.Lanes = slices.DeleteFunc(slices.Clone(st.Lanes), func(l DrainLane) bool { return d.passedLane(l.RunID) })
+	return st
+}
+
+// passedInProgress are the lanes of st in progress that the drive passed over.
+func passedInProgress(st DrainState, d DrainOptions) []DrainLane {
+	var out []DrainLane
+	for _, l := range st.Lanes {
+		if l.Outcome == DrainLaneInProgress && d.passedLane(l.RunID) {
+			out = append(out, l)
+		}
+	}
+	return out
 }
 
 // DrainResult is one drain invocation's summary.
@@ -325,6 +360,10 @@ type DrainResult struct {
 	// Skips is the drain's skip list as this call leaves it: empty once the
 	// drain has ended, which clears it (drain_skip.go).
 	Skips []DrainSkip `json:"skips"`
+	// passedOnly are the lanes in progress a drive passed over, set when they are
+	// all the drain has left: it would have stopped at its cap or as empty, and
+	// stays open for them instead (DrainOptions.PassedLanes).
+	passedOnly []DrainLane
 }
 
 // DrainCounts are the drain's totals (itd-82 scope 8): its lanes by outcome,
@@ -348,6 +387,24 @@ type DrainCounts struct {
 	Judgements int        `json:"judgements"`
 	Passed     int        `json:"passed"`
 	Spend      DrainSpend `json:"spend"`
+	// HandBacksByPR are the hand-backs per pull request the drain's lanes
+	// opened (itd-2610301750162657): one entry for each pull request, in the
+	// order its lane opened, none left out for having no hand-back.
+	// HandBacksNoPR counts the hand-backs no pull request carries: the
+	// judgement's, a reservation's, a field hand-back's, and a lane's that
+	// opened none.
+	HandBacksByPR []DrainPRHandBacks `json:"hand_backs_by_pr"`
+	HandBacksNoPR int                `json:"hand_backs_without_pr"`
+}
+
+// DrainPRHandBacks is one pull request's hand-backs: its lane's issue, how
+// many hand-backs its lane routed and their kinds, each named once, in the
+// order first routed.
+type DrainPRHandBacks struct {
+	PR        int      `json:"pr"`
+	Issue     string   `json:"issue"`
+	HandBacks int      `json:"hand_backs"`
+	Kinds     []string `json:"kinds"`
 }
 
 // DrainSpend is what the drain's lanes have spent, in agent runs, the unit the
@@ -441,7 +498,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	}()
 	// A stop comes before the plan is read: the lanes take it and the move
 	// opens nothing (stop.go). A judgement awaited is let go with its hold.
-	stopNote, serr := drainStop(repoRoot, &st, o)
+	stopNote, serr := drainStop(repoRoot, &st, o, d.PassedLanes)
 	if serr != nil {
 		persisted = st.Judging
 		return DrainResult{}, serr
@@ -562,12 +619,20 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			}
 			persisted = st.Judging
 		}
+		// The spot-check's record of what the drain decided alone: written
+		// from the state as the move leaves it, never failing the move
+		// (spotcheckRecords).
+		if note := spotcheckRecords(d.Context, repoRoot, st); note != "" {
+			res.Next = joinNext(res.Next, note)
+		}
 		// The lanes in progress take a new pace only once the move has
 		// written it, so a move refused before here takes none.
 		if repace != nil {
-			if err := repace.lanes(repoRoot, st, now); err != nil {
+			left, err := repace.lanes(repoRoot, st.withoutPassed(d), now, o.laneSave(true))
+			if err != nil {
 				return DrainResult{}, fmt.Errorf("the drain took its new pace, but a lane in progress did not: %w; give the pace again", err)
 			}
+			res.Next = joinNext(append([]string{res.Next}, left...)...)
 		}
 		res.Max, res.Pace, res.Lanes, res.HandBacks = st.Max, st.Pace, st.Lanes, st.HandBacks
 		res.Judging, res.Judgements = st.Judging, st.Judgements
@@ -598,7 +663,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if res.Complete && res.Counts.PullRequests == 0 && res.Counts.LanesOpened > 0 && res.Counts.InProgress == 0 {
 			res.Next = joinNext(res.Next, "no lane ended in a pull request, which is a normal ending: every lane's outcome and hand-back is above")
 		}
-		if i := slices.IndexFunc(st.Lanes, func(l DrainLane) bool { return l.Outcome == DrainLaneInProgress }); i >= 0 {
+		if i := slices.IndexFunc(st.Lanes, func(l DrainLane) bool { return l.Outcome == DrainLaneInProgress && !d.passedLane(l.RunID) }); i >= 0 {
 			l := st.Lanes[i]
 			res.Lane = &l
 		}
@@ -624,6 +689,11 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			persisted = st.Judging
 		}
 		var notes []string
+		if live {
+			if note := spotcheckRecords(d.Context, repoRoot, st); note != "" {
+				notes = append(notes, note)
+			}
+		}
 		if note := finishedNote(res.Finished); note != "" {
 			notes = append(notes, "before refusing, this move "+note)
 		}
@@ -781,12 +851,12 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 
 	// Merged lanes are finished before the window clock is read: the cleanup
 	// does no new work, so the pace does not hold it (iss-2610090936460789).
-	if res.Finished, res.Parked, err = finishMerged(repoRoot, st.Lanes, now, o); err != nil {
+	if res.Finished, res.Parked, err = finishMerged(repoRoot, st.Lanes, now, o, d.PassedLanes); err != nil {
 		return refuseMoved(err)
 	}
 	// The lane in progress is renewed at half its lease on every move,
 	// waiting or not, before the window gate (drain_lease.go).
-	leaseNotes = renewInProgress(repoRoot, st, view, now)
+	leaseNotes = renewInProgress(repoRoot, st.withoutPassed(d), view, now)
 	finished := false
 	for _, f := range res.Finished {
 		for i := range st.Lanes {
@@ -883,7 +953,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	var bounds *stuckBounds
 	for i := range st.Lanes {
 		l := &st.Lanes[i]
-		if l.Outcome != DrainLaneInProgress {
+		// A lane the drive passed over is not read for its outcome: it is the later
+		// drive's that takes it up.
+		if l.Outcome != DrainLaneInProgress || d.passedLane(l.RunID) {
 			continue
 		}
 		run, err := ReadState(repoRoot, l.RunID)
@@ -891,9 +963,15 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			return refuseMoved(err)
 		}
 		if run.Admitted == nil {
-			if run, err = admitDrainLane(repoRoot, st, run, rule, now); err != nil {
+			admitted, err := admitDrainLane(repoRoot, st, run, rule, now, o.laneSave(true))
+			if left, ok := leftAtVersion(err); ok {
+				res.Next = leftToItsDriver(*l, left)
+				return finish(true)
+			}
+			if err != nil {
 				return refuseMoved(err)
 			}
+			run = admitted
 		}
 		outcome, pr, hb := laneOutcome(run)
 		if outcome == DrainLaneInProgress {
@@ -905,9 +983,15 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				bounds = &b
 			}
 			if stuckReason(run, *bounds) != "" {
-				if run, err = handBackStuck(repoRoot, l.RunID, *bounds, now); err != nil {
+				handed, err := handBackStuck(repoRoot, l.RunID, *bounds, now, o.laneSave(true))
+				if left, ok := leftAtVersion(err); ok {
+					res.Next = leftToItsDriver(*l, left)
+					return finish(true)
+				}
+				if err != nil {
 					return refuseMoved(err)
 				}
+				run = handed
 				outcome, pr, hb = laneOutcome(run)
 			}
 		}
@@ -937,6 +1021,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	}
 
 	if st.Max > 0 && len(st.Lanes) >= st.Max {
+		if passed := passedInProgress(st, d); len(passed) > 0 {
+			return finish(passedOnlyMove(&res, passed, "the cap is reached"))
+		}
 		st.Stopped, st.EndedAt = DrainStoppedCap, &now
 		res.Next = fmt.Sprintf("the cap is reached: --max %d, and the drain opened %d lane(s); it stops here. `abcd drain` again begins a new drain", st.Max, len(st.Lanes))
 		return finish(true)
@@ -1309,6 +1396,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		res.Next = fmt.Sprintf("nothing to ask before %s: the only eligible work left is a lapsed judgement request's issue, asked again once its cool-down has passed; run `abcd drain` again at or after %s", at, at)
 		return finish(true)
 	}
+	if passed := passedInProgress(st, d); len(passed) > 0 {
+		return finish(passedOnlyMove(&res, passed, "nothing eligible is left"))
+	}
 	st.Stopped, st.EndedAt = DrainStoppedEmpty, &now
 	res.Next = fmt.Sprintf("nothing eligible is left: the drain opened %d lane(s) and ends here", len(st.Lanes))
 	return finish(true)
@@ -1318,15 +1408,40 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 // names no admission, as a lane opened before runs recorded theirs does, so the
 // records step that refused it goes on (admitResumed). Only the rule the drain
 // began under is the one that admitted the lane: a move whose rule is another
-// record leaves the run as it is, and its records step stays refused.
-func admitDrainLane(repoRoot string, st DrainState, run State, rule drainrule.Rule, now time.Time) (State, error) {
+// record leaves the run as it is, and its records step stays refused. The admission
+// saves the run whole, through save (Options.laneSave).
+func admitDrainLane(repoRoot string, st DrainState, run State, rule drainrule.Rule, now time.Time, save saveFrame) (State, error) {
 	if rule.Record == "" || recordid.CanonADRID(st.Rule) != rule.Record {
 		return run, nil
 	}
-	if err := admitLate(repoRoot, run.RunID, Admitted{Kind: landings.KindDrain, Record: rule.Record, Path: rule.Path}, now); err != nil {
+	if err := admitLate(repoRoot, run.RunID, Admitted{Kind: landings.KindDrain, Record: rule.Record, Path: rule.Path}, now, save); err != nil {
 		return run, err
 	}
 	return ReadState(repoRoot, run.RunID)
+}
+
+// passedOnlyMove is a move whose only lanes left are the drive passed over: the drain
+// would have stopped, why, and stays open instead, so a later drive takes them up through
+// its own claim and judge; the move names each lane and writes the drain's state as any
+// move does.
+func passedOnlyMove(res *DrainResult, passed []DrainLane, why string) bool {
+	res.passedOnly = passed
+	names := make([]string, 0, len(passed))
+	for _, l := range passed {
+		names = append(names, fmt.Sprintf("%s's lane, run %s", l.Issue, l.RunID))
+	}
+	res.Next = fmt.Sprintf("%s, and the only lanes left in progress are ones this drive passed over, since it may not save them: %s; the drain stays open, and a drive that may save them takes them up",
+		why, strings.Join(names, "; "))
+	return true
+}
+
+// leftToItsDriver is a move's next over a lane in progress whose run another session
+// drives at another version (mayWholeSave): the lane is left to that session and the
+// move ends as it does over any lane in progress, without refusing, so each move says it
+// once and the drain goes on once the lane is handed back or its pull request opens.
+func leftToItsDriver(l DrainLane, left *Refusal) string {
+	return fmt.Sprintf("%s's lane, run %s, is left as its file stands: %s; %s; run `abcd drain` again once it is handed back or its pull request is open",
+		l.Issue, l.RunID, fsutil.RedactHome(left.Reason), fsutil.RedactHome(left.Remedy))
 }
 
 // joinNext joins the clauses of a move's next step that are not empty with
@@ -1422,6 +1537,14 @@ func drainCounts(repoRoot string, st DrainState, flags []DrainRoute, passed []Ex
 		}
 	}
 	c.Spend.AgentRuns = c.Spend.Implementers + c.Spend.Validators
+	c.HandBacksByPR = []DrainPRHandBacks{}
+	at := map[int]int{}
+	for _, l := range st.Lanes {
+		if _, seen := at[l.PR]; l.PR > 0 && !seen {
+			at[l.PR] = len(c.HandBacksByPR)
+			c.HandBacksByPR = append(c.HandBacksByPR, DrainPRHandBacks{PR: l.PR, Issue: l.Issue, Kinds: []string{}})
+		}
+	}
 	for _, r := range st.HandBacks {
 		switch r.Route {
 		case RoutePromoted:
@@ -1430,6 +1553,17 @@ func drainCounts(repoRoot string, st DrainState, flags []DrainRoute, passed []Ex
 			c.DecisionRecords++
 		case RouteHome:
 			c.Homes++
+		}
+		l, ok := routedLane(st, r)
+		i, opened := at[l.PR]
+		if !ok || l.PR <= 0 || !opened {
+			c.HandBacksNoPR++
+			continue
+		}
+		e := &c.HandBacksByPR[i]
+		e.HandBacks++
+		if !slices.Contains(e.Kinds, r.Kind) {
+			e.Kinds = append(e.Kinds, r.Kind)
 		}
 	}
 	return c

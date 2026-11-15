@@ -126,6 +126,7 @@ func TestARenewalFromALaneNeverRaisesTheRunThatDrivesIt(t *testing.T) {
 	f.awaitImplementer(t)
 	l := currentLane(t, f.repo, f.runID)
 	root := f.repo.Root()
+	claimAsDriver(t, root, f.runID, Options{})
 	before := stateAtVersion(t, root, f.runID, schemaVersionUnkeyed)
 
 	at := f.tip(t).claimed.Add(61 * time.Minute)

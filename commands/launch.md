@@ -1141,8 +1141,9 @@ written to.
 The gate also refuses, in the manifest era, a release whose version is not
 newer than every release tag, unless it re-gates its own tagged commit and every
 newer release tag descends from it; a version already tagged at another commit
-is refused too. So a point release on an older line, such as v0.14.2 after
-v0.15.0, is refused: cut the next version on `main` instead. Before 1.0 only the
+is refused too. So a point release on an older line, a patch to one minor
+version once a later minor version is tagged, is refused: cut the next version
+on `main` instead. Before 1.0 only the
 newest release is offered (the product thinker's ruling of 2026-10-14), and
 `ComputeRetention` refuses an out-of-order ship already. A hand-pushed tag that
 `verify` refuses is used up, because tags cannot be deleted or moved; roll the

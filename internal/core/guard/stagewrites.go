@@ -27,9 +27,11 @@ const (
 var stageGateFiles = []string{".githooks", "hooks", "Makefile", "GNUmakefile", "makefile"}
 
 // stageAbcdGates are the files under .abcd that do the same, by path below the
-// tree: each, and all below each.
+// tree: each, and all below each. The reservation state (the copy's key, its
+// fetch stamp, the generated set kept) is abcd's own to write.
 var stageAbcdGates = []string{".abcd/rules.json", ".abcd/guard.json", ".abcd/config.json", ".abcd/config",
-	".abcd/.work.local/preflight-receipts", ".abcd/.work.local/approvals", ".abcd/.work.local/review-receipts"}
+	".abcd/.work.local/preflight-receipts", ".abcd/.work.local/approvals", ".abcd/.work.local/review-receipts",
+	".abcd/.work.local/reservation"}
 
 // stageLocalTier is the one place under .abcd a stage writes freely, and
 // stageAbcd the rest of it, which it writes where its work declares.
@@ -623,6 +625,9 @@ func StageWriteRefusal(dirs, declared []string, path string) string {
 		}
 	}
 	facts := factsFor(NewFiles(dirs[0]).WithRunDirs(dirs[1:]...))
+	if facts.hooksUnread != "" {
+		return "a drive's stage writes nothing the guard cannot check against the hooks directories git runs here, and " + facts.hooksUnread
+	}
 	if name, ok := facts.protects(pathUse{path: clean, ok: true, written: path}); ok {
 		return "a drive's stage does not write " + fsutil.DisplayPath(name) + ", which is protected"
 	}

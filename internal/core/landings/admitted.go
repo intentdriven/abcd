@@ -101,6 +101,18 @@ func (a Admitted) String() string {
 	return a.Value()
 }
 
+// trailerBlock is the lines of message's trailer block, its last paragraph as
+// git reads trailers, each trimmed: the one reading of a trailer block in this
+// package, ParseAdmitted's and the row's trailers alike.
+func trailerBlock(message string) []string {
+	paras := strings.Split(strings.TrimRight(strings.ReplaceAll(message, "\r\n", "\n"), "\n"), "\n\n")
+	var lines []string
+	for line := range strings.SplitSeq(paras[len(paras)-1], "\n") {
+		lines = append(lines, strings.TrimSpace(line))
+	}
+	return lines
+}
+
 // trailerLineRe is one `Admitted-by:` line, its key in any case as git reads a
 // trailer key.
 var trailerLineRe = regexp.MustCompile(`(?i)^admitted-by\s*:\s*(\S+)\s+(\S+)\s*$`)
@@ -110,13 +122,11 @@ var trailerLineRe = regexp.MustCompile(`(?i)^admitted-by\s*:\s*(\S+)\s+(\S+)\s*$
 // carries none, carries two that differ, or carries one the loop never writes;
 // the path is never in a trailer, so the one returned has none.
 func ParseAdmitted(message string) (Admitted, bool) {
-	paras := strings.Split(strings.TrimRight(strings.ReplaceAll(message, "\r\n", "\n"), "\n"), "\n\n")
-	block := paras[len(paras)-1]
 	var found *Admitted
-	for line := range strings.SplitSeq(block, "\n") {
-		m := trailerLineRe.FindStringSubmatch(strings.TrimSpace(line))
+	for _, line := range trailerBlock(message) {
+		m := trailerLineRe.FindStringSubmatch(line)
 		if m == nil {
-			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "admitted-by") {
+			if strings.HasPrefix(strings.ToLower(line), "admitted-by") {
 				return Admitted{}, false
 			}
 			continue

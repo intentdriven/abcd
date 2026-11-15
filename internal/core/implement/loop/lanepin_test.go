@@ -146,8 +146,8 @@ func TestAHookChangeMergedOnTheDefaultBranchIsNoChangeInTheLane(t *testing.T) {
 	if err != nil || res.PerformedStage != StageBrief {
 		t.Fatalf("the lane takes its next step: %+v %v", res, err)
 	}
-	if wt, ok := pinned(t, repo, runID, path); !ok || len(wt.Hooks) != 3 {
-		t.Fatalf("the lane's three hook entries are pinned as it opens: %+v %v", wt, ok)
+	if wt, ok := pinned(t, repo, runID, path); !ok || len(wt.Hooks) != 4 {
+		t.Fatalf("the lane's four hook entries, at every depth, are pinned as it opens: %+v %v", wt, ok)
 	}
 }
 
@@ -596,8 +596,8 @@ func TestAStandingBranchMovedWhoseWorktreeCannotBeRemovedIsAdoptedNext(t *testin
 func TestAStandingBranchWhoseHooksCannotBeReadIsRefused(t *testing.T) {
 	repo, _, tip := hookedOrigin(t)
 	c := Context{RepoRoot: repo.Root()}
-	worktreeRefused(t, standingBranchHooks(c, "lane-1", strings.Repeat("1", 40), "the-branch", tip, "no-hooks-here"), "cannot be read")
-	worktreeRefused(t, standingBranchHooks(c, "lane-1", tip, "the-branch", strings.Repeat("2", 40), "no-hooks-here"), "cannot be read")
+	worktreeRefused(t, standingBranchHooks(c, "lane-1", strings.Repeat("1", 40), "the-branch", tip, filepath.Join(repo.Root(), "no-hooks-here")), "cannot be read")
+	worktreeRefused(t, standingBranchHooks(c, "lane-1", tip, "the-branch", strings.Repeat("2", 40), filepath.Join(repo.Root(), "no-hooks-here")), "cannot be read")
 }
 
 // TestALaneWhoseCommitsHooksCannotBeReadIsRefused: the proof after the add

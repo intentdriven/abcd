@@ -96,3 +96,38 @@ func TestHandAuditedReadsOnlyItsOwnSection(t *testing.T) {
 		t.Error("a record with no Audit Notes section was read as hand-audited")
 	}
 }
+
+// TestHandAuditedReadsCodeSpansOnOneLine: a verdict inside a span that opens
+// and closes on its line is quoted; a span is paired on each line alone, so
+// one over a line break is read as prose, a verdict in it included, and on
+// the line below it two backticks pair as on any line. A span is blanked with
+// spaces, not cut out, so the text either side of one stays apart and cannot
+// join into a verdict word. Comments are taken out before spans are paired,
+// so text either side of a span is never joined into a comment either: the
+// line's verdict is read.
+func TestHandAuditedReadsCodeSpansOnOneLine(t *testing.T) {
+	if HandAudited(withAuditNotes("Criterion 2 names the `MET` token in its refusal.")) {
+		t.Errorf("a verdict quoted on one line read as given")
+	}
+	if !HandAudited(withAuditNotes("Criterion 2 now quotes `the\nNOT_MET` token in its refusal.")) {
+		t.Errorf("a verdict in a span over a line break not read")
+	}
+	if HandAudited(withAuditNotes("Criterion 2 names `x\ny` and is MET, as `z` shows.")) {
+		t.Errorf("a verdict between two backticks on the line below a span over a line break read as given")
+	}
+	if !HandAudited(withAuditNotes("<`x`!-- Criterion 2 MET -->")) {
+		t.Errorf("a verdict either side of which a span sits read as a comment")
+	}
+	if HandAudited(withAuditNotes("Criterion 2 is ME`x`T, the span cut out.")) {
+		t.Errorf("the text either side of a span joined into a verdict")
+	}
+}
+
+// TestHandAuditedPairsSpansOnEveryLine: the hand-audit reader pairs a span on
+// each line alone, below a backtick run a line leaves open as anywhere else,
+// so a verdict quoted on its line there is not a verdict given.
+func TestHandAuditedPairsSpansOnEveryLine(t *testing.T) {
+	if HandAudited(withAuditNotes("Criterion 2 names `x\ny and quotes the `MET` token.")) {
+		t.Errorf("a verdict quoted on its line below a run left open read as given")
+	}
+}

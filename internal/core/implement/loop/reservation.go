@@ -59,6 +59,11 @@ const (
 // clause a refusal no git would write.
 var claimReserve = claim.Reserve
 
+// reserveFresh is claim.Reserve as reserveKey makes it, a seam a test replaces
+// to give a reservation a refusal claim gives no record finished on origin's
+// default branch (it backs off such a record before it judges any holder).
+var reserveFresh = claim.Reserve
+
 // claimOptions are the options a run's reservation act runs under: the step's
 // clock, so a test's injected clock dates the commits too.
 func claimOptions(now time.Time) claim.Options {
@@ -69,7 +74,7 @@ func claimOptions(now time.Time) claim.Options {
 // (as last fetched; snap, or read here when nil) shows the run's own, from
 // this copy and not released, half through its lease since its
 // Abcd-Claimed-At: it fetches and pushes a renewal that keeps the tip's own
-// term (renewalTerm), and logs reservation_renewed in the run record. Under
+// term (claim.RenewalTerm), and logs reservation_renewed in the run record. Under
 // half its lease nothing is pushed. A renewal that fails is logged, once
 // until one succeeds, and its note returned for the step's answer; the stage
 // still runs, since the land fence is where a lost reservation stops the run.
@@ -106,7 +111,7 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 	if !due {
 		return ""
 	}
-	req := claim.Request{Record: st.Key, Renew: true, Lease: renewalTerm(*own), Stage: renewalStage(*st)}
+	req := claim.Request{Record: st.Key, Renew: true, Lease: claim.RenewalTerm(*own), Stage: renewalStage(*st)}
 	// At its landing, an issue lane's renewal narrows its footprint to the
 	// files its branch changed (narrow.go); a narrowing that was due and
 	// could not be made is said in the renewal's note.
@@ -184,15 +189,7 @@ func renewalDue(st State, snap claim.Snapshot, now time.Time) (own *claim.Reserv
 		return own, false, fmt.Sprintf("the reservation on %s is held by %s from another copy, until %s, so the land fence will not arm this run's merge",
 			st.Key, own.Holder, stamp(own.EffectiveExpiry))
 	}
-	half := own.ClaimedAt.Add(own.EffectiveExpiry.Sub(own.ClaimedAt) / 2)
-	return own, !now.Before(half), ""
-}
-
-// renewalTerm is the lease a renewal pushes: the tip's own term, never
-// shorter than the default nor longer than a day, so a renewal never cuts the
-// day a fence gave a pull request waiting on a person.
-func renewalTerm(own claim.Reservation) time.Duration {
-	return min(max(lease.Default, own.EffectiveExpiry.Sub(own.ClaimedAt)), lease.Max)
+	return own, claim.HalfThrough(*own, now), ""
 }
 
 // renewFailed logs a failed renewal in the run record, once until a renewal
@@ -277,7 +274,7 @@ func landFence(c Context, lane Lane, term time.Duration) (time.Time, string, err
 // while the lane worked never becomes a duplicate pull request, and a release
 // another session is cutting holds the push as `abcd land`'s own release hold
 // does (C7). It renews a reservation that holds with the tip's own term
-// (renewalTerm), so the push never cuts a lease; a hold that is now another
+// (claim.RenewalTerm), so the push never cuts a lease; a hold that is now another
 // person's, or released as finished on origin's default branch, cannot
 // change, and a drain hands the lane back at once (stuck.go).
 func pushFence(c Context, lane Lane) (time.Time, string, error) {
@@ -285,7 +282,7 @@ func pushFence(c Context, lane Lane) (time.Time, string, error) {
 	if c.State.ReservedAt != nil {
 		if snap, err := claim.View(c.RepoRoot, c.Now); err == nil {
 			if r, ok := snap.Lookup(c.State.Key); ok && r.Copy == claim.CopyThis {
-				term = renewalTerm(r)
+				term = claim.RenewalTerm(r)
 			}
 		}
 	}
@@ -323,6 +320,9 @@ func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, s
 		if !letItsReservationGo(c.State) {
 			m, err := claim.FetchMergeHold(c.RepoRoot, c.Now, claimOptions(c.Now))
 			var fe *claim.FetchError
+			if r, ok := heldStopOf(err); ok {
+				return time.Time{}, "", r
+			}
 			switch {
 			case errors.As(err, &fe):
 				return time.Time{}, "", fenceUnread(lane,
@@ -352,7 +352,7 @@ func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, s
 
 // laneChangesHeld ends the fence with holdLaneChanges, its clause beside notice.
 func laneChangesHeld(c Context, lane Lane, act fenceAct, holds time.Time, notice string) (time.Time, string, error) {
-	reserved, err := holdLaneChanges(c, lane, act)
+	reserved, _, err := holdLaneChanges(c, lane, StageLand, act)
 	if err != nil {
 		return holds, notice, err
 	}
@@ -439,6 +439,9 @@ func renewAtFence(c Context, lane Lane, term time.Duration, act fenceAct) (time.
 	not := ", so this lane does not " + act.not
 	var fe *claim.FetchError
 	var nh *claim.NotHeld
+	if r, ok := heldStopOf(err); ok {
+		return time.Time{}, r
+	}
 	switch {
 	case errors.As(err, &fe):
 		return time.Time{}, fenceUnread(lane,
@@ -667,7 +670,7 @@ type reserved struct {
 // start.
 func reserveKey(repoRoot, key string, req claim.Request, now time.Time) (reserved, error) {
 	req.Record = key
-	res, err := claim.Reserve(repoRoot, req, claimOptions(now))
+	res, err := reserveFresh(repoRoot, req, claimOptions(now))
 	return reservedNote(res, err, now)
 }
 
@@ -714,8 +717,10 @@ func reserveForJudgement(repoRoot, id string, footprint []string, takeOver bool,
 func reservedNote(res claim.Result, err error, now time.Time) (reserved, error) {
 	if err != nil {
 		if errors.Is(err, claim.ErrBackOff) {
-			return reserved{}, contend(StageReservation, CheckReservation, "", err.Error(),
+			r := contend(StageReservation, CheckReservation, "", err.Error(),
 				"take other work; `abcd peers` lists the reservations on "+claim.Remote)
+			r.recordFinished = errors.Is(err, claim.ErrFinished)
+			return reserved{}, r
 		}
 		if ce := (*claim.CapError)(nil); errors.As(err, &ce) {
 			r := refuse(StageReservation, "", "", err.Error(), "wait for one of your pull requests to merge, which ends its reservation, then run the verb again")
@@ -724,6 +729,7 @@ func reservedNote(res claim.Result, err error, now time.Time) (reserved, error) 
 		}
 		r := refuse(StageReservation, "", "", err.Error(), "settle what it names, then run the verb again")
 		r.originUnread = isPushFailure(err)
+		r.overCap = errors.Is(err, claim.ErrOverCap)
 		return reserved{}, r
 	}
 	verb := map[claim.Act]string{claim.ActReserved: "reserved", claim.ActRenewed: "renewed the reservation on",
@@ -853,9 +859,19 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 		fp = heldWith(fp, widenedPaths(st))
 	}
 	// A reservation the run could not record is released again, and peers would see the
-	// issue flap on each retry, so the lock is looked at before anything is pushed.
+	// issue flap on each retry, so the lock is looked at before anything is pushed, and so
+	// is the judge of the save that records it: a run whose file states another version,
+	// which this session may not save whole (mayWholeSave), is refused here, unreserved.
+	// Both are read outside the lock the save takes, since the push cannot be made inside
+	// it: that lock is every run's in the checkout, held for a few seconds at most, and a
+	// push can outlast it. So a window remains: a lock taken, or a driver recorded over
+	// this session's claim, between this judge and the save leaves the save refused after
+	// the push, and a reservation this call made fresh is released again, as before.
 	if err := withLock(repoRoot, func(*os.Root) error { return nil }); err != nil {
 		return err
+	}
+	if left := wholeSaveLeft(repoRoot, res.RunID, o); left != nil {
+		return left
 	}
 	i := st.current()
 	landing := i >= 0 && st.Lanes[i].Stage == StageLand
@@ -871,7 +887,7 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 	if since.unread != "" {
 		r.note += "; " + since.unread + own
 	}
-	if err := mutate(repoRoot, res.RunID, func(_ *os.Root, st *State) (bool, error) {
+	if err := saveRun(repoRoot, res.RunID, o, func(_ *os.Root, st *State) (bool, error) {
 		if st.ReservedAt == nil {
 			st.ReservedAt = r.at
 		}
@@ -895,7 +911,7 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 // reserveAgain is a resumed run's reservation act. Over this copy's own live
 // reservation, as last fetched, whose footprint covers every path the
 // record names now (fp), it is a renewal keeping the tip's footprint and
-// term (renewalTerm), so a resume never cuts the fence's day and, as an act
+// term (claim.RenewalTerm), so a resume never cuts the fence's day and, as an act
 // that widens nothing, is not judged for overlap: an overlap a race let in
 // would otherwise refuse the resume while `implement step` renews the very
 // same reservation. A record whose footprint widened since the tip was
@@ -904,7 +920,7 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 // with the tip's term, so a widening resume never cuts the fence's day either.
 // An issue's tip, while its lane is at its landing (landing), is the
 // narrowing of that landing (narrow.go) to the files the lane changed, a
-// path it widened to beyond its found_at before an edit (widen.go) among
+// path the lane widened to beyond its found_at (widen.go) among
 // them, renewed as it stands, never read as a widening: no implementer edits
 // at the landing, and a lane leaving it for a fresh round reserves its
 // found_at again (reserveOnLeavingLand). Anywhere short of the landing
@@ -931,7 +947,7 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver, drain, landing bo
 	r, ok := snap.Lookup(key)
 	// An issue's tip this copy holds, live or lapsed, or released with a tombstone
 	// that keeps its footprint, as a drive lets a lane go for a limit, names the
-	// paths its lane widened to beyond the found_at before an edit (widen.go), and
+	// paths its lane widened to beyond the found_at (widen.go), and
 	// the lane's branch changes them: a reservation made again keeps them beside
 	// the found_at rather than dropping them.
 	if validIssueKey(key) && ok && r.Copy == claim.CopyThis &&
@@ -951,7 +967,7 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver, drain, landing bo
 	if !narrowed && !covers(r.Footprint, fp) {
 		return widenReservation(repoRoot, key, fp, takeOver, drain, r, now)
 	}
-	res, err := reserveRenewal(repoRoot, claim.Request{Record: key, Renew: true, Lease: renewalTerm(r), Stage: stage}, claimOptions(now))
+	res, err := reserveRenewal(repoRoot, claim.Request{Record: key, Renew: true, Lease: claim.RenewalTerm(r), Stage: stage}, claimOptions(now))
 	var nh *claim.NotHeld
 	if errors.As(err, &nh) && (nh.Why == claim.NotHeldAbsent || nh.Why == claim.NotHeldAnotherCopy ||
 		(nh.Why == claim.NotHeldReleased && !nh.Derived)) {
@@ -965,7 +981,7 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver, drain, landing bo
 // overlap (and against the cap) like any reservation, so a widening never
 // cuts the day a fence gave a pull request either.
 func widenReservation(repoRoot, key string, fp []string, takeOver, drain bool, own claim.Reservation, now time.Time) (reserved, error) {
-	return reserveKey(repoRoot, key, claim.Request{Footprint: fp, TakeOver: takeOver, Drain: drain, Lease: renewalTerm(own)}, now)
+	return reserveKey(repoRoot, key, claim.Request{Footprint: fp, TakeOver: takeOver, Drain: drain, Lease: claim.RenewalTerm(own)}, now)
 }
 
 // reserveOnLeavingLand reserves an issue lane's whole found_at again when the
@@ -1047,6 +1063,8 @@ func reserveOnLeavingLand(repoRoot string, st State, lane Lane, to Stage, now ti
 	// lane stays at its landing with nothing merged and nothing pushed.
 	if _, ferr := claim.Fetch(repoRoot, claimOptions(now)); errors.Is(ferr, claim.ErrNoOrigin) {
 		return "", nil
+	} else if r, ok := heldStopOf(ferr); ok {
+		return "", r
 	} else if ferr != nil {
 		reason := ferr.Error()
 		if fe := (*claim.FetchError)(nil); errors.As(ferr, &fe) {
@@ -1320,8 +1338,10 @@ func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) s
 	// The retry released it: the run's record says so (iss-2610150616434848),
 	// so its last reservation entry is no longer the failure, and a later
 	// routing over the run reuses this entry rather than pushing again. Best
-	// effort: the release is on origin whether or not the record takes it.
-	_ = mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+	// effort: the release is on origin whether or not the record takes it. The
+	// line is the record's alone (mutateReservation), so a run another version's
+	// driver writes keeps its version.
+	_ = mutateReservation(repoRoot, run.RunID, func(st *State) (bool, error) {
 		for _, e := range st.Record {
 			if e.Stage == StageReservationReleased {
 				return false, nil

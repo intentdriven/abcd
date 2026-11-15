@@ -30,6 +30,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -64,28 +65,54 @@ const (
 // ErrBackOff marks a refusal whose remedy is to take other work: the record is
 // held, and the front door exits 3, as `implement claim` does for contention.
 // ErrRefused marks every other refusal and failure, exit 2.
+//
+// ErrOverCap marks, beside ErrRefused, a refusal of a message the writer
+// composed past MaxMessageBytes, so a caller can tell a footprint too large
+// for one reservation from any other refusal.
+//
+// ErrFinished marks, beside ErrBackOff, the one back-off whose record sits
+// finished on origin's default branch as the act just fetched it (an issue
+// resolved or wontfix, an intent shipped or superseded), so a caller tells that
+// refusal from every other without reading its message.
 var (
-	ErrBackOff = errors.New("the record is reserved")
-	ErrRefused = errors.New("the reservation was refused")
+	ErrBackOff  = errors.New("the record is reserved")
+	ErrRefused  = errors.New("the reservation was refused")
+	ErrOverCap  = errors.New("the message passes its cap")
+	ErrFinished = errors.New("the record is finished on origin's default branch")
 )
 
-// refusal is a refusal carrying its class (ErrBackOff or ErrRefused).
+// refusal is a refusal carrying its class (ErrBackOff or ErrRefused), and
+// also, when set, a mark beside it (ErrOverCap or ErrFinished). notRun is a
+// git the check gitutil.SetBeforeHookedGit set did not run, when the refusal
+// quotes one (redacted): it stays reachable through errors.As, so a drive
+// tells its own stop from a failure of the act.
 type refusal struct {
-	msg  string
-	kind error
+	msg    string
+	kind   error
+	also   error
+	notRun error
 }
 
-func (e *refusal) Error() string        { return e.msg }
-func (e *refusal) Is(target error) bool { return target == e.kind }
+func (e *refusal) Error() string { return e.msg }
+func (e *refusal) Is(target error) bool {
+	return target == e.kind || (e.also != nil && target == e.also)
+}
+func (e *refusal) Unwrap() error { return e.notRun }
 
 // refuse is an ErrRefused refusal; every message ends saying what was not done.
 func refuse(format string, args ...any) error {
-	return &refusal{msg: fmt.Sprintf(format, args...), kind: ErrRefused}
+	return &refusal{msg: fmt.Sprintf(format, args...), kind: ErrRefused, notRun: notRunIn(args)}
+}
+
+// refuseOverCap is an ErrRefused refusal of a message past its cap, marked
+// ErrOverCap.
+func refuseOverCap(format string, args ...any) error {
+	return &refusal{msg: fmt.Sprintf(format, args...), kind: ErrRefused, also: ErrOverCap, notRun: notRunIn(args)}
 }
 
 // backOff is an ErrBackOff refusal.
 func backOff(format string, args ...any) error {
-	return &refusal{msg: fmt.Sprintf(format, args...), kind: ErrBackOff}
+	return &refusal{msg: fmt.Sprintf(format, args...), kind: ErrBackOff, notRun: notRunIn(args)}
 }
 
 // nothingPushed and noReservation end every refusal: the first for one met
@@ -108,8 +135,60 @@ func echo(s string) string {
 }
 
 // redacted is an error's text with the home directory redacted, as every
-// refusal quotes git's or the filesystem's own reason.
-func redacted(err error) string { return fsutil.RedactHome(err.Error()) }
+// refusal quotes git's or the filesystem's own reason. It prints as that
+// text (%s, %v), and keeps the error when it is a git the drive's check did
+// not run (gitutil.NotRunError), so refuse, backOff and the error types here
+// keep that reachable through errors.As while their text stays redacted.
+func redacted(err error) redactedText {
+	r := redactedText{text: fsutil.RedactHome(err.Error())}
+	var nr *gitutil.NotRunError
+	if errors.As(err, &nr) {
+		r.notRun = err
+	}
+	return r
+}
+
+// redactedText is redacted's answer: the text, and the git not run it
+// quotes, if any.
+type redactedText struct {
+	text   string
+	notRun error
+}
+
+func (r redactedText) String() string { return r.text }
+
+// err is the text as an error, the git not run it quotes reachable through
+// errors.As.
+func (r redactedText) err() error { return &notRunText{text: r.text, notRun: r.notRun} }
+
+// notRunText is an error that reads as redacted text and unwraps to the git
+// not run it quotes, or to nothing.
+type notRunText struct {
+	text   string
+	notRun error
+}
+
+func (e *notRunText) Error() string { return e.text }
+func (e *notRunText) Unwrap() error { return e.notRun }
+
+// notRunIn is the git not run that one of args quotes (a redacted text, or
+// an error), for a refusal formatted from them; nil for none.
+func notRunIn(args []any) error {
+	for _, a := range args {
+		switch v := a.(type) {
+		case redactedText:
+			if v.notRun != nil {
+				return v.notRun
+			}
+		case error:
+			var nr *gitutil.NotRunError
+			if errors.As(v, &nr) {
+				return v
+			}
+		}
+	}
+	return nil
+}
 
 // reservableID is the subject a reservation names, in canonical form, or a
 // refusal. Only an issue or an intent is reservable as a record — the records
@@ -182,5 +261,10 @@ type NotHeld struct {
 	kind error
 }
 
-func (e *NotHeld) Error() string        { return e.msg }
-func (e *NotHeld) Is(target error) bool { return target == e.kind }
+func (e *NotHeld) Error() string { return e.msg }
+
+// Is matches the NotHeld's class, and ErrFinished when Derived names a record,
+// not a release, finished on origin's default branch.
+func (e *NotHeld) Is(target error) bool {
+	return target == e.kind || (target == ErrFinished && e.Derived && !isRelease(e.Record))
+}

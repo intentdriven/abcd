@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -771,4 +772,103 @@ func TestACopiedWorldNamesItsOwnOriginThroughAPathGitQuotes(t *testing.T) {
 		}
 		w.seed.Git("fetch", "-q", "origin")
 	})
+}
+
+// spotcheckOrigin is a checkout whose origin holds the spot-check's branch.
+func spotcheckOrigin(t *testing.T) *gittest.Repo {
+	t.Helper()
+	bare := filepath.Join(t.TempDir(), "origin.git")
+	gittest.InitBare(t, bare)
+	r := gittest.NewRepo(t)
+	r.Write("a.txt", "a\n")
+	r.Commit("the base")
+	r.Git("remote", "add", Remote, bare)
+	r.Git("push", "-q", Remote, "HEAD:"+spotcheckBranchRef)
+	// The push sets the tracking ref; the tests start with none.
+	if r.Git("for-each-ref", spotcheckTrackingRef) != "" {
+		r.Git("update-ref", "-d", spotcheckTrackingRef)
+	}
+	return r
+}
+
+// FetchBranch runs under the caller's context: one already ended fetches
+// nothing, and says so as an error, never as a branch origin lacks.
+func TestTheSpotcheckFetchRunsUnderTheCallersContext(t *testing.T) {
+	r := spotcheckOrigin(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	found, err := FetchBranch(ctx, r.Root(), spotcheckBranchRef, spotcheckTrackingRef)
+	if err == nil || found || !errors.Is(err, context.Canceled) && !strings.Contains(err.Error(), "context canceled") {
+		t.Fatalf("FetchBranch under an ended context = %v, %v", found, err)
+	}
+	if out := r.Git("for-each-ref", spotcheckTrackingRef); out != "" {
+		t.Fatalf("a fetch under an ended context moved the tracking ref: %s", out)
+	}
+	found, err = FetchBranch(context.Background(), r.Root(), spotcheckBranchRef, spotcheckTrackingRef)
+	if err != nil || !found || r.Git("for-each-ref", spotcheckTrackingRef) == "" {
+		t.Fatalf("FetchBranch = %v, %v", found, err)
+	}
+}
+
+// FetchBranch's own bound ends a fetch that hangs, under a caller's context
+// that never ends, within the bound and the runner's grace (two seconds), and
+// a fetch ended so is an error, never a branch origin lacks.
+func TestTheSpotcheckFetchEndsAtItsBound(t *testing.T) {
+	r := spotcheckOrigin(t)
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip(err)
+	}
+	bin := t.TempDir()
+	script := "#!/bin/sh\nfor a in \"$@\"; do\n  if [ \"$a\" = fetch ]; then exec sleep 600; fi\ndone\nexec \"" + real + "\" \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	saved := spotcheckNetTimeout
+	t.Cleanup(func() { spotcheckNetTimeout = saved })
+	spotcheckNetTimeout = time.Second
+	// grace is the runner's own once its context ends; margin is what the
+	// test allows past the two for processes to start and be reaped.
+	const grace, margin = 2 * time.Second, 3 * time.Second
+	start := time.Now()
+	found, err := FetchBranch(context.Background(), r.Root(), spotcheckBranchRef, spotcheckTrackingRef)
+	if took := time.Since(start); took > spotcheckNetTimeout+grace+margin {
+		t.Fatalf("the fetch took %s against a bound of %s", took, spotcheckNetTimeout)
+	}
+	if err == nil || found {
+		t.Fatalf("a fetch ended by its bound = %v, %v; want an error", found, err)
+	}
+}
+
+// KeptHolderID reads the holder id and never mints one: with none set or
+// kept it is "" and the home is left as it was; a kept one is read, and the
+// one the environment names comes first.
+func TestTheKeptHolderIDIsReadAndNeverMinted(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv(abcdhome.PersonHomeEnv, "")
+	t.Setenv(HolderIDEnv, "")
+	if id := KeptHolderID(); id != "" {
+		t.Fatalf("KeptHolderID with none kept = %q", id)
+	}
+	if entries, err := os.ReadDir(home); err != nil || len(entries) != 0 {
+		t.Fatalf("the home holds %v after a read (%v); nothing is minted", entries, err)
+	}
+	kept := "h_" + strings.Repeat("a", 32)
+	p := filepath.Join(home, filepath.FromSlash(abcdhome.Rel(holderIDLeaf)))
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(kept+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if id := KeptHolderID(); id != kept {
+		t.Fatalf("KeptHolderID = %q, want the kept %q", id, kept)
+	}
+	env := "h_" + strings.Repeat("b", 32)
+	t.Setenv(HolderIDEnv, env)
+	if id := KeptHolderID(); id != env {
+		t.Fatalf("KeptHolderID = %q, want the environment's %q", id, env)
+	}
 }

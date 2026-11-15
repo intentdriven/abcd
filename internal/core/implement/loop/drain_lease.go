@@ -12,6 +12,7 @@ package loop
 // that moved anyway pushes nothing.
 
 import (
+	"slices"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -74,8 +75,9 @@ func renewInProgress(repoRoot string, st DrainState, view *claim.Snapshot, now t
 // when one is due, so a closed or conflicting pull request's lane is left to lapse.
 // It returns what a renewal that did not go through said. The save is the
 // reservation's alone, as every renewal's is, so a run another driver wrote at
-// another version stays at it.
-func renewParkedDue(repoRoot string, now time.Time) []string {
+// another version stays at it. A run whose lane the drive passed over (passed,
+// DrainOptions.PassedLanes) is not read: nothing is renewed or recorded for it.
+func renewParkedDue(repoRoot string, now time.Time, passed []string) []string {
 	runs, err := Runs(repoRoot)
 	if err != nil {
 		return nil
@@ -84,7 +86,7 @@ func renewParkedDue(repoRoot string, now time.Time) []string {
 	var due []State
 	read := false
 	for _, run := range runs {
-		if parkedAtLand(run) < 0 || run.ReservedAt == nil {
+		if slices.Contains(passed, run.RunID) || parkedAtLand(run) < 0 || run.ReservedAt == nil {
 			continue
 		}
 		if !read {

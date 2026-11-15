@@ -248,7 +248,7 @@ func TestAParkedRenewalKeepsTheVersionItRead(t *testing.T) {
 			}
 		},
 		"a drive's wait": func(t *testing.T, f *landFixture, at time.Time) {
-			if notes := renewParkedDue(f.repo.Root(), at); len(notes) != 0 {
+			if notes := renewParkedDue(f.repo.Root(), at, nil); len(notes) != 0 {
 				t.Fatalf("the renewal says %q", notes)
 			}
 		},

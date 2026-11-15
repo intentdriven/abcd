@@ -39,6 +39,11 @@ func writeEmptyCommit(root string, who identity, now time.Time, m commitMessage,
 	if err := checkText(root, f, text); err != nil {
 		return "", err
 	}
+	if r, ok := m.(message); ok {
+		if why := footprintReadBack(r, text); why != "" {
+			return "", refuse("the commit composed for %s was not written: %s; %s", r.Record, why, nothingPushed)
+		}
+	}
 	date := "@" + strconv.FormatInt(now.Unix(), 10) + " +0000"
 	env := []string{
 		"GIT_AUTHOR_NAME=" + who.Name, "GIT_AUTHOR_EMAIL=" + who.Email, "GIT_AUTHOR_DATE=" + date,
@@ -58,6 +63,25 @@ func writeEmptyCommit(root string, who identity, now time.Time, m commitMessage,
 		return "", refuse("git named the %s commit %s, which is not an object name; %s", f.name, echo(sha), nothingPushed)
 	}
 	return sha, nil
+}
+
+// footprintReadBack is why text, the message composed for m, may not be
+// written, "" when it may: the footprint every reader reads back from it
+// (collectTrailers, as parseMessage reads it) must be exactly the footprint
+// m was composed with, path for path, so a reservation names the same paths
+// to its writer and to every reader. It judges only what abcd writes; a tip
+// already on origin is read as it always was.
+func footprintReadBack(m message, text string) string {
+	back := collectTrailers(text, reservationFamily.keys).vals[keyFootprint]
+	if len(back) != len(m.Footprint) {
+		return "its footprint does not read back as it was written"
+	}
+	for i, p := range m.Footprint {
+		if back[i] != p {
+			return "a footprint path does not read back exactly as it was written"
+		}
+	}
+	return ""
 }
 
 // unwritableWithdrawals is why no commit may carry ws, "" when one may: no

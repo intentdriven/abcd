@@ -120,7 +120,11 @@ var helpPlacements = map[string]helpPlacement{
 	"ideate":    {group: groupRecords},
 	"intent":    {group: groupRecords},
 	"land":      {group: groupRecords},
-	"library":   {group: groupRecords},
+	// landings is the reader of how each change landed, beside status and
+	// land (spc-2610301950480609 approach 8): land pushes and arms, status
+	// lists what lapses within the hour.
+	"landings": {group: groupRecords},
+	"library":  {group: groupRecords},
 	// status is the people's view of what everyone else is doing
 	// (itd-2609151838312703 decision 21): the announcements, who holds which
 	// reservation and any release being cut.

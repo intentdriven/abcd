@@ -852,8 +852,21 @@ func TestReadyReportsTheStepsShape(t *testing.T) {
 			if !tc.ok && !strings.Contains(c.Remedy, tc.remedy) {
 				t.Fatalf("the remedy must contain %q: %+v", tc.remedy, c)
 			}
-			if !res.Ready {
-				t.Fatalf("the steps row never withholds readiness: %+v", res.Checks)
+			for _, c := range res.Checks {
+				if !c.OK && !c.Advisory && c.Name != CheckSpecBody {
+					t.Fatalf("the steps row never withholds readiness: %+v", res.Checks)
+				}
+			}
+			// An unclosed opener hides everything below it from the spec's
+			// readers, so the spec_body row refuses it, naming the opener's line
+			// (iss-2611101318042398); the steps row itself stays advisory.
+			body := checkByName(t, res, CheckSpecBody)
+			if tc.name == "unclosed" {
+				if res.Ready || body.OK || !strings.Contains(body.Detail, "line 8") {
+					t.Fatalf("an unclosed opener in the spec withholds readiness at spec_body: %+v", body)
+				}
+			} else if !res.Ready {
+				t.Fatalf("a well-formed spec reads ready: %+v", res.Checks)
 			}
 		})
 	}

@@ -173,7 +173,7 @@ func Release(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 		return StepResult{}, err
 	}
 	var res StepResult
-	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err := saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		i, err := decidable(repoRoot, *st, laneID, "--release")
 		if err != nil {
 			return false, err
@@ -245,7 +245,7 @@ func discardHeld(repoRoot, runID, laneID string, o Options) (StepResult, error) 
 		return StepResult{}, err
 	}
 	var res StepResult
-	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err = saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		i, err := decidable(repoRoot, *st, laneID, "--discard")
 		if err != nil {
 			return false, err

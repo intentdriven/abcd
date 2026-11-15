@@ -189,7 +189,7 @@ func readPushRecord(root, id string, links []chainLink, tips ...string) pushReco
 				}
 				carried = line
 			} else if carried, err = firstParentsCtx(ctx, root, refName(id), p.After, maxChain); err != nil {
-				return pushRecord{why: "the forge's record of who pushed to " + id + "'s branch was not placed (" + termsafe.Sanitize(redacted(err)) + ")"}
+				return pushRecord{why: "the forge's record of who pushed to " + id + "'s branch was not placed (" + termsafe.Sanitize(redacted(err).text) + ")"}
 			}
 		}
 		if p.Before != zeroCommit {

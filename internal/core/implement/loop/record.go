@@ -304,7 +304,9 @@ const maxTranscriptPaths = 256
 // run's, captured at its end. A capture that fails stops the call: the ones
 // before it are recorded, and the refusal names the path that failed, so the
 // call can be made again with the rest. A path captured before is captured
-// again (the store's capture is idempotent) and recorded once.
+// again (the store's capture is idempotent) and recorded once. A session that is not
+// the run's driver leaves a run whose file states another version as it stands,
+// capturing nothing (mayWholeSave): `implement record` makes no claim.
 func CaptureTranscripts(repoRoot, runID string, paths []string, capture TranscriptCapturer, o Options) (RunRecord, error) {
 	switch {
 	case len(paths) == 0:
@@ -318,7 +320,7 @@ func CaptureTranscripts(repoRoot, runID string, paths []string, capture Transcri
 	var rec RunRecord
 	var final State
 	var failed error
-	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	err := saveRun(repoRoot, runID, o, func(_ *os.Root, st *State) (bool, error) {
 		if !st.Complete() {
 			return false, refuse(StageRecord, "", "", st.RunID+" is not complete, and its transcripts are captured at its end",
 				"finish the run with `abcd implement step`, then capture its transcripts")

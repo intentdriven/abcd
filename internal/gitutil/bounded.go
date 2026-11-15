@@ -87,7 +87,12 @@ func RunCommitCommandBoundedAsStored(dir string, limit time.Duration, stalled er
 }
 
 // runCommitBounded is RunCommitCommandBounded's body, as stored when stored.
+// It asks the check SetBeforeHookedGit set first, before the command is
+// built: the command runs the repository's hooks, merge drivers and filters.
 func runCommitBounded(dir string, limit time.Duration, stalled error, stored bool, args []string) (string, error) {
+	if err := askBeforeHooked(args); err != nil {
+		return "", err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	cmd := WorkingTreeCommitCommand(ctx, dir, args...)

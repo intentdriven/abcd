@@ -415,7 +415,9 @@ type proseLine struct {
 	// forwardMarker is a forward-looking marker outside every inline code span
 	// (mdrecord.CodeSpanRanges, the one reading of a span): a marker, not a
 	// sentence about the marker, which is what a report asking for the marker's
-	// removal must be about.
+	// removal must be about. The spans are paired on the line alone, whatever
+	// the lines above it leave open, so a marker quoted on its line is a
+	// mention even where the page may pair a backtick over the line break.
 	forwardMarker bool
 }
 
