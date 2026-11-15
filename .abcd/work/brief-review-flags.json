@@ -672,6 +672,46 @@
       "evidence": "internal/core/implement/load.go:32-34 (\"Beside the load it reports the free disk ... and the memory pressure ..., each a warning that never changes its status\"); internal/surface/cli/implement_load.go:900-901 prints LOW DISK and MEMORY PRESSURE warnings; the chapter's own line 375 says the same of memory",
       "commit": "49301ccb097cd61b6e8bff9d64eb7c9dd5fa923f",
       "applied": "2026-11-04T03:52:40Z"
+    },
+    {
+      "chapter": "17-guard.md",
+      "sentence": "agent fixes the file rather than redrafting the question, and nothing is marked",
+      "replacement": "agent fixes the file rather than redrafting the question. Where the badge shows and the mode names somebody, the question is marked open under that mode and no mode is written, so the next message's reset returns the mode to managed; elsewhere nothing is marked",
+      "evidence": "internal/surface/cli/guard_question.go:334-343, internal/surface/cli/guard_question.go:419-427",
+      "commit": "4dfbb1fd15d939d22e66fea28ba121a7f8683979",
+      "applied": "2026-11-15T16:58:54Z"
+    },
+    {
+      "chapter": "17-guard.md",
+      "sentence": "the guard's allow verb and, when it admits abcd's own question where the badge",
+      "replacement": "the guard's allow verb and, where the badge",
+      "evidence": "internal/surface/cli/guard_question.go:390-401, internal/surface/cli/guard_question.go:419-427",
+      "commit": "4dfbb1fd15d939d22e66fea28ba121a7f8683979",
+      "applied": "2026-11-15T16:58:54Z"
+    },
+    {
+      "chapter": "17-guard.md",
+      "sentence": "shows, the waiting-on mode and the marker saying a question is open (all below),",
+      "replacement": "shows, the waiting-on mode an admitted older-form chip sets and the marker saying a question is open, written for abcd's question whether it is admitted or refused and for another tool's question while the mode names somebody (all below),",
+      "evidence": "internal/surface/cli/guard_question.go:390-401, internal/surface/cli/guard_question.go:419-427",
+      "commit": "4dfbb1fd15d939d22e66fea28ba121a7f8683979",
+      "applied": "2026-11-15T16:58:54Z"
+    },
+    {
+      "chapter": "17-guard.md",
+      "sentence": "with no header in abcd's grammar never reads the mode store, so an unreadable",
+      "replacement": "with no header in abcd's grammar is never judged by the mode store: an unreadable",
+      "evidence": "internal/surface/cli/guard_question.go:177-187, internal/surface/cli/guard_question.go:390-410",
+      "commit": "4dfbb1fd15d939d22e66fea28ba121a7f8683979",
+      "applied": "2026-11-15T16:58:54Z"
+    },
+    {
+      "chapter": "README.md",
+      "sentence": "brief, the check's exit 2, or five checks spent, and only to the agent that",
+      "replacement": "brief, a check that gives no ready input (its exit 2, or `refuse-away` while the person is away), or five checks spent, and only to the agent that",
+      "evidence": "agents/question-drafter.md:76-78, agents/question-drafter.md:194-198",
+      "commit": "4dfbb1fd15d939d22e66fea28ba121a7f8683979",
+      "applied": "2026-11-15T16:58:54Z"
     }
   ]
 }

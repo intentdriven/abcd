@@ -48,7 +48,7 @@ whose own hook runs the lab binary. They are queued for the person
   exclusions, and each transcript is read for writes instead.
 - **Lab B's hook-level half** feeds the lab binary's `guard hook` the
   PreToolUse payload that a session's question call would carry. The 21-fault
-  call (`testdata/questions/corpus/four-tabs-21-faults.json`) is expected to
+  call (`internal/surface/cli/testdata/questions/corpus/four-tabs-21-faults.json`) is expected to
   be denied and the writer's redraft admitted on the second ask.
 - **Lab C's briefs** are the three the 2026-10-30 planning interview's
   drafter refused for length (iss-2610301855200679 counts three of ten),

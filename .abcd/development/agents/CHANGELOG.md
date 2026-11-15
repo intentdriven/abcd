@@ -14,6 +14,16 @@ unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
 ## 2026-11-15 (itd-2610230756259215 — abcd's question writer checks every draft)
 
+### question-drafter 0.2.4
+
+PATCH: one decision whose material alone is too long is never spread over
+parts, as the intent's decision 33 says. The writer drops first what no answer
+turns on, and splits only into the decisions the material holds or by its
+answers. The rows estimate is named as an estimate also where the writer has a
+shell. A "Now:" line where nothing is in force says so. Forced by the step 5
+reviews of 0.2.3: its split instruction contradicted decision 33, and one run
+wrote a draft plan as "Now:". Unmeasured, in the `0.x` band.
+
 ### question-drafter 0.2.3
 
 PATCH: after a rows finding the writer works out what its edit saves by the

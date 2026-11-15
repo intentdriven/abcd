@@ -11,7 +11,7 @@ production_mode: hand-written
 found_at: "internal/core/question"
 remedy: "Add a read-only abcd verb that checks a draft question before it is asked and returns every fault, the row count of each tab and the ready-to-ask input, have the question drafter and agents call it instead of counting rows themselves, and make the hook's refusal list every fault grouped by rule without truncation and name that verb; the open choice of whether the status line alone makes a question abcd's goes to the product thinker."
 related_intents: [itd-2610230756259215]
-resolution: "abcd's question writer now checks every draft with abcd guard question and returns only what passes; the hook names every fault; labs recorded in .abcd/development/research/notes/2026-11-question-writer-labs.md"
+resolution: "abcd's question writer now checks every draft with abcd guard question and returns only what passes; the hook names every fault; labs recorded in .abcd/development/research/notes/2026-11-question-writer-labs.md; live halves queued (dcn-2611151605470998)"
 impact: fix
 resolved_by:
   intent: "itd-2610230756259215"

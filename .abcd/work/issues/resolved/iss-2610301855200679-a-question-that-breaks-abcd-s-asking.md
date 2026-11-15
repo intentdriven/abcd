@@ -12,7 +12,7 @@ found_at: "agents/question-drafter.md"
 remedy: "Turn the question-drafter into a question-writing agent that keeps working until its draft passes abcd's own question check (the read-only check itd-2610230756259215 proposes) and only then returns it: draft, check, fix every fault, repeat; never a refusal for length, only for a missing part of the brief. Its layout rules are configurable per repository, with abcd's rules as the default; for example, when the material or the options are too long for one screen, it splits the question into numbered parts (Q1a, Q1b), each a checked question. The calling agent puts to the person only a draft the check passed and never writes or edits a question itself; the hook's refusal stays the last resort, not the first check."
 refines: [itd-2610230756259215, iss-2610230745597968]
 related_intents: [itd-2610230756259215]
-resolution: "abcd's question writer now checks every draft with abcd guard question and returns only what passes; the hook names every fault; labs recorded in .abcd/development/research/notes/2026-11-question-writer-labs.md"
+resolution: "abcd's question writer now checks every draft with abcd guard question and returns only what passes; the hook names every fault; labs recorded in .abcd/development/research/notes/2026-11-question-writer-labs.md; live halves queued (dcn-2611151605470998)"
 impact: fix
 resolved_by:
   intent: "itd-2610230756259215"

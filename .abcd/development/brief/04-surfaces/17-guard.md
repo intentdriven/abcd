@@ -5,8 +5,8 @@ push that erases a colleague's commits, an `rm -rf` with an unlucky glob, a
 `git clean` over uncommitted work. `/abcd:guard` catches those before they run
 and says what to run instead. It writes nothing but the record of a branch an
 agent creates, the one-shot allow a person records in their home folder with
-the guard's allow verb and, when it admits abcd's own question where the badge
-shows, the waiting-on mode and the marker saying a question is open (all below),
+the guard's allow verb and, where the badge
+shows, the waiting-on mode an admitted older-form chip sets and the marker saying a question is open, written for abcd's question whether it is admitted or refused and for another tool's question while the mode names somebody (all below),
 and it costs nothing to have on: an unrecognised command passes through
 untouched.
 
@@ -277,7 +277,7 @@ repository's configuration is refused, so abcd asks no question until it is
 fixed.", the resolver's refusal naming the file, the key, the value and the
 bounds (or the limit in force and the file that set it), and one line stating
 every key's bounds from `question.Bounds`. It names no asking rule, so the
-agent fixes the file rather than redrafting the question, and nothing is marked
+agent fixes the file rather than redrafting the question. Where the badge shows and the mode names somebody, the question is marked open under that mode and no mode is written, so the next message's reset returns the mode to managed; elsewhere nothing is marked
 open. A layer the resolver could not read (a `.abcd/config.json` that is a
 symlink, not a regular file, not one JSON object, holds a key twice or is
 over the resolver's size cap, a `~/.abcd.noindex/config.json` the account
@@ -385,7 +385,7 @@ rows note and otherwise on stderr with exit 1; with a layer of the question
 limits unread as well, that layer's line follows it, one line per store. A
 checkout git will not name the root of leaves a number header's register rule
 unapplied the same way, the line naming the failed root lookup. A question
-with no header in abcd's grammar never reads the mode store, so an unreadable
+with no header in abcd's grammar is never judged by the mode store: an unreadable
 one changes nothing for it. A state
 file or marker the gate cannot write, a read-only tier among them, is not a
 decision either: the question, already judged, runs and the hook says so on
