@@ -576,13 +576,21 @@ The driver's commit, merge and reset hooks, and any filter run inside those comm
 the same variables and home as a stage, and read the git configuration the drive wrote
 rather than any a stage left in that home; its network commands, its other filters and its
 forge calls keep the person's environment. A preflight runs
-with what a stage carries too, with Go's workspace file and its own settings file off
-(`GOWORK=off`, `GOENV=off`), and never in the lane's worktree: just before it the drive
+with what a stage carries too, with Go's own settings file off (`GOENV=off`) and its
+workspace file the checkout's own `go.work` when the head tracks one at its root, off
+(`GOWORK=off`) otherwise, and never in the lane's worktree: just before it the drive
 reads again the settings it holds, those that change what a checkout writes among them,
-then adds its own checkout of the lane's head as stored, in a directory it makes,
+then adds its own checkout of the lane's head as stored, in a directory of a random name
+it makes under `~/.abcd.noindex/preflight-checkouts/` (the account's alone, mode 0700),
 compares that checkout with the head's tree by content before the preflight and after it,
-through an index it builds itself, with any untracked file outside the checkout's local
-tier a difference, and removes it once the preflight has ended. Only a head the drive saw
+through an index it builds itself in the environment the checkout was made in, so a
+filter the checkout was written through reads it back, and removes it once the preflight
+has ended. Before the preflight any untracked file outside the checkout's local tier is a
+difference, ignored or not; after it, an untracked file is a difference unless the head's
+own `.gitignore` files ignore it (no other ignore source is read) or it is in the local
+tier, and an untracked `.gitignore` or `.gitattributes` anywhere is a difference, ignored
+or not. A hold after a preflight that exited 0 stands for that head: the drive does not
+run the preflight on it again. Only a head the drive saw
 pass there lands a lane, and the receipt that preflight minted is taken into the main
 checkout's local tier, where the pre-push hook finds it. A lane at its landing that changes the Makefile, `scripts/`, the active
 hooks, the forge's workflow folder (`.github/`) or abcd's configuration, receipts or

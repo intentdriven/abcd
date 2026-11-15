@@ -82,9 +82,18 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "loop tests: cannot hide the machine's gh login:", err)
 		os.Exit(1)
 	}
+	// Nor does a drive's preflight checkout go under the machine's own home: a
+	// test of where it goes names its own (terminal_checkout_test.go).
+	checkoutHome, err := os.MkdirTemp("", "loop-preflight-home-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "loop tests: cannot make a home for the preflight checkouts:", err)
+		os.Exit(1)
+	}
+	preflightCheckoutHome = func() (string, error) { return checkoutHome, nil }
 	code := m.Run()
 	cleanup()
 	removeFixtureWorlds()
+	_ = os.RemoveAll(checkoutHome)
 	os.Exit(code)
 }
 

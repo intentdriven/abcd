@@ -233,8 +233,12 @@ type terminal struct {
 	unmarked []string
 	// idleSince is when the run last stopped moving, zero while it moves.
 	idleSince time.Time
-	// ranClean names the lane and head a preflight last exited 0 on.
-	ranClean string
+	// ranClean names the lane and head a preflight last exited 0 on, and
+	// ranCleanHeld why that landing was held once it had, "" when it was not
+	// (ownPreflight): a later step on the same head is refused again with it,
+	// and the preflight is not run again.
+	ranClean     string
+	ranCleanHeld string
 	// ctx is the run's, which says whether a failed launch was the run ending.
 	ctx context.Context
 	// evidence keeps what the run's first limit showed (limit_evidence.go).
@@ -1827,9 +1831,14 @@ func (t *terminal) stepRefused(ctx context.Context, runID string, err error) (ag
 	lane := run.Lanes[i]
 	head := runID + " " + lane.ID + " " + lane.HeadSHA
 	if t.ranClean == head {
-		// It exited 0 and the receipt is still not there, which running it again
-		// would not change: the lane goes to the stuck check.
-		return t.laneRefused(ctx, runID, lane.ID, "its preflight exits 0 and leaves no receipt naming the lane's head", "")
+		// It exited 0 on this head, and the landing was held after it or the
+		// receipt is still not there, which running it again would not change:
+		// the lane goes to the stuck check.
+		why := t.ranCleanHeld
+		if why == "" {
+			why = "its preflight exits 0 and leaves no receipt naming the lane's head"
+		}
+		return t.laneRefused(ctx, runID, lane.ID, why, "")
 	}
 	if !t.wallHeld() {
 		return false, TerminalWall, nil
@@ -1837,14 +1846,17 @@ func (t *terminal) stepRefused(ctx context.Context, runID string, err error) (ag
 	// The preflight runs in the drive's own checkout of the lane's stored head,
 	// never in the lane's worktree (preflightcheckout.go), and a receipt is the
 	// drive's own only for a head it saw pass there.
-	held, perr := t.ownPreflight(ctx, runID, lane)
+	held, passed, perr := t.ownPreflight(ctx, runID, lane)
 	switch {
 	case ctx.Err() != nil || t.stopped() || t.stopHolds():
 		return false, "", nil
 	case held != "":
+		if passed {
+			t.ranClean, t.ranCleanHeld = head, held
+		}
 		return t.laneRefused(ctx, runID, lane.ID, held, "")
 	case perr == nil:
-		t.ranClean = head
+		t.ranClean, t.ranCleanHeld = head, ""
 		t.minted[lane.HeadSHA] = true
 		return true, "", nil
 	default:

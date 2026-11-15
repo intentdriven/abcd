@@ -462,8 +462,9 @@ func TestThereIsNoFlagThatOpensAGate(t *testing.T) {
 }
 
 // TestAPreflightReadsNoGoWorkspaceOrGoSettingsFile: the preflight runs with
-// GOWORK=off and GOENV=off, whatever the environment carries, and with GOFLAGS
-// stated.
+// GOENV=off, whatever the environment carries, with GOFLAGS stated, and with
+// GOWORK naming the checkout's own go.work when its commit tracks one at its
+// root, and off otherwise.
 func TestAPreflightReadsNoGoWorkspaceOrGoSettingsFile(t *testing.T) {
 	w := newDriveWorld(t)
 	p, err := runner.DriveProfile(w.home, "")
@@ -478,26 +479,60 @@ func TestAPreflightReadsNoGoWorkspaceOrGoSettingsFile(t *testing.T) {
 	t.Setenv("GOENV", "/elsewhere/env")
 	was := drivePreflightProgram
 	t.Cleanup(func() { drivePreflightProgram = was })
-	dir := t.TempDir()
-	env := filepath.Join(dir, "env")
-	drivePreflightProgram = func() (string, []string, error) {
-		return "/bin/sh", []string{"-c", "/usr/bin/env > '" + env + "'"}, nil
-	}
-	if err := drivePreflight(os.Stderr, p)(context.Background(), dir); err != nil {
-		t.Fatal(err)
-	}
-	raw, err := os.ReadFile(env)
-	if err != nil {
-		t.Fatal(err)
-	}
-	lines := strings.Split(string(raw), "\n")
-	for _, want := range []string{"GOWORK=off", "GOENV=off"} {
-		if !slices.Contains(lines, want) {
-			t.Errorf("the preflight's environment lacks %s:\n%s", want, raw)
-		}
-	}
-	if !slices.ContainsFunc(lines, func(l string) bool { return strings.HasPrefix(l, "GOFLAGS=") }) {
-		t.Errorf("the preflight's environment states no GOFLAGS:\n%s", raw)
+	for _, c := range []struct {
+		name   string
+		commit func(r *gittest.Repo)
+		gowork func(dir string) string
+	}{
+		{name: "no go.work tracked",
+			commit: func(r *gittest.Repo) {
+				r.Write("go.mod", "module example.invalid/m\n")
+				r.Commit("a module")
+			},
+			gowork: func(string) string { return "off" }},
+		{name: "a go.work tracked at the root",
+			commit: func(r *gittest.Repo) {
+				r.Write("go.work", "go 1.22\n\nuse ./m\n")
+				r.Write("m/go.mod", "module example.invalid/m\n")
+				r.Commit("a workspace")
+			},
+			gowork: func(dir string) string { return filepath.Join(dir, "go.work") }},
+		{name: "a go.work tracked below the root alone",
+			commit: func(r *gittest.Repo) {
+				r.Write("m/go.work", "go 1.22\n\nuse .\n")
+				r.Write("m/go.mod", "module example.invalid/m\n")
+				r.Commit("a nested workspace")
+			},
+			gowork: func(string) string { return "off" }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := gittest.NewRepo(t)
+			c.commit(r)
+			dir := r.Root()
+			env := filepath.Join(t.TempDir(), "env")
+			drivePreflightProgram = func() (string, []string, error) {
+				return "/bin/sh", []string{"-c", "/usr/bin/env > '" + env + "'"}, nil
+			}
+			if err := drivePreflight(os.Stderr, p)(context.Background(), dir); err != nil {
+				t.Fatal(err)
+			}
+			raw, err := os.ReadFile(env)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lines := strings.Split(string(raw), "\n")
+			for _, want := range []string{"GOWORK=" + c.gowork(dir), "GOENV=off"} {
+				if !slices.Contains(lines, want) {
+					t.Errorf("the preflight's environment lacks %s:\n%s", want, raw)
+				}
+			}
+			if n := len(slices.DeleteFunc(slices.Clone(lines), func(l string) bool { return !strings.HasPrefix(l, "GOWORK=") })); n != 1 {
+				t.Errorf("the preflight's environment states GOWORK %d times:\n%s", n, raw)
+			}
+			if !slices.ContainsFunc(lines, func(l string) bool { return strings.HasPrefix(l, "GOFLAGS=") }) {
+				t.Errorf("the preflight's environment states no GOFLAGS:\n%s", raw)
+			}
+		})
 	}
 }
 

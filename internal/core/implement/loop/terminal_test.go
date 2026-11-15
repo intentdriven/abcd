@@ -397,9 +397,10 @@ func TestARoleAnsweredBadlyPausesAndALaterStepRetriesIt(t *testing.T) {
 	}
 }
 
-// TestALandingWaitingForItsReceiptRunsThePreflightInTheLanesWorktree: the
-// wait for a receipt is the loop's to end, and it then steps again.
-func TestALandingWaitingForItsReceiptRunsThePreflightInTheLanesWorktree(t *testing.T) {
+// TestALandingWaitingForItsReceiptRunsThePreflightOnce: the wait for a
+// receipt is the loop's to end, by running the preflight once, in the drive's
+// own checkout, and it then steps again.
+func TestALandingWaitingForItsReceiptRunsThePreflightOnce(t *testing.T) {
 	w := newTerminalWorld(t)
 	w.needsPreflight = true
 	o := w.options(t)
@@ -408,8 +409,8 @@ func TestALandingWaitingForItsReceiptRunsThePreflightInTheLanesWorktree(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Ended != DrainStoppedCap || len(w.preflights) != 1 || w.preflights[0] == "" {
-		t.Fatalf("the preflight ran once in the lane's worktree: %+v %q", res, w.preflights)
+	if res.Ended != DrainStoppedCap || len(w.preflights) != 1 || w.preflights[0] == "" || w.preflights[0] == w.worktree {
+		t.Fatalf("the preflight ran once, in the drive's own checkout: %+v %q", res, w.preflights)
 	}
 	if len(lanesDone(t, w.repo)) != 1 {
 		t.Fatalf("the lane landed after its preflight:\n%s", strings.Join(w.lines, "\n"))
