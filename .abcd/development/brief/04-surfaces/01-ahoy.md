@@ -351,9 +351,11 @@ The appendix lists the sub-verbs and their options.
   under its repository's name where its root commit is registered in
   `~/.abcd.noindex/history/index.json` and under its root commit where it is
   not, and judges each worktree from the checkout its own `.git` file names,
-  never from the registry's recorded path. A registry that is absent or cannot
-  be read leaves every lane under its root commit and does not stop the
-  listing.
+  never from the registry's recorded path. The registry is read from the same
+  home as the lanes, so inside a walled stage both are the person's. A registry
+  that is absent leaves every lane under its root commit; one that is there but
+  cannot be read, or is refused, does the same and adds one note saying so,
+  without naming a path. Neither stops the listing.
 - **Pruning** removes a worktree only when it passes the proof of belonging, is
   not locked, held by an unfinished build run, owned by another account or the
   prune's own working directory, and is clean with its branch merged, or is a
