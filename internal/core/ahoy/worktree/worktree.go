@@ -363,7 +363,15 @@ func Add(repoRoot string, opts AddOptions) (Added, error) {
 		}
 		added, ferr := finish(repoRoot, lane, opts.Name, path, branch)
 		if ferr != nil {
-			return added, ferr
+			// Both failures are named, the hook's first, so its exit status
+			// is not lost behind the finishing one (iss-2610231125096250).
+			r := refuse(fmt.Sprintf("the repository's checkout hook failed (%v), and then %v", err, ferr), "settle the hook, then the finishing failure")
+			var fr *Refusal
+			if errors.As(ferr, &fr) {
+				r = refuse(fmt.Sprintf("the repository's checkout hook failed (%v), and then %s", err, fr.Reason), fr.Remedy)
+			}
+			r.Err = err
+			return added, r
 		}
 		r := refuse(fmt.Sprintf("git made the worktree at %s, which stands, but the repository's checkout hook failed: %v", path, err),
 			"settle the hook, then work in the worktree, or remove it (`git worktree remove`)")
