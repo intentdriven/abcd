@@ -131,12 +131,19 @@ var drivePreflightProgram = func() (string, []string, error) {
 // issue (drivePassOver).
 const hooksPathRemedy = "look at what git answers for the setting with `git config --show-scope --show-origin --get-all core.hooksPath` in the repository, settle the value it names (a path git cannot expand, such as one under a home that does not exist, cannot be read), then start the drive again"
 
+// maxLaneChangeList is the most the gate check reads of a lane's change list,
+// one name after another; a longer list is not read whole, and holds the
+// landing as one that could not be read.
+const maxLaneChangeList = 16 << 20
+
 // driveGateCheck says whether a lane's landing may go on: not over a lane that
 // changes what judges it, which a person's own session handles, and not when what
 // the lane changed cannot be read. What the lane changed is read from the
 // repository at repoRoot, from base to head, the commit its landing lands, and
 // never from what the lane's worktree has checked out, which anything run there
-// can move. The hooks path is placed both in the lane's
+// can move. It is read as stored, so no replace ref or graft stands another
+// commit or tree in for either end: the landing pushes the stored head, and the
+// change judged is the one it pushes. The hooks path is placed both in the lane's
 // worktree and in the checkout at repoRoot, since a value that names a directory
 // inside that checkout is where git runs hooks from whichever worktree it runs
 // in, and the lane's change reaches it there once landed; each place is the same
@@ -147,7 +154,7 @@ func driveGateCheck(repoRoot string) func(worktree, base, head string) error {
 		if !gitutil.IsFullSHA(base) || !gitutil.IsFullSHA(head) {
 			return &loop.PreflightRefused{Reason: "the lane records no base and head to read what it changed, so its landing does not go on"}
 		}
-		out, err := gitutil.Run(repoRoot, "diff", "--name-only", "-z", "--no-renames", base, head, "--")
+		out, err := gitutil.RunCappedAsStored(repoRoot, maxLaneChangeList, "diff", "--name-only", "-z", "--no-renames", base, head, "--")
 		if err != nil {
 			return &loop.PreflightRefused{Reason: "what the lane changed could not be read, so its landing does not go on"}
 		}

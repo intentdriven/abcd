@@ -396,6 +396,42 @@ func TestALaneIsJudgedAtItsHeadWhereverItsWorktreeStands(t *testing.T) {
 	}
 }
 
+// TestALaneIsJudgedAtItsStoredCommits: a ref under refs/replace/ that stands
+// another commit in for the lane's head, or for its base, does not change what
+// the gate check reads the lane as changing, since the landing pushes the
+// stored head.
+func TestALaneIsJudgedAtItsStoredCommits(t *testing.T) {
+	for _, end := range []string{"head", "base"} {
+		t.Run(end, func(t *testing.T) {
+			repo := gittest.NewRepo(t)
+			repo.Write("a.go", "package a\n")
+			repo.Commit("base")
+			base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+			repo.Git("checkout", "-q", "-b", "lane")
+			repo.Write(".github/workflows/x.yml", "x\n")
+			repo.Commit("the workflow")
+			head := checkedOutHead(t, repo.Root())
+			switch end {
+			case "head":
+				// A commit on the same base that changes nothing.
+				same := strings.TrimSpace(repo.Git("commit-tree", base+"^{tree}", "-p", base, "-m", "the same"))
+				repo.Git("replace", head, same)
+			case "base":
+				// A commit whose tree already holds the lane's change.
+				holds := strings.TrimSpace(repo.Git("commit-tree", head+"^{tree}", "-m", "holds it"))
+				repo.Git("replace", base, holds)
+			}
+			if repo.Git("diff", "--name-only", base, head, "--") != "" {
+				t.Fatal("the replace ref is not in force for a plain read, so the case shows nothing")
+			}
+			var refused *loop.PreflightRefused
+			if err := driveGateCheck(repo.Root())(repo.Root(), base, head); !errors.As(err, &refused) || !strings.Contains(refused.Reason, ".github/workflows/x.yml") {
+				t.Fatalf("with a replace ref on the %s the lane's change to a gate was not seen: %v", end, err)
+			}
+		})
+	}
+}
+
 // TestAMergedDefaultBranchIsNotTheLanesChange: read from what the lane merged, a
 // Makefile the default branch changed hands nothing back.
 func TestAMergedDefaultBranchIsNotTheLanesChange(t *testing.T) {
