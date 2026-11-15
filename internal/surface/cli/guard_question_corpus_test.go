@@ -19,8 +19,10 @@ import (
 // draft of testdata/questions/corpus/, in every checkout state the gate reads,
 // `abcd guard question` and `abcd guard hook` of the same build give the same
 // answer, because both call questionState and question.Decide. The mode store
-// unreadable is one of those states: a chipped draft is judged on its chip
-// there, and one without a chip runs unchecked.
+// unreadable is one of those states: an older-form chipped draft is judged on
+// its chip there, a number-form one by every rule but the register, and one
+// with no header in abcd's grammar runs unchecked in every state but away
+// (spc-2610301917245442, step 3; decision 36).
 
 // questionRules is every rule of the limits check, each of which the corpus
 // holds one draft for.
@@ -268,6 +270,9 @@ func TestGuardQuestionAndHookDecideAlike(t *testing.T) {
 				if rule, ok := strings.CutPrefix(name, "rule-"); ok && st.name == "unmanaged" &&
 					!slices.ContainsFunc(res.Findings, func(f questionFindingJSON) bool { return f.Rule == rule }) {
 					t.Errorf("the %s draft draws no %s finding: %+v", name, rule, res.Findings)
+				}
+				if name == "clean-unchipped" && !strings.HasPrefix(st.name, "away") && res.Hook != question.OutcomeAdmitUnchecked {
+					t.Errorf("a draft with no header in abcd's grammar: hook %q, want admit-unchecked whatever the mode", res.Hook)
 				}
 				if res.Partial != (len(res.Unread) > 0) {
 					t.Errorf("partial %v with unread %+v", res.Partial, res.Unread)

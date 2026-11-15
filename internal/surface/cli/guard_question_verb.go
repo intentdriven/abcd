@@ -440,7 +440,7 @@ func outcomeLine(o question.Outcome) string {
 	case question.OutcomeRefuseAway:
 		return "the person is away (abcd mode autonomous), so the hook would refuse every question; route it with abcd mode queue or abcd decide"
 	case question.OutcomeAdmitUnchecked:
-		return "this is not abcd's question (no header in abcd's chip grammar, and no mode naming anyone), so the hook would let it through unchecked and nothing was checked; head it with abcd's chip, such as \"Product Q1\", to have it checked"
+		return "this is not abcd's question (no header in abcd's grammar), so the hook would let it through unchecked whatever the mode names, and nothing was checked; head it with the question's number, such as \"Q1\", to have it checked"
 	case question.OutcomeUnchecked:
 		return "a store the check needed could not be read, so the hook would let this question through unchecked, on its loud status"
 	}
@@ -461,8 +461,9 @@ func outcomeLineOf(res questionCheckResult) string {
 	}):
 		return "the question limits could not be read, so the hook would check this question at abcd's defaults and let it through on its loud status"
 	case res.Hook == question.OutcomeUnchecked && res.Abcds:
-		// abcd's question is checked whatever store was unread: a chipped
-		// one with the mode store unread is judged on its chip.
+		// abcd's question is checked whatever store was unread: an
+		// older-form chip with the mode store unread is judged on its chip,
+		// and a number header by every rule but the register.
 		return "this question was checked and has no finding, but " + unreadStores(res) +
 			" could not be read, so the hook would let it through on its loud status"
 	}

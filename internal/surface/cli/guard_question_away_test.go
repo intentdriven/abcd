@@ -198,9 +198,9 @@ func TestPresentQuestionGateUnchanged(t *testing.T) {
 				t.Error("the admitted question was not marked open")
 			}
 
-			// The badge names the product thinker now, so another tool's
-			// question would be held to abcd's rules; the answer's reset
-			// puts it back to managed first.
+			// Another tool's question runs unchecked whatever the mode
+			// names (decision 36); the mode is put back to managed as the
+			// answer's reset would.
 			setMode(t, root, mode.Managed)
 			if stdout, stderr, code := runGuardTriple(askPayload(t, root, foreign)); code != 0 || stdout != "" || stderr != "" {
 				t.Fatalf("another tool's question must run unchecked while present; code=%d stdout=%q stderr=%q", code, stdout, stderr)

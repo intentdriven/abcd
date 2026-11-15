@@ -92,8 +92,8 @@ Then read the JSON (`_type` `abcd/question-check/v1`):
 - `hook` — what the hook would do with the draft in this checkout now:
   `admit`, `admit-with-rows-note`, `refuse`, `refuse-away` (the person is
   away; route the question with `abcd mode queue` or `abcd decide`),
-  `admit-unchecked` (not abcd's question: no chip, and no mode naming anyone,
-  so nothing was checked) or `unchecked` (a store could not be read, so the
+  `admit-unchecked` (not abcd's question: no header in abcd's grammar,
+  whatever the mode names, so nothing was checked) or `unchecked` (a store could not be read, so the
   hook lets the draft through on its loud status; abcd's draft is checked all
   the same).
 - `findings` — every finding at once, each with its `tab`, `part`, `rule`,
@@ -143,7 +143,8 @@ every finding and check again until it exits `0`, then read `hook`: ask the
 `ready` input where it is given, and where the person is away (`refuse-away`,
 no `ready`) route the question with `abcd mode queue` or `abcd decide`. A draft
 the hook would let through unchecked as not abcd's (`admit-unchecked`) also
-exits `0`; label it with abcd's header if it is abcd's question.
+exits `0`; head it with the question's number, such as `Q1`, if it is abcd's
+question.
 
 ## `hook` — the host adapter
 
@@ -176,13 +177,13 @@ before, and a record made for a command that then fails names a branch that
 does not exist, which the reading ignores.
 
 On the host's question tool the hook checks abcd's own questions instead of
-consulting the registry. A question is abcd's when a header is in abcd's chip
-grammar (a role word, then `Q` and the question's number, such as `Product Q2`)
-or when `/abcd:mode` names somebody; any other question belongs to another tool
-and runs unchecked. That includes a question with no abcd chip asked while
-`/abcd:mode` reads `managed`, in a repository abcd manages or not: the hook
-cannot tell an abcd question that forgot its chip from another tool's, so the
-interview pages teaching the chip are what keep abcd's questions under the
+consulting the registry. A question is abcd's when a header is in abcd's
+grammar: `Q` and the question's number, with an optional part letter and an
+optional total (`Q1`, `Q1a`, `Q2/5`), or the older form with a role word first
+(`Product Q2`, `Setup Q1/4`), which is still read. Any other question belongs
+to another tool and runs unchecked, whatever `/abcd:mode` names, in a
+repository abcd manages or not: the header is what the hook checks a question
+by, so the pages that teach it are what keep abcd's questions under the
 check. abcd's question is held to the field limits of the asking
 rules wherever the hook runs, in a repository abcd manages or not: the header,
 the number of questions and options, each label's words and each meaning's
@@ -219,25 +220,26 @@ question with `abcd guard question` or draft it through the
 `abcd:question-drafter` agent, which runs that check. In a question refused for another part, a tab over the rows
 limit is not one of the parts to fix and the head line does not count it: it
 follows them, under a line saying the rows limit does not refuse on its own and
-that the question would have been shown. A question with no abcd chip, held to the limits
-because `/abcd:mode` names somebody, carries one more line under the head line
-saying so: another tool's question asked while the mode names somebody is held
-to abcd's rules. The hook refuses and never rewrites the question.
+that the question would have been shown. The hook refuses and never rewrites the question.
 
-In a repository abcd manages, an admitted question carrying abcd's chip sets
-`/abcd:mode` from the chip's role: `Product` to `product-thinker`, `Tech` and
-`Setup` to `facilitator`. So a chipped question is never refused on the mode,
-and the status line names whom the question on screen is for, a chip naming
-the other person re-setting the mode. An admitted question is marked open in
+A number header names no person, so the agent sets `/abcd:mode` to the person
+the question is for, `product-thinker` or `facilitator`, before asking it, and
+the product thinker's register rule (no record number and no command) follows
+that mode: a `Q1` tab naming a command is refused while the mode names the
+product thinker and admitted while it names the facilitator. In a repository
+abcd manages, abcd's question is never refused on the mode. An admitted
+question with a number header sets nothing, leaving the mode the agent set; one
+with an older-form header sets `/abcd:mode` from its role word: `Product` to
+`product-thinker`, `Tech` and `Setup` to `facilitator`, a role naming the other
+person re-setting the mode. An admitted question is marked open in
 `.abcd/.work.local/question_open`, and the answer resets the state to
 `managed`: the plugin's hook on the question tool's result resets it when the
 answer comes back, and the next human message resets it on a host that does
-not run that hook. Where the state cannot be read, the hook still judges a
-question carrying abcd's chip, at the limits in force, since the chip says
-whom it is for: one that breaks a rule is refused, and any other runs with no
-mode set and nothing marked open, under one loud line saying the mode store
-could not be read. A question without a chip, which only the mode could make
-abcd's, runs with a loud `NOT CHECKED` warning instead. Where the state cannot
+not run that hook. Where the state cannot be read, the hook still judges
+abcd's question at the limits in force, the register rule of a number header
+aside, since that rule follows the mode: one that breaks a rule is refused,
+and any other runs with no mode set and nothing marked open, under one loud
+line saying the mode store could not be read. Where the state cannot
 be written or the question cannot be marked open, such as a local tier that is
 not writable, the question runs with a loud `NOT CHECKED` warning. A questions field the hook cannot read is the same case: the question runs, and the hook
 warns loudly. So is a payload the hook cannot decode at all: where it names the

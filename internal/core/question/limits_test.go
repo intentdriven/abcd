@@ -564,6 +564,46 @@ func TestChipRole(t *testing.T) {
 	}
 }
 
+// TestHeaderGrammarReadsNumberAndOlderForms (spc-2610301917245442, step 3):
+// abcd's header is Q and the question's number, with an optional part letter
+// and an optional total, and the older form that opens with a role word is
+// still read. Only the older form carries a role word; rule 1's limit and
+// remedy name the number form and say the older form is still read.
+func TestHeaderGrammarReadsNumberAndOlderForms(t *testing.T) {
+	for _, h := range []string{"Q1", "Q1a", "Q2/5", "Q1a/4", "Product Q2", "Setup Q1/4"} {
+		if !isAbcds(h, Default) {
+			t.Errorf("isAbcds(%q) = false, want abcd's", h)
+		}
+	}
+	for _, h := range []string{"Q0", "q1", "Q1A", "Builder Q1", "Pick a theme", "", "Q1/", "Q1/0", " Q1", "Q1 "} {
+		if isAbcds(h, Default) {
+			t.Errorf("isAbcds(%q) = true, want not abcd's", h)
+		}
+	}
+	for h, want := range map[string]string{"Product Q2": "Product", "Setup Q1/4": "Setup", "Tech Q1a": "Tech"} {
+		if got, ok := chipRole(h, Default); !ok || got != want {
+			t.Errorf("chipRole(%q) = %q, %v; want %q", h, got, ok, want)
+		}
+	}
+	for _, h := range []string{"Q1", "Q1a", "Q2/5"} {
+		if got, ok := chipRole(h, Default); ok {
+			t.Errorf("chipRole(%q) read the role %q from the number form", h, got)
+		}
+	}
+	tab := wellBuiltTab()
+	tab.Header = "Pick"
+	fs := CheckLimits(one(tab), Default, facilitator())
+	if len(fs) != 1 || fs[0].Rule != RuleHeader {
+		t.Fatalf("want one header finding, got:\n%s", render(fs))
+	}
+	if !strings.Contains(fs[0].Limit, `"Q1"`) || !strings.Contains(fs[0].Remedy, `"Q1"`) {
+		t.Errorf("rule 1 must name the number form, \"Q1\": limit %q, remedy %q", fs[0].Limit, fs[0].Remedy)
+	}
+	if !strings.Contains(fs[0].Limit+" "+fs[0].Remedy, "still read") {
+		t.Errorf("rule 1 must say the older form is still read: limit %q, remedy %q", fs[0].Limit, fs[0].Remedy)
+	}
+}
+
 // TestCheckReadsOnlyTheTabsAndOptionsItCounts: a call carrying more tabs than
 // QuestionsPerCall allows, or a tab more options than OptionsPerQ, is refused on
 // the count, and only the first tabs and options the limits allow are checked

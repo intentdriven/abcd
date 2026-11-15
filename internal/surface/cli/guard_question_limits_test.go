@@ -271,8 +271,9 @@ func TestWellBuiltQuestionIsAdmitted(t *testing.T) {
 
 // TestRecommendedStarredOrLongHeaderIsRefused is criterion A3 at the hook:
 // each case is refused with the host's deny and a line naming the rule, the value and
-// the limit. A header outside the chip grammar makes the question abcd's only
-// through a mode naming somebody, so the mode here names the product thinker.
+// the limit. A header outside abcd's grammar makes the question another
+// tool's whatever the mode (decision 36), so the long header is one in the
+// grammar and over the width.
 func TestRecommendedStarredOrLongHeaderIsRefused(t *testing.T) {
 	for _, tc := range []struct {
 		name, rule, value, limit string
@@ -280,7 +281,7 @@ func TestRecommendedStarredOrLongHeaderIsRefused(t *testing.T) {
 	}{
 		{"recommended", "never-recommended", "Keep it (Recommended)", "no (Recommended) label", func(q *hostQuestion) { q.Options[0].Label = "Keep it (Recommended)" }},
 		{"starred", "never-recommended", "★ Keep it", "no star mark", func(q *hostQuestion) { q.Options[0].Label = "★ Keep it" }},
-		{"long header", "header", "Product thinker Q2", "12 columns", func(q *hostQuestion) { q.Header = "Product thinker Q2" }},
+		{"long header", "header", "Product Q12/40", "12 columns", func(q *hostQuestion) { q.Header = "Product Q12/40" }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := managedCheckout(t)
@@ -734,57 +735,91 @@ func TestVerbTextAndDenyShareTheirLines(t *testing.T) {
 	}
 }
 
-// TestModeMadeQuestionAbcdsSaysSo: while the mode names somebody every question
-// is abcd's, so another tool's question asked then is held to abcd's rules. Its
-// refusal says why in one line, naming the mode's person, so an agent that did
-// not write the question does not loop on it; a question carrying abcd's chip
-// is abcd's on the chip, and its refusal carries no such line
-// (review-askGuard-security finding 4).
-func TestModeMadeQuestionAbcdsSaysSo(t *testing.T) {
-	foreign := hostQuestion{Header: "Ship", Question: "Ship it?", Options: []hostOption{{Label: "Yes"}, {Label: "No"}}}
-	for st, who := range map[mode.State]string{mode.ProductThinker: "the product thinker", mode.Facilitator: "the technical facilitator"} {
+// TestUnlabelledQuestionRunsUncheckedWhateverTheMode (spc-2610301917245442,
+// step 3; decision 36): a question is abcd's only when a header is in abcd's
+// grammar, so one without, asked while the mode names the product thinker,
+// the facilitator or nobody, or with the mode store unreadable, is another
+// tool's: it runs unchecked, unmarked, with nothing said and the mode left
+// where it was, however it breaks abcd's rules. It replaces the line that said
+// a mode had made such a question abcd's.
+func TestUnlabelledQuestionRunsUncheckedWhateverTheMode(t *testing.T) {
+	foreign := hostQuestion{Header: "Ship", Question: "Ship it?", Options: []hostOption{{Label: "Yes (Recommended)"}, {Label: "No"}}}
+	for _, st := range []mode.State{mode.Managed, mode.ProductThinker, mode.Facilitator} {
+		t.Run(string(st), func(t *testing.T) {
+			root := managedCheckout(t)
+			setMode(t, root, st)
+			stdout, stderr, code := runGuard(askPayload(t, root, foreign), "guard", "hook")
+			mustRunSilently(t, stdout, stderr, code)
+			if markedOpen(t, root) {
+				t.Error("another tool's question was marked open")
+			}
+			if got, _ := mode.ReadAt(root); got != st {
+				t.Errorf("mode = %q, want it left at %q", got, st)
+			}
+		})
+	}
+	t.Run("mode store unreadable", func(t *testing.T) {
 		root := managedCheckout(t)
-		setMode(t, root, st)
-		stdout, stderr, code := runGuard(askPayload(t, root, foreign), "guard", "hook")
-		reason := mustDeny(t, stdout, stderr, code)
-		want := "treated as abcd's because the mode names " + who + "; another tool's question asked now is held to abcd's rules"
-		if !strings.Contains(reason, want) {
-			t.Errorf("%s: the refusal must say why the question is abcd's (%q):\n%s", st, want, reason)
+		if err := os.WriteFile(modeFile(root), []byte("sideways\n"), 0o600); err != nil {
+			t.Fatal(err)
 		}
-		refusal(t, reason)
+		stdout, stderr, code := runGuard(askPayload(t, root, foreign), "guard", "hook")
+		mustRunSilently(t, stdout, stderr, code)
+	})
+}
 
-		q := wellBuilt()
-		q.Options[0].Label = "Keep it (Recommended)"
-		if stdout, _, _ := runGuard(askPayload(t, root, q), "guard", "hook"); strings.Contains(stdout, "treated as abcd's") {
-			t.Errorf("%s: a question carrying abcd's chip is abcd's on the chip, not the mode:\n%s", st, stdout)
+// numberCommandQuestion is wellBuilt headed with abcd's number and naming a
+// record, which the product thinker's register refuses.
+func numberCommandQuestion() hostQuestion {
+	q := wellBuilt()
+	q.Header = "Q1"
+	q.Options[0].Description = "It closes iss-2609202058058301. It costs a few characters."
+	return q
+}
+
+// TestNumberHeaderRegisterFollowsTheMode (spc-2610301917245442, step 3): a
+// number header names no person, so the register rule follows the mode the
+// agent set before asking: a Q1 tab naming a record is refused under the
+// product thinker's mode and admitted under the facilitator's, and under
+// managed, where the mode names nobody.
+func TestNumberHeaderRegisterFollowsTheMode(t *testing.T) {
+	q := numberCommandQuestion()
+	root := managedCheckout(t)
+	setMode(t, root, mode.ProductThinker)
+	stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
+	reason := mustDeny(t, stdout, stderr, code)
+	if _, parts, _ := refusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"register"}) {
+		t.Errorf("product thinker: want one register finding; got %v:\n%s", rulesNamed(parts), reason)
+	}
+	for _, st := range []mode.State{mode.Facilitator, mode.Managed} {
+		setMode(t, root, st)
+		stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
+		if code != 0 || stdout != "" || stderr != "" {
+			t.Errorf("%s: a Q1 tab naming a record is the facilitator's to read; code=%d stdout=%q stderr=%q", st, code, stdout, stderr)
 		}
 	}
 }
 
-// TestModeMadeQuestionSurvivesAGitHoldingItsPipe: a question without abcd's
-// chip is abcd's only through the mode store, and the gate finds the store
-// through git's toplevel. The hook runs in-process here, so nothing is left
-// unflushed: TestModeMadeQuestionAbcdsSaysSo's empty stdout on a loaded macOS
-// leg was the gate deciding to write nothing. git's toplevel answer missed the
-// runner's WaitDelay, the root lookup failed, the gate read the checkout as one
-// with no mode store and admitted the question silently, and the test read the
-// empty stdout as "not one hook output object: EOF" (iss-2610090642394550; the
-// lookup's own fixes are iss-2610100846469473 and iss-2610272041031418).
-// gittest.SlowPipeGit holds git's output open without load, on every toplevel
-// call, and the refusal still arrives.
-func TestModeMadeQuestionSurvivesAGitHoldingItsPipe(t *testing.T) {
-	foreign := hostQuestion{Header: "Ship", Question: "Ship it?", Options: []hostOption{{Label: "Yes"}, {Label: "No"}}}
+// TestNumberHeaderRegisterSurvivesAGitHoldingItsPipe: a number header's
+// register follows the mode, and the gate finds the mode store through git's
+// toplevel. The hook runs in-process here, so nothing is left unflushed: an
+// empty stdout on a loaded macOS leg was once the gate deciding to write
+// nothing, git's toplevel answer having missed the runner's WaitDelay
+// (iss-2610090642394550; the lookup's own fixes are iss-2610100846469473 and
+// iss-2610272041031418). gittest.SlowPipeGit holds git's output open without
+// load, on every toplevel call, and the register refusal still arrives.
+func TestNumberHeaderRegisterSurvivesAGitHoldingItsPipe(t *testing.T) {
 	root := managedCheckout(t)
 	setMode(t, root, mode.ProductThinker)
 	calls := gittest.SlowPipeGit(t, "--show-toplevel", -1)
 
-	stdout, stderr, code := runGuard(askPayload(t, root, foreign), "guard", "hook")
+	stdout, stderr, code := runGuard(askPayload(t, root, numberCommandQuestion()), "guard", "hook")
 	if calls() == 0 {
 		t.Fatal("the gate never asked git for the toplevel, so the held pipe was never in its way")
 	}
 	reason := mustDeny(t, stdout, stderr, code)
-	if want := "treated as abcd's because the mode names the product thinker"; !strings.Contains(reason, want) {
-		t.Errorf("the refusal must say why the question is abcd's (%q):\n%s", want, reason)
+	if !strings.Contains(reason, "(register)") {
+		t.Errorf("the refusal must name the register rule the mode applies:\n%s", reason)
 	}
 }
 

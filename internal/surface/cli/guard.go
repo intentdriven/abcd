@@ -275,9 +275,10 @@ func newGuardHookCommand() *cobra.Command {
 			"character or invalid UTF-8, or is over 4096 bytes, is refused with the\n" +
 			"host's deny and the reason.\n\n" +
 			"On the host's question tool the hook checks abcd's own questions instead of\n" +
-			"consulting the registry. A question is abcd's when a header is in abcd's chip\n" +
-			"grammar (such as Product Q2) or when `abcd mode` names somebody; any other\n" +
-			"question is another tool's and runs unchecked. abcd's question is held to\n" +
+			"consulting the registry. A question is abcd's when a header is in abcd's\n" +
+			"grammar, the question's number (Q1, Q1a, Q2/5) or the older form with a\n" +
+			"role word first (Product Q2); any other question is another tool's and runs\n" +
+			"unchecked, whatever `abcd mode` names. abcd's question is held to\n" +
 			"the asking rules' field limits wherever the hook runs, and one that breaks\n" +
 			"them is refused with the host's deny, whose reason is a head line counting\n" +
 			"the parts, then one line per rule and tab naming the first part that broke\n" +
@@ -288,10 +289,13 @@ func newGuardHookCommand() *cobra.Command {
 			"note for the agent (additionalContext, no permission decision) naming each\n" +
 			"tab over the limit, the verb that checks the next draft and the agent that\n" +
 			"drafts a question to fit. The hook never\n" +
-			"rewrites a question. In a checkout abcd manages, an admitted question\n" +
-			"carrying abcd's chip sets `abcd mode` from the chip's role (Product to\n" +
-			"product-thinker, Tech and Setup to facilitator), so it is never refused on\n" +
-			"the mode, and the question is marked open in the local tier; the answer\n" +
+			"rewrites a question. A number header names no person, so the agent sets\n" +
+			"`abcd mode` to the person before asking, and the product thinker's register\n" +
+			"rule follows that mode. In a checkout abcd manages, an admitted question is\n" +
+			"never refused on the mode: an older-form header sets `abcd mode` from its\n" +
+			"role (Product to product-thinker, Tech and Setup to facilitator), a number\n" +
+			"header leaves the mode as set, and the question is marked open in the local\n" +
+			"tier; the answer\n" +
 			"resets the mode to managed, from `abcd hook question-answered` on the\n" +
 			"question tool's PostToolUse or else on the next human message. A questions\n" +
 			"field the hook cannot read lets the question run and warns loudly. While\n" +

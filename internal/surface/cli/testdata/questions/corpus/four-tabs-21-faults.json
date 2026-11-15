@@ -1,7 +1,7 @@
 {
   "questions": [
     {
-      "header": "Login",
+      "header": "Q1",
       "multiSelect": false,
       "question": "Should the login timeout be raised?",
       "options": [
@@ -10,18 +10,18 @@
           "description": "The change ships with the next release."
         },
         {
-          "label": "No",
+          "label": "No, keep the timeout as it is",
           "description": "Nothing changes."
         }
       ]
     },
     {
-      "header": "Export",
+      "header": "Q2",
       "multiSelect": false,
       "question": "Should the export keep the old column order?",
       "options": [
         {
-          "label": "Yes",
+          "label": "Yes, keep the old column order",
           "description": "The change ships with the next release."
         },
         {
@@ -31,12 +31,12 @@
       ]
     },
     {
-      "header": "Search",
+      "header": "Q3",
       "multiSelect": false,
       "question": "Should search match partial words?",
       "options": [
         {
-          "label": "Yes",
+          "label": "Yes, match the start of words",
           "description": "The change ships with the next release."
         },
         {
@@ -46,12 +46,12 @@
       ]
     },
     {
-      "header": "Backups",
+      "header": "Q4",
       "multiSelect": false,
       "question": "Should backups run every night?",
       "options": [
         {
-          "label": "Yes",
+          "label": "Yes, run them every single night",
           "description": "The change ships with the next release."
         },
         {

@@ -240,16 +240,18 @@ The hook also answers for the host's question tool (itd-2609212130146198,
 spc-2610030944505997), and there it checks abcd's own questions rather than
 consulting the hazard registry. It decodes the tool's questions into the field
 view of `internal/core/question` (the host's JSON key names stay in the
-surface) and decides whether the question is abcd's: a header in abcd's chip
-grammar, which only abcd's interview pages are taught to write, or a mode
-naming somebody, which only `abcd mode` and this gate set and the answer resets
-(itd-201 decision 10). Any other question is another tool's
-and runs, unchecked and unmarked, exit 0, wherever it is asked. That includes a
-question with no abcd chip asked while the mode reads managed, in a managed
-checkout too: the gate cannot tell an abcd question that forgot its chip from
-another tool's (itd-201 decision 10; spc-2610030944505997, open question 1,
-decided (a)), and the compensating control is the interview pages teaching the
-chip.
+surface) and decides whether the question is abcd's by its header alone
+(itd-2610230756259215 decision 36; spc-2610301917245442, step 3): a header in
+abcd's grammar, which is `Q` and the question's number with
+an optional part letter and an optional total (`Q1`, `Q1a`, `Q2/5`), or the
+older form opened by a role word from `Limits.ChipRoles` (`Product Q2`, `Setup
+Q1/4`), still read. Any other question is another tool's and runs, unchecked
+and unmarked, exit 0, wherever it is asked and whatever the mode names. The
+mode once made a question without a header abcd's too (itd-201 decision 10),
+and so held another tool's question, asked while it named somebody, to abcd's
+rules; the header alone draws the line now, and the compensating control for an
+abcd question that forgot it is the pages and the question-writing agent
+teaching it.
 
 abcd's question is held to the field limits (`question.CheckLimits`) wherever
 the hook runs, managed or not: the setup interview asks before a repository is
@@ -279,9 +281,11 @@ repository's question limits", naming the file and saying the question is
 checked at the defaults instead, leads a deny's reason or a rows note, and
 otherwise goes to stderr with exit 1, so the question is never admitted
 silently. Another tool's question runs unchecked whatever either file says. The
-addressee the product thinker's register rule reads is each tab's chip role
-for a chipped question, since the mode the gate then sets follows the chip,
-and the mode's for a question without a chip; the binary's verb list
+addressee the product thinker's register rule reads is the mode's person for
+a call headed with abcd's number, where the badge shows, since a number names
+no person and the agent sets the mode before asking (decision 37), and nobody
+elsewhere; a call of older-form headers is read by each tab's role word, since
+the mode the gate then sets follows it; the binary's verb list
 is read from the command tree and passed in. The row limit is estimated with
 the host's frame measured at 80 by 24, and a side preview on any option is
 refused, because the host hides every option's description while a preview
@@ -322,10 +326,7 @@ less. Beside any other finding, the rows finding is named in the deny but is not
 and the rows findings follow them, one line per tab, under one line saying
 the rows limit does not refuse on its own and the question would have been
 shown. Listed among the parts to fix, it read as a cause, and the agent cut a
-question the gate would have shown. A question with no abcd chip,
-abcd's only because the mode names somebody, carries one line under the head
-line saying so, naming the mode's person, so an agent whose question another
-tool wrote does not loop on it. The hook refuses and never
+question the gate would have shown. The hook refuses and never
 rewrites: the host lets a pre-tool hook replace a tool's input, and a rewritten
 question would put words in the agent's mouth that neither it nor the person
 chose. A questions field the check cannot read is not a decision: the question
@@ -336,10 +337,14 @@ cannot be read fails open naming no tool. Neither echoes the decoder's text,
 which can name a Go type.
 
 In a repository abcd manages, abcd's question is never refused on the mode
-(iss-2610100626211810). Its chip already names whom it is for, and refusing it
-while the mode read managed refused an interview intermittently, whenever the
-mode had been reset between two questions. So when the gate admits a question
-carrying abcd's chip, it derives the state from the chip's role and sets it:
+(iss-2610100626211810): refusing it while the mode read managed refused an
+interview intermittently, whenever the mode had been reset between two
+questions. A number header names no person, so the agent sets the mode to the
+person the question is for with `abcd mode` before asking it (decision 37),
+and the gate, admitting it, sets nothing and marks it open under that mode, so
+the answer's reset returns the mode to managed. An older-form header names its
+person in its role word, so when the gate admits a question carrying one, it
+derives the state from the role and sets it:
 `Product` names the product thinker, and `Tech` and `Setup` name the technical
 facilitator. `Setup` is the setup interview's chip, whose questions (the
 repository's visibility, its keys, the oracles it connects) are about how abcd
@@ -355,18 +360,21 @@ answer comes back, and the rules loader's prompt
 hook runs the same reset on the next human message, the fallback for a host
 that does not run `PostToolUse`; whichever runs first clears the marker, so
 the other changes nothing. `abcd mode` remains the way to record whose answer
-is owed at a stop that is not a question. A question without abcd's chip while
-the mode names somebody is held to the field limits and marked open, and sets
-nothing. Where the badge does not show, the mode is neither read nor set. A
-mode store the gate cannot read leaves a chipped question judged all the
-same, at the limits in force, because its chip names whom it is for: one that
-breaks a rule is refused, and any other runs with no mode set from its chip
-and no marker written. One line says so, "abcd guard: the mode store could not
-be read", at the head of a deny's reason or a rows note and otherwise on
-stderr with exit 1; with a layer of the question limits unread as well, that
-layer's line follows it, one line per store. A question without a chip is
-abcd's only through the mode, so with the store unread it runs unchecked, and
-the hook says so on exit 1, the same fail-open-loud contract below. A state
+is owed at a stop that is not a question, as it is before a question headed
+with abcd's number. Where the badge does not show, the mode is neither read
+nor set. A mode store the gate cannot read leaves abcd's question judged all
+the same, at the limits in force: an older-form header names whom its tab is
+for, and a number header loses only the register rule, which follows the
+mode, the verdict naming the store and that rule as unread. One that breaks a
+rule is refused, and any other runs with no mode set and no marker written.
+One line says so, "abcd guard: the mode store could not be read", naming the
+register rule where it was not applied, at the head of a deny's reason or a
+rows note and otherwise on stderr with exit 1; with a layer of the question
+limits unread as well, that layer's line follows it, one line per store. A
+checkout git will not name the root of leaves a number header's register rule
+unapplied the same way, the line naming the failed root lookup. A question
+with no header in abcd's grammar never reads the mode store, so an unreadable
+one changes nothing for it. A state
 file or marker the gate cannot write, a read-only tier among them, is not a
 decision either: the question, already judged, runs and the hook says so on
 exit 1. The manifest's pre-tool-use matcher names the

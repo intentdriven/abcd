@@ -281,8 +281,9 @@ func TestGuardQuestionReportsRefuseAwayWhileAway(t *testing.T) {
 }
 
 // TestGuardQuestionMarksAPartialResult: a mode store the verb cannot read
-// makes the hook fail open for a draft without a chip, so the verb says
-// unchecked, marks the result partial and names the store; a chipped draft is
+// leaves a number-form draft checked by every rule but the register, which
+// follows the mode, so the verb says unchecked, marks the result partial and
+// names the store and that rule; an older-form chipped draft is
 // judged on its chip all the same, refused on a rule it breaks, partial and
 // naming the store with no rule left unapplied; an away record it cannot read
 // marks the result partial too, naming every rule, since it decides whether
@@ -293,9 +294,9 @@ func TestGuardQuestionMarksAPartialResult(t *testing.T) {
 		if err := os.WriteFile(modeFile(root), []byte("sideways\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		res, _, _ := runQuestionVerb(t, "clean-unchipped")
-		if res.Hook != question.OutcomeUnchecked || !res.Partial || len(res.Unread) != 1 || res.Unread[0].Store != string(question.StoreMode) || len(res.Unread[0].Rules) != len(questionRules) {
-			t.Errorf("hook %q, partial %v, unread %+v", res.Hook, res.Partial, res.Unread)
+		res, _, code := runQuestionVerb(t, "clean-number")
+		if res.Hook != question.OutcomeUnchecked || !res.Abcds || code != 2 || !res.Partial || len(res.Unread) != 1 || res.Unread[0].Store != string(question.StoreMode) || !slices.Equal(res.Unread[0].Rules, []string{string(question.RuleRegister)}) {
+			t.Errorf("hook %q, abcds %v, exit %d, partial %v, unread %+v; want unchecked, abcd's, exit 2, the mode store with the register rule", res.Hook, res.Abcds, code, res.Partial, res.Unread)
 		}
 		if strings.Contains(res.Unread[0].Why, root) {
 			t.Errorf("the unread reason leaks the checkout's path: %q", res.Unread[0].Why)
@@ -354,26 +355,33 @@ func TestGuardQuestionPartialNeverExitsZero(t *testing.T) {
 	}
 }
 
-// TestGuardQuestionSaysAnUnlabelledDraftIsNotAbcds: a draft without abcd's
-// chip, asked while the mode names nobody, is another tool's question to the
-// hook: the verb says so in its hook field and its text, checks nothing, and
-// exits 0, since no finding was made (decision 8); the text names the missing
-// label so it is caught before the ask.
+// TestGuardQuestionSaysAnUnlabelledDraftIsNotAbcds: a draft with no header in
+// abcd's grammar is another tool's question to the hook whatever the mode,
+// the product thinker's included (decision 36): the verb says so in its hook
+// field and its text, checks nothing, and exits 0, since no finding was made
+// (decision 8); the text names the missing header so it is caught before the
+// ask.
 func TestGuardQuestionSaysAnUnlabelledDraftIsNotAbcds(t *testing.T) {
-	managedCheckout(t)
-	res, _, code := runQuestionVerb(t, "clean-unchipped")
-	if res.Hook != question.OutcomeAdmitUnchecked || res.Abcds || len(res.Findings) != 0 || code != 0 {
-		t.Errorf("hook %q, abcds %v, %d findings, exit %d", res.Hook, res.Abcds, len(res.Findings), code)
-	}
-	stdout, _, _ := runGuard("", "guard", "question", corpusPath(t, "clean-unchipped"))
-	if !strings.Contains(stdout, "not abcd's question") {
-		t.Errorf("the text render does not say the draft is not abcd's:\n%s", stdout)
+	for _, st := range []mode.State{mode.Managed, mode.ProductThinker} {
+		t.Run(string(st), func(t *testing.T) {
+			root := managedCheckout(t)
+			setMode(t, root, st)
+			res, _, code := runQuestionVerb(t, "clean-unchipped")
+			if res.Hook != question.OutcomeAdmitUnchecked || res.Abcds || len(res.Findings) != 0 || code != 0 {
+				t.Errorf("hook %q, abcds %v, %d findings, exit %d", res.Hook, res.Abcds, len(res.Findings), code)
+			}
+			stdout, _, _ := runGuard("", "guard", "question", corpusPath(t, "clean-unchipped"))
+			if !strings.Contains(stdout, "not abcd's question") || !strings.Contains(stdout, `"Q1"`) {
+				t.Errorf("the text render does not say the draft is not abcd's and name the number header:\n%s", stdout)
+			}
+		})
 	}
 }
 
 // TestGuardQuestionListsAllTwentyOneFindings: the 2026-10-23 case, four
-// issues as four tabs asked while the mode named the product thinker, is
-// listed whole: all 21 findings, every one refusing.
+// issues as four tabs asked while the mode named the product thinker, rebuilt
+// with four number headers so it is abcd's under decision 36, is listed
+// whole: all 21 findings, every one refusing.
 func TestGuardQuestionListsAllTwentyOneFindings(t *testing.T) {
 	root := managedCheckout(t)
 	setMode(t, root, mode.ProductThinker)
