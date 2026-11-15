@@ -301,3 +301,25 @@ func TestOwnerUIDReportsTheCallersOwnUID(t *testing.T) {
 		t.Error("OwnerUID must report an error for an absent path, never a uid the caller could read as its own")
 	}
 }
+
+// TestFoldedPathMatchComparesAsAFoldingFilesystemDoes: case, the full folds
+// that spell one rune as several letters, and composed and decomposed forms
+// all compare equal, on any host; a different letter does not.
+func TestFoldedPathMatchComparesAsAFoldingFilesystemDoes(t *testing.T) {
+	for _, c := range []struct {
+		path, name  string
+		under, want bool
+	}{
+		{"Make\ufb01le", "Makefile", false, true},
+		{"STRA\u00dfE/x", "strasse", true, true},
+		{"caf\u00e9/x", "cafe\u0301", true, true},
+		{"\u017fcripts/a", "scripts", true, true},
+		{"scripts/a", "scripts", false, false},
+		{"scriptsx/a", "scripts", true, false},
+		{"caf\u00e9/x", "cafe", true, false},
+	} {
+		if got := fsutil.FoldedPathMatch(c.path, c.name, c.under); got != c.want {
+			t.Errorf("FoldedPathMatch(%q, %q, %v) = %v, want %v", c.path, c.name, c.under, got, c.want)
+		}
+	}
+}
