@@ -2336,6 +2336,11 @@ const gateUnreadBound = 30 * time.Minute
 // an approval given later arms it. A pull request the forge reports
 // conflicting is refused, unarmed.
 func landArm(c Context, lane *Lane) (Outcome, error) {
+	// No lane is armed, or its merge gate asked, while a runner has not said
+	// which model ran one of its implementers (land_runner_wait.go).
+	if out, waits, err := awaitRunnerReport(c, *lane); waits {
+		return out, err
+	}
 	ld := lane.Landing
 	def, err := defaultBranch(c, *lane)
 	if err != nil {
@@ -2622,6 +2627,9 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 		// head, or a review receipt naming it, given since arms it now, and
 		// the reason it waits is brought up to date otherwise.
 		if !ld.Armed {
+			if out, waits, err := awaitRunnerReport(c, *lane); waits {
+				return out, err
+			}
 			rule, err := readMergeRule(c, *lane, def)
 			if err != nil {
 				return Outcome{}, err

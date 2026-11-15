@@ -210,7 +210,8 @@ var parkedStages = DefaultStages
 // the run whole (parkedStopNote). Only its renewal stands, which decides for itself (stopEndsRenewal), and only
 // where this code is reached: under a stop in force the move refuses first (drainStop), so
 // only a drive still in an agent's call or a preflight renews the claim of a run with work a
-// save could not take, and otherwise it lapses at its lease with the lane's work still on its branch and in its worktree.
+// save could not take, and otherwise it lapses at its lease, unless a load-gate waiter in this
+// copy renews it (gateWaiterRenews), with the lane's work still on its branch and in its worktree.
 // The landing's last step below, resyncParked, watchParked and handBackClosed each save the
 // run's whole state, so each is judged before it acts (mayWholeSave, through laneSave): a
 // parked run whose file states another version, this drain's lane or an earlier drain's,

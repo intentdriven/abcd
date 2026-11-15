@@ -829,7 +829,7 @@ what it did in `next`:
   run with work a save could not take has its reservation renewed. A read that holds the run
   refuses the move first, so only a drive still in an agent's call or a preflight renews it then. Under a stop in force only a drive
   still in an agent's call or a preflight renews it, and once none is: a run that settles releases its reservation, and
-  one with work a save could not take leaves it to lapse at its lease, so a peer can then
+  one with work a save could not take leaves it to lapse at its lease unless a load-gate waiter in this copy renews it, so a peer can then
   take the issue, with what the lane committed on its branch and the rest in its worktree alone. A halted run waits for
   `abcd implement resume --take <run-id>`; a mark from a person's stop that has not settled
   goes on as any other if the stop has lifted, and one from a signal to a drive waits for that same take-over.

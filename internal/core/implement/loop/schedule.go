@@ -507,6 +507,9 @@ func move(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate
 			if beganCheckWait(st, i, r, now) {
 				began = true
 			}
+			if beganRunnerWait(st, i, r, now) {
+				began = true
+			}
 			if waitErr == nil {
 				waitErr = err
 			}

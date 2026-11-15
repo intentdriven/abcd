@@ -1207,7 +1207,7 @@ driver, so a lifted stop's mark on it is not taken up by a drain, which reads it
 move as any lane in progress does, and one a new pace leaves keeps its pace. With no agent left in its
 call and its work saved it no longer renews. Work a save could not take stays uncommitted in its
 worktree and nowhere else, and its claim lapses at its lease unless a gated waiter, `abcd implement status` or a drive still
-in an agent's call or a preflight renews it; only that drive renews a run parked at land. A
+in an agent's call or a preflight renews it; only that drive renews a run parked at land, unless a load-gate waiter in this copy renews it. A
 lift names any stop it cannot reach. A stop another account left is not honoured, and each
 step's answer and the listing name it.
 

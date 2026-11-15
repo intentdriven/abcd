@@ -124,11 +124,13 @@ func resolveStuckBounds(roots layered.Roots) (stuckBounds, error) {
 // waitByDesign reports whether r is a wait the loop makes on purpose rather
 // than a refusal: the landing's wait for its preflight receipt, an outage's,
 // a land fence's that could not read origin, a merge gate's that could not
-// read what it asks at the arming, and a lane whose hold could not be widened
+// read what it asks at the arming, a landing waiting at its arming for a
+// runner's report (land_runner_wait.go), which bounds that wait itself, and a
+// lane whose hold could not be widened
 // to a path another holder holds live (widen.go), which noteRefusal alone
 // still logs, against the minutes bound.
 func waitByDesign(r *Refusal) bool {
-	return !r.checkWait.IsZero() || r.Outage != nil || r.outage != nil || r.Stage == StageOutage || r.originUnread || r.releaseHeld || r.gateUnread || r.pathHeld
+	return !r.checkWait.IsZero() || r.Outage != nil || r.outage != nil || r.Stage == StageOutage || r.originUnread || r.releaseHeld || r.gateUnread || r.runnerWait != "" || r.pathHeld
 }
 
 // noteRefusal logs err on the lane it names, in an issue run (stuck.go's
