@@ -577,10 +577,11 @@ the same variables and home as a stage, and read the git configuration the drive
 rather than any a stage left in that home; its network commands, its other filters and its
 forge calls keep the person's environment. A preflight runs
 with what a stage carries too, and only a receipt from a preflight the drive ran itself
-lands a lane. A lane at its landing that changes the Makefile, `scripts/` or the active
-hooks, measured from what it last merged of the default branch, is handed back, and an
-issue that names one is passed over before a lane opens: that change needs a person's own
-session, and the drive's last lines name each one. A stage's shell has no credential for
+lands a lane. A lane at its landing that changes the Makefile, `scripts/`, the active
+hooks or the forge's workflow folder (`.github/`), measured from what it last merged of the
+default branch, is handed back, and an issue that names one is passed over before a lane
+opens, whatever the case of the name: that change needs a person's own session, and the
+drive's last lines name each one. A stage's shell has no credential for
 origin, so a stage reserves nothing: the driver, which holds it, reserves every path a
 lane's branch changes beyond the issue's hold once the implementer hands its receipt back,
 before it judges the receipt and before the validators start, again before each step at
