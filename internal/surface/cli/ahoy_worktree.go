@@ -79,10 +79,12 @@ func worktreeCheckout() (string, error) {
 func newAhoyWorktreeCommand(asJSON *bool) *cobra.Command {
 	list := func(cmd *cobra.Command, all bool) error {
 		if all {
-			got, err := worktree.ListAll(worktree.AllOptions{Labels: registryLabels(), Here: hereOrNone(), Forge: worktreeForge})
+			labels, note := registryLabels()
+			got, err := worktree.ListAll(worktree.AllOptions{Labels: labels, Here: hereOrNone(), Forge: worktreeForge})
 			if err != nil {
 				return worktreeFault("list", err)
 			}
+			got.ForgeNote = joinNote(note, got.ForgeNote)
 			return render(cmd.OutOrStdout(), *asJSON, got, func(w io.Writer) { renderAllLanes(w, got) })
 		}
 		root, err := worktreeCheckout()
@@ -413,26 +415,46 @@ func renderDossier(w io.Writer, d worktree.Dossier) {
 	fmt.Fprintf(w, "      next: %s\n", d.Recommendation)
 }
 
-// hereOrNone is the checkout the caller stands in, or "" outside one: --all
-// reads the whole store from anywhere.
+// registryUnreadNote is the one line `list --all` adds when the registry
+// exists but could not be read or was refused. It names no path, since the
+// reason may be a link the person did not lay.
+const registryUnreadNote = "the repository registry could not be read, so every lane is shown under its root commit"
+
 // registryLabels is the registry's name for each registered root commit, the
-// label `list --all` shows a lane under (itd-2609091014076309's criterion 7).
-// The labels only name rows, so a registry that is absent, cannot be read or
-// is refused passes none and every lane stays under its root commit; its error
-// never fails the listing. The registry's path label is passed through but
-// never read: each worktree's own .git file says which checkout it belongs to.
-func registryLabels() map[string]worktree.Label {
+// label `list --all` shows a lane under (itd-2609091014076309's criterion 7),
+// and the note to show when the registry could not be read. The labels only
+// name rows, so a registry that is absent, cannot be read or is refused passes
+// none and every lane stays under its root commit; its error never fails the
+// listing. An absent registry is the ordinary state of a machine with no
+// registered repository and gets no note. The registry's path label is passed
+// through but never read: each worktree's own .git file says which checkout
+// it belongs to.
+func registryLabels() (map[string]worktree.Label, string) {
 	reg, err := ahoy.RegistryLabels()
 	if err != nil {
-		return nil
+		return nil, registryUnreadNote
 	}
 	out := make(map[string]worktree.Label, len(reg))
 	for sha, l := range reg {
 		out[sha] = worktree.Label{Name: l.Name, Path: l.Path}
 	}
-	return out
+	return out, ""
 }
 
+// joinNote adds note to the listing's note line, ahead of any forge note, so
+// the text form still says both on one line.
+func joinNote(note, existing string) string {
+	switch {
+	case note == "":
+		return existing
+	case existing == "":
+		return note
+	}
+	return note + "; " + existing
+}
+
+// hereOrNone is the checkout the caller stands in, or "" outside one: --all
+// reads the whole store from anywhere.
 func hereOrNone() string {
 	root, err := worktreeCheckout()
 	if err != nil {

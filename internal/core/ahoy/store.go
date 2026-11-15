@@ -736,11 +736,19 @@ func historyRoot() (string, error) {
 // is the machine's layout and is opened, never judged; ~/.abcd.noindex and
 // ~/.abcd.noindex/history are. An absent registry without create is os.ErrNotExist.
 func historyDir(create bool) (*os.Root, error) {
-	if _, err := historyRoot(); err != nil {
-		return nil, err
-	}
 	home, err := os.UserHomeDir()
 	if err != nil {
+		return nil, err
+	}
+	return historyDirIn(home, create)
+}
+
+// historyDirIn is historyDir under home, for a reader that names the home
+// itself: RegistryLabels reads the registry under the machine home the
+// worktree store's lanes come from. It applies historyRoot's link refusal to
+// home before opening anything.
+func historyDirIn(home string, create bool) (*os.Root, error) {
+	if err := fsutil.HomeScopeLink(home, historyRelPath+"/index.json"); err != nil {
 		return nil, err
 	}
 	if create {
@@ -785,6 +793,12 @@ func loadHistoryIndex() (*historyIndex, error) {
 	return scrubHistoryIndex(readHistoryIndexFile())
 }
 
+// loadHistoryIndexUnder is loadHistoryIndex under home rather than the
+// process's own: the same link refusal, guarded read and scrub.
+func loadHistoryIndexUnder(home string) (*historyIndex, error) {
+	return scrubHistoryIndex(readHistoryIndexFileOpened(historyDirIn(home, false)))
+}
+
 // loadHistoryIndexIn is loadHistoryIndex through dir, ~/.abcd.noindex/history as the
 // caller's walk opened it: the read under the history lock goes through the
 // directory whose lock is held, never through a second walk that a same-uid
@@ -808,7 +822,13 @@ func scrubHistoryIndex(idx *historyIndex, err error) (*historyIndex, error) {
 // included. Only the detector wants this: everything else goes through
 // loadHistoryIndex, which scrubs.
 func readHistoryIndexFile() (*historyIndex, error) {
-	dir, err := historyDir(false)
+	return readHistoryIndexFileOpened(historyDir(false))
+}
+
+// readHistoryIndexFileOpened reads the index through dir, the history
+// directory a caller opened; a directory that is absent is no index and no
+// error.
+func readHistoryIndexFileOpened(dir *os.Root, err error) (*historyIndex, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil

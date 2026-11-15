@@ -64,3 +64,38 @@ func TestRegistryLabelsAbsentOrUnreadable(t *testing.T) {
 		t.Fatalf("malformed: got %v, %v; want an empty map and the error", got, err)
 	}
 }
+
+// TestRegistryLabelsReadsTheMachineHome: where the process's HOME is a walled
+// stage's and abcdhome.MachineHome is the person's, the registry is read under
+// the person's home, where the worktree store's lanes are, and the stage's
+// own registry is not consulted. The process-home loader the registry's other
+// readers use still reads the stage's.
+func TestRegistryLabelsReadsTheMachineHome(t *testing.T) {
+	person, _ := setupHermetic(t)
+	const a = "0000000000000000000000000000000000000001"
+	write := func(home, name string) {
+		t.Helper()
+		root := abcdhome.Path(home, "history")
+		if err := os.MkdirAll(root, abcdhome.DirMode); err != nil {
+			t.Fatal(err)
+		}
+		idx := historyIndex{Schema: 1, Description: historyIndexDescription, Repos: []historyRepo{{RootCommit: a, Name: name, Status: "active"}}}
+		if err := writeJSON(filepath.Join(root, "index.json"), idx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(person, "person-name")
+	stage := t.TempDir()
+	write(stage, "stage-name")
+	t.Setenv("HOME", stage)
+	t.Setenv(abcdhome.StageHomeEnv, stage)
+	t.Setenv(abcdhome.PersonHomeEnv, person)
+	got, err := RegistryLabels()
+	if err != nil || got[a].Name != "person-name" {
+		t.Fatalf("got %v, %v; want the person's registry", got, err)
+	}
+	idx, err := loadHistoryIndex()
+	if err != nil || idx == nil || len(idx.Repos) != 1 || idx.Repos[0].Name != "stage-name" {
+		t.Fatalf("loadHistoryIndex keeps to the process's home: %+v, %v", idx, err)
+	}
+}

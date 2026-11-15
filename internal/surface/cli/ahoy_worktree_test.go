@@ -204,8 +204,8 @@ func twoLanes(t *testing.T) (string, string) {
 }
 
 // listAllLabels runs `list --all` in both forms and returns each lane's label
-// by key from the JSON form, and the text form.
-func listAllLabels(t *testing.T) (map[string]string, string) {
+// by key and the note from the JSON form, and the text form.
+func listAllLabels(t *testing.T) (map[string]string, string, string) {
 	t.Helper()
 	js, code := runWorktree(t, true, "list", "--all")
 	var got worktree.AllListing
@@ -220,7 +220,7 @@ func listAllLabels(t *testing.T) (map[string]string, string) {
 	if code != 0 {
 		t.Fatalf("text form: exit %d\n%s", code, text)
 	}
-	return labels, text
+	return labels, got.ForgeNote, text
 }
 
 // TestAhoyWorktreeListAllLabelsRegisteredLanes is itd-2609091014076309's
@@ -231,7 +231,10 @@ func listAllLabels(t *testing.T) (map[string]string, string) {
 func TestAhoyWorktreeListAllLabelsRegisteredLanes(t *testing.T) {
 	alpha, beta := twoLanes(t)
 	writeRegistry(t, `{"schema": 1, "repos": [{"root_commit": "`+alpha+`", "name": "alpha-repo", "path": "/no/such/checkout", "status": "active"}]}`)
-	labels, text := listAllLabels(t)
+	labels, note, text := listAllLabels(t)
+	if strings.Contains(note, registryUnreadNote) {
+		t.Fatalf("a readable registry adds no note: %q", note)
+	}
 	if labels[alpha] != "alpha-repo" {
 		t.Fatalf("the registered lane is shown under its registry name, got %q: %v", labels[alpha], labels)
 	}
@@ -250,9 +253,12 @@ func TestAhoyWorktreeListAllLabelsRegisteredLanes(t *testing.T) {
 
 // TestAhoyWorktreeListAllWithoutARegistry: a registry that is absent,
 // malformed, not a regular file or reached through a symlinked history
-// directory changes nothing: every lane is shown under its root commit and the
-// listing does not fail.
+// directory labels no lane: every lane is shown under its root commit and the
+// listing does not fail. A registry that is there but cannot be read or is
+// refused adds one note, naming no path, in both forms; an absent one adds
+// none.
 func TestAhoyWorktreeListAllWithoutARegistry(t *testing.T) {
+	unread := map[string]bool{"absent": false, "malformed": true, "not a regular file": true, "symlinked history": true}
 	cases := map[string]func(t *testing.T, alpha string){
 		"absent": func(*testing.T, string) {},
 		"malformed": func(t *testing.T, alpha string) {
@@ -280,11 +286,47 @@ func TestAhoyWorktreeListAllWithoutARegistry(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			alpha, beta := twoLanes(t)
 			arrange(t, alpha)
-			labels, _ := listAllLabels(t)
+			labels, note, text := listAllLabels(t)
 			if len(labels) != 2 || labels[alpha] != alpha || labels[beta] != beta {
 				t.Fatalf("every lane is shown under its root commit: %v", labels)
 			}
+			if got := strings.Contains(note, registryUnreadNote); got != unread[name] {
+				t.Fatalf("the registry note is present=%v, want %v: %q", got, unread[name], note)
+			}
+			if got := strings.Contains(text, "note: "+registryUnreadNote); got != unread[name] {
+				t.Fatalf("the text form's registry note is present=%v, want %v:\n%s", got, unread[name], text)
+			}
+			for _, leak := range []string{os.Getenv("HOME"), "index.json", "history"} {
+				if strings.Contains(note, leak) {
+					t.Fatalf("the note names %q: %q", leak, note)
+				}
+			}
 		})
+	}
+}
+
+// TestAhoyWorktreeListAllReadsTheRegistryFromTheMachineHome: inside a walled
+// stage the process's HOME is the stage's, while the lanes are listed from the
+// person's home (abcdhome.MachineHome). The registry is read from that same
+// home, so a lane is named from the person's registry, never the stage's.
+func TestAhoyWorktreeListAllReadsTheRegistryFromTheMachineHome(t *testing.T) {
+	alpha, beta := twoLanes(t)
+	person := os.Getenv("HOME")
+	writeRegistry(t, `{"schema": 1, "repos": [{"root_commit": "`+alpha+`", "name": "person-name"}]}`)
+	stage := t.TempDir()
+	t.Setenv("HOME", stage)
+	t.Setenv(abcdhome.StageHomeEnv, stage)
+	t.Setenv(abcdhome.PersonHomeEnv, person)
+	writeRegistry(t, `{"schema": 1, "repos": [{"root_commit": "`+alpha+`", "name": "stage-name"}, {"root_commit": "`+beta+`", "name": "stage-beta"}]}`)
+	if got, err := abcdhome.MachineHome(); err != nil || got != person {
+		t.Fatalf("the fixture's machine home is %q (%v), want the person's %q", got, err, person)
+	}
+	labels, note, _ := listAllLabels(t)
+	if labels[alpha] != "person-name" || labels[beta] != beta {
+		t.Fatalf("the lanes are named from the person's registry alone: %v", labels)
+	}
+	if strings.Contains(note, registryUnreadNote) {
+		t.Fatalf("a readable registry adds no note: %q", note)
 	}
 }
 
