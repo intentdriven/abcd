@@ -193,7 +193,9 @@ an unmanaged repository the line is absent and the field omitted. It is not
 `presence:` line and the JSON a `statusline` object, both the plain form of the
 same row the host's status line shows — the badge first (`abcd-managed`,
 `waiting on the technical facilitator`, `waiting on the product thinker`), then
-the repository, the branch and the record's counts. The state behind the badge is what `abcd mode` stores at
+the repository, the branch, the `autonomous merging` element (key `merging`)
+while the repository's `facilitator.mode` is `auto`, and the record's counts;
+[`26-mode.md`](26-mode.md) says how that element is read and when it drops. The state behind the badge is what `abcd mode` stores at
 `.abcd/.work.local/mode`; the board reads it and never writes it. In an
 unmanaged repository the line is absent and the field omitted. The board is the
 fallback for a host with no status surface, so it renders the line even where
