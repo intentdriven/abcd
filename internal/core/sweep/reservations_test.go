@@ -539,3 +539,25 @@ func TestOnlyACronUnderOnScheduleIsRead(t *testing.T) {
 		}
 	}
 }
+
+// TestALongCronIsCutWhereItIsShown: a cron value far past any real one, which
+// the sweep cannot read, is shown in the schedule's note cut to the bound
+// report text is held to, with a marker saying it was cut, and the note stays
+// short.
+func TestALongCronIsCutWhereItIsShown(t *testing.T) {
+	repo, _ := originRepo(t)
+	long := strings.Repeat("7 ", 50000)
+	withWorkflow(t, repo, `    - cron: "`+long+`"`)
+	got := nextScheduled(repo.Root(), sweepClock)
+	if !strings.Contains(got, "its schedule could not be read") || !strings.Contains(got, "(cut to its first 160 characters)") {
+		t.Fatalf("note %q; want the cron cut, with a marker", got[:min(len(got), 400)])
+	}
+	if len(got) > 1200 {
+		t.Fatalf("the note is %d bytes; want it bound", len(got))
+	}
+	one := strings.Repeat("9", 100000)
+	withWorkflow(t, repo, `    - cron: "`+one+` * * * *"`)
+	if got := nextScheduled(repo.Root(), sweepClock); len(got) > 1200 || !strings.Contains(got, "(cut") {
+		t.Fatalf("a long field: the note is %d bytes, %q; want it bound and cut", len(got), got[:min(len(got), 400)])
+	}
+}

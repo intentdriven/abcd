@@ -363,6 +363,10 @@ func nextScheduled(root string, now time.Time) string {
 	case err != nil:
 		return unread(reservationWorkflowPath + " is not a regular file abcd can read")
 	}
+	// Each cron is the workflow file's text, which anyone who commits to the
+	// branch writes, so it is shown as report text is: quoted, masked and cut
+	// to reportTextCap runes, room for any five-field cron, with a marker
+	// when it is cut.
 	exprs, err := workflowCrons(data)
 	if err != nil {
 		return unread(reservationWorkflowPath + " " + err.Error())
@@ -377,17 +381,17 @@ func nextScheduled(root string, now time.Time) string {
 	for _, expr := range exprs {
 		c, err := parseCron(expr)
 		if err != nil {
-			return unread("its cron " + strconv.Quote(expr) + " is not the plain five-field form the sweep reads: " + err.Error())
+			return unread("its cron " + untrusted(expr) + " is not the plain five-field form the sweep reads: " + untrustedLine(err.Error()))
 		}
 		at, ok := c.next(now)
 		if !ok {
-			return unread("its cron " + strconv.Quote(expr) + " names no time that comes")
+			return unread("its cron " + untrusted(expr) + " names no time that comes")
 		}
 		if next.IsZero() || at.Before(next) {
 			next, from = at, expr
 		}
 	}
-	return "its next scheduled run is at " + next.Format(time.RFC3339) + ", from its cron " + strconv.Quote(from) +
+	return "its next scheduled run is at " + next.Format(time.RFC3339) + ", from its cron " + untrusted(from) +
 		" in " + reservationWorkflowPath + " (in UTC, as the forge reads it), and it deletes what is spent then"
 }
 
