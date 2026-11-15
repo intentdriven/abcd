@@ -475,6 +475,12 @@ func TestASyncMergeIsRefusedOverACheckedOutSubmodule(t *testing.T) {
 		t.Setenv("HOME", t.TempDir())
 		r := gittest.NewRepo(t)
 		r.Git("config", "commit.gpgsign", "false")
+		// The sync's merge runs with the drive's environment, which carries
+		// no identity, and HOME above is empty, so the identity it commits
+		// under is the repository's own: a host with no identity of its own
+		// to guess (CI's) has nothing else to fall back on.
+		r.Git("config", "user.name", "Fixture")
+		r.Git("config", "user.email", "fixture@example.invalid")
 		r.Write("a.txt", "a\n")
 		r.Commit("seed")
 		r.Git("update-index", "--add", "--cacheinfo", "160000,"+r.Git("rev-parse", "HEAD")+",unpop")
