@@ -30,7 +30,9 @@ Then tell the user the `state`. An absent store reads as `managed`; outside any 
 
 **The agent, at a question.** abcd's question is headed with its number
 (`Q1`, `Q1a`, `Q2/5`), which names no person, so set the state to the person
-the question is for before you ask it:
+the question is for before the question is written, so the check the
+`abcd:question-drafter` agent runs on each draft reads that person, and keep
+it while you ask:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" mode product-thinker --json

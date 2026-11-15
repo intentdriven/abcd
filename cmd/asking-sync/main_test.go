@@ -371,3 +371,34 @@ func TestCheckCoversTheDrafterBlock(t *testing.T) {
 		t.Fatalf("-check after the sync returned %v", err)
 	}
 }
+
+// TestDrafterBlockTellsTheWriterToRunTheVerb (spc-2610301917245442, step 4;
+// approach 10): the writer's generated block tells it to head every draft
+// with abcd's number, to run `abcd guard question` after every edit, and to
+// return the verb's rows, ready input and version; the hand count of rows is
+// kept, and only for a host that gives the writer no shell.
+func TestDrafterBlockTellsTheWriterToRunTheVerb(t *testing.T) {
+	block := renderDrafter(question.Default)
+	for _, want := range []string{
+		`"Q1"`,
+		"run `abcd guard question` after every edit",
+		"`rows`",
+		"`ready`",
+		"`version`",
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("the drafter block does not state %q:\n%s", want, block)
+		}
+	}
+	at := strings.Index(block, "## Counting rows")
+	if at < 0 {
+		t.Fatal("the drafter block lost its row count")
+	}
+	heading := block[at : at+strings.Index(block[at:], "\n")]
+	if !strings.Contains(heading, "no shell") {
+		t.Errorf("the hand count must be headed as the fallback for a host with no shell; heading = %q", heading)
+	}
+	if strings.Count(block, "no shell") < 2 {
+		t.Errorf("the block must say, beside the count, that it is only for a host with no shell:\n%s", block[at:])
+	}
+}

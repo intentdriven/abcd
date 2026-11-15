@@ -29,8 +29,8 @@ func AskingRecall() []string { return append([]string(nil), askingRecall...) }
 // criterion A7). The text names no record and no source-tree command: it
 // reaches repositories that have neither (itd-201 decision 8).
 //
-// The register rule, the ask-the-role-first rule and the mode rules open with
-// "In abcd's own interviews": they hold for abcd's command pages, never for
+// The register rule, the ask-the-role-first rule, the writer rule and the mode
+// rules open with "In abcd's own interviews": they hold for abcd's command pages, never for
 // another tool's questions in a managed repository (itd-201 decision 10).
 func AskingRules(l Limits) []string {
 	return []string{
@@ -49,21 +49,22 @@ func AskingRules(l Limits) []string {
 			"Material too long for one question is put one part per question, never into a message before the question or into a preview.",
 
 		fmt.Sprintf("Every question has one layout, and abcd's question check refuses a question that breaks it, naming the part, the value, and the limit; fix each part and ask again. "+
-			"The header is a chip of at most %s columns naming whom the question is for and which it is: %s, the role one of %s, with a total after the slash only when the interview's length is known. "+
+			"The header is at most %s columns and is abcd's number for the question: %s, a letter after the number for one part of a question split in parts, and a total after the slash only when the interview's length is known; the header is what the check knows abcd's question by, and the older form with a role word first (%s, the role one of %s) is still read. "+
 			"The question text gives the material first, then a line starting %q and a line starting %q (each saying %q where it does not apply), and ends with the question on its own line. "+
 			"It offers %s to %s options, the last %s; each label is at most %s words, and each description at most %s sentences. "+
 			"There is no bold (no ** or __) and no side preview, and one question, or one tab, fits %s rows at %s columns, counting the header, the host's frame, the question text, and every option's label and description. "+
 			"The rows limit is the one the check does not refuse on: a question over it is shown, and the agent is told afterwards to keep the next question within it.",
-			numberWord(l.HeaderColumns), chipExamples(l.ChipRoles), joinOr(l.ChipRoles, false),
+			numberWord(l.HeaderColumns), joinOr(numberExamples, true), chipExamples(l.ChipRoles), joinOr(l.ChipRoles, false),
 			l.NowPrefix, l.ChangeLaterPrefix, l.NotApplicable,
 			numberWord(l.OptionsPerQ[0]), numberWord(l.OptionsPerQ[1]), joinOr(l.LaterLabels, true),
 			numberWord(l.LabelWords), numberWord(l.MeaningSentences),
 			numberWord(l.Rows), numberWord(l.Columns)),
 
-		"In abcd's own interviews, draft each question through the abcd:question-drafter agent: hand it the material to quote, whom the question is for, the decision, and the defensible answers, and ask the question it returns. " +
-			"It applies these rules and counts the rows the way the check does, so the question fits. " +
-			"When it refuses a draft or the draft runs over a limit, fix the brief and redraft it without telling the person: The drafter's refusals and retries are the agent's own work, and the next thing the person sees is the question itself. " +
-			"A host with no agents drafts the question itself, to the same rules.",
+		"In abcd's own interviews, write each question through the abcd:question-drafter agent, abcd's question writer: hand it the material to quote, whom the question is for, the decision, and the defensible answers. " +
+			"It writes the question to these rules, runs `abcd guard question` on each draft, fixes every fault the check names, and checks again until the check is clean, then returns the question with the rows the check counted. " +
+			"Ask only the question the writer returns, and never write or edit a question yourself. " +
+			"When it refuses, fix the brief and redraft it without telling the person: The writer's refusals and retries are the agent's own work, and the next thing the person sees is the question itself. " +
+			"A host with no agents writes the question itself, to the same rules, and checks each draft with `abcd guard question` before asking it.",
 
 		"Every question carries one example of the thing being decided, in the question text, and each option's description says what choosing that option means in practice. " +
 			"An abcd question carries no side preview: While a preview shows, the host hides every option's description and cuts the preview to the rows it has, so the meaning goes where it always shows. " +
@@ -90,10 +91,15 @@ func AskingRules(l Limits) []string {
 		"In abcd's own interviews, before a stop that is not a question (a hand-off, or a step the person runs), record whose answer is owed with `abcd mode facilitator` or `abcd mode product-thinker`, and set it back with `abcd mode managed` once the answer is in. " +
 			"Where the host has no status surface, the set form prints one line naming the addressee; relay it verbatim, because that line is the whole of the fallback.",
 
-		"In abcd's own interviews, classify each question's addressee first (the product thinker or the technical facilitator), and head the question with the chip naming that role: the chip sets the mode when the question is asked, and the answer sets it back to managed, so a question needs no `abcd mode` before it. " +
-			"The status line names the person the question on screen is for, so a mixed interview re-sets the mode per question, never once at the start.",
+		"In abcd's own interviews, classify each question's addressee first (the product thinker or the technical facilitator), and set the mode to that person with `abcd mode product-thinker` or `abcd mode facilitator` before the question is written, so its check reads the person it is for: the number in the header names no person, and the answer sets the mode back to managed. " +
+			"The status line names the person the question on screen is for, so the tabs of one question are for one person, and a mixed interview re-sets the mode per question, never once at the start.",
 	}
 }
+
+// numberExamples are the headers the layout rule shows in abcd's number form:
+// a plain number, a part, and a number with the interview's total. The
+// grammar is the check's (chipRe); no limit sets it.
+var numberExamples = []string{"Q1", "Q1a", "Q2/5"}
 
 // chipOrdinals are the ordinals the chip examples show, one per role in turn:
 // a plain ordinal, another, and one with the interview's total.

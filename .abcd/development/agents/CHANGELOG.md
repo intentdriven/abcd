@@ -12,6 +12,35 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-11-15 (itd-2610230756259215 — abcd's question writer checks every draft)
+
+### question-drafter 0.2.0
+
+MINOR, a schema change in the `0.x` band: the drafter becomes abcd's question
+writer (spc-2610301917245442, step 4). It heads every draft with abcd's number
+(`Q1`, `Q1a`, `Q2/5`), runs `abcd guard question` after every edit with the
+draft on standard input, and returns the check's `ready` input as `questions`,
+its `rows`, its `version`, and `checked_by` (`abcd`; `hook-only` where the
+installed binary has no `guard question`, counting nothing by hand; `hand`
+only where the host gives it no shell). It makes at most five checks to a
+part. It never refuses for length: material that does not fit is split into
+numbered parts, returned in a new `next` list that replaces `remaining`. It
+refuses for three causes only, each to the calling agent: a missing or
+contradictory part of the brief, the check's exit 2, and five checks spent,
+with the check's last findings. In abcd's own source checkout it runs the
+check through `scripts/abcd.sh` and records the version it reports. The
+generated block's asking rules and its new "Checking each draft" section move
+with the GRILL text; the hand row count is kept for a host with no shell.
+Unmeasured, in the `0.x` band.
+
+### planning-interviewer 0.3.1
+
+PATCH: the receipt contract says the chip keeps the older form, the role word
+first, because abcd draws the question in a Terminal with no status line, and
+that the asking rules' number form, mode setting, question writer and
+`abcd guard question` are for a host session; abcd checks the receipt itself.
+No other rule or field changed. Unmeasured, in the `0.x` band.
+
 ## 2026-11-05 (a recorded verdict names the head it judges)
 
 ### ruthless-reviewer 0.3.2

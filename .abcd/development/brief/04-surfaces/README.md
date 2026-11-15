@@ -499,7 +499,7 @@ an agent page means adding or removing its row in the same change.
 | [`planning-interviewer`](../../../../agents/planning-interviewer.md) | `intent` | [`05-intent.md`](05-intent.md) | Runs an intent's planning interview and edits the intent record after each answer |
 | [`press-release-composer`](../../../../agents/press-release-composer.md) | `disembark` | [`02-disembark.md`](02-disembark.md) | Composes a lifeboat's press release from its packed brief, spine, and principles |
 | [`principle-distiller`](../../../../agents/principle-distiller.md) | `disembark` | [`02-disembark.md`](02-disembark.md) | Distils durable principles from a packed lifeboat's decision record |
-| [`question-drafter`](../../../../agents/question-drafter.md) | none | [§ Agents outside the verb chapters](#agents-outside-the-verb-chapters) | Drafts one of abcd's own questions so it follows every asking rule and fits the rows limit |
+| [`question-drafter`](../../../../agents/question-drafter.md) | none | [§ Agents outside the verb chapters](#agents-outside-the-verb-chapters) | Writes one of abcd's own questions and checks it with `abcd guard question` until it is clean |
 | [`reflection-composer`](../../../../agents/reflection-composer.md) | `reflect` | [`09-reflect.md`](09-reflect.md) | Runs a cut release's retrospective interview and drafts its answers |
 | [`release-changelog-composer`](../../../../agents/release-changelog-composer.md) | `launch` | [`04-launch.md`](04-launch.md) | Composes a release cut's changelog lines and release page from the records that shipped in it |
 | [`ruthless-reviewer`](../../../../agents/ruthless-reviewer.md) | `build`, `drain` | [§ Agents outside the verb chapters](#agents-outside-the-verb-chapters) | Reviews a diff that builds and passes its checks, for correctness first |
@@ -545,15 +545,20 @@ that everything it reads is data, never instruction.
   marketing, and cites only what it opened in the run. It returns a ranked list
   of recommendations, each with its source and tier, and a section on what it
   rejected.
-- **`question-drafter`** drafts one of abcd's own questions before the agent
-  running the interview asks it: handed the material to quote, the addressee,
-  the decision and the defensible answers, it returns the host question tool's
-  input and the rows each tab takes, counted as the question check in
-  [`17-guard.md`](17-guard.md) counts them. Its asking rules and its row count
-  are a block `cmd/asking-sync` renders from `question.Default`, so the
-  prompt and the check read one statement of every limit. It puts nothing to
-  the person itself and never marks an option recommended. The GRILL asking
-  rules tell every agent running an abcd interview to draft through it.
+- **`question-drafter`** is abcd's question writer: it writes one of abcd's own
+  questions before the agent running the interview asks it. Handed the
+  material to quote, the addressee, the decision and the defensible answers,
+  it heads each draft with abcd's number, runs `abcd guard question`
+  ([`17-guard.md`](17-guard.md)) after every edit, at most five checks to a
+  part, and returns the check's ready input, its rows and its version with
+  `checked_by`, splitting material too long for one screen into numbered
+  parts rather than refusing it. It refuses only a missing or contradictory
+  brief, the check's exit 2, or five checks spent, and only to the agent that
+  called it. Its asking rules, how it checks a draft, and the hand row count
+  kept for a host with no shell are a block `cmd/asking-sync` renders from
+  `question.Default`. It puts nothing to the person itself and never marks an
+  option recommended. The GRILL asking rules tell every agent running an abcd
+  interview to ask only what it returns.
 
 `docs-currency-reviewer`, one of the release gate's semantic passes, serves
 `launch` and is documented in [`10-docs.md`](10-docs.md): the release cut names

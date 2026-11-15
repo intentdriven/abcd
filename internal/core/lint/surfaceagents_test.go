@@ -176,3 +176,60 @@ func TestGuardPageDocumentsTheQuestionVerb(t *testing.T) {
 		t.Error("the reference does not carry the verb's help line in the house form")
 	}
 }
+
+// handWritten is page with every generated block cut out, so a test reads
+// only what a person wrote.
+func handWritten(page string) string {
+	var b strings.Builder
+	for {
+		at := strings.Index(page, "<!-- generated:")
+		if at < 0 {
+			b.WriteString(page)
+			return b.String()
+		}
+		b.WriteString(page[:at])
+		end := strings.Index(page[at:], "<!-- /generated -->")
+		if end < 0 {
+			return b.String()
+		}
+		page = page[at+end+len("<!-- /generated -->"):]
+	}
+}
+
+// TestWriterPageStatesItsRefusalsAndFallbacks (spc-2610301917245442, step 4;
+// approach 9): the hand-written part of the question-writing agent's page
+// states its three refusals, each returned to the calling agent only (a
+// missing or contradictory part of the brief, the check's exit 2, five checks
+// spent with the last findings); the `checked_by` field with its three values;
+// the five-check bound; that it never refuses for length, splitting into
+// numbered parts with every answer's gain and cost kept; and, in abcd's own
+// source checkout, the verb run from the source tree.
+func TestWriterPageStatesItsRefusalsAndFallbacks(t *testing.T) {
+	page, err := os.ReadFile(filepath.Join(repoRootFromPackage, "agents", "question-drafter.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Join(strings.Fields(handWritten(string(page))), " ")
+	for name, phrases := range map[string][]string{
+		"the refusal of a missing or contradictory part": {"a part of the brief is missing or contradicts another"},
+		"the refusal on the check's exit 2":              {"exits 2", "never a reason to count by hand"},
+		"the refusal after five checks":                  {"five checks", "the check's last findings"},
+		"refusals go to the caller only":                 {"to the agent that called you", "never to the person"},
+		"checked_by and its three values":                {"`checked_by`", "`abcd`", "`hook-only`", "`hand`"},
+		"an older binary is hook-only":                   {"has no `guard question`", "`checked_by: hook-only`", "count nothing by hand"},
+		"a host with no shell counts by hand":            {"no shell", "`checked_by: hand`"},
+		"the five-check bound":                           {"at most five checks to a part"},
+		"never refused for length":                       {"never refuse for length", "numbered parts", `"None of these"`, "Q1b", "every answer's gain and cost"},
+		"the source tree in abcd's checkout":             {"abcd's own source checkout", "`scripts/abcd.sh guard question`", "`version` it reports"},
+		"what it returns":                                {"`questions`", "`rows`", "`version`", "`ready`"},
+	} {
+		for _, p := range phrases {
+			if !strings.Contains(text, p) {
+				t.Errorf("agents/question-drafter.md does not state %s: missing %q", name, p)
+			}
+		}
+	}
+	if strings.Contains(text, "`remaining`") {
+		t.Error("the writer page still returns `remaining`: a part that does not fit is split into numbered parts, never handed back unasked")
+	}
+}
