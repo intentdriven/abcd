@@ -172,6 +172,8 @@ mint() {
 		echo "preflight: no push receipt minted — the working tree differed from HEAD (staged, unstaged"
 		echo "           or untracked changes), so these gates did not read the tree a push ships."
 		echo "           Commit or set aside the changes and run \`make preflight\` again before pushing."
+		echo "           Where \`git status\` reads clean, a replacement ref, a graft file or a commit-graph"
+		echo "           that changes how HEAD reads may be the cause: these gates read HEAD as stored."
 		return 0
 	fi
 	if [ "$began_head" != "$now_head" ]; then
