@@ -27,9 +27,11 @@ const (
 var stageGateFiles = []string{".githooks", "hooks", "Makefile", "GNUmakefile", "makefile"}
 
 // stageAbcdGates are the files under .abcd that do the same, by path below the
-// tree: each, and all below each.
+// tree: each, and all below each. The reservation state (the copy's key, its
+// fetch stamp, the generated set kept) is abcd's own to write.
 var stageAbcdGates = []string{".abcd/rules.json", ".abcd/guard.json", ".abcd/config.json", ".abcd/config",
-	".abcd/.work.local/preflight-receipts", ".abcd/.work.local/approvals", ".abcd/.work.local/review-receipts"}
+	".abcd/.work.local/preflight-receipts", ".abcd/.work.local/approvals", ".abcd/.work.local/review-receipts",
+	".abcd/.work.local/reservation"}
 
 // stageLocalTier is the one place under .abcd a stage writes freely, and
 // stageAbcd the rest of it, which it writes where its work declares.
