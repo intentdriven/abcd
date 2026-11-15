@@ -175,6 +175,7 @@ An entry in the store lane that is neither a worktree nor a directory failing th
    - criteria: 8
    - packages: internal/core/sweep/branches.go, internal/core/sweep/remote.go
    - tests: `branch -d` honoured and its refusal kept; a merged origin branch deleted under a lease and named; one held by an open pull request, a reservation or a live session kept, naming what holds it; the never-delete list.
+   - landed: 527becba3754
 4. Reservations and inbox
    - criteria: 9, 10
    - packages: internal/core/sweep/reservations.go, internal/core/sweep/inbox.go
