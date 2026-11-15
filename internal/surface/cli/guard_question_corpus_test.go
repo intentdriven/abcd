@@ -39,6 +39,10 @@ type questionCorpusState struct {
 	name  string
 	make  func(t *testing.T) string
 	badge bool // the hook marks an admitted question of abcd's open here
+	// start is the mode the state sets before the call, where the badge
+	// shows and the store reads: hookOutcome reads it, not the mode after
+	// the call, which an older-form chip has just changed.
+	start mode.State
 }
 
 var questionCorpusStates = []questionCorpusState{
@@ -47,24 +51,24 @@ var questionCorpusStates = []questionCorpusState{
 		dir := realPath(t, t.TempDir())
 		t.Chdir(dir)
 		return dir
-	}, false},
-	{"unmanaged", unmanagedRepo, false},
-	{"managed", managedCheckout, true},
+	}, false, ""},
+	{"unmanaged", unmanagedRepo, false, ""},
+	{"managed", managedCheckout, true, mode.Managed},
 	{"managed, product thinker", func(t *testing.T) string {
 		root := managedCheckout(t)
 		setMode(t, root, mode.ProductThinker)
 		return root
-	}, true},
+	}, true, mode.ProductThinker},
 	{"managed, facilitator", func(t *testing.T) string {
 		root := managedCheckout(t)
 		setMode(t, root, mode.Facilitator)
 		return root
-	}, true},
+	}, true, mode.Facilitator},
 	{"away", func(t *testing.T) string {
 		root := awayCheckout(t)
 		setAwayHere(t)
 		return root
-	}, true},
+	}, true, ""},
 	{"away record unreadable", func(t *testing.T) string {
 		root := awayCheckout(t)
 		setAwayHere(t)
@@ -72,28 +76,28 @@ var questionCorpusStates = []questionCorpusState{
 			t.Fatal(err)
 		}
 		return root
-	}, true},
+	}, true, ""},
 	{"mode store unreadable", func(t *testing.T) string {
 		root := managedCheckout(t)
 		if err := os.WriteFile(modeFile(root), []byte("sideways\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		return root
-	}, true},
+	}, true, ""},
 	// The question limits a repository sets (spc-2610301950037469, step 2),
 	// each from a configuration fixture under corpus/config/: values in
 	// force, a value the resolver refuses, and a file it cannot parse, which
 	// leaves abcd's question checked at the defaults.
-	{"limits in force", corpusConfig("limits-in-force"), false},
-	{"limits refused", corpusConfig("limits-refused"), false},
-	{"limits unparseable", corpusConfig("limits-unparseable"), false},
+	{"limits in force", corpusConfig("limits-in-force"), false, ""},
+	{"limits refused", corpusConfig("limits-refused"), false, ""},
+	{"limits unparseable", corpusConfig("limits-unparseable"), false, ""},
 	{"root unfindable", func(t *testing.T) string {
 		root := managedCheckout(t)
 		setMode(t, root, mode.ProductThinker)
 		fakeGit(t, `case "$*" in *rev-parse*) echo 'fatal: refused' >&2; exit 128;; esac
 exec "$REAL_GIT" "$@"`)
 		return root
-	}, false},
+	}, false, ""},
 }
 
 // corpusConfig is a checkout state: an unmanaged repository whose
@@ -115,10 +119,12 @@ var denyHeadRe = regexp.MustCompile(`^Blocked by the abcd guard \(question tool\
 
 // hookOutcome reads what the hook did with a call as one of Decide's
 // outcomes. A silent admission is admit or admit-unchecked; it is told apart
-// only where the badge shows and the mode reads managed, by whether the
-// question was marked open: under a mode naming somebody an unchecked
-// question is marked open too, so the answer resets that mode.
-func hookOutcome(t *testing.T, stdout, stderr string, code int, root string, badge bool) (outs []question.Outcome, reason, note string) {
+// only where the badge shows and the mode read managed before the call, by
+// whether the question was marked open: under a mode naming somebody an
+// unchecked question is marked open too, so the answer resets that mode. The
+// mode is the state's starting one, never the mode after the call, which an
+// older-form chip has just changed.
+func hookOutcome(t *testing.T, stdout, stderr string, code int, root string, st questionCorpusState) (outs []question.Outcome, reason, note string) {
 	t.Helper()
 	switch {
 	case isDeny(stdout):
@@ -138,11 +144,11 @@ func hookOutcome(t *testing.T, stdout, stderr string, code int, root string, bad
 		}
 		return []question.Outcome{question.OutcomeAdmitWithRowsNote}, "", out.HookSpecificOutput.AdditionalContext
 	case code == 0:
-		if badge {
+		if st.badge {
 			if !markedOpen(t, root) {
 				return []question.Outcome{question.OutcomeAdmitUnchecked}, "", ""
 			}
-			if st, err := mode.ReadAt(root); err == nil && st == mode.Managed {
+			if st.start == mode.Managed {
 				return []question.Outcome{question.OutcomeAdmit}, "", ""
 			}
 			return []question.Outcome{question.OutcomeAdmit, question.OutcomeAdmitUnchecked}, "", ""
@@ -195,7 +201,7 @@ func TestGuardQuestionAndHookDecideAlike(t *testing.T) {
 				}
 				payload := askToolPayload(t, root, map[string]json.RawMessage{"questions": in.Questions})
 				stdout, stderr, code := runGuard(payload, "guard", "hook")
-				outs, reason, note := hookOutcome(t, stdout, stderr, code, root, st.badge)
+				outs, reason, note := hookOutcome(t, stdout, stderr, code, root, st)
 				if !slices.Contains(outs, res.Hook) {
 					t.Fatalf("the verb says %q, the hook did %v (exit %d, stdout %q, stderr %q)", res.Hook, outs, code, stdout, stderr)
 				}

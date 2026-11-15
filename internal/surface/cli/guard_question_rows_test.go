@@ -150,9 +150,9 @@ func TestRowsWithAnotherFindingIsDenied(t *testing.T) {
 	if !slices.Equal(rulesNamed(rows), []string{string(question.RuleRows)}) {
 		t.Errorf("want the rows finding named after the rows line; got %v:\n%s", rulesNamed(rows), reason)
 	}
-	if markedOpen(t, root) {
-		t.Error("a refused question was marked open")
-	}
+	// Refused under the product thinker's mode, it is marked open under it,
+	// so the next message's reset returns the mode to managed.
+	mustBeMarkedUnder(t, root, mode.ProductThinker)
 }
 
 // TestRowsOnlyWhileManagedIsAdmitted (iss-2610100626211810): the chip names

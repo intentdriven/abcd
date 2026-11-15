@@ -636,7 +636,8 @@ func (w *Written) brief(turn, asked int, answers []Answer, c carried) string {
 		"After that abcd shows the question as it stands, repaired where it can be, and ends the interview on an outcome. "+
 		"The rows limit alone refuses nothing: a question over it is shown, and the next brief asks you to keep the next within it.\n\n",
 		c.bound, plural(c.bound, "time", "times"))
-	b.WriteString("## How every question is asked\n\nabcd draws your question, so where a rule below says to ask through the host's question tool, or to set a mode, you write the question in your receipt instead and set no mode. The chip names whom the question is for.\n\n")
+	b.WriteString("## How every question is asked\n\nabcd draws your question, so where a rule below says to ask through the host's question tool, to write through the question-writing agent or check a draft with `abcd guard question`, or to set a mode, you write the question in your receipt instead, abcd checks it, and you set no mode. " +
+		"No status line names the person here, so head the chip in the older form, the role word first (\"Product Q3\", \"Tech Q4\"): the chip names whom the question is for.\n\n")
 	for _, r := range question.AskingRules(w.Limits) {
 		b.WriteString("- " + r + "\n")
 	}

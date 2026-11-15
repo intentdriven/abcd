@@ -23,11 +23,14 @@ spc-2610030944505997), and abcd's question check in `abcd guard hook` refuses
 an abcd question that breaks it, naming the part, the value, and the limit. The
 rows limit is the exception: a question too tall for the narrow window is
 shown, and the agent is told afterwards to keep the next one within it. The
-`abcd:question-drafter` agent drafts a question to these rules and counts its
-rows the way the check does:
+`abcd:question-drafter` agent, abcd's question writer, writes a question to
+these rules and checks every draft with `abcd guard question` until it is
+clean:
 
-- **The header is a chip** naming whom the question is for and which it is
-  ("Product Q2"), one of the roles the limits list.
+- **The header is abcd's number** for the question (`Q1`, `Q1a` for a part,
+  `Q2/5` with the interview's total); the agent sets the mode to the person it
+  is for before the question is written, so the check reads that person. The older form with a role word first ("Product
+  Q2") is still read, and the Terminal-drawn interviews keep it.
 - **The thing being decided comes first**, quoted in full in paragraphs and
   lists, never referred to; then the `Now:` and `Change later:` lines, which
   carry items 1 and 3 above into every question, each saying "not

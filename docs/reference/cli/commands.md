@@ -2465,12 +2465,12 @@ calls, so it reports every finding, the rows each tab takes at 80 columns
 (header and frame, question text, options, total), what the hook would do
 with the draft in this checkout now (admit, admit-with-rows-note, refuse,
 refuse-away, admit-unchecked or unchecked), whether that answer depends on
-the mode or the away record, the binary's version, and the input ready to
-ask. The ready input is the draft's own bytes for the host form, every key
-the check does not read kept, and the composed input for --ask; it is left
-out when the hook would refuse. The verdict is evidence about a hook of the
-same version; a mode set, or the person marked away, before the ask can
-change it.
+the mode or the away record, whether the badge shows here (badge), the
+binary's version, and the input ready to ask. The ready input is the
+draft's own bytes for the host form, every key the check does not read
+kept, and the composed input for --ask; it is left out when the hook
+would refuse. The verdict is evidence about a hook of the same version; a
+mode set, or the person marked away, before the ask can change it.
 
 The limits judged at are the ones the hook holds abcd's question to in
 this checkout: abcd's defaults, with the rows, label words and description

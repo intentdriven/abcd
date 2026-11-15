@@ -176,3 +176,72 @@ func TestGuardPageDocumentsTheQuestionVerb(t *testing.T) {
 		t.Error("the reference does not carry the verb's help line in the house form")
 	}
 }
+
+// handWritten is page with every generated block cut out, so a test reads
+// only what a person wrote.
+func handWritten(page string) string {
+	var b strings.Builder
+	for {
+		at := strings.Index(page, "<!-- generated:")
+		if at < 0 {
+			b.WriteString(page)
+			return b.String()
+		}
+		b.WriteString(page[:at])
+		end := strings.Index(page[at:], "<!-- /generated -->")
+		if end < 0 {
+			return b.String()
+		}
+		page = page[at+end+len("<!-- /generated -->"):]
+	}
+}
+
+// TestWriterPageStatesItsRefusalsAndFallbacks (spc-2610301917245442, step 4;
+// approach 9): the hand-written part of the question-writing agent's page
+// states its three refusals, each returned to the calling agent only (a
+// missing or contradictory part of the brief, the mode in force among them,
+// an `unnamed` addressee under `badge: true` included, but not one under
+// `badge: false`; the check giving no ready input, on its
+// exit 2 or a `refuse-away`; five checks spent with the last findings), and
+// the caller's `abcd mode managed` when it abandons a question after one;
+// the draft piped as one line of JSON; the `questions` array of `ready` as
+// what is returned; the `checked_by` field with its three values;
+// the five-check bound; that it never refuses for length, splitting into
+// numbered parts with every answer's gain and cost kept; and, in abcd's own
+// source checkout, the verb run from the source tree.
+func TestWriterPageStatesItsRefusalsAndFallbacks(t *testing.T) {
+	page, err := os.ReadFile(filepath.Join(repoRootFromPackage, "agents", "question-drafter.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Join(strings.Fields(handWritten(string(page))), " ")
+	for name, phrases := range map[string][]string{
+		"the refusal of a missing or contradictory part": {"a part of the brief is missing or contradicts another"},
+		"the refusal when no ready input comes back":     {"cannot give a ready input", "exits 2", "`refuse-away`", "never a reason to count by hand"},
+		"unnamed: an unset mode, or no badge":            {"names a person (`product-thinker` or `facilitator`) other than the one you were handed", "the check's `badge` says why", "With `badge: true`", "the caller did not set the mode", "That is refusal cause 1", "naming the person you were handed and the mode in force", "With `badge: false`", "`unnamed` is no disagreement"},
+		"the abandoned question's mode":                  {"abandons the question after your refusal", "`abcd mode managed`"},
+		"the draft's one line of JSON":                   {"valid JSON on one line", "written as `\\n`", "can never be the delimiter line"},
+		"the questions array, not ready":                 {"the `questions` array of the check's `ready` input"},
+		"the refusal after five checks":                  {"five checks", "the check's last findings"},
+		"refusals go to the caller only":                 {"to the agent that called you", "never to the person"},
+		"checked_by and its three values":                {"`checked_by`", "`abcd`", "`hook-only`", "`hand`"},
+		"an older binary is hook-only":                   {"has no `guard question`", "`checked_by: hook-only`", "count nothing by hand"},
+		"a host with no shell counts by hand":            {"no shell", "`checked_by: hand`"},
+		"the five-check bound":                           {"at most five checks to a part"},
+		"never refused for length":                       {"never refuse for length", "numbered parts", `"None of these"`, "Q1b", "every answer's gain and cost"},
+		"the source tree in abcd's checkout":             {"abcd's own source checkout", "`scripts/abcd.sh guard question`", "`version` it reports"},
+		"what it returns":                                {"`questions`", "`rows`", "`version`", "`ready`"},
+	} {
+		for _, p := range phrases {
+			if !strings.Contains(text, p) {
+				t.Errorf("agents/question-drafter.md does not state %s: missing %q", name, p)
+			}
+		}
+	}
+	if strings.Contains(text, "`remaining`") {
+		t.Error("the writer page still returns `remaining`: a part that does not fit is split into numbered parts, never handed back unasked")
+	}
+	if strings.Contains(text, "prints `managed`") || strings.Contains(text, "carries abcd's block") {
+		t.Error("the writer page still judges an `unnamed` tab by `abcd mode` or abcd's block in a root file; the check's `badge` is the State value the hook decides with")
+	}
+}

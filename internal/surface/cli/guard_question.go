@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
@@ -111,13 +113,13 @@ func isQuestionTool(name string) bool {
 // home) is loud and holds abcd's question to the defaults: one NOT CHECKED
 // line names the file, and a question the defaults admit runs at exit 1.
 // Another tool's question runs unchecked whatever either file says.
-func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
+func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage, outer error) error {
 	reads := questionState(cmd, cwd)
 	if reads.state.Away {
 		return denyCall(awayQuestionRefusal())
 	}
 	if reads.state.AwayErr == nil {
-		return presentQuestionGate(cmd, reads, raw)
+		return presentQuestionGate(cmd, reads, raw, outer)
 	}
 	// The away record could not be read safely, so it reads as not away and
 	// the question is checked as if the person were present. Said on stderr,
@@ -128,7 +130,7 @@ func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
 		termsafe.Sanitize(scrubPaths(reads.state.AwayErr)))
 	out := &wroteWriter{w: cmd.OutOrStdout()}
 	cmd.SetOut(out)
-	err := presentQuestionGate(cmd, reads, raw)
+	err := presentQuestionGate(cmd, reads, raw, outer)
 	cmd.SetOut(out.w)
 	if err == nil && !out.wrote {
 		return &exitError{Code: 1}
@@ -232,10 +234,26 @@ func (o *wroteWriter) Write(p []byte) (int, error) {
 // question.Decide's; this function only acts on it, and every write it makes
 // comes after the decision, so `abcd guard question`, which calls the same
 // decision, can never reach them.
-func presentQuestionGate(cmd *cobra.Command, reads questionReads, raw json.RawMessage) error {
+func presentQuestionGate(cmd *cobra.Command, reads questionReads, raw json.RawMessage, outer error) error {
 	stderr := cmd.ErrOrStderr()
-	fields, err := decodeQuestions(raw)
+	err := outer
+	var fields question.Fields
+	if err == nil {
+		fields, err = decodeQuestions(raw)
+	}
+	var collision *questionKeyCollision
+	if errors.As(err, &collision) {
+		// A key the check reads, repeated or under another case, is known
+		// for certain and its remedy is to drop it, so the hook denies, as
+		// the verb exits 2 on the same input: no question is shown that the
+		// check judged on one value while the host could show another.
+		// Refused under a mode naming somebody, it is marked open like any
+		// refusal (markRefusedOpen), so the next message resets the mode.
+		return denyCall(collision.refusal() + markRefusedOpen(reads))
+	}
 	if err != nil {
+		// No marker is written here: the host's own schema rejects such an
+		// input before the hook runs, so no question reaches the person.
 		return questionFailOpen(stderr, "the question tool's input could not be read (%s)", err)
 	}
 	v := question.Decide(fields, reads.state, reads.state.Limits)
@@ -301,7 +319,8 @@ func modeUnreadLine(st question.State, u question.Unread) string {
 }
 
 // actOnQuestionVerdict does what the hook does with a decision: a deny for a
-// refusal, the marker and the mode for an admission where the badge shows,
+// refusal, marked open under a mode naming somebody with no mode written
+// (markRefusedOpen), the marker and the mode for an admission where the badge shows,
 // the rows note for an admission with rows findings, and, for a question
 // that is not abcd's, only the marker under a mode naming somebody
 // (markUncheckedOpen). A marker or mode it cannot write fails open loudly
@@ -313,12 +332,14 @@ func actOnQuestionVerdict(cmd *cobra.Command, reads questionReads, v question.Ve
 	case question.OutcomeAdmitUnchecked:
 		return markUncheckedOpen(stderr, reads)
 	case question.OutcomeRefuse:
-		if v.Refused != nil {
-			return denyCall(lead + limitsRefusedReason(v.Refused.Reason))
-		}
 		var reason strings.Builder
 		reason.WriteString(lead)
-		writeLimitsRefusal(&reason, v.Findings)
+		if v.Refused != nil {
+			reason.WriteString(limitsRefusedReason(v.Refused.Reason))
+		} else {
+			writeLimitsRefusal(&reason, v.Findings)
+		}
+		reason.WriteString(markRefusedOpen(reads))
 		return denyCall(reason.String())
 	}
 	if !v.Abcds {
@@ -335,7 +356,8 @@ func actOnQuestionVerdict(cmd *cobra.Command, reads questionReads, v question.Ve
 		// the mode the agent set before asking (decision 37).
 		want := stateOf(v.ModeAfter)
 		// The marker first: a marker written for a mode that then could not
-		// be set costs one reset to managed on the answer, while a mode set
+		// be set no longer names the mode in force, so the answer clears it
+		// and leaves the mode alone (mode.ResetOnAnswer), while a mode set
 		// with no marker would stay parked with nothing left to reset it.
 		if err := mode.MarkQuestionOpen(reads.root, want); err != nil {
 			return questionFailOpen(stderr, "the question could not be marked open, so the mode was not set from its chip and will not reset on the answer (%s)", err)
@@ -366,13 +388,43 @@ func actOnQuestionVerdict(cmd *cobra.Command, reads questionReads, v question.Ve
 // inherit. Under managed, or with no badge, nothing is written. A marker that
 // cannot be written is said loudly, since the mode then stays parked.
 func markUncheckedOpen(stderr io.Writer, reads questionReads) error {
-	if !reads.state.Badge || reads.state.ModeErr != nil || addresseeOf(reads.mode) == question.Unnamed {
+	if !namesSomebody(reads) {
 		return nil
 	}
 	if err := mode.MarkQuestionOpen(reads.root, reads.mode); err != nil {
-		return questionFailOpen(stderr, "the question could not be marked open, so the mode will not reset on the answer (%s)", err)
+		// The question was never abcd's to check, so it ran as any other
+		// tool's does; what failed is the reset, and only that is said, on
+		// exit 1, loud and never blocking.
+		fmt.Fprintf(stderr, "abcd guard: this question was not abcd's (no header in abcd's number grammar), so it ran as normal; but the mode, %s, could not be marked for reset at %s, so the answer will not return it to managed (%s).\n",
+			reads.mode, mode.QuestionOpenRelPath, termsafe.Sanitize(scrubPaths(err)))
+		return &exitError{Code: 1}
 	}
 	return nil
+}
+
+// namesSomebody reports whether the badge shows and the mode, read, names a
+// person: the only place the gate marks a question open under the mode in
+// force with no mode written.
+func namesSomebody(reads questionReads) bool {
+	return reads.state.Badge && reads.state.ModeErr == nil && addresseeOf(reads.mode) != question.Unnamed
+}
+
+// markRefusedOpen marks abcd's refused question open under the mode in force
+// where it names somebody, and writes no mode. The agent sets the mode before
+// asking (decision 37), so a refusal it then abandons would leave the mode
+// parked; the marker lets the next human message's reset return it to
+// managed (the host runs no PostToolUse for a denied call). It returns the
+// line the deny's reason ends with when the marker cannot be written, and ""
+// otherwise: the call is refused either way.
+func markRefusedOpen(reads questionReads) string {
+	if !namesSomebody(reads) {
+		return ""
+	}
+	if err := mode.MarkQuestionOpen(reads.root, reads.mode); err != nil {
+		return "\nabcd guard: the mode, " + string(reads.mode) + ", could not be marked for reset at " + mode.QuestionOpenRelPath +
+			", so the next message will not return it to managed (" + termsafe.Sanitize(scrubPaths(err)) + ")."
+	}
+	return ""
 }
 
 // stateOf is the mode a person names: the inverse of addresseeOf.
@@ -434,8 +486,144 @@ var errUnreadableQuestions = errors.New("tool_input.questions is not a list of q
 // and echoes nothing from the decoder, whose text can carry a Go type.
 var errUnreadableQuestionPayload = errors.New("it is not a JSON object whose tool_input is an object, nested no deeper than the decoder reads")
 
+// errQuestionKeyCollision is why a question whose object carries a key twice,
+// or a key that matches one the check reads only under case folding, is not
+// checked: encoding/json reads such keys case-insensitively, the last one
+// winning, so the check would judge one value while a host reading exact keys
+// shows the other. It echoes nothing from the payload; questionKeyCollision
+// carries it with the one key, sanitised and bounded, that the refusal names.
+var errQuestionKeyCollision = errors.New("an object of the question tool's input carries a key twice, or a key that differs from questions, header, question, options, label, description or preview only in case, so the check would read one value and the host could show another")
+
+// questionKeyCollision is errQuestionKeyCollision for one key: key as the
+// input spells it, and read, the key the check reads that it collides with
+// (the same key when it is repeated). errors.Is matches it to
+// errQuestionKeyCollision.
+type questionKeyCollision struct {
+	key, read string
+}
+
+func (c *questionKeyCollision) Error() string {
+	return errQuestionKeyCollision.Error() + " (the key " + quoteKey(c.key) + ")"
+}
+
+func (c *questionKeyCollision) Is(target error) bool { return target == errQuestionKeyCollision }
+
+// refusal is the hook's deny for the collision: it names the key and says to
+// drop it.
+func (c *questionKeyCollision) refusal() string {
+	const head = "Blocked by the abcd guard (question tool): "
+	k := quoteKey(c.key)
+	if c.key == c.read {
+		return head + "the key " + k + " appears twice in one object of the question tool's input, so the check would judge one value and the host could show the other. Drop one " + k + " and ask again."
+	}
+	return head + "the key " + k + " in the question tool's input differs from " + quoteKey(c.read) + ", a key the check reads, only in case, so the check would judge one value and the host could show the other. Drop " + k + " and ask again."
+}
+
+// quoteKey is a key from the payload as a refusal names it: sanitised, cut
+// at maxQuotedKey bytes on a character boundary, and quoted.
+func quoteKey(k string) string {
+	k = termsafe.Sanitize(k)
+	for i := range k {
+		if i > maxQuotedKey {
+			k = k[:i] + "..."
+			break
+		}
+	}
+	return strconv.Quote(k)
+}
+
+// maxQuotedKey bounds the key a refusal echoes from the payload.
+const maxQuotedKey = 40
+
+// questionReadKeys and optionReadKeys are the keys the check reads from a
+// question and from an option, as hostQuestionInput spells them.
+var (
+	questionReadKeys = []string{"header", "question", "options"}
+	optionReadKeys   = []string{"label", "description", "preview"}
+)
+
+// collidingKeys returns the first key of the JSON object raw that it carries
+// twice, or that equals one of read under case folding but not byte for
+// byte, and nil when none does. Any key that collides with nothing is kept,
+// as the host owns the schema and adds to it. A value that is not an object
+// collides with nothing; the decode after it decides whether it is readable.
+func collidingKeys(raw json.RawMessage, read []string) *questionKeyCollision {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return nil
+	}
+	seen := map[string]bool{}
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil
+		}
+		k, _ := tok.(string)
+		if seen[k] {
+			return &questionKeyCollision{key: k, read: k}
+		}
+		seen[k] = true
+		for _, r := range read {
+			if k != r && strings.EqualFold(k, r) {
+				return &questionKeyCollision{key: k, read: r}
+			}
+		}
+		var skip json.RawMessage
+		if dec.Decode(&skip) != nil {
+			return nil
+		}
+	}
+	return nil
+}
+
+// toolInputKeysCollide reports whether a hook payload's tool_input carries
+// a key twice, or its questions key under another case, which the payload
+// decode would read as one of them: the hook then denies the question, after
+// the away check, as it denies a collision inside a question.
+func toolInputKeysCollide(payload []byte) error {
+	var p struct {
+		ToolInput json.RawMessage `json:"tool_input"`
+	}
+	if json.Unmarshal(payload, &p) != nil {
+		return nil
+	}
+	if c := collidingKeys(p.ToolInput, []string{"questions"}); c != nil {
+		return c
+	}
+	return nil
+}
+
+// questionKeysCollide applies collidingKeys to every question of raw and to
+// every option of each, so a question judged is the question shown.
+func questionKeysCollide(raw json.RawMessage) *questionKeyCollision {
+	var qs []json.RawMessage
+	if json.Unmarshal(raw, &qs) != nil {
+		return nil
+	}
+	for _, q := range qs {
+		if c := collidingKeys(q, questionReadKeys); c != nil {
+			return c
+		}
+		var in struct {
+			Options []json.RawMessage `json:"options"`
+		}
+		if json.Unmarshal(q, &in) != nil {
+			continue
+		}
+		for _, o := range in.Options {
+			if c := collidingKeys(o, optionReadKeys); c != nil {
+				return c
+			}
+		}
+	}
+	return nil
+}
+
 // decodeQuestions reads the question tool's questions into the field view the
-// limits check reads, one tab per question.
+// limits check reads, one tab per question. A question or option object
+// whose keys collide (questionKeysCollide) is never judged on one of its
+// values: it returns the collision, which the hook denies and the verb
+// refuses with exit 2.
 func decodeQuestions(raw json.RawMessage) (question.Fields, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return question.Fields{}, errUnreadableQuestions
@@ -443,6 +631,9 @@ func decodeQuestions(raw json.RawMessage) (question.Fields, error) {
 	var in []hostQuestionInput
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return question.Fields{}, errUnreadableQuestions
+	}
+	if c := questionKeysCollide(raw); c != nil {
+		return question.Fields{}, c
 	}
 	f := question.Fields{Tabs: make([]question.Tab, len(in))}
 	for i, q := range in {

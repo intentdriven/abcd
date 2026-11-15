@@ -396,7 +396,7 @@ func guardHookDecide(cmd *cobra.Command) error {
 	// and gated on the mode, not the registry (itd-2609212130146198,
 	// spc-2610030944505997); guard_question.go holds the whole of it.
 	if isQuestionTool(in.ToolName) {
-		return questionGate(cmd, in.Cwd, in.ToolInput.Questions)
+		return questionGate(cmd, in.Cwd, in.ToolInput.Questions, toolInputKeysCollide(raw))
 	}
 	// A file the host's own tools write is judged by the occupancy of the
 	// working tree it lands in, not the registry (iss-2610280051498465).

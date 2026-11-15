@@ -665,3 +665,146 @@ func TestGuardQuestionTextStatesTheLimitsInForce(t *testing.T) {
 		t.Errorf("a refused value: exit %d; the render must state the refusal and no ready input:\n%s", code, stdout)
 	}
 }
+
+// collidingDrafts are host-form drafts whose objects carry a key twice, or a
+// key equal to one the check reads only under case folding: encoding/json
+// would judge one value while a host reading exact keys shows another. Each
+// is built from a well-built question's JSON with one key added.
+func collidingDrafts(t *testing.T) map[string]string {
+	t.Helper()
+	q := wellBuilt()
+	q.Header = "Q1"
+	one, err := json.Marshal(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.TrimSuffix(string(one), "}")
+	opts, err := json.Marshal(q.Options[1:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	optionDup := `{"label":"Keep it","label":"Keep it (Recommended)","description":"It says whom it is for. It costs a few characters."}`
+	return map[string]string{
+		"question under another case":  `{"questions":[` + body + `,"Question":"Ship it?"}]}`,
+		"header twice":                 `{"questions":[` + body + `,"header":"Q2"}]}`,
+		"an option's label twice":      `{"questions":[` + body[:strings.Index(body, `"options":`)] + `"options":[` + optionDup + `,` + strings.TrimPrefix(string(opts), "[") + `}]}`,
+		"questions under another case": `{"questions":[` + string(one) + `],"Questions":[` + string(one) + `]}`,
+	}
+}
+
+// TestGuardQuestionRefusesCollidingKeys: the verb exits 2 on a host-form
+// draft whose objects carry a key twice or a read key under another case,
+// naming the collision, since the check would judge one value and the host
+// could show another. An unknown key that collides with nothing is kept.
+func TestGuardQuestionRefusesCollidingKeys(t *testing.T) {
+	unmanagedRepo(t)
+	for name, draft := range collidingDrafts(t) {
+		t.Run(name, func(t *testing.T) {
+			if !json.Valid([]byte(draft)) {
+				t.Fatalf("the fixture is not JSON: %s", draft)
+			}
+			stdout, stderr, code := runGuard(draft, "guard", "question", "-")
+			if code != 2 || stdout != "" {
+				t.Fatalf("exit %d, stdout %q, stderr %q; want exit 2 and nothing on stdout", code, stdout, stderr)
+			}
+			if !strings.Contains(stderr, "only in case") {
+				t.Errorf("stderr does not name the collision: %q", stderr)
+			}
+		})
+	}
+	q := wellBuilt()
+	q.Header = "Q1"
+	one, err := json.Marshal(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := `{"questions":[` + strings.TrimSuffix(string(one), "}") + `,"x-note":"kept","X-Other":1}]}`
+	if _, stderr, code := runGuard(kept, "guard", "question", "-"); code != 0 {
+		t.Errorf("a draft with unknown keys that collide with nothing: exit %d, stderr %q; want 0", code, stderr)
+	}
+}
+
+// TestHookDeniesCollidingKeys: the hook refuses the same drafts the verb
+// exits 2 on, naming the colliding key and saying to drop it, after the away
+// check: a collision is known for certain, so no question is shown that the
+// check judged on one value while the host could show another. Under a mode
+// naming somebody the refusal is marked open, so the next message resets the
+// mode like any refusal's.
+func TestHookDeniesCollidingKeys(t *testing.T) {
+	keys := map[string]string{
+		"question under another case":  `"Question"`,
+		"header twice":                 `"header"`,
+		"an option's label twice":      `"label"`,
+		"questions under another case": `"Questions"`,
+	}
+	for name, draft := range collidingDrafts(t) {
+		t.Run(name, func(t *testing.T) {
+			root := managedCheckout(t)
+			setMode(t, root, mode.ProductThinker)
+			cwd, err := json.Marshal(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			payload := `{"session_id":"s1","hook_event_name":"PreToolUse","cwd":` + string(cwd) +
+				`,"tool_name":"` + questionTools[0] + `","tool_input":` + draft + `}`
+			stdout, stderr, code := runGuard(payload, "guard", "hook")
+			reason := mustDeny(t, stdout, stderr, code)
+			if !strings.Contains(reason, "the key "+keys[name]) || !strings.Contains(reason, "Drop ") {
+				t.Errorf("the deny must name the key %s and say to drop it; reason = %q", keys[name], reason)
+			}
+			mustBeMarkedUnder(t, root, mode.ProductThinker)
+			if got, _ := mode.ReadAt(root); got != mode.ProductThinker {
+				t.Errorf("mode = %q, want product-thinker left as it was", got)
+			}
+		})
+	}
+}
+
+// TestGuardQuestionReportsWhetherTheBadgeShows: the verb's JSON carries
+// badge, the State value the hook decides with, so the writer can tell a tab
+// for nobody under a badge that shows (the caller did not set the mode) from
+// one where no mode is read at all: true in a managed checkout with the local
+// tier, false once the tier is gone, as in a fresh clone, and false in a
+// checkout abcd does not manage. The text render says the same.
+func TestGuardQuestionReportsWhetherTheBadgeShows(t *testing.T) {
+	q := wellBuilt()
+	q.Header = "Q1"
+	raw, err := json.Marshal(map[string]any{"questions": []hostQuestion{q}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	badge := func(t *testing.T) any {
+		t.Helper()
+		stdout, stderr, code := runGuard(string(raw), "guard", "question", "-", "--json")
+		var res map[string]any
+		if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+			t.Fatalf("the verb's output is not its JSON (exit %d): %v\nstderr %q", code, err, stderr)
+		}
+		return res["badge"]
+	}
+	text := func(t *testing.T) string {
+		t.Helper()
+		stdout, _, _ := runGuard(string(raw), "guard", "question", "-")
+		return stdout
+	}
+	root := managedCheckout(t)
+	if got := badge(t); got != true {
+		t.Errorf("badge in a managed checkout with the tier = %v, want true", got)
+	}
+	if !strings.Contains(text(t), "badge: shown") {
+		t.Errorf("the text render does not say the badge shows: %q", text(t))
+	}
+	if err := os.RemoveAll(filepath.Join(root, filepath.FromSlash(mode.TierRelPath))); err != nil {
+		t.Fatal(err)
+	}
+	if got := badge(t); got != false {
+		t.Errorf("badge in a managed checkout with no tier = %v, want false", got)
+	}
+	if !strings.Contains(text(t), "badge: not shown") {
+		t.Errorf("the text render does not say the badge is not shown: %q", text(t))
+	}
+	unmanagedRepo(t)
+	if got := badge(t); got != false {
+		t.Errorf("badge in a checkout abcd does not manage = %v, want false", got)
+	}
+}

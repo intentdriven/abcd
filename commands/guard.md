@@ -123,6 +123,11 @@ Then read the JSON (`_type` `abcd/question-check/v1`):
 - `depends_on_state`, `partial`, `unread` — whether a mode set or the person
   marked away before the ask could change the answer, and each store the check
   could not read with the rules it could not apply.
+- `badge` — whether the status line shows abcd's badge here, the value the
+  hook decides with: `true` where abcd manages the checkout and its local tier
+  is present, so the mode is read and set; `false` otherwise, as in a fresh
+  clone with no local tier. A tab for `unnamed` under `badge: true` was
+  checked with no mode set.
 - `addressee`, `addressee_changes` — whom each tab is for, and where an
   admitted chip would re-set the mode.
 
@@ -183,7 +188,9 @@ optional total (`Q1`, `Q1a`, `Q2/5`), or the older form with a role word first
 (`Product Q2`, `Setup Q1/4`), which is still read. Any other question belongs
 to another tool and runs unchecked, whatever `/abcd:mode` names, in a
 repository abcd manages or not (where the mode names somebody it is still
-marked open, with nothing else written, so the answer resets the mode): the header is what the hook checks a question
+marked open, with nothing else written, so the answer resets the mode; where
+that marker cannot be written, one loud line says the question was not abcd's
+and ran as normal, and that the mode was not marked for reset): the header is what the hook checks a question
 by, so the pages that teach it are what keep abcd's questions under the
 check. abcd's question is held to the field limits of the asking
 rules wherever the hook runs, in a repository abcd manages or not: the header,
@@ -235,11 +242,16 @@ abcd manages, abcd's question is never refused on the mode. An admitted
 question with a number header sets nothing, leaving the mode the agent set; one
 with an older-form header sets `/abcd:mode` from its role word: `Product` to
 `product-thinker`, `Tech` and `Setup` to `facilitator`, a role naming the other
-person re-setting the mode. An admitted question is marked open in
+person re-setting the mode. A call that mixes the two forms sets the
+product thinker when any of its tabs is theirs, by its role word or by the mode
+in force, so the status line never names only the facilitator while the
+product thinker owes an answer too. An admitted question is marked open in
 `.abcd/.work.local/question_open`, and the answer resets the state to
 `managed`: the plugin's hook on the question tool's result resets it when the
 answer comes back, and the next human message resets it on a host that does
-not run that hook. Where the state cannot be read, the hook still judges
+not run that hook. A refused question asked while the mode names somebody is
+marked open under that mode too, with no mode set, so the next human message
+resets a mode the agent set before a question it then abandoned. Where the state cannot be read, the hook still judges
 abcd's question at the limits in force, the register rule of a number header
 aside, since that rule follows the mode: one that breaks a rule is refused,
 and any other runs with no mode set and nothing marked open, under one loud
@@ -248,7 +260,13 @@ be written or the question cannot be marked open, such as a local tier that is
 not writable, the question runs with a loud `NOT CHECKED` warning. A questions field the hook cannot read is the same case: the question runs, and the hook
 warns loudly. So is a payload the hook cannot decode at all: where it names the
 question tool the warning says the question runs, and where no tool name can be
-read the warning names no tool.
+read the warning names no tool. One exception is refused instead: an object of
+the input that carries a key twice, or a key the check reads (`questions`,
+`header`, `question`, `options`, `label`, `description`, `preview`) under
+another case, is denied, naming the key and saying to drop it, as `abcd guard
+question` exits 2 on it, since the check would judge one value while the host
+could show the other; under a state naming somebody it is marked open like any
+refusal.
 
 While the away mode holds (`/abcd:mode autonomous`), the hook refuses every
 question on the host's question tool whose payload it can decode, before any

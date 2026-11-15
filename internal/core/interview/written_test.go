@@ -873,3 +873,23 @@ func TestTheInterviewMeasuresWithItsLimits(t *testing.T) {
 		t.Errorf("the brief does not state the limits in force:\n%s", brief)
 	}
 }
+
+// TestBriefSetsTheHostOnlyRulesAside (spc-2610301917245442, step 4): the
+// asking rules the brief carries send a host session's questions through the
+// question-writing agent and `abcd guard question`, head them with abcd's
+// number and set the mode first. A Terminal-drawn interview does none of
+// that: abcd checks the receipt itself and no status line names the person,
+// so the brief sets those rules aside and keeps the older chip, the role word
+// first.
+func TestBriefSetsTheHostOnlyRulesAside(t *testing.T) {
+	brief := newWrittenRun(t, "").w.brief(1, 0, nil, carried{})
+	for _, want := range []string{
+		"to write through the question-writing agent or check a draft with `abcd guard question`",
+		"abcd checks it, and you set no mode",
+		"head the chip in the older form, the role word first",
+	} {
+		if !strings.Contains(brief, want) {
+			t.Errorf("the brief does not say %q:\n%s", want, brief)
+		}
+	}
+}
