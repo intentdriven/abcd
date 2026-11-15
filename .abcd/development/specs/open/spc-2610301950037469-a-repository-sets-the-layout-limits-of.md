@@ -97,6 +97,7 @@ Out of scope, recorded elsewhere: A configurable options count (`question.option
    - tests: internal/core/question/asking_test.go, internal/core/rules/grill_test.go, internal/core/rules/inject_test.go, internal/surface/cli/rules_grill_domain_test.go, internal/surface/cli/guard_question_verb_test.go
 
    Waits for spc-2610301917245442's step 4, which revises the same asking rules, so the layout rule is edited once by each and never by both at once; the one-fixture test that holds the verb's `limits` to the injected figures needs step 2.
+   - landed: 65e2c177a6c9
 
 4. The pages, the writer, and the lab
    - needs: 3
