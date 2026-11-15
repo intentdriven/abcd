@@ -7,8 +7,7 @@ package sweep
 import "strings"
 
 // RowKind is what a row is about: worktrees, strays and the embargo store,
-// local branches, branches on origin and reservations; the inbox kind joins
-// them as the step that judges those items lands.
+// local branches, branches on origin, reservations and inbox reports.
 type RowKind string
 
 const (
@@ -28,11 +27,13 @@ const (
 	// RowReservation is a reservation branch on origin, as the reservation
 	// sweep judged it (reservations.go).
 	RowReservation RowKind = "reservation"
+	// RowInbox is a report waiting in abcd's inbox (inbox.go).
+	RowInbox RowKind = "inbox"
 )
 
 // Action is what `--apply` does with a row's item: remove, save-patch and keep
-// for worktrees, delete for branches and dispatch for spent reservations;
-// promote joins them with the kind it acts on.
+// for worktrees, delete for branches, dispatch for spent reservations and
+// promote for waiting inbox reports.
 type Action string
 
 const (
@@ -49,6 +50,9 @@ const (
 	// ActionDispatch is a spent reservation: apply dispatches the reservation
 	// sweep's workflow, which deletes it. The sweep never deletes one itself.
 	ActionDispatch Action = "dispatch"
+	// ActionPromote is a waiting inbox report: apply files it as an issue
+	// through the inbox's promote, with the automatic filer's remedy.
+	ActionPromote Action = "promote"
 	// ActionKeep leaves the item as it is, its reason saying why.
 	ActionKeep Action = "keep"
 )
@@ -67,6 +71,8 @@ const (
 	// OutcomeDispatched is a spent reservation the reservation sweep's
 	// workflow was dispatched to delete.
 	OutcomeDispatched Outcome = "dispatched"
+	// OutcomePromoted is an inbox report filed as an issue.
+	OutcomePromoted Outcome = "promoted"
 	// OutcomeKept is an item left as it was, its reason saying why: one the
 	// dry run kept, or one a check at the moment of acting kept.
 	OutcomeKept Outcome = "kept"
@@ -106,6 +112,10 @@ const (
 	// reservation branch, and KindWorkflow the dispatch of its workflow.
 	KindReservationSweep EvidenceKind = "reservation-sweep"
 	KindWorkflow         EvidenceKind = "workflow"
+	// KindReport is what the inbox read of a report, and KindPromote the
+	// inbox's promote of it.
+	KindReport  EvidenceKind = "report"
+	KindPromote EvidenceKind = "promote"
 )
 
 // Row is one item a sweep judged. Every string in it is display-ready: a path

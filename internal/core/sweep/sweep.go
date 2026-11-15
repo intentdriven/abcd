@@ -27,6 +27,8 @@ import (
 
 	store "github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
+	"github.com/intentdriven/abcd/internal/core/record/match"
+	"github.com/intentdriven/abcd/internal/core/report"
 	"github.com/intentdriven/abcd/internal/core/reservesweep"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -55,6 +57,10 @@ type Options struct {
 	// kept, as prune keeps its own. It is required, as Held is: a sweep that
 	// does not know where it runs could remove the worktree it runs in.
 	Cwd string
+	// Match is the filing-time match each promoted inbox report's record
+	// runs, configured as the inbox's promote verb configures it; nil files
+	// each unmatched.
+	Match *match.Config
 
 	// changes reads the paths a worktree changes, running git in it; nil is
 	// changedPaths. A test sets it to see which worktrees git ran in.
@@ -67,6 +73,11 @@ type Options struct {
 	// reservesweep.Sweep. It is always asked with Apply false. A test sets
 	// it to judge reservations without a fetch.
 	reservations func(root string, o reservesweep.Options) (reservesweep.Report, error)
+	// inbox lists the reports waiting in abcd's inbox; nil is report.List.
+	// promote files one of them; nil is report.Promote. A test sets either
+	// to see what was asked, or to have a promotion fail.
+	inbox   func() ([]report.Entry, error)
+	promote func(ledgerRoot, id string, mc *match.Config) (report.Promoted, error)
 }
 
 // runDry judges every worktree of the repository at repoRoot and every entry
