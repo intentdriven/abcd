@@ -37,6 +37,7 @@ var heldSettingsTable = map[string]bool{
 	"http.https://example.invalid/.proxysslkey": true, "http.cookiefile": true, "http.savecookies": true,
 	"http.extraheader": true, "http.https://example.invalid/.extraheader": true, "http.delegation": true,
 	"http.proxyauthmethod": true, "http.emptyauth": true, "http.https://example.invalid/.emptyauth": true,
+	"remote.origin.proxyauthmethod": true, "remote.upstream.serveroption": true,
 	"core.alternaterefscommand": true, "core.attributesfile": true,
 	"diff.external": true, "merge.renormalize": true, "merge.verifysignatures": true,
 	"format.pretty": true, "pretty.changelog": true,

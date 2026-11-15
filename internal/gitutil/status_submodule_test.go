@@ -111,10 +111,10 @@ func TestStatusRunsNoSubmoduleContentFilter(t *testing.T) {
 	}
 }
 
-// TestAStatusThroughStatusArgsStartsNothingInASubmodule: every status read of
-// a clean tree or a tree's changed files that abcd makes takes its command
-// line from StatusArgs, whichever runner runs it: the isolated one (a run's
-// view of a lane's worktree), the person's own (WorkingTreeCommand: a lane's
+// TestAStatusThroughStatusArgsStartsNothingInASubmodule: a status read that
+// takes its command line from StatusArgs, whichever runner runs it: the
+// isolated one (a run's view of a lane's worktree), the person's own
+// (WorkingTreeCommand: a lane's
 // clean-tree checks before a sync, a pick commit and a landing, the land
 // verb's), and the one bound to a deadline (WorkingTreeCommandContext: the
 // read before a merged lane's worktree is removed). None starts a status
@@ -162,6 +162,49 @@ func TestAStatusThroughStatusArgsStartsNothingInASubmodule(t *testing.T) {
 			if want := map[bool]string{false: "", true: "M sub\x00"}[moved]; strings.TrimSpace(out) != want {
 				t.Errorf("%s, submodule moved %v: status %q, want %q", run.name, moved, out, want)
 			}
+		}
+	}
+}
+
+// TestAWorkingTreeDiffThroughDiffWorktreeArgsStartsNothingInASubmodule: a
+// diff of the index with the working tree, like a status, starts a status
+// inside each checked-out submodule whose commit has not moved, so the
+// filter the submodule's own settings name runs, as the plain diff here
+// shows; one whose command line DiffWorktreeArgs gives starts nothing there.
+// A moved submodule is still listed. Watched failing with DiffWorktreeArgs
+// giving no --ignore-submodules: the diff ran the submodule's filter.
+func TestAWorkingTreeDiffThroughDiffWorktreeArgsStartsNothingInASubmodule(t *testing.T) {
+	r, mark := submoduleFilterFixture(t)
+	plain := exec.Command("git", "-C", r.Root(), "diff", "--name-only", "-z")
+	plain.Env = r.Env()
+	if out, err := plain.CombinedOutput(); err != nil {
+		t.Fatalf("fixture: git diff: %v\n%s", err, out)
+	}
+	if !ran(mark) {
+		t.Fatal("fixture: a plain git diff of the working tree did not run the submodule's clean filter, so this test proves nothing")
+	}
+	for _, moved := range []bool{false, true} {
+		if moved {
+			sub := exec.Command("git", "-C", filepath.Join(r.Root(), "sub"),
+				"-c", "user.name=F", "-c", "user.email=f@example.invalid", "-c", "commit.gpgsign=false",
+				"-c", "filter.subevil.clean=", "commit", "-q", "--allow-empty", "-m", "moved")
+			sub.Env = r.Env()
+			if out, err := sub.CombinedOutput(); err != nil {
+				t.Fatalf("moving the submodule: %v\n%s", err, out)
+			}
+		}
+		_ = os.Remove(mark)
+		staleSub(t, r)
+		args := gitutil.DiffWorktreeArgs("--name-only", "-z")
+		out, err := gitutil.RunTreeCommand(gitutil.WorkingTreeCommand(r.Root(), args...), args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ran(mark) {
+			t.Errorf("submodule moved %v: the diff ran the submodule's own clean filter", moved)
+		}
+		if want := map[bool]string{false: "", true: "sub\x00"}[moved]; out != want {
+			t.Errorf("submodule moved %v: diff %q, want %q", moved, out, want)
 		}
 	}
 }

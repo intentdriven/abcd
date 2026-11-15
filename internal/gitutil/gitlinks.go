@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"os/exec"
 	"strings"
 )
 
@@ -16,7 +17,24 @@ const maxGitlinks = 4096
 // listing is streamed, keeping only the gitlinks, so a large index costs time,
 // not memory.
 func Gitlinks(root string) ([]string, error) {
-	cmd := isolatedGit(root, "ls-files", "--stage", "-z", "--full-name")
+	return gitlinks(isolatedGit(root, gitlinksArgs...))
+}
+
+// GitlinksWithIndex is Gitlinks of the scratch index at index (an absolute
+// path, as RunWithIndex takes one).
+func GitlinksWithIndex(root, index string) ([]string, error) {
+	cmd, err := indexCommand(root, index, gitlinksArgs)
+	if err != nil {
+		return nil, err
+	}
+	return gitlinks(cmd)
+}
+
+// gitlinksArgs is the index listing Gitlinks reads.
+var gitlinksArgs = []string{"ls-files", "--stage", "-z", "--full-name"}
+
+// gitlinks is Gitlinks and GitlinksWithIndex, streaming cmd's listing.
+func gitlinks(cmd *exec.Cmd) ([]string, error) {
 	e := &capWriter{remaining: 4096}
 	cmd.Stderr = e
 	out, err := cmd.StdoutPipe()

@@ -633,7 +633,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	if beforeLandingStage != nil {
 		beforeLandingStage(wt)
 	}
-	if _, err := pickGit(wt, "add", "-A", "--", "."); err != nil {
+	if _, err := addAllGit(wt, "."); err != nil {
 		return Outcome{}, fmt.Errorf("staging the landing's records: %w", err)
 	}
 	// The local tier holds the close's review request and the preflight's
@@ -1309,7 +1309,7 @@ func strayChanges(st State, lane Lane) (string, error) {
 	if err := os.WriteFile(index, data, 0o600); err != nil {
 		return "", err
 	}
-	if _, err := pickGitIndex(wt, index, "add", "-A", "--", "."); err != nil {
+	if _, err := addAllGitIndex(wt, index, "."); err != nil {
 		return "", err
 	}
 	if _, err := pickGitIndex(wt, index, "reset", "-q", "--", TierRelDir); err != nil {

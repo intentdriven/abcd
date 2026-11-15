@@ -191,7 +191,7 @@ func snapshot(worktree, head, tmp string) ([]byte, []string, error) {
 	if _, err := gitutil.RunWithIndex(worktree, index, 4096, "read-tree", head); err != nil {
 		return nil, nil, err
 	}
-	if _, err := pickGitIndex(worktree, index, "add", "-A"); err != nil {
+	if _, err := addAllGitIndex(worktree, index); err != nil {
 		return nil, nil, err
 	}
 	patch, err := gitutil.RunWithIndex(worktree, index, maxAsidePatchBytes,

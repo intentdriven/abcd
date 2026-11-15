@@ -69,7 +69,7 @@ func TestAHeldKeyGoneFromALaneWorktreesOwnScopeEndsTheDrive(t *testing.T) {
 			}
 			change(t, repo, lane)
 			laneScopeNamed(t, heldBeforeGit(repo.Root(), id), lane)
-			laneScopeNamed(t, heldBeforeGitIn(repo.Root(), id, lane), lane)
+			laneScopeNamed(t, heldBeforeGitIn(repo.Root(), id, lane, nil), lane)
 			worktreeRefused(t, remoteUnchanged(Context{RepoRoot: repo.Root(), remote: id}, "lane-2"), "gc.recentobjectshook in the worktree")
 		})
 	}
@@ -89,13 +89,16 @@ func TestAHeldKeyGoneFromALaneWorktreesOwnScopeEndsTheDrive(t *testing.T) {
 // TestTheHoldAsksGitWhetherItReadsAWorktreesOwnSettings: git decides whether
 // it reads a worktree's own settings from extensions.worktreeConfig in the
 // repository's own settings file alone, following no include there, so a
-// later value in an included file or in config.worktree changes nothing, as
-// a real git shows here; the hold asks git the same way. With true in the
-// repository's settings and false after it, the lane's own scope is still
-// read, and a key set there ends the drive; with false there and true in an
-// include, git reads no worktree's own settings, and neither does the hold.
-// Watched failing on the branch before, which took the last record of the
-// whole listing: the first two cases read no lane, the last read one.
+// value in an included file, in config.worktree, in the global settings or on
+// the command line changes nothing, as a real git shows here; the hold asks
+// git the same way. With true in the repository's settings and false
+// elsewhere, the lane's own scope is still read, and a key set there ends the
+// drive; with false there and true elsewhere, git reads no worktree's own
+// settings, and neither does the hold. Watched failing on the branch before,
+// which took the last record of the whole listing: the include and
+// config.worktree cases with true in the repository read no lane, and the
+// include case with false there read one. The global and command-line cases
+// were added after the fix and pass on it; they were not watched failing.
 func TestTheHoldAsksGitWhetherItReadsAWorktreesOwnSettings(t *testing.T) {
 	for name, tc := range map[string]struct {
 		repoValue string
@@ -115,6 +118,18 @@ func TestTheHoldAsksGitWhetherItReadsAWorktreesOwnSettings(t *testing.T) {
 			writeMode(t, inc, "[extensions]\n\tworktreeConfig = true\n", 0o644)
 			repo.Git("config", "include.path", inc)
 		}, false},
+		"true, then false in the global settings": {"true", func(t *testing.T, repo *gittest.Repo) {
+			writeMode(t, filepath.Join(os.Getenv("HOME"), ".gitconfig"), "[extensions]\n\tworktreeConfig = false\n", 0o644)
+		}, true},
+		"false, then true in the global settings": {"false", func(t *testing.T, repo *gittest.Repo) {
+			writeMode(t, filepath.Join(os.Getenv("HOME"), ".gitconfig"), "[extensions]\n\tworktreeConfig = true\n", 0o644)
+		}, false},
+		"true, then false on the command line": {"true", func(t *testing.T, repo *gittest.Repo) {
+			t.Setenv("GIT_CONFIG_PARAMETERS", "'extensions.worktreeconfig'='false'")
+		}, true},
+		"false, then true on the command line": {"false", func(t *testing.T, repo *gittest.Repo) {
+			t.Setenv("GIT_CONFIG_PARAMETERS", "'extensions.worktreeconfig'='true'")
+		}, false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			repo, _, _ := hookedOrigin(t)
@@ -130,7 +145,9 @@ func TestTheHoldAsksGitWhetherItReadsAWorktreesOwnSettings(t *testing.T) {
 			file := filepath.Join(repo.Root(), ".git", "worktrees", filepath.Base(lane), "config.worktree")
 			writeMode(t, file, "[gc]\n\trecentObjectsHook = true\n", 0o644)
 			read := exec.Command("git", "-C", lane, "config", "--show-scope", "--get", "gc.recentObjectsHook")
-			read.Env = repo.Env()
+			// The person's own environment: their global settings, and the
+			// command line's settings as git hands them to a git it runs.
+			read.Env = append(gitutil.ScrubbedEnv(), gitutil.CommandLineConfig()...)
 			got, err := read.Output()
 			if reads := err == nil && strings.HasPrefix(string(got), "worktree"); reads != tc.gitReads {
 				t.Fatalf("fixture: git reads the lane's own settings = %v (%q, %v), want %v", reads, got, err, tc.gitReads)
@@ -195,7 +212,7 @@ func TestALaneTheDriveMakesHoldsTheCheckoutsOwnScopeAsItsStart(t *testing.T) {
 	if err := heldBeforeGit(repo.Root(), id); err != nil {
 		t.Fatalf("the lane the drive made reads unchanged: %v", err)
 	}
-	if err := heldBeforeGitIn(repo.Root(), id, lw.Path); err != nil {
+	if err := heldBeforeGitIn(repo.Root(), id, lw.Path, nil); err != nil {
 		t.Fatalf("the lane the drive made reads unchanged before a git there: %v", err)
 	}
 
@@ -207,7 +224,7 @@ func TestALaneTheDriveMakesHoldsTheCheckoutsOwnScopeAsItsStart(t *testing.T) {
 
 	repo.Git("-C", lw.Path, "config", "--worktree", "gc.recentObjectsHook", "false")
 	laneScopeNamed(t, heldBeforeGit(repo.Root(), id), lw.Path)
-	laneScopeNamed(t, heldBeforeGitIn(repo.Root(), id, lw.Path), lw.Path)
+	laneScopeNamed(t, heldBeforeGitIn(repo.Root(), id, lw.Path, nil), lw.Path)
 	repo.Git("-C", lw.Path, "config", "--worktree", "gc.recentObjectsHook", "true")
 
 	made := filepath.Join(t.TempDir(), "run-2611140000000003-lane-1")
@@ -230,7 +247,7 @@ func TestAGitAboutToRunReadsOnlyItsOwnLanesScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unset, err := gitutil.SetBeforeHookedGitAt(func(dir string, _ []string) error { return heldBeforeGitIn(repo.Root(), id, dir) })
+	unset, err := gitutil.SetBeforeHookedGitAt(func(dir string, args []string) error { return heldBeforeGitIn(repo.Root(), id, dir, args) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,5 +285,99 @@ func TestAnIncludeAtALaneWorktreesOwnScopeIsReadInEveryEnvironment(t *testing.T)
 	r := mustRefusal(t, heldBeforeGit(repo.Root(), id))
 	if !strings.Contains(r.Reason, "gpg.program in the worktree") {
 		t.Fatalf("the comparison names the key the include changed at the lane's own scope: %+v", r)
+	}
+}
+
+// TestAGitThatNamesALaneReadsThatLanesScope: a git that runs in the checkout
+// but acts on a lane worktree reads that lane's own scope: `git worktree
+// remove` of a lane whose own scope changed (git's remove starts a status
+// there) is stopped, and so is a git moved into the lane by -C; one given
+// --git-dir or --work-tree, whose lane cannot be told, reads every lane. A
+// git in the checkout that names no lane reads none. Watched failing on the
+// branch before, whose check read only the lane of the directory the git
+// was started in: the remove ran, and removed the lane.
+func TestAGitThatNamesALaneReadsThatLanesScope(t *testing.T) {
+	repo, lane := laneScopeRepo(t)
+	id, err := readRemoteIdentity(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	unset, err := gitutil.SetBeforeHookedGitAt(func(dir string, args []string) error { return heldBeforeGitIn(repo.Root(), id, dir, args) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unset()
+	repo.Git("-C", lane, "config", "--worktree", "gc.recentObjectsHook", "false")
+	if _, err := pickGit(repo.Root(), "rev-parse", "HEAD"); err != nil {
+		t.Fatalf("a git in the checkout that names no lane was stopped: %v", err)
+	}
+	stopped := func(what string, args ...string) {
+		t.Helper()
+		_, err := pickGit(repo.Root(), args...)
+		var nr *gitutil.NotRunError
+		if !errors.As(err, &nr) {
+			t.Fatalf("%s runs only after the comparison of the lane it names, which stops it: %v", what, err)
+		}
+		laneScopeNamed(t, nr.Err, lane)
+	}
+	stopped("the removal of the lane", "worktree", "remove", "--", lane)
+	if _, err := os.Stat(lane); err != nil {
+		t.Fatalf("the lane stands: %v", err)
+	}
+	stopped("a git moved into the lane", "-C", lane, "rev-parse", "HEAD")
+	stopped("a git given the lane's work tree", "--work-tree="+lane, "rev-parse", "HEAD")
+}
+
+// TestALaneTheWorktreeStageAdoptsIsReadAsItIsAdopted: a lane worktree made by
+// hand where the drive would make it is adopted by the worktree stage, which
+// reads its own scope then, before any agent runs there (laneMade): one that
+// sets a key the drive holds otherwise than the checkout's own scope did as
+// the drive started is refused at the worktree stage, naming the key; one
+// that matches opens and is held. Watched failing on the branch before, whose
+// adopted lane was read only at the next comparison: the stage opened it.
+func TestALaneTheWorktreeStageAdoptsIsReadAsItIsAdopted(t *testing.T) {
+	for _, differs := range []bool{true, false} {
+		repo, _, _ := hookedOrigin(t)
+		repo.Git("config", "extensions.worktreeConfig", "true")
+		repo.Git("config", "--worktree", "gc.recentObjectsHook", "true")
+		id, err := readRemoteIdentity(repo.Root())
+		if err != nil {
+			t.Fatal(err)
+		}
+		start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		st, err := ReadState(repo.Root(), start.RunID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		first := st.Lanes[0]
+		lw, err := laneWorktree(repo.Root(), st.RunID, first.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := lw.lane.Ensure(); err != nil {
+			t.Fatal(err)
+		}
+		repo.Git("worktree", "add", "-q", "-b", lw.Branch, lw.Path, "HEAD")
+		if differs {
+			repo.Git("-C", lw.Path, "config", "--worktree", "gc.recentObjectsHook", "false")
+		}
+		c := Context{RepoRoot: repo.Root(), RunDir: runRel(st.RunID), State: st, remote: id}
+		_, err = worktreeStage(c, &first)
+		if differs {
+			worktreeRefused(t, err, "gc.recentobjectshook in the worktree")
+			continue
+		}
+		if err != nil {
+			t.Fatalf("an adopted lane whose own scope is the checkout's opens: %v", err)
+		}
+		id.mu.Lock()
+		_, held := id.lanes[lanePath(lw.Path)]
+		id.mu.Unlock()
+		if !held {
+			t.Fatal("the adopted lane is held as it is adopted")
+		}
 	}
 }

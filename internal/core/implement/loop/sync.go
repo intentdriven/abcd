@@ -186,7 +186,7 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 			// runner, which asks the drive's comparison too: a stop there
 			// is the step's, never no conflict or no merge to abort, and
 			// what git's merge left in the lane is said.
-			conflicted, cerr := pickGit(lane.Worktree, "diff", "--name-only", "--diff-filter=U", "-z")
+			conflicted, cerr := unmergedPaths(lane.Worktree)
 			if r, ok := heldStopOf(cerr); ok {
 				return Outcome{}, false, mergeLeft(r, *lane, def)
 			}
@@ -411,9 +411,25 @@ func undoStalledSync(lane Lane, def string, stalled error) error {
 // (iss-2610111729399920), and its content filters run on the files the merge
 // writes and when merge.renormalize is on, left as the repository set them
 // (abcd-fixes-what-it-adds).
+//
+// The merge is told, per submodule, to leave each submodule's working tree
+// out of the stash of the lane's changes it makes first
+// (submoduleIgnorePins), so it starts nothing inside a submodule there.
 func syncMerge(dir, msg, merged string) error {
-	_, err := commitGit(dir, "merge", "--no-ff", "--no-edit", "-m", msg, merged)
+	pins, err := submoduleIgnorePins(dir)
+	if err != nil {
+		return err
+	}
+	_, err = commitGit(dir, append(pins, "merge", "--no-ff", "--no-edit", "-m", msg, merged)...)
 	return err
+}
+
+// unmergedPaths is the NUL-separated list of the paths a failed merge left
+// unmerged in the lane's worktree at dir: a diff of the index with the
+// working tree (gitutil.DiffWorktreeArgs), which starts nothing inside a
+// submodule.
+func unmergedPaths(dir string) (string, error) {
+	return pickGit(dir, gitutil.DiffWorktreeArgs("--name-only", "--diff-filter=U", "-z")...)
 }
 
 // writeSyncBrief renders the brief of the fresh implementer a conflicting sync

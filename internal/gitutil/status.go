@@ -139,8 +139,9 @@ func Status(root string, maxBytes int, opt StatusOptions) ([]StatusEntry, error)
 
 // StatusArgs is the command line of a `git status` abcd runs, whatever runner
 // runs it: "status", then --ignore-submodules=dirty, then opts (the caller's
-// options and pathspecs). Status builds its own with it, and so does every
-// other status read of a clean tree or a tree's changed files.
+// options and pathspecs). Status builds its own with it, and so do the status
+// reads of the build loop (internal/core/implement/loop) and of the land verb
+// (internal/core/landing) that name it; what it says holds for those.
 //
 // Without the flag git starts a status inside each checked-out submodule (a
 // path the index records as a submodule, with a repository under it, whether
@@ -154,6 +155,19 @@ func Status(root string, maxBytes int, opt StatusOptions) ([]StatusEntry, error)
 // setting and diff.ignoreSubmodules.
 func StatusArgs(opts ...string) []string {
 	return append([]string{"status", "--ignore-submodules=dirty"}, opts...)
+}
+
+// DiffWorktreeArgs is StatusArgs for a `git diff` that compares the index
+// with a working tree (one that names no commit): "diff", then
+// --ignore-submodules=dirty, then opts. Such a diff, as a status does, starts
+// a status inside each checked-out submodule whose commit is the one the
+// index records, under that submodule's own settings; with the flag it starts
+// nothing there. A submodule whose checked-out commit moved, and an unmerged
+// path, are still listed. git-diff(1), --ignore-submodules: "Using dirty
+// ignores all changes to the work tree of submodules, only changes to the
+// commits stored in the superproject are shown".
+func DiffWorktreeArgs(opts ...string) []string {
+	return append([]string{"diff", "--ignore-submodules=dirty"}, opts...)
 }
 
 // ParseStatus parses git's NUL-separated status listing.

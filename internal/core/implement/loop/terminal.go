@@ -696,16 +696,16 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 	// From here every git command of the drive that runs the repository's
 	// hooks, merge drivers or content filters, or reaches the network, first
 	// compares what the drive holds (heldBeforeGitIn: heldBeforeGit, reading
-	// the own settings of the one lane worktree that git runs in): each
+	// the own settings of the lane worktrees that git runs in or names): each
 	// runner gitutil has for such a command asks the check set here, given
-	// the directory the command runs in, before it builds the command
+	// the directory the command runs in and its arguments, before it builds the command
 	// (gitutil.SetBeforeHookedGit names them), so one made inside a
 	// step (the lane's add, commit, merge and reset, the landing push) or
 	// outside one (a move's reservation, a renewal while an agent runs, the
 	// network probe) never runs under a setting or hook changed since the
 	// drive started; it fails instead, naming the difference. One drive runs
 	// in a process: a check already set refuses the start.
-	unset, err := gitutil.SetBeforeHookedGitAt(func(dir string, _ []string) error { return heldBeforeGitIn(t.repoRoot, id, dir) })
+	unset, err := gitutil.SetBeforeHookedGitAt(func(dir string, args []string) error { return heldBeforeGitIn(t.repoRoot, id, dir, args) })
 	if err != nil {
 		t.leaveSharedRun()
 		return TerminalResult{}, refuse(StageDrain, "", "", "the drive cannot start: "+err.Error(),
