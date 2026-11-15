@@ -33,6 +33,7 @@ it does not order the table.
 | 35 | `/abcd:drain` | shipped | Work the open ledger unattended: preview with `--dry-run` which open issues a machine may fix alone and in what order, then run it one lane at a time, routing every hand-back by its kind | [`35-drain.md`](35-drain.md) |
 | 37 | `/abcd:embargo` | shipped | Keep a privately reported security advisory off the public ledger until its fix ships, then close or publish it on your approval of exactly what it shows | [`37-embargo.md`](37-embargo.md) |
 | 3 | `/abcd:embark` | shipped | Unpack a lifeboat's records into another repository, refusing the whole write on any conflict | [`03-embark.md`](03-embark.md) |
+| 41 | `/abcd:explain` | shipped | Ask the running binary how to call one of its commands, or what shape an input must take at the schema version it reads, instead of trusting a page that may be older | [`41-explain.md`](41-explain.md) |
 | 17 | `/abcd:guard` | shipped | Find out whether a shell command is safe to run, and what to run instead | [`17-guard.md`](17-guard.md) |
 | 11 | `/abcd:history` | shipped | Keep session transcripts as a local, redacted corpus this project can study | [`11-history.md`](11-history.md) |
 | 18 | `/abcd:ideate` | shipped | Put a big, unproven idea through an admission gauntlet and record the verdict either way | [`18-ideate.md`](18-ideate.md) |
@@ -174,6 +175,7 @@ and `help` are the framework's own commands, filed under set-up.
 | `drain` | agents and hosts | — |
 | `embargo` | people | release |
 | `embark` | people | portability |
+| `explain` | agents and hosts | — |
 | `guard` | agents and hosts | — |
 | `guard approve` | agents and hosts | — |
 | `guard hook` | agents and hosts | — |
@@ -287,6 +289,7 @@ It is a convention rather than a universal, and the exceptions are where the
 tree does not yet meet its own discipline. Nine parents print usage with no state
 at all: `disembark`, `docs`, `embargo`, `embark`, `guard`, `history`, `ideate`, `scribe`,
 and `session`, whose running relay keeps its sessions in that process's memory alone. Bare
+`abcd explain` prints its own help, because its operand is the command it explains. Bare
 `abcd launch` refuses with a hint to pass `--dry-run`. Bare
 `abcd build` refuses as a usage error because its one operand is the intent it
 starts a run for; the run's state renders through `abcd implement status`. Bare
@@ -436,10 +439,10 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 <!-- index: commands -->
 `abcd`, `agents`, `ahoy`, `announce`, `banlist`, `build`, `capture`,
 `checklist`, `dashboard`, `decide`, `disembark`, `docs`, `drain`, `embargo`,
-`embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
-`intent`, `lab`, `land`, `landings`, `launch`, `library`, `lint`, `memory`,
-`mode`, `peers`, `reading`, `reflect`, `report`, `reserve`, `scribe`, `session`,
-`site`, `status`, `update`.
+`embark`, `explain`, `guard`, `history`, `ideate`, `identity`, `implement`,
+`inbox`, `intent`, `lab`, `land`, `landings`, `launch`, `library`, `lint`,
+`memory`, `mode`, `peers`, `reading`, `reflect`, `report`, `reserve`, `scribe`,
+`session`, `site`, `status`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.

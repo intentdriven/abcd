@@ -554,6 +554,8 @@ func TestWithholdArgumentsKeepsWhatARefusalMustName(t *testing.T) {
 		{"a command name stays", []string{"implement", "load"}, "abcd implement load: refused", "abcd implement load: refused"},
 		{"a short argument stays", []string{"capture", "--limit=7"}, "limit 7 of 70", "limit 7 of 70"},
 		{"inside a longer word stays", []string{"x", "drainage"}, "the drainagescheme", "the drainagescheme"},
+		{"part of a command name stays", []string{"explain", "library", "cite-chec"}, "the nearest real path is `abcd library cite-check`", "the nearest real path is `abcd library cite-check`"},
+		{"a word that is no part of a command name is withheld", []string{"explain", "library", "cite-chex"}, "no sub-command cite-chex near `abcd library cite-check`", "no sub-command (argument 3, not repeated here) near `abcd library cite-check`"},
 		{"a flag name stays", []string{"--severity", tok}, "--severity is closed; " + tok, "--severity is closed; (argument 2, not repeated here)"},
 	}
 	for _, c := range cases {

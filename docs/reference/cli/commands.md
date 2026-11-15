@@ -2035,6 +2035,40 @@ Report what a lifeboat would write into a target, coverage blanks first: Writes 
 abcd embark probe ../lifeboat
 ```
 
+### `abcd explain`
+
+Print how to call one command, or the shape of one input it reads: Writes nothing; refuses a command path the tree does not have.
+
+**Usage:** `abcd explain [<verb> [<sub-verb>...]] [flags]`
+
+Print how to call one command, from the binary that runs it: its sentence, its usage
+line, each flag with its type, its allowed values, its default and whether it is
+required, the flags it inherits, each filled-in input it reads with that input's
+schema version, its worked example and its sub-commands, in at most 40 lines.
+A hidden command is answered too, marked (hidden) on its first line.
+
+--input <flag> prints one input's schema version, its fields and an example that
+passes the command's own check. --json prints the command's facts as JSON, or with
+--input the input's shape.
+
+Run it before filling in an input for a command: where it and a page disagree, the
+binary is right, since a page may be older. Bare, it prints this help. It reads
+only and writes nothing. Exit 2 on a refusal: a command path the tree does not have,
+naming the nearest real path or the sub-commands where the path went wrong, or an
+input the command does not read, naming the inputs it does.
+
+**Flags:**
+
+```
+      --input string   print the schema version, the fields and an example of the input the command reads through this flag
+```
+
+**Example:**
+
+```
+abcd explain ideate record --input verdict-json
+```
+
 ### `abcd guard`
 
 Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.

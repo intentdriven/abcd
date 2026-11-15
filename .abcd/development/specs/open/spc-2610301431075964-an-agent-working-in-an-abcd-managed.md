@@ -221,7 +221,8 @@ mechanism question that the intent's criteria leave open:
   - a tree-wide test runs `explain` on every visible command and sub-command,
     holding each to at most 40 lines;
   - each output's flags, inputs and example equal the command's facts;
-  - a hidden path and a misspelt path are refused with exit 2.
+  - a hidden path is answered, marked `(hidden)`, and a misspelt path is
+    refused with exit 2.
 - **An input's shape and an example that passes the decoder.** Approach 2.
   Tests:
   - for every registry entry, `explain … --input <flag> --json` names the
