@@ -63,7 +63,7 @@ func AskingRules(l Limits) []string {
 		"In abcd's own interviews, write each question through the abcd:question-drafter agent, abcd's question writer: hand it the material to quote, whom the question is for, the decision, and the defensible answers. " +
 			"It writes the question to these rules, runs `abcd guard question` on each draft, fixes every fault the check names, and checks again until the check is clean, then returns the question with the rows the check counted. " +
 			"Ask only the question the writer returns, and never write or edit a question yourself. " +
-			"When it refuses, fix the brief and redraft it without telling the person: The writer's refusals and retries are the agent's own work, and the next thing the person sees is the question itself. " +
+			"When it refuses, fix the brief and redraft it without telling the person: The writer's refusals and retries are the agent's own work, and the next thing the person sees is the question itself; a question abandoned after a refusal is followed by `abcd mode managed`, since nothing asked will reset the mode. " +
 			"A host with no agents writes the question itself, to the same rules, and checks each draft with `abcd guard question` before asking it.",
 
 		"Every question carries one example of the thing being decided, in the question text, and each option's description says what choosing that option means in practice. " +

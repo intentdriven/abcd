@@ -384,6 +384,7 @@ func TestDrafterBlockTellsTheWriterToRunTheVerb(t *testing.T) {
 		"run `abcd guard question` after every edit",
 		"`rows`",
 		"`ready`",
+		"the `questions` array of its `ready` input as your `questions`",
 		"`version`",
 	} {
 		if !strings.Contains(block, want) {

@@ -11,6 +11,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/statusline"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
 
@@ -91,6 +92,14 @@ func newModeCommand(asJSON *bool) *cobra.Command {
 			}
 			if err := mode.Set(cwd, st); err != nil {
 				return modeRefusal(err)
+			}
+			// An explicit set supersedes any question still marked open, so the
+			// next message's reset never undoes it. The state is already set;
+			// a marker that cannot be cleared is said, never a refusal.
+			if root, err := mode.Root(cwd); err == nil {
+				if err := mode.ClearQuestionOpen(root); err != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "abcd mode: the state is set, but %s\n", termsafe.Sanitize(scrubPaths(err)))
+				}
 			}
 			out := modeOutput{State: st}
 			if !statusSurfaceInstalled() {

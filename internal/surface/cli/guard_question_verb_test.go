@@ -665,3 +665,86 @@ func TestGuardQuestionTextStatesTheLimitsInForce(t *testing.T) {
 		t.Errorf("a refused value: exit %d; the render must state the refusal and no ready input:\n%s", code, stdout)
 	}
 }
+
+// collidingDrafts are host-form drafts whose objects carry a key twice, or a
+// key equal to one the check reads only under case folding: encoding/json
+// would judge one value while a host reading exact keys shows another. Each
+// is built from a well-built question's JSON with one key added.
+func collidingDrafts(t *testing.T) map[string]string {
+	t.Helper()
+	q := wellBuilt()
+	q.Header = "Q1"
+	one, err := json.Marshal(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.TrimSuffix(string(one), "}")
+	opts, err := json.Marshal(q.Options[1:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	optionDup := `{"label":"Keep it","label":"Keep it (Recommended)","description":"It says whom it is for. It costs a few characters."}`
+	return map[string]string{
+		"question under another case":  `{"questions":[` + body + `,"Question":"Ship it?"}]}`,
+		"header twice":                 `{"questions":[` + body + `,"header":"Q2"}]}`,
+		"an option's label twice":      `{"questions":[` + body[:strings.Index(body, `"options":`)] + `"options":[` + optionDup + `,` + strings.TrimPrefix(string(opts), "[") + `}]}`,
+		"questions under another case": `{"questions":[` + string(one) + `],"Questions":[` + string(one) + `]}`,
+	}
+}
+
+// TestGuardQuestionRefusesCollidingKeys: the verb exits 2 on a host-form
+// draft whose objects carry a key twice or a read key under another case,
+// naming the collision, since the check would judge one value and the host
+// could show another. An unknown key that collides with nothing is kept.
+func TestGuardQuestionRefusesCollidingKeys(t *testing.T) {
+	unmanagedRepo(t)
+	for name, draft := range collidingDrafts(t) {
+		t.Run(name, func(t *testing.T) {
+			if !json.Valid([]byte(draft)) {
+				t.Fatalf("the fixture is not JSON: %s", draft)
+			}
+			stdout, stderr, code := runGuard(draft, "guard", "question", "-")
+			if code != 2 || stdout != "" {
+				t.Fatalf("exit %d, stdout %q, stderr %q; want exit 2 and nothing on stdout", code, stdout, stderr)
+			}
+			if !strings.Contains(stderr, "only in case") {
+				t.Errorf("stderr does not name the collision: %q", stderr)
+			}
+		})
+	}
+	q := wellBuilt()
+	q.Header = "Q1"
+	one, err := json.Marshal(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := `{"questions":[` + strings.TrimSuffix(string(one), "}") + `,"x-note":"kept","X-Other":1}]}`
+	if _, stderr, code := runGuard(kept, "guard", "question", "-"); code != 0 {
+		t.Errorf("a draft with unknown keys that collide with nothing: exit %d, stderr %q; want 0", code, stderr)
+	}
+}
+
+// TestHookFailsOpenOnCollidingKeys: the hook reads the same drafts as
+// tool_input it cannot read: the question runs on the loud, non-blocking
+// status (exit 1, nothing on stdout) naming the collision, never judged on
+// one of the colliding values.
+func TestHookFailsOpenOnCollidingKeys(t *testing.T) {
+	root := unmanagedRepo(t)
+	cwd, err := json.Marshal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, draft := range collidingDrafts(t) {
+		t.Run(name, func(t *testing.T) {
+			payload := `{"session_id":"s1","hook_event_name":"PreToolUse","cwd":` + string(cwd) +
+				`,"tool_name":"` + questionTools[0] + `","tool_input":` + draft + `}`
+			stdout, stderr, code := runGuard(payload, "guard", "hook")
+			if code != 1 || stdout != "" {
+				t.Fatalf("exit %d, stdout %q, stderr %q; want exit 1 and nothing on stdout", code, stdout, stderr)
+			}
+			if !strings.Contains(stderr, "NOT CHECKED") || !strings.Contains(stderr, "only in case") {
+				t.Errorf("the fail-open must say NOT CHECKED and name the collision; stderr = %q", stderr)
+			}
+		})
+	}
+}

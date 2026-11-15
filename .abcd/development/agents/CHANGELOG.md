@@ -26,8 +26,13 @@ only where the host gives it no shell). It makes at most five checks to a
 part. It never refuses for length: material that does not fit is split into
 numbered parts, returned in a new `next` list that replaces `remaining`. It
 refuses for three causes only, each to the calling agent: a missing or
-contradictory part of the brief, the check's exit 2, and five checks spent,
-with the check's last findings. In abcd's own source checkout it runs the
+contradictory part of the brief (the mode in force among them, though an
+`unnamed` addressee, where no mode store is read, is no disagreement), the
+check giving no ready input (its exit 2, or `refuse-away`), and five checks
+spent, with the check's last findings; a caller that then abandons the
+question runs `abcd mode managed`. The draft is piped as one line of JSON,
+so the heredoc's delimiter can never end it early, and `questions` is the
+array inside the check's `ready`. In abcd's own source checkout it runs the
 check through `scripts/abcd.sh` and records the version it reports. The
 generated block's asking rules and its new "Checking each draft" section move
 with the GRILL text; the hand row count is kept for a host with no shell.

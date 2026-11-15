@@ -110,6 +110,15 @@ func markerIn(root *os.Root) (bool, error) {
 // state on every message that follows while the cause stayed put
 // (iss-2609260100393814). The refusal changes nothing and names the path. A
 // file, a symlink or a FIFO is removed as itself, as before.
+//
+// The reset applies only to the mode the question was asked under: the
+// marker's word is that mode, and the state is reset only while it still
+// reads the same. A marker left by a question that never reached an answer
+// (one refused and abandoned) whose mode has since been set again, by
+// `abcd mode` or by hand, is stale: it is cleared and the mode is left as it
+// was set, so a stale marker never resets a state somebody set after it.
+// Anything the reset cannot read as one word (a symlink, a FIFO, an oversize
+// or unknown word) is nothing the gate wrote, and is cleared the same way.
 func ResetOnAnswer(repoRoot string) (bool, error) {
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
@@ -127,6 +136,12 @@ func ResetOnAnswer(repoRoot string) (bool, error) {
 	case fi.IsDir():
 		return false, fmt.Errorf("a directory stands at the question marker's path %s, which the gate never writes and the reset cannot clear, so the mode was not reset; remove it by hand", QuestionOpenRelPath)
 	}
+	if !markerMatches(root, repoRoot) {
+		if err := root.Remove(QuestionOpenRelPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return false, fmt.Errorf("a stale question marker at %s, left under a mode since set again, could not be cleared: %w", QuestionOpenRelPath, err)
+		}
+		return false, nil
+	}
 	if err := SetAt(repoRoot, Managed); err != nil {
 		return false, fmt.Errorf("the mode was not reset: %w", err)
 	}
@@ -134,4 +149,38 @@ func ResetOnAnswer(repoRoot string) (bool, error) {
 		return true, fmt.Errorf("the mode was reset to managed, but the question marker at %s could not be cleared, so the next message resets it again: %w", QuestionOpenRelPath, err)
 	}
 	return true, nil
+}
+
+// markerMatches reports whether the marker names the mode in force: its one
+// word, read as a regular file within the store's cap, equals the state the
+// store reads. Anything else (a marker that is not a regular file, a word
+// outside the vocabulary, a store that cannot be read) is no match.
+func markerMatches(root *os.Root, repoRoot string) bool {
+	data, err := fsutil.ReadGuardedInRoot(root, QuestionOpenRelPath, maxStoreBytes)
+	if err != nil {
+		return false
+	}
+	marked, err := ParseState(string(data))
+	if err != nil {
+		return false
+	}
+	current, err := ReadAt(repoRoot)
+	return err == nil && current == marked
+}
+
+// ClearQuestionOpen removes the open-question marker, if any, and changes no
+// mode. An explicit `abcd mode <state>` calls it: a state set by hand
+// supersedes any question still marked open, so the next message's reset
+// never undoes it. A checkout with no tier or no marker is left as it is; a
+// marker it cannot remove (a directory planted at the path) is named.
+func ClearQuestionOpen(repoRoot string) error {
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return fmt.Errorf("opening the checkout to clear the question marker: %w", err)
+	}
+	defer root.Close()
+	if err := root.Remove(QuestionOpenRelPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("clearing the question marker at %s: %w", QuestionOpenRelPath, err)
+	}
+	return nil
 }

@@ -167,6 +167,7 @@ func TestAskingRulesNameTheVerbAndTheWriter(t *testing.T) {
 		"runs `abcd guard question` on each draft",
 		"until the check is clean",
 		"the rows the check counted",
+		"a question abandoned after a refusal is followed by `abcd mode managed`",
 	} {
 		if !strings.Contains(drafter, want) {
 			t.Errorf("the drafter rule must say %q: %s", want, drafter)

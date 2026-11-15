@@ -277,7 +277,13 @@ func decodeQuestionDraft(raw []byte, ask bool) (form string, f question.Fields, 
 		if json.Unmarshal(raw, &in) != nil || len(in.Questions) == 0 {
 			return "", f, nil, nil, errQuestionDraftShape
 		}
+		if collidingKeys(raw, []string{"questions"}) {
+			return "", f, nil, nil, errQuestionKeyCollision
+		}
 		if f, err = decodeQuestions(in.Questions); err != nil {
+			if errors.Is(err, errQuestionKeyCollision) {
+				return "", f, nil, nil, err
+			}
 			return "", f, nil, nil, errQuestionDraftShape
 		}
 		// The draft's own bytes: rebuilding the input from the decoded view

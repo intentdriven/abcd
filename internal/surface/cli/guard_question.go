@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -111,13 +112,13 @@ func isQuestionTool(name string) bool {
 // home) is loud and holds abcd's question to the defaults: one NOT CHECKED
 // line names the file, and a question the defaults admit runs at exit 1.
 // Another tool's question runs unchecked whatever either file says.
-func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
+func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage, outer error) error {
 	reads := questionState(cmd, cwd)
 	if reads.state.Away {
 		return denyCall(awayQuestionRefusal())
 	}
 	if reads.state.AwayErr == nil {
-		return presentQuestionGate(cmd, reads, raw)
+		return presentQuestionGate(cmd, reads, raw, outer)
 	}
 	// The away record could not be read safely, so it reads as not away and
 	// the question is checked as if the person were present. Said on stderr,
@@ -128,7 +129,7 @@ func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
 		termsafe.Sanitize(scrubPaths(reads.state.AwayErr)))
 	out := &wroteWriter{w: cmd.OutOrStdout()}
 	cmd.SetOut(out)
-	err := presentQuestionGate(cmd, reads, raw)
+	err := presentQuestionGate(cmd, reads, raw, outer)
 	cmd.SetOut(out.w)
 	if err == nil && !out.wrote {
 		return &exitError{Code: 1}
@@ -232,8 +233,11 @@ func (o *wroteWriter) Write(p []byte) (int, error) {
 // question.Decide's; this function only acts on it, and every write it makes
 // comes after the decision, so `abcd guard question`, which calls the same
 // decision, can never reach them.
-func presentQuestionGate(cmd *cobra.Command, reads questionReads, raw json.RawMessage) error {
+func presentQuestionGate(cmd *cobra.Command, reads questionReads, raw json.RawMessage, outer error) error {
 	stderr := cmd.ErrOrStderr()
+	if outer != nil {
+		return questionFailOpen(stderr, "the question tool's input could not be read (%s)", outer)
+	}
 	fields, err := decodeQuestions(raw)
 	if err != nil {
 		// No marker is written here: the host's own schema rejects such an
@@ -469,8 +473,98 @@ var errUnreadableQuestions = errors.New("tool_input.questions is not a list of q
 // and echoes nothing from the decoder, whose text can carry a Go type.
 var errUnreadableQuestionPayload = errors.New("it is not a JSON object whose tool_input is an object, nested no deeper than the decoder reads")
 
+// errQuestionKeyCollision is why a question whose object carries a key twice,
+// or a key that matches one the check reads only under case folding, is not
+// checked: encoding/json reads such keys case-insensitively, the last one
+// winning, so the check would judge one value while a host reading exact keys
+// shows the other. It echoes nothing from the payload.
+var errQuestionKeyCollision = errors.New("an object of the question tool's input carries a key twice, or a key that differs from questions, header, question, options, label, description or preview only in case, so the check would read one value and the host could show another")
+
+// questionReadKeys and optionReadKeys are the keys the check reads from a
+// question and from an option, as hostQuestionInput spells them.
+var (
+	questionReadKeys = []string{"header", "question", "options"}
+	optionReadKeys   = []string{"label", "description", "preview"}
+)
+
+// collidingKeys reports whether the JSON object raw carries a key twice, or a
+// key equal to one of read under case folding but not byte for byte. Any key
+// that collides with nothing is kept, as the host owns the schema and adds to
+// it. A value that is not an object collides with nothing; the decode after
+// it decides whether it is readable.
+func collidingKeys(raw json.RawMessage, read []string) bool {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return false
+	}
+	seen := map[string]bool{}
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return false
+		}
+		k, _ := tok.(string)
+		if seen[k] {
+			return true
+		}
+		seen[k] = true
+		for _, r := range read {
+			if k != r && strings.EqualFold(k, r) {
+				return true
+			}
+		}
+		var skip json.RawMessage
+		if dec.Decode(&skip) != nil {
+			return false
+		}
+	}
+	return false
+}
+
+// toolInputKeysCollide reports whether a hook payload's tool_input carries
+// its questions key twice or under another case, which the payload decode
+// would read as one of them: the hook then fails the question open as an
+// input it cannot read, after the away check, as for any other.
+func toolInputKeysCollide(payload []byte) error {
+	var p struct {
+		ToolInput json.RawMessage `json:"tool_input"`
+	}
+	if json.Unmarshal(payload, &p) != nil || !collidingKeys(p.ToolInput, []string{"questions"}) {
+		return nil
+	}
+	return errQuestionKeyCollision
+}
+
+// questionKeysCollide applies collidingKeys to every question of raw and to
+// every option of each, so a question judged is the question shown.
+func questionKeysCollide(raw json.RawMessage) bool {
+	var qs []json.RawMessage
+	if json.Unmarshal(raw, &qs) != nil {
+		return false
+	}
+	for _, q := range qs {
+		if collidingKeys(q, questionReadKeys) {
+			return true
+		}
+		var in struct {
+			Options []json.RawMessage `json:"options"`
+		}
+		if json.Unmarshal(q, &in) != nil {
+			continue
+		}
+		for _, o := range in.Options {
+			if collidingKeys(o, optionReadKeys) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // decodeQuestions reads the question tool's questions into the field view the
-// limits check reads, one tab per question.
+// limits check reads, one tab per question. A question or option object
+// whose keys collide (questionKeysCollide) is unreadable, never judged on one
+// of its values.
 func decodeQuestions(raw json.RawMessage) (question.Fields, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return question.Fields{}, errUnreadableQuestions
@@ -478,6 +572,9 @@ func decodeQuestions(raw json.RawMessage) (question.Fields, error) {
 	var in []hostQuestionInput
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return question.Fields{}, errUnreadableQuestions
+	}
+	if questionKeysCollide(raw) {
+		return question.Fields{}, errQuestionKeyCollision
 	}
 	f := question.Fields{Tabs: make([]question.Tab, len(in))}
 	for i, q := range in {

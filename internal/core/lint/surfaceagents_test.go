@@ -199,8 +199,12 @@ func handWritten(page string) string {
 // TestWriterPageStatesItsRefusalsAndFallbacks (spc-2610301917245442, step 4;
 // approach 9): the hand-written part of the question-writing agent's page
 // states its three refusals, each returned to the calling agent only (a
-// missing or contradictory part of the brief, the check's exit 2, five checks
-// spent with the last findings); the `checked_by` field with its three values;
+// missing or contradictory part of the brief, the mode in force among them
+// but never an `unnamed` addressee; the check giving no ready input, on its
+// exit 2 or a `refuse-away`; five checks spent with the last findings), and
+// the caller's `abcd mode managed` when it abandons a question after one;
+// the draft piped as one line of JSON; the `questions` array of `ready` as
+// what is returned; the `checked_by` field with its three values;
 // the five-check bound; that it never refuses for length, splitting into
 // numbered parts with every answer's gain and cost kept; and, in abcd's own
 // source checkout, the verb run from the source tree.
@@ -212,7 +216,11 @@ func TestWriterPageStatesItsRefusalsAndFallbacks(t *testing.T) {
 	text := strings.Join(strings.Fields(handWritten(string(page))), " ")
 	for name, phrases := range map[string][]string{
 		"the refusal of a missing or contradictory part": {"a part of the brief is missing or contradicts another"},
-		"the refusal on the check's exit 2":              {"exits 2", "never a reason to count by hand"},
+		"the refusal when no ready input comes back":     {"cannot give a ready input", "exits 2", "`refuse-away`", "never a reason to count by hand"},
+		"unnamed is no disagreement":                     {"names a person (`product-thinker` or `facilitator`) other than the one you were handed", "`unnamed` is no disagreement", "`unnamed` means no mode store is read here"},
+		"the abandoned question's mode":                  {"abandons the question after your refusal", "`abcd mode managed`"},
+		"the draft's one line of JSON":                   {"valid JSON on one line", "written as `\\n`", "can never be the delimiter line"},
+		"the questions array, not ready":                 {"the `questions` array of the check's `ready` input"},
 		"the refusal after five checks":                  {"five checks", "the check's last findings"},
 		"refusals go to the caller only":                 {"to the agent that called you", "never to the person"},
 		"checked_by and its three values":                {"`checked_by`", "`abcd`", "`hook-only`", "`hand`"},

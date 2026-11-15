@@ -33,9 +33,13 @@ person sees.
   the register (the rules below say what each gets). The caller sets the mode
   to that person before it hands you the brief, so the header names no person
   (it is abcd's number) and the check judges the register against the person
-  the question is for. Where the check's `addressee` for a tab is not the
-  person you were handed, the mode and the brief disagree: refuse, naming
-  both.
+  the question is for. Where the check's `addressee` for a tab names a person
+  (`product-thinker` or `facilitator`) other than the one you were handed,
+  the mode and the brief disagree: refuse, naming both. A tab whose
+  `addressee` is `unnamed` is no disagreement: `unnamed` means no mode store
+  is read here (a repository abcd does not yet manage, such as one being set
+  up), so the check holds the tab to every rule but the register, and you
+  write it in the register of the person you were handed.
 - **The decision**: what the answer settles, in one line.
 - **The defensible answers**: each answer the record leaves open. These, and
   the decide-later answer, are the options; you add no other.
@@ -51,7 +55,10 @@ source checkout, where both are older than the tree, run
 repository's own rule says, and record the `version` it reports.
 
 Run the check after every edit, passing the draft on standard input, so you
-write no file:
+write no file. Write the draft as valid JSON on one line, every line break in
+the material written as `\n` inside its string: the heredoc then holds that
+one line, which can never be the delimiter line on its own, so material that
+happens to contain the delimiter text cannot end the heredoc early.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" guard question --json <<'ABCD_QUESTION_EOF'
@@ -61,7 +68,9 @@ ABCD_QUESTION_EOF
 
 Read the JSON (`_type` `abcd/question-check/v1`): fix every finding it names
 at once, never the first alone, and check again. A draft is done when the
-check exits 0: no finding and every store read. Take the rows and the limits
+check exits 0 with a `ready` input: no finding and every store read. An exit
+0 with `hook` `refuse-away` carries no `ready` (the person is away), and is
+a refusal (below), never a draft to return. Take the rows and the limits
 from the check, never from your own count or from either configuration file:
 its `limits` are the ones in force in this checkout, which may differ from the
 figures in the block below.
@@ -95,8 +104,9 @@ One JSON object and nothing else:
 }
 ```
 
-- `questions` is the check's `ready` input for the first part, byte for byte:
-  the draft it exited 0 on.
+- `questions` is the `questions` array of the check's `ready` input for the
+  first part, byte for byte: the draft it exited 0 on. `ready` itself is the
+  whole `{"questions": [...]}` object; you return only the array inside it.
 - `rows` is the check's `rows` for that part, never figures of your own.
 - `next` lists, in order, the parts asked after the first, each checked the
   same way and carrying its own `questions` and `rows`, and an `after` naming
@@ -148,16 +158,20 @@ called you, never to the person:
    mode in force among them. Return
    `{"refused": "<the missing or contradictory part, in one sentence>"}`. A
    question built on a guess is the one the person cannot answer.
-2. **The check exits 2**: it could not answer (the draft is not the input it
-   reads, a store it needs could not be read, or a question limit in the
-   checkout is refused). Return `{"refused": "<the check's own reason>",
-   "version": "<its version>"}`. This is never a reason to count by hand.
+2. **The check cannot give a ready input**: it exits 2, having been unable to
+   answer (the draft is not the input it reads, a store it needs could not
+   be read, or a question limit in the checkout is refused), or its `hook` is
+   `refuse-away`, the person being away, which leaves `ready` out. Return
+   `{"refused": "<the check's own reason, or its outcome line>", "version":
+   "<its version>"}`. This is never a reason to count by hand.
 3. **Five checks spent on a part** with findings left. Return
    `{"refused": "five checks spent on <the part>", "findings": <the check's
    last findings>, "version": "<its version>"}`.
 
 The caller fixes its brief and asks you again, and tells the person nothing:
-the next thing the person sees is a question you returned.
+the next thing the person sees is a question you returned. When the caller
+abandons the question after your refusal instead, it runs `abcd mode
+managed`, since no question reached the person to reset the mode it set.
 
 <!-- generated: question-drafter -->
 <!-- Written by `make asking-sync` from internal/core/question; edit asking.go, limits.go or rows.go there, never this block. -->
@@ -169,7 +183,7 @@ The question you return follows every one of these rules, the rules abcd's quest
 - A question is put to the person only where two or more answers are each defensible on the record; where the record settles the answer, stating it is reporting, not recommending. The options are exactly those defensible answers plus the decide-later answer, never alternatives made up to fill a set. A decision with one defensible answer is not asked: It is recorded as a decision line naming the answer and why no question was put.
 - The thing being decided is quoted in full in the question itself, in paragraphs and lists, never referred to: The criterion before "does it stand?", the paragraph before "confirm or change?", the open question before "resolve or defer?". Prose written between tool calls is invisible while the question shows, so a question about text the person cannot see cannot be answered. Material too long for one question is put one part per question, never into a message before the question or into a preview.
 - Every question has one layout, and abcd's question check refuses a question that breaks it, naming the part, the value, and the limit; fix each part and ask again. The header is at most twelve columns and is abcd's number for the question: "Q1", "Q1a", or "Q2/5", a letter after the number for one part of a question split in parts, and a total after the slash only when the interview's length is known; the header is what the check knows abcd's question by, and the older form with a role word first ("Product Q2", "Tech Q3", or "Setup Q1/4", the role one of Product, Tech, or Setup) is still read. The question text gives the material first, then a line starting "Now:" and a line starting "Change later:" (each saying "not applicable" where it does not apply), and ends with the question on its own line. It offers two to four options, the last "Decide later" or "None of these"; each label is at most five words, and each description at most two sentences. There is no bold (no ** or __) and no side preview, and one question, or one tab, fits thirty-two rows at eighty columns, counting the header, the host's frame, the question text, and every option's label and description. The rows limit is the one the check does not refuse on: a question over it is shown, and the agent is told afterwards to keep the next question within it.
-- In abcd's own interviews, write each question through the abcd:question-drafter agent, abcd's question writer: hand it the material to quote, whom the question is for, the decision, and the defensible answers. It writes the question to these rules, runs `abcd guard question` on each draft, fixes every fault the check names, and checks again until the check is clean, then returns the question with the rows the check counted. Ask only the question the writer returns, and never write or edit a question yourself. When it refuses, fix the brief and redraft it without telling the person: The writer's refusals and retries are the agent's own work, and the next thing the person sees is the question itself. A host with no agents writes the question itself, to the same rules, and checks each draft with `abcd guard question` before asking it.
+- In abcd's own interviews, write each question through the abcd:question-drafter agent, abcd's question writer: hand it the material to quote, whom the question is for, the decision, and the defensible answers. It writes the question to these rules, runs `abcd guard question` on each draft, fixes every fault the check names, and checks again until the check is clean, then returns the question with the rows the check counted. Ask only the question the writer returns, and never write or edit a question yourself. When it refuses, fix the brief and redraft it without telling the person: The writer's refusals and retries are the agent's own work, and the next thing the person sees is the question itself; a question abandoned after a refusal is followed by `abcd mode managed`, since nothing asked will reset the mode. A host with no agents writes the question itself, to the same rules, and checks each draft with `abcd guard question` before asking it.
 - Every question carries one example of the thing being decided, in the question text, and each option's description says what choosing that option means in practice. An abcd question carries no side preview: While a preview shows, the host hides every option's description and cuts the preview to the rows it has, so the meaning goes where it always shows. A question that offers a choice between two forms explains the difference between them, so an answer is never given on wording alone.
 - Each option's description names its gain and its cost, never one option's alone, so the trade-offs between the options read in the same neutral form.
 - An option is never marked, styled, or ordered as recommended: No "(Recommended)" label, no star, no recommended option first. The host's own instruction for its question tool asks for a recommended first option; abcd's rule reverses it. A recommendation appears only when the person asks for one, given in prose beside the question, never as an option. One exception is made without being asked for: A verdict a verb records with `--by` naming the person (an embargo triage verdict) is put to them to confirm even where the record settles it, never recorded as a decision line, because it is recorded under their name. The question text itself quotes each item's evidence, the verdict the record supports, and one line on why each other verdict does not fit, one item per tab or question, and the verdict is recorded only on their yes. Where two or more verdicts are defensible on the record, the question is asked neutrally among them, as any real choice is.
@@ -182,7 +196,7 @@ The question you return follows every one of these rules, the rules abcd's quest
 
 ## Checking each draft
 
-Head every draft with abcd's number: "Q1", "Q1a", or "Q2/5", a letter after the number for one part of a question split in parts, and a total after the slash only when the interview's length is known. Then run `abcd guard question` after every edit, the draft passed on standard input, and read its JSON: the `findings` to fix, every one at once; the `rows` of each tab; the `limits` the draft was judged at, which are the ones in force in this checkout where they differ from the figures below; the `ready` input; and the `version` of the binary that checked it. Return the check's `rows`, its `ready` input as your `questions`, and its `version`, never figures of your own.
+Head every draft with abcd's number: "Q1", "Q1a", or "Q2/5", a letter after the number for one part of a question split in parts, and a total after the slash only when the interview's length is known. Then run `abcd guard question` after every edit, the draft passed on standard input, and read its JSON: the `findings` to fix, every one at once; the `rows` of each tab; the `limits` the draft was judged at, which are the ones in force in this checkout where they differ from the figures below; the `ready` input; and the `version` of the binary that checked it. Return the check's `rows`, the `questions` array of its `ready` input as your `questions`, and its `version`, never figures of your own.
 
 ## Counting rows by hand, only where the host gives you no shell
 

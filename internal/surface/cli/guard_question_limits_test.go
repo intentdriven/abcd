@@ -1348,3 +1348,31 @@ func mustRunSilently(t *testing.T, stdout, stderr string, code int) {
 		t.Fatalf("want the question admitted with nothing said; code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 }
+
+// TestModeSetSupersedesAnAbandonedRefusal: a question refused under the
+// product thinker and abandoned leaves its marker. An explicit `abcd mode`
+// set afterwards clears it, so the next human message's reset never undoes
+// the state that set chose.
+func TestModeSetSupersedesAnAbandonedRefusal(t *testing.T) {
+	root := managedCheckout(t)
+	setMode(t, root, mode.ProductThinker)
+	broken := wellBuilt()
+	broken.Header = "Q1"
+	broken.Options[0].Label = "Role and number (Recommended)"
+	stdout, stderr, code := runGuard(askPayload(t, root, broken), "guard", "hook")
+	mustDeny(t, stdout, stderr, code)
+	mustBeMarkedUnder(t, root, mode.ProductThinker)
+	for _, word := range []string{"managed", "facilitator"} {
+		if _, stderr, err := runSplit(t, "", "mode", word); err != nil {
+			t.Fatalf("abcd mode %s: %v\n%s", word, err, stderr)
+		}
+	}
+	if markedOpen(t, root) {
+		t.Error("an explicit mode set left the abandoned question's marker in place")
+	}
+	var reset strings.Builder
+	resetModeOnAnswer(&reset, root)
+	if got, _ := mode.ReadAt(root); got != mode.Facilitator {
+		t.Errorf("the next message moved the hand-set mode to %q; reset said %q", got, reset.String())
+	}
+}

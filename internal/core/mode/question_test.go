@@ -142,3 +142,79 @@ func TestResetOnAnswerRefusesAMarkerItCannotRemove(t *testing.T) {
 		}
 	}
 }
+
+// TestResetOnAnswerClearsAStaleMarker: the reset applies only to the mode the
+// question was asked under. A question refused under the product thinker and
+// abandoned leaves its marker; the mode is then set to managed and later to
+// the facilitator by hand. The next message must not reset that hand-set
+// mode: the marker names another mode, so it is stale, and is cleared with
+// the mode left as set. A marker that is not a regular file is nothing the
+// gate wrote, and is cleared the same way.
+func TestResetOnAnswerClearsAStaleMarker(t *testing.T) {
+	root := newRepo(t)
+	makeTier(t, root)
+	if err := mode.SetAt(root, mode.ProductThinker); err != nil {
+		t.Fatal(err)
+	}
+	if err := mode.MarkQuestionOpen(root, mode.ProductThinker); err != nil {
+		t.Fatal(err)
+	}
+	for _, st := range []mode.State{mode.Managed, mode.Facilitator} {
+		if err := mode.SetAt(root, st); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reset, err := mode.ResetOnAnswer(root)
+	if err != nil || reset {
+		t.Fatalf("ResetOnAnswer over a stale marker = %v, %v; want false, nil", reset, err)
+	}
+	if got, _ := mode.ReadAt(root); got != mode.Facilitator {
+		t.Errorf("a stale marker reset the hand-set mode to %q", got)
+	}
+	if _, err := os.Lstat(markerPath(root)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the stale marker survived: %v", err)
+	}
+
+	if err := os.Symlink(filepath.Join(root, "elsewhere"), markerPath(root)); err != nil {
+		t.Fatal(err)
+	}
+	reset, err = mode.ResetOnAnswer(root)
+	if err != nil || reset {
+		t.Fatalf("ResetOnAnswer over a symlinked marker = %v, %v; want false, nil", reset, err)
+	}
+	if got, _ := mode.ReadAt(root); got != mode.Facilitator {
+		t.Errorf("a symlinked marker reset the mode to %q", got)
+	}
+	if _, err := os.Lstat(markerPath(root)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the symlinked marker survived: %v", err)
+	}
+}
+
+// TestClearQuestionOpenRemovesOnlyTheMarker: an explicit mode set clears any
+// open question's marker through ClearQuestionOpen, which changes no mode and
+// is a no-op with no marker or no tier.
+func TestClearQuestionOpenRemovesOnlyTheMarker(t *testing.T) {
+	root := newRepo(t)
+	if err := mode.ClearQuestionOpen(root); err != nil {
+		t.Fatalf("with no tier: %v", err)
+	}
+	makeTier(t, root)
+	if err := mode.SetAt(root, mode.ProductThinker); err != nil {
+		t.Fatal(err)
+	}
+	if err := mode.ClearQuestionOpen(root); err != nil {
+		t.Fatalf("with no marker: %v", err)
+	}
+	if err := mode.MarkQuestionOpen(root, mode.ProductThinker); err != nil {
+		t.Fatal(err)
+	}
+	if err := mode.ClearQuestionOpen(root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(markerPath(root)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the marker survived: %v", err)
+	}
+	if got, _ := mode.ReadAt(root); got != mode.ProductThinker {
+		t.Errorf("clearing the marker moved the mode to %q", got)
+	}
+}

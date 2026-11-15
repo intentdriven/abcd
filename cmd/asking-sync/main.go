@@ -97,7 +97,7 @@ func renderDrafter(l question.Limits) string {
 	b.WriteString("\n## Checking each draft\n\n")
 	fmt.Fprintf(&b, "Head every draft with abcd's number: %s, a letter after the number for one part of a question split in parts, and a total after the slash only when the interview's length is known. ", numberHeaders())
 	b.WriteString("Then run `abcd guard question` after every edit, the draft passed on standard input, and read its JSON: the `findings` to fix, every one at once; the `rows` of each tab; the `limits` the draft was judged at, which are the ones in force in this checkout where they differ from the figures below; the `ready` input; and the `version` of the binary that checked it. ")
-	b.WriteString("Return the check's `rows`, its `ready` input as your `questions`, and its `version`, never figures of your own.\n")
+	b.WriteString("Return the check's `rows`, the `questions` array of its `ready` input as your `questions`, and its `version`, never figures of your own.\n")
 	b.WriteString("\n## Counting rows by hand, only where the host gives you no shell\n\n")
 	b.WriteString("Count by hand only where the host gives you no shell to run the check in. Where it gives you one, the check's `rows` are the count, and a check that cannot answer is a refusal, never a reason to count by hand. ")
 	fmt.Fprintf(&b, "The check estimates the rows one tab takes in the host's question view in a window %d columns wide, and a tab over %d rows is over the limit. Count each tab the same way:\n\n", l.Columns, l.Rows)
