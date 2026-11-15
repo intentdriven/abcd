@@ -887,3 +887,25 @@ func TestInterviewRolesAreGrantedReadForTheirBrief(t *testing.T) {
 		})
 	}
 }
+
+// TestWrittenInterviewBriefNamesTheRepositorysLimits (spc-2610301950037469,
+// approach 6): the AI-written interview's front door hands the interview
+// where its limits came from, so under a repository's question.rows of 40 the
+// brief the runner reads states forty rows and names .abcd/config.json.
+func TestWrittenInterviewBriefNamesTheRepositorysLimits(t *testing.T) {
+	routeMachine(t, interview.RoleReflectionComposer)
+	script := interviewStub(t, retroReceipts()...)
+	r := retroRepo(t)
+	r.Write(".abcd/config.json", `{"question":{"rows":40}}`)
+	r.Commit("question rows 40")
+	_, _ = interviewRun(t, false, term.Mono, "reflect", "interview", "v0.2.0", "--proceed", "--answers", retroAnswersFile(t, "Q1"))
+	brief, err := os.ReadFile(filepath.Join(script, "turn-1.brief.seen.md"))
+	if err != nil {
+		t.Fatalf("the runner never read a brief: %v", err)
+	}
+	for _, want := range []string{"fits forty rows", "In this repository, `.abcd/config.json` set the rows."} {
+		if !strings.Contains(string(brief), want) {
+			t.Errorf("the brief does not say %q:\n%s", want, brief)
+		}
+	}
+}
