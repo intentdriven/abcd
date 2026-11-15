@@ -412,7 +412,9 @@ _All resolved: The one open question (which questions the status line makes abcd
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-a2d9216f1974 -->
+Fidelity review OWED (receipt rcp-a2d9216f1974).
+<!-- abcd-review-end receipt=rcp-a2d9216f1974 -->
 
 ## Grounds
 
