@@ -213,9 +213,16 @@ func TestAHandBackWhoseReleaseFailsSaysNotReleased(t *testing.T) {
 		t.Fatalf("a release origin refused is not logged as made: %q", note)
 	}
 	for _, want := range []string{"the lane was handed back and its reservation not released", "could not push the tombstone",
-		"unless a drain routing the hand-back releases it", "its lease ends at ", " as last fetched", "nothing renews a handed-back lane's reservation"} {
+		"unless a drain routing the hand-back releases it", "its lease runs to ", " as last fetched, longer if a load-gate waiter in this copy renews it",
+		"no step and no run renewal renews a handed-back lane's reservation",
+		"but a load-gate waiter in this copy (`abcd implement load --wait`, which `make preflight` and gated test runs use) renews every reservation this copy pushed while it waits"} {
 		if !strings.Contains(res.Next, want) {
 			t.Fatalf("the answer says %q: %s", want, res.Next)
+		}
+	}
+	for _, not := range []string{"nothing renews", "its lease ends at "} {
+		if strings.Contains(res.Next, not) {
+			t.Fatalf("the answer promises no end the load gate's waiter can move (%q): %s", not, res.Next)
 		}
 	}
 	if strings.Contains(res.Next, "released, not recorded") {
@@ -421,8 +428,9 @@ func TestAClosedHandBackSaveRefusedLeavesTheReservationHeld(t *testing.T) {
 }
 
 // TestTheLeaseIsSaidAsLastFetched: the lease of a reservation the release did
-// not free is said as this checkout last fetched it, "ends at" a time to come
-// and "ended at" one already past.
+// not free is said as this checkout last fetched it, "runs to" a time to come,
+// longer if a load-gate waiter in this copy renews it, and "ended at" one
+// already past; either way the answer says the waiter still renews it.
 func TestTheLeaseIsSaidAsLastFetched(t *testing.T) {
 	repo, _, id, _ := handingBackAtImplementer(t)
 	st, err := ReadState(repo.Root(), id)
@@ -434,8 +442,8 @@ func TestTheLeaseIsSaidAsLastFetched(t *testing.T) {
 		at        time.Time
 		want, not string
 	}{
-		{"a lease to come", time.Now(), "; its lease ends at ", "ended at"},
-		{"a lease already past", time.Now().Add(48 * time.Hour), "; its lease ended at ", "ends at"},
+		{"a lease to come", time.Now(), "; its lease runs to ", "ended at"},
+		{"a lease already past", time.Now().Add(48 * time.Hour), "; its lease ended at ", "runs to"},
 	} {
 		until, ended := leaseEnd(repo.Root(), st, row.at)
 		if until == "" {
@@ -445,6 +453,9 @@ func TestTheLeaseIsSaidAsLastFetched(t *testing.T) {
 		next := r.next()
 		if !strings.Contains(next, row.want+until+" as last fetched") || strings.Contains(next, row.not) {
 			t.Fatalf("%s: the lease is said as %q, as last fetched: %s", row.name, row.want, next)
+		}
+		if !strings.Contains(next, "a load-gate waiter in this copy (`abcd implement load --wait`") || strings.Contains(next, "nothing renews") {
+			t.Fatalf("%s: the answer says the load gate's waiter still renews it: %s", row.name, next)
 		}
 	}
 }
@@ -502,6 +513,38 @@ func TestAnAutoPlanHandBackSaveRefusedLeavesTheReservationHeld(t *testing.T) {
 	}
 	if note := recordNote(t, repo, id, StageReservationReleased); !strings.Contains(note, "released the reservation on itd-10") {
 		t.Fatalf("the run record says the reservation was released: %q", note)
+	}
+}
+
+// TestAnAutoPlanReleaseRefusedSaysTheWaiterRenewsIt: an auto-plan run's lane
+// handed back whose release origin refuses logs reservation_release_failed,
+// and the line promises no lapse the load gate's waiter can put off: it says
+// the waiter in this copy renews every reservation this copy pushed.
+func TestAnAutoPlanReleaseRefusedSaysTheWaiterRenewsIt(t *testing.T) {
+	repo, bare := reservingDraftRepo(t)
+	root := repo.Root()
+	start, err := Start(root, "itd-10", Options{AutoPlan: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, ref := start.RunID, claim.RefPrefix+"itd-10"
+	before := originReservation(t, bare, ref)
+	reviewBoth(t, root, id, "SHIP", "FIX FIRST")
+	refuseReservationPush(t, bare, "itd-10")
+
+	res, err := advance(root, id, DefaultStages(), Options{})
+	if err != nil || res.HandBack == nil {
+		t.Fatalf("the step's hand-back saved: %+v %v", res, err)
+	}
+	if tomb := originReservation(t, bare, ref); tomb.released || tomb.commit != before.commit {
+		t.Fatalf("origin refused the tombstone, so the reservation is still held: %+v", tomb)
+	}
+	note := recordNote(t, repo, id, StageReservationReleaseFailed)
+	for _, want := range []string{", so it lapses with its lease once nothing renews it; ",
+		"a load-gate waiter in this copy (`abcd implement load --wait`, which `make preflight` and gated test runs use) renews every reservation this copy pushed while it waits"} {
+		if !strings.Contains(note, want) {
+			t.Fatalf("the failed release's line says %q: %q", want, note)
+		}
 	}
 }
 

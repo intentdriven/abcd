@@ -55,9 +55,11 @@ type handBackRelease struct {
 // A crash between the write and the release leaves the lane handed back and
 // the reservation held, with neither reservation_released nor
 // reservation_release_failed in the record: a drain routing the hand-back
-// releases it (releaseHandedBack), and otherwise it lapses at its lease's end,
-// since nothing renews a handed-back issue run's reservation
-// (handedBackIssue).
+// releases it (releaseHandedBack), and otherwise it lapses once its lease runs
+// out unrenewed. No step and no run renewal renews a handed-back issue run's
+// reservation (handedBackIssue), but a load-gate waiter in this copy
+// (claim.RenewDue, which reads no run) renews every reservation this copy
+// pushed while it waits, so the lease can run past the time the answer gives.
 func releaseAfterWrite(repoRoot string, st *State, lane string, now time.Time) *handBackRelease {
 	out := &handBackRelease{}
 	st.afterWritten(func(s *State, rewrite func() error) {
@@ -126,7 +128,8 @@ func leaseEnd(repoRoot string, st State, now time.Time) (until string, ended boo
 // made and recorded, or where none was made; "not released" where the remote
 // did not take it; "released, not recorded" where it did and the record's
 // second write failed. An issue run's lease is told as this checkout last
-// fetched it: "ends at" a time to come, "ended at" one already past.
+// fetched it: "runs to" a time to come, which a load-gate waiter in this copy
+// may extend (waiterRenews), "ended at" one already past.
 func (r *handBackRelease) next() string {
 	if r == nil || !r.made {
 		return ""
@@ -147,17 +150,27 @@ func (r *handBackRelease) next() string {
 		return "the lane was handed back and its reservation released, not recorded: " + r.clause + r.unwrittenNote("say so")
 	}
 	s := "the lane was handed back and its reservation not released: " + r.clause
-	if r.until != "" {
-		verb := "ends"
-		if r.ended {
-			verb = "ended"
-		}
-		s += "; its lease " + verb + " at " + r.until + " as last fetched, and nothing renews a handed-back lane's reservation (a run `abcd build` started has no drain routing it)"
-	} else {
-		s += "; nothing renews a handed-back lane's reservation (a run `abcd build` started has no drain routing it)"
+	switch {
+	case r.until != "" && r.ended:
+		s += "; its lease ended at " + r.until + " as last fetched; " + waiterRenews
+	case r.until != "":
+		s += "; its lease runs to " + r.until + " as last fetched, longer if a load-gate waiter in this copy renews it: " + waiterRenews
+	default:
+		s += "; " + waiterRenews
 	}
-	return s + r.unwrittenNote("say the release is owed")
+	return s + " (a run `abcd build` started has no drain routing it)" + r.unwrittenNote("say the release is owed")
 }
+
+// waiterRenews is what renews a handed-back lane's reservation, and what does
+// not: no step and no run renewal (handedBackIssue), but the load gate's
+// waiter (gateWaiterRenews).
+const waiterRenews = "no step and no run renewal renews a handed-back lane's reservation, but " + gateWaiterRenews
+
+// gateWaiterRenews says the renewal no run governs: the load gate's waiter
+// renews this copy's own reservations half through their lease whatever the
+// run says (claim.RenewDue), a reservation whose release failed included.
+const gateWaiterRenews = "a load-gate waiter in this copy " +
+	"(`abcd implement load --wait`, which `make preflight` and gated test runs use) renews every reservation this copy pushed while it waits"
 
 // said is note, the run record's last line a caller read in the save's
 // callback, as the caller says it once the save has returned: where a release

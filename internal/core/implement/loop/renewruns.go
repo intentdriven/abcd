@@ -203,8 +203,10 @@ func renewsWhereItWaits(st State) bool {
 }
 
 // handedBackIssue reports whether st is an issue's run with a lane handed
-// back: its reservation is the person's to have released, so nothing renews
-// it, neither a waiter (renewsWhereItWaits) nor a step (advanceWith).
+// back: its reservation is the person's to have released, so no run renewal
+// renews it, neither a waiter's (renewsWhereItWaits) nor a step's
+// (advanceWith). A load-gate waiter's renewal of this copy's own reservations
+// (claim.RenewDue) reads no run, and still renews it while the waiter waits.
 func handedBackIssue(st State) bool {
 	if st.Issue() == "" {
 		return false

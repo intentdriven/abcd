@@ -1076,7 +1076,8 @@ stays open for the cutting session to merge or hold. A release whose tag is on
 `origin`, or whose holder released it, holds nothing. Past the fence the reservation holds only
 while something renews it at half its lease: each step of the run does,
 whatever its stage, an implementer's long stage included (but not a run keyed
-by an issue whose lane is handed back: nothing renews that reservation), so does handing an
+by an issue whose lane is handed back: no step and no run renewal renews that reservation, though
+the load gate's waiter below still renews every reservation this copy pushed), so does handing an
 agent's receipt back with `receipt`, so does `status`, so does the load gate's
 waiter (`implement load --wait` or `--race-gate`) an agent's `go test` or
 `make preflight` runs under, while it waits and while its command runs, and
@@ -1098,7 +1099,10 @@ while the reservation is still this copy's and logs `reservation_released`
 with the outcome, since the issue is the person's again. A crash between the
 hand-back's write and the release leaves the lane handed back and the
 reservation held, with no line for it, until a drain routing the hand-back
-releases it or it lapses at its lease's end. A fetch or push that
+releases it or its lease runs out. No step and no run renewal renews it, but a
+load-gate waiter in this copy (`implement load --wait`, which `make preflight`
+and gated test runs use) renews every reservation this copy pushed while it
+waits, so the lease can run past the time the answer gives. A fetch or push that
 fails, and a release the reservation's tip refuses for a reason of its own (a
 tombstone it may not write, a tip it cannot read), is logged
 `reservation_release_failed` instead, never `reservation_released`. A

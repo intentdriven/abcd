@@ -1323,8 +1323,10 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		}
 		// The run's reservation is renewed at half its lease before a stage
 		// (reservation.go); a renewal that fails is named and the stage runs.
-		// An issue run whose lane is handed back is not renewed: the issue is
-		// a person's again, and a reservation its release left held lapses.
+		// An issue run whose lane is handed back is not renewed here: the
+		// issue is a person's again, and a reservation its release left held
+		// lapses once nothing renews it, though a load-gate waiter in this
+		// copy still renews it while it waits (claim.RenewDue reads no run).
 		logged := len(st.Record)
 		renewNote := ""
 		if !handedBackIssue(*st) {

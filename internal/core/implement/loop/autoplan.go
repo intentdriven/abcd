@@ -808,7 +808,7 @@ func releaseAutoPlan(repoRoot string, st *State, now time.Time) {
 	clause, failed := releaseReservation(repoRoot, st.Key, "", now)
 	stage := StageReservationReleased
 	if failed {
-		clause += ", so it lapses with its lease"
+		clause += ", so it lapses with its lease once nothing renews it; " + gateWaiterRenews
 		stage = StageReservationReleaseFailed
 	}
 	st.Record = append(st.Record, Entry{At: now, Stage: stage, Note: clause})
