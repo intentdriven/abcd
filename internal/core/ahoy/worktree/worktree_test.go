@@ -672,6 +672,46 @@ func TestAddFinishesAWorktreeGitMadeWhenTheCheckoutHookFails(t *testing.T) {
 	}
 }
 
+// TestAddNamesTheHookFailureWhenTheFinishFailsToo (iss-2610231125096250): when
+// the checkout hook fails after git made the worktree, and finishing it then
+// fails too (the branch carries a file where the local tier goes), the refusal
+// names both, the hook's exit status first, and carries no Err, so a caller
+// that reports git's failure in place of the reason (the build loop) cannot
+// drop the finishing one.
+func TestAddNamesTheHookFailureWhenTheFinishFailsToo(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX hook script")
+	}
+	repo, _ := repoWithCommit(t)
+	repo.Write(".abcd/.work.local", "not a directory\n")
+	repo.Git("add", "-A", "-f")
+	repo.Git("commit", "-q", "-m", "plant")
+	hook := filepath.Join(repo.Root(), ".git", "hooks", "post-checkout")
+	if err := os.MkdirAll(filepath.Dir(hook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	withHooks := func(dir string, args ...string) (string, error) {
+		return gitutil.RunCommitCommandBounded(dir, time.Minute, gitutil.ErrCheckoutStalled, args...)
+	}
+	base := strings.TrimSpace(repo.Git("rev-parse", "main"))
+	got, err := worktree.Add(repo.Root(), worktree.AddOptions{Name: "hooked", Base: base, Git: withHooks})
+	r := mustRefusal(t, err)
+	hookAt, tierAt := strings.Index(r.Reason, "exit status 3"), strings.Index(r.Reason, ".abcd/.work.local")
+	if hookAt < 0 || tierAt < 0 || hookAt > tierAt {
+		t.Fatalf("the refusal names the hook's status, then the tier it could not lay: %+v", r)
+	}
+	if r.Err != nil {
+		t.Fatalf("the refusal carries no Err, so its reason is what a caller reports: %v", r.Err)
+	}
+	l, _ := worktree.LaneFor(repo.Root())
+	if got.Path != l.Path("hooked") {
+		t.Fatalf("add names the worktree that stands: %+v", got)
+	}
+}
+
 // TestRemoveAddedRemovesOnlyTheWorktreeAddMade: the worktree Add made, a real
 // directory git lists at its path on its branch, is removed and its branch
 // kept. A symlink standing at that path (here to another worktree of the

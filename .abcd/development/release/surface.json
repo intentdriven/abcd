@@ -453,7 +453,7 @@
     {
       "path": "abcd ahoy worktree list",
       "hidden": false,
-      "sentence": "List this repository's worktrees and its lane, or every lane with --all: Writes nothing; refuses a store it cannot trust or a directory outside a checkout.",
+      "sentence": "List this repository's worktrees and its lane, or every lane with --all: Writes nothing; refuses a store it cannot trust, or outside a checkout without --all.",
       "flags": [
         {
           "name": "all",

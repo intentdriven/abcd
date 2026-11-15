@@ -10,7 +10,7 @@ production_mode: hand-written
 ## Summary
 
 This spec delivers
-[itd-2609091014076309](../../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md):
+[itd-2609091014076309](../../intents/shipped/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md):
 a session's or an agent's worktree lands in `~/.abcd.noindex/worktrees/<root-sha>/<name>/`,
 abcd can say what that lane holds, and abcd reclaims what has merged without
 deleting anything it cannot prove belongs to it.
@@ -92,7 +92,7 @@ func ValidName(name string) bool                              // one plain path 
 A refusal is a typed `*Refusal{Reason, Remedy}`, home-redacted, which the
 loop wraps in its own `refuse(StepWorktree, …)` so its receipts read as before.
 
-[spc-2609202134338445](spc-2609202134338445-one-verb-takes-a-single-intent-from.md)
+[spc-2609202134338445](../open/spc-2609202134338445-one-verb-takes-a-single-intent-from.md)
 piece 6, the lane, is already landed as a plain `git worktree add` into the
 store's path and says it takes the store's verb once this intent ships. It
 consumes the package, not the CLI verb: the loop keeps what is its own (the

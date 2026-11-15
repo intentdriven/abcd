@@ -71,7 +71,7 @@ and each changes in the change that makes this record true:
   worktree's path;
 - the bundled rules' scratch rule (`internal/core/rules/defaults/rules.json`);
 - the path spelling in
-  [itd-2609091014076309](../../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md)
+  [itd-2609091014076309](../../intents/shipped/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md)
   and its open spec spc-2609301811532881, each of which gains a dated decision
   line naming this record and changes nothing else.
 

@@ -38,22 +38,22 @@ records the ruling; this file carries the stance.
   chooses by whose space it is. A sibling directory survives every platform
   event and still belongs to the user.
 
-**Enforcement.** None on the write side. The read side exists: the loader
-refuses a configuration root the caller does not own, and only
-`~/.abcd.noindex/trusted-roots` re-admits it. The store this rule points at — a
-root-SHA-keyed `~/.abcd.noindex/worktrees/` lane, a verb that lists it, a verb that
-reclaims a merged worktree, a line on the status board — is
-[itd-2609091014076309](../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md),
-planned and unbuilt. Until it ships the rule is applied by hand: a session that needs a
-worktree puts it under `~/.abcd.noindex/worktrees/<root-sha>/<name>/`, the location
+**Enforcement.** The write side is the worktree store,
+[itd-2609091014076309](../intents/shipped/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md),
+which has shipped: `abcd ahoy worktree add` makes a session's or an agent's
+worktree under `~/.abcd.noindex/worktrees/<root-sha>/<name>/`, the location
 [adr-2610031751065746](../decisions/adrs/2610031751065746-the-worktree-store-lives-under-the.md)
-sets, a verifier's
-copy goes outside every working tree, in a directory of its own under
-`~/.abcd.noindex/` keyed on the root-commit SHA (the session's scratchpad only
-for a copy the same turn makes and discards), never
-`.abcd/.work.local/scratch/`, and a reviewer
-who sees a directory
-appear beside a checkout names it.
+sets, `list` shows that lane, `prune` reclaims a worktree there whose work has
+merged and whose tree is clean, and the status board counts the lane's
+worktrees. Nothing refuses a worktree made somewhere else, so a session makes
+its worktree with the verb rather than by hand. The read side exists too: the
+loader refuses a configuration root the caller does not own, and only
+`~/.abcd.noindex/trusted-roots` re-admits it. Two parts of the rule are still
+applied by hand: a verifier's copy goes outside every working tree, in a
+directory of its own under `~/.abcd.noindex/` keyed on the root-commit SHA (the
+session's scratchpad only for a copy the same turn makes and discards), never
+`.abcd/.work.local/scratch/`, and a reviewer who sees a directory appear beside
+a checkout names it.
 
 **Promotion.** The intent's verbs promote the store half; a check that counts
 a repository's worktrees outside the store, and a hazard-registry entry that

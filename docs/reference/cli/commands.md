@@ -265,7 +265,7 @@ abcd ahoy worktree add example-lane
 
 ##### `abcd ahoy worktree list`
 
-List this repository's worktrees and its lane, or every lane with --all: Writes nothing; refuses a store it cannot trust or a directory outside a checkout.
+List this repository's worktrees and its lane, or every lane with --all: Writes nothing; refuses a store it cannot trust, or outside a checkout without --all.
 
 **Usage:** `abcd ahoy worktree list [flags]`
 
