@@ -251,3 +251,52 @@ func TestReconstructRefusesAnOutReachedThroughASymlinkedAncestor(t *testing.T) {
 		t.Errorf("a plain nested --out holds %d file(s), want the artefact and its telemetry", len(entries))
 	}
 }
+
+// TestReconstructOutLeafMustBeARealDirectoryOutsideACheckout pins what the
+// history chapter of the brief says about --out against what the verb does
+// (iss-2611040555277268). Outside every checkout a symlinked PARENT is the
+// operator's own and is followed, but the last component is refused when it is
+// a symlink, there as anywhere: the chapter must say so rather than call the
+// whole path the operator's own.
+func TestReconstructOutLeafMustBeARealDirectoryOutsideACheckout(t *testing.T) {
+	repo, rootSHA := sessionEndRepo(t)
+	t.Chdir(repo)
+	plantReconstructSession(t, rootSHA)
+
+	outside := t.TempDir()
+	real := filepath.Join(outside, "real")
+	if err := os.MkdirAll(filepath.Join(real, "out"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, filepath.Join(outside, "parentlink")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(real, "out"), filepath.Join(outside, "leaflink")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	_, _, err := runRecovery("", "history", "reconstruct", "sess-cli", "--out", filepath.Join(outside, "leaflink"))
+	if err == nil || !strings.Contains(err.Error(), "not an existing directory") {
+		t.Errorf("a symlink as --out's last component outside a checkout: want the not-an-existing-directory refusal, got %v", err)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(real, "out")); len(entries) != 0 {
+		t.Errorf("reconstruct wrote %d file(s) through a symlinked last component", len(entries))
+	}
+
+	if _, _, err := runRecovery("", "history", "reconstruct", "sess-cli", "--out", filepath.Join(outside, "parentlink", "out")); err != nil {
+		t.Fatalf("a symlinked parent outside every checkout was refused: %v", err)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(real, "out")); len(entries) != 2 {
+		t.Errorf("want both files behind the symlinked parent, got %d", len(entries))
+	}
+
+	chapter, err := os.ReadFile(filepath.Join(repoRootFromTest(t), ".abcd", "development", "brief", "04-surfaces", "11-history.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prose := strings.Join(strings.Fields(string(chapter)), " ")
+	const want = "The last component must itself be a real directory wherever it is"
+	if !strings.Contains(prose, want) {
+		t.Errorf("the history chapter does not state %q: it still reads as if a path outside every checkout were wholly the operator's own", want)
+	}
+}
