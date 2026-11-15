@@ -83,6 +83,7 @@ Out of scope, recorded elsewhere: Per-repository layout limits (itd-261030191435
    - needs: 2, 3
    - packages: internal/core/question/asking.go, cmd/asking-sync/main.go, agents/question-drafter.md, agents/planning-interviewer.md, commands/intent.md, commands/mode.md
    - tests: internal/core/question/asking_test.go, internal/core/rules/grill_test.go, cmd/asking-sync/main_test.go, internal/surface/cli/roles_vocabulary_test.go, internal/core/lint/surfaceagents_test.go
+   - landed: e46d51c64256
 5. The recorded labs
    - needs: 4
    - packages: .abcd/development/research/notes/2026-11-question-writer-labs.md
