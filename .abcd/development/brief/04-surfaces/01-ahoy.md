@@ -141,6 +141,9 @@ flags.
   marked option. The bare board carries the same explanation as an optional,
   advisory gap while no provider is configured.
 - **The provider setup** sets one provider up, and writes. See below.
+- **The worktree verbs** give a session or an agent a checkout of its own in
+  the machine-scoped worktree store, list what the store holds, and reclaim what
+  has merged. Adding and pruning write; listing does not. See below.
 
 **Not built yet:** `destroy`, a nuclear uninstall that would remove the `.abcd/`
 namespace too (itd-10), as distinct from the uninstall's reversible behaviour.
@@ -307,6 +310,80 @@ value for a name already kept, and the secret scanner reads the index's bytes
 before they are written, refusing any finding. A value is read from stdin only,
 and never printed, logged or written to a record; a call's record names the
 credential it used.
+
+### The worktree store
+
+An agent that needs an isolated checkout, for a build lane, a subagent or a
+peer session, asks the store's add sub-verb for one under a name and works in
+the path it prints (itd-2609091014076309). The worktree lands in
+`~/.abcd.noindex/worktrees/<root-sha>/<name>/`, keyed on the full object name of
+the repository's root commit, so nothing is made beside the checkout or inside
+it. The plugin page carries this as a host-run step, so an agent uses the
+store in place of the location its host would choose by default. The store's
+layout, its one owning package and its invariant are in
+[`../05-internals/03-configuration.md` § The worktree store](../05-internals/03-configuration.md#the-worktree-store).
+The appendix lists the sub-verbs and their options.
+
+- **Adding** judges the name first: one plain path segment of letters, digits,
+  `.`, `_` and `-`, not led by `-` or `.`, with no `..`, and not the embargo
+  store's name, which shares the lane. By default it makes a new branch of the
+  same name from the default branch, and a branch of that name that already
+  exists is refused with the branch option named as the way to check it out;
+  given that option, it checks out an existing local branch and makes none.
+  git runs the checkout as the person's own `git worktree add` would, so the
+  repository's content filters and checkout hook run, bounded at 60 minutes.
+  The new directory is narrowed to `0700`, the branch's start commit is
+  recorded in the lane (`.starts/<name>`) for the merged judgement, and the
+  worktree's local tier is laid. Every refusal before git runs writes nothing.
+  The path is printed with the home as `~`, and the JSON form gives the name,
+  the branch and the path.
+- **Listing**, which the bare sub-verb also does, shows every worktree git
+  reports for the repository but the main checkout, and every directory in the
+  lane git does not list, each with its branch, `clean` or `dirty`, `merged` or
+  `unmerged` and how a merged one was judged, and whether it sits in the
+  `store`, `outside` it, or is the embargo store (`sibling`). A row that fails
+  the proof of belonging carries its reason in place of those columns. A
+  directory under the store whose name abbreviates this repository's root
+  commit is "not a lane", named with the full-key lane it should have been.
+  Listing every lane on the machine works from any folder, shows each lane
+  under its root commit, and judges each worktree from the checkout its own
+  `.git` file names. The registry's repository names are not read yet, so a
+  lane's label repeats its key.
+- **Pruning** removes a worktree only when it passes the proof of belonging, is
+  not locked, held by an unfinished build run, owned by another account or the
+  prune's own working directory, and is clean with its branch merged, or is a
+  quiet unmerged one the person names on the command line. Each worktree gets a
+  row, `reclaimed`, `quiet` or `kept` with its reason. Before a removal it copies
+  the local tier, redacted, into the notes archive beside a manifest, and a tier
+  it cannot archive keeps the worktree. The removal is `git worktree remove`
+  without its force option; the prune never deletes a branch and never runs the
+  repository-wide `git worktree prune`. Files git ignores outside the local tier
+  go with the worktree unarchived (iss-2610272112319234 holds that finding).
+  After a removal it trims the Go build cache. It exits 0 when it reclaimed a
+  worktree, 1 when it reclaimed none, and 2 on a refusal or fault; its dry run
+  removes, archives and trims nothing and exits as the real run would.
+
+A quiet worktree is an unmerged one whose last activity (the tip's commit time,
+the worktree's `.git` file and its changed files, whichever is latest) is older
+than `worktrees.quiet_days`, 14 by default and read through the layered
+configuration, with no pull request open for its branch; a detached HEAD is
+never quiet. Its row carries a dossier, uncommitted changes first, so the person
+can decide whether to name it. A name the lane does not hold refuses the run
+before anything is removed.
+
+Merged is judged once for listing and pruning alike, in this order: the forge
+records the branch's pull request merged into the default branch with the local
+tip as its head; the tip is an ancestor of the default branch and the branch
+holds a commit of its own, counted from the start the add recorded or, with
+none recorded, from its reflog; every commit has an equivalent on the default
+branch; or the branch's whole diff matches one commit there by stable patch id.
+Listing and pruning each ask the forge once a run with one read-only
+`gh pr list`, a fetch their documented meaning includes under
+[invariant 7](../02-constraints/03-invariants.md); with no forge answering they
+judge from git alone and say so once. The `/abcd` board's worktrees line never
+asks the forge: it counts the lane's worktrees from the peers scan the board
+already runs, and its "can be cleared" count is an estimate that the prune's own
+report overrides.
 
 ## Preparing a repository: the host-run half of the install
 
