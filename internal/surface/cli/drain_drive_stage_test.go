@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -922,5 +923,32 @@ func TestADrivesLogKeepsItsStartLines(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), line) {
 		t.Fatalf("the log keeps the line:\n%s", raw)
+	}
+}
+
+// TestAStagesQuestionCheckKeepsTheDefaultLimits (spc-2610301950037469): under
+// a walled launch the question check measures at abcd's defaults, as the GRILL
+// domain the stage's prompt hook injects states them, since the working
+// tree's .abcd/config.json is the lane's own writing; outside one it reads
+// the file.
+func TestAStagesQuestionCheckKeepsTheDefaultLimits(t *testing.T) {
+	repo := unmanagedRepo(t)
+	writeRepoQuestionConfig(t, repo, `{"question":{"rows":40}}`)
+	t.Setenv(runner.StageBaseEnv, "0123456789abcdef0123456789abcdef01234567")
+	var st question.State
+	questionLimitsAt(repo, &st)
+	if !reflect.DeepEqual(st.Limits, question.Default) || st.LimitsErr != nil || st.LimitsRefused != nil {
+		t.Errorf("a stage's check took the lane's file: limits %v", st.Limits.Configurable())
+	}
+	for i, src := range st.LimitsSource {
+		if src != "bundled" {
+			t.Errorf("a stage's limits_source[%d] = %q, want bundled", i, src)
+		}
+	}
+	t.Setenv(runner.StageBaseEnv, "")
+	st = question.State{}
+	questionLimitsAt(repo, &st)
+	if st.Limits.Rows != 40 {
+		t.Errorf("outside a stage the check does not read the file: rows %d", st.Limits.Rows)
 	}
 }

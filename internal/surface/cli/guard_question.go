@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/question"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -744,7 +746,20 @@ const questionPointerLine = "Check the next draft with `abcd guard question` bef
 // and role words no file sets, decision 2) and the rows split, since a
 // refused value is never applied and abcd's question is refused before any
 // limit is checked.
+//
+// Under a walled launch the check keeps abcd's defaults, reported as
+// bundled, as the GRILL domain the stage's prompt hook injects states them
+// (rulesForHook): the working tree's .abcd/config.json there is the lane's
+// own writing, never a limit the lane is held to.
 func questionLimitsAt(cwd string, st *question.State) {
+	if os.Getenv(runner.StageBaseEnv) != "" {
+		st.Limits = question.Default
+		st.LimitsSource = make([]string, len(st.Limits.Configurable()))
+		for i := range st.LimitsSource {
+			st.LimitsSource[i] = layered.Bundled.String()
+		}
+		return
+	}
 	roots, _ := layered.RootsFor(cwd)
 	v, err := layered.QuestionLimits(roots)
 	var unread *layered.UnreadError

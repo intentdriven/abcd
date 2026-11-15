@@ -268,6 +268,9 @@ rows, label words and description sentences the repository's
 `question.description_sentences`, at the root the rules loader
 resolves rather than git's toplevel, each
 tightened where the person's own `~/.abcd.noindex/config.json` sets it lower.
+On a stage of a walled launch the check keeps abcd's defaults, reported as
+`bundled`, as the GRILL domain that stage's prompt hook injects does: the
+working tree's `.abcd/config.json` there is the lane's own writing.
 A value the resolver read and refused, outside its bounds, not a whole number,
 another key under the same namespace, or a personal value looser than
 the limit in force, refuses every abcd question with the host's deny, whatever
