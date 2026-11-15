@@ -239,3 +239,55 @@ func armHooksLimitQuestion(t *testing.T, n int) question.Question {
 	}
 	return confirmQuestion(t, n, HooksArmGapID, armHooksQuestion(repo), armHooksAsk)
 }
+
+// setupPlanLimitsOwed is every limit the setup plan breaks today, as
+// "<plan> at the <limits>: <rule>". The plan is put only to a person at a
+// terminal, never relayed to a host's question tool, and its height is
+// iss-2611152326582649. The list may only shrink: a plan that newly breaks a limit
+// fails, and so does a line here that no longer breaks.
+var setupPlanLimitsOwed = map[string]bool{
+	"a fresh repository at the defaults: rows": true,
+	"a fresh repository at the floors: rows":   true,
+	"nothing to change at the floors: rows":    true,
+}
+
+// TestSetupPlanQuestionPassesTheLimitsAtTheFloors (itd-2610301914350541,
+// ac-23): the setup plan, as a fresh repository's detection builds it and
+// with nothing to change, is held to abcd's defaults and to the floor of
+// every key; what it breaks today is owed by name in setupPlanLimitsOwed.
+func TestSetupPlanQuestionPassesTheLimitsAtTheFloors(t *testing.T) {
+	setupHermetic(t)
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	det, err := Detect(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans := map[string]SetupPlan{
+		"a fresh repository": buildSetupPlan(det, []string{"the repository's visibility", "where agents read their instructions"}),
+		"nothing to change":  {},
+	}
+	broken := map[string]bool{}
+	for name, plan := range plans {
+		ask := question.Ask{Questions: []question.Question{SetupPlanQuestion(1, plan)}}
+		for _, f := range question.Check(ask) {
+			t.Errorf("%s: structural: %s", name, f)
+		}
+		for lname, l := range map[string]question.Limits{"defaults": question.Default, "floors": question.FloorsForTest(question.Default)} {
+			for _, f := range question.CheckLimits(ask.Fields(), l, question.Addressee{}) {
+				key := name + " at the " + lname + ": " + string(f.Rule)
+				broken[key] = true
+				if !setupPlanLimitsOwed[key] {
+					t.Errorf("%s at the %s: %s", name, lname, f)
+				}
+			}
+		}
+	}
+	for key := range setupPlanLimitsOwed {
+		if !broken[key] {
+			t.Errorf("%q is owed in setupPlanLimitsOwed but the plan no longer breaks it; delete its line", key)
+		}
+	}
+}
