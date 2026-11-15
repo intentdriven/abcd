@@ -65,3 +65,35 @@ func TestAnAbsoluteHooksPathIsPlacedByWhereItReallyIs(t *testing.T) {
 		}
 	}
 }
+
+// TestDriveGateNamesTheWorkflowFolderAndFoldsCase: the forge's workflow folder
+// is a gate, and every gate, the configured hooks path among them, is named
+// whatever the case of each part, on any filesystem; an ordinary path, or a
+// name that only starts with a gate's letters, is none.
+func TestDriveGateNamesTheWorkflowFolderAndFoldsCase(t *testing.T) {
+	for _, c := range []struct {
+		path, hooks string
+		gate        bool
+	}{
+		{".github/workflows/ci.yml", "", true},
+		{".github", "", true},
+		{".github/", "", true},
+		{"Scripts/x.sh", "", true},
+		{"MAKEFILE", "", true},
+		{".GitHooks/pre-push", "", true},
+		{"Tools/Hooks/x", "tools/hooks", true},
+		{"tools/HOOKS", "tools/hooks", true},
+		{"internal/x.go", "", false},
+		{"scriptsx/a", "", false},
+		{".githubx/workflows/ci.yml", "", false},
+		{"Makefile.bak", "", false},
+		{"makefile/x", "", false},
+		{"docs/.github/x.yml", "", false},
+		{"tools/hooksx/a", "tools/hooks", false},
+		{"tools", "tools/hooks", false},
+	} {
+		if got := DriveGate(c.path, c.hooks); got != c.gate {
+			t.Errorf("DriveGate(%q, %q) = %v, want %v", c.path, c.hooks, got, c.gate)
+		}
+	}
+}
