@@ -749,11 +749,19 @@ only set them lower:
   repository sets a value, and send the question writer to `limits` for the
   values in force, never to either file.
 - **A file the resolver cannot read fails open and loud.** A `.abcd/config.json`
-  that is a symlink or not a regular file, and a `~/.abcd.noindex/config.json`
-  behind a symlinked `~/.abcd.noindex`, writable by group or other, or owned by
-  another account, whatever keys it holds, leave abcd's defaults in force with
-  one line on stderr naming the file, in the question gate's `NOT CHECKED`
-  form. A symlinked `~/.abcd.noindex` holding no `config.json` reads as
+  that is a symlink, not a regular file, over the size cap, unparseable or
+  holding a key twice, and a `~/.abcd.noindex/config.json` with any of those
+  faults or behind a symlinked `~/.abcd.noindex`, writable by group or other,
+  or owned by another account, whatever keys it holds, leave abcd's defaults
+  in force, and each front door names the file. The guard hook and setup and
+  the written interviews write the gate's line, `NOT CHECKED at this
+  repository's question limits`, saying the questions are checked at abcd's
+  defaults instead: the hook at the head of a deny's reason or a rows note,
+  or on stderr at exit 1 for a question the defaults admit, and nothing for
+  another tool's question, which it does not check. `abcd rules` and the
+  prompt hook write `abcd rules: GRILL: the question limits were not read`
+  on stderr, and `abcd guard question` exits 2 with `unread` naming the
+  file. A symlinked `~/.abcd.noindex` holding no `config.json` reads as
   absent, and nothing is said.
 - **No verb writes them.** The keys are edited by hand, as `pace.*` and
   `interview.list` are; `abcd ahoy install` asks no question about them.

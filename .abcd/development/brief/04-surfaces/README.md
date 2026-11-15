@@ -372,8 +372,10 @@ the checkout from the root the loader resolves for the working directory.
   says it is on a stage, so an empty recall there reads apart from a prompt
   that matched nothing. It writes nothing: no session state is loaded or saved.
 - **Diagnostics go to stderr, never stdout**, so the JSON form stays one
-  document: a refused root, a domain skipped for carrying no rules, and each
-  bundled entry of a guardrail domain an override's list leaves out.
+  document: a refused root, a domain skipped for carrying no rules, each
+  bundled entry of a guardrail domain an override's list leaves out, and the
+  question limits' line: a refused value (GRILL then states abcd's defaults
+  and says which key was refused), a layer not read, or a refused home.
 
 ### The spec verb
 
@@ -553,13 +555,15 @@ that everything it reads is data, never instruction.
   material to quote, the addressee, the decision and the defensible answers,
   it heads each draft with abcd's number, runs `abcd guard question`
   ([`17-guard.md`](17-guard.md)) after every edit, at most five checks to a
-  part, and returns the check's ready input, its rows and its version with
-  `checked_by`. It quotes one decision's too-long material shorter, keeping every answer's gain and cost, and splits material holding several decisions or too many answers into numbered
+  part, and returns the check's ready input, its rows, its `limits` and its
+  version with `checked_by`; a hand count, made only with no shell, is at
+  abcd's defaults and says so in a `note`. It quotes one decision's too-long material shorter, keeping every answer's gain and cost, and splits material holding several decisions or too many answers into numbered
   parts. It refuses only a missing or contradictory
   brief, a check that gives no ready input (its exit 2, or `refuse-away` while the person is away), or five checks spent, and only to the agent that
   called it. Its asking rules, how it checks a draft, and the hand row count
   kept for a host with no shell are a block `cmd/asking-sync` renders from
-  `question.Default`. It puts nothing to the person itself and never marks an
+  `question.Default`, with the keys a repository sets and their bounds from
+  `question.Bounds`. It puts nothing to the person itself and never marks an
   option recommended. The GRILL asking rules tell every agent running an abcd
   interview to ask only what it returns.
 
