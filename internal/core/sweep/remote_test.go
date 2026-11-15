@@ -495,7 +495,9 @@ func TestADefaultBranchThatMovedOnOriginHoldsEveryDelete(t *testing.T) {
 // TestADefaultBranchThatMovesOnOriginBetweenDeletesHoldsTheLaterOne: the last
 // check before each delete asks origin for its default branch again, so when
 // another clone moves origin's main after the first of two deletes passed its
-// last check, the first is deleted and the second is held until a fetch.
+// last check, the first is deleted and the second is held until a fetch. The
+// question to origin after the first delete sees the move too, so the first
+// row names how to restore that branch and the run faults.
 func TestADefaultBranchThatMovesOnOriginBetweenDeletesHoldsTheLaterOne(t *testing.T) {
 	repo, origin := originRepo(t)
 	first := mergedOnOrigin(repo, "first", "first.txt")
@@ -519,7 +521,7 @@ func TestADefaultBranchThatMovesOnOriginBetweenDeletesHoldsTheLaterOne(t *testin
 	t.Cleanup(func() { beforeRemoteDelete = nil })
 	f := &fakeForge{prs: []pullRequest{mergedPR(4, "first", first), mergedPR(5, "second", second)}}
 
-	res := sweepRemoteOK(t, repo, remoteOpts(f), true)
+	res, err := sweepRemote(context.Background(), repo.Root(), remoteOpts(f), true)
 	moved := onOrigin(repo, origin, "main")
 	if moved == fetched || repo.Git("rev-parse", "refs/remotes/origin/main") != fetched {
 		t.Fatalf("the fixture: origin's main is at %s and origin/main here at %s; want origin moved past %s and origin/main left there",
@@ -528,8 +530,9 @@ func TestADefaultBranchThatMovesOnOriginBetweenDeletesHoldsTheLaterOne(t *testin
 	if len(hooked) == 0 || hooked[0] != "refs/heads/first" {
 		t.Fatalf("the deletes reached the push in the order %v; want first's first", hooked)
 	}
-	if r := remoteRowFor(t, res, "first"); r.Outcome != OutcomeDeleted {
-		t.Fatalf("first: %+v; want it deleted before origin's main moved", r)
+	restore := "git push origin " + first + ":refs/heads/first"
+	if r := remoteRowFor(t, res, "first"); r.Outcome != OutcomeDeleted || !strings.Contains(r.Reason, "to restore it, run `"+restore+"`") {
+		t.Fatalf("first: %+v; want it deleted as origin's main moved, naming %q", r, restore)
 	}
 	if got := onOrigin(repo, origin, "first"); got != "" {
 		t.Fatalf("origin still holds first at %s", got)
@@ -543,8 +546,8 @@ func TestADefaultBranchThatMovesOnOriginBetweenDeletesHoldsTheLaterOne(t *testin
 	if onOrigin(repo, origin, "second") != second {
 		t.Fatal("origin no longer holds second")
 	}
-	if res.ExitCode() != ExitActed {
-		t.Fatalf("a run that deleted one branch exits %d", res.ExitCode())
+	if err == nil || res.ExitCode() != ExitRefused || !strings.Contains(res.Refusal, restore) {
+		t.Fatalf("a delete origin's main moved under is the run's fault: err %v, exit %d, refusal %q", err, res.ExitCode(), res.Refusal)
 	}
 }
 
@@ -694,5 +697,75 @@ func TestARunStoppedWhileOriginsTipIsReadIsReportedStopped(t *testing.T) {
 	}
 	if onOrigin(repo, origin, "feat") != tip {
 		t.Fatal("origin no longer holds feat")
+	}
+}
+
+// TestADefaultBranchThatMovesAfterADeleteNamesTheRestore: when another clone
+// moves origin's main after origin took a delete, the question to origin
+// after the delete sees it; the outcome stays deleted, the row names the
+// judged tip and the exact command that restores the branch, and the run
+// faults. The command, run as printed, puts the branch back.
+func TestADefaultBranchThatMovesAfterADeleteNamesTheRestore(t *testing.T) {
+	repo, origin := originRepo(t)
+	tip := mergedOnOrigin(repo, "feat", "feat.txt")
+	fetched := repo.Git("rev-parse", "refs/remotes/origin/main")
+	// Another clone moves origin's main, pushing by the remote's name; see
+	// TestADefaultBranchThatMovedOnOriginHoldsEveryDelete for why a push from
+	// this checkout cannot stand in for it.
+	other := filepath.Join(t.TempDir(), "other")
+	repo.Git("clone", "-q", origin, other)
+	write(t, filepath.Join(other, "later.txt"), "later\n")
+	repo.Git("-C", other, "add", "-A")
+	repo.Git("-C", other, "commit", "-q", "-m", "later")
+	afterRemoteDelete = func(string) { repo.Git("-C", other, "push", "-q", "origin", "main") }
+	t.Cleanup(func() { afterRemoteDelete = nil })
+	f := &fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}
+
+	res, err := sweepRemote(context.Background(), repo.Root(), remoteOpts(f), true)
+	moved := onOrigin(repo, origin, "main")
+	if moved == fetched {
+		t.Fatal("the fixture: origin's main did not move")
+	}
+	r := remoteRowFor(t, res, "feat")
+	restore := "git push origin " + tip + ":refs/heads/feat"
+	if r.Outcome != OutcomeDeleted || !strings.Contains(r.Reason, "the branch's judged tip was "+tip) ||
+		!strings.Contains(r.Reason, "to restore it, run `"+restore+"`") ||
+		!strings.Contains(r.Reason, "origin's default branch is main at "+short(moved)+" after the delete, but the branch was judged against origin/main at "+short(fetched)) {
+		t.Fatalf("%+v; want it deleted, naming its judged tip and %q", r, restore)
+	}
+	if err == nil || res.ExitCode() != ExitRefused || !strings.Contains(res.Refusal, restore) {
+		t.Fatalf("a delete origin's default branch moved after is the run's fault: err %v, exit %d, refusal %q", err, res.ExitCode(), res.Refusal)
+	}
+	if onOrigin(repo, origin, "feat") != "" {
+		t.Fatal("origin still holds feat")
+	}
+	repo.Git(strings.Fields(restore)[1:]...)
+	if onOrigin(repo, origin, "feat") != tip {
+		t.Fatalf("%q did not put feat back at %s", restore, tip)
+	}
+}
+
+// TestAnUnansweredQuestionAfterADeleteIsANoteNotAFault: when origin cannot
+// name its default branch after it took a delete, the row says origin could
+// not be asked after the delete, prints no restore line, and the run does
+// not fault.
+func TestAnUnansweredQuestionAfterADeleteIsANoteNotAFault(t *testing.T) {
+	repo, origin := originRepo(t)
+	tip := mergedOnOrigin(repo, "feat", "feat.txt")
+	afterRemoteDelete = func(string) { repo.Git("--git-dir", origin, "symbolic-ref", "HEAD", "refs/heads/gone") }
+	t.Cleanup(func() { afterRemoteDelete = nil })
+	f := &fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}
+
+	res, err := sweepRemote(context.Background(), repo.Root(), remoteOpts(f), true)
+	r := remoteRowFor(t, res, "feat")
+	if r.Outcome != OutcomeDeleted || !strings.Contains(r.Reason, "origin could not be asked for its default branch after the delete") ||
+		strings.Contains(r.Reason, "git push") {
+		t.Fatalf("%+v; want it deleted, with a note that origin could not be asked and no restore line", r)
+	}
+	if err != nil || res.Refusal != "" || res.ExitCode() != ExitActed {
+		t.Fatalf("an unanswered question after a delete is no fault: err %v, refusal %q, exit %d", err, res.Refusal, res.ExitCode())
+	}
+	if onOrigin(repo, origin, "feat") != "" {
+		t.Fatal("origin still holds feat")
 	}
 }

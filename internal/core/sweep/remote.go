@@ -45,7 +45,10 @@ package sweep
 // default branch and its tip asked again, held to the same rule. Only then is
 // it deleted, by one push of an empty ref with a
 // lease on the exact tip that was judged (the reservation sweep's pattern),
-// so a branch someone pushed to meanwhile survives. The push runs through
+// so a branch someone pushed to meanwhile survives. After a delete origin
+// took, origin is asked for its default branch and tip once more: when they
+// moved, the row names the tip the branch was judged at and the command that
+// restores it, and the run faults. The push runs through
 // gitutil.Net, so the repository's own pre-push hook sees it, as it sees the
 // reservation sweep's; a hook that refuses it keeps the branch and is the
 // run's fault, as any other failed push is. Reservations are the ones the
@@ -100,6 +103,11 @@ const remotePrefix = "refs/remotes/" + claim.Remote + "/"
 // beforeRemoteDelete, when a test sets it, runs between the last check of a
 // branch on origin and its delete: the window another writer's push lands in.
 var beforeRemoteDelete func(ref string)
+
+// afterRemoteDelete, when a test sets it, runs between a delete origin took
+// and the question to origin that follows it: the window in which origin's
+// default branch can move after the delete.
+var afterRemoteDelete func(ref string)
 
 // readRemoteTip reads origin's tip of a branch for the last check before a
 // delete: lsRemoteTipContext, which a test replaces to end the run's context
@@ -714,7 +722,7 @@ func (rj *remoteJudge) delete(b remoteBranch, addrHold, head, headTip string, he
 	if err == nil {
 		row.Outcome = OutcomeDeleted
 		row.Reason = clean("deleted on origin under a lease on its judged tip " + short(b.tip) + "; " + row.Reason)
-		return nil
+		return rj.afterDelete(b, row)
 	}
 	why := gitutil.ScrubURLCredentials(pushRefusal(out, err))
 	if strings.Contains(why, "stale info") {
@@ -722,6 +730,48 @@ func (rj *remoteJudge) delete(b remoteBranch, addrHold, head, headTip string, he
 	}
 	row.Reason = clean("the delete on origin failed, so the branch is kept: " + why)
 	return errors.New(clean("sweep: the delete of " + b.name + " on origin failed: " + why))
+}
+
+// afterDelete asks origin once more for its default branch and that branch's
+// tip, after origin took the delete of the branch b, row's outcome being
+// deleted. The last check asked just before the push, but origin's default
+// branch can move between that answer and the push, and the merged judgement
+// holds only against the branch and tip it read. When origin's answer no
+// longer matches them, the outcome stays deleted, the row adds the tip the
+// branch was judged at and the exact command that puts it back, and the
+// branch is returned as the run's fault, so the exit code shows it. An
+// answer origin does not give adds a note saying so, with no restore line
+// and no fault; one cut short by the run's end is the run's fault, as any
+// stop is.
+func (rj *remoteJudge) afterDelete(b remoteBranch, row *Row) error {
+	if afterRemoteDelete != nil {
+		afterRemoteDelete(b.ref)
+	}
+	head, headTip, err := rj.originHead()
+	if cerr := rj.ctx.Err(); cerr != nil {
+		row.Reason += clean("; origin could not be asked for its default branch after the delete, because the run was stopped")
+		return fmt.Errorf("the run was stopped after a delete, before origin was asked for its default branch again: %w", cerr)
+	}
+	if err != nil {
+		row.Reason += clean("; origin could not be asked for its default branch after the delete (" + answerText(err) + ")")
+		return nil
+	}
+	if head == rj.defName && headTip == rj.defTip {
+		return nil
+	}
+	moved := "origin's default branch is " + head + " at " + short(headTip) + " after the delete, but the branch was judged against " +
+		displayRef(rj.def) + " at " + short(rj.defTip)
+	restore := remoteRestoreCommand(b.ref, b.tip)
+	row.Reason += clean("; " + moved + ", so the judgement may no longer hold: the branch's judged tip was " + b.tip +
+		"; to restore it, run `" + restore + "`")
+	row.Evidence = append(row.Evidence, Evidence{Kind: KindRemote, Strength: Proven, Detail: clean(moved)})
+	return errors.New(clean("sweep: origin's default branch moved after " + b.name + " was deleted on origin; to restore it, run `" + restore + "`"))
+}
+
+// remoteRestoreCommand is the command that puts back the branch at ref on
+// origin at its judged tip sha, after a delete.
+func remoteRestoreCommand(ref, sha string) string {
+	return "git push " + claim.Remote + " " + sha + ":" + ref
 }
 
 // answerText is the first line of an error origin or the forge gave, for a
