@@ -385,6 +385,7 @@ func TestDrafterBlockTellsTheWriterToRunTheVerb(t *testing.T) {
 		"`rows`",
 		"`ready`",
 		"the `questions` array of its `ready` input as your `questions`",
+		"`badge`, whether the mode is read here",
 		"`version`",
 	} {
 		if !strings.Contains(block, want) {

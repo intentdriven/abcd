@@ -417,8 +417,11 @@ because a store could not be read, abcd's question checked all the same);
 `depends_on_state`, set wherever a mode set or the person marked away before
 the ask could change that; `partial` and `unread`, naming each store the
 decision needed and could not read and the rules it therefore could not
-apply; each tab's `addressee` and, where an admitted chip would re-set the
-mode, `addressee_changes`; every finding with whether it `refuses`;
+apply; `badge`, whether the status line shows abcd's badge here (abcd manages
+the checkout and its local tier is present), the value the hook decides with,
+so a tab `unnamed` under it was checked with no mode set while one without it
+is checked where no mode is read; each tab's `addressee` and, where an
+admitted chip would re-set the mode, `addressee_changes`; every finding with whether it `refuses`;
 `by_rule`, the findings folded one entry per rule and tab with the first
 echoed value and a count, the groups the deny names one line each; `rows`
 per tab (`header_and_frame`, `question_text`, `options`, `total`, the split

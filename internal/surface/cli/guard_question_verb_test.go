@@ -759,3 +759,52 @@ func TestHookDeniesCollidingKeys(t *testing.T) {
 		})
 	}
 }
+
+// TestGuardQuestionReportsWhetherTheBadgeShows: the verb's JSON carries
+// badge, the State value the hook decides with, so the writer can tell a tab
+// for nobody under a badge that shows (the caller did not set the mode) from
+// one where no mode is read at all: true in a managed checkout with the local
+// tier, false once the tier is gone, as in a fresh clone, and false in a
+// checkout abcd does not manage. The text render says the same.
+func TestGuardQuestionReportsWhetherTheBadgeShows(t *testing.T) {
+	q := wellBuilt()
+	q.Header = "Q1"
+	raw, err := json.Marshal(map[string]any{"questions": []hostQuestion{q}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	badge := func(t *testing.T) any {
+		t.Helper()
+		stdout, stderr, code := runGuard(string(raw), "guard", "question", "-", "--json")
+		var res map[string]any
+		if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+			t.Fatalf("the verb's output is not its JSON (exit %d): %v\nstderr %q", code, err, stderr)
+		}
+		return res["badge"]
+	}
+	text := func(t *testing.T) string {
+		t.Helper()
+		stdout, _, _ := runGuard(string(raw), "guard", "question", "-")
+		return stdout
+	}
+	root := managedCheckout(t)
+	if got := badge(t); got != true {
+		t.Errorf("badge in a managed checkout with the tier = %v, want true", got)
+	}
+	if !strings.Contains(text(t), "badge: shown") {
+		t.Errorf("the text render does not say the badge shows: %q", text(t))
+	}
+	if err := os.RemoveAll(filepath.Join(root, filepath.FromSlash(mode.TierRelPath))); err != nil {
+		t.Fatal(err)
+	}
+	if got := badge(t); got != false {
+		t.Errorf("badge in a managed checkout with no tier = %v, want false", got)
+	}
+	if !strings.Contains(text(t), "badge: not shown") {
+		t.Errorf("the text render does not say the badge is not shown: %q", text(t))
+	}
+	unmanagedRepo(t)
+	if got := badge(t); got != false {
+		t.Errorf("badge in a checkout abcd does not manage = %v, want false", got)
+	}
+}

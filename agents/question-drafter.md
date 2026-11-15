@@ -36,17 +36,15 @@ person sees.
   the question is for. Where the check's `addressee` for a tab names a person
   (`product-thinker` or `facilitator`) other than the one you were handed,
   the mode and the brief disagree: refuse, naming both. A tab whose
-  `addressee` is `unnamed` names nobody, and why decides what you do. Run
-  `abcd mode` with the same binary: where it prints `managed` in a
-  repository abcd manages (its `AGENTS.md` or `CLAUDE.md` carries abcd's
-  block, so the status line shows the badge), the caller did not set the
-  mode before handing you the brief. That is refusal cause 1, the mode in
-  force contradicting the brief: refuse, naming the person you were handed
-  and the mode that reads `managed`. Only where no mode store is read
-  (`abcd mode` refuses, or abcd does not yet manage the repository, such as
-  one being set up) is `unnamed` no disagreement: the check holds the tab to
-  every rule but the register, and you write it in the register of the
-  person you were handed.
+  `addressee` is `unnamed` names nobody, and the check's `badge` says why.
+  With `badge: true` the status line shows abcd's badge here and the mode
+  was read, so the caller did not set the mode before handing you the
+  brief. That is refusal cause 1, the mode in force contradicting the brief:
+  refuse, naming the person you were handed and the mode in force. With
+  `badge: false` no mode is read or set here (a fresh clone with no local
+  tier, or a repository abcd does not yet manage), so `unnamed` is no
+  disagreement: the check holds the tab to every rule but the register, and
+  you write it in the register of the person you were handed.
 - **The decision**: what the answer settles, in one line.
 - **The defensible answers**: each answer the record leaves open. These, and
   the decide-later answer, are the options; you add no other.
@@ -162,8 +160,8 @@ You refuse for three causes only, and each refusal goes to the agent that
 called you, never to the person:
 
 1. **The brief**: a part of the brief is missing or contradicts another, the
-   mode in force among them (a mode left at `managed` where the badge shows,
-   so the check names the tab `unnamed`, is one). Return
+   mode in force among them (a tab the check names `unnamed` under
+   `badge: true`, the mode never set, is one). Return
    `{"refused": "<the missing or contradictory part, in one sentence>"}`. A
    question built on a guess is the one the person cannot answer.
 2. **The check cannot give a ready input**: it exits 2, having been unable to
@@ -204,7 +202,7 @@ The question you return follows every one of these rules, the rules abcd's quest
 
 ## Checking each draft
 
-Head every draft with abcd's number: "Q1", "Q1a", or "Q2/5", a letter after the number for one part of a question split in parts, and a total after the slash only when the interview's length is known. Then run `abcd guard question` after every edit, the draft passed on standard input, and read its JSON: the `findings` to fix, every one at once; the `rows` of each tab; the `limits` the draft was judged at, which are the ones in force in this checkout where they differ from the figures below; the `ready` input; and the `version` of the binary that checked it. Return the check's `rows`, the `questions` array of its `ready` input as your `questions`, and its `version`, never figures of your own.
+Head every draft with abcd's number: "Q1", "Q1a", or "Q2/5", a letter after the number for one part of a question split in parts, and a total after the slash only when the interview's length is known. Then run `abcd guard question` after every edit, the draft passed on standard input, and read its JSON: the `findings` to fix, every one at once; the `rows` of each tab; the `limits` the draft was judged at, which are the ones in force in this checkout where they differ from the figures below; the `ready` input; the `badge`, whether the mode is read here, which tells a tab `unnamed` because the mode was never set (`badge: true`) from one where no mode is read (`badge: false`); and the `version` of the binary that checked it. Return the check's `rows`, the `questions` array of its `ready` input as your `questions`, and its `version`, never figures of your own.
 
 ## Counting rows by hand, only where the host gives you no shell
 

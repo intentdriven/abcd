@@ -42,14 +42,19 @@ const (
 // questionCheckResult is the verb's JSON (decision 6): the fields the drafter
 // copies rather than translates.
 type questionCheckResult struct {
-	Type             string                  `json:"_type"`
-	Version          string                  `json:"version"`
-	Form             string                  `json:"form"`
-	Hook             question.Outcome        `json:"hook"`
-	Abcds            bool                    `json:"abcds"`
-	DependsOnState   bool                    `json:"depends_on_state"`
-	Partial          bool                    `json:"partial"`
-	Unread           []questionUnreadJSON    `json:"unread"`
+	Type           string               `json:"_type"`
+	Version        string               `json:"version"`
+	Form           string               `json:"form"`
+	Hook           question.Outcome     `json:"hook"`
+	Abcds          bool                 `json:"abcds"`
+	DependsOnState bool                 `json:"depends_on_state"`
+	Partial        bool                 `json:"partial"`
+	Unread         []questionUnreadJSON `json:"unread"`
+	// Badge is whether the status line shows abcd's badge here, the State
+	// value the hook decides with: where it shows, a tab whose addressee is
+	// unnamed was checked under a mode that names nobody, so the caller did
+	// not set it; where it does not, the mode is neither read nor set.
+	Badge            bool                    `json:"badge"`
 	Addressee        []questionAddresseeJSON `json:"addressee"`
 	AddresseeChanges string                  `json:"addressee_changes,omitempty"`
 	Findings         []questionFindingJSON   `json:"findings"`
@@ -179,12 +184,12 @@ func newGuardQuestionCommand(asJSON *bool) *cobra.Command {
 			"(header and frame, question text, options, total), what the hook would do\n" +
 			"with the draft in this checkout now (admit, admit-with-rows-note, refuse,\n" +
 			"refuse-away, admit-unchecked or unchecked), whether that answer depends on\n" +
-			"the mode or the away record, the binary's version, and the input ready to\n" +
-			"ask. The ready input is the draft's own bytes for the host form, every key\n" +
-			"the check does not read kept, and the composed input for --ask; it is left\n" +
-			"out when the hook would refuse. The verdict is evidence about a hook of the\n" +
-			"same version; a mode set, or the person marked away, before the ask can\n" +
-			"change it.\n\n" +
+			"the mode or the away record, whether the badge shows here (badge), the\n" +
+			"binary's version, and the input ready to ask. The ready input is the\n" +
+			"draft's own bytes for the host form, every key the check does not read\n" +
+			"kept, and the composed input for --ask; it is left out when the hook\n" +
+			"would refuse. The verdict is evidence about a hook of the same version; a\n" +
+			"mode set, or the person marked away, before the ask can change it.\n\n" +
 			"The limits judged at are the ones the hook holds abcd's question to in\n" +
 			"this checkout: abcd's defaults, with the rows, label words and description\n" +
 			"sentences the repository's .abcd/config.json sets under question, each\n" +
@@ -334,6 +339,7 @@ func questionCheckOf(form string, v question.Verdict, structural []question.Find
 		DependsOnState: v.DependsOnState,
 		Partial:        v.Partial,
 		Unread:         []questionUnreadJSON{},
+		Badge:          reads.state.Badge,
 		Addressee:      []questionAddresseeJSON{},
 		Findings:       []questionFindingJSON{},
 		ByRule:         []questionGroupJSON{},
@@ -501,6 +507,11 @@ func writeQuestionCheck(w io.Writer, res questionCheckResult) {
 	fmt.Fprintf(w, "hook: %s: %s.\n", res.Hook, outcomeLineOf(res))
 	fmt.Fprintln(w, limitsLine(res))
 	fmt.Fprintf(w, "version: %s\n", termsafe.Sanitize(res.Version))
+	if res.Badge {
+		fmt.Fprintln(w, "badge: shown, so the mode is read and set here")
+	} else {
+		fmt.Fprintln(w, "badge: not shown, so the mode is neither read nor set here")
+	}
 	for _, a := range res.Addressee {
 		fmt.Fprintf(w, "tab %d is for: %s\n", a.Tab, a.Person)
 	}
