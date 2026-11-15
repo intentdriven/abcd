@@ -146,6 +146,34 @@ Labs at the last round:
   question to a longer explanation that cannot fit is a design question these
   labs do not settle.
 
+## At a configured limit: the rows-40 lab (spc-2610301950037469 step 4)
+
+itd-2610301914350541 lets a repository set the question limits. Its spec
+(approach 10) sets one lab, `question-writer-rows-40`, run as the labs above,
+with one change: the world's `.abcd/config.json` sets `question.rows` to 40.
+The writer gets Lab A's 25-row material, verbatim, three times.
+
+A run passes when:
+- the writer returns one question and no later part;
+- the lab binary's verb passes it from the world at 40 rows;
+- the `limits` the writer reports are the verb's;
+- the transcript holds no read of either configuration file;
+- the other rules of Lab A hold, with the page's five checks as the bound.
+
+**Result.** lab-261115224033-30a79f9, pinned at 30a79f966 with page 0.2.7:
+
+| Run | Rows (limit 40) | Checks | Limits reported | Configuration read |
+|---|---|---|---|---|
+| 1 | 29 | 1 | rows 40, label words 5, sentences 2 | none |
+| 2 | 30 | 1 | the same | none |
+| 3 | 27 | 1 | the same | none |
+
+All three pass. The first probe shows the verb reporting rows 40 from
+`.abcd/config.json`, and the other two keys at abcd's defaults. No run cut
+anything: each first draft was within 40 rows. At 24 rows the same material
+needed cutting (Lab A above). The writer took the limits only from the check's
+`limits`, which page 0.2.7 adds to its return.
+
 ## Not covered here, queued for the person
 
 Two halves need a host session whose own hook runs the lab binary, and an
