@@ -740,7 +740,10 @@ only set them lower:
   2, naming the key, the value, the bounds and the file; the question gate in
   `abcd guard hook` refuses every question carrying abcd's header; and
   `abcd guard question` exits 2 with `refused` and no `ready` input, whatever
-  the draft.
+  the draft. On a stage of a walled launch neither file is read: the check
+  holds abcd's question to abcd's defaults there, as that stage's GRILL
+  domain states them, so a value in the lane's own file is neither applied
+  nor refused.
 - **The check reports the values in force.** `abcd guard question` returns
   them as `limits` and the file that set each as `limits_source` (`bundled`,
   `.abcd/config.json` or `~/.abcd.noindex/config.json`), and the GRILL

@@ -375,7 +375,8 @@ the checkout from the root the loader resolves for the working directory.
   document: a refused root, a domain skipped for carrying no rules, each
   bundled entry of a guardrail domain an override's list leaves out, and the
   question limits' line: a refused value (GRILL then states abcd's defaults
-  and says which key was refused), a layer not read, or a refused home.
+  and names the key refused, or says the file holds a setting under
+  `question` that abcd does not read), a layer not read, or a refused home.
 
 ### The spec verb
 
