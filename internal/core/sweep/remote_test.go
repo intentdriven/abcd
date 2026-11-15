@@ -672,7 +672,7 @@ func TestAPushAddressOtherThanOriginsFetchAddressHoldsEveryDelete(t *testing.T) 
 	repo, origin := originRepo(t)
 	tip := squashedOnOrigin(repo, "feat", "feat.txt")
 	mirror := filepath.Join(t.TempDir(), "mirror.git")
-	repo.Git("clone", "-q", "--bare", origin, mirror)
+	gittest.CloneBare(t, origin, mirror)
 	repo.Git("config", "remote.origin.pushurl", mirror)
 	f := &fakeForge{}
 
