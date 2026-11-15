@@ -84,13 +84,15 @@ func (t *terminal) resumeCommand() string {
 
 // holdToProfile is the check before a drive drives run runID: another profile ends the
 // run, before anything claims or reserves the lane, as a wall that no longer holds does.
-// It returns why the run ends, "" to go on.
+// It returns why the run ends, "" to go on. A lane owing only its arming's
+// withdrawal (owedArming) needs no agent, so it holds to no profile, as
+// LanesOnAnotherProfile passes it over: its step runs no agent on this one.
 func (t *terminal) holdToProfile(runID string) (string, error) {
 	if t.o.Options.Profile == "" {
 		return "", nil
 	}
 	run, err := ReadState(t.repoRoot, runID)
-	if err != nil || !t.onAnotherProfile(run) {
+	if err != nil || !t.onAnotherProfile(run) || owedArming(run) > 0 {
 		return "", err
 	}
 	t.heldToProfile = true

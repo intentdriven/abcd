@@ -215,10 +215,22 @@ func withdrawLateArming(c Context, lane *Lane, stage Stage, why, then string, vo
 // forge disarmed and the state armed, and the lane handed back, where nothing
 // but this move reads its arming. The next step's withdrawal reads the forge
 // again, finds no arming left, and records that, so nothing is lost.
+//
+// Past the stuck bound's minutes since the lane began owing the withdrawal
+// (owedSince), the refusal's remedy says a person withdraws the arming or
+// decides the lane (owedToPerson); the reservation stays kept and renewed.
 func withdrawOwed(repoRoot string, st *State, i int, c Context, now time.Time) (StepResult, error) {
 	lane := st.Lanes[i]
 	note, err := withdrawLateArming(c, &lane, StageHandedBack, lateHandBack(lane), "it merges only if a person arms or merges it", lateWriterHandedBack(lane))
 	if err != nil {
+		if r, ok := AsRefusal(err); ok && strings.HasPrefix(r.Reason, owedRetryPrefix(lane)) {
+			roots, _ := layered.RootsFor(repoRoot)
+			if b, berr := resolveStuckBounds(roots); berr == nil {
+				if mins, past := owedPast(*st, lane, b, now); past {
+					r.Remedy = owedToPerson(lane, mins, b)
+				}
+			}
+		}
 		return StepResult{}, err
 	}
 	st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: string(StageHandedBack), Note: note})
@@ -228,6 +240,52 @@ func withdrawOwed(repoRoot string, st *State, i int, c Context, now time.Time) (
 	res.Next = note + "; " + res.Next
 	res.release = releaseAfterWrite(repoRoot, st, lane.ID, now)
 	return res, nil
+}
+
+// owedRetryPrefix is how a hand-back's withdrawal of lane's arming that did not
+// take begins (withdrawLateArming's refusal), in the record line
+// releaseAfterWrite writes for it and in each later step's refusal.
+func owedRetryPrefix(lane Lane) string {
+	return "pull request #" + strconv.Itoa(lane.PR) + " is armed and " + lateHandBack(lane) + ", and "
+}
+
+// owedSince is when lane, handed back with its pull request still armed
+// (armingOwed), began owing the withdrawal, which its bound counts from, as the
+// runner wait counts from its record line (runnerWaitSince): the lane's first
+// record line of a withdrawal that did not take since it was handed back, or
+// the hand-back's own time where the record holds none. ok is false where
+// neither is known.
+func owedSince(st State, lane Lane) (since time.Time, ok bool) {
+	if lane.HandBack != nil {
+		since = lane.HandBack.At
+	}
+	prefix := owedRetryPrefix(lane)
+	for _, e := range st.Record {
+		if e.Lane == lane.ID && e.Stage == string(StageHandedBack) && !e.At.Before(since) && strings.HasPrefix(e.Note, prefix) {
+			return e.At, true
+		}
+	}
+	return since, !since.IsZero()
+}
+
+// owedPast is how many whole minutes lane has owed its withdrawal (owedSince),
+// and whether that is at or past the stuck bound's minutes in b.
+func owedPast(st State, lane Lane, b stuckBounds, now time.Time) (mins int, past bool) {
+	since, ok := owedSince(st, lane)
+	if !ok {
+		return 0, false
+	}
+	mins = int(now.Sub(since) / time.Minute)
+	return mins, mins >= b.minutes.Value
+}
+
+// owedToPerson is what a step's refusal and a drain's next say of a lane whose
+// withdrawal has not taken past the bound (owedPast): a person withdraws the
+// arming or decides the lane, and the reservation is kept and renewed.
+func owedToPerson(lane Lane, mins int, b stuckBounds) string {
+	n := strconv.Itoa(lane.PR)
+	return fmt.Sprintf("the withdrawal of pull request #%s's arming has not taken in %d minutes of tries, past the bound of %d (%s), so a person withdraws it with `gh pr merge %s --disable-auto`, taking it out of the merge queue on its page if it is there, or decides the lane; until the forge reports no arming the run's reservation is kept and renewed, and each `abcd implement step` still tries the withdrawal again",
+		n, mins, b.minutes.Value, describeOrigin(b.minutes), n)
 }
 
 // landWithdrawal is a landing's withdrawal of an armed lane's arming while a
@@ -292,7 +350,8 @@ type ownReviewEntry struct {
 // pushed head in this checkout's local tier (recordOwnReview, through
 // landing.RecordReview, from the returns of the lane's last round), and
 // returns the clause the record says it with, "" when no receipt names that
-// head here. It is asked only for a lane a late writer handed back
+// head here; a receipt an earlier try moved aside is said as moved aside again,
+// so each line of the withdrawal names the move alike. It is asked only for a lane a late writer handed back
 // (lateWriterHandedBack): that report has shown the round's pair cannot be
 // shown to differ from every model that wrote the lane, so the merge gate
 // asked again of that head (landing.DecideMerge, which the release hold's
@@ -319,6 +378,12 @@ func voidOwnReview(repoRoot string, lane Lane) string {
 	defer root.Close()
 	rel := landing.ReviewReceiptsRelDir + "/" + head
 	if _, err := root.Lstat(rel); errors.Is(err, fs.ErrNotExist) {
+		// A receipt an earlier try of this withdrawal moved aside, which only
+		// this move does, is said in the same words, so the line of a try that
+		// takes names the move as the first try's did.
+		if _, err := root.Lstat(rel + voidedSuffix); err == nil {
+			return movedAside(head)
+		}
 		return ""
 	}
 	stands := func(why string) string {
@@ -342,6 +407,12 @@ func voidOwnReview(repoRoot string, lane Lane) string {
 	if err := root.Rename(rel, rel+voidedSuffix); err != nil {
 		return "; the review receipt the loop recorded for its head " + shortSHA(head) + " could not be moved aside (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "), so a re-arm of that head may still count it"
 	}
+	return movedAside(head)
+}
+
+// movedAside is the clause a withdrawal's line says the loop's own review
+// receipt for head was moved aside with (voidOwnReview).
+func movedAside(head string) string {
 	return "; the review receipt the loop recorded for its head " + shortSHA(head) + " from the lane's round is moved aside to " + head + voidedSuffix +
 		" in this checkout, so no re-arm of that head counts the pair that judged it"
 }

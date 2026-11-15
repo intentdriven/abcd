@@ -297,6 +297,13 @@ func stopRefusal(runID string, rec RunStop) error {
 	if rec.PageFailed != "" {
 		reason += "; " + termsafe.Sanitize(rec.PageFailed)
 	}
+	// A lane the stop left handed back with its pull request still armed
+	// (settleStop) is named, with the person's withdrawal.
+	for _, l := range rec.Left {
+		if l.Stage == StageHandedBack && l.ArmedPR > 0 {
+			reason += "; " + termsafe.Sanitize(l.Note)
+		}
+	}
 	return contend(StageStop, "", "", reason, remedy)
 }
 
@@ -669,6 +676,19 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 	for i := range st.Lanes {
 		lane := st.Lanes[i]
 		if stopFinished(lane) {
+			// A lane handed back with its pull request still armed (armingOwed)
+			// is left as it is, its arming with it: the stop withdraws nothing,
+			// so it says once, in the record and in what it left, that the pull
+			// request is still armed and a person withdraws it.
+			if armingOwed(lane) {
+				if p, ok := prior[lane.ID]; ok {
+					left = append(left, p)
+					continue
+				}
+				note := owedAtStop(lane)
+				st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageStop, Note: note})
+				left = append(left, StopLeft{Lane: lane.ID, Stage: lane.Stage, Settled: true, Note: note, ArmedPR: lane.PR})
+			}
 			continue
 		}
 		if p, ok := prior[lane.ID]; ok && p.Settled {
@@ -738,6 +758,13 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 	}
 	rec.HaltedAt = &now
 	st.Record = append(st.Record, Entry{At: now, Stage: StageStop, Note: "halted: every lane has settled and the run's claims are let go"})
+}
+
+// owedAtStop is what a stop says of lane, handed back with its pull request
+// still armed and its withdrawal not yet taken (armingOwed).
+func owedAtStop(lane Lane) string {
+	return fmt.Sprintf("pull request #%d is still armed: %s and the withdrawal has not taken, and the stop withdraws nothing, so it can still merge until a person withdraws it with `gh pr merge %d --disable-auto`, taking it out of the merge queue on its page if it is there",
+		lane.PR, lateHandBack(lane), lane.PR)
 }
 
 // newestAside is the newest aside holding files saved for the lane. An aside that cannot

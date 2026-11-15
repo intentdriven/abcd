@@ -153,18 +153,21 @@ func releasedThisHold(st State) bool {
 // leaseEnd is the end of the run's reservation's lease as this checkout last
 // fetched it (claim.View reads no remote), which a load-gate waiter in this
 // copy may put off while the reservation is live (gateWaiterRenews), "" where
-// that view does not show it as this copy's; ended is set when that time is
-// not after now: the reservation has lapsed, and nothing revives it.
-func leaseEnd(repoRoot string, st State, now time.Time) (until string, ended bool) {
+// that view does not show it as this copy's or could not be read; ended is set
+// when that time is not after now: the reservation has lapsed, and nothing
+// revives it. unread is set where the view could not be read, apart from one
+// that does not show it as this copy's: the reservation may then be live and
+// this copy's.
+func leaseEnd(repoRoot string, st State, now time.Time) (until string, ended, unread bool) {
 	snap, err := claim.View(repoRoot, now)
 	if err != nil {
-		return "", false
+		return "", false, true
 	}
 	own, _, lost := renewalDue(st, snap, now)
 	if own == nil || lost != "" || own.Copy != claim.CopyThis || (own.State != claim.StateLive && own.State != claim.StateExpired) {
-		return "", false
+		return "", false, false
 	}
-	return stamp(own.EffectiveExpiry), own.State == claim.StateExpired || !own.EffectiveExpiry.After(now)
+	return stamp(own.EffectiveExpiry), own.State == claim.StateExpired || !own.EffectiveExpiry.After(now), false
 }
 
 // next is what the release adds to a result's next step: nothing where it was
@@ -212,9 +215,9 @@ func refusalText(err error) string {
 }
 
 // releaseNext is next's word on the release alone. A lease this checkout's
-// view does not show as this copy's, or could not read, gets no waiter's
-// clause: the waiter renews only a live reservation of this copy's
-// (lapseTail).
+// view does not show as this copy's, or could not read, adds no lease of its
+// own: the record's line it repeats already ends as lapseTail chose, with the
+// waiter's clause for a view it could not read, and none for another copy's.
 func (r *handBackRelease) releaseNext() string {
 	if !r.made {
 		return ""
@@ -266,22 +269,24 @@ const gateWaiterRenews = "a load-gate waiter in this copy (`abcd implement load 
 // be live and this copy's last push takes: a load-gate waiter in this copy may
 // renew it (gateWaiterRenews), so the lapse is not promised. A reservation that
 // is certainly not live (lapsed, or released) takes no such clause, and nor
-// does one the view does not show as this copy's (lapseTail).
+// does one a view it read shows as not this copy's; one the view could not be
+// read for keeps it (lapseTail).
 const unlessWaiterRenews = "unless a load-gate waiter in this copy renews it"
 
 // lapseTail is how the line of a release that did not reach origin ends, by
 // the run's lease as this checkout last fetched it (leaseEnd), as
 // releaseOnHandBack and terminal.leftHeld choose it: a lease already lapsed
-// says when, with no waiter's clause; a live one this copy holds lapses with
-// its lease unless a load-gate waiter renews it; any other, another copy's or
-// one the view could not read, just lapses with its lease. until and ended
-// are leaseEnd's.
+// says when, with no waiter's clause; a live one this copy holds, or one the
+// view could not read, which may be that (as terminal.go says where it cannot
+// read what the drive holds), lapses with its lease unless a load-gate waiter
+// renews it; another copy's just lapses with its lease. until and ended are
+// leaseEnd's.
 func lapseTail(repoRoot string, st State, now time.Time) (tail, until string, ended bool) {
-	until, ended = leaseEnd(repoRoot, st, now)
+	until, ended, unread := leaseEnd(repoRoot, st, now)
 	switch {
 	case ended:
 		return "; its lease lapsed at " + until + " as last fetched", until, ended
-	case until != "":
+	case until != "" || unread:
 		return ", so it lapses with its lease " + unlessWaiterRenews, until, ended
 	}
 	return ", so it lapses with its lease", until, ended

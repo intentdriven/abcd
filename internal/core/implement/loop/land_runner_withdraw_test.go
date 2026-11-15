@@ -1,11 +1,9 @@
 package loop
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -209,18 +207,21 @@ func TestALateArmingAlreadyMergedIsSaidAsMerged(t *testing.T) {
 	}
 }
 
-// loopReceipt writes the review receipt recordOwnReview would write for the
-// pushed head of the run's lane in hand (landing.RecordReview's shape): each
-// non-auditor return of the lane's last round, by name, verdict and the sha256
-// of its text, read here from the files themselves. recordOwnReview records
-// only a round that read the pushed head, as an auto-mode landing's records
-// round does, so the lane's last round is first made to have read it. With
-// other set, one return's digest is another text's, as a receipt a person
-// recorded from other returns would carry. It returns the receipt's path.
+// loopReceipt records the review receipt for the pushed head of the run's lane
+// in hand the way recordOwnReview does: through landing.RecordReview, with each
+// non-auditor return of the lane's last round by its name and text. A return
+// names the head it read on its first line, and recordOwnReview records only a
+// round that read the pushed head, as an auto-mode landing's records round
+// does, so the lane's last round is first made to have read it, each return
+// naming that head where it named the one the round read. With other set, one return's text handed in is another
+// text than its file's, as a receipt a person recorded from other returns
+// carries. It returns the receipt's path.
 func loopReceipt(t *testing.T, root, runID string, other bool) string {
 	t.Helper()
+	read := ""
 	if err := mutate(root, runID, func(_ *os.Root, st *State) (bool, error) {
 		i := st.current()
+		read = st.Lanes[i].Validation[len(st.Lanes[i].Validation)-1].HeadSHA
 		st.Lanes[i].Validation[len(st.Lanes[i].Validation)-1].HeadSHA = st.Lanes[i].Landing.Pushed
 		return true, nil
 	}); err != nil {
@@ -231,39 +232,53 @@ func loopReceipt(t *testing.T, root, runID string, other bool) string {
 		t.Fatal(err)
 	}
 	l := st.Lanes[st.current()]
-	type entry struct {
-		Name    string `json:"name"`
-		Verdict string `json:"verdict"`
-		SHA256  string `json:"sha256"`
-	}
-	var entries []entry
+	head := l.Landing.Pushed
+	var returns []landing.ReviewReturn
 	for _, v := range l.Validation[len(l.Validation)-1].Validators {
 		if v.Role == RoleAuditor {
 			continue
 		}
-		text, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(v.Return)))
+		at := filepath.Join(root, filepath.FromSlash(v.Return))
+		text, err := os.ReadFile(at)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if other && len(entries) == 0 {
+		if read != "" && read != head {
+			text = []byte(strings.ReplaceAll(string(text), read, head))
+		}
+		if landing.StatesFullPair(string(text), head) != nil {
+			if returnHeadLine.Match(text) {
+				text = []byte(returnHeadLine.ReplaceAllString(string(text), "Reviewed head: "+head))
+			} else {
+				text = append([]byte("Reviewed head: "+head+"\n\n"), text...)
+			}
+		}
+		// The fixture's reviewers of one class return one text; each reviewer
+		// writes its own, and a receipt counts no text twice.
+		if !strings.Contains(string(text), "### Findings") {
+			t.Fatalf("premise: the return has its findings section: %s", text)
+		}
+		text = []byte(strings.Replace(string(text), "### Findings", "Read as "+v.Return+".\n\n### Findings", 1))
+		if err := os.WriteFile(at, text, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if other && len(returns) == 0 {
 			text = append(text, "a person's own reading\n"...)
 		}
-		sum := sha256.Sum256(text)
-		entries = append(entries, entry{Name: v.Return, Verdict: v.Verdict, SHA256: hex.EncodeToString(sum[:])})
+		returns = append(returns, landing.ReviewReturn{Name: v.Return, Text: string(text)})
 	}
-	data, err := json.MarshalIndent(map[string]any{"commit": l.Landing.Pushed, "verdict_rule": 2, "recorded_at": "2026-11-15T09:00:00Z", "reviews": entries}, "", "  ")
+	at, err := landing.RecordReview(root, head, returns)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("the round's returns are recorded as recordOwnReview records them: %v", err)
 	}
-	at := filepath.Join(root, filepath.FromSlash(landing.ReviewReceiptsRelDir), l.Landing.Pushed)
-	if err := os.MkdirAll(filepath.Dir(at), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(at, append(data, '\n'), 0o600); err != nil {
-		t.Fatal(err)
+	if !filepath.IsAbs(at) {
+		at = filepath.Join(root, filepath.FromSlash(at))
 	}
 	return at
 }
+
+// returnHeadLine is a return's line naming the head it read.
+var returnHeadLine = regexp.MustCompile(`(?m)^Reviewed head: [0-9a-f]+`)
 
 // TestALateArmingWithdrawnReleasesTheReservation: the withdrawal taken and
 // read back as gone clears the arming, says so, and only then releases the
@@ -385,6 +400,241 @@ func TestADrainDrivesALaneOwingItsWithdrawalUntilItClears(t *testing.T) {
 	if !f.reservationReleased(t) {
 		t.Fatal("the reservation is released once the arming is gone")
 	}
+}
+
+// TestADrainLaneReadAtItsPullRequestThenOwingItsArmingIsDrivenUntilItClears:
+// the common case. The drain has already read the lane at its pull request when
+// a late report hands its run back with the pull request still armed and the
+// withdrawal does not take: the next move takes the lane back to in progress
+// and names its step, routing nothing and keeping the reservation; once a step
+// has withdrawn the arming, the next move routes the hand-back.
+func TestADrainLaneReadAtItsPullRequestThenOwingItsArmingIsDrivenUntilItClears(t *testing.T) {
+	f, path, report := lateReportArmed(t)
+	root := f.repo.Root()
+	if _, err := Drain(root, Options{}, DrainOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := drainLaneOutcome(t, root, f.runID); got != DrainLanePullRequest {
+		t.Fatalf("premise: the drain reads the armed lane at its pull request: %s", got)
+	}
+	f.ghFile(t, "refuse-disarm", "")
+	f.handInLate(t, path, report)
+	res, err := Drain(root, Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := drainLaneOutcome(t, root, f.runID); got != DrainLaneInProgress {
+		t.Fatalf("the lane owing its withdrawal is in progress again: %s", got)
+	}
+	if len(res.Routed) != 0 || !strings.Contains(res.Next, "implement step --run "+f.runID) || !strings.Contains(res.Next, "tries the withdrawal again") {
+		t.Fatalf("the drain routes nothing and names the lane's step: %+v", res)
+	}
+	if f.reservationReleased(t) {
+		t.Fatal("the reservation is kept while the pull request is armed")
+	}
+	if _, err := advance(root, f.runID, f.stages, Options{}); mustRefusal(t, err).Contention == false {
+		t.Fatalf("the step tries the withdrawal again and waits on it: %v", err)
+	}
+	f.ghGone(t, "refuse-disarm")
+	if _, err := advance(root, f.runID, f.stages, Options{}); err != nil {
+		t.Fatalf("the step that withdraws the arming: %v", err)
+	}
+	res, err = Drain(root, Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Routed) != 1 || res.Routed[0].Issue != secondIssue {
+		t.Fatalf("once the arming is withdrawn the drain routes the hand-back: %+v", res)
+	}
+	if !f.reservationReleased(t) {
+		t.Fatal("the reservation is released once the arming is gone")
+	}
+}
+
+// drainLaneOutcome is the outcome the drain's state stores for runID's lane.
+func drainLaneOutcome(t *testing.T, root, runID string) string {
+	t.Helper()
+	st, _, err := readDrain(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(st.Lanes, func(l DrainLane) bool { return l.RunID == runID })
+	if i < 0 {
+		t.Fatalf("the drain has no lane for %s: %+v", runID, st.Lanes)
+	}
+	return st.Lanes[i].Outcome
+}
+
+// TestADrainDrivesANewerLaneWhileAnOwedWithdrawalKeepsFailing: a lane in
+// progress only for the withdrawal its hand-back owes holds up no newer lane
+// the drain has in progress: the move names the newer lane's step and hands
+// a drive that lane, and the owed lane stays in progress, its step still trying the withdrawal, its
+// reservation kept.
+func TestADrainDrivesANewerLaneWhileAnOwedWithdrawalKeepsFailing(t *testing.T) {
+	f, path, report := lateReportArmed(t)
+	root := f.repo.Root()
+	newer := drainToLane(t, f.repo, Options{}, DrainOptions{})
+	if newer.Start == nil || newer.Lane == nil || newer.Lane.Issue != eligibleIssue {
+		t.Fatalf("premise: with the armed lane at its pull request, the drain opens the next issue's lane: %+v", newer)
+	}
+	f.ghFile(t, "refuse-disarm", "")
+	f.handInLate(t, path, report)
+	res, err := Drain(root, Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.Next, "implement step --run "+newer.Start.RunID) || strings.Contains(res.Next, f.runID) {
+		t.Fatalf("the drain names the newer lane's step, not the owed one's: %s", res.Next)
+	}
+	if res.Lane == nil || res.Lane.RunID != newer.Start.RunID {
+		t.Fatalf("the lane a drive takes up is the newer one: %+v", res.Lane)
+	}
+	if got := drainLaneOutcome(t, root, f.runID); got != DrainLaneInProgress {
+		t.Fatalf("the owed lane stays in progress: %s", got)
+	}
+	_, err = advance(root, f.runID, f.stages, Options{})
+	if r := mustRefusal(t, err); !r.Contention || !strings.Contains(r.Reason, "the forge refused to withdraw the arming") {
+		t.Fatalf("the owed lane's step still tries the withdrawal: %+v", r)
+	}
+	if f.reservationReleased(t) {
+		t.Fatal("the owed lane's reservation is kept")
+	}
+}
+
+// TestAnOwedWithdrawalPastTheBoundIsAPersonsToWithdraw: once the stuck bound's
+// minutes have passed since the lane's first line of a withdrawal that did not
+// take, the drain's next and the step's refusal say a person withdraws the
+// arming or decides the lane, naming the pull request, and the reservation is
+// kept.
+func TestAnOwedWithdrawalPastTheBoundIsAPersonsToWithdraw(t *testing.T) {
+	f, path, report := lateReportArmed(t)
+	root := f.repo.Root()
+	f.ghFile(t, "refuse-disarm", "")
+	f.handInLate(t, path, report)
+	res, err := Drain(root, Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(res.Next, "needs a person") {
+		t.Fatalf("premise: inside the bound the drain names the step alone: %s", res.Next)
+	}
+	// The hand-back and its lines two hours back: past the bundled sixty minutes.
+	back := 2 * time.Hour
+	if err := mutate(root, f.runID, func(_ *os.Root, st *State) (bool, error) {
+		i := st.current()
+		hb := *st.Lanes[i].HandBack
+		hb.At = hb.At.Add(-back)
+		st.Lanes[i].HandBack = &hb
+		for k, e := range st.Record {
+			if e.Lane == st.Lanes[i].ID && e.Stage == string(StageHandedBack) {
+				st.Record[k].At = e.At.Add(-back)
+			}
+		}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !recordSays(t, root, f.runID, string(StageHandedBack), "pull request #7 is armed and", "the forge refused to withdraw the arming") {
+		t.Fatal("premise: the record holds the first try that did not take")
+	}
+	res, err = Drain(root, Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"needs a person", "pull request #7", "a person withdraws it with `gh pr merge 7 --disable-auto`", "or decides the lane", "past the bound of 60", "kept and renewed"} {
+		if !strings.Contains(res.Next, want) {
+			t.Fatalf("past the bound the drain's next names the person's act (%q): %s", want, res.Next)
+		}
+	}
+	_, err = advance(root, f.runID, f.stages, Options{})
+	r := mustRefusal(t, err)
+	if !r.Contention || !strings.Contains(r.Reason, "pull request #7 is armed") || !strings.Contains(r.Remedy, "a person withdraws it with `gh pr merge 7 --disable-auto`") || !strings.Contains(r.Remedy, "or decides the lane") {
+		t.Fatalf("past the bound the step's refusal names the person's act: %+v", r)
+	}
+	if f.reservationReleased(t) {
+		t.Fatal("the reservation is kept past the bound")
+	}
+	if got := drainLaneOutcome(t, root, f.runID); got != DrainLaneInProgress {
+		t.Fatalf("the lane stays in progress past the bound: %s", got)
+	}
+}
+
+// TestEachLineOfAWithdrawalNamesTheReceiptsMoveAlike: a late writer's
+// hand-back whose first withdrawal does not take moves the loop's own review
+// receipt aside and its line says so; the line of the later try that takes
+// says it in the same words.
+func TestEachLineOfAWithdrawalNamesTheReceiptsMoveAlike(t *testing.T) {
+	f, path, report := lateReportArmed(t)
+	root := f.repo.Root()
+	receiptAt := loopReceipt(t, root, f.runID, false)
+	head := currentLane(t, f.repo, f.runID).Landing.Pushed
+	moved := "the review receipt the loop recorded for its head " + shortSHA(head) + " from the lane's round is moved aside to " + head + voidedSuffix
+	f.ghFile(t, "refuse-disarm", "")
+	f.handInLate(t, path, report)
+	if !recordSays(t, root, f.runID, string(StageHandedBack), "the forge refused to withdraw the arming", moved) {
+		t.Fatal("the first try's line says the receipt is moved aside")
+	}
+	if _, err := os.Lstat(receiptAt + voidedSuffix); err != nil {
+		t.Fatalf("premise: the receipt is moved aside: %v", err)
+	}
+	f.ghGone(t, "refuse-disarm")
+	res, err := advance(root, f.runID, f.stages, Options{})
+	if err != nil {
+		t.Fatalf("the step that withdraws the arming: %v", err)
+	}
+	if !recordSays(t, root, f.runID, string(StageHandedBack), "withdrew pull request #7's arming, since", moved) || !strings.Contains(res.Next, moved) {
+		t.Fatalf("the line of the try that takes names the move as the first did: %s", res.Next)
+	}
+}
+
+// TestAStopSaysALaneOwingItsWithdrawalIsStillArmed: a person's stop of a run
+// whose lane owes its arming's withdrawal releases what it released before,
+// and its record line and its answer say the pull request is still armed and
+// that a person withdraws it.
+func TestAStopSaysALaneOwingItsWithdrawalIsStillArmed(t *testing.T) {
+	f, path, report := lateReportArmed(t)
+	root := f.repo.Root()
+	f.ghFile(t, "refuse-disarm", "")
+	f.handInLate(t, path, report)
+	o, _, _ := stopped(t)
+	r := wantStopRefusal(t, checkOnce(root, f.runID, o))
+	c := controlOf(t, root, f.runID)
+	if c.Stop == nil || c.Stop.HaltedAt == nil {
+		t.Fatalf("premise: the stop halts the run: %+v", c.Stop)
+	}
+	const armed, person = "pull request #7 is still armed", "a person withdraws it with `gh pr merge 7 --disable-auto`"
+	if !recordSays(t, root, f.runID, StageStop, armed, person) {
+		t.Fatal("the stop's record line says the pull request is still armed and a person withdraws it")
+	}
+	if !strings.Contains(r.Reason, armed) || !strings.Contains(r.Reason, person) {
+		t.Fatalf("the stop's answer says the pull request is still armed and a person withdraws it: %s", r.Reason)
+	}
+	i := slices.IndexFunc(c.Stop.Left, func(l StopLeft) bool { return l.ArmedPR == 7 && strings.Contains(l.Note, armed) })
+	if i < 0 || !c.Stop.Left[i].Settled {
+		t.Fatalf("what the stop left names the armed pull request, settled: %+v", c.Stop.Left)
+	}
+	if !f.reservationReleased(t) {
+		t.Fatal("the stop releases the reservation as it did")
+	}
+	if wantStopRefusal(t, checkOnce(root, f.runID, o)); countLines(t, root, f.runID, StageStop, armed) != 1 {
+		t.Fatal("a later check says it no second time")
+	}
+}
+
+// countLines counts the record lines at stage that say want.
+func countLines(t *testing.T, root, runID, stage, want string) int {
+	t.Helper()
+	st, err := ReadState(root, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, e := range st.Record {
+		if e.Stage == stage && strings.Contains(e.Note, want) {
+			n++
+		}
+	}
+	return n
 }
 
 // TestAnArmedLaneWhoseRunnerHasNotReportedIsWithdrawnAndWaits: an armed lane

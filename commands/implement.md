@@ -720,13 +720,26 @@ refusing, or still reporting the arming) leaves the lane unfinished: each later
 drives it (as `abcd drain --drive` does), routing the hand-back only once the
 forge reports no arming, and an issue run's reservation is kept, renewed by
 those steps and drain moves at half its lease, and released only once the
-arming is gone. The review receipt the loop itself recorded for that pull
+arming is gone. A drain drives any newer lane it has in progress first, and
+names this lane's step once none is. Once `pace.stuck_minutes` have passed
+since the record's first line of a try that did not take (the hand-back's
+time where it holds none), the step's refusal and the drain's `next` say a
+person withdraws the arming (`gh pr merge <n> --disable-auto`, taking it out of
+the merge queue on its page if it is there) or decides the lane, naming the
+pull request; the reservation is still kept and renewed, and each step still
+tries the withdrawal. A person's stop of the run leaves such a lane as it is:
+its record line and its answer say the pull request is still armed and that a
+person withdraws it. The review receipt the loop itself recorded for that pull
 request's head, from the lane's round, is moved aside in this checkout (to the
 head's name with `.voided` after it), so no re-arm of that head counts the pair
-that judged it. Any other review receipt for that head is left in place, and
-the record says it stands as its recorder's: a receipt a person recorded with
-`abcd land --record-review`, in this checkout or any other worktree, still
-counts.
+that judged it, and the line of the first try and that of the try that takes
+both say so. A review receipt for that head of other returns is left in place,
+and the record says it stands as its recorder's: one a person recorded with
+`abcd land --record-review` still counts, and so does any receipt in another
+worktree, which is never moved. A person's receipt of the very same return
+files is identical to the loop's in every return it counts, so it is moved
+aside with it; the move is
+reversible, by renaming `<head>.voided` back to `<head>`.
 
 A reviewer's brief and a routed request ask its return to name the model it ran
 on in a line `Reviewer model: <model>`; the loop looks for that line among the

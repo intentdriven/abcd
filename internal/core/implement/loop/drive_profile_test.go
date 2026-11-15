@@ -462,3 +462,32 @@ func TestADriveEndedOnAHoldNamesNoResumeWhateverElseIsInProgress(t *testing.T) {
 		t.Fatalf("a resume line after a hold: %q", res.Resume)
 	}
 }
+
+// TestALaneOwingOnlyItsWithdrawalHoldsToNoProfile: the profile checks agree. A
+// lane handed back with its pull request still armed needs no agent, only the
+// withdrawal its step tries, so neither the front door's check nor the drive's
+// own holds a drive on another profile off it.
+func TestALaneOwingOnlyItsWithdrawalHoldsToNoProfile(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "late")
+	left := laneLeftOn(t, w, "alpha")
+	root := w.repo.Root()
+	if err := mutate(root, left.Run, func(_ *os.Root, st *State) (bool, error) {
+		i := st.current()
+		st.Lanes[i].Stage, st.Lanes[i].PR = StageHandedBack, 7
+		st.Lanes[i].Landing = &Landing{Merge: "queue", Armed: true}
+		st.Lanes[i].HandBack = &HandBack{Kind: HandBackStuck}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if run, err := ReadState(root, left.Run); err != nil || owedArming(run) != 7 || run.Profile != "alpha" {
+		t.Fatalf("premise: the run's lane owes its arming's withdrawal on profile alpha: %+v %v", run.Lanes, err)
+	}
+	if got, err := LanesOnAnotherProfile(root, "beta"); err != nil || len(got) != 0 {
+		t.Fatalf("the front door's check passes the lane over: %+v, %v", got, err)
+	}
+	tm := &terminal{repoRoot: root, o: TerminalOptions{Options: Options{Profile: "beta"}}}
+	if ended, err := tm.holdToProfile(left.Run); err != nil || ended != "" || tm.heldToProfile {
+		t.Fatalf("the drive's own check passes it over too: %q, %v", ended, err)
+	}
+}

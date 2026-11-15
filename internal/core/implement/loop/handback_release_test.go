@@ -453,7 +453,7 @@ func TestTheLeaseIsSaidAsLastFetched(t *testing.T) {
 		{"a lease to come", time.Now(), "; its lease runs to ", "lapsed at", true},
 		{"a lease already past", time.Now().Add(48 * time.Hour), "; its lease lapsed at ", "runs to", false},
 	} {
-		until, ended := leaseEnd(repo.Root(), read, row.at)
+		until, ended, _ := leaseEnd(repo.Root(), read, row.at)
 		if until == "" {
 			t.Fatalf("%s: premise: this checkout's view shows the reservation as this copy's", row.name)
 		}
@@ -718,5 +718,22 @@ func TestThePageSaysWhatTheGateWaiterRenews(t *testing.T) {
 	}
 	if strings.Contains(page, "renews every reservation") {
 		t.Fatal("commands/implement.md still says the waiter renews every reservation")
+	}
+}
+
+// TestAnUnreadViewKeepsTheWaiterClause: where this checkout's view of the
+// reservations cannot be read, the reservation may still be live and this
+// copy's, so the line of a release that did not reach origin keeps the
+// load-gate waiter's clause, as terminal.go's lines keep it where they cannot
+// read what the drive holds.
+func TestAnUnreadViewKeepsTheWaiterClause(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now()
+	if _, err := claim.View(dir, now); err == nil {
+		t.Fatal("premise: the view of a directory that is no checkout cannot be read")
+	}
+	tail, until, ended := lapseTail(dir, State{Key: secondIssue}, now)
+	if until != "" || ended || !strings.Contains(tail, "lapses with its lease "+unlessWaiterRenews) {
+		t.Fatalf("an unread view keeps the waiter's clause: %q (%q, %v)", tail, until, ended)
 	}
 }
