@@ -989,3 +989,54 @@ func TestSpawnCacheTrimRunsTheVerbDetached(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 }
+
+// worktreeAddStep is the host-run step both the plugin page and AGENTS.md carry
+// (spc-2609301811532881, criteria 20 and 21): the verb an agent runs for a
+// checkout of its own.
+const worktreeAddStep = "ahoy worktree add <name>"
+
+// repoSection is the part of the repository file rel from the line heading
+// down to the next heading of the same level, its whitespace folded so a
+// reflowed paragraph still matches.
+func repoSection(t *testing.T, rel, heading string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(testRepoRoot(), rel))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	start := strings.Index(text, "\n"+heading)
+	if start < 0 {
+		t.Fatalf("%s has no section headed %q", rel, heading)
+	}
+	rest := text[start+1:]
+	level := heading[:strings.Index(heading, " ")+1]
+	if end := strings.Index(rest[len(heading):], "\n"+level); end >= 0 {
+		rest = rest[:len(heading)+end]
+	}
+	return strings.Join(strings.Fields(rest), " ")
+}
+
+// TestAhoyPageCarriesTheWorktreeHostRunStep is criterion 21: the ahoy plugin
+// page's worktree section tells an agent that needs an isolated checkout to run
+// the store's add verb and work in the path it prints, never where a host would
+// put a worktree by default, and documents list, prune and the forge read.
+func TestAhoyPageCarriesTheWorktreeHostRunStep(t *testing.T) {
+	section := repoSection(t, filepath.Join("commands", "ahoy.md"), "## `worktree` — ")
+	for _, want := range []string{
+		"**The host-run step.**",
+		"a lane, a subagent or a peer session",
+		"run `abcd " + worktreeAddStep + "` and work in the path it prints",
+		"the place your host would put a worktree by default",
+		abcdhome.Display("worktrees", "<root-sha>", "<name>") + "/",
+		"ahoy worktree list --all",
+		"ahoy worktree prune --dry-run",
+		"`--yes <name>`",
+		"**The forge read.**",
+	} {
+		if !strings.Contains(section, want) {
+			t.Errorf("the ahoy page's worktree section lacks %q", want)
+		}
+	}
+}
+
