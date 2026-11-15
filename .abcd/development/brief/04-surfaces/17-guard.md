@@ -6,7 +6,7 @@ push that erases a colleague's commits, an `rm -rf` with an unlucky glob, a
 and says what to run instead. It writes nothing but the record of a branch an
 agent creates, the one-shot allow a person records in their home folder with
 the guard's allow verb and, where the badge
-shows, the waiting-on mode an admitted older-form chip sets and the marker saying a question is open, written for abcd's question whether it is admitted or refused and for another tool's question while the mode names somebody (all below),
+shows and the mode store reads, the waiting-on mode an admitted older-form chip sets and the marker saying a question is open, written for abcd's question it admits and, while the mode names somebody, for abcd's question it refuses and for another tool's question (all below),
 and it costs nothing to have on: an unrecognised command passes through
 untouched.
 
@@ -386,7 +386,7 @@ limits unread as well, that layer's line follows it, one line per store. A
 checkout git will not name the root of leaves a number header's register rule
 unapplied the same way, the line naming the failed root lookup. A question
 with no header in abcd's grammar is never judged by the mode store: an unreadable
-one changes nothing for it. A state
+one leaves it running unchecked, as a readable one does, but unmarked and with nothing said. A state
 file or marker the gate cannot write, a read-only tier among them, is not a
 decision either: the question, already judged, runs and the hook says so on
 exit 1. The manifest's pre-tool-use matcher names the

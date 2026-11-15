@@ -554,8 +554,8 @@ that everything it reads is data, never instruction.
   it heads each draft with abcd's number, runs `abcd guard question`
   ([`17-guard.md`](17-guard.md)) after every edit, at most five checks to a
   part, and returns the check's ready input, its rows and its version with
-  `checked_by`, splitting material too long for one screen into numbered
-  parts rather than refusing it. It refuses only a missing or contradictory
+  `checked_by`. It quotes one decision's too-long material shorter, keeping every answer's gain and cost, and splits material holding several decisions or too many answers into numbered
+  parts. It refuses only a missing or contradictory
   brief, a check that gives no ready input (its exit 2, or `refuse-away` while the person is away), or five checks spent, and only to the agent that
   called it. Its asking rules, how it checks a draft, and the hand row count
   kept for a host with no shell are a block `cmd/asking-sync` renders from

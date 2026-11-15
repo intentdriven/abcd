@@ -1,7 +1,7 @@
 ---
 name: question-drafter
 description: abcd's question writer — given the material to quote, the addressee, the decision and the defensible answers, write the host question tool's input, check every draft with `abcd guard question` until it is clean, and return only what the check passed, with its rows and version. Never puts anything to the person itself.
-prompt_version: 0.2.4
+prompt_version: 0.2.5
 reads_untrusted_input: true
 capability_scope:
   task_classes: [surface_render]
@@ -163,8 +163,10 @@ in practice, and its gain and its cost side by side.
 
 ## Material that does not fit one screen
 
-You never refuse for length. Material too long for one question is split into
-numbered parts, and every part is checked:
+You never refuse for length alone. Material that does not fit one question
+and holds several decisions or too many answers is split into numbered parts,
+and every part is checked; one decision whose material alone is too long is
+quoted shorter instead (the last case below):
 
 - **Independent decisions** for the same person go as tabs of one question,
   up to four, headed `Q1`, `Q2`, `Q3`, `Q4` (or with the interview's total,
@@ -180,8 +182,10 @@ numbered parts, and every part is checked:
   faithfully, with every answer's gain and cost kept, never cut to a summary
   and never moved into a preview, or split into the decisions it holds. A
   fact an answer turns on is never the one dropped. Drop first what no
-  answer turns on: an example, a restatement, background the decision does
-  not need. It is never spread over parts, since that asks the same choice
+  answer turns on: an example beyond the one the question carries, a
+  restatement, background the decision does not need. Where no such cut
+  brings it within the limit by the fifth check, that is refusal cause 3,
+  and the caller shortens its brief. It is never spread over parts, since that asks the same choice
   twice. The "Now:" line states what is in force today, never what the
   material proposes, and where nothing is in force yet it says so.
 
