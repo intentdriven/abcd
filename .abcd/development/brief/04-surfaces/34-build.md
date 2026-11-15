@@ -1386,7 +1386,7 @@ the remedy as fields.
   spc-2609202134341288; the layered reader it resolves through is the model
   tier's (itd-2609170822093401).
 - The worktree store the lane's checkout lives in: itd-2609091014076309
-  (planned, not yet shipped), the rule it enacts, adr-2609091248200336, and the
+  (shipped), the rule it enacts, adr-2609091248200336, and the
   location that rule's successor sets, adr-2610031751065746.
 - The shared run state and the claim the peers check reads:
   [`27-implement.md`](27-implement.md).

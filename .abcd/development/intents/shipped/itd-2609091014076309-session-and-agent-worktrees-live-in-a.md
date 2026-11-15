@@ -17,7 +17,7 @@ related_issues: [iss-2610230014564359, iss-2610231003000222, iss-261023101146532
 
 # Session and agent worktrees live in a machine-scoped store that abcd lists and reclaims, never beside the user's own projects
 
-Typed links: `related_adrs` [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md) (the rule this store enacts), [adr-2609091248201071](../../decisions/adrs/2609091248201071-the-transcript-corpus-is-a-sibling-store.md) (the root-SHA-keyed sibling store whose shape this copies); `refines` [itd-2609201916151817](itd-2609201916151817-one-verb-takes-a-single-intent-from.md) (the build loop, whose lane primitive becomes this store's one primitive: its spec's piece 6 takes the store's verb once this ships); `related_intents` [itd-118](../superseded/itd-118-merged-work-leaves-no-residue-abcd.md) (the post-merge tidy that will call `prune`) and [itd-148](itd-148-every-change-starts-in-its-own-worktree.md) (every change in its own worktree, which uses this store's verbs and is `blocked_by` this draft).
+Typed links: `related_adrs` [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md) (the rule this store enacts), [adr-2609091248201071](../../decisions/adrs/2609091248201071-the-transcript-corpus-is-a-sibling-store.md) (the root-SHA-keyed sibling store whose shape this copies); `refines` [itd-2609201916151817](../planned/itd-2609201916151817-one-verb-takes-a-single-intent-from.md) (the build loop, whose lane primitive becomes this store's one primitive: its spec's piece 6 takes the store's verb once this ships); `related_intents` [itd-118](../superseded/itd-118-merged-work-leaves-no-residue-abcd.md) (the post-merge tidy that will call `prune`) and [itd-148](../planned/itd-148-every-change-starts-in-its-own-worktree.md) (every change in its own worktree, which uses this store's verbs and is `blocked_by` this draft).
 
 ## Press Release
 
@@ -181,7 +181,9 @@ _None open._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-01d317e17525 -->
+Fidelity review OWED (receipt rcp-01d317e17525).
+<!-- abcd-review-end receipt=rcp-01d317e17525 -->
 
 ## Grounds
 
