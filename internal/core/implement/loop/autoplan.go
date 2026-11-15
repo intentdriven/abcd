@@ -220,7 +220,7 @@ func checkoutDigestOf(repoRoot string) (digest, uncopied string, err error) {
 	if _, err := gitutil.RunWithIndex(repoRoot, index, 4096, "read-tree", head); err != nil {
 		return "", "", fmt.Errorf("staging the checkout: %w", err)
 	}
-	if _, err := pickGitIndex(repoRoot, index, "add", "-A"); err != nil {
+	if _, err := addAllGitIndex(repoRoot, index); err != nil {
 		return "", "", fmt.Errorf("staging the checkout: %w", err)
 	}
 	// The local tier, where the run's own state lives, is out of the digest

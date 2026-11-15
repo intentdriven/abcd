@@ -101,8 +101,9 @@ exposure is identical: a locator that has stopped matching is a surface nobody i
 watching, and it would otherwise read as a clean pass. There is nothing to
 propose for it, so the render offers no diff; the fix is to correct the locator or
 to unregister the surface. A surface whose candidate files are all absent is
-skipped rather than reported, because a file that does not exist carries no
-drift.
+reported as absent, not as drift, because a file that does not exist carries no
+drift: the identity report prints it with the state `absent` and its JSON lists
+it with that status, and bare `abcd lint` stays silent on it.
 
 **Autonomous rewriting is permanently out of scope.** The render proposes; the
 product thinker adopts. Changing the positioning deliberately is an edit to the block,

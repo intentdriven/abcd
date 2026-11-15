@@ -158,12 +158,13 @@ lookup the adapter (invariant 2). These are doubtful, each with its reason,
 while every other branch is still read (C11): an announcement whose sender is
 not its branch's owner; a commit that does not read as an announcement, such
 as one that changes a file, shown only by its branch and the reason; a branch
-that moved back or was rewritten, passed a merge, or gained more than one read
-covers since it was last read here, holds more than one read covers at its
-first read here, or gained more new commits than one intake takes in
-("continuity not verified"); and a branch
+that moved back or was rewritten, passed a merge, gained more than one read
+covers since it was last read here, or holds more than one read covers at its
+first read here ("continuity not verified"); and a branch
 whose name is neither a holder id nor a lower-case username, counted and never
-named.
+named. A branch that gained more new commits than one intake takes in is not
+doubtful: it is counted as not read yet and left for the next intake, as the
+intake above says.
 
 ## What it shows
 
