@@ -1167,7 +1167,7 @@ func TestAStageWithAnObjectThatDoesNotHashToItsIDNamesNoTree(t *testing.T) {
 	swapLooseBlob(t, w.repo, runGit(t, w.repo, "rev-parse", "HEAD:reads/data.txt"), "bad\n")
 
 	r := w.stage(w.repo, nil, allPackages...)
-	if r.code != 0 || !strings.Contains(r.out, "reuses nothing") || !strings.Contains(r.out, "does not hash to its id") {
+	if r.code != 0 || !strings.Contains(r.out, "reuses nothing") || !strings.Contains(r.out, "does not hash to its name") {
 		t.Fatalf("the stage did not fall back to a fresh run, saying why:\n%s", r)
 	}
 	matches, err := filepath.Glob(filepath.Join(w.repo, ".abcd", ".work.local", "preflight-reuse", head, "unit-*"))

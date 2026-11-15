@@ -383,12 +383,12 @@ func runFresh(ctx context.Context, cfg Config, g goTestArgs, mode, why, head, tr
 // runs the lines that use the tree, holding its lock. A non-empty third result
 // is a reason to run fresh instead, with nothing yet run, and a true fourth says
 // that fresh run vouches for no tree: the repository gave a blob that does not
-// hash to its id (errObjectMismatch), and git checked the worktree out from the
+// hash to its id (gitutil.ErrObjectMismatch), and git checked the worktree out from the
 // same objects.
 func runReusedLines(ctx context.Context, cfg Config, g goTestArgs, dir string, list List, head string, tally *Tally) (Plan, bool, string, bool) {
 	stats, snap, err := syncTree(ctx, cfg.Worktree, head, dir)
 	if err != nil {
-		return Plan{}, false, "the check directory could not be brought to the commit: " + err.Error(), errors.Is(err, errObjectMismatch)
+		return Plan{}, false, "the check directory could not be brought to the commit: " + err.Error(), errors.Is(err, gitutil.ErrObjectMismatch)
 	}
 	fmt.Fprintf(cfg.Stdout, "check-tests: %s stage from %s at %.12s: %d files written, %d removed, %d directories retimed, %d files already right, in %s\n",
 		cfg.Stage, snap.tree, head, stats.Written, stats.Removed, stats.Retimed, stats.Kept, stats.Took.Round(time.Millisecond))

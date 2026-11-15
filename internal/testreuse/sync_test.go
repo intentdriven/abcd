@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // gitRepo is a small repository for the sync's tests.
@@ -712,7 +713,16 @@ func swapLooseBlob(t *testing.T, dir, oid, body string) {
 	t.Helper()
 	src := filepath.Join(t.TempDir(), "swapped")
 	writeFile(t, src, body, 0o644)
-	other := runGit(t, dir, "hash-object", "-w", src)
+	swapLooseObject(t, dir, oid, runGit(t, dir, "hash-object", "-w", src))
+	if got := runGit(t, dir, "cat-file", "blob", oid); got+"\n" != body {
+		t.Fatalf("the swapped object does not take: %s reads as %q", oid, got)
+	}
+}
+
+// swapLooseObject overwrites the loose object file of oid with that of other,
+// another loose object, so git answers a read of oid with other's content.
+func swapLooseObject(t *testing.T, dir, oid, other string) {
+	t.Helper()
 	objects := filepath.Join(runGit(t, dir, "rev-parse", "--absolute-git-dir"), "objects")
 	raw, err := os.ReadFile(filepath.Join(objects, other[:2], other[2:]))
 	if err != nil {
@@ -724,9 +734,6 @@ func swapLooseBlob(t *testing.T, dir, oid, body string) {
 	}
 	if err := os.WriteFile(dst, raw, 0o644); err != nil {
 		t.Fatal(err)
-	}
-	if got := runGit(t, dir, "cat-file", "blob", oid); got+"\n" != body {
-		t.Fatalf("the swapped object does not take: %s reads as %q", oid, got)
 	}
 }
 
@@ -741,10 +748,38 @@ func TestASyncRefusesABlobThatDoesNotHashToItsID(t *testing.T) {
 	swapLooseBlob(t, r.root, r.git("rev-parse", head+":a.txt"), "swapped\n")
 	dir := t.TempDir()
 	_, err := Sync(context.Background(), r.root, head, dir)
-	if !errors.Is(err, errObjectMismatch) {
-		t.Fatalf("Sync = %v, want %v", err, errObjectMismatch)
+	if !errors.Is(err, gitutil.ErrObjectMismatch) {
+		t.Fatalf("Sync = %v, want %v", err, gitutil.ErrObjectMismatch)
 	}
 	if raw, err := os.ReadFile(filepath.Join(dir, treeDirName, "a.txt")); err == nil {
 		t.Errorf("the check directory holds a.txt = %q from an object that does not hash to its id", raw)
+	}
+}
+
+// TestASyncRefusesATreeThatDoesNotHashToItsID: git checks a commit's root tree
+// against its id but reads the trees below it as their object files hold them,
+// so a subtree holding another tree's content lists other blobs, each a real
+// one. Every tree the commit names is checked against its id before anything
+// is placed, and one that does not hash to it fails the sync.
+func TestASyncRefusesATreeThatDoesNotHashToItsID(t *testing.T) {
+	r := newGitRepo(t)
+	r.write("d/a.txt", "stored\n")
+	head := r.commit("one")
+	r.write("d/a.txt", "other\n")
+	r.git("add", "-A")
+	other := r.git("rev-parse", r.git("write-tree")+":d")
+	r.git("reset", "-q", "--hard", head)
+	sub := r.git("rev-parse", head+":d")
+	swapLooseObject(t, r.root, sub, other)
+	if got := r.git("ls-tree", "-r", head); !strings.Contains(got, r.git("rev-parse", other+":a.txt")) {
+		t.Fatalf("the swapped tree does not take: HEAD lists\n%s", got)
+	}
+	dir := t.TempDir()
+	_, err := Sync(context.Background(), r.root, head, dir)
+	if !errors.Is(err, gitutil.ErrObjectMismatch) {
+		t.Fatalf("Sync = %v, want %v", err, gitutil.ErrObjectMismatch)
+	}
+	if raw, err := os.ReadFile(filepath.Join(dir, treeDirName, "d", "a.txt")); err == nil {
+		t.Errorf("the check directory holds d/a.txt = %q from a tree that does not hash to its id", raw)
 	}
 }

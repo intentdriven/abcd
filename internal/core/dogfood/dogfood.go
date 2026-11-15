@@ -76,7 +76,6 @@
 package dogfood
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha1"
@@ -1002,129 +1001,28 @@ func build(storeAbs string, c Checkout) (string, error) {
 // treeEntry is one blob of a verified tree: its mode and object name.
 type treeEntry struct{ mode, oid string }
 
-// maxTreeObjects and maxTreeBytes bound verifiedTree's walk: how many commit
-// and tree objects it reads, and how many bytes of them in all.
-const (
-	maxTreeObjects = 1 << 20
-	maxTreeBytes   = 64 << 20
-)
-
-// verifiedTree reads commit and every tree under it from repo through one
-// `git cat-file --batch`, with replacement objects off, re-hashes each object
-// against its name, and returns the commit's blobs by path. git checks the
-// hash of a commit and of a root tree when it parses them, but `git archive`
-// and `git ls-tree` read a subtree without checking it, so a loose object
-// written over a subtree of the reviewed commit, or an object store borrowed
-// through alternates, would otherwise put other files in the build.
+// verifiedTree reads commit and every tree under it from repo, each object
+// re-hashed against its name (gitutil.VerifiedObjects), and returns the
+// commit's files and links by path. git checks the hash of a commit and of a
+// root tree when it parses them, but `git archive` and `git ls-tree` read a
+// subtree without checking it, so a loose object written over a subtree of the
+// reviewed commit, or an object store borrowed through alternates, would
+// otherwise put other files in the build. A submodule's commit is left out:
+// archive writes no content for it.
 func verifiedTree(ctx context.Context, repo, commit string) (map[string]treeEntry, error) {
-	newHash, ok := objectHash(commit)
-	if !ok {
-		return nil, errors.New("the commit is not a full object name")
-	}
-	rawLen := newHash().Size()
-	cmd := exec.CommandContext(ctx, "git", append(gitutil.ExecPins(), "-C", repo, "cat-file", "--batch")...)
-	cmd.Env = builderEnv()
-	stdin, err := cmd.StdinPipe()
+	objects, err := gitutil.OpenVerifiedObjects(ctx, repo)
 	if err != nil {
 		return nil, err
 	}
-	stdout, err := cmd.StdoutPipe()
+	defer objects.Close()
+	tree, err := objects.Tree(commit)
 	if err != nil {
 		return nil, err
 	}
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-	// The walk stops at its first refusal with git perhaps still writing an
-	// answer nobody reads, so git is ended rather than waited for.
-	defer func() {
-		stdin.Close()
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-	}()
-	rd := bufio.NewReader(stdout)
-	objects, total := 0, 0
-	read := func(oid, wantType string) ([]byte, error) {
-		objects++
-		if objects > maxTreeObjects {
-			return nil, fmt.Errorf("the commit holds more than %d trees", maxTreeObjects)
-		}
-		if _, err := io.WriteString(stdin, oid+"\n"); err != nil {
-			return nil, err
-		}
-		header, err := rd.ReadString('\n')
-		if err != nil {
-			return nil, err
-		}
-		f := strings.Fields(header)
-		if len(f) != 3 || f[0] != oid || f[1] != wantType {
-			return nil, fmt.Errorf("object %s is not the %s the commit records", short(oid), wantType)
-		}
-		size, err := strconv.Atoi(f[2])
-		if err != nil || size < 0 {
-			return nil, fmt.Errorf("object %s has an unreadable size", short(oid))
-		}
-		if total += size; total > maxTreeBytes {
-			return nil, fmt.Errorf("the commit's trees exceed %d bytes", maxTreeBytes)
-		}
-		body := make([]byte, size+1)
-		if _, err := io.ReadFull(rd, body); err != nil {
-			return nil, err
-		}
-		body = body[:size]
-		h := newHash()
-		fmt.Fprintf(h, "%s %d\x00", wantType, size)
-		h.Write(body)
-		if hex.EncodeToString(h.Sum(nil)) != oid {
-			return nil, fmt.Errorf("object %s does not hash to its name (the checkout's object store was altered)", short(oid))
-		}
-		return body, nil
-	}
-	body, err := read(commit, "commit")
-	if err != nil {
-		return nil, err
-	}
-	first, _, _ := strings.Cut(string(body), "\n")
-	rootTree, ok := strings.CutPrefix(first, "tree ")
-	if !ok || len(rootTree) != len(commit) {
-		return nil, errors.New("the commit names no tree")
-	}
-	want := map[string]treeEntry{}
-	type pending struct{ dir, oid string }
-	queue := []pending{{"", rootTree}}
-	for len(queue) > 0 {
-		t := queue[len(queue)-1]
-		queue = queue[:len(queue)-1]
-		body, err := read(t.oid, "tree")
-		if err != nil {
-			return nil, err
-		}
-		for len(body) > 0 {
-			sp := bytes.IndexByte(body, ' ')
-			nul := bytes.IndexByte(body, 0)
-			if sp <= 0 || nul <= sp+1 || len(body) < nul+1+rawLen {
-				return nil, fmt.Errorf("tree %s is malformed", short(t.oid))
-			}
-			mode, name := string(body[:sp]), string(body[sp+1:nul])
-			oid := hex.EncodeToString(body[nul+1 : nul+1+rawLen])
-			body = body[nul+1+rawLen:]
-			if name == "." || name == ".." || strings.Contains(name, "/") {
-				return nil, fmt.Errorf("tree %s holds an entry named %q", short(t.oid), name)
-			}
-			p := name
-			if t.dir != "" {
-				p = t.dir + "/" + name
-			}
-			switch mode {
-			case "40000":
-				queue = append(queue, pending{p, oid})
-			case "160000":
-				// a submodule's commit: archive writes no content for it
-			case "100644", "100755", "120000":
-				want[p] = treeEntry{mode: mode, oid: oid}
-			default:
-				return nil, fmt.Errorf("tree %s holds %s at an unknown mode %s", short(t.oid), p, mode)
-			}
+	want := make(map[string]treeEntry, len(tree))
+	for p, e := range tree {
+		if e.Mode != "160000" {
+			want[p] = treeEntry{mode: e.Mode, oid: e.OID}
 		}
 	}
 	return want, nil
