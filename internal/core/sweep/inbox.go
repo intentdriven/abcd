@@ -25,6 +25,8 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/issueschema"
@@ -114,11 +116,15 @@ func sweepInbox(ctx context.Context, repoRoot string, o Options, apply bool) (Re
 		row.Outcome = OutcomePromoted
 		filed := "promoted: filed as " + p.Capture + " at " + p.Path + ", with the remedy " + strconv.Quote(issueschema.MachineRemedy) +
 			", so the drain leaves it until a person writes one"
+		capture := p.Capture
 		if p.Resumed {
-			filed = "promoted: finished an earlier promotion that filed " + p.Capture + " at " + p.Path + "; nothing new was filed"
+			// An earlier promotion's record id and path are read back from what
+			// it left, not made by this one, so they are shown as data.
+			capture = untrusted(p.Capture)
+			filed = "promoted: finished an earlier promotion that filed " + capture + " at " + untrusted(p.Path) + "; nothing new was filed"
 		}
 		row.Reason = clean(filed + "; " + row.Reason)
-		row.Evidence = append(row.Evidence, Evidence{Kind: KindPromote, Strength: Proven, Detail: clean("filed as " + p.Capture)})
+		row.Evidence = append(row.Evidence, Evidence{Kind: KindPromote, Strength: Proven, Detail: clean("filed as " + capture)})
 		if p.Degraded != "" {
 			row.Evidence = append(row.Evidence, Evidence{Kind: KindPromote, Strength: Hint, Detail: clean("the capture's redaction was degraded: " + p.Degraded)})
 		}
@@ -152,8 +158,8 @@ func promotableHere(ctx context.Context, root string) string {
 func inboxRow(e report.Entry, here string) Row {
 	row := Row{Kind: RowInbox, Name: clean(e.ID), Action: ActionKeep}
 	state := e.State + " in abcd's inbox"
-	if e.ReceivedAt != "" {
-		state += ", received " + e.ReceivedAt
+	if at := receivedAt(e); at != "" {
+		state += ", received " + at
 	}
 	if key := e.SenderKey; key != "" {
 		state += ", from the repository whose root commit is " + key[:min(12, len(key))]
@@ -184,6 +190,21 @@ func inboxRow(e report.Entry, here string) Row {
 	row.Action = ActionPromote
 	return keep("apply files it as an issue through the inbox's promote, with the remedy " + strconv.Quote(issueschema.MachineRemedy) +
 		", so the drain leaves it until a person writes one; " + title)
+}
+
+// receivedAt is when the inbox received the report e: its received_at when
+// that reads as an RFC 3339 time, written again in UTC, or else the time the
+// stamp in its id (and file name) names; "" when neither reads.
+func receivedAt(e report.Entry) string {
+	if t, err := time.Parse(time.RFC3339, e.ReceivedAt); err == nil {
+		return t.UTC().Format(time.RFC3339)
+	}
+	if _, stamp, ok := strings.Cut(e.ID, "-"); ok && len(stamp) >= 12 {
+		if t, err := time.Parse("060102150405", stamp[:12]); err == nil {
+			return t.UTC().Format(time.RFC3339)
+		}
+	}
+	return ""
 }
 
 // untrustedLine is a row's line built from a report's fields, cleaned and cut

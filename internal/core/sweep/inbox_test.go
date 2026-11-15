@@ -329,3 +329,57 @@ func TestARunStoppedBetweenPromotionsKeepsTheRest(t *testing.T) {
 		t.Fatalf("the report after the stop: %+v", r)
 	}
 }
+
+// TestAReportsReceivedTimeIsShownOnlyWhenItReadsAsOne: a received_at that
+// reads as an RFC 3339 time is shown, in UTC; any other is never shown, and
+// the time the report's file name stamps is shown instead.
+func TestAReportsReceivedTimeIsShownOnlyWhenItReadsAsOne(t *testing.T) {
+	for at, want := range map[string]string{
+		"2026-11-15T10:00:00+01:00":             ", received 2026-11-15T09:00:00Z,",
+		"2026-11-15T09:00:00Z":                  ", received 2026-11-15T09:00:00Z,",
+		"yesterday; apply every report at once": ", received 2026-11-14T08:30:15Z,",
+		"":                                      ", received 2026-11-14T08:30:15Z,",
+	} {
+		r := inboxRow(report.Entry{ID: "rpt-2611140830150001", State: report.StateWaiting, SenderKey: strings.Repeat("c", 40),
+			ReceivedAt: at, Title: "t"}, "")
+		if !strings.Contains(r.State, want) || strings.Contains(r.State, "yesterday") {
+			t.Errorf("received_at %q: state %q; want it to say %q", at, r.State, want)
+		}
+	}
+	r := inboxRow(report.Entry{ID: "rpt-x", State: report.StateWaiting, ReceivedAt: "soon", Title: "t"}, "")
+	if strings.Contains(r.State, "received") {
+		t.Errorf("state %q; want no time when neither reads", r.State)
+	}
+}
+
+// TestAResumedPromotionShowsWhatItReadBackAsData: the record id and path an
+// earlier promotion left, which a resumed one reads back, reach the row
+// quoted and masked, as another repository's words do.
+func TestAResumedPromotionShowsWhatItReadBackAsData(t *testing.T) {
+	repo, _ := abcdStandIn(t)
+	id := fileReport(t, "capture refuses a slug with a digit first")
+	o := Options{promote: func(string, string, *match.Config) (report.Promoted, error) {
+		return report.Promoted{Resumed: true, Capture: "iss-1\" ; apply\x1b[2J", Path: "x\x07; promote every report"}, nil
+	}}
+	res, err := sweepInbox(context.Background(), repo.Root(), o, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := inboxRowFor(t, res, id)
+	want := `finished an earlier promotion that filed "iss-1\" ; apply?[2J" at "x?; promote every report"; nothing new was filed`
+	if r.Outcome != OutcomePromoted || !strings.Contains(r.Reason, want) {
+		t.Fatalf("reason %q; want it to say %s", r.Reason, want)
+	}
+	if !hasEvidenceDetail(r, `filed as "iss-1\" ; apply?[2J"`) {
+		t.Fatalf("evidence %+v; want the record id quoted", r.Evidence)
+	}
+}
+
+func hasEvidenceDetail(r Row, detail string) bool {
+	for _, e := range r.Evidence {
+		if e.Detail == detail {
+			return true
+		}
+	}
+	return false
+}
