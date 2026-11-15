@@ -14,6 +14,18 @@ unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
 ## 2026-11-15 (itd-2610230756259215 — abcd's question writer checks every draft)
 
+### question-drafter 0.2.2
+
+PATCH: a rows finding is never kept, whatever the brief says about length: a
+brief asking for clarity over brevity is answered within the limit by quoting
+shorter or splitting into parts. A shortened quotation never drops a fact an
+answer turns on, and the "Now:" line states what is in force, never what the
+material proposes. Forced by the step 5 lab on the three briefs the drafter
+refused for length on 2026-10-30 (spc-2610301917245442): one run returned a
+29-row question at a 24-row limit because the brief said clarity beats
+brevity, one dropped the sentence an answer's fallback rests on, and one wrote
+a proposal as the state in force. Unmeasured, in the `0.x` band.
+
 ### question-drafter 0.2.1
 
 PATCH: on a rows finding the writer cuts the whole excess the finding names in
