@@ -159,6 +159,32 @@ func PathWithin(child, parent string, fold bool) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+// RelWithin is child relative to parent, in child's own spelling, and whether
+// child lies at or inside parent, both compared as PathWithin compares them:
+// with fold set, a child whose parent part differs from parent only in case or
+// normalisation is placed below parent rather than read as a sibling of it.
+func RelWithin(parent, child string, fold bool) (string, bool) {
+	parent, child = filepath.Clean(parent), filepath.Clean(child)
+	if !PathWithin(child, parent, fold) {
+		return "", false
+	}
+	rel, err := filepath.Rel(FoldPath(parent, fold), FoldPath(child, fold))
+	if err != nil {
+		return "", false
+	}
+	if rel == "." {
+		return rel, true
+	}
+	// Folding changes no separator, so the folded rel has as many parts as
+	// child has below parent; they are taken from child as written.
+	n := len(strings.Split(rel, string(filepath.Separator)))
+	parts := strings.Split(child, string(filepath.Separator))
+	if n > len(parts) {
+		return "", false
+	}
+	return filepath.Join(parts[len(parts)-n:]...), true
+}
+
 // PathsOverlap reports whether a and b are the same directory or one contains
 // the other — either way a write under one touches the other.
 func PathsOverlap(a, b string, fold bool) bool {

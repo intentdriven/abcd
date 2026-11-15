@@ -521,3 +521,27 @@ func TestAStageDoesNotWriteTheWorkflowFolderOrACaseVariantOfAGate(t *testing.T) 
 		}
 	}
 }
+
+// TestAStageWriteSpelledThroughACaseVariantOfItsTreeIsJudgedAgainstTheGates:
+// where the filesystem folds case, a path whose tree part differs from the
+// tree only in case is the same file, so its gate files and protected names
+// are refused as they are under the tree as written, and an ordinary file
+// stays open.
+func TestAStageWriteSpelledThroughACaseVariantOfItsTreeIsJudgedAgainstTheGates(t *testing.T) {
+	folding := approveFoldsCase
+	t.Cleanup(func() { approveFoldsCase = folding })
+	approveFoldsCase = func() bool { return true }
+	tree := filepath.Join(t.TempDir(), "Tree")
+	if err := os.Mkdir(tree, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	variant := filepath.Join(filepath.Dir(tree), "TREE")
+	for _, rel := range []string{"Makefile", ".github/workflows/x.yml", ".abcd/guard.json", ".git/config"} {
+		if StageWriteRefusal([]string{tree}, nil, filepath.Join(variant, rel)) == "" {
+			t.Errorf("a stage may write %s through %s", rel, variant)
+		}
+	}
+	if why := StageWriteRefusal([]string{tree}, nil, filepath.Join(variant, "a.go")); why != "" {
+		t.Errorf("an ordinary file through %s is refused: %s", variant, why)
+	}
+}

@@ -524,15 +524,13 @@ func StageProgramRefusal(f *Files, line string) string {
 // stageGateFile is the gate file path lands in below tree, "" when it lands in
 // none or tree does not hold it. What decides how a lane is judged is never
 // opened by a declaration; a record under .abcd is, where declared names it.
-// Each part below tree compares as a case-folding filesystem compares names,
+// path is placed below tree as PathWithin places it (fsutil.RelWithin), and
+// each part below tree compares as a case-folding filesystem compares names,
 // whatever this machine's does (fsutil.FoldedPathMatch), since the tree is
 // checked out on machines whose filesystems may fold it.
 func stageGateFile(tree, path string, declared []string, fold bool) string {
-	if !fsutil.PathWithin(path, tree, fold) {
-		return ""
-	}
-	rel, err := filepath.Rel(tree, path)
-	if err != nil {
+	rel, ok := fsutil.RelWithin(tree, path, fold)
+	if !ok {
 		return ""
 	}
 	rel = filepath.ToSlash(rel)
@@ -635,8 +633,8 @@ func StageWriteRefusal(dirs, declared []string, path string) string {
 // protectedComponent is the first part of path below dir that is a protected
 // name, "" for none.
 func protectedComponent(path, dir string, fold bool) string {
-	rel, err := filepath.Rel(dir, path)
-	if err != nil {
+	rel, ok := fsutil.RelWithin(dir, path, fold)
+	if !ok {
 		return ""
 	}
 	for _, part := range strings.Split(rel, string(filepath.Separator)) {

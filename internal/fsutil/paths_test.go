@@ -323,3 +323,23 @@ func TestFoldedPathMatchComparesAsAFoldingFilesystemDoes(t *testing.T) {
 		}
 	}
 }
+
+// TestRelWithinPlacesAFoldedParentPartBelowTheParent: with fold set, a child
+// whose parent part differs only in case is below the parent and keeps its own
+// spelling below it; without fold it is outside, as is a sibling either way.
+func TestRelWithinPlacesAFoldedParentPartBelowTheParent(t *testing.T) {
+	parent := filepath.FromSlash("/x/Tree")
+	child := filepath.FromSlash("/x/TREE/Docs/Make.md")
+	if rel, ok := fsutil.RelWithin(parent, child, true); !ok || rel != filepath.FromSlash("Docs/Make.md") {
+		t.Fatalf("folded: %q %v", rel, ok)
+	}
+	if rel, ok := fsutil.RelWithin(parent, child, false); ok {
+		t.Fatalf("unfolded is outside: %q", rel)
+	}
+	if rel, ok := fsutil.RelWithin(parent, parent, true); !ok || rel != "." {
+		t.Fatalf("the parent itself: %q %v", rel, ok)
+	}
+	if rel, ok := fsutil.RelWithin(parent, filepath.FromSlash("/x/Treehouse/a"), true); ok {
+		t.Fatalf("a sibling is outside: %q", rel)
+	}
+}
