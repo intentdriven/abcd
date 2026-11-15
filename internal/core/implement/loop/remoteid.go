@@ -84,12 +84,13 @@ import (
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // remoteIdentityHeld names, for a refusal and the docs, what settings a drive
 // holds across its lanes (remoteIdentityKey), as each environment its git
 // runs in reads them.
-const remoteIdentityHeld = "at every scope, as each environment the drive's git runs in reads them: where a networked git goes and how it reaches the remote (origin's and every remote's url, pushurl, uploadpack, receivepack, proxy, proxy authentication method, server options, promisor switch, partial-clone filter and vcs; every url rewrite; core.sshCommand, core.gitProxy and ssh.variant; the protocol allow rules; fetch.bundleURI), whom it trusts and what it sends (every credential.*; core.askPass; push.pushOption; transfer.advertiseSID; the http.* settings that decide where an https fetch or push connects, whom it takes as the remote and what it sends there: the proxy and its authentication, certificate and key, the resolve and redirect settings, the TLS version, ciphers, backend, certificate authorities and pinned key, the client certificate and key, cookies, extra headers, the user agent, credential delegation and the authentication switches, per URL too); " +
+const remoteIdentityHeld = "at every scope, as each environment the drive's git runs in reads them: where a networked git goes and how it reaches the remote (origin's and every remote's url, pushurl, uploadpack, receivepack, proxy, proxy authentication method, server options, promisor switch, partial-clone filter, mirror switch and vcs; extensions.partialClone and every promisor.*; every url rewrite; core.sshCommand, core.gitProxy and ssh.variant; the protocol allow rules; fetch.bundleURI), whom it trusts and what it sends (every credential.*; core.askPass; push.pushOption; transfer.advertiseSID; the http.* settings that decide where an https fetch or push connects, whom it takes as the remote and what it sends there: the proxy and its authentication, certificate and key, the resolve and redirect settings, the TLS version, ciphers, backend, certificate authorities and pinned key, the client certificate and key, cookies, extra headers, the user agent, credential delegation and the authentication switches, per URL too); " +
 	"the programs a command of the drive starts (core.hooksPath, core.fsmonitor, core.editor, core.alternateRefsCommand, uploadpack.packObjectsHook and gc.recentObjectsHook; content filters, diff and merge drivers and diff.external; every gpg.* and the signing and verifying switches; format.pretty and pretty.*, whose format can check a signature; the Git LFS transfer and extension programs; hook.*; init.templateDir); " +
 	"the settings that change which of them run (merge.renormalize, submodule.recurse and push.recurseSubmodules, status.submoduleSummary, core.attributesFile, core.worktree and extensions.worktreeConfig); include and includeIf paths and the files they name; and the global and system attributes files"
 
@@ -118,10 +119,18 @@ const remoteIdentityHeld = "at every scope, as each environment the drive's git 
 //   - remote.<name>.proxyAuthMethod, the per-remote form of
 //     http.proxyAuthMethod (what is sent to the proxy);
 //     remote.<name>.serverOption, what a fetch from that remote sends the
-//     server; and remote.<name>.promisor and partialclonefilter, which make
-//     a git that reads a missing object fetch it from that remote, and say
-//     what it asks for; remote.<name>.proxy and the remote's other program
-//     and destination keys are watched by the run's fingerprint.
+//     server; remote.<name>.promisor and partialclonefilter, which make a
+//     git that reads a missing object fetch it from that remote, and say
+//     what it asks for; remote.<name>.mirror, which makes a push to that
+//     remote behave as if --mirror were given (git-config(1));
+//     remote.<name>.proxy and the remote's other program and destination
+//     keys are watched by the run's fingerprint.
+//   - extensions.partialClone, which names a promisor remote as
+//     remote.<name>.promisor does, and every promisor.* key git 2.52
+//     documents: acceptFromServer, which lets the server a fetch reaches name
+//     promisor remotes the client accepts, checkFields, which decides which
+//     of them are accepted, quiet, and advertise and sendFields, read where
+//     the repository serves a fetch (git-config(1)).
 //   - push.pushOption, what a push sends the server (git-config(1): as if
 //     each value were given as --push-option), and transfer.advertiseSID,
 //     which makes a fetch or push send the server its session id.
@@ -153,9 +162,9 @@ const remoteIdentityHeld = "at every scope, as each environment the drive's git 
 //
 // Every other push.*, remote.<name>.*, fetch.*, transfer.* and url.* key git
 // 2.52 documents is decided by the drive's own command line (its pushes name
-// origin and a refspec and pass --no-follow-tags, its fetches name origin and
-// their refspecs and pass --no-tags), is read by no git of the drive, or is
-// neither a program nor trust nor a value sent:
+// origin and a refspec and, in a drive, pass --no-follow-tags; its fetches
+// name origin and their refspecs and pass --no-tags), is read by no git of
+// the drive, or is neither a program nor trust nor a value sent:
 // TestEveryRemoteSettingGitDocumentsIsInOneRow gives each its row and why.
 //
 // The fingerprint of a run outside a drive keeps to watchedConfig, so nothing
@@ -163,7 +172,9 @@ const remoteIdentityHeld = "at every scope, as each environment the drive's git 
 // driveUnreadSettings beside this.
 const driveHeldConfig = `^(` +
 	`http\.(.+\.)?(proxy|proxyauthmethod|proxysslcainfo|proxysslcert|proxysslkey|proxysslcertpasswordprotected|sslverify|sslversion|sslcipherlist|sslcainfo|sslcapath|pinnedpubkey|sslbackend|schannelcheckrevoke|schannelusesslcainfo|ssltry|sslcert|sslcerttype|sslkey|sslkeytype|sslcertpasswordprotected|curloptresolve|followredirects|cookiefile|savecookies|extraheader|useragent|delegation|emptyauth|proactiveauth)` +
-	`|remote\..+\.(proxyauthmethod|serveroption|promisor|partialclonefilter)` +
+	`|remote\..+\.(proxyauthmethod|serveroption|promisor|partialclonefilter|mirror)` +
+	`|extensions\.partialclone` +
+	`|promisor\..+` +
 	`|push\.pushoption` +
 	`|transfer\.advertisesid` +
 	`|fetch\.bundleuri` +
@@ -267,8 +278,8 @@ type lanesRead struct {
 }
 
 // everyLane is the reading of every lane worktree's own scope: one listing
-// of the worktrees, then each lane's settings listed once, or once per
-// environment where it holds an include.
+// of the worktrees, then each lane's settings listed once, or, where it holds
+// an include, once more in each environment.
 var everyLane = lanesRead{all: true}
 
 // maxSettingsBytes caps one listing of the settings.
@@ -471,7 +482,8 @@ const maxWorktreeListingBytes = 1 << 20
 // worktree whose directory is gone, or that git marks prunable, holds
 // nothing; any other read that gives no answer the hold can take is a
 // readFailure naming it. It lists the worktrees once and each lane's settings
-// once, or once per environment where it holds an include, side by side.
+// once, or, where it holds an include, once more in each environment, side by
+// side.
 func laneScopeSettings(repoRoot string, b readBounds) (lanes map[string]map[string]string, checkoutOwn map[string]string, err error) {
 	what := "listing the repository's worktrees (git worktree list --porcelain -z)"
 	a, err := isolatedEnv.readBy(b, repoRoot, what, maxWorktreeListingBytes, "worktree", "list", "--porcelain", "-z")
@@ -526,9 +538,9 @@ func laneScopeSettings(repoRoot string, b readBounds) (lanes map[string]map[stri
 // config.worktree, the same file in every environment. Where that scope
 // holds an include (include.path, includeIf.*.path), whose path and condition
 // can resolve otherwise in another environment (a path from the home, a
-// condition on another scope's settings), it is listed in every environment
-// a drive's git runs in instead, and a key every environment gives the same
-// values hashes as one listing's.
+// condition on another scope's settings), it is listed once more in every
+// environment a drive's git runs in, and a key every environment gives the
+// same values hashes as one listing's.
 func laneOwnScope(lane string, b readBounds) (keys map[string]string, gone bool, err error) {
 	vals, gone, err := ownScopeValues(isolatedEnv, lane, b)
 	if err != nil || gone {
@@ -1162,7 +1174,10 @@ func readRemedy(then string) string {
 func (was *remoteIdentity) changed(repoRoot string, now *remoteIdentity) []string {
 	seen := map[string]bool{}
 	var out []string
+	// A key's name is the settings' text, so each name goes through
+	// termsafe.Sanitize before a refusal prints it.
 	add := func(name string) {
+		name = termsafe.Sanitize(name)
 		if !seen[name] {
 			seen[name] = true
 			out = append(out, name)
@@ -1207,16 +1222,18 @@ func (was *remoteIdentity) laneChanged(repoRoot string, now *remoteIdentity) []s
 	held := maps.Clone(was.lanes)
 	was.mu.Unlock()
 	var out []string
+	// The key is the lane's settings' text and the path git's listing of
+	// the lanes, so each name goes through termsafe.Sanitize.
 	diff := func(path string, a, b map[string]string) {
 		in := " in the worktree " + fsutil.RedactHome(path)
 		for k, h := range a {
 			if b[k] != h {
-				out = append(out, hiddenKey(was.salt, k)+in)
+				out = append(out, termsafe.Sanitize(hiddenKey(was.salt, k)+in))
 			}
 		}
 		for k := range b {
 			if _, ok := a[k]; !ok {
-				out = append(out, hiddenKey(was.salt, k)+in)
+				out = append(out, termsafe.Sanitize(hiddenKey(was.salt, k)+in))
 			}
 		}
 	}

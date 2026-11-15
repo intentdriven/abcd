@@ -365,7 +365,8 @@ func (r *treeReader) placeGitDirs() error {
 		// would place the submodule's git directory where the pointer leads.
 		// What git reads whole is sized above and the files placing git's
 		// own directory read unchanged, so listing the index reads the one
-		// the pin placed (iss-2610050504094430).
+		// the pin placed (iss-2610050504094430). The listing names every
+		// gitlink, with no cap, so this check's work grows with the index.
 		links, err := gitutil.Gitlinks(r.repo)
 		if err != nil {
 			return err
@@ -422,7 +423,9 @@ func (r *treeReader) placeGitDirs() error {
 // and each gitlink's .git pointer in the working tree, which git status reads
 // to place the submodule's git directory as it checks the submodule's HEAD.
 // A submodule's own gitlinks are not listed: git status does not run inside
-// a submodule (gitutil.Status's --ignore-submodules=dirty).
+// a submodule (gitutil.Status's --ignore-submodules=dirty). The index's
+// listing (gitutil.Gitlinks) names every gitlink, with no cap, so the files
+// placed, and the work of reading them, grow with the index.
 func placingFiles(repo, gitDir, common, top string) ([]string, error) {
 	out := []string{filepath.Join(repo, ".git"), filepath.Join(gitDir, "commondir")}
 	mods, err := moduleGitDirs(common)

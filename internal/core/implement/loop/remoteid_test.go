@@ -607,3 +607,35 @@ func TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly(t *testing.T) {
 		}
 	}
 }
+
+// TestAHeldChangeIsNamedWithNoControlCharacter: a key's name is the
+// settings' text (a subsection holds any byte but a newline and NUL) and a
+// lane's path git's listing of the lanes, so each name the held comparison
+// gives a refusal (changed, laneChanged) goes through termsafe.Sanitize.
+// Watched failing with the names given raw.
+func TestAHeldChangeIsNamedWithNoControlCharacter(t *testing.T) {
+	lane := filepath.Join(t.TempDir(), "lane\x1b[2J")
+	if err := os.Mkdir(lane, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	env := driveEnvs()[0]
+	was := &remoteIdentity{
+		salt:  "salt",
+		envs:  map[*gitEnv]map[string]string{env: {"remote.o\x1b]0;x.vcs": "a"}},
+		lanes: map[string]map[string]string{lane: {"remote.l\x1b[31m.vcs": "a"}},
+	}
+	now := &remoteIdentity{
+		envs:      map[*gitEnv]map[string]string{env: {}},
+		lanes:     map[string]map[string]string{lane: {}},
+		lanesRead: everyLane,
+	}
+	names := was.changed(t.TempDir(), now)
+	if len(names) != 2 {
+		t.Fatalf("both changes are named: %q", names)
+	}
+	for _, n := range names {
+		if strings.ContainsAny(n, "\x1b\n") {
+			t.Errorf("a held change is named with a control character: %q", n)
+		}
+	}
+}

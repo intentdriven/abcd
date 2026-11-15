@@ -448,11 +448,14 @@ func syncSubmoduleRefusal(lane Lane, def string) error {
 }
 
 // submoduleRefusal is the refusal of a sync not merged over the checked-out
-// submodule cs names.
+// submodule cs names. The path is the lane's index's, the default branch's
+// name origin's and the branch the lane's, so each goes through
+// termsafe.Sanitize, as undeclaredConflict's do.
 func submoduleRefusal(lane Lane, def string, cs *checkedOutSubmodule) error {
+	path, def, branch := termsafe.Sanitize(cs.Path), termsafe.Sanitize(def), termsafe.Sanitize(lane.Branch)
 	return refuse(string(StageLand), "", lane.ID,
-		fmt.Sprintf("the lane's index records a submodule at %q with a repository checked out there, so the sync with %s is not merged: git's merge can start a status inside that submodule, under its own settings, and the drive does not change what the merge's hooks see to stop it", cs.Path, def),
-		"merge "+Remote+"/"+def+" into "+lane.Branch+" yourself in the lane's worktree "+fsutil.RedactHome(lane.Worktree)+" (`git merge --no-ff "+Remote+"/"+def+"`), or remove the checkout at "+cs.Path+" there, then run `abcd implement step` again")
+		fmt.Sprintf("the lane's index records a submodule at %q with a repository checked out there, so the sync with %s is not merged: git's merge can start a status inside that submodule, under its own settings, and the drive does not change what the merge's hooks see to stop it", path, def),
+		"merge "+Remote+"/"+def+" into "+branch+" yourself in the lane's worktree "+termsafe.Sanitize(fsutil.RedactHome(lane.Worktree))+" (`git merge --no-ff "+Remote+"/"+def+"`), or remove the checkout at "+path+" there, then run `abcd implement step` again")
 }
 
 // unmergedPaths is the NUL-separated list of the paths a failed merge left

@@ -476,3 +476,49 @@ func TestTheDrivesOtherWorkingTreeCommandsStartNothingInASubmodule(t *testing.T)
 		t.Error("the removal of a lane's worktree ran its submodule's own clean filter")
 	}
 }
+
+// TestTheSubmoduleHandBackPrintsNoControlCharacter: a gitlink's path is
+// whatever the lane's index records, any byte but NUL, the default branch's
+// name is origin's and the branch is the lane's; the sync's hand-back over a
+// checked-out submodule (submoduleRefusal, checkedOutSubmodule) puts each
+// through termsafe.Sanitize, so neither a newline nor an escape sequence
+// reaches the terminal. Watched failing with the remedy writing the path,
+// the default branch and the branch raw.
+func TestTheSubmoduleHandBackPrintsNoControlCharacter(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := gittest.NewRepo(t)
+	r.Git("config", "commit.gpgsign", "false")
+	r.Write("a.txt", "a\n")
+	r.Commit("seed")
+	path := "sub\nline\x1b[31m"
+	r.Git("update-index", "--add", "--cacheinfo", "160000,"+r.Git("rev-parse", "HEAD")+","+path)
+	r.Git("commit", "-q", "-m", "a gitlink with a newline and an escape in its path")
+	dir := filepath.Join(r.Root(), path)
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: elsewhere\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lane := Lane{ID: "lane-1", Branch: "build/\x1b[2Jlane\n1", Worktree: r.Root()}
+	err := syncSubmoduleRefusal(lane, "ma\x1b]0;in\n")
+	rf, ok := AsRefusal(err)
+	if !ok {
+		t.Fatalf("the sync over a checked-out submodule is handed back: %v", err)
+	}
+	var cs *checkedOutSubmodule
+	if !errors.As(checkedOutGitlink(r.Root()), &cs) || cs.Path != path {
+		t.Fatalf("the gitlink is found checked out at its own path: %+v", cs)
+	}
+	for name, text := range map[string]string{"reason": rf.Reason, "remedy": rf.Remedy, "error": cs.Error()} {
+		if strings.ContainsAny(text, "\n\x1b") {
+			t.Errorf("the hand-back's %s prints a control character: %q", name, text)
+		}
+		if !strings.Contains(text, "sub?line?[31m") {
+			t.Errorf("the hand-back's %s names the path, sanitized: %q", name, text)
+		}
+	}
+	if !strings.Contains(rf.Remedy, "ma?]0;in?") || !strings.Contains(rf.Remedy, "build/?[2Jlane?1") {
+		t.Errorf("the remedy names the default branch and the branch, sanitized: %q", rf.Remedy)
+	}
+}

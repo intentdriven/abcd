@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // addAllGit runs `git add -A` in dir, the root of a lane's worktree or of the
@@ -93,8 +94,10 @@ func addAllArgs(dir, index string, pathspec []string) (args []string, stdin stri
 // index records a gitlink at Path with a repository checked out there.
 type checkedOutSubmodule struct{ Path string }
 
+// Error names the path through termsafe.Sanitize, since the lane's index
+// holds it.
 func (e *checkedOutSubmodule) Error() string {
-	return fmt.Sprintf("the lane's index records a submodule at %q with a repository checked out there, so the sync's merge is not made: git's merge can start a status inside it, under that submodule's own settings, and no command-line form reaches what the merge runs without reaching the hooks it runs", e.Path)
+	return fmt.Sprintf("the lane's index records a submodule at %q with a repository checked out there, so the sync's merge is not made: git's merge can start a status inside it, under that submodule's own settings, and no command-line form reaches what the merge runs without reaching the hooks it runs", termsafe.Sanitize(e.Path))
 }
 
 // checkedOutGitlink is the first gitlink of the index of the worktree at dir
@@ -114,7 +117,13 @@ func checkedOutGitlink(dir string) error {
 			return &checkedOutSubmodule{Path: l}
 		case errors.Is(err, fs.ErrNotExist), errors.Is(err, syscall.ENOTDIR):
 		default:
-			return fmt.Errorf("reading whether the submodule at %q is checked out before the sync's merge: %w", l, err)
+			// The path is named once, sanitized; the error the lstat gave
+			// is kept without the path it would repeat raw.
+			var pe *fs.PathError
+			if errors.As(err, &pe) {
+				err = pe.Err
+			}
+			return fmt.Errorf("reading whether the submodule at %q is checked out before the sync's merge: %w", termsafe.Sanitize(l), err)
 		}
 	}
 	return nil

@@ -2017,12 +2017,16 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 // landPushArgs is the landing push of a lane's head to its branch on
 // origin. The head the receipt names is pushed by its commit id, not the
 // branch's ref, so a branch that moves after the check cannot change what is
-// pushed; and it passes --no-follow-tags, which overrides push.followTags
-// (git-config(1)), so an annotated tag a lane made that points into the
-// branch's history is never sent with it. `abcd land`, run by a person,
-// pushes as before.
+// pushed. In a drive (claim.DriveMarked, which RunTerminal sets) it passes
+// --no-follow-tags, which overrides push.followTags (git-config(1)), so an
+// annotated tag a lane made that points into the branch's history is never
+// sent with it. A person's `abcd build` or `abcd implement step`, and `abcd
+// land`, push as before.
 func landPushArgs(head, branch string) []string {
-	return []string{"push", "--porcelain", "--no-follow-tags", Remote, head + ":refs/heads/" + branch}
+	if claim.DriveMarked() {
+		return []string{"push", "--porcelain", "--no-follow-tags", Remote, head + ":refs/heads/" + branch}
+	}
+	return []string{"push", "--porcelain", Remote, head + ":refs/heads/" + branch}
 }
 
 // announceBeforePush is claim.AnnounceBeforePush, the one path abcd's pushes

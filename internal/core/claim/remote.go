@@ -476,7 +476,7 @@ func pushArgs(sha, id string) []string { return pushTo(sha, refName(id)) }
 // value a writer chose. While a drive runs (DrivePushes) it also passes
 // --no-follow-tags.
 func pushTo(sha, ref string) []string {
-	if drivePushes.Load() > 0 {
+	if DriveMarked() {
 		return []string{"push", "--porcelain", "--no-follow-tags", Remote, sha + ":" + ref}
 	}
 	return []string{"push", "--porcelain", Remote, sha + ":" + ref}
@@ -489,14 +489,19 @@ var drivePushes atomic.Int32
 // is called: while it is marked, every push this package makes (pushTo)
 // passes --no-follow-tags, so an annotated tag a lane made that points into
 // the pushed history is never sent with it, whatever push.followTags holds
-// (git-config(1), push.followTags: --no-follow-tags overrides it). A push made outside a drive,
-// `abcd reserve` run by a person among them, is as before. clear is
-// idempotent.
+// (git-config(1), push.followTags: --no-follow-tags overrides it). A push
+// made outside a drive, `abcd reserve` run by a person among them, is as
+// before. clear is idempotent.
 func DrivePushes() (clear func()) {
 	drivePushes.Add(1)
 	var once sync.Once
 	return func() { once.Do(func() { drivePushes.Add(-1) }) }
 }
+
+// DriveMarked reports whether this process is marked as running a drive
+// (DrivePushes), for a push made outside this package to pass what pushTo
+// passes.
+func DriveMarked() bool { return drivePushes.Load() > 0 }
 
 // push makes one push pushTo built. A push origin refused comes back as its
 // rejection (pushRejection), for the act to explain in its own terms.
