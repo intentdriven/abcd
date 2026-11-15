@@ -59,6 +59,24 @@
 # Exit 0 on success; `check` exits 1 when there is no receipt; 2 on a usage fault.
 set -euo pipefail
 
+# Every git here, and scripts/records-only.sh, which mint runs, reads with
+# replace refs, graft files and the commit-graph turned off, as .githooks/pre-push
+# does: no refs/replace/* ref stands another commit, tree or blob in for one HEAD
+# stores, no graft file gives it other parents, and no commit-graph file, a
+# cache git reads a commit's tree and parents from in place of the commit,
+# claims another tree for it. None of the three changes the state or the tree
+# the stage reports are checked against. A tree or blob object's content is not
+# checked against its id here. The graft path is the one
+# internal/gitutil uses (noGraftFile): it names nothing, so git reads no graft
+# file, and git prints no hint for it as it does for /dev/null. core.commitGraph
+# is set false as the last entry of GIT_CONFIG_PARAMETERS, after any entries the
+# caller's environment carries, and the last entry wins; GIT_TEST_COMMIT_GRAPH,
+# which loads a graph whatever the setting says, is off.
+export GIT_NO_REPLACE_OBJECTS=1
+export GIT_GRAFT_FILE=/dev/null/none
+export GIT_CONFIG_PARAMETERS="${GIT_CONFIG_PARAMETERS:+$GIT_CONFIG_PARAMETERS }'core.commitgraph=false'"
+export GIT_TEST_COMMIT_GRAPH=0
+
 cd "$(git rev-parse --show-toplevel)"
 
 receipts_rel=".abcd/.work.local/preflight-receipts"
@@ -155,6 +173,8 @@ mint() {
 		echo "preflight: no push receipt minted — the working tree differed from HEAD (staged, unstaged"
 		echo "           or untracked changes), so these gates did not read the tree a push ships."
 		echo "           Commit or set aside the changes and run \`make preflight\` again before pushing."
+		echo "           Where \`git status\` reads clean, a replacement ref or a commit-graph that changes"
+		echo "           how HEAD reads may be the cause: these gates read HEAD as stored."
 		return 0
 	fi
 	if [ "$began_head" != "$now_head" ]; then

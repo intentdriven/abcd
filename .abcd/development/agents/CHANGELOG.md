@@ -14,7 +14,7 @@ unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
 ## 2026-11-15 (itd-2610301914350541 — the asking rules state the question keys)
 
-### question-drafter 0.2.1
+### question-drafter 0.2.7
 
 PATCH: the generated asking-rules block now ends its layout rule with the three
 keys a repository may set in `.abcd/config.json`, `question.rows`,
@@ -25,6 +25,66 @@ states are still abcd's defaults, and the drafter's own behaviour is
 unchanged. Unmeasured, in the `0.x` band.
 
 ## 2026-11-15 (itd-2610230756259215 — abcd's question writer checks every draft)
+
+### question-drafter 0.2.6
+
+PATCH: wording only. The section on material that does not fit said the writer
+never refuses for length alone, while its one-decision case refuses after the
+fifth check when no fact-keeping cut fits. It now says the writer never refuses
+for length while a cut or a split can still bring the material within the
+limit. Forced by the step 5 correctness delta review of 0.2.5; it changes no
+behaviour the labs judge. Unmeasured, in the `0.x` band.
+
+### question-drafter 0.2.5
+
+PATCH: wording only. The section on material that does not fit says one
+decision is quoted shorter, not split. The example the question must carry is
+never the one dropped. A single decision that no fact-keeping cut brings within
+the limit by the fifth check is named as refusal cause 3. Forced by the step 5
+delta reviews of 0.2.4; no round-five run reached a changed case
+(dcn-2611151710456359). Unmeasured, in the `0.x` band.
+
+### question-drafter 0.2.4
+
+PATCH: one decision whose material alone is too long is never spread over
+parts, as the intent's decision 33 says. The writer drops first what no answer
+turns on, and splits only into the decisions the material holds or by its
+answers. The rows estimate is named as an estimate also where the writer has a
+shell. A "Now:" line where nothing is in force says so. Forced by the step 5
+reviews of 0.2.3: its split instruction contradicted decision 33, and one run
+wrote a draft plan as "Now:". Unmeasured, in the `0.x` band.
+
+### question-drafter 0.2.3
+
+PATCH: after a rows finding the writer works out what its edit saves by the
+wrapping rules before it checks again, checks only once that covers the whole
+excess, and splits the material into parts where no cut that keeps every fact
+covers it; it counts its checks and stops at the fifth. Forced by the step 5
+lab's third round (spc-2610301917245442): one 25-row run spent four checks
+cutting three, two and one row, and one parts run spent five checks at 25 rows
+on edits that saved nothing the check counts, then refused. Unmeasured, in the
+`0.x` band.
+
+### question-drafter 0.2.2
+
+PATCH: a rows finding is never kept, whatever the brief says about length: a
+brief asking for clarity over brevity is answered within the limit by quoting
+shorter or splitting into parts. A shortened quotation never drops a fact an
+answer turns on, and the "Now:" line states what is in force, never what the
+material proposes. Forced by the step 5 lab on the three briefs the drafter
+refused for length on 2026-10-30 (spc-2610301917245442): one run returned a
+29-row question at a 24-row limit because the brief said clarity beats
+brevity, one dropped the sentence an answer's fallback rests on, and one wrote
+a proposal as the state in force. Unmeasured, in the `0.x` band.
+
+### question-drafter 0.2.1
+
+PATCH: on a rows finding the writer cuts the whole excess the finding names in
+one edit, never a row or two at a time, starting with option descriptions that
+wrap onto a second row and blank lines the layout does not need. Forced by the
+step 5 lab on the 25-row material (spc-2610301917245442): at 24 rows two of
+three runs trimmed 31, 27, 25, 24 and 30, 29, 25, 23, four checks each against
+the criterion's three. Unmeasured, in the `0.x` band.
 
 ### question-drafter 0.2.0
 

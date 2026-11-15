@@ -258,8 +258,8 @@ as an input in `explain` by name only.
 
 ## Footprint
 
-- packages: internal/core/surface/facts.go, internal/core/surface/inputs.go, internal/core/surface/sentences.go, internal/core/surface/examples.go, internal/surface/cli/explain.go, internal/surface/cli/inputs.go, internal/surface/cli/surface.go, internal/surface/cli/cli.go, internal/surface/cli/helpgroups.go, internal/core/lint/commandpagefacts.go, internal/core/ideate, internal/core/intent, internal/core/release, internal/core/reading, internal/core/scribe, internal/core/lifeboat, internal/core/docfidelity, internal/core/memory, cmd/command-facts-sync, Makefile, commands, docs/reference/cli, .abcd/development/release/surface.json, .abcd/development/brief/04-surfaces/41-explain.md, .abcd/development/brief/04-surfaces/README.md
-- tests: internal/core/surface/facts_test.go, internal/core/surface/inputs_test.go, internal/surface/cli/explain_test.go, internal/surface/cli/inputs_test.go, internal/surface/cli/commandfacts_drift_test.go, internal/surface/cli/commandpage_lint_test.go, internal/core/lint/commandpagefacts_test.go, cmd/command-facts-sync/main_test.go
+- packages: internal/core/surface/facts.go, internal/core/surface/inputs.go, internal/core/surface/sentences.go, internal/core/surface/examples.go, internal/surface/cli/explain.go, internal/surface/cli/inputs.go, internal/surface/cli/surface.go, internal/surface/cli/cli.go, internal/surface/cli/helpgroups.go, internal/surface/cli/barerender.go, internal/surface/cli/usage_errors.go, internal/core/lint/commandpagefacts.go, internal/core/ideate, internal/core/intent, internal/core/release, internal/core/reading, internal/core/scribe, internal/core/lifeboat, internal/core/docfidelity, internal/core/memory, cmd/command-facts-sync, Makefile, commands, docs/reference/cli, .abcd/development/release/surface.json, .abcd/development/brief/04-surfaces/41-explain.md, .abcd/development/brief/04-surfaces/README.md, .abcd/development/brief/04-surfaces/17-guard.md, .abcd/development/release-gate/manifest.json, .abcd/rules.json
+- tests: internal/core/surface/facts_test.go, internal/core/surface/inputs_test.go, internal/surface/cli/explain_test.go, internal/surface/cli/refusal_operands_test.go, internal/surface/cli/inputs_test.go, internal/surface/cli/commandfacts_drift_test.go, internal/surface/cli/commandpage_lint_test.go, internal/core/lint/commandpagefacts_test.go, cmd/command-facts-sync/main_test.go
 
 ## Steps
 
@@ -270,8 +270,9 @@ as an input in `explain` by name only.
    - landed: caeab6619329
 2. The explain verb on both surfaces
    - needs: 1
-   - packages: internal/surface/cli/explain.go, internal/core/surface/sentences.go, internal/core/surface/examples.go, internal/surface/cli/helpgroups.go, commands/explain.md, .abcd/development/brief/04-surfaces/41-explain.md, .abcd/development/brief/04-surfaces/README.md, .abcd/development/release/surface.json, docs/reference/cli/commands.md
-   - tests: internal/surface/cli/explain_test.go
+   - packages: internal/surface/cli/explain.go, internal/core/surface/sentences.go, internal/core/surface/examples.go, internal/surface/cli/helpgroups.go, internal/surface/cli/barerender.go, internal/surface/cli/cli.go, internal/surface/cli/usage_errors.go, commands/explain.md, .abcd/development/brief/04-surfaces/41-explain.md, .abcd/development/brief/04-surfaces/README.md, .abcd/development/brief/04-surfaces/17-guard.md, .abcd/development/release/surface.json, .abcd/development/release-gate/manifest.json, .abcd/rules.json, docs/reference/cli/commands.md
+   - tests: internal/surface/cli/explain_test.go, internal/surface/cli/refusal_operands_test.go
+   - landed: 6f748cff2dbf
 3. The per-command JSON, the page blocks and the first instruction
    - needs: 1
    - packages: cmd/command-facts-sync, Makefile, commands, docs/reference/cli/commands
