@@ -333,8 +333,10 @@ func TestAGitThatNamesALaneReadsThatLanesScope(t *testing.T) {
 // reads its own scope then, before any agent runs there (laneMade): one that
 // sets a key the drive holds otherwise than the checkout's own scope did as
 // the drive started is refused at the worktree stage, naming the key; one
-// that matches opens and is held. Watched failing on the branch before, whose
-// adopted lane was read only at the next comparison: the stage opened it.
+// that matches opens and is held. Watched failing on the branch before, which
+// did not hold the adopted lane; the differing case was refused there too,
+// by the comparison the stage makes before it asks origin, which reads every
+// lane.
 func TestALaneTheWorktreeStageAdoptsIsReadAsItIsAdopted(t *testing.T) {
 	for _, differs := range []bool{true, false} {
 		repo, _, _ := hookedOrigin(t)
