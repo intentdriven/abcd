@@ -196,17 +196,37 @@ func storedGitEnv() []string {
 	return gitutil.AsStoredEnv(gitEnv())
 }
 
-// blobReader is one `git cat-file --batch`, started when first needed.
+// errObjectMismatch is a blob whose content does not hash to the id it was
+// read by.
+var errObjectMismatch = errors.New("the content git gave does not hash to its id")
+
+// blobReader is one `git cat-file --batch`, started when first needed. git
+// answers a read of a loose object with whatever its file holds, so each body is
+// checked against the id it was read by, in the repository's object format,
+// before the sync places it.
 type blobReader struct {
-	ctx  context.Context
-	repo string
-	cmd  *exec.Cmd
-	in   io.WriteCloser
-	out  *bufio.Reader
+	ctx   context.Context
+	repo  string
+	idLen int // the hex length of an object id in the repository's format
+	cmd   *exec.Cmd
+	in    io.WriteCloser
+	out   *bufio.Reader
 }
 
 func (b *blobReader) read(oid string) ([]byte, error) {
 	if b.cmd == nil {
+		format, err := gitOutput(b.ctx, b.repo, "rev-parse", "--show-object-format")
+		if err != nil {
+			return nil, err
+		}
+		switch f := strings.TrimSpace(string(format)); f {
+		case "sha1":
+			b.idLen = sha1.Size * 2
+		case "sha256":
+			b.idLen = sha256.Size * 2
+		default:
+			return nil, fmt.Errorf("the repository's object format is %q, which the sync cannot check a blob against", f)
+		}
 		cmd := exec.CommandContext(b.ctx, "git", "cat-file", "--batch")
 		cmd.Dir = b.repo
 		cmd.Env = storedGitEnv()
@@ -241,6 +261,9 @@ func (b *blobReader) read(oid string) ([]byte, error) {
 	body := make([]byte, size+1) // the content and its newline
 	if _, err := io.ReadFull(b.out, body); err != nil {
 		return nil, err
+	}
+	if len(oid) != b.idLen || blobOID(oid, body[:size]) != oid {
+		return nil, fmt.Errorf("git cat-file: %s: %w", oid, errObjectMismatch)
 	}
 	return body[:size], nil
 }

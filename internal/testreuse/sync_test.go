@@ -3,6 +3,7 @@ package testreuse
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -702,5 +703,48 @@ func TestTheReuseReadsNoCommitGraph(t *testing.T) {
 				t.Errorf("git status over a worktree that is HEAD as stored says %q, %v; want nothing", out, err)
 			}
 		})
+	}
+}
+
+// swapLooseBlob overwrites the loose object file of the blob oid with that of a
+// blob holding body, so git answers a read of oid with body.
+func swapLooseBlob(t *testing.T, dir, oid, body string) {
+	t.Helper()
+	src := filepath.Join(t.TempDir(), "swapped")
+	writeFile(t, src, body, 0o644)
+	other := runGit(t, dir, "hash-object", "-w", src)
+	objects := filepath.Join(runGit(t, dir, "rev-parse", "--absolute-git-dir"), "objects")
+	raw, err := os.ReadFile(filepath.Join(objects, other[:2], other[2:]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(objects, oid[:2], oid[2:])
+	if err := os.Chmod(dst, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := runGit(t, dir, "cat-file", "blob", oid); got+"\n" != body {
+		t.Fatalf("the swapped object does not take: %s reads as %q", oid, got)
+	}
+}
+
+// TestASyncRefusesABlobThatDoesNotHashToItsID: git answers a read of a loose
+// object with whatever its file holds, so a blob's content is checked against
+// its id before it is placed in the check directory, and one that does not
+// hash to it fails the sync with nothing of it placed.
+func TestASyncRefusesABlobThatDoesNotHashToItsID(t *testing.T) {
+	r := newGitRepo(t)
+	r.write("a.txt", "stored\n")
+	head := r.commit("one")
+	swapLooseBlob(t, r.root, r.git("rev-parse", head+":a.txt"), "swapped\n")
+	dir := t.TempDir()
+	_, err := Sync(context.Background(), r.root, head, dir)
+	if !errors.Is(err, errObjectMismatch) {
+		t.Fatalf("Sync = %v, want %v", err, errObjectMismatch)
+	}
+	if raw, err := os.ReadFile(filepath.Join(dir, treeDirName, "a.txt")); err == nil {
+		t.Errorf("the check directory holds a.txt = %q from an object that does not hash to its id", raw)
 	}
 }

@@ -1155,3 +1155,32 @@ func TestAReceiptReadsTheCommitAsStored(t *testing.T) {
 		}
 	}
 }
+
+// TestAStageWithAnObjectThatDoesNotHashToItsIDNamesNoTree: a blob of HEAD whose
+// object file holds other content fails the sync, and the stage falls back to a
+// fresh run in the worktree. git checked the worktree out from that object
+// store, so the run vouches for no tree: its report names none, and no receipt
+// can be minted from it.
+func TestAStageWithAnObjectThatDoesNotHashToItsIDNamesNoTree(t *testing.T) {
+	w := newWorld(t)
+	head := runGit(t, w.repo, "rev-parse", "HEAD")
+	swapLooseBlob(t, w.repo, runGit(t, w.repo, "rev-parse", "HEAD:reads/data.txt"), "bad\n")
+
+	r := w.stage(w.repo, nil, allPackages...)
+	if r.code != 0 || !strings.Contains(r.out, "reuses nothing") || !strings.Contains(r.out, "does not hash to its id") {
+		t.Fatalf("the stage did not fall back to a fresh run, saying why:\n%s", r)
+	}
+	matches, err := filepath.Glob(filepath.Join(w.repo, ".abcd", ".work.local", "preflight-reuse", head, "unit-*"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("reports: %v, %v\n%s", matches, err, r)
+	}
+	raw, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"tree none", "mode fallback"} {
+		if !strings.Contains(string(raw), want+"\n") {
+			t.Errorf("the report lacks %q:\n%s", want, raw)
+		}
+	}
+}

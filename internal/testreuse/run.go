@@ -191,6 +191,7 @@ func Run(ctx context.Context, cfg Config) int {
 		ran      bool
 		failed   bool
 		fallback string
+		untested bool // a fresh run vouches for no tree (runReusedLines)
 		refused  error
 		tally    Tally
 	)
@@ -208,7 +209,7 @@ func Run(ctx context.Context, cfg Config) int {
 			}
 			g.p, g.timeout = p, timeout
 		}
-		plan, failed, fallback = runReusedLines(ctx, cfg, g, dir, list, head, &tally)
+		plan, failed, fallback, untested = runReusedLines(ctx, cfg, g, dir, list, head, &tally)
 		ran = fallback == ""
 		return nil
 	}
@@ -250,6 +251,8 @@ func Run(ctx context.Context, cfg Config) int {
 	case refused != nil:
 		fmt.Fprintf(cfg.Stderr, "check-tests: after the wait: %v. Nothing ran.\n", refused)
 		return 1
+	case !ran && untested:
+		return runFresh(ctx, cfg, g, modeFallback, fallback, head, "")
 	case !ran:
 		return runFresh(ctx, cfg, g, modeFallback, fallback, head, tree)
 	}
@@ -377,12 +380,15 @@ func runFresh(ctx context.Context, cfg Config, g goTestArgs, mode, why, head, tr
 }
 
 // runReusedLines brings the check directory to the commit, plans the stage and
-// runs the lines that use the tree, holding its lock. A non-empty last result is a
-// reason to run fresh instead, with nothing yet run.
-func runReusedLines(ctx context.Context, cfg Config, g goTestArgs, dir string, list List, head string, tally *Tally) (Plan, bool, string) {
+// runs the lines that use the tree, holding its lock. A non-empty third result
+// is a reason to run fresh instead, with nothing yet run, and a true fourth says
+// that fresh run vouches for no tree: the repository gave a blob that does not
+// hash to its id (errObjectMismatch), and git checked the worktree out from the
+// same objects.
+func runReusedLines(ctx context.Context, cfg Config, g goTestArgs, dir string, list List, head string, tally *Tally) (Plan, bool, string, bool) {
 	stats, snap, err := syncTree(ctx, cfg.Worktree, head, dir)
 	if err != nil {
-		return Plan{}, false, "the check directory could not be brought to the commit: " + err.Error()
+		return Plan{}, false, "the check directory could not be brought to the commit: " + err.Error(), errors.Is(err, errObjectMismatch)
 	}
 	fmt.Fprintf(cfg.Stdout, "check-tests: %s stage from %s at %.12s: %d files written, %d removed, %d directories retimed, %d files already right, in %s\n",
 		cfg.Stage, snap.tree, head, stats.Written, stats.Removed, stats.Retimed, stats.Kept, stats.Took.Round(time.Millisecond))
@@ -390,25 +396,25 @@ func runReusedLines(ctx context.Context, cfg Config, g goTestArgs, dir string, l
 	env := reusedLineEnv(dir, snap.tree)
 	all, err := listPackages(ctx, snap.tree, env, g.race, "./...")
 	if err != nil {
-		return Plan{}, false, err.Error()
+		return Plan{}, false, err.Error(), false
 	}
 	named, err := listPackages(ctx, snap.tree, env, g.race, g.patterns...)
 	if err != nil {
-		return Plan{}, false, err.Error()
+		return Plan{}, false, err.Error(), false
 	}
 	rels := map[string]string{}
 	known := map[string][]string{}
 	for _, p := range all {
 		rel, err := filepath.Rel(snap.tree, p.Dir)
 		if err != nil {
-			return Plan{}, false, err.Error()
+			return Plan{}, false, err.Error(), false
 		}
 		rels[p.ImportPath] = filepath.ToSlash(rel)
 		known[filepath.ToSlash(rel)] = testNames(p)
 	}
 	if bad := unresolved(list, known); len(bad) > 0 {
 		return Plan{}, false, ListPath + " on the default branch names what this tree does not hold: " + strings.Join(firstFew(bad), ", ") +
-			"; merging origin's default branch clears it when this branch is behind it"
+			"; merging origin's default branch clears it when this branch is behind it", false
 	}
 	pkgs := make([]string, len(named))
 	for i, p := range named {
@@ -425,7 +431,7 @@ func runReusedLines(ctx context.Context, cfg Config, g goTestArgs, dir string, l
 	if left := snap.leftBehind(); len(left) > 0 {
 		fmt.Fprintf(cfg.Stdout, "check-tests: a test left files in the check directory, so a test that walks the tree will not replay: %s\n", strings.Join(firstFew(left), ", "))
 	}
-	return plan, failed, ""
+	return plan, failed, "", false
 }
 
 // reusedLineEnv is the environment of a line whose results are to be reused. It
