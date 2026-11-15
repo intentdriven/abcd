@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -45,11 +46,12 @@ var chipStates = []struct {
 	{"Setup Q1/4", mode.Facilitator},
 }
 
-// TestGuardChipSetsTheModeWhileManaged (iss-2610100626211810): a question
-// carrying abcd's chip already names whom it is for, so with the mode reading
-// managed it is never refused on the mode. It runs silently, the mode is set
-// from the chip's role, and the question is marked open for the reset.
-func TestGuardChipSetsTheModeWhileManaged(t *testing.T) {
+// TestOlderChipStillSetsTheMode (iss-2610100626211810; spc-2610301917245442,
+// step 3): a header in the older form, a role word before the number, names
+// whom the question is for, so with the mode reading managed it is never
+// refused on the mode. It runs silently, the mode is set from the chip's role,
+// and the question is marked open for the reset.
+func TestOlderChipStillSetsTheMode(t *testing.T) {
 	for _, tc := range chipStates {
 		t.Run(tc.header, func(t *testing.T) {
 			root := managedCheckout(t)
@@ -148,30 +150,43 @@ func TestGuardLeavesQuestionsAloneWhereUnmanaged(t *testing.T) {
 	}
 }
 
-// TestGuardQuestionGateFailsOpenLoudWithoutAChip: a question without abcd's
-// chip is abcd's only through the mode, so with the mode store unreadable the
-// gate cannot tell whether it is abcd's: it is not a decision, so the
-// question runs, unchecked, and the gate says so on the loud, non-blocking
-// status, the guard's own fail-open-loud contract, in one line.
-func TestGuardQuestionGateFailsOpenLoudWithoutAChip(t *testing.T) {
+// TestGuardQuestionGateSkipsANumberHeadersRegisterWithTheModeUnread
+// (spc-2610301917245442, step 3): a number header names no person, so its
+// register rule follows the mode, and with the mode store unreadable that one
+// rule cannot be applied. Every other rule is: a question that breaks one is
+// refused, and a clean one runs at exit 1. Each answer leads with one line
+// saying the mode store was not read and the register rule was not applied;
+// nothing is marked open and nothing says the question ran ungated.
+func TestGuardQuestionGateSkipsANumberHeadersRegisterWithTheModeUnread(t *testing.T) {
+	const modeLine = "abcd guard: the mode store could not be read ("
 	root := managedCheckout(t)
 	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(mode.FileRelPath)), []byte("sideways\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	unchipped := wellBuilt()
-	unchipped.Header = "Labels"
-	unchipped.Options[0].Label = "Role and number (Recommended)"
-	stdout, stderr, code := runGuard(askPayload(t, root, unchipped), "guard", "hook")
+	number := wellBuilt()
+	number.Header = "Q1"
+	stdout, stderr, code := runGuard(askPayload(t, root, number), "guard", "hook")
 	if code != 1 || stdout != "" {
-		t.Fatalf("an unreadable mode store must fail open loud for a question without a chip (exit 1, no stdout); code=%d stdout=%q stderr=%q", code, stdout, stderr)
+		t.Fatalf("a clean number-form question with the mode store unread: want exit 1 and nothing on stdout; code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
-	if lines := strings.Split(strings.TrimRight(stderr, "\n"), "\n"); len(lines) != 1 {
-		t.Errorf("want one stderr line, got %d: %q", len(lines), stderr)
+	lines := strings.Split(strings.TrimRight(stderr, "\n"), "\n")
+	if len(lines) != 1 || !strings.HasPrefix(lines[0], modeLine) || !strings.Contains(lines[0], "register rule") {
+		t.Errorf("want the one mode line naming the register rule; stderr = %q", stderr)
 	}
-	for _, want := range []string{"NOT CHECKED", "the mode store could not be read", "UNGATED"} {
-		if !strings.Contains(stderr, want) {
-			t.Errorf("the fail-open must say %q; stderr = %q", want, stderr)
-		}
+	if strings.Contains(stderr, "UNGATED") || strings.Contains(stderr, "NOT CHECKED") {
+		t.Errorf("the question was checked by every other rule, so nothing may say it was not; stderr = %q", stderr)
+	}
+
+	broken := number
+	broken.Options = slices.Clone(number.Options)
+	broken.Options[0].Label = "Role and number (Recommended)"
+	stdout, stderr, code = runGuard(askPayload(t, root, broken), "guard", "hook")
+	reason := mustDeny(t, stdout, stderr, code)
+	if !strings.HasPrefix(reason, modeLine) || !strings.Contains(reason, "(never-recommended)") {
+		t.Errorf("a broken number-form question must be refused on its rule, the mode line first; reason:\n%s", reason)
+	}
+	if markedOpen(t, root) {
+		t.Error("a question was marked open beside a mode store the gate could not read")
 	}
 }
 
@@ -251,16 +266,18 @@ func TestGuardQuestionGateJudgesAChippedQuestionWithTheModeUnread(t *testing.T) 
 	untouched("with the limits unread")
 }
 
-// TestGuardQuestionGateSaysWhenItCannotFindTheRoot (iss-2610110432159652): a
-// question without abcd's chip is abcd's only through the mode store, and the
-// gate finds the store through git's toplevel. In a checkout git will not name
-// the root of, the gate cannot tell whether the mode names somebody, so the
-// check did not run: the question still runs (exit 1, the host's non-blocking
-// error, nothing on stdout) and one stderr line names the failed root lookup
-// and its error. It used to pass the question with no word at all. Outside
-// every repository there is no mode store to miss, and the gate stays silent.
+// TestGuardQuestionGateSaysWhenItCannotFindTheRoot (iss-2610110432159652;
+// spc-2610301917245442, step 3): a number header's register rule follows the
+// mode, and the gate finds the mode store through git's toplevel. In a
+// checkout git will not name the root of, the gate cannot tell whom the mode
+// names, so that rule did not run: the question still runs (exit 1, the
+// host's non-blocking error, nothing on stdout) and one stderr line names the
+// failed root lookup, its error and the rule not applied. It used to pass the
+// question with no word at all. Outside every repository there is no mode
+// store to miss, and the gate stays silent.
 func TestGuardQuestionGateSaysWhenItCannotFindTheRoot(t *testing.T) {
-	foreign := hostQuestion{Header: "Ship", Question: "Ship it?", Options: []hostOption{{Label: "Yes"}, {Label: "No"}}}
+	foreign := wellBuilt()
+	foreign.Header = "Q1"
 	root := managedCheckout(t)
 	setMode(t, root, mode.ProductThinker)
 	outside := realPath(t, t.TempDir())
@@ -269,15 +286,18 @@ exec "$REAL_GIT" "$@"`)
 
 	stdout, stderr, code := runGuard(askPayload(t, root, foreign), "guard", "hook")
 	if code != 1 || stdout != "" {
-		t.Fatalf("a question whose root lookup failed must fail open loud (exit 1, no stdout); code=%d stdout=%q stderr=%q", code, stdout, stderr)
+		t.Fatalf("a number-form question whose root lookup failed must run loudly (exit 1, no stdout); code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 	if lines := strings.Split(strings.TrimRight(stderr, "\n"), "\n"); len(lines) != 1 {
 		t.Errorf("want one stderr line, got %d: %q", len(lines), stderr)
 	}
-	for _, want := range []string{"NOT CHECKED", "repository root", "git could not name the repository root", "UNGATED"} {
+	for _, want := range []string{"repository root", "git could not name the repository root", "register rule"} {
 		if !strings.Contains(stderr, want) {
-			t.Errorf("the fail-open must say %q; stderr = %q", want, stderr)
+			t.Errorf("the line must say %q; stderr = %q", want, stderr)
 		}
+	}
+	if strings.Contains(stderr, "UNGATED") {
+		t.Errorf("every rule but the register was applied, so nothing may say the question ran ungated; stderr = %q", stderr)
 	}
 	if strings.Contains(stderr, root) {
 		t.Errorf("the fail-open leaks the checkout's path; stderr = %q", stderr)
@@ -383,6 +403,45 @@ func TestPostToolUseHookResetsTheModeOnTheAnswer(t *testing.T) {
 	}
 	if n := modeResetLines(stderr); n != 0 {
 		t.Errorf("no question was open, yet the hook reported a reset:\n%s", stderr)
+	}
+}
+
+// TestNumberHeaderLeavesTheModeAndResetsOnTheAnswer (spc-2610301917245442,
+// step 3; decision 37): a number header names no person, so an admitted
+// number-form question sets no mode: the agent set it before asking. It is
+// marked open under the mode in force, and the answer resets the mode to
+// managed and clears the marker, as for any admitted question.
+func TestNumberHeaderLeavesTheModeAndResetsOnTheAnswer(t *testing.T) {
+	for _, st := range []mode.State{mode.ProductThinker, mode.Facilitator} {
+		t.Run(string(st), func(t *testing.T) {
+			root := managedCheckout(t)
+			setMode(t, root, st)
+			stdout, stderr, code := runGuard(chipCall(t, root, "Q1a/4"), "guard", "hook")
+			if code != 0 || stdout != "" || stderr != "" {
+				t.Fatalf("a well-built number-form question must be admitted silently; code=%d stdout=%q stderr=%q", code, stdout, stderr)
+			}
+			if got, _ := mode.ReadAt(root); got != st {
+				t.Errorf("mode = %q, want the %q the agent set, untouched", got, st)
+			}
+			data, err := os.ReadFile(questionMarker(root))
+			if err != nil {
+				t.Fatalf("the admitted question was not marked open: %v", err)
+			}
+			if strings.TrimSpace(string(data)) != string(st) {
+				t.Errorf("marker = %q, want %q", data, st)
+			}
+			answered := `{"session_id":"s-num","hook_event_name":"PostToolUse","tool_name":"` + questionTools[0] +
+				`","tool_input":{"questions":[]},"tool_response":{"answers":{}},"cwd":"` + root + `"}`
+			if _, stderr, err := runSplit(t, answered, "hook", "question-answered"); err != nil {
+				t.Fatalf("question-answered: %v\n%s", err, stderr)
+			}
+			if got, _ := mode.ReadAt(root); got != mode.Managed {
+				t.Errorf("mode after the answer = %q, want managed", got)
+			}
+			if markedOpen(t, root) {
+				t.Error("the marker survived the answer")
+			}
+		})
 	}
 }
 

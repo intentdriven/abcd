@@ -53,8 +53,13 @@ type questionCheckResult struct {
 	Addressee        []questionAddresseeJSON `json:"addressee"`
 	AddresseeChanges string                  `json:"addressee_changes,omitempty"`
 	Findings         []questionFindingJSON   `json:"findings"`
-	Rows             []questionRowsJSON      `json:"rows"`
-	RowsLimit        int                     `json:"rows_limit"`
+	// ByRule is the findings folded one entry per rule and tab, in the order
+	// the first of each appeared, with its first echoed value and a count:
+	// the groups the hook's deny and the text render name one line each
+	// (question.GroupFindings, spc-2610301917245442 step 2).
+	ByRule    []questionGroupJSON `json:"by_rule"`
+	Rows      []questionRowsJSON  `json:"rows"`
+	RowsLimit int                 `json:"rows_limit"`
 	// Limits and LimitsSource are the question limits the check judged at,
 	// as the hook judges at them, and where each came from
 	// (spc-2610301950037469 step 2). Both are absent while a limit is
@@ -116,6 +121,14 @@ type questionFindingJSON struct {
 	Limit   string `json:"limit"`
 	Remedy  string `json:"remedy"`
 	Refuses bool   `json:"refuses"`
+}
+
+// questionGroupJSON is one rule's findings on one tab.
+type questionGroupJSON struct {
+	Tab   int    `json:"tab"`
+	Rule  string `json:"rule"`
+	Value string `json:"value"`
+	Count int    `json:"count"`
 }
 
 type questionRowsJSON struct {
@@ -317,6 +330,7 @@ func questionCheckOf(form string, v question.Verdict, structural []question.Find
 		Unread:         []questionUnreadJSON{},
 		Addressee:      []questionAddresseeJSON{},
 		Findings:       []questionFindingJSON{},
+		ByRule:         []questionGroupJSON{},
 		Rows:           []questionRowsJSON{},
 		RowsLimit:      reads.state.Limits.Rows,
 	}
@@ -362,6 +376,9 @@ func questionCheckOf(form string, v question.Verdict, structural []question.Find
 	}
 	for _, f := range v.Findings {
 		res.Findings = append(res.Findings, findingJSON(f, question.RefusingFinding(f)))
+	}
+	for _, g := range question.GroupFindings(append(slices.Clone(structural), v.Findings...)) {
+		res.ByRule = append(res.ByRule, questionGroupJSON{Tab: g.Tab, Rule: string(g.Rule), Value: g.First.Value, Count: g.Count})
 	}
 	for i, r := range v.Rows {
 		res.Rows = append(res.Rows, questionRowsJSON{Tab: i + 1, RowSplit: r})
@@ -423,7 +440,7 @@ func outcomeLine(o question.Outcome) string {
 	case question.OutcomeRefuseAway:
 		return "the person is away (abcd mode autonomous), so the hook would refuse every question; route it with abcd mode queue or abcd decide"
 	case question.OutcomeAdmitUnchecked:
-		return "this is not abcd's question (no header in abcd's chip grammar, and no mode naming anyone), so the hook would let it through unchecked and nothing was checked; head it with abcd's chip, such as \"Product Q1\", to have it checked"
+		return "this is not abcd's question (no header in abcd's grammar), so the hook would let it through unchecked whatever the mode names, and nothing was checked; head it with the question's number, such as \"Q1\", to have it checked"
 	case question.OutcomeUnchecked:
 		return "a store the check needed could not be read, so the hook would let this question through unchecked, on its loud status"
 	}
@@ -444,8 +461,9 @@ func outcomeLineOf(res questionCheckResult) string {
 	}):
 		return "the question limits could not be read, so the hook would check this question at abcd's defaults and let it through on its loud status"
 	case res.Hook == question.OutcomeUnchecked && res.Abcds:
-		// abcd's question is checked whatever store was unread: a chipped
-		// one with the mode store unread is judged on its chip.
+		// abcd's question is checked whatever store was unread: an
+		// older-form chip with the mode store unread is judged on its chip,
+		// and a number header by every rule but the register.
 		return "this question was checked and has no finding, but " + unreadStores(res) +
 			" could not be read, so the hook would let it through on its loud status"
 	}
@@ -488,15 +506,26 @@ func writeQuestionCheck(w io.Writer, res questionCheckResult) {
 		fmt.Fprintf(w, "  tab %d: %d rows: header and frame %d, question text %d, options %d\n",
 			r.Tab, r.Total, r.HeaderAndFrame, r.QuestionText, r.Options)
 	}
-	refusing := 0
+	// The finding lines are the hook's own: one per rule and tab, from the
+	// renderer the deny uses, so a line the verb shows is the line the hook
+	// would refuse with, byte for byte (spc-2610301917245442, step 2).
+	var refusing, rest []question.Finding
 	for _, f := range res.Findings {
+		qf := question.Finding{Tab: f.Tab, Part: f.Part, Rule: question.Rule(f.Rule), Value: f.Value, Limit: f.Limit, Remedy: f.Remedy}
 		if f.Refuses {
-			refusing++
+			refusing = append(refusing, qf)
+		} else {
+			rest = append(rest, qf)
 		}
 	}
-	fmt.Fprintf(w, "findings: %d, %d of them refusing\n", len(res.Findings), refusing)
-	for _, f := range res.Findings {
-		fmt.Fprintln(w, "  "+termsafe.Sanitize(question.Finding{Tab: f.Tab, Part: f.Part, Rule: question.Rule(f.Rule), Value: f.Value, Limit: f.Limit, Remedy: f.Remedy}.String()))
+	fmt.Fprintf(w, "findings: %d, %d of them refusing\n", len(res.Findings), len(refusing))
+	question.RenderGroups(w, question.GroupFindings(refusing))
+	if len(rest) > 0 {
+		fmt.Fprintln(w, "not refused by the hook on their own (the rows limit, and the structure of an --ask draft, which the hook never reads):")
+		question.RenderGroups(w, question.GroupFindings(rest))
+	}
+	if len(res.Findings) > 0 {
+		fmt.Fprintln(w, questionPointerLine)
 	}
 	for _, u := range res.Unread {
 		rules := "none"

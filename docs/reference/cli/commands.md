@@ -2376,20 +2376,27 @@ character or invalid UTF-8, or is over 4096 bytes, is refused with the
 host's deny and the reason.
 
 On the host's question tool the hook checks abcd's own questions instead of
-consulting the registry. A question is abcd's when a header is in abcd's chip
-grammar (such as Product Q2) or when `abcd mode` names somebody; any other
-question is another tool's and runs unchecked. abcd's question is held to
+consulting the registry. A question is abcd's when a header is in abcd's
+grammar, the question's number (Q1, Q1a, Q2/5) or the older form with a
+role word first (Product Q2); any other question is another tool's and runs
+unchecked, whatever `abcd mode` names. abcd's question is held to
 the asking rules' field limits wherever the hook runs, and one that breaks
 them is refused with the host's deny, whose reason is a head line counting
-the parts, then one line per part naming the tab, the part, the value, the
-limit and the remedy. The rows limit is the exception: a question whose
-only finding is its height is shown, and the hook's stdout carries a note
-for the agent (additionalContext, no permission decision) naming each tab
-over the limit and the agent that drafts a question to fit. The hook never
-rewrites a question. In a checkout abcd manages, an admitted question
-carrying abcd's chip sets `abcd mode` from the chip's role (Product to
-product-thinker, Tech and Setup to facilitator), so it is never refused on
-the mode, and the question is marked open in the local tier; the answer
+the parts, then one line per rule and tab naming the first part that broke
+it, the value, the limit and the remedy and counting the rest, every rule
+on every tab named, then one line pointing at `abcd guard question` and the
+abcd:question-drafter agent. The rows limit is the exception: a question
+whose only finding is its height is shown, and the hook's stdout carries a
+note for the agent (additionalContext, no permission decision) naming each
+tab over the limit, the verb that checks the next draft and the agent that
+drafts a question to fit. The hook never
+rewrites a question. A number header names no person, so the agent sets
+`abcd mode` to the person before asking, and the product thinker's register
+rule follows that mode. In a checkout abcd manages, an admitted question is
+never refused on the mode: an older-form header sets `abcd mode` from its
+role (Product to product-thinker, Tech and Setup to facilitator), a number
+header leaves the mode as set, and the question is marked open in the local
+tier; the answer
 resets the mode to managed, from `abcd hook question-answered` on the
 question tool's PostToolUse or else on the next human message. A questions
 field the hook cannot read lets the question run and warns loudly. While

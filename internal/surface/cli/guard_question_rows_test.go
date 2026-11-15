@@ -62,8 +62,10 @@ func mustBeRowsOnly(t *testing.T, q hostQuestion, who question.Person) []questio
 // the rows limit runs, is marked open as any admitted question is, and the
 // agent is told through additionalContext — never a permission decision,
 // which would bypass the host's own permission flow. The note names the tab,
-// its rows and the limit, says the question was shown, points at the drafter,
-// and never says to ask again: the person may already have answered it.
+// its rows and the limit, says the question was shown, points at the verb
+// that checks the next draft and the drafter beside it (spc-2610301917245442,
+// step 2), and never says to ask again: the person may already have answered
+// it.
 func TestRowsOnlyOverflowIsAdmittedWithANote(t *testing.T) {
 	q := tallQuestion()
 	fs := mustBeRowsOnly(t, q, question.ProductThinker)
@@ -71,7 +73,7 @@ func TestRowsOnlyOverflowIsAdmittedWithANote(t *testing.T) {
 
 	check := func(t *testing.T, note string) {
 		t.Helper()
-		for _, want := range []string{"tab 1", fs[0].Value, limit, "was shown", "abcd:question-drafter"} {
+		for _, want := range []string{"tab 1", fs[0].Value, limit, "was shown", "`abcd guard question`", "abcd:question-drafter"} {
 			if !strings.Contains(note, want) {
 				t.Errorf("the note must name %q; note = %q", want, note)
 			}

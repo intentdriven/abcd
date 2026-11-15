@@ -19,7 +19,7 @@ type Rule string
 // The rules, in the spec's order, rule 14 appended by the layout intent's
 // decision 20.
 const (
-	RuleHeader            Rule = "header"               // 1: present, within HeaderColumns, in the chip grammar
+	RuleHeader            Rule = "header"               // 1: present, within HeaderColumns, in abcd's header grammar
 	RuleQuestionsPerCall  Rule = "questions-per-call"   // 2: one to four; more than one is tabs
 	RuleOptions           Rule = "options"              // 3: two to four, decide-later included
 	RuleLabelWords        Rule = "label-words"          // 4: at most LabelWords words
@@ -82,23 +82,33 @@ const previewRemedy = "abcd's questions carry no side preview (decision 20): put
 // splitRemedy is rule 13's remedy (itd-2610030810350727 decision 9).
 const splitRemedy = "Split the material into parts: up to four parts of one thing as tabs, or successive questions, one part per question. Never move it into a message before the question, or into a preview."
 
-// chipRole reads the role word from a header in the chip grammar,
-// "<role> Q<n>" with an optional "/<total>", the role one of l.ChipRoles
-// ("Product Q2", "Tech Q3", "Setup Q1/4"). It judges the grammar alone, not the
-// width. A header in the grammar is abcd's: only abcd's interview pages are
-// taught to write it.
+// The header grammar (spc-2610301917245442, step 3; itd-2610230756259215
+// decision 36): Q and the question's number, an optional part letter and an
+// optional total ("Q1", "Q1a", "Q2/5"), which is abcd's number form, or the
+// same opened by a role word from l.ChipRoles and a space ("Product Q2",
+// "Setup Q1/4"), the older form, still read. A header in the grammar is what
+// makes a question abcd's: the guard checks a question by its header alone,
+// whatever the mode says.
+
+// isAbcds reports whether a header is in abcd's grammar, either form. It judges
+// the grammar alone, not the width.
+func isAbcds(header string, l Limits) bool { return chipRe(l).MatchString(header) }
+
+// chipRole reads the role word from a header in the older form, "<role> Q<n>"
+// ("Product Q2", "Tech Q3", "Setup Q1/4"). A header in the number form carries
+// no role word and reads none: the person it is for is the one the mode names.
 func chipRole(header string, l Limits) (string, bool) {
 	m := chipRe(l).FindStringSubmatch(header)
-	if m == nil {
+	if m == nil || m[1] == "" {
 		return "", false
 	}
 	return m[1], true
 }
 
-// chipRes holds the chip pattern compiled once per set of role words, keyed by
-// the words joined with a NUL, which no role word carries. The guard reads the
-// chip once per tab, and a compile per read made a call of many tabs spend
-// seconds compiling (review-askGuard-security finding 6).
+// chipRes holds the header pattern compiled once per set of role words, keyed
+// by the words joined with a NUL, which no role word carries. The guard reads
+// the header once per tab, and a compile per read made a call of many tabs
+// spend seconds compiling (review-askGuard-security finding 6).
 var chipRes sync.Map // string -> *regexp.Regexp
 
 func chipRe(l Limits) *regexp.Regexp {
@@ -106,11 +116,19 @@ func chipRe(l Limits) *regexp.Regexp {
 	if re, ok := chipRes.Load(key); ok {
 		return re.(*regexp.Regexp)
 	}
-	roles := make([]string, len(l.ChipRoles))
-	for i, r := range l.ChipRoles {
-		roles[i] = regexp.QuoteMeta(r)
+	roles := make([]string, 0, len(l.ChipRoles))
+	for _, r := range l.ChipRoles {
+		if r != "" {
+			roles = append(roles, regexp.QuoteMeta(r))
+		}
 	}
-	re := regexp.MustCompile(`^(` + strings.Join(roles, "|") + `) Q[1-9][0-9]*(?:/[1-9][0-9]*)?$`)
+	// The role group always exists, so m[1] is the role word or empty; with
+	// no role word configured it can never match anything.
+	role := `(?:(` + strings.Join(roles, "|") + `) )?`
+	if len(roles) == 0 {
+		role = `()`
+	}
+	re := regexp.MustCompile(`^` + role + `Q[1-9][0-9]*[a-z]?(?:/[1-9][0-9]*)?$`)
 	actual, _ := chipRes.LoadOrStore(key, re)
 	return actual.(*regexp.Regexp)
 }
@@ -179,16 +197,19 @@ func (c checker) tab(n int, t Tab) []Finding {
 	l := c.l
 
 	// 1. Header.
-	chipLimit := fmt.Sprintf("the chip <role> Q<n>, an optional /<total>, the role one of %s", strings.Join(l.ChipRoles, ", "))
+	headerLimit := `abcd's header: Q and the question's number, such as "Q1", an optional part letter ("Q1a") and an optional /<total> ("Q2/5")`
+	if len(l.ChipRoles) > 0 {
+		headerLimit += fmt.Sprintf("; the older form, a role word first (%s), is still read", quoteList(olderHeaders(l)))
+	}
 	if strings.TrimSpace(t.Header) == "" {
-		add("header", RuleHeader, t.Header, chipLimit, "Head the question with its chip, such as "+chipExample(l)+".")
+		add("header", RuleHeader, t.Header, headerLimit, `Head the question with its number, such as "Q1".`)
 	} else {
 		if w := textwidth.Columns(t.Header); w > l.HeaderColumns {
 			add("header", RuleHeader, t.Header, fmt.Sprintf("%d columns", l.HeaderColumns),
-				fmt.Sprintf("The header is %d columns; shorten it to the chip, such as %s.", w, chipExample(l)))
+				fmt.Sprintf(`The header is %d columns; shorten it to the number, such as "Q1".`, w))
 		}
 		if !c.chip.MatchString(t.Header) {
-			add("header", RuleHeader, t.Header, chipLimit, "Write the header as the chip, such as "+chipExample(l)+"; a total is added only when the interview's length is known.")
+			add("header", RuleHeader, t.Header, headerLimit, `Write the header as the question's number, such as "Q1", "Q1a" for a part, or "Q2/5" where the interview's length is known; the older form with a role word first is still read.`)
 		}
 	}
 
@@ -349,11 +370,13 @@ func (c checker) tab(n int, t Tab) []Finding {
 	return out
 }
 
-func chipExample(l Limits) string {
-	if len(l.ChipRoles) == 0 {
-		return `"Q1"`
+// olderHeaders is one older-form header per role word, as rule 1 names them.
+func olderHeaders(l Limits) []string {
+	out := make([]string, len(l.ChipRoles))
+	for i, r := range l.ChipRoles {
+		out[i] = r + " Q1"
 	}
-	return fmt.Sprintf("%q", l.ChipRoles[0]+" Q1")
+	return out
 }
 
 func quoteList(xs []string) string {
@@ -381,18 +404,17 @@ func (c checker) isLater(label string) bool {
 	return false
 }
 
-// forProductThinker reports whether rule 9 applies: the mode names the product
-// thinker, or no mode names anyone and the chip's role word is the product
-// thinker's.
+// forProductThinker reports whether rule 9 applies to one tab, decided per
+// tab (spc-2610301917245442, step 3): a header in the older form names its
+// tab's person in its role word, so the rule applies when that word is the
+// product thinker's, whatever the caller passed; any other header, the number
+// form included, carries no role word, so the rule follows the person the
+// caller passed, the mode's.
 func (c checker) forProductThinker(header string) bool {
-	switch c.who.Person {
-	case ProductThinker:
-		return true
-	case Facilitator:
-		return false
+	if m := c.chip.FindStringSubmatch(header); m != nil && m[1] != "" {
+		return m[1] == ProductRole
 	}
-	m := c.chip.FindStringSubmatch(header)
-	return m != nil && m[1] == ProductRole
+	return c.who.Person == ProductThinker
 }
 
 var (

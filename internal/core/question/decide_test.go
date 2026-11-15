@@ -59,11 +59,12 @@ func TestRowsSplitIsTheChecks(t *testing.T) {
 	}
 }
 
-// TestDecideFollowsTheHooksOrder: away refuses before any rule; an unread mode
-// store fails open for a question without a chip and leaves a chipped one
-// checked; a question without a chip while the mode names nobody is not
-// abcd's; otherwise the limits decide, the rows limit alone admitting with a
-// note.
+// TestDecideFollowsTheHooksOrder: away refuses before any rule; a question
+// with no header in abcd's grammar is not abcd's in every mode state, the
+// mode store unread included (decision 36); an unread mode store leaves
+// abcd's question checked, an older-form chip needing no mode and a number
+// header losing only the register rule; otherwise the limits decide, the rows
+// limit alone admitting with a note.
 func TestDecideFollowsTheHooksOrder(t *testing.T) {
 	broken := wellBuiltTab()
 	broken.Options[0].Label = "Role and number (Recommended)"
@@ -71,6 +72,10 @@ func TestDecideFollowsTheHooksOrder(t *testing.T) {
 	unchipped.Header = "Labels"
 	unchippedBroken := broken
 	unchippedBroken.Header = "Labels"
+	number := wellBuiltTab()
+	number.Header = "Q1"
+	numberBroken := broken
+	numberBroken.Header = "Q1"
 	errStore := errors.New("unreadable")
 	refusedRows := &LimitsRefusal{Key: RowsKey, Value: "100", Bounds: "24 to 60", File: ".abcd/config.json", Reason: "refused"}
 	for _, tc := range []struct {
@@ -87,14 +92,20 @@ func TestDecideFollowsTheHooksOrder(t *testing.T) {
 		{"broken chipped", broken, State{}, OutcomeRefuse, false, true},
 		{"rows alone", rowsTab(), State{}, OutcomeAdmitWithRowsNote, false, true},
 		{"unchipped, mode names nobody", unchipped, State{Repo: true, Badge: true}, OutcomeAdmitUnchecked, false, false},
-		{"unchipped, mode names the product thinker", unchipped, State{Repo: true, Badge: true, Mode: ProductThinker}, OutcomeRefuse, false, true},
+		{"unchipped, mode names the product thinker", unchipped, State{Repo: true, Badge: true, Mode: ProductThinker}, OutcomeAdmitUnchecked, false, false},
+		{"unchipped and broken, mode names the facilitator", unchippedBroken, State{Repo: true, Badge: true, Mode: Facilitator}, OutcomeAdmitUnchecked, false, false},
+		{"number, clean", number, State{Repo: true, Badge: true, Mode: ProductThinker}, OutcomeAdmit, false, false},
+		{"number, broken, mode names nobody", numberBroken, State{Repo: true, Badge: true}, OutcomeRefuse, false, true},
+		{"number, mode unread, clean", number, State{Repo: true, Badge: true, ModeErr: errStore}, OutcomeUnchecked, true, false},
+		{"number, mode unread, broken", numberBroken, State{Repo: true, Badge: true, ModeErr: errStore}, OutcomeRefuse, true, true},
+		{"number, root unread", number, State{RootErr: errStore}, OutcomeUnchecked, true, false},
 		{"mode unread, chipped, clean", wellBuiltTab(), State{Repo: true, Badge: true, ModeErr: errStore}, OutcomeUnchecked, true, false},
 		{"mode unread, chipped, broken", broken, State{Repo: true, Badge: true, ModeErr: errStore}, OutcomeRefuse, true, true},
 		{"mode unread, chipped, rows alone", rowsTab(), State{Repo: true, Badge: true, ModeErr: errStore}, OutcomeAdmitWithRowsNote, true, true},
 		{"mode unread, limits unread, chipped, broken", broken, State{Repo: true, Badge: true, ModeErr: errStore, LimitsErr: errStore}, OutcomeRefuse, true, true},
-		{"mode unread, unchipped", unchipped, State{Repo: true, Badge: true, ModeErr: errStore}, OutcomeUnchecked, true, false},
-		{"mode unread, unchipped, broken", unchippedBroken, State{Repo: true, Badge: true, ModeErr: errStore}, OutcomeUnchecked, true, false},
-		{"root unread, unchipped", unchipped, State{RootErr: errStore}, OutcomeUnchecked, true, false},
+		{"mode unread, unchipped", unchipped, State{Repo: true, Badge: true, ModeErr: errStore}, OutcomeAdmitUnchecked, false, false},
+		{"mode unread, unchipped, broken", unchippedBroken, State{Repo: true, Badge: true, ModeErr: errStore}, OutcomeAdmitUnchecked, false, false},
+		{"root unread, unchipped", unchipped, State{RootErr: errStore}, OutcomeAdmitUnchecked, false, false},
 		{"root unread, chipped", wellBuiltTab(), State{RootErr: errStore}, OutcomeAdmit, false, false},
 		{"away unread, clean", wellBuiltTab(), State{Repo: true, AwayErr: errStore}, OutcomeUnchecked, true, false},
 		{"away unread, broken", broken, State{Repo: true, AwayErr: errStore}, OutcomeRefuse, true, true},
@@ -129,9 +140,10 @@ func TestDecideFollowsTheHooksOrder(t *testing.T) {
 }
 
 // TestDecideNamesTheUnreadStoreAndItsRules: an unread away record names every
-// rule, since it decides whether any is read; an unread mode store names every
-// rule for a question it cannot tell is abcd's, and none for a chipped one,
-// whose rules need no mode.
+// rule, since it decides whether any is read; an unread mode store names the
+// register rule for a number header, whose register follows the mode, none
+// for an older-form chip, whose rules need no mode, and is not read at all
+// for a question that is not abcd's.
 func TestDecideNamesTheUnreadStoreAndItsRules(t *testing.T) {
 	errStore := errors.New("unreadable")
 	unchipped := wellBuiltTab()
@@ -141,8 +153,23 @@ func TestDecideNamesTheUnreadStoreAndItsRules(t *testing.T) {
 		t.Errorf("away unread = %+v, want the away store with every rule", v.Unread)
 	}
 	v = Decide(one(unchipped), State{Repo: true, Badge: true, ModeErr: errStore}, Default)
-	if len(v.Unread) != 1 || v.Unread[0].Store != StoreMode || !slices.Equal(v.Unread[0].Rules, allRules()) {
-		t.Errorf("mode unread, unchipped = %+v, want the mode store with every rule", v.Unread)
+	if len(v.Unread) != 0 {
+		t.Errorf("mode unread, unchipped = %+v, want nothing unread: the mode no longer decides whether a question is abcd's", v.Unread)
+	}
+	number := wellBuiltTab()
+	number.Header = "Q1"
+	for name, s := range map[string]State{
+		"mode unread": {Repo: true, Badge: true, ModeErr: errStore},
+		"root unread": {RootErr: errStore},
+	} {
+		v = Decide(one(number), s, Default)
+		if len(v.Unread) != 1 || v.Unread[0].Store != StoreMode || !slices.Equal(v.Unread[0].Rules, []Rule{RuleRegister}) {
+			t.Errorf("%s, number header = %+v, want the mode store with the register rule, which follows the mode", name, v.Unread)
+		}
+	}
+	v = Decide(one(wellBuiltTab()), State{RootErr: errStore}, Default)
+	if len(v.Unread) != 0 {
+		t.Errorf("root unread, older-form chip = %+v, want nothing unread: its chip names whom it is for", v.Unread)
 	}
 	v = Decide(one(wellBuiltTab()), State{Repo: true, Badge: true, ModeErr: errStore}, Default)
 	if len(v.Unread) != 1 || v.Unread[0].Store != StoreMode || len(v.Unread[0].Rules) != 0 {
@@ -221,5 +248,74 @@ func TestDecideAddresseesAndTheModeAfter(t *testing.T) {
 	v = Decide(one(tech), State{}, Default)
 	if v.ModeChanges {
 		t.Error("a mode change was reported where no badge shows")
+	}
+}
+
+// TestNumberHeaderRegisterFollowsTheModeAtTheCore (spc-2610301917245442,
+// step 3): a number header names no person, so the register rule follows the
+// mode where the badge shows and is not applied elsewhere; an admitted
+// number-form call sets no mode, leaving the one the agent set, and each tab
+// is for the mode's person.
+func TestNumberHeaderRegisterFollowsTheModeAtTheCore(t *testing.T) {
+	tab := wellBuiltTab()
+	tab.Header = "Q1"
+	tab.Options[0].Description = "It closes iss-2609202058058301. It costs a few characters."
+	v := Decide(one(tab), State{Repo: true, Badge: true, Mode: ProductThinker}, Default)
+	if v.Outcome != OutcomeRefuse || !slices.Equal(rulesOf(v.Findings), []Rule{RuleRegister}) {
+		t.Errorf("product thinker: outcome %q, findings %v; want refused on the register", v.Outcome, rulesOf(v.Findings))
+	}
+	for name, s := range map[string]State{
+		"facilitator":              {Repo: true, Badge: true, Mode: Facilitator},
+		"managed":                  {Repo: true, Badge: true},
+		"no badge":                 {Repo: true, Mode: ProductThinker},
+		"outside every repository": {},
+	} {
+		v := Decide(one(tab), s, Default)
+		if v.Outcome != OutcomeAdmit || len(v.Findings) != 0 {
+			t.Errorf("%s: outcome %q, findings %v; want admitted", name, v.Outcome, rulesOf(v.Findings))
+		}
+		if v.ModeChanges || v.ModeAfter != s.Mode {
+			t.Errorf("%s: mode after %v (changes %v); a number header sets no mode", name, v.ModeAfter, v.ModeChanges)
+		}
+		if !v.Abcds || v.Chipped {
+			t.Errorf("%s: abcds %v, chipped %v; want abcd's, with no older-form chip", name, v.Abcds, v.Chipped)
+		}
+	}
+	v = Decide(one(wellBuiltTab()), State{Repo: true, Badge: true, Mode: Facilitator}, Default)
+	if !v.Chipped || v.ModeAfter != ProductThinker || !v.ModeChanges {
+		t.Errorf("older-form chip: chipped %v, mode after %v (changes %v); want the chip's product thinker, changed", v.Chipped, v.ModeAfter, v.ModeChanges)
+	}
+	v = Decide(one(tab), State{Repo: true, Badge: true, Mode: Facilitator}, Default)
+	if !slices.Equal(v.Addressees, []Person{Facilitator}) {
+		t.Errorf("addressees = %v, want the mode's facilitator", v.Addressees)
+	}
+
+	// A mixed call is judged tab by tab: a number tab by the mode, an
+	// older-form tab by its own role word, and the addressees say so.
+	clean := wellBuiltTab()
+	clean.Header = "Q1"
+	product := wellBuiltTab()
+	product.Options[0].Description = "It closes iss-2609202058058301. It costs a few characters."
+	v = Decide(Fields{Tabs: []Tab{clean, product}}, State{Repo: true, Badge: true, Mode: Facilitator}, Default)
+	if v.Outcome != OutcomeRefuse || len(v.Findings) != 1 || v.Findings[0].Rule != RuleRegister || v.Findings[0].Tab != 2 {
+		t.Errorf("facilitator's mode, Q1 and Product Q2 naming a record: outcome %q, findings %v; want tab 2 refused on the register", v.Outcome, v.Findings)
+	}
+	if !slices.Equal(v.Addressees, []Person{Facilitator, ProductThinker}) {
+		t.Errorf("addressees = %v, want the mode's facilitator, then the chip's product thinker", v.Addressees)
+	}
+	tech := product
+	tech.Header = "Tech Q2"
+	v = Decide(Fields{Tabs: []Tab{clean, tech}}, State{Repo: true, Badge: true, Mode: ProductThinker}, Default)
+	if v.Outcome != OutcomeAdmit || len(v.Findings) != 0 {
+		t.Errorf("product thinker's mode, Q1 and Tech Q2 naming a record: outcome %q, findings %v; want admitted, the Tech tab being the facilitator's", v.Outcome, v.Findings)
+	}
+	if !slices.Equal(v.Addressees, []Person{ProductThinker, Facilitator}) {
+		t.Errorf("addressees = %v, want the mode's product thinker, then the chip's facilitator", v.Addressees)
+	}
+	numberProduct := product
+	numberProduct.Header = "Q2"
+	v = Decide(Fields{Tabs: []Tab{numberProduct, tech}}, State{Repo: true, Badge: true, Mode: ProductThinker}, Default)
+	if v.Outcome != OutcomeRefuse || len(v.Findings) != 1 || v.Findings[0].Tab != 1 {
+		t.Errorf("product thinker's mode, Q2 naming a record and Tech Q2: outcome %q, findings %v; want tab 1 refused on the register", v.Outcome, v.Findings)
 	}
 }

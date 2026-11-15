@@ -73,10 +73,12 @@ Out of scope, recorded elsewhere: Per-repository layout limits (itd-261030191435
    - needs: 1
    - packages: internal/core/question/render.go, internal/surface/cli/guard_question.go, commands/guard.md, .abcd/development/brief/04-surfaces/17-guard.md
    - tests: internal/core/question/render_test.go, internal/surface/cli/guard_question_limits_test.go, internal/surface/cli/guard_question_rows_test.go
+   - landed: 312d70bd0f74
 3. The header grammar, the mode, and invariant 1
    - needs: 1
    - packages: internal/core/question/check.go, internal/core/question/limits.go, internal/core/question/decide.go, internal/surface/cli/guard_question.go, commands/guard.md, commands/mode.md, .abcd/development/brief/04-surfaces/17-guard.md, .abcd/development/brief/02-constraints/03-invariants.md
    - tests: internal/core/question/limits_test.go, internal/surface/cli/guard_question_limits_test.go, internal/surface/cli/guard_question_test.go, internal/surface/cli/guard_question_corpus_test.go
+   - landed: 312d70bd0f74
 4. The writer contract, the GRILL text, and the regenerated pages
    - needs: 2, 3
    - packages: internal/core/question/asking.go, cmd/asking-sync/main.go, agents/question-drafter.md, agents/planning-interviewer.md, commands/intent.md, commands/mode.md

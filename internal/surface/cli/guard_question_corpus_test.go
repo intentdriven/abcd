@@ -13,15 +13,16 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/question"
-	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The verb and the hook decide alike (spc-2610301917245442, step 1): on every
 // draft of testdata/questions/corpus/, in every checkout state the gate reads,
 // `abcd guard question` and `abcd guard hook` of the same build give the same
 // answer, because both call questionState and question.Decide. The mode store
-// unreadable is one of those states: a chipped draft is judged on its chip
-// there, and one without a chip runs unchecked.
+// unreadable is one of those states: an older-form chipped draft is judged on
+// its chip there, a number-form one by every rule but the register, and one
+// with no header in abcd's grammar runs unchecked in every state but away
+// (spc-2610301917245442, step 3; decision 36).
 
 // questionRules is every rule of the limits check, each of which the corpus
 // holds one draft for.
@@ -114,7 +115,9 @@ var denyHeadRe = regexp.MustCompile(`^Blocked by the abcd guard \(question tool\
 
 // hookOutcome reads what the hook did with a call as one of Decide's
 // outcomes. A silent admission is admit or admit-unchecked; it is told apart
-// only where the badge shows, by whether the question was marked open.
+// only where the badge shows and the mode reads managed, by whether the
+// question was marked open: under a mode naming somebody an unchecked
+// question is marked open too, so the answer resets that mode.
 func hookOutcome(t *testing.T, stdout, stderr string, code int, root string, badge bool) (outs []question.Outcome, reason, note string) {
 	t.Helper()
 	switch {
@@ -136,10 +139,13 @@ func hookOutcome(t *testing.T, stdout, stderr string, code int, root string, bad
 		return []question.Outcome{question.OutcomeAdmitWithRowsNote}, "", out.HookSpecificOutput.AdditionalContext
 	case code == 0:
 		if badge {
-			if markedOpen(t, root) {
+			if !markedOpen(t, root) {
+				return []question.Outcome{question.OutcomeAdmitUnchecked}, "", ""
+			}
+			if st, err := mode.ReadAt(root); err == nil && st == mode.Managed {
 				return []question.Outcome{question.OutcomeAdmit}, "", ""
 			}
-			return []question.Outcome{question.OutcomeAdmitUnchecked}, "", ""
+			return []question.Outcome{question.OutcomeAdmit, question.OutcomeAdmitUnchecked}, "", ""
 		}
 		return []question.Outcome{question.OutcomeAdmit, question.OutcomeAdmitUnchecked}, "", ""
 	case code == 1:
@@ -149,8 +155,9 @@ func hookOutcome(t *testing.T, stdout, stderr string, code int, root string, bad
 	return nil, "", ""
 }
 
-func findingLine(f questionFindingJSON) string {
-	return termsafe.Sanitize(question.Finding{Tab: f.Tab, Part: f.Part, Rule: question.Rule(f.Rule), Value: f.Value, Limit: f.Limit, Remedy: f.Remedy}.String())
+// findingOf is a finding of the verb's JSON as the check made it.
+func findingOf(f questionFindingJSON) question.Finding {
+	return question.Finding{Tab: f.Tab, Part: f.Part, Rule: question.Rule(f.Rule), Value: f.Value, Limit: f.Limit, Remedy: f.Remedy}
 }
 
 // TestGuardQuestionAndHookDecideAlike: for every draft of the corpus in every
@@ -221,13 +228,19 @@ func TestGuardQuestionAndHookDecideAlike(t *testing.T) {
 					if n, _ := strconv.Atoi(m[1]); n != len(refusing) {
 						t.Errorf("the deny counts %d parts, the verb %d", n, len(refusing))
 					}
-					for _, f := range refusing[:min(len(refusing), maxRefusalParts)] {
-						if !strings.Contains(reason, findingLine(f)) {
-							t.Errorf("the deny lacks the verb's finding %q:\n%s", findingLine(f), reason)
+					// One line per rule and tab, every group named, none
+					// cut (spc-2610301917245442, step 2).
+					fs := make([]question.Finding, len(refusing))
+					for i, f := range refusing {
+						fs[i] = findingOf(f)
+					}
+					for _, g := range question.GroupFindings(fs) {
+						if !strings.Contains(reason, g.String()+"\n") {
+							t.Errorf("the deny lacks the verb's group line %q:\n%s", g.String(), reason)
 						}
 					}
-					if more := len(refusing) - maxRefusalParts; more > 0 && !strings.Contains(reason, fmt.Sprintf("... and %d more part(s)", more)) {
-						t.Errorf("the deny does not count the %d findings it leaves out:\n%s", more, reason)
+					if strings.Contains(reason, "more part(s)") {
+						t.Errorf("the deny cuts its list short:\n%s", reason)
 					}
 				case res.Hook == question.OutcomeAdmitWithRowsNote:
 					if len(refusing) != 0 || len(rows) == 0 {
@@ -262,6 +275,9 @@ func TestGuardQuestionAndHookDecideAlike(t *testing.T) {
 				if rule, ok := strings.CutPrefix(name, "rule-"); ok && st.name == "unmanaged" &&
 					!slices.ContainsFunc(res.Findings, func(f questionFindingJSON) bool { return f.Rule == rule }) {
 					t.Errorf("the %s draft draws no %s finding: %+v", name, rule, res.Findings)
+				}
+				if name == "clean-unchipped" && !strings.HasPrefix(st.name, "away") && res.Hook != question.OutcomeAdmitUnchecked {
+					t.Errorf("a draft with no header in abcd's grammar: hook %q, want admit-unchecked whatever the mode", res.Hook)
 				}
 				if res.Partial != (len(res.Unread) > 0) {
 					t.Errorf("partial %v with unread %+v", res.Partial, res.Unread)
