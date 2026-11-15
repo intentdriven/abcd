@@ -4706,7 +4706,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				if res.Status == "refused" {
 					fmt.Fprintln(w)
 					for _, n := range res.Notes {
-						fmt.Fprintf(w, "  note: %s\n", termsafe.Sanitize(n))
+						fmt.Fprintf(w, "  note: %s\n", termsafe.SanitizeLine(n))
 					}
 				}
 				renderSetupReport(w, res.Report)
@@ -4732,7 +4732,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				// what abcd did not do and why (a dangling PATH entry it declined
 				// to create, a directory it could not write).
 				for _, n := range res.Notes {
-					fmt.Fprintf(w, "  note: %s\n", termsafe.Sanitize(n))
+					fmt.Fprintf(w, "  note: %s\n", termsafe.SanitizeLine(n))
 				}
 				if len(res.DeclinedCategories) > 0 {
 					fmt.Fprintf(w, "  declined: %s\n", strings.Join(res.DeclinedCategories, ", "))
@@ -5103,7 +5103,7 @@ func renderRemoteResult(w io.Writer, verb string, res ahoy.RemoteResult) {
 	// A refusal that showed up only as an unchanged toggle would read as a silent
 	// failure, so the reason is printed whatever the status.
 	for _, n := range res.Notes {
-		fmt.Fprintf(w, "  note:     %s\n", termsafe.Sanitize(n))
+		fmt.Fprintf(w, "  note:     %s\n", termsafe.SanitizeLine(n))
 	}
 }
 

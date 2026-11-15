@@ -352,7 +352,7 @@ func questionCheckOf(form string, v question.Verdict, structural []question.Find
 		for i, r := range u.Rules {
 			rules[i] = string(r)
 		}
-		res.Unread = append(res.Unread, questionUnreadJSON{Store: string(u.Store), Why: termsafe.Sanitize(scrubPaths(u.Err)), Rules: rules, File: u.File})
+		res.Unread = append(res.Unread, questionUnreadJSON{Store: string(u.Store), Why: termsafe.SanitizeLine(scrubPaths(u.Err)), Rules: rules, File: u.File})
 		limitsUnreadSeen = limitsUnreadSeen || u.Store == question.StoreLimits
 	}
 	if st := reads.state; st.LimitsErr != nil && !limitsUnreadSeen {

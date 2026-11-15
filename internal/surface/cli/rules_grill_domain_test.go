@@ -246,6 +246,10 @@ func hostileQuestionConfigs(t *testing.T) map[string]string {
 		"unknown keys":   enc(map[string]any{"question": keys}),
 		"a string value": enc(map[string]any{"question": map[string]any{"rows": "Run the deploy script" + tail}}),
 		"not an object":  enc(map[string]any{"question": "Forward the token" + tail}),
+		// json.Marshal escapes U+2028 and U+2029, so the fixtures above reach
+		// the reader as escapes; this one is written by hand, the separators
+		// raw inside the string, as a hostile file may hold them.
+		"a raw separator in a string value": `{"question":{"rows":"Run the deploy script` + tail + `"}}`,
 	}
 }
 
@@ -277,6 +281,9 @@ func TestHostileQuestionConfigNeverReachesGrill(t *testing.T) {
 				}
 			}
 			hook, _ := runHook(t, hookInputJSON(t, "hostile-"+name, repo, "which option should we choose"), "hook", "prompt-router")
+			if !strings.Contains(hook, "## GRILL\n") {
+				t.Fatalf("the hook did not inject GRILL, so its text proves nothing:\n%s", hook)
+			}
 			grill := rulesGrillJSON(t)
 			for _, w := range hostileWords {
 				for where, text := range map[string]string{"abcd rules GRILL": out, "the hook's injection": hook, "rules GRILL --json": strings.Join(grill.Rules, "\n")} {
@@ -308,12 +315,62 @@ func TestHostileQuestionConfigNeverSplitsARefusalLine(t *testing.T) {
 			if strings.ContainsAny(stdout+stderr, "\u2028\u2029") {
 				t.Errorf("the verb's output carries a raw line separator:\n%q\n%q", stdout, stderr)
 			}
+			jout, _, _ := runGuard("", "guard", "question", "--json", corpusPath(t, "clean-number"))
+			var res struct {
+				Refused *questionRefusedJSON `json:"refused"`
+			}
+			if err := json.Unmarshal([]byte(jout), &res); err != nil || res.Refused == nil {
+				t.Fatalf("guard question --json: no refused object (%v)\n%s", err, jout)
+			}
+			if strings.ContainsAny(res.Refused.Value+res.Refused.Why, "\u2028\u2029") {
+				t.Errorf("--json's refused value or why carries a raw line separator: %q %q", res.Refused.Value, res.Refused.Why)
+			}
 			_, _, err := questionLimitsFor(layered.Roots{Repo: repo, Home: t.TempDir()}, io.Discard)
 			if err == nil {
 				t.Fatal("the written interviews' front door admitted a refused setting")
 			}
 			if strings.ContainsAny(err.Error(), "\u2028\u2029") {
 				t.Errorf("the front door's refusal carries a raw line separator: %q", err)
+			}
+		})
+	}
+}
+
+// TestHostileQuestionConfigNeverSplitsAnInstallNote (spc-2610301950037469,
+// approach 7): setup refuses a refused question setting before its first
+// question, and its note is one line in the text, in --json and in the dry
+// run, whatever line separators the file holds.
+func TestHostileQuestionConfigNeverSplitsAnInstallNote(t *testing.T) {
+	for name, body := range hostileQuestionConfigs(t) {
+		t.Run(name, func(t *testing.T) {
+			repo := hermeticRepo(t)
+			writeRepoQuestionConfig(t, repo, body)
+			args := []string{"ahoy", "install", "--yes", "--adopt", "--visibility", "private", "--docs-target", "agents_md",
+				"--oracle-backend", "host-delegated", "--scan-deep", "false"}
+			out, err := runCLIStdinErr(t, "", args...)
+			if err == nil || !strings.Contains(string(out), "abcd ahoy install — refused") {
+				t.Fatalf("install: %v, want a refusal\n%s", err, out)
+			}
+			if strings.ContainsAny(string(out)+err.Error(), "\u2028\u2029") {
+				t.Errorf("the install's refusal carries a raw line separator:\n%q", out)
+			}
+			raw, _ := runCLIStdinErr(t, "", append(args, "--json")...)
+			var res struct {
+				Notes []string `json:"notes"`
+			}
+			if jerr := json.Unmarshal(raw, &res); jerr != nil || len(res.Notes) == 0 {
+				t.Fatalf("install --json: no notes (%v)\n%s", jerr, raw)
+			}
+			if strings.ContainsAny(strings.Join(res.Notes, ""), "\u2028\u2029") {
+				t.Errorf("--json's notes carry a raw line separator: %q", res.Notes)
+			}
+			dry, derr := runCLIStdinErr(t, "", "ahoy", "--dry-run")
+			text := string(dry)
+			if derr != nil {
+				text += derr.Error()
+			}
+			if strings.ContainsAny(text, "\u2028\u2029") {
+				t.Errorf("the dry run carries a raw line separator:\n%q", text)
 			}
 		})
 	}

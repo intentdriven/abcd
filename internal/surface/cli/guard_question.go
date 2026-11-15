@@ -786,7 +786,7 @@ func limitsRefusalOf(err error) *question.LimitsRefusal {
 // through unchecked but held to abcd's defaults.
 func limitsUnreadLine(err error) string {
 	return "abcd guard: NOT CHECKED at this repository's question limits — they were not read (" +
-		termsafe.Sanitize(scrubPaths(err)) + "), so the question is checked at abcd's defaults instead.\n"
+		termsafe.SanitizeLine(scrubPaths(err)) + "), so the question is checked at abcd's defaults instead.\n"
 }
 
 // limitsRefusedReason is the deny for abcd's question while a question limit
@@ -819,7 +819,7 @@ func boundsLine() string {
 // and keeps the warning in front of a human.
 func questionFailOpen(w io.Writer, format string, err error) error {
 	fmt.Fprintf(w, "abcd guard: NOT CHECKED — "+format+". The question runs UNGATED.\n",
-		termsafe.Sanitize(scrubPaths(err)))
+		termsafe.SanitizeLine(scrubPaths(err)))
 	return &exitError{Code: 1}
 }
 

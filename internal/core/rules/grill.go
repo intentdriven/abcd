@@ -26,7 +26,7 @@ import (
 // dedup and provenance. The front doors that load a repository's rules
 // regenerate it at the question limits in force there (LoadWith,
 // withRepoGrillDomain); this init-time domain is the bundled layer, at
-// question.Default, and the form Load returns.
+// question.Default, and the form LoadAt and LoadWith with no limits set return.
 const GrillDomain = "GRILL"
 
 // grillDomain generates the asking-rules domain from the one source.

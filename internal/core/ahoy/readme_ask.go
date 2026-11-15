@@ -405,16 +405,17 @@ func questionLimits(abs string) (question.Limits, string, error) {
 	case err == nil:
 		return v.V, "", nil
 	case errors.As(err, &unread):
-		return v.V, fsutil.RedactHome(err.Error()), nil
+		return v.V, termsafe.SanitizeLine(fsutil.RedactHome(err.Error())), nil
 	}
 	return question.Limits{}, "", err
 }
 
 // limitsRefusal is the install's refusal of a question value: the resolver's
 // words, naming the key, the value, the bounds (or the limit in force) and
-// the file, and that nothing is asked until it is fixed.
+// the file, and that nothing is asked until it is fixed. It is one line: the
+// file's own line separators are masked (termsafe.SanitizeLine).
 func limitsRefusal(err error) string {
-	return fsutil.RedactHome(err.Error()) + "; abcd asks no question until the value is fixed there, so nothing was asked or written"
+	return termsafe.SanitizeLine(fsutil.RedactHome(err.Error())) + "; abcd asks no question until the value is fixed there, so nothing was asked or written"
 }
 
 // LimitsUnread is why a question-limits layer was not read, "" when every
