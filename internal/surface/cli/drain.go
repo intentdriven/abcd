@@ -109,9 +109,10 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"drives each lane to its landing, every role on that separate login, and runs each\n" +
 			"landing's preflight behind the load gate, printing one line per step and logging them\n" +
 			"under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/, the active\n" +
-			"hooks or the forge's workflow folder (.github/) is handed back at its landing, and an\n" +
-			"issue that names one is passed over, whatever the case of the name: that change needs\n" +
-			"a person's own session. The driver's commit, merge and reset hooks, and any\n" +
+			"hooks, the forge's workflow folder (.github/) or abcd's configuration, receipts or\n" +
+			"approvals is handed back at its landing, and an issue that names one is passed over,\n" +
+			"whatever the case of the name: that change needs a person's own session. The driver's\n" +
+			"commit, merge and reset hooks, and any\n" +
 			"filter run inside those commands, get the stage's variables, while its network commands,\n" +
 			"its other filters and its forge calls keep the person's environment. It ends at the cap,\n" +
 			"when nothing is eligible, or on a stop. With no --until, eight hours of runner failures\n" +

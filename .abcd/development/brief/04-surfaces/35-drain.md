@@ -566,8 +566,8 @@ It refuses a line the guard can read that names the harness's configuration vari
 profile's directory; the stage's file tools are denied it by a deny rule of the launch's own,
 and a profile whose path such a rule cannot hold is refused at the drive's start. A file tool, and a shell line the guard can read, write only in the
 stage's working tree and run directories, its home and temporary files, and never the
-hooks, the Makefile, abcd's configuration, a preflight or review receipt or an approval;
-other records under
+hooks, the Makefile, the forge's workflow folder (`.github/`), abcd's configuration, a
+preflight or review receipt or an approval, whatever the case of the name; other records under
 `.abcd/` are written only where the work declares them. A program the guard cannot read
 is not held to this. The hooks read the rules and the guard's registry as the lane's base
 holds them, and the away mode, the checklist and recall stand aside on a stage.
@@ -578,8 +578,8 @@ rather than any a stage left in that home; its network commands, its other filte
 forge calls keep the person's environment. A preflight runs
 with what a stage carries too, and only a receipt from a preflight the drive ran itself
 lands a lane. A lane at its landing that changes the Makefile, `scripts/`, the active
-hooks or the forge's workflow folder (`.github/`), measured from what it last merged of the
-default branch, is handed back, and an issue that names one is passed over before a lane
+hooks, the forge's workflow folder (`.github/`) or abcd's configuration, receipts or
+approvals, measured from what it last merged of the default branch, is handed back, and an issue that names one is passed over before a lane
 opens, whatever the case of the name: that change needs a person's own session, and the
 drive's last lines name each one. A stage's shell has no credential for
 origin, so a stage reserves nothing: the driver, which holds it, reserves every path a
