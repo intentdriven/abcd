@@ -1,0 +1,6 @@
+---
+id: dcn-2611150755220444
+slug: decided-by-the-run-for-owner-review
+date: 2026-11-15
+---
+2026-11-15 — Decided by the run for owner review, within the autonomous run of 15 to 22 November, for itd-2610222214476887 step 4 (spc-2610230730269295): the sweep acts on origin, and the guard's delete proof reads a branch on origin, only when origin has one fetch address and every push address names the same repository, and the forge's own answer agrees with it; otherwise the sweep keeps every branch on origin and says why, and the guard refuses the delete as unproven. Grounds: a branch deleted on the wrong repository cannot be told from a branch deleted on the right one after the fact, and keeping a merged branch costs only a later sweep. Alternatives considered: trust the first push address (rejected, because a split remote then deletes on a repository the checks never read); ask the person on each mismatch (rejected, because the sweep is meant to run unattended). Consequence: a person whose origin fetches from one repository and pushes to another clears those branches by hand, and commands/guard.md says how. Reverse it by letting the sweep follow the push address and dropping the check from the guard's proof.
