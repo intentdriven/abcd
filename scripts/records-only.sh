@@ -28,6 +28,24 @@
 #                      can redo the check
 set -uo pipefail
 
+# Every git here reads with replace refs, graft files and the commit-graph
+# turned off, as scripts/preflight-receipt.sh and .githooks/pre-push do: no
+# refs/replace/* ref stands another commit, tree or blob in for one HEAD or
+# origin's default branch stores, no graft file moves the merge base, and no
+# commit-graph file, a cache git reads a commit's tree and parents from in place
+# of the commit, claims another tree or parents for one. None of the three
+# changes the state, the merge base or the diff. A tree or blob object's content
+# is not checked against its id here, and which ref names origin's default
+# branch is read as the git directory has it. The graft path is the one internal/gitutil uses (noGraftFile): it
+# names nothing, so git reads no graft file. core.commitGraph is set false as
+# the last entry of GIT_CONFIG_PARAMETERS, after any entries the caller's
+# environment carries, and the last entry wins; GIT_TEST_COMMIT_GRAPH, which
+# loads a graph whatever the setting says, is off.
+export GIT_NO_REPLACE_OBJECTS=1
+export GIT_GRAFT_FILE=/dev/null/none
+export GIT_CONFIG_PARAMETERS="${GIT_CONFIG_PARAMETERS:+$GIT_CONFIG_PARAMETERS }'core.commitgraph=false'"
+export GIT_TEST_COMMIT_GRAPH=0
+
 verdict=false
 reason='the classifier did not reach a verdict'
 # The reason can carry a changed path, which a writer chose, so only printable
