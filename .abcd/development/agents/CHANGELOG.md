@@ -14,14 +14,23 @@ unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
 ## 2026-11-15 (itd-2610230756259215 — abcd's question writer checks every draft)
 
+### question-drafter 0.2.6
+
+PATCH: wording only. The section on material that does not fit said the writer
+never refuses for length alone, while its one-decision case refuses after the
+fifth check when no fact-keeping cut fits. It now says the writer never refuses
+for length while a cut or a split can still bring the material within the
+limit. Forced by the step 5 correctness delta review of 0.2.5; it changes no
+behaviour the labs judge. Unmeasured, in the `0.x` band.
+
 ### question-drafter 0.2.5
 
 PATCH: wording only. The section on material that does not fit says one
 decision is quoted shorter, not split. The example the question must carry is
 never the one dropped. A single decision that no fact-keeping cut brings within
 the limit by the fifth check is named as refusal cause 3. Forced by the step 5
-delta reviews of 0.2.4; no lab case exercises a change (dcn recorded with the
-change). Unmeasured, in the `0.x` band.
+delta reviews of 0.2.4; no round-five run reached a changed case
+(dcn-2611151710456359). Unmeasured, in the `0.x` band.
 
 ### question-drafter 0.2.4
 
