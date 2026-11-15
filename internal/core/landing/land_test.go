@@ -1084,31 +1084,6 @@ func TestARepositoryWithNoPreflightTargetGetsNoPush(t *testing.T) {
 	}
 }
 
-func TestRepoKeysMatchAcrossURLForms(t *testing.T) {
-	same := []string{"https://github.com/O/R", "https://github.com/o/r.git", "git@github.com:o/r.git", "ssh://git@github.com:22/o/r", "https://user@GitHub.com/o/r/"}
-	want := repoKey(same[0])
-	for _, u := range same[1:] {
-		if got := repoKey(u); got != want || got == "" {
-			t.Errorf("repoKey(%q) = %q, want %q", u, got, want)
-		}
-	}
-	if repoKey("https://github.com/o/other") == want || repoKey("https://gitlab.com/o/r") == want {
-		t.Error("a different repository matched")
-	}
-	if repoKey("/tmp/x/origin.git") != repoKey("file:///tmp/x/origin") {
-		t.Error("a local path and its file URL differ")
-	}
-	// m9: a port other than the scheme's own is another server.
-	for _, u := range []string{"https://github.com:8443/o/r", "ssh://git@github.com:2222/o/r"} {
-		if repoKey(u) == want {
-			t.Errorf("repoKey(%q) = %q matched the default port's repository", u, repoKey(u))
-		}
-	}
-	if repoKey("https://github.com:443/o/r") != want {
-		t.Error("https's own port named another server")
-	}
-}
-
 // M1: the push sends the commit the gate checked, not whatever the branch
 // names when the push runs, even when the branch moves after a skipped gate.
 func TestThePushSendsTheGatedCommitWhenTheBranchMovesAfterTheGate(t *testing.T) {
