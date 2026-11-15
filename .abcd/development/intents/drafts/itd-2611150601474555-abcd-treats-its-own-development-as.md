@@ -15,7 +15,7 @@ production_mode: hand-written
 
 ## Press Release
 
-> abcd treats its own development as evidence for how it manages repositories. The records each autonomous run leaves (its failures and their gaps, the steps done by hand, how two accounts coordinated) and the records of how intents are filed, decided, planned, reviewed and released are read back after each run, and the changes they point to are built into abcd for every repository it manages, so improving abcd's process and improving the product are one loop. To be worked on with the product thinker on 22 Nov 2026, after two weeks of autonomous runs.
+> abcd treats its own development as evidence for how it manages repositories. The records each autonomous run leaves (its failures and their gaps, the steps done by hand, how two accounts coordinated) and the records of how intents are filed, decided, planned, reviewed and released are read back after each run, and the changes they point to are built into abcd for every repository it manages, so improving abcd's process and improving the product are one loop.
 
 ## Why This Matters
 
@@ -37,6 +37,7 @@ production_mode: hand-written
 
 - Which records of a run are read back, by whom, and when (after each run, each release, or both)?
 - How a finding about abcd's own process becomes a change every managed repository gets, rather than a rule for abcd alone.
+- Planning is to be done with the product thinker after two weeks of autonomous runs (from 22 Nov 2026), with those runs' records as the evidence.
 
 ## Audit Notes
 
