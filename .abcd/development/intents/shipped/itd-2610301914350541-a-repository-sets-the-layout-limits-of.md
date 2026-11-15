@@ -572,7 +572,9 @@ to the product thinker on 2026-10-31 and answered: the floor stays 24
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-1c71e6f7520c -->
+Fidelity review OWED (receipt rcp-1c71e6f7520c).
+<!-- abcd-review-end receipt=rcp-1c71e6f7520c -->
 
 ## Grounds
 

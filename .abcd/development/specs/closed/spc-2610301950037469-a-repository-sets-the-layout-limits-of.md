@@ -105,3 +105,4 @@ Out of scope, recorded elsewhere: A configurable options count (`question.option
    - tests: cmd/asking-sync/main_test.go, internal/core/lint/surfaceagents_test.go
 
    Waits for spc-2610301917245442's step 4 (the writer's contract and the regenerated pages) and step 5 (the labs' pinned binary and snapshot repository), which this lab reuses with one configured value.
+   - landed: ae6d43ee59eb
