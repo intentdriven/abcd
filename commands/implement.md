@@ -732,8 +732,9 @@ renewed, and each step still tries the withdrawal. Past the bound a drain
 whose only lane in progress is this one opens no new lane, and `abcd drain
 --drive` keeps stepping it, thirty seconds apart at least, ending as any
 drive with nothing moving does, so the reservation stays renewed while the
-drive runs (after it ends, only a step someone runs or a load-gate waiter in
-this copy renews it) and no second lane is in hand past the drain's cap
+drive runs (after it ends, only a step, `abcd drain` or `abcd implement
+status` someone runs, or a load-gate waiter in this copy, renews it) and no
+second lane is in hand past the drain's cap
 (`commands/drain.md`). The
 person's act ends it: once they disarm the pull request with the command the
 refusal names, the next step records that and releases the reservation. A
