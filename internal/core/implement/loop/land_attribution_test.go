@@ -153,18 +153,43 @@ func TestARefusingCommitMsgHookStopsTheLanding(t *testing.T) {
 	}
 }
 
-// TestTheLandedRangePassesTheAttributionGate runs the repository's own
-// attribution gate over the range the landing added to the lane.
-func TestTheLandedRangePassesTheAttributionGate(t *testing.T) {
-	if _, err := exec.LookPath("bash"); err != nil {
-		t.Skip("the attribution gate is a bash script")
-	}
+// checkoutRoot is the checkout this package is tested in, whose gates and hooks
+// the tests below run.
+func checkoutRoot(t *testing.T) string {
+	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", "..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)
 	}
+	return root
+}
+
+// passesRS004Message runs RS004's message half, which the commit-msg hook runs,
+// over msg.
+func passesRS004Message(t *testing.T, root, msg string) {
+	t.Helper()
+	file := filepath.Join(t.TempDir(), "msg")
+	if err := os.WriteFile(file, []byte(msg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", filepath.Join(root, "scripts", "check-issue-resolution.sh"), "message", file)
+	cmd.Dir = root
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("RS004's message half passes the records commit's message: %v\n%s\n%s", err, out, msg)
+	}
+}
+
+// TestTheLandedRangePassesTheAttributionGate runs the repository's own
+// attribution gate over the range the landing added to the lane, and RS004's
+// message half over the records commit's message, for a build's lane and for a
+// drain's (iss-2611121820103102).
+func TestTheLandedRangePassesTheAttributionGate(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("the attribution gate is a bash script")
+	}
+	root := checkoutRoot(t)
 	// The gate's session-URL half runs `abcd lint outbound`; the checker is
-	// built from this checkout, before the fixture moves HOME (and the build
+	// built from this checkout, before a fixture moves HOME (and the build
 	// cache with it).
 	bin := filepath.Join(t.TempDir(), "abcd")
 	build := exec.Command("go", "build", "-o", bin, "./cmd/abcd")
@@ -172,64 +197,162 @@ func TestTheLandedRangePassesTheAttributionGate(t *testing.T) {
 	if b, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("building the outbound checker: %v\n%s", err, b)
 	}
-	f := newLandFixture(t, queueRuleset("MERGE"))
-	l := f.validatedOnce(t)
-	implHead := l.HeadSHA
-	f.step(t)
-	f.step(t)
-	l = currentLane(t, f.repo, f.runID)
-	if l.HeadSHA == implHead {
-		t.Fatal("the landing made no records commit")
-	}
-	gate := func(args ...string) ([]byte, error) {
+	gate := func(l Lane, args ...string) ([]byte, error) {
 		cmd := exec.Command("bash", append([]string{filepath.Join(root, "scripts", "check-attribution.sh")}, args...)...)
 		cmd.Dir = l.Worktree
 		cmd.Env = append(os.Environ(), "ABCD_OUTBOUND_BIN="+bin)
 		return cmd.CombinedOutput()
 	}
-	if out, err := gate("commits", implHead, l.HeadSHA); err != nil {
-		t.Fatalf("the attribution gate passes the landed range %s..%s: %v\n%s", shortSHA(implHead), shortSHA(l.HeadSHA), err, out)
-	}
-	// The records commit carries the run's admission (itd-2610301850454860), and
-	// RS004's message half, which the commit-msg hook runs, accepts its message
-	// for both an admission naming the spec and one naming an issue it declares.
-	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
-	if !strings.Contains(msg, "\nAdmitted-by: build spc-1\n") {
-		t.Fatalf("the records commit carries the admission:\n%s", msg)
-	}
-	for _, m := range []string{msg, strings.Replace(msg, "Admitted-by: build spc-1", strings.Join(admittedTrailers(Admitted{Kind: "build", Record: "iss-2609300000000999"}, nil), "\n"), 1)} {
-		file := filepath.Join(t.TempDir(), "msg")
-		if err := os.WriteFile(file, []byte(m), 0o644); err != nil {
-			t.Fatal(err)
+	// landed makes the records commit of a lane at its first landing step and
+	// passes the range it added through the gate; it returns the commit's message.
+	landed := func(t *testing.T, f *landFixture, l Lane) (Lane, string) {
+		t.Helper()
+		implHead := l.HeadSHA
+		f.step(t)
+		f.step(t)
+		l = currentLane(t, f.repo, f.runID)
+		if l.HeadSHA == implHead {
+			t.Fatal("the landing made no records commit")
 		}
-		cmd := exec.Command("bash", filepath.Join(root, "scripts", "check-issue-resolution.sh"), "message", file)
-		cmd.Dir = root
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("RS004's message half passes the records commit's message: %v\n%s\n%s", err, out, m)
+		if out, err := gate(l, "commits", implHead, l.HeadSHA); err != nil {
+			t.Fatalf("the attribution gate passes the landed range %s..%s: %v\n%s", shortSHA(implHead), shortSHA(l.HeadSHA), err, out)
 		}
+		return l, f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
+	}
+	// pullRequestBody walks the lane to its pull request and passes the body,
+	// as the forge received it, through the gate's body check
+	// (iss-2610020727177336); it returns the body.
+	pullRequestBody := func(t *testing.T, f *landFixture, l Lane) string {
+		t.Helper()
+		preflighted(t, l, l.HeadSHA)
+		f.step(t) // push
+		f.step(t) // pull request
+		held := filepath.Join(f.gh, "body.md")
+		b, _ := os.ReadFile(held)
+		if out, err := gate(l, "body", held); err != nil {
+			t.Fatalf("the attribution gate passes the pull request's body: %v\n%s\n%s", err, out, b)
+		}
+		return string(b)
 	}
 
-	// The pull request's body, as the forge received it, passes the gate's
-	// body check (iss-2610020727177336), and so does a body naming two models.
-	preflighted(t, l, l.HeadSHA)
-	f.step(t) // push
-	f.step(t) // pull request
-	held := filepath.Join(f.gh, "body.md")
-	if out, err := gate("body", held); err != nil {
-		b, _ := os.ReadFile(held)
-		t.Fatalf("the attribution gate passes the pull request's body: %v\n%s\n%s", err, out, b)
+	t.Run("a build's lane", func(t *testing.T) {
+		f := newLandFixture(t, queueRuleset("MERGE"))
+		l, msg := landed(t, f, f.validatedOnce(t))
+		// The records commit carries the run's admission (itd-2610301850454860), and
+		// RS004's message half, which the commit-msg hook runs, accepts its message
+		// for both an admission naming the spec and one naming an issue it declares.
+		if !strings.Contains(msg, "\nAdmitted-by: build spc-1\n") {
+			t.Fatalf("the records commit carries the admission:\n%s", msg)
+		}
+		passesRS004Message(t, root, msg)
+		passesRS004Message(t, root, strings.Replace(msg, "Admitted-by: build spc-1", strings.Join(admittedTrailers(Admitted{Kind: "build", Record: "iss-2609300000000999"}, nil), "\n"), 1))
+
+		// A body naming two models passes the body check as well.
+		pullRequestBody(t, f, l)
+		two := filepath.Join(t.TempDir(), "two.md")
+		st, err := ReadState(f.repo.Root(), f.runID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := prBody(st, currentLane(t, f.repo, f.runID), []string{"Assisted-by: Claude:claude-a", "Assisted-by: ExampleVendor:model-1"})
+		if err := os.WriteFile(two, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := gate(l, "body", two); err != nil {
+			t.Fatalf("the attribution gate passes a body naming two models: %v\n%s\n%s", err, out, body)
+		}
+	})
+
+	// A drain's lane is admitted under the drain's rule record and resolves the
+	// issue it fixed: the message both gates read is the one the drain's own
+	// landing composed, not a build's with a line swapped.
+	t.Run("a drain's lane", func(t *testing.T) {
+		f := drainLandFixture(t)
+		l, msg := landed(t, f, f.walkIssueLaneToLand(t))
+		want := []string{"Resolves: " + f.issue, drainRule.Trailer(), "Assisted-by: Claude:claude-test-5"}
+		if got := trailerBlock(msg); !slices.Equal(got, want) {
+			t.Fatalf("the drain lane's records commit's trailers are %q, want %q:\n%s", got, want, msg)
+		}
+		passesRS004Message(t, root, msg)
+		if body := pullRequestBody(t, f, l); !strings.Contains(body, "\n"+drainRule.Trailer()+"\n") {
+			t.Fatalf("the drain lane's pull request's body carries its admission:\n%s", body)
+		}
+	})
+}
+
+// TestADrainLanesRecordsCommitPassesTheRepositorysCommitMsgHook makes a drain
+// lane's records commit through this repository's own commit-msg hook
+// (.githooks/commit-msg), installed in the fixture the way a hooks dispatcher
+// installs it: a hook of the fixture's that runs the committed one by its path
+// in this checkout, so the hook finds the abcd source beside itself. The
+// commit is made, so the hook passed the message with its drain admission
+// trailer; the same hook then refuses that message with a tool's footer added,
+// so the pass was a judgement and not a hook that judged nothing
+// (iss-2611121820103102). The fixture's repository is not this one, so the hook
+// runs its outbound half and leaves RS004's message half, which it runs for
+// this repository alone, to the test above.
+func TestADrainLanesRecordsCommitPassesTheRepositorysCommitMsgHook(t *testing.T) {
+	for _, tool := range []string{"bash", "go"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("the commit-msg hook is a bash script that builds abcd: no %s", tool)
+		}
 	}
-	two := filepath.Join(t.TempDir(), "two.md")
-	st, err := ReadState(f.repo.Root(), f.runID)
-	if err != nil {
+	root := checkoutRoot(t)
+	committed := filepath.Join(root, ".githooks", "commit-msg")
+	if st, err := os.Stat(committed); err != nil || st.Mode()&0o111 == 0 {
+		t.Fatalf("the repository's commit-msg hook is an executable file: %v", err)
+	}
+	// The hook builds ./cmd/abcd with the committer's go; the caches are named
+	// before the fixture moves HOME, so the build inside the hook neither
+	// compiles the tree afresh nor fetches a module.
+	out, err := exec.Command("go", "env", "GOCACHE", "GOMODCACHE").Output()
+	caches := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if err != nil || len(caches) != 2 || caches[0] == "" || caches[1] == "" {
+		t.Fatalf("reading go's caches: %v %q", err, out)
+	}
+	t.Setenv("GOCACHE", caches[0])
+	t.Setenv("GOMODCACHE", caches[1])
+
+	f := drainLandFixture(t)
+	l := f.walkIssueLaneToLand(t)
+	head := l.HeadSHA
+	log := t.TempDir()
+	seen, said, exit := filepath.Join(log, "seen"), filepath.Join(log, "said"), filepath.Join(log, "exit")
+	hook := installHook(t, f, "commit-msg", "#!/bin/sh\ncat \"$1\" > '"+seen+"'\n'"+committed+"' \"$@\" 2> '"+said+"'\nrc=$?\necho \"$rc\" > '"+exit+"'\ncat '"+said+"' >&2\nexit \"$rc\"\n")
+	f.step(t) // prepare
+	if _, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err != nil {
+		b, _ := os.ReadFile(said)
+		t.Fatalf("the records commit passes the repository's commit-msg hook: %v\n%s", err, b)
+	}
+	l = currentLane(t, f.repo, f.runID)
+	if l.HeadSHA == head || !l.Landing.RecordsDone {
+		t.Fatalf("the records commit is made through the hook: %+v", l.Landing)
+	}
+	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
+	want := []string{"Resolves: " + f.issue, drainRule.Trailer(), "Assisted-by: Claude:claude-test-5"}
+	if got := trailerBlock(msg); !slices.Equal(got, want) {
+		t.Fatalf("the records commit's trailers are %q, want %q:\n%s", got, want, msg)
+	}
+	judged, err := os.ReadFile(seen)
+	if err != nil || strings.TrimRight(string(judged), "\n") != strings.TrimRight(msg, "\n") {
+		t.Fatalf("the hook judged the message the commit records: %v\n%s", err, judged)
+	}
+	if rc, err := os.ReadFile(exit); err != nil || strings.TrimSpace(string(rc)) != "0" {
+		b, _ := os.ReadFile(said)
+		t.Fatalf("the repository's hook ran to a pass: exit %q %v\n%s", rc, err, b)
+	}
+
+	// The same hook, in the same worktree and environment, refuses the message
+	// once it carries a tool's footer.
+	bad := filepath.Join(log, "bad")
+	footer := "🤖 Generated with [Some Tool](https://sometool.dev)" // abcd-lint:allow
+	if err := os.WriteFile(bad, []byte(strings.TrimRight(msg, "\n")+"\n\n"+footer+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	body := prBody(st, currentLane(t, f.repo, f.runID), []string{"Assisted-by: Claude:claude-a", "Assisted-by: ExampleVendor:model-1"})
-	if err := os.WriteFile(two, []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if out, err := gate("body", two); err != nil {
-		t.Fatalf("the attribution gate passes a body naming two models: %v\n%s\n%s", err, out, body)
+	cmd := exec.Command(hook, bad)
+	cmd.Dir = l.Worktree
+	if refused, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(refused), "breaks the outbound policy") {
+		t.Fatalf("the installed hook refuses the message with a tool's footer: %v\n%s", err, refused)
 	}
 }
 

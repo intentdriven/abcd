@@ -634,6 +634,22 @@ line. With no route of the person's to a runner it
 refuses, exit 2, writing nothing. Never run it from this page in place of the
 interview above: in a host session the interview is yours.
 
+A question the role writes that breaks an asking rule, or a closing summary
+abcd's check refuses, is not shown to the person: it goes back to the role in
+its next brief, with every finding, to write again. `interview.redrafts` in the
+repository's `.abcd/config.json` (`{"interview": {"redrafts": 2}}`) says how
+many times in a row: a whole number from 0 to 10, 3 when no file sets it, and 0
+shows a refused question at once. At the bound the question is shown as it
+stands, repaired where abcd can repair it, and a closing summary still refused,
+or a question abcd cannot draw, ends the interview with a message naming what
+happened and the command to run again; the answers already given are kept. A
+question over the rows limit alone is shown, not redrafted. A value outside
+that range refuses the interview before its first question, naming the key, the
+value and the file. The key is the repository's alone, as the route is the
+person's: set in `~/.abcd.noindex/config.json` it bounds nothing, and an
+interview drawing its questions in a Terminal says so in one line naming both
+files, and draws its lists numbered.
+
 Off a terminal the questions are answered from an answers file by ordinal
 (`{"schema_version": 1, "interview": "planning", "answers": [{"id": "Q1", "value": "..."}]}`);
 an entry that names no `answered_in` takes `--answered-in`, `Terminal` by
