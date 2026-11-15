@@ -756,12 +756,14 @@ only set them lower:
   holding a key twice, and a `~/.abcd.noindex/config.json` with any of those
   faults or behind a symlinked `~/.abcd.noindex`, writable by group or other,
   or owned by another account, whatever keys it holds, leave abcd's defaults
-  in force, and each front door names the file. The guard hook and setup and
-  the written interviews write the gate's line, `NOT CHECKED at this
-  repository's question limits`, saying the questions are checked at abcd's
-  defaults instead: the hook at the head of a deny's reason or a rows note,
-  or on stderr at exit 1 for a question the defaults admit, and nothing for
-  another tool's question, which it does not check. `abcd rules` and the
+  in force, and each front door names the file. The guard hook and setup
+  write the gate's line, `NOT CHECKED at this repository's question limits`,
+  saying the questions are checked at abcd's defaults instead: the hook at
+  the head of a deny's reason or a rows note, or on stderr at exit 1 for a
+  question the defaults admit, and nothing for another tool's question,
+  which it does not check. The written interviews read their routing from
+  the same files first, so there a file that cannot be read refuses the
+  interview with exit 2, naming it, and nothing is run. `abcd rules` and the
   prompt hook write `abcd rules: GRILL: the question limits were not read`
   on stderr, and `abcd guard question` exits 2 with `unread` naming the
   file. A symlinked `~/.abcd.noindex` holding no `config.json` reads as

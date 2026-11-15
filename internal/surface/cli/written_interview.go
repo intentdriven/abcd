@@ -239,7 +239,11 @@ func questionLimitsFor(roots layered.Roots, errOut io.Writer) (question.Limits, 
 	case err == nil:
 		return v.V, v.Note(), nil
 	case errors.As(err, &unread):
-		// The resolver hands back the defaults with an unread layer.
+		// The resolver hands back the defaults with an unread layer. The
+		// verb has read the same files through runner.Load just before and
+		// refused on a fault there, so this is reached only when a file
+		// changes between the two reads; it stays so that case is measured
+		// at the defaults and said, as the gate says it, rather than refused.
 		fmt.Fprint(errOut, limitsUnreadLineFor(err, "the questions are measured"))
 		return v.V, question.LimitsNote{}, nil
 	}

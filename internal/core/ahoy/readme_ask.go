@@ -420,5 +420,5 @@ func limitsRefusal(err error) string {
 
 // LimitsUnread is why a question-limits layer was not read, "" when every
 // layer was: the run's questions were measured at abcd's defaults, which the
-// front door says in the question gate's fail-open form.
+// front door says in the gate's limits form (limitsUnreadLineFor).
 func (r InstallResult) LimitsUnread() string { return r.limitsUnread }

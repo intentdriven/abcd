@@ -241,9 +241,10 @@ func armHooksLimitQuestion(t *testing.T, n int) question.Question {
 }
 
 // setupPlanLimitsOwed is every limit the setup plan breaks today, as
-// "<plan> at the <limits>: <rule>". The plan is put only to a person at a
-// terminal, never relayed to a host's question tool, and its height is
-// iss-2611152326582649. The list may only shrink: a plan that newly breaks a limit
+// "<plan> at the <limits>: <rule>". The plan is drawn at a terminal and,
+// through commands/ahoy.md, relayed to the host's question tool as the plan
+// screen's material, where a rows overrun is admitted with a note and cut
+// off at the window; its height is iss-2611152326582649. The list may only shrink: a plan that newly breaks a limit
 // fails, and so does a line here that no longer breaks.
 var setupPlanLimitsOwed = map[string]bool{
 	"a fresh repository at the defaults: rows": true,
