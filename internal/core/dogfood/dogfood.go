@@ -844,11 +844,12 @@ func Build(home string, c Checkout) (string, error) {
 }
 
 // builderEnv is the environment of every git command the builder runs: the
-// isolated environment with replacement objects off, so refs/replace/* in the
-// checkout (which `git replace` writes) cannot stand another object in for
-// the reviewed one.
+// isolated environment reading objects as stored (gitutil.AsStoredEnv), so
+// neither refs/replace/* in the checkout (which `git replace` writes), a graft
+// file nor a commit-graph file can stand another object, parents or tree in
+// for the reviewed commit's.
 func builderEnv(extra ...string) []string {
-	return append(append(gitutil.IsolatedEnv(), "GIT_NO_REPLACE_OBJECTS=1"), extra...)
+	return append(gitutil.AsStoredEnv(gitutil.IsolatedEnv()), extra...)
 }
 
 // boundedBuffer keeps at most limit bytes and records whether more came.
