@@ -633,7 +633,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	if beforeLandingStage != nil {
 		beforeLandingStage(wt)
 	}
-	if _, err := pickGit(wt, "add", "-A", "--", "."); err != nil {
+	if _, err := addAllGit(wt, "."); err != nil {
 		return Outcome{}, fmt.Errorf("staging the landing's records: %w", err)
 	}
 	// The local tier holds the close's review request and the preflight's
@@ -766,7 +766,7 @@ func addsOnlyTheMark(repo, was, now, mark string) (bool, error) {
 // (Landing.SpecSettled), for the round to read. dirty is any other change. ownSpec
 // is "" on a lane with no spec, which has no such record.
 func worktreeChanges(worktree, ownSpec string) (dirty, settled bool, err error) {
-	out, err := pickGit(worktree, "status", "--porcelain", "-z", "--untracked-files=all", "--no-renames")
+	out, err := pickGit(worktree, gitutil.StatusArgs("--porcelain", "-z", "--untracked-files=all", "--no-renames")...)
 	if err != nil {
 		return false, false, err
 	}
@@ -1137,7 +1137,7 @@ func refuseRecordDifferences(head, work []closeRecord, fields []string, moves fu
 func ownSpecUnresolved(lane Lane, specID string) (string, error) {
 	store, err := spec.Load(lane.Worktree)
 	if err != nil {
-		changed, gerr := pickGit(lane.Worktree, "status", "--porcelain", "--", spec.SpecsRelDir)
+		changed, gerr := pickGit(lane.Worktree, gitutil.StatusArgs("--porcelain", "--", spec.SpecsRelDir)...)
 		if gerr != nil {
 			return "", fmt.Errorf("reading the lane's worktree: %w", gerr)
 		}
@@ -1198,7 +1198,7 @@ func ownSpecRestorer(worktree, specID string) func() {
 func ownIntentUnresolved(lane Lane, id string) (string, error) {
 	corpus, err := intent.Load(lane.Worktree)
 	if err != nil {
-		changed, gerr := pickGit(lane.Worktree, "status", "--porcelain", "--", intent.IntentsRelDir)
+		changed, gerr := pickGit(lane.Worktree, gitutil.StatusArgs("--porcelain", "--", intent.IntentsRelDir)...)
 		if gerr != nil {
 			return "", fmt.Errorf("reading the lane's worktree: %w", gerr)
 		}
@@ -1309,7 +1309,7 @@ func strayChanges(st State, lane Lane) (string, error) {
 	if err := os.WriteFile(index, data, 0o600); err != nil {
 		return "", err
 	}
-	if _, err := pickGitIndex(wt, index, "add", "-A", "--", "."); err != nil {
+	if _, err := addAllGitIndex(wt, index, "."); err != nil {
 		return "", err
 	}
 	if _, err := pickGitIndex(wt, index, "reset", "-q", "--", TierRelDir); err != nil {
@@ -1987,9 +1987,7 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 			gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error()))+", so "+lane.Branch+" was not pushed: the landing announces before it pushes",
 			"settle what it names, then run `abcd implement step` again; the branch was not pushed, and an announcement already sent stands")
 	}
-	// The head the receipt names is pushed by its commit id, not the branch's
-	// ref, so a branch that moves after the check cannot change what is pushed.
-	if _, err := gitutil.Net(c.RepoRoot, "push", "--porcelain", Remote, lane.HeadSHA+":refs/heads/"+lane.Branch); err != nil {
+	if _, err := gitutil.Net(c.RepoRoot, landPushArgs(lane.HeadSHA, lane.Branch)...); err != nil {
 		if r, ok := heldStopOf(err); ok {
 			return Outcome{}, r
 		}
@@ -2014,6 +2012,21 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 	}
 	ld.PreflightReceipt, ld.Pushed, ld.CheckWaitSince = fsutil.RedactHome(rcp), lane.HeadSHA, nil
 	return Outcome{Stay: true, Note: note}, nil
+}
+
+// landPushArgs is the landing push of a lane's head to its branch on
+// origin. The head the receipt names is pushed by its commit id, not the
+// branch's ref, so a branch that moves after the check cannot change what is
+// pushed. In a drive (claim.DriveMarked, which RunTerminal sets) it passes
+// --no-follow-tags, which overrides push.followTags (git-config(1)), so an
+// annotated tag a lane made that points into the branch's history is never
+// sent with it. A person's `abcd build` or `abcd implement step`, and `abcd
+// land`, push as before.
+func landPushArgs(head, branch string) []string {
+	if claim.DriveMarked() {
+		return []string{"push", "--porcelain", "--no-follow-tags", Remote, head + ":refs/heads/" + branch}
+	}
+	return []string{"push", "--porcelain", Remote, head + ":refs/heads/" + branch}
 }
 
 // announceBeforePush is claim.AnnounceBeforePush, the one path abcd's pushes

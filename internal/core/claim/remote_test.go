@@ -872,3 +872,44 @@ func TestTheKeptHolderIDIsReadAndNeverMinted(t *testing.T) {
 		t.Fatalf("KeptHolderID = %q, want the environment's %q", id, env)
 	}
 }
+
+// TestADrivesReservationPushSendsNoTag: with push.followTags on, a push
+// sends each annotated tag missing from origin that points into the history
+// it pushes, as a person's own `abcd reserve` push still does. While a drive
+// runs (DrivePushes), the reservation's push passes --no-follow-tags, so a
+// tag a lane made on that history is not sent. Watched failing with pushTo
+// not reading DrivePushes: the drive's push sent the tag.
+func TestADrivesReservationPushSendsNoTag(t *testing.T) {
+	for _, drive := range []bool{true, false} {
+		r := spotcheckOrigin(t)
+		bare := strings.TrimSpace(r.Git("remote", "get-url", Remote))
+		r.Git("config", "push.followTags", "true")
+		r.Write("b.txt", "b\n")
+		r.Commit("the reservation")
+		sha := strings.TrimSpace(r.Git("rev-parse", "HEAD"))
+		r.Git("tag", "-a", "-m", "a lane's tag", "v9.9.9", sha)
+		clear := func() {}
+		if drive {
+			clear = DrivePushes()
+		}
+		err := push(r.Root(), pushArgs(sha, "iss-5"))
+		clear()
+		clear()
+		if err != nil {
+			t.Fatalf("drive %v: the push: %v", drive, err)
+		}
+		if tip := runGit(t, bare, "for-each-ref", "--format=%(objectname)", RefPrefix+"iss-5"); tip != sha {
+			t.Fatalf("drive %v: origin's reservation is %q, want %s", drive, tip, sha)
+		}
+		tags := runGit(t, bare, "for-each-ref", "refs/tags")
+		if drive && tags != "" {
+			t.Errorf("a drive's reservation push sent the lane's tag: %q", tags)
+		}
+		if !drive && !strings.Contains(tags, "refs/tags/v9.9.9") {
+			t.Errorf("a push outside a drive follows push.followTags as before: origin holds %q", tags)
+		}
+	}
+	if n := drivePushes.Load(); n != 0 {
+		t.Fatalf("a cleared mark is left at %d", n)
+	}
+}

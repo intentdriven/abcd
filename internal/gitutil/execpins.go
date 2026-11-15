@@ -123,7 +123,12 @@ func BuiltinMergeDriver() string {
 // merge.default to the built-in text driver, so a read-only merge abcd
 // computes (the conflict probe's merge-tree, a prediction of the forge's
 // merge) never starts a program the repository names, whichever driver an
-// attribute or merge.default selects (iss-2610090821510097). A merge made in a
+// attribute or merge.default selects (iss-2610090821510097). They also pin
+// merge.renormalize off: with it on, a three-way content merge runs each side
+// through the content filters the attributes select (git-config(1),
+// merge.renormalize), and merge-tree reads it. The forge's own merge reads no
+// setting of a person's checkout, so the prediction is the forge's either
+// way, and no merge a person makes takes the pin. A merge made in a
 // lane's worktree does not take them: it runs the repository's own drivers
 // (WorkingTreeCommitCommand, iss-2610111729399920). A driver cannot be blanked as
 // a filter is: git fails to start an empty driver command and reports every
@@ -144,7 +149,7 @@ func MergeDriverOverridesContext(ctx context.Context, root string) ([]string, er
 	if err != nil {
 		return nil, err
 	}
-	out := []string{"-c", "merge.default=text"}
+	out := []string{"-c", "merge.default=text", "-c", "merge.renormalize=false"}
 	driver := BuiltinMergeDriver()
 	for _, name := range names {
 		out = append(out, "-c", "merge."+name+".driver="+driver)

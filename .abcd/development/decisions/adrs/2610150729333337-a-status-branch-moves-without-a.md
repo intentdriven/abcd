@@ -14,7 +14,7 @@ related_adrs: [adr-2610031352212697, adr-38]
 
 ## Context
 
-[itd-2609151838312703](../../intents/planned/itd-2609151838312703-sessions-announce-what-they-are-doing.md) has sessions post announcements to the shared remote. They post from any account, any machine and hosted cloud sessions. Each announcement is an empty-tree commit on the person's own branch, `abcd-status/<forge username in lower case>`.
+[itd-2609151838312703](../../intents/shipped/itd-2609151838312703-sessions-announce-what-they-are-doing.md) has sessions post announcements to the shared remote. They post from any account, any machine and hosted cloud sessions. Each announcement is an empty-tree commit on the person's own branch, `abcd-status/<forge username in lower case>`.
 
 Three constraints were already locked:
 

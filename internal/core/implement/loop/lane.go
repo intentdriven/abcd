@@ -415,6 +415,12 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 			return Outcome{}, fmt.Errorf("finding where %s left %s: %v", lw.Branch, from, err)
 		}
 		base = mb
+		// A worktree adopted (made by hand, or by a step stopped before it
+		// recorded the lane) is read as one the drive makes, before any agent
+		// runs in it (laneMade).
+		if err := laneMade(c, lane.ID, lw.Path); err != nil {
+			return Outcome{}, err
+		}
 	default:
 		told := ""
 		if tip != "" {
@@ -488,6 +494,11 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 			return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
 				"git could not add the lane's worktree: "+fsutil.RedactHome(err.Error()),
 				"settle what git reports, then run `abcd implement step` again")
+		}
+		// A drive reads the new worktree's own settings scope now, before
+		// any agent runs in it, and holds that as the lane's (laneMade).
+		if err := laneMade(c, lane.ID, lw.Path); err != nil {
+			return Outcome{}, err
 		}
 		if LaneOpened != nil {
 			LaneOpened()

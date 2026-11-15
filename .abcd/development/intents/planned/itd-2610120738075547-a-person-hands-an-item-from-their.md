@@ -114,7 +114,7 @@ This would be shown wrong if, on the proof rung or on the first three items hand
 - **A cap on concurrent cloud sessions enforced by abcd.** There is none beyond the plan's own (decision 6); the first rung counts at most.
 - **A login kept for abcd in a credential store.** The person renews the host login by hand (decision 11).
 - **Merging handed-back work automatically.** C9 offers a passing copy for landing; the person, or a local session under the usual rules, opens and merges it.
-- **Messages between cloud and local sessions** while they run; reports are read after the fact. The session mailbox is [itd-2609151838312703](itd-2609151838312703-sessions-announce-what-they-are-doing.md)'s, and it never leaves the local network.
+- **Messages between cloud and local sessions** while they run; reports are read after the fact. The session mailbox is [itd-2609151838312703](../shipped/itd-2609151838312703-sessions-announce-what-they-are-doing.md)'s, and it never leaves the local network.
 - **The wider register of running sessions** ([itd-2609150819440345](../superseded/itd-2609150819440345-which-session-holds-which-worktree.md)).
 - **Recurring cloud routines** and their template ([itd-107](../drafts/itd-107-autonomous-routines-assemble-from-one.md)).
 - **Deleting spent work-in-progress branches.** The proxy refuses deletions; a sweep from an ordinary machine is the reservation record's tidy-up route ([itd-118](../superseded/itd-118-merged-work-leaves-no-residue-abcd.md)).
