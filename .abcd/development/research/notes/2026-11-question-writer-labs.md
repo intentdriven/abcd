@@ -101,11 +101,11 @@ times, as decision 22's three runs on one fixed material asks.
 
 | Round (pin, page) | Lab A: 25-row case | Lab B: hook-level half | Lab C: refused-for-length briefs | What changed next |
 |---|---|---|---|---|
-| a7b0131, 0.2.0 | 1 of 3: two runs spent four checks | not run (the live-session decision was pending) | not run | 0.2.1: cut a tab's whole row excess in one edit (dcn-2611151612261749) |
+| a7b0131, 0.2.0 | 1 of 3: two runs spent four checks | not run: its home was left unused when Lab A forced the page change, and every lab was minted again on the next pin (dcn-2611151612261749) | not run, for the same reason | 0.2.1: cut a tab's whole row excess in one edit (dcn-2611151612261749) |
 | 905f543, 0.2.1 | 3 of 3 | 3 of 3 | 2 of 3 by the pass rules: one run kept a 29-row tab because the brief asked for clarity over brevity. Two prose defects outside the pass rules: a fact an answer turned on was dropped, and a "Now:" line stated a proposal | 0.2.2: a rows finding is never kept, whatever the brief says; a fact an answer turns on is never dropped; "Now:" states what is in force (dcn-2611151635157888) |
 | a0a4658, 0.2.2 | 2 of 3: one run cut 30 → 27 → 25 → 24 over four checks | 3 of 3 | 1 of 3: one run refused after five checks stuck at 25 rows; one spent six checks | 0.2.3: work out what an edit saves before checking again; stop at the fifth check (dcn-2611151643599731) |
 | a7cecf1, 0.2.3 | 3 of 3 | 3 of 3 | 3 of 3, one run per brief | 0.2.4: the step's reviews found that 0.2.3 told the writer to spread one decision over parts, which decision 33 rules out (dcn-2611151700578698) |
-| 727df18, 0.2.4 | **3 of 3**, two checks each | **3 of 3**, checks 1, 2, 2 | **9 of 9**, three per brief, checks 4, 4, 3 / 3, 2, 3 / 5, 2, 2 | none |
+| 727df18, 0.2.4 | **3 of 3**, two checks each | **3 of 3**, checks 1, 2, 2 | **9 of 9**, three per brief, checks 4, 4, 3 / 3, 2, 3 / 5, 2, 2 | 0.2.5 and 0.2.6: wording only, from the step's reviews, which no run of this round reached (dcn-2611151710456359) |
 
 Labs at the last round:
 
