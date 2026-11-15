@@ -56,13 +56,13 @@ func TestAsStoredEnvKeepsTheCallersConfig(t *testing.T) {
 		"A=1", "B=2",
 		"GIT_NO_REPLACE_OBJECTS=1",
 		"GIT_GRAFT_FILE=/dev/null/none",
-		"GIT_CONFIG_PARAMETERS='user.name'='Quinn' 'core.commitgraph'='false'",
+		"GIT_CONFIG_PARAMETERS='user.name'='Quinn' 'core.commitgraph=false'",
 		"GIT_TEST_COMMIT_GRAPH=0",
 	}
 	if !slices.Equal(out, want) {
 		t.Errorf("AsStoredEnv = %q\nwant %q", out, want)
 	}
-	if got := gitutil.AsStoredEnv(nil); !slices.Contains(got, "GIT_CONFIG_PARAMETERS='core.commitgraph'='false'") {
+	if got := gitutil.AsStoredEnv(nil); !slices.Contains(got, "GIT_CONFIG_PARAMETERS='core.commitgraph=false'") {
 		t.Errorf("AsStoredEnv(nil) = %q, want the one entry alone", got)
 	}
 }

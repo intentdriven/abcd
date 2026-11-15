@@ -21,8 +21,10 @@ func asStored(cmd *exec.Cmd) *exec.Cmd {
 }
 
 // commitGraphOff is the GIT_CONFIG_PARAMETERS entry that turns the
-// commit-graph off, in the quoting git writes for `git -c`.
-const commitGraphOff = "'core.commitgraph'='false'"
+// commit-graph off, quoted whole as git before 2.31 writes it: every git
+// parses that form, also after an entry in the 'key'='value' form git 2.31
+// and later write, which a git before 2.31 cannot parse.
+const commitGraphOff = "'core.commitgraph=false'"
 
 // AsStoredEnv is env made to read objects as stored, for a git command built
 // outside this package as well as asStored's own: GIT_NO_REPLACE_OBJECTS=1,

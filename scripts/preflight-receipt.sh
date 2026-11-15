@@ -73,7 +73,7 @@ set -euo pipefail
 # which loads a graph whatever the setting says, is off.
 export GIT_NO_REPLACE_OBJECTS=1
 export GIT_GRAFT_FILE=/dev/null/none
-export GIT_CONFIG_PARAMETERS="${GIT_CONFIG_PARAMETERS:+$GIT_CONFIG_PARAMETERS }'core.commitgraph'='false'"
+export GIT_CONFIG_PARAMETERS="${GIT_CONFIG_PARAMETERS:+$GIT_CONFIG_PARAMETERS }'core.commitgraph=false'"
 export GIT_TEST_COMMIT_GRAPH=0
 
 cd "$(git rev-parse --show-toplevel)"
