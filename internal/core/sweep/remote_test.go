@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -497,7 +498,7 @@ func TestADefaultBranchThatMovedOnOriginHoldsEveryDelete(t *testing.T) {
 // another clone moves origin's main after the first of two deletes passed its
 // last check, the first is deleted and the second is held until a fetch. The
 // question to origin after the first delete sees the move too, so the first
-// row names how to restore that branch and the run faults.
+// row notes how to restore that branch; that is no fault.
 func TestADefaultBranchThatMovesOnOriginBetweenDeletesHoldsTheLaterOne(t *testing.T) {
 	repo, origin := originRepo(t)
 	first := mergedOnOrigin(repo, "first", "first.txt")
@@ -531,7 +532,7 @@ func TestADefaultBranchThatMovesOnOriginBetweenDeletesHoldsTheLaterOne(t *testin
 		t.Fatalf("the deletes reached the push in the order %v; want first's first", hooked)
 	}
 	restore := "git push origin " + first + ":refs/heads/first"
-	if r := remoteRowFor(t, res, "first"); r.Outcome != OutcomeDeleted || !strings.Contains(r.Reason, "to restore it, run `"+restore+"`") {
+	if r := remoteRowFor(t, res, "first"); r.Outcome != OutcomeDeleted || !strings.Contains(r.Reason, "`"+restore+"` restores it") {
 		t.Fatalf("first: %+v; want it deleted as origin's main moved, naming %q", r, restore)
 	}
 	if got := onOrigin(repo, origin, "first"); got != "" {
@@ -546,8 +547,8 @@ func TestADefaultBranchThatMovesOnOriginBetweenDeletesHoldsTheLaterOne(t *testin
 	if onOrigin(repo, origin, "second") != second {
 		t.Fatal("origin no longer holds second")
 	}
-	if err == nil || res.ExitCode() != ExitRefused || !strings.Contains(res.Refusal, restore) {
-		t.Fatalf("a delete origin's main moved under is the run's fault: err %v, exit %d, refusal %q", err, res.ExitCode(), res.Refusal)
+	if err != nil || res.Refusal != "" || res.ExitCode() != ExitActed {
+		t.Fatalf("a delete origin's main moved under is a note, no fault: err %v, exit %d, refusal %q", err, res.ExitCode(), res.Refusal)
 	}
 }
 
@@ -701,10 +702,10 @@ func TestARunStoppedWhileOriginsTipIsReadIsReportedStopped(t *testing.T) {
 }
 
 // TestADefaultBranchThatMovesAfterADeleteNamesTheRestore: when another clone
-// moves origin's main after origin took a delete, the question to origin
-// after the delete sees it; the outcome stays deleted, the row names the
-// judged tip and the exact command that restores the branch, and the run
-// faults. The command, run as printed, puts the branch back.
+// moves origin's main after origin took a delete, as an ordinary merge does,
+// the question to origin after the delete sees it; the outcome stays deleted,
+// and the row notes the judged tip and the exact command that restores the
+// branch, with no fault. The command, run as printed, puts the branch back.
 func TestADefaultBranchThatMovesAfterADeleteNamesTheRestore(t *testing.T) {
 	repo, origin := originRepo(t)
 	tip := mergedOnOrigin(repo, "feat", "feat.txt")
@@ -728,13 +729,13 @@ func TestADefaultBranchThatMovesAfterADeleteNamesTheRestore(t *testing.T) {
 	}
 	r := remoteRowFor(t, res, "feat")
 	restore := "git push origin " + tip + ":refs/heads/feat"
-	if r.Outcome != OutcomeDeleted || !strings.Contains(r.Reason, "the branch's judged tip was "+tip) ||
-		!strings.Contains(r.Reason, "to restore it, run `"+restore+"`") ||
-		!strings.Contains(r.Reason, "origin's default branch is main at "+short(moved)+" after the delete, but the branch was judged against origin/main at "+short(fetched)) {
-		t.Fatalf("%+v; want it deleted, naming its judged tip and %q", r, restore)
+	if r.Outcome != OutcomeDeleted ||
+		!strings.Contains(r.Reason, "; note: origin's default branch is main at "+short(moved)+" after the delete, but the branch was judged against origin/main at "+short(fetched)) ||
+		!strings.Contains(r.Reason, "in case the branch's work is no longer on main, its judged tip was "+tip+", and `"+restore+"` restores it") {
+		t.Fatalf("%+v; want it deleted, noting its judged tip and %q", r, restore)
 	}
-	if err == nil || res.ExitCode() != ExitRefused || !strings.Contains(res.Refusal, restore) {
-		t.Fatalf("a delete origin's default branch moved after is the run's fault: err %v, exit %d, refusal %q", err, res.ExitCode(), res.Refusal)
+	if err != nil || res.Refusal != "" || res.ExitCode() != ExitActed {
+		t.Fatalf("a delete origin's default branch moved after is a note, no fault: err %v, exit %d, refusal %q", err, res.ExitCode(), res.Refusal)
 	}
 	if onOrigin(repo, origin, "feat") != "" {
 		t.Fatal("origin still holds feat")
@@ -767,5 +768,103 @@ func TestAnUnansweredQuestionAfterADeleteIsANoteNotAFault(t *testing.T) {
 	}
 	if onOrigin(repo, origin, "feat") != "" {
 		t.Fatal("origin still holds feat")
+	}
+}
+
+// shellWords splits a printed command as a POSIX shell reads its words:
+// blanks separate words, single quotes hold everything literally, and a
+// backslash outside them takes the next character literally. Any other
+// character a shell acts on unquoted (; | & < > ( ) $ ` " and the like) is
+// refused, so a line this reads is words and nothing else.
+func shellWords(t *testing.T, line string) []string {
+	t.Helper()
+	var (
+		words []string
+		cur   strings.Builder
+		in    bool
+	)
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case c == '\'':
+			end := strings.IndexByte(line[i+1:], '\'')
+			if end < 0 {
+				t.Fatalf("an unclosed quote in %q", line)
+			}
+			cur.WriteString(line[i+1 : i+1+end])
+			i += end + 1
+			in = true
+		case c == '\\' && i+1 < len(line):
+			cur.WriteByte(line[i+1])
+			i++
+			in = true
+		case c == ' ':
+			if in {
+				words = append(words, cur.String())
+				cur.Reset()
+				in = false
+			}
+		case strings.IndexByte(";|&<>()$`\"!{}#*?[]~\t\n", c) >= 0:
+			t.Fatalf("%q holds %q unquoted", line, c)
+		default:
+			cur.WriteByte(c)
+			in = true
+		}
+	}
+	if in {
+		words = append(words, cur.String())
+	}
+	return words
+}
+
+// TestTheRestoreCommandIsOneWordPerArgument: whatever a branch name holds
+// that git allows, the printed restore command reads back as exactly
+// `git push origin <tip>:refs/heads/<name>`, the refspec one shell word; a
+// name holding a backquote or a character outside printable ASCII gets no
+// command.
+func TestTheRestoreCommandIsOneWordPerArgument(t *testing.T) {
+	sha := strings.Repeat("a", 40)
+	for _, name := range []string{"plain/name-1.2", "a;b", "a|b", "$(touch x)", "a&b", "it's", `say"hi"`, "a!b", "{x,y}", "a#b", "x>y<z", "end'"} {
+		ref := "refs/heads/" + name
+		cmd, ok := remoteRestoreCommand(ref, sha)
+		if !ok {
+			t.Fatalf("%q: no command", name)
+		}
+		got := shellWords(t, cmd)
+		want := []string{"git", "push", "origin", sha + ":" + ref}
+		if !slices.Equal(got, want) {
+			t.Fatalf("%q: %q reads as %q; want %q", name, cmd, got, want)
+		}
+	}
+	if cmd, _ := remoteRestoreCommand("refs/heads/plain/name-1.2", sha); cmd != "git push origin "+sha+":refs/heads/plain/name-1.2" {
+		t.Fatalf("a plain name is quoted: %q", cmd)
+	}
+	for _, name := range []string{"with`tick", "café", "bell\x07"} {
+		if cmd, ok := remoteRestoreCommand("refs/heads/"+name, sha); ok || cmd != "" {
+			t.Fatalf("%q: printed %q; want no command", name, cmd)
+		}
+	}
+}
+
+// TestARestoreNoteForANameNoCommandCarries: when origin's default branch
+// moves after the delete of a branch whose name holds a backquote, the note
+// gives the judged tip and says to quote the name by hand, with no command.
+func TestARestoreNoteForANameNoCommandCarries(t *testing.T) {
+	repo, origin := originRepo(t)
+	name := "odd`name"
+	tip := mergedOnOrigin(repo, name, "odd.txt")
+	other := filepath.Join(t.TempDir(), "other")
+	repo.Git("clone", "-q", origin, other)
+	write(t, filepath.Join(other, "later.txt"), "later\n")
+	repo.Git("-C", other, "add", "-A")
+	repo.Git("-C", other, "commit", "-q", "-m", "later")
+	afterRemoteDelete = func(string) { repo.Git("-C", other, "push", "-q", "origin", "main") }
+	t.Cleanup(func() { afterRemoteDelete = nil })
+
+	res := sweepRemoteOK(t, repo, remoteOpts(&fakeForge{prs: []pullRequest{mergedPR(4, name, tip)}}), true)
+	r := remoteRowFor(t, res, name)
+	if r.Outcome != OutcomeDeleted || !strings.Contains(r.Reason, "its judged tip was "+tip+"; its name holds a character no printed command carries safely, so quote the name by hand") ||
+		strings.Contains(r.Reason, "git push") {
+		t.Fatalf("%+v; want the judged tip and no command", r)
 	}
 }

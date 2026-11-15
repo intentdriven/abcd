@@ -47,8 +47,8 @@ package sweep
 // lease on the exact tip that was judged (the reservation sweep's pattern),
 // so a branch someone pushed to meanwhile survives. After a delete origin
 // took, origin is asked for its default branch and tip once more: when they
-// moved, the row names the tip the branch was judged at and the command that
-// restores it, and the run faults. The push runs through
+// moved, the row notes the tip the branch was judged at and the command that
+// restores it, in case its work is no longer there. The push runs through
 // gitutil.Net, so the repository's own pre-push hook sees it, as it sees the
 // reservation sweep's; a hook that refuses it keeps the branch and is the
 // run's fault, as any other failed push is. Reservations are the ones the
@@ -69,6 +69,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -77,6 +78,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 const (
@@ -744,12 +746,12 @@ func (rj *remoteJudge) delete(b remoteBranch, addrHold, head, headTip string, he
 // deleted. The last check asked just before the push, but origin's default
 // branch can move between that answer and the push, and the merged judgement
 // holds only against the branch and tip it read. When origin's answer no
-// longer matches them, the outcome stays deleted, the row adds the tip the
-// branch was judged at and the exact command that puts it back, and the
-// branch is returned as the run's fault, so the exit code shows it. An
-// answer origin does not give adds a note saying so, with no restore line
-// and no fault; one cut short by the run's end is the run's fault, as any
-// stop is.
+// longer matches them, which an ordinary merge landing in that window also
+// does, the outcome stays deleted and the row adds a note: the tip the branch
+// was judged at and the command that puts it back, in case the branch's work
+// is no longer on the default branch. That is no fault. An answer origin
+// does not give adds a note saying so, with no restore line and no fault;
+// one cut short by the run's end is the run's fault, as any stop is.
 func (rj *remoteJudge) afterDelete(b remoteBranch, row *Row) error {
 	if afterRemoteDelete != nil {
 		afterRemoteDelete(b.ref)
@@ -768,17 +770,42 @@ func (rj *remoteJudge) afterDelete(b remoteBranch, row *Row) error {
 	}
 	moved := "origin's default branch is " + head + " at " + short(headTip) + " after the delete, but the branch was judged against " +
 		displayRef(rj.def) + " at " + short(rj.defTip)
-	restore := remoteRestoreCommand(b.ref, b.tip)
-	row.Reason += clean("; " + moved + ", so the judgement may no longer hold: the branch's judged tip was " + b.tip +
-		"; to restore it, run `" + restore + "`")
-	row.Evidence = append(row.Evidence, Evidence{Kind: KindRemote, Strength: Proven, Detail: clean(moved)})
-	return errors.New(clean("sweep: origin's default branch moved after " + b.name + " was deleted on origin; to restore it, run `" + restore + "`"))
+	note := "; note: " + moved + "; in case the branch's work is no longer on " + rj.defName + ", its judged tip was " + b.tip
+	if restore, ok := remoteRestoreCommand(b.ref, b.tip); ok {
+		note += ", and `" + restore + "` restores it"
+	} else {
+		note += "; its name holds a character no printed command carries safely, so quote the name by hand to restore it at that tip"
+	}
+	row.Reason += clean(note)
+	row.Evidence = append(row.Evidence, Evidence{Kind: KindRemote, Strength: Hint, Detail: clean(moved)})
+	return nil
 }
 
 // remoteRestoreCommand is the command that puts back the branch at ref on
-// origin at its judged tip sha, after a delete.
-func remoteRestoreCommand(ref, sha string) string {
-	return "git push " + claim.Remote + " " + sha + ":" + ref
+// origin at its judged tip sha, after a delete, and whether one can be
+// printed. The ref is a name origin holds, so the refspec is one shell word:
+// left bare when every character is one a shell takes unquoted, and
+// single-quoted otherwise (shellquote.Single). A ref holding a backquote or
+// any character outside printable ASCII gets no command at all.
+func remoteRestoreCommand(ref, sha string) (string, bool) {
+	for _, r := range ref {
+		if r == '`' || r < 0x20 || r > 0x7e {
+			return "", false
+		}
+	}
+	return "git push " + claim.Remote + " " + shellWord(sha+":"+ref), true
+}
+
+// shellSafeRe is the text a shell takes unquoted as one word.
+var shellSafeRe = regexp.MustCompile(`^[A-Za-z0-9._/:@%+=-]+$`)
+
+// shellWord is s as one shell word: bare when the shell takes it unquoted,
+// single-quoted otherwise.
+func shellWord(s string) string {
+	if shellSafeRe.MatchString(s) {
+		return s
+	}
+	return shellquote.Single(s)
 }
 
 // answerText is the first line of an error origin or the forge gave, for a
