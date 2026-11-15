@@ -104,10 +104,10 @@ These are kept, with the reason:
 
 Under `--apply`, a branch on origin is deleted when the forge records its pull request as merged, or when it is patch-equivalent to the default branch, once nothing still needs it:
 - no open pull request heads it;
-- no reservation names it;
+- no reservation names it. A reservation names a branch by the branch its own record carries, not by the record's id appearing in the branch's name. Step 3 as landed reads the id in the name, and step 5 changes it to read the reservation's recorded branch;
 - no running session works on it, judged by the liveness proof against any local worktree on that branch.
 
-An open pull request that targets the branch as its base holds it too, so the sweep keeps more than the pull requests that head it.
+An open pull request that targets the branch as its base holds it too, so the sweep keeps more than the pull requests that head it. This is the run's reading, which the product thinker kept.
 
 The deletion is a push of an empty ref carrying a lease on the tip that was judged (the reservation sweep's pattern), made through the guard, and each branch it deletes is named.
 
