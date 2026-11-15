@@ -724,7 +724,7 @@
     {
       "chapter": "README.md",
       "sentence": "`checked_by`, splitting material too long for one screen into numbered",
-      "replacement": "`checked_by`. It quotes one decision's too-long material shorter, keeping every answer's gain and cost, and splits material holding several decisions or too many answers into numbered",
+      "replacement": "abcd's defaults and says so in a `note`. It quotes one decision's too-long material shorter, keeping every answer's gain and cost, and splits material holding several decisions or too many answers into numbered",
       "evidence": "agents/question-drafter.md:166-186",
       "commit": "8c6cfbd43b36287e0f8c54109a587e23d9b1f45f",
       "applied": "2026-11-15T17:10:45Z"
