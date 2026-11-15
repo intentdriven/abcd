@@ -502,3 +502,40 @@ func TestReservationTextIsCleaned(t *testing.T) {
 		t.Fatalf("an unknown commit is kept as a hint: %+v", r)
 	}
 }
+
+// TestOnlyACronUnderOnScheduleIsRead: the schedule is read from the workflow
+// file's on.schedule alone, parsed as YAML; a `cron:` in a job's steps or in
+// a script is no schedule. A file with no cron there, one that does not
+// parse, one whose on.schedule is written twice or given by an alias, and
+// one past the size the sweep reads each give no time, saying why.
+func TestOnlyACronUnderOnScheduleIsRead(t *testing.T) {
+	repo, _ := originRepo(t)
+	scheduleOf := func(body string) string {
+		dir := filepath.Join(repo.Root(), ".github", "workflows")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		write(t, filepath.Join(dir, "reservation-sweep.yml"), body)
+		return nextScheduled(repo.Root(), sweepClock)
+	}
+	steps := "jobs:\n  sweep:\n    runs-on: ubuntu-latest\n    steps:\n      - cron: \"1 1 1 1 1\"\n      - run: |\n          - cron: \"2 2 2 2 2\"\n"
+	got := scheduleOf("name: reservation-sweep\non:\n  schedule:\n    - cron: \"37 4 * * *\"\n  workflow_dispatch:\n" + steps)
+	if !strings.Contains(got, nextRun) || !strings.Contains(got, `from its cron "37 4 * * *"`) {
+		t.Fatalf("with a schedule and crons in the steps: %q; want %q from the schedule", got, nextRun)
+	}
+	for name, c := range map[string]struct{ body, why string }{
+		"crons only in the steps":     {"on:\n  workflow_dispatch:\n" + steps, "names no cron under on.schedule"},
+		"not YAML":                    {"on: [\n  schedule:\n", "does not parse as YAML"},
+		"on written twice":            {"on:\n  schedule:\n    - cron: \"37 4 * * *\"\non:\n  push:\n", "`on` written twice"},
+		"schedule written twice":      {"on:\n  schedule:\n    - cron: \"37 4 * * *\"\n  schedule:\n    - cron: \"1 1 1 1 1\"\n", "on.schedule written twice"},
+		"a schedule by an alias":      {"x: &s\n  - cron: \"37 4 * * *\"\non:\n  schedule: *s\n", "not a list"},
+		"an entry that is no cron":    {"on:\n  schedule:\n    - cron: \"37 4 * * *\"\n    - at: \"1 1 1 1 1\"\n", "not one `cron:` value"},
+		"a cron with another key":     {"on:\n  schedule:\n    - cron: \"37 4 * * *\"\n      also: \"1 1 1 1 1\"\n", "not one `cron:` value"},
+		"larger than the sweep reads": {"on:\n  schedule:\n    - cron: \"37 4 * * *\"\n# " + strings.Repeat("x", workflowFileCap) + "\n", "is too large"},
+	} {
+		got := scheduleOf(c.body)
+		if !strings.Contains(got, "its schedule could not be read") || !strings.Contains(got, c.why) || strings.Contains(got, "next scheduled run is at") {
+			t.Errorf("%s: %q; want the schedule said unread because it %s", name, got, c.why)
+		}
+	}
+}

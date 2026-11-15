@@ -41,7 +41,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -51,6 +50,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/reservesweep"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"go.yaml.in/yaml/v3"
 )
 
 const (
@@ -355,15 +355,20 @@ func nextScheduled(root string, now time.Time) string {
 	}
 	defer r.Close()
 	data, err := fsutil.ReadGuardedInRoot(r, reservationWorkflowPath, workflowFileCap)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return unread("this checkout has no " + reservationWorkflowPath)
-		}
+	switch {
+	case os.IsNotExist(err):
+		return unread("this checkout has no " + reservationWorkflowPath)
+	case errors.Is(err, fsutil.ErrTooBig):
+		return unread(fmt.Sprintf("%s is too large: the sweep reads at most %d bytes of it", reservationWorkflowPath, workflowFileCap))
+	case err != nil:
 		return unread(reservationWorkflowPath + " is not a regular file abcd can read")
 	}
-	exprs := workflowCrons(string(data))
+	exprs, err := workflowCrons(data)
+	if err != nil {
+		return unread(reservationWorkflowPath + " " + err.Error())
+	}
 	if len(exprs) == 0 {
-		return unread(reservationWorkflowPath + " names no cron")
+		return unread(reservationWorkflowPath + " names no cron under on.schedule")
 	}
 	var (
 		next time.Time
@@ -386,33 +391,78 @@ func nextScheduled(root string, now time.Time) string {
 		" in " + reservationWorkflowPath + " (in UTC, as the forge reads it), and it deletes what is spent then"
 }
 
-// cronLineRe is a schedule's `- cron: <expression>` line.
-var cronLineRe = regexp.MustCompile(`^\s*-\s*cron:\s*(.*)$`)
+// workflowCrons is every cron expression a workflow file's on.schedule
+// names, in the order written, parsed as YAML (the parser the repository
+// already reads workflow files with), so a `cron:` anywhere else in the file,
+// in a comment, a script or another key, is no schedule. A file that does not
+// parse, or whose on.schedule holds an alias, a key written twice or an entry
+// that is not one `cron:` scalar, is an error saying so: the schedule is not
+// guessed. A panic in the parser reads as a file it could not parse, since
+// the file is one abcd did not write.
+func workflowCrons(file []byte) (crons []string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			crons, err = nil, errors.New("could not be read by the YAML parser")
+		}
+	}()
+	var doc yaml.Node
+	if err := yaml.Unmarshal(file, &doc); err != nil {
+		return nil, errors.New("does not parse as YAML")
+	}
+	if len(doc.Content) == 0 {
+		return nil, nil
+	}
+	odd := func(what string) ([]string, error) {
+		return nil, errors.New("holds " + what + " the sweep does not read")
+	}
+	on, found, dup := mappingValue(doc.Content[0], "on")
+	switch {
+	case dup:
+		return odd("a top-level key `on` written twice, which")
+	case !found:
+		return nil, nil
+	case on.Kind == yaml.AliasNode:
+		return odd("an `on` given by an alias, which")
+	}
+	schedule, found, dup := mappingValue(on, "schedule")
+	switch {
+	case dup:
+		return odd("an on.schedule written twice, which")
+	case !found:
+		return nil, nil
+	case schedule.Kind != yaml.SequenceNode:
+		return odd("an on.schedule that is not a list, which")
+	}
+	for _, item := range schedule.Content {
+		cron, found, dup := mappingValue(item, "cron")
+		if dup || !found || cron.Kind != yaml.ScalarNode || len(item.Content) != 2 {
+			return odd(fmt.Sprintf("an entry on line %d of its on.schedule that is not one `cron:` value, which", item.Line))
+		}
+		crons = append(crons, cron.Value)
+	}
+	return crons, nil
+}
 
-// workflowCrons is every cron expression a workflow file's schedule names,
-// unquoted, in the order written. A value that does not read as one quoted
-// or plain scalar is kept as written, so its parse refuses it.
-func workflowCrons(file string) []string {
-	var out []string
-	for _, line := range strings.Split(file, "\n") {
-		m := cronLineRe.FindStringSubmatch(strings.TrimRight(line, "\r"))
-		if m == nil {
+// mappingValue is the value the mapping n gives the plain key, whether n
+// gives it, and whether n gives it more than once. A merge key, or a node
+// that is not a mapping, gives nothing, so a schedule reached through one is
+// not read; a value given by an alias is answered as the alias node, which
+// the caller refuses.
+func mappingValue(n *yaml.Node, key string) (value *yaml.Node, found, dup bool) {
+	if n == nil || n.Kind != yaml.MappingNode {
+		return nil, false, false
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		k, v := n.Content[i], n.Content[i+1]
+		if k.Kind != yaml.ScalarNode || k.Value != key || k.Tag == "!!merge" {
 			continue
 		}
-		v := strings.TrimSpace(m[1])
-		if v != "" && (v[0] == '"' || v[0] == '\'') {
-			if end := strings.IndexByte(v[1:], v[0]); end >= 0 {
-				rest := strings.TrimSpace(v[end+2:])
-				if rest == "" || strings.HasPrefix(rest, "#") {
-					v = v[1 : end+1]
-				}
-			}
-		} else if i := strings.Index(v, " #"); i >= 0 {
-			v = strings.TrimSpace(v[:i])
+		if found {
+			return nil, true, true
 		}
-		out = append(out, v)
+		value, found = v, true
 	}
-	return out
+	return value, found, false
 }
 
 // cronSpec is a cron expression in the plain five-field form: minute, hour,
