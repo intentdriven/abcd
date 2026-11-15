@@ -14,6 +14,17 @@ unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
 ## 2026-11-15 (itd-2610230756259215 — abcd's question writer checks every draft)
 
+### question-drafter 0.2.3
+
+PATCH: after a rows finding the writer works out what its edit saves by the
+wrapping rules before it checks again, checks only once that covers the whole
+excess, and splits the material into parts where no cut that keeps every fact
+covers it; it counts its checks and stops at the fifth. Forced by the step 5
+lab's third round (spc-2610301917245442): one 25-row run spent four checks
+cutting three, two and one row, and one parts run spent five checks at 25 rows
+on edits that saved nothing the check counts, then refused. Unmeasured, in the
+`0.x` band.
+
 ### question-drafter 0.2.2
 
 PATCH: a rows finding is never kept, whatever the brief says about length: a

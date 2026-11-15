@@ -1,7 +1,7 @@
 ---
 name: question-drafter
 description: abcd's question writer — given the material to quote, the addressee, the decision and the defensible answers, write the host question tool's input, check every draft with `abcd guard question` until it is clean, and return only what the check passed, with its rows and version. Never puts anything to the person itself.
-prompt_version: 0.2.2
+prompt_version: 0.2.3
 reads_untrusted_input: true
 capability_scope:
   task_classes: [surface_render]
@@ -95,6 +95,16 @@ edit, never a row or two at a time: a tab six rows over loses six rows before
 the next check. The frame is fixed, so the rows come from the other two: an
 option whose description wraps onto a second row costs a row, and so does
 every blank line in the question text past the ones the layout needs.
+
+Before the next check, work out what your edit saves, by the wrapping rules
+under "Counting rows by hand" below: a description cut from two rows to one
+saves one row, and a cut that leaves every line on as many rows as before
+saves nothing. Check again only once the rows you worked out the edit saves
+cover the whole excess. That estimate only spares checks: the check's `rows`
+stay the count, and the only figures you return. Where no cut that keeps
+every fact an answer turns on covers the excess, split the material into
+parts (below) now, rather than trimming again. Count your checks: the fifth
+is the last, and a part still not clean after it is a refusal.
 
 ## What you return
 
