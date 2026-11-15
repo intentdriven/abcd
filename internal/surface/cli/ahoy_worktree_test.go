@@ -1042,15 +1042,18 @@ func TestAhoyPageCarriesTheWorktreeHostRunStep(t *testing.T) {
 
 // TestAgentsNamesTheWorktreeVerbAndNoSiblingForm is criterion 20: AGENTS.md's
 // concurrent-sessions convention makes a session's checkout with the store's
-// verb, at the store's path, and names no plain `git worktree add` aimed at a
-// directory beside the checkout.
+// verb, at the store's path, tells the session to work in the path the verb
+// prints, and names no plain `git worktree add` aimed at a directory beside the
+// checkout.
 func TestAgentsNamesTheWorktreeVerbAndNoSiblingForm(t *testing.T) {
 	section := repoSection(t, "AGENTS.md", "## Concurrent sessions")
+	flat := strings.Join(strings.Fields(section), " ")
 	for _, want := range []string{
 		"`scripts/abcd.sh " + worktreeAddStep + "`",
 		"`" + abcdhome.Display("worktrees", "<root-sha>", "<name>") + "/`",
+		"work in the path it prints",
 	} {
-		if !strings.Contains(section, want) {
+		if !strings.Contains(flat, want) {
 			t.Errorf("AGENTS.md's concurrent-sessions convention lacks %q", want)
 		}
 	}
