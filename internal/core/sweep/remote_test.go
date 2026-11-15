@@ -461,12 +461,22 @@ func TestOriginsAnswerIsScrubbedBeforeItIsShown(t *testing.T) {
 func TestADefaultBranchThatMovedOnOriginHoldsEveryDelete(t *testing.T) {
 	repo, origin := originRepo(t)
 	tip := mergedOnOrigin(repo, "feat", "feat.txt")
-	repo.Write("later.txt", "later\n")
-	repo.Git("add", "-A")
-	repo.Git("commit", "-q", "-m", "later")
-	// Pushed by path, not by the remote's name, so origin/main stays where
-	// the last fetch left it.
-	repo.Git("push", "-q", origin, "main")
+	fetched := repo.Git("rev-parse", "refs/remotes/origin/main")
+	// Another clone moves origin's main, as another writer would. A push from
+	// this checkout cannot stand in for it, even one to origin's path rather
+	// than its name: since git 2.56 a push to a URL that matches one
+	// configured remote updates that remote's tracking ref too, which moves
+	// origin/main here with origin's main.
+	other := filepath.Join(t.TempDir(), "other")
+	repo.Git("clone", "-q", origin, other)
+	write(t, filepath.Join(other, "later.txt"), "later\n")
+	repo.Git("-C", other, "add", "-A")
+	repo.Git("-C", other, "commit", "-q", "-m", "later")
+	repo.Git("-C", other, "push", "-q", "origin", "main")
+	if moved := onOrigin(repo, origin, "main"); moved == fetched || repo.Git("rev-parse", "refs/remotes/origin/main") != fetched {
+		t.Fatalf("the fixture: origin's main is at %s and origin/main here at %s; want origin moved past %s and origin/main left there",
+			moved, repo.Git("rev-parse", "refs/remotes/origin/main"), fetched)
+	}
 
 	res := sweepRemoteOK(t, repo, remoteOpts(&fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}), true)
 	r := remoteRowFor(t, res, "feat")
