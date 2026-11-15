@@ -388,3 +388,30 @@ func TestARemoteBranchProofRestsOnOriginBeingOneRepository(t *testing.T) {
 		t.Error("origin's tip was read before origin was shown to be one repository")
 	}
 }
+
+// TestARemoteDeleteRefusedForItsOwnReasonAsksNoForge: a delete on another
+// remote, and a delete of a reservation branch on origin, are refused for
+// their own reasons, with their own advice, whether no forge client is given
+// or one answers for another repository, and no forge call is made.
+func TestARemoteDeleteRefusedForItsOwnReasonAsksNoForge(t *testing.T) {
+	repo, _ := proofRepo(t)
+	rec := &recorder{}
+	foreign := rec.wrap(func(_ string, args ...string) (string, error) {
+		if isRepoView(args) {
+			return otherView, nil
+		}
+		return `[]`, nil
+	})
+	for name, o := range map[string]DeleteProofOptions{"no forge": {}, "a forge for another repository": {Forge: foreign}} {
+		p := prove(t, o, guard.DeleteTarget{Kind: guard.DeleteRemoteBranch, Dir: repo.Root(), Remote: "upstream", Branch: "feat"})
+		proofRefused(t, p, "only a delete on origin can be proven")
+		r := prove(t, o, guard.DeleteTarget{Kind: guard.DeleteRemoteBranch, Dir: repo.Root(), Remote: "origin", Branch: "abcd-reserved/iss-1"})
+		proofRefused(t, r, "reservation branch")
+		if !strings.Contains(r.Settle, "abcd reserve --sweep --apply") {
+			t.Errorf("%s: the reservation refusal's advice %q does not name the sweep", name, r.Settle)
+		}
+	}
+	if calls := rec.all(); len(calls) != 0 {
+		t.Fatalf("the forge was asked %v", calls)
+	}
+}

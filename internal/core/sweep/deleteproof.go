@@ -258,11 +258,21 @@ func branchHazard(def string, wts []gitutil.Worktree, held gitutil.Held, branch 
 }
 
 // remoteBranch proves a branch delete on origin: at the tip origin holds
-// now, merged, with no open pull request. Every answer it gives rests on
-// origin being one repository matched to the forge (pinned), which is
-// checked first: a push to an address the tip read does not reach would
-// otherwise be proven by what that read found, or did not find.
+// now, merged, with no open pull request. The refusals that read nothing of
+// origin come first, a delete on another remote and the branch hazards, so
+// each names its own reason. Every answer after them, origin's tip read and
+// every answer that can prove the delete safe, rests on origin being one
+// repository matched to the forge (pinned), which is checked before them: a
+// push to an address the tip read does not reach would otherwise be proven
+// by what that read found, or did not find.
 func (p deleteProver) remoteBranch(root, def string, wts []gitutil.Worktree, held gitutil.Held, t guard.DeleteTarget) guard.DeleteProof {
+	if t.Remote != claim.Remote {
+		return unproven("the delete is on the remote "+t.Remote+", and only a delete on "+claim.Remote+" can be proven",
+			"Delete it on "+claim.Remote+", or keep it.")
+	}
+	if pr, bad := branchHazard(def, wts, held, t.Branch); bad {
+		return pr
+	}
 	if p.o.Forge == nil {
 		return unproven("no forge was asked whether a pull request is open on it",
 			"Run the delete where gh is signed in to the repository's forge.")
@@ -270,13 +280,6 @@ func (p deleteProver) remoteBranch(root, def string, wts []gitutil.Worktree, hel
 	gh, why := p.pinned(root)
 	if why != "" {
 		return unproven(why, "Run the delete where origin is one repository, fetched and pushed at the same one, on the forge gh is signed in to.")
-	}
-	if t.Remote != claim.Remote {
-		return unproven("the delete is on the remote "+t.Remote+", and only a delete on "+claim.Remote+" can be proven",
-			"Delete it on "+claim.Remote+", or keep it.")
-	}
-	if pr, bad := branchHazard(def, wts, held, t.Branch); bad {
-		return pr
 	}
 	tip, found, err := p.o.RemoteTip(root, t.Remote, t.Branch)
 	if err != nil {
