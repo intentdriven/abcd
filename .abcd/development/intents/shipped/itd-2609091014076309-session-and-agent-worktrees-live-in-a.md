@@ -185,22 +185,20 @@ _None open._
 Fidelity review — receipt rcp-01d317e17525 (verifier abcd:intent-auditor claude-opus-5-5).
 
 Provenance: abcd:intent-auditor@claude-opus-5-5 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:c4c21d8e0e38a05344c95e8f83e4cea2c02cb4ff3434487e9e1a202f463e418f
-Input attestations: commit:1009cdd4a3127b7adcc75d4bdeb8089d367a73b8 (step 1, on origin/main)@-; commit:5ce7c0e882e8ce7019eca085d6cb1c9fe629f607 (steps 2 to 6, on origin/main)@-; diff:origin/main...b70b459b798f0e7d2b5f80f12e69c9813889b5f9 (step 7 and the close, branch worktree-surfaces-1115)@sha256:6028324478fae2d4a1623c193016f24ba1abd54433acbfe1ccc7c4f300745721;
+Input attestations: commit:1009cdd4a3127b7adcc75d4bdeb8089d367a73b8 (step 1, on origin/main)@-; commit:5ce7c0e882e8ce7019eca085d6cb1c9fe629f607 (steps 2 to 6, on origin/main)@-; diff:origin/main...b70b459b798f0e7d2b5f80f12e69c9813889b5f9 (step 7 and the close, branch worktree-surfaces-1115)@sha256:6028324478fae2d4a1623c193016f24ba1abd54433acbfe1ccc7c4f300745721; commit:01e9fbf41e4ef6061ef6db4977432af072b53ed3 (merge of PR #1577, the registry-label fix for ac-7, on origin/main)@-; tree:4276675814bf85427deedc9b4f5dff01e501ee52 (HEAD of the re-audit worktree, origin/main merged in)@-;
 
-Acceptance rollup: MET 17 · MET_WITH_CONCERNS 3 · NOT_MET 1 · INCONCLUSIVE 0
-
-Audit owed (receipt rcp-01d317e17525): ac-7 NOT_MET. Remedy: fix, then re-run the audit. Carried by iss-2611151551240397.
+Acceptance rollup: MET 18 · MET_WITH_CONCERNS 3 · NOT_MET 0 · INCONCLUSIVE 0
 
 Per-criterion verdicts:
 - ac-1 — MET: Add makes the worktree at the lane path on a new branch and the door prints that path alone; the CLI test checks the path, the branch, and that the checkout's parent gains no entry.
-  evidence: internal/core/ahoy/worktree/worktree.go:350 — "args = []string{"worktree", "add", "-b", branch, "--", path, opts.Base}"
-  evidence: internal/surface/cli/ahoy_worktree.go:173 — "return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { fmt.Fprintln(w, out.Path) })"
-  evidence: internal/surface/cli/ahoy_worktree_test.go:520 — "func TestAhoyWorktreeAddPrintsThePath(t *testing.T) {"
-  evidence: internal/surface/cli/ahoy_worktree_test.go:545 — "t.Fatalf("nothing is made beside the checkout: %d -> %d entries (%v)""
+  evidence: internal/core/ahoy/worktree/worktree.go:352 — "args = []string{"worktree", "add", "-b", branch, "--", path, opts.Base}"
+  evidence: internal/surface/cli/ahoy_worktree.go:174 — "return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { fmt.Fprintln(w, out.Path) })"
+  evidence: internal/surface/cli/ahoy_worktree_test.go:679 — "func TestAhoyWorktreeAddPrintsThePath(t *testing.T) {"
+  evidence: internal/surface/cli/ahoy_worktree_test.go:705 — "t.Fatalf("nothing is made beside the checkout: %d -> %d entries (%v)""
 - ac-2 — MET: levels() makes each level one at a time with EnsureRealDir, then Lstat-checks it before going deeper. Add reads the chain (present) before Ensure, so a symlinked level refuses before git runs. The test plants a symlink at each of the three levels.
   evidence: internal/core/ahoy/worktree/worktree.go:163 — "if err := fsutil.EnsureRealDir(dir, dirPerm); err != nil {"
   evidence: internal/core/ahoy/worktree/worktree.go:175 — "is not real directories: %s is a symlink or a file"
-  evidence: internal/core/ahoy/worktree/worktree.go:322 — "if _, err := lane.present(); err != nil {"
+  evidence: internal/core/ahoy/worktree/worktree.go:324 — "if _, err := lane.present(); err != nil {"
   evidence: internal/core/ahoy/worktree/worktree_test.go:125 — "func TestEnsureRefusesASymlinkedLevel(t *testing.T) {"
   evidence: internal/core/ahoy/worktree/worktree_test.go:99 — "func TestEnsureMakesEachLevelTheCallersAlone(t *testing.T) {"
 - ac-3 — MET: CallersAlone holds every level to a single owner and no group or other write bit. Tests cover modes 0770, 0722 and 0777 and a substituted foreign owner at each level, and nothing is made beneath a refused level.
@@ -210,10 +208,10 @@ Per-criterion verdicts:
   evidence: internal/core/ahoy/worktree/worktree_test.go:202 — "func TestEnsureRefusesALevelAnotherAccountOwns(t *testing.T) {"
 - ac-4 — MET: ValidName, the occupied-path check and the root-commit check each refuse with a named reason before any level is made. --branch checks out an existing branch with no new ref. The CLI and core tests cover ../x, -x, a taken name, no commits and --branch.
   evidence: internal/core/ahoy/worktree/worktree.go:194 — "func ValidName(name string) bool {"
-  evidence: internal/core/ahoy/worktree/worktree.go:328 — "%s is occupied: git lists a worktree there already"
+  evidence: internal/core/ahoy/worktree/worktree.go:330 — "%s is occupied: git lists a worktree there already"
   evidence: internal/core/ahoy/worktree/worktree.go:101 — "the repository has no root commit to key the worktree store on"
-  evidence: internal/surface/cli/ahoy_worktree_test.go:582 — "func TestAhoyWorktreeAddRefusesAndWritesNothing(t *testing.T) {"
-  evidence: internal/surface/cli/ahoy_worktree_test.go:561 — "func TestAhoyWorktreeAddChecksOutAnExistingBranch(t *testing.T) {"
+  evidence: internal/surface/cli/ahoy_worktree_test.go:741 — "func TestAhoyWorktreeAddRefusesAndWritesNothing(t *testing.T) {"
+  evidence: internal/surface/cli/ahoy_worktree_test.go:720 — "func TestAhoyWorktreeAddChecksOutAnExistingBranch(t *testing.T) {"
   evidence: internal/core/ahoy/worktree/worktree_test.go:424 — "func TestAddRefusesBeforeWritingAnything(t *testing.T) {"
 - ac-5 — MET: The loop's lane step calls worktree.LaneForContext, Ensure, Adopt and Add (through the addWorktree seam). The test watches that seam and finds exactly one Add call at the store's path, and none on adoption.
   evidence: internal/core/implement/loop/lane.go:42 — "var addWorktree = worktree.Add"
@@ -223,11 +221,20 @@ Per-criterion verdicts:
   evidence: internal/core/ahoy/worktree/list.go:240 — "case filepath.Dir(real) == realLane:"
   evidence: internal/core/ahoy/worktree/list_test.go:72 — "func TestListRendersTheLaneAndASibling(t *testing.T) {"
   evidence: internal/core/ahoy/worktree/list_test.go:98 — ""sibling": {Branch: "sib", Where: "outside", State: "clean", Merged: "unmerged"},"
-- ac-7 — NOT_MET: The criterion promises that `abcd ahoy worktree list --all` shows registered lanes under their index.json names. The door calls ListAll with no Labels, and ahoy has no RegistryLabels reader. So every lane, registered or not, renders under its SHA. The core labelling is tested only by passing Labels by hand, and the brief and the plugin page record the gap. The stale-path, checkout-not-found and not-a-lane halves are delivered.
-  evidence: internal/surface/cli/ahoy_worktree.go:81 — "// The registry's labels have no exported reader yet, so every"
-  evidence: internal/surface/cli/ahoy_worktree.go:83 — "got, err := worktree.ListAll(worktree.AllOptions{Here: hereOrNone(), Forge: worktreeForge})"
-  evidence: .abcd/development/brief/04-surfaces/01-ahoy.md:352 — "The registry's repository names are not read yet, so a"
-  evidence: internal/core/ahoy/worktree/list_test.go:258 — "got, err := worktree.ListAll(worktree.AllOptions{Labels: labels, Here: alpha.Root()})"
+- ac-7 — MET: The door now reads the registry: registryLabels() calls ahoy.RegistryLabels, which maps each root commit in ~/.abcd.noindex/history/index.json (read under the machine home, through the scrubbing loader) to its name, and passes the map to ListAll, which heads a lane with its registry name and leaves an unregistered one under its SHA. The CLI test registers one of two lanes with a path that does not exist and checks the registered lane's name and the other's SHA in both forms. The core test covers two registered lanes and one unregistered, a stale registry path that leaves the rows byte-identical, a moved checkout as 'checkout not found' with the repair hint, and an abbreviated directory as 'not a lane' naming the full-key lane and git worktree remove. The brief and the plugin page now describe the labelling.
+  evidence: internal/surface/cli/ahoy_worktree.go:82 — "labels, note := registryLabels()"
+  evidence: internal/surface/cli/ahoy_worktree.go:83 — "got, err := worktree.ListAll(worktree.AllOptions{Labels: labels, Here: hereOrNone(), Forge: worktreeForge})"
+  evidence: internal/surface/cli/ahoy_worktree.go:433 — "reg, err := ahoy.RegistryLabels()"
+  evidence: internal/core/ahoy/registry_labels.go:36 — "func RegistryLabels() (map[string]RegistryLabel, error) {"
+  evidence: internal/core/ahoy/registry_labels.go:42 — "idx, err := loadHistoryIndexUnder(home)"
+  evidence: internal/core/ahoy/worktree/list.go:469 — "if l, ok := opts.Labels[n]; ok && l.Name != "" {"
+  evidence: internal/surface/cli/ahoy_worktree_test.go:231 — "func TestAhoyWorktreeListAllLabelsRegisteredLanes(t *testing.T) {"
+  evidence: internal/surface/cli/ahoy_worktree_test.go:233 — ""name": "alpha-repo", "path": "/no/such/checkout""
+  evidence: internal/core/ahoy/worktree/list_test.go:235 — "func TestListAllLabelsEveryLane(t *testing.T) {"
+  evidence: internal/core/ahoy/worktree/list_test.go:280 — "if moved.Reason != "checkout not found; run `git worktree repair` from the checkout""
+  evidence: internal/core/ahoy/worktree/list_test.go:298 — "t.Fatalf("a stale registry path changed the rows:\n%s\n%s", a, b)"
+  evidence: .abcd/development/brief/04-surfaces/01-ahoy.md:351 — "under its repository's name where its root commit is registered in"
+  evidence: commands/ahoy.md:1792 — "from any folder. Each lane is shown under its repository's name where its root"
 - ac-8 — MET: reclaim runs `git worktree remove` without --force and never deletes a branch. The test checks that the directory is gone and unlisted, that refs/heads/done still verifies, and that the row reads reclaimed.
   evidence: internal/core/ahoy/worktree/prune.go:302 — "_, err := gitutil.Run(repoRoot, "worktree", "remove", "--", path)"
   evidence: internal/core/ahoy/worktree/prune_test.go:98 — "func TestPruneReclaimsAMergedCleanWorktree(t *testing.T) {"
@@ -245,17 +252,17 @@ Per-criterion verdicts:
   evidence: internal/core/ahoy/worktree/quiet_test.go:68 — "func TestPruneListsAQuietWorktreeWithItsDossier(t *testing.T) {"
   evidence: internal/core/ahoy/worktree/quiet_test.go:144 — "func TestPruneYesRemovesTheNamedQuietCandidateOnly(t *testing.T) {"
   evidence: internal/core/ahoy/worktree/quiet_test.go:193 — "func TestPruneKeepsADirtyNamedQuietCandidate(t *testing.T) {"
-  evidence: internal/surface/cli/ahoy_worktree_test.go:434 — "func TestAhoyWorktreePruneListsAndNamesQuietCandidates(t *testing.T) {"
+  evidence: internal/surface/cli/ahoy_worktree_test.go:593 — "func TestAhoyWorktreePruneListsAndNamesQuietCandidates(t *testing.T) {"
 - ac-12 — MET_WITH_CONCERNS: scan() runs lane.present() before it judges anything, and the door maps any refusal to exit 2. Tests cover a group-writable lane and a symlinked store with nothing removed. Concern: 'another account's directory' is never driven through prune; it is proved only by Ensure's substituted-owner test of the shared levels() function. Exit 2 at the door is tested only for a 0777 lane.
   evidence: internal/core/ahoy/worktree/list.go:208 — "inLane, err := lane.present()"
-  evidence: internal/surface/cli/ahoy_worktree.go:65 — "return &exitError{Code: 2, Msg: "abcd ahoy worktree " + verb + ": ""
+  evidence: internal/surface/cli/ahoy_worktree.go:66 — "return &exitError{Code: 2, Msg: "abcd ahoy worktree " + verb + ": ""
   evidence: internal/core/ahoy/worktree/prune_test.go:259 — "func TestPruneRefusesAStoreItCannotTrust(t *testing.T) {"
-  evidence: internal/surface/cli/ahoy_worktree_test.go:354 — "func TestAhoyWorktreePruneRefusesAStoreItCannotTrust(t *testing.T) {"
+  evidence: internal/surface/cli/ahoy_worktree_test.go:513 — "func TestAhoyWorktreePruneRefusesAStoreItCannotTrust(t *testing.T) {"
 - ac-13 — MET: Outside, dirty and unmerged rows are kept, each with its reason. The door exits 1 when Reclaimed() is 0 and 0 otherwise. The core test checks the three reasons and the counts; the CLI test checks exit 1 for an unmerged lane and exit 0 once a merged one is reclaimed.
   evidence: internal/core/ahoy/worktree/prune.go:283 — "return "outside the store; never touched""
-  evidence: internal/surface/cli/ahoy_worktree.go:243 — "if got.Reclaimed() == 0 {"
+  evidence: internal/surface/cli/ahoy_worktree.go:244 — "if got.Reclaimed() == 0 {"
   evidence: internal/core/ahoy/worktree/prune_test.go:297 — "func TestPruneKeepsWhatItCannotReclaim(t *testing.T) {"
-  evidence: internal/surface/cli/ahoy_worktree_test.go:196 — "func TestAhoyWorktreePruneExitCodes(t *testing.T) {"
+  evidence: internal/surface/cli/ahoy_worktree_test.go:355 — "func TestAhoyWorktreePruneExitCodes(t *testing.T) {"
 - ac-14 — MET: A lane directory git does not list gets reasonNotListed. A listed one whose common directory differs gets reasonOtherCommon. refusedFor keeps any row that has a reason. The test plants both, and both stay untouched and reported.
   evidence: internal/core/ahoy/worktree/list.go:260 — "e := entry{path: lane.Path(n), name: n, where: WhereStore, reason: reasonNotListed}"
   evidence: internal/core/ahoy/worktree/list.go:316 — "case fsutil.RealExistingPath(common) != own:"
@@ -268,7 +275,7 @@ Per-criterion verdicts:
 - ac-16 — MET: On a dry run, reclaim stops before the archive and the removal and reports 'would reclaim'. The core test compares dry-run rows to real-run rows field by field. The CLI test checks the --dry-run --json rows and the exit code.
   evidence: internal/core/ahoy/worktree/prune.go:316 — "if opts.DryRun {"
   evidence: internal/core/ahoy/worktree/prune_test.go:433 — "func TestPruneDryRunReportsTheRowsARealRunWould(t *testing.T) {"
-  evidence: internal/surface/cli/ahoy_worktree_test.go:208 — "js, code := runWorktree(t, true, "prune", "--dry-run")"
+  evidence: internal/surface/cli/ahoy_worktree_test.go:367 — "js, code := runWorktree(t, true, "prune", "--dry-run")"
 - ac-17 — MET_WITH_CONCERNS: boardScan runs one peers.Scan and feeds the worktrees member. The line is absent on an empty lane and is not part of statusblock.Block. The test checks held 2 and reclaimable 1, the absence on an empty lane, and the status block. Concern 1: 'reclaimable' is the peers scan's 'spent' estimate, not prune's judgement. It misses a squash-merged branch and counts a locked or freshly cut worktree; the product thinker signed this off as 'can be cleared' in the spec's Open Point. Concern 2: 'starts no per-lane status read' is held by the code's shape alone; no test asserts it.
   evidence: internal/surface/cli/peers.go:413 — "rep, err := peers.Scan(root)"
   evidence: internal/surface/cli/board_worktrees.go:35 — "held, spent := rep.HeldUnder(lane.Dir)"
@@ -278,22 +285,22 @@ Per-criterion verdicts:
   evidence: internal/core/ahoy/worktree/worktree.go:82 — "sha, err := gitutil.RootCommit(repoRoot)"
   evidence: internal/core/ahoy/worktree/list_test.go:146 — "func TestListFromAMovedCheckoutFindsTheSameLane(t *testing.T) {"
 - ac-19 — MET: finish() narrows the directory git made to the owner. Both the core and CLI add tests check Perm() == 0o700. On a filesystem that cannot change modes, the worktree keeps git's mode by design.
-  evidence: internal/core/ahoy/worktree/worktree.go:436 — "_, _ = fsutil.NarrowToOwner(path)"
-  evidence: internal/surface/cli/ahoy_worktree_test.go:541 — "if fi, err := os.Lstat(l.Path("feature")); err != nil || fi.Mode().Perm() != 0o700 {"
+  evidence: internal/core/ahoy/worktree/worktree.go:441 — "_, _ = fsutil.NarrowToOwner(path)"
+  evidence: internal/surface/cli/ahoy_worktree_test.go:700 — "if fi, err := os.Lstat(l.Path("feature")); err != nil || fi.Mode().Perm() != 0o700 {"
   evidence: internal/core/ahoy/worktree/worktree_test.go:292 — "if fi, err := os.Lstat(got.Path); err != nil || fi.Mode().Perm() != 0o700 {"
 - ac-20 — MET: AGENTS.md's concurrent-sessions convention at HEAD names `scripts/abcd.sh ahoy worktree add <name>` and the store path, and names no `git worktree add` or `../`. The test checks both.
   evidence: AGENTS.md:308 — "Make it with `scripts/abcd.sh ahoy worktree add <name>` and work in the"
-  evidence: internal/surface/cli/ahoy_worktree_test.go:1047 — "func TestAgentsNamesTheWorktreeVerbAndNoSiblingForm(t *testing.T) {"
+  evidence: internal/surface/cli/ahoy_worktree_test.go:1207 — "func TestAgentsNamesTheWorktreeVerbAndNoSiblingForm(t *testing.T) {"
 - ac-21 — MET: commands/ahoy.md carries the host-run step: an agent needing an isolated checkout runs add and works in the printed path, never the host's default place. The test checks those phrases.
   evidence: commands/ahoy.md:1746 — "**The host-run step.** When you need an isolated checkout, for a lane, a"
   evidence: commands/ahoy.md:1748 — "path it prints. Do not use the place your host would put a worktree by default,"
-  evidence: internal/surface/cli/ahoy_worktree_test.go:1024 — "func TestAhoyPageCarriesTheWorktreeHostRunStep(t *testing.T) {"
+  evidence: internal/surface/cli/ahoy_worktree_test.go:1183 — "func TestAhoyPageCarriesTheWorktreeHostRunStep(t *testing.T) {"
 
 Gap audit:
 - honoured:
   - add creates the worktree in ~/.abcd.noindex/worktrees/< root-sha>/< name>/ through a level-by-level, symlink- and owner-checked maker, at 0700, and writes nothing beside the checkout
     evidence: internal/core/ahoy/worktree/worktree.go:154 — "func levels(home, rel, what string, create bool) (bool, error) {"
-    evidence: internal/surface/cli/ahoy_worktree_test.go:520 — "func TestAhoyWorktreeAddPrintsThePath(t *testing.T) {"
+    evidence: internal/surface/cli/ahoy_worktree_test.go:679 — "func TestAhoyWorktreeAddPrintsThePath(t *testing.T) {"
   - one store primitive: the build loop's lane goes through worktree.Add, Adopt, Ensure and LaneFor
     evidence: internal/core/implement/loop/lane_store_test.go:15 — "func TestTheLaneGoesThroughTheStorePackage(t *testing.T) {"
   - prune removes only what passes the proof of belonging and is merged and clean, never forces, keeps the branch, and names every kept worktree with its reason
@@ -304,10 +311,14 @@ Gap audit:
   - quiet worktrees are listed with a dossier, dirty state first, and go only when named with --yes
     evidence: internal/core/ahoy/worktree/quiet_test.go:144 — "func TestPruneYesRemovesTheNamedQuietCandidateOnly(t *testing.T) {"
   - exit codes 0 reclaimed, 1 nothing reclaimed, 2 refusal or fault, with a dry run answering the real run's code
-    evidence: internal/surface/cli/ahoy_worktree_test.go:196 — "func TestAhoyWorktreePruneExitCodes(t *testing.T) {"
+    evidence: internal/surface/cli/ahoy_worktree_test.go:355 — "func TestAhoyWorktreePruneExitCodes(t *testing.T) {"
   - AGENTS.md and the ahoy plugin page point an agent at the add verb and the printed path
     evidence: AGENTS.md:308 — "Make it with `scripts/abcd.sh ahoy worktree add <name>` and work in the"
     evidence: commands/ahoy.md:1746 — "**The host-run step.** When you need an isolated checkout, for a lane, a"
+  - list --all names each registered lane from ~/.abcd.noindex/history/index.json and leaves an unregistered one under its root commit; the registry's path label is never read, and an unreadable or refused registry keeps every lane under its SHA with one path-free note
+    evidence: internal/surface/cli/ahoy_worktree.go:433 — "reg, err := ahoy.RegistryLabels()"
+    evidence: internal/surface/cli/ahoy_worktree_test.go:260 — "func TestAhoyWorktreeListAllWithoutARegistry(t *testing.T) {"
+    evidence: internal/core/ahoy/worktree/list_test.go:235 — "func TestListAllLabelsEveryLane(t *testing.T) {"
 - diverged:
   - The board's reclaimable count was promised as the count prune would reclaim. The delivered count is the peers scan's 'spent' estimate (merged by ancestry, record folders clean). It can miss a squash merge and can count a locked or freshly cut worktree. The product thinker signed this off as 'can be cleared'.
     evidence: internal/core/peers/read.go:135 — "func (r Report) HeldUnder(dir string) (held, spent int) {"
@@ -317,10 +328,7 @@ Gap audit:
   - 'Merged' was promised as the forge state or patch-equivalence. The delivered ladder adds an ancestry rung that counts only a branch with a commit of its own. A forge answer counts only when the pull request's head is the local tip, so the forge rung is narrower than promised.
     evidence: internal/core/ahoy/worktree/merged.go:157 — "if pr.State == "MERGED" && !pr.IsCrossRepository && pr.HeadRefOid == tip && pr.BaseRefName == branchName(def) {"
     evidence: internal/core/ahoy/worktree/merged.go:170 — "if ownCommit(dir, ref, tip, start) {"
-- missing:
-  - `list --all` was promised to label each lane through ~/.abcd.noindex/history/index.json. No RegistryLabels reader exists, and the door passes no labels, so every lane shows under its SHA. No issue tracks the gap.
-    evidence: internal/surface/cli/ahoy_worktree.go:83 — "got, err := worktree.ListAll(worktree.AllOptions{Here: hereOrNone(), Forge: worktreeForge})"
-    evidence: .abcd/development/brief/04-surfaces/01-ahoy.md:352 — "The registry's repository names are not read yet, so a"
+- missing: (none)
 
 Scope-condition dispositions:
 - cond-2609301811538239 — narrowed: A worktree the user made by hand outside the lane is listed as outside and never touched. But 'store' versus 'outside' is decided by location alone, with no record of who made a worktree. A worktree placed by hand inside the lane passes the proof of belonging and is reclaimed once merged and clean.
@@ -343,6 +351,8 @@ Scope-condition dispositions:
   evidence: internal/surface/cli/ahoy_worktree_test.go:120 — "func TestAhoyWorktreeListNeverPrintsTheAbsolutePath(t *testing.T) {"
   evidence: internal/core/ahoy/worktree/prune_test.go:222 — "if strings.Contains(string(b), home) || strings.Contains(string(b), pat) {"
 <!-- abcd-review-end receipt=rcp-01d317e17525 -->
+
+Audit owed flag cleared 2026-11-15 (receipt rcp-01d317e17525): a re-run of the audit judged no criterion NOT_MET or INCONCLUSIVE, and iss-2611151551240397 is resolved.
 
 ## Grounds
 
