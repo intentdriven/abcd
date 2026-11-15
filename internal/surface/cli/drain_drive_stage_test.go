@@ -461,6 +461,46 @@ func TestThereIsNoFlagThatOpensAGate(t *testing.T) {
 	}
 }
 
+// TestAPreflightReadsNoGoWorkspaceOrGoSettingsFile: the preflight runs with
+// GOWORK=off and GOENV=off, whatever the environment carries, and with GOFLAGS
+// stated.
+func TestAPreflightReadsNoGoWorkspaceOrGoSettingsFile(t *testing.T) {
+	w := newDriveWorld(t)
+	p, err := runner.DriveProfile(w.home, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Repo = w.repo
+	if _, err := runner.WriteWallSettings(p, runner.SelfBinary()); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOWORK", "/elsewhere/go.work")
+	t.Setenv("GOENV", "/elsewhere/env")
+	was := drivePreflightProgram
+	t.Cleanup(func() { drivePreflightProgram = was })
+	dir := t.TempDir()
+	env := filepath.Join(dir, "env")
+	drivePreflightProgram = func() (string, []string, error) {
+		return "/bin/sh", []string{"-c", "/usr/bin/env > '" + env + "'"}, nil
+	}
+	if err := drivePreflight(os.Stderr, p)(context.Background(), dir); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(raw), "\n")
+	for _, want := range []string{"GOWORK=off", "GOENV=off"} {
+		if !slices.Contains(lines, want) {
+			t.Errorf("the preflight's environment lacks %s:\n%s", want, raw)
+		}
+	}
+	if !slices.ContainsFunc(lines, func(l string) bool { return strings.HasPrefix(l, "GOFLAGS=") }) {
+		t.Errorf("the preflight's environment states no GOFLAGS:\n%s", raw)
+	}
+}
+
 // TestAPreflightLeavesNoProcessBehind: on success and on failure.
 func TestAPreflightLeavesNoProcessBehind(t *testing.T) {
 	w := newDriveWorld(t)

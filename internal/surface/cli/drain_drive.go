@@ -894,12 +894,13 @@ func driveLog(repoRoot string, w io.Writer) (say func(string), detail io.Writer,
 		}
 }
 
-// drivePreflight runs the repository's preflight in a lane's worktree behind
-// the load gate, as a process group of its own, so the terminal's interrupt
-// does not reach it, and with only what a stage carries of the environment,
-// since the lane's own files decide what it runs.
-func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, worktree string) error {
-	return func(ctx context.Context, worktree string) error {
+// drivePreflight runs the repository's preflight in checkout, the drive's own
+// checkout of a lane's head, behind the load gate, as a process group of its
+// own, so the terminal's interrupt does not reach it, and with only what a
+// stage carries of the environment, since the lane's own files decide what it
+// runs (preflightGoEnv).
+func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, checkout string) error {
+	return func(ctx context.Context, checkout string) error {
 		program, args, err := drivePreflightProgram()
 		if err != nil {
 			return err
@@ -909,8 +910,8 @@ func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, wor
 		}
 		// #nosec G204 -- program is the running binary; the arguments are fixed.
 		cmd := exec.CommandContext(ctx, program, args...)
-		cmd.Dir = worktree
-		cmd.Env = runner.PreflightEnv(p)
+		cmd.Dir = checkout
+		cmd.Env = preflightGoEnv(runner.PreflightEnv(p))
 		cmd.Stdout, cmd.Stderr = w, w
 		procgroup.Lead(cmd)
 		cmd.Cancel = func() error { return procgroup.Kill(cmd) }
@@ -918,6 +919,30 @@ func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, wor
 		procgroup.KillLeft(cmd)
 		return err
 	}
+}
+
+// preflightGoEnv is env with Go told to read no workspace file (GOWORK=off),
+// which a checkout could hold beside go.mod, ignored, and no settings file of
+// its own (GOENV=off), which lies under the stage's home; GOFLAGS is stated,
+// empty, when env carries none, so nothing else supplies it.
+func preflightGoEnv(env []string) []string {
+	out := make([]string, 0, len(env)+3)
+	flags := false
+	for _, kv := range env {
+		k, _, _ := strings.Cut(kv, "=")
+		switch k {
+		case "GOWORK", "GOENV":
+			continue
+		case "GOFLAGS":
+			flags = true
+		}
+		out = append(out, kv)
+	}
+	out = append(out, "GOWORK=off", "GOENV=off")
+	if !flags {
+		out = append(out, "GOFLAGS=")
+	}
+	return out
 }
 
 // driveWhy is what stopped a drive, as a clause to follow its end words.

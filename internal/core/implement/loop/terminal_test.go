@@ -17,6 +17,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -166,6 +167,17 @@ type terminalWorld struct {
 	// noReceipt makes a land stage wait for its receipt however often the
 	// preflight has run.
 	noReceipt bool
+	// plantedReceipt makes a land stage land only when the drive takes the
+	// lane's head for one its own preflight passed on.
+	plantedReceipt bool
+	// onPreflight, when set, runs as the preflight does, in the checkout it
+	// is given, before the stand-in mints its receipt; an error is the
+	// preflight's.
+	onPreflight func(checkout string) error
+	// worktree is the lane's worktree every lane's worktree stage names, a
+	// linked worktree of the repository, and head the commit made there,
+	// which that stage records as the lane's head.
+	worktree, head string
 }
 
 func newTerminalWorld(t *testing.T, script ...string) *terminalWorld {
@@ -190,11 +202,18 @@ func newTerminalWorld(t *testing.T, script ...string) *terminalWorld {
 // fakeStages are a lane's stages with an implementer the runner starts, whose
 // verifier reads the receipt it wrote, and a landing that says what it did.
 func (w *terminalWorld) fakeStages(t *testing.T) Stages {
-	worktree := t.TempDir()
+	worktree := filepath.Join(t.TempDir(), "lane")
+	w.repo.Git("worktree", "add", "-q", "--detach", worktree, "HEAD")
+	wt := gittest.OpenRepo(t, worktree)
+	ignore, _ := os.ReadFile(filepath.Join(worktree, ".gitignore"))
+	wt.Write(".gitignore", string(ignore)+".abcd/.work.local/\ngo.work\n")
+	wt.Write("a.go", "package a\n")
+	wt.Commit("the lane's work")
+	w.worktree, w.head = worktree, strings.TrimSpace(wt.Git("rev-parse", "HEAD"))
 	var n atomic.Int64
 	return Stages{
 		{Name: StageWorktree, Piece: 6, Run: func(c Context, l *Lane) (Outcome, error) {
-			l.Branch, l.Worktree, l.BaseSHA = "build/"+l.ID, worktree, driveBase
+			l.Branch, l.Worktree, l.BaseSHA, l.HeadSHA = "build/"+l.ID, worktree, driveBase, w.head
 			return Outcome{Note: "worktree done"}, nil
 		}},
 		{Name: StageBrief, Piece: 5, Run: func(c Context, l *Lane) (Outcome, error) {
@@ -217,6 +236,11 @@ func (w *terminalWorld) fakeStages(t *testing.T) Stages {
 			}},
 		{Name: StageValidate, Piece: 8, Run: func(Context, *Lane) (Outcome, error) { return Outcome{Note: "validate done"}, nil }},
 		{Name: StageLand, Piece: 9, Run: func(c Context, l *Lane) (Outcome, error) {
+			if w.plantedReceipt && (c.receiptOwn == nil || !c.receiptOwn(l.HeadSHA)) {
+				r := contend(string(StageLand), "", l.ID, "the receipt naming the lane's head is not one the drive's own preflight passed", "run the preflight")
+				r.checkWait = c.Now
+				return Outcome{}, r
+			}
 			if w.noReceipt || w.needsPreflight && len(w.preflights) == 0 {
 				r := contend(string(StageLand), "", l.ID, "no preflight receipt names the lane's head", "run the preflight")
 				r.checkWait = c.Now
@@ -238,9 +262,17 @@ func (w *terminalWorld) options(t *testing.T) TerminalOptions {
 		Stages:  w.stages,
 		Stop:    w.stop,
 		Say:     func(s string) { w.lines = append(w.lines, s) },
-		Preflight: func(_ context.Context, worktree string) error {
-			w.preflights = append(w.preflights, worktree)
-			return w.preflight
+		Preflight: func(_ context.Context, checkout string) error {
+			w.preflights = append(w.preflights, checkout)
+			if w.onPreflight != nil {
+				if err := w.onPreflight(checkout); err != nil {
+					return err
+				}
+			}
+			if w.preflight != nil {
+				return w.preflight
+			}
+			return mintStandInReceipt(checkout)
 		},
 		Sleep: func(_ context.Context, d time.Duration) {
 			w.sleeps = append(w.sleeps, d)
@@ -623,4 +655,19 @@ func TestARetryAfterIsTheWaitOfAProofsNextTry(t *testing.T) {
 	if !slices.ContainsFunc(w.lines, func(l string) bool { return strings.Contains(l, "the file answered wrongly") }) {
 		t.Fatalf("the line:\n%s", strings.Join(w.lines, "\n"))
 	}
+}
+
+// mintStandInReceipt writes, as the repository's preflight does when it passes,
+// a receipt for the checkout's HEAD in its local tier.
+func mintStandInReceipt(checkout string) error {
+	out, err := exec.Command("git", "-C", checkout, "rev-parse", "HEAD").Output()
+	if err != nil {
+		return err
+	}
+	head := strings.TrimSpace(string(out))
+	dir := filepath.Join(checkout, filepath.FromSlash(landing.ReceiptsRelDir))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, head), []byte("commit "+head+"\nscope full\n"), 0o600)
 }

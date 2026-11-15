@@ -576,8 +576,15 @@ The driver's commit, merge and reset hooks, and any filter run inside those comm
 the same variables and home as a stage, and read the git configuration the drive wrote
 rather than any a stage left in that home; its network commands, its other filters and its
 forge calls keep the person's environment. A preflight runs
-with what a stage carries too, and only a receipt from a preflight the drive ran itself
-lands a lane. A lane at its landing that changes the Makefile, `scripts/`, the active
+with what a stage carries too, with Go's workspace file and its own settings file off
+(`GOWORK=off`, `GOENV=off`), and never in the lane's worktree: just before it the drive
+reads again the settings it holds, those that change what a checkout writes among them,
+then adds its own checkout of the lane's head as stored, in a directory it makes,
+compares that checkout with the head's tree by content before the preflight and after it,
+through an index it builds itself, with any untracked file outside the checkout's local
+tier a difference, and removes it once the preflight has ended. Only a head the drive saw
+pass there lands a lane, and the receipt that preflight minted is taken into the main
+checkout's local tier, where the pre-push hook finds it. A lane at its landing that changes the Makefile, `scripts/`, the active
 hooks, the forge's workflow folder (`.github/`) or abcd's configuration, receipts or
 approvals, measured from what it last merged of the default branch, is handed back, and an issue that names one is passed over before a lane
 opens, whatever the case of the name: that change needs a person's own session, and the

@@ -102,9 +102,10 @@ type TerminalOptions struct {
 	Stages Stages
 	// Review is the reviewer route, as `implement step` hands it.
 	Review *ReviewRoute
-	// Preflight runs the repository's preflight in a lane's worktree, behind
-	// the load gate.
-	Preflight func(ctx context.Context, worktree string) error
+	// Preflight runs the repository's preflight behind the load gate in
+	// checkout, the drive's own checkout of a lane's head
+	// (preflightcheckout.go), never the lane's worktree.
+	Preflight func(ctx context.Context, checkout string) error
 	// PreflightAllowed says whether a lane's preflight may run, given its
 	// worktree, base and head: the head its landing lands, the judged head or
 	// the landing's records commit on it, never what the worktree has checked
@@ -297,7 +298,9 @@ type terminal struct {
 	wallEnded string
 	// judge is what the last move's routed judgement came to.
 	judge JudgeOutcome
-	// minted names each head a preflight this run ran exited 0 on, and bases each
+	// minted names each head a preflight this run ran exited 0 on in the
+	// drive's own checkout of that head, which held the head's content before
+	// and after (ownPreflight); it is the drive's memory, never a file. bases each
 	// lane's base as the run first read it.
 	minted map[string]bool
 	bases  map[string]string
@@ -1831,14 +1834,19 @@ func (t *terminal) stepRefused(ctx context.Context, runID string, err error) (ag
 	if !t.wallHeld() {
 		return false, TerminalWall, nil
 	}
-	t.say("%s %s: running the preflight", runID, lane.ID)
-	switch perr := t.preflight(ctx, lane.Worktree); {
+	// The preflight runs in the drive's own checkout of the lane's stored head,
+	// never in the lane's worktree (preflightcheckout.go), and a receipt is the
+	// drive's own only for a head it saw pass there.
+	held, perr := t.ownPreflight(ctx, runID, lane)
+	switch {
+	case ctx.Err() != nil || t.stopped() || t.stopHolds():
+		return false, "", nil
+	case held != "":
+		return t.laneRefused(ctx, runID, lane.ID, held, "")
 	case perr == nil:
 		t.ranClean = head
 		t.minted[lane.HeadSHA] = true
 		return true, "", nil
-	case ctx.Err() != nil || t.stopped() || t.stopHolds():
-		return false, "", nil
 	default:
 		return t.laneRefused(ctx, runID, lane.ID, "its preflight failed: "+perr.Error(), "")
 	}
@@ -1846,7 +1854,7 @@ func (t *terminal) stepRefused(ctx context.Context, runID string, err error) (ag
 
 // preflight runs a lane's preflight on a context a stop also ends, this terminal's or one
 // set from outside it, so one queued at the load gate or running does not outlast it.
-func (t *terminal) preflight(ctx context.Context, worktree string) error {
+func (t *terminal) preflight(ctx context.Context, checkout string) error {
 	pctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	looked := make(chan struct{})
@@ -1871,7 +1879,7 @@ func (t *terminal) preflight(ctx context.Context, worktree string) error {
 	}()
 	var err error
 	t.beginCall("the preflight")
-	t.renewing(func() { err = t.o.Preflight(pctx, worktree) })
+	t.renewing(func() { err = t.o.Preflight(pctx, checkout) })
 	cancel()
 	<-looked
 	return err
