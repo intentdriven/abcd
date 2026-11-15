@@ -133,6 +133,7 @@ One JSON object and nothing else:
   "rows": [
     {"tab": 1, "header_and_frame": 8, "question_text": 9, "options": 6, "total": 23}
   ],
+  "limits": {"rows": "<the check's>", "label_words": "<the check's>", "description_sentences": "<the check's>"},
   "next": [],
   "version": "<the version the check reported>",
   "checked_by": "abcd"
@@ -143,6 +144,9 @@ One JSON object and nothing else:
   first part, byte for byte: the draft it exited 0 on. `ready` itself is the
   whole `{"questions": [...]}` object; you return only the array inside it.
 - `rows` is the check's `rows` for that part, never figures of your own.
+- `limits` is the check's `limits`, the values in force in this checkout that
+  it measured against: never figures of your own or either file's. A
+  `hook-only` or `hand` return carries none, since no check reported them.
 - `next` lists, in order, the parts asked after the first, each checked the
   same way and carrying its own `questions` and `rows`, and an `after` naming
   the answer that leads to it where only one answer does (`"None of these"`).

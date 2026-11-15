@@ -253,6 +253,7 @@ func TestWriterPageStatesItsRefusalsAndFallbacks(t *testing.T) {
 		"never refused for length":                       {"never refuse for length", "numbered parts", `"None of these"`, "Q1b", "every answer's gain and cost"},
 		"the source tree in abcd's checkout":             {"abcd's own source checkout", "`scripts/abcd.sh guard question`", "`version` it reports"},
 		"what it returns":                                {"`questions`", "`rows`", "`version`", "`ready`"},
+		"the limits it reports are the check's":          {"`limits` is the check's `limits`", "never figures of your own or either file's"},
 		"a hand count is at abcd's defaults":             {"A hand count is made at abcd's defaults", "neither the repository's values nor the person's were read", "Say so in a `note` beside `checked_by`"},
 		"an unchecked pass is not done":                  {"exits 0 with a `ready` input and `abcds` `true`", "An exit 0 with `hook` `admit-unchecked` is not done", "`abcds` is `false`", "Fix the header to abcd's number"},
 	} {

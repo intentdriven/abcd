@@ -30,7 +30,8 @@ split into parts (step 4; itd-2610230756259215 decision 33). The hand-written
 part says when an exit 0 of the check counts as done, and that a hand count,
 made only where the host gives no shell, is made at abcd's defaults, reading
 neither the repository's values nor the person's, with a `note` saying so
-(decision 10). Unmeasured, in the `0.x` band.
+(decision 10). The return carries the check's `limits`, the values it measured
+against, beside `rows`. Unmeasured, in the `0.x` band.
 
 ## 2026-11-15 (itd-2610230756259215 — abcd's question writer checks every draft)
 
