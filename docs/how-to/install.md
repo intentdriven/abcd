@@ -388,6 +388,13 @@ badge, and in the harness's session list.
 - **Naming never holds a session up.** If the record cannot be read or written
   within two seconds, or the process list cannot be read, the session starts
   unnamed and one line on the hook's error output says why.
+- **A name is held for as long as the session runs.** Each prompt checks the
+  session's place in the record. A resumed session whose name could not be
+  recorded when it started is recorded at its next prompt. If two running
+  sessions carry one name, the one that claimed it later takes the next free
+  name, and that prompt tells you and the session which name it now has. If
+  the check cannot finish in time, the prompt changes nothing and tries again
+  next time.
 
 ## Where your session transcripts are kept
 

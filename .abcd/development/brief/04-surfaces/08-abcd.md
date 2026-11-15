@@ -240,7 +240,23 @@ session was given it since; a fork takes the next free name at its first
 prompt while the session it came from runs. A name is not handed out again
 while any named session runs, except that of a session resumed after its
 record aged out of the newest 512, and naming restarts at the first persona once
-every named session's host process has ended. The board's presence
+every named session's host process has ended. A session's name is free only
+when the process that last held it is gone, judged by its process id and its
+start time together, so a process id the system has given to a later process
+does not keep a name held. Every prompt re-asserts the session's hold on its
+name. When the register has no entry for a session that carries the name abcd
+gave it (its start could not take the register's lock or read the process
+table in time), the prompt makes the entry again for the process now running
+the session. When another running session holds the same name, the session
+whose claim on it came later in the register takes the next free name, and
+that one prompt sets it as the title and says, to the session and to the
+person, which name it now has; the other session keeps its name and is told
+nothing. A prompt whose session's entry is in place, its own and first of its
+name, with nothing owed, reads the register once without its lock and reads no
+process table. A prompt that cannot take the lock within two seconds, or
+cannot read the process table within one, keeps the title, takes no name,
+gives no notice and writes nothing, with one line on stderr, and the next
+prompt tries again. The board's presence
 line carries no name: it has no host payload to read one from.
 
 **The peers line and `/abcd:peers`** (itd-2609091416295622,
