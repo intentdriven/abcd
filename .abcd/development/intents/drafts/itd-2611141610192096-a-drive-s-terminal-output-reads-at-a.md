@@ -225,6 +225,7 @@ All resolved by the product thinker on 2026-11-15 (decisions 1 to 3).
 ## Typed Links
 
 - builds_on: itd-2611141610197753 (a drive carries on from one command, and says in one line when it cannot). The first live line of either design is that intent's state line, so this intent is built after its state is a value the loop hands the surface.
+- built on by: itd-2611150636498012 (the refreshed terminal interface and a headless mode, a draft), which adds the option line and the keys to this footer and restates a ruling on DQ-10, DQ-11 and DQ-12.
 - related: itd-2610222215485265 (the drive whose output this is; its criterion that the drive prints one line per step stands, and this intent says what a line holds). itd-2610030810370060 (the plain-terminal interviews, whose criteria B3, B4 and B7 on plain output, colour and untrusted text this intent follows). itd-2611141610201875 (the merge queue and the checkout, whose one-line reports appear among these events). itd-2611150636498012 (the CLI and terminal refresh), where the option menu of decision 1 and the headless mode are built.
 - evidence: lab-261114145658-67e1f9b (findings F-13, F-20 and F-21) and `.abcd/development/research/notes/drive-operations-2026-11.md`, event 5.
 

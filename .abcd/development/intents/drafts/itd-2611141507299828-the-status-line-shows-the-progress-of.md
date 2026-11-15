@@ -7,6 +7,7 @@ suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2611031342000215, itd-2610281253044600]
 severity: minor
+related_intents: [itd-2611150636498012]
 impact: additive
 origin: researcher-authored
 production_mode: hand-written
