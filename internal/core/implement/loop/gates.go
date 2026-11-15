@@ -8,12 +8,16 @@ import (
 )
 
 // DriveGates are what a lane's preflight, the driver's own git and the forge's
-// workflows run, as paths: a change to one is a change to what judges the lane.
-// They are kept in this one place for everything that names them: `abcd drain
-// --drive`, which lands no lane that changes one and passes over an issue on
-// one; and the issue brief, which names them to the implementer. A directory
-// ends in a slash.
-var DriveGates = []string{"Makefile", "GNUmakefile", "makefile", "scripts/", ".githooks/", "hooks/", ".github/"}
+// workflows run, and abcd's own configuration, receipts and approvals, as
+// paths: a change to one is a change to what judges the lane. They are kept in
+// this one place for everything that names them: `abcd drain --drive`, which
+// lands no lane that changes one and passes over an issue on one; and the issue
+// brief, which names them to the implementer. A directory ends in a slash. The
+// files under .abcd are the ones a drive's stage may not write either.
+var DriveGates = []string{"Makefile", "GNUmakefile", "makefile", "scripts/", ".githooks/", "hooks/", ".github/",
+	".abcd/rules.json", ".abcd/guard.json", ".abcd/config.json", ".abcd/config/",
+	".abcd/.work.local/preflight-receipts/", ".abcd/.work.local/approvals/", ".abcd/.work.local/review-receipts/",
+	".abcd/.work.local/reservation/"}
 
 // DriveGate reports whether path, relative to the checkout, is one of DriveGates,
 // or under the hooks path the repository configures, hooksPath (DriveHooksPath).

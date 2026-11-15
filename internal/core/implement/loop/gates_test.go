@@ -101,6 +101,15 @@ func TestDriveGateNamesTheWorkflowFolderAndFoldsCase(t *testing.T) {
 		{"tools/\ufb01xups/a", "tools/fixups", true},
 		{"tools/class-hooks/x", "tools/cla\u00df-hooks", true},
 		{"Make\ufb02le", "", false},
+		{".abcd/rules.json", "", true},
+		{".ABCD/Guard.json", "", true},
+		{".abcd/config.json", "", true},
+		{".abcd/config/patterns", "", true},
+		{".abcd/.work.local/approvals/abc", "", true},
+		{".abcd/.WORK.local/preflight-receipts/abc", "", true},
+		{".abcd/work/issues/open/a.md", "", false},
+		{".abcd/rules.json.bak", "", false},
+		{".abcd/configx/a", "", false},
 		{"", "", false},
 	} {
 		if got := DriveGate(c.path, c.hooks); got != c.gate {

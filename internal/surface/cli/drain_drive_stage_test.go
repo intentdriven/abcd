@@ -225,7 +225,7 @@ func TestALaneThatChangesItsGatesIsRefused(t *testing.T) {
 	if err := driveGateCheck()(repo.Root(), base); err != nil {
 		t.Fatalf("code is no gate: %v", err)
 	}
-	for _, path := range []string{"Makefile", "scripts/check.sh", ".github/workflows/x.yml"} {
+	for _, path := range []string{"Makefile", "scripts/check.sh", ".github/workflows/x.yml", ".abcd/guard.json"} {
 		base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
 		repo.Write(path, "x\n")
 		repo.Commit(path)
@@ -658,7 +658,7 @@ func TestAGateIssueIsPassedOverForAPersonsOwnSession(t *testing.T) {
 	pass := drivePassOver(repo.Root())
 	for _, found := range []string{"Makefile", "scripts/check.sh:12", "tools/hooks/pre-push", ".githooks/commit-msg",
 		"scripts", "scripts/", "./scripts", "hooks", "hooks/", ".githooks", ".githooks/", "tools/hooks", "tools/hooks/",
-		".github/workflows/ci.yml:3", ".github", "Scripts/check.sh", "Tools/Hooks/pre-push", "Make\ufb01le"} {
+		".github/workflows/ci.yml:3", ".github", "Scripts/check.sh", "Tools/Hooks/pre-push", ".abcd/config.json", "Make\ufb01le"} {
 		if why := pass("iss-1", found); !strings.Contains(why, "a person's own session") {
 			t.Errorf("%s: %q", found, why)
 		}
