@@ -13,8 +13,6 @@ import "strings"
 //   - C0 controls (<0x20) and DEL (0x7f) — these carry ESC, so a raw ANSI escape
 //     in a commit subject could recolour, move the cursor, or corrupt the report;
 //     a newline is masked too, so an injected line break cannot forge extra lines;
-//   - U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR, which a renderer
-//     that splits on them starts a new line at, as it does at a newline;
 //   - the C1 range (0x80–0x9F) — U+009B (CSI) acts like ESC[ on an 8-bit terminal,
 //     so masking ESC (a C0 control) alone would leave an equivalent path open;
 //   - bidirectional override/isolate controls (the "Trojan Source" class) and
@@ -41,13 +39,26 @@ func Sanitize(s string) string {
 			return '?'
 		case r >= 0x80 && r <= 0x9f:
 			return '?'
-		case r == 0x2028 || r == 0x2029:
-			return '?'
 		case isBidiControl(r) || isZeroWidth(r):
 			return '?'
 		}
 		return r
 	}, s)
+}
+
+// SanitizeLine is Sanitize for a value written into one line of text a
+// renderer may split on more than a newline: it also masks U+2028 LINE
+// SEPARATOR and U+2029 PARAGRAPH SEPARATOR, at which such a renderer starts a
+// new line as it does at a newline. Sanitize itself leaves the two runes,
+// because readers compare stored text with Sanitize to judge it clean, and
+// text an earlier abcd stored with them must still read.
+func SanitizeLine(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == 0x2028 || r == 0x2029 {
+			return '?'
+		}
+		return r
+	}, Sanitize(s))
 }
 
 // SanitizeBlock sanitises multi-line text while keeping its line structure: each

@@ -100,13 +100,11 @@ func TestSanitizeAll(t *testing.T) {
 }
 
 // TestIsHiddenIsWhatSanitizeMasks: the exported predicate is the set Sanitize
-// masks outside the control ranges and the two line separators, so a parser
-// refusing by it and a render masking by Sanitize never disagree. U+2028 and
-// U+2029 are masked as a newline is, as line breaks rather than hidden runes,
-// and IsHidden leaves them to each parser's own line handling.
+// masks outside the control ranges, so a parser refusing by it and a render
+// masking by Sanitize never disagree.
 func TestIsHiddenIsWhatSanitizeMasks(t *testing.T) {
 	for r := rune(0xA0); r < 0x10000; r++ {
-		if r >= 0xD800 && r <= 0xDFFF || r == 0x2028 || r == 0x2029 {
+		if r >= 0xD800 && r <= 0xDFFF {
 			continue
 		}
 		if masked := Sanitize(string(r)) == "?"; masked != IsHidden(r) {
@@ -115,15 +113,15 @@ func TestIsHiddenIsWhatSanitizeMasks(t *testing.T) {
 	}
 }
 
-// TestSanitizeMasksLineSeparators: U+2028 LINE SEPARATOR and U+2029
-// PARAGRAPH SEPARATOR start a line for a renderer that splits on them, as a
-// newline does, so a value interpolated into one line has them masked like a
-// newline; SanitizeBlock keeps only its own newlines and masks them too.
-func TestSanitizeMasksLineSeparators(t *testing.T) {
-	if got := Sanitize("a ## b c"); got != "a?## b?c" {
-		t.Errorf("Sanitize = %q, want both separators masked", got)
+// TestSanitizeLineMasksLineSeparators: U+2028 and U+2029 start a line for a
+// renderer that splits on them, so a value written into one line has them
+// masked by SanitizeLine; Sanitize leaves them, since stored text an earlier
+// abcd accepted is compared with Sanitize on read.
+func TestSanitizeLineMasksLineSeparators(t *testing.T) {
+	if got := SanitizeLine("a\u2028## b\u2029c\x1b"); got != "a?## b?c?" {
+		t.Errorf("SanitizeLine = %q, want both separators and the escape masked", got)
 	}
-	if got := SanitizeBlock("a b\nc"); got != "a?b\nc" {
-		t.Errorf("SanitizeBlock = %q, want the separator masked and the newline kept", got)
+	if got := Sanitize("a\u2028b\u2029c"); got != "a\u2028b\u2029c" {
+		t.Errorf("Sanitize = %q, want the separators left for stored text to keep reading", got)
 	}
 }

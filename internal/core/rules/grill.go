@@ -55,7 +55,7 @@ func withRepoGrillDomain(rs RuleSet, l question.Limits, n question.LimitsNote) R
 	if n.Refused != nil {
 		rs.notes = append(rs.notes, fmt.Sprintf(
 			"rules: %s: a question limit is refused (%s); abcd's question check refuses every abcd question until the file is fixed",
-			GrillDomain, termsafe.Sanitize(n.Refused.Reason)))
+			GrillDomain, termsafe.SanitizeLine(n.Refused.Reason)))
 	}
 	return rs
 }

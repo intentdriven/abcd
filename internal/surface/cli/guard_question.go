@@ -800,7 +800,7 @@ func limitsUnreadLine(err error) string {
 func limitsRefusedReason(reason string) string {
 	var b strings.Builder
 	b.WriteString("Blocked by the abcd guard (question tool): a question limit in this repository's configuration is refused, so abcd asks no question until it is fixed.\n")
-	b.WriteString(termsafe.Sanitize(scrubPaths(errors.New(reason))) + "\n")
+	b.WriteString(termsafe.SanitizeLine(scrubPaths(errors.New(reason))) + "\n")
 	b.WriteString("Fix the value in that file and ask again: " + boundsLine() + ", and a person's own " + abcdhome.Display(layered.Config.MachineRel) + " may set each only lower than the limit otherwise in force.")
 	return b.String()
 }
