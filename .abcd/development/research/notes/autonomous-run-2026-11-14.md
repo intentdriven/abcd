@@ -39,9 +39,9 @@ What it shows: on one machine shared by peer sessions and a drive, test capacity
 
 ### 2. A commit followed a gate that had timed out
 
-One commit was made after a gated test run whose gate had timed out. The command sent the run's output through `tail` and then joined the commit with `&&`. `tail` succeeded, so the commit ran. The preflight caught the failure later.
+One commit was made after a gated test run whose gate had timed out and run nothing, because the command acted on a result other than the gate's own. The preflight caught it later.
 
-What it shows: the result that matters is the gate's own, and a pipe replaces it with the result of its last stage. An agent has to read the gate's result before it acts on it. A guard at the tool level that refuses this shape of command would catch what the agent's care did not.
+What it shows: the result that matters is the gate's own. An agent reads the gate's result before it acts on it, and a step that commits or pushes follows only a gate that opened and passed.
 
 ### 3. Targeted tests missed the repository-wide audits
 
@@ -104,7 +104,7 @@ After the fixes of the week before, the drive ran for more than twelve hours ove
 Each proposal names a check that would show it done.
 
 1. **Plan the run in preflights.** Before it starts, the run counts the full preflights its plan needs and orders the work so that review comes before preflight and records-only changes travel on records branches. Check: the run's plan states a number of full preflights, and its closing note states the number spent.
-2. **Read the gate's result, and guard the pipe.** A command that runs a gated test run and then acts on it does not pass the run through a pipe unless the pipe's failure is the command's failure. Check: the guard refuses a gated run piped into another command and joined to a commit or a push, and admits the same command where the pipe's failure fails it.
+2. **Act only on the gate's own result.** A step that commits or pushes after a gated test run follows only a gate that opened and passed. Check: every sub-agent brief and the run's own commands read the gate's result line before committing.
 3. **An audits-only target.** A builder can run the repository-wide audits alone, through the gate, in a small fraction of a preflight's time. Check: on a branch with an exported function that only tests call, and on one with a hook that reaches git without a deadline, the target fails and names the audit.
 4. **Brief builders with the repository's rules.** Every builder's brief names the repository-wide audits and the rule that each commit builds on its own. Check: the brief template carries both, and a run's review findings include neither.
 5. **One fix round per head, and count the rounds.** Both reviewers get the same head at the same time, their findings are merged into one list, and the round number is written where the run's state is. Check: each branch's record shows its round count, and no round has two fix lists.
