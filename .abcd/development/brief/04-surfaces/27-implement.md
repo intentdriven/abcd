@@ -270,11 +270,11 @@ a read fails, the check says it could not check. Inside a live run (a run state
 with a joined session) a warning is also written as a load event, attributed
 to the first-role session, carrying the verdict's facts so it renders exactly
 as it was printed; the run's hand-written load samples share the name and carry
-no `triggers`. Without its wait flag the check needs `--site`, which names where
-it runs and takes one of two values, `preflight` or `eval-harness`: with neither,
-or with any other value, it exits 2 having checked nothing. Given a site it exits
-0 on every status: it never
-refuses, waits or signals anything. With its wait flag, which takes no `--site`, it is the one waiter
+no `triggers`. Without its wait flag the check needs its site flag, which names
+where it runs and takes one of two values, `preflight` or `eval-harness`: with
+neither, or with any other value, it exits 2 having checked nothing. Given a site
+it exits 0 on every status: it never
+refuses, waits or signals anything. With its wait flag, which takes no site flag, it is the one waiter
 concurrent sessions gate a preflight or a race run with, and `make preflight`
 waits at it once, as one whole run (a records-only change takes a shorter
 rule that waits at no gate): it blocks until the one-minute load is
