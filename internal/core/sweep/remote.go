@@ -29,9 +29,16 @@ package sweep
 // Only refs under refs/heads/ are ever named in a delete, so a tag never is.
 //
 // The judgement reaches no remote: it reads origin's branches as the
-// caller's fetch left them, and the forge's listings through Options.Forge.
-// Under apply, each delete is preceded by a last check of everything that
-// could hold the branch, made again: origin's own default branch and its tip
+// caller's fetch left them, and the forge's listings through Options.Forge,
+// pinned to origin's repository (forge.go); a forge that cannot be matched
+// to origin lists nothing, so every branch is kept. Under apply, origin's
+// fetch and push addresses are read again once, before the first delete,
+// with the person's own configuration (the one the push runs under): unless
+// origin is one repository at every address (oneRepository), still the one
+// the forge was matched to, the last check below cannot see the repository
+// the push would change, and every delete is held. Each delete is then preceded by a last check of
+// everything that could hold the branch, made again: origin's own default
+// branch and its tip
 // (asked of origin before the first delete, and required to be the very
 // branch and commit the judgement read), the forge's pull requests from that
 // branch, the worktrees, the local branches' upstreams and the guard's checks
@@ -39,7 +46,10 @@ package sweep
 // default branch and its tip asked again, held to the same rule. Only then is
 // it deleted, by one push of an empty ref with a
 // lease on the exact tip that was judged (the reservation sweep's pattern),
-// so a branch someone pushed to meanwhile survives. The push runs through
+// so a branch someone pushed to meanwhile survives. After a delete origin
+// took, origin is asked for its default branch and tip once more: when they
+// moved, the row notes the tip the branch was judged at and the command that
+// restores it, in case its work is no longer there. The push runs through
 // gitutil.Net, so the repository's own pre-push hook sees it, as it sees the
 // reservation sweep's; a hook that refuses it keeps the branch and is the
 // run's fault, as any other failed push is. Reservations are the ones the
@@ -60,6 +70,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -68,6 +79,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 const (
@@ -94,6 +106,16 @@ const remotePrefix = "refs/remotes/" + claim.Remote + "/"
 // beforeRemoteDelete, when a test sets it, runs between the last check of a
 // branch on origin and its delete: the window another writer's push lands in.
 var beforeRemoteDelete func(ref string)
+
+// afterRemoteDelete, when a test sets it, runs between a delete origin took
+// and the question to origin that follows it: the window in which origin's
+// default branch can move after the delete.
+var afterRemoteDelete func(ref string)
+
+// readRemoteTip reads origin's tip of a branch for the last check before a
+// delete: lsRemoteTipContext, which a test replaces to end the run's context
+// while the read is under way.
+var readRemoteTip = lsRemoteTipContext
 
 // remoteBranch is one branch on origin as this checkout last fetched it.
 type remoteBranch struct {
@@ -165,6 +187,7 @@ func sweepRemote(ctx context.Context, repoRoot string, o Options, apply bool) (R
 	var (
 		fault    error
 		asked    bool
+		addrHold string
 		head     string
 		headTip  string
 		headFail error
@@ -185,9 +208,10 @@ func sweepRemote(ctx context.Context, repoRoot string, o Options, apply bool) (R
 			// The tracked default branch is a local reading and may be stale,
 			// so an act on origin asks origin which branch is its default.
 			asked = true
+			addrHold = rj.addressHold()
 			head, headTip, headFail = rj.originHead()
 		}
-		if err := rj.delete(branches[i], head, headTip, headFail, row); err != nil && fault == nil {
+		if err := rj.delete(branches[i], addrHold, head, headTip, headFail, row); err != nil && fault == nil {
 			fault = err
 		}
 	}
@@ -237,7 +261,15 @@ func newRemoteJudge(ctx context.Context, root string, o Options) (*remoteJudge, 
 		rj.live.changes = changedPaths
 	}
 	if len(branches) > 0 {
-		if err := rj.askForge(); err != nil {
+		rj.o = rj.o.pinnedForge(ctx, root)
+		if err := ctx.Err(); err != nil {
+			return nil, nil, fmt.Errorf("the run was stopped while the forge's repository was matched to origin: %w", err)
+		}
+		if rj.o.forgeUnmatched != "" {
+			// No pull request is listed from a repository that may not be
+			// origin's, so none can be shown absent and every branch is kept.
+			rj.openUnread = rj.o.forgeUnmatched
+		} else if err := rj.askForge(); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -273,25 +305,48 @@ func (rj *remoteJudge) readLocal() error {
 	return nil
 }
 
+// The stages of the last check before a delete on origin that
+// Options.onLastCheck is told of: the worktrees and local branches read
+// again, and the liveness probe made again.
+const (
+	lastCheckWorktrees = "worktrees"
+	lastCheckProbe     = "probe"
+)
+
+// passed tells Options.onLastCheck, when set, that the last check passed
+// stage.
+func (o Options) passed(stage string) {
+	if o.onLastCheck != nil {
+		o.onLastCheck(stage)
+	}
+}
+
 // errForgeTimedOut is a forge call that did not answer within forgeTimeout.
 var errForgeTimedOut = errors.New("the forge did not answer in time")
 
-// forge asks the forge, bounded by forgeTimeout and the run's context. A call
-// still running at the deadline is abandoned, and its answer is no answer.
+// forge asks the forge for the run's judgement of origin's branches, through
+// forgeCall.
+func (rj *remoteJudge) forge(args ...string) (string, error) {
+	return forgeCall(rj.ctx, rj.o.Forge, rj.root, args...)
+}
+
+// forgeCall asks the forge client gh from root, bounded by forgeTimeout and
+// ctx. A call still running at the deadline is abandoned, and its answer is
+// no answer.
 //
-// An abandoned call may still be running in its goroutine when forge
+// An abandoned call may still be running in its goroutine when forgeCall
 // returns. That is safe: the channel is buffered, so the goroutine's one send
 // never blocks and it ends as soon as the call does, and nothing it shares
-// with forge is written after forge returns; its answer is dropped. Once the
-// run's context has ended no call starts at all, here or at the callers, which
+// with forgeCall is written after forgeCall returns; its answer is dropped.
+// Once ctx has ended no call starts at all, here or at the callers, which
 // check the context first, so a stopped run never has two forge calls in
 // flight. After a timeout alone the next call may overlap the abandoned one,
 // so Options.Forge must not rely on its calls being serialised.
-func (rj *remoteJudge) forge(args ...string) (string, error) {
-	if rj.o.Forge == nil {
+func forgeCall(ctx context.Context, gh store.GH, root string, args ...string) (string, error) {
+	if gh == nil {
 		return "", errors.New("no forge was asked")
 	}
-	if err := rj.ctx.Err(); err != nil {
+	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 	type answer struct {
@@ -300,7 +355,7 @@ func (rj *remoteJudge) forge(args ...string) (string, error) {
 	}
 	ch := make(chan answer, 1)
 	go func() {
-		out, err := rj.o.Forge(rj.root, args...)
+		out, err := gh(root, args...)
 		ch <- answer{out, err}
 	}()
 	t := time.NewTimer(forgeTimeout)
@@ -310,8 +365,8 @@ func (rj *remoteJudge) forge(args ...string) (string, error) {
 		return a.out, a.err
 	case <-t.C:
 		return "", errForgeTimedOut
-	case <-rj.ctx.Done():
-		return "", rj.ctx.Err()
+	case <-ctx.Done():
+		return "", ctx.Err()
 	}
 }
 
@@ -512,6 +567,31 @@ func (rj *remoteJudge) originHead() (branch, tip string, err error) {
 	return gitutil.RemoteHeadTip(ctx, gitutil.NetContext, rj.root, claim.Remote)
 }
 
+// addressHold is why origin's addresses hold every delete, "" when they do
+// not. Origin, as git resolves it under the person's own configuration (the
+// one the delete's push runs under, rewrites included), must be one
+// repository (oneRepository): exactly one fetch address, and every push
+// address naming the repository it names, so the last check's reads of
+// origin and the push reach the same repository. It must also still be the
+// repository the forge was matched to, when one was (pinnedForge), so the
+// pull requests the judgement read are that repository's. A read that fails
+// holds every delete too. No address is shown: one may carry credentials,
+// and the reason needs none.
+func (rj *remoteJudge) addressHold() string {
+	fetch, push, err := originAddresses(rj.ctx, rj.root)
+	if err != nil {
+		return answerText(err) + ", so nothing on origin is deleted"
+	}
+	key, why := oneRepository(fetch, push)
+	switch {
+	case why != "":
+		return why
+	case rj.o.forgeKey != "" && key != rj.o.forgeKey:
+		return "origin names another repository than the one the forge was matched to when the run began, so the sweep cannot check what it would delete"
+	}
+	return ""
+}
+
 // headHold is why origin's default branch, as origin named it, holds the
 // delete of the branch b, "" when it does not: head is that branch and
 // headTip its tip there, or headFail why they could not be asked. Only the
@@ -538,13 +618,14 @@ func (rj *remoteJudge) headHold(b remoteBranch, head, headTip string, headFail e
 
 // delete makes the last check of the branch b on origin and, when nothing
 // holds it, deletes it under a lease on the tip that was judged, marking row
-// with the outcome. head is origin's default branch as origin named it before
-// the run's first delete and headTip its tip there, or headFail why they
-// could not be asked; the last check asks origin for both again just before
-// the push. A hold the last check finds keeps the branch, naming it; so does
+// with the outcome. addrHold is why origin's addresses hold every delete
+// (addressHold), "" when they do not. head is origin's default branch as
+// origin named it before the run's first delete and headTip its tip there, or
+// headFail why they could not be asked; the last check asks origin for both
+// again just before the push. A hold the last check finds keeps the branch, naming it; so does
 // origin refusing the lease because the branch moved. Any other refusal of
 // the delete keeps it, naming why, and is returned as the run's fault.
-func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail error, row *Row) error {
+func (rj *remoteJudge) delete(b remoteBranch, addrHold, head, headTip string, headFail error, row *Row) error {
 	held := func(reason string, ev ...Evidence) error {
 		row.Reason = clean("held at the last check before the delete: " + reason)
 		for _, e := range ev {
@@ -563,8 +644,18 @@ func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail err
 		}
 		return nil
 	}
+	// The run's questions to origin before its first delete may have been
+	// cut short by the run's end, which reads as no answer: a stopped run is
+	// reported as stopped, never as a hold. Every read below is followed by
+	// the same check, before its answer is judged.
+	if err := stopped(); err != nil {
+		return err
+	}
 	if reason, ev := rj.headHold(b, head, headTip, headFail); reason != "" {
 		return held(reason, ev...)
+	}
+	if addrHold != "" {
+		return held(addrHold)
 	}
 	if !strings.HasPrefix(b.ref, "refs/heads/") || neverDeleted(b.name, head) != "" || !gitutil.IsFullSHA(b.tip) {
 		return held("it is not a branch the sweep deletes")
@@ -607,16 +698,29 @@ func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail err
 	// The repository's own state is read last, closest to the push: the
 	// worktrees, their upstreams and the guard's checks, and a fresh process
 	// table.
-	if err := rj.readLocal(); err != nil {
-		return held(err.Error())
+	lerr := rj.readLocal()
+	rj.o.passed(lastCheckWorktrees)
+	if err := stopped(); err != nil {
+		return err
+	}
+	if lerr != nil {
+		return held(lerr.Error())
 	}
 	rj.live.probe = newProbe(rj.ctx, rj.o.Probe)
-	if ev := rj.holds(b, map[string][]string{b.name: open}, bases, ""); len(ev) > 0 {
+	ev := rj.holds(b, map[string][]string{b.name: open}, bases, "")
+	rj.o.passed(lastCheckProbe)
+	if err := stopped(); err != nil {
+		return err
+	}
+	if len(ev) > 0 {
 		return held(details(ev), ev...)
 	}
 	ctx, cancel := context.WithTimeout(rj.ctx, remoteNetTimeout)
 	defer cancel()
-	tip, found, err := lsRemoteTipContext(ctx, rj.root, claim.Remote, b.name)
+	tip, found, err := readRemoteTip(ctx, rj.root, claim.Remote, b.name)
+	if serr := stopped(); serr != nil {
+		return serr
+	}
 	switch {
 	case err != nil:
 		return held("origin's tip of it could not be read (" + answerText(err) + ")")
@@ -654,7 +758,7 @@ func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail err
 	if err == nil {
 		row.Outcome = OutcomeDeleted
 		row.Reason = clean("deleted on origin under a lease on its judged tip " + short(b.tip) + "; " + row.Reason)
-		return nil
+		return rj.afterDelete(b, row)
 	}
 	why := gitutil.ScrubURLCredentials(pushRefusal(out, err))
 	if strings.Contains(why, "stale info") {
@@ -662,6 +766,73 @@ func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail err
 	}
 	row.Reason = clean("the delete on origin failed, so the branch is kept: " + why)
 	return errors.New(clean("sweep: the delete of " + b.name + " on origin failed: " + why))
+}
+
+// afterDelete asks origin once more for its default branch and that branch's
+// tip, after origin took the delete of the branch b, row's outcome being
+// deleted. The last check asked just before the push, but origin's default
+// branch can move between that answer and the push, and the merged judgement
+// holds only against the branch and tip it read. When origin's answer no
+// longer matches them, which an ordinary merge landing in that window also
+// does, the outcome stays deleted and the row adds a note: the tip the branch
+// was judged at and the command that puts it back, in case the branch's work
+// is no longer on the default branch. That is no fault. An answer origin
+// does not give adds a note saying so, with no restore line and no fault;
+// one cut short by the run's end is the run's fault, as any stop is.
+func (rj *remoteJudge) afterDelete(b remoteBranch, row *Row) error {
+	if afterRemoteDelete != nil {
+		afterRemoteDelete(b.ref)
+	}
+	head, headTip, err := rj.originHead()
+	if cerr := rj.ctx.Err(); cerr != nil {
+		row.Reason += clean("; origin could not be asked for its default branch after the delete, because the run was stopped")
+		return fmt.Errorf("the run was stopped after a delete, before origin was asked for its default branch again: %w", cerr)
+	}
+	if err != nil {
+		row.Reason += clean("; origin could not be asked for its default branch after the delete (" + answerText(err) + ")")
+		return nil
+	}
+	if head == rj.defName && headTip == rj.defTip {
+		return nil
+	}
+	moved := "origin's default branch is " + head + " at " + short(headTip) + " after the delete, but the branch was judged against " +
+		displayRef(rj.def) + " at " + short(rj.defTip)
+	note := "; note: " + moved + "; in case the branch's work is no longer on " + rj.defName + ", its judged tip was " + b.tip
+	if restore, ok := remoteRestoreCommand(b.ref, b.tip); ok {
+		note += ", and `" + restore + "` restores it"
+	} else {
+		note += "; its name holds a character no printed command carries safely, so quote the name by hand to restore it at that tip"
+	}
+	row.Reason += clean(note)
+	row.Evidence = append(row.Evidence, Evidence{Kind: KindRemote, Strength: Hint, Detail: clean(moved)})
+	return nil
+}
+
+// remoteRestoreCommand is the command that puts back the branch at ref on
+// origin at its judged tip sha, after a delete, and whether one can be
+// printed. The ref is a name origin holds, so the refspec is one shell word:
+// left bare when every character is one a shell takes unquoted, and
+// single-quoted otherwise (shellquote.Single). A ref holding a backquote or
+// any character outside printable ASCII gets no command at all.
+func remoteRestoreCommand(ref, sha string) (string, bool) {
+	for _, r := range ref {
+		if r == '`' || r < 0x20 || r > 0x7e {
+			return "", false
+		}
+	}
+	return "git push " + claim.Remote + " " + shellWord(sha+":"+ref), true
+}
+
+// shellSafeRe is the text a shell takes unquoted as one word.
+var shellSafeRe = regexp.MustCompile(`^[A-Za-z0-9._/:@%+=-]+$`)
+
+// shellWord is s as one shell word: bare when the shell takes it unquoted,
+// single-quoted otherwise.
+func shellWord(s string) string {
+	if shellSafeRe.MatchString(s) {
+		return s
+	}
+	return shellquote.Single(s)
 }
 
 // answerText is the first line of an error origin or the forge gave, for a

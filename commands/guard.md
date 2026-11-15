@@ -92,13 +92,16 @@ Then read the JSON (`_type` `abcd/question-check/v1`):
 - `hook` — what the hook would do with the draft in this checkout now:
   `admit`, `admit-with-rows-note`, `refuse`, `refuse-away` (the person is
   away; route the question with `abcd mode queue` or `abcd decide`),
-  `admit-unchecked` (not abcd's question: no chip, and no mode naming anyone,
-  so nothing was checked) or `unchecked` (a store could not be read, so the
+  `admit-unchecked` (not abcd's question: no header in abcd's grammar,
+  whatever the mode names, so nothing was checked) or `unchecked` (a store could not be read, so the
   hook lets the draft through on its loud status; abcd's draft is checked all
   the same).
 - `findings` — every finding at once, each with its `tab`, `part`, `rule`,
   `value`, `limit`, `remedy` and whether it `refuses` (the rows limit alone
   never does).
+- `by_rule` — the findings folded one entry per rule and tab, in the order the
+  first of each appeared, with its first `value` and a `count`: the lines the
+  hook's refusal names.
 - `rows` — each tab's rows at 80 columns, as `header_and_frame`,
   `question_text`, `options` and `total`, against `rows_limit`. Report these
   figures; never count rows by hand.
@@ -120,8 +123,19 @@ Then read the JSON (`_type` `abcd/question-check/v1`):
 - `depends_on_state`, `partial`, `unread` — whether a mode set or the person
   marked away before the ask could change the answer, and each store the check
   could not read with the rules it could not apply.
+- `badge` — whether the status line shows abcd's badge here, the value the
+  hook decides with: `true` where abcd manages the checkout and its local tier
+  is present, so the mode is read and set; `false` otherwise, as in a fresh
+  clone with no local tier. A tab for `unnamed` under `badge: true` was
+  checked with no mode set.
 - `addressee`, `addressee_changes` — whom each tab is for, and where an
   admitted chip would re-set the mode.
+
+Without `--json` the verb prints what the hook would do, the limits, each
+tab's rows, then one line per rule and tab, written by the renderer the
+hook's refusal uses, so each line is the line the hook would refuse with,
+and, where there is a finding, the refusal's closing line pointing at this
+verb and the `abcd:question-drafter` agent.
 
 Exit codes: `0` when the draft has no finding and every store was read,
 whatever the hook would do with it; `1` on any finding, a tab over the rows
@@ -134,7 +148,8 @@ every finding and check again until it exits `0`, then read `hook`: ask the
 `ready` input where it is given, and where the person is away (`refuse-away`,
 no `ready`) route the question with `abcd mode queue` or `abcd decide`. A draft
 the hook would let through unchecked as not abcd's (`admit-unchecked`) also
-exits `0`; label it with abcd's header if it is abcd's question.
+exits `0`; head it with the question's number, such as `Q1`, if it is abcd's
+question.
 
 ## `hook` — the host adapter
 
@@ -167,13 +182,16 @@ before, and a record made for a command that then fails names a branch that
 does not exist, which the reading ignores.
 
 On the host's question tool the hook checks abcd's own questions instead of
-consulting the registry. A question is abcd's when a header is in abcd's chip
-grammar (a role word, then `Q` and the question's number, such as `Product Q2`)
-or when `/abcd:mode` names somebody; any other question belongs to another tool
-and runs unchecked. That includes a question with no abcd chip asked while
-`/abcd:mode` reads `managed`, in a repository abcd manages or not: the hook
-cannot tell an abcd question that forgot its chip from another tool's, so the
-interview pages teaching the chip are what keep abcd's questions under the
+consulting the registry. A question is abcd's when a header is in abcd's
+grammar: `Q` and the question's number, with an optional part letter and an
+optional total (`Q1`, `Q1a`, `Q2/5`), or the older form with a role word first
+(`Product Q2`, `Setup Q1/4`), which is still read. Any other question belongs
+to another tool and runs unchecked, whatever `/abcd:mode` names, in a
+repository abcd manages or not (where the mode names somebody it is still
+marked open, with nothing else written, so the answer resets the mode; where
+that marker cannot be written, one loud line says the question was not abcd's
+and ran as normal, and that the mode was not marked for reset): the header is what the hook checks a question
+by, so the pages that teach it are what keep abcd's questions under the
 check. abcd's question is held to the field limits of the asking
 rules wherever the hook runs, in a repository abcd manages or not: the header,
 the number of questions and options, each label's words and each meaning's
@@ -194,40 +212,61 @@ the file is fixed; a file the hook cannot read, such as a symlinked
 abcd's defaults instead, with a loud `NOT CHECKED` line naming it. A question that breaks any of them is refused with the host's
 deny, whose reason is one head line, "Blocked by the abcd guard (question tool): N part(s)
 of this question break abcd's asking rules; fix each and ask again.", then one
-line per part naming the tab, the part, the value, the limit and the remedy, so
-one retry fixes them all. At most ten parts are named, and a closing line counts
-the rest, so a refusal stays a few lines however large the question; the head
-line keeps the full count. The rows limit is the exception: a question whose
+line per rule and tab naming the tab, the first part that broke the rule, its
+value, the limit and the remedy, and how many more such lines the rule drew on
+that tab, so one retry fixes them all. Every rule on every tab is named, and
+the head line counts every part. A refusal stays a few lines however large the
+question, because the check reads at most four tabs and four options, and a
+rule broken a thousand times on one tab, an em dash on each of a thousand list
+lines, is still one line. Its last line is "Check the next draft with `abcd
+guard question` before asking it, or draft it through the
+abcd:question-drafter agent, which does.", the words of the `question` section
+above. The rows limit is the exception: a question whose
 only finding is that a tab runs past the rows limit is shown, and the hook tells
-the agent afterwards which tab ran over, by how much, and to draft the next
-question through the `abcd:question-drafter` agent, which counts rows the way
-the check does. In a question refused for another part, a tab over the rows
+the agent afterwards which tab ran over, by how much, and to check the next
+question with `abcd guard question` or draft it through the
+`abcd:question-drafter` agent, which runs that check. In a question refused for another part, a tab over the rows
 limit is not one of the parts to fix and the head line does not count it: it
 follows them, under a line saying the rows limit does not refuse on its own and
-that the question would have been shown. A question with no abcd chip, held to the limits
-because `/abcd:mode` names somebody, carries one more line under the head line
-saying so: another tool's question asked while the mode names somebody is held
-to abcd's rules. The hook refuses and never rewrites the question.
+that the question would have been shown. The hook refuses and never rewrites the question.
 
-In a repository abcd manages, an admitted question carrying abcd's chip sets
-`/abcd:mode` from the chip's role: `Product` to `product-thinker`, `Tech` and
-`Setup` to `facilitator`. So a chipped question is never refused on the mode,
-and the status line names whom the question on screen is for, a chip naming
-the other person re-setting the mode. An admitted question is marked open in
+A number header names no person, so the agent sets `/abcd:mode` to the person
+the question is for, `product-thinker` or `facilitator`, before asking it, and
+the product thinker's register rule (no record number and no command) follows
+that mode: a `Q1` tab naming a command is refused while the mode names the
+product thinker and admitted while it names the facilitator. A tab headed in
+the older form is judged by its own role word, so in one call a `Product Q2`
+tab is held to the product thinker's register beside a `Q1` tab asked while
+the mode names the facilitator. In a repository
+abcd manages, abcd's question is never refused on the mode. An admitted
+question with a number header sets nothing, leaving the mode the agent set; one
+with an older-form header sets `/abcd:mode` from its role word: `Product` to
+`product-thinker`, `Tech` and `Setup` to `facilitator`, a role naming the other
+person re-setting the mode. A call that mixes the two forms sets the
+product thinker when any of its tabs is theirs, by its role word or by the mode
+in force, so the status line never names only the facilitator while the
+product thinker owes an answer too. An admitted question is marked open in
 `.abcd/.work.local/question_open`, and the answer resets the state to
 `managed`: the plugin's hook on the question tool's result resets it when the
 answer comes back, and the next human message resets it on a host that does
-not run that hook. Where the state cannot be read, the hook still judges a
-question carrying abcd's chip, at the limits in force, since the chip says
-whom it is for: one that breaks a rule is refused, and any other runs with no
-mode set and nothing marked open, under one loud line saying the mode store
-could not be read. A question without a chip, which only the mode could make
-abcd's, runs with a loud `NOT CHECKED` warning instead. Where the state cannot
+not run that hook. A refused question asked while the mode names somebody is
+marked open under that mode too, with no mode set, so the next human message
+resets a mode the agent set before a question it then abandoned. Where the state cannot be read, the hook still judges
+abcd's question at the limits in force, the register rule of a number header
+aside, since that rule follows the mode: one that breaks a rule is refused,
+and any other runs with no mode set and nothing marked open, under one loud
+line saying the mode store could not be read. Where the state cannot
 be written or the question cannot be marked open, such as a local tier that is
 not writable, the question runs with a loud `NOT CHECKED` warning. A questions field the hook cannot read is the same case: the question runs, and the hook
 warns loudly. So is a payload the hook cannot decode at all: where it names the
 question tool the warning says the question runs, and where no tool name can be
-read the warning names no tool.
+read the warning names no tool. One exception is refused instead: an object of
+the input that carries a key twice, or a key the check reads (`questions`,
+`header`, `question`, `options`, `label`, `description`, `preview`) under
+another case, is denied, naming the key and saying to drop it, as `abcd guard
+question` exits 2 on it, since the check would judge one value while the host
+could show the other; under a state naming somebody it is marked open like any
+refusal.
 
 While the away mode holds (`/abcd:mode autonomous`), the hook refuses every
 question on the host's question tool whose payload it can decode, before any
@@ -510,6 +549,18 @@ answer:
 - **Merged** into origin's default branch as last fetched: its tip is an
   ancestor of it, or, for a rebased or squashed branch, its patches are there
   (the worktree store's own judgement), or a pull request merged at that tip.
+- **Origin is one repository, matched to the forge by name**, for a branch on
+  origin, checked before anything else about it. Origin has one fetch address,
+  and every push address names the same repository; the forge is asked for
+  that repository by host, owner and name, and its answer must name every one
+  of origin's fetch and push addresses. Every later question to the forge
+  names that repository. An origin that pushes to a fork (a `pushurl` or
+  `pushInsteadOf` naming another repository), or that is reached through an
+  ssh host alias the forge does not answer to (`git@work:owner/name`), is
+  refused with that reason, whatever the branch's state. The proof holds only
+  where origin's fetch and push addresses, as git resolves them, name the one
+  repository by an address the forge answers to; elsewhere the person deletes
+  the branch on the forge, or lets the one line through with `allow` below.
 - **No open pull request**, asked of the forge, for a branch on origin. A local
   `git branch -D` is judged offline against `origin/<default>` as last
   fetched; only a delete that touches origin asks the network, and a tip origin

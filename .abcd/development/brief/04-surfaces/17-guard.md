@@ -183,7 +183,8 @@ that allows it:
   `enablePullRequestAutoMerge` or `mergePullRequest` mutation, under
   `merge-enqueue-human`;
 - a `gh api graphql` call whose query is not on the line (read from a file
-  with `query=@…`, from `--input`, or printed by a substitution), which could
+  with `query=@…`, from the file gh's input option names, or printed by a
+  substitution), which could
   be one of those mutations, under `merge-graphql-unread-human`;
 - a `PUT` to the REST merge route, `repos/{owner}/{repo}/pulls/N/merge`
   (a method word the line does not fix counts as `PUT`, and a route word it
@@ -240,16 +241,23 @@ The hook also answers for the host's question tool (itd-2609212130146198,
 spc-2610030944505997), and there it checks abcd's own questions rather than
 consulting the hazard registry. It decodes the tool's questions into the field
 view of `internal/core/question` (the host's JSON key names stay in the
-surface) and decides whether the question is abcd's: a header in abcd's chip
-grammar, which only abcd's interview pages are taught to write, or a mode
-naming somebody, which only `abcd mode` and this gate set and the answer resets
-(itd-201 decision 10). Any other question is another tool's
-and runs, unchecked and unmarked, exit 0, wherever it is asked. That includes a
-question with no abcd chip asked while the mode reads managed, in a managed
-checkout too: the gate cannot tell an abcd question that forgot its chip from
-another tool's (itd-201 decision 10; spc-2610030944505997, open question 1,
-decided (a)), and the compensating control is the interview pages teaching the
-chip.
+surface) and decides whether the question is abcd's by its header alone
+(itd-2610230756259215 decision 36; spc-2610301917245442, step 3): a header in
+abcd's grammar, which is `Q` and the question's number with
+an optional part letter and an optional total (`Q1`, `Q1a`, `Q2/5`), or the
+older form opened by a role word from `Limits.ChipRoles` (`Product Q2`, `Setup
+Q1/4`), still read. Any other question is another tool's and runs unchecked,
+exit 0, wherever it is asked and whatever the mode names. It is unmarked too,
+except where the badge shows and the mode names somebody: there it is marked
+open under that mode, with no mode written and no rule read, so the answer
+resets a mode the agent set before a question whose header then missed the
+grammar (`Q 1`, `q1`, `Q1A`, or none), rather than leaving it parked for the
+next question to inherit. The
+mode once made a question without a header abcd's too (itd-201 decision 10),
+and so held another tool's question, asked while it named somebody, to abcd's
+rules; the header alone draws the line now, and the compensating control for an
+abcd question that forgot it is the pages and the question-writing agent
+teaching it.
 
 abcd's question is held to the field limits (`question.CheckLimits`) wherever
 the hook runs, managed or not: the setup interview asks before a repository is
@@ -279,41 +287,54 @@ repository's question limits", naming the file and saying the question is
 checked at the defaults instead, leads a deny's reason or a rows note, and
 otherwise goes to stderr with exit 1, so the question is never admitted
 silently. Another tool's question runs unchecked whatever either file says. The
-addressee the product thinker's register rule reads is each tab's chip role
-for a chipped question, since the mode the gate then sets follows the chip,
-and the mode's for a question without a chip; the binary's verb list
+addressee the product thinker's register rule reads is decided tab by tab: a
+tab with an older-form header by its own role word, never by a mode the gate
+is about to replace with it, and every other tab by the mode's person where
+the badge shows and the store was read, since a number names no person and
+the agent sets the mode before asking (decision 37), and by nobody elsewhere;
+each tab's `addressee` in the verdict is the person it was judged for; the
+binary's verb list
 is read from the command tree and passed in. The row limit is estimated with
 the host's frame measured at 80 by 24, and a side preview on any option is
 refused, because the host hides every option's description while a preview
 shows (the layout intent's decision 20). Every finding refuses at once with
 the host's deny, whose reason is one head line, "Blocked by the abcd guard (question tool):
 N part(s) of this question break abcd's asking rules; fix each and ask again.",
-then one line per finding naming the tab, the part, the value, the limit and
-the remedy, each line through `termsafe.Sanitize`. The refusal's size follows
-the limits, not the payload: past the count findings, `CheckLimits` checks only
-the first `QuestionsPerCall[1]` tabs and the first `OptionsPerQ[1]` options of
-each, and the hook names at most ten findings and closes with one line counting
-the rest, the head line keeping the full count. The rows limit is the one
+counting every refusing finding, then one line per rule and tab
+(spc-2610301917245442, step 2): `question.GroupFindings` folds the findings
+into one group per rule and tab, in the order the first of each appeared,
+keeping the first finding and a count, and `question.RenderGroups` writes each
+group as the first finding's line (the tab, the part, the value, the limit and
+the remedy) closed by "(and N more such lines)" when the rule broke more than
+once on that tab, each line through `termsafe.Sanitize`. The last line points
+at the question check and the writer: it says to check the next draft with
+the question check, naming its command, before asking it, or to draft it
+through the `abcd:question-drafter` agent, which does. Every rule on every tab is named, with no cut. The refusal's size
+follows the limits, not the payload: past the count findings, `CheckLimits`
+checks only the first `QuestionsPerCall[1]` tabs and the first `OptionsPerQ[1]`
+options of each, and a rule that adds one finding per line of question text,
+the em dash in a list item, is one line per tab, so a refusal is at most the
+rules times the checked tabs, the call's count finding and three fixed lines.
+The ten-line cut it replaced named only the first findings of a refusal past
+ten, and the agent fixed those, asked again, and was refused for the rest. The rows limit is the one
 finding that does not refuse on its own (iss-2610070637562567): a question
 whose only findings are tabs over the rows limit is admitted as any admitted
 question is, marked open where the badge shows, and the hook prints one object
 on stdout whose `additionalContext` tells the agent, after the question
 returns, which tabs ran over, their rows and the limit, that the question was
-shown, and to draft the next one through the `abcd:question-drafter` agent
-(`question-drafter`, `agents/question-drafter.md`). It
+shown, and to check the next one with the question check before asking it
+or draft it through the `abcd:question-drafter` agent
+(`question-drafter`, `agents/question-drafter.md`), which runs that check. It
 sets no `permissionDecision`, which would bypass the host's own permission
 flow, and never tells the agent to ask again, because the person may already
 have answered. A refusal for that question was a redraft of a question the
 person was ready to answer, and a tab cut at the foot of a short window costs
 less. Beside any other finding, the rows finding is named in the deny but is not one of the parts to fix
 (iss-2610100626327722): the head line counts only the findings that refuse,
-and the rows findings follow them, bounded the same way, under one line saying
+and the rows findings follow them, one line per tab, under one line saying
 the rows limit does not refuse on its own and the question would have been
 shown. Listed among the parts to fix, it read as a cause, and the agent cut a
-question the gate would have shown. A question with no abcd chip,
-abcd's only because the mode names somebody, carries one line under the head
-line saying so, naming the mode's person, so an agent whose question another
-tool wrote does not loop on it. The hook refuses and never
+question the gate would have shown. The hook refuses and never
 rewrites: the host lets a pre-tool hook replace a tool's input, and a rewritten
 question would put words in the agent's mouth that neither it nor the person
 chose. A questions field the check cannot read is not a decision: the question
@@ -324,10 +345,14 @@ cannot be read fails open naming no tool. Neither echoes the decoder's text,
 which can name a Go type.
 
 In a repository abcd manages, abcd's question is never refused on the mode
-(iss-2610100626211810). Its chip already names whom it is for, and refusing it
-while the mode read managed refused an interview intermittently, whenever the
-mode had been reset between two questions. So when the gate admits a question
-carrying abcd's chip, it derives the state from the chip's role and sets it:
+(iss-2610100626211810): refusing it while the mode read managed refused an
+interview intermittently, whenever the mode had been reset between two
+questions. A number header names no person, so the agent sets the mode to the
+person the question is for with `abcd mode` before asking it (decision 37),
+and the gate, admitting it, sets nothing and marks it open under that mode, so
+the answer's reset returns the mode to managed. An older-form header names its
+person in its role word, so when the gate admits a question carrying one, it
+derives the state from the role and sets it:
 `Product` names the product thinker, and `Tech` and `Setup` name the technical
 facilitator. `Setup` is the setup interview's chip, whose questions (the
 repository's visibility, its keys, the oracles it connects) are about how abcd
@@ -336,25 +361,32 @@ people sets the product thinker. A chip naming someone other than the mode
 names re-sets the mode, because the status line names whom the question on
 screen is for. The gate writes a `question_open` marker in
 `.abcd/.work.local/` first and sets the state second, so a failure between the
-two leaves a marker whose reset costs nothing rather than a parked state with
+two leaves a marker that no longer matches the state in force, which the
+answer clears with the state left alone, rather than a parked state with
 nothing left to reset it. The answer resets the state to managed and clears the
-marker: the plugin's `PostToolUse` hook on the question tool runs the reset when the
+marker only when the marker's word matches the state in force (or the state
+store cannot be read); a marker naming another state is cleared and the state
+left as set, and `abcd mode <state>` clears a marker naming another state,
+keeping one naming the state it sets. The plugin's `PostToolUse` hook on the question tool runs the reset when the
 answer comes back, and the rules loader's prompt
 hook runs the same reset on the next human message, the fallback for a host
 that does not run `PostToolUse`; whichever runs first clears the marker, so
 the other changes nothing. `abcd mode` remains the way to record whose answer
-is owed at a stop that is not a question. A question without abcd's chip while
-the mode names somebody is held to the field limits and marked open, and sets
-nothing. Where the badge does not show, the mode is neither read nor set. A
-mode store the gate cannot read leaves a chipped question judged all the
-same, at the limits in force, because its chip names whom it is for: one that
-breaks a rule is refused, and any other runs with no mode set from its chip
-and no marker written. One line says so, "abcd guard: the mode store could not
-be read", at the head of a deny's reason or a rows note and otherwise on
-stderr with exit 1; with a layer of the question limits unread as well, that
-layer's line follows it, one line per store. A question without a chip is
-abcd's only through the mode, so with the store unread it runs unchecked, and
-the hook says so on exit 1, the same fail-open-loud contract below. A state
+is owed at a stop that is not a question, as it is before a question headed
+with abcd's number. Where the badge does not show, the mode is neither read
+nor set. A mode store the gate cannot read leaves abcd's question judged all
+the same, at the limits in force: an older-form header names whom its tab is
+for, and a number header loses only the register rule, which follows the
+mode, the verdict naming the store and that rule as unread. One that breaks a
+rule is refused, and any other runs with no mode set and no marker written.
+One line says so, "abcd guard: the mode store could not be read", naming the
+register rule where it was not applied, at the head of a deny's reason or a
+rows note and otherwise on stderr with exit 1; with a layer of the question
+limits unread as well, that layer's line follows it, one line per store. A
+checkout git will not name the root of leaves a number header's register rule
+unapplied the same way, the line naming the failed root lookup. A question
+with no header in abcd's grammar never reads the mode store, so an unreadable
+one changes nothing for it. A state
 file or marker the gate cannot write, a read-only tier among them, is not a
 decision either: the question, already judged, runs and the hook says so on
 exit 1. The manifest's pre-tool-use matcher names the
@@ -386,8 +418,13 @@ because a store could not be read, abcd's question checked all the same);
 `depends_on_state`, set wherever a mode set or the person marked away before
 the ask could change that; `partial` and `unread`, naming each store the
 decision needed and could not read and the rules it therefore could not
-apply; each tab's `addressee` and, where an admitted chip would re-set the
-mode, `addressee_changes`; every finding with whether it `refuses`; `rows`
+apply; `badge`, whether the status line shows abcd's badge here (abcd manages
+the checkout and its local tier is present), the value the hook decides with,
+so a tab `unnamed` under it was checked with no mode set while one without it
+is checked where no mode is read; each tab's `addressee` and, where an
+admitted chip would re-set the mode, `addressee_changes`; every finding with whether it `refuses`;
+`by_rule`, the findings folded one entry per rule and tab with the first
+echoed value and a count, the groups the deny names one line each; `rows`
 per tab (`header_and_frame`, `question_text`, `options`, `total`, the split
 the rows rule computes) with `rows_limit`; `limits` and `limits_source`, the
 three figures the draft was judged at (`rows`, `label_words`,
@@ -401,7 +438,12 @@ it (itd-2610301914350541); and `ready`, the input to ask, left
 out when the hook would refuse or a limit is refused: the draft's own value, every key the check
 does not read (such as `multiSelect`) kept, for the host form, and the
 composition for the structured form. The verdict holds between a verb and a hook of the
-same version, which is why the version is reported.
+same version, which is why the version is reported. Its text render prints
+the outcome, the rows of each tab, the finding lines written by
+`question.RenderGroups` from the groups the deny writes, the refusing ones
+first and those the hook does not refuse on after them, and the deny's
+pointer line, so a line the check shows is the line the hook would refuse
+with, byte for byte.
 
 **While the person is away** (spc-2610180914469489, "The question reroute";
 dcn-2610180937177502, dcn-2610181003477194), the gate reads the away record
@@ -543,7 +585,7 @@ force push by these routes: its flags, a `+` refspec, `git push --mirror`,
 `git send-pack` forcing or reading its refs from `--stdin`,
 `git fast-import --force`, `gh repo sync --force`, and through the forge's API a
 PATCH of a ref with `force` set to anything but `false`, `0`, `null` or nothing, a value
-the line does not fix or `--input`, or
+the line does not fix or reads from the file gh's input option names, or
 a GraphQL `updateRef` with `force`, in the query or in a field beside it. Each asks for a new commit instead. A rebase
 or an amend stays allowed: a line cannot show whether its commits were pushed,
 and the force push a pushed one would need is refused. Each git entry here sets

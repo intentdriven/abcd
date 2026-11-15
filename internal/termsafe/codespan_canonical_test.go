@@ -51,6 +51,7 @@ var backtickScanners = map[string]backtickScanner{
 	"internal/core/mdrender/render.go":     {2, "the site renderer's inline walk hands each run to PairCodeSpan; the other is the escapable-punctuation range, which names a backtick among the ASCII punctuation"},
 	"internal/core/question/check.go":      {2, "the question check's register rule walks to each run and pairs it through PairCodeSpan, stepping over an unpaired run whole"},
 	"internal/core/surface/appendix.go":    {2, "codeRegions walks to each run and pairs it through PairCodeSpan, stepping over an unpaired run whole"},
+	"internal/core/sweep/remote.go":        {1, "remoteRestoreCommand refuses a branch name holding a backquote, so the restore command it prints never holds one and its one-backtick span cannot close early; nothing is paired"},
 }
 
 // TestNoSecondCodeSpanPairer is the one-canonical-primitive detector for the

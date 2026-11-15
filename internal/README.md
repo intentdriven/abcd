@@ -315,6 +315,24 @@ plugin surface, and a future MCP server share one engine.
   remote config never choose one. Every failure leaves the installed release
   running, said on stderr. The hook shims reach it through
   `hook dogfood-binary`.
+- **`core/ahoy/worktree/`** — the machine-scoped worktree store
+  (itd-2609091014076309): it adds, lists and removes the worktrees under
+  `~/.abcd.noindex/worktrees/` and writes the notes archive under
+  `~/.abcd.noindex/notes/`. The one other worktree in a lane is the embargo
+  store, which `core/embargo` makes itself and this package lists and never
+  judges or removes. `LaneFor` keys a
+  repository's lane on its root commit, one level maker makes and checks every
+  level of both stores, `Add` makes a worktree in the lane, `List` and
+  `ListAll` read the lanes and judge each worktree clean or dirty and merged or
+  unmerged, and `Prune` reclaims what passes the proof of belonging after
+  archiving its local tier through `core/history`'s redaction pass. It sits
+  under `ahoy` because `ahoy` owns the machine's stores, yet it imports nothing
+  from `ahoy`, so `core/implement/loop`, which makes every build lane through
+  `LaneFor`, `Adopt` and `Add`, imports it with no cycle. What it cannot
+  import is handed in: the forge client and the build loop's reader of held
+  worktrees (`HeldReader`) come from the front door. It never prints;
+  `surface/cli`'s `ahoy worktree` verbs lay out its rows. It also holds the Go
+  build cache's trim, which prune and `ahoy worktree trim-cache` run.
 - **`core/board/`** — the status board's one renderer (spc-2610031844142274):
   the product thinker's view and the facilitator's, each as text fitted or
   wrapped to the window or as a markdown list a host session pastes unchanged.

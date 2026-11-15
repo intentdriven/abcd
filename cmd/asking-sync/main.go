@@ -78,9 +78,12 @@ func render(l question.Limits) string {
 	return b.String()
 }
 
-// renderDrafter is the question-drafter's block: a note for whoever edits the
-// page, every asking rule as its own list item, and the row count the check
-// makes, each figure filled from l. It states the count in the words of
+// renderDrafter is the question-writer's block: a note for whoever edits the
+// page, every asking rule as its own list item, how each draft is headed and
+// checked with `abcd guard question` and what of the check's answer is
+// returned, and the row count the check makes, kept for a host that gives the
+// writer no shell, each figure filled from l (spc-2610301917245442, step 4).
+// It states the count in the words of
 // internal/core/question's estimate (estimateRows, tabRows, blockRows), so
 // the agent's arithmetic and the check's read one statement of each figure.
 func renderDrafter(l question.Limits) string {
@@ -91,7 +94,12 @@ func renderDrafter(l question.Limits) string {
 	for _, r := range question.AskingRules(l) {
 		b.WriteString("- " + r + "\n")
 	}
-	b.WriteString("\n## Counting rows\n\n")
+	b.WriteString("\n## Checking each draft\n\n")
+	fmt.Fprintf(&b, "Head every draft with abcd's number: %s, a letter after the number for one part of a question split in parts, and a total after the slash only when the interview's length is known. ", numberHeaders())
+	b.WriteString("Then run `abcd guard question` after every edit, the draft passed on standard input, and read its JSON: the `findings` to fix, every one at once; the `rows` of each tab; the `limits` the draft was judged at, which are the ones in force in this checkout where they differ from the figures below; the `ready` input; the `badge`, whether the mode is read here, which tells a tab `unnamed` because the mode was never set (`badge: true`) from one where no mode is read (`badge: false`); and the `version` of the binary that checked it. ")
+	b.WriteString("Return the check's `rows`, the `questions` array of its `ready` input as your `questions`, and its `version`, never figures of your own.\n")
+	b.WriteString("\n## Counting rows by hand, only where the host gives you no shell\n\n")
+	b.WriteString("Count by hand only where the host gives you no shell to run the check in. Where it gives you one, the check's `rows` are the count, and a check that cannot answer is a refusal, never a reason to count by hand. ")
 	fmt.Fprintf(&b, "The check estimates the rows one tab takes in the host's question view in a window %d columns wide, and a tab over %d rows is over the limit. Count each tab the same way:\n\n", l.Columns, l.Rows)
 	fmt.Fprintf(&b, "1. The header and the host's frame: %d rows, the chip's row included.\n", l.HostChromeRows)
 	fmt.Fprintf(&b, "2. The question text: its rows wrapped at %d columns.\n", l.HostTextColumns)
@@ -99,6 +107,10 @@ func renderDrafter(l question.Limits) string {
 	b.WriteString("\nThe tab's rows are the sum of the three. To wrap a text at a width, take each of its lines on its own and fill it word by word, as a terminal fills a line: a word goes on the current line when it fits beside the words already there, separated by one space, and starts a new line when it does not. Each line of the text takes at least one row, so a blank line is one row; blank lines at the start and the end of the text are dropped; an empty text is 0 rows. A word wider than the width stands alone on its line and the host hard-wraps it, so that line counts its width divided by the width, rounded up. Width is counted in terminal columns: most characters take one, and East Asian wide and fullwidth characters take two.\n")
 	return b.String()
 }
+
+// numberHeaders is the headers the writer is shown in abcd's number form,
+// quoted and joined, the examples the layout rule shows.
+func numberHeaders() string { return `"Q1", "Q1a", or "Q2/5"` }
 
 // sync returns page with its one asking-rules block rendered from l, every
 // byte outside the block kept. A page with no block, an unclosed one, or more

@@ -30,4 +30,4 @@ The deferral past v0.11.1 lapsed long ago and is withdrawn, on the old-majors tr
 
 ## What it waits on
 
-It is carried by itd-148, which waits on the planned store intent itd-2609091014076309 for the verbs that add, list and clear away worktrees.
+It is carried by itd-148, which can now build on the shipped store intent itd-2609091014076309 and its verbs that add, list and clear away worktrees.

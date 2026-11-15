@@ -207,17 +207,30 @@ spc-2609212139593041). The badge reads exactly one of its three labels and
 never the bare tool name, and its colour ends at the badge: the closing
 sequence restores the default foreground and background and nothing else, so
 the rest of the row keeps whatever styling the host gives it. The two moments
-the badge must change are two moments the hooks already see. When the
-guard hook, on the host's question tool, admits abcd's own question (one headed
-in abcd's chip grammar, [`17-guard.md`](17-guard.md)), it sets the state from
-the chip's role, naming whom the question is for, and writes a `question_open`
-marker beside the state in `.abcd/.work.local/`; a chipped question is never
-refused on the mode. The answer resets it: the question tool's `PostToolUse`
+the badge must change are two moments the hooks already see. Before abcd's
+question, which is headed with its number (`Q1`, `Q1a`, `Q2/5`) and names no
+person, the agent sets the state to the person it is for with `abcd mode`
+(itd-2610230756259215 decision 37). When the guard hook, on the host's
+question tool, admits abcd's own question (one with a header in abcd's
+grammar, [`17-guard.md`](17-guard.md)), it writes a `question_open` marker
+beside the state in `.abcd/.work.local/`: a number-form header sets no state
+and is marked open under the state the agent set, and a header in the older
+form, a role word first (`Product Q2`), still sets the state from its role,
+naming whom the question is for. abcd's question is never refused on the
+mode. A question with no header in abcd's grammar is another tool's and runs
+unchecked, but where the state names somebody it is marked open under that
+state too, with nothing written to the state, so an abcd question whose header
+missed the grammar does not leave the state parked. The answer resets it: the question tool's `PostToolUse`
 hook, when the answer comes back, or the prompt hook on the next human message
-where the host runs no `PostToolUse`, finds the marker, resets the state to
-managed, clears the marker and says so in one line on stderr. With no marker
-neither hook changes anything, so a state the human set by hand survives the
-message they type next. At a stop that is not a question the agent sets the
+where the host runs no `PostToolUse`, finds the marker and, when its word
+matches the state in force, resets the state to managed, clears the marker and
+says so in one line on stderr. A marker naming another state is stale (its
+question was refused and abandoned, and the state set again since): it is
+cleared and the state left as set. A state store the reset cannot read is no
+evidence of a state set since, so it is reset to managed all the same. With no
+marker neither hook changes anything, so a state the human set by hand survives
+the message they type next, and `abcd mode <state>` clears a marker naming
+another state, keeping one naming the state it sets. At a stop that is not a question the agent sets the
 state itself with `abcd mode`, naming whom it addresses. A repository abcd
 does not manage, or one without the local tier, has no badge, and its
 questions are not gated.

@@ -28,16 +28,38 @@ Then tell the user the `state`. An absent store reads as `managed`; outside any 
 
 ## Set the state — two writers, one verb
 
-**The agent, at a question.** A question through the host's question tool
-needs no setting: its chip already names whom it is for. When the guard admits
-abcd's question in a repository abcd manages, it sets the state from the chip's
-role (`Product` names the product thinker; `Tech` and `Setup` name the
-technical facilitator), so a chipped question is never refused on the mode,
-and it marks the question open. The answer resets the state to `managed`: the
+**The agent, at a question.** abcd's question is headed with its number
+(`Q1`, `Q1a`, `Q2/5`), which names no person, so set the state to the person
+the question is for before the question is written, so the check the
+`abcd:question-drafter` agent runs on each draft reads that person, and keep
+it while you ask:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" mode product-thinker --json
+```
+
+or `facilitator` for the technical facilitator. The status line then names
+whom the question on screen is for, and the guard holds the question to that
+person's register: while the state names the product thinker, a question that
+names a record number or a command is refused. When the guard admits the
+question in a repository abcd manages, it leaves the state as you set it and
+marks the question open. A question headed in the older form, a role word
+first (`Product Q2`), still sets the state from its role (`Product` names the
+product thinker; `Tech` and `Setup` name the technical facilitator). Either
+way abcd's question is never refused on the mode. A question whose header
+misses abcd's grammar (`Q 1`, `q1`, or none) is not checked, but it is still
+marked open under the state you set, so the answer resets it, and so is a
+question the guard refuses, so a refused question you then abandon does not
+leave the state parked. The answer resets the state to `managed`: the
 plugin's hook on the question tool's result resets it when the answer comes
 back, and on a host that does not run that hook the prompt hook resets it on
 the next human message. Either says so once on stderr, so you do not set it
-back yourself. While the away mode below holds, the guard refuses every
+back yourself. The reset applies only while the state is still the one the
+question was asked under: a state set again since, by this verb or by hand,
+is left as set, and setting a state with this verb clears a question still
+marked open under another state, keeping one marked under the state it sets,
+which the answer then still resets. A question you abandon after the question writer refused it
+reached nobody, so set the state back yourself with `abcd mode managed`. While the away mode below holds, the guard refuses every
 question instead, whatever its chip, and sets nothing: its reason says which
 acts to queue and that every other question is decided with `abcd decide`.
 

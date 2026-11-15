@@ -964,7 +964,7 @@ worktree in this repository's lane, `abcd ahoy worktree list` lists the lane
 (`--all` every lane on the machine), and `abcd ahoy worktree prune` reclaims
 the merged, clean ones, archiving their notes first. The build loop writes here
 too: each lane's worktree is created at `<root-sha>/<run>-<lane>/` in this store
-(`implement/loop`, `WorktreeStoreRel`). What follows is the layout, at the location
+(`implement/loop`, through the store's own `internal/core/ahoy/worktree`). What follows is the layout, at the location
 [adr-2610031751065746](../../decisions/adrs/2610031751065746-the-worktree-store-lives-under-the.md)
 sets, on the rule
 [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md)
@@ -1003,11 +1003,17 @@ derives the lane from the root commit, makes every level of
 `~/.abcd.noindex/worktrees/<root-sha>/` and of the notes archive
 `~/.abcd.noindex/notes/<root-sha>/` one at a time as a real directory that is the
 caller's alone, and adds, lists and removes worktrees through git. The build
-loop's lanes are made through it, so a worktree enters the store one way. Before
-`prune` removes a worktree it moves the worktree's git-ignored
+loop's lanes are made through it, so a worktree enters the store one way. The
+one exception is abcd's embargo store, a detached worktree that `core/embargo`
+makes at `<root-sha>/embargo/`; the store lists it as a sibling and never judges,
+archives or removes it. Before
+`prune` removes a worktree it copies the worktree's git-ignored
 `.abcd/.work.local/` into `~/.abcd.noindex/notes/<root-sha>/<UTC timestamp>-<name>/`
-beside a manifest, redacted on write by the transcript store's pass; nothing
-reclaims the archive.
+beside a manifest, each file redacted on write by the transcript store's pass.
+The binary a source checkout's `scripts/abcd.sh` builds into the tier is left
+out. The original tier goes with the worktree when `git worktree remove`
+deletes it; when git refuses the removal, the worktree and its tier stay and the
+archive entry already written stays beside them. Nothing reclaims the archive.
 
 **The Go build cache is kept under a size limit.** Go trims only entries unused
 for five days, and every store worktree adds entries, so a machine running many of
@@ -1060,6 +1066,9 @@ directory is this checkout's; anything else is reported and left in place, and n
 removal is forced. It is the reclaim half of
 [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md):
 a tool that must not create in the user's space must not delete there either.
+The invariants register,
+[`02-constraints/03-invariants.md`](../02-constraints/03-invariants.md), carries
+it with the prune tests that hold it.
 
 ## The check directory
 

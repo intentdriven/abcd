@@ -453,7 +453,7 @@
     {
       "path": "abcd ahoy worktree list",
       "hidden": false,
-      "sentence": "List this repository's worktrees and its lane, or every lane with --all: Writes nothing; refuses a store it cannot trust or a directory outside a checkout.",
+      "sentence": "List this repository's worktrees and its lane, or every lane with --all: Writes nothing; refuses a store it cannot trust, or outside a checkout without --all.",
       "flags": [
         {
           "name": "all",
@@ -1818,6 +1818,22 @@
       "hidden": false,
       "sentence": "Report what a lifeboat would write into a target, coverage blanks first: Writes nothing; refuses a lifeboat whose manifest does not verify.",
       "flags": []
+    },
+    {
+      "path": "abcd explain",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Print how to call one command, or the shape of one input it reads: Writes nothing; refuses a command path the tree does not have.",
+      "flags": [
+        {
+          "name": "input",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd guard",

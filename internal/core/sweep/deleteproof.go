@@ -59,7 +59,10 @@ const (
 // may be nil, and then the default reads the host.
 type DeleteProofOptions struct {
 	// Forge is the forge client the open and merged pull requests are asked
-	// of; nil fails every remote branch's proof, which cannot show none open.
+	// of, every call pinned to origin's repository as the sweep pins its own
+	// (forge.go); nil, or a forge whose repository cannot be matched to
+	// origin's, fails every remote branch's proof, which cannot show none
+	// open.
 	Forge store.GH
 	// RemoteTip reads the tip a remote holds for a branch now, and whether it
 	// holds the branch at all; nil is a bounded `git ls-remote`.
@@ -79,6 +82,16 @@ type deleteProver struct {
 	// proved holds each target's proof, so a line the hook judges against
 	// two registries (the session's and the workdir's) is proved once.
 	proved map[guard.DeleteTarget]guard.DeleteProof
+	// pins holds the forge pinned to each checkout's origin (pinned), so a
+	// line naming two branches asks the forge for the repository once.
+	pins map[string]proverPin
+}
+
+// proverPin is one checkout's forge pinned to origin's repository, or why it
+// could not be.
+type proverPin struct {
+	gh  store.GH
+	why string
 }
 
 // NewDeleteProver returns the prover the shell guard's front doors attach to
@@ -90,15 +103,31 @@ func NewDeleteProver(o DeleteProofOptions) guard.DeleteProver {
 	if o.Budget <= 0 {
 		o.Budget = proofBudget
 	}
-	return deleteProver{o: o, deadline: time.Now().Add(o.Budget), proved: map[guard.DeleteTarget]guard.DeleteProof{}}
+	return deleteProver{o: o, deadline: time.Now().Add(o.Budget), proved: map[guard.DeleteTarget]guard.DeleteProof{}, pins: map[string]proverPin{}}
 }
 
 // errOutOfTime is a forge call the prover's budget did not wait for.
 var errOutOfTime = errors.New("the guard's time for proving this line ran out")
 
-// forge asks the forge within what is left of the budget. A call still
-// running at the deadline is abandoned, and its answer is no answer.
-func (p deleteProver) forge(root string, args ...string) (string, error) {
+// pinned is the forge pinned to the origin of the checkout at root, or why it
+// could not be, within what is left of the budget.
+func (p deleteProver) pinned(root string) (store.GH, string) {
+	if pin, ok := p.pins[root]; ok {
+		return pin.gh, pin.why
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), p.deadline)
+	defer cancel()
+	gh, _, why := pinForge(ctx, root, p.o.Forge)
+	if ctx.Err() != nil {
+		gh, why = nil, errOutOfTime.Error()
+	}
+	p.pins[root] = proverPin{gh: gh, why: why}
+	return gh, why
+}
+
+// forge asks the forge client gh within what is left of the budget. A call
+// still running at the deadline is abandoned, and its answer is no answer.
+func (p deleteProver) forge(gh store.GH, root string, args ...string) (string, error) {
 	left := time.Until(p.deadline)
 	if left <= 0 {
 		return "", errOutOfTime
@@ -109,7 +138,7 @@ func (p deleteProver) forge(root string, args ...string) (string, error) {
 	}
 	ch := make(chan answer, 1)
 	go func() {
-		out, err := p.o.Forge(root, args...)
+		out, err := gh(root, args...)
 		ch <- answer{out, err}
 	}()
 	t := time.NewTimer(left)
@@ -229,7 +258,13 @@ func branchHazard(def string, wts []gitutil.Worktree, held gitutil.Held, branch 
 }
 
 // remoteBranch proves a branch delete on origin: at the tip origin holds
-// now, merged, with no open pull request.
+// now, merged, with no open pull request. The refusals that read nothing of
+// origin come first, a delete on another remote and the branch hazards, so
+// each names its own reason. Every answer after them, origin's tip read and
+// every answer that can prove the delete safe, rests on origin being one
+// repository matched to the forge (pinned), which is checked before them: a
+// push to an address the tip read does not reach would otherwise be proven
+// by what that read found, or did not find.
 func (p deleteProver) remoteBranch(root, def string, wts []gitutil.Worktree, held gitutil.Held, t guard.DeleteTarget) guard.DeleteProof {
 	if t.Remote != claim.Remote {
 		return unproven("the delete is on the remote "+t.Remote+", and only a delete on "+claim.Remote+" can be proven",
@@ -237,6 +272,14 @@ func (p deleteProver) remoteBranch(root, def string, wts []gitutil.Worktree, hel
 	}
 	if pr, bad := branchHazard(def, wts, held, t.Branch); bad {
 		return pr
+	}
+	if p.o.Forge == nil {
+		return unproven("no forge was asked whether a pull request is open on it",
+			"Run the delete where gh is signed in to the repository's forge.")
+	}
+	gh, why := p.pinned(root)
+	if why != "" {
+		return unproven(why, "Run the delete where origin is one repository, fetched and pushed at the same one, on the forge gh is signed in to.")
 	}
 	tip, found, err := p.o.RemoteTip(root, t.Remote, t.Branch)
 	if err != nil {
@@ -251,11 +294,7 @@ func (p deleteProver) remoteBranch(root, def string, wts []gitutil.Worktree, hel
 		return unproven("origin's tip of it, "+short(tip)+", is a commit this checkout has not fetched",
 			"Fetch it (`git fetch origin "+t.Branch+"`) and run the delete again.")
 	}
-	if p.o.Forge == nil {
-		return unproven("no forge was asked whether a pull request is open on it",
-			"Run the delete where gh is signed in to the repository's forge.")
-	}
-	prs, err := p.forge(root, "pr", "list", "--head", t.Branch, "--state", "all",
+	prs, err := p.forge(gh, root, "pr", "list", "--head", t.Branch, "--state", "all",
 		"--limit", strconv.Itoa(proofPRLimit),
 		"--json", "number,headRefName,headRefOid,baseRefName,isCrossRepository,state")
 	if err != nil {

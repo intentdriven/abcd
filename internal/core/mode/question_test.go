@@ -142,3 +142,194 @@ func TestResetOnAnswerRefusesAMarkerItCannotRemove(t *testing.T) {
 		}
 	}
 }
+
+// TestResetOnAnswerClearsAStaleMarker: the reset applies only to the mode the
+// question was asked under. A question refused under the product thinker and
+// abandoned leaves its marker; the mode is then set to managed and later to
+// the facilitator by hand. The next message must not reset that hand-set
+// mode: the marker names another mode, so it is stale, and is cleared with
+// the mode left as set. A marker that is not a regular file is nothing the
+// gate wrote, and is cleared the same way.
+func TestResetOnAnswerClearsAStaleMarker(t *testing.T) {
+	root := newRepo(t)
+	makeTier(t, root)
+	if err := mode.SetAt(root, mode.ProductThinker); err != nil {
+		t.Fatal(err)
+	}
+	if err := mode.MarkQuestionOpen(root, mode.ProductThinker); err != nil {
+		t.Fatal(err)
+	}
+	for _, st := range []mode.State{mode.Managed, mode.Facilitator} {
+		if err := mode.SetAt(root, st); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reset, err := mode.ResetOnAnswer(root)
+	if err != nil || reset {
+		t.Fatalf("ResetOnAnswer over a stale marker = %v, %v; want false, nil", reset, err)
+	}
+	if got, _ := mode.ReadAt(root); got != mode.Facilitator {
+		t.Errorf("a stale marker reset the hand-set mode to %q", got)
+	}
+	if _, err := os.Lstat(markerPath(root)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the stale marker survived: %v", err)
+	}
+
+	if err := os.Symlink(filepath.Join(root, "elsewhere"), markerPath(root)); err != nil {
+		t.Fatal(err)
+	}
+	reset, err = mode.ResetOnAnswer(root)
+	if err != nil || reset {
+		t.Fatalf("ResetOnAnswer over a symlinked marker = %v, %v; want false, nil", reset, err)
+	}
+	if got, _ := mode.ReadAt(root); got != mode.Facilitator {
+		t.Errorf("a symlinked marker reset the mode to %q", got)
+	}
+	if _, err := os.Lstat(markerPath(root)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the symlinked marker survived: %v", err)
+	}
+}
+
+// TestResetOnAnswerResetsOverAnUnreadableStore: a store that cannot be read
+// is no evidence of a mode set since the question, so the marker is not
+// stale: the reset writes managed and clears the marker, as it did before the
+// marker's word was compared. Where the store cannot be written either, the
+// reset says so and keeps the marker for the next message, never clearing it
+// silently with the mode left parked.
+func TestResetOnAnswerResetsOverAnUnreadableStore(t *testing.T) {
+	root := newRepo(t)
+	makeTier(t, root)
+	if err := mode.MarkQuestionOpen(root, mode.ProductThinker); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(storePath(root), []byte("bogus\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mode.ReadAt(root); err == nil {
+		t.Fatal("the fixture's store reads; want an unknown word it refuses")
+	}
+	reset, err := mode.ResetOnAnswer(root)
+	if err != nil || !reset {
+		t.Fatalf("ResetOnAnswer over a store holding an unknown word = %v, %v; want true, nil", reset, err)
+	}
+	if got, err := mode.ReadAt(root); err != nil || got != mode.Managed {
+		t.Errorf("mode after the reset = %q, %v; want managed", got, err)
+	}
+	if _, err := os.Lstat(markerPath(root)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the marker survived the reset: %v", err)
+	}
+
+	if err := os.Remove(storePath(root)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(storePath(root), "planted"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := mode.MarkQuestionOpen(root, mode.ProductThinker); err != nil {
+		t.Fatal(err)
+	}
+	reset, err = mode.ResetOnAnswer(root)
+	if err == nil || reset {
+		t.Fatalf("ResetOnAnswer over a store it can neither read nor write = %v, %v; want false and an error", reset, err)
+	}
+	if _, err := os.Lstat(markerPath(root)); err != nil {
+		t.Errorf("the marker was cleared with the mode not reset: %v", err)
+	}
+}
+
+// TestClearQuestionOpenOtherThanKeepsAMarkerForTheStateSet: an explicit mode
+// set clears a marker naming another state, and changes no mode; a marker
+// naming the state being set is kept, so a retry that sets the mode again
+// beside the question it asks still resets on the answer.
+func TestClearQuestionOpenOtherThanKeepsAMarkerForTheStateSet(t *testing.T) {
+	root := newRepo(t)
+	if err := mode.ClearQuestionOpenOtherThan(root, mode.Managed); err != nil {
+		t.Fatalf("with no tier: %v", err)
+	}
+	makeTier(t, root)
+	if err := mode.SetAt(root, mode.ProductThinker); err != nil {
+		t.Fatal(err)
+	}
+	if err := mode.ClearQuestionOpenOtherThan(root, mode.ProductThinker); err != nil {
+		t.Fatalf("with no marker: %v", err)
+	}
+	if err := mode.MarkQuestionOpen(root, mode.ProductThinker); err != nil {
+		t.Fatal(err)
+	}
+	if err := mode.ClearQuestionOpenOtherThan(root, mode.ProductThinker); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(markerPath(root)); err != nil {
+		t.Errorf("a marker naming the state being set was cleared: %v", err)
+	}
+	if err := mode.ClearQuestionOpenOtherThan(root, mode.Facilitator); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(markerPath(root)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a marker naming another state survived: %v", err)
+	}
+	if got, _ := mode.ReadAt(root); got != mode.ProductThinker {
+		t.Errorf("clearing the marker moved the mode to %q", got)
+	}
+}
+
+// TestClearQuestionOpenOtherThanChecksItsTarget: like MarkQuestionOpen, the
+// clear acts only where the tier is a real directory, so a tier symlinked to
+// another directory of the checkout has that directory's question_open left
+// alone. At the marker's path it removes a symlink as itself, and names and
+// leaves a directory, which the gate never writes.
+func TestClearQuestionOpenOtherThanChecksItsTarget(t *testing.T) {
+	root := newRepo(t)
+	if err := os.MkdirAll(filepath.Join(root, ".abcd"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(root, "other")
+	if err := os.MkdirAll(other, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	bystander := filepath.Join(other, "question_open")
+	if err := os.WriteFile(bystander, []byte("facilitator\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tier := filepath.Join(root, filepath.FromSlash(mode.TierRelPath))
+	if err := os.Symlink(other, tier); err != nil {
+		t.Fatal(err)
+	}
+	if err := mode.ClearQuestionOpenOtherThan(root, mode.Managed); err != nil {
+		t.Fatalf("behind a symlinked tier: %v", err)
+	}
+	if _, err := os.Lstat(bystander); err != nil {
+		t.Errorf("the clear removed a file behind a symlinked tier: %v", err)
+	}
+	if err := os.Remove(tier); err != nil {
+		t.Fatal(err)
+	}
+
+	makeTier(t, root)
+	target := filepath.Join(root, "kept")
+	if err := os.WriteFile(target, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, markerPath(root)); err != nil {
+		t.Fatal(err)
+	}
+	if err := mode.ClearQuestionOpenOtherThan(root, mode.Managed); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(markerPath(root)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a symlink at the marker's path survived: %v", err)
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Errorf("the clear removed what the symlink pointed at: %v", err)
+	}
+
+	if err := os.Mkdir(markerPath(root), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := mode.ClearQuestionOpenOtherThan(root, mode.Managed); err == nil {
+		t.Error("a directory at the marker's path was not named")
+	}
+	if fi, err := os.Lstat(markerPath(root)); err != nil || !fi.IsDir() {
+		t.Errorf("the directory at the marker's path was removed: %v", err)
+	}
+}

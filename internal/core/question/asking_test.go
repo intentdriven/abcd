@@ -144,3 +144,66 @@ func TestAskingRulesStateTheRowsExceptionAndTheDrafter(t *testing.T) {
 		}
 	}
 }
+
+// TestAskingRulesNameTheVerbAndTheWriter (spc-2610301917245442, step 4;
+// approach 10): the drafter rule makes abcd:question-drafter the writer that
+// runs `abcd guard question` on each draft and loops until it is clean; one
+// rule, and one only, says the agent running the interview asks only what the
+// writer returns and never writes or edits a question itself; a host with no
+// agents checks its own draft with the same verb; and the header rule names
+// the number form, "Q1" and "Q2/5", with the older form still read.
+func TestAskingRulesNameTheVerbAndTheWriter(t *testing.T) {
+	rules := AskingRules(Default)
+	drafter := ""
+	for _, r := range rules {
+		if strings.Contains(r, "abcd:question-drafter") {
+			drafter = r
+		}
+	}
+	if drafter == "" {
+		t.Fatal("no rule names the abcd:question-drafter agent")
+	}
+	for _, want := range []string{
+		"runs `abcd guard question` on each draft",
+		"until the check is clean",
+		"the rows the check counted",
+		"a question abandoned after a refusal is followed by `abcd mode managed`",
+	} {
+		if !strings.Contains(drafter, want) {
+			t.Errorf("the drafter rule must say %q: %s", want, drafter)
+		}
+	}
+	noAgents := ""
+	for _, s := range strings.SplitAfter(drafter, ". ") {
+		if strings.Contains(s, "A host with no agents") {
+			noAgents = s
+		}
+	}
+	if !strings.Contains(noAgents, "`abcd guard question`") {
+		t.Errorf("the no-agents sentence must check the draft with `abcd guard question`: %q", noAgents)
+	}
+	const asksOnly = "only the question the writer returns, and never write or edit a question yourself"
+	n := 0
+	for _, r := range rules {
+		if strings.Contains(r, asksOnly) {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("%d rules say %q; want exactly one", n, asksOnly)
+	}
+	header := ""
+	for _, r := range rules {
+		if strings.Contains(r, "Every question has one layout") {
+			header = r
+		}
+	}
+	for _, want := range []string{`"Q1"`, `"Q1a"`, `"Q2/5"`, "is still read"} {
+		if !strings.Contains(header, want) {
+			t.Errorf("the header rule must name %s: %s", want, header)
+		}
+	}
+	if strings.Contains(joined(rules), "head the question with the chip") {
+		t.Error("a rule still has the agent head the question with the chip, which the number form replaced")
+	}
+}

@@ -28,6 +28,8 @@ var bareRenderExceptions = map[string]string{
 		"its store holds private advisories, which no bare listing shows, so bare prints its sub-verbs",
 	"embark": "a parent whose sub-verbs act on a named lifeboat; with no operand there " +
 		"is no state to render, so bare prints its sub-verbs",
+	"explain": "its operand is the command it explains, and it keeps no state of its own, " +
+		"so bare prints its help and writes nothing (spc-2610301431075964)",
 	"guard": "it judges one command handed to it and keeps no standing state to " +
 		"render, so bare prints its usage",
 	"history": "not yet conformant: its store's state renders through `history list` and " +
