@@ -364,3 +364,27 @@ func TestDeleteProofRefusesABranchAStoppedRebaseOrBisectHolds(t *testing.T) {
 	}
 	proofRefused(t, prove(t, o, local("free")), "could not be read")
 }
+
+// TestARemoteBranchProofRestsOnOriginBeingOneRepository: origin fetched from
+// one repository and pushed to another, with the branch only in the one the
+// push reaches, fails the proof before origin's tip is read, so no answer of
+// the proof, a branch origin's fetch address does not hold among them, comes
+// before the check that origin is one repository.
+func TestARemoteBranchProofRestsOnOriginBeingOneRepository(t *testing.T) {
+	repo, _ := proofRepo(t)
+	other := filepath.Join(t.TempDir(), "other.git")
+	gittest.InitBare(t, other)
+	repo.Git("config", "remote.origin.pushurl", other)
+	branchWith(repo, "topic", "topic.txt")
+	repo.Git("push", "-q", other, "topic")
+	read := false
+	o := DeleteProofOptions{Forge: forgeSaying(`[]`), RemoteTip: func(dir, remote, branch string) (string, bool, error) {
+		read = true
+		return lsRemoteTip(dir, remote, branch)
+	}}
+	target := guard.DeleteTarget{Kind: guard.DeleteRemoteBranch, Dir: repo.Root(), Remote: "origin", Branch: "topic"}
+	proofRefused(t, prove(t, o, target), "origin is read from one repository and pushed to another")
+	if read {
+		t.Error("origin's tip was read before origin was shown to be one repository")
+	}
+}
