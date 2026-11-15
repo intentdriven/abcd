@@ -393,8 +393,10 @@ badge, and in the harness's session list.
   recorded when it started is recorded at its next prompt. If two running
   sessions carry one name, the one that claimed it later takes the next free
   name, and that prompt tells you and the session which name it now has. If
-  the check cannot finish in time, the prompt changes nothing and tries again
-  next time.
+  the next prompt still shows the old name, the new name and the message are
+  sent once more; after that, the old name is yours to keep if you chose it.
+  If the check cannot finish in time, the prompt changes nothing and tries
+  again next time.
 
 ## Where your session transcripts are kept
 

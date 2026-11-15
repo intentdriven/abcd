@@ -1597,8 +1597,9 @@ loudly, naming the file (save `abcd mode back`, which names a refused away
 record on a line of its own and replaces it with a closed record, printing
 nothing from it); a read of the machine configuration or routing table
 fails naming the file, save the keys above that are read past with a note; the
-session-name register leaves the session unnamed with a note at its start, and its name as it is with a note at a prompt; the status-line
-settings and the load limits take their defaults with a note; and a dogfood
+session-name register leaves the session unnamed with a note at its start,
+and its name as it is with a note at a prompt; the status-line settings and
+the load limits take their defaults with a note; and a dogfood
 check record (named in an `IGNORED` note when it is not this account's alone)
 or build, a one-shot allow, an occupancy marker and a
 rules-loader ledger are passed over as if absent, so the installed release
