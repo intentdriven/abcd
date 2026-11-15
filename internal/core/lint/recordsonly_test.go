@@ -313,8 +313,10 @@ func TestPreflightRecordsRuleRunsPrechecksTests(t *testing.T) {
 
 // TestRecordsOnlyReadsTheCommitsAsStored: the verdict is about HEAD's own
 // commits, so a refs/replace/* ref standing a records-only commit in for a
-// code change, with the worktree holding the stand-in's tree, and a graft file
-// that moves the merge base past a code change, each still take the full run.
+// code change, with the worktree holding the stand-in's tree, a graft file
+// that moves the merge base past a code change, and a commit-graph file altered
+// to claim a records-only tree for a commit that also changes code, with the
+// worktree holding that tree, each still take the full run.
 func TestRecordsOnlyReadsTheCommitsAsStored(t *testing.T) {
 	for _, c := range []struct {
 		name  string
@@ -341,6 +343,20 @@ func TestRecordsOnlyReadsTheCommitsAsStored(t *testing.T) {
 			moved := r.Git("commit-tree", base+"^{tree}", "-p", base, "-m", "origin moves on")
 			r.Git("update-ref", "refs/remotes/origin/main", moved)
 			writeGrafts(t, r, moved+" "+base+" "+code+"\n")
+		}},
+		{"an altered commit-graph", func(r *gittest.Repo) {
+			r.Write(".abcd/work/issues/open/iss-2.md", "two\n")
+			r.Git("add", "-A")
+			records := r.Git("write-tree")
+			r.Write("internal/x/x.go", "package x\n\nvar Y = 1\n")
+			r.Commit("code and records")
+			head := r.Git("rev-parse", "HEAD")
+			r.Git("commit-graph", "write", "--reachable")
+			gittest.ForgeCommitGraphTree(t, r.Git("rev-parse", "--absolute-git-dir"), head, records)
+			if got := r.Git("-c", "core.commitGraph=true", "log", "-1", "--format=%T"); got != records {
+				t.Fatalf("the altered commit-graph does not take: HEAD reads as tree %s", got)
+			}
+			r.Git("read-tree", "--reset", "-u", records)
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {

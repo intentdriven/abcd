@@ -59,14 +59,22 @@
 # Exit 0 on success; `check` exits 1 when there is no receipt; 2 on a usage fault.
 set -euo pipefail
 
-# Every git here reads objects as stored, and so does scripts/records-only.sh,
-# which mint runs: no refs/replace/* ref stands another commit, tree or blob in
-# for one HEAD stores, and no graft file gives it other parents. The state, the
-# tree the stage reports are checked against and the records-only verdict are
-# then all read from the commit the receipt names. The graft path is the one
+# Every git here reads objects as stored, as .githooks/pre-push does, and so
+# does scripts/records-only.sh, which mint runs: no refs/replace/* ref stands
+# another commit, tree or blob in for one HEAD stores, no graft file gives it
+# other parents, and no commit-graph file, a cache git reads a commit's tree and
+# parents from in place of the commit, claims another tree for it. The state
+# and the tree the stage reports are checked against are then read from HEAD as
+# stored, the commit the receipt names. The graft path is the one
 # internal/gitutil uses (noGraftFile): it names nothing, so git reads no graft
-# file, and git prints no hint for it as it does for /dev/null.
-export GIT_NO_REPLACE_OBJECTS=1 GIT_GRAFT_FILE=/dev/null/none
+# file, and git prints no hint for it as it does for /dev/null. core.commitGraph
+# is set false as the last entry of GIT_CONFIG_PARAMETERS, after any entries the
+# caller's environment carries, and the last entry wins; GIT_TEST_COMMIT_GRAPH,
+# which loads a graph whatever the setting says, is off.
+export GIT_NO_REPLACE_OBJECTS=1
+export GIT_GRAFT_FILE=/dev/null/none
+export GIT_CONFIG_PARAMETERS="${GIT_CONFIG_PARAMETERS:+$GIT_CONFIG_PARAMETERS }'core.commitgraph'='false'"
+export GIT_TEST_COMMIT_GRAPH=0
 
 cd "$(git rev-parse --show-toplevel)"
 

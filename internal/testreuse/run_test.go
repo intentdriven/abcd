@@ -1104,46 +1104,54 @@ func receiptScript(t *testing.T, dir string, args ...string) string {
 }
 
 // TestAReceiptReadsTheCommitAsStored: the receipt names a commit, so the
-// script reads that commit as stored, whatever refs/replace/* ref stands
-// another in for it. A worktree holding HEAD as stored is clean, and a
-// receipt is minted when both stages checked the stored tree; a worktree
-// holding the replacement's tree is not HEAD, and nothing a stage reported on
-// that tree mints a receipt for HEAD.
+// script reads that commit as stored, whatever refs/replace/* ref or altered
+// commit-graph file claims another tree for it. A worktree holding HEAD as
+// stored is clean, and a receipt is minted when both stages checked the stored
+// tree; a worktree holding the other tree is not HEAD, and nothing a stage
+// reported on that tree mints a receipt for HEAD.
 func TestAReceiptReadsTheCommitAsStored(t *testing.T) {
-	for _, c := range []struct {
-		name     string
-		checkout bool // the worktree and index hold the replacement's tree
-		state    string
-		minted   bool
+	for _, how := range []struct {
+		name  string
+		claim func(t *testing.T, dir string) (other string) // a tree-ish read as the other tree
 	}{
-		{"the worktree holds HEAD as stored", false, "clean", true},
-		{"the worktree holds the replacement", true, "dirty", false},
+		{"a replace ref", func(t *testing.T, dir string) string { return replaceHead(t, dir, "a.txt", "the replacement\n") }},
+		{"a commit-graph", func(t *testing.T, dir string) string { return forgeGraphHead(t, dir, "a.txt", "the replacement\n") }},
 	} {
-		t.Run(c.name, func(t *testing.T) {
-			r := newGitRepo(t)
-			r.write(".gitignore", ".abcd/.work.local/\n")
-			r.write("a.txt", "stored\n")
-			head := r.commit("one")
-			other := replaceHead(t, r.root, "a.txt", "the replacement\n")
-			tested := r.git("--no-replace-objects", "rev-parse", head+"^{tree}")
-			if c.checkout {
-				r.git("read-tree", "--reset", "-u", other)
-				tested = r.git("rev-parse", other+"^{tree}")
-			}
-			for _, stage := range []string{"unit", "race"} {
-				body := "commit " + head + "\ntree " + tested + "\nstage " + stage + "\nmode reuse\nreused 1\npackages 1\nresult pass\n"
-				writeFile(t, filepath.Join(r.root, ".abcd", ".work.local", "preflight-reuse", head, stage+"-aaaaaaaaaaaa"), body, 0o644)
-			}
+		for _, c := range []struct {
+			name     string
+			checkout bool // the worktree and index hold the other tree
+			state    string
+			minted   bool
+		}{
+			{"the worktree holds HEAD as stored", false, "clean", true},
+			{"the worktree holds the other tree", true, "dirty", false},
+		} {
+			t.Run(how.name+"/"+c.name, func(t *testing.T) {
+				r := newGitRepo(t)
+				r.write(".gitignore", ".abcd/.work.local/\n")
+				r.write("a.txt", "stored\n")
+				head := r.commit("one")
+				tested := r.git("rev-parse", head+"^{tree}")
+				other := how.claim(t, r.root)
+				if c.checkout {
+					r.git("read-tree", "--reset", "-u", other)
+					tested = r.git("rev-parse", other+"^{tree}")
+				}
+				for _, stage := range []string{"unit", "race"} {
+					body := "commit " + head + "\ntree " + tested + "\nstage " + stage + "\nmode reuse\nreused 1\npackages 1\nresult pass\n"
+					writeFile(t, filepath.Join(r.root, ".abcd", ".work.local", "preflight-reuse", head, stage+"-aaaaaaaaaaaa"), body, 0o644)
+				}
 
-			began := receiptScript(t, r.root, "state")
-			if began != head+" "+c.state {
-				t.Errorf("state = %q, want %q", began, head+" "+c.state)
-			}
-			out := receiptScript(t, r.root, "mint", began)
-			_, err := os.Stat(filepath.Join(r.root, ".abcd", ".work.local", "preflight-receipts", head))
-			if minted := err == nil; minted != c.minted {
-				t.Errorf("a receipt minted = %v, want %v:\n%s", minted, c.minted, out)
-			}
-		})
+				began := receiptScript(t, r.root, "state")
+				if began != head+" "+c.state {
+					t.Errorf("state = %q, want %q", began, head+" "+c.state)
+				}
+				out := receiptScript(t, r.root, "mint", began)
+				_, err := os.Stat(filepath.Join(r.root, ".abcd", ".work.local", "preflight-receipts", head))
+				if minted := err == nil; minted != c.minted {
+					t.Errorf("a receipt minted = %v, want %v:\n%s", minted, c.minted, out)
+				}
+			})
+		}
 	}
 }

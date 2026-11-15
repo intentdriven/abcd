@@ -28,13 +28,22 @@
 #                      can redo the check
 set -uo pipefail
 
-# Every git here reads objects as stored, as scripts/preflight-receipt.sh does:
-# no refs/replace/* ref stands another commit, tree or blob in for one HEAD or
-# origin's default branch stores, and no graft file moves the merge base, so the
-# verdict is about the commits a receipt names. The graft path is the one
-# internal/gitutil uses (noGraftFile): it names nothing, so git reads no graft
-# file.
-export GIT_NO_REPLACE_OBJECTS=1 GIT_GRAFT_FILE=/dev/null/none
+# Every git here reads objects as stored, as scripts/preflight-receipt.sh and
+# .githooks/pre-push do: no refs/replace/* ref stands another commit, tree or
+# blob in for one HEAD or origin's default branch stores, no graft file moves
+# the merge base, and no commit-graph file, a cache git reads a commit's tree
+# and parents from in place of the commit, claims another tree or parents for
+# one. The state, the merge base and the diff are then read from the commits as
+# stored; which ref names origin's default branch is read as the git directory
+# has it. The graft path is the one internal/gitutil uses (noGraftFile): it
+# names nothing, so git reads no graft file. core.commitGraph is set false as
+# the last entry of GIT_CONFIG_PARAMETERS, after any entries the caller's
+# environment carries, and the last entry wins; GIT_TEST_COMMIT_GRAPH, which
+# loads a graph whatever the setting says, is off.
+export GIT_NO_REPLACE_OBJECTS=1
+export GIT_GRAFT_FILE=/dev/null/none
+export GIT_CONFIG_PARAMETERS="${GIT_CONFIG_PARAMETERS:+$GIT_CONFIG_PARAMETERS }'core.commitgraph'='false'"
+export GIT_TEST_COMMIT_GRAPH=0
 
 verdict=false
 reason='the classifier did not reach a verdict'
