@@ -47,8 +47,11 @@ type Options struct {
 	// Probe is what the liveness probe reads: the reservations already
 	// fetched, the build loop's runs, the process lister and the clock.
 	Probe ProbeOptions
-	// Forge is the store's forge client for the merged judgement; nil asks
-	// none, and merged is judged from git alone.
+	// Forge is the forge client every half asks: the store's merged
+	// judgement, the pull requests on origin's branches and the reservation
+	// workflow's dispatch. nil asks none, and merged is judged from git
+	// alone. Every call is pinned to origin's repository (forge.go); when it
+	// cannot be, none is made.
 	Forge store.GH
 	// Held reads what the build loop holds, as the store's prune reads it. It
 	// is required: like prune, a sweep that cannot tell what the loop holds
@@ -79,6 +82,13 @@ type Options struct {
 	// to see what was asked, or to have a promotion fail.
 	inbox   func() ([]report.Entry, error)
 	promote func(ledgerRoot, id string, mc *match.Config) (report.Promoted, error)
+
+	// forgeChecked says Forge was pinned to origin's repository already
+	// (pinnedForge), forgeKey is that repository's key, and forgeUnmatched
+	// is why it could not be, when Forge was given and now is nil.
+	forgeChecked   bool
+	forgeKey       string
+	forgeUnmatched string
 }
 
 // runDry judges every worktree of the repository at repoRoot and every entry
@@ -93,12 +103,14 @@ func runDry(ctx context.Context, repoRoot string, o Options) (Result, error) {
 
 // plan is what runApply acts on beside the result: the store's row behind
 // each of the result's rows, in order, the salvage each save-patch row would
-// write, by the row's index, and the lane and judge that made them.
+// write, by the row's index, the lane and judge that made them, and the
+// options they were made with, the forge pinned.
 type plan struct {
 	srcs     []store.Row
 	salvages map[int]salvage
 	lane     store.Lane
 	j        judge
+	o        Options
 }
 
 // judgeRepo is runDry, also answering with the plan behind the result's rows,
@@ -112,6 +124,7 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options, retain bool) (Re
 	if err := o.required(); err != nil {
 		return fail(err)
 	}
+	o = o.pinnedForge(ctx, repoRoot)
 	listing, err := store.List(repoRoot, store.ListOptions{Forge: o.Forge})
 	if err != nil {
 		return fail(err)
@@ -139,6 +152,10 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options, retain bool) (Re
 		j.changes = changedPaths
 	}
 	j.cwd = fsutil.RealExistingPath(o.Cwd)
+	if o.forgeUnmatched != "" {
+		// The store asked no forge, and would say none was given.
+		listing.ForgeNote = clean(o.forgeUnmatched + "; merged is judged from git alone")
+	}
 	res := Result{
 		Lane:                    listing.Lane,
 		Rows:                    make([]Row, 0, len(listing.Worktrees)),
@@ -147,7 +164,7 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options, retain bool) (Re
 		RunsUnread:              clean(p.runsUnread),
 		ForgeNote:               listing.ForgeNote,
 	}
-	pl := plan{srcs: listing.Worktrees, salvages: map[int]salvage{}, lane: lane, j: j}
+	pl := plan{srcs: listing.Worktrees, salvages: map[int]salvage{}, lane: lane, j: j, o: o}
 	sv := &salvager{ctx: ctx, repoRoot: repoRoot, home: home, lane: lane, retain: retain}
 	for i, r := range listing.Worktrees {
 		row := j.row(r)
@@ -192,6 +209,9 @@ func runSweep(ctx context.Context, repoRoot string, o Options, apply bool) (Resu
 	if err := o.required(); err != nil {
 		return refused(err)
 	}
+	// One pin serves every half: origin's repository is asked of the forge
+	// once a run.
+	o = o.pinnedForge(ctx, repoRoot)
 	halves := []func() (Result, error){
 		func() (Result, error) {
 			if apply {

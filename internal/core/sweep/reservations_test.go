@@ -1,6 +1,7 @@
 package sweep
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -19,11 +20,13 @@ import (
 
 // workflowForge is a fake forge client for the reservation workflow: it
 // lists the newest dispatched run from runs, one answer a call (the last one
-// repeating), and takes or refuses `gh workflow run` by dispatchErr. Every
+// repeating), and takes or refuses `gh workflow run` by dispatchErr. It
+// answers `gh repo view` with view, or hostedView when that is empty. Every
 // call is recorded. onDispatch, when set, runs as the dispatch is asked.
 type workflowForge struct {
 	mu          sync.Mutex
 	runs        []string
+	view        string
 	dispatchErr error
 	listErr     error
 	onDispatch  func()
@@ -35,6 +38,8 @@ func (f *workflowForge) gh(_ string, args ...string) (string, error) {
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, args)
 	switch {
+	case isRepoView(args):
+		return cmp.Or(f.view, hostedView), nil
 	case len(args) >= 2 && args[0] == "workflow" && args[1] == "run":
 		if f.onDispatch != nil {
 			f.onDispatch()
@@ -193,7 +198,7 @@ func TestSpentReservationsDispatchTheWorkflowAndNameItsRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := f.dispatches(); len(got) != 1 || !slices.Equal(got[0], []string{"workflow", "run", "reservation-sweep.yml", "--ref=main"}) {
+	if got := f.dispatches(); len(got) != 1 || !slices.Equal(got[0], []string{"workflow", "run", "reservation-sweep.yml", "--ref=main", pinnedArg}) {
 		t.Fatalf("dispatches = %q; want one, of reservation-sweep.yml on main", got)
 	}
 	run := "run 11, https://forge.example/actions/runs/11"
@@ -205,7 +210,8 @@ func TestSpentReservationsDispatchTheWorkflowAndNameItsRun(t *testing.T) {
 	if k := reservationRowFor(t, res, keptRecord); k.Outcome != OutcomeKept {
 		t.Fatalf("the kept reservation: %+v", k)
 	}
-	if !strings.Contains(res.Workflow, "dispatched the reservation sweep's workflow on main: "+run) || !slices.Contains(res.Notes(), res.Workflow) {
+	if !strings.Contains(res.Workflow, "dispatched the reservation sweep's workflow on main; the newest dispatched run on main, which may be another person's dispatch, is "+run) ||
+		!slices.Contains(res.Notes(), res.Workflow) {
 		t.Fatalf("the result's workflow line %q, notes %q; want the run named once", res.Workflow, res.Notes())
 	}
 	if res.ExitCode() != ExitActed || res.Refusal != "" {
@@ -220,9 +226,39 @@ func TestSpentReservationsDispatchTheWorkflowAndNameItsRun(t *testing.T) {
 		}
 	}
 	for _, c := range f.calls {
-		if c[0] == "run" && !slices.Equal(c, []string{"run", "list", "--workflow=reservation-sweep.yml", "--branch=main", "--event=workflow_dispatch", "--limit=1", "--json=databaseId,url"}) {
+		if c[0] == "run" && !slices.Equal(c, []string{"run", "list", "--workflow=reservation-sweep.yml", "--branch=main", "--event=workflow_dispatch", "--limit=1", "--json=databaseId,url", pinnedArg}) {
 			t.Fatalf("a run listing asked %q", c)
 		}
+	}
+	assertPinned(t, f.calls)
+}
+
+// TestTheDispatchGoesToTheBranchOriginNamesItsDefault: the workflow is
+// dispatched on the branch origin names as its default when asked, not on
+// the one this checkout last fetched as its default; and a run whose URL is
+// not an https one is named by its id alone.
+func TestTheDispatchGoesToTheBranchOriginNamesItsDefault(t *testing.T) {
+	repo, origin := originRepo(t)
+	noWaitBetweenRunListings(t)
+	repo.Git("push", "-q", "origin", "main:trunk")
+	repo.Git("--git-dir", origin, "symbolic-ref", "HEAD", "refs/heads/trunk")
+	plain := func(id int64, url string) string {
+		b, err := json.Marshal([]workflowRun{{ID: id, URL: url}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	f := &workflowForge{runs: []string{plain(10, ""), plain(11, "javascript:alert(1)")}}
+	res, err := sweepReservations(context.Background(), repo.Root(), reservationOpts(spentAndKept(), f), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.dispatches(); len(got) != 1 || !slices.Contains(got[0], "--ref=trunk") {
+		t.Fatalf("dispatches = %q; want one, on trunk", got)
+	}
+	if !strings.Contains(res.Workflow, "is run 11;") || strings.Contains(res.Workflow, "javascript") {
+		t.Fatalf("workflow line %q; want run 11 named by its id alone", res.Workflow)
 	}
 }
 

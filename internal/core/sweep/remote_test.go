@@ -1,6 +1,7 @@
 package sweep
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"os"
@@ -27,7 +28,8 @@ type pullRequest struct {
 
 // fakeForge answers `gh pr list` from prs, filtered by the call's --state and
 // --head as gh filters them; a per-branch listing (--head, the last check
-// before a delete) answers from recheck instead once it is set.
+// before a delete) answers from recheck instead once it is set. It answers
+// `gh repo view` with view, or hostedView when that is empty.
 //
 // onRecheck, when set, runs at the first per-branch listing: the moment the
 // last check begins, before it reads the repository's own state again.
@@ -39,6 +41,7 @@ type pullRequest struct {
 type fakeForge struct {
 	mu           sync.Mutex
 	prs, recheck []pullRequest
+	view         string
 	calls        [][]string
 	onRecheck    func()
 }
@@ -47,6 +50,9 @@ func (f *fakeForge) gh(_ string, args ...string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, args)
+	if isRepoView(args) {
+		return cmp.Or(f.view, hostedView), nil
+	}
 	value := func(flag string) string {
 		for i, a := range args {
 			if v, ok := strings.CutPrefix(a, flag+"="); ok {
@@ -78,7 +84,9 @@ func (f *fakeForge) gh(_ string, args ...string) (string, error) {
 }
 
 // originRepo is sweepRepo with an origin that holds main, kept under HOME so
-// a path git prints of it reads home-redacted, and fetched.
+// a path git prints of it reads home-redacted, and fetched. The sweep reads
+// origin's address as the forge's (hostedOrigin), while git reaches the
+// local repository.
 func originRepo(t *testing.T) (*gittest.Repo, string) {
 	t.Helper()
 	repo, home := sweepRepo(t)
@@ -86,6 +94,7 @@ func originRepo(t *testing.T) (*gittest.Repo, string) {
 	gittest.InitBare(t, origin)
 	repo.Git("remote", "add", "origin", origin)
 	publish(repo)
+	hostedOrigin(t, origin)
 	return repo, origin
 }
 
@@ -96,6 +105,18 @@ func mergedOnOrigin(repo *gittest.Repo, branch, rel string) string {
 	branchWith(repo, branch, rel)
 	repo.Git("push", "-q", "origin", branch)
 	repo.Git("merge", "-q", "--ff-only", branch)
+	publish(repo)
+	return repo.Git("rev-parse", branch)
+}
+
+// squashedOnOrigin cuts branch from main with one commit at rel, pushes it to
+// origin, merges it into main by a squash and publishes main: merged by
+// content, which git alone shows. It answers the branch's tip.
+func squashedOnOrigin(repo *gittest.Repo, branch, rel string) string {
+	branchWith(repo, branch, rel)
+	repo.Git("push", "-q", "origin", branch)
+	repo.Git("merge", "-q", "--squash", branch)
+	repo.Git("commit", "-q", "-m", "squash "+branch)
 	publish(repo)
 	return repo.Git("rev-parse", branch)
 }
@@ -441,6 +462,7 @@ func TestOriginsAnswerIsScrubbedBeforeItIsShown(t *testing.T) {
 	// git quotes the path back with the URL whole.
 	url := "file://" + t.TempDir() + "/https://user:s3cret@example.invalid/none.git"
 	repo.Git("remote", "set-url", "origin", url)
+	hostedOrigin(t, url)
 
 	_, _, err := lsRemoteTipContext(context.Background(), repo.Root(), "origin", "feat")
 	if err == nil || strings.Contains(err.Error(), "s3cret") || strings.Contains(err.Error(), "user:") {
@@ -641,34 +663,38 @@ func TestARunWhoseContextEndsStopsJudging(t *testing.T) {
 }
 
 // TestAPushAddressOtherThanOriginsFetchAddressHoldsEveryDelete: with a push
-// URL configured for origin, the push would change a repository other than
-// the one the last check read, so every delete is held, naming why, and
-// neither repository loses the branch. The dry run's judgement is unchanged.
+// URL configured for origin that names another repository, the push would
+// change a repository other than the one the sweep reads, so origin is not
+// one repository: the forge is asked nothing, every branch is kept, naming
+// why, in the dry run and under apply, and neither repository loses the
+// branch.
 func TestAPushAddressOtherThanOriginsFetchAddressHoldsEveryDelete(t *testing.T) {
 	repo, origin := originRepo(t)
-	tip := mergedOnOrigin(repo, "feat", "feat.txt")
+	tip := squashedOnOrigin(repo, "feat", "feat.txt")
 	mirror := filepath.Join(t.TempDir(), "mirror.git")
 	repo.Git("clone", "-q", "--bare", origin, mirror)
 	repo.Git("config", "remote.origin.pushurl", mirror)
-	f := &fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}
+	f := &fakeForge{}
 
-	if r := remoteRowFor(t, sweepRemoteOK(t, repo, remoteOpts(f), false), "feat"); r.Action != ActionDelete {
-		t.Fatalf("the dry run: %+v; want feat judged deletable", r)
+	for _, apply := range []bool{false, true} {
+		res := sweepRemoteOK(t, repo, remoteOpts(f), apply)
+		r := remoteRowFor(t, res, "feat")
+		if r.Action != ActionKeep || !strings.Contains(r.Reason, "the forge's repository could not be matched to origin") ||
+			!strings.Contains(r.Reason, "origin is read from one repository and pushed to another") {
+			t.Fatalf("apply %v: %+v; want it kept because origin's fetch and push addresses name two repositories", apply, r)
+		}
+		if strings.Contains(r.Reason, mirror) || strings.Contains(r.Reason, origin) {
+			t.Fatalf("the reason shows an address: %q", r.Reason)
+		}
+		if res.Refusal != "" || res.ExitCode() != ExitNothing {
+			t.Fatalf("a kept branch is no fault: refusal %q, exit %d", res.Refusal, res.ExitCode())
+		}
 	}
-	res := sweepRemoteOK(t, repo, remoteOpts(f), true)
-	r := remoteRowFor(t, res, "feat")
-	if r.Outcome != OutcomeKept || !strings.Contains(r.Reason, "held at the last check before the delete") ||
-		!strings.Contains(r.Reason, "origin is read from one address and pushed to another, so the sweep cannot check what it would delete") {
-		t.Fatalf("%+v; want it held because origin's fetch and push addresses differ", r)
-	}
-	if strings.Contains(r.Reason, mirror) || strings.Contains(r.Reason, origin) {
-		t.Fatalf("the reason shows an address: %q", r.Reason)
+	if len(f.calls) != 0 {
+		t.Fatalf("the forge was asked %v", f.calls)
 	}
 	if onOrigin(repo, origin, "feat") != tip || onOrigin(repo, mirror, "feat") != tip {
 		t.Fatal("a repository lost feat")
-	}
-	if res.Refusal != "" || res.ExitCode() != ExitNothing {
-		t.Fatalf("a held delete is no fault: refusal %q, exit %d", res.Refusal, res.ExitCode())
 	}
 }
 

@@ -29,13 +29,14 @@ package sweep
 // Only refs under refs/heads/ are ever named in a delete, so a tag never is.
 //
 // The judgement reaches no remote: it reads origin's branches as the
-// caller's fetch left them, and the forge's listings through Options.Forge.
-// Under apply, origin's fetch and push addresses are read once, before the
-// first delete, with the person's own configuration (the one the push runs
-// under): when they differ, because a push URL or a push rewrite is
-// configured, origin is read from one address and pushed to another, the
-// last check below cannot see the repository the push would change, and
-// every delete is held. Each delete is then preceded by a last check of
+// caller's fetch left them, and the forge's listings through Options.Forge,
+// pinned to origin's repository (forge.go); a forge that cannot be matched
+// to origin lists nothing, so every branch is kept. Under apply, origin's
+// fetch and push addresses are read again once, before the first delete,
+// with the person's own configuration (the one the push runs under): unless
+// origin is one repository at every address (oneRepository), still the one
+// the forge was matched to, the last check below cannot see the repository
+// the push would change, and every delete is held. Each delete is then preceded by a last check of
 // everything that could hold the branch, made again: origin's own default
 // branch and its tip
 // (asked of origin before the first delete, and required to be the very
@@ -260,7 +261,15 @@ func newRemoteJudge(ctx context.Context, root string, o Options) (*remoteJudge, 
 		rj.live.changes = changedPaths
 	}
 	if len(branches) > 0 {
-		if err := rj.askForge(); err != nil {
+		rj.o = rj.o.pinnedForge(ctx, root)
+		if err := ctx.Err(); err != nil {
+			return nil, nil, fmt.Errorf("the run was stopped while the forge's repository was matched to origin: %w", err)
+		}
+		if rj.o.forgeUnmatched != "" {
+			// No pull request is listed from a repository that may not be
+			// origin's, so none can be shown absent and every branch is kept.
+			rj.openUnread = rj.o.forgeUnmatched
+		} else if err := rj.askForge(); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -543,26 +552,26 @@ func (rj *remoteJudge) originHead() (branch, tip string, err error) {
 }
 
 // addressHold is why origin's addresses hold every delete, "" when they do
-// not: its fetch addresses and its push addresses, each as git resolves them
-// under the person's own configuration (the one the delete's push runs
-// under, rewrites included), must be the same list. When they differ, the
-// last check's reads of origin are answered by one repository and the push
-// changes another, so nothing the sweep read shows the delete safe. A read
-// that fails holds every delete too. Neither address is shown: one may
-// carry credentials, and the reason needs neither.
+// not. Origin, as git resolves it under the person's own configuration (the
+// one the delete's push runs under, rewrites included), must be one
+// repository (oneRepository): exactly one fetch address, and every push
+// address naming the repository it names, so the last check's reads of
+// origin and the push reach the same repository. It must also still be the
+// repository the forge was matched to, when one was (pinnedForge), so the
+// pull requests the judgement read are that repository's. A read that fails
+// holds every delete too. No address is shown: one may carry credentials,
+// and the reason needs none.
 func (rj *remoteJudge) addressHold() string {
-	ctx, cancel := context.WithTimeout(rj.ctx, remoteNetTimeout)
-	defer cancel()
-	fetch, err := gitutil.NetContext(ctx, rj.root, "remote", "get-url", "--all", claim.Remote)
+	fetch, push, err := originAddresses(rj.ctx, rj.root)
 	if err != nil {
-		return "origin's fetch address could not be read (" + answerText(err) + "), so nothing on origin is deleted"
+		return answerText(err) + ", so nothing on origin is deleted"
 	}
-	push, err := gitutil.NetContext(ctx, rj.root, "remote", "get-url", "--push", "--all", claim.Remote)
-	if err != nil {
-		return "origin's push address could not be read (" + answerText(err) + "), so nothing on origin is deleted"
-	}
-	if strings.TrimSpace(fetch) != strings.TrimSpace(push) {
-		return "origin is read from one address and pushed to another, so the sweep cannot check what it would delete"
+	key, why := oneRepository(fetch, push)
+	switch {
+	case why != "":
+		return why
+	case rj.o.forgeKey != "" && key != rj.o.forgeKey:
+		return "origin names another repository than the one the forge was matched to when the run began, so the sweep cannot check what it would delete"
 	}
 	return ""
 }

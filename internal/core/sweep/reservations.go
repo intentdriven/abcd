@@ -8,28 +8,30 @@ package sweep
 // reservations and of origin's default branch.
 //
 // Under apply, when any reservation is spent, the sweep dispatches the
-// reservation sweep's workflow on origin's default branch, at most once per
-// run, with `gh workflow run reservation-sweep.yml --ref=<default>`, and the
-// workflow deletes them. The run the dispatch started is read back with
-// `gh run list --workflow=reservation-sweep.yml --limit=1`, narrowed to
-// dispatched runs on that branch, and the result names its id and URL. The
+// reservation sweep's workflow on origin's default branch, as origin names
+// it when asked (git ls-remote --symref), at most once per run, with
+// `gh workflow run reservation-sweep.yml --ref=<default>`, and the workflow
+// deletes them. The newest dispatched run on that branch is read back with
+// `gh run list --workflow=reservation-sweep.yml --limit=1`, and the result
+// names its id, and its URL when that is an https one; it may be another
+// person's dispatch made at the same time, and the result says so. The
 // sweep never pushes a reservation deletion itself: the judgement is always
 // asked with Apply false, and nothing in this file pushes.
 //
-// Where no forge client answers (none given, gh absent) or the dispatch
-// fails, the result gives the workflow's next scheduled time instead,
-// computed from the cron in this checkout's copy of the workflow file. Only
-// the plain five-field form, each field `*` or one number, is read; any other
-// cron, or none, is reported as a schedule that could not be read, never
-// guessed. Nothing is dispatched in a dry run or when nothing is spent.
+// Where no forge client answers (none given, gh absent), the forge's
+// repository cannot be matched to origin's, or the dispatch fails, the
+// result gives the workflow's next scheduled time instead, computed from the
+// cron in this checkout's copy of the workflow file. Only a cron under the
+// file's on.schedule is read, and only in the plain five-field form, each
+// field `*` or one number; any other cron, or none, is reported as a
+// schedule that could not be read, never guessed. Nothing is dispatched in a
+// dry run or when nothing is spent.
 //
 // The forge client is asked through Options.Forge and forgeCall, as every
 // forge call of this package is: from the repository's root, bounded by
-// forgeTimeout and the run's context, naming no repository of its own, so gh
-// resolves the repository from the checkout's remotes as it does for the
-// pull-request listings. The judgement takes no context: the run's context
-// is checked before and after it, and a run stopped at any point reports as
-// stopped.
+// forgeTimeout and the run's context, and pinned to origin's repository
+// (forge.go). The judgement takes no context: the run's context is checked
+// before and after it, and a run stopped at any point reports as stopped.
 //
 // sweepReservations is the reservation half of runSweep.
 
@@ -133,7 +135,7 @@ func sweepReservations(ctx context.Context, repoRoot string, o Options, apply bo
 	if o.Probe.Now != nil {
 		now = o.Probe.Now
 	}
-	d := dispatchWorkflow(ctx, repoRoot, o.Forge, now())
+	d := dispatchWorkflow(ctx, repoRoot, o, now())
 	res.Workflow = clean(d.note)
 	for _, i := range spent {
 		row := &res.Rows[i]
@@ -204,7 +206,8 @@ func reservationRow(b reservesweep.Branch, defaultUnread string) Row {
 type dispatched struct {
 	// taken is a dispatch the forge took.
 	taken bool
-	// run names the run it started, its id and URL, "" when none was listed.
+	// run names the newest dispatched run listed after the dispatch, its id
+	// and its https URL, "" when none was listed.
 	run string
 	// note is the line the result carries once: the run, or why none was
 	// dispatched and when the schedule runs the workflow next.
@@ -221,28 +224,42 @@ type workflowRun struct {
 }
 
 // dispatchWorkflow dispatches the reservation sweep's workflow on origin's
-// default branch, once, and reads back the run it started. The newest
-// dispatched run is read before the dispatch too, so the run read after it
-// is named only when it is a later one. Where no forge client answers or the
-// dispatch fails, the note gives the workflow's next scheduled time, from now.
-func dispatchWorkflow(ctx context.Context, root string, gh store.GH, now time.Time) dispatched {
+// default branch, as origin names it now, once, through o's forge pinned to
+// origin's repository, and reads back the newest dispatched run. That run is
+// read before the dispatch too, so the run read after it is named only when
+// it is a later one. Where no forge client answers, the forge's repository
+// cannot be matched to origin's, origin's default branch cannot be asked or
+// the dispatch fails, the note gives the workflow's next scheduled time, from
+// now.
+func dispatchWorkflow(ctx context.Context, root string, o Options, now time.Time) dispatched {
 	fallback := func(why string) dispatched {
 		return dispatched{note: "the reservation sweep's workflow was not dispatched (" + why + "); " + nextScheduled(root, now)}
 	}
 	stopped := func(err error, note string) dispatched {
 		return dispatched{stopped: fmt.Errorf("%s: %w", note, err), note: note}
 	}
-	if gh == nil {
-		return fallback("no forge client was given")
-	}
-	c, cancel := context.WithTimeout(ctx, gitReadTimeout)
-	def := shortName(gitutil.TrackedDefaultBranchContext(c, root, claim.Remote))
-	cancel()
+	o = o.pinnedForge(ctx, root)
 	if err := ctx.Err(); err != nil {
 		return stopped(err, "the run was stopped before the reservation sweep's workflow was dispatched")
 	}
+	gh := o.Forge
+	switch {
+	case o.forgeUnmatched != "":
+		return fallback(o.forgeUnmatched)
+	case gh == nil:
+		return fallback("no forge client was given")
+	}
+	c, cancel := context.WithTimeout(ctx, remoteNetTimeout)
+	def, _, err := gitutil.RemoteHeadTip(c, gitutil.NetContext, root, claim.Remote)
+	cancel()
+	if cerr := ctx.Err(); cerr != nil {
+		return stopped(cerr, "the run was stopped before the reservation sweep's workflow was dispatched")
+	}
+	if err != nil {
+		return fallback("origin's default branch could not be asked: " + answerText(err))
+	}
 	if def == "" {
-		return fallback("origin's default branch is not known here")
+		return fallback("origin names no default branch")
 	}
 	before, beforeErr := latestDispatchedRun(ctx, root, gh, def)
 	if err := ctx.Err(); err != nil {
@@ -250,7 +267,7 @@ func dispatchWorkflow(ctx context.Context, root string, gh store.GH, now time.Ti
 	}
 	// Each value rides in its flag's own argument (--ref=<name>), so a
 	// branch name is never read as a flag of its own.
-	_, err := forgeCall(ctx, gh, root, "workflow", "run", reservationWorkflow, "--ref="+def)
+	_, err = forgeCall(ctx, gh, root, "workflow", "run", reservationWorkflow, "--ref="+def)
 	if cerr := ctx.Err(); cerr != nil {
 		return stopped(cerr, "the run was stopped while the reservation sweep's workflow was dispatched; whether the forge took the dispatch is not known")
 	}
@@ -263,6 +280,7 @@ func dispatchWorkflow(ctx context.Context, root string, gh store.GH, now time.Ti
 	}
 	d := dispatched{taken: true}
 	on := "dispatched the reservation sweep's workflow on " + def
+	newest := "the newest dispatched run on " + def + ", which may be another person's dispatch"
 	var lastErr error
 	for try := range runListTries {
 		if try > 0 {
@@ -287,8 +305,11 @@ func dispatchWorkflow(ctx context.Context, root string, gh store.GH, now time.Ti
 			lastErr = nil
 			continue
 		}
-		d.run = fmt.Sprintf("run %d, %s", r.ID, r.URL)
-		d.note = on + ": " + d.run + "; it deletes the spent reservations"
+		d.run = fmt.Sprintf("run %d", r.ID)
+		if strings.HasPrefix(r.URL, "https://") {
+			d.run += ", " + r.URL
+		}
+		d.note = on + "; " + newest + ", is " + d.run + "; the workflow deletes the spent reservations"
 		if beforeErr != nil {
 			d.note += " (the runs could not be listed before the dispatch, so this may be an earlier dispatched run)"
 		}
