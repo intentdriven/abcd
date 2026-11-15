@@ -261,7 +261,7 @@ teaching it.
 
 abcd's question is held to the field limits (`question.CheckLimits`) wherever
 the hook runs, managed or not: the setup interview asks before a repository is
-managed, and the limits need no store. The limits are the resolver's
+managed, and the limits need no managed checkout: where neither file sets them they are abcd's defaults. The limits are the resolver's
 (`layered.QuestionLimits`, itd-2610301914350541): `question.Default` with the
 rows, label words and description sentences the repository's
 `.abcd/config.json` sets as `question.rows`, `question.label_words` and
