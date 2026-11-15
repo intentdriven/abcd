@@ -1836,7 +1836,12 @@ written once in `internal/core/question`, beside the question's field limits,
 and every limit they state (the header chip's width, the options per question,
 the words per label, the rows at eighty columns) is filled from the one value
 the question check in `abcd guard hook` enforces, so the rules and the check
-cannot state a limit differently. Its recall keywords are words of asking and
+cannot state a limit differently. In a repository that sets the question keys
+(above), the prompt hook and `abcd rules` regenerate it at the limits the
+resolver returns for the rules root (`rules.LoadWith`), and its layout rule
+names the file that set each figure; a refused value leaves it at the defaults
+with the refusal written in and named on stderr, and the domain stays bundled
+either way. Its recall keywords are words of asking and
 choosing (`which`, `choose`, `decide`, `options`, `interview`, …), so it lands
 in most sessions, at about 1,100 tokens. A bundled `rules.json` that declares
 it by hand panics at load, as one declaring `SHELL` does. It reaches every

@@ -18,6 +18,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
+	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -76,7 +77,7 @@ func TestAStagesRulesAreTheBases(t *testing.T) {
 	base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
 	repo.Write(".abcd/rules.json", `{"schema_version":1,"disabled":false,"domains":{"LANEONE":{"recall":["word"],"rules":["the lane's"]}}}`)
 	t.Setenv(runner.StageBaseEnv, base)
-	rs, err := rulesForHook(repo.Root())
+	rs, err := rulesForHook(repo.Root(), io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +85,7 @@ func TestAStagesRulesAreTheBases(t *testing.T) {
 		t.Fatal("a rule the lane wrote reached the hook")
 	}
 	t.Setenv(runner.StageBaseEnv, "")
-	if rs, err = rulesForHook(repo.Root()); err != nil {
+	if rs, err = rulesForHook(repo.Root(), io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := rs.Domains["LANEONE"]; !ok {
@@ -584,7 +585,7 @@ func TestTheHooksStandAsideOnAStage(t *testing.T) {
 		t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 		_, repo := memoryFixture(t)
 		id := addRaceNote(t, "session-one")
-		rs, err := rules.Load(repo)
+		rs, err := rules.LoadWith(repo, question.Default, question.LimitsNote{})
 		if err != nil {
 			t.Fatal(err)
 		}

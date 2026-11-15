@@ -315,3 +315,53 @@ func TestGrillDomainObeysTheLoaderContracts(t *testing.T) {
 		}
 	})
 }
+
+// TestLoadWithARefusalWritesItIntoGrillAndTheNotes (spc-2610301950037469,
+// approach 8): under a refused question limit the GRILL domain states abcd's
+// defaults, names the refused key and why, and says the check refuses every
+// abcd question; the notes carry the refusal as one line; the domain stays
+// bundled; and every other bundled domain loads as before.
+func TestLoadWithARefusalWritesItIntoGrillAndTheNotes(t *testing.T) {
+	const reason = ".abcd/config.json (repo layer): question.rows is 100: outside 24 to 60"
+	rs, err := LoadWith(t.TempDir(), question.Default, question.LimitsNote{Refused: reason})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, ok := rs.Lookup(GrillDomain)
+	if !ok || d.Source != SourceBundled {
+		t.Fatalf("Lookup(%s) = %+v, %v; want the bundled domain", GrillDomain, d, ok)
+	}
+	if want := question.AskingRulesFrom(question.Default, question.LimitsNote{Refused: reason}); !reflect.DeepEqual(d.Rules, want) {
+		t.Fatalf("GRILL under a refusal is not the asking rules with the refusal written in:\n got %q\nwant %q", d.Rules, want)
+	}
+	layout := ruleWith(d.Rules, "Every question has one layout")
+	for _, want := range []string{"thirty-two rows", "abcd's defaults", "question.rows is 100", "refuses every abcd question"} {
+		if !strings.Contains(layout, want) {
+			t.Errorf("the layout rule under a refusal does not say %q:\n%s", want, layout)
+		}
+	}
+	var lines []string
+	for _, n := range rs.Notes() {
+		if strings.Contains(n, reason) {
+			lines = append(lines, n)
+		}
+	}
+	if len(lines) != 1 || strings.Contains(lines[0], "\n") || !strings.Contains(lines[0], GrillDomain) {
+		t.Errorf("the notes must carry the refusal as one line naming %s; got %q of %q", GrillDomain, lines, rs.Notes())
+	}
+	for name := range Defaults().Domains {
+		if _, ok := rs.Domains[name]; !ok {
+			t.Errorf("the bundled domain %s did not load beside the refusal", name)
+		}
+	}
+	plain, err := LoadWith(t.TempDir(), question.Default, question.LimitsNote{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plain.Notes()) != 0 {
+		t.Errorf("a load with no refusal carries notes: %q", plain.Notes())
+	}
+	if p, _ := plain.Lookup(GrillDomain); !reflect.DeepEqual(p.Rules, question.AskingRules(question.Default)) {
+		t.Errorf("LoadWith at the defaults with no note is not the bundled GRILL: %q", p.Rules)
+	}
+}

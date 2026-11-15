@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/question"
+	"github.com/intentdriven/abcd/internal/core/rules"
 )
 
 // The GRILL domain is generated into the binary's bundled defaults from
@@ -163,5 +164,56 @@ func TestIntentInterviewPageCarriesGrillVisibilityAndAddresseeLines(t *testing.T
 	}
 	if strings.Contains(block, "does not reliably reach") {
 		t.Error("the generated block still says prose \"does not reliably reach\" the human; GRILL states it as invisible while a question shows")
+	}
+}
+
+// TestRulesPrintsTheRefusedLimitOnStderr (spc-2610301950037469, approach 9):
+// in a repository whose .abcd/config.json sets a question limit outside its
+// bounds, `abcd rules` names the refusal on stderr, still renders every
+// bundled domain on stdout, and GRILL states abcd's defaults with the
+// refusal written in.
+func TestRulesPrintsTheRefusedLimitOnStderr(t *testing.T) {
+	repo := unmanagedRepo(t)
+	writeRepoQuestionConfig(t, repo, `{"question":{"rows":100}}`)
+	const reason = ".abcd/config.json (repo layer): question.rows is 100: outside 24 to 60"
+	out, errb, err := runCLISplit(t, "rules")
+	if err != nil {
+		t.Fatalf("abcd rules under a refused limit: %v\n%s", err, errb)
+	}
+	if !strings.Contains(errb, "GRILL") || !strings.Contains(errb, reason) {
+		t.Errorf("stderr does not name the refused limit %q under GRILL:\n%s", reason, errb)
+	}
+	for _, d := range rules.Defaults().Active() {
+		if !strings.Contains(out, "## "+d.Name+"\n") {
+			t.Errorf("stdout does not render the bundled domain %s beside the refusal", d.Name)
+		}
+	}
+	got := rulesGrillJSON(t)
+	if want := question.AskingRulesFrom(question.Default, question.LimitsNote{Refused: reason}); got.Source != "bundled" || !reflect.DeepEqual(got.Rules, want) {
+		t.Errorf("rules GRILL --json = %+v; want the bundled domain at the defaults with the refusal written in", got)
+	}
+}
+
+// TestConfiguredRepositoryKeepsGrillBundled (spc-2610301950037469, approach
+// 8): a repository that sets a question limit changes the figures GRILL
+// states, and the file it names, but not the domain's provenance: no override
+// layer named it, so it reports source bundled and its heading carries no
+// label.
+func TestConfiguredRepositoryKeepsGrillBundled(t *testing.T) {
+	repo := unmanagedRepo(t)
+	writeRepoQuestionConfig(t, repo, `{"question":{"rows":40}}`)
+	got := rulesGrillJSON(t)
+	const file = ".abcd/config.json"
+	want := question.AskingRulesFrom(question.Bounded(question.Default, 40, question.Default.LabelWords, question.Default.MeaningSentences),
+		question.LimitsNote{SetBy: []string{file, "bundled", "bundled"}})
+	if got.Source != "bundled" || !reflect.DeepEqual(got.Rules, want) {
+		t.Fatalf("rules GRILL --json = %+v; want the bundled domain stating forty rows set by %s", got, file)
+	}
+	out, errb, err := runCLISplit(t, "rules", "GRILL")
+	if err != nil {
+		t.Fatalf("abcd rules GRILL: %v\n%s", err, errb)
+	}
+	if !strings.Contains(out, "## GRILL\n") || strings.Contains(out, "## GRILL (") {
+		t.Errorf("the configured repository's GRILL heading carries a label:\n%s", out)
 	}
 }

@@ -808,3 +808,80 @@ func TestGuardQuestionReportsWhetherTheBadgeShows(t *testing.T) {
 		t.Errorf("badge in a checkout abcd does not manage = %v, want false", got)
 	}
 }
+
+// TestCheckAndGrillStateOneLimits (spc-2610301950037469, the Mechanism claim):
+// from one fixture checkout, the verb's limits and limits_source and the
+// figures the prompt hook's GRILL injection states agree. Under a
+// repository's rows 40, label words 6 and sentences 3, the injected layout
+// rule states forty rows, six words and three sentences and names the
+// repository's file, rows_limit equals limits.rows, and every source is that
+// file. A machine file setting rows 30 makes both say thirty, the rows'
+// source the machine file and the other two the repository's.
+func TestCheckAndGrillStateOneLimits(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	repo := unmanagedRepo(t)
+	writeRepoQuestionConfig(t, repo, `{"question":{"rows":40,"label_words":6,"description_sentences":3}}`)
+	const file = ".abcd/config.json"
+	machine := abcdhome.Display(layered.Config.MachineRel)
+
+	inject := func(session string) string {
+		t.Helper()
+		out, errlog := runHook(t, hookInputJSON(t, session, repo, "which option should we choose"), "hook", "prompt-router")
+		if !strings.Contains(out, "## GRILL\n") {
+			t.Fatalf("an asking prompt did not inject GRILL:\n%s\nstderr:\n%s", out, errlog)
+		}
+		return out
+	}
+	statesInWords := func(text string, l questionLimitsJSON) {
+		t.Helper()
+		for _, want := range []string{
+			"fits " + numberWordForTest(l.Rows) + " rows",
+			"each label is at most " + numberWordForTest(l.LabelWords) + " words",
+			"each description at most " + numberWordForTest(l.DescriptionSentences) + " sentences",
+		} {
+			if !strings.Contains(text, want) {
+				t.Errorf("the injected GRILL does not state the verb's limits as %q:\n%s", want, text)
+			}
+		}
+	}
+
+	res, _, code := runQuestionVerbOnDraft(t, wellBuilt())
+	want := questionLimitsJSON{Rows: 40, LabelWords: 6, DescriptionSentences: 3}
+	if code != 0 || res.Limits == nil || *res.Limits != want || res.RowsLimit != res.Limits.Rows {
+		t.Fatalf("the verb: exit %d, limits %+v, rows_limit %d; want %+v and rows_limit equal to limits.rows", code, res.Limits, res.RowsLimit, want)
+	}
+	if res.LimitsSource == nil || *res.LimitsSource != (questionLimitsSourceJSON{Rows: file, LabelWords: file, DescriptionSentences: file}) {
+		t.Errorf("limits_source = %+v; want %s for every key", res.LimitsSource, file)
+	}
+	text := inject("one-limits-repo")
+	statesInWords(text, *res.Limits)
+	if !strings.Contains(text, "In this repository, `"+file+"` set the rows, the label words, and the description sentences.") {
+		t.Errorf("the injected GRILL does not name %s as having set the three figures:\n%s", file, text)
+	}
+
+	writeMachineQuestionConfig(t, `{"question":{"rows":30}}`)
+	res, _, _ = runQuestionVerbOnDraft(t, wellBuilt())
+	want.Rows = 30
+	if res.Limits == nil || *res.Limits != want || res.RowsLimit != 30 {
+		t.Fatalf("the verb under a machine rows 30: limits %+v, rows_limit %d; want %+v", res.Limits, res.RowsLimit, want)
+	}
+	if res.LimitsSource == nil || *res.LimitsSource != (questionLimitsSourceJSON{Rows: machine, LabelWords: file, DescriptionSentences: file}) {
+		t.Errorf("limits_source = %+v; want the rows from %s and the rest from %s", res.LimitsSource, machine, file)
+	}
+	text = inject("one-limits-machine")
+	statesInWords(text, *res.Limits)
+	if !strings.Contains(text, "`"+file+"` set the label words and the description sentences, and the person's own `"+machine+"` tightened the rows.") {
+		t.Errorf("the injected GRILL does not name the files key by key:\n%s", text)
+	}
+}
+
+// numberWordForTest writes n as the asking rules write a limit, for the
+// figures this file's fixtures set.
+func numberWordForTest(n int) string {
+	words := map[int]string{3: "three", 6: "six", 30: "thirty", 40: "forty"}
+	w, ok := words[n]
+	if !ok {
+		panic(fmt.Sprintf("numberWordForTest: no word for %d", n))
+	}
+	return w
+}

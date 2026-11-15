@@ -1,9 +1,12 @@
 package question
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // joined is the whole asking-rule text as one string, for phrase checks.
@@ -205,5 +208,94 @@ func TestAskingRulesNameTheVerbAndTheWriter(t *testing.T) {
 	}
 	if strings.Contains(joined(rules), "head the question with the chip") {
 		t.Error("a rule still has the agent head the question with the chip, which the number form replaced")
+	}
+}
+
+// layoutRule is the rule that states the question's layout and its limits.
+func layoutRule(t *testing.T, rules []string) string {
+	t.Helper()
+	for _, r := range rules {
+		if strings.HasPrefix(r, "Every question has one layout") {
+			return r
+		}
+	}
+	t.Fatal("no rule states the question's layout")
+	return ""
+}
+
+// TestAskingRulesFromNamesTheFileThatSetTheLimits (spc-2610301950037469,
+// approach 7): with the limits in force and the file that set each, the
+// layout rule states the figures in words and ends naming the repository's
+// file for the figures it set and the person's own file for any it
+// tightened; a refusal says the figures are abcd's defaults, names the
+// refused key and why, and says the check refuses every abcd question until
+// the file is fixed. Every repository's text carries the keys and their
+// bounds, rendered from Bounds.
+func TestAskingRulesFromNamesTheFileThatSetTheLimits(t *testing.T) {
+	const repo = ".abcd/config.json"
+	machine := abcdhome.Display("config.json")
+
+	byRepo := layoutRule(t, AskingRulesFrom(Bounded(Default, 40, 6, 3), LimitsNote{SetBy: []string{repo, repo, repo}}))
+	for _, want := range []string{
+		"at most six words", "at most three sentences", "fits forty rows",
+		"In this repository, `.abcd/config.json` set the rows, the label words, and the description sentences.",
+	} {
+		if !strings.Contains(byRepo, want) {
+			t.Errorf("the layout rule under the repository's limits does not say %q:\n%s", want, byRepo)
+		}
+	}
+	if !strings.HasSuffix(byRepo, "the description sentences.") {
+		t.Errorf("the sentence naming the file does not end the layout rule:\n%s", byRepo)
+	}
+
+	mixed := layoutRule(t, AskingRulesFrom(Bounded(Default, 30, 6, Default.MeaningSentences), LimitsNote{SetBy: []string{machine, repo, "bundled"}}))
+	wantMixed := "In this repository, `.abcd/config.json` set the label words, and the person's own `" + machine + "` tightened the rows."
+	if !strings.HasSuffix(mixed, wantMixed) || !strings.Contains(mixed, "fits thirty rows") {
+		t.Errorf("a person's tightened rows beside the repository's label words: the layout rule must end %q:\n%s", wantMixed, mixed)
+	}
+
+	const reason = ".abcd/config.json (repo layer): question.rows is 100: outside 24 to 60"
+	refused := layoutRule(t, AskingRulesFrom(Default, LimitsNote{Refused: reason}))
+	for _, want := range []string{
+		"fits thirty-two rows", "at most five words",
+		"the figures stated here are abcd's defaults",
+		reason,
+		"abcd's question check refuses every abcd question",
+	} {
+		if !strings.Contains(refused, want) {
+			t.Errorf("the layout rule under a refused value does not say %q:\n%s", want, refused)
+		}
+	}
+	if strings.Contains(refused, "tightened") || strings.Contains(refused, "` set the") {
+		t.Errorf("a refused value names a file as having set a figure:\n%s", refused)
+	}
+
+	bounds := fmt.Sprintf("A repository may set `%s` from %s to %s, `%s` from %s to %s, and `%s` from %s to %s in its `.abcd/config.json`. "+
+		"A person's own `%s` may set each lower, never higher.",
+		Bounds[0].Key, numberWord(Bounds[0].Floor), numberWord(Bounds[0].Ceiling),
+		Bounds[1].Key, numberWord(Bounds[1].Floor), numberWord(Bounds[1].Ceiling),
+		Bounds[2].Key, numberWord(Bounds[2].Floor), numberWord(Bounds[2].Ceiling), machine)
+	for name, rule := range map[string]string{"defaults": layoutRule(t, AskingRules(Default)), "by the repository": byRepo, "refused": refused} {
+		if !strings.Contains(rule, bounds) {
+			t.Errorf("%s: the layout rule does not state the keys and their bounds, %q:\n%s", name, bounds, rule)
+		}
+	}
+}
+
+// TestAskingRulesWithNoNoteAreUnchanged: AskingRules(l) is AskingRulesFrom(l)
+// with no note, byte for byte, and with no note, or a note whose every key is
+// bundled, the text names no file as having set a figure.
+func TestAskingRulesWithNoNoteAreUnchanged(t *testing.T) {
+	for _, l := range []Limits{Default, Bounded(Default, 40, 6, 3)} {
+		if got, want := AskingRulesFrom(l, LimitsNote{}), AskingRules(l); !slices.Equal(got, want) {
+			t.Errorf("AskingRulesFrom with no note differs from AskingRules:\n got %q\nwant %q", got, want)
+		}
+	}
+	bundled := AskingRulesFrom(Default, LimitsNote{SetBy: []string{"bundled", "bundled", "bundled"}})
+	if !slices.Equal(bundled, AskingRules(Default)) {
+		t.Errorf("a note whose every key is bundled changed the text:\n got %q", bundled)
+	}
+	if text := joined(AskingRules(Default)); strings.Contains(text, "In this repository") {
+		t.Errorf("the default text names a file as having set a figure:\n%s", text)
 	}
 }

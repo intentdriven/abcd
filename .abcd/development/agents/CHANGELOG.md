@@ -12,6 +12,18 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-11-15 (itd-2610301914350541 — the asking rules state the question keys)
+
+### question-drafter 0.2.1
+
+PATCH: the generated asking-rules block now ends its layout rule with the three
+keys a repository may set in `.abcd/config.json`, `question.rows`,
+`question.label_words` and `question.description_sentences`, each with its
+bounds, and says a person's own `~/.abcd.noindex/config.json` may set each
+lower, never higher (spc-2610301950037469, step 3). The figures the block
+states are still abcd's defaults, and the drafter's own behaviour is
+unchanged. Unmeasured, in the `0.x` band.
+
 ## 2026-11-15 (itd-2610230756259215 — abcd's question writer checks every draft)
 
 ### question-drafter 0.2.0

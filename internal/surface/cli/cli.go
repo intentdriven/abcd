@@ -39,6 +39,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/interview"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/launch"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/lifeboat"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/memory"
@@ -1623,12 +1624,43 @@ func readGuardedOperand(spec string, cap int64) ([]byte, error) {
 
 // rulesForHook is the rules a hook injects: on a walled launch, as they stood at
 // the commit its lane was cut from, since what the lane writes is not what the
-// agents reading its work are told.
-func rulesForHook(root string) (rules.RuleSet, error) {
+// agents reading its work are told. There GRILL keeps abcd's default question
+// limits, since the working tree's .abcd/config.json is the lane's own writing.
+func rulesForHook(root string, errOut io.Writer) (rules.RuleSet, error) {
 	if base := os.Getenv(runner.StageBaseEnv); base != "" {
 		return rules.LoadAt(root, base)
 	}
-	return rules.Load(root)
+	return rulesWithLimits(root, errOut)
+}
+
+// rulesWithLimits loads the rules for root with the GRILL domain stating the
+// question limits in force there, resolved through the one resolver at the
+// rules root, the file the question check reads (spc-2610301950037469,
+// approach 9). In force, GRILL states them and names the file that set each.
+// Refused, it states abcd's defaults with the refusal written in, and the
+// loader's notes carry it. Unread, it states the defaults, and one line on
+// errOut names the file. Every other domain loads as before, and a
+// configuration fault never injects nothing.
+func rulesWithLimits(root string, errOut io.Writer) (rules.RuleSet, error) {
+	roots, _ := layered.HomeRoots()
+	roots.Repo = root
+	v, err := layered.QuestionLimits(roots)
+	var unread *layered.UnreadError
+	switch {
+	case err == nil:
+		var n question.LimitsNote
+		if v.SetByFile() {
+			for _, src := range v.Sources {
+				n.SetBy = append(n.SetBy, src.Origin)
+			}
+		}
+		return rules.LoadWith(root, v.V, n)
+	case errors.As(err, &unread):
+		diagnosticLine(errOut, "abcd rules: %s: the question limits were not read (%s); %s states abcd's defaults",
+			rules.GrillDomain, scrubPaths(err), rules.GrillDomain)
+		return rules.LoadWith(root, v.V, question.LimitsNote{})
+	}
+	return rules.LoadWith(root, question.Default, question.LimitsNote{Refused: termsafe.Sanitize(fsutil.RedactHome(err.Error()))})
 }
 
 // maxHookStdinBytes caps the hook payload read from stdin (trust boundary).
@@ -1958,9 +1990,9 @@ outside the dedup ledger.`,
 			noteCtx, noteCancel := context.WithDeadline(context.Background(), deadline)
 			away.Block = joinBlocks(checklistPromptNote(noteCtx, cmd.ErrOrStderr(), cwd, in.SessionID), away.Block)
 			noteCancel()
-			rs, err := rulesForHook(root)
+			rs, err := rulesForHook(root, cmd.ErrOrStderr())
 			if err != nil {
-				// rules.Load errors already carry their own "rules:" prefix, so
+				// rules load errors already carry their own "rules:" prefix, so
 				// wrap with a bare "abcd" to avoid "abcd rules: rules: …"
 				// (iss-2608261550491547).
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s; injecting nothing\n", termsafe.Sanitize(err.Error()))
@@ -3002,13 +3034,15 @@ Read-only.`,
 				return err
 			}
 			root := rulesRoot(cwd, cmd.ErrOrStderr())
-			load := rules.Load
+			// The rules load at the question limits in force here, as the
+			// hook loads them (spc-2610301950037469, approach 9).
+			load := rulesWithLimits
 			if byPrompt {
 				// The preview loads the rules as the hook does: on a drive's
 				// stage, as they stood at the lane's base commit.
 				load = rulesForHook
 			}
-			rs, err := load(root)
+			rs, err := load(root, cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
@@ -7459,7 +7493,7 @@ func printStoreNotes(cmd *cobra.Command, repoRoot, rootSHA string) error {
 // rulesRoot resolves the repo root the modular-rules loader (and the shell
 // guard, which shares it) must read: the nearest directory holding a .abcd,
 // searched from cwd upward but never past the git working tree, and cwd itself
-// outside git. rules.Load/LoadBackstop join ".abcd/rules.json" onto the path
+// outside git. rules.LoadWith/LoadBackstop join ".abcd/rules.json" onto the path
 // they are given, so handing them a subdirectory silently ignored the per-repo
 // overrides AND the kill switch; an unbounded walk instead let a .abcd planted
 // above the working tree govern the session (GHSA-vvqc-3mv2-5p49). The
