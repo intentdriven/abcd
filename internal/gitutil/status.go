@@ -107,12 +107,13 @@ type StatusOptions struct {
 // the repository names no filter there is nothing to blank, so the read asks
 // all the same: the command line alone cannot show that none is named.
 //
-// --ignore-submodules=dirty keeps git from starting a status inside each
-// checked-out submodule, which reads the submodule's own config and so runs a
-// clean filter FilterOverrides cannot see (iss-2610091935327982). The flag,
-// not diff.ignoreSubmodules: a repository's submodule.<name>.ignore=none beats
-// that config and loses to the flag. A moved submodule pointer is still
-// listed; uncommitted content inside a submodule is not.
+// --ignore-submodules=dirty (StatusArgs) keeps git from starting a status
+// inside each checked-out submodule, which reads the submodule's own config
+// and so runs a clean filter FilterOverrides cannot see
+// (iss-2610091935327982). The flag, not diff.ignoreSubmodules: a
+// repository's submodule.<name>.ignore=none beats that config and loses to
+// the flag. A moved submodule pointer is still listed; uncommitted content
+// inside a submodule is not.
 func Status(root string, maxBytes int, opt StatusOptions) ([]StatusEntry, error) {
 	var args []string
 	if on, _ := FiltersSwitchedOn(root); !on {
@@ -122,7 +123,7 @@ func Status(root string, maxBytes int, opt StatusOptions) ([]StatusEntry, error)
 		}
 		args = filters
 	}
-	args = append(args, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=dirty")
+	args = append(append(args, "--no-optional-locks"), StatusArgs("--porcelain=v1", "-z", "--untracked-files=all")...)
 	if opt.Ignored {
 		args = append(args, "--ignored=matching")
 	}
@@ -134,6 +135,39 @@ func Status(root string, maxBytes int, opt StatusOptions) ([]StatusEntry, error)
 		return nil, err
 	}
 	return ParseStatus(out), nil
+}
+
+// StatusArgs is the command line of a `git status` abcd runs, whatever runner
+// runs it: "status", then --ignore-submodules=dirty, then opts (the caller's
+// options and pathspecs). Status builds its own with it, and so do the status
+// reads of the build loop (internal/core/implement/loop) and of the land verb
+// (internal/core/landing) that name it; what it says holds for those.
+//
+// Without the flag git starts a status inside each checked-out submodule (a
+// path the index records as a submodule, with a repository under it, whether
+// or not .gitmodules names it), under that submodule's own settings, so a
+// content filter they name runs there. With it git starts nothing there: a
+// submodule whose checked-out commit is not the one the index records is
+// still listed, and uncommitted changes inside a submodule's working tree
+// are not. git-status(1): "Using "dirty" ignores all changes to the work
+// tree of submodules, only changes to the commits stored in the superproject
+// are shown". The flag on the command line outranks a submodule.<name>.ignore
+// setting and diff.ignoreSubmodules.
+func StatusArgs(opts ...string) []string {
+	return append([]string{"status", "--ignore-submodules=dirty"}, opts...)
+}
+
+// DiffWorktreeArgs is StatusArgs for a `git diff` that compares the index
+// with a working tree (one that names no commit): "diff", then
+// --ignore-submodules=dirty, then opts. Such a diff, as a status does, starts
+// a status inside each checked-out submodule whose commit is the one the
+// index records, under that submodule's own settings; with the flag it starts
+// nothing there. A submodule whose checked-out commit moved, and an unmerged
+// path, are still listed. git-diff(1), --ignore-submodules: "Using dirty
+// ignores all changes to the work tree of submodules, only changes to the
+// commits stored in the superproject are shown".
+func DiffWorktreeArgs(opts ...string) []string {
+	return append([]string{"diff", "--ignore-submodules=dirty"}, opts...)
 }
 
 // ParseStatus parses git's NUL-separated status listing.

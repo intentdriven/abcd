@@ -156,8 +156,8 @@ func runHooked(dir string, network bool, stdin string, args []string, sink io.Wr
 	return runHookedContext(context.Background(), dir, network, stdin, args, sink)
 }
 
-// beforeHooked is the check SetBeforeHookedGit sets, nil for none.
-var beforeHooked atomic.Pointer[func(args []string) error]
+// beforeHooked is the check SetBeforeHookedGitAt sets, nil for none.
+var beforeHooked atomic.Pointer[func(dir string, args []string) error]
 
 // NotRunError is a git command abcd did not run. It has two makers: the
 // check SetBeforeHookedGit set refused the command (askBeforeHooked, for a
@@ -222,6 +222,18 @@ func SetBeforeHookedGit(f func(args []string) error) (clear func(), err error) {
 	if f == nil {
 		return nil, errors.New("no check was given")
 	}
+	return SetBeforeHookedGitAt(func(_ string, args []string) error { return f(args) })
+}
+
+// SetBeforeHookedGitAt is SetBeforeHookedGit for a check that is also given
+// the directory the command runs in, as its runner was given it (the
+// directory of a WorkingTreeCommand, the root of an isolated command, the
+// dir of Net): a drive's comparison reads a lane worktree's own settings
+// only for a git that runs in that worktree.
+func SetBeforeHookedGitAt(f func(dir string, args []string) error) (clear func(), err error) {
+	if f == nil {
+		return nil, errors.New("no check was given")
+	}
 	p := &f
 	if !beforeHooked.CompareAndSwap(nil, p) {
 		return nil, ErrBeforeHookedGitSet
@@ -229,12 +241,12 @@ func SetBeforeHookedGit(f func(args []string) error) (clear func(), err error) {
 	return func() { beforeHooked.CompareAndSwap(p, nil) }, nil
 }
 
-// askBeforeHooked asks the check SetBeforeHookedGit set, when one is set,
-// for the git command args would run: its error is a NotRunError naming the
-// subcommand.
-func askBeforeHooked(args []string) error {
+// askBeforeHooked asks the check SetBeforeHookedGitAt set, when one is set,
+// for the git command args would run in dir: its error is a NotRunError
+// naming the subcommand.
+func askBeforeHooked(dir string, args []string) error {
 	if f := beforeHooked.Load(); f != nil {
-		if err := (*f)(args); err != nil {
+		if err := (*f)(dir, args); err != nil {
 			return &NotRunError{Verb: gitVerb(args), Err: err}
 		}
 	}
@@ -244,7 +256,7 @@ func askBeforeHooked(args []string) error {
 // runHookedContext is runHooked under parent, after the check
 // SetBeforeHookedGit set, when one is set.
 func runHookedContext(parent context.Context, dir string, network bool, stdin string, args []string, sink io.Writer) (string, error) {
-	if err := askBeforeHooked(args); err != nil {
+	if err := askBeforeHooked(dir, args); err != nil {
 		return "", err
 	}
 	ctx, cancel := context.WithTimeout(parent, NetTimeout)
@@ -310,6 +322,7 @@ func hookedCommand(ctx context.Context, dir string, network bool, args []string)
 	full := []string{"-c", "core.quotePath=false"}
 	if network {
 		full = append(full, "-c", "http.lowSpeedLimit="+netLowSpeedLimit, "-c", "http.lowSpeedTime="+netLowSpeedTime)
+		full = append(full, fetchRecursionOff(args)...)
 	}
 	full = append(append(full, "-C", dir), args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
@@ -327,6 +340,25 @@ func hookedCommand(ctx context.Context, dir string, network bool, args []string)
 		}
 	}
 	return cmd
+}
+
+// fetchRecursionOff is what a fetch abcd makes through a networked runner
+// carries on its command line, before the subcommand: submodule recursion
+// off (fetch.recurseSubmodules=false, submodule.recurse=false). git's default
+// for a fetch is on demand: a fetch that brings a changed submodule commit
+// runs `git fetch` inside each checked-out submodule, under that submodule's
+// own settings. With both off, git fetches the refs abcd names in the
+// repository it runs in and goes into no submodule, whatever any scope or the
+// tree's .gitmodules sets (command-line settings are read last). A person's
+// own fetch, pull and checkout read their settings as before. Any other
+// subcommand carries nothing: a push reads push.recurseSubmodules as the
+// person set it. A hook the fetch runs sees the two settings, as it sees the
+// low-speed bounds, through GIT_CONFIG_PARAMETERS.
+func fetchRecursionOff(args []string) []string {
+	if Subcommand(args) != "fetch" {
+		return nil
+	}
+	return []string{"-c", "fetch.recurseSubmodules=false", "-c", "submodule.recurse=false"}
 }
 
 // NetAskContext runs one git command that reads and writes nothing (a
