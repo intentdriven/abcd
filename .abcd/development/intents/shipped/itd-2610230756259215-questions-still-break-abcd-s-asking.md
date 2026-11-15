@@ -412,7 +412,268 @@ _All resolved: The one open question (which questions the status line makes abcd
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: INGESTED receipt=rcp-a2d9216f1974 -->
+Fidelity review — receipt rcp-a2d9216f1974 (verifier intent-auditor claude-fable-5-2).
+
+Provenance: intent-auditor@claude-fable-5-2 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:62af6a31df2e9a2e169227d791ba86d746e23dd5ba34da80ae5f26861fa91486
+Input attestations: tree:frozen copy of commit 8abc657a7 (question-step5-8abc657a7); steps landed ce643bd05, 312d70bd0, e46d51c64 and this branch over main a7b0131b9@-; research-note:.abcd/development/research/notes/2026-11-question-writer-labs.md@-;
+
+Acceptance rollup: MET 27 · MET_WITH_CONCERNS 16 · NOT_MET 2 · INCONCLUSIVE 3
+
+Audit owed (receipt rcp-a2d9216f1974): ac-3 INCONCLUSIVE · ac-6 INCONCLUSIVE · ac-7 INCONCLUSIVE · ac-39 NOT_MET · ac-48 NOT_MET. Remedy: fix, then re-run the audit. Carried by iss-2611151724225887.
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: Lab B's hook-level half fed the writer's redraft to the lab binary's guard hook and it was admitted with no output in 3 of 3 runs, and every writer-returned question in Labs A and C exits 0 on the verb; concern: no live interview was run, so no person saw a question, and the runs were on page 0.2.4 while the shipped page is 0.2.6.
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:117 — "the second ask is admitted (exit 0, no output)."
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:57 — "the lab binary's verb, rerun from the world on every returned part, exits 0;"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:31 — "need a host session whose own hook runs the lab binary. They are queued for"
+  evidence: agents/question-drafter.md:4 — "prompt_version: 0.2.6"
+- ac-2 — MET_WITH_CONCERNS: Every tab the writer returned in the fifteen last-round runs is within 24 rows by the verb's count at 80 columns; concern: that count is the check's estimate, no host view at 80 columns was observed in any run, and the default limit a writer outside the lab is held to is 32 rows.
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:58 — "every tab is within 24 rows by the verb's own count;"
+  evidence: agents/question-drafter.md:244 — "a tab over 32 rows is over the limit"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:31 — "need a host session whose own hook runs the lab binary. They are queued for"
+- ac-3 — INCONCLUSIVE: The criterion needs an agent that skipped the drafter, was refused, and asked again; Lab B's live half was not run, and its hook-level half replays the writer's redraft, not an agent's own second ask from the grouped refusal, so the one-retry outcome for that agent cannot be verified.
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:153 — "- **Lab B's live half:** a session asks the 21-fault question without the"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:83 — "must be denied, and the writer's redraft admitted on the second ask."
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:32 — "the person (dcn-2611151605470998), and this note does not claim them."
+- ac-4 — MET: The verb's text render prints the hook outcome, each tab's rows, and every finding through the one grouping renderer; TestGuardQuestionTextGroupsRowsAndOutcome asserts the outcome line, the rows split and the grouped finding line.
+  evidence: internal/surface/cli/guard_question_verb.go:507 — "fmt.Fprintf(w, "hook: %s: %s.\n", res.Hook, outcomeLineOf(res))"
+  evidence: internal/surface/cli/guard_question_verb.go:539 — "question.RenderGroups(w, question.GroupFindings(refusing))"
+  evidence: internal/surface/cli/guard_question_verb_test.go:466 — ""tab 1: 34 rows: header and frame 8, question text 20, options 6","
+- ac-5 — MET: TestGuardQuestionWritesNothing sets the mode to the product thinker, runs the verb on four drafts and asserts the mode file is byte-identical and no question is marked open, so the status line's source is unchanged.
+  evidence: internal/surface/cli/guard_question_verb_test.go:252 — "if err != nil || !bytes.Equal(modeBefore, modeAfter) {"
+  evidence: internal/surface/cli/guard_question_verb_test.go:229 — "setMode(t, root, mode.ProductThinker)"
+- ac-6 — INCONCLUSIVE: The page tells the writer to split into numbered parts and the header grammar reads Q1a, but no recorded run returned parts: every Lab C run on material that did not fit returned one shortened question, and no live session showed a person any part, so the seen-by-a-person outcome cannot be verified.
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:143 — "rule.** In eighteen Lab C runs across four rounds, no writer returned parts."
+  evidence: agents/question-drafter.md:167 — "material within the limit. Material that does not fit one question and holds several decisions or too many answers is split into numbered parts,"
+- ac-7 — INCONCLUSIVE: The page states the Q1a 'None of these' to Q1b 'Decide later' form, but no lab material carried more answers than fit one screen and no run returned a `next` part, so the behaviour is instructed and never observed.
+  evidence: agents/question-drafter.md:178 — "- **Too many answers for one question** is the dependent case: `Q1a` offers the"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:143 — "rule.** In eighteen Lab C runs across four rounds, no writer returned parts."
+- ac-8 — MET_WITH_CONCERNS: The asking rules make the header abcd's number and have the agent set the mode to the addressee before the question, and every lab run's headers were number-form; concern: the hook still admits the older role-word header for a host-tool question, so 'only its number' holds for questions written to the rules, not for any question asked, and no live status line was observed.
+  evidence: agents/question-drafter.md:236 — "set the mode to that person with `abcd mode product-thinker` or `abcd mode facilitator` before the question is written"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:59 — "every header is in number form;"
+  evidence: internal/core/question/limits_test.go:583 — "for _, h := range []string{"Q1", "Q1a", "Q2/5", "Q1a/4", "Product Q2", "Setup Q1/4"} {"
+- ac-9 — MET: questionCheckExit returns nil with no finding, no refused limit and no partial result; TestGuardQuestionExitsZeroOnACleanDraft runs a clean draft from a file, from - and from stdin with no argument and asserts exit 0.
+  evidence: internal/surface/cli/guard_question_verb.go:427 — "return nil"
+  evidence: internal/surface/cli/guard_question_verb_test.go:70 — "if code != 0 || res.Hook != question.OutcomeAdmit || len(res.Findings) != 0 || res.Partial {"
+  evidence: internal/surface/cli/guard_question_verb_test.go:74 — "for _, args := range [] []string{{"guard", "question", "-"}, {"guard", "question"}} {"
+- ac-10 — MET: Any finding exits 1, and TestGuardQuestionExitsOneOnARowsOverrunAlone asserts exit 1 on a draft whose only finding is the non-refusing rows finding.
+  evidence: internal/surface/cli/guard_question_verb.go:424 — "if len(res.Findings) > 0 {"
+  evidence: internal/surface/cli/guard_question_verb_test.go:89 — "if code != 1 {"
+  evidence: internal/surface/cli/guard_question_verb_test.go:95 — "if len(res.Findings) != 1 || res.Findings[0].Rule != string(question.RuleRows) || res.Findings[0].Refuses {"
+- ac-11 — MET_WITH_CONCERNS: A draft that is not JSON or has neither shape exits 2 with the expected shape named, and an over-bound draft exits 2; concern: the over-bound message names the byte bound and that the draft was not checked, not the shape it expected, and the test asks only for the word 'bound' there.
+  evidence: internal/surface/cli/guard_question_verb.go:276 — "return "", f, nil, nil, fmt.Errorf("the draft is not JSON; %w", shape)"
+  evidence: internal/surface/cli/guard_question_verb.go:262 — "return nil, fmt.Errorf("the draft is over the hook's %d-byte bound; it was not checked", maxHookStdinBytes)"
+  evidence: internal/surface/cli/guard_question_verb_test.go:119 — "{"over the bound", over, "bound", false},"
+- ac-12 — MET: With --ask the draft is decoded strictly as question.Ask, composed through Fields into the host input, and Decide judges those fields; TestGuardQuestionAskComposesTheDraft asserts the form, outcome and composed ready input.
+  evidence: internal/surface/cli/guard_question_verb.go:305 — "f = a.Fields()"
+  evidence: internal/surface/cli/guard_question_verb_test.go:180 — "if code != 0 || res.Form != questionFormAsk || res.Hook != question.OutcomeAdmit {"
+- ac-13 — MET: TestGuardQuestionWritesNothing hashes every file of a managed checkout with the mode on the product thinker and no question open, runs the verb on a clean, a refused, a rows-only and an unlabelled draft, and asserts no file changed, appeared or vanished and nothing was marked open.
+  evidence: internal/surface/cli/guard_question_verb_test.go:261 — "t.Errorf("the verb wrote %s", p)"
+  evidence: internal/surface/cli/guard_question_verb_test.go:255 — "if markedOpen(t, root) {"
+  evidence: internal/surface/cli/guard_question_verb_test.go:234 — "before := treeHashes(t, root)"
+- ac-14 — MET: TestGuardQuestionAndHookDecideAlike runs the verb and `guard hook` on every corpus draft in twelve checkout states (each mode state, away, the away record unreadable, the mode store unreadable) and asserts the outcome and the deny's count and group lines equal the verb's; both call questionState and question.Decide.
+  evidence: internal/surface/cli/guard_question_corpus_test.go:205 — "if !slices.Contains(outs, res.Hook) {"
+  evidence: internal/surface/cli/guard_question_corpus_test.go:244 — "if !strings.Contains(reason, g.String()+"\n") {"
+  evidence: internal/surface/cli/guard_question.go:259 — "v := question.Decide(fields, reads.state, reads.state.Limits)"
+  evidence: internal/surface/cli/guard_question_verb.go:230 — "v := question.Decide(fields, reads.state, reads.state.Limits)"
+- ac-15 — MET: Decide returns refuse-away before any rule when the person is away, and TestGuardQuestionReportsRefuseAwayWhileAway asserts it for a clean, an unlabelled and the 21-fault draft.
+  evidence: internal/core/question/decide.go:292 — "v.Outcome = OutcomeRefuseAway"
+  evidence: internal/surface/cli/guard_question_verb_test.go:280 — "if res.Hook != question.OutcomeRefuseAway || code != 0 || len(res.Findings) != 0 || len(res.Ready) != 0 || !res.DependsOnState {"
+- ac-16 — MET_WITH_CONCERNS: An unread mode or away store marks the result partial and names the store and the rules not applied, and a draft with no finding reads `unchecked`; concern: the outcome is not `unchecked` for every draft, since a draft that breaks a rule with the mode store unread is reported `refuse` (and a rows-only one keeps its rows note), which the criterion's wording does not allow for.
+  evidence: internal/core/question/decide.go:395 — "if v.Outcome == OutcomeAdmit || v.Outcome == OutcomeAdmitUnchecked {"
+  evidence: internal/surface/cli/guard_question_verb_test.go:314 — "if res.Hook != question.OutcomeRefuse || !res.Abcds || code != 2 || len(res.Ready) != 0 {"
+  evidence: internal/surface/cli/guard_question_verb_test.go:339 — "if res.Hook != question.OutcomeUnchecked || !res.Partial || len(res.Unread) != 1 || res.Unread[0].Store != string(question.StoreAway) {"
+- ac-17 — MET: A partial result exits 2 before the findings are counted, and TestGuardQuestionPartialNeverExitsZero asserts exit 2 with no finding.
+  evidence: internal/surface/cli/guard_question_verb.go:420 — "if res.Partial {"
+  evidence: internal/surface/cli/guard_question_verb_test.go:353 — "if code != 2 || len(res.Findings) != 0 || !res.Partial {"
+- ac-18 — MET: A draft with no header in abcd's grammar is admit-unchecked with no rule read, the text says it is not abcd's question and nothing was checked, and the test asserts it under the managed and the product thinker's mode.
+  evidence: internal/core/question/decide.go:305 — "v.Outcome = OutcomeAdmitUnchecked"
+  evidence: internal/surface/cli/guard_question_verb_test.go:373 — "if res.Hook != question.OutcomeAdmitUnchecked || res.Abcds || len(res.Findings) != 0 || code != 0 {"
+  evidence: internal/surface/cli/guard_question_verb_test.go:368 — "for _, st := range []mode.State{mode.Managed, mode.ProductThinker} {"
+- ac-19 — MET: TestRowsSplitIsTheChecks asserts 8, 7, 10 and 25 from tabRows on the 25-row tab (the same text as the corpus's rows-25.json) and that the rows finding carries those figures; the verb reports Decide's Rows, which tabRows computes.
+  evidence: internal/core/question/decide_test.go:46 — "want := RowSplit{HeaderAndFrame: 8, QuestionText: 7, Options: 10, Total: 25}"
+  evidence: internal/core/question/decide.go:287 — "v.Rows = append(v.Rows, tabRows(t, l))"
+  evidence: internal/surface/cli/guard_question_verb.go:396 — "res.Rows = append(res.Rows, questionRowsJSON{Tab: i + 1, RowSplit: r})"
+- ac-20 — MET: TestGuardQuestionListsAllTwentyOneFindings runs the verb with --json on the 21-fault corpus case and asserts 21 findings across all four tabs.
+  evidence: internal/surface/cli/guard_question_verb_test.go:395 — "if len(res.Findings) != 21 {"
+- ac-21 — MET: GroupFindings keys each group on tab and rule, and TestQuestionDenyNamesEveryRuleAndTab asserts the verb's by_rule for the 21-fault case holds one entry per refusing rule and tab, counting 21 in all.
+  evidence: internal/core/question/render.go:39 — "k := key{f.Tab, f.Rule}"
+  evidence: internal/surface/cli/guard_question_limits_test.go:656 — "if g.Tab != want[i].Tab || g.Rule != want[i].Rule {"
+  evidence: internal/core/question/render_test.go:17 — "func TestGroupFindingsIsOneRuleOneTab(t *testing.T) {"
+- ac-22 — MET: writeLimitsRefusal writes one group line per refusing rule and tab with no cut, and TestQuestionDenyNamesEveryRuleAndTab asserts the deny's lines equal the verb's rule-and-tab list and carry no 'more part' line.
+  evidence: internal/surface/cli/guard_question.go:700 — "question.RenderGroups(w, question.GroupFindings(refusing))"
+  evidence: internal/surface/cli/guard_question_limits_test.go:641 — "if strings.Contains(reason, "more part") {"
+  evidence: internal/surface/cli/guard_question_limits_test.go:645 — "if !slices.Equal(parts, want) {"
+- ac-23 — MET_WITH_CONCERNS: A refusal on the asking rules closes on the pointer line naming `abcd guard question` and the abcd:question-drafter agent; concern: not any refusal does, since the away refusal, the refused-limit refusal and the key-collision refusal are written without the pointer line.
+  evidence: internal/surface/cli/guard_question.go:729 — "const questionPointerLine = "Check the next draft with `abcd guard question` before asking it, or draft it through the abcd:question-drafter agent, which does.""
+  evidence: internal/surface/cli/guard_question.go:217 — "return "Blocked by the abcd guard (question tool): the person is away (abcd mode autonomous), so no question is put to them, whatever its chip and whoever wrote it.\n" +"
+  evidence: internal/surface/cli/guard_question.go:802 — "b.WriteString("Blocked by the abcd guard (question tool): a question limit in this repository's configuration is refused, so abcd asks no question until it is fixed.\n")"
+- ac-24 — MET: TestQuestionRefusalIsBoundedOnAFlood refuses 40,000 tabs, 30,000 options and a thousand dashed lines and asserts the deny stays within the rules times the checked tabs plus the call finding and three fixed lines, and within 4 KiB.
+  evidence: internal/surface/cli/guard_question_limits_test.go:522 — "maxLines := len(questionRules)*question.Default.QuestionsPerCall[1] + 1 + 3"
+  evidence: internal/surface/cli/guard_question_limits_test.go:546 — "if len(lines) > maxLines {"
+- ac-25 — MET: TestEmDashFloodTakesOneLinePerTab puts 2,000 dashed list lines on each of two tabs and asserts one em-dash line per tab, each echoing the first and closing on the count of the rest.
+  evidence: internal/surface/cli/guard_question_limits_test.go:588 — "if len(dashed) != 2 {"
+  evidence: internal/surface/cli/guard_question_limits_test.go:592 — "if !strings.HasSuffix(l, fmt.Sprintf("(and %d more such lines)", n-1)) {"
+- ac-26 — MET: The verb's text render and the hook's deny both write finding lines through question.RenderGroups, and TestVerbTextAndDenyShareTheirLines asserts the group lines equal on the 21-fault case and a tall refused draft.
+  evidence: internal/surface/cli/guard_question_limits_test.go:736 — "if len(want) == 0 || !slices.Equal(got, want) {"
+  evidence: internal/core/question/render.go:66 — "func RenderGroups(w io.Writer, groups []Group) {"
+- ac-27 — MET: TestGuardQuestionAskComposesTheDraft asserts the composed text opens with the material, then Now:, then Change later:, then ends on the ask, with 'Decide later' the last option; the core test asserts the same of Fields.
+  evidence: internal/surface/cli/guard_question_verb_test.go:192 — "if m != 0 || !(m < n && n < c && c < a) || !strings.HasSuffix(text, "number?") {"
+  evidence: internal/surface/cli/guard_question_verb_test.go:195 — "if q.Header != "Product Q1" || q.Options[len(q.Options)-1].Label != "Decide later" {"
+- ac-28 — MET: A structured draft with no Now: line composes without one and the verb reports the now-and-change-later finding alone; the core test asserts the composition invents no Now: line.
+  evidence: internal/surface/cli/guard_question_verb_test.go:204 — "if code != 1 || res.Hook != question.OutcomeRefuse || len(res.Findings) != 1 || res.Findings[0].Rule != string(question.RuleNowAndChangeLater) {"
+  evidence: internal/core/question/ask_test.go:308 — "if strings.Contains(f.Tabs[0].Text, "Now:") {"
+- ac-29 — MET_WITH_CONCERNS: For a host-form draft `ready` is the draft's own raw message, so multiSelect and unknown keys survive, and the text render prints the draft's bytes; concern: with --json the result is written by an indenting JSON encoder, so `ready` is the same JSON value re-rendered, not the input's bytes unchanged, and the test compares the two only after compacting both.
+  evidence: internal/surface/cli/guard_question_verb.go:297 — "return questionFormHost, f, nil, json.RawMessage(raw), nil"
+  evidence: internal/surface/cli/cli.go:7721 — "enc.SetIndent("", " ")"
+  evidence: internal/surface/cli/guard_question_verb_test.go:425 — "if err := json.Compact(&got, res.Ready); err != nil {"
+- ac-30 — MET: The result's version is core.Version, and TestGuardQuestionJSONCarriesTheVersion sets it and reads it back from the JSON.
+  evidence: internal/surface/cli/guard_question_verb.go:335 — "Version: core.Version,"
+  evidence: internal/surface/cli/guard_question_verb_test.go:450 — "if res.Version != "v9.8.7-test" {"
+- ac-31 — MET: The drafter page's generated block tells the writer to head every draft with abcd's number, run the verb after every edit and return its rows, ready input and version; `make asking-sync-check` runs the sync in check mode and TestDrafterBlockIsGenerated holds the committed block to the rendering (the gate itself was not run in this audit).
+  evidence: agents/question-drafter.md:240 — "Then run `abcd guard question` after every edit, the draft passed on standard input, and read its JSON"
+  evidence: agents/question-drafter.md:240 — "Return the check's `rows`, the `questions` array of its `ready` input as your `questions`, and its `version`, never figures of your own."
+  evidence: Makefile:314 — "@go run ./cmd/asking-sync -check"
+  evidence: cmd/asking-sync/main_test.go:293 — "if got, want := drafterBlock(t, page), renderDrafter(question.Default); got != want {"
+- ac-32 — MET_WITH_CONCERNS: The page makes an exit 2 a refusal returned to the caller with the check's own reason and never a reason to count by hand, and a lint test holds those phrases; concern: this is the written contract only, and the lab note records no run in which the verb exited 2.
+  evidence: agents/question-drafter.md:202 — "2. **The check cannot give a ready input**: it exits 2, having been unable to"
+  evidence: agents/question-drafter.md:207 — ""< its version>"}\`. This is never a reason to count by hand."
+- ac-33 — MET_WITH_CONCERNS: The page has a writer with no shell return `checked_by: hand` with its hand-counted rows; concern: it is the written contract only, and every lab run had a shell, so no recorded output says its rows were counted by hand.
+  evidence: agents/question-drafter.md:155 — "- `hand`: the host gives you no shell at all, so you counted the rows by"
+  evidence: agents/question-drafter.md:157 — "return `checked_by: hand` with those rows."
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:60 — "- `checked_by` is `abcd`, and the version is the lab binary's;"
+- ac-34 — MET_WITH_CONCERNS: The page tells the writer, in abcd's own source checkout, to run `scripts/abcd.sh guard question` and record the version it reports; concern: the spec left this behaviour to the labs, and every lab ran in a repository with no abcd checkout, so no recorded run shows it.
+  evidence: agents/question-drafter.md:59 — "`scripts/abcd.sh guard question` from the repository root instead, as that"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:9 — "- each lab runs on one pinned binary, in a managed repository holding the"
+- ac-35 — MET_WITH_CONCERNS: The page has a writer whose installed binary lacks the sub-verb return `checked_by: hook-only` with no rows and count nothing by hand; concern: the spec left this behaviour to the labs and the lab note records no run on a binary predating the verb.
+  evidence: agents/question-drafter.md:150 — "- `hook-only`: the installed binary has no `guard question` (it refuses the"
+  evidence: agents/question-drafter.md:153 — "`checked_by: hook-only` and no `rows`, and count nothing by hand: a hand count beside a binary that"
+- ac-36 — MET: The GRILL domain is generated from question.AskingRules; its writer rule and its no-agents sentence name `abcd guard question`, it says to ask only the question the writer returns, its layout rule names the number form, and TestGrillTextScopesRegisterToAbcdInterviews holds the 'In abcd's own interviews' opening.
+  evidence: internal/core/rules/grill.go:29 — "Rules: question.AskingRules(question.Default),"
+  evidence: agents/question-drafter.md:227 — "A host with no agents writes the question itself, to the same rules, and checks each draft with `abcd guard question` before asking it."
+  evidence: agents/question-drafter.md:227 — "Ask only the question the writer returns, and never write or edit a question yourself."
+  evidence: internal/core/rules/grill_test.go:186 — "if !strings.HasPrefix(r, scope) {"
+- ac-37 — MET_WITH_CONCERNS: The note records each lab running in a managed repository made by `git init` and `abcd ahoy install --adopt` with no abcd checkout, the lab binary's verb exiting 0 there on every returned part; concern: the lab stores lie outside the delivered tree, so this rests on the note alone, and the note does not state the first-probe exit and version the spec asked each lab to record.
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:9 — "- each lab runs on one pinned binary, in a managed repository holding the"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:10 — "plugin binary and no abcd checkout;"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:57 — "the lab binary's verb, rerun from the world on every returned part, exits 0;"
+- ac-38 — MET_WITH_CONCERNS: Lab A's last round, with question.rows at 24, passed 3 of 3: every run returned one question at 24 rows after two checks with nothing written; concern: the runs are on page 0.2.4 while the shipped page is 0.2.6 (two later wording edits the changelog marks unmeasured), two of the four earlier rounds failed, and the transcripts lie outside the delivered tree.
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:112 — "- **lab-261115170128-727df18 (A).** Every run returns one question at 24 rows"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:113 — "after two checks, with nothing written. See F-1."
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:38 — "`{"question": {"rows": 24}}`, because:"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:21 — "At page 0.2.4 (pin 727df1898) all fifteen runs pass"
+  evidence: agents/question-drafter.md:4 — "prompt_version: 0.2.6"
+- ac-39 — NOT_MET: Promised: three recorded live sessions each ask the 21-fault question, are refused, and have their second ask admitted. Delivered: no live session was run; the note queues Lab B's live half for the person and the decision closes the spec with it 'queued, not passed'. Only a hook-level replay (the lab binary's guard hook fed the payload, then the writer's redraft) passed 3 of 3.
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:153 — "- **Lab B's live half:** a session asks the 21-fault question without the"
+  evidence: .abcd/work/decisions/dcn-2611151605470998-spc-2610301917245442-step-5-lab-b.md:6 — "The spec closes with the live half recorded as queued, not passed."
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:115 — "- the first ask is denied, naming 21 parts;"
+- ac-40 — MET: commands/guard.md carries a `question` section, the generated reference documents `abcd guard question`, and its help line is in the house form; TestGuardPageDocumentsTheQuestionVerb holds all three.
+  evidence: commands/guard.md:68 — "## `question` — check a draft question before it is asked"
+  evidence: docs/reference/cli/commands.md:2446 — "Check a draft question as the hook will judge it: Writes nothing; refuses an unreadable draft, a store it cannot read, and any finding."
+- ac-41 — MET: The guard chapter's sub-verbs table carries the `question` row, its exit rules state the verb's 0, 1 and 2 beside the check's, and surface.json carries the verb for the surface-coverage rule (record-lint itself was not run in this audit).
+  evidence: .abcd/development/brief/04-surfaces/17-guard.md:34 — "| `question` | gate | shipped |"
+  evidence: .abcd/development/brief/04-surfaces/17-guard.md:86 — "learn whether it is ready. It exits 0 when the draft has no finding at all and"
+  evidence: .abcd/development/release/surface.json:1946 — ""path": "abcd guard question","
+- ac-42 — MET_WITH_CONCERNS: The page bounds the writer at five checks to a part, each after an edit fixing every finding, with a five-spent refusal carrying the last findings to the caller only, and Lab C's last round stayed within five checks with no refusal in 9 of 9; concern: those runs are on page 0.2.4, not the shipped 0.2.6, an earlier round had a run spend six checks, and the shipped page says it never refuses for length only 'while a cut or a split below can still' fit, naming a too-long single decision as refusal cause 3.
+  evidence: agents/question-drafter.md:83 — "You make at most five checks to a part. Each check after the first follows an"
+  evidence: agents/question-drafter.md:209 — "\`{"refused": "five checks spent on < the part>", "findings": < the check's"
+  evidence: agents/question-drafter.md:166 — "You never refuse for length while a cut or a split below can still bring the"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:120 — "- **lab-261115170139-727df18 (C).** No run refuses. Every run returns one"
+  evidence: agents/question-drafter.md:4 — "prompt_version: 0.2.6"
+- ac-43 — MET_WITH_CONCERNS: The asking rules and the page tell the caller to fix its brief and redraft on a refusal without telling the person; concern: this is instruction only, since no last-round run refused and no live interview was run, so no transcript shows a caller re-briefing and asking nothing meanwhile.
+  evidence: agents/question-drafter.md:227 — "When it refuses, fix the brief and redraft it without telling the person"
+  evidence: agents/question-drafter.md:212 — "The caller fixes its brief and asks you again, and tells the person nothing:"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:155 — "- **Lab C's live half:** three interviews of at least ten questions each, with"
+- ac-44 — MET: The header pattern is an optional role word, Q, a number, an optional part letter and an optional total; TestHeaderGrammarReadsNumberAndOlderForms asserts Q1, Q1a, Q2/5 and Product Q2 are abcd's, and the page has the writer return number headers.
+  evidence: internal/core/question/check.go:131 — "re := regexp.MustCompile(`^` + role + `Q[1-9] [0-9]*[a-z]?(?:/[1-9] [0-9]*)?$`)"
+  evidence: internal/core/question/limits_test.go:583 — "for _, h := range []string{"Q1", "Q1a", "Q2/5", "Q1a/4", "Product Q2", "Setup Q1/4"} {"
+  evidence: agents/question-drafter.md:172 — "up to four, headed `Q1`, `Q2`, `Q3`, `Q4` (or with the interview's total,"
+- ac-45 — MET: TestUnlabelledQuestionRunsUncheckedWhateverTheMode asks a rule-breaking question headed 'Ship' through the hook under the product thinker's mode and asserts it runs silently with the mode left as it was.
+  evidence: internal/surface/cli/guard_question_limits_test.go:758 — "foreign := hostQuestion{Header: "Ship", Question: "Ship it?", Options: []hostOption{{Label: "Yes (Recommended)"}, {Label: "No"}}}"
+  evidence: internal/surface/cli/guard_question_limits_test.go:764 — "mustRunSilently(t, stdout, stderr, code)"
+- ac-46 — MET: Decide passes the mode's person as the register rule's addressee for a number header, and TestNumberHeaderRegisterFollowsTheMode asserts a Q1 tab is refused on the register under the product thinker's mode and admitted under the facilitator's.
+  evidence: internal/core/question/decide.go:335 — "who = s.Mode"
+  evidence: internal/surface/cli/guard_question_limits_test.go:973 — "if _, parts, _ := refusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"register"}) {"
+- ac-47 — MET_WITH_CONCERNS: Lab C's last round ran each of the three refused-for-length briefs three times and no run refused, every run returning a question the verb passes at 24 rows; concern: no run returned parts, each returning one question quoted shorter, which a recorded decision reads as passing; the runs are on page 0.2.4, not the shipped 0.2.6, and an earlier round had a run refuse.
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:120 — "- **lab-261115170139-727df18 (C).** No run refuses. Every run returns one"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:143 — "rule.** In eighteen Lab C runs across four rounds, no writer returned parts."
+  evidence: .abcd/work/decisions/dcn-2611151700578698-step-5-of-spc-2610301917245442-lab-c-s.md:6 — "so a single question quoted shorter that keeps every answer's gain and cost passes"
+  evidence: agents/question-drafter.md:4 — "prompt_version: 0.2.6"
+- ac-48 — NOT_MET: Promised: three recorded interviews of at least ten questions each run through the writer, with the hook refusing none. Delivered: no interview was run; the note queues Lab C's live half for the person and does not claim it.
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:155 — "- **Lab C's live half:** three interviews of at least ten questions each, with"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:160 — "are queued (dcn-2611151605470998)."
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:32 — "the person (dcn-2611151605470998), and this note does not claim them."
+
+Gap audit:
+- honoured:
+  - One decision function judges a question for both the guard hook and the read-only `abcd guard question`, which reports every finding, each tab's rows, the hook's outcome, the version and the ready input.
+    evidence: internal/surface/cli/guard_question.go:259 — "v := question.Decide(fields, reads.state, reads.state.Limits)"
+    evidence: internal/surface/cli/guard_question_verb.go:230 — "v := question.Decide(fields, reads.state, reads.state.Limits)"
+  - The hook's refusal names every rule on every tab with no cut, through the renderer the verb's text shares, and points at the verb and the writer.
+    evidence: internal/surface/cli/guard_question.go:700 — "question.RenderGroups(w, question.GroupFindings(refusing))"
+    evidence: internal/surface/cli/guard_question.go:705 — "fmt.Fprint(w, questionPointerLine)"
+  - A question is abcd's by its header alone, in the number form or the older role-word form, whatever the mode names.
+    evidence: internal/core/question/decide.go:305 — "v.Outcome = OutcomeAdmitUnchecked"
+    evidence: internal/core/question/check.go:131 — "re := regexp.MustCompile(`^` + role + `Q[1-9] [0-9]*[a-z]?(?:/[1-9] [0-9]*)?$`)"
+  - The question-drafter page is rewritten as the question writer: it checks every draft with the verb, at most five checks to a part, and returns the check's ready input, rows and version or a refusal to the caller.
+    evidence: agents/question-drafter.md:83 — "You make at most five checks to a part. Each check after the first follows an"
+    evidence: agents/question-drafter.md:138 — "- `questions` is the `questions` array of the check's `ready` input for the"
+  - The verb is documented on the plugin's guard page, in the generated reference and in the brief's guard chapter.
+    evidence: commands/guard.md:68 — "## `question` — check a draft question before it is asked"
+    evidence: .abcd/development/brief/04-surfaces/17-guard.md:34 — "| `question` | gate | shipped |"
+- diverged:
+  - The recorded labs judge the shipped writer page: the passing round ran page 0.2.4 at pin 727df1898, and the shipped page is 0.2.6, two wording edits later that the changelog marks unmeasured.
+    evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:21 — "At page 0.2.4 (pin 727df1898) all fifteen runs pass"
+    evidence: agents/question-drafter.md:4 — "prompt_version: 0.2.6"
+    evidence: .abcd/development/agents/CHANGELOG.md:24 — "behaviour the labs judge. Unmeasured, in the `0.x` band."
+  - Material refused for length comes back as numbered parts: every Lab C run returned one question quoted shorter, read as passing by a recorded decision.
+    evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:143 — "rule.** In eighteen Lab C runs across four rounds, no writer returned parts."
+    evidence: .abcd/work/decisions/dcn-2611151700578698-step-5-of-spc-2610301917245442-lab-c-s.md:6 — "so a single question quoted shorter that keeps every answer's gain and cost passes"
+  - The second ask after a refusal is shown in live sessions: it was shown only by replaying payloads into the lab binary's guard hook, the second payload being the writer's redraft.
+    evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:80 — "**Lab B's hook-level half** feeds the lab binary's `guard hook` the PreToolUse"
+    evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:83 — "must be denied, and the writer's redraft admitted on the second ask."
+  - `ready` is the input's bytes unchanged: with --json it is the same JSON value re-rendered by an indenting encoder; only the text render prints the draft's bytes.
+    evidence: internal/surface/cli/cli.go:7721 — "enc.SetIndent("", " ")"
+    evidence: internal/surface/cli/guard_question_verb_test.go:425 — "if err := json.Compact(&got, res.Ready); err != nil {"
+  - An unread store always reads `unchecked`: a draft that breaks a rule with the mode store unread is reported `refuse`, partial.
+    evidence: internal/surface/cli/guard_question_verb_test.go:314 — "if res.Hook != question.OutcomeRefuse || !res.Abcds || code != 2 || len(res.Ready) != 0 {"
+  - Any refusal names the verb and the writer: only a refusal on the asking rules carries the pointer line; the away, refused-limit and key-collision refusals do not.
+    evidence: internal/surface/cli/guard_question.go:217 — "return "Blocked by the abcd guard (question tool): the person is away (abcd mode autonomous), so no question is put to them, whatever its chip and whoever wrote it.\n" +"
+- missing:
+  - Three recorded live sessions in which the 21-fault question is refused and the second ask admitted (Lab B's live half).
+    evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:153 — "- **Lab B's live half:** a session asks the 21-fault question without the"
+    evidence: .abcd/work/decisions/dcn-2611151605470998-spc-2610301917245442-step-5-lab-b.md:6 — "The spec closes with the live half recorded as queued, not passed."
+  - Three recorded interviews of at least ten questions each through the writer with no hook refusal (Lab C's live half).
+    evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:155 — "- **Lab C's live half:** three interviews of at least ten questions each, with"
+    evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:32 — "the person (dcn-2611151605470998), and this note does not claim them."
+  - Any recorded run in which the writer returns numbered parts, Q1a then Q1b, or the 'None of these' route to Q1b.
+    evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:143 — "rule.** In eighteen Lab C runs across four rounds, no writer returned parts."
+  - A recorded run of the writer in abcd's own checkout (the source-tree verb) or on a binary predating the verb (hook-only), which the spec left to the labs.
+    evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:9 — "- each lab runs on one pinned binary, in a managed repository holding the"
+
+Scope-condition dispositions:
+- cond-2610301917242187 — survived: The hook and the verb still decode the host input as tabs with a header, a question and options carrying a label and a description, and the lab's hook-level half fed that payload shape.
+  evidence: internal/surface/cli/guard_question.go:470 — "type hostQuestionInput struct {"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:80 — "**Lab B's hook-level half** feeds the lab binary's `guard hook` the PreToolUse"
+- cond-2610301917242167 — survived: The verb reports its binary's version and the labs passed a run only when that was the lab binary's, the hook-level half running the same binary; the session's own hook ran the installed release, which is the cross-version case the condition sets outside the claim.
+  evidence: internal/surface/cli/guard_question_verb.go:335 — "Version: core.Version,"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:60 — "- `checked_by` is `abcd`, and the version is the lab binary's;"
+  evidence: .abcd/work/decisions/dcn-2611151605470998-spc-2610301917245442-step-5-lab-b.md:6 — "This session's hooks and its subagents' run the installed release"
+- cond-2610301917241788 — survived: Every lab writer ran the verb from a shell and returned `checked_by: abcd`; the page keeps the hand count for a host with no shell only.
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:60 — "- `checked_by` is `abcd`, and the version is the lab binary's;"
+  evidence: agents/question-drafter.md:244 — "Count by hand only where the host gives you no shell to run the check in."
+- cond-2610301917246661 — untested: Every row figure in the delivery is the check's own estimate; no run compared it with the host's question view, since no live session was run, so the frame calibration was neither exercised nor contradicted.
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:58 — "every tab is within 24 rows by the verb's own count;"
+- cond-2610301917246513 — survived: The labs' pass rules judged only what the check sees, and a content fault the check passed (a 'Now:' line stating a draft plan as in force) was left to the writer and the person's review, as the condition assumed.
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:76 — "The pass rules judge only these mechanical properties. The writer's prose, such"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:126 — "describes the draft plan as if it were already in force, so the 0.2.2"
+- cond-2610301917245587 — survived: The verdict is flagged as depending on state wherever a repository root was found, the text render says a mode set or the person marked away before the ask can change it, and the away test asserts the flag.
+  evidence: internal/core/question/decide.go:285 — "v := Verdict{DependsOnState: s.Repo, ModeAfter: s.Mode}"
+  evidence: internal/surface/cli/guard_question_verb.go:559 — "fmt.Fprintln(w, "This answer holds for the checkout as it is now: a mode set, or the person marked away, before the ask can change it.")"
+- cond-2610301917243787 — untested: No agent that used neither the writer nor the verb was run: Lab B's live half is queued, and its hook-level half admitted the writer's redraft, not such an agent's retry from the grouped refusal.
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:153 — "- **Lab B's live half:** a session asks the 21-fault question without the"
+<!-- abcd-review-end receipt=rcp-a2d9216f1974 -->
 
 ## Grounds
 

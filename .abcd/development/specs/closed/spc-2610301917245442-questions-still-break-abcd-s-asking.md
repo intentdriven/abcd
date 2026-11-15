@@ -88,3 +88,4 @@ Out of scope, recorded elsewhere: Per-repository layout limits (itd-261030191435
    - needs: 4
    - packages: .abcd/development/research/notes/2026-11-question-writer-labs.md
    - tests: internal/surface/cli/guard_question_verb_test.go
+   - landed: a96d7b3dcbf6
