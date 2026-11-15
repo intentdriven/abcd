@@ -1987,9 +1987,7 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 			gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error()))+", so "+lane.Branch+" was not pushed: the landing announces before it pushes",
 			"settle what it names, then run `abcd implement step` again; the branch was not pushed, and an announcement already sent stands")
 	}
-	// The head the receipt names is pushed by its commit id, not the branch's
-	// ref, so a branch that moves after the check cannot change what is pushed.
-	if _, err := gitutil.Net(c.RepoRoot, "push", "--porcelain", Remote, lane.HeadSHA+":refs/heads/"+lane.Branch); err != nil {
+	if _, err := gitutil.Net(c.RepoRoot, landPushArgs(lane.HeadSHA, lane.Branch)...); err != nil {
 		if r, ok := heldStopOf(err); ok {
 			return Outcome{}, r
 		}
@@ -2014,6 +2012,17 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 	}
 	ld.PreflightReceipt, ld.Pushed, ld.CheckWaitSince = fsutil.RedactHome(rcp), lane.HeadSHA, nil
 	return Outcome{Stay: true, Note: note}, nil
+}
+
+// landPushArgs is the landing push of a lane's head to its branch on
+// origin. The head the receipt names is pushed by its commit id, not the
+// branch's ref, so a branch that moves after the check cannot change what is
+// pushed; and it passes --no-follow-tags, which overrides push.followTags
+// (git-config(1)), so an annotated tag a lane made that points into the
+// branch's history is never sent with it. `abcd land`, run by a person,
+// pushes as before.
+func landPushArgs(head, branch string) []string {
+	return []string{"push", "--porcelain", "--no-follow-tags", Remote, head + ":refs/heads/" + branch}
 }
 
 // announceBeforePush is claim.AnnounceBeforePush, the one path abcd's pushes

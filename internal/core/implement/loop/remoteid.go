@@ -53,12 +53,13 @@ package loop
 // (gitutil.StatusArgs) or a diff of a working tree (gitutil.DiffWorktreeArgs)
 // passes --ignore-submodules=dirty, the staging (addAllGit, addAllGitIndex)
 // leaves out by pathspec each submodule whose checked-out commit has not
-// moved, and a sync's merge names submodule.<name>.ignore=dirty for each
-// name (submoduleIgnorePins); a commit of the drive always has something to
-// commit or is made with --allow-empty, and git refuses to remove a worktree
-// holding a checked-out submodule before it reads its status. What remains:
-// a submodule moved, or a .gitmodules changed, between those reads and git's
-// own command is not seen; and the commands a person's held submodule.recurse
+// moved, and a sync's merge is not made where the lane's index records a
+// gitlink with a repository checked out at its path (syncMerge), which hands
+// the lane back; a commit of the drive always has something to commit or is
+// made with --allow-empty, and git refuses to remove a worktree holding a
+// checked-out submodule before it reads its status. What remains: a
+// submodule moved, or checked out, between those reads and git's own command
+// is not seen; and the commands a person's held submodule.recurse
 // or push.recurseSubmodules makes recurse (the drive's push and reset) read
 // each submodule's own settings. And an origin defined only by a legacy
 // remotes or branches file in the git directory is not held, having no key
@@ -88,7 +89,7 @@ import (
 // remoteIdentityHeld names, for a refusal and the docs, what settings a drive
 // holds across its lanes (remoteIdentityKey), as each environment its git
 // runs in reads them.
-const remoteIdentityHeld = "at every scope, as each environment the drive's git runs in reads them: where a networked git goes and how it reaches the remote (origin's and every remote's url, pushurl, uploadpack, receivepack, proxy, proxy authentication method, server options and vcs; every url rewrite; core.sshCommand, core.gitProxy and ssh.variant; the protocol allow rules; fetch.bundleURI), whom it trusts and what it sends (every credential.*; core.askPass; the http.* settings that decide where an https fetch or push connects, whom it takes as the remote and what it sends there: the proxy and its authentication, certificate and key, the resolve and redirect settings, the TLS version, ciphers, backend, certificate authorities and pinned key, the client certificate and key, cookies, extra headers, credential delegation and the authentication switches, per URL too); " +
+const remoteIdentityHeld = "at every scope, as each environment the drive's git runs in reads them: where a networked git goes and how it reaches the remote (origin's and every remote's url, pushurl, uploadpack, receivepack, proxy, proxy authentication method, server options, promisor switch, partial-clone filter and vcs; every url rewrite; core.sshCommand, core.gitProxy and ssh.variant; the protocol allow rules; fetch.bundleURI), whom it trusts and what it sends (every credential.*; core.askPass; push.pushOption; transfer.advertiseSID; the http.* settings that decide where an https fetch or push connects, whom it takes as the remote and what it sends there: the proxy and its authentication, certificate and key, the resolve and redirect settings, the TLS version, ciphers, backend, certificate authorities and pinned key, the client certificate and key, cookies, extra headers, the user agent, credential delegation and the authentication switches, per URL too); " +
 	"the programs a command of the drive starts (core.hooksPath, core.fsmonitor, core.editor, core.alternateRefsCommand, uploadpack.packObjectsHook and gc.recentObjectsHook; content filters, diff and merge drivers and diff.external; every gpg.* and the signing and verifying switches; format.pretty and pretty.*, whose format can check a signature; the Git LFS transfer and extension programs; hook.*; init.templateDir); " +
 	"the settings that change which of them run (merge.renormalize, submodule.recurse and push.recurseSubmodules, status.submoduleSummary, core.attributesFile, core.worktree and extensions.worktreeConfig); include and includeIf paths and the files they name; and the global and system attributes files"
 
@@ -107,18 +108,23 @@ const remoteIdentityHeld = "at every scope, as each environment the drive's git 
 //     followRedirects), and what is sent (sslCert, sslCertType, sslKey,
 //     sslKeyType, sslCertPasswordProtected, proxySSLCert, proxySSLKey,
 //     proxySSLCertPasswordProtected, proxyAuthMethod, cookieFile,
-//     saveCookies, extraHeader, delegation, emptyAuth, proactiveAuth). The
-//     other http.* keys git 2.52 documents are neither a program nor trust:
-//     postBuffer and maxRequests (buffers), minSessions, keepAliveCount,
-//     keepAliveIdle, keepAliveInterval, lowSpeedLimit and lowSpeedTime
-//     (speed), noEPSV and version (how a connection is made, not to whom),
-//     and userAgent (a name git gives itself); none is unread.
+//     saveCookies, extraHeader, userAgent, delegation, emptyAuth,
+//     proactiveAuth). The other http.* keys git 2.52 documents are neither a
+//     program nor trust nor a value sent: postBuffer and maxRequests
+//     (buffers), minSessions, keepAliveCount, keepAliveIdle,
+//     keepAliveInterval, lowSpeedLimit and lowSpeedTime (speed), noEPSV and
+//     version (how a connection is made, not to whom); none is unread.
 //     TestEveryHTTPSettingGitDocumentsIsInOneRow holds that list.
 //   - remote.<name>.proxyAuthMethod, the per-remote form of
-//     http.proxyAuthMethod (what is sent to the proxy), and
+//     http.proxyAuthMethod (what is sent to the proxy);
 //     remote.<name>.serverOption, what a fetch from that remote sends the
-//     server; remote.<name>.proxy and the remote's other program and
-//     destination keys are watched by the run's fingerprint.
+//     server; and remote.<name>.promisor and partialclonefilter, which make
+//     a git that reads a missing object fetch it from that remote, and say
+//     what it asks for; remote.<name>.proxy and the remote's other program
+//     and destination keys are watched by the run's fingerprint.
+//   - push.pushOption, what a push sends the server (git-config(1): as if
+//     each value were given as --push-option), and transfer.advertiseSID,
+//     which makes a fetch or push send the server its session id.
 //   - fetch.bundleURI: where a fetch first downloads from.
 //   - core.alternateRefsCommand (the connectivity check of every fetch),
 //     core.attributesFile (which filters and drivers apply), diff.external,
@@ -145,12 +151,21 @@ const remoteIdentityHeld = "at every scope, as each environment the drive's git 
 //   - hook.*: no setting of git 2.52, which the installed git is; a later git
 //     reads its configured hooks there.
 //
+// Every other push.*, remote.<name>.*, fetch.*, transfer.* and url.* key git
+// 2.52 documents is decided by the drive's own command line (its pushes name
+// origin and a refspec and pass --no-follow-tags, its fetches name origin and
+// their refspecs and pass --no-tags), is read by no git of the drive, or is
+// neither a program nor trust nor a value sent:
+// TestEveryRemoteSettingGitDocumentsIsInOneRow gives each its row and why.
+//
 // The fingerprint of a run outside a drive keeps to watchedConfig, so nothing
 // outside a drive refuses more. What is not held, and why, is
 // driveUnreadSettings beside this.
 const driveHeldConfig = `^(` +
-	`http\.(.+\.)?(proxy|proxyauthmethod|proxysslcainfo|proxysslcert|proxysslkey|proxysslcertpasswordprotected|sslverify|sslversion|sslcipherlist|sslcainfo|sslcapath|pinnedpubkey|sslbackend|schannelcheckrevoke|schannelusesslcainfo|ssltry|sslcert|sslcerttype|sslkey|sslkeytype|sslcertpasswordprotected|curloptresolve|followredirects|cookiefile|savecookies|extraheader|delegation|emptyauth|proactiveauth)` +
-	`|remote\..+\.(proxyauthmethod|serveroption)` +
+	`http\.(.+\.)?(proxy|proxyauthmethod|proxysslcainfo|proxysslcert|proxysslkey|proxysslcertpasswordprotected|sslverify|sslversion|sslcipherlist|sslcainfo|sslcapath|pinnedpubkey|sslbackend|schannelcheckrevoke|schannelusesslcainfo|ssltry|sslcert|sslcerttype|sslkey|sslkeytype|sslcertpasswordprotected|curloptresolve|followredirects|cookiefile|savecookies|extraheader|useragent|delegation|emptyauth|proactiveauth)` +
+	`|remote\..+\.(proxyauthmethod|serveroption|promisor|partialclonefilter)` +
+	`|push\.pushoption` +
+	`|transfer\.advertisesid` +
 	`|fetch\.bundleuri` +
 	`|core\.(alternaterefscommand|attributesfile)` +
 	`|diff\.external` +
@@ -179,9 +194,11 @@ const driveHeldConfig = `^(` +
 // (color.pager, advice.*) that name none. TestEachProgramSettingGitDocumentsIsHeldOrUnread
 // reads git's own list (`git help --config`) against this and the held
 // pattern. Left out as naming no program and changing neither where a
-// networked git goes nor whom it trusts: core.excludesFile, fetch.fsckObjects
-// and the other fsck and transfer checks, and the http.* keys of speed,
-// buffers, connection mode and user agent (driveHeldConfig lists them).
+// networked git goes, nor whom it trusts, nor what it sends:
+// core.excludesFile, fetch.fsckObjects and the other fsck and transfer
+// checks, the http.* keys of speed, buffers and connection mode, and the
+// push, remote, fetch and transfer keys TestEveryRemoteSettingGitDocumentsIsInOneRow
+// gives a row (driveHeldConfig says where).
 var driveUnreadSettings = []struct{ pattern, why string }{
 	{`alias\..+`, "git-config(1), alias.*: \"To avoid confusion and troubles with script usage, aliases that hide existing Git commands are ignored except for deprecated commands.\" abcd runs no deprecated command (TestNoAliasStandsForASubcommandAbcdJudges in internal/gitutil)"},
 	{`core\.pager|pager\..+|color\.pager`, "git starts a pager only when its output is a terminal, and a drive gives its git none; color.pager is a switch; the run's own fingerprint still watches core.pager, so a change to it during a lane's run stops that run's next git step"},
@@ -191,7 +208,7 @@ var driveUnreadSettings = []struct{ pattern, why string }{
 	{`sendemail\..+|imap\..+`, "read by send-email and imap-send, which a drive does not run"},
 	{`trailer\..+`, "read by interpret-trailers and by a commit or tag given --trailer, none of which a drive runs"},
 	{`maintenance\..+|gc\.(auto|autodetach)`, "automatic maintenance starts no program beyond the hooks directory's pre-auto-gc and gc.recentObjectsHook, which are held"},
-	{`fetch\.recursesubmodules|submodule\.(.+\..+|active|fetchjobs|alternatelocation|alternateerrorstrategy|propagatebranches)`, "every fetch abcd makes through its networked runners, in a drive or not, pins fetch.recurseSubmodules and submodule.recurse off on its command line; the git commands of the drive that compare a working tree with the index start nothing in a submodule: a status or a diff of a working tree passes --ignore-submodules=dirty, which outranks submodule.<name>.ignore (and diff.ignoreSubmodules), the staging leaves out by pathspec each submodule whose checked-out commit has not moved, and a sync's merge names submodule.<name>.ignore=dirty on its command line for each name the lane's .gitmodules declares; a drive runs no git submodule; only where submodule.recurse or push.recurseSubmodules, which are held, is on does a git of the drive read the others: its push and its lane's reset go into each submodule git counts active (submodule.<name>.active), under that submodule's own settings"},
+	{`fetch\.recursesubmodules|submodule\.(.+\..+|active|fetchjobs|alternatelocation|alternateerrorstrategy|propagatebranches)`, "every fetch abcd makes through its networked runners, in a drive or not, pins fetch.recurseSubmodules and submodule.recurse off on its command line; the git commands of the drive that compare a working tree with the index start nothing in a submodule: a status or a diff of a working tree passes --ignore-submodules=dirty, which outranks submodule.<name>.ignore (and diff.ignoreSubmodules), the staging leaves out by pathspec each submodule whose checked-out commit has not moved, and a sync's merge is not made where the lane's index records a gitlink with a repository checked out at its path; a drive runs no git submodule; only where submodule.recurse or push.recurseSubmodules, which are held, is on does a git of the drive read the others: its push and its lane's reset go into each submodule git counts active (submodule.<name>.active), under that submodule's own settings"},
 	{`transfer\.bundleuri`, "read by clone alone, which a drive does not run"},
 	{`advice\..+`, "a switch for a hint, naming no program"},
 }
@@ -250,7 +267,8 @@ type lanesRead struct {
 }
 
 // everyLane is the reading of every lane worktree's own scope: one listing
-// of the worktrees, then one listing of each lane's settings.
+// of the worktrees, then each lane's settings listed once, or once per
+// environment where it holds an include.
 var everyLane = lanesRead{all: true}
 
 // maxSettingsBytes caps one listing of the settings.
@@ -453,7 +471,7 @@ const maxWorktreeListingBytes = 1 << 20
 // worktree whose directory is gone, or that git marks prunable, holds
 // nothing; any other read that gives no answer the hold can take is a
 // readFailure naming it. It lists the worktrees once and each lane's settings
-// once, side by side.
+// once, or once per environment where it holds an include, side by side.
 func laneScopeSettings(repoRoot string, b readBounds) (lanes map[string]map[string]string, checkoutOwn map[string]string, err error) {
 	what := "listing the repository's worktrees (git worktree list --porcelain -z)"
 	a, err := isolatedEnv.readBy(b, repoRoot, what, maxWorktreeListingBytes, "worktree", "list", "--porcelain", "-z")
@@ -1325,8 +1343,8 @@ func laneMade(c Context, laneID, path string) error {
 // difference or a read that gives no answer (terminal.go); and before the
 // drive releases what it holds as it ends (letGo), outside the drain's lock.
 // While a drive runs, the same comparison, reading the own scope of the lane
-// worktrees the git runs in or names alone (heldBeforeGitIn), is made before every
-// git command abcd starts with the repository's hooks, merge drivers or
+// worktrees the git runs in or names alone (heldBeforeGitIn), is made before
+// every git command abcd starts with the repository's hooks, merge drivers or
 // content filters on, or that reaches the network, in a step or not (the
 // lane's add, commit, merge and reset, the landing push, a move's
 // reservation, a renewal made while an agent runs, the network probe:
@@ -1357,11 +1375,15 @@ func heldBeforeGitIn(repoRoot string, held *remoteIdentity, dir string, args []s
 // (laneOf of that directory, else of dir), and, for a `git worktree`
 // subcommand, the lane each path it names is in (git's `worktree remove`
 // starts a status in the worktree it removes, which reads that worktree's own
-// settings). One lane is read alone; two or more, or a git whose lane cannot
+// settings). The subcommand is found as gitutil finds it
+// (gitutil.SubcommandIndex), past every global option and its value
+// (gitutil.TakesGlobalValue), and the value of each `git worktree` option
+// that takes one (worktreeValued) is skipped, so an option's value is never
+// read as a path: the drive's own `worktree add -b <branch>` reads the lane
+// it makes. One lane is read alone; two or more, or a git whose lane cannot
 // be told from its arguments (a --git-dir or --work-tree anywhere in them, or
 // a -C after its subcommand, before any "--"), read every lane; none reads
-// none. A word given as an option's value is taken as a path too, which can
-// only add a lane to read.
+// none.
 func (id *remoteIdentity) lanesFor(repoRoot, dir string, args []string) lanesRead {
 	at := dir
 	join := func(p string) string {
@@ -1378,23 +1400,19 @@ func (id *remoteIdentity) lanesFor(repoRoot, dir string, args []string) lanesRea
 			return everyLane
 		}
 	}
-	i := 0
-	for ; i < len(args); i++ {
-		a := args[i]
-		if a == "-c" || a == "--namespace" || a == "--config-env" {
-			i++
+	sub := gitutil.SubcommandIndex(args)
+	global := args
+	if sub >= 0 {
+		global = args[:sub]
+	}
+	for i := 0; i < len(global); i++ {
+		if !gitutil.TakesGlobalValue(global[i]) {
 			continue
 		}
-		if a == "-C" {
-			if i+1 < len(args) && args[i+1] != "" {
-				at = join(args[i+1])
-			}
-			i++
-			continue
+		if global[i] == "-C" && i+1 < len(global) && global[i+1] != "" {
+			at = join(global[i+1])
 		}
-		if !strings.HasPrefix(a, "-") {
-			break
-		}
+		i++
 	}
 	lanes := map[string]bool{}
 	add := func(p string) {
@@ -1403,7 +1421,10 @@ func (id *remoteIdentity) lanesFor(repoRoot, dir string, args []string) lanesRea
 		}
 	}
 	add(at)
-	rest := args[min(i+1, len(args)):]
+	if sub < 0 {
+		return lanesOf(lanes)
+	}
+	rest := args[sub+1:]
 	for _, a := range rest {
 		if a == "--" {
 			break
@@ -1412,14 +1433,19 @@ func (id *remoteIdentity) lanesFor(repoRoot, dir string, args []string) lanesRea
 			return everyLane
 		}
 	}
-	if i < len(args) && args[i] == "worktree" {
+	if args[sub] == "worktree" {
 		named, past := 0, false
-		for j, a := range rest {
+		for j := 0; j < len(rest); j++ {
+			a := rest[j]
 			switch {
+			case j == 0:
+				// The worktree subcommand.
 			case a == "--" && !past:
 				past = true
-			case j == 0, a == "" || !past && strings.HasPrefix(a, "-"):
-				// The worktree subcommand, or an option.
+			case !past && slices.Contains(worktreeValued, a):
+				j++
+			case a == "" || !past && strings.HasPrefix(a, "-"):
+				// An option, or its value given with "=".
 			default:
 				add(join(a))
 				named++
@@ -1429,6 +1455,17 @@ func (id *remoteIdentity) lanesFor(repoRoot, dir string, args []string) lanesRea
 			return everyLane
 		}
 	}
+	return lanesOf(lanes)
+}
+
+// worktreeValued are the options of `git worktree` (git 2.52) that take the
+// next word as their value: add's new branch (-b, -B), add's and lock's
+// --reason, and list's and prune's --expire.
+var worktreeValued = []string{"-b", "-B", "--reason", "--expire"}
+
+// lanesOf is the reading of the lanes a git names: none, the one alone, or
+// every lane for two or more.
+func lanesOf(lanes map[string]bool) lanesRead {
 	switch len(lanes) {
 	case 0:
 		return lanesRead{}

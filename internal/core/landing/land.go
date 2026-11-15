@@ -460,7 +460,8 @@ func headOf(dir string) (string, error) {
 // dirtyTree reports whether the checkout at dir holds a staged, unstaged or
 // untracked change, read as the person's own git reads it (their ignore files
 // included). It leaves uncommitted changes inside a submodule's working tree
-// out (gitutil.StatusArgs), while the preflight's receipt counts them: a
+// out (gitutil.StatusArgs), while the preflight's receipt counts them as
+// git's status reads the repository's settings: where those count them, a
 // preflight run on such a tree mints no receipt, so the land is refused at
 // the receipt. A change made inside a submodule after the receipt for HEAD
 // was minted is seen by neither.

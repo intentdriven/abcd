@@ -1,6 +1,8 @@
 package loop
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -143,53 +145,197 @@ func TestTheDrivesAddStartsNothingInASubmodule(t *testing.T) {
 	}
 }
 
-// TestASyncMergeStartsNothingInASubmodule: git's merge first saves the
-// lane's uncommitted changes (`git stash create`), which, where the
-// submodule's .gitmodules entry sets its ignore to none, starts a status
-// inside it under its own settings; git merge takes no --ignore-submodules,
-// and a diff.ignoreSubmodules on the command line loses to the entry, as the
-// plain merge here shows. The sync's merge (syncMerge) names each submodule's
-// ignore on its command line, so the filter does not run, and the merge is
-// made. A submodule name git's command line cannot carry is refused, naming
-// it. Watched failing with submoduleIgnorePins giving no pins: the sync's
-// merge ran the submodule's filter.
-func TestASyncMergeStartsNothingInASubmodule(t *testing.T) {
+// TestTheDrivesAddReadsItsPathspecsAsAbcdWritesThem: GIT_LITERAL_PATHSPECS in
+// the environment makes git read every pathspec as a file name, which would
+// turn the staging's excludes into names of files that do not exist, so the
+// checked-out submodule would be staged through its own filter. The drive's
+// add passes --no-literal-pathspecs, so the excludes hold with it set.
+// Watched failing with the add passing no such option: the filter ran.
+func TestTheDrivesAddReadsItsPathspecsAsAbcdWritesThem(t *testing.T) {
 	r, stale, live := subFilterRepo(t)
-	side := func(file string) {
-		r.Git("checkout", "-q", "-b", "side-"+file)
-		r.Write(file, file+"\n")
-		r.Git("-c", "filter.subown.clean=", "add", file)
-		r.Git("-c", "filter.subown.clean=", "commit", "-q", "-m", file)
-		r.Git("checkout", "-q", "-")
-	}
-	side("plain.txt")
-	side("sync.txt")
+	t.Setenv("GIT_LITERAL_PATHSPECS", "1")
 	stale()
-	plain := exec.Command("git", "-C", r.Root(), "-c", "diff.ignoreSubmodules=dirty", "merge", "--no-ff", "--no-edit", "-m", "plain", "side-plain.txt")
-	plain.Env = r.Env()
-	if out, err := plain.CombinedOutput(); err != nil {
-		t.Fatalf("fixture: git merge: %v\n%s", err, out)
-	}
-	if !live() {
-		t.Fatal("fixture: a plain git merge did not run the submodule's clean filter, so this test proves nothing")
-	}
-
-	stale()
-	if err := syncMerge(r.Root(), "sync", "side-sync.txt"); err != nil {
+	r.Write("b.txt", "b\n")
+	if _, err := addAllGit(r.Root(), "."); err != nil {
 		t.Fatal(err)
 	}
 	if live() {
-		t.Error("the sync's merge ran the submodule's own clean filter")
+		t.Error("with GIT_LITERAL_PATHSPECS set, the drive's add ran the submodule's own clean filter")
 	}
-	if got := r.Git("log", "-1", "--format=%s%n%P"); !strings.HasPrefix(got, "sync\n") || len(strings.Fields(got)) != 3 {
-		t.Errorf("the sync's merge makes its merge commit: %q", got)
+	if got := r.Git("diff", "--cached", "--name-only"); got != "b.txt" {
+		t.Errorf("the drive's add stages the change beside the submodule: %q", got)
 	}
+}
 
-	r.Git("config", "--file", ".gitmodules", "submodule.a=b.path", "elsewhere")
-	err := syncMerge(r.Root(), "again", "side-sync.txt")
-	if err == nil || !strings.Contains(err.Error(), `"a=b"`) {
-		t.Errorf("a submodule name holding = is refused, naming it: %v", err)
+// TestTheDrivesAddIsBoundedByNoCountOfSubmodules: an index holding more
+// gitlinks than any bound a listing once had (4097, none checked out) is
+// staged, its excludes passed to git on its standard input rather than its
+// command line, and every gitlink is kept. Watched failing on the branch
+// before: the listing refused the index.
+func TestTheDrivesAddIsBoundedByNoCountOfSubmodules(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := gittest.NewRepo(t)
+	r.Git("config", "commit.gpgsign", "false")
+	r.Write("a.txt", "a\n")
+	r.Commit("seed")
+	head := r.Git("rev-parse", "HEAD")
+	const n = 4097
+	var info strings.Builder
+	for i := range n {
+		p := fmt.Sprintf("links/%04d-%s", i, strings.Repeat("x", 200))
+		fmt.Fprintf(&info, "160000 %s 0\t%s\n", head, p)
+		if err := os.MkdirAll(filepath.Join(r.Root(), filepath.FromSlash(p)), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
+	cmd := exec.Command("git", "-C", r.Root(), "update-index", "--index-info")
+	cmd.Env, cmd.Stdin = r.Env(), strings.NewReader(info.String())
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("fixture: git update-index: %v\n%s", err, out)
+	}
+	r.Git("commit", "-q", "-m", "many gitlinks")
+	r.Write("b.txt", "b\n")
+	if _, err := addAllGit(r.Root(), "."); err != nil {
+		t.Fatalf("the drive's add over %d gitlinks: %v", n, err)
+	}
+	if got := r.Git("diff", "--cached", "--name-only"); got != "b.txt" {
+		t.Errorf("the drive's add stages the change and keeps every gitlink: %q", got)
+	}
+}
+
+// embeddedFilterRepo is subFilterRepo's shape for a repository embedded in
+// the tree and added by path, which records a gitlink that no .gitmodules
+// entry names: git has no submodule.<name>.ignore to read for it, and looks
+// inside it by default. Its own settings name a clean filter for every path;
+// stale and live are subFilterRepo's.
+func embeddedFilterRepo(t *testing.T) (r *gittest.Repo, stale func(), live func() bool) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX sentinel script")
+	}
+	t.Setenv("HOME", t.TempDir())
+	r = gittest.NewRepo(t)
+	r.Git("config", "user.name", "Fixture")
+	r.Git("config", "user.email", "fixture@example.invalid")
+	r.Git("config", "commit.gpgsign", "false")
+	r.Write("a.txt", "a\n")
+	r.Commit("seed")
+	emb := filepath.Join(r.Root(), "emb")
+	r.Git("init", "-q", emb)
+	r.Write("emb/s.txt", "s\n")
+	r.Git("-C", emb, "add", "s.txt")
+	r.Git("-C", emb, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-q", "-m", "embedded seed")
+	r.Git("-c", "advice.addEmbeddedRepo=false", "add", "emb")
+	r.Git("commit", "-q", "-m", "an embedded repository, no .gitmodules entry")
+	mark := filepath.Join(t.TempDir(), "emb-filter-ran")
+	script := filepath.Join(t.TempDir(), "emb-clean.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\ntouch "+mark+"\ncat\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r.Git("-C", emb, "config", "filter.embown.clean", script)
+	if err := os.WriteFile(filepath.Join(emb, ".git", "info", "attributes"), []byte("* filter=embown\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	stale = func() {
+		n++
+		later := time.Now().Add(time.Duration(n) * time.Hour)
+		if err := os.Chtimes(filepath.Join(emb, "s.txt"), later, later); err != nil {
+			t.Fatal(err)
+		}
+	}
+	live = func() bool {
+		_, err := os.Stat(mark)
+		_ = os.Remove(mark)
+		return err == nil
+	}
+	return r, stale, live
+}
+
+// sideBranches makes a branch, side-<file>, for each file, holding that file
+// on top of HEAD, with every filter blanked for the fixture's own commits.
+func sideBranches(t *testing.T, r *gittest.Repo, files ...string) {
+	t.Helper()
+	for _, file := range files {
+		r.Git("checkout", "-q", "-b", "side-"+file)
+		r.Write(file, file+"\n")
+		r.Git("-c", "filter.subown.clean=", "-c", "filter.embown.clean=", "add", file)
+		r.Git("-c", "filter.subown.clean=", "-c", "filter.embown.clean=", "commit", "-q", "-m", file)
+		r.Git("checkout", "-q", "-")
+	}
+}
+
+// TestASyncMergeIsRefusedOverACheckedOutSubmodule: git looks inside a
+// checked-out submodule, under that submodule's own settings, as its merge
+// saves the lane's changes first where the .gitmodules entry sets its
+// ignore to none (the plain merge here), and by default for a repository
+// embedded in the tree, which no entry names (the plain status here; git's
+// merge looks inside it too once the changes it saves hold a tracked file's).
+// No command-line form reaches what the merge runs and not the merge's
+// hooks, so the sync's merge (syncMerge) is not made where the lane's index
+// records a gitlink with a repository checked out at its path, whether or
+// not .gitmodules names it: it is refused, naming the path, and nothing is
+// merged or run. A gitlink with nothing checked out merges as before.
+// Watched failing with the -c pins removed and nothing in their place: both
+// merges were made, the named submodule's running its own filter.
+func TestASyncMergeIsRefusedOverACheckedOutSubmodule(t *testing.T) {
+	for _, tc := range []struct {
+		name, path string
+		repo       func(t *testing.T) (*gittest.Repo, func(), func() bool)
+		looks      []string
+	}{
+		{"a submodule .gitmodules names", "sub", subFilterRepo,
+			[]string{"-c", "diff.ignoreSubmodules=dirty", "merge", "--no-ff", "--no-edit", "-m", "plain", "side-plain.txt"}},
+		{"a repository embedded with no entry", "emb", embeddedFilterRepo, []string{"status", "--porcelain"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, stale, live := tc.repo(t)
+			sideBranches(t, r, "plain.txt", "sync.txt")
+			_ = live()
+			stale()
+			plain := exec.Command("git", append([]string{"-C", r.Root()}, tc.looks...)...)
+			plain.Env = r.Env()
+			if out, err := plain.CombinedOutput(); err != nil {
+				t.Fatalf("fixture: git %s: %v\n%s", tc.looks[0], err, out)
+			}
+			if !live() {
+				t.Fatalf("fixture: a plain git %q did not run the submodule's clean filter, so this test proves nothing", tc.looks)
+			}
+
+			head := r.Git("rev-parse", "HEAD")
+			stale()
+			err := syncMerge(r.Root(), "sync", "side-sync.txt")
+			var checkedOut *checkedOutSubmodule
+			if !errors.As(err, &checkedOut) || checkedOut.Path != tc.path || !strings.Contains(err.Error(), `"`+tc.path+`"`) {
+				t.Fatalf("the sync's merge over a checked-out submodule is refused, naming %s: %v", tc.path, err)
+			}
+			if live() {
+				t.Error("the refused sync ran the submodule's own clean filter")
+			}
+			if got := r.Git("rev-parse", "HEAD"); got != head {
+				t.Errorf("the refused sync merged: HEAD moved from %s to %s", head, got)
+			}
+		})
+	}
+	t.Run("a gitlink with nothing checked out", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		r := gittest.NewRepo(t)
+		r.Git("config", "commit.gpgsign", "false")
+		r.Write("a.txt", "a\n")
+		r.Commit("seed")
+		r.Git("update-index", "--add", "--cacheinfo", "160000,"+r.Git("rev-parse", "HEAD")+",unpop")
+		r.Git("commit", "-q", "-m", "a gitlink with no checkout")
+		if err := os.Mkdir(filepath.Join(r.Root(), "unpop"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		sideBranches(t, r, "sync.txt")
+		if err := syncMerge(r.Root(), "sync", "side-sync.txt"); err != nil {
+			t.Fatal(err)
+		}
+		if got := r.Git("log", "-1", "--format=%s%n%P"); !strings.HasPrefix(got, "sync\n") || len(strings.Fields(got)) != 3 {
+			t.Errorf("the sync's merge makes its merge commit: %q", got)
+		}
+	})
 }
 
 // TestAFailedSyncsUnmergedReadStartsNothingInASubmodule: after a sync's

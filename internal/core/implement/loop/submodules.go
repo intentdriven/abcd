@@ -1,37 +1,48 @@
 package loop
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // addAllGit runs `git add -A` in dir, the root of a lane's worktree or of the
-// checkout, on its own index (pickGit), limited to pathspec ("." when none),
-// with each checked-out submodule left out whose commit is the one the index
-// records (addAllArgs).
+// checkout, on its own index (pickGitInput), limited to pathspec ("." when
+// none), with each checked-out submodule left out whose commit is the one the
+// index records (addAllArgs).
 func addAllGit(dir string, pathspec ...string) (string, error) {
-	args, err := addAllArgs(dir, "", pathspec)
+	args, stdin, err := addAllArgs(dir, "", pathspec)
 	if err != nil {
 		return "", err
 	}
-	return pickGit(dir, args...)
+	return pickGitInput(dir, stdin, args...)
 }
 
-// addAllGitIndex is addAllGit on the scratch index at index (pickGitIndex).
+// addAllGitIndex is addAllGit on the scratch index at index
+// (pickGitIndexInput).
 func addAllGitIndex(dir, index string, pathspec ...string) (string, error) {
-	args, err := addAllArgs(dir, index, pathspec)
+	args, stdin, err := addAllArgs(dir, index, pathspec)
 	if err != nil {
 		return "", err
 	}
-	return pickGitIndex(dir, index, args...)
+	return pickGitIndexInput(dir, index, stdin, args...)
 }
 
-// addAllArgs is the command line of a `git add -A` the drive runs at the
-// root dir, on the index at index ("" for dir's own): "add", "-A", "--",
-// pathspec ("." when none), then an exclude for each gitlink of that index
-// whose checked-out commit is the one the index records.
+// addAllArgs is the command line, and the standard input, of a `git add -A`
+// the drive runs at the root dir, on the index at index ("" for dir's own):
+// `git --no-literal-pathspecs add -A --pathspec-from-file=-
+// --pathspec-file-nul`, given on its standard input pathspec ("." when none)
+// and then an exclude for each gitlink of that index whose checked-out commit
+// is the one the index records, each NUL-terminated. On standard input the
+// pathspecs are bounded by nothing the system's limit on a command line's
+// length sets, and --no-literal-pathspecs keeps a GIT_LITERAL_PATHSPECS in
+// the environment from reading the excludes as file names.
 //
 // git's add compares the index with the working tree, and for such a
 // submodule starts a status inside it, under that submodule's own settings,
@@ -41,91 +52,70 @@ func addAllGitIndex(dir, index string, pathspec ...string) (string, error) {
 // keeps it out: staging such a submodule changes nothing in the index. A
 // submodule whose checked-out commit moved, or whose path is gone or holds
 // something else, is staged as before, and git does not look inside it to
-// tell. Which gitlinks moved is read first, isolated, by `git diff-files
-// --ignore-submodules=dirty` over the gitlinks alone, which starts nothing in
-// a submodule.
-func addAllArgs(dir, index string, pathspec []string) ([]string, error) {
+// tell. Which gitlinks moved is read first, isolated, by
+// gitutil.MovedGitlinks, which starts nothing in a submodule and runs no
+// filter; the gitlinks of the index are listed by gitutil.Gitlinks or
+// GitlinksWithIndex. Neither bounds their number.
+func addAllArgs(dir, index string, pathspec []string) (args []string, stdin string, err error) {
 	if len(pathspec) == 0 {
 		pathspec = []string{"."}
 	}
-	args := append([]string{"add", "-A", "--"}, pathspec...)
+	args = []string{"--no-literal-pathspecs", "add", "-A", "--pathspec-from-file=-", "--pathspec-file-nul"}
 	var links []string
-	var err error
 	if index == "" {
 		links, err = gitutil.Gitlinks(dir)
 	} else {
 		links, err = gitutil.GitlinksWithIndex(dir, index)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("listing the submodules before staging: %w", err)
+		return nil, "", fmt.Errorf("listing the submodules before staging: %w", err)
+	}
+	var in strings.Builder
+	for _, p := range pathspec {
+		in.WriteString(p + "\x00")
 	}
 	if len(links) == 0 {
-		return args, nil
+		return args, in.String(), nil
 	}
-	diff := append([]string{"--literal-pathspecs", "diff-files", "--ignore-submodules=dirty", "--name-only", "-z", "--"}, links...)
-	var out []byte
-	if index == "" {
-		out, err = gitutil.RunCappedBytes(dir, maxGitOutput, diff...)
-	} else {
-		out, err = gitutil.RunWithIndex(dir, index, maxGitOutput, diff...)
-	}
+	moved, err := gitutil.MovedGitlinks(dir, index)
 	if err != nil {
-		return nil, fmt.Errorf("reading which submodules moved before staging: %w", err)
-	}
-	moved := map[string]bool{}
-	for _, p := range strings.Split(string(out), "\x00") {
-		if p != "" {
-			moved[p] = true
-		}
+		return nil, "", fmt.Errorf("reading which submodules moved before staging: %w", err)
 	}
 	for _, l := range links {
 		if !moved[l] {
-			args = append(args, ":(top,exclude,literal)"+l)
+			in.WriteString(":(top,exclude,literal)" + l + "\x00")
 		}
 	}
-	return args, nil
+	return args, in.String(), nil
 }
 
-// submoduleIgnorePins is the `-c submodule.<name>.ignore=dirty` pair, for a
-// lane's sync merge (syncMerge), of each submodule name a .gitmodules of the
-// worktree at dir declares: the working tree's file, the index's and HEAD's
-// (git reads the first of these that exists), each read isolated by `git
-// config`, which follows no include of a file or blob named to it.
-//
-// git's merge first saves the lane's uncommitted changes (`git stash
-// create`), which compares the index with the working tree and, where a
-// submodule's settings or the .gitmodules entry set its ignore to none,
-// starts a status inside that submodule, under its own settings, so a content
-// filter they name runs there. git merge takes no --ignore-submodules, and a
-// diff.ignoreSubmodules on the command line loses to submodule.<name>.ignore;
-// the per-name setting on the command line outranks every settings file and
-// .gitmodules. A name holding "=" cannot be named that way (git splits a -c
-// at its first "="), so it is refused, naming it.
-func submoduleIgnorePins(dir string) ([]string, error) {
-	seen := map[string]bool{}
-	var pins []string
-	for _, src := range [][]string{{"--file", ".gitmodules"}, {"--blob", ":.gitmodules"}, {"--blob", "HEAD:.gitmodules"}} {
-		// Exit 1 is no submodule entry, or no such file or blob.
-		out, _, err := gitutil.RunCappedExitOne(dir, maxGitOutput, append(append([]string{"config"}, src...), "-z", "--name-only", "--get-regexp", `^submodule\.`)...)
-		if err != nil {
-			return nil, fmt.Errorf("reading the submodule names of %s before the merge: %w", src[1], err)
-		}
-		for _, key := range strings.Split(string(out), "\x00") {
-			name, ok := strings.CutPrefix(key, "submodule.")
-			i := strings.LastIndexByte(name, '.')
-			if !ok || i <= 0 {
-				continue
-			}
-			name = name[:i]
-			if seen[name] {
-				continue
-			}
-			seen[name] = true
-			if strings.Contains(name, "=") {
-				return nil, fmt.Errorf("the submodule name %q in %s holds \"=\", which git's command line cannot name, so the merge cannot be kept from looking inside it", name, src[1])
-			}
-			pins = append(pins, "-c", "submodule."+name+".ignore=dirty")
+// checkedOutSubmodule is a sync's merge not made (syncMerge): the lane's
+// index records a gitlink at Path with a repository checked out there.
+type checkedOutSubmodule struct{ Path string }
+
+func (e *checkedOutSubmodule) Error() string {
+	return fmt.Sprintf("the lane's index records a submodule at %q with a repository checked out there, so the sync's merge is not made: git's merge can start a status inside it, under that submodule's own settings, and no command-line form reaches what the merge runs without reaching the hooks it runs", e.Path)
+}
+
+// checkedOutGitlink is the first gitlink of the index of the worktree at dir
+// whose path holds a checked-out repository (a .git file or directory, or
+// anything else of that name, under it), whether or not .gitmodules names
+// it, as a *checkedOutSubmodule; nil when none does. A gitlink with nothing
+// checked out at its path is no such one.
+func checkedOutGitlink(dir string) error {
+	links, err := gitutil.Gitlinks(dir)
+	if err != nil {
+		return fmt.Errorf("listing the submodules before the sync's merge: %w", err)
+	}
+	for _, l := range links {
+		_, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(l), ".git"))
+		switch {
+		case err == nil:
+			return &checkedOutSubmodule{Path: l}
+		case errors.Is(err, fs.ErrNotExist), errors.Is(err, syscall.ENOTDIR):
+		default:
+			return fmt.Errorf("reading whether the submodule at %q is checked out before the sync's merge: %w", l, err)
 		}
 	}
-	return pins, nil
+	return nil
 }

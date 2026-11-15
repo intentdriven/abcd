@@ -36,11 +36,20 @@ func Subcommand(args []string) string {
 	return ""
 }
 
+// SubcommandIndex is the index of args' subcommand, past git's global
+// options and their values (TakesGlobalValue), -1 for none.
+func SubcommandIndex(args []string) int { return subcommandIndex(args) }
+
+// TakesGlobalValue reports whether a, a word before git's subcommand, is a
+// global option that takes the next word as its value (-c, -C, --git-dir,
+// --work-tree, --namespace, --config-env, --super-prefix, --attr-source).
+func TakesGlobalValue(a string) bool { return slices.Contains(globalValued, a) }
+
 // subcommandIndex is the index of args' subcommand, -1 for none.
 func subcommandIndex(args []string) int {
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; {
-		case slices.Contains(globalValued, a):
+		case TakesGlobalValue(a):
 			i++
 		case strings.HasPrefix(a, "-"):
 		default:

@@ -7,6 +7,8 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
@@ -471,9 +473,29 @@ func pushArgs(sha, id string) []string { return pushTo(sha, refName(id)) }
 // origin, plain, with no force, no `+` refspec, no --no-verify and no
 // deletion, so the repository's hooks run and the remote takes it only as a
 // fast-forward. ref is a full ref a namespace formed (namespace.ref), never a
-// value a writer chose.
+// value a writer chose. While a drive runs (DrivePushes) it also passes
+// --no-follow-tags.
 func pushTo(sha, ref string) []string {
+	if drivePushes.Load() > 0 {
+		return []string{"push", "--porcelain", "--no-follow-tags", Remote, sha + ":" + ref}
+	}
 	return []string{"push", "--porcelain", Remote, sha + ":" + ref}
+}
+
+// drivePushes counts the drives running in this process (DrivePushes).
+var drivePushes atomic.Int32
+
+// DrivePushes marks this process as running a drive until the returned clear
+// is called: while it is marked, every push this package makes (pushTo)
+// passes --no-follow-tags, so an annotated tag a lane made that points into
+// the pushed history is never sent with it, whatever push.followTags holds
+// (git-config(1), push.followTags: --no-follow-tags overrides it). A push made outside a drive,
+// `abcd reserve` run by a person among them, is as before. clear is
+// idempotent.
+func DrivePushes() (clear func()) {
+	drivePushes.Add(1)
+	var once sync.Once
+	return func() { once.Do(func() { drivePushes.Add(-1) }) }
 }
 
 // push makes one push pushTo built. A push origin refused comes back as its

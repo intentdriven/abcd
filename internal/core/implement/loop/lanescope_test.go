@@ -383,3 +383,43 @@ func TestALaneTheWorktreeStageAdoptsIsReadAsItIsAdopted(t *testing.T) {
 		}
 	}
 }
+
+// TestTheLanesAGitNamesAreReadPastEveryOptionsValue: lanesFor finds a git's
+// subcommand with gitutil's reading of git's global options, and skips the
+// value of every option it knows, so a lane is read for the path a git names
+// and never for an option's value: the drive's own `worktree add -b
+// <branch>`, whose branch's base name is a lane's, reads the lane it makes
+// alone, and a `worktree` after --super-prefix or --attr-source is still read
+// as one. Two lanes named, or a -C after the subcommand, read every lane.
+// Watched failing with lanesFor's own reading of the options: the add read
+// every lane, and the two worktree commands after those options read none.
+func TestTheLanesAGitNamesAreReadPastEveryOptionsValue(t *testing.T) {
+	checkout, store := t.TempDir(), t.TempDir()
+	a := filepath.Join(store, "run-2611140000000001-lane-1")
+	b := filepath.Join(store, "run-2611140000000001-lane-2")
+	for _, d := range []string{a, b} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	id := &remoteIdentity{lanes: map[string]map[string]string{}}
+	one := func(l string) lanesRead { return lanesRead{lane: lanePath(l)} }
+	for _, tc := range []struct {
+		name string
+		args []string
+		want lanesRead
+	}{
+		{"a -C after the subcommand", []string{"commit", "-C", "HEAD"}, everyLane},
+		{"two lanes named", []string{"-C", a, "worktree", "remove", b}, everyLane},
+		{"a worktree move", []string{"worktree", "move", a, filepath.Join(store, "elsewhere")}, one(a)},
+		{"--super-prefix before worktree", []string{"--super-prefix", "x/", "worktree", "remove", a}, one(a)},
+		{"--attr-source before worktree", []string{"--attr-source", "HEAD", "worktree", "remove", "--force", a}, one(a)},
+		{"the drive's own worktree add", []string{"-c", "core.splitIndex=false", "worktree", "add", "-q", "-b", "build/run-2611140000000001-lane-2", a, "HEAD"}, one(a)},
+		{"a worktree lock with its reason", []string{"worktree", "lock", "--reason", "build/run-2611140000000001-lane-2", a}, one(a)},
+		{"a git that names no lane", []string{"rev-parse", "HEAD"}, lanesRead{}},
+	} {
+		if got := id.lanesFor(checkout, checkout, tc.args); got != tc.want {
+			t.Errorf("%s (%q): read %+v, want %+v", tc.name, tc.args, got, tc.want)
+		}
+	}
+}

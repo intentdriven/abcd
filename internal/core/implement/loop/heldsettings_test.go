@@ -3,6 +3,7 @@ package loop
 import (
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -38,6 +39,9 @@ var heldSettingsTable = map[string]bool{
 	"http.extraheader": true, "http.https://example.invalid/.extraheader": true, "http.delegation": true,
 	"http.proxyauthmethod": true, "http.emptyauth": true, "http.https://example.invalid/.emptyauth": true,
 	"remote.origin.proxyauthmethod": true, "remote.upstream.serveroption": true,
+	"http.useragent": true, "http.https://example.invalid/.useragent": true, "push.pushoption": true,
+	"transfer.advertisesid": true, "remote.origin.promisor": true, "remote.origin.partialclonefilter": true,
+	"push.followtags": false, "remote.origin.mirror": false, "remote.origin.push": false,
 	"core.alternaterefscommand": true, "core.attributesfile": true,
 	"diff.external": true, "merge.renormalize": true, "merge.verifysignatures": true,
 	"format.pretty": true, "pretty.changelog": true,
@@ -63,7 +67,7 @@ var heldSettingsTable = map[string]bool{
 	// Not held: names no program, and changes neither where a networked git
 	// goes nor whom it trusts.
 	"core.excludesfile": false, "fetch.fsckobjects": false, "transfer.fsckobjects": false,
-	"receive.fsckobjects": false, "http.postbuffer": false, "http.https://example.invalid/.useragent": false,
+	"receive.fsckobjects": false, "http.postbuffer": false,
 	"protocol.version": false, "core.quotepath": false, "user.signingkey": false,
 }
 
@@ -190,6 +194,7 @@ var httpSettingRows = struct {
 		"sslcert", "sslcerttype", "sslkey", "sslkeytype", "sslcertpasswordprotected",
 		"proxysslcert", "proxysslkey", "proxysslcertpasswordprotected", "proxyauthmethod",
 		"cookiefile", "savecookies", "extraheader", "delegation", "emptyauth", "proactiveauth",
+		"useragent",
 	},
 	neither: map[string]string{
 		"postbuffer":        "a buffer's size",
@@ -202,7 +207,6 @@ var httpSettingRows = struct {
 		"lowspeedtime":      "when a slow transfer is given up",
 		"noepsv":            "how an ftp connection is made, not to whom",
 		"version":           "which HTTP version is spoken, not to whom",
-		"useragent":         "the name git gives itself",
 	},
 }
 
@@ -293,5 +297,175 @@ func TestTheHeldPatternGitIsGivenSelectsWhatTheDriveHolds(t *testing.T) {
 	slices.Sort(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("git selected %q\nthe hold holds %q", got, want)
+	}
+}
+
+// remoteSettingRows puts every push.*, remote.<name>.*, fetch.*, transfer.*
+// and url.* setting git heldListsGit documents (by its canonical spelling,
+// a placeholder as "x") in one row, each with why: held (a change stops the
+// drive); pinned (the drive's own command line decides what it would); unread
+// (driveUnreadSettings gives the reason); and neither a program nor trust
+// nor a value sent.
+var remoteSettingRows = map[string]struct{ row, why string }{
+	// Where a fetch or push goes, how it reaches the remote, whom it trusts
+	// and what it sends: held.
+	"remote.x.url":                {"held", "where the remote is"},
+	"remote.x.pushurl":            {"held", "where a push goes"},
+	"remote.x.uploadpack":         {"held", "the program a fetch runs on the remote side"},
+	"remote.x.receivepack":        {"held", "the program a push runs on the remote side"},
+	"remote.x.proxy":              {"held", "the proxy a fetch or push goes through"},
+	"remote.x.proxyauthmethod":    {"held", "what is sent to the proxy"},
+	"remote.x.vcs":                {"held", "the remote helper git runs"},
+	"remote.x.serveroption":       {"held", "what a fetch sends the server"},
+	"remote.x.promisor":           {"held", "makes a git that reads a missing object fetch it from the remote"},
+	"remote.x.partialclonefilter": {"held", "what such a fetch asks the remote for"},
+	"url.x.insteadof":             {"held", "rewrites where a fetch or push goes"},
+	"url.x.pushinsteadof":         {"held", "rewrites where a push goes"},
+	"fetch.bundleuri":             {"held", "where a fetch first downloads from"},
+	"push.pushoption":             {"held", "what a push sends the server (git-config(1): as if each value were given as --push-option)"},
+	"push.gpgsign":                {"held", "starts the signing program"},
+	"push.recursesubmodules":      {"held", "makes the push go into each submodule"},
+	"transfer.advertisesid":       {"held", "makes a fetch or push send the server its session id"},
+	// Decided by the drive's own command line.
+	"push.followtags":           {"pinned", "the drive's pushes pass --no-follow-tags, which overrides it"},
+	"push.default":              {"pinned", "decides what a push that names no refspec sends; the drive's pushes name theirs"},
+	"push.autosetupremote":      {"pinned", "read by a push that names no refspec; the drive's pushes name theirs"},
+	"remote.x.push":             {"pinned", "the refspecs of a push that names none; the drive's pushes name theirs"},
+	"remote.pushdefault":        {"pinned", "the remote of a push that names none; the drive's pushes name origin"},
+	"fetch.all":                 {"pinned", "fetches every remote when none is named; the drive's fetches name origin"},
+	"remote.x.tagopt":           {"pinned", "tag following on fetch; the drive's fetches pass --no-tags, which overrides it"},
+	"remote.x.mirror":           {"pinned", "git refuses a mirror push given a refspec, and the drive's pushes name theirs, so such a push sends nothing"},
+	"remote.x.fetch":            {"pinned", "the refspecs of a fetch that names none; the drive's fetches name theirs, and git uses these only to choose the remote-tracking refs here that the named ones also update"},
+	"remote.x.followremotehead": {"pinned", "read by a fetch that uses the configured refspecs; the drive's fetches name theirs"},
+	// Read by no git command the drive runs (driveUnreadSettings).
+	"fetch.recursesubmodules": {"unread", ""},
+	"transfer.bundleuri":      {"unread", ""},
+	// Neither a program, nor trust, nor a value sent.
+	"fetch.bundlecreationtoken":    {"neither", "a number git writes itself after a bundle download"},
+	"fetch.fsck.x":                 {"neither", "a check of the objects received"},
+	"fetch.fsck.skiplist":          {"neither", "a check of the objects received"},
+	"fetch.fsckobjects":            {"neither", "a check of the objects received"},
+	"transfer.fsckobjects":         {"neither", "a check of the objects received"},
+	"fetch.negotiationalgorithm":   {"neither", "which of the repository's own commits a fetch offers as common"},
+	"push.negotiate":               {"neither", "whether a push first learns which of the repository's own commits the remote has"},
+	"fetch.output":                 {"neither", "how a fetch prints the refs it updated"},
+	"fetch.showforcedupdates":      {"neither", "whether a fetch says which updates were forced"},
+	"fetch.parallel":               {"neither", "how many fetches run at once; the drive's fetch one remote, with submodule recursion off"},
+	"fetch.prune":                  {"neither", "removes remote-tracking refs here that the remote no longer has, among those a fetch's refspecs name"},
+	"fetch.prunetags":              {"neither", "removes tags here that the remote no longer has, only for a fetch that names no refspec"},
+	"remote.x.prune":               {"neither", "removes remote-tracking refs here that the remote no longer has, among those a fetch's refspecs name"},
+	"remote.x.prunetags":           {"neither", "removes tags here that the remote no longer has, only for a fetch that names no refspec"},
+	"fetch.unpacklimit":            {"neither", "whether what is received is kept as a pack"},
+	"transfer.unpacklimit":         {"neither", "whether what is received is kept as a pack"},
+	"fetch.writecommitgraph":       {"neither", "whether a fetch writes a commit graph here"},
+	"push.usebitmaps":              {"neither", "how the pack a push sends is built"},
+	"push.useforceifincludes":      {"neither", "makes a push given a lease refuse more"},
+	"remote.x.skipdefaultupdate":   {"neither", "which remotes `git remote update` and a fetch of every remote leave out"},
+	"remote.x.skipfetchall":        {"neither", "which remotes a fetch of every remote leaves out"},
+	"transfer.advertiseobjectinfo": {"neither", "what a serving upload-pack advertises, read on the remote's side"},
+	"transfer.hiderefs":            {"neither", "which refs a serving upload-pack or receive-pack leaves out, read on the remote's side"},
+	"transfer.credentialsinurl":    {"neither", "whether git warns about, or refuses, a URL in the settings that holds a password; it sends nothing"},
+}
+
+// remoteSettingSections are the sections remoteSettingRows covers.
+var remoteSettingSections = []string{"push.", "remote.", "fetch.", "transfer.", "url."}
+
+// remoteSettingKey is a documented setting's canonical name with its
+// placeholder given a value: a remote's name, a URL base, a check's id.
+func remoteSettingKey(key string) string {
+	switch {
+	case strings.HasPrefix(key, "remote.x."):
+		return "remote.origin." + strings.TrimPrefix(key, "remote.x.")
+	case strings.HasPrefix(key, "url.x."):
+		return "url.https://example.invalid/." + strings.TrimPrefix(key, "url.x.")
+	case key == "fetch.fsck.x":
+		return "fetch.fsck.badtimezone"
+	}
+	return key
+}
+
+// TestEveryRemoteSettingGitDocumentsIsInOneRow: each setting of
+// remoteSettingRows is held, or not, as its row says, with a reason; every
+// push.*, remote.<name>.*, fetch.*, transfer.* and url.* setting the
+// installed git documents is in a row (on a git newer than heldListsGit, one
+// the rows do not know is logged). Watched failing with push.pushOption,
+// transfer.advertiseSID and the promisor settings not held.
+func TestEveryRemoteSettingGitDocumentsIsInOneRow(t *testing.T) {
+	for key, r := range remoteSettingRows {
+		k := remoteSettingKey(key)
+		switch r.row {
+		case "held":
+			if !remoteIdentityKey(k) {
+				t.Errorf("%s is in the held row and the drive does not hold it", k)
+			}
+		case "unread":
+			if !unreadSetting(k) {
+				t.Errorf("%s is in the unread row and driveUnreadSettings gives no reason", k)
+			}
+		case "pinned", "neither":
+			if r.why == "" {
+				t.Errorf("%s is in the %s row with no reason", k, r.row)
+			}
+			if remoteIdentityKey(k) {
+				t.Errorf("%s is in the %s row, and the drive holds it", k, r.row)
+			}
+		default:
+			t.Errorf("%s is in no row of the four (%q)", k, r.row)
+		}
+	}
+	names, newer := documentedSettings(t)
+	seen := 0
+	for key, name := range names {
+		if !slices.ContainsFunc(remoteSettingSections, func(p string) bool { return strings.HasPrefix(key, p) }) {
+			continue
+		}
+		seen++
+		if _, ok := remoteSettingRows[key]; !ok {
+			unknownSetting(t, newer, fmt.Sprintf("git documents %s, which is in no row of remoteSettingRows", name))
+		}
+	}
+	if seen == 0 {
+		t.Fatal("git listed no setting of those sections, so this test proves nothing")
+	}
+}
+
+// TestTheLandingPushSendsNoTag: with push.followTags on, a push sends each
+// annotated tag missing from origin that points into the history it pushes.
+// The landing push (landPushArgs) passes --no-follow-tags, so a tag a lane
+// made on its branch is not sent with it, and the branch is. Watched failing
+// with landPushArgs passing no such option: the tag reached origin.
+func TestTheLandingPushSendsNoTag(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	r := gittest.NewRepo(t)
+	r.Write("a.txt", "a\n")
+	r.Commit("seed")
+	bare := filepath.Join(t.TempDir(), "origin.git")
+	gittest.InitBare(t, bare)
+	r.Git("remote", "add", Remote, bare)
+	r.Git("config", "push.followTags", "true")
+	r.Write("b.txt", "b\n")
+	r.Commit("the lane's work")
+	head := r.Git("rev-parse", "HEAD")
+	r.Git("tag", "-a", "-m", "a lane's tag", "v9.9.9", head)
+	if _, err := gitutil.Net(r.Root(), landPushArgs(head, "build/lane-1")...); err != nil {
+		t.Fatal(err)
+	}
+	listing := func(ref string) string {
+		t.Helper()
+		cmd := exec.Command("git", "-C", bare, "for-each-ref", "--format=%(refname) %(objectname)", ref)
+		cmd.Env = r.Env()
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	if got := listing("refs/heads/build/lane-1"); got != "refs/heads/build/lane-1 "+head {
+		t.Fatalf("origin's branch is %q, want the lane's head %s", got, head)
+	}
+	if tags := listing("refs/tags"); tags != "" {
+		t.Errorf("the landing push sent the lane's tag: %q", tags)
 	}
 }

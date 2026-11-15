@@ -208,3 +208,64 @@ func TestAWorkingTreeDiffThroughDiffWorktreeArgsStartsNothingInASubmodule(t *tes
 		}
 	}
 }
+
+// TestMovedGitlinksRunsNoProgramAndListsAMovedSubmodule: MovedGitlinks reads
+// the whole tree with diff-files, which starts nothing inside a checked-out
+// submodule and hashes a racily clean file of the superproject, so a filter
+// the superproject marks required is blanked and switched off: neither
+// filter runs and the read does not fail. A submodule checked out at its
+// recorded commit is not listed; one moved is. Watched failing with
+// filterBlanks giving nothing: the superproject's filter ran.
+func TestMovedGitlinksRunsNoProgramAndListsAMovedSubmodule(t *testing.T) {
+	r, mark := submoduleFilterFixture(t)
+	top := filepath.Join(t.TempDir(), "top-filter-ran")
+	script := filepath.Join(t.TempDir(), "top-clean.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\ntouch "+top+"\ncat\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r.Git("config", "filter.top.clean", script)
+	r.Git("config", "filter.top.required", "true")
+	r.Write(".gitattributes", "a.txt filter=top\n")
+	r.Git("-c", "filter.subevil.clean=", "add", "-A")
+	r.Git("commit", "-q", "-m", "the superproject's own filter")
+	_ = os.Remove(top)
+	_ = os.Remove(mark)
+	staleSub(t, r)
+	racy := func() {
+		t.Helper()
+		past := time.Now().Add(-48 * time.Hour)
+		if err := os.Chtimes(filepath.Join(r.Root(), ".git", "index"), past, past); err != nil {
+			t.Fatal(err)
+		}
+	}
+	racy()
+	plain := exec.Command("git", "-C", r.Root(), "diff-files", "--ignore-submodules=dirty", "-z")
+	plain.Env = r.Env()
+	if out, err := plain.CombinedOutput(); err != nil {
+		t.Fatalf("fixture: git diff-files: %v\n%s", err, out)
+	}
+	if !ran(top) {
+		t.Fatal("fixture: a plain diff-files did not run the superproject's filter on a racily clean file, so this test proves nothing")
+	}
+	_ = os.Remove(top)
+	_ = os.Remove(mark)
+	racy()
+	moved, err := gitutil.MovedGitlinks(r.Root(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ran(top) || ran(mark) {
+		t.Errorf("MovedGitlinks ran a filter: the superproject's %v, the submodule's %v", ran(top), ran(mark))
+	}
+	if len(moved) != 0 {
+		t.Errorf("a submodule at its recorded commit is listed as moved: %v", moved)
+	}
+	r.Git("-C", "sub", "-c", "filter.subevil.clean=", "commit", "-q", "--allow-empty", "-m", "moved")
+	moved, err = gitutil.MovedGitlinks(r.Root(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(moved) != 1 || !moved["sub"] {
+		t.Errorf("a moved submodule is listed: %v", moved)
+	}
+}

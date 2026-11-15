@@ -96,7 +96,17 @@ func pickMessage(st State) string {
 // content filter a global `git lfs install` defines, a global ignore file)
 // with the program-starting knobs and automatic maintenance pinned off.
 func pickGit(dir string, args ...string) (string, error) {
-	return gitutil.RunTreeCommand(gitutil.WorkingTreeCommand(dir, args...), args)
+	return pickGitInput(dir, "", args...)
+}
+
+// pickGitInput is pickGit with stdin given to git on its standard input (""
+// for none).
+func pickGitInput(dir, stdin string, args ...string) (string, error) {
+	cmd := gitutil.WorkingTreeCommand(dir, args...)
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
+	return gitutil.RunTreeCommand(cmd, args)
 }
 
 // commitGit is pickGit for a command that runs the repository's hooks on the
@@ -231,11 +241,20 @@ func resetLaneTree(dir, head string) error {
 // The scratch index is written whole, as gitutil.RunWithIndex writes one, so a
 // repository set to core.splitIndex gains no shared index file from it.
 func pickGitIndex(dir, index string, args ...string) (string, error) {
+	return pickGitIndexInput(dir, index, "", args...)
+}
+
+// pickGitIndexInput is pickGitIndex with stdin given to git on its standard
+// input ("" for none).
+func pickGitIndexInput(dir, index, stdin string, args ...string) (string, error) {
 	if !filepath.IsAbs(index) {
 		return "", fmt.Errorf("the scratch index %q is not an absolute path", index)
 	}
 	cmd := gitutil.WorkingTreeCommand(dir, append([]string{"-c", "core.splitIndex=false"}, args...)...)
 	cmd.Env = append(cmd.Env, "GIT_INDEX_FILE="+index)
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
 	return gitutil.RunTreeCommand(cmd, args)
 }
 
