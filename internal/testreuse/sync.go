@@ -26,6 +26,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // The check directory's own files, beside the tree so nothing a test reads of
@@ -156,11 +157,12 @@ func oneSpelling(entries []entry) error {
 }
 
 // gitOutput runs a read-only git question in repo, under no variable an outer
-// git set: a hook's GIT_DIR must not answer for another repository.
+// git set: a hook's GIT_DIR must not answer for another repository. It reads
+// objects as stored (storedGitEnv).
 func gitOutput(ctx context.Context, repo string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = repo
-	cmd.Env = gitEnv()
+	cmd.Env = storedGitEnv()
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -183,6 +185,16 @@ func gitEnv() []string {
 	return env
 }
 
+// storedGitEnv is gitEnv for a git that reads the commit under test, its tree
+// and its blobs: no refs/replace/* ref stands another object in for one the
+// commit stores, and no graft file gives it other parents, so what the check
+// directory holds and the tree a report names are the commit as stored, the
+// tree a receipt for that commit vouches for. A test line keeps gitEnv: what a
+// test's own git sees is the test's business.
+func storedGitEnv() []string {
+	return gitutil.AsStoredEnv(gitEnv())
+}
+
 // blobReader is one `git cat-file --batch`, started when first needed.
 type blobReader struct {
 	ctx  context.Context
@@ -196,7 +208,7 @@ func (b *blobReader) read(oid string) ([]byte, error) {
 	if b.cmd == nil {
 		cmd := exec.CommandContext(b.ctx, "git", "cat-file", "--batch")
 		cmd.Dir = b.repo
-		cmd.Env = gitEnv()
+		cmd.Env = storedGitEnv()
 		in, err := cmd.StdinPipe()
 		if err != nil {
 			return nil, err

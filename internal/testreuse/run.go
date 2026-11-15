@@ -353,7 +353,7 @@ func treeNotCommit(ctx context.Context, worktree string) string {
 	script := filepath.Join(worktree, "scripts", "preflight-receipt.sh")
 	cmd := exec.CommandContext(ctx, "bash", script, "state")
 	cmd.Dir = worktree
-	cmd.Env = gitEnv()
+	cmd.Env = storedGitEnv()
 	out, err := cmd.Output()
 	if err != nil {
 		return "the tree's state could not be read"

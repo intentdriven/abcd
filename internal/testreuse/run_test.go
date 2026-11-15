@@ -1057,3 +1057,32 @@ func TestTheTallyCountsWhatGoTestSaid(t *testing.T) {
 		t.Errorf("ran: %v", c.Ran)
 	}
 }
+
+// TestAStageWithAReplacedHeadChecksTheStoredTree: a refs/replace/* ref standing
+// a commit with another tree in for HEAD changes neither the tree a stage checks
+// nor the one its report names: both are HEAD as stored, which the worktree
+// holds, so the stage reuses rather than reading the worktree as edited.
+func TestAStageWithAReplacedHeadChecksTheStoredTree(t *testing.T) {
+	w := newWorld(t)
+	head := runGit(t, w.repo, "rev-parse", "HEAD")
+	tree := runGit(t, w.repo, "rev-parse", "HEAD^{tree}")
+	replaceHead(t, w.repo, "reads/data.txt", "bad\n")
+
+	r := w.stage(w.repo, nil, allPackages...)
+	if r.code != 0 {
+		t.Fatalf("the check of the stored tree failed: %s", r)
+	}
+	matches, err := filepath.Glob(filepath.Join(w.repo, ".abcd", ".work.local", "preflight-reuse", head, "unit-*"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("reports: %v, %v\n%s", matches, err, r)
+	}
+	raw, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"commit " + head, "tree " + tree, "mode reuse", "result pass"} {
+		if !strings.Contains(string(raw), want+"\n") {
+			t.Errorf("the report lacks %q:\n%s\n%s", want, raw, r)
+		}
+	}
+}

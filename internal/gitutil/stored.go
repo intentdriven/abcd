@@ -15,8 +15,15 @@ import (
 // parents it does not store (noGraftFile), which git honours even with
 // replace refs off.
 func asStored(cmd *exec.Cmd) *exec.Cmd {
-	cmd.Env = append(cmd.Env, "GIT_NO_REPLACE_OBJECTS=1", "GIT_GRAFT_FILE="+noGraftFile)
+	cmd.Env = AsStoredEnv(cmd.Env)
 	return cmd
+}
+
+// AsStoredEnv is env with the two variables asStored sets appended, for a git
+// command built outside this package that must read objects as stored. They
+// come last, so they win over any value env already carries.
+func AsStoredEnv(env []string) []string {
+	return append(env, "GIT_NO_REPLACE_OBJECTS=1", "GIT_GRAFT_FILE="+noGraftFile)
 }
 
 // RunCappedAsStored is RunCapped reading history as stored (asStored): for a

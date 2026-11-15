@@ -595,3 +595,62 @@ func TestASyncRemovesWhatItDoesNotKnowBesideTheTree(t *testing.T) {
 		}
 	}
 }
+
+// TestASyncReadsTheCommitAsStored: a refs/replace/* ref can stand another commit,
+// or another blob, in for the one a commit stores, and git honours it on every
+// read unless told not to. The check directory and the tree its report names are
+// the commit as stored, the tree the receipt vouches for, whatever replace refs
+// the repository holds.
+func TestASyncReadsTheCommitAsStored(t *testing.T) {
+	for name, replace := range map[string]func(r *gitRepo, head string){
+		"a replaced commit": func(r *gitRepo, head string) {
+			replaceHead(t, r.root, "a.txt", "the replacement, longer\n")
+		},
+		"a replaced blob": func(r *gitRepo, head string) {
+			path := filepath.Join(t.TempDir(), "other")
+			writeFile(t, path, "the replacement, longer\n", 0o644)
+			r.git("replace", r.git("rev-parse", head+":a.txt"), r.git("hash-object", "-w", path))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newGitRepo(t)
+			r.write("a.txt", "stored\n")
+			head := r.commit("one")
+			tree := r.git("rev-parse", "HEAD^{tree}")
+			replace(r, head)
+			if got := r.git("show", "HEAD:a.txt"); got == "stored" {
+				t.Fatalf("the replace ref does not take: git reads %q", got)
+			}
+
+			if gotHead, gotTree := headAndTree(context.Background(), r.root); gotHead != head || gotTree != tree {
+				t.Errorf("headAndTree = %s %s, want the stored %s %s", gotHead, gotTree, head, tree)
+			}
+			dir := t.TempDir()
+			if _, err := Sync(context.Background(), r.root, head, dir); err != nil {
+				t.Fatal(err)
+			}
+			if raw, err := os.ReadFile(filepath.Join(dir, treeDirName, "a.txt")); err != nil || string(raw) != "stored\n" {
+				t.Errorf("the check directory holds a.txt = %q, %v; want the commit's stored %q", raw, err, "stored\n")
+			}
+		})
+	}
+}
+
+// replaceHead stands in for HEAD, through a refs/replace/* ref, a commit with
+// HEAD's parents whose tree has body at rel, and leaves the index and worktree
+// at HEAD as stored. It returns the stand-in. The stand-in is no descendant of
+// HEAD, so the replacement makes no cycle a history walk would refuse.
+func replaceHead(t *testing.T, dir, rel, body string) string {
+	t.Helper()
+	head := runGit(t, dir, "rev-parse", "HEAD")
+	writeFile(t, filepath.Join(dir, rel), body, 0o644)
+	runGit(t, dir, "add", "-A")
+	args := []string{"commit-tree", runGit(t, dir, "write-tree"), "-m", "another tree"}
+	for _, p := range strings.Fields(runGit(t, dir, "rev-list", "--no-walk", "--parents", "HEAD"))[1:] {
+		args = append(args, "-p", p)
+	}
+	other := runGit(t, dir, args...)
+	runGit(t, dir, "reset", "-q", "--hard", head)
+	runGit(t, dir, "replace", head, other)
+	return other
+}
