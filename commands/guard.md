@@ -510,6 +510,18 @@ answer:
 - **Merged** into origin's default branch as last fetched: its tip is an
   ancestor of it, or, for a rebased or squashed branch, its patches are there
   (the worktree store's own judgement), or a pull request merged at that tip.
+- **Origin is one repository, matched to the forge by name**, for a branch on
+  origin, checked before anything else about it. Origin has one fetch address,
+  and every push address names the same repository; the forge is asked for
+  that repository by host, owner and name, and its answer must name every one
+  of origin's fetch and push addresses. Every later question to the forge
+  names that repository. An origin that pushes to a fork (a `pushurl` or
+  `pushInsteadOf` naming another repository), or that is reached through an
+  ssh host alias the forge does not answer to (`git@work:owner/name`), is
+  refused with that reason, whatever the branch's state. The proof holds only
+  where origin's fetch and push addresses, as git resolves them, name the one
+  repository by an address the forge answers to; elsewhere the person deletes
+  the branch on the forge, or lets the one line through with `allow` below.
 - **No open pull request**, asked of the forge, for a branch on origin. A local
   `git branch -D` is judged offline against `origin/<default>` as last
   fetched; only a delete that touches origin asks the network, and a tip origin
