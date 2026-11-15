@@ -313,3 +313,26 @@ func TestTheDeleteProofAsksTheForgeOnlyOfOriginsRepository(t *testing.T) {
 	}
 }
 
+// TestAnAddressWithASpaceIsOneAddress: an origin whose one address is a local
+// path holding a space reads as one address, so the reason it names no forge
+// repository is the one given, not a count of addresses.
+func TestAnAddressWithASpaceIsOneAddress(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "My Drive", "repo.git")
+	fetch, push := configured(t, [2]string{"remote.origin.url", path})
+	if len(fetch) != 1 || fetch[0] != path || len(push) != 1 || push[0] != path {
+		t.Fatalf("fetch %q, push %q; want the one path each", fetch, push)
+	}
+	key, why := oneRepository(fetch, push)
+	if why != "" {
+		t.Fatalf("why %q; want one repository", why)
+	}
+	if _, ok := forgeRepoName(key); ok {
+		t.Fatalf("a local path named a forge repository: %q", key)
+	}
+	repo, _ := originRepo(t)
+	repo.Git("remote", "set-url", "origin", path)
+	_, _, why = pinForge(context.Background(), repo.Root(), viewing(func(string, ...string) (string, error) { return "[]", nil }))
+	if !strings.Contains(why, "names no owner and repository") || strings.Contains(why, "fetch addresses") {
+		t.Fatalf("why %q; want the path said to name no forge repository", why)
+	}
+}

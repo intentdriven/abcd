@@ -40,7 +40,8 @@ var originAddresses = readOriginAddresses
 // readOriginAddresses reads origin's every fetch address and every push
 // address, each as git resolves it under the person's own configuration (the
 // one the delete's push runs under), its insteadOf and pushInsteadOf rewrites
-// applied. It reads the configuration and reaches no remote.
+// applied, one configured address to a line of git's answer. It reads the
+// configuration and reaches no remote.
 func readOriginAddresses(ctx context.Context, root string) (fetch, push []string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, remoteNetTimeout)
 	defer cancel()
@@ -48,12 +49,24 @@ func readOriginAddresses(ctx context.Context, root string) (fetch, push []string
 	if err != nil {
 		return nil, nil, fmt.Errorf("origin's fetch address could not be read: %w", err)
 	}
-	fetch = strings.Fields(out)
+	fetch = addressLines(out)
 	out, err = gitutil.NetContext(ctx, root, "remote", "get-url", "--push", "--all", claim.Remote)
 	if err != nil {
 		return nil, nil, fmt.Errorf("origin's push address could not be read: %w", err)
 	}
-	return fetch, strings.Fields(out), nil
+	return fetch, addressLines(out), nil
+}
+
+// addressLines is each address git printed, one to a line, as one value: an
+// address holding a space (a local path, say) is one address, not two.
+func addressLines(out string) []string {
+	var urls []string
+	for _, line := range strings.Split(out, "\n") {
+		if line = strings.TrimRight(line, "\r"); strings.TrimSpace(line) != "" {
+			urls = append(urls, line)
+		}
+	}
+	return urls
 }
 
 // oneRepository is the key of the one repository origin is fetched from and
