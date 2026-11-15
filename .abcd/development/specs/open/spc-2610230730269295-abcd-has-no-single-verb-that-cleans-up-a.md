@@ -104,10 +104,10 @@ These are kept, with the reason:
 
 Under `--apply`, a branch on origin is deleted when the forge records its pull request as merged, or when it is patch-equivalent to the default branch, once nothing still needs it:
 - no open pull request heads it;
-- no reservation names it;
+- no reservation names it. A reservation names a branch by the branch its own record carries, not by the record's id appearing in the branch's name. Step 3 as landed reads the id in the name, and step 5 changes it to read the reservation's recorded branch;
 - no running session works on it, judged by the liveness proof against any local worktree on that branch.
 
-An open pull request that targets the branch as its base holds it too, so the sweep keeps more than the pull requests that head it.
+An open pull request that targets the branch as its base holds it too, so the sweep keeps more than the pull requests that head it. This is the run's reading, which the product thinker kept.
 
 The deletion is a push of an empty ref carrying a lease on the tip that was judged (the reservation sweep's pattern), made through the guard, and each branch it deletes is named.
 
@@ -175,11 +175,12 @@ An entry in the store lane that is neither a worktree nor a directory failing th
    - criteria: 8
    - packages: internal/core/sweep/branches.go, internal/core/sweep/remote.go
    - tests: `branch -d` honoured and its refusal kept; a merged origin branch deleted under a lease and named; one held by an open pull request, a reservation or a live session kept, naming what holds it; the never-delete list.
+   - landed: 527becba3754
 4. Reservations and inbox
    - criteria: 9, 10
    - packages: internal/core/sweep/reservations.go, internal/core/sweep/inbox.go
    - tests: the reservation workflow dispatched and its run reported; the fallback to the next scheduled time with no gh; every waiting report promoted with the automatic filer's remedy and named. Waits on iss-2610142200389875's sweep being on main.
 5. The surfaces
    - criteria: 1, 11
-   - packages: internal/surface/cli/sweep.go, internal/surface/cli/helpgroups.go, internal/surface/cli/barerender.go, internal/surface/cli/cli.go, internal/core/guard/deletes.go, commands/sweep.md, docs/reference/cli/commands.md, .abcd/development/release/surface.json, .abcd/development/brief/04-surfaces/40-sweep.md
-   - tests: internal/surface/cli/sweep_test.go: the verb's rows, `--json` and exit codes through the front door; the reference and surface baseline regenerated; once this step wires `abcd sweep`, the shell guard's refusal of a delete it cannot prove safe (`git-delete-unproven`, iss-2610241239492159) names it as what settles a spent branch or worktree, which until then it never does.
+   - packages: internal/core/sweep/branches.go, internal/core/sweep/remote.go, internal/surface/cli/sweep.go, internal/surface/cli/helpgroups.go, internal/surface/cli/barerender.go, internal/surface/cli/cli.go, internal/core/guard/deletes.go, commands/sweep.md, docs/reference/cli/commands.md, .abcd/development/release/surface.json, .abcd/development/brief/04-surfaces/40-sweep.md
+   - tests: internal/core/sweep: a merged origin branch whose reservation records that branch is kept, naming the reservation, even when the record id is not in the branch's name; a branch whose name carries a record id that a reservation records against another branch is not held by that reservation (the reservation's own recorded branch is what holds, which replaces step 3's reading of the id in the name). internal/surface/cli/sweep_test.go: the verb's rows, `--json` and exit codes through the front door; the reference and surface baseline regenerated; once this step wires `abcd sweep`, the shell guard's refusal of a delete it cannot prove safe (`git-delete-unproven`, iss-2610241239492159) names it as what settles a spent branch or worktree, which until then it never does.

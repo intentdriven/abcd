@@ -253,6 +253,8 @@ calibration under itd-81 and not required here.
 - reverses (advisory, for the product thinker to confirm at review): decision 1 of
   itd-2610240922461281, the bundled pair.
 - refines: iss-2610140652230444 (the ruling that set the four classes).
+- built on by: itd-2611150636483483 (an optional fallback to a smaller class when a
+  class's model is exhausted, a draft), which acts on this intent's class map and its order.
 
 Records that read differently under the new names and are revised with this change:
 itd-2610100704270254 (sub-agent counts by class) and spc-2610301925429250.

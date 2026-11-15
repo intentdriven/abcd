@@ -1057,3 +1057,130 @@ func TestTheTallyCountsWhatGoTestSaid(t *testing.T) {
 		t.Errorf("ran: %v", c.Ran)
 	}
 }
+
+// TestAStageWithAReplacedHeadChecksTheStoredTree: a refs/replace/* ref standing
+// a commit with another tree in for HEAD changes neither the tree a stage checks
+// nor the one its report names: both are HEAD as stored, which the worktree
+// holds, so the stage reuses rather than reading the worktree as edited.
+func TestAStageWithAReplacedHeadChecksTheStoredTree(t *testing.T) {
+	w := newWorld(t)
+	head := runGit(t, w.repo, "rev-parse", "HEAD")
+	tree := runGit(t, w.repo, "rev-parse", "HEAD^{tree}")
+	replaceHead(t, w.repo, "reads/data.txt", "bad\n")
+
+	r := w.stage(w.repo, nil, allPackages...)
+	if r.code != 0 {
+		t.Fatalf("the check of the stored tree failed: %s", r)
+	}
+	matches, err := filepath.Glob(filepath.Join(w.repo, ".abcd", ".work.local", "preflight-reuse", head, "unit-*"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("reports: %v, %v\n%s", matches, err, r)
+	}
+	raw, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"commit " + head, "tree " + tree, "mode reuse", "result pass"} {
+		if !strings.Contains(string(raw), want+"\n") {
+			t.Errorf("the report lacks %q:\n%s\n%s", want, raw, r)
+		}
+	}
+}
+
+// receiptScript runs the committed scripts/preflight-receipt.sh in dir.
+func receiptScript(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	script, err := filepath.Abs(filepath.Join("..", "..", "scripts", "preflight-receipt.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", append([]string{script}, args...)...)
+	cmd.Dir, cmd.Env = dir, gittest.Env(t)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("preflight-receipt.sh %v: %v\n%s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// TestAReceiptReadsTheCommitAsStored: the receipt names a commit, so the
+// script reads that commit as stored, whatever refs/replace/* ref or altered
+// commit-graph file claims another tree for it. A worktree holding HEAD as
+// stored is clean, and a receipt is minted when both stages checked the stored
+// tree; a worktree holding the other tree is not HEAD, and nothing a stage
+// reported on that tree mints a receipt for HEAD.
+func TestAReceiptReadsTheCommitAsStored(t *testing.T) {
+	for _, how := range []struct {
+		name  string
+		claim func(t *testing.T, dir string) (other string) // a tree-ish read as the other tree
+	}{
+		{"a replace ref", func(t *testing.T, dir string) string { return replaceHead(t, dir, "a.txt", "the replacement\n") }},
+		{"a commit-graph", func(t *testing.T, dir string) string { return forgeGraphHead(t, dir, "a.txt", "the replacement\n") }},
+	} {
+		for _, c := range []struct {
+			name     string
+			checkout bool // the worktree and index hold the other tree
+			state    string
+			minted   bool
+		}{
+			{"the worktree holds HEAD as stored", false, "clean", true},
+			{"the worktree holds the other tree", true, "dirty", false},
+		} {
+			t.Run(how.name+"/"+c.name, func(t *testing.T) {
+				r := newGitRepo(t)
+				r.write(".gitignore", ".abcd/.work.local/\n")
+				r.write("a.txt", "stored\n")
+				head := r.commit("one")
+				tested := r.git("rev-parse", head+"^{tree}")
+				other := how.claim(t, r.root)
+				if c.checkout {
+					r.git("read-tree", "--reset", "-u", other)
+					tested = r.git("rev-parse", other+"^{tree}")
+				}
+				for _, stage := range []string{"unit", "race"} {
+					body := "commit " + head + "\ntree " + tested + "\nstage " + stage + "\nmode reuse\nreused 1\npackages 1\nresult pass\n"
+					writeFile(t, filepath.Join(r.root, ".abcd", ".work.local", "preflight-reuse", head, stage+"-aaaaaaaaaaaa"), body, 0o644)
+				}
+
+				began := receiptScript(t, r.root, "state")
+				if began != head+" "+c.state {
+					t.Errorf("state = %q, want %q", began, head+" "+c.state)
+				}
+				out := receiptScript(t, r.root, "mint", began)
+				_, err := os.Stat(filepath.Join(r.root, ".abcd", ".work.local", "preflight-receipts", head))
+				if minted := err == nil; minted != c.minted {
+					t.Errorf("a receipt minted = %v, want %v:\n%s", minted, c.minted, out)
+				}
+			})
+		}
+	}
+}
+
+// TestAStageWithAnObjectThatDoesNotHashToItsIDNamesNoTree: a blob of HEAD whose
+// object file holds other content fails the sync, and the stage falls back to a
+// fresh run in the worktree. git checked the worktree out from that object
+// store, so the run vouches for no tree: its report names none, and no receipt
+// can be minted from it.
+func TestAStageWithAnObjectThatDoesNotHashToItsIDNamesNoTree(t *testing.T) {
+	w := newWorld(t)
+	head := runGit(t, w.repo, "rev-parse", "HEAD")
+	swapLooseBlob(t, w.repo, runGit(t, w.repo, "rev-parse", "HEAD:reads/data.txt"), "bad\n")
+
+	r := w.stage(w.repo, nil, allPackages...)
+	if r.code != 0 || !strings.Contains(r.out, "reuses nothing") || !strings.Contains(r.out, "does not hash to its name") {
+		t.Fatalf("the stage did not fall back to a fresh run, saying why:\n%s", r)
+	}
+	matches, err := filepath.Glob(filepath.Join(w.repo, ".abcd", ".work.local", "preflight-reuse", head, "unit-*"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("reports: %v, %v\n%s", matches, err, r)
+	}
+	raw, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"tree none", "mode fallback"} {
+		if !strings.Contains(string(raw), want+"\n") {
+			t.Errorf("the report lacks %q:\n%s", want, raw)
+		}
+	}
+}

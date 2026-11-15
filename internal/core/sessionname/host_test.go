@@ -141,3 +141,19 @@ func TestAWalkSaysHowItEnded(t *testing.T) {
 		}
 	}
 }
+
+// TestIsShellIsTheWalksShellList: IsShell answers yes for each shell the host walk passes
+// over, a login shell's dash included, and no for abcd, which the walk passes over too, and
+// for any other program.
+func TestIsShellIsTheWalksShellList(t *testing.T) {
+	for _, name := range append(append([]string{}, shells...), "-zsh", "-bash") {
+		if !IsShell(name) {
+			t.Errorf("IsShell(%q) = false", name)
+		}
+	}
+	for _, name := range []string{"abcd", "abcd-darwin-arm64", "login", "tmux", "claude", "vim", "", "-"} {
+		if IsShell(name) {
+			t.Errorf("IsShell(%q) = true", name)
+		}
+	}
+}
