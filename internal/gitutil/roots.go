@@ -22,8 +22,9 @@ const maxRootLine = 4096
 // last fetched (DefaultRef, when it names a ref under refs/remotes/origin/;
 // HEAD otherwise), oldest committer date first, ties in object-name order.
 // The history is read as stored: with replace refs off
-// (core.useReplaceRefs=false and GIT_NO_REPLACE_OBJECTS) and no graft file
-// (noGraftFile), so neither can add a root or hide one.
+// (core.useReplaceRefs=false and GIT_NO_REPLACE_OBJECTS), no graft file
+// (noGraftFile) and no commit-graph (AsStoredEnv), so none of them can add a
+// root or hide one.
 //
 // The list only grows by a merge that brings in an unrelated history (`git
 // subtree add`, `--allow-unrelated-histories`, an empty-diff `merge -s
@@ -45,7 +46,7 @@ func DefaultBranchRoots(root string) ([]string, error) {
 	}
 	args := []string{"-c", "core.useReplaceRefs=false", "rev-list", "--max-parents=0", "--timestamp", rev, "--"}
 	cmd := isolatedGit(root, args...)
-	cmd.Env = append(cmd.Env, "GIT_NO_REPLACE_OBJECTS=1", "GIT_GRAFT_FILE="+noGraftFile)
+	cmd.Env = AsStoredEnv(cmd.Env)
 	type dated struct {
 		at  int64
 		sha string

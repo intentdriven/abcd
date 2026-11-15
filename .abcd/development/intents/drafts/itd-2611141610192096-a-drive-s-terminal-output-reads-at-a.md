@@ -25,7 +25,7 @@ production_mode: hand-written
 
 ## What It Looks Like
 
-The mock-ups are the lab's prototype drawing one recorded fixture run (lab-261114145658-67e1f9b, probe p6-output-renders-2). The words and the short forms are illustrations, and the rendering is the lab's. Which of the two running designs is built is an open question below.
+The mock-ups are the lab's prototype drawing one recorded fixture run (lab-261114145658-67e1f9b, probe p6-output-renders-2). The words and the short forms are illustrations, and the rendering is the lab's. The footer design is the one built (decision 3); the table design is drawn for comparison.
 
 The state line in them follows the lab's prototype, which read `stalled` after 30 minutes of one wait. itd-2611141610197753 sets that bound to the stuck bound's minutes, 60 as bundled, and says which waits have a named end: an outage has none, so it reads `waiting` up to the bound and `stalled` after it. At the moment drawn, two hours and three quarters into an outage, the line is the same under both rules. What differs is earlier in the run: between 30 and 60 minutes into the outage the lab's prototype says `stalled` and the planned rule says `waiting`.
 
@@ -185,12 +185,12 @@ We expect a person to learn the drive's state from the screen without scrolling,
 - A terminal that honours the three control sequences the prototype uses to redraw a region in place. Where output is not a terminal, or `TERM=dumb`, the drive writes plain lines. `NO_COLOR` switches off colour and nothing else: the region is still redrawn.
 - The state line is the one itd-2611141610197753 defines and stores. This intent draws it and defines none of its words or rules.
 - The lab drew one recorded fixture run of three lanes and a set of hostile titles. It did not wire the renderers into `abcd drain --drive`, redraw on a resize or on a timer, or put the drive's two output streams through one writer; each is part of building this.
-- Without keys, "one step away" means `abcd implement status` in a second terminal and the log's path. Whether the drive reads keys is an open question below.
+- Until the option menu of decision 1 is built, "one step away" means `abcd implement status` in a second terminal and the log's path.
 
 ## What's Out of Scope
 
 - The state line's words, its stall rules and where it is stored. That is itd-2611141610197753.
-- Keys, until the first open question is answered. The design works without them.
+- The option menu the drive offers (decision 1), and the headless mode that goes with it. They are part of a larger refresh of the command line and terminal interface for the autonomous run, which is filed as itd-2611150636498012. This intent's design works without them.
 - A terminal library or a full-screen interface. Three control sequences were enough in the prototype.
 - Colour. It is added last, if at all, from the repository's existing colour-mode resolver, and nothing is conveyed by colour alone.
 - The prototype's sentence patterns. It read the drive's state back out of its sentences, and twice read it wrong (F-11); the product hands the surface a typed event from the loop.
@@ -210,26 +210,23 @@ We expect a person to learn the drive's state from the screen without scrolling,
 
 ## Open Questions
 
-Each question below is the product thinker's to decide, and none is answered here. Each is quoted as the lab met it, with the answers it can defend and what each costs.
+All resolved by the product thinker on 2026-11-15 (decisions 1 to 3).
 
-1. **DQ-10. "Should the drive read keys?"** (F-13, the lab's note on keys)
-   - No keys; detail is `abcd implement status` and the log's path. Cost: no way to ask for detail without a second terminal.
-   - A typed letter and Enter (`d`, `s`): no terminal mode, safe once the read is guarded against a drive in the background. Cost: not a single key; the letter echoes into the live region until the next redraw.
-   - Single keys by a new terminal mode written for the drive. Cost: termios code the repository does not have, a direct use of `golang.org/x/sys`, and four failure cases to test (hang-up, Ctrl-C as a byte, a killed drive leaving the terminal raw, a background read).
+## Decisions
 
-2. **DQ-11. "Is 'stop after the current lane' wanted, and what reaches it?"** (F-13)
-   - Yes, as the first Ctrl-C's meaning, with a second to stop at once as now. Cost: changes what Ctrl-C does today.
-   - Yes, by a typed letter. Cost: depends on DQ-10.
-   - No. Cost: a stop always leaves a lane to take up.
-
-3. **DQ-12. "Footer or table at a terminal?"** (F-13, the probe p6-output-renders-2 and its side-by-side drawing)
-   - Footer: three live lines, every event a line above. Cost: more scrollback (23 rows for the whole fixture run against 15).
-   - Table: a row per lane, only notable events above. Cost: a lane's stages leave no trace on the screen; the region grows with the lanes (the prototype shows the last six).
+1. **The drive offers options that a person cycles through with Space and accepts with Enter** (product thinker, 2026-11-15; formerly DQ-10, "Should the drive read keys?").
+   - Answer: the drive offers options. A person cycles through them with Space and accepts the one shown with Enter. The default option does nothing, so an accidental Enter changes nothing. This is none of the three answers the lab offered (no keys, a typed letter and Enter, or single keys by a new terminal mode).
+   - Where it is built: in a larger refresh of the command line and terminal interface for the autonomous run, which also needs a headless mode so that a native macOS app can later connect to the command line. That refresh is itd-2611150636498012, and this intent's design works without it.
+2. **Stop after the current lane is wanted, and is one of those options** (product thinker, 2026-11-15; formerly DQ-11).
+   - Answer: yes. It is reached as an option of the menu in decision 1. Ctrl-C keeps its meaning as today.
+3. **The terminal shows the footer, not the table** (product thinker, 2026-11-15; formerly DQ-12).
+   - Answer: the footer, three live lines with every event a line above. The cost is more scrollback, 23 rows for the whole fixture run against 15 for the table.
 
 ## Typed Links
 
 - builds_on: itd-2611141610197753 (a drive carries on from one command, and says in one line when it cannot). The first live line of either design is that intent's state line, so this intent is built after its state is a value the loop hands the surface.
-- related: itd-2610222215485265 (the drive whose output this is; its criterion that the drive prints one line per step stands, and this intent says what a line holds). itd-2610030810370060 (the plain-terminal interviews, whose criteria B3, B4 and B7 on plain output, colour and untrusted text this intent follows). itd-2611141610201875 (the merge queue and the checkout, whose one-line reports appear among these events).
+- built on by: itd-2611150636498012 (the refreshed terminal interface and a headless mode, a draft), which adds the option line and the keys to this footer and restates a ruling on DQ-10, DQ-11 and DQ-12.
+- related: itd-2610222215485265 (the drive whose output this is; its criterion that the drive prints one line per step stands, and this intent says what a line holds). itd-2610030810370060 (the plain-terminal interviews, whose criteria B3, B4 and B7 on plain output, colour and untrusted text this intent follows). itd-2611141610201875 (the merge queue and the checkout, whose one-line reports appear among these events). itd-2611150636498012 (the CLI and terminal refresh), where the option menu of decision 1 and the headless mode are built.
 - evidence: lab-261114145658-67e1f9b (findings F-13, F-20 and F-21) and `.abcd/development/research/notes/drive-operations-2026-11.md`, event 5.
 
 ## Audit Notes

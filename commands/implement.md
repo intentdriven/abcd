@@ -1091,8 +1091,26 @@ crash left open drifts while nobody looks. Work it could not save is a
 refusal, exit 2: settle it and take again, never step over it. Exit 3 while a stop holds, while
 another driver's process is alive or a recorded driver cannot be judged, or when a peer has
 taken the work a stop released: back off. A run a person's stop halted waits for this take-over,
-also after the stop lifts: a new `abcd drain --drive` names it and passes over it. A run halted
-by the first interrupt to a drive's own terminal is the one a later drive takes up,
+also after the stop lifts: a new `abcd drain --drive` names it and passes over it. A take-over
+from a plain terminal records as the run's driver the nearest process above it that is not a
+shell or abcd; a terminal multiplexer, or a terminal program shared by several windows, is that
+one process for all of its panes and windows. An `abcd drain --drive` whose own nearest such
+process is the recorded driver takes the run from it, with a line in the run's record saying so,
+only when the recorded driver names no session, no process on the way up from the drive holds a
+session marker, every session marker could be read, and only shells run beneath that process
+besides the drive, the processes the drive runs under and the ones it started. Otherwise it
+waits. Where another process runs beneath the recorded driver, a session marker could not be
+read, or the process table could not be read again under the run's lock, its wait says which,
+naming the process or the number of files, and it looks again later. In every other case it
+gives the plain reason that the run is driven by that process. A drive whose output is piped to
+another program, or a long-lived helper under the same terminal, is such another process and
+keeps the drive waiting while it runs. A drive started through a program that stays as its
+parent, such as one that keeps the machine awake or a recorder, is not under the terminal by
+this rule and waits. The rule cannot tell a terminal from a host that left no marker and has no
+other process beneath it: an agent a host runs inside its own process is not in the process
+table. Nor does it see a step whose shell ended after it claimed, which the process table no
+longer shows beneath the terminal.
+A run halted by the first interrupt to a drive's own terminal is the one a later drive takes up,
 unless its lane is parked on its pull request, which waits for this take-over.
 
 **One driver steps a run.** `implement step` records the session it runs under in

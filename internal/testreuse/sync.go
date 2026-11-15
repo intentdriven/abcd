@@ -1,7 +1,6 @@
 package testreuse
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha1"
@@ -10,14 +9,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -26,6 +23,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // The check directory's own files, beside the tree so nothing a test reads of
@@ -77,39 +75,27 @@ func blobOID(oid string, body []byte) string {
 type entry struct {
 	mode string
 	oid  string
-	size int64
 	path string
 }
 
-// listTree reads a commit's tree. What is copied here is executed, so it refuses
-// a path that could leave the tree, that lands in a directory named .git in any
-// spelling, or that a file system could take for another of the commit's paths.
-func listTree(ctx context.Context, repo, commit string) ([]entry, error) {
-	out, err := gitOutput(ctx, repo, "ls-tree", "-r", "-z", "-l", "--full-tree", commit)
+// listTree reads a commit's tree through objects, every tree in it checked
+// against its id (gitutil.VerifiedObjects), in path order. What is copied here
+// is executed, so it refuses a path that could leave the tree, that lands in a
+// directory named .git in any spelling, or that a file system could take for
+// another of the commit's paths.
+func listTree(objects *gitutil.VerifiedObjects, commit string) ([]entry, error) {
+	tree, err := objects.Tree(commit)
 	if err != nil {
 		return nil, err
 	}
-	var entries []entry
-	for _, rec := range strings.Split(string(out), "\x00") {
-		if rec == "" {
-			continue
-		}
-		meta, p, ok := strings.Cut(rec, "\t")
-		fields := strings.Fields(meta)
-		if !ok || len(fields) != 4 {
-			return nil, fmt.Errorf("git ls-tree: a line of an unexpected shape: %q", rec)
-		}
+	entries := make([]entry, 0, len(tree))
+	for p, e := range tree {
 		if !treePath(p) {
 			return nil, fmt.Errorf("the commit names a path outside its tree: %q", p)
 		}
-		e := entry{mode: fields[0], oid: fields[2], path: p}
-		if fields[3] != "-" {
-			if e.size, err = strconv.ParseInt(fields[3], 10, 64); err != nil {
-				return nil, fmt.Errorf("git ls-tree: size %q: %w", fields[3], err)
-			}
-		}
-		entries = append(entries, e)
+		entries = append(entries, entry{mode: e.Mode, oid: e.OID, path: p})
 	}
+	slices.SortFunc(entries, func(a, b entry) int { return strings.Compare(a.path, b.path) })
 	if err := oneSpelling(entries); err != nil {
 		return nil, err
 	}
@@ -156,11 +142,12 @@ func oneSpelling(entries []entry) error {
 }
 
 // gitOutput runs a read-only git question in repo, under no variable an outer
-// git set: a hook's GIT_DIR must not answer for another repository.
+// git set: a hook's GIT_DIR must not answer for another repository. It reads
+// objects as stored (storedGitEnv).
 func gitOutput(ctx context.Context, repo string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = repo
-	cmd.Env = gitEnv()
+	cmd.Env = storedGitEnv()
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -183,60 +170,16 @@ func gitEnv() []string {
 	return env
 }
 
-// blobReader is one `git cat-file --batch`, started when first needed.
-type blobReader struct {
-	ctx  context.Context
-	repo string
-	cmd  *exec.Cmd
-	in   io.WriteCloser
-	out  *bufio.Reader
-}
-
-func (b *blobReader) read(oid string) ([]byte, error) {
-	if b.cmd == nil {
-		cmd := exec.CommandContext(b.ctx, "git", "cat-file", "--batch")
-		cmd.Dir = b.repo
-		cmd.Env = gitEnv()
-		in, err := cmd.StdinPipe()
-		if err != nil {
-			return nil, err
-		}
-		out, err := cmd.StdoutPipe()
-		if err != nil {
-			return nil, err
-		}
-		if err := cmd.Start(); err != nil {
-			return nil, err
-		}
-		b.cmd, b.in, b.out = cmd, in, bufio.NewReader(out)
-	}
-	if _, err := io.WriteString(b.in, oid+"\n"); err != nil {
-		return nil, err
-	}
-	head, err := b.out.ReadString('\n')
-	if err != nil {
-		return nil, err
-	}
-	fields := strings.Fields(head)
-	if len(fields) != 3 || fields[0] != oid {
-		return nil, fmt.Errorf("git cat-file: %q for %s", strings.TrimSpace(head), oid)
-	}
-	size, err := strconv.ParseInt(fields[2], 10, 64)
-	if err != nil {
-		return nil, err
-	}
-	body := make([]byte, size+1) // the content and its newline
-	if _, err := io.ReadFull(b.out, body); err != nil {
-		return nil, err
-	}
-	return body[:size], nil
-}
-
-func (b *blobReader) close() {
-	if b.cmd != nil {
-		_ = b.in.Close()
-		_ = b.cmd.Wait()
-	}
+// storedGitEnv is gitEnv for a git that reads the commit under test, its tree
+// and its blobs: no refs/replace/* ref stands another object in for one the
+// commit stores, no graft file gives it other parents, and no commit-graph
+// file claims another tree for it (gitutil.AsStoredEnv): none of the three
+// changes what these reads give. The environment does not check that an
+// object's content hashes to its id; the sync reads the commit's trees and
+// blobs through gitutil.VerifiedObjects, which does. A test line keeps gitEnv: what a
+// test's own git sees is the test's business.
+func storedGitEnv() []string {
+	return gitutil.AsStoredEnv(gitEnv())
 }
 
 // SyncStats is what a sync did to the check directory.
@@ -306,7 +249,15 @@ func clearBeside(top *os.Root) error {
 func syncTree(ctx context.Context, repo, commit, dir string) (SyncStats, *snapshot, error) {
 	began := time.Now()
 	var stats SyncStats
-	entries, err := listTree(ctx, repo, commit)
+	// One reader for the commit's trees and the blobs written below, each
+	// checked against its id: every tree is read before anything is written, as
+	// one that does not hash to its id lists other files than the commit's.
+	objects, err := gitutil.OpenVerifiedObjects(ctx, repo)
+	if err != nil {
+		return stats, nil, err
+	}
+	defer objects.Close()
+	entries, err := listTree(objects, commit)
 	if err != nil {
 		return stats, nil, err
 	}
@@ -363,14 +314,12 @@ func syncTree(ctx context.Context, repo, commit, dir string) (SyncStats, *snapsh
 
 	wrong := differing(root, entries)
 	stats.Kept = len(entries) - len(wrong)
-	blobs := &blobReader{ctx: ctx, repo: repo}
-	defer blobs.close()
 	for _, e := range wrong {
 		if e.mode == "160000" {
 			stats.Kept++
 			continue
 		}
-		body, err := blobs.read(e.oid)
+		body, err := objects.Blob(e.oid)
 		if err != nil {
 			return stats, nil, err
 		}
@@ -485,7 +434,7 @@ func (e entry) onDisk(root *os.Root) bool {
 		target, err := root.Readlink(e.path)
 		return err == nil && blobOID(e.oid, []byte(target)) == e.oid
 	}
-	if !info.Mode().IsRegular() || info.Mode().Perm() != e.perm() || info.Size() != e.size {
+	if !info.Mode().IsRegular() || info.Mode().Perm() != e.perm() {
 		return false
 	}
 	body, err := root.ReadFile(e.path)
