@@ -598,7 +598,7 @@ func TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly(t *testing.T) {
 		"http.https://x.proxy":       true,
 		"http.https://x.proxyx":      false,
 		"http.https://x.extraheader": true,
-		"http.https://x.useragent":   false,
+		"http.https://x.useragent":   true,
 		"http.postbuffer":            false,
 		"":                           false,
 	} {
