@@ -332,7 +332,7 @@ func (g *givenNames) UnmarshalJSON(raw []byte) error {
 // Start reserves; it never sets a title. The host ignores a prompt-hook title
 // equal to the one a session already has, so a title set here would never
 // reach the session list (decision 9). The returned Name is the name reserved,
-// which the prompt hook sets at the session's first prompt (Resend).
+// which the prompt hook sets at the session's first prompt (Prompt).
 //
 // A sub-agent is never named, nor a payload with no session id. A new session
 // (startup, or a fork) with no title reserves the next free name. A startup
@@ -624,7 +624,7 @@ func (reg *register) claim(personas []string, sessionID, title string, host Host
 // no record of its own whose title is a name given to another session has
 // inherited it (inherits). It is held like a resumed name, and recorded as
 // given to the fork too. A session id with a record of its own is never read
-// as inheriting: abcd records the person's own name as "" (keep, Resend), so
+// as inheriting: abcd records the person's own name as "" (keep, Prompt), so
 // a session the person named is not mistaken for a fork when another session
 // is given the same name.
 //
@@ -786,12 +786,6 @@ func (m Machine) peek() (*os.Root, register, error) {
 		return nil, register{}, err
 	}
 	return dir, reg, nil
-}
-
-// Resend is Prompt for a session whose repository is not named: a session
-// that has to take a new name takes it from the bundled list.
-func Resend(m Machine, sessionID, title string) Outcome {
-	return Prompt(m, Request{SessionID: sessionID, Title: title})
 }
 
 // Prompt is the prompt hook's naming: the title to set on this prompt (Name,

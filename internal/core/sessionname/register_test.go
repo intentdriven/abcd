@@ -284,7 +284,7 @@ func TestResumeHoldsTheNameForTheResumedProcess(t *testing.T) {
 	mustName(t, m.start(400, root, "c"), "Carol")
 	mustName(t, m.start(500, root, "d"), "Dave")
 	// The resumed session is owed no title at its prompt: the host kept it.
-	if got := Resend(m.at(301), "b", "Bob"); got.Name != "" {
+	if got := resend(m.at(301), "b", "Bob"); got.Name != "" {
 		t.Fatalf("the resumed session was sent %q", got.Name)
 	}
 }
@@ -321,9 +321,9 @@ func TestResumeOfAPersonsOwnNameHoldsNothing(t *testing.T) {
 func resends(t *testing.T, m *machine, prompts []struct{ sid, title, want string }) {
 	t.Helper()
 	for i, c := range prompts {
-		got := Resend(m.at(0), c.sid, c.title)
+		got := resend(m.at(0), c.sid, c.title)
 		if got.Name != c.want || len(got.Notes) != 0 {
-			t.Fatalf("prompt %d: Resend(%q, %q) = %+v, want %q\nregister:\n%s", i+1, c.sid, c.title, got, c.want, m.register())
+			t.Fatalf("prompt %d: resend(%q, %q) = %+v, want %q\nregister:\n%s", i+1, c.sid, c.title, got, c.want, m.register())
 		}
 	}
 }
@@ -386,7 +386,7 @@ func TestResendTreatsASymlinkedFolderAsAbsent(t *testing.T) {
 	if err := os.Symlink(t.TempDir(), abcdhome.Path(m.home, "sessions")); err != nil {
 		t.Fatal(err)
 	}
-	if got := Resend(m.at(0), "s1", ""); got.Name != "" || len(got.Notes) != 0 {
+	if got := resend(m.at(0), "s1", ""); got.Name != "" || len(got.Notes) != 0 {
 		t.Fatalf("Resend through a symlinked folder = %+v, want nothing", got)
 	}
 }
@@ -541,7 +541,7 @@ func TestStartHandsDistinctNamesToConcurrentSessions(t *testing.T) {
 // named has no register, and a prompt neither creates one nor notes anything.
 func TestResendWithoutARegisterIsNothing(t *testing.T) {
 	m := newMachine(t)
-	got := Resend(m.at(0), "s1", "Alice")
+	got := resend(m.at(0), "s1", "Alice")
 	if got.Name != "" || len(got.Notes) != 0 {
 		t.Fatalf("Resend = %+v, want nothing", got)
 	}
@@ -1867,4 +1867,10 @@ func TestTwoSessionsInOneProcessWithOneNameEndWithTwoNames(t *testing.T) {
 	if notices != 1 || title["x"] != "Alice" || title["y"] != "Bob" {
 		t.Fatalf("%d notices, titles %v; want one notice, x Alice and y Bob", notices, title)
 	}
+}
+
+// resend is Prompt for a session whose repository is not named: a session
+// that has to take a new name takes it from the bundled list.
+func resend(m Machine, sessionID, title string) Outcome {
+	return Prompt(m, Request{SessionID: sessionID, Title: title})
 }
