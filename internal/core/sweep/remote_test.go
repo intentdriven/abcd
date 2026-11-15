@@ -480,8 +480,91 @@ func TestADefaultBranchThatMovedOnOriginHoldsEveryDelete(t *testing.T) {
 
 	res := sweepRemoteOK(t, repo, remoteOpts(&fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}), true)
 	r := remoteRowFor(t, res, "feat")
-	if r.Outcome != OutcomeKept || !strings.Contains(r.Reason, "fetch origin and run the sweep again") {
-		t.Fatalf("%+v; want it held until a fetch", r)
+	moved := onOrigin(repo, origin, "main")
+	// The reason names the tip origin's default branch moved to, which a
+	// renamed default branch's reason does not.
+	if r.Outcome != OutcomeKept || !strings.Contains(r.Reason, "fetch origin and run the sweep again") ||
+		!strings.Contains(r.Reason, "origin's default branch is at "+short(moved)+", but it was judged against origin/main at "+short(fetched)) {
+		t.Fatalf("%+v; want it held until a fetch, naming origin's main at %s against %s", r, short(moved), short(fetched))
+	}
+	if onOrigin(repo, origin, "feat") != tip {
+		t.Fatal("origin no longer holds feat")
+	}
+}
+
+// TestADefaultBranchThatMovesOnOriginBetweenDeletesHoldsTheLaterOne: the last
+// check before each delete asks origin for its default branch again, so when
+// another clone moves origin's main after the first of two deletes passed its
+// last check, the first is deleted and the second is held until a fetch.
+func TestADefaultBranchThatMovesOnOriginBetweenDeletesHoldsTheLaterOne(t *testing.T) {
+	repo, origin := originRepo(t)
+	first := mergedOnOrigin(repo, "first", "first.txt")
+	second := mergedOnOrigin(repo, "second", "second.txt")
+	fetched := repo.Git("rev-parse", "refs/remotes/origin/main")
+	// Another clone moves origin's main, pushing by the remote's name; see
+	// TestADefaultBranchThatMovedOnOriginHoldsEveryDelete for why a push from
+	// this checkout cannot stand in for it.
+	other := filepath.Join(t.TempDir(), "other")
+	repo.Git("clone", "-q", origin, other)
+	write(t, filepath.Join(other, "later.txt"), "later\n")
+	repo.Git("-C", other, "add", "-A")
+	repo.Git("-C", other, "commit", "-q", "-m", "later")
+	var hooked []string
+	beforeRemoteDelete = func(ref string) {
+		hooked = append(hooked, ref)
+		if ref == "refs/heads/first" {
+			repo.Git("-C", other, "push", "-q", "origin", "main")
+		}
+	}
+	t.Cleanup(func() { beforeRemoteDelete = nil })
+	f := &fakeForge{prs: []pullRequest{mergedPR(4, "first", first), mergedPR(5, "second", second)}}
+
+	res := sweepRemoteOK(t, repo, remoteOpts(f), true)
+	moved := onOrigin(repo, origin, "main")
+	if moved == fetched || repo.Git("rev-parse", "refs/remotes/origin/main") != fetched {
+		t.Fatalf("the fixture: origin's main is at %s and origin/main here at %s; want origin moved past %s and origin/main left there",
+			moved, repo.Git("rev-parse", "refs/remotes/origin/main"), fetched)
+	}
+	if len(hooked) == 0 || hooked[0] != "refs/heads/first" {
+		t.Fatalf("the deletes reached the push in the order %v; want first's first", hooked)
+	}
+	if r := remoteRowFor(t, res, "first"); r.Outcome != OutcomeDeleted {
+		t.Fatalf("first: %+v; want it deleted before origin's main moved", r)
+	}
+	if got := onOrigin(repo, origin, "first"); got != "" {
+		t.Fatalf("origin still holds first at %s", got)
+	}
+	r := remoteRowFor(t, res, "second")
+	if r.Action != ActionDelete || r.Outcome != OutcomeKept || !strings.Contains(r.Reason, "held at the last check before the delete") ||
+		!strings.Contains(r.Reason, "origin's default branch is at "+short(moved)+", but it was judged against origin/main at "+short(fetched)) ||
+		!strings.Contains(r.Reason, "fetch origin and run the sweep again") {
+		t.Fatalf("second: %+v; want it judged deletable, then held until a fetch at the last check", r)
+	}
+	if onOrigin(repo, origin, "second") != second {
+		t.Fatal("origin no longer holds second")
+	}
+	if res.ExitCode() != ExitActed {
+		t.Fatalf("a run that deleted one branch exits %d", res.ExitCode())
+	}
+}
+
+// TestADefaultBranchOriginCannotNameAtTheLastCheckHoldsTheDelete: when origin
+// answers the run's first question about its default branch but not the last
+// check's, because its HEAD came to name a branch it does not hold, the delete
+// is held and the branch stands on origin.
+func TestADefaultBranchOriginCannotNameAtTheLastCheckHoldsTheDelete(t *testing.T) {
+	repo, origin := originRepo(t)
+	tip := mergedOnOrigin(repo, "feat", "feat.txt")
+	f := &fakeForge{prs: []pullRequest{mergedPR(4, "feat", tip)}}
+	// The forge's per-branch listing comes after the run's first question to
+	// origin and before the last check's.
+	f.onRecheck = func() { repo.Git("--git-dir", origin, "symbolic-ref", "HEAD", "refs/heads/gone") }
+
+	res := sweepRemoteOK(t, repo, remoteOpts(f), true)
+	r := remoteRowFor(t, res, "feat")
+	if r.Action != ActionDelete || r.Outcome != OutcomeKept || !strings.Contains(r.Reason, "held at the last check before the delete") ||
+		!strings.Contains(r.Reason, "origin's default branch could not be asked") {
+		t.Fatalf("%+v; want it judged deletable, then held because origin's default branch could not be asked", r)
 	}
 	if onOrigin(repo, origin, "feat") != tip {
 		t.Fatal("origin no longer holds feat")

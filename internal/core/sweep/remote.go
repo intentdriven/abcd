@@ -32,10 +32,12 @@ package sweep
 // caller's fetch left them, and the forge's listings through Options.Forge.
 // Under apply, each delete is preceded by a last check of everything that
 // could hold the branch, made again: origin's own default branch and its tip
-// (asked of origin, once per run, and required to be the very branch and
-// commit the judgement read), the forge's pull requests from that branch,
-// the worktrees, the local branches' upstreams and the guard's checks with a
-// fresh liveness probe, and origin's tip of it now. Only then is it deleted, by one push of an empty ref with a
+// (asked of origin before the first delete, and required to be the very
+// branch and commit the judgement read), the forge's pull requests from that
+// branch, the worktrees, the local branches' upstreams and the guard's checks
+// with a fresh liveness probe, origin's tip of it now, and, last, origin's
+// default branch and its tip asked again, held to the same rule. Only then is
+// it deleted, by one push of an empty ref with a
 // lease on the exact tip that was judged (the reservation sweep's pattern),
 // so a branch someone pushed to meanwhile survives. The push runs through
 // gitutil.Net, so the repository's own pre-push hook sees it, as it sees the
@@ -510,13 +512,38 @@ func (rj *remoteJudge) originHead() (branch, tip string, err error) {
 	return gitutil.RemoteHeadTip(ctx, gitutil.NetContext, rj.root, claim.Remote)
 }
 
+// headHold is why origin's default branch, as origin named it, holds the
+// delete of the branch b, "" when it does not: head is that branch and
+// headTip its tip there, or headFail why they could not be asked. Only the
+// very branch and tip the judgement read let a delete through.
+func (rj *remoteJudge) headHold(b remoteBranch, head, headTip string, headFail error) (string, []Evidence) {
+	switch {
+	case headFail != nil:
+		return "origin's default branch could not be asked (" + answerText(headFail) + "), so nothing on origin is deleted", nil
+	case b.name == head:
+		return "it is origin's default branch", []Evidence{{Kind: KindRemote, Strength: Proven, Detail: "origin's default branch"}}
+	case head != rj.defName:
+		return "origin's default branch is " + head + ", but it was judged against " + displayRef(rj.def) +
+			" as last fetched; fetch origin and run the sweep again", nil
+	case headTip != rj.defTip:
+		// Equality is the simple rule, and the safe one: a default branch
+		// that moved on origin since the fetch may hold, or have dropped,
+		// what the merged judgement read, so only the exact tip judged
+		// against lets a delete through.
+		return "origin's default branch is at " + short(headTip) + ", but it was judged against " + displayRef(rj.def) +
+			" at " + short(rj.defTip) + " as last fetched; fetch origin and run the sweep again", nil
+	}
+	return "", nil
+}
+
 // delete makes the last check of the branch b on origin and, when nothing
 // holds it, deletes it under a lease on the tip that was judged, marking row
-// with the outcome. head is origin's default branch as origin named it and
-// headTip its tip there, or headFail why they could not be asked. A hold the last check finds keeps the
-// branch, naming it; so does origin refusing the lease because the branch
-// moved. Any other refusal of the delete keeps it, naming why, and is
-// returned as the run's fault.
+// with the outcome. head is origin's default branch as origin named it before
+// the run's first delete and headTip its tip there, or headFail why they
+// could not be asked; the last check asks origin for both again just before
+// the push. A hold the last check finds keeps the branch, naming it; so does
+// origin refusing the lease because the branch moved. Any other refusal of
+// the delete keeps it, naming why, and is returned as the run's fault.
 func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail error, row *Row) error {
 	held := func(reason string, ev ...Evidence) error {
 		row.Reason = clean("held at the last check before the delete: " + reason)
@@ -536,22 +563,10 @@ func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail err
 		}
 		return nil
 	}
-	switch {
-	case headFail != nil:
-		return held("origin's default branch could not be asked (" + answerText(headFail) + "), so nothing on origin is deleted")
-	case b.name == head:
-		return held("it is origin's default branch", Evidence{Kind: KindRemote, Strength: Proven, Detail: "origin's default branch"})
-	case head != rj.defName:
-		return held("origin's default branch is " + head + ", but it was judged against " + displayRef(rj.def) +
-			" as last fetched; fetch origin and run the sweep again")
-	case headTip != rj.defTip:
-		// Equality is the simple rule, and the safe one: a default branch
-		// that moved on origin since the fetch may hold, or have dropped,
-		// what the merged judgement read, so only the exact tip judged
-		// against lets a delete through.
-		return held("origin's default branch is at " + short(headTip) + ", but it was judged against " + displayRef(rj.def) +
-			" at " + short(rj.defTip) + " as last fetched; fetch origin and run the sweep again")
-	case !strings.HasPrefix(b.ref, "refs/heads/") || neverDeleted(b.name, head) != "" || !gitutil.IsFullSHA(b.tip):
+	if reason, ev := rj.headHold(b, head, headTip, headFail); reason != "" {
+		return held(reason, ev...)
+	}
+	if !strings.HasPrefix(b.ref, "refs/heads/") || neverDeleted(b.name, head) != "" || !gitutil.IsFullSHA(b.tip) {
 		return held("it is not a branch the sweep deletes")
 	}
 	if err := stopped(); err != nil {
@@ -610,6 +625,17 @@ func (rj *remoteJudge) delete(b remoteBranch, head, headTip string, headFail err
 	case tip != b.tip:
 		return held("it moved on origin since it was judged (now "+short(tip)+")",
 			Evidence{Kind: KindRemote, Strength: Proven, Detail: "origin's tip is " + short(tip)})
+	}
+	// origin's default branch is asked again, the last check before the push:
+	// the answer the run asked for before its first delete may be older than
+	// this delete, and the merged judgement holds only against the branch and
+	// tip it read.
+	head, headTip, headFail = rj.originHead()
+	if err := stopped(); err != nil {
+		return err
+	}
+	if reason, ev := rj.headHold(b, head, headTip, headFail); reason != "" {
+		return held(reason, ev...)
 	}
 	if beforeRemoteDelete != nil {
 		beforeRemoteDelete(b.ref)
