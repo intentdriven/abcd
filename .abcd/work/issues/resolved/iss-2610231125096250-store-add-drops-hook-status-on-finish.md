@@ -11,7 +11,7 @@ production_mode: hand-written
 found_at: "internal/core/ahoy/worktree/worktree.go"
 remedy: "Carry the hook's exit status into the refusal on the finishing-failure path too, naming both failures."
 related_intents: [itd-2609091014076309]
-resolution: "Fixed in this change: when the checkout hook fails and finishing the worktree then fails too, Add's refusal names the hook's failure first, then the finishing failure, and keeps git's failure as its cause (internal/core/ahoy/worktree/worktree.go:369; TestAddNamesTheHookFailureWhenTheFinishFailsToo)."
+resolution: "Fixed in this change: when the checkout hook fails and finishing the worktree then fails too, Add's refusal names the hook's failure first, then the finishing failure, and carries no Err, so the build loop reports the finishing failure with the store's remedy rather than as a git failure (internal/core/ahoy/worktree/worktree.go:377; TestAddNamesTheHookFailureWhenTheFinishFailsToo; TestALaneWhoseHookAndFinishBothFailNamesTheFinishingFailure)."
 impact: fix
 resolved_by:
   spec: "spc-2609301811532881"
