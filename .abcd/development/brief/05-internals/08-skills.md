@@ -120,8 +120,13 @@ command instead.
 The payload step is the one that is easy to forget and has not been taken for
 anyone: the include list still names commands, agents and hooks and no skills
 directory, which is exactly the condition that dropped a shipped skill from the
-cut artefact before. A skill added without it passes the record gate and is
-missing from the release.
+cut artefact before. The guard for it is `TestBundleShipsEveryPluginSurface`
+(`internal/core/launch/payload_completeness_test.go`): it fails on a `skills/`
+directory that is neither in the includes of `.abcd/config/launch-payload.json`
+nor given a reason in `surfaceExcludeReasons`, and it runs in `go test ./...`,
+so in preflight and CI. A skill added without the payload step passes the
+record gate and then fails that test, so it cannot land by the normal route
+until the skills directory is added to the include list.
 
 itd-30 (design fictions, a draft intent) is a **command extension** rather than a
 new skill: it extends the canonical create `/abcd:intent "<text>"` with a format
