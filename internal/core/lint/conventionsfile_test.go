@@ -306,7 +306,9 @@ const worktreeStoreIntent = "itd-2609091014076309"
 // The planning records that wait on the store (itd-148, its spec spc-42, and
 // iss-213, which itd-148 carries) went on calling it "the store draft" after it
 // was planned (iss-2610111926302792), so they are sites too, found by id in
-// whichever lifecycle folder holds them. A site is the list item, prose
+// whichever lifecycle folder holds them; so are the users-directory principle
+// and itd-2610222214476887, whose prose called the store planned and unbuilt
+// beside a link the close had repointed to shipped/. A site is the list item, prose
 // sentence or front-matter line that names the intent or says "store draft"
 // (worktreeStoreSites), never the whole paragraph, so a word said of another
 // intent in the same list is not blamed on this one (iss-2610111926302443).
@@ -346,12 +348,14 @@ func TestWorktreeStoreRuleNamesTheIntentsActualState(t *testing.T) {
 	sites := map[string][]string{"the CONCURRENCY rule": {rule}}
 	rels := []string{
 		".abcd/development/brief/04-surfaces/34-build.md",
+		".abcd/development/principles/the-users-directory-is-theirs.md",
 		"internal/core/implement/loop/lane.go",
 	}
-	// The planning records waiting on the store, wherever their lifecycle
-	// folder puts them.
+	// The planning records waiting on the store, or building on its reclaim,
+	// wherever their lifecycle folder puts them.
 	for _, pattern := range []string{
 		".abcd/development/intents/*/itd-148-*.md",
+		".abcd/development/intents/*/itd-2610222214476887-*.md",
 		".abcd/development/specs/*/spc-42-*.md",
 		".abcd/work/issues/*/iss-213-*.md",
 	} {
@@ -384,7 +388,7 @@ func TestWorktreeStoreRuleNamesTheIntentsActualState(t *testing.T) {
 // is still to ship, which a shipped intent is not.
 func staleUnshippedWords(site string) []string {
 	var found []string
-	for _, stale := range []string{"has not shipped", "not yet shipped", "no verbs yet", "still sits in `planned/`", "intents/planned/" + worktreeStoreIntent} {
+	for _, stale := range []string{"has not shipped", "not yet shipped", "no verbs yet", "still sits in `planned/`", "planned and unbuilt", "planned but not built", "intents/planned/" + worktreeStoreIntent} {
 		if strings.Contains(site, stale) {
 			found = append(found, stale)
 		}
