@@ -190,7 +190,7 @@ We expect a person to learn the drive's state from the screen without scrolling,
 ## What's Out of Scope
 
 - The state line's words, its stall rules and where it is stored. That is itd-2611141610197753.
-- The option menu the drive offers (decision 1), and the headless mode that goes with it. They are part of a larger refresh of the command line and terminal interface for the autonomous run, which is filed as a draft of its own. This intent's design works without them.
+- The option menu the drive offers (decision 1), and the headless mode that goes with it. They are part of a larger refresh of the command line and terminal interface for the autonomous run, which is filed as itd-2611150636498012. This intent's design works without them.
 - A terminal library or a full-screen interface. Three control sequences were enough in the prototype.
 - Colour. It is added last, if at all, from the repository's existing colour-mode resolver, and nothing is conveyed by colour alone.
 - The prototype's sentence patterns. It read the drive's state back out of its sentences, and twice read it wrong (F-11); the product hands the surface a typed event from the loop.
@@ -216,7 +216,7 @@ All resolved by the product thinker on 2026-11-15 (decisions 1 to 3).
 
 1. **The drive offers options that a person cycles through with Space and accepts with Enter** (product thinker, 2026-11-15; formerly DQ-10, "Should the drive read keys?").
    - Answer: the drive offers options. A person cycles through them with Space and accepts the one shown with Enter. The default option does nothing, so an accidental Enter changes nothing. This is none of the three answers the lab offered (no keys, a typed letter and Enter, or single keys by a new terminal mode).
-   - Where it is built: in a larger refresh of the command line and terminal interface for the autonomous run, which also needs a headless mode so that a native macOS app can later connect to the command line. That refresh is a draft intent of its own, filed separately, and this intent's design works without it.
+   - Where it is built: in a larger refresh of the command line and terminal interface for the autonomous run, which also needs a headless mode so that a native macOS app can later connect to the command line. That refresh is itd-2611150636498012, and this intent's design works without it.
 2. **Stop after the current lane is wanted, and is one of those options** (product thinker, 2026-11-15; formerly DQ-11).
    - Answer: yes. It is reached as an option of the menu in decision 1. Ctrl-C keeps its meaning as today.
 3. **The terminal shows the footer, not the table** (product thinker, 2026-11-15; formerly DQ-12).
@@ -225,7 +225,7 @@ All resolved by the product thinker on 2026-11-15 (decisions 1 to 3).
 ## Typed Links
 
 - builds_on: itd-2611141610197753 (a drive carries on from one command, and says in one line when it cannot). The first live line of either design is that intent's state line, so this intent is built after its state is a value the loop hands the surface.
-- related: itd-2610222215485265 (the drive whose output this is; its criterion that the drive prints one line per step stands, and this intent says what a line holds). itd-2610030810370060 (the plain-terminal interviews, whose criteria B3, B4 and B7 on plain output, colour and untrusted text this intent follows). itd-2611141610201875 (the merge queue and the checkout, whose one-line reports appear among these events). The CLI and terminal refresh draft (filed separately), where the option menu of decision 1 and the headless mode are built.
+- related: itd-2610222215485265 (the drive whose output this is; its criterion that the drive prints one line per step stands, and this intent says what a line holds). itd-2610030810370060 (the plain-terminal interviews, whose criteria B3, B4 and B7 on plain output, colour and untrusted text this intent follows). itd-2611141610201875 (the merge queue and the checkout, whose one-line reports appear among these events). itd-2611150636498012 (the CLI and terminal refresh), where the option menu of decision 1 and the headless mode are built.
 - evidence: lab-261114145658-67e1f9b (findings F-13, F-20 and F-21) and `.abcd/development/research/notes/drive-operations-2026-11.md`, event 5.
 
 ## Audit Notes
