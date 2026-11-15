@@ -120,6 +120,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/sessionkind"
+	"github.com/intentdriven/abcd/internal/core/vintage"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -298,28 +299,16 @@ func partsScanner(sc *scanner.Scanner) string {
 // binaryStamp names the running binary in partsScanner: the sha256 of the
 // executable's bytes, computed once per process, and only by a pass that has
 // parts to read or write. A test replaces it.
+// The executable is the one the process found when it started
+// (vintage.ExecutableAtStart), so a binary put in place at the same path
+// afterwards (an update) is not taken for the one running.
 var binaryStamp = sync.OnceValue(func() string {
-	exe, err := os.Executable()
-	if err != nil {
+	exe, atStart := vintage.ExecutableAtStart()
+	if exe == "" {
 		return processStamp()
 	}
-	return executableStamp(exe, exeAtStart)
+	return executableStamp(exe, atStart)
 })
-
-// exeAtStart is the executable file as the process found it when it started,
-// so a binary swapped in at the same path afterwards (an update) is not taken
-// for the one running. nil when it could not be read.
-var exeAtStart = func() os.FileInfo {
-	exe, err := os.Executable()
-	if err != nil {
-		return nil
-	}
-	fi, err := os.Stat(exe)
-	if err != nil {
-		return nil
-	}
-	return fi
-}()
 
 // executableStamp is the sha256 of the file at path, when it is still the file
 // atStart describes; otherwise, or when it cannot be read, a stamp unique to
