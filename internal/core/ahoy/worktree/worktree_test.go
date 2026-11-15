@@ -675,8 +675,9 @@ func TestAddFinishesAWorktreeGitMadeWhenTheCheckoutHookFails(t *testing.T) {
 // TestAddNamesTheHookFailureWhenTheFinishFailsToo (iss-2610231125096250): when
 // the checkout hook fails after git made the worktree, and finishing it then
 // fails too (the branch carries a file where the local tier goes), the refusal
-// names both, the hook's exit status first, and keeps git's failure as its
-// cause.
+// names both, the hook's exit status first, and carries no Err, so a caller
+// that reports git's failure in place of the reason (the build loop) cannot
+// drop the finishing one.
 func TestAddNamesTheHookFailureWhenTheFinishFailsToo(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX hook script")
@@ -702,8 +703,8 @@ func TestAddNamesTheHookFailureWhenTheFinishFailsToo(t *testing.T) {
 	if hookAt < 0 || tierAt < 0 || hookAt > tierAt {
 		t.Fatalf("the refusal names the hook's status, then the tier it could not lay: %+v", r)
 	}
-	if r.Err == nil || !strings.Contains(r.Err.Error(), "exit status 3") {
-		t.Fatalf("git's failure stays the cause: %v", r.Err)
+	if r.Err != nil {
+		t.Fatalf("the refusal carries no Err, so its reason is what a caller reports: %v", r.Err)
 	}
 	l, _ := worktree.LaneFor(repo.Root())
 	if got.Path != l.Path("hooked") {

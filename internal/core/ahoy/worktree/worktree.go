@@ -285,7 +285,9 @@ type Added struct {
 // may stand at the path; only then are the lane's levels made (Ensure), git
 // adds the worktree and its directory is narrowed to 0700. Every refusal
 // comes before anything is written, so a refused Add writes nothing; a git
-// that fails is a refusal whose cause is git's error (Refusal.Err).
+// that fails is a refusal whose cause is git's error (Refusal.Err), except
+// when git made the worktree and finishing it failed too: that refusal names
+// both failures in its Reason and carries no Err.
 //
 // Once git has made the worktree, Add records where its branch starts
 // (start.go) and lays its local tier, so a reservation can keep its key there
@@ -368,12 +370,15 @@ func Add(repoRoot string, opts AddOptions) (Added, error) {
 		if ferr != nil {
 			// Both failures are named, the hook's first, so its exit status
 			// is not lost behind the finishing one (iss-2610231125096250).
+			// Err stays nil: a caller that reports a refusal's Err in place
+			// of its Reason (the build loop does, for git's failures) would
+			// otherwise drop the finishing failure, which a rerun that adopts
+			// the worktree never reports again.
 			r := refuse(fmt.Sprintf("the repository's checkout hook failed (%v), and then %v", err, ferr), "settle the hook, then the finishing failure")
 			var fr *Refusal
 			if errors.As(ferr, &fr) {
 				r = refuse(fmt.Sprintf("the repository's checkout hook failed (%v), and then %s", err, fr.Reason), fr.Remedy)
 			}
-			r.Err = err
 			return added, r
 		}
 		r := refuse(fmt.Sprintf("git made the worktree at %s, which stands, but the repository's checkout hook failed: %v", path, err),
