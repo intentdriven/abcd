@@ -272,6 +272,7 @@ as an input in `explain` by name only.
    - needs: 1
    - packages: internal/surface/cli/explain.go, internal/core/surface/sentences.go, internal/core/surface/examples.go, internal/surface/cli/helpgroups.go, internal/surface/cli/barerender.go, internal/surface/cli/cli.go, internal/surface/cli/usage_errors.go, commands/explain.md, .abcd/development/brief/04-surfaces/41-explain.md, .abcd/development/brief/04-surfaces/README.md, .abcd/development/brief/04-surfaces/17-guard.md, .abcd/development/release/surface.json, .abcd/development/release-gate/manifest.json, .abcd/rules.json, docs/reference/cli/commands.md
    - tests: internal/surface/cli/explain_test.go, internal/surface/cli/refusal_operands_test.go
+   - landed: 6f748cff2dbf
 3. The per-command JSON, the page blocks and the first instruction
    - needs: 1
    - packages: cmd/command-facts-sync, Makefile, commands, docs/reference/cli/commands
