@@ -201,10 +201,12 @@ func (o Options) required() error {
 // Every other half runs whatever the one before it answered: each judges its
 // own items, keeps what its own reads cannot clear, and refuses or faults on
 // its own, and once the run's context has ended each later half refuses
-// itself before it reads anything. The result's Refusal and the error are
-// the first half's refusal or fault, so ExitCode reads ExitRefused when any
-// half refused or faulted. Each failed-closed check is said once: the first
-// half's note for each, and every distinct forge note.
+// itself before it reads anything. The result's Refusal is every half's
+// refusal or fault, each distinct one once, named by its half, in the order
+// the halves ran, and the error carries the same text and wraps every
+// half's error, so ExitCode reads ExitRefused when any half refused or
+// faulted. Each failed-closed check is said once: the first half's note for
+// each, and every distinct forge note.
 func runSweep(ctx context.Context, repoRoot string, o Options, apply bool) (Result, error) {
 	if err := o.required(); err != nil {
 		return refused(err)
@@ -212,22 +214,28 @@ func runSweep(ctx context.Context, repoRoot string, o Options, apply bool) (Resu
 	// One pin serves every half: origin's repository is asked of the forge
 	// once a run.
 	o = o.pinnedForge(ctx, repoRoot)
-	halves := []func() (Result, error){
-		func() (Result, error) {
+	halves := []struct {
+		name string
+		run  func() (Result, error)
+	}{
+		{"worktrees", func() (Result, error) {
 			if apply {
 				return runApply(ctx, repoRoot, o)
 			}
 			return runDry(ctx, repoRoot, o)
-		},
-		func() (Result, error) { return sweepBranches(ctx, repoRoot, apply) },
-		func() (Result, error) { return sweepRemote(ctx, repoRoot, o, apply) },
-		func() (Result, error) { return sweepReservations(ctx, repoRoot, o, apply) },
-		func() (Result, error) { return sweepInbox(ctx, repoRoot, o, apply) },
+		}},
+		{"local branches", func() (Result, error) { return sweepBranches(ctx, repoRoot, apply) }},
+		{"origin's branches", func() (Result, error) { return sweepRemote(ctx, repoRoot, o, apply) }},
+		{"reservations", func() (Result, error) { return sweepReservations(ctx, repoRoot, o, apply) }},
+		{"inbox", func() (Result, error) { return sweepInbox(ctx, repoRoot, o, apply) }},
 	}
 	out := Result{Rows: []Row{}, Applied: apply}
-	var first error
+	var (
+		errs     []error
+		refusals []string
+	)
 	for _, half := range halves {
-		res, err := half()
+		res, err := half.run()
 		out.Rows = append(out.Rows, res.Rows...)
 		out.Lane = firstNonEmpty(out.Lane, res.Lane)
 		out.ProcessCheckUnavailable = firstNonEmpty(out.ProcessCheckUnavailable, res.ProcessCheckUnavailable)
@@ -237,12 +245,18 @@ func runSweep(ctx context.Context, repoRoot string, o Options, apply bool) (Resu
 		if res.ForgeNote != "" && !strings.Contains(out.ForgeNote, res.ForgeNote) {
 			out.ForgeNote = strings.TrimPrefix(out.ForgeNote+"; "+res.ForgeNote, "; ")
 		}
-		if err != nil && first == nil {
-			first = err
-			out.Refusal = firstNonEmpty(res.Refusal, clean(err.Error()))
+		if err != nil {
+			errs = append(errs, err)
+			if r := half.name + ": " + firstNonEmpty(res.Refusal, clean(err.Error())); !slices.Contains(refusals, r) {
+				refusals = append(refusals, r)
+			}
 		}
 	}
-	return out, first
+	if len(errs) == 0 {
+		return out, nil
+	}
+	out.Refusal = strings.Join(refusals, "; ")
+	return out, &refusal{msg: out.Refusal, cause: errors.Join(errs...)}
 }
 
 // refused is the result and error of a run that refused before judging. The

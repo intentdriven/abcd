@@ -131,3 +131,25 @@ func TestAHalfThatRefusesLeavesTheOthersToAct(t *testing.T) {
 		t.Fatalf("a run with no reader of the loop's holds: err %v, exit %d, rows %+v", err, res.ExitCode(), res.Rows)
 	}
 }
+
+// TestEveryHalfsRefusalIsCarried: two halves that refuse are both in the
+// run's Refusal and its error, each named by its half, in the order the
+// halves ran, and the error wraps each half's cause.
+func TestEveryHalfsRefusalIsCarried(t *testing.T) {
+	repo, o, _ := everyKind(t)
+	fetchFailed := errors.New("the reservations could not be fetched")
+	j := spentAndKept()
+	j.err = fetchFailed
+	o.reservations = j.judge
+	inboxFailed := errors.New("the inbox is not a folder")
+	o.inbox = func() ([]report.Entry, error) { return nil, inboxFailed }
+
+	res, err := runSweep(context.Background(), repo.Root(), o, true)
+	want := "reservations: judging the reservations: the reservations could not be fetched; inbox: reading abcd's inbox: the inbox is not a folder"
+	if err == nil || res.Refusal != want || err.Error() != want || res.ExitCode() != ExitRefused {
+		t.Fatalf("refusal %q, err %v, exit %d; want %q", res.Refusal, err, res.ExitCode(), want)
+	}
+	if !errors.Is(err, fetchFailed) || !errors.Is(err, inboxFailed) {
+		t.Fatalf("the error %v does not wrap both halves' causes", err)
+	}
+}
