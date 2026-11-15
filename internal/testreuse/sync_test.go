@@ -654,3 +654,53 @@ func replaceHead(t *testing.T, dir, rel, body string) string {
 	runGit(t, dir, "replace", head, other)
 	return other
 }
+
+// forgeGraphHead writes the repository's commit-graph and alters it to claim
+// for HEAD a tree with body at rel, leaving the index and worktree at HEAD as
+// stored. It returns the tree the graph claims.
+func forgeGraphHead(t *testing.T, dir, rel, body string) string {
+	t.Helper()
+	head := runGit(t, dir, "rev-parse", "HEAD")
+	writeFile(t, filepath.Join(dir, rel), body, 0o644)
+	runGit(t, dir, "add", "-A")
+	forged := runGit(t, dir, "write-tree")
+	runGit(t, dir, "reset", "-q", "--hard", head)
+	runGit(t, dir, "commit-graph", "write", "--reachable")
+	gittest.ForgeCommitGraphTree(t, runGit(t, dir, "rev-parse", "--absolute-git-dir"), head, forged)
+	if got := runGit(t, dir, "-c", "core.commitGraph=true", "log", "-1", "--format=%T", head); got != forged {
+		t.Fatalf("the altered commit-graph does not take: HEAD reads as tree %s", got)
+	}
+	return forged
+}
+
+// TestTheReuseReadsNoCommitGraph: a commit-graph file is a cache git takes a
+// commit's tree from in place of the commit, so one altered by hand can claim
+// another tree for HEAD, and git status then compares the worktree with that
+// tree. The reuse's git reads the commit's own tree, whatever the environment
+// asks of the graph: a `git -c core.commitGraph=true` the stage inherited, or
+// git's test switch for a graph.
+func TestTheReuseReadsNoCommitGraph(t *testing.T) {
+	for name, env := range map[string][2]string{
+		"plain":                  {},
+		"a caller asking for it": {"GIT_CONFIG_PARAMETERS", "'core.commitgraph'='true'"},
+		"test switch turned on":  {"GIT_TEST_COMMIT_GRAPH", "1"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newGitRepo(t)
+			r.write("a.txt", "stored\n")
+			r.commit("one")
+			tree := r.git("rev-parse", "HEAD^{tree}")
+			forgeGraphHead(t, r.root, "a.txt", "forged\n")
+			if env[0] != "" {
+				t.Setenv(env[0], env[1])
+			}
+			ctx := context.Background()
+			if out, err := gitOutput(ctx, r.root, "log", "-1", "--format=%T", "HEAD"); err != nil || strings.TrimSpace(string(out)) != tree {
+				t.Errorf("HEAD's tree reads as %q, %v; want the stored %s", out, err, tree)
+			}
+			if out, err := gitOutput(ctx, r.root, "status", "--porcelain"); err != nil || len(out) != 0 {
+				t.Errorf("git status over a worktree that is HEAD as stored says %q, %v; want nothing", out, err)
+			}
+		})
+	}
+}

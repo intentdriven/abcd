@@ -187,7 +187,8 @@ func gitEnv() []string {
 
 // storedGitEnv is gitEnv for a git that reads the commit under test, its tree
 // and its blobs: no refs/replace/* ref stands another object in for one the
-// commit stores, and no graft file gives it other parents, so what the check
+// commit stores, no graft file gives it other parents, and no commit-graph
+// file claims another tree for it (gitutil.AsStoredEnv), so what the check
 // directory holds and the tree a report names are the commit as stored, the
 // tree a receipt for that commit vouches for. A test line keeps gitEnv: what a
 // test's own git sees is the test's business.

@@ -11,19 +11,50 @@ import (
 
 // asStored makes an isolated command read history as stored: no
 // refs/replace/* ref stands one object in for another
-// (GIT_NO_REPLACE_OBJECTS), and no .git/info/grafts file gives a commit
+// (GIT_NO_REPLACE_OBJECTS), no .git/info/grafts file gives a commit
 // parents it does not store (noGraftFile), which git honours even with
-// replace refs off.
+// replace refs off, and no commit-graph file stands in for a commit's tree
+// and parents (AsStoredEnv).
 func asStored(cmd *exec.Cmd) *exec.Cmd {
 	cmd.Env = AsStoredEnv(cmd.Env)
 	return cmd
 }
 
-// AsStoredEnv is env with the two variables asStored sets appended, for a git
-// command built outside this package that must read objects as stored. They
-// come last, so they win over any value env already carries.
+// commitGraphOff is the GIT_CONFIG_PARAMETERS entry that turns the
+// commit-graph off, in the quoting git writes for `git -c`.
+const commitGraphOff = "'core.commitgraph'='false'"
+
+// AsStoredEnv is env made to read objects as stored, for a git command built
+// outside this package as well as asStored's own: GIT_NO_REPLACE_OBJECTS=1,
+// GIT_GRAFT_FILE naming no file, core.commitGraph false as the last entry of
+// GIT_CONFIG_PARAMETERS, and GIT_TEST_COMMIT_GRAPH=0. A commit-graph is a cache
+// git reads a commit's tree and parents from in place of the commit, and one
+// written by hand can claim another tree. The entry follows whatever entries
+// env's GIT_CONFIG_PARAMETERS carries, which stay, and the last entry wins;
+// GIT_TEST_COMMIT_GRAPH, which loads a graph whatever the setting says, is
+// off. This is what .githooks/pre-push sets. The variables come last and any
+// earlier value of them is dropped. env itself is not changed.
 func AsStoredEnv(env []string) []string {
-	return append(env, "GIT_NO_REPLACE_OBJECTS=1", "GIT_GRAFT_FILE="+noGraftFile)
+	out := make([]string, 0, len(env)+4)
+	params := ""
+	for _, kv := range env {
+		switch key, value, _ := strings.Cut(kv, "="); key {
+		case "GIT_CONFIG_PARAMETERS":
+			params = value
+		case "GIT_NO_REPLACE_OBJECTS", "GIT_GRAFT_FILE", "GIT_TEST_COMMIT_GRAPH":
+		default:
+			out = append(out, kv)
+		}
+	}
+	if params != "" {
+		params += " "
+	}
+	return append(out,
+		"GIT_NO_REPLACE_OBJECTS=1",
+		"GIT_GRAFT_FILE="+noGraftFile,
+		"GIT_CONFIG_PARAMETERS="+params+commitGraphOff,
+		"GIT_TEST_COMMIT_GRAPH=0",
+	)
 }
 
 // RunCappedAsStored is RunCapped reading history as stored (asStored): for a
