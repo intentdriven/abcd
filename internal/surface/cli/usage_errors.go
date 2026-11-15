@@ -193,14 +193,16 @@ type typedArgument struct {
 // working-directory or home form, to a relative path or to its base name; as
 // the value after its last `=`; and as its leading part, where a refusal cut it
 // short. Six kinds are left as they are: an argument shorter than
-// minWithheldLen, the name of a command in the tree, a well-formed record id
-// (recordid.CitedIDRe), a well-formed run id (loop.ValidRunID), a flag value
-// that is a word of the flag's declared vocabulary (declareClosedSet) and a
-// relative path to something that exists in the working directory
-// (checkoutPath), which a refusal names so the caller can find the record or
-// the run, see the word it gave, or see the overlap. The per-site wording
-// names what was refused; this pass is the backstop for a site that still
-// repeats it.
+// minWithheldLen, the name of a command in the tree or part of one, a
+// well-formed record id (recordid.CitedIDRe), a well-formed run id
+// (loop.ValidRunID), a flag value that is a word of the flag's declared
+// vocabulary (declareClosedSet) and a relative path to something that exists
+// in the working directory (checkoutPath), which a refusal names so the caller
+// can find the record or the run, see the word it gave, or see the overlap.
+// Part of a command name is abcd's own text, so withholding it would only
+// garble the name a refusal suggests: `abcd explain library cite-chec` names
+// `abcd library cite-check` whole. The per-site wording names what was
+// refused; this pass is the backstop for a site that still repeats it.
 func withholdArguments(root *cobra.Command, args []string, msg string) string {
 	ops := typedArguments(root, args)
 	// Longest first, so an argument that holds a shorter one is withheld whole.
@@ -241,7 +243,7 @@ func typedArguments(root *cobra.Command, args []string) []typedArgument {
 	commands := commandNames(root)
 	var ops []typedArgument
 	add := func(v string, i int) {
-		if len(v) < minWithheldLen || commands[v] || recordid.CitedIDRe.MatchString(v) || loop.ValidRunID(v) || checkoutPath(v) {
+		if len(v) < minWithheldLen || partOfCommandName(commands, v) || recordid.CitedIDRe.MatchString(v) || loop.ValidRunID(v) || checkoutPath(v) {
 			return
 		}
 		ops = append(ops, typedArgument{text: v, pos: i + 1})
@@ -431,6 +433,20 @@ func replaceWhole(s, old, repl string) string {
 
 func isWordRune(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+// partOfCommandName reports whether v is a command name or alias in names, or
+// a part of one.
+func partOfCommandName(names map[string]bool, v string) bool {
+	if names[v] {
+		return true
+	}
+	for name := range names {
+		if strings.Contains(name, v) {
+			return true
+		}
+	}
+	return false
 }
 
 // commandNames is the set of every command name and alias in the tree, which
