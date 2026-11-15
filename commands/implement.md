@@ -1299,7 +1299,9 @@ reaches the remote (each remote's URLs, uploadpack, receivepack, proxy and
 vcs, every URL rewrite, the ssh command and `ssh.variant`, the proxy program,
 the protocol allow rules, `fetch.bundleURI`, each remote's mirror switch,
 which makes a push to it behave as if `--mirror` were given, and the partial
-clone's settings: each remote's promisor switch and partial-clone filter,
+clone's settings: each remote's promisor switch, partial-clone filter and
+token (`remote.<name>.token`, which `git help --config` does not list, and
+which git-config(1) documents under `promisor.checkFields`),
 `extensions.partialClone`, which names a promisor remote, and every
 `promisor.*` key, among them `promisor.acceptFromServer`, which lets the
 server a fetch reaches name promisor remotes; a git that reads a missing
@@ -1385,18 +1387,18 @@ so does a known one in a form that can start a program or reach the network
 signature checked for a log or a listing, a repository made from a
 template, a remote updated or shown). The comparison's own reads never
 compare themselves, whatever the settings they read hold.
-On a difference the command is not run and fails naming the key (with the
-lane worktree, for a key set at a lane's own scope) or the file; its remedy
-gives the git command that shows where each is set. A difference at a pass of the loop
-ends the drive, and so does a read there that gives no answer: the drive
+On a difference the command is not run and fails naming the key (with the lane
+worktree, for a key set at a lane's own scope) or the file; its remedy gives
+the git command that shows where each is set. A difference at a pass of the
+loop ends the drive, and so does a read there that gives no answer: the drive
 reads what it holds only as it starts, so a change of yours to a watched
 setting while a drive runs (a new credential helper, an editor, an include)
-ends it too. Look at the change and start it again. When a drive ends that
-way it releases nothing, since releasing is a push: it names each
-reservation it leaves and when its lease lapses, and once the setting is as it
-should be you release one with `abcd reserve <id> --release`, or start the
-drive again, which takes the run up. What changes between a comparison and
-git's own run of the command is not seen.
+ends it too. Look at the change and start it again. When a drive ends that way
+it releases nothing, since releasing is a push: it names each reservation it
+leaves and when its lease lapses, and once the setting is as it should be you
+release one with `abcd reserve <id> --release`, or start the drive again,
+which takes the run up. What changes between a comparison and git's own run of
+the command is not seen.
 
 One comparison is about a dozen reads of git (in each of the three
 environments, its settings listing and its two attributes files, then any
@@ -1476,40 +1478,43 @@ option and reads neither setting), leaves each such submodule out by pathspec,
 which changes nothing it stages, with its pathspecs given to git on its
 standard input, so no number of submodules bounds it, and read as abcd writes
 them whatever `GIT_LITERAL_PATHSPECS` says: the add is given
-`--no-literal-pathspecs`, so git sets `GIT_LITERAL_PATHSPECS=0` for any hook
-the add runs. A sync's merge, which first saves the lane's uncommitted changes
-and so can look inside a submodule, is not made
-where the lane's index records a submodule with a repository checked out at
-its path, whether or not `.gitmodules` names it: the lane is handed back,
-naming the path, before anything changes, with the remedy to merge the default
-branch in by hand or to remove that checkout; a submodule with nothing checked
-out merges as before. Nothing is added to the merge's command line for this,
-so the hooks the merge runs read each submodule's `ignore` setting as the
-repository sets it. A submodule whose checked-out commit is not the one the
-index records still reads as changed and is still staged; uncommitted changes
-inside a submodule's working tree are not counted. A commit given its message
-looks inside a submodule only when it has nothing to commit, and the drive's
-commits always have their record to commit or are made with `--allow-empty`;
-the removal of a merged lane's worktree is refused by git, for a worktree that
-holds a checked-out submodule, before git reads that worktree's status. A
-fetch abcd makes goes into no submodule either, whatever any scope or the
-tree's `.gitmodules` sets (your own fetch, pull, checkout and status are as
-before). What remains: a submodule moved, or checked out, between the
-drive's read of it and git's own command is not seen; and where your settings
-turn recursion on (`push.recurseSubmodules`, or `submodule.recurse`, which git
-documents as read by checkout, fetch, grep, pull, push, read-tree, reset,
-restore and switch; both are held), the drive's commands among those that
-recurse, its push and reset, go into each checked-out submodule (the reset
-into each submodule git counts active, which `submodule.<name>.active` can
-decide), under that submodule's own settings, which the drive does not hold.
-Not held either: an
-`origin` defined only by a legacy remotes or branches file in the git
-directory, which has no key to compare; and a file named by an include inside
-a conditionally included file whose condition does not hold at the checkout.
-The shell guard judges a command against a list of settings of its own, which
-is not this one. A step the host runs and a single build
-carry no such record: there these settings must not change between one lane's
-run and the next, and nothing enforces it.
+`--no-literal-pathspecs`, so git sets `GIT_LITERAL_PATHSPECS=0` for every
+program the add starts (a content filter; the add runs no hook, since abcd
+sets `core.hooksPath` to `/dev/null` on its command line), and
+`GIT_ICASE_PATHSPECS`, which no option of git undoes, is taken out of the
+add's environment, so an exclude matches only the submodule's own path, in its
+own case, and no program the add starts sees that variable. A sync's merge,
+which first saves the lane's uncommitted changes and so can look inside a
+submodule, is not made where the lane's index records a submodule with a
+repository checked out at its path, whether or not `.gitmodules` names it: the
+lane is handed back, naming the path, before anything changes, with the remedy
+to merge the default branch in by hand or to remove that checkout; a submodule
+with nothing checked out merges as before. Nothing is added to the merge's
+command line for this, so the hooks the merge runs read each submodule's
+`ignore` setting as the repository sets it. A submodule whose checked-out
+commit is not the one the index records still reads as changed and is still
+staged; uncommitted changes inside a submodule's working tree are not counted.
+A commit given its message looks inside a submodule only when it has nothing
+to commit, and the drive's commits always have their record to commit or are
+made with `--allow-empty`; the removal of a merged lane's worktree is refused
+by git, for a worktree that holds a checked-out submodule, before git reads
+that worktree's status. A fetch abcd makes goes into no submodule either,
+whatever any scope or the tree's `.gitmodules` sets (your own fetch, pull,
+checkout and status are as before). What remains: a submodule moved, or
+checked out, between the drive's read of it and git's own command is not seen;
+and where your settings turn recursion on (`push.recurseSubmodules`, or
+`submodule.recurse`, which git documents as read by checkout, fetch, grep,
+pull, push, read-tree, reset, restore and switch; both are held), the drive's
+commands among those that recurse, its push and reset, go into each
+checked-out submodule (the reset into each submodule git counts active, which
+`submodule.<name>.active` can decide), under that submodule's own settings,
+which the drive does not hold. Not held either: an `origin` defined only by a
+legacy remotes or branches file in the git directory, which has no key to
+compare; and a file named by an include inside a conditionally included file
+whose condition does not hold at the checkout. The shell guard judges a
+command against a list of settings of its own, which is not this one. A step
+the host runs and a single build carry no such record: there these settings
+must not change between one lane's run and the next, and nothing enforces it.
 
 A run whose fingerprint an earlier abcd recorded holds only the hooks
 directory's top level, and a symlink by its target's text, for the checkout
