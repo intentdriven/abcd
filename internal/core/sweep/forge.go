@@ -80,12 +80,14 @@ func oneRepository(fetch, push []string) (key, why string) {
 	return key, ""
 }
 
-// repoNameRe is one segment of a forge repository's owner/name.
-var repoNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+// repoNameRe is the host, or one segment of a forge repository's
+// owner/name: letters, digits, '.', '_' and '-', never opening with '-', so
+// no part of the name the forge client is given reads as a flag.
+var repoNameRe = regexp.MustCompile(`^[A-Za-z0-9._][A-Za-z0-9._-]*$`)
 
 // forgeRepoName is the repository a key names as the forge client takes it,
 // host/owner/name, and whether the key names one: a host with no port and a
-// path of exactly an owner and a name.
+// path of exactly an owner and a name, none of the three opening with '-'.
 func forgeRepoName(key string) (string, bool) {
 	host, path := forgerepo.SplitKey(key)
 	if host == "" || strings.Contains(host, ":") || !repoNameRe.MatchString(host) {
@@ -130,7 +132,8 @@ func pinForge(ctx context.Context, root string, gh store.GH) (store.GH, string, 
 		return fail("origin's address names no owner and repository on a forge's host")
 	}
 	// The repository rides as gh repo view's one positional argument, which
-	// takes no --repo; forgeRepoName admits no character a flag opens with.
+	// takes no --repo; forgeRepoName admits no name that opens with '-', the
+	// character a flag opens with.
 	out, err := forgeCall(ctx, gh, root, "repo", "view", repo, "--json", "nameWithOwner,url,sshUrl")
 	if err != nil {
 		return fail("the forge could not be asked for " + repo + ": " + answerText(err))

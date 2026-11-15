@@ -167,9 +167,9 @@ func TestOriginMustBeOneRepository(t *testing.T) {
 }
 
 // TestTheForgeIsAskedForOriginsRepositoryByName: the name the forge client is
-// asked for is host/owner/name, which opens with the host, so it is never
-// read as a flag; an address naming no owner and name on a host, or a host
-// with a port, names none.
+// asked for is host/owner/name, none of the three opening with '-', so no part
+// of it is read as a flag; an address naming no owner and name on a host, or a
+// host with a port, names none.
 func TestTheForgeIsAskedForOriginsRepositoryByName(t *testing.T) {
 	for key, want := range map[string]string{
 		"forge.example:/acme/widgets":      "forge.example/acme/widgets",
@@ -180,6 +180,10 @@ func TestTheForgeIsAskedForOriginsRepositoryByName(t *testing.T) {
 		"forge.example:/acme/widgets/sub":  "",
 		"forge.example:/../widgets":        "",
 		"forge.example:/acme/wid gets":     "",
+		"-bx:/acme/widgets":                "",
+		"forge.example:/-acme/widgets":     "",
+		"forge.example:/acme/-widgets":     "",
+		"forge.example:/a-cme/wid-gets":    "forge.example/a-cme/wid-gets",
 	} {
 		if got, ok := forgeRepoName(key); got != want || ok != (want != "") {
 			t.Errorf("forgeRepoName(%q) = %q, %v; want %q", key, got, ok, want)
@@ -308,3 +312,4 @@ func TestTheDeleteProofAsksTheForgeOnlyOfOriginsRepository(t *testing.T) {
 		t.Fatalf("calls %v; want the repository asked for, and nothing else", calls)
 	}
 }
+
