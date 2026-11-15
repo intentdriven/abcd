@@ -10,7 +10,7 @@ severity: minor
 impact: additive
 origin: researcher-authored
 production_mode: dictated-and-formatted
-related_issues: [iss-2609091037191879, iss-2610142200372105, iss-2608220750029993, iss-2610150726321422, iss-2610150726331622]
+related_issues: [iss-2609091037191879]
 related_intents: [itd-2609151838327688, itd-2610100704270254, itd-2609150819440345, itd-2610170634394993]
 related_adrs: [adr-2610031352212697, adr-2610150729333337]
 ---
@@ -172,3 +172,4 @@ _Empty. Populated by intent-auditor when intent moves to shipped/._
 ## Grounds
 
 - pursued: from today a second person's sessions and cloud sessions work on this project, and none of them can see the messages local sessions use to avoid merging into each other's work; we expect notes and the release hold to stop that, and it would be shown wrong by a session merging into a held release or onto an announced merge in the first two weeks.
+- deferred: four open issues were taken out of `related_issues` at the close on 2026-11-15, because this intent delivers none of them and its criteria promise none, and each still names this intent in its own `related_intents`: iss-2610142200372105, the reservation clock bound, which C9 closes for announcements only (decision 13 borrows its shape); iss-2608220750029993, session presence, kept apart by the decomposition and decision 16; iss-2610150726321422 and iss-2610150726331622, the dashboard rename and the split of `abcd peers`, which decision 21 and the spec leave out of scope. We expect each to be delivered by its own later work, and this would be shown wrong if one of them turns out to need a change to announcements or `abcd status` as shipped here. Decided by the run for owner review in dcn-2611151137343508.
