@@ -951,4 +951,15 @@ func TestAStagesQuestionCheckKeepsTheDefaultLimits(t *testing.T) {
 	if st.Limits.Rows != 40 {
 		t.Errorf("outside a stage the check does not read the file: rows %d", st.Limits.Rows)
 	}
+	// A value naming no commit is no walled launch, as rules.LoadAt holds for
+	// the prompt hook: the check reads the files, so a person's own lower
+	// figures are never dropped by setting the variable to anything at all.
+	for _, bogus := range []string{"1", "HEAD", "0123456789abcdef"} {
+		t.Setenv(runner.StageBaseEnv, bogus)
+		st = question.State{}
+		questionLimitsAt(repo, &st)
+		if st.Limits.Rows != 40 || st.LimitsSource[0] != ".abcd/config.json" {
+			t.Errorf("stage base %q, naming no commit, switched the check to the defaults: rows %d, source %v", bogus, st.Limits.Rows, st.LimitsSource)
+		}
+	}
 }

@@ -750,9 +750,11 @@ const questionPointerLine = "Check the next draft with `abcd guard question` bef
 // Under a walled launch the check keeps abcd's defaults, reported as
 // bundled, as the GRILL domain the stage's prompt hook injects states them
 // (rulesForHook): the working tree's .abcd/config.json there is the lane's
-// own writing, never a limit the lane is held to.
+// own writing, never a limit the lane is held to. A value naming no commit
+// is no walled launch, as rules.LoadAt holds, so the files are read: setting
+// the variable to anything at all never drops a person's lower figures.
 func questionLimitsAt(cwd string, st *question.State) {
-	if os.Getenv(runner.StageBaseEnv) != "" {
+	if gitutil.IsFullSHA(os.Getenv(runner.StageBaseEnv)) {
 		st.Limits = question.Default
 		st.LimitsSource = make([]string, len(st.Limits.Configurable()))
 		for i := range st.LimitsSource {
