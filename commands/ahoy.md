@@ -1798,7 +1798,8 @@ found". `--json` gives `store` and `lanes`, each lane with `key`, `label`,
 
 **The forge read.** `list` and `prune` each ask the forge once a run, through
 the person's own `gh`, for the repository's pull requests: one read-only
-`gh pr list`. That read is part of what both verbs do. A branch counts as merged
+`gh pr list`. `list --all` asks once for each checkout its lanes' worktrees
+name. That read is part of what both verbs do. A branch counts as merged
 when its pull request merged into the default branch with the local tip as its
 head commit, when its tip is an ancestor of the default branch and it holds a
 commit of its own, when every commit on it has an equivalent on the default

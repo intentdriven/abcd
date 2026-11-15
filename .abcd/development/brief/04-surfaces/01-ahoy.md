@@ -142,8 +142,10 @@ flags.
   advisory gap while no provider is configured.
 - **The provider setup** sets one provider up, and writes. See below.
 - **The worktree verbs** give a session or an agent a checkout of its own in
-  the machine-scoped worktree store, list what the store holds, and reclaim what
-  has merged. Adding and pruning write; listing does not. See below.
+  the machine-scoped worktree store, list what the store holds, reclaim what has
+  merged and a quiet unmerged worktree the person names, and keep the Go build
+  cache under its size limit. Adding, pruning and the cache trim write; listing
+  does not. See below.
 
 **Not built yet:** `destroy`, a nuclear uninstall that would remove the `.abcd/`
 namespace too (itd-10), as distinct from the uninstall's reversible behaviour.
@@ -360,8 +362,9 @@ The appendix lists the sub-verbs and their options.
   repository-wide `git worktree prune`. Files git ignores outside the local tier
   go with the worktree unarchived (iss-2610272112319234 holds that finding).
   After a removal it trims the Go build cache. It exits 0 when it reclaimed a
-  worktree, 1 when it reclaimed none, and 2 on a refusal or fault; its dry run
-  removes, archives and trims nothing and exits as the real run would.
+  worktree, 1 when it reclaimed none, and 2 on a refusal or fault. Its dry run
+  removes, archives and trims nothing, reports `would reclaim` where a real run
+  reports `reclaimed`, and exits as the real run would.
 
 A quiet worktree is an unmerged one whose last activity (the tip's commit time,
 the worktree's `.git` file and its changed files, whichever is latest) is older
@@ -377,9 +380,10 @@ tip as its head; the tip is an ancestor of the default branch and the branch
 holds a commit of its own, counted from the start the add recorded or, with
 none recorded, from its reflog; every commit has an equivalent on the default
 branch; or the branch's whole diff matches one commit there by stable patch id.
-Listing and pruning each ask the forge once a run with one read-only
-`gh pr list`, a fetch their documented meaning includes under
-[invariant 7](../02-constraints/03-invariants.md); with no forge answering they
+Listing this repository and pruning each ask the forge once a run with one
+read-only `gh pr list`, and listing every lane asks once for each checkout its
+lanes' worktrees name: a fetch their documented meaning includes under
+[invariant 7](../02-constraints/03-invariants.md). With no forge answering they
 judge from git alone and say so once. The `/abcd` board's worktrees line never
 asks the forge: it counts the lane's worktrees from the peers scan the board
 already runs, and its "can be cleared" count is an estimate that the prune's own
