@@ -54,7 +54,7 @@ type Renewal struct {
 // reservations as last fetched (View), which asks the network nothing, and
 // each renewal is a renew-only, live-only act (Request.Renew, Request.Live):
 // it never reserves a record anew, never takes one over and never revives one
-// that has lapsed. A renewal keeps the tip's own term (renewalTerm). A
+// that has lapsed. A renewal keeps the tip's own term (RenewalTerm). A
 // release subject is left alone: its hold is a release cut's, kept by the
 // cut. Only a reservation whose tip is the commit this copy itself last
 // pushed for it (pushedHere) is renewed; any other tip is left as it is, and
@@ -98,29 +98,31 @@ func renewDue(root string, o Options) ([]Renewal, error) {
 	}
 	var out []Renewal
 	for _, r := range snap.Reservations {
-		if r.Copy != CopyThis || r.State != StateLive || isRelease(r.Record) || !halfThrough(r, now) {
+		if r.Copy != CopyThis || r.State != StateLive || isRelease(r.Record) || !HalfThrough(r, now) {
 			continue
 		}
 		if pushedHere(root, r.Record) != r.Commit {
 			out = append(out, Renewal{Record: r.Record, Err: errNotPushedHere})
 			continue
 		}
-		res, err := Reserve(root, Request{Record: r.Record, Renew: true, Live: true, Lease: renewalTerm(r)}, o)
+		res, err := Reserve(root, Request{Record: r.Record, Renew: true, Live: true, Lease: RenewalTerm(r)}, o)
 		out = append(out, Renewal{Record: r.Record, Until: res.ExpiresAt, Err: err})
 	}
 	return out, nil
 }
 
-// halfThrough reports whether r is half through its lease at now, counted from
-// its claimed-at to its effective expiry: the point a renewal is due.
-func halfThrough(r Reservation, now time.Time) bool {
+// HalfThrough reports whether r is half through its lease at now, counted from
+// its claimed-at to its effective expiry: the point a renewal is due. It and
+// RenewalTerm are exported so the implement loop's renewals call them rather
+// than keep copies that could drift from the waiter's (iss-2610171047088861).
+func HalfThrough(r Reservation, now time.Time) bool {
 	return !now.Before(r.ClaimedAt.Add(r.EffectiveExpiry.Sub(r.ClaimedAt) / 2))
 }
 
-// renewalTerm is the lease a renewal of r pushes: r's own term, never shorter
+// RenewalTerm is the lease a renewal of r pushes: r's own term, never shorter
 // than the default nor longer than a day, so a renewal never cuts a longer
 // term a fence gave a pull request waiting on a person.
-func renewalTerm(r Reservation) time.Duration {
+func RenewalTerm(r Reservation) time.Duration {
 	return min(max(lease.Default, r.EffectiveExpiry.Sub(r.ClaimedAt)), lease.Max)
 }
 

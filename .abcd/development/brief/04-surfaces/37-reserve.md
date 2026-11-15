@@ -340,6 +340,23 @@ case-sensitively and patterns that unset it match regardless of case, so a
 file is generated only where git would call it generated on a clone that
 ignores case and on one that does not. A file counts only when origin's default branch
 holds it, so a directory is never generated, even when every file under it is.
+The declaration and the files are read from the one tree origin's default
+branch names, and the answer is kept in the checkout's local tier
+(`.abcd/.work.local/reservation/generated`) under a key made of that tree,
+the default branch's ref, the two matching budgets, the kept file's format
+version, and the running binary as the process found it at start: its path,
+size and time written, with the version and source revision its build
+stamped when it carries them. A view with a live footprint therefore lists
+and matches the files once each time the default branch moves to another
+tree rather than on every view. A kept answer that git tracks, that is not a
+regular file, that is past 16 MiB or names more paths than a listing within
+its budget can (610,080), or that does not answer the key in hand, is read
+afresh; only a match that ran to its end, or past its budget, is kept, and
+a set past either cap is not (iss-2610170833428011). The check that git does
+not track the kept file runs under the stop check's deadline in that hook, and
+under five seconds of its own for every other reader; the read and the write each
+make that check, and one that runs out reads as nothing kept or writes nothing. A walled stage of a
+build or drain does not write the reservation state directory.
 Every misreading leans towards "not generated": a declaration that cannot be
 read, is over the cap, holds a NUL byte or passes the step budget its
 matching is held to shares nothing (a line past its own budget for one path

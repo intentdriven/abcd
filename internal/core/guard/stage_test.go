@@ -317,6 +317,33 @@ func TestAStageDoesNotWriteWhatArmsAMerge(t *testing.T) {
 	}
 }
 
+// TestAStageDoesNotWriteTheReservationState: the reservation state in the
+// local tier, at the top of the tree or deeper, is abcd's own to write; the
+// rest of the tier stays open.
+func TestAStageDoesNotWriteTheReservationState(t *testing.T) {
+	tree := t.TempDir()
+	for _, rel := range []string{
+		".abcd/.work.local/reservation",
+		".abcd/.work.local/reservation/copy-key",
+		".abcd/.work.local/reservation/generated",
+		"nested/.abcd/.work.local/reservation/fetched-at",
+	} {
+		if StageWriteRefusal([]string{tree}, nil, filepath.Join(tree, rel)) == "" {
+			t.Errorf("a stage may write %s", rel)
+		}
+	}
+	for _, rel := range []string{".abcd/.work.local/reservations-notes", "internal/reservation/a.go"} {
+		if why := StageWriteRefusal([]string{tree}, nil, filepath.Join(tree, rel)); why != "" {
+			t.Errorf("%s is refused: %s", rel, why)
+		}
+	}
+	home := t.TempDir()
+	stage := NewFiles(tree).WithStage(filepath.Join(home, "stage"), nil, nil)
+	if a := approveShell(clean(), stage, `printf x > .abcd/.work.local/reservation/generated`); a.Allow {
+		t.Error("a stage's line wrote the reservation state")
+	}
+}
+
 // TestAStageDoesNotLand: the loop lands, a stage does not; the verbs a stage's work
 // needs stay open.
 func TestAStageDoesNotLand(t *testing.T) {
