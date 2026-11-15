@@ -27,6 +27,7 @@ import (
 
 	store "github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
+	"github.com/intentdriven/abcd/internal/core/reservesweep"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -62,6 +63,10 @@ type Options struct {
 	// PruneOne. A test sets it to see which worktrees the prune was asked
 	// about.
 	pruneOne func(repoRoot, name string, opts store.PruneOptions) (store.Pruned, error)
+	// reservations is the reservation sweep's judgement; nil is
+	// reservesweep.Sweep. It is always asked with Apply false. A test sets
+	// it to judge reservations without a fetch.
+	reservations func(root string, o reservesweep.Options) (reservesweep.Report, error)
 }
 
 // runDry judges every worktree of the repository at repoRoot and every entry

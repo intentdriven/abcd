@@ -7,8 +7,8 @@ package sweep
 import "strings"
 
 // RowKind is what a row is about: worktrees, strays and the embargo store,
-// local branches and branches on origin; the reservation and inbox kinds join
-// them as the steps that judge those items land.
+// local branches, branches on origin and reservations; the inbox kind joins
+// them as the step that judges those items lands.
 type RowKind string
 
 const (
@@ -25,11 +25,14 @@ const (
 	// RowRemoteBranch is a branch on origin, as this checkout last fetched it
 	// (remote.go).
 	RowRemoteBranch RowKind = "remote-branch"
+	// RowReservation is a reservation branch on origin, as the reservation
+	// sweep judged it (reservations.go).
+	RowReservation RowKind = "reservation"
 )
 
 // Action is what `--apply` does with a row's item: remove, save-patch and keep
-// for worktrees, delete for branches; dispatch and promote join them with the
-// kinds they act on.
+// for worktrees, delete for branches and dispatch for spent reservations;
+// promote joins them with the kind it acts on.
 type Action string
 
 const (
@@ -43,6 +46,9 @@ const (
 	// `git branch -d`, a branch on origin deleted under a lease on the tip
 	// that was judged.
 	ActionDelete Action = "delete"
+	// ActionDispatch is a spent reservation: apply dispatches the reservation
+	// sweep's workflow, which deletes it. The sweep never deletes one itself.
+	ActionDispatch Action = "dispatch"
 	// ActionKeep leaves the item as it is, its reason saying why.
 	ActionKeep Action = "keep"
 )
@@ -58,6 +64,9 @@ const (
 	OutcomeSaved Outcome = "saved"
 	// OutcomeDeleted is a branch the delete took.
 	OutcomeDeleted Outcome = "deleted"
+	// OutcomeDispatched is a spent reservation the reservation sweep's
+	// workflow was dispatched to delete.
+	OutcomeDispatched Outcome = "dispatched"
 	// OutcomeKept is an item left as it was, its reason saying why: one the
 	// dry run kept, or one a check at the moment of acting kept.
 	OutcomeKept Outcome = "kept"
@@ -93,6 +102,10 @@ const (
 	// KindRemote is origin's own answer at the last check before a delete:
 	// its default branch and the branch's tip there.
 	KindRemote EvidenceKind = "remote"
+	// KindReservationSweep is the reservation sweep's judgement of a
+	// reservation branch, and KindWorkflow the dispatch of its workflow.
+	KindReservationSweep EvidenceKind = "reservation-sweep"
+	KindWorkflow         EvidenceKind = "workflow"
 )
 
 // Row is one item a sweep judged. Every string in it is display-ready: a path
@@ -140,6 +153,10 @@ type Result struct {
 	RunsUnread string `json:"runs_unread,omitempty"`
 	// ForgeNote is the store's note that no forge answered.
 	ForgeNote string `json:"forge_note,omitempty"`
+	// Workflow is what became of the reservation sweep's workflow: the run a
+	// dispatch started, or why none was dispatched and when the workflow's
+	// schedule runs it next.
+	Workflow string `json:"workflow,omitempty"`
 	// Refusal is why the run refused or faulted; "" when it completed.
 	Refusal string `json:"refusal,omitempty"`
 	// Applied marks a run that acted, each row carrying its Outcome; a dry
@@ -148,7 +165,7 @@ type Result struct {
 }
 
 // Notes are the lines a rendering puts once at the top: each failed-closed
-// check, then the forge note.
+// check, then the forge note, then the reservation workflow's.
 func (r Result) Notes() []string {
 	var out []string
 	if r.ProcessCheckUnavailable != "" {
@@ -162,6 +179,9 @@ func (r Result) Notes() []string {
 	}
 	if r.ForgeNote != "" {
 		out = append(out, r.ForgeNote)
+	}
+	if r.Workflow != "" {
+		out = append(out, r.Workflow)
 	}
 	return out
 }
