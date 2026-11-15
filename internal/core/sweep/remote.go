@@ -297,22 +297,29 @@ func (rj *remoteJudge) readLocal() error {
 // errForgeTimedOut is a forge call that did not answer within forgeTimeout.
 var errForgeTimedOut = errors.New("the forge did not answer in time")
 
-// forge asks the forge, bounded by forgeTimeout and the run's context. A call
-// still running at the deadline is abandoned, and its answer is no answer.
+// forge asks the forge for the run's judgement of origin's branches, through
+// forgeCall.
+func (rj *remoteJudge) forge(args ...string) (string, error) {
+	return forgeCall(rj.ctx, rj.o.Forge, rj.root, args...)
+}
+
+// forgeCall asks the forge client gh from root, bounded by forgeTimeout and
+// ctx. A call still running at the deadline is abandoned, and its answer is
+// no answer.
 //
-// An abandoned call may still be running in its goroutine when forge
+// An abandoned call may still be running in its goroutine when forgeCall
 // returns. That is safe: the channel is buffered, so the goroutine's one send
 // never blocks and it ends as soon as the call does, and nothing it shares
-// with forge is written after forge returns; its answer is dropped. Once the
-// run's context has ended no call starts at all, here or at the callers, which
+// with forgeCall is written after forgeCall returns; its answer is dropped.
+// Once ctx has ended no call starts at all, here or at the callers, which
 // check the context first, so a stopped run never has two forge calls in
 // flight. After a timeout alone the next call may overlap the abandoned one,
 // so Options.Forge must not rely on its calls being serialised.
-func (rj *remoteJudge) forge(args ...string) (string, error) {
-	if rj.o.Forge == nil {
+func forgeCall(ctx context.Context, gh store.GH, root string, args ...string) (string, error) {
+	if gh == nil {
 		return "", errors.New("no forge was asked")
 	}
-	if err := rj.ctx.Err(); err != nil {
+	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 	type answer struct {
@@ -321,7 +328,7 @@ func (rj *remoteJudge) forge(args ...string) (string, error) {
 	}
 	ch := make(chan answer, 1)
 	go func() {
-		out, err := rj.o.Forge(rj.root, args...)
+		out, err := gh(root, args...)
 		ch <- answer{out, err}
 	}()
 	t := time.NewTimer(forgeTimeout)
@@ -331,8 +338,8 @@ func (rj *remoteJudge) forge(args ...string) (string, error) {
 		return a.out, a.err
 	case <-t.C:
 		return "", errForgeTimedOut
-	case <-rj.ctx.Done():
-		return "", rj.ctx.Err()
+	case <-ctx.Done():
+		return "", ctx.Err()
 	}
 }
 
