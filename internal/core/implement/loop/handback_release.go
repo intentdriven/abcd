@@ -35,6 +35,11 @@ type handBackRelease struct {
 	// nothing was released.
 	arming string
 	armed  bool
+	// atLand is set on a landing's withdrawal (withdrawAfterWrite), which
+	// releases nothing: arming is then its record line, and refused the
+	// refusal of a withdrawal that did not take, which the step answers with.
+	atLand  bool
+	refused error
 	// unwritten is the second write's error: the line is not in the record.
 	unwritten error
 	// state is the run as the step left it, the release's line included.
@@ -64,16 +69,20 @@ type handBackRelease struct {
 // reservation_release_failed in the record: a drain routing the hand-back
 // releases it (releaseHandedBack), and otherwise it lapses once its lease runs
 // out unrenewed. No step and no run renewal renews a handed-back issue run's
-// reservation (handedBackIssue), but a load-gate waiter in this copy
-// (claim.RenewDue, which reads no run) may still renew it, as gateWaiterRenews
-// says, so the lease can run past the time the answer gives.
+// reservation (handedBackIssue), one still owing its arming's withdrawal
+// aside, but a load-gate waiter in this copy (claim.RenewDue, which reads no
+// run) may still renew it, as gateWaiterRenews says, so the lease can run past
+// the time the answer gives.
 //
 // A lane handed back with its pull request still armed (armingOwed) has the
 // arming withdrawn first, here, after the write, so a refused save leaves the
 // forge as it was (withdrawLateArming), and the record says what came of it.
 // Until the forge reports no arming nothing is released: the lane stays where
-// each later step tries the withdrawal again (laneWant), and that step's own
-// release is made once it has.
+// each later step tries the withdrawal again (laneWant), a drain reads it as
+// in progress (laneOutcome), each step and drain move renews the reservation
+// (handedBackIssue), and the step's own release is made once the withdrawal
+// has taken. Only a late writer's hand-back (lateWriterHandedBack) moves aside
+// the review receipt the loop recorded for the lane's head (voidOwnReview).
 func releaseAfterWrite(repoRoot string, st *State, lane string, now time.Time) *handBackRelease {
 	out := &handBackRelease{}
 	st.afterWritten(func(s *State, rewrite func() error) {
@@ -86,7 +95,7 @@ func releaseAfterWrite(repoRoot string, st *State, lane string, now time.Time) *
 		if armingOwed(s.Lanes[at]) {
 			l := s.Lanes[at]
 			c := Context{RepoRoot: repoRoot, RunDir: runRel(s.RunID), State: *s, Now: now}
-			note, err := withdrawLateArming(c, &l, StageHandedBack, lateHandBack(l), "it merges only if a person arms or merges it")
+			note, err := withdrawLateArming(c, &l, StageHandedBack, lateHandBack(l), "it merges only if a person arms or merges it", lateWriterHandedBack(l))
 			if r, ok := AsRefusal(err); ok {
 				note = r.Reason + "; " + r.Remedy
 			} else if err != nil {
@@ -172,6 +181,15 @@ func (r *handBackRelease) next() string {
 	if r == nil {
 		return ""
 	}
+	if r.atLand {
+		if r.refused != nil {
+			return refusalText(r.refused)
+		}
+		if r.arming == "" {
+			return ""
+		}
+		return r.arming + r.unwrittenNote("say so")
+	}
 	if r.arming != "" {
 		s := r.arming
 		if r.armed {
@@ -185,7 +203,18 @@ func (r *handBackRelease) next() string {
 	return r.releaseNext()
 }
 
-// releaseNext is next's word on the release alone.
+// refusalText is a refusal as an answer says it: its reason and remedy.
+func refusalText(err error) string {
+	if rf, ok := AsRefusal(err); ok {
+		return termsafe.Sanitize(fsutil.RedactHome(rf.Reason + "; " + rf.Remedy))
+	}
+	return termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+}
+
+// releaseNext is next's word on the release alone. A lease this checkout's
+// view does not show as this copy's, or could not read, gets no waiter's
+// clause: the waiter renews only a live reservation of this copy's
+// (lapseTail).
 func (r *handBackRelease) releaseNext() string {
 	if !r.made {
 		return ""
@@ -211,8 +240,6 @@ func (r *handBackRelease) releaseNext() string {
 		s += ", and nothing revives it"
 	case r.until != "":
 		s += "; its lease runs to " + r.until + " as last fetched, longer if a load-gate waiter in this copy renews it: " + waiterRenews
-	default:
-		s += "; " + waiterRenews
 	}
 	return s + " (a run `abcd build` started has no drain routing it)" + r.unwrittenNote("say the release is owed")
 }
@@ -238,8 +265,27 @@ const gateWaiterRenews = "a load-gate waiter in this copy (`abcd implement load 
 // unlessWaiterRenews is the clause a lapse said of a reservation that may still
 // be live and this copy's last push takes: a load-gate waiter in this copy may
 // renew it (gateWaiterRenews), so the lapse is not promised. A reservation that
-// is certainly not live (lapsed, or released) takes no such clause.
+// is certainly not live (lapsed, or released) takes no such clause, and nor
+// does one the view does not show as this copy's (lapseTail).
 const unlessWaiterRenews = "unless a load-gate waiter in this copy renews it"
+
+// lapseTail is how the line of a release that did not reach origin ends, by
+// the run's lease as this checkout last fetched it (leaseEnd), as
+// releaseOnHandBack and terminal.leftHeld choose it: a lease already lapsed
+// says when, with no waiter's clause; a live one this copy holds lapses with
+// its lease unless a load-gate waiter renews it; any other, another copy's or
+// one the view could not read, just lapses with its lease. until and ended
+// are leaseEnd's.
+func lapseTail(repoRoot string, st State, now time.Time) (tail, until string, ended bool) {
+	until, ended = leaseEnd(repoRoot, st, now)
+	switch {
+	case ended:
+		return "; its lease lapsed at " + until + " as last fetched", until, ended
+	case until != "":
+		return ", so it lapses with its lease " + unlessWaiterRenews, until, ended
+	}
+	return ", so it lapses with its lease", until, ended
+}
 
 // said is note, the run record's last line a caller read in the save's
 // callback, as the caller says it once the save has returned: where a release
@@ -251,7 +297,7 @@ func (r *handBackRelease) said(note string) string {
 		return note
 	}
 	if !r.made {
-		if r.arming != "" {
+		if r.arming != "" || r.refused != nil {
 			return joinNext(note, r.next())
 		}
 		return note

@@ -779,7 +779,11 @@ what it did in `next`:
   it does any issue it handed back.
 - **It routes.** Once the lane is handed back or its pull request is open, the
   next drain records the outcome in `lanes`, routes a hand-back (below), and
-  opens the next lane. Before its records and its push, the lane's sync
+  opens the next lane. A lane handed back with its pull request still armed is
+  not finished: it reads as in progress, `next` names the step that tries the
+  arming's withdrawal again (`abcd implement step --run <run-id>`, which
+  `abcd drain --drive` takes), each move renews its reservation at half its
+  lease, and the hand-back is routed only once the forge reports no arming. Before its records and its push, the lane's sync
   fetches `origin`'s default branch and merges it whenever it has moved, a fresh
   round judging the merge (`commands/implement.md`): a conflict confined to
   files `origin` declares `linguist-generated` goes back to an implementer to

@@ -25,7 +25,9 @@ import (
 // has handed back, by its own step or as stuck, is not renewed by this pass: the
 // drain has not routed it yet, as a paused move does not, and its
 // reservation, released or left holding by a release origin refused, is
-// the routing's (releaseHandedBack). It returns the
+// the routing's (releaseHandedBack). A lane handed back whose pull request is
+// still armed (armingOwed) is in progress until the forge reports no arming
+// (laneOutcome), so this pass renews it: its hand-back keeps the reservation. It returns the
 // notes of renewals that failed or found the hold another's, for the move's
 // next step; a lane whose run cannot be read is left to the routing below,
 // which names it. A run a drive let go is not renewed by this pass either: the tip of

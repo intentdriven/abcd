@@ -1,10 +1,15 @@
 package loop
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/landing"
@@ -204,21 +209,70 @@ func TestALateArmingAlreadyMergedIsSaidAsMerged(t *testing.T) {
 	}
 }
 
+// loopReceipt writes the review receipt recordOwnReview would write for the
+// pushed head of the run's lane in hand (landing.RecordReview's shape): each
+// non-auditor return of the lane's last round, by name, verdict and the sha256
+// of its text, read here from the files themselves. recordOwnReview records
+// only a round that read the pushed head, as an auto-mode landing's records
+// round does, so the lane's last round is first made to have read it. With
+// other set, one return's digest is another text's, as a receipt a person
+// recorded from other returns would carry. It returns the receipt's path.
+func loopReceipt(t *testing.T, root, runID string, other bool) string {
+	t.Helper()
+	if err := mutate(root, runID, func(_ *os.Root, st *State) (bool, error) {
+		i := st.current()
+		st.Lanes[i].Validation[len(st.Lanes[i].Validation)-1].HeadSHA = st.Lanes[i].Landing.Pushed
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := ReadState(root, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := st.Lanes[st.current()]
+	type entry struct {
+		Name    string `json:"name"`
+		Verdict string `json:"verdict"`
+		SHA256  string `json:"sha256"`
+	}
+	var entries []entry
+	for _, v := range l.Validation[len(l.Validation)-1].Validators {
+		if v.Role == RoleAuditor {
+			continue
+		}
+		text, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(v.Return)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if other && len(entries) == 0 {
+			text = append(text, "a person's own reading\n"...)
+		}
+		sum := sha256.Sum256(text)
+		entries = append(entries, entry{Name: v.Return, Verdict: v.Verdict, SHA256: hex.EncodeToString(sum[:])})
+	}
+	data, err := json.MarshalIndent(map[string]any{"commit": l.Landing.Pushed, "verdict_rule": 2, "recorded_at": "2026-11-15T09:00:00Z", "reviews": entries}, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := filepath.Join(root, filepath.FromSlash(landing.ReviewReceiptsRelDir), l.Landing.Pushed)
+	if err := os.MkdirAll(filepath.Dir(at), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(at, append(data, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return at
+}
+
 // TestALateArmingWithdrawnReleasesTheReservation: the withdrawal taken and
 // read back as gone clears the arming, says so, and only then releases the
-// reservation; the review receipt this checkout holds for the pushed head is
-// removed, so the release hold's re-arm (landing.DecideMerge) no longer counts
-// the pair that judged it.
+// reservation; the review receipt the loop recorded for the pushed head from
+// the lane's round is moved aside, so the release hold's re-arm
+// (landing.DecideMerge) no longer counts the pair that judged it.
 func TestALateArmingWithdrawnReleasesTheReservation(t *testing.T) {
 	f, path, report := lateReportArmed(t)
-	l := currentLane(t, f.repo, f.runID)
-	receiptAt := filepath.Join(f.repo.Root(), filepath.FromSlash(landing.ReviewReceiptsRelDir), l.Landing.Pushed)
-	if err := os.MkdirAll(filepath.Dir(receiptAt), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(receiptAt, []byte("{}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	receiptAt := loopReceipt(t, f.repo.Root(), f.runID, false)
 	f.handInLate(t, path, report)
 	if !strings.Contains(f.ghLog(t), "pr merge 7 --disable-auto") {
 		t.Fatalf("the forge is asked to withdraw the arming:\n%s", f.ghLog(t))
@@ -226,14 +280,110 @@ func TestALateArmingWithdrawnReleasesTheReservation(t *testing.T) {
 	if l := currentLane(t, f.repo, f.runID); l.Landing.Armed || l.Landing.Merge != "" {
 		t.Fatalf("the withdrawal clears the arming: %+v", l.Landing)
 	}
-	if !recordSays(t, f.repo.Root(), f.runID, string(StageHandedBack), "withdrew pull request #7's arming", "review receipt of its head") {
-		t.Fatal("the record says the arming was withdrawn and the head's review receipt removed")
+	if !recordSays(t, f.repo.Root(), f.runID, string(StageHandedBack), "withdrew pull request #7's arming", "the review receipt the loop recorded for its head", "moved aside") {
+		t.Fatal("the record says the arming was withdrawn and the loop's own review receipt moved aside")
 	}
 	if !f.reservationReleased(t) {
 		t.Fatal("the reservation is released once the arming is gone")
 	}
 	if _, err := os.Lstat(receiptAt); !os.IsNotExist(err) {
-		t.Fatalf("the hand-back supersedes the head's own review receipt: %v", err)
+		t.Fatalf("the late writer's hand-back voids the loop's own review receipt: %v", err)
+	}
+	if _, err := os.Lstat(receiptAt + voidedSuffix); err != nil {
+		t.Fatalf("the voided receipt is kept aside, under a name no reader counts: %v", err)
+	}
+}
+
+// TestALateWritersHandBackLeavesAReceiptTheLoopDidNotWrite: a review receipt
+// at the head's path whose returns are not the lane's round (one a person
+// recorded) is left where it is, and the record says it stands as its
+// recorder's.
+func TestALateWritersHandBackLeavesAReceiptTheLoopDidNotWrite(t *testing.T) {
+	f, path, report := lateReportArmed(t)
+	receiptAt := loopReceipt(t, f.repo.Root(), f.runID, true)
+	before, err := os.ReadFile(receiptAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.handInLate(t, path, report)
+	if after, err := os.ReadFile(receiptAt); err != nil || string(after) != string(before) {
+		t.Fatalf("a receipt the loop did not write is left as it is: %v", err)
+	}
+	if !recordSays(t, f.repo.Root(), f.runID, string(StageHandedBack), "withdrew pull request #7's arming", "is left in place", "stands as its recorder's") ||
+		recordSays(t, f.repo.Root(), f.runID, string(StageHandedBack), "moved aside") {
+		t.Fatal("the record says the receipt stands as its recorder's, and never that it was moved aside")
+	}
+}
+
+// TestALateArmingIsRenewedWhileItIsOwed: past half the lease, a step that
+// tries the withdrawal again and is refused renews the reservation the
+// hand-back keeps, so no peer takes the issue while the pull request can
+// still merge.
+func TestALateArmingIsRenewedWhileItIsOwed(t *testing.T) {
+	f, path, report := lateReportArmed(t)
+	f.ghFile(t, "refuse-disarm", "")
+	f.handInLate(t, path, report)
+	before := originReservation(t, f.bare, claim.RefPrefix+secondIssue)
+	// The fixture's lease runs a day: thirteen hours on is past its half.
+	later := Options{Now: func() time.Time { return time.Now().Add(13 * time.Hour) }}
+	// The run's window has elapsed by then: the first step closes it, and
+	// the next, its pause over, takes the move.
+	_, err := advance(f.repo.Root(), f.runID, f.stages, later)
+	if err == nil {
+		_, err = advance(f.repo.Root(), f.runID, f.stages, later)
+	}
+	if r := mustRefusal(t, err); !r.Contention || !strings.Contains(r.Reason, "the forge refused to withdraw the arming") {
+		t.Fatalf("the step tries the withdrawal again and waits on it: %+v", r)
+	}
+	if after := originReservation(t, f.bare, claim.RefPrefix+secondIssue); after.commit == before.commit || after.released {
+		t.Fatalf("the step renews the kept reservation: before %+v, after %+v", before, after)
+	}
+	if note := recordNote(t, f.repo, f.runID, StageReservationRenewed); !strings.Contains(note, "renewed the reservation on "+secondIssue) {
+		t.Fatalf("the run record logs the renewal: %q", note)
+	}
+}
+
+// TestADrainDrivesALaneOwingItsWithdrawalUntilItClears: a drain lane whose
+// late hand-back's withdrawal did not take is not routed by the drain's move:
+// it is still in progress, its step is named, and the drive's check reads it
+// so; once a step has withdrawn the arming, the next move routes it.
+func TestADrainDrivesALaneOwingItsWithdrawalUntilItClears(t *testing.T) {
+	f, path, report := lateReportArmed(t)
+	f.ghFile(t, "refuse-disarm", "")
+	f.handInLate(t, path, report)
+	res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Routed) != 0 || !strings.Contains(res.Next, "implement step --run "+f.runID) || !strings.Contains(res.Next, "tries the withdrawal again") {
+		t.Fatalf("the drain does not route a lane that owes its withdrawal, and names its step: %+v", res)
+	}
+	st, _, err := readDrain(f.repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i := slices.IndexFunc(st.Lanes, func(l DrainLane) bool { return l.RunID == f.runID }); i < 0 || st.Lanes[i].Outcome != DrainLaneInProgress {
+		t.Fatalf("the drain's lane is still in progress: %+v", st.Lanes)
+	}
+	if !(&terminal{repoRoot: f.repo.Root()}).laneInProgress(f.runID) {
+		t.Fatal("the drive keeps stepping a lane that owes its withdrawal")
+	}
+	if f.reservationReleased(t) {
+		t.Fatal("the reservation is kept while the pull request is armed")
+	}
+	f.ghGone(t, "refuse-disarm")
+	if _, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err != nil {
+		t.Fatalf("the step that withdraws the arming: %v", err)
+	}
+	res, err = Drain(f.repo.Root(), Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Routed) != 1 || res.Routed[0].Issue != secondIssue {
+		t.Fatalf("once the arming is withdrawn the drain routes the hand-back: %+v", res)
+	}
+	if !f.reservationReleased(t) {
+		t.Fatal("the reservation is released once the arming is gone")
 	}
 }
 
@@ -242,15 +392,7 @@ func TestALateArmingWithdrawnReleasesTheReservation(t *testing.T) {
 // reported is neither queued, toggled nor asked about: its arming is
 // withdrawn, and the next step waits at its arming for the report.
 func TestAnArmedLaneWhoseRunnerHasNotReportedIsWithdrawnAndWaits(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	f := newLandFixture(t, queueRuleset("MERGE"))
-	l := f.landedToArmedOnce(t)
-	if !l.Landing.Armed {
-		t.Fatalf("premise: the lane is armed: %+v", l.Landing)
-	}
-	f.queueAnswer(t, stubQueue{head: l.Landing.Pushed, enabledAt: "2026-10-15T07:00:00Z", status: "CLEAN"})
-	collectedImplementer(t, f.repo.Root(), f.runID)
-	rel := currentLane(t, f.repo, f.runID).Receipts[0].Receipt
+	f, _, rel := armedUnreported(t)
 	before := f.ghLog(t)
 	f.step(t)
 	log := strings.TrimPrefix(f.ghLog(t), before)
@@ -272,6 +414,88 @@ func TestAnArmedLaneWhoseRunnerHasNotReportedIsWithdrawnAndWaits(t *testing.T) {
 	}
 	if n := runnerWaitLines(t, f, rel); n != 1 {
 		t.Fatalf("the record says once what the lane waits for: %d lines", n)
+	}
+}
+
+// armedUnreported is an armed lane sitting CLEAN outside the merge queue whose
+// implementer's runner has not reported, and that receipt's path.
+func armedUnreported(t *testing.T) (*landFixture, Lane, string) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.landedToArmedOnce(t)
+	if !l.Landing.Armed {
+		t.Fatalf("premise: the lane is armed: %+v", l.Landing)
+	}
+	f.queueAnswer(t, stubQueue{head: l.Landing.Pushed, enabledAt: "2026-10-15T07:00:00Z", status: "CLEAN"})
+	collectedImplementer(t, f.repo.Root(), f.runID)
+	l = currentLane(t, f.repo, f.runID)
+	return f, l, l.Receipts[0].Receipt
+}
+
+// TestThePreReportWithdrawalVoidsNoReceipt: the landing's withdrawal of an
+// armed lane whose runner has not reported leaves the review receipt the loop
+// recorded for its head in place: no report has shown its pair to share a
+// model with a writer.
+func TestThePreReportWithdrawalVoidsNoReceipt(t *testing.T) {
+	f, _, _ := armedUnreported(t)
+	receiptAt := loopReceipt(t, f.repo.Root(), f.runID, false)
+	f.step(t)
+	if !strings.Contains(f.ghLog(t), "pr merge 7 --disable-auto") {
+		t.Fatalf("premise: its arming is withdrawn:\n%s", f.ghLog(t))
+	}
+	if _, err := os.Lstat(receiptAt); err != nil {
+		t.Fatalf("the pre-report withdrawal leaves the loop's receipt where it is: %v", err)
+	}
+	if recordSays(t, f.repo.Root(), f.runID, "", "review receipt") {
+		t.Fatal("the record says nothing of the review receipt")
+	}
+}
+
+// TestTheLandingsWithdrawalIsMadeOnceTheStepIsWritten: a landing step whose
+// save is refused asks nothing of the forge; one the forge refuses to
+// withdraw is the step's refusal, the lane armed at its landing and nothing
+// recorded, and the next step tries again until it takes.
+func TestTheLandingsWithdrawalIsMadeOnceTheStepIsWritten(t *testing.T) {
+	f, _, rel := armedUnreported(t)
+	old := modelsCheck
+	t.Cleanup(func() { modelsCheck = old })
+	modelsCheck = func(m State) error {
+		return refuse("state", "", "", StateRelPath(m.RunID)+" was not saved: the stand-in models check refuses it", "this is a fault in abcd, so report it")
+	}
+	before := f.ghLog(t)
+	if _, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err == nil {
+		t.Fatal("premise: the step's save is refused")
+	}
+	if strings.Contains(strings.TrimPrefix(f.ghLog(t), before), "--disable-auto") {
+		t.Fatalf("a refused save asks nothing of the forge:\n%s", f.ghLog(t))
+	}
+	modelsCheck = old
+
+	f.ghFile(t, "refuse-disarm", "")
+	for try := 1; try <= 2; try++ {
+		before = f.ghLog(t)
+		_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
+		if r := mustRefusal(t, err); !r.Contention || !strings.Contains(r.Reason, "the forge refused to withdraw the arming") || !strings.Contains(r.Reason, rel) {
+			t.Fatalf("try %d: the forge's refusal is the step's, naming the receipt: %+v", try, r)
+		}
+		if !strings.Contains(strings.TrimPrefix(f.ghLog(t), before), "--disable-auto") {
+			t.Fatalf("try %d: the step asks the forge to withdraw the arming:\n%s", try, f.ghLog(t))
+		}
+		if l := currentLane(t, f.repo, f.runID); !l.Landing.Armed || l.Stage != StageLand {
+			t.Fatalf("try %d: the lane stays armed at its landing: %+v", try, l)
+		}
+	}
+	if recordSays(t, f.repo.Root(), f.runID, string(StageLand), "withdrew pull request #7's arming") {
+		t.Fatal("a withdrawal that did not take is not recorded as made")
+	}
+	f.ghGone(t, "refuse-disarm")
+	res := f.step(t)
+	if l := currentLane(t, f.repo, f.runID); l.Landing.Armed || l.Stage != StageLand {
+		t.Fatalf("the withdrawal that takes clears the arming: %+v", l)
+	}
+	if !recordSays(t, f.repo.Root(), f.runID, string(StageLand), "withdrew pull request #7's arming", rel) || !strings.Contains(res.Next, "withdrew pull request #7's arming") {
+		t.Fatalf("the record and the answer say the arming was withdrawn: %s", res.Next)
 	}
 }
 

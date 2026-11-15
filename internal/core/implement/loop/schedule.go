@@ -749,6 +749,9 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 		// (releaseAfterWrite).
 		res.release = releaseAfterWrite(repoRoot, st, lane.ID, now)
 		return res, nil
+	case out.Stay && out.withdraw != nil:
+		// The withdrawal's own line is written once it is made, after this
+		// save (withdrawAfterWrite).
 	case out.Stay:
 		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: stage, Note: out.Note})
 	case out.Goto != "":
@@ -788,6 +791,9 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 	st.UpdatedAt = now
 	res := laneResult(*st, lane, performed, handed)
 	res.release = release
+	if out.withdraw != nil {
+		res.release = withdrawAfterWrite(repoRoot, st, lane.ID, *out.withdraw, now)
+	}
 	if out.Stay || out.Goto != "" {
 		res.stepNote = out.Note
 	}

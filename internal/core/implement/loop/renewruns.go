@@ -195,7 +195,9 @@ func renewalRuns(root, runID string) ([]State, []RunRenewal) {
 // run whose lane was handed back, whose reservation the hand-back released
 // (or the drain's routing of it releases), nor one parked at land, which the
 // drain's move renews once it has read the lane's pull request
-// (drain_finish.go), as the drain's own renewal leaves it (renewable).
+// (drain_finish.go), as the drain's own renewal leaves it (renewable). A lane
+// handed back that still owes its arming's withdrawal is renewed: its
+// reservation is kept until the forge reports no arming (handedBackIssue).
 func renewsWhereItWaits(st State) bool {
 	if st.ReservedAt == nil || st.Complete() || parkedAtLand(st) >= 0 {
 		return false
@@ -208,13 +210,17 @@ func renewsWhereItWaits(st State) bool {
 // renews it, neither a waiter's (renewsWhereItWaits) nor a step's
 // (advanceWith). A load-gate waiter's renewal of this copy's own reservations
 // (claim.RenewDue) reads no run, and may still renew it, as gateWaiterRenews
-// says.
+// says. A lane handed back with its pull request still armed (armingOwed) is
+// not counted: the hand-back keeps the reservation until the forge reports no
+// arming, so each step that tries the withdrawal again renews it, as the
+// drain's move does (renewable), and a peer cannot take the issue while the
+// pull request can still merge.
 func handedBackIssue(st State) bool {
 	if st.Issue() == "" {
 		return false
 	}
 	for _, l := range st.Lanes {
-		if l.HandBack != nil || l.Stage == StageHandedBack {
+		if (l.HandBack != nil || l.Stage == StageHandedBack) && !armingOwed(l) {
 			return true
 		}
 	}

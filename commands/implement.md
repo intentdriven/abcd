@@ -708,15 +708,25 @@ no refusal. Once `pace.stuck_minutes` have passed since that record line, the
 lane is handed back as `stuck`, naming the receipt; a line of the lane at
 another stage, or a change of the receipt waited for, starts the minutes
 again. A lane already armed when such a wait applies has its arming withdrawn
-first and then waits the same way. When a late report hands back a lane whose
-pull request is armed, the arming is withdrawn once the hand-back is written:
-the record says what came of it, a pull request already merged is said as
-merged, and one with no arming left is said to have none. A withdrawal that
-does not take (the forge unread, refusing, or still reporting the arming) is
-tried again by each later `abcd implement step`, and an issue run's
-reservation is released only once the forge reports no arming. The review
-receipt this checkout holds for that pull request's head is removed, so no
-re-arm of that head counts the pair that judged it.
+once the step is written, so a step whose save is refused asks nothing of the
+forge, and then waits the same way; a withdrawal there that does not take is
+the step's refusal, the lane left armed, and the next step tries again. When a
+late report hands back a lane whose pull request is armed, the arming is
+withdrawn once the hand-back is written: the record says what came of it, a
+pull request already merged is said as merged, and one with no arming left is
+said to have none. A withdrawal that does not take (the forge unread,
+refusing, or still reporting the arming) leaves the lane unfinished: each later
+`abcd implement step` tries it again, a drain reads the lane as in progress and
+drives it (as `abcd drain --drive` does), routing the hand-back only once the
+forge reports no arming, and an issue run's reservation is kept, renewed by
+those steps and drain moves at half its lease, and released only once the
+arming is gone. The review receipt the loop itself recorded for that pull
+request's head, from the lane's round, is moved aside in this checkout (to the
+head's name with `.voided` after it), so no re-arm of that head counts the pair
+that judged it. Any other review receipt for that head is left in place, and
+the record says it stands as its recorder's: a receipt a person recorded with
+`abcd land --record-review`, in this checkout or any other worktree, still
+counts.
 
 A reviewer's brief and a routed request ask its return to name the model it ran
 on in a line `Reviewer model: <model>`; the loop looks for that line among the
@@ -1093,7 +1103,8 @@ stays open for the cutting session to merge or hold. A release whose tag is on
 `origin`, or whose holder released it, holds nothing. Past the fence the reservation holds only
 while something renews it at half its lease: each step of the run does,
 whatever its stage, an implementer's long stage included (but not a run keyed
-by an issue whose lane is handed back: no step and no run renewal renews that reservation, though
+by an issue whose lane is handed back: no step and no run renewal renews that reservation, unless
+the hand-back still owes the withdrawal of its pull request's arming, though
 the load gate's waiter below may still renew it, as it renews each live reservation that is not a
 release, is half through its lease, and whose tip is the commit this copy last pushed), so does handing an
 agent's receipt back with `receipt`, so does `status`, so does the load gate's
@@ -1223,8 +1234,8 @@ driver, so a lifted stop's mark on it is not taken up by a drain, which reads it
 `next`, once each move, and the move is not refused for it: a lane in progress left that way ends the
 move as any lane in progress does, and one a new pace leaves keeps its pace. With no agent left in its
 call and its work saved it no longer renews. Work a save could not take stays uncommitted in its
-worktree and nowhere else, and its claim lapses at its lease unless a gated waiter, `abcd implement status` or a drive still
-in an agent's call or a preflight renews it; only that drive renews a run parked at land, unless a load-gate waiter in this copy renews it. A
+worktree and nowhere else, and its claim lapses at its lease unless the run renewal of a load-gate waiter, `abcd implement status` or a drive still
+in an agent's call or a preflight renews it; of those only that drive renews a run parked at land, since the waiter's run renewal skips one, though the waiter's renewal of this copy's own reservations, which reads no run, still may renew its reservation. A
 lift names any stop it cannot reach. A stop another account left is not honoured, and each
 step's answer and the listing name it.
 

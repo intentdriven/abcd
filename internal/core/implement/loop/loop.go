@@ -299,6 +299,10 @@ type Outcome struct {
 	Reservation string
 	// Note is the run record's line for the stage.
 	Note string
+	// withdraw, set only with Stay, is the landing's withdrawal of the lane's
+	// arming, made once the step's save has written (withdrawAfterWrite),
+	// whose own line the record then gets in place of Note.
+	withdraw *landWithdrawal
 }
 
 // Handler performs one stage for a lane, writing what it made into lane. It
@@ -1368,6 +1372,16 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	})
 	if err == nil && wait != nil {
 		err = wait
+	}
+	// A landing's withdrawal made after the write (withdrawAfterWrite) is the
+	// step's answer: its refusal where it did not take, the arming as it was,
+	// and its record line where it did.
+	if err == nil && res.release != nil && res.release.atLand {
+		if res.release.refused != nil {
+			err = res.release.refused
+		} else if res.release.arming != "" {
+			res.stepNote = res.release.arming
+		}
 	}
 	if err == nil {
 		res.consumed = counted

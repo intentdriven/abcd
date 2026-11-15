@@ -58,7 +58,8 @@ func LanesOnAnotherProfile(repoRoot, profile string) ([]LaneOnProfile, error) {
 		if err != nil {
 			return nil, err
 		}
-		if outcome, _, _ := laneOutcome(run); outcome != DrainLaneInProgress {
+		// A lane owing only its arming's withdrawal needs no agent either.
+		if outcome, _, _ := laneOutcome(run); outcome != DrainLaneInProgress || owedArming(run) > 0 {
 			continue
 		}
 		if run.Profile != "" && run.Profile != profile {

@@ -286,7 +286,7 @@ func stopRefusal(runID string, rec RunStop) error {
 	case rec.HaltedAt != nil:
 		state = "and has let its claims go"
 	case heldBySave(&rec):
-		state = "with work that could not be saved aside left uncommitted in its worktree and nowhere else; its claims lapse at their lease unless renewed, which a gated waiter or `abcd implement status` does; neither does for a run parked at land, whose claims lapse at their lease " + unlessWaiterRenews + "; the run record names it"
+		state = "with work that could not be saved aside left uncommitted in its worktree and nowhere else; its claims lapse at their lease unless renewed, which the run renewal of a load-gate waiter or `abcd implement status` does; that run renewal skips a run parked at land, though the waiter's renewal of this copy's own reservations, which reads no run, still may renew its reservation; the run record names it"
 	}
 	remedy := "the person's own `abcd implement stop --lift` lifts it; hand back any receipt you hold with `abcd implement receipt`, then stop"
 	if !rec.FromFile {
@@ -721,7 +721,8 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 		clause, failed := releaseReservation(repoRoot, st.Key, "", now)
 		stage := StageReservationReleased
 		if failed {
-			clause += ", so it lapses with its lease " + unlessWaiterRenews
+			tail, _, _ := lapseTail(repoRoot, *st, now)
+			clause += tail
 			stage = StageReservationReleaseFailed
 		}
 		// A run a drive already let go keeps the note made then, which is what its lane

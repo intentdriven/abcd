@@ -2625,15 +2625,14 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 			return Outcome{}, conflictRefusal(c, *lane, def, tracking, m)
 		}
 		// An armed lane whose runner has not reported is not asked, recorded
-		// or armed again: its arming is withdrawn, and from the next step it
-		// waits at its arming as an unarmed lane does (land_runner_wait.go).
+		// or armed again: its arming is withdrawn once the step's save has
+		// written, so a refused save leaves the forge as it was, and from the
+		// next step it waits at its arming as an unarmed lane does
+		// (withdrawAfterWrite, land_runner_wait.go).
 		if r, unreported := unreportedRunner(*lane); unreported && ld.Armed {
-			note, err := withdrawLateArming(c, lane, StageLand, "the runner that ran the implementer whose receipt is "+r.Receipt+" has not said which model ran it",
-				"the lane waits at its arming for that report, and is handed back as stuck if it has not come within the stuck bound's minutes")
-			if err != nil {
-				return Outcome{}, err
-			}
-			return Outcome{Stay: true, Note: note}, nil
+			return Outcome{Stay: true, withdraw: &landWithdrawal{
+				why:  "the runner that ran the implementer whose receipt is " + r.Receipt + " has not said which model ran it",
+				then: "the lane waits at its arming for that report, and is handed back as stuck if it has not come within the stuck bound's minutes"}}, nil
 		}
 		// A pull request left open is asked about again: an approval of its
 		// head, or a review receipt naming it, given since arms it now, and

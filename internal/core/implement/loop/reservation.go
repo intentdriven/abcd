@@ -1276,12 +1276,13 @@ func ReleaseReservation(repoRoot, key string, o Options) (claim.Result, error) {
 // reservation: its held lanes may still land.
 //
 // A failed release's line ends by what the lease as this checkout last
-// fetched it (leaseEnd) leaves: a lease still to run lapses unless a load-gate
-// waiter in this copy renews it or a drain routing the hand-back releases it;
-// one already lapsed gets no waiter's clause, since the waiter renews only a
-// live reservation. It returns that lease's end and whether it has passed,
-// "" and false where the release was made or that view does not show the
-// reservation as this copy's.
+// fetched it leaves (lapseTail): a lease still to run lapses unless a drain
+// routing the hand-back releases it, or, where the view shows it live and this
+// copy's, a load-gate waiter in this copy renews it; one already lapsed gets
+// no waiter's clause, since the waiter renews only a live reservation of this
+// copy's. It returns that lease's end and whether it has passed, "" and false
+// where the release was made or that view does not show the reservation as
+// this copy's.
 func releaseOnHandBack(repoRoot string, st *State, hb HandBack, now time.Time) (until string, ended bool) {
 	if st.ReservedAt == nil || st.Issue() == "" {
 		return "", false
@@ -1289,11 +1290,11 @@ func releaseOnHandBack(repoRoot string, st *State, hb HandBack, now time.Time) (
 	clause, failed := releaseReservation(repoRoot, st.Key, tombstoneKind(hb), now)
 	stage := StageReservationReleased
 	if failed {
-		until, ended = leaseEnd(repoRoot, *st, now)
-		if ended {
-			clause += "; its lease lapsed at " + until + " as last fetched"
-		} else {
-			clause += ", so it lapses with its lease " + unlessWaiterRenews + " or a drain routing the hand-back releases it"
+		var tail string
+		tail, until, ended = lapseTail(repoRoot, *st, now)
+		clause += tail
+		if !ended {
+			clause += " or a drain routing the hand-back releases it"
 		}
 		stage = StageReservationReleaseFailed
 	}
@@ -1339,10 +1340,13 @@ func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) s
 		return ""
 	}
 	// A lane handed back with its pull request still armed keeps the
-	// reservation until a step has withdrawn the arming (releaseAfterWrite).
+	// reservation until a step has withdrawn the arming (releaseAfterWrite);
+	// a drain reads such a lane as in progress (laneOutcome) and routes it only
+	// once the arming is gone, and its steps and the drain's moves renew the
+	// reservation until then (handedBackIssue, renewInProgress).
 	for _, l := range run.Lanes {
 		if armingOwed(l) {
-			return fmt.Sprintf("the reservation on %s is kept while pull request #%d is armed: `abcd implement step --run %s` tries the withdrawal again and then releases it", run.Key, l.PR, run.RunID)
+			return fmt.Sprintf("the reservation on %s is kept, and renewed by each step and drain move, while pull request #%d is armed: `abcd implement step --run %s` tries the withdrawal again and then releases it", run.Key, l.PR, run.RunID)
 		}
 	}
 	// The step that handed the lane back has already released it, and its
@@ -1355,7 +1359,8 @@ func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) s
 	}
 	clause, failed := releaseReservation(repoRoot, run.Key, tombstoneKind(hb), now)
 	if failed {
-		return clause + ", so it lapses with its lease " + unlessWaiterRenews
+		tail, _, _ := lapseTail(repoRoot, run, now)
+		return clause + tail
 	}
 	// The retry released it: the run's record says so (iss-2610150616434848),
 	// so its last reservation entry is no longer the failure, and a later

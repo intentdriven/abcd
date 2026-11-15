@@ -1068,12 +1068,22 @@ func withdrawReviewer(st State, l *Lane, ri, vi int) string {
 	return name
 }
 
+// lateWriterFound opens the reason of every hand-back lateWriterHandBack makes.
+const lateWriterFound = noOtherModel + ": a model learned after the lane's reviewers were handed out is a writer of it"
+
+// lateWriterHandedBack reports whether l was handed back by a late writer
+// (lateWriterHandBack): a report that came after its reviewers were handed out
+// showed one of them is not another model than every writer.
+func lateWriterHandedBack(l Lane) bool {
+	return l.HandBack != nil && l.HandBack.Kind == HandBackStuck && strings.HasPrefix(l.HandBack.Reason, lateWriterFound)
+}
+
 // lateWriterHandBack is the stuck hand-back of a lane whose reviewer was
 // withdrawn by resettleWriters where the next step cannot hand it out again:
 // a round already settled, or a lane gone on past its validators.
 func lateWriterHandBack(st State, l Lane, withdrawn []string) *HandBack {
 	return &HandBack{Kind: HandBackStuck,
-		Reason: noOtherModel + ": a model learned after the lane's reviewers were handed out is a writer of it, and " + strings.Join(withdrawn, " and ") +
+		Reason: lateWriterFound + ", and " + strings.Join(withdrawn, " and ") +
 			" is not another model than every writer (" + writersPhrase(lastWriters(l)) + "), so its review no longer counts and the round it judged cannot be judged again",
 		Home: fmt.Sprintf("a person: discard the lane with `abcd implement step --run %s --discard %s` and build %s again; its reviewers are then chosen against every model that wrote it",
 			st.RunID, l.ID, keyOf(st))}

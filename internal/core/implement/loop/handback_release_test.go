@@ -484,6 +484,37 @@ func TestTheLeaseIsSaidAsLastFetched(t *testing.T) {
 	}
 }
 
+// TestADrainsFailedReleaseSaysTheLeaseAsLastFetched: the drain's release of a
+// routed hand-back (releaseHandedBack), refused by origin, ends its clause by
+// the lease as this checkout last fetched it, as releaseOnHandBack does: a
+// lease to come lapses unless a load-gate waiter renews it, and one already
+// past says when it lapsed, with no waiter's clause.
+func TestADrainsFailedReleaseSaysTheLeaseAsLastFetched(t *testing.T) {
+	repo, bare, id, _ := handingBackAtImplementer(t)
+	read, err := ReadState(repo.Root(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer refuseReservationPush(t, bare, secondIssue)()
+	for _, row := range []struct {
+		name   string
+		at     time.Time
+		want   string
+		waiter bool
+	}{
+		{"a lease to come", time.Now(), ", so it lapses with its lease " + unlessWaiterRenews, true},
+		{"a lease already past", time.Now().Add(48 * time.Hour), "; its lease lapsed at ", false},
+	} {
+		clause := releaseHandedBack(repo.Root(), read, HandBack{Kind: HandBackDesignFinding}, row.at)
+		if !strings.Contains(clause, "could not push the tombstone") {
+			t.Fatalf("%s: premise: origin refuses the tombstone: %s", row.name, clause)
+		}
+		if !strings.Contains(clause, row.want) || strings.Contains(clause, "load-gate waiter") != row.waiter {
+			t.Fatalf("%s: the clause says %q, and a load-gate waiter only for a live lease (%v): %s", row.name, row.want, row.waiter, clause)
+		}
+	}
+}
+
 // reservingDraftRepo is draftRepo over the auto-plan's draft, with an origin
 // its run reserves the intent on, as the fixtures' person.
 func reservingDraftRepo(t *testing.T) (*gittest.Repo, string) {

@@ -2062,7 +2062,8 @@ func dropMovedRun(repoRoot string, run State, why string, now time.Time, o Optio
 		clause, failed := releaseReservationAt(repoRoot, run.Key, tip, "", now)
 		why += "; " + clause
 		if failed {
-			why += ", so it lapses with its lease " + unlessWaiterRenews
+			tail, _, _ := lapseTail(repoRoot, run, now)
+			why += tail
 		} else if err := mutateReservation(repoRoot, run.RunID, func(st *State) (bool, error) {
 			st.Record = append(st.Record, Entry{At: now, Stage: StageReservationReleased, Note: clause})
 			st.UpdatedAt = now

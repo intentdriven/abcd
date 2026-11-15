@@ -244,8 +244,11 @@ func stuckReason(run State, b stuckBounds) string {
 	if i < 0 || run.Issue() == "" {
 		return ""
 	}
+	// A lane already handed back is no lane to hand back as stuck: one whose
+	// pull request is still armed is in progress only for the withdrawal its
+	// hand-back owes (laneOutcome), which each step tries again.
 	r := run.Lanes[i].Refused
-	if r == nil {
+	if r == nil || run.Lanes[i].HandBack != nil || run.Lanes[i].Stage == StageHandedBack {
 		return ""
 	}
 	at := refusedAt(*r)

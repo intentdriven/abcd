@@ -854,10 +854,23 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	if res.Finished, res.Parked, err = finishMerged(repoRoot, st.Lanes, now, o, d.PassedLanes); err != nil {
 		return refuseMoved(err)
 	}
+	// A lane read at its pull request whose run has since handed it back with
+	// the pull request still armed (by a step at its landing, the person's or
+	// the finish's) is not finished: it is in progress again, so this move
+	// renews it and the drain drives it until the forge reports no arming.
+	owing := false
+	for i := range st.Lanes {
+		if st.Lanes[i].Outcome != DrainLanePullRequest || d.passedLane(st.Lanes[i].RunID) {
+			continue
+		}
+		if run, err := ReadState(repoRoot, st.Lanes[i].RunID); err == nil && owedArming(run) > 0 {
+			st.Lanes[i].Outcome, owing = DrainLaneInProgress, true
+		}
+	}
 	// The lane in progress is renewed at half its lease on every move,
 	// waiting or not, before the window gate (drain_lease.go).
 	leaseNotes = renewInProgress(repoRoot, st.withoutPassed(d), view, now)
-	finished := false
+	finished := owing
 	for _, f := range res.Finished {
 		for i := range st.Lanes {
 			if f.Done && st.Lanes[i].RunID == f.RunID {
@@ -997,6 +1010,11 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		switch outcome {
 		case DrainLaneInProgress:
+			if pr := owedArming(run); pr > 0 {
+				res.Next = fmt.Sprintf("drive %s's lane, run %s: `abcd implement step --run %s`; its lane is handed back with pull request #%d still armed, so each step tries the withdrawal again, the drain renews its reservation, and run `abcd drain` again routes the hand-back once the forge reports no arming",
+					l.Issue, l.RunID, l.RunID, pr)
+				return finish(true)
+			}
 			res.Next = fmt.Sprintf("drive %s's lane, run %s: `abcd implement step --run %s` (one lane at a time); run `abcd drain` again once it is handed back or its pull request is open",
 				l.Issue, l.RunID, l.RunID)
 			if note := refusingNote(run, *bounds); note != "" {
@@ -1480,7 +1498,11 @@ func capPhrase(max int) string {
 
 // laneOutcome reads what an issue run has come to: handed back (with the
 // hand-back), a pull request opened (armed or left open), done, or in
-// progress.
+// progress. A lane handed back whose pull request is still armed (armingOwed)
+// is in progress: it is not finished until the forge reports no arming, so the
+// drain's moves and `drain --drive` keep stepping it (each step tries the
+// withdrawal again) and renewing its reservation, and route the hand-back
+// only once it has been withdrawn.
 func laneOutcome(run State) (string, int, *HandBack) {
 	i := run.current()
 	if run.Complete() || i < 0 {
@@ -1495,6 +1517,8 @@ func laneOutcome(run State) (string, int, *HandBack) {
 	}
 	l := run.Lanes[i]
 	switch {
+	case armingOwed(l):
+		return DrainLaneInProgress, 0, nil
 	case l.HandBack != nil:
 		return DrainLaneHandedBack, 0, l.HandBack
 	case l.Landing != nil && l.Landing.Merge != "":

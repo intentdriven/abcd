@@ -437,7 +437,9 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 			release = res.release
 			if st.Lanes[i].Stage != StageDone {
 				// The landing's step completed something short of the cleanup;
-				// what it wrote is kept, and the lane is not claimed done.
+				// what it wrote is kept, and the lane is not claimed done. One
+				// it handed back with its pull request still armed is not
+				// finished either: the drain drives it again (owedArming).
 				f.Note = res.Next
 				return true, nil
 			}
@@ -459,6 +461,19 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 		}
 	}
 	return out, reads, nil
+}
+
+// owedArming is the pull request of run's lane in hand when that lane was
+// handed back with it still armed (armingOwed), 0 otherwise. Such a lane is not
+// finished, by the landing's step or a drain: the drain reads it as in
+// progress (laneOutcome), takes a lane it read at its pull request back to
+// that, and routes its hand-back only once the forge reports no arming.
+func owedArming(run State) int {
+	i := run.current()
+	if i < 0 || !armingOwed(run.Lanes[i]) {
+		return 0
+	}
+	return run.Lanes[i].PR
 }
 
 // syncable reports whether a parked lane whose pull request the forge lists

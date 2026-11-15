@@ -12,18 +12,25 @@ package loop
 // passed since that line it hands the lane back as stuck, naming the receipt.
 //
 // A lane armed before this wait existed is not asked, recorded or armed again
-// while such a report is still to come: the landing withdraws its arming
-// (withdrawLateArming) and the lane then waits at its arming as an unarmed lane
-// does. One a late report hands back has the arming withdrawn once the
-// hand-back is written (releaseAfterWrite), and until the forge reports no
-// arming the lane is retried by each later step and an issue run's reservation
-// is kept; the record says what came of each try.
+// while such a report is still to come: once the landing step's save is
+// written, its arming is withdrawn (withdrawAfterWrite), and the lane then
+// waits at its arming as an unarmed lane does. One a late report hands back
+// has the arming withdrawn once the hand-back is written (releaseAfterWrite),
+// and the review receipt the loop recorded for its head moved aside
+// (voidOwnReview); until the forge reports no arming the lane is not finished:
+// each later step and each drain move takes it up again, its issue run's
+// reservation is kept and renewed, and the record says what came of the
+// withdrawal once it takes.
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -32,6 +39,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -124,7 +132,10 @@ func beganRunnerWait(st *State, i int, r *Refusal, now time.Time) bool {
 
 // armingOwed reports whether l was handed back with its pull request still
 // armed, so the hand-back owes the arming's withdrawal (withdrawLateArming): a
-// lane handed back as closed has a pull request the forge already closed.
+// lane handed back as closed has a pull request the forge already closed. A
+// lane that owes it is not finished: a drain reads it as in progress
+// (laneOutcome) and routes the hand-back only once the forge reports no
+// arming, and its run's reservation is renewed until then (handedBackIssue).
 func armingOwed(l Lane) bool {
 	return l.Stage == StageHandedBack && l.PR > 0 && l.Landing != nil && l.Landing.Armed &&
 		(l.HandBack == nil || l.HandBack.Kind != HandBackClosed)
@@ -142,12 +153,16 @@ func lateHandBack(lane Lane) string { return lane.ID + " was handed back after i
 // read-back failing or still armed) is a contention refusal that leaves the
 // lane's arming as it was, for a later step to try again; a lost network waits
 // on the shared probe. then is what the line says comes next once the arming
-// is gone. The review receipt this checkout holds for the lane's pushed head is
-// removed first (voidOwnReview), so no re-arm made of that head, the release
-// hold's included, counts the pair that judged it.
-func withdrawLateArming(c Context, lane *Lane, stage Stage, why, then string) (string, error) {
+// is gone. With void set, which only a late writer's hand-back sets, the review
+// receipt the loop recorded for the lane's pushed head is moved aside first
+// (voidOwnReview), so no re-arm made of that head, the release hold's
+// included, counts the pair that judged it.
+func withdrawLateArming(c Context, lane *Lane, stage Stage, why, then string, void bool) (string, error) {
 	n := strconv.Itoa(lane.PR)
-	voided := voidOwnReview(c.RepoRoot, *lane)
+	voided := ""
+	if void {
+		voided = voidOwnReview(c.RepoRoot, *lane)
+	}
 	retry := func(reason string) error {
 		return contend(string(stage), "", lane.ID, "pull request #"+n+" is armed and "+why+", and "+reason+"; until the forge reports no arming it can still merge"+voided,
 			"run `abcd implement step` again: the step tries the withdrawal again, and releases an issue run's reservation only once the forge reports no arming; or withdraw it yourself with `gh pr merge "+n+
@@ -195,9 +210,14 @@ func withdrawLateArming(c Context, lane *Lane, stage Stage, why, then string) (s
 // One that does not take is the step's contention, nothing written; one that
 // does is recorded, and the run's reservation is released once the step's save
 // has written it, under the same lock (releaseAfterWrite).
+//
+// The forge is asked here, before the save: a save then refused leaves the
+// forge disarmed and the state armed, and the lane handed back, where nothing
+// but this move reads its arming. The next step's withdrawal reads the forge
+// again, finds no arming left, and records that, so nothing is lost.
 func withdrawOwed(repoRoot string, st *State, i int, c Context, now time.Time) (StepResult, error) {
 	lane := st.Lanes[i]
-	note, err := withdrawLateArming(c, &lane, StageHandedBack, lateHandBack(lane), "it merges only if a person arms or merges it")
+	note, err := withdrawLateArming(c, &lane, StageHandedBack, lateHandBack(lane), "it merges only if a person arms or merges it", lateWriterHandedBack(lane))
 	if err != nil {
 		return StepResult{}, err
 	}
@@ -210,14 +230,83 @@ func withdrawOwed(repoRoot string, st *State, i int, c Context, now time.Time) (
 	return res, nil
 }
 
-// voidOwnReview removes the review receipt this checkout's local tier holds
-// for lane's pushed head (landing.RecordReview, which recordOwnReview writes
-// from the round's pair), and returns the clause the record says it with, ""
-// when there was none. A report since has shown that pair cannot be shown to
-// differ from every model that wrote the lane, so the merge gate asked again
-// of that head (landing.DecideMerge, which the release hold's re-arm asks
-// too) is not to count it; a later round's pair, recorded again once the
-// lane's reviewers are settled, does.
+// landWithdrawal is a landing's withdrawal of an armed lane's arming while a
+// runner's report on one of its implementers is still to come (landMerged):
+// why the arming is withdrawn and what comes next once it is gone.
+type landWithdrawal struct{ why, then string }
+
+// withdrawAfterWrite registers, on the state a landing step left lane at, the
+// step (State.afterWritten) that withdraws the lane's arming once that save's
+// write has returned without error, under the lock the save took: a save
+// refused or failed asks nothing of the forge, so the state and the forge
+// never disagree on whether the lane is armed. The step reads the lane as it
+// stands in the state just written and acts only on one still armed at its
+// land stage. A withdrawal that takes (withdrawLateArming) clears the arming
+// and is recorded by a second write under the same hold; one that does not is
+// kept as the step's refusal (handBackRelease.refused), nothing more written,
+// the arming as it was, and the next step at the landing tries again. It
+// voids no review receipt: no report has yet shown the lane's reviewers to
+// share a model with its writers.
+func withdrawAfterWrite(repoRoot string, st *State, lane string, w landWithdrawal, now time.Time) *handBackRelease {
+	out := &handBackRelease{atLand: true}
+	st.afterWritten(func(s *State, rewrite func() error) {
+		out.ran = true
+		defer func() { out.state = *s }()
+		at := slices.IndexFunc(s.Lanes, func(l Lane) bool { return l.ID == lane })
+		if at < 0 {
+			return
+		}
+		l := s.Lanes[at]
+		if l.Stage != StageLand || l.PR <= 0 || l.Landing == nil || !l.Landing.Armed {
+			return
+		}
+		c := Context{RepoRoot: repoRoot, RunDir: runRel(s.RunID), State: *s, Now: now}
+		note, err := withdrawLateArming(c, &l, StageLand, w.why, w.then, false)
+		if err != nil {
+			out.refused = err
+			return
+		}
+		s.Lanes[at] = l
+		s.Record = append(s.Record, Entry{At: now, Lane: l.ID, Stage: string(StageLand), Note: note})
+		s.UpdatedAt = now
+		out.arming = note
+		out.unwritten = rewrite()
+	})
+	return out
+}
+
+// voidedSuffix is added to the name of a review receipt the loop moved aside
+// (voidOwnReview). The receipt's readers (landing's findReceipt and
+// readReviewReceipts) look for the file named by the head alone, so a receipt
+// under this name counts for no head.
+const voidedSuffix = ".voided"
+
+// ownReviewEntry is one entry of a review receipt, as landing.RecordReview
+// writes it, read for the name and digest of the return it counts.
+type ownReviewEntry struct {
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
+}
+
+// voidOwnReview moves aside the review receipt the loop recorded for lane's
+// pushed head in this checkout's local tier (recordOwnReview, through
+// landing.RecordReview, from the returns of the lane's last round), and
+// returns the clause the record says it with, "" when no receipt names that
+// head here. It is asked only for a lane a late writer handed back
+// (lateWriterHandedBack): that report has shown the round's pair cannot be
+// shown to differ from every model that wrote the lane, so the merge gate
+// asked again of that head (landing.DecideMerge, which the release hold's
+// re-arm asks too) is not to count it; a later round's pair, recorded again
+// once the lane's reviewers are settled, does.
+//
+// The receipt is the loop's own only when its commit is the head and its
+// reviews are the round's non-auditor returns, each by its name and the
+// sha256 of its text, as recordOwnReview handed them in; any other receipt at
+// that path (one a person recorded with `abcd land --record-review`, or one
+// whose returns cannot be read now) is left in place, and the clause says it
+// stands as its recorder's. A receipt in another worktree is not this lane's
+// to touch: the loop records its own in this checkout alone, so one found
+// elsewhere was recorded by someone else, and it still counts.
 func voidOwnReview(repoRoot string, lane Lane) string {
 	if lane.Landing == nil || !gitutil.IsFullSHA(lane.Landing.Pushed) {
 		return ""
@@ -232,8 +321,75 @@ func voidOwnReview(repoRoot string, lane Lane) string {
 	if _, err := root.Lstat(rel); errors.Is(err, fs.ErrNotExist) {
 		return ""
 	}
-	if err := root.Remove(rel); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return "; the review receipt of its head " + shortSHA(head) + " could not be removed (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "), so a re-arm of that head may still count it"
+	stands := func(why string) string {
+		return "; the review receipt of its head " + shortSHA(head) + " in this checkout is left in place, since " + why + ", so it stands as its recorder's"
 	}
-	return "; the review receipt of its head " + shortSHA(head) + " in this checkout is removed, so no re-arm of that head counts the pair that judged it"
+	data, err := localtier.ReadInRoot(root, rel, maxReviewReceiptBytes)
+	if err != nil {
+		return stands("it could not be read (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + ") to show it is the one the loop recorded")
+	}
+	own, why := ownReviewEntries(repoRoot, lane)
+	if why != "" {
+		return stands("the lane's round cannot be read to show it is the one the loop recorded (" + why + ")")
+	}
+	var rec struct {
+		Commit  string           `json:"commit"`
+		Reviews []ownReviewEntry `json:"reviews"`
+	}
+	if err := json.Unmarshal(data, &rec); err != nil || rec.Commit != head || !sameEntries(rec.Reviews, own) {
+		return stands("it is not the one the loop recorded from the lane's round")
+	}
+	if err := root.Rename(rel, rel+voidedSuffix); err != nil {
+		return "; the review receipt the loop recorded for its head " + shortSHA(head) + " could not be moved aside (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "), so a re-arm of that head may still count it"
+	}
+	return "; the review receipt the loop recorded for its head " + shortSHA(head) + " from the lane's round is moved aside to " + head + voidedSuffix +
+		" in this checkout, so no re-arm of that head counts the pair that judged it"
+}
+
+// maxReviewReceiptBytes bounds the review receipt voidOwnReview reads.
+const maxReviewReceiptBytes = 1 << 20
+
+// ownReviewEntries are the entries recordOwnReview would write for lane's
+// pushed head from its last round: each non-auditor validator's return, by
+// name and digest. why is set where they cannot be read: no round, a round
+// that read another head, or a return that cannot be read.
+func ownReviewEntries(repoRoot string, lane Lane) ([]ownReviewEntry, string) {
+	n := len(lane.Validation)
+	if n == 0 {
+		return nil, "the lane records no review round"
+	}
+	round := lane.Validation[n-1]
+	if round.HeadSHA != lane.Landing.Pushed {
+		return nil, "its latest round read " + shortSHA(round.HeadSHA) + ", not the pushed head"
+	}
+	var out []ownReviewEntry
+	for _, v := range round.Validators {
+		if v.Role == RoleAuditor {
+			continue
+		}
+		text, err := readReturn(repoRoot, v.Return, lane.ID)
+		if err != nil {
+			return nil, refusalReason(err)
+		}
+		sum := sha256.Sum256(text)
+		out = append(out, ownReviewEntry{Name: v.Return, SHA256: hex.EncodeToString(sum[:])})
+	}
+	return out, ""
+}
+
+// sameEntries reports whether a receipt's entries are exactly want, in any
+// order: the same count, and each one's name with its digest.
+func sameEntries(got, want []ownReviewEntry) bool {
+	if len(got) != len(want) || len(want) == 0 {
+		return false
+	}
+	left := slices.Clone(want)
+	for _, g := range got {
+		i := slices.Index(left, g)
+		if i < 0 {
+			return false
+		}
+		left = slices.Delete(left, i, i+1)
+	}
+	return true
 }
