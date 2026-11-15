@@ -146,7 +146,10 @@ owns is refused and left untouched (iss-2609291610432030).
   (`<session>.telemetry.json`), written into an output directory (default the working
   directory) or to stdout. The directory must already exist, and it is refused
   when it is reached through a symlink at any level inside a checkout; outside
-  every checkout the path is the operator's own. The artefact is Markdown because its
+  every checkout the levels above the last are the operator's own, and a
+  symlinked parent is followed. The last component must itself be a real
+  directory wherever it is: a symlink there is refused outside a checkout too,
+  as not an existing directory. The artefact is Markdown because its
   consumer is a model being handed the session as context; it names its records
   by basename and carries no store path, so it reads with the store gone.
 

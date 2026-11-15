@@ -128,8 +128,9 @@ parsing anything.
 In its plain form, the verb prints a grouped, doctor-style report: a severity
 glyph, the rule id, `file:line`, the message, and the fix indented under it,
 closing on a count. The JSON form emits `findings` and `skipped`. Each
-finding carries a stable `ruleId`, a `severity` (`error` or `warn`), a `file`, a
-`message`, a `fix`, and a `policyInfo` rationale.
+finding carries a stable `ruleId`, a `severity` (`error` or `warn`), a `file`
+(omitted where a `site-gates` finding names no source span), a `message`, a
+`fix`, and a `policyInfo` rationale.
 
 Two details a consumer needs. `line` is `omitempty` and tracks the individual
 finding rather than the rule family: a finding that names a scanned line carries

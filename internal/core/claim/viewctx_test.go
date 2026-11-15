@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // The reservations' view a hook reads on a deadline (iss-2611100548341325):
@@ -33,7 +34,10 @@ import (
 // batch's listing, headers and bodies, the own reads of a tip too big for the
 // batch (its ref, its size and its date) and of the tip that is not a commit
 // (its ref), and the generated files a live footprint is judged against
-// (the tree listing, the root attributes' entry and blob). crowded fills
+// (the default branch's tree, the tree listing, the root attributes' entry
+// and blob, and the tracked check before the answer is kept). The answer the
+// fixture's own acts kept is dropped (dropKeptGenerated), so the view reads
+// it afresh. crowded fills
 // origin's default-branch listing past its cap, so the default branch is
 // named by symbolic-ref and a question per ref as well. It does not reach a
 // small commit read on its own (the batch reads every one), which
@@ -80,7 +84,17 @@ func viewOnEveryRoute(t *testing.T, crowded bool) *participant {
 		}
 		runGitStdin(t, p.dir, lines.String(), "update-ref", "--stdin")
 	}
+	dropKeptGenerated(t, p.dir)
 	return p
+}
+
+// dropKeptGenerated removes the generated set kept in the checkout at dir,
+// so the next read lists and matches afresh.
+func dropKeptGenerated(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.Remove(filepath.Join(dir, filepath.FromSlash(generatedKeptRel))); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
 }
 
 // viewSite is one place the view starts git, matched on the subcommand's
@@ -101,6 +115,19 @@ func argvHas(s string) func(string) bool {
 	return func(a string) bool { return strings.Contains(a, s) }
 }
 
+// argvOnTree matches a call whose argv is before, a full object name, then
+// after, to the end.
+func argvOnTree(before, after string) func(string) bool {
+	return func(a string) bool {
+		i := strings.LastIndex(a, before)
+		if i < 0 {
+			return false
+		}
+		name, ok := strings.CutSuffix(a[i+len(before):], after)
+		return ok && gitutil.IsFullSHA(name)
+	}
+}
+
 // viewSites are the sites viewOnEveryRoute's view reaches, each with the
 // times it is made; crowded adds the default branch's two fallback questions.
 func viewSites(crowded bool) []viewSite {
@@ -110,7 +137,7 @@ func viewSites(crowded bool) []viewSite {
 	sites := []viewSite{
 		// The tip that is not a commit asks its kept first sighting twice: as
 		// its date (dated) and as its first sighting (seen).
-		{"the tracked checks (fetch stamp, kept key, the kept first sightings of the tip ahead and twice of the tip not a commit)", argvEnds(" ls-files -z"), 5},
+		{"the tracked checks (fetch stamp, kept key, the kept first sightings of the tip ahead and twice of the tip not a commit, the generated set before it is kept)", argvEnds(" ls-files -z"), 6},
 		{"the reservation listing", argvEnds(" for-each-ref --format=%(refname) " + TrackingPrefix), 1},
 		{"the release-tag listing", argvEnds(" for-each-ref --format=%(refname) " + ReleaseTagsTracking), 1},
 		{"the empty tree's name", argvEnds(" hash-object -t tree --stdin"), 1},
@@ -123,8 +150,9 @@ func viewSites(crowded bool) []viewSite {
 		{"the own ref read of the tip that is not a commit", argvEnds(" " + own("iss-9")), 1},
 		{"the size of the tip too big for the batch", argvHas(" cat-file -s "), 1},
 		{"the date of the tip too big for the batch", argvHas(" show -s --format=%ct "), 1},
-		{"the generated files' tree listing", argvEnds(" ls-tree -r -z --full-tree refs/remotes/origin/main"), 1},
-		{"the root attributes' entry", argvEnds(" ls-tree -l -z --full-tree refs/remotes/origin/main -- .gitattributes"), 1},
+		{"the default branch's tree", argvEnds(" rev-parse --verify --quiet refs/remotes/origin/main^{tree} --"), 1},
+		{"the generated files' tree listing", argvOnTree(" ls-tree -r -z --full-tree ", ""), 1},
+		{"the root attributes' entry", argvOnTree(" ls-tree -l -z --full-tree ", " -- .gitattributes"), 1},
 		{"the root attributes' blob", argvHas(" cat-file blob "), 1},
 	}
 	if crowded {
@@ -284,6 +312,9 @@ func TestViewContextStopsAHungGitOnEveryRoute(t *testing.T) {
 	}
 	for n := 1; n <= len(log); n++ {
 		t.Run("call "+strconv.Itoa(n), func(t *testing.T) {
+			// The view before kept the generated set; each run reads it
+			// afresh, so it makes the calls that view made.
+			dropKeptGenerated(t, p.dir)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			_, stalled := gitOnPath(t, n, cancel)

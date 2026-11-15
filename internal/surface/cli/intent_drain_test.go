@@ -365,7 +365,10 @@ func TestIntentAuditOwedRefusesANegativeCapFirst(t *testing.T) {
 	help := string(runCLI(t, "intent", "audit", "--help"))
 	owedLine := ""
 	for _, l := range strings.Split(help, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(l), "--owed ") {
+		// The flag's name is the line's first field; pflag writes a boolean
+		// flag as `--owed[=true|false]`, so the suffix is trimmed before the
+		// name is compared.
+		if f := strings.Fields(l); len(f) > 0 && strings.TrimSuffix(f[0], "[=true|false]") == "--owed" {
 			owedLine = l
 		}
 	}
