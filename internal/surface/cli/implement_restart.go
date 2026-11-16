@@ -22,7 +22,6 @@ import (
 func runRestart(ctx context.Context, cmd *cobra.Command, asJSON bool, root, runID, laneID, yielded string, accepted []string, rs loop.Runners) error {
 	const prefix = "abcd implement step"
 	w := cmd.OutOrStdout()
-	installAutoSweep()
 	res, err := loop.RestartDrive(ctx, root, runID, laneID, yielded, loop.DefaultStages(), loop.Options{}, rs)
 	if err != nil {
 		return loopFail(w, asJSON, prefix, err)

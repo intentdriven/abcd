@@ -236,6 +236,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			const prefix = "abcd build"
+			installAutoSweep()
 			if release {
 				var with []string
 				for _, f := range []string{"session", "pace", "sub-agents", "fix-rounds", "take-over", "auto-plan"} {
@@ -410,6 +411,7 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const prefix = "abcd build next"
+			installAutoSweep()
 			root, err := loopRoot()
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
@@ -1238,6 +1240,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const prefix = "abcd implement step"
+			installAutoSweep()
 			root, err := loopRoot()
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
@@ -1363,7 +1366,6 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				// started in is refused, exit 3 (iss-2610240859590333). The
 				// loop calls it under the run's lock, just before the plan.
 				guard := func() error { return refuseSharedMainCheckout(cmd, prefix, root) }
-				installAutoSweep()
 				res, err = loop.Drive(ctx, root, id, loop.DefaultStages(), loop.Options{Tiers: tiers, PlanGuard: guard},
 					loop.Runners{Config: cfg, Transcripts: &lazyHistoryStore{cmd: cmd}})
 				if err == nil {

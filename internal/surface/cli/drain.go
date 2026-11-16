@@ -293,6 +293,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 		Example: "  abcd drain --drive\n  abcd drain --drive --yes --max 3\n  abcd drain --dry-run\n  abcd drain --dry-run --json\n  abcd drain --max 3\n  abcd drain --json\n  abcd drain --judgement .abcd/.work.local/run/drain-judgement.json --json",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			installAutoSweep()
 			repoRoot, err := ledgerRootFor(cmd, "abcd drain")
 			if err != nil {
 				return err
@@ -444,7 +445,6 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 	// the process (drainSignalContext).
 	ctx, stop := drainSignalContext()
 	defer stop()
-	installAutoSweep()
 	res, err := loop.Drain(repoRoot, o, loop.DrainOptions{Max: maxLanes, Judgement: judgement,
 		Transcripts: &lazyHistoryStore{cmd: cmd}, Context: ctx, Skip: sk.skip, SkipReason: sk.reason, Unskip: sk.unskip})
 	if isDrainRuleRefusal(err) {

@@ -88,6 +88,12 @@ type Options struct {
 	// delete on origin has passed (lastCheckWorktrees, lastCheckProbe). A
 	// test sets it to end the run's context at that point.
 	onLastCheck func(stage string)
+	// ours, when set, says which branches the sweep may delete, locally and
+	// on origin: the sweep abcd runs on its own sets it to the branches abcd
+	// made (abcdMade), and every other branch judged deletable is kept and
+	// listed for the applying sweep a person runs. nil is every branch, as
+	// the applying sweep judges them.
+	ours func(name string) bool
 
 	// forgeChecked says Forge was pinned to origin's repository already
 	// (pinnedForge), forgeKey is that repository's key, and forgeUnmatched
@@ -225,7 +231,7 @@ func prepare(ctx context.Context, repoRoot string, o Options) (Options, error) {
 	if err := ctx.Err(); err != nil {
 		return o, fmt.Errorf("sweep: stopped before the fetch: %w", err)
 	}
-	fetched, err := fetchFirst(repoRoot)
+	fetched, err := fetchFirst(ctx, repoRoot)
 	if err != nil {
 		return o, err
 	}
@@ -247,16 +253,19 @@ func prepare(ctx context.Context, repoRoot string, o Options) (Options, error) {
 }
 
 // fetchFirst is the sweep's fetch: origin's branches with pruning, then the
-// reservations and origin's default branch (claim.Fetch). fetched is false,
-// with no error, when the checkout has no remote named origin.
-func fetchFirst(repoRoot string) (fetched bool, err error) {
+// reservations and origin's default branch (claim.FetchContext). Both are
+// bounded by ctx as well as by gitutil.NetTimeout, through the hooked
+// runner Net uses, so the sweep abcd runs on its own ends within its own
+// bound. fetched is false, with no error, when the checkout has no remote
+// named origin.
+func fetchFirst(ctx context.Context, repoRoot string) (fetched bool, err error) {
 	if _, err := gitutil.Run(repoRoot, "remote", "get-url", claim.Remote); err != nil {
 		return false, nil
 	}
-	if _, err := gitutil.Net(repoRoot, "fetch", "--prune", "--quiet", claim.Remote); err != nil {
+	if _, err := gitutil.NetInputContext(ctx, repoRoot, "", "fetch", "--prune", "--quiet", claim.Remote); err != nil {
 		return false, fmt.Errorf("sweep: fetching %s: %w; nothing was judged", claim.Remote, err)
 	}
-	if _, err := claim.Fetch(repoRoot, claim.Options{}); err != nil {
+	if _, err := claim.FetchContext(ctx, repoRoot, claim.Options{}); err != nil {
 		if errors.Is(err, claim.ErrNoOrigin) {
 			return false, nil
 		}
@@ -314,7 +323,7 @@ func runHalves(ctx context.Context, repoRoot string, o Options, apply, automatic
 			}
 			return runDry(ctx, repoRoot, o)
 		}},
-		{"local branches", func() (Result, error) { return sweepBranches(ctx, repoRoot, apply) }},
+		{"local branches", func() (Result, error) { return sweepBranches(ctx, repoRoot, apply, o.ours) }},
 		{"origin's branches", func() (Result, error) { return sweepRemote(ctx, repoRoot, o, apply) }},
 		{"reservations", func() (Result, error) { return sweepReservations(ctx, repoRoot, o, apply) }},
 		{"inbox", func() (Result, error) { return sweepInbox(ctx, repoRoot, o, apply) }},

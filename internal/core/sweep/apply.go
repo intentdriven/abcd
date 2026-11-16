@@ -13,6 +13,7 @@ package sweep
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -54,6 +55,19 @@ func runApply(ctx context.Context, repoRoot string, o Options) (Result, error) {
 	for i := range res.Rows {
 		row := &res.Rows[i]
 		row.Outcome = OutcomeKept
+		// A run whose context has ended acts on nothing more: each removal
+		// starts only while the run is live, and none is cut off once begun
+		// (the store's prune takes no context), so the run stops between
+		// removals, never inside one.
+		if row.Action == ActionRemove || row.Action == ActionSavePatch {
+			if err := ctx.Err(); err != nil {
+				row.Reason = clean("the run was stopped before this worktree was acted on, so it is kept as it was; " + row.Reason)
+				if fault == nil {
+					fault = fmt.Errorf("the run was stopped before every worktree was acted on: %w", err)
+				}
+				continue
+			}
+		}
 		switch row.Action {
 		case ActionRemove:
 			if err := pl.j.remove(ctx, repoRoot, pl.srcs[i], o, prune, row); err != nil && fault == nil {

@@ -357,6 +357,9 @@ func newTerminal(repoRoot string, o TerminalOptions) *terminal {
 		t.o.Sleep = func(ctx context.Context, d time.Duration) { sleepOr(ctx, d, o.Stop, t.stopHolds) }
 	}
 	t.o.Options.driverIsSelf = true
+	// A person's stop ends every sweep the drive runs on its own, a lane's
+	// landing's and a drain move's, at once (autosweep.go).
+	t.o.Options.sweepStop = o.Stop
 	t.o.Drain.JudgeOutcome = &t.judge
 	t.o.Options.RunStateWatch = true
 	t.o.Options.ReceiptOwn = func(sha string) bool { return t.minted[sha] }
@@ -2598,13 +2601,12 @@ func (t *terminal) ended(why string) TerminalResult {
 		t.letGo()
 	}
 	res := TerminalResult{Ended: why, Last: t.last, HeldBack: t.heldBack, PassedOver: t.passedOver, PassedLanes: t.passedLanes}
-	// A drive that ends, other than killed or halted on a check, sweeps on its
-	// own once, after it has let its lanes go (autosweep.go); a stop's ended
-	// context sweeps nothing.
-	if why != TerminalKilled && why != TerminalHalted {
-		if res.Swept = autoSweep(t.ctx, t.repoRoot); res.Swept != "" {
-			t.say("%s", res.Swept)
-		}
+	// A drive that ends, other than killed, halted on a check or stopped by
+	// a person, sweeps on its own once, after it has let its lanes go
+	// (autosweep.go); the line is the drive's end's to print (Swept). A
+	// stop that comes while it sweeps ends it between removals.
+	if why != TerminalKilled && why != TerminalHalted && why != TerminalStopped {
+		res.Swept = autoSweep(t.ctx, t.o.Stop, t.repoRoot)
 	}
 	if why == TerminalWall || why == TerminalHalted {
 		res.Why = t.why

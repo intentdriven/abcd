@@ -153,6 +153,13 @@ type Options struct {
 	// origin's default branch (drain_origin.go). Nil, the check reads the
 	// checkout's.
 	plan *capture.DrainPlan
+	// sweepCtx and sweepStop bound the sweep a landing runs on its own
+	// (autosweep.go): sweepCtx is the caller's context (Drive's, so the
+	// step's, and inside a drive the drive's), nil for none; sweepStop is a
+	// drive's stop (TerminalOptions.Stop), nil outside one. Held in memory
+	// alone, never written.
+	sweepCtx  context.Context
+	sweepStop <-chan struct{}
 	// drain marks a lane start the drain makes: a reservation it pushes backs
 	// off a hand-back whose record is unchanged on origin (claim.Request.Drain),
 	// and an issue run handed back is over, so a lane the drain opens again
@@ -1434,7 +1441,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	// step's save has written the lane done and released the run's lock
 	// (autosweep.go): whatever the sweep comes to, the landing stands.
 	if res.landed {
-		res.Next = joinNext(res.Next, autoSweep(context.Background(), repoRoot))
+		res.Next = joinNext(res.Next, autoSweep(o.sweepCtx, o.sweepStop, repoRoot))
 	}
 	return res, nil
 }

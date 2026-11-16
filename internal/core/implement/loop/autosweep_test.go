@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // sweepCalls installs an automatic sweep that records each repository it is
@@ -125,21 +127,146 @@ func TestTheDrainsEndSweepsOnce(t *testing.T) {
 	}
 }
 
-// TestADrivesEndSweepsUnlessKilled: a terminal drive that ends sweeps once
-// and carries the line; one killed sweeps nothing.
-func TestADrivesEndSweepsUnlessKilled(t *testing.T) {
+// TestADrivesEndSweepsUnlessKilledHaltedOrStopped: a terminal drive that ends
+// sweeps once and carries the line for its end to print, saying nothing of it
+// on its own, so the line is printed once; one killed, halted on a check or
+// stopped by a person sweeps nothing.
+func TestADrivesEndSweepsUnlessKilledHaltedOrStopped(t *testing.T) {
 	repo := drainRepo(t)
 	calls := sweepCalls(t, func(string) string { return "abcd swept on its own: 1 removed or deleted" })
 	var said []string
 	term := newTerminal(repo.Root(), TerminalOptions{Say: func(s string) { said = append(said, s) }})
 	term.ctx = context.Background()
 	res := term.ended(TerminalPassedLanes)
-	if len(*calls) != 1 || res.Swept != "abcd swept on its own: 1 removed or deleted" || !strings.Contains(strings.Join(said, "\n"), "abcd swept on its own") {
-		t.Fatalf("calls %d, swept %q, said %q", len(*calls), res.Swept, said)
+	if len(*calls) != 1 || res.Swept != "abcd swept on its own: 1 removed or deleted" || strings.Contains(strings.Join(said, "\n"), "abcd swept on its own") {
+		t.Fatalf("calls %d, swept %q, said %q; want one sweep, its line carried and not said", len(*calls), res.Swept, said)
 	}
-	*calls = nil
-	res = term.ended(TerminalKilled)
-	if len(*calls) != 0 || res.Swept != "" {
-		t.Fatalf("a killed drive swept %d times (%q)", len(*calls), res.Swept)
+	for _, why := range []string{TerminalKilled, TerminalHalted, TerminalStopped} {
+		*calls = nil
+		res = term.ended(why)
+		if len(*calls) != 0 || res.Swept != "" {
+			t.Fatalf("a drive ended %s swept %d times (%q)", why, len(*calls), res.Swept)
+		}
+	}
+}
+
+// TestTheAutomaticSweepIsBoundWellBelowALanesCommand: the sweep runs under a
+// deadline of at most two minutes, the caller's context's values reach it,
+// and a caller's context or a drive's stop already ended sweeps nothing.
+func TestTheAutomaticSweepIsBoundWellBelowALanesCommand(t *testing.T) {
+	type key struct{}
+	var (
+		got   context.Context
+		calls int
+	)
+	t.Cleanup(SetAutoSweeper(func(ctx context.Context, _ string) string {
+		calls++
+		got = ctx
+		return ""
+	}))
+	autoSweep(context.WithValue(context.Background(), key{}, "the step's"), nil, "repo")
+	if calls != 1 || got.Value(key{}) != "the step's" {
+		t.Fatalf("calls %d; the caller's context did not reach the sweep", calls)
+	}
+	if dl, ok := got.Deadline(); !ok || time.Until(dl) > 2*time.Minute {
+		t.Fatalf("the sweep's deadline is %v away (set %v); want two minutes at most", time.Until(dl), ok)
+	}
+	stop := make(chan struct{})
+	close(stop)
+	ended, cancel := context.WithCancel(context.Background())
+	cancel()
+	calls = 0
+	autoSweep(context.Background(), stop, "repo")
+	autoSweep(ended, nil, "repo")
+	if calls != 0 {
+		t.Fatalf("a stopped drive or an ended context swept %d times", calls)
+	}
+}
+
+// TestAStopWhileTheSweepRunsEndsItsContext: a person's stop of the drive that
+// comes while the sweep runs ends the sweep's context, so it stops between
+// removals rather than at its bound.
+func TestAStopWhileTheSweepRunsEndsItsContext(t *testing.T) {
+	stop := make(chan struct{})
+	ended := false
+	t.Cleanup(SetAutoSweeper(func(ctx context.Context, _ string) string {
+		close(stop)
+		select {
+		case <-ctx.Done():
+			ended = true
+		case <-time.After(30 * time.Second):
+		}
+		return ""
+	}))
+	autoSweep(context.Background(), stop, "repo")
+	if !ended {
+		t.Fatal("a stop that came while the sweep ran did not end its context")
+	}
+}
+
+// TestALandingsSweepTakesTheStepsContextAndADrivesStop: a landing driven
+// through Drive sweeps under Drive's context; inside a drive whose person has
+// stopped it, the landing sweeps nothing.
+func TestALandingsSweepTakesTheStepsContextAndADrivesStop(t *testing.T) {
+	type key struct{}
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.landedToArmedOnce(t)
+	var got context.Context
+	t.Cleanup(SetAutoSweeper(func(ctx context.Context, _ string) string { got = ctx; return "" }))
+	f.merged(t, l.HeadSHA)
+	ctx := context.WithValue(context.Background(), key{}, "the step's")
+	res, err := Drive(ctx, f.repo.Root(), f.runID, f.stages, Options{}, Runners{})
+	if err != nil || res.PerformedStage != StageLand {
+		t.Fatalf("the landing: %+v, %v", res, err)
+	}
+	if got == nil || got.Value(key{}) != "the step's" {
+		t.Fatal("the landing's sweep did not run under the step's context")
+	}
+
+	f = newLandFixture(t, queueRuleset("MERGE"))
+	l = f.landedToArmedOnce(t)
+	got = nil
+	f.merged(t, l.HeadSHA)
+	stop := make(chan struct{})
+	close(stop)
+	term := newTerminal(f.repo.Root(), TerminalOptions{Stop: stop})
+	if _, err := advance(f.repo.Root(), f.runID, f.stages, term.o.Options); err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatal("a landing inside a stopped drive swept")
+	}
+}
+
+// TestABuildThatClosesAMergedLaneSweeps: a build's resume that closes a lane
+// whose pull request merged sweeps on its own once, after the closing, the
+// sweep's line among the start's diagnostics.
+func TestABuildThatClosesAMergedLaneSweeps(t *testing.T) {
+	f, l := mergedLaneFixture(t)
+	f.mergeCommit(t, l.Landing.Pushed)
+	calls := sweepCalls(t, func(repoRoot string) string {
+		if _, err := os.Stat(l.Worktree); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("the sweep runs after the closed lane's worktree is removed: %v", err)
+		}
+		return "abcd swept on its own: 1 removed or deleted"
+	})
+	res, err := Start(f.repo.Root(), "itd-10", Options{noReserve: true})
+	if err != nil || len(res.Closed) != 1 {
+		t.Fatalf("the build closes the merged lane: %+v, %v", res.Closed, err)
+	}
+	if len(*calls) != 1 || !slices.Contains(res.Diagnostics, "abcd swept on its own: 1 removed or deleted") {
+		t.Fatalf("calls %d, diagnostics %q; want one sweep, reported", len(*calls), res.Diagnostics)
+	}
+}
+
+// TestASweepsPanicIsOneBoundedLine: a panic's text is cut to its bound and
+// cleaned for one line, a line separator included.
+func TestASweepsPanicIsOneBoundedLine(t *testing.T) {
+	t.Cleanup(SetAutoSweeper(func(context.Context, string) string {
+		panic(strings.Repeat("origin went away ", 400))
+	}))
+	line := autoSweep(context.Background(), nil, "repo")
+	if !strings.HasPrefix(line, "abcd's own sweep stopped on a fault (") || strings.ContainsRune(line, ' ') || len([]rune(line)) > 2*autoSweepFaultCap {
+		t.Fatalf("the panic's line runs %d runes: %q", len([]rune(line)), line)
 	}
 }

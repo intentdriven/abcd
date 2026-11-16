@@ -32,9 +32,10 @@ var sweepOptions func(*sweep.Options)
 // installAutoSweep installs the automatic sweep (iss-2611150649557869,
 // dcn-2611161331159806) in the loop, which runs it after a landing sees its
 // pull request merged and at the end of a drain. Each verb that can land a
-// lane or end a drain installs it just before it moves the loop; it is not
-// installed at init, so no hook, whose git calls must run under the hook's
-// deadline, ever reaches the sweep.
+// lane, close a merged one or end a drain (`abcd build`, `abcd build next`,
+// `abcd implement step`, `abcd drain` with or without its drive) installs it
+// as its run starts; it is not installed at init, so no hook, whose git calls
+// must run under the hook's deadline, ever reaches the sweep.
 func installAutoSweep() { loop.SetAutoSweeper(sweepOnOwn) }
 
 // sweepOnOwn is the automatic sweep of the checkout at repoRoot, with the

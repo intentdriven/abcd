@@ -5,7 +5,11 @@ package sweep
 // pull request merged and at the end of a drain, the provably spent part of an
 // applied sweep, with exactly the proofs `--apply` uses, judged against a
 // fresh fetch: the worktrees, the local branches and the merged branches on
-// origin. It dispatches no reservation workflow and files no inbox report;
+// origin. Unattended, it deletes only the branches abcd made
+// (dcn-2611161459048806): the build loop's lane branches and the branches of
+// the worktree store's own worktrees; any other branch judged deletable is
+// kept and listed for the applying sweep a person runs, who saw a dry run
+// first. It dispatches no reservation workflow and files no inbox report;
 // both stay with the sweep a person runs. Its answer is never an error: a
 // refusal or a fault is carried in the answer, for the act it follows to
 // report, and that act's own outcome stands.
@@ -13,11 +17,16 @@ package sweep
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	store "github.com/intentdriven/abcd/internal/core/ahoy/worktree"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // KeyAutomatic is the one setting that turns the automatic sweep off, in
@@ -33,6 +42,9 @@ const autoRows = 5
 
 // autoRowCap bounds each row the report shows, in bytes.
 const autoRowCap = 240
+
+// autoFaultCap bounds the refusal or fault the report carries, in bytes.
+const autoFaultCap = 480
 
 // Setting is sweep.automatic as resolved for one repository.
 type Setting struct {
@@ -110,13 +122,18 @@ type Auto struct {
 	Result Result
 	// Fault is the run's refusal or fault, "" when it completed.
 	Fault string
+	// unjudged says the run was refused before any half judged anything:
+	// its fetch, or the reads before it, failed.
+	unjudged bool
 }
 
 // Automatic runs the automatic sweep of the repository at repoRoot: its
 // setting read first, then, when it is on, Run's fetch and an applied sweep of
-// the worktrees, the local branches and the branches on origin. It never
-// returns an error and never panics: a refusal, a fault, or a panic in any
-// half, is the answer's Fault.
+// the worktrees, the local branches and the branches on origin, the branches
+// it deletes held to the ones abcd made (abcdMade). It never returns an error
+// and never panics: a refusal, a fault, or a panic in any half, is the
+// answer's Fault. ctx bounds the whole of it, the fetch and each delete's
+// push included; once ctx ends, it stops between removals.
 func Automatic(ctx context.Context, repoRoot string, a AutoOptions) (out Auto) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -141,10 +158,16 @@ func Automatic(ctx context.Context, repoRoot string, a AutoOptions) (out Auto) {
 		return out
 	}
 	out.Ran = true
-	o, err := prepare(ctx, repoRoot, a.Options)
+	// Which branches abcd made is read before any half runs: the worktree
+	// half removes the store's worktrees whose branches the branch halves
+	// then judge.
+	opts := a.Options
+	opts.ours = abcdMade(ctx, repoRoot)
+	o, err := prepare(ctx, repoRoot, opts)
 	if err != nil {
 		out.Result, _ = refused(err)
 		out.Fault = out.Result.Refusal
+		out.unjudged = true
 		return out
 	}
 	res, err := runHalves(ctx, repoRoot, o, true, true)
@@ -167,6 +190,9 @@ func (a Auto) Text() string {
 			return "abcd did not sweep on its own: " + a.Setting.Why
 		}
 		return ""
+	}
+	if a.unjudged {
+		return "abcd's own sweep was refused before it judged anything: " + clip(a.Fault, autoFaultCap) + "; nothing was removed, and the act it followed stands"
 	}
 	var acted, left []Row
 	removed, saved := 0, 0
@@ -198,7 +224,7 @@ func (a Auto) Text() string {
 	}
 	parts = append(parts, tail)
 	if a.Fault != "" {
-		parts = append(parts, "refused: "+a.Fault+"; the act it followed stands")
+		parts = append(parts, "refused: "+clip(a.Fault, autoFaultCap)+"; the act it followed stands")
 	}
 	return strings.Join(parts, " ")
 }
@@ -235,4 +261,43 @@ func clip(s string, n int) string {
 		cut--
 	}
 	return s[:cut] + "…"
+}
+
+// leftForAPerson is row, a branch's, as the sweep abcd runs on its own judges
+// it when ours (Options.ours) is set: a branch judged deletable that ours does
+// not name is kept, saying it is left for the applying sweep a person runs,
+// with the reason it was judged deletable after (dcn-2611161459048806). Any
+// other row, and every row with ours nil, is row as it was.
+func leftForAPerson(row Row, ours func(string) bool) Row {
+	if ours == nil || row.Action != ActionDelete || ours(row.Name) {
+		return row
+	}
+	why := "abcd deletes on its own only the branches it made (a build lane's, or a worktree store worktree's)"
+	row.Action = ActionKeep
+	row.Reason = clean("left for `abcd sweep --apply`: " + why + "; " + row.Reason)
+	row.Evidence = append(row.Evidence, Evidence{Kind: KindProtected, Strength: Proven, Detail: why})
+	return row
+}
+
+// abcdMade says which branches abcd made in the repository at repoRoot: a
+// build lane's, under the loop's branch prefix, and the branch of each
+// worktree in the repository's own worktree store, read as the run starts,
+// before its worktree half removes any. A store that cannot be read leaves
+// the lanes' branches alone ours, which deletes fewer, never more.
+func abcdMade(ctx context.Context, repoRoot string) func(string) bool {
+	inStore := map[string]bool{}
+	if lane, err := store.LaneForContext(ctx, repoRoot); err == nil {
+		rctx, cancel := context.WithTimeout(ctx, gitReadTimeout)
+		wts, err := gitutil.ListWorktreesContext(rctx, repoRoot, gitutil.MaxWorktreeListing)
+		cancel()
+		if err == nil {
+			realLane := fsutil.RealExistingPath(lane.Dir)
+			for _, wt := range wts {
+				if wt.Branch != "" && filepath.Dir(fsutil.RealExistingPath(wt.Path)) == realLane {
+					inStore[strings.TrimPrefix(wt.Branch, "refs/heads/")] = true
+				}
+			}
+		}
+	}
+	return func(name string) bool { return strings.HasPrefix(name, loop.BranchPrefix) || inStore[name] }
 }

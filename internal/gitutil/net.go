@@ -116,6 +116,17 @@ func NetInput(dir, stdin string, args ...string) (string, error) {
 	return runHooked(dir, true, stdin, args, nil)
 }
 
+// NetInputContext is NetInput bounded by ctx as well as by NetTimeout, with
+// the checkout's hooks running as Net's do (a push's pre-push hook still
+// judges it): git is killed when ctx ends, and the error says so. stdin ""
+// feeds the command nothing, so it serves a fetch or a push with no refspecs
+// to feed. It is for a caller whose act must end with its own deadline (the
+// sweep abcd runs on its own), where NetContext, which runs no hook, would
+// skip a hook the repository asks for.
+func NetInputContext(ctx context.Context, dir, stdin string, args ...string) (string, error) {
+	return runHookedContext(ctx, dir, true, stdin, args, nil)
+}
+
 // LocalGit runs one git command that reaches no remote (a commit, a read of
 // origin's URLs) from the checkout at dir, with the repository's hooks running
 // under the developer's own configuration exactly as their own git runs them:
