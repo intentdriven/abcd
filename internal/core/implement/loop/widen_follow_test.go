@@ -65,6 +65,14 @@ func (f *landFixture) intentToThePush(t *testing.T, atLand func()) (Lane, error)
 	return Lane{}, nil
 }
 
+// branchChanges is each path lane's branch changes since its merge base with
+// origin's default branch.
+func (f *landFixture) branchChanges(t *testing.T, l Lane) []string {
+	t.Helper()
+	base := strings.TrimSpace(f.repo.Git("merge-base", l.Branch, "refs/remotes/origin/main"))
+	return strings.Fields(f.repo.Git("diff", "--no-renames", "--name-only", base, l.Branch, "--"))
+}
+
 // intentFootprint is the footprint origin's reservation of the intent names.
 func (f *landFixture) intentFootprint(t *testing.T) []string {
 	t.Helper()
@@ -97,8 +105,7 @@ func TestAnIntentLaneFindsWhatItCommitsReservedBeforeThePush(t *testing.T) {
 	if f.remoteBranch(t, l.Branch) == "" {
 		t.Fatalf("the lane's branch is pushed: %+v", l.Landing)
 	}
-	base := strings.TrimSpace(f.repo.Git("merge-base", l.Branch, "refs/remotes/origin/main"))
-	carried := strings.Fields(f.repo.Git("diff", "--no-renames", "--name-only", base, l.Branch, "--"))
+	carried := f.branchChanges(t, l)
 	if len(carried) < 2 {
 		t.Fatalf("the branch carries the lane's file and its landing's records: %q", carried)
 	}
