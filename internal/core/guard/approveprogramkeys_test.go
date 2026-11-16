@@ -12,17 +12,21 @@ import (
 )
 
 // TestApproveRefusesEachProgramSettingGitDocuments: each setting git 2.52's
-// git-config(1) or Git LFS's git-lfs-config(5) documents as a command, a
-// program path or a helper name, or as a switch that makes git start a
-// program, is refused as the list's other keys are: a local `git config`
-// write, in any case, and a git command that sets it for itself.
+// git-config(1) and git-archive(1), or Git LFS 3.7.1's git-lfs-config(5),
+// documents as a command, a program path or a helper name, as picking the
+// tool or viewer git starts, or as a switch that makes git start a program,
+// is refused as the list's other keys are: a local `git config` write, in any
+// case, and a git command that sets it for itself.
 func TestApproveRefusesEachProgramSettingGitDocuments(t *testing.T) {
 	refused := refusedAs(gitConfigWriteEntryID)
 	for _, key := range []string{
 		"trailer.sign.cmd",
 		"trailer.sign.command",
 		"hook.lint.command",
-		"submodule.lib.update",
+		"tar.x.command",
+		"tar.tar.xz.command",
+		"help.format",
+		"gpg.format",
 		"gc.recentObjectsHook",
 		"guitool.lint.cmd",
 		"help.browser",
@@ -73,14 +77,167 @@ func TestApproveLeavesSettingsThatNameNoProgram(t *testing.T) {
 	r, _ := gitRig(t)
 	var cases []approveCase
 	for _, key := range []string{
-		"format.pretty", "pretty.short", "merge.renormalize", "gpg.format", "ssh.variant",
+		"format.pretty", "pretty.short", "merge.renormalize", "ssh.variant", "tar.umask", "tar.x.remote",
 		"protocol.file.allow", "submodule.lib.url", "submodule.lib.branch", "trailer.where",
 		"trailer.sign.key", "lfs.url", "lfs.customtransfer.tx.concurrent", "lfs.extension.ext.priority",
-		"sendemail.smtpServerPort", "help.format", "instaweb.port", "merge.lines.name", "gc.auto",
+		"sendemail.smtpServerPort", "instaweb.port", "receive.procReceiveRefs", "gitcvs.dbDriver",
+		"merge.lines.name", "gc.auto",
 	} {
 		cases = append(cases, approveCase{`git config ` + key + ` x`, nil}, approveCase{`git -c ` + key + `=x status`, nil})
 	}
 	r.run(t, cases)
+}
+
+// TestApproveJudgesSubmoduleUpdateByItsValue: submodule.<name>.update starts
+// a program only for a value beginning with `!` (git-config(1)), so only such
+// a value, or one the line does not spell out, is refused.
+func TestApproveJudgesSubmoduleUpdateByItsValue(t *testing.T) {
+	refused := refusedAs(gitConfigWriteEntryID)
+	r, _ := gitRig(t)
+	var cases []approveCase
+	for _, v := range []string{"rebase", "merge", "checkout", "none"} {
+		cases = append(cases,
+			approveCase{`git config submodule.lib.update ` + v, nil},
+			approveCase{`git config set Submodule.Lib.Update ` + v, nil},
+			approveCase{`git config --add submodule.lib.update ` + v, nil},
+			approveCase{`git -c submodule.lib.update=` + v + ` status`, nil},
+			approveCase{`GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=submodule.lib.update GIT_CONFIG_VALUE_0=` + v + ` git status`, nil},
+			approveCase{`git clone -c submodule.lib.update=` + v + ` src dst`, nil})
+	}
+	r.run(t, append(cases,
+		approveCase{`git config submodule.lib.update '!sh x.sh'`, refused},
+		approveCase{`git config submodule.lib.update ' !sh x.sh'`, refused},
+		approveCase{`git config submodule.lib.update "$V"`, refused},
+		approveCase{`git config submodule.lib.update`, nil},
+		approveCase{`git config --add submodule.lib.update '!sh x.sh'`, refused},
+		approveCase{`git -c 'submodule.lib.update=!sh x.sh' status`, refused},
+		approveCase{`git -c submodule.lib.update="$V" status`, refused},
+		approveCase{`GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=submodule.lib.update 'GIT_CONFIG_VALUE_0=!sh x.sh' git status`, refused},
+		approveCase{`git clone -c 'submodule.lib.update=!sh x.sh' src dst`, refused},
+	))
+}
+
+// TestApproveJudgesASectionRenameOnItsNewName: `git config --rename-section`
+// and `git config rename-section` move every key of a section under the new
+// name, so a rename onto a section that holds a listed key, or onto a name
+// the line does not spell out, is refused, and the two steps that would set
+// a listed key that way are refused at the second.
+func TestApproveJudgesASectionRenameOnItsNewName(t *testing.T) {
+	refused := refusedAs(gitConfigWriteEntryID)
+	r, _ := gitRig(t)
+	r.run(t, []approveCase{
+		{`git config notrailer.sign.cmd 'sh x.sh'`, nil},
+		{`git config --rename-section notrailer.sign trailer.sign`, refused},
+		{`git config rename-section notrailer.sign trailer.sign`, refused},
+		{`git config notrailer.sign.cmd 'sh x.sh' && git config --rename-section notrailer.sign trailer.sign`, refused},
+		{`git config --rename-section mine core`, refused},
+		{`git config --rename-section mine ALIAS`, refused},
+		{`git config rename-section mine.x LFS.customtransfer.tx`, refused},
+		{`git config --rename-section mine.x hook.lint`, refused},
+		{`git config --rename-section mine.x tar.x`, refused},
+		{`git config --rename-section mine.x "$S"`, refused},
+		{`git config --rename-section mine.x`, refused},
+		{`git config --rename-section old.x new.x`, nil},
+		{`git config rename-section user.x mine.x`, nil},
+		{`git config --rename-section trailer.sign kept.sign`, nil},
+		{`git config --remove-section trailer.sign`, nil},
+	})
+}
+
+// TestApproveJudgesTheCommandLineFormsOfListedSettings: the options git
+// documents as the command-line form of a listed setting are judged as that
+// setting is. git clone's -c and --config (git-clone(1)) write a key into
+// the new repository; --template on clone and init (git-clone(1),
+// git-init(1)) is init.templateDir; --upload-pack on clone, fetch, pull and
+// ls-remote, ls-remote's and archive's --exec, and push's --receive-pack and
+// --exec (each page of its own) are remote.<name>.uploadpack and
+// .receivepack, the program git starts for the other side, run on this
+// machine when that side is a local repository. A long option is read in any
+// abbreviation git's option parser accepts.
+func TestApproveJudgesTheCommandLineFormsOfListedSettings(t *testing.T) {
+	refused := refusedAs(gitConfigWriteEntryID)
+	r, _ := gitRig(t)
+	r.run(t, []approveCase{
+		{`git clone -c core.pager=x src dst`, refused},
+		{`git clone --config core.pager=x src dst`, refused},
+		{`git clone --config=alias.st='!sh x.sh' src dst`, refused},
+		{`git clone --conf=trailer.sign.cmd=x src dst`, refused},
+		{`git clone -qc core.fsmonitor=x src dst`, refused},
+		{`git clone -ccore.hooksPath=h src dst`, refused},
+		{`git clone src dst -c credential.helper=store`, refused},
+		{`git clone -c core.worktree=/tmp/w src dst`, refused},
+		{`git clone -c "$K"=x src dst`, refused},
+		{`git clone -$X v src dst`, refused},
+		{`git clone --template=t src dst`, refused},
+		{`git clone --template t src dst`, refused},
+		{`git clone --templ=t src dst`, refused},
+		{`git init --template=t`, refused},
+		{`git init --template t dst`, refused},
+		{`git clone -u 'sh x.sh' src dst`, refused},
+		{`git clone -qu'sh x.sh' src dst`, refused},
+		{`git clone --upload-pack 'sh x.sh' src dst`, refused},
+		{`git clone --upload-pack='sh x.sh' src dst`, refused},
+		{`git fetch --upload-pack='sh x.sh' ../other`, refused},
+		{`git fetch --upload='sh x.sh' ../other`, refused},
+		{`git pull --upload-pack 'sh x.sh' ../other main`, refused},
+		{`git ls-remote --upload-pack='sh x.sh' ../other`, refused},
+		{`git ls-remote --exec='sh x.sh' ../other`, refused},
+		{`git archive --remote=../other --exec='sh x.sh' HEAD`, refused},
+		{`git push --receive-pack='sh x.sh' ../other main`, refused},
+		{`git push --exec='sh x.sh' ../other main`, refused},
+		{`git -C . fetch --upload-pack='sh x.sh' ../other`, refused},
+		{`git fetch --up"$X"='sh x.sh' ../other`, refused},
+		{`git clone -c user.name=x src dst`, nil},
+		{`git clone --config=color.ui=never src dst`, nil},
+		{`git clone -b main -o up src dst`, nil},
+		{`git clone src dst`, nil},
+		{`git init -q`, nil},
+		{`git fetch -u ../other`, nil},
+		{`git fetch --no-upload-pack ../other`, nil},
+		{`git ls-remote ../other`, nil},
+		{`git log --exec x`, nil},
+		{`git commit --template=t -m x`, nil},
+	})
+}
+
+// TestApproveJudgesProgramNamingEnvironmentOnTheCommand: an environment
+// variable git documents as naming a program it starts, or the directory it
+// takes one from, set on a git command (as an assignment before it, or
+// through env) is judged as the setting it stands for: git(1)'s GIT_SSH,
+// GIT_SSH_COMMAND, GIT_PAGER, GIT_EDITOR, GIT_SEQUENCE_EDITOR,
+// GIT_EXTERNAL_DIFF, GIT_ASKPASS, GIT_ALLOW_PROTOCOL, GIT_PROTOCOL_FROM_USER
+// and GIT_EXEC_PATH; git-var(1)'s PAGER, EDITOR and VISUAL; git-config(1)'s
+// SSH_ASKPASS and GIT_PROXY_COMMAND; git-init(1)'s GIT_TEMPLATE_DIR; and
+// git-help(1)'s GIT_MAN_VIEWER. GIT_PAGER and PAGER keep core.pager's
+// reading, and GIT_SSH_COMMAND core.sshCommand's: a value the line fixes is
+// judged as the command git runs.
+func TestApproveJudgesProgramNamingEnvironmentOnTheCommand(t *testing.T) {
+	refused := refusedAs(gitConfigWriteEntryID)
+	r, _ := gitRig(t)
+	var cases []approveCase
+	for _, name := range []string{
+		"GIT_SSH", "GIT_SSH_COMMAND", "GIT_PAGER", "PAGER", "GIT_EDITOR", "EDITOR", "VISUAL",
+		"GIT_SEQUENCE_EDITOR", "GIT_EXTERNAL_DIFF", "GIT_ASKPASS", "SSH_ASKPASS", "GIT_TEMPLATE_DIR",
+		"GIT_PROXY_COMMAND", "GIT_ALLOW_PROTOCOL", "GIT_PROTOCOL_FROM_USER", "GIT_EXEC_PATH",
+		"GIT_MAN_VIEWER",
+	} {
+		cases = append(cases,
+			approveCase{name + `='python3 -c x' git status`, refused},
+			approveCase{`env ` + name + `='python3 -c x' git status`, refused},
+			approveCase{name + `="$V" git status`, refused},
+			approveCase{name + `='python3 -c x' make`, nil})
+	}
+	r.run(t, append(cases,
+		approveCase{`GIT_PAGER=cat git log -1`, nil},
+		approveCase{`GIT_PAGER= git log -1`, nil},
+		approveCase{`PAGER='less -R' git log -1`, nil},
+		approveCase{`GIT_SSH_COMMAND='ssh -v' git fetch`, nil},
+		approveCase{`GIT_PAGER='rm -rf ~' git log -1`, refused},
+		approveCase{`GIT_SSH=ssh git fetch`, refused},
+		approveCase{`GIT_EDITOR=true git commit -m x`, refused},
+		approveCase{`GIT_ALLOW_PROTOCOL=ext git fetch`, refused},
+		approveCase{`GIT_SSH_VARIANT=ssh GIT_TERMINAL_PROMPT=0 git fetch`, nil},
+	))
 }
 
 // heldProgramRows judges each alternative of the settings a drive holds
@@ -150,7 +307,7 @@ var heldProgramRows = map[string][]struct {
 	`pretty\..+`:     {{"pretty.short", false, "a format, as format.pretty"}},
 	`gpg\..+`: {
 		{"gpg.program", true, ""}, {"gpg.ssh.program", true, ""}, {"gpg.ssh.defaultkeycommand", true, ""},
-		{"gpg.format", false, "picks which of the gpg programs a signature uses; each is listed as gpg.<format>.program"},
+		{"gpg.format", true, ""},
 		{"gpg.ssh.allowedsignersfile", false, "a file read, naming no program"},
 	},
 	`(commit|tag|push)\.gpgsign`:  {{"commit.gpgsign", true, ""}, {"tag.gpgsign", true, ""}, {"push.gpgsign", true, ""}},
@@ -176,6 +333,10 @@ var heldProgramRows = map[string][]struct {
 // settings a drive holds across its lanes has a row, each row's samples match
 // it, and each sample judged a program is one the approver refuses setting.
 // A new alternative in the drive's table fails here until it is judged.
+//
+// It checks only the samples a row names: a new alternative is satisfied by
+// one sample judged no program with a reason, so whether that reason holds is
+// still a reviewer's to judge.
 func TestApproverListHoldsEachProgramClassTheDriveHolds(t *testing.T) {
 	loop := filepath.Join("..", "implement", "loop")
 	alts := append(patternAlternatives(t, stringConst(t, filepath.Join(loop, "configwatch.go"), "watchedConfig")),

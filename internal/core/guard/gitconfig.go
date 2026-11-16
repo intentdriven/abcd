@@ -286,6 +286,12 @@ type gitConfigRead struct {
 	// flagValues is the value of each key a `-c key=value` word sets, by
 	// its index in keys.
 	flagValues map[int]string
+	// values is the value of each key set with one, by its index in keys;
+	// a value the line does not fix is unknownText.
+	values map[int]string
+	// env is each variable the command's own assignments set, by name: a
+	// value appended to the environment's is led by unknownText.
+	env map[string]string
 	// settings is every key set with its value, folded, in the order read. A
 	// value the line does not fix is unknownText.
 	settings []gitSetting
@@ -315,6 +321,7 @@ func readGitConfig(prefix, args, valueFlags []string) gitConfigRead {
 			env[name] = tok[eq+1:]
 		}
 	}
+	c.env = env
 	if _, ok := env["GIT_CONFIG_GLOBAL"]; ok {
 		c.unread = true
 	}
@@ -391,6 +398,7 @@ func readGitConfig(prefix, args, valueFlags []string) gitConfigRead {
 				// unreadable value. For the hooks path the directive is all
 				// that matters — any value moves the hooks.
 				c.keys = append(c.keys, strings.ToLower(strings.TrimSpace(k)))
+				c.setValue(unknownText)
 				c.settings = append(c.settings, gitSetting{strings.ToLower(strings.TrimSpace(k)), unknownText})
 				switch key := strings.ToLower(strings.TrimSpace(k)); {
 				case strings.HasPrefix(key, aliasPrefix):
@@ -419,6 +427,7 @@ func (c *gitConfigRead) add(key, value string) {
 	}
 	k := strings.ToLower(strings.TrimSpace(key))
 	c.keys = append(c.keys, k)
+	c.setValue(value)
 	c.settings = append(c.settings, gitSetting{k, value})
 	switch {
 	case strings.HasPrefix(k, aliasPrefix):
@@ -432,6 +441,14 @@ func (c *gitConfigRead) add(key, value string) {
 	case k == hooksPathKey:
 		c.hooksPath = true
 	}
+}
+
+// setValue records value as the value of the key last read.
+func (c *gitConfigRead) setValue(value string) {
+	if c.values == nil {
+		c.values = map[int]string{}
+	}
+	c.values[len(c.keys)-1] = value
 }
 
 // parseConfigParameters decodes GIT_CONFIG_PARAMETERS, the variable git uses to

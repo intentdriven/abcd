@@ -18,7 +18,7 @@ package loop
 // naming each changed key or file, until the person has looked and accepts it
 // (`abcd implement step --accept-config-change`). That is not every setting
 // that can name a program: the others a drive's git reads (the signing
-// programs and switches, gc.recentObjectsHook, Git LFS's transfer and
+// switches and the rest of gpg.*, gc.recentObjectsHook, Git LFS's transfer and
 // extension programs, hook.*, init.templateDir and the rest) a drive holds
 // across its lanes (driveHeldConfig in remoteid.go), and a run outside a
 // drive does not watch them.
