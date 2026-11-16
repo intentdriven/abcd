@@ -2540,9 +2540,9 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 // heldLapse says when a reservation leftHeld names lapses. Only a live
 // reservation this copy's last push takes can be renewed here, so only its
 // lapse takes a clause; read is false when the view could not be read. A
-// lane's run still in progress (run) is renewed by a step, `abcd drain` or
-// `abcd implement status` run in this copy as well as by a load-gate waiter
-// (UnlessRunRenewed); a judgement's hold by the waiter alone (claim.RenewDue).
+// lane's run still in progress (run) is renewed by a step or `abcd drain` run
+// in this copy as well as by a load-gate waiter (UnlessRunRenewed); a
+// judgement's hold by the waiter alone (claim.RenewDue).
 func heldLapse(r claim.Reservation, read, run bool) string {
 	if !read || r.Copy != claim.CopyThis || r.State != claim.StateLive {
 		return "lapses with its lease"
