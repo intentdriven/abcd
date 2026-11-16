@@ -229,9 +229,9 @@ type pageInvocation struct {
 // pageInvocations is every invocation of abcd in the prose, in page order: each
 // command of a fenced line or a code span (shellCommands) that starts with one
 // of the binary's spellings.
-func pageInvocations(lines []string) []pageInvocation {
+func pageInvocations(lines []string, fences []mdrecord.Span) []pageInvocation {
 	var out []pageInvocation
-	for _, t := range pageTexts(lines) {
+	for _, t := range pageTexts(lines, fences) {
 		for _, cmd := range shellCommands(t.text) {
 			if rest, ok := afterBinary(cmd); ok {
 				out = append(out, pageInvocation{line: t.line, exempt: t.exempt, rest: rest})
@@ -269,7 +269,8 @@ func CommandPageFacts(page, text string, facts []surface.Facts) []CommandPageFin
 	lines := strings.Split(text, "\n")
 	blankGeneratedBlocks(lines)
 	pageRoot := pageRootPath(ix, page)
-	sections := sectionsOf(lines)
+	reading := mdrecord.Read(lines, pageFenceRule)
+	sections := sectionsOf(lines, reading.Mask)
 
 	var findings []CommandPageFinding
 	report := func(line int, format string, args ...any) {
@@ -278,7 +279,7 @@ func CommandPageFacts(page, text string, facts []surface.Facts) []CommandPageFin
 
 	var anchors []anchor
 	inInvocation := map[int]map[string]bool{}
-	for _, t := range pageInvocations(lines) {
+	for _, t := range pageInvocations(lines, reading.Fences) {
 		inv := parseInvocation(ix, t.rest)
 		if inv.unknown != "" {
 			if !t.exempt {
@@ -378,21 +379,13 @@ func nextTo(anchors []anchor, line, section int) (anchor, bool) {
 }
 
 // sectionsOf numbers each line by the section it stands in: the count of
-// headings (a line opening with #, outside a fence) at or before it.
-func sectionsOf(lines []string) []int {
+// headings (an ATX heading line outside a fence, mask being mdrecord's
+// reading of the page) at or before it.
+func sectionsOf(lines []string, mask []uint8) []int {
 	out := make([]int, len(lines))
 	section := 0
-	fence := ""
 	for i, l := range lines {
-		trimmed := strings.TrimLeft(l, " \t")
-		switch {
-		case fence != "":
-			if strings.HasPrefix(trimmed, fence) && strings.Trim(trimmed, fence[:1]+" \t") == "" {
-				fence = ""
-			}
-		case fenceOpening(trimmed) != "":
-			fence = fenceOpening(trimmed)
-		case strings.HasPrefix(l, "#"):
+		if mask[i]&mdrecord.MaskFence == 0 && mdrecord.IsHeading(l) {
 			section++
 		}
 		out[i] = section
@@ -437,43 +430,53 @@ func blankGeneratedBlocks(lines []string) {
 	}
 }
 
+// pageFenceRule is the fence rule the lint reads a page by: the site's, under
+// which a fence indented under a list item is a fence, as the command pages
+// write them in their numbered steps.
+const pageFenceRule = mdrecord.ListNested
+
 // pageTexts is every fenced line and every code span of the prose, in page
-// order. A fenced line ending in a backslash is joined with the next. A code
-// span may wrap onto following lines of its paragraph; it is read with its
-// line breaks as spaces and reported on the line it opens on.
-func pageTexts(lines []string) []pageText {
+// order. Which lines a fence holds is mdrecord's reading (fences, Read under
+// pageFenceRule), so the lint and sectionsOf agree on where every fence
+// opens and closes. A fenced line ending in a backslash is joined with the
+// next line of its fence; the closing fence, or a delimiter-shaped line
+// inside the fence, ends the joined command and is not read. A code span may
+// wrap onto following lines of its paragraph; it is read with its line breaks
+// as spaces and reported on the line it opens on.
+func pageTexts(lines []string, fences []mdrecord.Span) []pageText {
 	var out []pageText
-	var fence string
 	var para []int // indexes of the lines of the current paragraph
 	flush := func() {
 		out = append(out, spansOf(lines, para)...)
 		para = para[:0]
 	}
+	delimiter := func(i int) bool {
+		return mdrecord.OpensFence(strings.TrimLeft(lines[i], " \t"), mdrecord.TopLevel)
+	}
+	next := 0 // the first fence not yet read
 	for i := 0; i < len(lines); i++ {
-		l := lines[i]
-		trimmed := strings.TrimLeft(l, " \t")
-		if fence != "" {
-			if strings.HasPrefix(trimmed, fence) && strings.Trim(trimmed, fence[:1]+" \t") == "" {
-				fence = ""
-				continue
-			}
-			start := i
-			joined := strings.TrimLeft(l, " \t")
-			exempt := strings.Contains(l, CommandPageHistorical)
-			for strings.HasSuffix(joined, `\`) && i+1 < len(lines) {
-				i++
-				exempt = exempt || strings.Contains(lines[i], CommandPageHistorical)
-				joined = strings.TrimSuffix(joined, `\`) + " " + strings.TrimLeft(lines[i], " \t")
-			}
-			out = append(out, pageText{line: start + 1, text: joined, exempt: exempt})
-			continue
-		}
-		if f := fenceOpening(trimmed); f != "" {
+		if next < len(fences) && i == fences[next].Start {
 			flush()
-			fence = f
+			end := fences[next].End
+			next++
+			for j := i + 1; j < end; j++ {
+				if delimiter(j) {
+					continue
+				}
+				start := j
+				joined := strings.TrimLeft(lines[j], " \t")
+				exempt := strings.Contains(lines[j], CommandPageHistorical)
+				for strings.HasSuffix(joined, `\`) && j+1 < end && !delimiter(j+1) {
+					j++
+					exempt = exempt || strings.Contains(lines[j], CommandPageHistorical)
+					joined = strings.TrimSuffix(joined, `\`) + " " + strings.TrimLeft(lines[j], " \t")
+				}
+				out = append(out, pageText{line: start + 1, text: joined, exempt: exempt})
+			}
+			i = end - 1
 			continue
 		}
-		if strings.TrimSpace(l) == "" {
+		if strings.TrimSpace(lines[i]) == "" {
 			flush()
 			continue
 		}
@@ -481,21 +484,6 @@ func pageTexts(lines []string) []pageText {
 	}
 	flush()
 	return out
-}
-
-// fenceOpening is the fence a line opens (its run of backticks or tildes, at
-// least three), or empty when the line opens none.
-func fenceOpening(trimmed string) string {
-	for _, c := range []string{"`", "~"} {
-		n := 0
-		for n < len(trimmed) && trimmed[n] == c[0] {
-			n++
-		}
-		if n >= 3 {
-			return strings.Repeat(c, n)
-		}
-	}
-	return ""
 }
 
 // spansOf is the code spans of one paragraph, the lines whose indexes are

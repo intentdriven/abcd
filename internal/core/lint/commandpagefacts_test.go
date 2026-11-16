@@ -227,6 +227,22 @@ func TestCommandPageFacts(t *testing.T) {
 			}{{1, "`abcd ideate` has no sub-command `recrod`"}, {5, "`--gone`"}},
 		},
 		{
+			name: "a closing fence ends a fenced line's continuation, and the spans after it are read",
+			text: "# Title\n\n```bash\nabcd status \\\n```\n\nThen `abcd ideate recrod`.\n",
+			want: []struct {
+				line int
+				frag string
+			}{{7, "`abcd ideate` has no sub-command `recrod`"}},
+		},
+		{
+			name: "a fence indented under a list item is read as a fence",
+			text: "1. Record it:\n\n     ```bash\n     abcd ideate recrod\n     ```\n",
+			want: []struct {
+				line int
+				frag string
+			}{{4, "`abcd ideate` has no sub-command `recrod`"}},
+		},
+		{
 			name: "a schema_version beside a call that passes no input is not checked",
 			text: "## Receipts\n\n```bash\nabcd docs cite confirm --receipt receipts.json\n```\n\n```json\n{\"schema_version\": 7}\n```\n",
 		},
