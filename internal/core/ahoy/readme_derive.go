@@ -1014,15 +1014,9 @@ func tagAt(w string) int {
 // back. A dropped tag leaves an empty placeholder, so the link pattern never
 // joins a bracket and a parenthesis the tag kept apart. Only this reading
 // admits a tag, so a held escape can never make one of a bracket the heading
-// shows as text.
-//
-// Text that already holds the placeholder's byte is read as before the
-// escapes were held: links, then tags, with an identity restore, as
-// MaskCodeSpans treats a heading holding its own.
+// shows as text. A placeholder byte the heading itself holds is held too, as
+// itself, so every one the link pattern sees is part of a placeholder.
 func dropTagsHoldEscapes(s string) (string, func(string) string) {
-	if strings.IndexByte(s, 0x01) >= 0 {
-		return inlineTagRe.ReplaceAllString(inlineLinkRe.ReplaceAllString(s, "$1"), ""), func(t string) string { return t }
-	}
 	var held []string
 	hold := func(b *strings.Builder, v string) {
 		fmt.Fprintf(b, "\x01%d\x01", len(held))
@@ -1048,6 +1042,10 @@ func dropTagsHoldEscapes(s string) (string, func(string) string) {
 		case s[i] == '\\' && i+1 < len(s) && isASCIIPunct(s[i+1]):
 			hold(&b, s[i:i+2])
 			i += 2
+			continue
+		case s[i] == 0x01:
+			hold(&b, s[i:i+1])
+			i++
 			continue
 		}
 		b.WriteByte(s[i])

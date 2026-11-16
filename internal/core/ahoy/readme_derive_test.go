@@ -532,13 +532,22 @@ func TestContentsKeepsAHeadingsEscapedMarkupAsText(t *testing.T) {
 // up to the file cap, is read in bounded time; read to the end of the line at
 // each bracket it took minutes (iss-2611161558121669).
 func TestHeadingTextStaysLinear(t *testing.T) {
-	for _, unit := range []string{"<!--", `<a b="`, "<a b=c ", "<"} {
-		s := `\! ` + strings.Repeat(unit, (1<<20)/len(unit))
+	for _, unit := range []string{"<!--", `<a b="`, "<a b=c ", "<", "<!--<b>"} {
+		s := "\x01" + `\! ` + strings.Repeat(unit, (1<<20)/len(unit))
 		start := time.Now()
 		headingText(s)
 		if d := time.Since(start); d > 20*time.Second {
 			t.Errorf("a %d-byte heading of %q took %v", len(s), unit, d)
 		}
+	}
+}
+
+// TestHeadingTextHoldsItsOwnPlaceholderByte: a heading holding the byte
+// escapes are held with is read the same way, its byte kept as written.
+func TestHeadingTextHoldsItsOwnPlaceholderByte(t *testing.T) {
+	text, unmask := headingText("a\x010\x01 \\<b> [x](y) <i>z</i>")
+	if got, want := unmask(text, false), "a\x010\x01 \\<b> x z"; got != want {
+		t.Errorf("headingText = %q, want %q", got, want)
 	}
 }
 
