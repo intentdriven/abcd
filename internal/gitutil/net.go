@@ -109,20 +109,16 @@ func (w *lineSink) flush() {
 	}
 }
 
-// NetInput is Net with stdin fed to the command: a `git fetch --stdin` reads
-// its refspecs there, one per line, so however many a fetch names, none
-// lengthens its command line past the system's argument limit.
-func NetInput(dir, stdin string, args ...string) (string, error) {
-	return runHooked(dir, true, stdin, args, nil)
-}
-
-// NetInputContext is NetInput bounded by ctx as well as by NetTimeout, with
-// the checkout's hooks running as Net's do (a push's pre-push hook still
-// judges it): git is killed when ctx ends, and the error says so. stdin ""
-// feeds the command nothing, so it serves a fetch or a push with no refspecs
-// to feed. It is for a caller whose act must end with its own deadline (the
-// sweep abcd runs on its own), where NetContext, which runs no hook, would
-// skip a hook the repository asks for.
+// NetInputContext is Net with stdin fed to the command, bounded by ctx as
+// well as by NetTimeout: a `git fetch --stdin` reads its refspecs there, one
+// per line, so however many a fetch names, none lengthens its command line
+// past the system's argument limit. The checkout's hooks run as Net's do (a
+// push's pre-push hook still judges it); git is killed when ctx ends, and the
+// error says so. stdin "" feeds the command nothing, so it serves a fetch or
+// a push with no refspecs to feed. It is for a caller whose act may have to
+// end with its own deadline (the sweep abcd runs on its own, through the
+// reservations' fetch), where NetContext, which runs no hook, would skip a
+// hook the repository asks for.
 func NetInputContext(ctx context.Context, dir, stdin string, args ...string) (string, error) {
 	return runHookedContext(ctx, dir, true, stdin, args, nil)
 }
@@ -208,7 +204,7 @@ var ErrBeforeHookedGitSet = errors.New("a check before every hooked or networked
 
 // SetBeforeHookedGit sets a check every git command abcd starts with the
 // repository's hooks, merge drivers or content filters on, or that reaches a
-// remote, asks first, before the command is built: Net, NetEach, NetInput,
+// remote, asks first, before the command is built: Net, NetEach, NetInputContext,
 // NetContext and LocalGit (runHookedContext), RunCommitCommandBounded and
 // RunCommitCommandBoundedAsStored (runCommitBounded), WorkingTreeCommand and
 // WorkingTreeCommandContext, and RunLimitedNetContext. An isolated command
@@ -374,7 +370,7 @@ func fetchRecursionOff(args []string) []string {
 
 // NetAskContext runs one git command that reads and writes nothing (a
 // `config` listing, `var`, `rev-parse --git-path`) in exactly the
-// environment Net, NetEach and NetInput give git: the person's own home,
+// environment Net, NetEach and NetInputContext give git: the person's own home,
 // configuration and credentials, the repository's hooks not pinned off. It
 // is for a caller that must know what that environment reads (the settings,
 // the hooks directory a push runs, the attributes files), never for a
@@ -407,7 +403,7 @@ func NetAskContext(ctx context.Context, dir string, limit int, args ...string) (
 	return string(out.buf), nil
 }
 
-// NetEnviron is the environment NetAskContext, Net, NetEach and NetInput
+// NetEnviron is the environment NetAskContext, Net, NetEach and NetInputContext
 // give git, less the ssh command Net composes: for a caller that must read
 // what that environment tells git (its home, its XDG_CONFIG_HOME,
 // GIT_ATTR_NOSYSTEM).
@@ -442,7 +438,7 @@ var netGuardOff atomic.Bool
 
 // netEnv is the environment of every git command abcd runs that may reach a
 // remote, built on env, the environment it would otherwise run with: Net,
-// NetEach, NetInput (and through them RemoteHeadBranch, the landing and the
+// NetEach, NetInputContext (and through them RemoteHeadBranch, the landing and the
 // reservation code) and RunLimitedNetContext. Outside a test binary it is env
 // unchanged, so the person's own configuration and credential helpers apply
 // exactly as their own git applies them. Under a test binary

@@ -20,8 +20,7 @@ const managedMarker = "# AGENTS.md\n\n<!-- BEGIN ABCD -->\nabcd's block.\n<!-- E
 // the applying sweep (dcn-2611161459048806), and answers the line the
 // landing reports.
 func TestTheLoopsAutomaticSweepIsThisFrontDoorsSweep(t *testing.T) {
-	t.Cleanup(loop.SetAutoSweeper(nil))
-	installAutoSweep()
+	t.Cleanup(installAutoSweep())
 	repo, done := sweepFixture(t)
 	repo.Write("AGENTS.md", managedMarker)
 
@@ -41,8 +40,7 @@ func TestTheLoopsAutomaticSweepIsThisFrontDoorsSweep(t *testing.T) {
 // repository's file removes nothing, and the line says which file turned it
 // off; outside a managed checkout nothing is removed and nothing is said.
 func TestTheAutomaticSweepHonoursTheRepositorysOff(t *testing.T) {
-	t.Cleanup(loop.SetAutoSweeper(nil))
-	installAutoSweep()
+	t.Cleanup(installAutoSweep())
 	repo, done := sweepFixture(t)
 	line := loop.AutoSweepForTest(context.Background(), repo.Root())
 	if line != "" {
@@ -68,8 +66,9 @@ func TestTheAutomaticSweepHonoursTheRepositorysOff(t *testing.T) {
 // its run starts, so the loop sweeps after its landings: `abcd implement
 // step`, `abcd drain`, `abcd drain --drive`, `abcd build` (its start and its
 // resume) and `abcd build next`. Each route is run where it refuses at once
-// (no checkout); the sweep it installed answers, in a managed checkout whose
-// setting is off, naming the setting, and nothing is installed after the test.
+// (no checkout); while it runs, the sweep it installed answers, in a managed
+// checkout whose setting is off, naming the setting; once it returns, no
+// sweep is installed, so a later test never runs the real one.
 func TestEveryRouteThatLandsInstallsTheAutomaticSweep(t *testing.T) {
 	repo, _ := sweepFixture(t)
 	repo.Write("AGENTS.md", managedMarker)
@@ -82,18 +81,20 @@ func TestEveryRouteThatLandsInstallsTheAutomaticSweep(t *testing.T) {
 		{"build", "next"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
-			t.Cleanup(loop.SetAutoSweeper(nil))
+			var during []string
+			prev := autoSweepInstalled
+			autoSweepInstalled = func() { during = append(during, loop.AutoSweepForTest(context.Background(), repo.Root())) }
+			t.Cleanup(func() { autoSweepInstalled = prev })
 			t.Chdir(t.TempDir())
 			if _, err := runCLIErr(t, args...); err == nil {
 				t.Fatalf("%v outside a checkout ran", args)
 			}
-			line := loop.AutoSweepForTest(context.Background(), repo.Root())
-			if !strings.Contains(line, "abcd did not sweep on its own: sweep.automatic is off") {
-				t.Fatalf("after %v the loop's sweep answered %q; want this front door's, installed", args, line)
+			if len(during) != 1 || !strings.Contains(during[0], "abcd did not sweep on its own: sweep.automatic is off") {
+				t.Fatalf("while %v ran, the loop's sweep answered %q; want this front door's, installed once", args, during)
+			}
+			if line := loop.AutoSweepForTest(context.Background(), repo.Root()); line != "" {
+				t.Fatalf("after %v a sweep is still installed: %q", args, line)
 			}
 		})
-	}
-	if line := loop.AutoSweepForTest(context.Background(), repo.Root()); line != "" {
-		t.Fatalf("a sweep is still installed after the routes' tests: %q", line)
 	}
 }

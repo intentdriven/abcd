@@ -34,9 +34,21 @@ var sweepOptions func(*sweep.Options)
 // pull request merged and at the end of a drain. Each verb that can land a
 // lane, close a merged one or end a drain (`abcd build`, `abcd build next`,
 // `abcd implement step`, `abcd drain` with or without its drive) installs it
-// as its run starts; it is not installed at init, so no hook, whose git calls
-// must run under the hook's deadline, ever reaches the sweep.
-func installAutoSweep() { loop.SetAutoSweeper(sweepOnOwn) }
+// as its run starts and uninstalls it with restore as the run ends, so no
+// later run in the same process (a test's) sweeps through it; it is not
+// installed at init, so no hook, whose git calls must run under the hook's
+// deadline, ever reaches the sweep.
+func installAutoSweep() (restore func()) {
+	restore = loop.SetAutoSweeper(sweepOnOwn)
+	if autoSweepInstalled != nil {
+		autoSweepInstalled()
+	}
+	return restore
+}
+
+// autoSweepInstalled, when a test sets it, is told each time a run installs
+// the automatic sweep, while it is installed.
+var autoSweepInstalled func()
 
 // sweepOnOwn is the automatic sweep of the checkout at repoRoot, with the
 // readers `abcd sweep --apply` is handed, from the process's own working

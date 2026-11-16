@@ -109,9 +109,12 @@ func TestEveryGitCommandADriveRunsIsInTheTable(t *testing.T) {
 
 // hookedRowRunners run each hooked row's runner, as `git -C <dir> <args>`.
 var hookedRowRunners = map[string]func(dir string, args ...string) error{
-	"gitutil.Net":      func(dir string, args ...string) error { _, err := gitutil.Net(dir, args...); return err },
-	"gitutil.NetEach":  func(dir string, args ...string) error { return gitutil.NetEach(dir, 64, func(string) {}, args...) },
-	"gitutil.NetInput": func(dir string, args ...string) error { _, err := gitutil.NetInput(dir, "x\n", args...); return err },
+	"gitutil.Net":     func(dir string, args ...string) error { _, err := gitutil.Net(dir, args...); return err },
+	"gitutil.NetEach": func(dir string, args ...string) error { return gitutil.NetEach(dir, 64, func(string) {}, args...) },
+	"gitutil.NetInputContext": func(dir string, args ...string) error {
+		_, err := gitutil.NetInputContext(context.Background(), dir, "x\n", args...)
+		return err
+	},
 	"gitutil.LocalGit": func(dir string, args ...string) error { _, err := gitutil.LocalGit(dir, args...); return err },
 	"gitutil.RunCommitCommandBounded": func(dir string, args ...string) error {
 		_, err := gitutil.RunCommitCommandBounded(dir, time.Minute, errors.New("stalled"), args...)
