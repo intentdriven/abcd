@@ -114,7 +114,22 @@ func TestApproveJudgesSubmoduleUpdateByItsValue(t *testing.T) {
 		approveCase{`git -c submodule.lib.update="$V" status`, refused},
 		approveCase{`GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=submodule.lib.update 'GIT_CONFIG_VALUE_0=!sh x.sh' git status`, refused},
 		approveCase{`git clone -c 'submodule.lib.update=!sh x.sh' src dst`, refused},
+		approveCase{`git -c submodule.lib.update status`, nil},
 	))
+}
+
+// TestApproveJudgesABooleanSettingOfItsOwn: `git -c <key>` with no `=` sets
+// the key to true (git(1)), and is judged as `-c <key>=true` is.
+func TestApproveJudgesABooleanSettingOfItsOwn(t *testing.T) {
+	refused := refusedAs(gitConfigWriteEntryID)
+	r, _ := gitRig(t)
+	r.run(t, []approveCase{
+		{`git -c tag.gpgSign status`, refused},
+		{`git -c log.showSignature log -1`, refused},
+		{`git -c protocol.allow status`, refused},
+		{`git -c color.ui status`, nil},
+		{`git -c advice.detachedHead status`, nil},
+	})
 }
 
 // TestApproveJudgesASectionRenameOnItsNewName: `git config --rename-section`

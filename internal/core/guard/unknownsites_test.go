@@ -240,6 +240,10 @@ var wordReaders = map[string]string{
 	"pathUses":         "commandSites and fixedToken; an operand holding an unknown mark is a target the line does not fix, which is refused",
 	"gitConfigRefusal": "sitesNamed, readGitConfig and firstOperands; an unknown subcommand is read as config",
 	"gitConfigWrite":   "isUnknown: an unknown word may be a scope, a mode or the key, and a write with one is refused",
+	"gitFlagRefusal":   "isUnknown, flagCouldBe and clusterCouldCarry: an unknown dash-word that may be one of clone's -c, -u or --config is refused before any short cluster is read",
+	"longFlagIs":       "isUnknown, knownLead and flagCouldBe: an unknown word is read by what its lead can still become",
+	"shortValueLetter": "exempt: gitFlagRefusal refuses every unknown short-option word before it reads one",
+	"flagWhat":         "exempt: reads one of programFlags, not a word of the line",
 	"execPinKeys":      "exempt: reads gitutil's own -c pins, not a command word",
 
 	// approvecode.go: code reaching an interpreter outside its inline flag.

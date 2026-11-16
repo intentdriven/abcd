@@ -372,6 +372,8 @@ func readGitConfig(prefix, args, valueFlags []string) gitConfigRead {
 					c.add(k, "")
 				default:
 					// A key with no `=` is a boolean set to true.
+					c.keys = append(c.keys, strings.ToLower(strings.TrimSpace(k)))
+					c.setValue("true")
 					c.settings = append(c.settings, gitSetting{strings.ToLower(strings.TrimSpace(k)), "true"})
 				}
 			}
