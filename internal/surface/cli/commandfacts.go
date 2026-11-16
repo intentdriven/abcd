@@ -38,11 +38,14 @@ const CommandFactsDir = "docs/reference/cli/commands"
 const CommandPagesDir = "commands"
 
 // The markers fencing the two generated blocks of a command page. The end
-// marker is the one every generated block in the repository closes with.
+// marker is the one every generated block in the repository closes with, and
+// every begin marker opens with GeneratedBeginPrefix, this file's two and
+// asking-sync's alike.
 const (
-	CommandFactsBegin = "<!-- generated: command-facts -->"
-	AskTheBinaryBegin = "<!-- generated: ask-the-binary -->"
-	GeneratedEnd      = "<!-- /generated -->"
+	CommandFactsBegin    = "<!-- generated: command-facts -->"
+	AskTheBinaryBegin    = "<!-- generated: ask-the-binary -->"
+	GeneratedBeginPrefix = "<!-- generated:"
+	GeneratedEnd         = "<!-- /generated -->"
 )
 
 // pluginRung is the binary as a plugin page invokes it: the plugin-root copy,
@@ -167,9 +170,12 @@ func CommandFactsFiles(facts []surface.Facts) (map[string][]byte, error) {
 }
 
 // pageRung is the binary as the page invokes it: the plugin-root copy when the
-// page names it anywhere, and the binary on PATH otherwise.
+// page's hand-written text names it anywhere, and the binary on PATH
+// otherwise. The generated blocks are left out of the reading, so a rung the
+// sync once wrote into a block never keeps itself once the text stops naming
+// it.
 func pageRung(page []byte) string {
-	if bytes.Contains(page, []byte(pluginRung)) {
+	if bytes.Contains(withoutGeneratedBlocks(page), []byte(pluginRung)) {
 		return pluginRung
 	}
 	return pathRung
@@ -286,9 +292,10 @@ func codeSpan(s string) string {
 // ask-the-binary block straight after the H1 heading, with nothing but blank
 // lines between, and the command-facts block last, followed by nothing but the
 // closing user-input line. A block that is absent is written into its place.
-// A page with no H1 heading, a block opened twice or never closed, a block out
-// of its place, or a name the tree has no visible verb for is a fault: the
-// generator never guesses.
+// A page with no H1 heading, a block opened twice or never closed (before the
+// page ends, or before another generated block opens), a block out of its
+// place, or a name the tree has no visible verb for is a fault: the generator
+// never guesses.
 func SyncCommandPage(page []byte, name string, facts []surface.Facts) ([]byte, error) {
 	if len(factsOfPage(facts, name)) == 0 {
 		return nil, fmt.Errorf("%s/%s.md names no visible command of the tree", CommandPagesDir, name)
@@ -317,11 +324,37 @@ func findBlock(page, name, begin string) (int, int, error) {
 		return 0, 0, fmt.Errorf("%s/%s.md carries %d %s markers; it must carry one", CommandPagesDir, name, n, begin)
 	}
 	start := strings.Index(page, begin)
-	stop := strings.Index(page[start:], GeneratedEnd)
+	inner := start + len(begin)
+	stop := strings.Index(page[inner:], GeneratedEnd)
 	if stop < 0 {
 		return 0, 0, fmt.Errorf("%s/%s.md opens %s and never closes it with %s", CommandPagesDir, name, begin, GeneratedEnd)
 	}
-	return start, start + stop + len(GeneratedEnd), nil
+	if strings.Contains(page[inner:inner+stop], GeneratedBeginPrefix) {
+		return 0, 0, fmt.Errorf("%s/%s.md opens %s and never closes it with %s before the next generated block opens; "+
+			"close it, or the sync would take that block's end marker and delete the text between", CommandPagesDir, name, begin, GeneratedEnd)
+	}
+	return start, inner + stop + len(GeneratedEnd), nil
+}
+
+// withoutGeneratedBlocks is page with every generated block removed, from its
+// begin marker through the first end marker after it, every generated block
+// of the repository's included (the asking-rules block of intent.md as much as
+// this file's two). A block left open is removed through the end of the page;
+// the sync refuses such a page in any case.
+func withoutGeneratedBlocks(page []byte) []byte {
+	var out []byte
+	for {
+		start := bytes.Index(page, []byte(GeneratedBeginPrefix))
+		if start < 0 {
+			return append(out, page...)
+		}
+		out = append(out, page[:start]...)
+		stop := bytes.Index(page[start:], []byte(GeneratedEnd))
+		if stop < 0 {
+			return out
+		}
+		page = page[start+stop+len(GeneratedEnd):]
+	}
 }
 
 // headingEnd is the offset just past the newline that ends the page's first

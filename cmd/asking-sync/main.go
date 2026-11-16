@@ -46,6 +46,11 @@ const (
 	drafterPath = "agents/question-drafter.md"
 	// drafterBeginMarker opens the drafter's block; endMarker closes it.
 	drafterBeginMarker = "<!-- generated: question-drafter -->"
+	// generatedBeginPrefix opens every generated block's begin marker in the
+	// repository, these and the command pages' two alike. One found between a
+	// begin marker and the end marker read for it means the block was left
+	// open and the end marker is another block's.
+	generatedBeginPrefix = "<!-- generated:"
 )
 
 // target is one page asking-sync writes: where it is, the marker opening its
@@ -114,7 +119,8 @@ func numberHeaders() string { return `"Q1", "Q1a", or "Q2/5"` }
 
 // sync returns page with its one asking-rules block rendered from l, every
 // byte outside the block kept. A page with no block, an unclosed one, or more
-// than one is a fault: the command never guesses where the block belongs.
+// than one is a fault: the command never guesses where the block belongs. A
+// block left open before another generated block opens is unclosed too.
 func sync(page []byte, l question.Limits) ([]byte, error) {
 	return syncTarget(page, targets[0], l)
 }
@@ -133,6 +139,10 @@ func syncTarget(page []byte, t target, l question.Limits) ([]byte, error) {
 	stop := bytes.Index(page[start:], end)
 	if stop < 0 {
 		return nil, fmt.Errorf("%s opens %s and never closes it with %s", t.path, t.begin, endMarker)
+	}
+	if bytes.Contains(page[start:start+stop], []byte(generatedBeginPrefix)) {
+		return nil, fmt.Errorf("%s opens %s and never closes it with %s before the next generated block opens; "+
+			"close it, or the sync would take that block's end marker and delete the text between", t.path, t.begin, endMarker)
 	}
 	out := make([]byte, 0, len(page))
 	out = append(out, page[:start]...)

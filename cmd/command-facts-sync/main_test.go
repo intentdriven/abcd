@@ -208,6 +208,31 @@ func TestAQuietVerbGetsAOneLineBlockInThePagesOwnRung(t *testing.T) {
 	}
 }
 
+// The page's rung is read from its hand-written text alone: a page whose
+// blocks name the plugin-root binary, written when the text named it too, is
+// sent to the binary on PATH once the text no longer names it, rather than
+// keeping the rung its own blocks carry.
+func TestTheRungIsReadFromTheTextAndNotFromTheBlocks(t *testing.T) {
+	plugin := `"${CLAUDE_PLUGIN_ROOT}/abcd"`
+	page := "---\nname: quiet\n---\n\n# Quiet\n\n" +
+		cli.AskTheBinaryBlock("quiet", plugin) + "\n\nRun `abcd quiet`.\n\n" +
+		cli.CommandFactsBlock(fixtureFacts(), "quiet", plugin) + "\n"
+	if !strings.Contains(page, plugin) {
+		t.Fatalf("the fixture's blocks do not name the plugin-root binary:\n%s", page)
+	}
+	root := checkout(t, map[string]string{"quiet": page})
+	if err := run(root, fixtureFacts(), false); err != nil {
+		t.Fatal(err)
+	}
+	got := read(t, root, cli.CommandPagesDir+"/quiet.md")
+	want := "---\nname: quiet\n---\n\n# Quiet\n\n" +
+		cli.AskTheBinaryBlock("quiet", "abcd") + "\n\nRun `abcd quiet`.\n\n" +
+		cli.CommandFactsBlock(fixtureFacts(), "quiet", "abcd") + "\n"
+	if got != want {
+		t.Errorf("the blocks kept the rung they carried:\n%s\nwant\n%s", got, want)
+	}
+}
+
 // -check names every stale copy and writes nothing: a missing file, an edited
 // block, and a file for a verb the tree no longer has. The sync then rewrites
 // the block where it stands and removes the orphan file.
@@ -249,13 +274,20 @@ func TestCheckNamesEachStaleCopyAndTheSyncMendsIt(t *testing.T) {
 	}
 }
 
-// Every fault is refused and nothing is written: a page with no H1 heading, a
-// block opened twice, a block never closed, a block out of its place, and a
-// page for a verb the tree has no visible command for.
+// Every fault is refused and nothing is written, the page left byte for byte
+// as it was: a page with no H1 heading, a block opened twice, a block never
+// closed, a block left open before another generated block opens (whose end
+// marker the sync would otherwise take, deleting the hand-written text
+// between), a block out of its place, and a page for a verb the tree has no
+// visible command for.
 func TestTheSyncRefusesWhatItWouldHaveToGuess(t *testing.T) {
 	alpha := pluginPage("alpha")
 	ask := cli.AskTheBinaryBlock("alpha", `"${CLAUDE_PLUGIN_ROOT}/abcd"`)
 	facts := cli.CommandFactsBlock(fixtureFacts(), "alpha", `"${CLAUDE_PLUGIN_ROOT}/abcd"`)
+	// openAsk is the ask-the-binary block with its end marker lost, standing
+	// in its place after the heading; the page's hand-written text follows.
+	openAsk := strings.TrimSuffix(ask, cli.GeneratedEnd)
+	asking := "<!-- generated: asking-rules -->\nThe asking rules.\n" + cli.GeneratedEnd
 	for _, c := range []struct {
 		name, verb, page, want string
 	}{
@@ -264,6 +296,13 @@ func TestTheSyncRefusesWhatItWouldHaveToGuess(t *testing.T) {
 		{"never closed", "alpha", strings.Replace(alpha, "What the page says first.", cli.CommandFactsBegin+"\nleft open", 1), "never closes it"},
 		{"ask out of place", "alpha", strings.Replace(alpha, "**User input:**", ask+"\n\n**User input:**", 1), "away from its place"},
 		{"facts out of place", "alpha", strings.Replace(alpha, "What the page says first.", "What the page says first.\n\n"+facts, 1), "away from its place"},
+		{"ask left open before the facts block", "alpha",
+			strings.Replace(strings.Replace(alpha, "What the page says first.", openAsk+"\n\nWhat the page says first.", 1),
+				"**User input:**", facts+"\n\n**User input:**", 1),
+			"before the next generated block opens"},
+		{"ask left open before the asking-rules block", "alpha",
+			strings.Replace(alpha, "What the page says first.", openAsk+"\n\nWhat the page says first.\n\n"+asking+"\n\nMore text.", 1),
+			"before the next generated block opens"},
 		{"hidden verb", "hook", pluginPage("hook"), "names no visible command"},
 		{"no such verb", "gamma", pluginPage("gamma"), "names no visible command"},
 	} {
