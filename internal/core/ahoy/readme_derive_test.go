@@ -478,8 +478,10 @@ func TestContentsKeepsAHeadingsEscapesAsWritten(t *testing.T) {
 // TestContentsKeepsAHeadingsEscapedMarkupAsText (iss-2611161558121669): an
 // escaped angle bracket or bracket is text, not markup, so the tag or link
 // it opens is listed as the heading renders it rather than stripped; an
-// escaped bracket inside a link's text does not cut the link short; and a
-// backslash inside a raw tag is no escape, so the tag is still stripped.
+// escaped bracket inside a link's text does not cut the link short; a
+// backslash inside a raw tag is no escape, so the tag is still stripped; and
+// an angle bracket that opens no tag as written stays text, though an escape
+// inside it is held.
 func TestContentsKeepsAHeadingsEscapedMarkupAsText(t *testing.T) {
 	readme := strings.Join([]string{
 		"# P",
@@ -492,6 +494,10 @@ func TestContentsKeepsAHeadingsEscapedMarkupAsText(t *testing.T) {
 		"",
 		`## Tag <a title="x\y">t</a> end`,
 		"",
+		`## Quote <a title="x\">t</a> end`,
+		"",
+		`## Use <a title='it\'s'> here`,
+		"",
 	}, "\n")
 	root := readmeRepo(t, "", map[string]string{"README.md": readme})
 	d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
@@ -500,6 +506,8 @@ func TestContentsKeepsAHeadingsEscapedMarkupAsText(t *testing.T) {
 		`- [Not \[a link\](x) here](`,
 		`- [A b\]c link](`,
 		`- [Tag t end](`,
+		`- [Quote t end](`,
+		`- [Use <a title='it\'s'> here](#use-a-titleits-here)`,
 	} {
 		if !strings.Contains(d.Body, want) {
 			t.Errorf("the contents list must carry %q:\n%s", want, d.Body)

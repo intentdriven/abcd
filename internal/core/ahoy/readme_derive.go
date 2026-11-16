@@ -965,45 +965,56 @@ var inlineTagRe = regexp.MustCompile(`<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Z
 //
 // An escape is text, not markup: an escaped angle bracket or bracket opens no
 // tag or link, and an escaped bracket or parenthesis inside a link does not
-// end it, so each escape is held while the tags and links are read and put
-// back after (iss-2610112021163993 keeps it as written in the list).
+// end it, so each escape is held while the links are read and put back after
+// (iss-2610112021163993 keeps it as written in the list). The tags are
+// dropped in the same reading, which alone decides where one opens.
 //
 // The text comes back masked, with the function that restores its spans: the
 // spans are read once, from the heading as written (iss-2610112237411831).
 func headingText(src string) (string, func(string, bool) string) {
 	masked, unmask := mdrecord.MaskCodeSpans(src)
-	held, restore := holdEscapes(masked)
-	return restore(inlineTagRe.ReplaceAllString(inlineLinkRe.ReplaceAllString(held, "$1"), "")), unmask
+	held, restore := dropTagsHoldEscapes(masked)
+	return restore(inlineLinkRe.ReplaceAllString(held, "$1")), unmask
 }
 
 // inlineTagAtRe is inlineTagRe anchored where the reading stands.
 var inlineTagAtRe = regexp.MustCompile(`^(?:` + inlineTagRe.String() + `)`)
 
-// escapeHoldRe is a held escape, as holdEscapes writes it.
+// escapeHoldRe is a held escape, as dropTagsHoldEscapes writes it.
 var escapeHoldRe = regexp.MustCompile("\x01([0-9]+)\x01")
 
-// holdEscapes replaces each backslash escape in s, a backslash before ASCII
-// punctuation, with a placeholder the tag and link patterns cannot read as
-// markup (iss-2611161558121669), and returns the function that puts them
-// back. It reads s left to right as the forge does: a tag where one opens is
-// copied as written, since a backslash inside raw HTML is no escape. Text
-// that already holds the placeholder's byte is returned as it is, with an
-// identity restore, as MaskCodeSpans treats a heading holding its own.
-func holdEscapes(s string) (string, func(string) string) {
-	if strings.IndexByte(s, 0x01) >= 0 || strings.IndexByte(s, '\\') < 0 {
-		return s, func(t string) string { return t }
-	}
+// headingTagWindow bounds how far one tag is read from its angle bracket, so
+// a heading of many unclosed brackets costs a bounded read at each rather
+// than a read to the end of the line (a hostile README stays linear); a tag
+// in a heading is far shorter.
+const headingTagWindow = 512
+
+// dropTagsHoldEscapes reads s left to right as the forge does
+// (iss-2611161558121669): an inline tag where one opens is dropped, and a
+// backslash inside it is no escape; a backslash escape elsewhere, a
+// backslash before ASCII punctuation, is replaced with a placeholder the
+// link pattern cannot read as markup, and the returned function puts it
+// back. Only this reading admits a tag, so a held escape can never make one
+// of a bracket the heading shows as text. Text that already holds the
+// placeholder's byte has its tags dropped and nothing held, with an identity
+// restore, as MaskCodeSpans treats a heading holding its own.
+func dropTagsHoldEscapes(s string) (string, func(string) string) {
+	hold := strings.IndexByte(s, 0x01) < 0
 	var held []string
 	var b strings.Builder
+	b.Grow(len(s))
 	for i := 0; i < len(s); {
 		switch {
 		case s[i] == '<':
-			if m := inlineTagAtRe.FindStringIndex(s[i:]); m != nil {
-				b.WriteString(s[i : i+m[1]])
+			w := s[i:min(len(s), i+headingTagWindow)]
+			if strings.HasPrefix(w, "<!--") && !strings.Contains(w[4:], "-->") {
+				break // an unclosed comment opens no tag
+			}
+			if m := inlineTagAtRe.FindStringIndex(w); m != nil {
 				i += m[1]
 				continue
 			}
-		case s[i] == '\\' && i+1 < len(s) && isASCIIPunct(s[i+1]):
+		case hold && s[i] == '\\' && i+1 < len(s) && isASCIIPunct(s[i+1]):
 			fmt.Fprintf(&b, "\x01%d\x01", len(held))
 			held = append(held, s[i:i+2])
 			i += 2
@@ -1011,6 +1022,9 @@ func holdEscapes(s string) (string, func(string) string) {
 		}
 		b.WriteByte(s[i])
 		i++
+	}
+	if len(held) == 0 {
+		return b.String(), func(t string) string { return t }
 	}
 	return b.String(), func(t string) string {
 		return escapeHoldRe.ReplaceAllStringFunc(t, func(m string) string {
