@@ -18,7 +18,7 @@ supersedes: [itd-118]
 
 # One command shows everything a repository has left lying around, and clears what is provably finished
 
-Typed links: `refines` and `blocked_by` [itd-2609091014076309](../shipped/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md) (the worktree store: its prune is the one reclaim this command calls, never a second copy); `supersedes` [itd-118](../superseded/itd-118-merged-work-leaves-no-residue-abcd.md) (the seed for tidying what a merge leaves behind, which this command absorbs; the product thinker confirmed it on 2026-10-23); graduated from [iss-2610222001116066](../../../work/issues/open/iss-2610222001116066-abcd-has-no-single-verb-that-cleans-up-a.md); reservations through [iss-2610142200389875](../../../work/issues/resolved/iss-2610142200389875-the-reservations-ruleset-forbids.md) (the reservation sweep).
+Typed links: `refines` and `blocked_by` [itd-2609091014076309](../shipped/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md) (the worktree store: its prune is the one reclaim this command calls, never a second copy); `supersedes` [itd-118](../superseded/itd-118-merged-work-leaves-no-residue-abcd.md) (the seed for tidying what a merge leaves behind, which this command absorbs; the product thinker confirmed it on 2026-10-23); graduated from [iss-2610222001116066](../../../work/issues/resolved/iss-2610222001116066-abcd-has-no-single-verb-that-cleans-up-a.md); reservations through [iss-2610142200389875](../../../work/issues/resolved/iss-2610142200389875-the-reservations-ruleset-forbids.md) (the reservation sweep).
 
 ## Press Release
 
