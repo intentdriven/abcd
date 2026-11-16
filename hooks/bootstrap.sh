@@ -252,9 +252,16 @@ safe() {
 # missing, what it costs, and the three ways out. A raw shell error ("No such
 # file or directory") must never be the whole story a user gets. It is split
 # from refuse() because the EXIT trap has to be able to say it WITHOUT calling
-# exit from inside a trap.
+# exit from inside a trap. A refusal reached while a binary already stands in
+# the plugin root (the migration seed's obstruction) says so instead: that
+# binary still runs every hook, so "not installed" and "UNGUARDED" would be
+# false, and the session-start wrapper shows this text (iss-2610161125115941).
 say_refusal() {
 	terminal=yes
+	if [ -f "$binary" ] && [ -x "$binary" ]; then
+		printf 'abcd bootstrap: %s\n\nThe abcd binary already in the plugin root still runs the hooks, and the shell-hazard guard stays active. Clear what is named above, and the next session start retries.\n' "$(safe "$1")" >&2
+		return
+	fi
 	printf 'abcd bootstrap: %s\n\nThe abcd binary is not installed in the plugin root, so the abcd hooks cannot run and the shell-hazard guard is inactive — shell commands run UNGUARDED until it is.\n\nAny one of these fixes it:\n  - start a session with network access, and this script retries by itself;\n  - install the release binary by hand (%s#install) and copy it to %s;\n  - build from source for full trust: go build ./cmd/abcd, then copy the binary to %s.\n' \
 		"$(safe "$1")" "$repo_url" "$(safe "$binary")" "$(safe "$binary")" >&2
 }
@@ -284,8 +291,11 @@ refuse() {
 # there. Nothing derived goes to stdout.
 #
 # refuse() keeps its non-zero exit. That split is the point: a genuine fault
-# SHOULD raise an error banner, because something is wrong and the session should
-# say so; a successful install should not.
+# with no binary to run SHOULD raise an error banner, because the hooks cannot
+# run and the session should say so; a successful install should not. When a
+# binary already stands in the plugin root, hooks/session-start.sh runs the
+# hooks on it and reports refuse()'s exit as a notice on stderr instead, so the
+# banner does not drop the notices those hooks print (iss-2610161125115941).
 notice() {
 	terminal=yes
 	printf '%s\n' "$(safe "$1")" >&2
