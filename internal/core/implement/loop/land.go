@@ -643,8 +643,9 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, fmt.Errorf("keeping the local tier out of the landing's records: %w", err)
 	}
 	// What the commit would hold is judged as staged, so a write during the close meets
-	// the rule the top of the call read.
-	raw, err := pickGit(wt, stagedRawArgs(lane.HeadSHA)...)
+	// the rule the top of the call read. Both reads of the index take the judged head's
+	// tree as its commit stores it (pickGitAsStored).
+	raw, err := pickGitAsStored(wt, stagedRawArgs(lane.HeadSHA)...)
 	if err != nil {
 		return Outcome{}, fmt.Errorf("reading the landing's staged records: %w", err)
 	}
@@ -653,7 +654,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	} else if why != "" {
 		return Outcome{}, strayRefusal(*lane, why)
 	}
-	staged, err := pickGit(wt, "--no-replace-objects", "diff", "--cached", "--no-renames", "--ignore-submodules=none", "--name-only", "-z")
+	staged, err := pickGitAsStored(wt, "diff", "--cached", "--no-renames", "--ignore-submodules=none", "--name-only", "-z")
 	if err != nil {
 		return Outcome{}, fmt.Errorf("reading the landing's staged records: %w", err)
 	}
@@ -1278,9 +1279,10 @@ func strayRefusal(lane Lane, why string) error {
 }
 
 // stagedRawArgs is git's list of what the index changes against head, one form for
-// every judgement to read, with head's objects as stored.
+// every judgement to read. Each caller runs it through pickGitAsStored or
+// pickGitIndexAsStored, so head's tree is the one its commit stores.
 func stagedRawArgs(head string) []string {
-	return []string{"--no-replace-objects", "diff", "--cached", "--raw", "--no-renames", "--no-abbrev", "--no-ext-diff", "--ignore-submodules=none", "-z", head, "--"}
+	return []string{"diff", "--cached", "--raw", "--no-renames", "--no-abbrev", "--no-ext-diff", "--ignore-submodules=none", "-z", head, "--"}
 }
 
 // strayChanges judges the lane's worktree as `git add` would stage it, on a copy of the
@@ -1315,7 +1317,7 @@ func strayChanges(st State, lane Lane) (string, error) {
 	if _, err := pickGitIndex(wt, index, "reset", "-q", "--", TierRelDir); err != nil {
 		return "", err
 	}
-	raw, err := pickGitIndex(wt, index, stagedRawArgs(lane.HeadSHA)...)
+	raw, err := pickGitIndexAsStored(wt, index, stagedRawArgs(lane.HeadSHA)...)
 	if err != nil {
 		return "", err
 	}
