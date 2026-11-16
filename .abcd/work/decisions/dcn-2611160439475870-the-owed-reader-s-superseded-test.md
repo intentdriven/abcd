@@ -1,0 +1,6 @@
+---
+id: dcn-2611160439475870
+slug: the-owed-reader-s-superseded-test
+date: 2026-11-16
+---
+2026-11-16 — The owed reader's superseded test (iss-2611160240149245) reads a branch as superseded when every change it makes since its merge base, to each path's exact mode and object, is recorded in a commit the default branch contains, merged pull requests' own commits included, rather than only in a state main's tip held. Grounds: the Opus correctness review showed a first-parent-only walk is stricter, but records-run-1104b, the case the issue reports, then never clears, because the pull request that landed its records moved two of them before merging; under the reachable rule deleting the branch loses none of its final content, which is the safety the security note on #1592 asked for (no unlanded work lost), and a change a reviewed pull request recorded then dropped was dropped on purpose. The mode joins the comparison key after the Opus security review showed a mode-only change matched a revert. Known limit: when the superseded branch is the only owed item, the note reaches no one, since notes print only beside a held stop. To reverse: add --first-parent to the log in superseded and accept that a branch whose records were moved inside the landing pull request stays owed.

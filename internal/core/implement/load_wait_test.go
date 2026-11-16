@@ -1254,6 +1254,56 @@ func TestWaitCrossedCapOutlastsAQueuedStartOrderedWaiter(t *testing.T) {
 	}
 }
 
+// TestWaitNeverPassesACrossedWaiterOneSlotHoldsShut: an account at two slots
+// sees one running preflight, or one live race run, as a free slot, and an
+// account at one slot, the default, sees either as a shut gate. A crossed
+// waiter of the second account, started an hour earlier and holding the
+// higher pid after a pid wrap, stays queued behind that work for as long as
+// it runs, so the first account's waiter keeps counting it whatever the cap:
+// passing it there let later starters of one account open ahead of an
+// earlier waiter of another for four hours (iss-2611151649449938). Once
+// nothing but the crossed waiter holds the gate shut, even at one slot, the
+// cap counts as before.
+func TestWaitNeverPassesACrossedWaiterOneSlotHoldsShut(t *testing.T) {
+	crossed := machineload.Proc{PID: 58628, PPID: 1, PGID: 58628, UID: 505, Age: 71 * time.Minute, Name: "abcd"}
+	crossedArgs := []string{"implement", "load", "--wait", "--timeout", "8h", "--", "make", "preflight"}
+	for _, c := range []struct {
+		name string
+		work machineload.Proc
+		args []string
+	}{
+		{"a running preflight", machineload.Proc{PID: 61000, PPID: 1, PGID: 61000, UID: 502, Age: 10 * time.Minute, Name: "make"}, []string{"preflight"}},
+		{"a live race run", raceRun(61000, 1), []string{"test", "-race", "./internal/..."}},
+	} {
+		busy := poll{load: 3, procs: []machineload.Proc{crossed, c.work}, args: map[int][]string{crossed.PID: crossedArgs, c.work.PID: c.args}}
+		clock := &fakeClock{now: waitT0}
+		req := waitReq(t.TempDir(), 8034, clock, busy)
+		req.Getenv = slotsEnv("2")
+		req.Timeout = 3 * WaitCrossedCap
+		res, err := WaitLoad(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Status != WaitTimedOut || !slices.Equal(res.Still, []string{WaitOnWaiter}) || !slices.Equal(res.Waiters, []int{crossed.PID}) {
+			t.Fatalf("beside %s: %+v, want a timeout still on the crossed waiter %d, which one slot holds shut", c.name, res, crossed.PID)
+		}
+
+		free := poll{load: 3, procs: []machineload.Proc{crossed}, args: map[int][]string{crossed.PID: crossedArgs}}
+		polls := []poll{busy, busy, busy, busy, busy, busy, busy, busy, free}
+		clock = &fakeClock{now: waitT0}
+		req = waitReq(t.TempDir(), 8034, clock, polls...)
+		req.Getenv = slotsEnv("2")
+		req.Timeout = time.Hour
+		if res, err = WaitLoad(req); err != nil {
+			t.Fatal(err)
+		}
+		gone := waitT0.Add(8 * WaitPollInterval)
+		if want := gone.Add(WaitCrossedCap + testJitter); res.Status != WaitOpen || !clock.Now().Equal(want) {
+			t.Fatalf("once %s is gone: %+v, done at %s; want open at %s, the cap counted from %s", c.name, res, clock.Now(), want, gone)
+		}
+	}
+}
+
 // TestWaitBackoffsAreBounded: a waiter that finds another opening beside it
 // with the lower pid at every look stands back WaitBackoffCap times, then
 // opens without that look, so it never goes round for ever.

@@ -1908,8 +1908,11 @@ machine's process ids wrap: it may run an abcd built before the start order
 each would wait on the other until its timeout. So once such waiters alone
 have kept yours shut for five minutes on end, longer than a waiter that orders
 by start ever shows queued while the machine is free to you, yours stops
-counting them; anything else that shuts the gate in between, or standing back
-at the last look, starts the count again. The five minutes grow by about a
+counting them. "Alone" is judged as at one preflight at a time, the strictest
+setting any account can hold: while a preflight, a waiter running its command or
+a race run is live, the count does not run even where your own slots leave room,
+since a waiter at one slot is held shut by that work. Anything else that shuts
+the gate in between, or standing back at the last look, starts the count again. The five minutes grow by about a
 minute and a half for each such waiter ahead beyond the first, so of two
 waiters behind the same one the earlier stops counting it first and opens
 before the later stops counting the earlier. A preflight whose own waiter is queued takes that waiter's place in the

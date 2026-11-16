@@ -52,7 +52,7 @@ var fullSHA = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 // verdictEnd is what may follow a verdict word on its line, once the emphasis closing
 // the word is off: what it judges by name, and then the end of the line or a
 // separator. Anything else makes the word the start of another statement.
-var verdictEnd = regexp.MustCompile("^(?:[ \\t]+[*_`]*(?:sha256:)?[0-9a-f]{7,64}[*_`]*)?[*_`]*[ \\t]*(?:$|[\\x{2014}\\x{2013}(]|[:;,.](?:[ \\t]|$)|-{1,2}[ \\t])")
+var verdictEnd = regexp.MustCompile("^(?:[ \\t]+[*_`]*(?:sha256:)?[0-9a-fA-F]{7,64}[*_`]*)?[*_`]*[ \\t]*(?:$|[\\x{2014}\\x{2013}(]|[:;,.](?:[ \\t]|$)|-{1,2}[ \\t])")
 
 // verdictHeading is the one Verdict heading a return's verdict is read under, at any
 // depth, starting its line. A line indented or quoted, or a heading with more after
@@ -81,8 +81,10 @@ func NormalizeLineBreaks(text string) string { return lineBreaks.Replace(text) }
 //     emphasis stripped, its words joined by a space, a hyphen or an underscore, in
 //     capitals) that ends the line or is followed by a separator;
 //   - subject is named in full, on that line or on a `Head: <name>` line directly
-//     under the heading, and no other name stands on either: a run of hex holding a
-//     digit is another name, unless it is the number of a record id, all digits
+//     under the heading, and the first full name after the verdict word on its line,
+//     where the line holds one, is subject: what follows that name is not read, and
+//     no other name stands ahead of it or on the `Head:` line. A run of hex holding
+//     a digit is another name, unless it is the number of a record id, all digits
 //     and no more than twenty of them (recordid.IDNumberAt), as the digits of
 //     iss-2611060835372141 are.
 //
@@ -109,7 +111,7 @@ func ReadVerdict(text, subject string) (string, error) {
 	named := false
 	line := below[0]
 	if m := verdictNameLine.FindStringSubmatch(line); m != nil {
-		if m[1] != subject {
+		if strings.ToLower(m[1]) != subject {
 			return "", namesOther(m[1], subject)
 		}
 		named = true
@@ -124,9 +126,21 @@ func ReadVerdict(text, subject string) (string, error) {
 	}
 	abbreviated := false
 	for _, at := range verdictNames.FindAllStringIndex(rest, -1) {
-		switch name := rest[at[0]:at[1]]; {
-		case name == subject:
+		name := strings.ToLower(rest[at[0]:at[1]])
+		if !hexName.MatchString(name) {
+			continue
+		}
+		if isFullName(name) {
+			// The first full name is what the verdict judges; what follows it on the
+			// line is said of something else, as a records commit's reviewer names the
+			// commit the record resolves with.
+			if name != subject {
+				return "", namesOther(name, subject)
+			}
 			named = true
+			break
+		}
+		switch {
 		case strings.HasPrefix(subject, name):
 			abbreviated = true
 		case recordid.IDNumberAt(rest, at[0], at[1]):
@@ -143,13 +157,23 @@ func ReadVerdict(text, subject string) (string, error) {
 	return "", fmt.Errorf("its verdict %s names no head; the line under the ### Verdict heading opens with the verdict and names what it judges in full, %s", clip(line), subject)
 }
 
-// verdictNames is a name on a verdict line. A run of hex letters with no digit in it
-// is a word unless it is the name itself, and a record id's number is that id's.
-var verdictNames = regexp.MustCompile(`\b(?:sha256:)?[0-9a-f]{7,64}\b`)
+// isFullName reports whether a name on a verdict line is a whole object name or
+// digest, not an abbreviation of one.
+func isFullName(name string) bool { return fullSHA.MatchString(strings.TrimPrefix(name, "sha256:")) }
+
+// verdictNames is each run of letters and digits on a verdict line, with a digest's
+// sha256: prefix, read whole whatever stands either side of it, so a name in
+// underscores or capitals is a name; hexName says which are names. A run of hex
+// letters with no digit in it is a word unless it is the name itself, and a record
+// id's number is that id's.
+var verdictNames = regexp.MustCompile(`(?:(?i:sha256):)?[0-9A-Za-z]+`)
+
+// hexName is a run verdictNames finds that is a name, lower-cased.
+var hexName = regexp.MustCompile(`^(?:sha256:)?[0-9a-f]{7,64}$`)
 
 // verdictNameLine is a labelled line naming what a verdict judges and nothing else,
 // directly under the heading and above the verdict.
-var verdictNameLine = regexp.MustCompile("^(?:[-*+][ \\t]+)?[*_`]*(?i:head)[*_`]*:[*_`]*[ \\t]*[*_`]*((?:sha256:)?[0-9a-f]{7,64})[*_`]*$")
+var verdictNameLine = regexp.MustCompile("^(?:[-*+][ \\t]+)?[*_`]*(?i:head)[*_`]*:[*_`]*[ \\t]*[*_`]*((?:sha256:)?[0-9a-fA-F]{7,64})[*_`]*$")
 
 // namesOther is the refusal of a verdict naming something other than subject.
 func namesOther(name, subject string) error {

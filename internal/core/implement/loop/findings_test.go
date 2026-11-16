@@ -267,8 +267,9 @@ const growthRounds = 5
 // recurs in every round; and under independent short stalls on the smaller
 // read, the shorter one. The fastest-of-three judge failed the control only
 // when all three small reads stalled; this one fails it when three of five
-// rounds do, about ten times as often. If the control flakes again, the
-// remedy is a longer small read, not more rounds.
+// rounds do, about ten times as often. When the control flaked, at 9.9 in a
+// loaded race shard, its small read was made four times longer, not the
+// rounds more; if it flakes again, the remedy is the same.
 //
 // An untimed read of the smaller input first pays the one-time costs a small
 // read meets, a cold cache among them; a one-time cost only the larger input
@@ -525,10 +526,15 @@ func TestAReportLineOfManyStatusWordsIsReadInLinearTime(t *testing.T) {
 // on it would fail a quadratic regression.
 func TestAReadGrowthTestRefusesAQuadraticRead(t *testing.T) {
 	var sink int
-	// One unit: the judge reads only the ratio, so the control's size
-	// sets only its running time.
+	// One unit: the judge reads only the ratio, so the control's size sets
+	// only its running time and how much a short stall weighs against it.
+	// At 2,000 a side the small read took about 17ms under the race
+	// detector, and in a loaded merge-queue race shard stalls on three of
+	// five small reads brought the median to 9.9 (iss-2611152052517498). At
+	// 4,000 it takes four times as long, so a stall of the same length
+	// weighs a quarter as much, for about three seconds more a run.
 	growth := readGrowth(1, func(units int) func() {
-		n := units * 2_000
+		n := units * 4_000
 		return func() {
 			for i := range n {
 				for j := range n {

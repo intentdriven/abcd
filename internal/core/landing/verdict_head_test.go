@@ -298,8 +298,9 @@ func TestTheDeltaWordingSaysWhatTheReaderHolds(t *testing.T) {
 
 // A record id on the verdict line is not a second name: its number is digits after
 // the family and a hyphen. A run that is not a record id's number, or holds a letter,
-// still names another, and the head abbreviated still abbreviates it
-// (iss-2611101222229613).
+// still names another ahead of the head, and the head abbreviated still abbreviates it
+// (iss-2611101222229613). The head is the first full name after the verdict, so what
+// follows it on the line is not read (iss-2611141504118241).
 func TestARecordIDOnTheVerdictLineNamesNoOtherCommit(t *testing.T) {
 	sha := "4f2c9a1be07d3e5f6a8b9c0d1e2f3a4b5c6d7e8f"
 	other := "0123456789abcdef0123456789abcdef01234567"
@@ -311,6 +312,10 @@ func TestARecordIDOnTheVerdictLineNamesNoOtherCommit(t *testing.T) {
 		"a record's file name":      "SHIP " + sha + " — iss-2611060835372141-a-slug.md",
 		"an adr by its old ordinal": "SHIP " + sha + " \u2014 per adr-0045 and dcn-2611031722512037",
 		"a twenty-digit record id":  "SHIP " + sha + " \u2014 iss-26110608353721410000",
+		"another commit after it":   "SHIP " + sha + " — the record's resolved_by matches " + other,
+		"a short run after it":      "SHIP " + sha + " — iss-2611060835372141abc, 2611060835372141",
+		"the head in underscores":   "**SHIP** _" + sha + "_",
+		"the head in capitals":      "SHIP — " + strings.ToUpper(sha),
 	} {
 		t.Run(name, func(t *testing.T) {
 			text := "### Verdict\n\n" + line + "\n"
@@ -320,20 +325,28 @@ func TestARecordIDOnTheVerdictLineNamesNoOtherCommit(t *testing.T) {
 		})
 	}
 	for name, line := range map[string]string{
-		"another commit beside a record":             "SHIP " + sha + " — fixes iss-2611060835372141, as " + other + " did",
-		"another commit after a family":              "SHIP " + sha + " — iss-" + other,
-		"a record number running into letters":       "SHIP " + sha + " — iss-2611060835372141abc",
-		"a family inside a word":                     "SHIP " + sha + " — xiss-2611060835372141",
-		"a bare digit run":                           "SHIP " + sha + " — 2611060835372141",
-		"a commit's length of digits after a family": "SHIP " + sha + " — iss-" + strings.Repeat("1234567890", 4),
-		"a digest's length of digits after a family": "SHIP " + sha + " — iss-" + strings.Repeat("1234567890", 6) + "1234",
+		"another commit beside a record":             "SHIP — fixes iss-2611060835372141, as " + other + " did, at " + sha,
+		"another commit after a family":              "SHIP — iss-" + other + " at " + sha,
+		"a record number running into letters":       "SHIP — iss-2611060835372141abc at " + sha,
+		"a family inside a word":                     "SHIP — xiss-2611060835372141 at " + sha,
+		"a bare digit run":                           "SHIP — 2611060835372141 at " + sha,
+		"a commit's length of digits after a family": "SHIP — iss-" + strings.Repeat("1234567890", 4) + " at " + sha,
+		"a digest's length of digits after a family": "SHIP — iss-" + strings.Repeat("1234567890", 6) + "1234 at " + sha,
 		"the head abbreviated beside a record":       "SHIP " + sha[:9] + " — fixes iss-2611060835372141",
 		"the head abbreviated after a family":        "SHIP iss-" + sha[:9],
+		"a twenty-one-digit run after a family":      "SHIP — iss-" + strings.Repeat("1234567", 3) + " at " + sha,
+		"another commit in underscores first":        "**SHIP** _" + other + "_ — " + sha,
+		"another commit in capitals first":           "SHIP — " + strings.ToUpper(other) + " " + sha,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if word, err := ReadVerdict("### Verdict\n\n"+line+"\n", sha); err == nil {
 				t.Fatalf("ReadVerdict = %q; want the line refused", word)
 			}
 		})
+	}
+	// A Head: line names the head, and the verdict line under it names
+	// another in underscores: the verdict is of that other.
+	if word, err := ReadVerdict("### Verdict\n\nHead: "+sha+"\n**SHIP** _"+other+"_\n", sha); err == nil {
+		t.Fatalf("ReadVerdict = %q; want a Head: line over another commit in underscores refused", word)
 	}
 }
