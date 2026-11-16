@@ -439,6 +439,15 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		a.Running = &RunnerClaim{Runner: route.Runner, Session: session, Until: now.Add(runner.LongestRun(timeout) + claimGrace)}
 		lane.Awaits = slices.Clone(lane.Awaits)
 		lane.Awaits[k] = a
+		if aw.Role == RoleImplementer {
+			if rc, ok := rs.Config.Runner(route.Runner); ok {
+				launched, err := launchedWriter(lane, rc.Model)
+				if err != nil {
+					return false, err
+				}
+				lane.Launched = launched
+			}
+		}
 		st.Lanes[i] = lane
 		worktree, base, trial = lane.Worktree, lane.BaseSHA, st.Trial
 		recordLaunch(root, st, Launch{Lane: laneID, Role: aw.Role, Runner: route.Runner, Route: route.Override(), Session: session, At: now})

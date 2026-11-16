@@ -851,3 +851,28 @@ func TestDeclinedOrRefusedInstallRecordsNothing(t *testing.T) {
 		})
 	}
 }
+
+// TestSetupNamesAnUnreadLimitsFileInTheGatesLimitsForm
+// (itd-2610301914350541 decision 8): setup that could not read a layer of
+// the question limits measures its questions at abcd's defaults and says so
+// once, in the gate's limits form; it never says its questions run ungated.
+func TestSetupNamesAnUnreadLimitsFileInTheGatesLimitsForm(t *testing.T) {
+	hermeticRepo(t)
+	p := writeMachineQuestionConfig(t, `{"question": {"rows": 30}}`)
+	if err := os.Chmod(p, 0o664); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCLIStdinErr(t, "", "ahoy", "install", "--yes", "--adopt", "--visibility", "private",
+		"--docs-target", "agents_md", "--oracle-backend", "host-delegated", "--scan-deep", "false")
+	if err != nil {
+		t.Fatalf("install: %v\n%s", err, out)
+	}
+	text := string(out)
+	want := "abcd guard: NOT CHECKED at this repository's question limits — they were not read ("
+	if strings.Count(text, want) != 1 || !strings.Contains(text, "so setup's questions were measured at abcd's defaults instead.\n") {
+		t.Errorf("setup does not name the unread file once in the gate's limits form:\n%s", text)
+	}
+	if strings.Contains(text, "UNGATED") {
+		t.Errorf("setup says its questions run ungated, though it measured them at abcd's defaults:\n%s", text)
+	}
+}

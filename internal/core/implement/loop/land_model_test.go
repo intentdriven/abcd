@@ -57,6 +57,9 @@ func setModel(t *testing.T, f *landFixture, model string, route *runner.RouteRec
 		t.Fatal(err)
 	}
 	i := st.current()
+	// A receipt verified before the model was required was judged by
+	// reviewers that recorded no models, in a run that stored no class map.
+	asBeforeModels(&st)
 	for j := range st.Lanes[i].Receipts {
 		r := &st.Lanes[i].Receipts[j]
 		r.Model, r.Route = model, route
@@ -94,6 +97,27 @@ func setModel(t *testing.T, f *landFixture, model string, route *runner.RouteRec
 	}
 }
 
+// asBeforeModels is st as a run started before version 27 leaves it once read
+// at version 27: no class map, and each reviewer it handed out marked as one
+// that recorded no models.
+func asBeforeModels(st *State) {
+	if st.Review != nil {
+		st.Review.Classes, st.Review.Unlaunchable = nil, nil
+	}
+	for li := range st.Lanes {
+		l := &st.Lanes[li]
+		for ri := range l.Validation {
+			for vi := range l.Validation[ri].Validators {
+				v := &l.Validation[ri].Validators[vi]
+				v.WriterModels, v.ReviewerModel, v.ReviewerNamed = nil, "", ""
+				if slices.Contains(reviewRoles, v.Role) && (v.Verdict != "" || l.awaited(v.Return)) {
+					v.ModelsUnrecorded = true
+				}
+			}
+		}
+	}
+}
+
 // landsWithModel steps the lane from land's first step to its records commit
 // and checks the run log says where the model came from and the commit
 // discloses it.
@@ -123,10 +147,10 @@ func landsWithModel(t *testing.T, f *landFixture, from, trailer string) {
 // reports, and the run log says so.
 func TestALandingReadsACorrectedReceiptsModelAgain(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.model = "claude-test-5"
+	f.model = "claude-mythos-5"
 	f.validatedOnce(t)
 	setModel(t, f, "", nil, false)
-	landsWithModel(t, f, "from its file", "Assisted-by: Claude:claude-test-5")
+	landsWithModel(t, f, "from its file", "Assisted-by: Claude:claude-mythos-5")
 }
 
 // TestALandingTakesTheModelOfTheRouteThatRanIt: a receipt a runner's
@@ -143,10 +167,10 @@ func TestALandingTakesTheModelOfTheRouteThatRanIt(t *testing.T) {
 // corrected model, as the refusal's remedy says it will.
 func TestALandingReadsAnUnnameableModelAgain(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.model = "claude-test-5"
+	f.model = "claude-mythos-5"
 	f.validatedOnce(t)
 	setModel(t, f, "unprefixed-model", nil, false)
-	landsWithModel(t, f, "from its file", "Assisted-by: Claude:claude-test-5")
+	landsWithModel(t, f, "from its file", "Assisted-by: Claude:claude-mythos-5")
 }
 
 // TestAFixBriefAsksForTheModel: a fix round's implementer writes a receipt

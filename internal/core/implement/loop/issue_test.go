@@ -387,7 +387,7 @@ func TestAnIssueLaneLandsOnePullRequestThatResolvesItsIssue(t *testing.T) {
 	rc := goodReceipt(t, f.runID, l, dir, sha)
 	// The records commit names the implementer's model (loopLanding), so the
 	// receipt reports one in a form the Assisted-by: trailer takes.
-	rc.Model = "claude-test-5"
+	rc.Model = "claude-mythos-5"
 	rc.Resolves = []Resolution{{Issue: eligibleIssue, Commit: sha, Note: "the empty list is guarded", Impact: "fix",
 		Grounds: "pursued: the renderer takes an empty list; shown wrong if it still panics"}}
 	if _, err := Receipt(repo.Root(), f.runID, writeReceipt(t, dir, rc), f.stages, Options{}); err != nil {
@@ -402,7 +402,7 @@ func TestAnIssueLaneLandsOnePullRequestThatResolvesItsIssue(t *testing.T) {
 	if !strings.Contains(msg, "Resolves: "+eligibleIssue) || strings.Contains(msg, "Delivers:") || !strings.Contains(msg, "landing for "+eligibleIssue) {
 		t.Fatalf("the records commit resolves the issue and delivers no intent:\n%s", msg)
 	}
-	if !strings.Contains(msg, "Assisted-by: Claude:claude-test-5") || strings.Contains(msg, "Assisted-by: None") {
+	if !strings.Contains(msg, "Assisted-by: Claude:claude-mythos-5") || strings.Contains(msg, "Assisted-by: None") {
 		t.Fatalf("the records commit names the implementer's model, never None:\n%s", msg)
 	}
 	files := repo.Git("-C", l.Worktree, "ls-tree", "-r", "--name-only", l.HeadSHA)

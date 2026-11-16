@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/findings_test.go"
 remedy: "Give the control test room below its ideal: time the control at more units so fixed per-call overhead weighs less, or judge the control by the largest of its rounds rather than the median, and keep the threshold the linear tests use unchanged; then run the control under -race a few hundred times to check it no longer fails."
+resolution: "The control's quadratic read is four times longer (4,000 a side, about 70ms small and 1.1s large under race), so a stall weighs a quarter as much; the median judge and its threshold are unchanged. Eighty race runs on a quiet machine gave growth 14.6 to 16.6."
+impact: internal
 ---
 
 TestAReadGrowthTestRefusesAQuadraticRead in internal/core/implement/loop failed once in the merge queue's race shard on 2026-11-15: the control quadratic read grew 9.9 times on an input four times larger, against a threshold of more than 10, and a records-only pull request was removed from the queue for it. The ideal growth is 16, and the median of up to five timing rounds came out under 10 on a loaded race-instrumented runner, so the control test sits close enough to its threshold to fail on noise.

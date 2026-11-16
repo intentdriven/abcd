@@ -14,10 +14,11 @@ import (
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
-// heldSettingsTable is, for settings that name or start a program, or change
-// where a networked git goes or whom it trusts, in a canonical spelling,
-// whether a drive holds it across its lanes; driveUnreadSettings says why
-// each one held false is not, and the rest name no program.
+// heldSettingsTable is, for settings that name or start a program, change
+// where a networked git goes or whom it trusts, or change what a checkout
+// writes, in a canonical spelling, whether a drive holds it across its lanes;
+// driveUnreadSettings says why each one held false is not, and the rest name
+// no program.
 var heldSettingsTable = map[string]bool{
 	// Watched by the run's fingerprint too.
 	"core.hookspath": true, "core.fsmonitor": true, "core.sshcommand": true, "core.askpass": true,
@@ -54,6 +55,11 @@ var heldSettingsTable = map[string]bool{
 	"status.submodulesummary": true, "lfs.customtransfer.x.path": true, "lfs.extension.x.clean": true,
 	"lfs.standalonetransferagent": true, "lfs.https://example.invalid/.standalonetransferagent": true,
 	"hook.lint.command": true, "gc.recentobjectshook": true, "init.templatedir": true,
+	// Held by a drive alone: what a checkout writes, or how its files are read
+	// back, which the drive's own preflight checkout is made and compared under.
+	"core.autocrlf": true, "core.eol": true, "core.symlinks": true, "core.filemode": true,
+	"core.ignorecase": true, "core.precomposeunicode": true, "core.checkroundtripencoding": true,
+	"core.sparsecheckout": true, "core.sparsecheckoutcone": true,
 	// Not held: no git command a drive runs reads it (driveUnreadSettings).
 	"alias.st": false, "core.pager": false, "pager.log": false, "color.pager": false,
 	"sequence.editor": false, "rebase.instructionformat": false, "interactive.difffilter": false,

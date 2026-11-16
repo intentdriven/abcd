@@ -46,6 +46,21 @@ func Sanitize(s string) string {
 	}, s)
 }
 
+// SanitizeLine is Sanitize for a value written into one line of text a
+// renderer may split on more than a newline: it also masks U+2028 LINE
+// SEPARATOR and U+2029 PARAGRAPH SEPARATOR, at which such a renderer starts a
+// new line as it does at a newline. Sanitize itself leaves the two runes,
+// because readers compare stored text with Sanitize to judge it clean, and
+// text an earlier abcd stored with them must still read.
+func SanitizeLine(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == 0x2028 || r == 0x2029 {
+			return '?'
+		}
+		return r
+	}, Sanitize(s))
+}
+
 // SanitizeBlock sanitises multi-line text while keeping its line structure: each
 // line is sanitised on its own and the line terminators are preserved. Sanitize
 // masks a newline (an injected line break must not forge extra report lines),

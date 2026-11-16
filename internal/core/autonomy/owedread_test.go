@@ -1330,6 +1330,132 @@ func TestNoUpstreamUnlandedBranchOwed(t *testing.T) {
 	}
 }
 
+// supersededFx makes a branch that adds rec.md and changes a.txt in two
+// commits, tracking origin/main when tracks is set, and then lands the same
+// two changes on main in one commit of its own (other patch ids, as a pull
+// request from another branch lands them) before main edits both again: the
+// shape of a records branch whose records another pull request landed and
+// the ledger has since moved on from (iss-2611160240149245). extra, when set,
+// adds a change to x.txt that main never makes, though main changes x.txt
+// too.
+func supersededFx(t *testing.T, tracks, extra bool) *fx {
+	t.Helper()
+	f := newFx(t)
+	f.change("main", "a.txt", "base\n")
+	f.change("main", "x.txt", "base\n")
+	f.git("push", "-q", "origin", "main")
+	f.git("fetch", "-q", "origin")
+	if tracks {
+		f.git("branch", "-q", "--track", "records/old", "origin/main")
+	} else {
+		f.git("branch", "records/old")
+	}
+	f.change("records/old", "rec.md", "v1\n")
+	f.change("records/old", "a.txt", "branch\n")
+	if extra {
+		f.change("records/old", "x.txt", "mine\n")
+	}
+	f.own("records/old")
+	f.repo.Write("rec.md", "v1\n")
+	f.repo.Write("a.txt", "branch\n")
+	f.git("add", "--", "rec.md", "a.txt")
+	f.git("commit", "-q", "-m", "land the records from another branch")
+	f.change("main", "rec.md", "v2, moved on\n")
+	f.change("main", "a.txt", "later\n")
+	f.change("main", "x.txt", "theirs\n")
+	f.git("push", "-q", "origin", "main")
+	f.git("fetch", "-q", "origin")
+	return f
+}
+
+// TestASupersededBranchIsNamedNotOwed: a branch every change of which the
+// default branch has itself made since their merge base, and then moved on
+// from, is not owed a push whether it tracks the default branch or has no
+// upstream: a note names it as superseded, for the person to delete.
+func TestASupersededBranchIsNamedNotOwed(t *testing.T) {
+	for _, tracks := range []bool{true, false} {
+		f := supersededFx(t, tracks, false)
+		owed := f.read(false)
+		notes := strings.Join(owed.Notes, " ")
+		if has(owed, OwedUnpushed, "records/old") || !strings.Contains(notes, "records/old") || !strings.Contains(notes, "superseded") {
+			t.Fatalf("tracking origin/main %v: %s; want records/old named superseded in a note, not owed", tracks, describe(owed))
+		}
+	}
+}
+
+// TestABranchWithAChangeMainNeverMadeIsNotSuperseded: the same branch with one
+// change more, to a file main has changed too but never to the branch's
+// content, holds work the default branch lacks: tracking the default branch
+// it is owed as before, and with no upstream it is never named superseded.
+func TestABranchWithAChangeMainNeverMadeIsNotSuperseded(t *testing.T) {
+	for _, tracks := range []bool{true, false} {
+		f := supersededFx(t, tracks, true)
+		owed := f.read(false)
+		if strings.Contains(strings.Join(owed.Notes, " "), "superseded") {
+			t.Fatalf("tracking origin/main %v: %s; a branch with a change main never made is not superseded", tracks, describe(owed))
+		}
+		if tracks && !has(owed, OwedUnpushed, "records/old") {
+			t.Fatalf("tracking origin/main: %s; want records/old owed, as a branch with unlanded work", describe(owed))
+		}
+	}
+}
+
+// TestAModeOnlyChangeIsNeverSuperseded: a branch whose only change makes a
+// file executable, its content unchanged, is not superseded when main's
+// history writes that same content back at that path without the mode (an
+// edit, then a revert): the mode is part of what a change writes.
+func TestAModeOnlyChangeIsNeverSuperseded(t *testing.T) {
+	f := newFx(t)
+	f.change("main", "run.sh", "echo hi\n")
+	f.git("push", "-q", "origin", "main")
+	f.git("fetch", "-q", "origin")
+	f.git("branch", "-q", "--track", "tools/x", "origin/main")
+	f.git("checkout", "-q", "tools/x")
+	f.git("update-index", "--chmod=+x", "run.sh")
+	f.git("commit", "-q", "-m", "make run.sh executable")
+	f.git("reset", "-q", "--hard")
+	f.git("checkout", "-q", "main")
+	f.change("main", "run.sh", "echo bye\n")
+	f.change("main", "run.sh", "echo hi\n")
+	f.git("push", "-q", "origin", "main")
+	f.git("fetch", "-q", "origin")
+	owed := f.read(false)
+	if strings.Contains(strings.Join(owed.Notes, " "), "superseded") || !has(owed, OwedUnpushed, "tools/x") {
+		t.Fatalf("%s; a mode change main's history never wrote is not superseded, and the branch stays owed", describe(owed))
+	}
+}
+
+// TestAChangeOnlyAMergedBranchRecordedIsSuperseded: a branch adding r5.md,
+// whose change a peer's branch recorded in a commit and then dropped before
+// it merged into main with a merge commit, is superseded once main moves on
+// from the rest: every change it makes is in a commit main contains, so
+// deleting it loses nothing main's history lacks, though main's tip never
+// held r5.md. A records branch whose records the landing pull request moved
+// before merging is this shape (iss-2611160240149245).
+func TestAChangeOnlyAMergedBranchRecordedIsSuperseded(t *testing.T) {
+	f := newFx(t)
+	f.git("branch", "-q", "--track", "records/old", "origin/main")
+	f.change("records/old", "r1.md", "v1\n")
+	f.change("records/old", "r5.md", "dropped in review\n")
+	f.own("records/old")
+	f.git("checkout", "-q", "-b", "records/new")
+	f.repo.Write("r1.md", "v1\n")
+	f.repo.Write("r5.md", "dropped in review\n")
+	f.git("add", "--", "r1.md", "r5.md")
+	f.git("commit", "-q", "-m", "the records, from another branch")
+	f.git("rm", "-q", "--", "r5.md")
+	f.git("commit", "-q", "-m", "drop r5 in review")
+	f.git("checkout", "-q", "main")
+	f.git("merge", "-q", "--no-ff", "-m", "merge records/new", "records/new")
+	f.change("main", "r1.md", "v2, moved on\n")
+	f.git("push", "-q", "origin", "main")
+	f.git("fetch", "-q", "origin")
+	owed := f.read(false)
+	if has(owed, OwedUnpushed, "records/old") || !strings.Contains(strings.Join(owed.Notes, " "), "superseded") {
+		t.Fatalf("%s; want records/old named superseded, every change of it in a commit main contains", describe(owed))
+	}
+}
+
 // TestNoUpstreamUndecidedBranchNoted: a no-upstream branch whose change
 // conflicts with the default branch and whose patch is not upstream cannot
 // be told landed or not: it is named in a note, not owed.

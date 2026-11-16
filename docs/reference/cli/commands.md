@@ -1556,7 +1556,9 @@ started on: a drive on another refuses before it takes that run's lane up, since
 another subscription, and a limit waits for that profile's reset. Nothing moves a drive
 from one profile to another. It then judges each eligible issue,
 drives each lane to its landing, every role on that separate login, and runs each
-landing's preflight behind the load gate, printing one line per step and logging them
+landing's preflight behind the load gate, in a checkout of the lane's head the drive
+makes itself and removes after, never in the lane's worktree, printing one line per
+step and logging them
 under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/, the active
 hooks, the forge's workflow folder (.github/) or abcd's configuration, receipts or
 approvals is handed back at its landing, and an issue that names one is passed over,
@@ -2926,7 +2928,9 @@ under and whatever its own account's wait limit is, with one exception: a
 waiter ahead with a higher pid, as after the process ids wrap, may run an abcd
 built before this order, which waits on every lower pid and so on yours, so once
 such waiters alone have kept yours shut for 5m0s on end, and a step more
-for each such waiter ahead beyond the first, yours stops counting them. A
+for each such waiter ahead beyond the first, yours stops counting them.
+"Alone" is judged as at one preflight at a time, the strictest setting: while a
+preflight, a waiter running its command or a race run is live, the count waits. A
 preflight whose own
 waiter is queued
 takes that waiter's place in the queue, and a waiter beneath a waiter running its

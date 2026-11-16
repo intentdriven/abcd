@@ -3,7 +3,15 @@ package rules
 import (
 	"fmt"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/question"
 )
+
+// Load is LoadWith at abcd's default question limits with no note, the
+// bundled GRILL domain: the form the package's own tests load with.
+func Load(repoRoot string) (RuleSet, error) {
+	return LoadWith(repoRoot, question.Default, question.LimitsNote{})
+}
 
 // Inject is InjectWithin with nothing reserved, the budget of a turn with no
 // status or away block.

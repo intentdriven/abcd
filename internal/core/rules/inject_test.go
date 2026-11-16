@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/question"
 )
 
 // ledgerLeaf is the file name a session's ledger is kept under.
@@ -374,5 +376,38 @@ func TestSessionFileStaysInStateDir(t *testing.T) {
 	}
 	if strings.ContainsAny(sessionLeaf(id), `/\`) || strings.Contains(sessionLeaf(id), "..") {
 		t.Fatalf("session file name carries a path: %s", sessionLeaf(id))
+	}
+}
+
+// TestChangedLimitsReinjectGrill (spc-2610301950037469, approach 8): a
+// session whose ledger holds GRILL's signature at one set of limits is sent
+// the domain again once the limits change, since the text, and so the
+// signature, changed; at unchanged limits it is not.
+func TestChangedLimitsReinjectGrill(t *testing.T) {
+	const prompt = "which option should we choose"
+	dir := t.TempDir()
+	before, err := LoadWith(dir, question.Default, question.LimitsNote{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := Inject(before, prompt, SessionState{}, 0, BracketUnknown)
+	if !slices.Contains(first.Injected, GrillDomain) {
+		t.Fatalf("the first asking prompt did not inject %s: %v", GrillDomain, first.Injected)
+	}
+	if again := Inject(before, prompt, first.State, 0, BracketUnknown); slices.Contains(again.Injected, GrillDomain) {
+		t.Fatalf("%s was sent again at unchanged limits", GrillDomain)
+	}
+	const repo = ".abcd/config.json"
+	after, err := LoadWith(dir, question.Bounded(question.Default, 40, 6, 3), question.LimitsNote{SetBy: []string{repo, repo, repo}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := Inject(after, prompt, first.State, 0, BracketUnknown)
+	if !slices.Contains(second.Injected, GrillDomain) || !strings.Contains(second.Text, "## "+GrillDomain+"\n") {
+		t.Fatalf("changed limits did not send %s again: %v\n%s", GrillDomain, second.Injected, second.Text)
+	}
+	d, _ := after.Lookup(GrillDomain)
+	if got := second.State.Ledger[GrillDomain]; got != Signature(d) || got == first.State.Ledger[GrillDomain] {
+		t.Errorf("the ledger holds %q for %s; want the signature of the domain at the new figures, not the old one", got, GrillDomain)
 	}
 }

@@ -96,7 +96,7 @@ func wantOnlyRealWaysOut(t *testing.T, next string, lane string) {
 func TestAStoppedLaneNamesOnlyItsRealWaysOutAndEachOneWorks(t *testing.T) {
 	correct := func(t *testing.T, dir string, rc LaneReceipt) {
 		t.Helper()
-		rc.Model = "a-model"
+		rc.Model = "grok-test-1"
 		writeReceipt(t, dir, rc)
 	}
 	t.Run("what it says", func(t *testing.T) {

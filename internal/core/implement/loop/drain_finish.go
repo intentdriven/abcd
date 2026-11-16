@@ -188,6 +188,11 @@ func (p DrainParked) held() bool {
 // sets a stop's mark there.
 var afterParkedFetch = func() {}
 
+// parkedStages are the stages a parked lane's landing step runs from
+// (finishMerged, resyncParked, watchParked): DefaultStages, a seam a test
+// replaces to make that step hand the lane back.
+var parkedStages = DefaultStages
+
 // finishMerged takes the landing's last step for every issue lane in the
 // checkout parked at land whose pushed head is on the default branch as the
 // remote holds it, whatever the drain's or the run's window clock says, and
@@ -205,7 +210,8 @@ var afterParkedFetch = func() {}
 // the run whole (parkedStopNote). Only its renewal stands, which decides for itself (stopEndsRenewal), and only
 // where this code is reached: under a stop in force the move refuses first (drainStop), so
 // only a drive still in an agent's call or a preflight renews the claim of a run with work a
-// save could not take, and otherwise it lapses at its lease with the lane's work still on its branch and in its worktree.
+// save could not take, and otherwise it lapses at its lease, unless a load-gate waiter in this
+// copy renews it (gateWaiterRenews), with the lane's work still on its branch and in its worktree.
 // The landing's last step below, resyncParked, watchParked and handBackClosed each save the
 // run's whole state, so each is judged before it acts (mayWholeSave, through laneSave): a
 // parked run whose file states another version, this drain's lane or an earlier drain's,
@@ -409,7 +415,11 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 			reads = append(reads, p)
 			continue
 		}
+		// release is what the release of a lane the landing's step hands back
+		// came to, made once the save wrote it (releaseAfterWrite).
+		var release *handBackRelease
 		err = save(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+			release = nil
 			i := parkedAtLand(*st)
 			if i < 0 {
 				return false, nil
@@ -420,13 +430,16 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 			}
 			// No remote identity: a lane parked at its landing (parkedAtLand) moves
 			// only through the land stage, never the worktree stage that checks it.
-			res, err := performMove(repoRoot, st, DefaultStages(), w, now, nil, nil, nil)
+			res, err := performMove(repoRoot, st, parkedStages(), w, now, nil, nil, nil)
 			if err != nil {
 				return false, err
 			}
+			release = res.release
 			if st.Lanes[i].Stage != StageDone {
 				// The landing's step completed something short of the cleanup;
-				// what it wrote is kept, and the lane is not claimed done.
+				// what it wrote is kept, and the lane is not claimed done. One
+				// it handed back with its pull request still armed is not
+				// finished either: the drain drives it again (owedArming).
 				f.Note = res.Next
 				return true, nil
 			}
@@ -442,11 +455,25 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 			out = append(out, refused(run, r))
 			continue
 		}
+		f.Note = joinNext(f.Note, release.next())
 		if f.Done || f.Note != "" {
 			out = append(out, f)
 		}
 	}
 	return out, reads, nil
+}
+
+// owedArming is the pull request of run's lane in hand when that lane was
+// handed back with it still armed (armingOwed), 0 otherwise. Such a lane is not
+// finished, by the landing's step or a drain: the drain reads it as in
+// progress (laneOutcome), takes a lane it read at its pull request back to
+// that, and routes its hand-back only once the forge reports no arming.
+func owedArming(run State) int {
+	i := run.current()
+	if i < 0 || !armingOwed(run.Lanes[i]) {
+		return 0
+	}
+	return run.Lanes[i].PR
 }
 
 // syncable reports whether a parked lane whose pull request the forge lists
@@ -469,7 +496,9 @@ func syncable(repoRoot, tracking, pushed string) bool {
 // for the sync; note is the record's line, or why the step refused, a run save
 // leaves as its file stands (mayWholeSave) among them.
 func resyncParked(repoRoot, runID string, now time.Time, save saveFrame) (note string, moved bool, err error) {
+	var release *handBackRelease
 	err = save(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		release = nil
 		i := parkedAtLand(*st)
 		if i < 0 {
 			return false, nil
@@ -480,10 +509,11 @@ func resyncParked(repoRoot, runID string, now time.Time, save saveFrame) (note s
 		}
 		// No remote identity: a lane parked at its landing (parkedAtLand) moves
 		// only through the land stage, never the worktree stage that checks it.
-		res, err := performMove(repoRoot, st, DefaultStages(), w, now, nil, nil, nil)
+		res, err := performMove(repoRoot, st, parkedStages(), w, now, nil, nil, nil)
 		if err != nil {
 			return false, err
 		}
+		release = res.release
 		moved = parkedAtLand(*st) < 0
 		note = res.Next
 		if n := len(st.Record); n > 0 {
@@ -493,6 +523,9 @@ func resyncParked(repoRoot, runID string, now time.Time, save saveFrame) (note s
 	})
 	if r, ok := AsRefusal(err); ok {
 		return fsutil.RedactHome(r.Reason + "; " + r.Remedy), false, nil
+	}
+	if err == nil {
+		note = release.said(note)
 	}
 	return note, moved, err
 }
@@ -517,7 +550,9 @@ func outOfQueue(pr listedPR) bool {
 // file stands (mayWholeSave) is named in note. A wait, or a step that refused for
 // any other reason, leaves the listing's reading as it was.
 func watchParked(repoRoot, runID string, now time.Time, save saveFrame) (note string, dropped, finished bool, err error) {
+	var release *handBackRelease
 	err = save(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		release = nil
 		i := parkedAtLand(*st)
 		if i < 0 {
 			return false, nil
@@ -529,9 +564,11 @@ func watchParked(repoRoot, runID string, now time.Time, save saveFrame) (note st
 		logged := len(st.Record)
 		// No remote identity: a lane parked at its landing (parkedAtLand) moves
 		// only through the land stage, never the worktree stage that checks it.
-		if _, err := performMove(repoRoot, st, DefaultStages(), w, now, nil, nil, nil); err != nil {
+		res, err := performMove(repoRoot, st, parkedStages(), w, now, nil, nil, nil)
+		if err != nil {
 			return false, err
 		}
+		release = res.release
 		if n := len(st.Record); n > logged {
 			note = st.Record[n-1].Note
 		}
@@ -547,18 +584,24 @@ func watchParked(repoRoot, runID string, now time.Time, save saveFrame) (note st
 		}
 		return "", false, false, nil
 	}
+	if err == nil {
+		note = release.said(note)
+	}
 	return note, false, finished, err
 }
 
 // handBackClosed hands run's parked lane back as closed, its pull request
 // closed without merging, and releases the issue's reservation with the
-// hand-back's tombstone (releaseOnHandBack), under the run's lock. It returns
+// hand-back's tombstone once the save has written the hand-back, under the same
+// lock (releaseAfterWrite). It returns
 // the record's line, "" when the lane is no longer parked (a step running at
 // the same time moved it), or why save left the run as its file stands
 // (mayWholeSave), nothing handed back and nothing released.
 func handBackClosed(repoRoot, runID string, now time.Time, save saveFrame) (string, error) {
 	note := ""
+	var release *handBackRelease
 	err := save(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		release = nil
 		i := parkedAtLand(*st)
 		if i < 0 {
 			return false, nil
@@ -568,17 +611,17 @@ func handBackClosed(repoRoot, runID string, now time.Time, save saveFrame) (stri
 			Home: "a person: the issue stays open, and the lane's run " + st.RunID + " keeps its worktree and branch until `abcd implement step --run " +
 				st.RunID + " --discard " + lane.ID + "` discards them"}
 		handBackLane(st, &lane, hb, "", now)
-		releaseOnHandBack(repoRoot, st, *lane.HandBack, now)
 		st.Lanes[i] = lane
 		st.UpdatedAt = now
 		note = st.Record[len(st.Record)-1].Note
-		if k := len(st.Record) - 2; k >= 0 && st.Record[k].Stage == string(StageHandedBack) {
-			note = st.Record[k].Note + "; " + note
-		}
+		release = releaseAfterWrite(repoRoot, st, lane.ID, now)
 		return true, nil
 	})
 	if r, ok := leftAtVersion(err); ok {
 		return fsutil.RedactHome(r.Reason + "; " + r.Remedy), nil
+	}
+	if err == nil && release != nil && release.made {
+		note += "; " + release.clause + release.unwrittenNote("say so")
 	}
 	return note, err
 }

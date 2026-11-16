@@ -408,3 +408,66 @@ func TestDrafterBlockTellsTheWriterToRunTheVerb(t *testing.T) {
 		t.Errorf("the block must say, beside the count, that it is only for a host with no shell:\n%s", block[at:])
 	}
 }
+
+// assertLimitsSentence holds block to question.PageLimitsSentence
+// (spc-2610301950037469, approach 10; itd-2610301914350541 decisions 10 and
+// 12): the sentence follows the last asking rule as its own paragraph, once;
+// it says the figures are abcd's defaults, names every configurable key from
+// question.Bounds, both configuration files, the check and its `limits`
+// field, and that the writer never reads either file; and it restates no
+// bound, so the layout rule's own statement of the keys and their bounds is
+// the only one in the block.
+func assertLimitsSentence(t *testing.T, name, block string) {
+	t.Helper()
+	s := question.PageLimitsSentence()
+	rules := question.AskingRules(question.Default)
+	last := rules[len(rules)-1]
+	if !strings.Contains(block, "\n- "+last+"\n\n"+s+"\n") {
+		t.Errorf("%s does not carry the limits sentence as the paragraph after the last asking rule:\n%s", name, s)
+	}
+	if n := strings.Count(block, s); n != 1 {
+		t.Errorf("%s carries the limits sentence %d times, want 1", name, n)
+	}
+	for _, want := range []string{"abcd's defaults", "`.abcd/config.json`", "the person's own", "`abcd guard question`", "`limits`", "never from either file"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("the limits sentence does not state %q: %s", want, s)
+		}
+	}
+	for _, b := range question.Bounds {
+		if !strings.Contains(s, "`"+b.Key+"`") {
+			t.Errorf("the limits sentence does not name %s: %s", b.Key, s)
+		}
+		if n := strings.Count(block, "`"+b.Key+"` from"); n != 1 {
+			t.Errorf("%s states the bounds of %s %d times, want once, in the layout rule", name, b.Key, n)
+		}
+	}
+	if strings.ContainsAny(s, "0123456789") {
+		t.Errorf("the limits sentence states a figure itself; it points at the layout rule's bounds: %s", s)
+	}
+}
+
+// TestDrafterBlockPointsAtTheChecksLimits (spc-2610301950037469, approach
+// 10): the writer's generated block keeps rendering from question.Default
+// and says those figures are abcd's defaults, that a repository and a
+// person's own file set the three keys within the bounds named, and that the
+// writer takes the values in force from the check's `limits`, never from
+// either file. The sentence is composed from question.Bounds: a key renamed
+// there is the key the sentence names.
+func TestDrafterBlockPointsAtTheChecksLimits(t *testing.T) {
+	assertLimitsSentence(t, "the drafter block", renderDrafter(question.Default))
+
+	saved := question.Bounds
+	t.Cleanup(func() { question.Bounds = saved })
+	question.Bounds = append([]question.Bound(nil), saved...)
+	question.Bounds[0].Key = "question.height"
+	if s := question.PageLimitsSentence(); !strings.Contains(s, "`question.height`") || strings.Contains(s, "`"+saved[0].Key+"`") {
+		t.Errorf("the limits sentence does not follow question.Bounds' keys: %s", s)
+	}
+}
+
+// TestIntentPageBlockCarriesTheSameLimitsSentence (spc-2610301950037469,
+// approach 10): the planning page's block carries the drafter's sentence,
+// byte for byte, in the same place.
+func TestIntentPageBlockCarriesTheSameLimitsSentence(t *testing.T) {
+	assertLimitsSentence(t, "the intent page's block", render(question.Default))
+}

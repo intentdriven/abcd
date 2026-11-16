@@ -109,12 +109,15 @@ Then read the JSON (`_type` `abcd/question-check/v1`):
 - `rows` — each tab's rows at 80 columns, as `header_and_frame`,
   `question_text`, `options` and `total`, against `rows_limit`. Report these
   figures; never count rows by hand.
-- `limits`, `limits_source` — the rows, label words and description sentences
+- `limits`, `limits_source`: the rows, label words and description sentences
   the draft was judged at, which are the ones the hook holds abcd's question
-  to in this checkout (`.abcd/config.json` sets them under `question`, and your
-  own `~/.abcd.noindex/config.json` may set each lower), and where each came
-  from: `bundled`, `.abcd/config.json` or `~/.abcd.noindex/config.json`. Take
-  the limits from here, never from either file; `rows_limit` is `limits.rows`.
+  to in this checkout, and where each came from (`bundled`,
+  `.abcd/config.json` or `~/.abcd.noindex/config.json`). abcd's defaults hold
+  until a file sets one: `.abcd/config.json` sets them under `question`
+  (`rows`, `label_words`, `description_sentences`), within the bounds the
+  asking rules state, and your own `~/.abcd.noindex/config.json` may set each
+  lower and is refused where it sets one higher. Take the limits from here,
+  never from either file; `rows_limit` is `limits.rows`.
 - `refused` — present instead of `limits` while a limit is refused: the
   `key`, the `value`, the `bounds` and the `file`, and for a personal value
   that loosens the `limit` in force and the `limit_file` that set it, with

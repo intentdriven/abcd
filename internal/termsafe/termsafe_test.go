@@ -112,3 +112,16 @@ func TestIsHiddenIsWhatSanitizeMasks(t *testing.T) {
 		}
 	}
 }
+
+// TestSanitizeLineMasksLineSeparators: U+2028 and U+2029 start a line for a
+// renderer that splits on them, so a value written into one line has them
+// masked by SanitizeLine; Sanitize leaves them, since stored text an earlier
+// abcd accepted is compared with Sanitize on read.
+func TestSanitizeLineMasksLineSeparators(t *testing.T) {
+	if got := SanitizeLine("a\u2028## b\u2029c\x1b"); got != "a?## b?c?" {
+		t.Errorf("SanitizeLine = %q, want both separators and the escape masked", got)
+	}
+	if got := Sanitize("a\u2028b\u2029c"); got != "a\u2028b\u2029c" {
+		t.Errorf("Sanitize = %q, want the separators left for stored text to keep reading", got)
+	}
+}
