@@ -29,7 +29,7 @@ var examples = map[string]string{
 	"abcd ahoy doctor":              "abcd ahoy doctor",
 	"abcd ahoy install":             "abcd ahoy install",
 	"abcd ahoy remote":              "abcd ahoy remote",
-	"abcd ahoy remote apply":        "abcd ahoy remote apply --yes",
+	"abcd ahoy remote apply":        "abcd ahoy remote apply",
 	"abcd ahoy shared-folder":       "abcd ahoy shared-folder /Users/Shared",
 	"abcd ahoy uninstall":           "abcd ahoy uninstall",
 	"abcd ahoy worktree":            "abcd ahoy worktree",

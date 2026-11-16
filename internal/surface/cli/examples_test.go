@@ -162,3 +162,37 @@ func TestEachWorkedExampleIsShapedLikeItsCommand(t *testing.T) {
 		}
 	}
 }
+
+// TestNoWorkedExampleAnswersAConsentPromptAhead holds every worked example off
+// --yes unless the command's Use line requires it. An agent reads a page's
+// example as a call it may run as written, so an example that answers a
+// confirmation in advance is a step past the person's consent; where a command
+// cannot run without --yes, its Use line says so and the example follows it.
+func TestNoWorkedExampleAnswersAConsentPromptAhead(t *testing.T) {
+	root := NewRootCommand()
+	byPath := map[string]*cobra.Command{}
+	for _, c := range visibleCommands(root) {
+		byPath[c.CommandPath()] = c
+	}
+	for _, path := range surface.ExamplePaths() {
+		c, ok := byPath[path]
+		if !ok {
+			continue
+		}
+		ex, _ := surface.ExampleFor(path)
+		required := false
+		for _, group := range usageRequirements(c.Use) {
+			for _, f := range group {
+				required = required || f == "--yes"
+			}
+		}
+		if required {
+			continue
+		}
+		for _, tok := range exampleTokens(ex) {
+			if tok == "--yes" || strings.HasPrefix(tok, "--yes=") {
+				t.Errorf("%q's example passes --yes, which answers the command's confirmation before the person has: %q", path, ex)
+			}
+		}
+	}
+}

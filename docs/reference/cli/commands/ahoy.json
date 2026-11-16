@@ -277,7 +277,7 @@
         }
       ],
       "inputs": [],
-      "example": "abcd ahoy remote apply --yes"
+      "example": "abcd ahoy remote apply"
     },
     {
       "path": "abcd ahoy shared-folder",

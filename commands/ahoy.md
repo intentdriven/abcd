@@ -2010,7 +2010,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 - `abcd ahoy remote [flags]`
   - An example call is `abcd ahoy remote`.
 - `abcd ahoy remote apply [flags]`
-  - An example call is `abcd ahoy remote apply --yes`.
+  - An example call is `abcd ahoy remote apply`.
 - `abcd ahoy shared-folder [<folder>] [--person <account>] [flags]`
   - An example call is `abcd ahoy shared-folder /Users/Shared`.
 - `abcd ahoy uninstall [flags]`

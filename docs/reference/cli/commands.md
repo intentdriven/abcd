@@ -229,7 +229,7 @@ Apply every GitHub setting the remote audit finds differing: Writes those settin
 **Example:**
 
 ```
-abcd ahoy remote apply --yes
+abcd ahoy remote apply
 ```
 
 #### `abcd ahoy shared-folder`
