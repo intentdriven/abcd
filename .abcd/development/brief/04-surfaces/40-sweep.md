@@ -51,8 +51,9 @@ One row per item, in this order:
   on it. A reservation records no branch, only the copy that made it, so it
   holds the branch of a local worktree that copy is on; a reservation made on
   another machine or under another account holds no branch on origin, so
-  such a branch is deleted once it is merged at the judged tip with no open
-  pull request; only an open pull request or a tip not yet merged keeps it.
+  for such a branch the reservation adds no hold: it is deleted once it is
+  merged at the judged tip, unless an open pull request or another hold
+  named here keeps it.
   A record id in a branch's name holds nothing by
   itself. The default branch, release branches, tags and
   abcd's own coordination branches are never deleted.
