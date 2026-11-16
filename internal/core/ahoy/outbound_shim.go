@@ -2,6 +2,7 @@ package ahoy
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -105,6 +106,21 @@ type outboundShimPlan struct {
 	action shimAction // what to write there
 	note   string     // why the check is not wired, or a copy was left; "" when neither
 }
+
+// wordedError says in words why a step failed, keeping its cause in the chain
+// for errors.Is and errors.As but out of the text, which can name a path
+// outside the working tree or carry git's own message (iss-2611162118486104).
+type wordedError struct {
+	text  string
+	cause error
+}
+
+func (e wordedError) Error() string { return e.text }
+func (e wordedError) Unwrap() error { return e.cause }
+
+// rootCommitCommand is the git command a note names when git gave no root
+// commit, so the person can see git's own reason, which the note keeps out.
+const rootCommitCommand = "git rev-list -n 1 --max-parents=0 HEAD"
 
 // errNoGitDirNamed is gitCommonDir's refusal of an empty answer.
 var errNoGitDirNamed = errors.New("git named no git directory")
@@ -398,6 +414,8 @@ func causeInWords(err error) string {
 		return "git was not found on PATH"
 	case errors.Is(err, errNoGitDirNamed):
 		return errNoGitDirNamed.Error()
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+		return "git did not answer in time"
 	}
 	return "an error abcd keeps out of this note, since it can name a path outside the working tree"
 }

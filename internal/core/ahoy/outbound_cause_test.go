@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // TestOutboundNotesKeepGitsReasonAndPathsOut (iss-2610152204588951): a note
@@ -120,5 +121,87 @@ func TestAbcdBinaryWriteRefusalNamesThePathToSet(t *testing.T) {
 	}
 	if strings.Contains(all, "could not lock") {
 		t.Errorf("the refusal carries git's message:\n%s", all)
+	}
+}
+
+// brokenHistoryRepo is a clone whose branch names an object git does not
+// hold, so git refuses the root-commit read with a message of its own.
+func brokenHistoryRepo(t *testing.T) *gittest.Repo {
+	t.Helper()
+	repo := gittest.NewRepo(t)
+	repo.Commit("first")
+	ref := strings.TrimSpace(repo.Git("symbolic-ref", "HEAD"))
+	missing := strings.Repeat("d", len(strings.TrimSpace(repo.Git("rev-parse", "HEAD"))))
+	if err := os.WriteFile(filepath.Join(repo.Root(), ".git", filepath.FromSlash(ref)), []byte(missing+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return repo
+}
+
+// TestRootCommitRefusalsKeepGitsMessageOut (iss-2611162118486104): where git
+// gives no root commit, the install's refusal and the remote verbs' refusal say
+// why in words and name the command that shows git's reason, never git's
+// message, which names objects and paths, nor the checkout's own location.
+func TestRootCommitRefusalsKeepGitsMessageOut(t *testing.T) {
+	setupHermetic(t)
+	check := func(t *testing.T, where, all, root string) {
+		t.Helper()
+		if !strings.Contains(all, "git gave no root commit") || !strings.Contains(all, rootCommitCommand+" shows git's reason") {
+			t.Fatalf("%s: want the refusal in words with the command:\n%s", where, all)
+		}
+		for _, leak := range []string{"fatal", "bad object", strings.Repeat("d", 12), root, displayPath(root)} {
+			if strings.Contains(all, leak) {
+				t.Errorf("%s: the refusal carries %q:\n%s", where, leak, all)
+			}
+		}
+	}
+	t.Run("install", func(t *testing.T) {
+		repo := brokenHistoryRepo(t)
+		_, err := Install(repo.Root(), planOpts(), RefusingPrompter{})
+		if err == nil {
+			t.Fatal("an install that cannot tell whether abcd manages the clone went ahead")
+		}
+		if !errors.Is(err, gitutil.ErrNoRootAnswer) {
+			t.Errorf("the refusal lost its cause from the chain: %v", err)
+		}
+		check(t, "install", err.Error(), repo.Root())
+	})
+	t.Run("install with --adopt", func(t *testing.T) {
+		repo := brokenHistoryRepo(t)
+		o := planOpts()
+		adopt := true
+		o.Adopt = &adopt
+		o.Yes = true
+		res, err := Install(repo.Root(), o, RefusingPrompter{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		check(t, "install with --adopt", notesJoined(res.Notes), repo.Root())
+	})
+	t.Run("remote", func(t *testing.T) {
+		repo := brokenHistoryRepo(t)
+		res, _ := RemoteRead(repo.Root())
+		check(t, "remote", strings.Join(res.Notes, "\n"), repo.Root())
+	})
+}
+
+// TestIdentityProposalRefusalKeepsGitsMessageOut (iss-2611162118486104): the
+// identity step reads the root commit to find the person's record; when git
+// gives none, the refusal says so in words and names the command to run.
+func TestIdentityProposalRefusalKeepsGitsMessageOut(t *testing.T) {
+	setupHermetic(t)
+	repo := brokenHistoryRepo(t)
+	p := &identityPrompter{terminal: true, answer: true}
+	a := establishCtx(repo.Root(), p, MismatchGapID)
+	a.stepGitIdentity()
+	notes := strings.Join(a.notes, "\n")
+	if !strings.Contains(notes, "the identity to propose could not be read: git exited with status") ||
+		!strings.Contains(notes, rootCommitCommand+" shows git's reason") {
+		t.Fatalf("want the refusal in words with the command:\n%s", notes)
+	}
+	for _, leak := range []string{"fatal", "bad object", repo.Root(), displayPath(repo.Root())} {
+		if strings.Contains(notes, leak) {
+			t.Errorf("the refusal carries %q:\n%s", leak, notes)
+		}
 	}
 }

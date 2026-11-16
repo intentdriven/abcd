@@ -1,6 +1,7 @@
 package ahoy
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/identity"
@@ -189,7 +190,7 @@ func (a *applyCtx) stepGitIdentity() {
 	}
 	prop, ok, err := identity.Propose(a.cwd)
 	if err != nil {
-		a.refuse(did + ": the identity to propose could not be read: " + errText(err))
+		a.refuse(did + ": the identity to propose could not be read: " + causeInWords(err) + "; " + rootCommitCommand + " shows git's reason")
 		return
 	}
 	if !ok {
@@ -211,7 +212,7 @@ func (a *applyCtx) stepGitIdentity() {
 		return
 	}
 	if err := identity.WriteLocal(a.cwd, prop.Identity); err != nil {
-		a.refuse(did + ": " + errText(err))
+		a.refuse(did + ": git config could not write it (" + causeInWords(err) + "; git config --local user.name " + fmt.Sprintf("%q", prop.Identity.Name) + " shows git's reason, and a config.lock a crashed git left is the usual cause)")
 		return
 	}
 	a.note(writeGitIdentity, ".git/config")
