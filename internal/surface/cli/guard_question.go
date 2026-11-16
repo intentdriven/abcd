@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/question"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -744,7 +746,22 @@ const questionPointerLine = "Check the next draft with `abcd guard question` bef
 // and role words no file sets, decision 2) and the rows split, since a
 // refused value is never applied and abcd's question is refused before any
 // limit is checked.
+//
+// Under a walled launch the check keeps abcd's defaults, reported as
+// bundled, as the GRILL domain the stage's prompt hook injects states them
+// (rulesForHook): the working tree's .abcd/config.json there is the lane's
+// own writing, never a limit the lane is held to. A value naming no commit
+// is no walled launch, as rules.LoadAt holds, so the files are read: setting
+// the variable to anything at all never drops a person's lower figures.
 func questionLimitsAt(cwd string, st *question.State) {
+	if gitutil.IsFullSHA(os.Getenv(runner.StageBaseEnv)) {
+		st.Limits = question.Default
+		st.LimitsSource = make([]string, len(st.Limits.Configurable()))
+		for i := range st.LimitsSource {
+			st.LimitsSource[i] = layered.Bundled.String()
+		}
+		return
+	}
 	roots, _ := layered.RootsFor(cwd)
 	v, err := layered.QuestionLimits(roots)
 	var unread *layered.UnreadError
@@ -785,8 +802,15 @@ func limitsRefusalOf(err error) *question.LimitsRefusal {
 // the file, and saying what was done instead, since the question is not let
 // through unchecked but held to abcd's defaults.
 func limitsUnreadLine(err error) string {
+	return limitsUnreadLineFor(err, "the question is checked")
+}
+
+// limitsUnreadLineFor is that line for the binary's own composers (setup
+// and the written interviews), which measure their questions at abcd's
+// defaults rather than let them run ungated: subject says what was measured.
+func limitsUnreadLineFor(err error, subject string) string {
 	return "abcd guard: NOT CHECKED at this repository's question limits — they were not read (" +
-		termsafe.Sanitize(scrubPaths(err)) + "), so the question is checked at abcd's defaults instead.\n"
+		termsafe.SanitizeLine(scrubPaths(err)) + "), so " + subject + " at abcd's defaults instead.\n"
 }
 
 // limitsRefusedReason is the deny for abcd's question while a question limit
@@ -800,7 +824,7 @@ func limitsUnreadLine(err error) string {
 func limitsRefusedReason(reason string) string {
 	var b strings.Builder
 	b.WriteString("Blocked by the abcd guard (question tool): a question limit in this repository's configuration is refused, so abcd asks no question until it is fixed.\n")
-	b.WriteString(termsafe.Sanitize(scrubPaths(errors.New(reason))) + "\n")
+	b.WriteString(termsafe.SanitizeLine(scrubPaths(errors.New(reason))) + "\n")
 	b.WriteString("Fix the value in that file and ask again: " + boundsLine() + ", and a person's own " + abcdhome.Display(layered.Config.MachineRel) + " may set each only lower than the limit otherwise in force.")
 	return b.String()
 }
@@ -819,7 +843,7 @@ func boundsLine() string {
 // and keeps the warning in front of a human.
 func questionFailOpen(w io.Writer, format string, err error) error {
 	fmt.Fprintf(w, "abcd guard: NOT CHECKED — "+format+". The question runs UNGATED.\n",
-		termsafe.Sanitize(scrubPaths(err)))
+		termsafe.SanitizeLine(scrubPaths(err)))
 	return &exitError{Code: 1}
 }
 

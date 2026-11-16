@@ -572,7 +572,175 @@ to the product thinker on 2026-10-31 and answered: the floor stays 24
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: INGESTED receipt=rcp-1c71e6f7520c -->
+Fidelity review — receipt rcp-1c71e6f7520c (verifier intent-auditor claude-opus-5-5).
+
+Provenance: intent-auditor@claude-opus-5-5 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:4f29f2ba4cbc628853e36ac3c944a25707aef7a171d2fb8bdd2c4176eda80b5b
+Input attestations: diff:origin/main...397e392752c1f5282b8647354366405d52919d0e (merge-base bfc53976a619; steps 3 and 4 of spc-2610301950037469)@sha256:a08c657b48b23595e6c29ac5861c48ebd4bbee3860af4e2a20e138b89fbed293; commit:ef06f3cdc86671b571f2588d575161d46ef3088a (step 1 on main, with its parents)@-; commit:580ae5e5356a370b92f8674cde70b32b6624cfc7 (step 2 on main, with its parents)@-; lab:lab-261115224033-30a79f9 findings.md (pin 30a79f966)@sha256:3b22f8de1d54a78ca6ceb6d8520a4f9f8f16c02e16fa1e2080577559bef2a61f;
+
+Acceptance rollup: MET 20 · MET_WITH_CONCERNS 4 · NOT_MET 3 · INCONCLUSIVE 3
+
+Audit owed (receipt rcp-1c71e6f7520c): ac-1 INCONCLUSIVE · ac-5 NOT_MET · ac-6 INCONCLUSIVE · ac-15 NOT_MET · ac-21 INCONCLUSIVE · ac-23 NOT_MET. Remedy: fix, then re-run the audit. Carried by iss-2611152314513870.
+
+Per-criterion verdicts:
+- ac-1 — INCONCLUSIVE: The rows-40 lab shows the verb's estimate of each writer-prepared tab (29, 30, 27 rows) within 40, but no record shows a person reading one in an 80x40 window; 'no tab is cut off' rests on the calibrated estimate and is owed a live read
+  evidence: ~/.abcd.noindex/lab/488a0aa96ac5de805348635b27036addf15cddc2/lab-261115224033-30a79f9/state/probes/run-1/result.json:5 — ""rows": [ 29 ], "rows_limit": 40"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:177 — "## Not covered here, queued for the person"
+- ac-2 — MET_WITH_CONCERNS: Every floor/ceiling combination admits the minimal question and refuses it without decide-later, with a recommended mark, without material first or without Now:; concern: 'quoted in full' is not mechanically checkable and no person witnessed a question in a configured repository
+  evidence: internal/core/question/limits_test.go:878 — "func TestEveryBoundCombinationKeepsTheFixedRules(t *testing.T) {"
+  evidence: internal/core/question/decide.go:352 — "v.Findings = CheckLimits(f, l, Addressee{Person: who, Verbs: s.Verbs})"
+- ac-3 — MET: rows 100 is refused by the resolver as '.abcd/config.json (repo layer): question.rows is 100: outside 24 to 60'; the verb exits 2 with refused and no ready, the hook denies every abcd-grammar question naming key, value, bounds and file, and the written interviews and install refuse before a question
+  evidence: internal/surface/cli/guard_question_verb_test.go:653 — "limits: refused: .abcd/config.json (repo layer): question.rows is 100: outside 24 to 60"
+  evidence: internal/surface/cli/guard_question.go:822 — "func limitsRefusedReason(reason string) string {"
+  evidence: internal/surface/cli/guard_question_verb.go:416 — "if res.Refused != nil {"
+  evidence: internal/core/ahoy/install_test.go:31 — "func TestInstallRefusesBeforeItsFirstQuestionOnARefusedValue(t *testing.T) {"
+- ac-4 — MET: The verb's text render prints a limits line after the outcome stating the three figures and naming .abcd/config.json after each figure it set
+  evidence: internal/surface/cli/guard_question_verb.go:488 — "func limitsLine(res questionCheckResult) string {"
+  evidence: internal/surface/cli/guard_question_verb_test.go:653 — "limits: 40 rows (.abcd/config.json), %d label words, %d description sentences"
+- ac-5 — NOT_MET: Promised: an unconfigured repository's asking rules differ from before only by thirty-two, with every other rule unchanged and no configuration mentioned. Delivered: the layout rule in every repository now names .abcd/config.json and ~/.abcd.noindex/config.json and their bounds, and the material rule was rewritten in this delivery
+  evidence: internal/core/question/asking.go:122 — "boundsSentences(), n.sentence()),"
+  evidence: internal/core/question/asking.go:164 — "return "A repository may set " + joinList(keys, "and") + " in its `" + repoConfigFile + "`. ""
+  evidence: internal/core/question/asking.go:108 — "Material too long for one question never goes into a message before the question or into a preview: One decision's material is quoted shorter"
+  evidence: internal/core/question/asking_test.go:278 — "for name, rule := range map[string]string{"defaults": layoutRule(t, AskingRules(Default)), "by the repository": byRepo, "refused": refused}"
+- ac-6 — INCONCLUSIVE: The hook judges a 30-row tab at the person's 24 (note) and at the repository's 40 with no machine file (no note), but the rows rule never refuses, and no record shows a person on either machine reading a question that fits; the window-fit outcome is owed
+  evidence: internal/surface/cli/guard_question_rows_test.go:206 — "func TestHookJudgesAtThePersonsTighterRows(t *testing.T) {"
+  evidence: internal/core/question/asking.go:115 — "The rows limit is the one the check does not refuse on: a question over it is shown"
+- ac-7 — MET: QuestionLimits returns question.Bounded(question.Default, ...) replacing only Rows, LabelWords and MeaningSentences; the hook's state and the verb pass state.Limits into Decide, which calls CheckLimits with it
+  evidence: internal/core/layered/question.go:179 — "v.V = question.Bounded(question.Default, got[0], got[1], got[2])"
+  evidence: internal/core/layered/question_test.go:76 — "func TestQuestionLimitsReplaceThreeFieldsOnly(t *testing.T) {"
+  evidence: internal/surface/cli/guard_question_verb.go:230 — "v := question.Decide(fields, reads.state, reads.state.Limits)"
+- ac-8 — MET: The resolver claims the question namespace with the three keys only; question.options, columns, tabs and a misspelling are refused naming the key and file in either layer, and the zero value is returned
+  evidence: internal/core/layered/question.go:130 — "if err := s.Claim(questionNamespace, keys...); err != nil {"
+  evidence: internal/core/layered/question_test.go:112 — "for _, key := range []string{"options", "columns", "tabs", "row"} {"
+- ac-9 — MET: A machine value at or below the limit in force replaces it and its source is the machine layer's origin, tested under a repository value, under the default, and at equality
+  evidence: internal/core/layered/question.go:167 — "limit, in = n, LimitSource{Key: b.Key, Layer: Machine, Origin: machine.Origin}"
+  evidence: internal/core/layered/question_test.go:148 — "func TestQuestionLimitsLetThePersonTighten(t *testing.T) {"
+- ac-10 — MET: A machine value above the limit in force is a KeyRefusedError carrying the key, personal value, its file, the limit and the limit's file, and no value is returned
+  evidence: internal/core/layered/question.go:163 — "if n > limit {"
+  evidence: internal/core/layered/question.go:95 — "looser than %d (%s); a personal value may only tighten"
+  evidence: internal/core/layered/question_test.go:201 — "func TestQuestionLimitsRefuseAPersonWhoLoosens(t *testing.T) {"
+- ac-11 — MET: Each key in either file is decoded strictly as an int and held to its Bound before any comparison; the table test admits floor and ceiling and refuses floor-1, ceiling+1, a fraction, a string and null naming key, value and bounds, and a personal value below the floor is refused on the bounds
+  evidence: internal/core/layered/question.go:196 — "func boundedInt(f Found, b question.Bound) (int, error) {"
+  evidence: internal/core/layered/question_test.go:238 — "func TestQuestionLimitsHoldTheBounds(t *testing.T) {"
+- ac-12 — MET: Decide admits a non-grammar question unchecked before consulting the refusal; a grammar question under a refusal is denied with the resolver's line naming key, value, bounds and file and no finding line
+  evidence: internal/core/question/decide.go:302 — "if !v.Abcds {"
+  evidence: internal/core/question/decide.go:346 — "if s.LimitsRefused != nil {"
+  evidence: internal/surface/cli/guard_question_limits_test.go:1054 — "func TestHookDenyNamesTheRefusedKeyAndNoRule(t *testing.T) {"
+  evidence: internal/surface/cli/guard_question_limits_test.go:1117 — "func TestUnlabelledQuestionRunsUncheckedUnderARefusedValue(t *testing.T) {"
+- ac-13 — MET: Under a refused value the verb exits 2 on any draft, its JSON carries refused (key, value, bounds, file) and no ready or limits
+  evidence: internal/surface/cli/guard_question_verb.go:399 — "res.Ready = ready"
+  evidence: internal/surface/cli/guard_question_verb_test.go:548 — "func TestGuardQuestionExitsTwoOnARefusedValue(t *testing.T) {"
+- ac-14 — MET: rulesWithLimits loads GRILL at the defaults with the refusal in closed fields; the layout rule says the figures are abcd's defaults, names the key and that the check refuses every abcd question; the loader's notes carry one line; abcd rules prints it on stderr and renders every bundled domain
+  evidence: internal/surface/cli/cli.go:1662 — "return rules.LoadWith(root, question.Default, question.LimitsNote{Refused: refusedLimitOf(err)})"
+  evidence: internal/core/question/asking.go:200 — "Until that file is fixed, abcd's question check refuses every abcd question."
+  evidence: internal/core/rules/grill.go:57 — "rules: %s: a question limit is refused (%s); abcd's question check refuses every abcd question until the file is fixed"
+  evidence: internal/surface/cli/rules_grill_domain_test.go:177 — "func TestRulesPrintsTheRefusedLimitOnStderr(t *testing.T) {"
+- ac-15 — NOT_MET: The configured half holds (figures in words, .abcd/config.json and the machine file named key by key). Promised for no value set: the rule reads as today at the new default and names no file. Delivered: it carries a new sentence naming .abcd/config.json and ~/.abcd.noindex/config.json with the bounds, asserted by a test for the defaults; spec approach 7 chose this, the criterion was not amended
+  evidence: internal/core/question/asking.go:164 — "func boundsSentences() string {"
+  evidence: internal/core/question/asking_test.go:278 — ""defaults": layoutRule(t, AskingRules(Default))"
+  evidence: internal/core/question/asking_test.go:241 — "In this repository, `.abcd/config.json` set the rows, the label words, and the description sentences."
+- ac-16 — MET: withRepoGrillDomain replaces only the rules and leaves provenance; rules GRILL --json reports source bundled with the configured text, and the heading carries no label
+  evidence: internal/core/rules/grill.go:53 — "d.Rules = question.AskingRulesFrom(l, n)"
+  evidence: internal/surface/cli/rules_grill_domain_test.go:208 — "func TestConfiguredRepositoryKeepsGrillBundled(t *testing.T) {"
+- ac-17 — MET: One fixture checkout renders the verb's JSON and the prompt hook's injection; limits equal the figures the layout rule states, rows_limit equals limits.rows, limits_source is per key, and a machine rows 30 moves both and names the machine file
+  evidence: internal/surface/cli/guard_question_verb_test.go:820 — "func TestCheckAndGrillStateOneLimits(t *testing.T) {"
+  evidence: internal/surface/cli/guard_question_verb.go:347 — "RowsLimit: reads.state.Limits.Rows,"
+- ac-18 — MET: A ledger holding GRILL's signature at the old limits re-injects the domain after a load at new figures, and not at unchanged ones
+  evidence: internal/core/rules/inject_test.go:386 — "func TestChangedLimitsReinjectGrill(t *testing.T) {"
+- ac-19 — MET: Both generated blocks append PageLimitsSentence: the figures are abcd's defaults, it names the three keys within the bounds the layout rule states, and sends the writer to the check's limits field, never either file; the intent page carries the same sentence
+  evidence: cmd/asking-sync/main.go:102 — "b.WriteString("\n" + question.PageLimitsSentence() + "\n")"
+  evidence: agents/question-drafter.md:252 — "`abcd guard question` reports the values in force in its `limits` field, and whoever writes a question takes them from there, never from either file."
+  evidence: commands/intent.md:360 — "The figures stated here are abcd's defaults"
+  evidence: cmd/asking-sync/main_test.go:452 — "func TestDrafterBlockPointsAtTheChecksLimits(t *testing.T) {"
+- ac-20 — MET: Three recorded runs at rows 40 each return one question the verb passes (29, 30, 27 rows), report limits equal to the verb's, and their tool uses read only the page and the brief, no config.json
+  evidence: ~/.abcd.noindex/lab/488a0aa96ac5de805348635b27036addf15cddc2/lab-261115224033-30a79f9/state/probes/run-2/result.json:22 — ""limits_reported": { "rows": 40, "label_words": 5, "description_sentences": 2 }"
+  evidence: ~/.abcd.noindex/lab/488a0aa96ac5de805348635b27036addf15cddc2/lab-261115224033-30a79f9/state/probes/run-3/result.json:32 — ""config_reads": [], "pass": true"
+  evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:149 — "## At a configured limit: the rows-40 lab (spc-2610301950037469 step 4)"
+- ac-21 — INCONCLUSIVE: The writer page instructs a no-shell writer to say it counted at abcd's defaults and read neither file, and a lint test holds the sentence, but no recorded run of a writer without a shell shows its output
+  evidence: agents/question-drafter.md:163 — "`hand`: the host gives you no shell at all, so you counted the rows by"
+  evidence: internal/core/lint/surfaceagents_test.go:234 — "func TestWriterPageStatesItsRefusalsAndFallbacks(t *testing.T) {"
+- ac-22 — MET: Eight floor/ceiling combinations each admit the one-paragraph two-line three-option question and refuse it without decide-later, with a recommended mark, without material, and without Now:
+  evidence: internal/core/question/limits_test.go:878 — "func TestEveryBoundCombinationKeepsTheFixedRules(t *testing.T) {"
+- ac-23 — NOT_MET: Floor tests exist for setup values and confirms, the README pair, category approvals, sessions, connect guide, source and the written sample. Promised: the setup plan too. Delivered: no test holds SetupPlanQuestion to CheckLimits at the floors or the defaults
+  evidence: internal/core/ahoy/setup_questions_limits_test.go:74 — "func TestEverySetupQuestionPassesTheLimitsAtTheFloors(t *testing.T) {"
+  evidence: internal/core/ahoy/setup_plan.go:164 — "func SetupPlanQuestion(n int, p SetupPlan) question.Question {"
+  evidence: internal/core/ahoy/setup_plan_test.go:0 — "no CheckLimits or FloorsForTest call in the file; SetupPlanQuestion is called by no test"
+- ac-24 — MET: An unreadable repository file (symlink, directory, unparseable) is an UnreadError returned with the defaults; the hook checks at the defaults with the NOT CHECKED line naming the file, and the verb exits 2 partial naming .abcd/config.json
+  evidence: internal/core/layered/question.go:121 — "if errors.As(err, &u) {"
+  evidence: internal/surface/cli/guard_question.go:809 — "func limitsUnreadLineFor(err error, subject string) string {"
+  evidence: internal/surface/cli/guard_question_limits_test.go:1143 — "func TestHookChecksAtTheDefaultsOnASymlinkedConfig(t *testing.T) {"
+  evidence: internal/surface/cli/guard_question_verb_test.go:602 — "func TestGuardQuestionExitsTwoNamingAnUnreadConfig(t *testing.T) {"
+- ac-25 — MET_WITH_CONCERNS: The hook checks at the defaults naming a machine file writable by others or behind a symlinked ~/.abcd.noindex, and a symlinked ~/.abcd.noindex with no config.json is silent; concerns: no test covers a machine file owned by another account, and no verb test shows the exit 2 naming the machine file (the code path is shared with the repository case)
+  evidence: internal/surface/cli/guard_question_limits_test.go:1235 — "func TestHookNamesAnUnreadMachineConfig(t *testing.T) {"
+  evidence: internal/surface/cli/guard_question.go:774 — "st.LimitsErr, st.LimitsFile = err, unread.Origin"
+- ac-26 — MET: Under rows 40 the hook admits 30, 36 and 40-row tabs silently and notes a 41-row tab naming 40; the verb reports no rows finding at 30 and one naming 40 at 41
+  evidence: internal/surface/cli/guard_question_rows_test.go:181 — "func TestHookAdmitsThirtyRowsUnderFortyAndNotesFortyOne(t *testing.T) {"
+  evidence: internal/surface/cli/guard_question_verb_test.go:507 — "func TestGuardQuestionChecksWithTheRepositorysLimits(t *testing.T) {"
+- ac-27 — MET: Five tabs at every ceiling are refused on the questions-per-call rule; QuestionsPerCall is not among the configurable keys
+  evidence: internal/core/question/limits_test.go:917 — "func TestTabsStayFixedAtTheCeilings(t *testing.T) {"
+  evidence: internal/core/question/limits.go:122 — "var Bounds = []Bound{"
+- ac-28 — MET_WITH_CONCERNS: A tree-walk test allows question.Default passed to the named takers only in the resolver, asking-sync, grill.go and tests (rules.Load is now a test helper); concern: the walk sees direct passes only, and the walled-launch path assigns question.Default as the limits in force and loads bundled GRILL, so that caller does not pass resolved limits
+  evidence: internal/surface/cli/limits_callsites_test.go:91 — "func TestOnlyTheResolverPassesTheDefaultLimits(t *testing.T) {"
+  evidence: internal/surface/cli/guard_question.go:755 — "if os.Getenv(runner.StageBaseEnv) != "" {"
+  evidence: internal/surface/cli/guard_question.go:756 — "st.Limits = question.Default"
+- ac-29 — MET: Bounds is stated once in limits.go beside Default; the resolver's refusal renders Bound.String, the loader's note carries the resolver's words, the hook and layout rule render from Bounds, and a test greps the readers for any literal bound
+  evidence: internal/core/question/limits.go:122 — "{Key: RowsKey, Floor: 24, Ceiling: 60},"
+  evidence: internal/core/layered/question.go:97 — "return head + "outside " + e.Bounds.String()"
+  evidence: internal/core/question/limits_test.go:933 — "func TestBoundsAreStatedOnce(t *testing.T) {"
+- ac-30 — MET_WITH_CONCERNS: The configuration chapter lists the three keys, defaults, bounds and tighten-only layering; the guard chapter's prose names the exit 2 for a refused value; commands/guard.md says where limits are set and that the check reports them; concerns: the guard chapter's question table row itself is unchanged (exit 2 is in prose), and docs-lint and record-lint passing was not run in this audit
+  evidence: .abcd/development/brief/05-internals/03-configuration.md:692 — "### The question keys"
+  evidence: .abcd/development/brief/04-surfaces/17-guard.md:91 — "1 MiB bound or has neither input shape, when a question limit the"
+  evidence: .abcd/development/brief/04-surfaces/17-guard.md:34 — "| `question` | gate | shipped |"
+  evidence: commands/guard.md:205 — "the repository's to set: `question.rows` (24 to 60, 32 by default),"
+
+Gap audit:
+- honoured:
+  - One resolver reads the three keys over abcd's defaults, tighten-only machine layer, bounds judged first, refusal with nothing falling through
+    evidence: internal/core/layered/question.go:117 — "func QuestionLimits(r Roots) (QuestionLimitsValue, error) {"
+  - The check reports limits and limits_source, rows_limit equals limits.rows, and the injected GRILL states the same figures
+    evidence: internal/surface/cli/guard_question_verb_test.go:820 — "func TestCheckAndGrillStateOneLimits(t *testing.T) {"
+  - A refused value refuses every abcd question in the hook, exits 2 in the verb, and is written into GRILL and the loader's notes
+    evidence: internal/core/question/decide.go:346 — "if s.LimitsRefused != nil {"
+  - An unreadable file holds abcd's question to the defaults loudly, in the NOT CHECKED form
+    evidence: internal/surface/cli/guard_question.go:809 — "func limitsUnreadLineFor(err error, subject string) string {"
+  - The default rows rose to 32 with the floor staying 24
+    evidence: internal/core/question/limits.go:59 — "Rows: 32,"
+  - The writer takes limits from the check and reads neither file, shown in three lab runs at rows 40
+    evidence: ~/.abcd.noindex/lab/488a0aa96ac5de805348635b27036addf15cddc2/lab-261115224033-30a79f9/findings.md:16 — "## F-1 At rows 40 the writer returns the 25-row material as one passing question"
+  - The fixed person-protecting rules hold at every combination of bounds; tabs stay fixed
+    evidence: internal/core/question/limits_test.go:878 — "func TestEveryBoundCombinationKeepsTheFixedRules(t *testing.T) {"
+- diverged:
+  - An unconfigured repository's asking rules read as before but for thirty-two and name no file: delivered with a bounds sentence naming both configuration files in every repository
+    evidence: internal/core/question/asking.go:164 — "func boundsSentences() string {"
+  - Every other asking rule unchanged: the material rule was rewritten in this delivery
+    evidence: internal/core/question/asking.go:108 — "One decision's material is quoted shorter and faithfully"
+  - The values apply wherever the hook runs in a configured repository: on a walled-launch stage the check and GRILL keep abcd's defaults and read neither file
+    evidence: internal/surface/cli/guard_question.go:755 — "if os.Getenv(runner.StageBaseEnv) != "" {"
+    evidence: internal/surface/cli/cli.go:1630 — "func rulesForHook(root string, errOut io.Writer) (rules.RuleSet, error) {"
+- missing:
+  - The setup plan question held at the floor of every key by a test
+    evidence: internal/core/ahoy/setup_plan.go:164 — "func SetupPlanQuestion(n int, p SetupPlan) question.Question {"
+  - A person's live read of a question in an 80x40 window at rows 40, and on a machine tightened to 24 (owed, not recorded)
+    evidence: .abcd/development/research/notes/2026-11-question-writer-labs.md:177 — "## Not covered here, queued for the person"
+  - A recorded run of a no-shell writer saying it counted at abcd's defaults
+    evidence: agents/question-drafter.md:163 — "`hand`: the host gives you no shell at all"
+
+Scope-condition dispositions:
+- cond-2610301950032668 — survived: Columns 80 and the host frame of 8 rows stay fixed fields of question.Default outside Bounds, and the resolver refuses question.columns; the estimate still does not notice a growing frame
+  evidence: internal/core/question/limits.go:70 — "HostChromeRows: 8,"
+  evidence: internal/core/question/limits.go:52 — "Columns: 80,"
+  evidence: internal/core/layered/question_test.go:112 — "for _, key := range []string{"options", "columns", "tabs", "row"} {"
+- cond-2610301950039896 — narrowed: The gate resolves through layered.RootsFor and the front doors through the rules root, with defaults where no file or namespace exists; but on a walled-launch stage both files are ignored, so a checkout with .abcd/config.json at its root still gets the defaults, untightened
+  narrowing: holds outside a walled-launch stage only: with the stage-base environment set, the check and GRILL use abcd's defaults and read neither .abcd/config.json nor ~/.abcd.noindex/config.json
+  evidence: internal/surface/cli/guard_question.go:755 — "if os.Getenv(runner.StageBaseEnv) != "" {"
+  evidence: internal/surface/cli/cli.go:1631 — "if base := os.Getenv(runner.StageBaseEnv); base != "" {"
+  evidence: .abcd/development/brief/05-internals/03-configuration.md:743 — "On a stage of a walled launch neither file is read"
+- cond-2610301950032451 — untested: Every test and the lab run the verb, hook and loader from one build; nothing exercises a predating binary or a version mismatch between them
+- cond-2610301950035338 — survived: Decide admits a non-grammar question unchecked before reading the limits, even under a refused value, and the binary's composers resolve the same limits or are held at the floors
+  evidence: internal/core/question/decide.go:302 — "if !v.Abcds {"
+  evidence: internal/surface/cli/guard_question_limits_test.go:1117 — "func TestUnlabelledQuestionRunsUncheckedUnderARefusedValue(t *testing.T) {"
+  evidence: internal/surface/cli/written_interview.go:236 — "v, err := layered.QuestionLimits(roots)"
+<!-- abcd-review-end receipt=rcp-1c71e6f7520c -->
 
 ## Grounds
 
