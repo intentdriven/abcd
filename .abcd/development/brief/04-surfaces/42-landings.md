@@ -44,7 +44,12 @@ Each row is classed in order. A person's push is a commit whose subject names
 no pull request, or one the forge says did not merge as that commit. A merge is
 a person's when a recorded approval of its merged head is found in a worktree
 of the checkout, when the forge holds a review approving that head by someone
-other than the author, or when the first parent committed the human mode. Under
+other than the author, or when the first parent committed the human mode. The
+recorded approval is looked for in every worktree of the checkout but a drive
+lane's (one the build loop made for a lane, named `run-<id>-lane-<n>` in any case, where
+the merge gate never counts an approval either; see [`38-land.md`](38-land.md))
+or one under a lane's worktree, its path resolved first, and in none when the
+reader runs from a drive lane's worktree or from anywhere under one. Under
 the auto mode, a merge with no approval seen is the drain's when its branch
 carries the drain's admission trailer, and automatic otherwise. A row the
 evidence cannot place with a person is marked unattended, and a row whose pull
