@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/ahoy/outbound_shim.go"
 remedy: "Describe the failing location in words in every outbound shim error note, and keep the raw error out of the note"
-resolution: "The outbound install's notes now say why a step failed in words through outboundCause: a file error by the operation and the system's reason, git's failure by its exit status with the command that shows git's reason, anything else by a fixed sentence, so neither a path outside the working tree nor git's message (which quotes the file it could not read) reaches a note; the forge and hook opt-in receipts, whose errors come from the working tree's own config, now name it relative to the tree. TestOutboundNotesKeepGitsReasonAndPathsOut and TestOutboundCauseNamesNoPath hold it."
+resolution: "The outbound install's notes now say why a step failed in words through causeInWords: a file error by the operation and the system's reason, git's failure by its exit status with the command that shows git's reason, anything else by a fixed sentence, so neither a path outside the working tree nor git's message (which quotes the file it could not read) reaches a note; the arm step for the commit checks takes the same words; TestOutboundNotesKeepGitsReasonAndPathsOut and TestCauseInWordsNamesNoPath hold it."
 impact: fix
 ---
 

@@ -288,7 +288,7 @@ func (a *applyCtx) recordOutboundOptIn(kind writeKind) {
 		return nil
 	})
 	if err != nil {
-		a.changes = append(a.changes, receiptPath(a.cwd, "outbound hook opt-in not persisted ("+fsutil.RedactRoot(errText(err), a.cwd, ".")+")"))
+		a.changes = append(a.changes, receiptPath(a.cwd, "outbound hook opt-in not persisted ("+err.Error()+")"))
 		return
 	}
 	if wrote {

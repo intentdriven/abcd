@@ -106,11 +106,11 @@ type outboundShimPlan struct {
 	note   string     // why the check is not wired, or a copy was left; "" when neither
 }
 
-// gitCommonDir names the clone's common git directory, absolute: the one every
-// worktree shares, and so the one whose hooks git runs for each of them.
 // errNoGitDirNamed is gitCommonDir's refusal of an empty answer.
 var errNoGitDirNamed = errors.New("git named no git directory")
 
+// gitCommonDir names the clone's common git directory, absolute: the one every
+// worktree shares, and so the one whose hooks git runs for each of them.
 func gitCommonDir(cwd string) (string, error) {
 	out, err := gitutil.Run(cwd, "rev-parse", "--git-common-dir")
 	if err != nil {
@@ -196,11 +196,11 @@ func hookDirRunsCheck(dir string) (state HookState, runsCheck, chains bool) {
 func planOutboundShim(cwd string) outboundShimPlan {
 	gitDir, err := gitCommonDir(cwd)
 	if err != nil {
-		return outboundShimPlan{note: notWiredNoCopy("git could not name this clone's git directory (" + outboundCause(err) + "; git rev-parse --git-common-dir says why)")}
+		return outboundShimPlan{note: notWiredNoCopy("git could not name this clone's git directory (" + causeInWords(err) + "; git rev-parse --git-common-dir says why)")}
 	}
 	root, err := os.OpenRoot(gitDir)
 	if err != nil {
-		return outboundShimPlan{note: notWiredNoCopy("this clone's git directory could not be opened (" + outboundCause(err) + ")")}
+		return outboundShimPlan{note: notWiredNoCopy("this clone's git directory could not be opened (" + causeInWords(err) + ")")}
 	}
 	defer root.Close()
 	plan := outboundShimPlan{gitDir: gitDir}
@@ -217,7 +217,7 @@ func planOutboundShim(cwd string) outboundShimPlan {
 		// git could not answer, so which hooks git runs here is not known:
 		// abcd writes no hook git runs, and says it could not tell.
 		lead = unreadLead
-		why = "the read of core.hooksPath (git config --get-all core.hooksPath) failed (" + outboundCause(err) +
+		why = "the read of core.hooksPath (git config --get-all core.hooksPath) failed (" + causeInWords(err) +
 			"), so abcd wrote no hook git runs; check that git can read this clone's settings and your own"
 		where = "the commit-msg hook git runs in this clone"
 	case len(paths) > 0 && paths[len(paths)-1] == "":
@@ -333,7 +333,7 @@ func (a *applyCtx) stepOutboundShim() {
 // writeShim writes the plan's file, and reports whether it did.
 func (a *applyCtx) writeShim(plan outboundShimPlan) bool {
 	failed := func(err error) bool {
-		a.refuse(notWiredNoCopy(plan.shown + " could not be written (" + outboundCause(err) + ")"))
+		a.refuse(notWiredNoCopy(plan.shown + " could not be written (" + causeInWords(err) + ")"))
 		return false
 	}
 	root, err := os.OpenRoot(plan.gitDir)
@@ -377,13 +377,13 @@ func (a *applyCtx) writeShim(plan outboundShimPlan) bool {
 	return true
 }
 
-// outboundCause says in words why a step of the outbound install failed, for
-// its note (iss-2610152204588951): a file error by what was done and the
+// causeInWords says in words why a step of the install failed, for its note
+// (iss-2610152204588951): a file error by what was done and the
 // system's reason, git's failure by its exit status, and anything else by
 // a fixed sentence. The error's own text is left out, since it can name a
 // path outside the working tree (the shared git directory, the person's own
 // git config) and git's message quotes the file it could not read.
-func outboundCause(err error) string {
+func causeInWords(err error) string {
 	var pe *fs.PathError
 	var le *os.LinkError
 	var ee *exec.ExitError
