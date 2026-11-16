@@ -11,6 +11,7 @@ package ptytest
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -39,18 +40,48 @@ type Pty struct {
 
 // Open opens a pseudo-terminal, sizes it cols by rows, and starts draining the
 // master end into a buffer Output and WaitFor read, so a child never blocks
-// on a full terminal. Both ends are closed when the test ends.
+// on a full terminal. Both ends are closed when the test ends. A system out
+// of pseudo-terminals is tried a few times and then skips the test with the
+// reason; any other failure to open one fails it.
 func Open(t testing.TB, cols, rows int) *Pty {
 	t.Helper()
 	return openHeld(t, cols, rows, nil)
 }
 
+// openPty opens one pseudo-terminal; a test stands in for a system out of
+// them.
+var openPty = open
+
+// exhaustedTries is how many times Open tries a system out of
+// pseudo-terminals before it skips the test, exhaustedWait the pause before
+// each try after the first, lengthened by each.
+var (
+	exhaustedTries = 5
+	exhaustedWait  = 200 * time.Millisecond
+)
+
+// outOfPtys reports whether err is the system being out of pseudo-terminals,
+// as an open of /dev/ptmx reports it: "device not configured" on macOS,
+// no space on Linux, or try again.
+func outOfPtys(err error) bool {
+	return errors.Is(err, syscall.ENXIO) || errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EAGAIN)
+}
+
 // openHeld is Open with the drain held until hold is closed (nil: never).
 func openHeld(t testing.TB, cols, rows int, hold chan struct{}) *Pty {
 	t.Helper()
-	m, s, err := open()
-	if err != nil {
-		t.Fatalf("opening a pseudo-terminal: %v", err)
+	m, s, err := openPty()
+	for try := 1; err != nil; try++ {
+		if !outOfPtys(err) {
+			t.Fatalf("opening a pseudo-terminal: %v", err)
+		}
+		// A loaded machine can be out of pseudo-terminals for a moment; a
+		// test that needs one is not failed for it (iss-2610151050413162).
+		if try == exhaustedTries {
+			t.Skipf("no pseudo-terminal could be opened in %d tries, the system is out of them: %v", try, err)
+		}
+		time.Sleep(time.Duration(try) * exhaustedWait)
+		m, s, err = openPty()
 	}
 	p := &Pty{Master: m, Terminal: s, done: make(chan struct{}), hold: hold}
 	if err := SetSize(s, cols, rows); err != nil {
