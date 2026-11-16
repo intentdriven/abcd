@@ -936,7 +936,7 @@ func renderDriveEnd(w io.Writer, res loop.TerminalResult) {
 			fmt.Fprintf(w, "  to resume: %s\n", res.Resume)
 		}
 		if res.Lapses != nil {
-			fmt.Fprintf(w, "  its reservation lapses at %s unless a step, `abcd drain` or `abcd implement status` run in this copy, or a load-gate waiter in this copy, renews it\n", res.Lapses.UTC().Format(time.RFC3339))
+			fmt.Fprintf(w, "  its reservation lapses at %s %s\n", res.Lapses.UTC().Format(time.RFC3339), loop.UnlessRunRenewed)
 		}
 	} else if res.Resume != "" {
 		fmt.Fprintf(w, "  to resume: %s\n", res.Resume)

@@ -273,6 +273,17 @@ const gateWaiterRenews = "a load-gate waiter in this copy (`abcd implement load 
 // read for keeps it (lapseTail).
 const unlessWaiterRenews = "unless a load-gate waiter in this copy renews it"
 
+// UnlessRunRenewed is the clause a lapse says of a live reservation this
+// copy's last push takes and a lane's run still in progress holds: a step,
+// `abcd drain` and `abcd implement status` run in this copy renew it (advanceWith,
+// renewInProgress, RenewRunsIn), as a load-gate waiter does. A run handed back,
+// stopped or let go keeps unlessWaiterRenews.
+const UnlessRunRenewed = "unless a step, `abcd drain` or `abcd implement status` run in this copy, or a load-gate waiter in this copy, renews it"
+
+// unlessRenewedEither is the clause for what a run and a judgement's hold may
+// both be: each kept by its own renewers.
+const unlessRenewedEither = "unless renewed: a lane's run still in progress by a step, `abcd drain` or `abcd implement status` run in this copy, or by a load-gate waiter in this copy, and anything else by the waiter alone"
+
 // lapseTail is how the line of a release that did not reach origin ends, by
 // the run's lease as this checkout last fetched it (leaseEnd), as
 // releaseOnHandBack and terminal.leftHeld choose it: a lease already lapsed
