@@ -22,8 +22,7 @@ package sweep
 // git reads with no deadline. The judgement reads refs and history and writes
 // nothing; only apply's `git branch -d` changes a ref.
 //
-// sweepBranches is an entry point the surfaces (step 5) call, and so stays
-// unexported until then, as runDry does.
+// sweepBranches is the local-branch half of runSweep, which Run calls.
 
 import (
 	"context"

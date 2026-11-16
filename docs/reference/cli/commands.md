@@ -6460,6 +6460,41 @@ not answer, the command's output so far, or nothing), says why on stderr and
 exits 0. With --json the row is emitted as its ordered elements, each with a
 key, a rendered and a plain form.
 
+### `abcd sweep`
+
+List the worktrees, branches, reservations and reports left lying around, or clear the spent: Writes only the fetch bare; refuses a failed fetch.
+
+**Usage:** `abcd sweep [flags]`
+
+List everything this repository has left lying around, and with --apply clear
+what is provably spent. It fetches origin first, its branches and the
+reservations, then lists one row per worktree of the repository (in the
+worktree store and outside it, the store's strays and the embargo store among
+them), per local branch, per branch on origin, per reservation branch and per
+report waiting in abcd's inbox, each with what --apply would do (remove,
+save-patch, delete, dispatch or promote) or why it would keep the item.
+
+--apply removes a merged, clean worktree through the store's prune, which
+archives its notes first, saves a dirty one's uncommitted work as a patch in
+the notes archive and keeps it, deletes a merged local branch with git branch
+-d and a merged branch on origin under a lease once nothing still needs it,
+dispatches the reservation sweep's workflow when a reservation is spent (it
+never deletes one itself), and files each waiting inbox report into the
+ledger. Nothing is forced and no process is stopped. Anything dirty,
+unmerged, locked, held by a live session, recently written, or that the sweep
+cannot classify stays, named with the reason; a check that could not be made
+holds every item it could have cleared, and is said once at the top.
+
+Exit 0 when the run acted on something (a dry run: when --apply would), 1 when
+it completed and acted on nothing, and 2 on a refusal or a fault, outside a
+git checkout or when the fetch fails among them.
+
+**Flags:**
+
+```
+      --apply[=true|false]   act on what is provably spent; without it the sweep changes nothing but the fetch
+```
+
 ### `abcd update`
 
 Swap the PATH-installed binary for a verified release, or with --check only compare: Writes the swapped binary; refuses a binary it cannot prove is abcd's.
