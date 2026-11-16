@@ -9,7 +9,7 @@ production_mode: hand-written
 
 ## Summary
 
-This spec delivers [itd-2609151838312703](../../intents/planned/itd-2609151838312703-sessions-announce-what-they-are-doing.md). Sessions under any account, on any machine or in a hosted cloud session post short fixed-form announcements on the shared remote. A person reads everyone's status with one command. A release cut holds every merge through a reservation that the land step reads.
+This spec delivers [itd-2609151838312703](../../intents/shipped/itd-2609151838312703-sessions-announce-what-they-are-doing.md). Sessions under any account, on any machine or in a hosted cloud session post short fixed-form announcements on the shared remote. A person reads everyone's status with one command. A release cut holds every merge through a reservation that the land step reads.
 
 **Precondition: the cloud probe.** Before step 1 starts, the product thinker runs the prompt the planning session wrote (decision 8). It records two things:
 

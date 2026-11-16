@@ -338,6 +338,10 @@ func RunTerminal(ctx context.Context, repoRoot string, o TerminalOptions) (Termi
 	if o.Drain.Transcripts == nil {
 		o.Drain.Transcripts = o.Runners.Transcripts
 	}
+	// Every push the reservation code makes while the drive runs passes
+	// --no-follow-tags (claim.DrivePushes), as the landing push does
+	// (landPushArgs), so no tag a lane made is sent with either.
+	defer claim.DrivePushes()()
 	return newTerminal(repoRoot, o).run(ctx)
 }
 
@@ -704,15 +708,17 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 	t.o.Options.remote = id
 	// From here every git command of the drive that runs the repository's
 	// hooks, merge drivers or content filters, or reaches the network, first
-	// compares what the drive holds (heldBeforeGit): each runner gitutil has
-	// for such a command asks the check set here before it builds the
-	// command (gitutil.SetBeforeHookedGit names them), so one made inside a
-	// step (the lane's add, commit, merge and reset, the landing push) or
+	// compares what the drive holds (heldBeforeGitIn: heldBeforeGit, reading
+	// the own settings of the lane worktrees that git runs in or names): each
+	// runner gitutil has for such a command asks the check set here, given
+	// the directory the command runs in and its arguments, before it builds
+	// the command (gitutil.SetBeforeHookedGit names them), so one made inside
+	// a step (the lane's add, commit, merge and reset, the landing push) or
 	// outside one (a move's reservation, a renewal while an agent runs, the
 	// network probe) never runs under a setting or hook changed since the
 	// drive started; it fails instead, naming the difference. One drive runs
 	// in a process: a check already set refuses the start.
-	unset, err := gitutil.SetBeforeHookedGit(func([]string) error { return heldBeforeGit(t.repoRoot, id) })
+	unset, err := gitutil.SetBeforeHookedGitAt(func(dir string, args []string) error { return heldBeforeGitIn(t.repoRoot, id, dir, args) })
 	if err != nil {
 		t.leaveSharedRun()
 		return TerminalResult{}, refuse(StageDrain, "", "", "the drive cannot start: "+err.Error(),

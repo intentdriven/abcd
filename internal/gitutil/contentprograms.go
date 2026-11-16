@@ -36,11 +36,20 @@ func Subcommand(args []string) string {
 	return ""
 }
 
+// SubcommandIndex is the index of args' subcommand, past git's global
+// options and their values (TakesGlobalValue), -1 for none.
+func SubcommandIndex(args []string) int { return subcommandIndex(args) }
+
+// TakesGlobalValue reports whether a, a word before git's subcommand, is a
+// global option that takes the next word as its value (-c, -C, --git-dir,
+// --work-tree, --namespace, --config-env, --super-prefix, --attr-source).
+func TakesGlobalValue(a string) bool { return slices.Contains(globalValued, a) }
+
 // subcommandIndex is the index of args' subcommand, -1 for none.
 func subcommandIndex(args []string) int {
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; {
-		case slices.Contains(globalValued, a):
+		case TakesGlobalValue(a):
 			i++
 		case strings.HasPrefix(a, "-"):
 		default:
@@ -85,25 +94,33 @@ type gitArgs struct {
 //
 // noValue are the options known to take no value, matched whole: the ones
 // abcd's own calls give before a word that makes the command not ask, and no
-// others. quiet are the words the subcommand's judge reads as making it not
-// ask, alone or as name=value. Neither list can name every option git takes,
-// so the word after an option on neither list is not read as one that makes
-// the command not ask (counts), and the command asks.
+// others; count says a dash and digits alone (-1, git's -<number> of
+// commits) takes none either. quiet are the words the subcommand's judge
+// reads as making it not ask, alone or as name=value. Neither list can name
+// every option git takes, so the word after an option on neither list is not
+// read as one that makes the command not ask (counts), and the command asks.
 type valued struct {
 	long    []string
 	short   string
 	exact   bool
 	noValue []string
+	count   bool
 	quiet   []string
 }
 
 // counts reports whether the word after prev, a word that is not the first
 // after the subcommand, is known not to be prev's value: prev is not an
-// option, holds "=", is on noValue, or is a word of quiet that was counted
-// itself (prevCounted). The first word after the subcommand always is.
+// option, holds "=", is on noValue, is a count (-1) where count is set, or is
+// a word of quiet that was counted itself (prevCounted). The first word after
+// the subcommand always is.
 func (v valued) counts(prev string, prevCounted bool) bool {
 	return !strings.HasPrefix(prev, "-") || strings.Contains(prev, "=") ||
-		slices.Contains(v.noValue, prev) || prevCounted && named(prev, v.quiet)
+		slices.Contains(v.noValue, prev) || v.count && isCount(prev) || prevCounted && named(prev, v.quiet)
+}
+
+// isCount reports whether w is a dash and digits alone (-1, -20).
+func isCount(w string) bool {
+	return len(w) > 1 && w[0] == '-' && strings.Trim(w[1:], "0123456789") == ""
 }
 
 // takesNext reports whether option word a takes the word after it as its
@@ -132,7 +149,9 @@ var (
 		"--since-as-filter", "--author", "--committer", "--grep", "--grep-reflog", "--exclude", "--date",
 		"--decorate-refs", "--decorate-refs-exclude"}
 	diffLog = valued{long: append(slices.Clip(diffValued), revValued...), short: "UlOSGInL", exact: true,
-		noValue: []string{"--no-renames", "-z", "--no-color", "-p", "--shortstat"},
+		noValue: []string{"--no-renames", "-z", "--no-color", "-p", "--shortstat", "--reverse", "--no-merges",
+			"--first-parent", "--no-show-signature", "-g", "--no-decorate", "--root"},
+		count: true,
 		quiet: []string{"--cached", "--staged", "-s", "--no-patch", "--name-only", "--name-status", "--raw", "--quiet",
 			"--no-textconv", "--no-ext-diff"}}
 )
@@ -149,12 +168,13 @@ var valuedNext = map[string]valued{
 		quiet: []string{"-l", "--list", "-n", "--contains", "--no-contains", "--merged", "--no-merged", "--points-at"}},
 	"init": {long: []string{"--template", "--separate-git-dir", "--object-format", "--ref-format", "--initial-branch"}, short: "b",
 		noValue: []string{"-q"}},
-	"diff":        diffLog,
-	"diff-index":  diffLog,
-	"show":        diffLog,
-	"log":         diffLog,
-	"whatchanged": diffLog,
-	"reflog":      diffLog,
+	"diff":       diffLog,
+	"diff-index": diffLog,
+	"diff-tree":  diffLog,
+	"show":       diffLog,
+	"log":        diffLog,
+	"reflog":     diffLog,
+	"rev-list":   diffLog,
 	"blame": {long: append([]string{"--contents", "--ignore-rev", "--ignore-revs-file"}, revValued...), short: "LS",
 		quiet: []string{"--no-textconv"}},
 	"hash-object":  {long: []string{"--path"}, short: "t", noValue: []string{"-w"}, quiet: []string{"--no-filters", "--stdin"}},
@@ -312,9 +332,70 @@ func (g gitArgs) filtersBlanked() bool {
 }
 
 // driversBuiltin reports whether the command carries MergeDriverOverrides'
-// settings, which make every merge driver git's built-in text merge.
+// settings, which make every merge driver git's built-in text merge and pin
+// merge.renormalize off, under which a content merge runs the filters.
 func (g gitArgs) driversBuiltin() bool {
-	return slices.ContainsFunc(g.settings, func(s string) bool { return strings.HasPrefix(s, "merge.default=") })
+	return slices.ContainsFunc(g.settings, func(s string) bool { return strings.HasPrefix(s, "merge.default=") }) &&
+		slices.Contains(g.settings, "merge.renormalize=false")
+}
+
+// builtinFormats are git's own pretty formats, which a pretty.<name> alias
+// of the same name cannot shadow (git-config(1), pretty.<name>).
+var builtinFormats = []string{"oneline", "short", "medium", "full", "fuller", "reference", "email", "raw", "mboxrd"}
+
+// formatWord reads w as one of the words that set the format git writes a
+// commit in (git-log(1), PRETTY FORMATS): --pretty=<v> and --format=<v>,
+// whose value is v, --pretty alone, which is medium, and --oneline, which is
+// oneline. git takes each exactly (no prefix), never its value as the next
+// word, and the last of them on the command line decides the format.
+func formatWord(w string) (value string, ok bool) {
+	switch w {
+	case "--pretty":
+		return "medium", true
+	case "--oneline":
+		return "oneline", true
+	}
+	name, v, valued := strings.Cut(w, "=")
+	if valued && (name == "--format" || name == "--pretty") {
+		return v, true
+	}
+	return "", false
+}
+
+// formatAsks reports whether the format git writes a commit in can show a
+// check of a signature, which starts gpg.program, as git reads the command
+// line: the last format word (formatWord) that is not the value of the option
+// before it decides. Its value does not ask when it is empty, a built-in name
+// (which no pretty.<name> alias can shadow), or a format of its own (a %
+// placeholder, format: or tformat:) with no signature placeholder (%G or
+// %(signature); it asks when it holds one, or is any other name, which git
+// reads as a pretty.<name> alias the repository's settings define. The last
+// format word asks too when the word before it is not known not to take it as
+// a value (valued.counts): it cannot be told whether git reads it as the
+// format. With no format word, the command's own default decides:
+// fromSettings is true for log and show, whose default is format.pretty
+// (git-config(1)), so they ask; reflog, rev-list, shortlog and diff-tree
+// default to a built-in format and do not.
+func (g gitArgs) formatAsks(fromSettings bool) bool {
+	for i := len(g.words) - 1; i >= 0; i-- {
+		if g.value[i] {
+			continue
+		}
+		v, ok := formatWord(g.words[i])
+		if !ok {
+			continue
+		}
+		switch {
+		case !g.counted[i]:
+			return true
+		case v == "", slices.Contains(builtinFormats, v):
+			return false
+		case strings.Contains(v, "%") || strings.HasPrefix(v, "format:") || strings.HasPrefix(v, "tformat:"):
+			return strings.Contains(v, "%G") || strings.Contains(v, "%(signature")
+		}
+		return true
+	}
+	return fromSettings
 }
 
 // diffProgramsOff reports whether textconv and external diff programs are
@@ -384,21 +465,28 @@ func (g gitArgs) twoTrees() bool {
 //   - diff-files, and diff-index without --cached: a patch reads the working
 //     tree through its filters unless FilterOverrides; diff-tree, diff-index
 //     and diff-files run textconv or an external diff only with --textconv or
-//     --ext-diff.
+//     --ext-diff; diff-tree also asks when it shows a signature check or its
+//     last format word can (formatAsks).
 //   - show: with --textconv or --ext-diff, or showing a commit's patch
 //     unless --no-textconv and --no-ext-diff (a blob, rev:path, is shown as
 //     stored unless --textconv is given; :/text and rev^{/text} name
-//     commits, not blobs).
-//   - log, whatchanged and reflog: with --textconv or --ext-diff, or with a
-//     patch, a stat or a content search unless --no-textconv and
-//     --no-ext-diff.
+//     commits, not blobs), or showing a commit in a format that can show a
+//     signature check (formatAsks: a format word that names an alias, or none,
+//     since show's default is format.pretty).
+//   - log and reflog: with --textconv or --ext-diff, or with a patch, a stat
+//     or a content search unless --no-textconv and --no-ext-diff; either also
+//     in a format that can show a signature check (formatAsks; log with no
+//     format word, since its default is format.pretty). A deprecated command
+//     (whatchanged, pack-redundant) is on neither list, so it asks: git lets
+//     an alias stand for one (alias.* in git-config(1)).
 //   - blame and annotate: unless --no-textconv and, for the working tree's
 //     file, FilterOverrides.
 //   - grep: only with --textconv.
 //   - apply: with --3way, which merges through the merge drivers, whatever
 //     else it carries; otherwise unless --cached, a stat alone, or
 //     FilterOverrides.
-//   - merge-tree: unless MergeDriverOverrides.
+//   - merge-tree: unless MergeDriverOverrides, which pin merge.renormalize
+//     off as well as every driver.
 //   - add, stash, checkout, switch, restore, checkout-index, commit, rm
 //     (but --cached), reset (but --soft), read-tree -u, worktree add, am,
 //     clone: unless FilterOverrides; merge, cherry-pick, revert, rebase and
@@ -443,7 +531,7 @@ func StartsNothing(verb string) bool {
 // network, and the networked runners ask before it runs.
 var startsNothing = map[string]string{
 	"rev-parse":        "names objects and paths",
-	"rev-list":         "lists commits; a format that shows a signature check (%G) asks",
+	"rev-list":         "lists commits; a format that can show a signature check (%G, or a pretty.<name> alias) asks",
 	"merge-base":       "reads commits",
 	"config":           "reads settings (--get, --get-regexp, --list); --edit, -e and edit, which open the editor, ask",
 	"var":              "reads settings and identities",
@@ -460,7 +548,7 @@ var startsNothing = map[string]string{
 		"(git's own when none is named), asks",
 	"remote": "lists remotes, reads one's URL or removes one (remote, remote get-url, remote remove); " +
 		"a form that reaches the network (update, show, prune, add -f, set-head -a) or one not known asks",
-	"shortlog": "counts commits by author (shortlog -sne HEAD), with no diff; a format that shows a signature check asks",
+	"shortlog": "counts commits by author (shortlog -sne HEAD), with no diff; a format that can show a signature check (%G, or a pretty.<name> alias) asks",
 	"cherry":   "compares commits' patch ids (cherry <upstream> <head>), hashed from stored content with no textconv or external diff",
 	"branch": "lists branches (branch --format=... --no-merged <rev>); --edit-description, which opens the editor, " +
 		"and a format that shows a signature check, ask",
@@ -483,8 +571,8 @@ var startsInForm = map[string]func(g gitArgs) bool{
 	"tag":          tagAsks,
 	"describe":     func(g gitArgs) bool { return g.hasAbbrev("--dirty") || g.hasAbbrev("--broken") },
 	"branch":       func(g gitArgs) bool { return g.hasAbbrev("--edit-description") || g.signatureShown() },
-	"rev-list":     func(g gitArgs) bool { return g.signatureShown() },
-	"shortlog":     func(g gitArgs) bool { return g.signatureShown() },
+	"rev-list":     func(g gitArgs) bool { return g.signatureShown() || g.formatAsks(false) },
+	"shortlog":     func(g gitArgs) bool { return g.signatureShown() || g.formatAsks(false) },
 	"for-each-ref": func(g gitArgs) bool { return g.signatureShown() },
 	"config": func(g gitArgs) bool {
 		return g.hasAbbrev("--edit") || g.hasShort('e') || len(g.revs) > 0 && g.revs[0] == "edit"
@@ -581,7 +669,8 @@ func tagAsks(g gitArgs) bool {
 // its kin): --show-signature in any prefix git takes for it, or a --format
 // or --pretty value, given after "=" or as the next word, the option in
 // any prefix, that holds a %G placeholder or a %(signature atom. One reading
-// for log, show, rev-list, shortlog, for-each-ref, branch and tag.
+// for log, show, reflog, diff-tree, rev-list, shortlog, for-each-ref, branch
+// and tag.
 func (g gitArgs) signatureShown() bool {
 	if g.hasAbbrev("--show-signature") {
 		return true
@@ -636,7 +725,9 @@ var contentJudges = map[string]func(g gitArgs, blanked bool) bool{
 	"diff-index": func(g gitArgs, blanked bool) bool {
 		return (!g.given("--cached") && g.patchy() && !blanked) || g.diffProgramsAsked()
 	},
-	"diff-tree": func(g gitArgs, _ bool) bool { return g.diffProgramsAsked() },
+	"diff-tree": func(g gitArgs, _ bool) bool {
+		return g.diffProgramsAsked() || g.signatureShown() || g.formatAsks(false)
+	},
 	"show": func(g gitArgs, _ bool) bool {
 		blob := func(r string) bool {
 			return strings.Contains(r, ":") && !strings.HasPrefix(r, ":/") && !strings.Contains(r, "^{/")
@@ -645,14 +736,13 @@ var contentJudges = map[string]func(g gitArgs, blanked bool) bool{
 		// at least one that is not a value must be given: show -O HEAD:a
 		// shows HEAD's patch.
 		blobs := len(g.givenRevs()) > 0 && !slices.ContainsFunc(g.revs, func(r string) bool { return !blob(r) })
-		return g.diffProgramsAsked() || g.signatureShown() || (!blobs && !g.noPatch() && !g.diffProgramsOff())
+		return g.diffProgramsAsked() || g.signatureShown() || (!blobs && (!g.noPatch() && !g.diffProgramsOff() || g.formatAsks(true)))
 	},
-	"log":         logJudge,
-	"whatchanged": logJudge,
-	"reflog":      logJudge,
-	"blame":       blameJudge,
-	"annotate":    blameJudge,
-	"grep":        func(g gitArgs, _ bool) bool { return g.hasAbbrev("--textconv", "--text") },
+	"log":      func(g gitArgs, blanked bool) bool { return logJudge(g, blanked) || g.formatAsks(true) },
+	"reflog":   func(g gitArgs, blanked bool) bool { return logJudge(g, blanked) || g.formatAsks(false) },
+	"blame":    blameJudge,
+	"annotate": blameJudge,
+	"grep":     func(g gitArgs, _ bool) bool { return g.hasAbbrev("--textconv", "--text") },
 	"apply": func(g gitArgs, blanked bool) bool {
 		if g.hasAbbrev("--3way") || g.hasShort('3') {
 			return true
@@ -700,12 +790,13 @@ func mergerJudge(g gitArgs, blanked bool) bool { return !blanked || !g.driversBu
 // askIfContentRuns asks the check SetBeforeHookedGit set before an isolated
 // command that LeavesContentProgramsOn says can start a program the
 // repository names, setting its error as cmd.Err so Run, Output and Start
-// return it and git never starts. With no check set it does nothing.
-func askIfContentRuns(cmd *exec.Cmd, args []string) {
+// return it and git never starts; root is the directory the command runs
+// in. With no check set it does nothing.
+func askIfContentRuns(cmd *exec.Cmd, root string, args []string) {
 	if cmd.Err != nil || !LeavesContentProgramsOn(args) {
 		return
 	}
-	if err := askBeforeHooked(args); err != nil {
+	if err := askBeforeHooked(root, args); err != nil {
 		cmd.Err = err
 	}
 }

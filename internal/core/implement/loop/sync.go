@@ -164,11 +164,14 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 		// stopped at its deadline can leave is the loop's own, and undoing
 		// it (undoStalledSync) never resets away a change the loop did not
 		// make.
-		if dirty, err := pickGit(lane.Worktree, "status", "--porcelain", "-z", "--untracked-files=all"); err != nil {
+		if dirty, err := pickGit(lane.Worktree, gitutil.StatusArgs("--porcelain", "-z", "--untracked-files=all")...); err != nil {
 			return Outcome{}, false, fmt.Errorf("reading the lane's worktree: %w", err)
 		} else if dirty != "" {
 			return Outcome{}, false, refuse(string(StageLand), "", lane.ID, "the lane's worktree holds uncommitted changes, so the sync with "+def+" is not merged over them",
 				"remove them from the lane's worktree, a spec left for the landing included, since the merge runs only over a clean one and a commit moves the branch off the judged head, then run `abcd implement step` again; settle that spec again when the landing's first step asks for it after the sync's round")
+		}
+		if err := syncSubmoduleRefusal(*lane, def); err != nil {
+			return Outcome{}, false, err
 		}
 		if reserved, err = reserveOnLeavingLand(c.RepoRoot, c.State, *lane, StageValidate, c.Now); err != nil {
 			return Outcome{}, false, err
@@ -179,6 +182,9 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 			// a difference, so there is nothing to abort or undo.
 			r, _ := heldStopOf(err)
 			return Outcome{}, false, r
+		} else if cs := (*checkedOutSubmodule)(nil); errors.As(err, &cs) {
+			// A submodule checked out since the read above: nothing merged.
+			return Outcome{}, false, submoduleRefusal(*lane, def, cs)
 		} else if errors.Is(err, errCommitStalled) {
 			return Outcome{}, false, undoStalledSync(*lane, def, err)
 		} else if err != nil {
@@ -186,7 +192,7 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 			// runner, which asks the drive's comparison too: a stop there
 			// is the step's, never no conflict or no merge to abort, and
 			// what git's merge left in the lane is said.
-			conflicted, cerr := pickGit(lane.Worktree, "diff", "--name-only", "--diff-filter=U", "-z")
+			conflicted, cerr := unmergedPaths(lane.Worktree)
 			if r, ok := heldStopOf(cerr); ok {
 				return Outcome{}, false, mergeLeft(r, *lane, def)
 			}
@@ -410,10 +416,54 @@ func undoStalledSync(lane Lane, def string, stalled error) error {
 // drivers, hooks, commit signing and signature check run
 // (iss-2610111729399920), and its content filters run on the files the merge
 // writes and when merge.renormalize is on, left as the repository set them
-// (abcd-fixes-what-it-adds).
+// (abcd-fixes-what-it-adds). Nothing is added to its command line for
+// submodules, so the hooks it runs read each submodule's ignore setting as
+// the repository sets it.
+//
+// Where the lane's index records a gitlink with a repository checked out at
+// its path, whether or not .gitmodules names it (checkedOutGitlink), the
+// merge is not made and a *checkedOutSubmodule says which path: git's merge
+// first saves the lane's changes, which can start a status inside that
+// submodule, under its own settings, and no command-line form reaches that
+// without reaching the merge's hooks too. A gitlink with nothing checked
+// out merges as before.
 func syncMerge(dir, msg, merged string) error {
+	if err := checkedOutGitlink(dir); err != nil {
+		return err
+	}
 	_, err := commitGit(dir, "merge", "--no-ff", "--no-edit", "-m", msg, merged)
 	return err
+}
+
+// syncSubmoduleRefusal is the refusal of a sync that is not merged over a
+// checked-out submodule of the lane's worktree (checkedOutGitlink), made
+// before anything changes, the reservation included; nil when there is none.
+func syncSubmoduleRefusal(lane Lane, def string) error {
+	err := checkedOutGitlink(lane.Worktree)
+	var cs *checkedOutSubmodule
+	if !errors.As(err, &cs) {
+		return err
+	}
+	return submoduleRefusal(lane, def, cs)
+}
+
+// submoduleRefusal is the refusal of a sync not merged over the checked-out
+// submodule cs names. The path is the lane's index's, the default branch's
+// name origin's and the branch the lane's, so each goes through
+// termsafe.Sanitize, as undeclaredConflict's do.
+func submoduleRefusal(lane Lane, def string, cs *checkedOutSubmodule) error {
+	path, def, branch := termsafe.Sanitize(cs.Path), termsafe.Sanitize(def), termsafe.Sanitize(lane.Branch)
+	return refuse(string(StageLand), "", lane.ID,
+		fmt.Sprintf("the lane's index records a submodule at %q with a repository checked out there, so the sync with %s is not merged: git's merge can start a status inside that submodule, under its own settings, and the drive does not change what the merge's hooks see to stop it", path, def),
+		"merge "+Remote+"/"+def+" into "+branch+" yourself in the lane's worktree "+termsafe.Sanitize(fsutil.RedactHome(lane.Worktree))+" (`git merge --no-ff "+Remote+"/"+def+"`), or remove the checkout at "+path+" there, then run `abcd implement step` again")
+}
+
+// unmergedPaths is the NUL-separated list of the paths a failed merge left
+// unmerged in the lane's worktree at dir: a diff of the index with the
+// working tree (gitutil.DiffWorktreeArgs), which starts nothing inside a
+// submodule.
+func unmergedPaths(dir string) (string, error) {
+	return pickGit(dir, gitutil.DiffWorktreeArgs("--name-only", "--diff-filter=U", "-z")...)
 }
 
 // writeSyncBrief renders the brief of the fresh implementer a conflicting sync
