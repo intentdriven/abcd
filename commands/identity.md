@@ -89,8 +89,11 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd identity [flags]`
+  - An example call is `abcd identity`.
 - `abcd identity init [flags]`
+  - An example call is `abcd identity init --title "Example Widgets" --tagline "Widgets that explain themselves"`.
 - `abcd identity render [flags]`
+  - An example call is `abcd identity render`.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

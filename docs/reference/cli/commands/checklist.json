@@ -7,6 +7,7 @@
       "usage": "abcd checklist [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd checklist",
       "subcommands": [
         "add",
         "render",
@@ -40,7 +41,8 @@
       "sentence": "Print the checklist as one block of text, open items first: Writes nothing; refuses outside a git checkout.",
       "usage": "abcd checklist render [flags]",
       "flags": [],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd checklist render"
     },
     {
       "path": "abcd checklist set",

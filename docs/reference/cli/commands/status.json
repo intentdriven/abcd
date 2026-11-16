@@ -6,7 +6,8 @@
       "sentence": "List everyone's announcements, reservations and releases being cut: Writes the fetched status branches and reservations; refuses outside a git checkout.",
       "usage": "abcd status [flags]",
       "flags": [],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd status"
     }
   ]
 }

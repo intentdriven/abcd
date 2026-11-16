@@ -24,6 +24,7 @@
         }
       ],
       "inputs": [],
+      "example": "abcd ahoy",
       "subcommands": [
         "connect",
         "credential",
@@ -111,14 +112,16 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd ahoy credential"
     },
     {
       "path": "abcd ahoy doctor",
       "sentence": "Report every install gap, user-scope state included: Writes nothing; refuses any argument.",
       "usage": "abcd ahoy doctor [flags]",
       "flags": [],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd ahoy doctor"
     },
     {
       "path": "abcd ahoy install",
@@ -209,7 +212,8 @@
           "kind": "answers",
           "name": "interview answers"
         }
-      ]
+      ],
+      "example": "abcd ahoy install"
     },
     {
       "path": "abcd ahoy remote",
@@ -217,6 +221,7 @@
       "usage": "abcd ahoy remote [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd ahoy remote",
       "subcommands": [
         "apply"
       ]
@@ -231,7 +236,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd ahoy remote apply --yes"
     },
     {
       "path": "abcd ahoy shared-folder",
@@ -256,7 +262,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd ahoy uninstall"
     },
     {
       "path": "abcd ahoy worktree",
@@ -264,6 +271,7 @@
       "usage": "abcd ahoy worktree [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd ahoy worktree",
       "subcommands": [
         "add",
         "list",
@@ -294,7 +302,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd ahoy worktree list"
     },
     {
       "path": "abcd ahoy worktree prune",
@@ -310,7 +319,8 @@
           "type": "list"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd ahoy worktree prune --dry-run"
     },
     {
       "path": "abcd ahoy worktree trim-cache",
@@ -322,7 +332,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd ahoy worktree trim-cache --dry-run"
     }
   ]
 }

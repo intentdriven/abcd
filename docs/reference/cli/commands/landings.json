@@ -19,7 +19,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd landings --since v0.11.0"
     }
   ]
 }

@@ -13,6 +13,7 @@
         }
       ],
       "inputs": [],
+      "example": "abcd library",
       "subcommands": [
         "add",
         "ask",
@@ -98,7 +99,8 @@
           "type": "int"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd library add article.md --public --key example-paper-2026 --title \"Example Widgets in Practice\""
     },
     {
       "path": "abcd library ask",
@@ -195,7 +197,8 @@
       "sentence": "Create an empty sources corpus, a git repository with no remote: Writes the corpus in one commit; refuses an existing corpus or one inside another working tree.",
       "usage": "abcd library init [flags]",
       "flags": [],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd library init"
     },
     {
       "path": "abcd library ledger",
@@ -249,14 +252,16 @@
           "type": "list"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd library ledger --list"
     },
     {
       "path": "abcd library lint",
       "sentence": "Health-check the whole memory store: Writes a lint report; refuses a store with a blocker finding.",
       "usage": "abcd library lint [flags]",
       "flags": [],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd library lint"
     },
     {
       "path": "abcd library sync-banlist",
@@ -268,7 +273,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd library sync-banlist"
     }
   ]
 }

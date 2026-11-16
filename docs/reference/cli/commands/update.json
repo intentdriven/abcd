@@ -16,6 +16,7 @@
         }
       ],
       "inputs": [],
+      "example": "abcd update --check",
       "subcommands": [
         "news"
       ]
@@ -38,7 +39,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd update news"
     }
   ]
 }

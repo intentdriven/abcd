@@ -7,6 +7,7 @@
       "usage": "abcd disembark [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd disembark",
       "subcommands": [
         "coverage",
         "graveyard",
@@ -78,7 +79,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd disembark plan ."
     },
     {
       "path": "abcd disembark press-release",
@@ -148,7 +150,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd disembark probe ."
     },
     {
       "path": "abcd disembark review",

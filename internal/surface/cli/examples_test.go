@@ -8,10 +8,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// examples_test.go — every verb that takes a required input carries one worked
-// example in its own --help (iss-2609100508565741), and each example is held to
-// the command it names, so it cannot drift into an invocation the verb refuses
-// on its face.
+// examples_test.go — every visible command carries one worked example, in its
+// facts and its own --help (iss-2609100508565741, itd-2610301346085246 ac-1),
+// and each example is held to the command it names, so it cannot drift into an
+// invocation the verb refuses on its face.
 
 // declaresRequiredInput reports whether a Use line, once every square-bracketed
 // (optional) part is removed, still names an operand or a flag after the verb.
@@ -63,6 +63,43 @@ func exampleTokens(s string) []string {
 }
 
 // visibleCommands (sentences_test.go) is every command a reader can see.
+
+// ownExamples are the visible commands whose builder writes an Example of its
+// own, several lines long, which the manifest's one line would replace. Each
+// still carries an example, which the test below holds it to.
+var ownExamples = map[string]bool{"abcd drain": true}
+
+// TestEveryVisibleCommandCarriesAWorkedExample holds every command `abcd
+// explain` answers for to one worked example (itd-2610301346085246 ac-1): an
+// entry in internal/core/surface/examples.go, which its --help and its facts
+// render, or, for a command in ownExamples alone, the Example its builder
+// writes.
+func TestEveryVisibleCommandCarriesAWorkedExample(t *testing.T) {
+	facts := CommandFacts()
+	for _, c := range visibleCommands(NewRootCommand()) {
+		path := c.CommandPath()
+		want, ok := surface.ExampleFor(path)
+		switch {
+		case ownExamples[path]:
+			if ok {
+				t.Errorf("`%s` is in ownExamples and in examples.go; the manifest's line would replace its own Example", path)
+			}
+			if strings.TrimSpace(c.Example) == "" {
+				t.Errorf("`%s` is in ownExamples but its builder writes no Example", path)
+			}
+			continue
+		case !ok:
+			t.Errorf("`%s` (%s) has no worked example in internal/core/surface/examples.go", path, c.Use)
+			continue
+		}
+		if !strings.Contains(c.Example, want) {
+			t.Errorf("`%s` does not carry its worked example %q (Example = %q)", path, want, c.Example)
+		}
+		if f, ok := factsFor(facts, path); !ok || f.Example != want {
+			t.Errorf("`%s`'s facts carry the example %q, want %q", path, f.Example, want)
+		}
+	}
+}
 
 func TestEveryVerbWithARequiredInputCarriesAWorkedExample(t *testing.T) {
 	root := NewRootCommand()

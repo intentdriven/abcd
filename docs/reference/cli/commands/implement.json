@@ -7,6 +7,7 @@
       "usage": "abcd implement [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd implement",
       "subcommands": [
         "check",
         "claim",
@@ -190,6 +191,7 @@
       "usage": "abcd implement outage [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd implement outage",
       "subcommands": [
         "ack",
         "clear",
@@ -309,7 +311,8 @@
           "type": "list"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd implement record"
     },
     {
       "path": "abcd implement release",
@@ -338,7 +341,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd implement report"
     },
     {
       "path": "abcd implement resume",
@@ -367,7 +371,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd implement status"
     },
     {
       "path": "abcd implement step",
@@ -403,7 +408,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd implement step"
     },
     {
       "path": "abcd implement stop",

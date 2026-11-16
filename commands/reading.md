@@ -517,6 +517,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd reading [flags]`
+  - An example call is `abcd reading`.
 - `abcd reading assemble --position <position> --target <HEAD|sha> [flags]`
   - An example call is `abcd reading assemble --position widening --target HEAD`.
 - `abcd reading ingest --reading-json <path> [--dry-run] [flags]`

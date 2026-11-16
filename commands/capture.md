@@ -849,6 +849,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd capture [text] [flags]`
+  - An example call is `abcd capture "the board drops its last row on an empty ledger" --remedy "render the row before the count"`.
 - `abcd capture admit <rdi-N> --grounds "<why>" [flags]`
   - An example call is `abcd capture admit rdi-2609010000000001 --grounds "the widened configuration is one the next release has to serve"`.
 - `abcd capture defer <iss-N> --after <vX.Y.Z> --reason <text> [flags]`
@@ -858,8 +859,11 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 - `abcd capture link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] [flags]`
   - An example call is `abcd capture link iss-2609010000000001 --blocked-by iss-2609010000000002`.
 - `abcd capture list [flags]`
+  - An example call is `abcd capture list --open`.
 - `abcd capture mentions [--ref <branch>] [flags]`
+  - An example call is `abcd capture mentions`.
 - `abcd capture migrate [--apply] [flags]`
+  - An example call is `abcd capture migrate`.
 - `abcd capture promote <iss-N> [--grounds "<token>: <text>"] | promote <rdi-N> [flags]`
   - An example call is `abcd capture promote iss-2609010000000001`.
 - `abcd capture reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds "<why>" [--open] | --complete <rfm-N> [flags]`

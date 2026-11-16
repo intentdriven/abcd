@@ -81,6 +81,7 @@
         }
       ],
       "inputs": [],
+      "example": "abcd capture \"the board drops its last row on an empty ledger\" --remedy \"render the row before the count\"",
       "subcommands": [
         "admit",
         "defer",
@@ -203,7 +204,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd capture list --open"
     },
     {
       "path": "abcd capture mentions",
@@ -215,7 +217,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd capture mentions"
     },
     {
       "path": "abcd capture migrate",
@@ -227,7 +230,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd capture migrate"
     },
     {
       "path": "abcd capture promote",

@@ -11,7 +11,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd report --template"
     }
   ]
 }

@@ -397,7 +397,9 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd library [flags]`
+  - An example call is `abcd library`.
 - `abcd library add [document] [flags]`
+  - An example call is `abcd library add article.md --public --key example-paper-2026 --title "Example Widgets in Practice"`.
 - `abcd library ask <question> [--dry-run] [flags]`
   - Reads `--page-json`, the answer page, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain library ask --input page-json` prints its shape.
   - An example call is `abcd library ask "why do record ids carry a timestamp?"`.
@@ -409,9 +411,13 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
   - Reads `--pages-json`, the distilled pages, at schema_version 1 (the input carries none); `"${CLAUDE_PLUGIN_ROOT}/abcd" explain library ingest --input pages-json` prints its shape.
   - An example call is `abcd library ingest https://example.com/article.html`.
 - `abcd library init [flags]`
+  - An example call is `abcd library init`.
 - `abcd library ledger [flags]`
+  - An example call is `abcd library ledger --list`.
 - `abcd library lint [flags]`
+  - An example call is `abcd library lint`.
 - `abcd library sync-banlist [flags]`
+  - An example call is `abcd library sync-banlist`.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

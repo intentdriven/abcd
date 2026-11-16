@@ -43,6 +43,12 @@ and staleness it reports are unchanged.
       --view string             the board's view: product (the default) or facilitator
 ```
 
+**Example:**
+
+```
+abcd
+```
+
 ### `abcd agents`
 
 List the agents abcd started for this session and add them up: Writes nothing; refuses when launches are on record and no session or scope says whose.
@@ -72,6 +78,12 @@ refusal: launches on record and no session or scope to say whose, or two scopes 
       --session string     list the launches this session asked for
 ```
 
+**Example:**
+
+```
+abcd agents --all
+```
+
 ### `abcd ahoy`
 
 Detect abcd's install state and list its gaps, or report one mode a flag names: Writes nothing; refuses any argument or two modes at once.
@@ -85,6 +97,12 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
       --identity[=true|false]    check git's commit author and committer against the identity you recorded on this machine, exiting non-zero when either diverges or is a machine identity (for a pre-commit hook or CI)
       --providers[=true|false]   explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live
       --remote[=true|false]      audit this repository's GitHub settings against abcd's baseline, one line per setting, and say what the remote apply sub-verb would change
+```
+
+**Example:**
+
+```
+abcd ahoy
 ```
 
 #### `abcd ahoy connect`
@@ -130,11 +148,23 @@ List the credentials abcd reads, explain one, or verify and store it: Writes the
       --home string    where the credential lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd.noindex/credentials.json) | keychain (read from stdin into the platform keychain)
 ```
 
+**Example:**
+
+```
+abcd ahoy credential
+```
+
 #### `abcd ahoy doctor`
 
 Report every install gap, user-scope state included: Writes nothing; refuses any argument.
 
 **Usage:** `abcd ahoy doctor`
+
+**Example:**
+
+```
+abcd ahoy doctor
+```
 
 #### `abcd ahoy install`
 
@@ -166,11 +196,23 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --yes[=true|false]                  approve every resolvable change category without prompting; excludes recording who you commit as on this machine (asked only at a terminal), the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal
 ```
 
+**Example:**
+
+```
+abcd ahoy install
+```
+
 #### `abcd ahoy remote`
 
 Apply abcd's GitHub settings baseline: Writes nothing bare, only the settings, rulesets and their mirrors through apply; refuses an unknown sub-verb.
 
 **Usage:** `abcd ahoy remote`
+
+**Example:**
+
+```
+abcd ahoy remote
+```
 
 ##### `abcd ahoy remote apply`
 
@@ -182,6 +224,12 @@ Apply every GitHub setting the remote audit finds differing: Writes those settin
 
 ```
       --yes[=true|false]   confirm the remote change without being asked (never the install of a missing gh); without it an unanswered run declines and changes nothing
+```
+
+**Example:**
+
+```
+abcd ahoy remote apply --yes
 ```
 
 #### `abcd ahoy shared-folder`
@@ -239,11 +287,23 @@ Remove abcd from this repository, leaving .abcd/ in place: Writes the removal of
       --bin-dir string   directory holding the PATH entry to remove; needed only when it was installed with --bin-dir into a directory that is not on PATH
 ```
 
+**Example:**
+
+```
+abcd ahoy uninstall
+```
+
 #### `abcd ahoy worktree`
 
 List this repository's worktrees and its lane in the worktree store: Writes nothing; refuses a store it cannot trust or a directory outside a checkout.
 
 **Usage:** `abcd ahoy worktree`
+
+**Example:**
+
+```
+abcd ahoy worktree
+```
 
 ##### `abcd ahoy worktree add`
 
@@ -275,6 +335,12 @@ List this repository's worktrees and its lane, or every lane with --all: Writes 
       --all[=true|false]   walk every lane in the worktree store on this machine
 ```
 
+**Example:**
+
+```
+abcd ahoy worktree list
+```
+
 ##### `abcd ahoy worktree prune`
 
 Reclaim this lane's merged, clean worktrees and trim the Go cache to its limit: Writes the notes archive and removes both; refuses a store it cannot trust.
@@ -286,6 +352,12 @@ Reclaim this lane's merged, clean worktrees and trim the Go cache to its limit: 
 ```
       --dry-run[=true|false]   archive, remove and trim nothing; report what a real run would
       --yes stringArray        reclaim this quiet candidate too (repeatable); a name not in the lane refuses the run
+```
+
+**Example:**
+
+```
+abcd ahoy worktree prune --dry-run
 ```
 
 ##### `abcd ahoy worktree trim-cache`
@@ -319,6 +391,12 @@ nothing refused, 1 when it was skipped or an entry could not be read or removed.
 
 ```
       --dry-run[=true|false]   delete nothing; report what a real run would
+```
+
+**Example:**
+
+```
+abcd ahoy worktree trim-cache --dry-run
 ```
 
 ### `abcd announce`
@@ -385,6 +463,12 @@ Render both banned-names layers: Writes nothing; refuses an unknown word without
 
 **Usage:** `abcd banlist`
 
+**Example:**
+
+```
+abcd banlist
+```
+
 #### `abcd banlist add`
 
 Add one banned-name entry to the layer a flag names: Writes that layer's store; refuses without exactly one of --private or --public.
@@ -419,6 +503,12 @@ Render the banned-names layers, private entries by key only: Writes nothing; ref
       --public[=true|false]    the committed, CI-enforced layer (.abcd/docs-lint.json)
 ```
 
+**Example:**
+
+```
+abcd banlist list --private
+```
+
 #### `abcd banlist migrate`
 
 Key a legacy private store in place, every line matching what it matched: Writes the private store; refuses when no private store exists.
@@ -431,6 +521,12 @@ format: the declaration becomes line 1, and each pattern keeps its exact bytes u
 the key the guard already names it by, entry-<its line>. Comments and blank lines
 survive. add, remove and `abcd library sync-banlist` refuse a legacy store with entries
 until it is migrated. A keyed store is left alone. No pattern is printed.
+
+**Example:**
+
+```
+abcd banlist migrate
+```
 
 #### `abcd banlist remove`
 
@@ -685,6 +781,12 @@ state or the series is locked.
       --until-empty[=true|false]   pick one at a time under the pace rule until no candidate is left; begins a series
 ```
 
+**Example:**
+
+```
+abcd build next
+```
+
 ### `abcd capture`
 
 File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a missing --remedy, a lone word or no checkout.
@@ -704,6 +806,12 @@ File an issue from quoted text, or render the ledger's status bare: Writes one r
       --severity string              severity: nitpick | minor | major | critical (default minor)
       --slug string                  override the slug derived from the text
       --source string                surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo | security-advisory (default user-observation)
+```
+
+**Example:**
+
+```
+abcd capture "the board drops its last row on an empty ledger" --remedy "render the row before the count"
 ```
 
 #### `abcd capture admit`
@@ -801,6 +909,12 @@ List the issues in one status folder or all three: Writes nothing; refuses when 
       --wontfix[=true|false]    issues currently in wontfix/
 ```
 
+**Example:**
+
+```
+abcd capture list --open
+```
+
 #### `abcd capture mentions`
 
 List open issues that default-branch history names with no resolution behind them: Writes nothing; refuses outside a git checkout.
@@ -813,6 +927,12 @@ List open issues that default-branch history names with no resolution behind the
       --ref string   history to walk (default: the repository's default branch)
 ```
 
+**Example:**
+
+```
+abcd capture mentions
+```
+
 #### `abcd capture migrate`
 
 Rewrite retired promote back-links as related_intents and related_issues: Writes the records only with --apply; refuses outside a git checkout.
@@ -823,6 +943,12 @@ Rewrite retired promote back-links as related_intents and related_issues: Writes
 
 ```
       --apply[=true|false]   write the rewritten records (default: report only)
+```
+
+**Example:**
+
+```
+abcd capture migrate
 ```
 
 #### `abcd capture promote`
@@ -962,6 +1088,12 @@ never the value, exits 2 and writes nothing. updated_by is the host's session
 id where the host exports one, otherwise the name the away record would give
 the writer. No verb makes a network request.
 
+**Example:**
+
+```
+abcd checklist
+```
+
 #### `abcd checklist add`
 
 Add one item to the checklist under a new stable id: Writes checklist.json and its last-good copy; refuses a schema violation or a secret, naming the field.
@@ -1000,6 +1132,12 @@ Print the checklist as the text a session's context is given: the open items
 first, then the done and dropped ones, each on one line. A checklist that fails
 the reader's checks is passed over for the last good copy, with one line saying
 why. Writes nothing.
+
+**Example:**
+
+```
+abcd checklist render
+```
 
 #### `abcd checklist set`
 
@@ -1181,6 +1319,12 @@ opened it live in `~/.abcd.noindex/dashboard/`.
 
 Exit 2 on a refusal, with nothing started or stopped.
 
+**Example:**
+
+```
+abcd dashboard
+```
+
 #### `abcd dashboard start`
 
 Start the dashboard on this computer's own Tailscale addresses: Writes its run file under ~/.abcd.noindex/; refuses when Tailscale is not running.
@@ -1202,6 +1346,12 @@ does not, the server is stopped and the failure named.
       --port int   the port to listen on, on each of this computer's Tailscale addresses (default 8080)
 ```
 
+**Example:**
+
+```
+abcd dashboard start
+```
+
 #### `abcd dashboard status`
 
 Report whether the dashboard runs, where, and the devices that opened it: Writes nothing; refuses any argument.
@@ -1211,6 +1361,12 @@ Report whether the dashboard runs, where, and the devices that opened it: Writes
 Report whether the dashboard runs, where, since when, and the devices that
 opened it in this run, each by its Tailscale device name and person. Writes
 nothing.
+
+**Example:**
+
+```
+abcd dashboard status
+```
 
 #### `abcd dashboard stop`
 
@@ -1223,6 +1379,12 @@ launched, checked by its process id, start time and executable just before the
 signal, waits until its addresses answer nothing, and removes the run file. A
 run file naming a process that is gone or is another program is removed with
 nothing signalled. It never stops anything by name.
+
+**Example:**
+
+```
+abcd dashboard stop
+```
 
 ### `abcd decide`
 
@@ -1266,6 +1428,12 @@ abcd decide "Decisions are one flat file each"
 Pack a repository into a lifeboat, probing and planning first: Writes nothing in the source, only inside the lifeboat; refuses an unknown sub-verb.
 
 **Usage:** `abcd disembark`
+
+**Example:**
+
+```
+abcd disembark
+```
 
 #### `abcd disembark coverage`
 
@@ -1329,6 +1497,12 @@ Show the file set a pack would write: Writes nothing; refuses a repository path 
       --include-ignored[=true|false]   also read files git ignores (widens the scan; the report says so)
 ```
 
+**Example:**
+
+```
+abcd disembark plan .
+```
+
 #### `abcd disembark press-release`
 
 Compose a lifeboat's press release, or validate the host's: Writes the press-release files in the lifeboat; refuses a host draft citing nothing resolvable.
@@ -1381,6 +1555,12 @@ Report which brief sections a lifeboat could ground from a repository: Writes no
       --include-ignored[=true|false]   also read files git ignores (widens the scan; the report says so)
 ```
 
+**Example:**
+
+```
+abcd disembark probe .
+```
+
 #### `abcd disembark review`
 
 Review a packed lifeboat against its source repository, or validate the host's verdict: Writes the review in the lifeboat; refuses an unregistered verdict.
@@ -1407,11 +1587,23 @@ Keep the citation baseline `abcd lint docs` enforces, and judge the brief agains
 
 **Usage:** `abcd docs`
 
+**Example:**
+
+```
+abcd docs
+```
+
 #### `abcd docs cite`
 
 Keep the citation baseline the docs lint enforces offline: Writes nothing bare, and only that baseline; refuses an unknown sub-verb.
 
 **Usage:** `abcd docs cite`
+
+**Example:**
+
+```
+abcd docs cite
+```
 
 ##### `abcd docs cite confirm`
 
@@ -1431,6 +1623,12 @@ Name the URLs directly, or pass --receipt with a receipt file. Both write the sa
       --root string      repo root (default: current working directory)
 ```
 
+**Example:**
+
+```
+abcd docs cite confirm https://example.com/article.html
+```
+
 ##### `abcd docs cite refresh`
 
 Fetch every cited URL once, the one documentation verb that reaches the network: Writes the citation baseline; refuses an unreadable docs-lint configuration.
@@ -1448,6 +1646,12 @@ This is the only abcd verb that reaches the network on behalf of documentation. 
       --root string     repo root (default: current working directory)
 ```
 
+**Example:**
+
+```
+abcd docs cite refresh
+```
+
 #### `abcd docs fidelity`
 
 Judge the brief against every shipped surface and the saved docs review: Writes drafted edits only with --apply; refuses a surface no chapter names.
@@ -1461,6 +1665,12 @@ Judge the brief against every shipped surface and the saved docs review: Writes 
       --autonomous[=true|false]   an unattended run: apply the drafted corrections, list every applied edit, and hand the routine the reviewer's request; the refusals stay
       --intent strings            the intent(s) whose delivery is judged, named in every finding (repeatable)
       --report[=true|false]       the per-task pass: state every finding, refuse nothing, exit 0
+```
+
+**Example:**
+
+```
+abcd docs fidelity
 ```
 
 ##### `abcd docs fidelity record`
@@ -1804,6 +2014,12 @@ after the person, in that session, has seen it and said yes.
 
 Exit 2 on a refusal (nothing written) and on a check finding.
 
+**Example:**
+
+```
+abcd embargo
+```
+
 #### `abcd embargo check`
 
 Check a commit range or texts for what would disclose an advisory under embargo: Writes nothing; refuses on each id, reserved CVE id, title or store path found.
@@ -1837,6 +2053,12 @@ finding.
       --allow stringArray   an advisory id of another project, already public, that may appear (repeatable)
       --file stringArray    a text to read (repeatable; - reads stdin)
       --range string        a commit range <a>..<b> whose messages and added lines are read
+```
+
+**Example:**
+
+```
+abcd embargo check --range v0.11.0..HEAD
 ```
 
 #### `abcd embargo close`
@@ -1900,6 +2122,12 @@ refuses the intake with nothing recorded. Each published advisory whose
 private record is resolved in the store and not yet in this checkout's
 ledger is listed with the command that restores it.
 
+**Example:**
+
+```
+abcd embargo intake
+```
+
 #### `abcd embargo publish`
 
 Show the publication plan with computed patched versions, or publish it: Writes GitHub and the store only with --approve; refuses a digest for another plan.
@@ -1952,6 +2180,12 @@ after the person, in that session, has seen the plan and said yes to it.
       --release string   the release tag vMAJOR.MINOR.PATCH to publish from (default the highest published release)
 ```
 
+**Example:**
+
+```
+abcd embargo publish
+```
+
 #### `abcd embargo triage`
 
 Record a verdict on a private advisory, drafting a closing verdict's text: Writes the embargo store; refuses an unknown verdict or one missing its reason.
@@ -1993,6 +2227,12 @@ abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by "<who decided>"
 Unpack a verified lifeboat into a target repository, probing first: Writes only its record families and marker block; refuses the whole write on any conflict.
 
 **Usage:** `abcd embark`
+
+**Example:**
+
+```
+abcd embark
+```
 
 #### `abcd embark from`
 
@@ -2076,6 +2316,12 @@ abcd explain ideate record --input verdict-json
 Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.
 
 **Usage:** `abcd guard`
+
+**Example:**
+
+```
+abcd guard
+```
 
 #### `abcd guard allow`
 
@@ -2353,6 +2599,12 @@ heredoc (`abcd guard check <<'EOF'` ... `EOF`) passes it through untouched.
       --command string   the candidate command line (default: read from stdin)
 ```
 
+**Example:**
+
+```
+abcd guard check --command 'git push --force origin main'
+```
+
 #### `abcd guard hook`
 
 Judge the shell command in a host's pre-tool-use payload: Writes branch records and a question's mode; refuses a hazard or a badly built question.
@@ -2443,6 +2695,12 @@ first, whatever its chip, with one reason that routes it by the act it asks
 about: an act only the person may approve to `abcd mode queue`, every other
 question to `abcd decide`; no mode is set and nothing is marked open.
 
+**Example:**
+
+```
+abcd guard hook < payload.json
+```
+
 #### `abcd guard question`
 
 Check a draft question as the hook will judge it: Writes nothing; refuses an unreadable draft, a store it cannot read, and any finding.
@@ -2503,6 +2761,12 @@ finding.
       --ask[=true|false]   read the draft as abcd's structured question type and judge it as composed into the host's input
 ```
 
+**Example:**
+
+```
+abcd guard question draft.json
+```
+
 ### `abcd help`
 
 Help about any command
@@ -2518,6 +2782,12 @@ Keep session transcripts in the user-level store and read them back: Writes noth
 
 **Usage:** `abcd history`
 
+**Example:**
+
+```
+abcd history
+```
+
 #### `abcd history capture`
 
 Redact and store a session transcript, or a whole session with --all: Writes one record per transcript; refuses stdin or --all without --session.
@@ -2531,6 +2801,12 @@ Redact and store a session transcript, or a whole session with --all: Writes one
       --kind string        source route: native (abcd's own capture of the host's transcript) | import (another tool's export) (default native)
       --session string     session id for the record (default: transcript filename; required for stdin)
       --tool string        source tool: the tool that produced the transcript, a lowercase slug (default host on a native capture; required on an import)
+```
+
+**Example:**
+
+```
+abcd history capture 0123abcd-session.jsonl
 ```
 
 #### `abcd history discard`
@@ -2559,6 +2835,12 @@ Redact and store every transcript staged for this repository: Writes the records
 
 **Usage:** `abcd history drain`
 
+**Example:**
+
+```
+abcd history drain
+```
+
 #### `abcd history ingest`
 
 Redact and store transcripts already on disk into a named repository: Writes that repository's store; refuses without --into.
@@ -2570,6 +2852,12 @@ Redact and store transcripts already on disk into a named repository: Writes tha
 ```
       --adopt stringArray   project directory name to claim for this run, in addition to adopt_projects (repeatable)
       --into string         destination repository root (REQUIRED, no default; its own redaction configuration governs everything stored)
+```
+
+**Example:**
+
+```
+abcd history ingest --into .
 ```
 
 #### `abcd history list`
@@ -2584,6 +2872,12 @@ List this repository's stored transcripts, newest first: Writes only a missing s
       --session string   list one session's whole set — its main-thread record and every sub-agent it spawned, main thread first
 ```
 
+**Example:**
+
+```
+abcd history list
+```
+
 #### `abcd history migrate`
 
 Repair records filed under a composite session id: Writes a missing store, and the repaired records only with --apply; refuses outside a git checkout.
@@ -2595,6 +2889,12 @@ Repair records filed under a composite session id: Writes a missing store, and t
 ```
       --apply[=true|false]         write the repaired records (default: report only)
       --sidecar-root stringArray   directory to search for the harness's per-agent metadata (repeatable; default: ingest_roots from .abcd/config/history.json)
+```
+
+**Example:**
+
+```
+abcd history migrate
 ```
 
 #### `abcd history reconstruct`
@@ -2628,6 +2928,12 @@ record metadata alone. The store is resolved as every history read resolves it: 
 store is created and a legacy corpus moved into it. A transcript that held both is a finding:
 each is named and the verb exits 1. Outside a git checkout with a commit it refuses.
 
+**Example:**
+
+```
+abcd history separation
+```
+
 #### `abcd history show`
 
 Show one stored transcript's metadata and redacted body: Writes only a missing store and a legacy corpus moved into it; refuses an id the store does not hold.
@@ -2653,6 +2959,12 @@ List the ended transcripts not yet redacted into the store: Writes only a missin
       --root-sha string          list the pile of the repository with this root-commit SHA, with no checkout to stand in (one whose checkout is gone)
 ```
 
+**Example:**
+
+```
+abcd history staged
+```
+
 ### `abcd ideate`
 
 Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one verdict record, private or public; refuses an unknown sub-verb.
@@ -2665,6 +2977,12 @@ against the existing record, and an independent adversarial review.
 The legs are host work; `/abcd:ideate` orchestrates them. This verb validates what they
 produced and writes the durable verdict. Ideate is OPTIONAL and never a gate: no other
 verb requires it, and skipping it is never warned about.
+
+**Example:**
+
+```
+abcd ideate
+```
 
 #### `abcd ideate record`
 
@@ -2693,6 +3011,12 @@ Record the identity block and propose drift corrections: Writes nothing bare, on
 
 **Usage:** `abcd identity`
 
+**Example:**
+
+```
+abcd identity
+```
+
 #### `abcd identity init`
 
 Record this repository's identity block and the pointer to it: Writes the block and the pointer; refuses without --title and --tagline when no block exists.
@@ -2709,11 +3033,23 @@ Record this repository's identity block and the pointer to it: Writes the block 
       --title string     the project's title (required unless a block already exists)
 ```
 
+**Example:**
+
+```
+abcd identity init --title "Example Widgets" --tagline "Widgets that explain themselves"
+```
+
 #### `abcd identity render`
 
 Print the correction for every drifted surface as a unified diff: Writes nothing; refuses a repository that records no identity block.
 
 **Usage:** `abcd identity render`
+
+**Example:**
+
+```
+abcd identity render
+```
 
 ### `abcd implement`
 
@@ -2746,6 +3082,12 @@ and `receipt` completes that stage once the receipt verifies.
 Exit 2 on a refusal (an unrecognised input, a session that has not joined, a bound
 the session's role does not permit), exit 3 on contention (the record is claimed by
 another session, or the run state is locked): back off and take other work.
+
+**Example:**
+
+```
+abcd implement
+```
 
 #### `abcd implement check`
 
@@ -3248,6 +3590,12 @@ proven back, and `report` lists each outage with its minutes and what was retrie
 Bare `abcd implement outage` is read-only: the outage in force, the services down,
 when the next probe is due and who holds it. It creates nothing.
 
+**Example:**
+
+```
+abcd implement outage
+```
+
 ##### `abcd implement outage ack`
 
 Acknowledge the notification an outage's give-up raised: Writes the outage record; refuses when no notification is pending.
@@ -3427,6 +3775,12 @@ started run. Exit 2 on a refusal, exit 3 on a locked run state.
       --transcript stringArray   a transcript to capture into the history store for a complete run (repeatable; one capture per path)
 ```
 
+**Example:**
+
+```
+abcd implement record
+```
+
 #### `abcd implement release`
 
 Release this session's claim on a record: Writes the release and a claim_released line; refuses a claim another session holds.
@@ -3477,6 +3831,12 @@ By default the run's whole log is read, every day of it; --date reads one day, a
 ```
       --date string   read one day's log (YYYY-MM-DD, UTC)
       --log string    read this log file instead of the run's own
+```
+
+**Example:**
+
+```
+abcd implement report
 ```
 
 #### `abcd implement resume`
@@ -3542,6 +3902,12 @@ Exit 2 when --run names no run.
 
 ```
       --run string   the run to render (run-<16 digits>); every run in this checkout when omitted
+```
+
+**Example:**
+
+```
+abcd implement status
 ```
 
 #### `abcd implement step`
@@ -3805,6 +4171,12 @@ refusal, exit 3 on a pause or a locked run state.
       --yielded string                      with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying
 ```
 
+**Example:**
+
+```
+abcd implement step
+```
+
 #### `abcd implement stop`
 
 Stop the unattended runs of each account that chose this folder, or lift it: Writes the stop file; refuses no terminal, and a file no run would honour.
@@ -3913,6 +4285,12 @@ report is kept, marked promoted.
 
 Exit 2 on a refusal, with nothing written.
 
+**Example:**
+
+```
+abcd inbox
+```
+
 #### `abcd inbox promote`
 
 File one report as a capture in abcd's own ledger: Writes the capture and marks the report promoted; refuses outside abcd's own checkout.
@@ -3949,6 +4327,12 @@ File a draft intent from quoted text, or render the intent store's status bare: 
       --impact string            stamp the draft's product impact: additive|breaking|fix (optional)
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
       --title string             the draft's H1 title (default: the first sentence of the text, cut on a word boundary at 60 characters)
+```
+
+**Example:**
+
+```
+abcd intent "let a reviewer read the board from a phone"
 ```
 
 #### `abcd intent audit`
@@ -4025,6 +4409,12 @@ Emit the consistency request over the brief and every intent, or one intent agai
 ```
       --max-chunks int      on a provider route, the most chunks of an overflowing corpus sent in one run; a plan of more is refused, naming its count and bytes (default 8)
       --route stringArray   route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+```
+
+**Example:**
+
+```
+abcd intent consistency
 ```
 
 ##### `abcd intent consistency ingest`
@@ -4249,6 +4639,12 @@ recorded — until the same gate passes again. The finding stays.
 
 Exit 2 on a refusal of the request itself (no checkout, an unknown lab, a bad
 name or question); nothing is written on any of them.
+
+**Example:**
+
+```
+abcd lab
+```
 
 #### `abcd lab harvest`
 
@@ -4599,6 +4995,12 @@ author's approval of their own): the shell guard refuses it to an agent.
       --rests-on string             make --record-review a delta review resting on the full pair recorded for this commit, given by its full object name; each return also states Reviewed delta: <base>..<head>
 ```
 
+**Example:**
+
+```
+abcd land
+```
+
 ### `abcd landings`
 
 List how each change landed on the default branch and what admitted it: Writes only its forge cache in the local tier; refuses no default branch or no range.
@@ -4677,6 +5079,12 @@ commit object is absent reads as no default branch.
       --unattended[=true|false]   keep only the rows no evidence places with a person
 ```
 
+**Example:**
+
+```
+abcd landings --since v0.11.0
+```
+
 ### `abcd launch`
 
 Preview the release cut, the launch bundle, its secret scan and the gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run.
@@ -4707,6 +5115,12 @@ configuration names runs; a submodule moved to a different commit still does.
       --deep-smoke[=true|false]       also run the installability smoke's deep tier: render every command, skill and agent page's help in an isolated subprocess (always on in the cut)
       --dry-run[=true|false]          preview the launch bundle, its gates and the release cut without publishing
       --fetch-baseline[=true|false]   read the parity baseline from the tag's published plugin archive, verified against the release's checksums.txt (a network fetch; default: a fresh render at the tag)
+```
+
+**Example:**
+
+```
+abcd launch --dry-run
 ```
 
 #### `abcd launch archive`
@@ -4770,6 +5184,12 @@ Run the release job's semantic-receipt gate locally, before the merge: Writes no
 
 **Usage:** `abcd launch receipts`
 
+**Example:**
+
+```
+abcd launch receipts
+```
+
 #### `abcd launch scaffold`
 
 Scaffold the release gate for the declared artefact kind: Writes its workflows and runbook; refuses an undeclared kind, or a hand-edited file without --confirm.
@@ -4781,6 +5201,12 @@ Scaffold the release gate for the declared artefact kind: Writes its workflows a
 ```
       --confirm[=true|false]               overwrite a hand-edited scaffolded file with the current machinery
       --dependency-reauthor[=true|false]   opt in to re-authoring bot-opened dependency bumps as the repository owner (seeds .abcd/config/dependency-reauthor.conf)
+```
+
+**Example:**
+
+```
+abcd launch scaffold
 ```
 
 #### `abcd launch ship`
@@ -4822,6 +5248,12 @@ checkout, so --fetch-baseline is refused beside it.
       --route stringArray             route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
+**Example:**
+
+```
+abcd launch ship --dry-run
+```
+
 ### `abcd library`
 
 Render the sources corpus and the checkout's memory store, read-only: Writes nothing; refuses only when neither store can be read.
@@ -4854,6 +5286,12 @@ line naming what would create it, and the verb refuses only when neither can be 
 
 ```
       --corpus string   the sources corpus directory (absolute; default ~/.abcd.noindex/sources)
+```
+
+**Example:**
+
+```
+abcd library
 ```
 
 #### `abcd library add`
@@ -4894,6 +5332,12 @@ history.
       --url string                 the canonical URL (recorded, never fetched)
       --venue string               the container title (journal, site, publisher)
       --year int                   the year of issue
+```
+
+**Example:**
+
+```
+abcd library add article.md --public --key example-paper-2026 --title "Example Widgets in Practice"
 ```
 
 #### `abcd library ask`
@@ -4989,6 +5433,12 @@ Create the corpus at its location (0700): a git repository with no remote, an em
 sources.json and a README, in one commit. Refuses an existing corpus, a non-empty
 directory, and a location inside another repository's working tree.
 
+**Example:**
+
+```
+abcd library init
+```
+
 #### `abcd library ledger`
 
 Append an influence line to this repository's ledger, or flip one to cited: Writes one ledger line; refuses a flip for a source that is not public and citable.
@@ -5022,11 +5472,23 @@ names it.
       --used-in stringArray   a repository-relative path the influence landed in (repeatable)
 ```
 
+**Example:**
+
+```
+abcd library ledger --list
+```
+
 #### `abcd library lint`
 
 Health-check the whole memory store: Writes a lint report; refuses a store with a blocker finding.
 
 **Usage:** `abcd library lint`
+
+**Example:**
+
+```
+abcd library lint
+```
 
 #### `abcd library sync-banlist`
 
@@ -5051,6 +5513,12 @@ exits 0.
       --refresh[=true|false]   the guard's mode: update an existing store only; an absent corpus or store is a one-line notice and exit 0
 ```
 
+**Example:**
+
+```
+abcd library sync-banlist
+```
+
 ### `abcd lint`
 
 Check this repository against the conventions, every target but outbound: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.
@@ -5061,6 +5529,12 @@ Check this repository against the conventions, every target but outbound: Writes
 
 ```
       --root string   repo root to lint (default: current working directory)
+```
+
+**Example:**
+
+```
+abcd lint
 ```
 
 #### `abcd lint docs`
@@ -5077,11 +5551,23 @@ Lint the docs for change-narration, broken links, citations, and stray root mark
       --root string                 repo root to lint (default: current working directory)
 ```
 
+**Example:**
+
+```
+abcd lint docs
+```
+
 #### `abcd lint identity`
 
 Show this repository's identity block and every surface held to it: Writes nothing; refuses a repository that records no identity block.
 
 **Usage:** `abcd lint identity`
+
+**Example:**
+
+```
+abcd lint identity
+```
 
 #### `abcd lint outbound`
 
@@ -5104,6 +5590,12 @@ wrote it. Exit 0 clean, 1 the artefact is refused, 2 the check could not run.
       --root string    repo root supplying the scanner configuration (default: current working directory)
 ```
 
+**Example:**
+
+```
+abcd lint outbound pr-body.md
+```
+
 #### `abcd lint site`
 
 Gate the built website, rendering it first when absent: Writes only inside the output directory; refuses a site failing any gate with exit 1.
@@ -5116,6 +5608,12 @@ Gate the built website, rendering it first when absent: Writes only inside the o
       --base-path string       path the site is served below on its host, such as /widgets/ for a project's GitHub Pages address; every root-absolute link is placed under it (default "/")
       --out string             built output directory to check (rendered first if absent) (default "site")
       --project[=true|false]   gate a project site, every page built from what abcd writes to the repository and the interface words, styles and scripts taken from the binary; .abcd/site.json then holds the site's settings only
+```
+
+**Example:**
+
+```
+abcd lint site
 ```
 
 ### `abcd memory`
@@ -5139,6 +5637,12 @@ memory remove <mem-id>` removes any personal note. A note in the project's file
 is removed by editing that file in a reviewed change, never by this verb.
 
 Exit 2 on a refusal, with nothing written.
+
+**Example:**
+
+```
+abcd memory
+```
 
 #### `abcd memory add`
 
@@ -5184,6 +5688,12 @@ List every memory note with its body, recall words, stamps and reach: Writes not
 List every note in both layers: its id, title, body, recall words, who wrote
 it, when and in which session, its origin, and its reach (this repository,
 everywhere, another repository, or the project's file). Read-only.
+
+**Example:**
+
+```
+abcd memory list
+```
 
 #### `abcd memory remove`
 
@@ -5250,6 +5760,12 @@ ends it and prints what was queued and recorded. While it holds, setting
 a stop parked on a person who is away is a question nobody answers. The away
 mode grants no rights; the person's standing instruction decides what is pushed.
 
+**Example:**
+
+```
+abcd mode
+```
+
 #### `abcd mode autonomous`
 
 Record that the person is away and sessions work on, until a time or open-ended: Writes the away record; refuses an end already past or past seven days.
@@ -5293,6 +5809,12 @@ nothing written. No network request.
       --until string               when the mode ends: a clock time (09:00) or a timestamp; open-ended (seven days at most) when omitted
 ```
 
+**Example:**
+
+```
+abcd mode autonomous --until 09:00
+```
+
 #### `abcd mode back`
 
 End the away mode, printing what was queued and recorded one line each: Writes its ending whatever the record's or lock's state; refuses outside a git checkout.
@@ -5311,6 +5833,12 @@ with its oldest lines let go and counted; one that does not parse, or is not
 safely this account's, is replaced by a closed record, printing nothing from
 it; and a lock not had in time is gone around. Each is named on its own line.
 No network request.
+
+**Example:**
+
+```
+abcd mode back
+```
 
 #### `abcd mode queue`
 
@@ -5409,6 +5937,12 @@ A worktree is named home-relative (~/...), or by its directory name when it
 sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 1 when
 the reservations could not be fetched; exit 2 outside a git checkout.
 
+**Example:**
+
+```
+abcd peers
+```
+
 ### `abcd reading`
 
 Render the cold-reading assembler's state: Writes nothing; refuses any argument.
@@ -5423,6 +5957,12 @@ whole, and a hashed manifest records what was passed so a reader can judge conta
 rather than accept a disclosure on trust.
 
 Bare `abcd reading` renders the assembler's state and writes nothing.
+
+**Example:**
+
+```
+abcd reading
+```
 
 #### `abcd reading assemble`
 
@@ -5629,6 +6169,12 @@ nothing filed. After the editor ran, both name where what was written is kept.
 
 ```
       --template[=true|false]   print the report skeleton to fill (writes nothing)
+```
+
+**Example:**
+
+```
+abcd report --template
 ```
 
 ### `abcd reserve`
@@ -5924,6 +6470,12 @@ Read-only.
       --prompt string   show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes and pages it recalls
 ```
 
+**Example:**
+
+```
+abcd rules
+```
+
 ### `abcd scribe`
 
 Assemble a ledger scribe's context and ingest what it transcribed: Writes nothing bare; refuses an unknown sub-verb.
@@ -5937,6 +6489,12 @@ ledger's declared shapes, and authors nothing. Its context is the reading assemb
 inverse: ledger content only, drawn from the issue ledger's own directories, and the
 researcher's supplied text. `assemble` builds it with a manifest of every path passed;
 `ingest` validates the scribe's output and refuses anything the scribe authored.
+
+**Example:**
+
+```
+abcd scribe
+```
 
 #### `abcd scribe assemble`
 
@@ -6036,6 +6594,12 @@ the team runs it, on the host's computer reached over Tailscale Serve
 
 Bare `abcd session` prints this help and writes nothing.
 
+**Example:**
+
+```
+abcd session
+```
+
 #### `abcd session blueprint`
 
 Write the team relay's Render blueprint and Dockerfile, pinned to a release: Writes render.yaml and .abcd/relay/; refuses an edited file or no GitHub origin.
@@ -6085,6 +6649,12 @@ session question.
       --release string        the abcd release tag to pin, as vMAJOR.MINOR.PATCH (default: this abcd's own version, when it is a release)
 ```
 
+**Example:**
+
+```
+abcd session blueprint
+```
+
 #### `abcd session page`
 
 Write the brief session's static page and its editor bundle into a directory: Writes only the page's six files; refuses a directory holding anything else.
@@ -6118,6 +6688,12 @@ Exit 2 on a refusal, with nothing written.
 ```
       --base-path string   the path the site is served under, as plain path segments (default "/")
       --out string         the directory to write the page into: absent, empty, or one an earlier run wrote
+```
+
+**Example:**
+
+```
+abcd session page --out brief-page
 ```
 
 #### `abcd session serve`
@@ -6172,6 +6748,12 @@ Exit 2 on a refusal, with nothing started.
       --repo stringArray            a repository to serve sessions for, as owner/name (repeatable; also ABCD_SESSION_REPOS)
 ```
 
+**Example:**
+
+```
+abcd session serve
+```
+
 #### `abcd session setup`
 
 Set up live brief sessions with the team's own GitHub sign-in app: Writes its client id, the answer and the blueprint; refuses no GitHub origin or no answer.
@@ -6217,6 +6799,12 @@ that cannot be written afterwards exits 2 with the app and the answer kept.
       --where string          where sessions may run: local, cloud or both (default: the answer recorded in .abcd/config.json)
 ```
 
+**Example:**
+
+```
+abcd session setup --where local
+```
+
 #### `abcd session start`
 
 Start a live brief session on this computer, over your tailnet: Writes only an answer it asks; refuses no recorded GitHub App, no Tailscale or no GitHub origin.
@@ -6253,6 +6841,12 @@ Exit 2 on a refusal, with nothing started.
       --port int           the port on this computer to listen on (0 lets the system choose) (default 8787)
 ```
 
+**Example:**
+
+```
+abcd session start
+```
+
 ### `abcd site`
 
 Report what the website declares and what was built: Writes nothing; refuses any argument.
@@ -6263,6 +6857,12 @@ Report what the website declares and what was built: Writes nothing; refuses any
 
 ```
       --out string   output directory to report on (default "site")
+```
+
+**Example:**
+
+```
+abcd site
 ```
 
 #### `abcd site build`
@@ -6283,6 +6883,12 @@ Render the website into the output directory: Writes there, plus a missing label
       --version string         version for the footer and the build stamp (default: the newest dated CHANGELOG heading)
 ```
 
+**Example:**
+
+```
+abcd site build
+```
+
 #### `abcd site setup`
 
 Take the website from this checkout to a live address: Writes its files, and the forge and host changes once confirmed; refuses a folder abcd does not manage.
@@ -6301,11 +6907,23 @@ Take the website from this checkout to a live address: Writes its files, and the
       --yes[=true|false]                confirm the forge and host changes without being asked (never the install of a missing gh, nor publishing over a site already live, which takes --replace-existing); without it an unanswered run declines them
 ```
 
+**Example:**
+
+```
+abcd site setup
+```
+
 ### `abcd spec`
 
 Render the spec store's status: Writes nothing; refuses outside a git checkout.
 
 **Usage:** `abcd spec`
+
+**Example:**
+
+```
+abcd spec
+```
 
 #### `abcd spec close`
 
@@ -6413,6 +7031,12 @@ succeeded and with no remote named origin; exit 1 when it failed, when
 what it fetched could not be read, or in a checkout without its local
 tier; exit 2 outside a git checkout or with an operand.
 
+**Example:**
+
+```
+abcd status
+```
+
 ### `abcd statusline`
 
 Render abcd's status-line row from the host's payload on stdin: Writes nothing; never refuses.
@@ -6460,6 +7084,12 @@ not answer, the command's output so far, or nothing), says why on stderr and
 exits 0. With --json the row is emitted as its ordered elements, each with a
 key, a rendered and a plain form.
 
+**Example:**
+
+```
+abcd statusline < payload.json
+```
+
 ### `abcd sweep`
 
 List the worktrees, branches, reservations and reports left lying around, or clear the spent: Writes only the fetch bare; refuses a failed fetch.
@@ -6493,6 +7123,12 @@ git checkout or when the fetch fails among them.
 
 ```
       --apply[=true|false]   act on what is provably spent; without it the sweep changes nothing but the fetch
+```
+
+**Example:**
+
+```
+abcd sweep
 ```
 
 ### `abcd update`
@@ -6534,6 +7170,12 @@ install's shape, and swaps nothing.
       --yes[=true|false]     skip the TTY confirmation of a freshly resolved tag
 ```
 
+**Example:**
+
+```
+abcd update --check
+```
+
 #### `abcd update news`
 
 Say what changed since the update, and offer the setup that waits: Writes only an answer or --seen, to ~/.abcd.noindex/; refuses --answer with --full or --seen.
@@ -6548,4 +7190,10 @@ After an abcd update, print what the agent relays at the start of its first repl
       --answer string       record the person's reply to the offer, yes or not-now, once for this repository and release; run it only with their reply
       --full[=true|false]   print the full summary of the releases since the last update and what waits here; writes nothing
       --seen[=true|false]   record that the person read the news where no offer was made; run it only after they were shown it
+```
+
+**Example:**
+
+```
+abcd update news
 ```

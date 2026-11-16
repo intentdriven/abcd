@@ -7,6 +7,7 @@
       "usage": "abcd banlist [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd banlist",
       "subcommands": [
         "add",
         "list",
@@ -53,14 +54,16 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd banlist list --private"
     },
     {
       "path": "abcd banlist migrate",
       "sentence": "Key a legacy private store in place, every line matching what it matched: Writes the private store; refuses when no private store exists.",
       "usage": "abcd banlist migrate [flags]",
       "flags": [],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd banlist migrate"
     },
     {
       "path": "abcd banlist remove",

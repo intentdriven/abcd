@@ -296,6 +296,7 @@ prerequisite for a plugin or CLI user.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd [<record-id>] [flags]`
+  - An example call is `abcd`.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

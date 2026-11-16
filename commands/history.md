@@ -464,19 +464,27 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd history [flags]`
+  - An example call is `abcd history`.
 - `abcd history capture [<transcript-file> | - | --session <id> --all <path>...] [flags]`
+  - An example call is `abcd history capture 0123abcd-session.jsonl`.
 - `abcd history discard <staged-filename> --yes [flags]`
   - An example call is `abcd history discard 0123abcd-session.raw --yes`.
 - `abcd history drain [flags]`
+  - An example call is `abcd history drain`.
 - `abcd history ingest [<path>...] [flags]`
+  - An example call is `abcd history ingest --into .`.
 - `abcd history list [flags]`
+  - An example call is `abcd history list`.
 - `abcd history migrate [flags]`
+  - An example call is `abcd history migrate`.
 - `abcd history reconstruct <session-id> [flags]`
   - An example call is `abcd history reconstruct 0123abcd-session`.
 - `abcd history separation [flags]`
+  - An example call is `abcd history separation`.
 - `abcd history show <session-id-or-filename> [flags]`
   - An example call is `abcd history show 0123abcd-session`.
 - `abcd history staged [flags]`
+  - An example call is `abcd history staged`.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

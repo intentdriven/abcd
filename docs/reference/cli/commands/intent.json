@@ -20,6 +20,7 @@
         }
       ],
       "inputs": [],
+      "example": "abcd intent \"let a reviewer read the board from a phone\"",
       "subcommands": [
         "audit",
         "condition",
@@ -138,6 +139,7 @@
         }
       ],
       "inputs": [],
+      "example": "abcd intent consistency",
       "subcommands": [
         "ingest"
       ]

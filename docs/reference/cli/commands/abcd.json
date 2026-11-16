@@ -33,6 +33,7 @@
         }
       ],
       "inputs": [],
+      "example": "abcd",
       "subcommands": [
         "agents",
         "ahoy",

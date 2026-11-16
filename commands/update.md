@@ -269,7 +269,9 @@ summary on a host that runs no session-start hook. `--answer` takes neither
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd update [tag] [flags]`
+  - An example call is `abcd update --check`.
 - `abcd update news [flags]`
+  - An example call is `abcd update news`.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

@@ -7,6 +7,7 @@
       "usage": "abcd reading [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd reading",
       "subcommands": [
         "assemble",
         "ingest"

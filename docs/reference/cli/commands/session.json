@@ -7,6 +7,7 @@
       "usage": "abcd session [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd session",
       "subcommands": [
         "blueprint",
         "page",
@@ -33,7 +34,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd session blueprint"
     },
     {
       "path": "abcd session page",
@@ -50,7 +52,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd session page --out brief-page"
     },
     {
       "path": "abcd session serve",
@@ -83,7 +86,8 @@
           "type": "list"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd session serve"
     },
     {
       "path": "abcd session setup",
@@ -103,7 +107,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd session setup --where local"
     },
     {
       "path": "abcd session start",
@@ -120,7 +125,8 @@
           "default": "8787"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd session start"
     }
   ]
 }

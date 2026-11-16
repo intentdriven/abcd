@@ -1394,13 +1394,17 @@ quoted-delimiter heredoc shown above.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd guard [flags]`
+  - An example call is `abcd guard`.
 - `abcd guard allow --once --command <line> [flags]`
   - An example call is `abcd guard allow --once --command 'git branch -D feat/done'`.
 - `abcd guard approve --dir <working-tree> --base <commit> [--run-dir <dir>]... [flags]`
   - An example call is `abcd guard approve --dir /work/example-repo --base 0123456789abcdef0123456789abcdef01234567`.
 - `abcd guard check [flags]`
+  - An example call is `abcd guard check --command 'git push --force origin main'`.
 - `abcd guard hook [flags]`
+  - An example call is `abcd guard hook < payload.json`.
 - `abcd guard question [<file>|-] [flags]`
+  - An example call is `abcd guard question draft.json`.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS
