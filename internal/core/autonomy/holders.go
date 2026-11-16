@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/occupancy"
+	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -32,13 +33,24 @@ import (
 //     session's occupancy marker), the work a peer has taken up there;
 //   - a reservation only runs another session drives are for.
 //
+// A run whose control record names a process and no session, a drive
+// started in a plain terminal (`abcd drain --drive`, which records its own
+// process), is that process's while it runs, when it is neither the
+// stopping check's own process nor one above it: its lanes, and a
+// reservation only runs it drives are for, are left out and named as the
+// drive's until it hands the lane back or stops (driveHolds,
+// iss-2611150851542274). This holds whether or not the stopping session has
+// an id abcd keys on, since it reads no session.
+//
 // Whatever the evidence cannot tell stays owed: a branch recorded before
-// sessions were kept, a lane of a run with no session as its driver (a plain
-// terminal's) or none at all unless a live session started in the worktree
+// sessions were kept, a lane of a run with no session as its driver whose
+// process has ended, is this check's own or one above it, or cannot be read,
+// or with no driver at all, unless a live session started in the worktree
 // the lane is checked out in (that session's, as above), a reservation made
-// by hand, an item whose holder has ended, and every item when the stopping
-// session has no id abcd keys on or the live sessions cannot be read. A
-// peer's work returns to the sessions left once the peer ends. A branch a
+// by hand, an item whose holder has ended, and every session's item when the
+// stopping session has no id abcd keys on or the live sessions cannot be
+// read. A peer's work returns to the sessions left once the peer ends, and a
+// drive's once it ends. A branch a
 // peer holds still serves as the base of this session's branch cut from it
 // (stackIdx indexes the own set as findOwn found it). The live sessions are
 // read once a check, whenever an owed item remains, so a copy another live
@@ -58,12 +70,94 @@ type claimant struct {
 }
 
 // scope leaves out of the copy's own branches and reservations what another
-// live session holds, recording each holder for one note. It runs after
-// findOwn and before the items are judged.
+// live session or a live drive holds, recording each holder for one note. It
+// runs after findOwn and before the items are judged.
 func (r *owedReader) scope() {
-	if !ValidSessionID(r.me) {
-		return
+	r.driveScope()
+	if ValidSessionID(r.me) {
+		r.sessionScope()
 	}
+	r.holdNotes()
+}
+
+// driveScope leaves out the lanes, and the reservations only their runs are
+// for, of each run a live drive holds (driveHolds).
+func (r *owedReader) driveScope() {
+	for _, name := range r.ownNames() {
+		lane, ok := r.lanes[name]
+		if !ok {
+			continue
+		}
+		if p, held := r.driveHolds(runDriverRec{session: lane.driver, host: lane.driverHost}); held {
+			delete(r.own, name)
+			delete(r.lanes, name)
+			r.holdDrive(p, fmt.Sprintf("%s (its run's lane)", name))
+		}
+	}
+	for _, res := range r.mine {
+		drivers := r.runDrivers[res.Record]
+		if len(drivers) == 0 {
+			continue
+		}
+		drive := ""
+		for _, d := range drivers {
+			p, held := r.driveHolds(d)
+			if !held {
+				drive = ""
+				break
+			}
+			if drive == "" {
+				drive = p
+			}
+		}
+		if drive != "" {
+			r.heldRes[res.Record] = drive
+			r.holdDrive(drive, fmt.Sprintf("the reservation of %s (its run's)", res.Record))
+		}
+	}
+}
+
+// driveHolds names the live drive d is, a process its run's control record
+// names with no session (a plain terminal's drive records its own process):
+// its process is running, as the process table proves by its id and start
+// time, and it is neither this check's own process nor one above it, which
+// the walk up from this process must reach the machine's first process to
+// say. False when d names a session, names no process, the process has
+// ended, or the table cannot be read or walked, all of which leave its items
+// owed as before.
+func (r *owedReader) driveHolds(d runDriverRec) (string, bool) {
+	if d.session != "" || d.host.PID <= 1 || r.expired() {
+		return "", false
+	}
+	_, tab, err := r.readProcs()
+	if err != nil || !tab.Alive(d.host) {
+		return "", false
+	}
+	up := sessionname.Ancestors(tab, selfPID())
+	if !up.Finished {
+		return "", false
+	}
+	for _, h := range up.Hosts {
+		if sessionname.SameHost(h, d.host) {
+			return "", false
+		}
+	}
+	return fmt.Sprintf("process %d", d.host.PID), true
+}
+
+// selfPID is the process the stopping check runs in; a test stands one in.
+var selfPID = os.Getpid
+
+// holdDrive records an item a live drive holds, for its note.
+func (r *owedReader) holdDrive(process, item string) {
+	if r.driveHeld == nil {
+		r.driveHeld = map[string][]string{}
+	}
+	r.driveHeld[process] = append(r.driveHeld[process], item)
+}
+
+// sessionScope leaves out what another live session holds.
+func (r *owedReader) sessionScope() {
 	for _, name := range r.ownNames() {
 		lane := r.lanes[name]
 		if r.recordedBy[name] == r.me || lane.driver == r.me {
@@ -88,6 +182,9 @@ func (r *owedReader) scope() {
 		}
 	}
 	for _, res := range r.mine {
+		if r.heldRes[res.Record] != "" {
+			continue
+		}
 		drivers := r.runDrivers[res.Record]
 		if len(drivers) == 0 {
 			continue
@@ -95,11 +192,11 @@ func (r *owedReader) scope() {
 		var claims []claimant
 		ours := false
 		for _, d := range drivers {
-			if d == "" || d == r.me {
+			if d.session == "" || d.session == r.me {
 				ours = true
 				break
 			}
-			claims = append(claims, claimant{d, "its run's"})
+			claims = append(claims, claimant{d.session, "its run's"})
 		}
 		if ours {
 			continue
@@ -109,7 +206,6 @@ func (r *owedReader) scope() {
 			r.hold(c.session, fmt.Sprintf("the reservation of %s (%s)", res.Record, c.why))
 		}
 	}
-	r.holdNotes()
 }
 
 // holder is the first claimant that is another session running now; false
@@ -176,6 +272,20 @@ func (r *owedReader) holdNotes() {
 			named, more = named[:maxHeldNamed], fmt.Sprintf(" and %d more", len(items)-maxHeldNamed)
 		}
 		r.note("live session %s holds %s%s: that session's work, not owed here", s, strings.Join(named, ", "), more)
+	}
+	procs := make([]string, 0, len(r.driveHeld))
+	for p := range r.driveHeld {
+		procs = append(procs, p)
+	}
+	sort.Strings(procs)
+	for _, p := range procs {
+		items := r.driveHeld[p]
+		named := items
+		more := ""
+		if len(named) > maxHeldNamed {
+			named, more = named[:maxHeldNamed], fmt.Sprintf(" and %d more", len(items)-maxHeldNamed)
+		}
+		r.note("a live drive (%s) holds %s%s: the drive's work, not owed here until it hands the lane back or stops", p, strings.Join(named, ", "), more)
 	}
 }
 
