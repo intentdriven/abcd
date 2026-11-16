@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/intentdriven/abcd/internal/core/guard"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // The forge-text half of the outbound switch (iss-2610142210511831). `ahoy
@@ -42,7 +43,7 @@ func (a *applyCtx) stepOutboundForge() {
 		return nil
 	})
 	if err != nil {
-		a.changes = append(a.changes, receiptPath(a.cwd, "forge-text opt-in not persisted ("+err.Error()+")"))
+		a.changes = append(a.changes, receiptPath(a.cwd, "forge-text opt-in not persisted ("+fsutil.RedactRoot(errText(err), a.cwd, ".")+")"))
 		return
 	}
 	if wrote {

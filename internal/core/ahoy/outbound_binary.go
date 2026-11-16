@@ -63,7 +63,7 @@ func (a *applyCtx) stepOutboundBinary() {
 	}
 	cur, err := localAbcdBinary(a.cwd)
 	if err != nil {
-		a.refuse(did + ": this clone's git config could not be read (" + errText(err) + ")")
+		a.refuse(did + ": this clone's git config could not be read (" + outboundCause(err) + "; git config --local --list says why)")
 		return
 	}
 	if cur == target {
@@ -74,7 +74,7 @@ func (a *applyCtx) stepOutboundBinary() {
 		return
 	}
 	if _, err := gitutil.Run(a.cwd, "config", "--local", abcdBinaryKey, target); err != nil {
-		a.refuse(did + ": git config could not write it (" + errText(err) + ")")
+		a.refuse(did + ": git config could not write it (" + outboundCause(err) + ")")
 		return
 	}
 	a.note(writeOutboundBinary, ".git/config")
