@@ -4725,6 +4725,22 @@
       "flags": []
     },
     {
+      "path": "abcd sweep",
+      "hidden": false,
+      "group": "set-up",
+      "block": "people",
+      "sentence": "List the worktrees, branches, reservations and reports left lying around, or clear the spent: Writes only the fetch bare; refuses a failed fetch.",
+      "flags": [
+        {
+          "name": "apply",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd update",
       "hidden": false,
       "group": "set-up",

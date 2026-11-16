@@ -266,9 +266,11 @@ func TestAMergedBranchSomethingStillNeedsIsKeptNamingIt(t *testing.T) {
 		{"an open pull request targeting it", "feat", "feat.txt", func(_ *gittest.Repo, f *fakeForge, _ *Options, _ string) {
 			f.prs = append(f.prs, pullRequest{Number: 13, HeadRefName: "follow-up", HeadRefOid: strings.Repeat("a", 40), BaseRefName: "feat", State: "OPEN"})
 		}, "open pull request #13 targets it as its base"},
-		{"a reservation naming its record", "fix/iss-2610230000000001-x", "fix.txt", func(_ *gittest.Repo, _ *fakeForge, o *Options, _ string) {
-			o.Probe.Reservations.Reservations = []claim.Reservation{live("iss-2610230000000001")}
-		}, "reserved as iss-2610230000000001 by bob"},
+		{"a reservation recording it, the record id not in its name", "feat", "feat.txt", func(repo *gittest.Repo, _ *fakeForge, o *Options, _ string) {
+			wt := filepath.Join(o.Cwd, "tracking")
+			repo.Git("worktree", "add", "-q", "--track", "-b", "local-feat", wt, "origin/feat")
+			o.Probe.CopyView = reservedFrom("tracking", live("iss-2610230000000001"))
+		}, "reserved as iss-2610230000000001 by bob from this worktree"},
 		{"a reservation's footprint over a worktree tracking it", "feat", "feat.txt", func(repo *gittest.Repo, _ *fakeForge, o *Options, _ string) {
 			wt := filepath.Join(o.Cwd, "tracking")
 			repo.Git("worktree", "add", "-q", "--track", "-b", "local-feat", wt, "origin/feat")
@@ -306,6 +308,58 @@ func TestAMergedBranchSomethingStillNeedsIsKeptNamingIt(t *testing.T) {
 				t.Fatal("origin no longer holds the branch something needs")
 			}
 		})
+	}
+}
+
+// reservedFrom is a CopyView under which the worktree whose last path
+// element is base made each of rs: its own view names them CopyThis, as a
+// reservation's tip names the copy it was made from. Every other worktree's
+// view is empty.
+func reservedFrom(base string, rs ...claim.Reservation) CopyView {
+	return func(wt string, _ time.Time) (claim.Snapshot, error) {
+		if filepath.Base(wt) != base {
+			return claim.Snapshot{FetchedAt: time.Unix(1, 0)}, nil
+		}
+		mine := make([]claim.Reservation, len(rs))
+		for i, r := range rs {
+			r.Copy = claim.CopyThis
+			mine[i] = r
+		}
+		return claim.Snapshot{FetchedAt: time.Unix(1, 0), Reservations: mine}, nil
+	}
+}
+
+// TestARecordIdInABranchsNameIsNotAReservationOfIt is step 5's reading of a
+// reservation on origin: the branch a reservation records is the one its
+// own copy is on, so a merged branch whose name carries a record id that a
+// reservation records against another branch is not held by it, and is
+// deleted; the branch the reservation does record stays.
+func TestARecordIdInABranchsNameIsNotAReservationOfIt(t *testing.T) {
+	now := stale()()
+	repo, origin := originRepo(t)
+	named := mergedOnOrigin(repo, "fix/iss-2610230000000001-x", "fix.txt")
+	other := mergedOnOrigin(repo, "other", "other.txt")
+	wt := filepath.Join(t.TempDir(), "elsewhere")
+	repo.Git("worktree", "add", "-q", "--track", "-b", "local-other", wt, "origin/other")
+	f := &fakeForge{prs: []pullRequest{mergedPR(4, "fix/iss-2610230000000001-x", named), mergedPR(5, "other", other)}}
+	o := remoteOpts(f)
+	reserved := claim.Reservation{Record: "iss-2610230000000001", Holder: "bob", State: claim.StateLive, EffectiveExpiry: now.Add(time.Hour)}
+	o.Probe.Reservations.Reservations = []claim.Reservation{reserved}
+	o.Probe.CopyView = reservedFrom("elsewhere", reserved)
+
+	res := sweepRemoteOK(t, repo, o, true)
+	if r := remoteRowFor(t, res, "fix/iss-2610230000000001-x"); r.Outcome != OutcomeDeleted {
+		t.Fatalf("%+v; want the branch whose name alone carries the record id deleted", r)
+	}
+	if onOrigin(repo, origin, "fix/iss-2610230000000001-x") != "" {
+		t.Fatal("origin still holds the branch no reservation records")
+	}
+	r := remoteRowFor(t, res, "other")
+	if r.Outcome != OutcomeKept || !strings.Contains(r.Reason, "reserved as iss-2610230000000001 by bob from this worktree") {
+		t.Fatalf("%+v; want the branch the reservation records kept, naming it", r)
+	}
+	if onOrigin(repo, origin, "other") != other {
+		t.Fatal("origin no longer holds the branch the reservation records")
 	}
 }
 
