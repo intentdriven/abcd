@@ -83,17 +83,29 @@ waiting inbox reports as ledger records.
 In a repository abcd manages, abcd runs the provably spent part of the
 applying form itself (iss-2611150649557869, dcn-2611161331159806), with the
 same proofs against a fresh fetch: once a landing sees its pull request
-merged, whether a build's lane or a drain's, at the end of a drain move that
-ends the drain, and at the end of a drive. A build run ends at its last
-landing, which has swept already. It removes merged, clean worktrees, saves a
-dirty one's work and keeps it, and deletes merged local branches and merged
-branches on origin. It starts no reservation workflow and files no inbox
-report: those stay with the applying form a person runs. The worktree the
-running process is in, and any a live session holds, are kept by the same
-liveness proof. The act it follows reports it on one line, bounded: what it
-removed and what it left, counted, the first few rows in the sweep's row
-wording, then where the full list is. A refusal or fault of that sweep is
-reported there and never fails the act it follows.
+merged, whether a build's lane, a drain's, or a merged lane a build's start or
+resume closes, at the end of a drain move that ends the drain, and at the end
+of a drive a person did not stop and nothing killed or halted. A build run
+ends at its last landing, which has swept already. It removes merged, clean
+worktrees of the worktree store, saves a dirty one's work and keeps it, and
+deletes the merged branches abcd made, locally and on origin: a build lane's
+and a worktree store worktree's (dcn-2611161459048806). Any other merged
+branch, a long-lived one at or behind the default branch or a peer's freshly
+pushed one, is listed with its reason and left for the applying form, since
+no person saw a dry run first. It starts no reservation workflow and files no
+inbox report: those stay with the applying form a person runs. The worktree
+the running process is in, and any a live session holds, are kept by the same
+liveness proof.
+
+It is bounded at two minutes as a whole, well inside a lane's ten-minute
+command bound: its fetch, its reads and each delete on origin end with that
+bound or with a person's stop, and it starts no removal past it, so it stops
+between removals and never inside one. What it did not reach is judged again,
+with the same proofs, by the next landing's sweep or the drain's end. The act
+it follows reports it on one line, bounded: what it removed and what it left,
+counted, the first few rows in the sweep's row wording, then where the full
+list is. A refusal before anything is judged says so; a refusal or fault of
+that sweep is reported there and never fails the act it follows.
 
 One setting turns it off: `sweep.automatic`, a boolean read through the
 layered configuration reader from the repository's `.abcd/config.json` and

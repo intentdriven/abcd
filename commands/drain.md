@@ -861,11 +861,15 @@ what it did in `next`:
   finished a merged lane, and a move that ends the drain, then run the
   provably spent part of `abcd sweep --apply` once, with the same proofs
   against a fresh fetch: merged, clean worktrees removed, a dirty one's work
-  saved as a patch and the worktree kept, merged local branches and merged
-  branches on origin deleted. It starts no reservation workflow and files no
-  inbox report. A step that lands a lane sweeps the same way, and so does
-  `--drive` once at its own end (unless it was killed), its line in the
-  drive's summary; the move that ends a drive's drain leaves it to that. The
+  saved as a patch and the worktree kept, and the merged branches abcd made
+  (a lane's `build/…` branch, a worktree store worktree's) deleted locally and
+  on origin; any other merged branch is kept and listed for `abcd sweep
+  --apply`. It starts no reservation workflow and files no inbox report, and
+  runs for two minutes at most, stopping between removals. A step that lands
+  a lane sweeps the same way, and so does `--drive` once at its own end
+  (unless it was killed, halted or stopped), its line printed once in the
+  drive's summary; a stop of the drive also ends a sweep under way and starts
+  no other. The move that ends a drive's drain leaves it to that. The
   line joins `next`: what it removed and what it left, counted, the first few
   rows, then `abcd sweep` for the full list. A refusal or fault of that sweep
   is reported there and the move stands. `"sweep": {"automatic": false}` in
