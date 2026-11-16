@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/testsecret"
@@ -428,7 +429,7 @@ func TestContentsStripsInlineHTMLFromHeadings(t *testing.T) {
 		"- [Install](#-install)",
 		"- [Usage beta](#usage-beta)",
 		"- [OldNew](#oldnew)",
-		"- [a < b > c](#a--b--c)",
+		`- [a \< b > c](#a--b--c)`,
 		"- [Use `<kbd>` here](#use-kbd-here)",
 		"- [The `[x](y)` form](#the-xy-form)",
 		"- [A `tick](#a-tick)",
@@ -472,6 +473,81 @@ func TestContentsKeepsAHeadingsEscapesAsWritten(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("the contents list must carry %q:\n%s", want, body)
 		}
+	}
+}
+
+// TestContentsKeepsAHeadingsEscapedMarkupAsText (iss-2611161558121669): an
+// escaped angle bracket or bracket is text, not markup, so the tag or link
+// it opens is listed as the heading renders it rather than stripped; an
+// escaped bracket inside a link's text does not cut the link short; a
+// backslash inside a raw tag is no escape, so the tag is still stripped; and
+// an angle bracket that opens no tag as written stays text, though an escape
+// inside it is held.
+func TestContentsKeepsAHeadingsEscapedMarkupAsText(t *testing.T) {
+	readme := strings.Join([]string{
+		"# P",
+		"",
+		`## Use \<b> here`,
+		"",
+		`## Not \[a link](x) here`,
+		"",
+		`## A [b\]c](x) link`,
+		"",
+		`## Tag <a title="x\y">t</a> end`,
+		"",
+		`## Quote <a title="x\">t</a> end`,
+		"",
+		`## Use <a title='it\'s'> here`,
+		"",
+		"## Option [new]<br>(experimental)",
+		"",
+		"## Hi <img[ src=x](y)>",
+		"",
+		`## <img src="data:` + strings.Repeat("a", 600) + `"> Badge`,
+		"",
+		"## Note <!-- " + strings.Repeat("n", 600) + " --> kept",
+		"",
+	}, "\n")
+	root := readmeRepo(t, "", map[string]string{"README.md": readme})
+	d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
+	for _, want := range []string{
+		`- [Use \<b> here](`,
+		`- [Not \[a link\](x) here](`,
+		`- [A b\]c link](`,
+		`- [Tag t end](`,
+		`- [Quote t end](`,
+		`- [Use \<a title='it\'s'> here](#use-a-titleits-here)`,
+		`- [Option \[new\](experimental)](#option-newexperimental)`,
+		`- [Hi \<img src=x>](#hi-img-srcx)`,
+		`Badge](#-badge)`,
+		`- [Note  kept](#note--kept)`,
+	} {
+		if !strings.Contains(d.Body, want) {
+			t.Errorf("the contents list must carry %q:\n%s", want, d.Body)
+		}
+	}
+}
+
+// TestHeadingTextStaysLinear: a hostile heading of many unclosed brackets,
+// up to the file cap, is read in bounded time; read to the end of the line at
+// each bracket it took minutes (iss-2611161558121669).
+func TestHeadingTextStaysLinear(t *testing.T) {
+	for _, unit := range []string{"<!--", `<a b="`, "<a b=c ", "<", "<!--<b>"} {
+		s := "\x01" + `\! ` + strings.Repeat(unit, (1<<20)/len(unit))
+		start := time.Now()
+		headingText(s)
+		if d := time.Since(start); d > 20*time.Second {
+			t.Errorf("a %d-byte heading of %q took %v", len(s), unit, d)
+		}
+	}
+}
+
+// TestHeadingTextHoldsItsOwnPlaceholderByte: a heading holding the byte
+// escapes are held with is read the same way, its byte kept as written.
+func TestHeadingTextHoldsItsOwnPlaceholderByte(t *testing.T) {
+	text, unmask := headingText("a\x010\x01 \\<b> [x](y) <i>z</i>")
+	if got, want := unmask(text, false), "a\x010\x01 \\<b> x z"; got != want {
+		t.Errorf("headingText = %q, want %q", got, want)
 	}
 }
 
