@@ -19,7 +19,7 @@ impact: additive
 
 > An agent in a project that uses abcd learns how to use abcd from the abcd it is running. It asks for one command's instructions and gets them in a few lines, with the exact form any input must take and one example that works, instead of reading a long page that may be older than the program.
 >
-> Every fact about a command (its options, the forms it accepts and their versions, its examples) is written once, in the program. The instruction pages, a plain list for each command and the program's own answers are all made from that one place and checked at every build, so a page can no longer tell an agent one thing while the program expects another.
+> Every fact about a command (its options, the forms it accepts and their versions, its examples) is written once, in the program. The instruction pages, a plain list for each command and the program's own answers are all made from that one place and checked at every build, so a page cannot tell an agent one thing while the program expects another.
 
 _The product thinker's accepted text (2026-10-30, planning interview); the paragraph on practice runs, refusals and next steps moved to itd-2610301428390406 and itd-2610301428378830 when the intent was split the same day._
 
