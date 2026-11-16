@@ -969,6 +969,41 @@ func headingText(src string) (string, func(string, bool) string) {
 	return inlineTagRe.ReplaceAllString(inlineLinkRe.ReplaceAllString(masked, "$1"), ""), unmask
 }
 
+// escapeLinkChars escapes what could close or break the link a heading's
+// masked text sits in, keeping the owner's own escapes as written
+// (iss-2610112021163993): a backslash before ASCII punctuation is a markdown
+// escape and stays, pair and all, so the list renders what the heading
+// renders; a lone backslash (before anything else, or at the end, where it
+// would escape the link's closing bracket) is doubled, and an unescaped
+// bracket is escaped.
+func escapeLinkChars(s string) string {
+	var b strings.Builder
+	b.Grow(len(s) + 8)
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '\\' && i+1 < len(s) && isASCIIPunct(s[i+1]):
+			b.WriteByte(c)
+			b.WriteByte(s[i+1])
+			i++
+		case c == '\\':
+			b.WriteString(`\\`)
+		case c == '[' || c == ']':
+			b.WriteByte('\\')
+			b.WriteByte(c)
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
+// isASCIIPunct reports whether c is ASCII punctuation, the characters a
+// markdown backslash escapes (CommonMark 2.4).
+func isASCIIPunct(c byte) bool {
+	return strings.IndexByte("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", c) >= 0
+}
+
 // spanJoinRe is a masked code span with a backtick or another span directly
 // after it, or a backtick directly before it: written out side by side, the
 // backtick runs would merge and a reader would pair them differently.
@@ -980,7 +1015,7 @@ var spanJoinRe = regexp.MustCompile("(\x00[0-9]+\x00)(\x00|`)|(`)(\x00[0-9]+\x00
 // stripped tag or link left a span touching another span or a backtick, a
 // space keeps them apart, as the list shows a setext heading's line break.
 func escapeLinkText(masked string, unmask func(string, bool) string) string {
-	escaped := strings.NewReplacer(`\`, `\\`, `[`, `\[`, `]`, `\]`).Replace(masked)
+	escaped := escapeLinkChars(masked)
 	for spanJoinRe.MatchString(escaped) {
 		escaped = spanJoinRe.ReplaceAllString(escaped, "$1$3 $2$4")
 	}

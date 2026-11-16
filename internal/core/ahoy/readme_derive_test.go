@@ -436,6 +436,45 @@ func TestContentsStripsInlineHTMLFromHeadings(t *testing.T) {
 	}, "\n"))
 }
 
+// TestContentsKeepsAHeadingsEscapesAsWritten (iss-2610112021163993): a
+// backslash that escapes ASCII punctuation is kept as written, so the list
+// renders what the heading renders; only a lone backslash (before anything
+// else, or at the end) and an unescaped bracket are escaped, so neither can
+// close or break the link the text sits in.
+func TestContentsKeepsAHeadingsEscapesAsWritten(t *testing.T) {
+	readme := strings.Join([]string{
+		"# P",
+		"",
+		`## A \* b`,
+		"",
+		"## Tick \\` here",
+		"",
+		`## Pair \\ kept`,
+		"",
+		`## Path a\b`,
+		"",
+		`## Ends \`,
+		"",
+		`## Box [x] and \[y\]`,
+		"",
+	}, "\n")
+	root := readmeRepo(t, "", map[string]string{"README.md": readme})
+	d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
+	body := d.Body
+	for _, want := range []string{
+		`- [A \* b](`,
+		"- [Tick \\` here](",
+		`- [Pair \\ kept](`,
+		`- [Path a\\b](`,
+		`- [Ends \\](`,
+		`- [Box \[x\] and \[y\]](`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the contents list must carry %q:\n%s", want, body)
+		}
+	}
+}
+
 // TestContentsMasksCodeSpansOnce: a heading's code spans are read once, from
 // the heading as written (iss-2610112237411831). Where a stripped tag or link
 // sat between two spans, the anchor is made from both spans' rendered text and
