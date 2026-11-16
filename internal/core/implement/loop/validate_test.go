@@ -521,6 +521,51 @@ func TestAVerdictWordEndsItsLineOrMeetsASeparator(t *testing.T) {
 	}
 }
 
+// The commit a verdict names is the first full name after its word on the verdict
+// line, and what follows it on that line is not read: a records round's reviewer who
+// names the judged commit and then the commit the record resolves with passes, and a
+// line naming another commit first, or only another, is refused
+// (iss-2611141504118241).
+func TestAVerdictNamesTheFirstFullCommitAfterItsWord(t *testing.T) {
+	words := reviewerVerdicts[RoleRuthless]
+	head := "4f2c9a1be07d3e5f6a8b9c0d1e2f3a4b5c6d7e8f"
+	other := "0123456789abcdef0123456789abcdef01234567"
+	verdict := func(section string) (verdictWord, error) {
+		return parseVerdict("### Analysis\n\nThe records commit reads.\n\n### Verdict\n\n"+section+"\n", words, head)
+	}
+	for name, section := range map[string]string{
+		"the judged commit, then the commit it resolves with": "SHIP " + head + " — the record's resolved_by matches the lane's commit " + other + ".",
+		"the judged commit, then itself again and another":    "**SHIP** `" + head + "` (" + head + "; resolved by " + other + ")",
+		"a head line, then the judged commit and another":     "Head: " + head + "\nSHIP " + head + " — resolved by " + other,
+	} {
+		if w, err := verdict(section); err != nil || w.word != "SHIP" {
+			t.Errorf("%s: parseVerdict = %+v, %v; want SHIP", name, w, err)
+		}
+	}
+	for name, section := range map[string]string{
+		"only another commit":                         "SHIP " + other + " — nothing survived.",
+		"another commit, then the judged commit":      "SHIP " + other + " — as was " + head,
+		"a head line, then another commit first":      "Head: " + head + "\nSHIP " + other + ", and " + head,
+		"another commit abbreviated, then the judged": "SHIP 0123456789a, then " + head,
+	} {
+		w, err := verdict(section)
+		if err == nil {
+			t.Errorf("%s: parseVerdict = %+v; want a refusal", name, w)
+			continue
+		}
+		if !strings.Contains(err.Error(), "names \"0123456789") {
+			t.Errorf("%s: refused with %q; want it to name the other commit", name, err)
+		}
+	}
+	if w, err := verdict("SHIP " + head[:9] + " — resolved by " + other[:9]); err == nil {
+		t.Errorf("a line with no full name: parseVerdict = %+v; want a refusal", w)
+	}
+	brief := namesTheHeadLine(words, head)
+	if !strings.Contains(brief, "That line holds the verdict word and that name and nothing else") {
+		t.Errorf("the reviewer's brief does not say the verdict line holds the word and the judged name alone: %s", brief)
+	}
+}
+
 // Every line shaped as a verdict counts, and only the exact heading is read, so a
 // return with a second such line, or with no exact heading, states no verdict. Each
 // return here names the head, so the lines it holds are what refuses it.

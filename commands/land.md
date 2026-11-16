@@ -364,7 +364,9 @@ abbreviate it), with no other `Reviewed head:` line, and it must carry one
 line under that heading begins with the verdict, which ends the line or is followed by
 the head's name or a separator, and the verdict names the head it judges by its full
 object name, on that line or on a `Head: <full name>` line directly under the
-heading: `**SHIP** <full name> — nothing survived.` states `SHIP` of that head. Ask each
+heading: `**SHIP** <full name> — nothing survived.` states `SHIP` of that head. The
+first full name after the verdict is the one it names, and what follows that name on
+the line is not read, so a line naming another commit first is refused. Ask each
 reviewer in its brief for this too, and give it the name (`git rev-parse HEAD`). When
 every verdict passes the
 stop rule, `SHIP` or `APPROVE` (no critical or major finding), the head's review receipt is written to
