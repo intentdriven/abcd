@@ -74,8 +74,9 @@ type ReadOptions struct {
 	SessionID string
 	// ProcTable reads the machine's process table under the check's ctx, for
 	// the live work standing for an owed item (livework.go); nil means
-	// machineload.ReadContext. It is read at most once a check, only while
-	// away, and only when a whole run's marker is found.
+	// machineload.ReadContext. It is read at most once a check, and only
+	// when a run's recorded driver is a process with no session (a drive's
+	// hold, holders.go) or, while away, a whole run's marker is found.
 	ProcTable func(ctx context.Context) (machineload.Snapshot, error)
 	// LiveSessions reads the sessions running on the machine, each with the
 	// checkout it started in; nil means occupancy.Live under Home with the
@@ -273,14 +274,20 @@ type owedReader struct {
 	live       map[string]string // a live session's id -> the checkout it started in
 	liveTried  bool
 	liveOK     bool
-	recordedBy map[string]string   // a recorded branch -> the session that created it, "" when none was kept
-	runDrivers map[string][]string // a live run's key -> each unfinished run's driving session, "" when none
-	elsewhere  map[string]string   // a branch -> the other worktree it is checked out in
-	heldRes    map[string]string   // a reservation -> the live session whose run it is for
-	held       map[string]*holding // by session: what another live session holds
+	recordedBy map[string]string         // a recorded branch -> the session that created it, "" when none was kept
+	runDrivers map[string][]runDriverRec // a live run's key -> each unfinished run's recorded driver
+	elsewhere  map[string]string         // a branch -> the other worktree it is checked out in
+	heldRes    map[string]string         // a reservation -> the live session or drive whose run it is for
+	driveHeld  map[string][]string       // a live drive's process -> the items it holds, for its note
+	held       map[string]*holding       // by session: what another live session holds
 
-	// procTable reads the process table for the live work (livework.go).
+	// procTable reads the process table for the live work (livework.go) and
+	// for a drive's hold on its lanes (holders.go), once a check (readProcs).
 	procTable func(ctx context.Context) (machineload.Snapshot, error)
+	procsRead bool
+	procSnap  machineload.Snapshot
+	procTab   sessionname.Table
+	procErr   error
 
 	receiptsMinted bool
 	own            map[string]bool
@@ -311,6 +318,9 @@ type laneState struct {
 	// driver is the session its run's control record names as the run's
 	// driver, "" when it names none.
 	driver string
+	// driverHost is the process that record names as the driver, the zero
+	// Host when it names none.
+	driverHost sessionname.Host
 }
 
 type laneReview struct {
@@ -564,7 +574,7 @@ const runRelDir = ".abcd/.work.local/run"
 // tier whose reservation is live under this copy's key.
 func (r *owedReader) readLanes() {
 	r.lanes = map[string]laneState{}
-	r.runDrivers = map[string][]string{}
+	r.runDrivers = map[string][]runDriverRec{}
 	rt, err := os.OpenRoot(r.root)
 	if err != nil {
 		return
@@ -615,7 +625,7 @@ func (r *owedReader) readLanes() {
 			if l.Branch == "" || l.Stage == "done" || l.Stage == "discarded" || l.Stage == "handed-back" {
 				continue
 			}
-			ls := laneState{key: run.Key, driver: driver}
+			ls := laneState{key: run.Key, driver: driver.session, driverHost: driver.host}
 			for _, v := range l.Validation {
 				pass := len(v.Validators) > 0
 				for _, val := range v.Validators {
@@ -632,24 +642,43 @@ func (r *owedReader) readLanes() {
 // bound on it).
 const maxControlBytes = 1 << 20
 
-// runDriver is the session a run's control record names as its live driver
-// (the loop's ClaimDriver writes it as each step starts), read leniently: ""
-// when the record is absent, unreadable, or names no session abcd keys on,
-// which says nothing of whose the run is.
-func runDriver(rt *os.Root, runDir string) string {
+// runDriverRec is a run's recorded driver: the session abcd keys on, "" when
+// the record names none, and the process it names, the zero Host when none.
+type runDriverRec struct {
+	session string
+	host    sessionname.Host
+}
+
+// runDriver is the driver a run's control record names (the loop's
+// ClaimDriver writes it as each step starts), read leniently: the zero
+// record when the control record is absent or unreadable, and no session
+// when it names none abcd keys on, which alone says nothing of whose the run
+// is. A drive started in a plain terminal names its own process and no
+// session (the loop's selfDriver).
+func runDriver(rt *os.Root, runDir string) runDriverRec {
 	raw, err := fsutil.ReadGuardedInRoot(rt, runDir+"/control.json", maxControlBytes)
 	if err != nil {
-		return ""
+		return runDriverRec{}
 	}
 	var c struct {
 		Driver *struct {
-			Session string `json:"session"`
+			Session   string `json:"session"`
+			PID       int    `json:"pid"`
+			StartUnix int64  `json:"start_unix"`
+			SlackMS   int64  `json:"slack_ms"`
 		} `json:"driver"`
 	}
-	if json.Unmarshal(raw, &c) != nil || c.Driver == nil || !ValidSessionID(c.Driver.Session) {
-		return ""
+	if json.Unmarshal(raw, &c) != nil || c.Driver == nil {
+		return runDriverRec{}
 	}
-	return c.Driver.Session
+	var d runDriverRec
+	if ValidSessionID(c.Driver.Session) {
+		d.session = c.Driver.Session
+	}
+	if c.Driver.PID > 1 && c.Driver.StartUnix > 0 && c.Driver.SlackMS >= 0 {
+		d.host = sessionname.Host{PID: c.Driver.PID, StartUnix: c.Driver.StartUnix, Slack: time.Duration(c.Driver.SlackMS) * time.Millisecond}
+	}
+	return d
 }
 
 // reflogBranches are the branches this working copy's HEAD reflog has

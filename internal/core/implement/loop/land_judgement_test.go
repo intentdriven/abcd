@@ -215,6 +215,72 @@ func TestALandingReadsWhatItCommitsAsStored(t *testing.T) {
 	}
 }
 
+// forgeHeadTree writes the repository's commit-graph and alters it so the judged head
+// claims the tree of the lane's index with body staged at AGENTS.md, then confirms that a
+// git reading the graph takes that tree. The lane's index and worktree are left as they
+// were.
+func (f *landFixture) forgeHeadTree(t *testing.T, l Lane, body string) {
+	t.Helper()
+	wt := l.Worktree
+	was := landRead(t, wt, "AGENTS.md")
+	landWrite(t, wt, "AGENTS.md", body)
+	f.repo.Git("-C", wt, "add", "AGENTS.md")
+	tree := f.repo.Git("-C", wt, "write-tree")
+	f.repo.Git("-C", wt, "reset", "-q")
+	landWrite(t, wt, "AGENTS.md", was)
+	f.repo.Git("-C", wt, "commit-graph", "write", "--reachable")
+	common := f.repo.Git("-C", wt, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	gittest.ForgeCommitGraphTree(t, common, l.HeadSHA, tree)
+	if got := f.repo.Git("-C", wt, "-c", "core.commitGraph=true", "log", "-1", "--format=%T", l.HeadSHA); got != tree {
+		t.Fatalf("premise: the altered commit-graph does not take: the judged head reads as tree %s, not %s", got, tree)
+	}
+	if got := f.repo.Git("-C", wt, "cat-file", "-p", l.HeadSHA); strings.Contains(got, "tree "+tree) {
+		t.Fatalf("premise: the judged head stores the forged tree:\n%s", got)
+	}
+}
+
+// A landing judges what it stages against the judged head's tree as its commit stores
+// it, whatever tree the repository's commit-graph records for that commit: a change to
+// AGENTS.md the graph's tree already holds is still refused, both when it stands in the
+// worktree before the landing reads it and when it is written during the close.
+func TestALandingReadsTheJudgedHeadsTreeAsStored(t *testing.T) {
+	const payload = "Not the landing's.\n"
+	for name, beforeStage := range map[string]bool{
+		"in the worktree":     false,
+		"staged by the close": true,
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newLandFixture(t, queueRuleset("MERGE"))
+			f.validatedOnce(t)
+			f.step(t) // prepare
+			l := currentLane(t, f.repo, f.runID)
+			wt, judged := l.Worktree, l.HeadSHA
+			body := landRead(t, wt, "AGENTS.md") + payload
+			f.forgeHeadTree(t, l, body)
+			staged := false
+			if beforeStage {
+				beforeLandingStage = func(string) {
+					staged = true
+					landWrite(t, wt, "AGENTS.md", body)
+				}
+				t.Cleanup(func() { beforeLandingStage = nil })
+			} else {
+				landWrite(t, wt, "AGENTS.md", body)
+			}
+			r := f.wantsRefusedStep(t)
+			if !strings.Contains(r.Reason, "AGENTS.md") || !strings.Contains(r.Reason, strayClaim) {
+				t.Fatalf("the refusal names the file: %+v", r)
+			}
+			if beforeStage && !staged {
+				t.Fatalf("the landing's first judgement took the stored head for a change: %+v", r)
+			}
+			if got := f.repo.Git("-C", wt, "rev-parse", "HEAD"); got != judged {
+				t.Fatalf("nothing is committed: %s, %s", got, judged)
+			}
+		})
+	}
+}
+
 // A commit found on the judged head is read as stored: what stands in for it, its blobs or
 // its parents says nothing of what it holds.
 func TestACommitFoundIsReadAsStored(t *testing.T) {

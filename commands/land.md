@@ -342,9 +342,11 @@ and lands nothing. The forge refuses an author's approval of their own pull
 request, and the facilitator authors most of the pull requests abcd opens, so
 this is how they approve one. It writes
 `.abcd/.work.local/approvals/<full sha>`, found from any worktree as the
-receipts are, which the merge gate counts as an approval of that commit and of
-no other; `--json` carries the `commit` and the `approval` path. It is the
-person's own act: **never run it for the user.** The shell guard refuses it
+review receipts are (never from a drive lane's), which the merge gate counts as
+an approval of that commit and of no other; `--json` carries the `commit` and
+the `approval` path. Run inside a drive lane's worktree, or anywhere under
+one, it is refused with exit 2, since the gate never counts an approval there; run it from the main
+checkout or your own worktree. It is the person's own act: **never run it for the user.** The shell guard refuses it
 to an agent in either mode; tell the user the head is ready for their
 approval and let them run it. It takes no `--no-push`, `--no-enqueue` or
 `--record-review`.
@@ -375,9 +377,30 @@ reviewer in its brief for this too, and give it the name (`git rev-parse HEAD`).
 every verdict passes the
 stop rule, `SHIP` or `APPROVE` (no critical or major finding), the head's review receipt is written to
 `.abcd/.work.local/review-receipts/<full sha>`, beside the preflight receipts
-and found from any worktree the same way, and `--json` carries the `commit` and
-the `receipt` path. A return whose first line does not state this head, has no verdict or more
-than one line opening a verdict, whose verdict names no head, another head or this one
+and found from any worktree the same way but one: The merge gate counts no review
+receipt and no recorded approval in a drive lane's worktree, the one the build
+loop made for a lane, named `run-<id>-lane-<n>` in any case in the worktree store, nor in
+anything under one. The gate resolves a path, its symlinks followed, before it
+tells a lane's worktree, so a directory inside a lane, a repository nested in
+one, or a path of another name that resolves into one counts as the lane: The
+drive's lane worktrees and everything under them are the drive's, so the gate
+reads no record there, whatever path names them. Whenever the gate reads them,
+its reason names each one it passed over, whether or not another counted: The
+review receipts in `auto` mode, and the recorded approvals for a contributor's
+pull request or in `human` mode. When `abcd land` or the release hold's re-arm
+runs from a drive lane's worktree or from anywhere under one, the gate counts no
+review receipt and no recorded approval at all, in any worktree, and its reason
+says so; a forge review can still count as an approval, and nothing already
+armed is withdrawn on that answer. `abcd land <branch>` run from another
+checkout for a branch checked out in a drive lane's worktree counts none either,
+and its reason says the branch is checked out in a drive lane's worktree: The
+drive lands that branch itself, and to land it by hand the lane must be handed
+back and its worktree removed first. `--record-review` run inside a drive lane's
+worktree, or anywhere under one, is refused with exit 2, saying the gate never
+counts a record there, and nothing is written. Record the pair in the main
+checkout or a worktree you made.
+`--json` carries the `commit` and the `receipt` path. A return whose first line
+does not state this head, has no verdict or more than one line opening a verdict, whose verdict names no head, another head or this one
 abbreviated, says `FIX FIRST`, `BLOCK` or `NEEDS-INPUT`, or is the
 same text as another return is refused with exit 2, naming the return, and
 nothing is written. The receipt is written only inside the checkout.
@@ -455,8 +478,8 @@ from the head to `<base>`.
 
 The merge gate asks all of this again at landing, against the default branch as
 just fetched and in the build of abcd that runs the gate, and the note says why
-when a delta no longer stands. It reads the receipts for the head in every worktree:
-a full pair in any of them counts. It counts a
+when a delta no longer stands. It reads the receipts for the head in every worktree
+but a drive lane's or one under it, and a full pair in any of them counts. It counts a
 receipt with no delta only when it holds a passing pair for the head it names.
 `--rests-on` without `--record-review` is refused with exit 2.
 

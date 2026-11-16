@@ -375,7 +375,10 @@ type ownReviewEntry struct {
 // whose returns cannot be read now) is left in place, and the clause says it
 // stands as its recorder's. A receipt in another worktree is not this lane's
 // to touch: the loop records its own in this checkout alone, so one found
-// elsewhere was recorded by someone else, and it still counts.
+// elsewhere was recorded by someone else, and it still counts, but for one in
+// a drive lane's worktree, the lane's own among them. The gate never counts
+// that one (the landing gate's lane check), so there is nothing there to move
+// aside.
 func voidOwnReview(repoRoot string, lane Lane) string {
 	if lane.Landing == nil || !gitutil.IsFullSHA(lane.Landing.Pushed) {
 		return ""

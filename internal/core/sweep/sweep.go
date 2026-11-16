@@ -12,10 +12,9 @@ package sweep
 // the sweep composes those judgements with the liveness probe and never
 // re-makes them.
 //
-// runSweep, which runs every half of a sweep in the spec's order, runDry,
-// runApply, newProbe and hostProcesses are the package's entry points and
-// stay unexported until the surfaces (step 5) call them: an exported core
-// function no front door reaches is scaffolding the reach audit refuses.
+// Run is the package's entry point, the one the surfaces call (step 5): the
+// sweep's one fetch, then runSweep, which runs every half of a sweep in the
+// spec's order.
 
 import (
 	"context"
@@ -25,9 +24,12 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	store "github.com/intentdriven/abcd/internal/core/ahoy/worktree"
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/report"
 	"github.com/intentdriven/abcd/internal/core/reservesweep"
@@ -192,6 +194,71 @@ func (o Options) required() error {
 		return errors.New("sweep: a dry run needs its own working directory, to keep the worktree holding it")
 	}
 	return nil
+}
+
+// Run is one whole sweep of the repository at repoRoot, as `abcd sweep`
+// runs it: a dry run, or with apply an applied one. It fetches first
+// (criterion 11): origin's branches, pruned, so the half that judges them
+// reads origin as it is, then the reservations (claim.Fetch). It then reads
+// into the probe the reservations as fetched and the build loop's runs,
+// unless the options already carry them. A checkout with no origin fetches
+// nothing and runs on: no fetch of the reservations is then stamped, so every
+// worktree is held, and origin's half has no branch to judge. A fetch that
+// fails refuses the run before anything is judged, since every judgement
+// after it would read origin as it was at some earlier fetch.
+func Run(ctx context.Context, repoRoot string, o Options, apply bool) (Result, error) {
+	if err := o.required(); err != nil {
+		return refused(err)
+	}
+	if err := ctx.Err(); err != nil {
+		return refused(fmt.Errorf("sweep: stopped before the fetch: %w", err))
+	}
+	fetched, err := fetchFirst(repoRoot)
+	if err != nil {
+		return refused(err)
+	}
+	if fetched && o.Probe.Reservations.FetchedAt.IsZero() {
+		snap, err := claim.View(repoRoot, o.probeNow())
+		if err != nil {
+			return refused(fmt.Errorf("sweep: reading the reservations after the fetch: %w; nothing was judged", err))
+		}
+		o.Probe.Reservations = snap
+	}
+	if o.Probe.Runs == nil && o.Probe.RunsUnread == "" {
+		runs, err := loop.Runs(repoRoot)
+		if err != nil {
+			o.Probe.RunsUnread = err.Error()
+		}
+		o.Probe.Runs = runs
+	}
+	return runSweep(ctx, repoRoot, o, apply)
+}
+
+// fetchFirst is the sweep's fetch: origin's branches with pruning, then the
+// reservations and origin's default branch (claim.Fetch). fetched is false,
+// with no error, when the checkout has no remote named origin.
+func fetchFirst(repoRoot string) (fetched bool, err error) {
+	if _, err := gitutil.Run(repoRoot, "remote", "get-url", claim.Remote); err != nil {
+		return false, nil
+	}
+	if _, err := gitutil.Net(repoRoot, "fetch", "--prune", "--quiet", claim.Remote); err != nil {
+		return false, fmt.Errorf("sweep: fetching %s: %w; nothing was judged", claim.Remote, err)
+	}
+	if _, err := claim.Fetch(repoRoot, claim.Options{}); err != nil {
+		if errors.Is(err, claim.ErrNoOrigin) {
+			return false, nil
+		}
+		return false, fmt.Errorf("sweep: fetching the reservations: %w; nothing was judged", err)
+	}
+	return true, nil
+}
+
+// probeNow is the probe's clock read once, as newProbe reads it.
+func (o Options) probeNow() time.Time {
+	if o.Probe.Now != nil {
+		return o.Probe.Now()
+	}
+	return time.Now()
 }
 
 // runSweep is one whole sweep of the repository at repoRoot, a dry run or,

@@ -180,7 +180,9 @@ An entry in the store lane that is neither a worktree nor a directory failing th
    - criteria: 9, 10
    - packages: internal/core/sweep/reservations.go, internal/core/sweep/inbox.go
    - tests: the reservation workflow dispatched and its run reported; the fallback to the next scheduled time with no gh; every waiting report promoted with the automatic filer's remedy and named. Waits on iss-2610142200389875's sweep being on main.
+   - landed: bd0524e475c6, 6c00c054c99d
 5. The surfaces
    - criteria: 1, 11
    - packages: internal/core/sweep/branches.go, internal/core/sweep/remote.go, internal/surface/cli/sweep.go, internal/surface/cli/helpgroups.go, internal/surface/cli/barerender.go, internal/surface/cli/cli.go, internal/core/guard/deletes.go, commands/sweep.md, docs/reference/cli/commands.md, .abcd/development/release/surface.json, .abcd/development/brief/04-surfaces/40-sweep.md
    - tests: internal/core/sweep: a merged origin branch whose reservation records that branch is kept, naming the reservation, even when the record id is not in the branch's name; a branch whose name carries a record id that a reservation records against another branch is not held by that reservation (the reservation's own recorded branch is what holds, which replaces step 3's reading of the id in the name). internal/surface/cli/sweep_test.go: the verb's rows, `--json` and exit codes through the front door; the reference and surface baseline regenerated; once this step wires `abcd sweep`, the shell guard's refusal of a delete it cannot prove safe (`git-delete-unproven`, iss-2610241239492159) names it as what settles a spent branch or worktree, which until then it never does.
+   - landed: ab6f7a214b9f, a81c24e060ea, d4a18d9e9e7b

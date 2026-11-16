@@ -136,6 +136,25 @@ func TestGuardRefusesADeleteItsProverFindsUnsafe(t *testing.T) {
 	}
 }
 
+// TestTheDeleteRefusalNamesTheSweep: once `abcd sweep` is wired
+// (spc-2610230730269295, step 5), every refusal of a delete the guard cannot
+// prove safe, and the lesson made from it, names the sweep as what settles a
+// spent branch or worktree, the dry run to see it and --apply to clear it.
+func TestTheDeleteRefusalNamesTheSweep(t *testing.T) {
+	p := &recordingProver{proof: DeleteProof{Failed: "pull request #12 is open on it", Settle: "Close or merge #12 first."}}
+	d, err := deleteRegistry(t, t.TempDir(), p).Check("git push origin --delete feat/x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, text := range map[string]string{"the refusal": d.Message, "the lesson": Defaults().DeleteLesson()} {
+		for _, want := range []string{"`abcd sweep`", "`abcd sweep --apply`", "spent branch or worktree"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s does not name %q: %s", name, want, text)
+			}
+		}
+	}
+}
+
 // TestGuardRefusesADeleteWhoseTargetsItCannotRead pins every doubt the
 // reading fails closed on: the prover, which would prove anything safe, is
 // never asked, and the line is refused under the delete id.
