@@ -377,7 +377,7 @@ type ownReviewEntry struct {
 // to touch: the loop records its own in this checkout alone, so one found
 // elsewhere was recorded by someone else, and it still counts, but for one in
 // a drive lane's worktree, the lane's own among them. The gate never counts
-// that one (landing.DriveLaneWorktree), so there is nothing there to move
+// that one (the landing gate's lane check), so there is nothing there to move
 // aside.
 func voidOwnReview(repoRoot string, lane Lane) string {
 	if lane.Landing == nil || !gitutil.IsFullSHA(lane.Landing.Pushed) {

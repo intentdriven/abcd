@@ -135,18 +135,22 @@ func laneBlind(rel string) bool {
 // receipts, and the gate's reason names it.
 var driveLaneName = regexp.MustCompile(`(?i)^run-[0-9]{16}-lane-[1-9][0-9]{0,3}$`)
 
-// DriveLaneWorktree reports whether path names a drive lane's worktree by
+// driveLaneWorktree reports whether path names a drive lane's worktree by
 // its last element alone: a lane's name as the implement loop mints it, in
 // any case. It neither resolves path nor looks at its ancestors; the merge
 // gate asks insideDriveLane, which does both.
-func DriveLaneWorktree(path string) bool {
+func driveLaneWorktree(path string) bool {
 	return driveLaneName.MatchString(filepath.Base(filepath.Clean(path)))
 }
+
+// DriveLaneWorktreeForTest is driveLaneWorktree, for the implement loop's parity
+// test, which holds the loop's own lane check to the gate's.
+func DriveLaneWorktreeForTest(path string) bool { return driveLaneWorktree(path) }
 
 // insideDriveLane reports whether path is a drive lane's worktree or lies
 // anywhere under one: an element of the path as given, made absolute, or of
 // the path with its symlinks resolved (fsutil.RealExistingPath) is a lane's
-// name in any case (DriveLaneWorktree). The drive's lane worktrees and
+// name in any case (driveLaneWorktree). The drive's lane worktrees and
 // everything under them are the drive's, so the merge gate reads no review
 // receipt or recorded approval there, whatever path names them: a worktree
 // listed under another name that resolves into a lane, a directory inside a
@@ -168,7 +172,7 @@ func insideDriveLane(path string) bool {
 	}
 	for _, p := range []string{given, fsutil.RealExistingPath(path)} {
 		for {
-			if DriveLaneWorktree(p) {
+			if driveLaneWorktree(p) {
 				return true
 			}
 			up := filepath.Dir(p)

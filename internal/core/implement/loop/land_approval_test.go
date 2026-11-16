@@ -326,7 +326,7 @@ func TestAReceiptInTheLanesWorktreeNeverArmsAParkedLane(t *testing.T) {
 	f.recordsRound(t, "FIX FIRST", "APPROVE")
 	f.step(t)
 	l := f.pushToArm(t)
-	if l.Landing == nil || l.Landing.Armed || !landing.DriveLaneWorktree(l.Worktree) {
+	if l.Landing == nil || l.Landing.Armed || !landing.DriveLaneWorktreeForTest(l.Worktree) {
 		t.Fatalf("the lane parks, in a worktree read as a drive lane's (%s): %+v", l.Worktree, l.Landing)
 	}
 	plant := func(root string) {
@@ -367,21 +367,21 @@ func TestTheGateReadsTheLoopsLaneNamesAsDriveLanes(t *testing.T) {
 			t.Fatal(err)
 		}
 		p := filepath.Join("/store", "abc", name)
-		if !landing.DriveLaneWorktree(p) || !isLaneWorktree(p) {
-			t.Fatalf("%s: gate %v, loop %v; want both to read it as a lane's", p, landing.DriveLaneWorktree(p), isLaneWorktree(p))
+		if !landing.DriveLaneWorktreeForTest(p) || !isLaneWorktree(p) {
+			t.Fatalf("%s: gate %v, loop %v; want both to read it as a lane's", p, landing.DriveLaneWorktreeForTest(p), isLaneWorktree(p))
 		}
 	}
 	for _, p := range []string{"/store/abc/mine", "/store/abc/run-123-lane-1", "/store/abc/run-1234567890123456-lane-0", "/store/abc/run-1234567890123456-lane-1-x"} {
-		if landing.DriveLaneWorktree(p) != isLaneWorktree(p) {
-			t.Fatalf("%s: gate %v, loop %v; want them to agree", p, landing.DriveLaneWorktree(p), isLaneWorktree(p))
+		if landing.DriveLaneWorktreeForTest(p) != isLaneWorktree(p) {
+			t.Fatalf("%s: gate %v, loop %v; want them to agree", p, landing.DriveLaneWorktreeForTest(p), isLaneWorktree(p))
 		}
 	}
 	// The gate is broader than the loop in one way: It reads a lane's name in
 	// any case, since a case-insensitive volume opens the lane by its name in
 	// another case, while the loop mints and recognises lower case alone.
 	for _, p := range []string{"/store/abc/RUN-1234567890123456-LANE-1", "/store/abc/Run-1234567890123456-Lane-42"} {
-		if !landing.DriveLaneWorktree(p) || isLaneWorktree(p) {
-			t.Fatalf("%s: gate %v, loop %v; want the gate alone to read it as a lane's", p, landing.DriveLaneWorktree(p), isLaneWorktree(p))
+		if !landing.DriveLaneWorktreeForTest(p) || isLaneWorktree(p) {
+			t.Fatalf("%s: gate %v, loop %v; want the gate alone to read it as a lane's", p, landing.DriveLaneWorktreeForTest(p), isLaneWorktree(p))
 		}
 	}
 }

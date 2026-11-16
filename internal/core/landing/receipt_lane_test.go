@@ -25,23 +25,23 @@ func addWorktree(t *testing.T, f *fixture, name string) string {
 
 func TestADriveLaneWorktreeIsToldByItsName(t *testing.T) {
 	for path, want := range map[string]bool{
-		"/home/u/.abcd.noindex/worktrees/abc/run-0000000000000001-lane-1":   true,
-		"/home/u/.abcd.noindex/worktrees/abc/run-1234567890123456-lane-42/": true,
-		"/elsewhere/run-0000000000000001-lane-9999":                         true,
-		"/home/u/.abcd.noindex/worktrees/abc/RUN-0000000000000001-LANE-1":   true,
-		"/home/u/.abcd.noindex/worktrees/abc/Run-0000000000000001-Lane-7":   true,
-		"/home/u/.abcd.noindex/worktrees/abc/rUn-0000000000000001-lAnE-42/": true,
-		"/home/u/.abcd.noindex/worktrees/abc/RUN-0000000000000001-LANE-0":   false,
-		"/home/u/.abcd.noindex/worktrees/abc/receipt-scope":                 false,
-		"/home/u/.abcd.noindex/worktrees/abc/run-0000000000000001-lane-0":   false,
-		"/home/u/.abcd.noindex/worktrees/abc/run-000000000000001-lane-1":    false,
-		"/home/u/.abcd.noindex/worktrees/abc/run-0000000000000001-lane-1x":  false,
-		"/home/u/.abcd.noindex/worktrees/abc/x-run-0000000000000001-lane-1": false,
-		"/home/u/.abcd.noindex/worktrees/abc/run-0000000000000001-lane-1/x": false,
-		"/home/u/projects/repo": false,
+		"/home/u/store/worktrees/abc/run-0000000000000001-lane-1":   true,
+		"/home/u/store/worktrees/abc/run-1234567890123456-lane-42/": true,
+		"/elsewhere/run-0000000000000001-lane-9999":                 true,
+		"/home/u/store/worktrees/abc/RUN-0000000000000001-LANE-1":   true,
+		"/home/u/store/worktrees/abc/Run-0000000000000001-Lane-7":   true,
+		"/home/u/store/worktrees/abc/rUn-0000000000000001-lAnE-42/": true,
+		"/home/u/store/worktrees/abc/RUN-0000000000000001-LANE-0":   false,
+		"/home/u/store/worktrees/abc/receipt-scope":                 false,
+		"/home/u/store/worktrees/abc/run-0000000000000001-lane-0":   false,
+		"/home/u/store/worktrees/abc/run-000000000000001-lane-1":    false,
+		"/home/u/store/worktrees/abc/run-0000000000000001-lane-1x":  false,
+		"/home/u/store/worktrees/abc/x-run-0000000000000001-lane-1": false,
+		"/home/u/store/worktrees/abc/run-0000000000000001-lane-1/x": false,
+		"/home/u/projects/repo":                                     false,
 	} {
-		if got := DriveLaneWorktree(path); got != want {
-			t.Errorf("DriveLaneWorktree(%q) = %v, want %v", path, got, want)
+		if got := driveLaneWorktree(path); got != want {
+			t.Errorf("driveLaneWorktree(%q) = %v, want %v", path, got, want)
 		}
 	}
 }
