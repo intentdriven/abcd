@@ -956,7 +956,9 @@ over each of the run's lanes' own diff.
    run's state; the run log names where the model came from, and a lane with
    no model in any of them is refused. The commit runs the
    repository's hooks; one that refuses stops the landing, which resumes once
-   what the hook names is settled.
+   what the hook names is settled. The landing checks that the lane's worktree
+   is on its branch at the judged head before it commits, and that the commit it
+   adopts sits on the judged head and changes only what was judged.
 3. It pushes the lane's branch only once the repository's preflight receipt
    (`.abcd/.work.local/preflight-receipts/<head>`, in any worktree) names the
    lane's head. Without one, the lane waits for its full check (exit 3 when
