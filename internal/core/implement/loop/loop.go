@@ -299,6 +299,10 @@ type Outcome struct {
 	Reservation string
 	// Note is the run record's line for the stage.
 	Note string
+	// withdraw, set only with Stay, is the landing's withdrawal of the lane's
+	// arming, made once the step's save has written (withdrawAfterWrite),
+	// whose own line the record then gets in place of Note.
+	withdraw *landWithdrawal
 }
 
 // Handler performs one stage for a lane, writing what it made into lane. It
@@ -525,6 +529,9 @@ type StepResult struct {
 	// it re-told an await an earlier call began: only the call that hands the
 	// work out may start a runner for it.
 	handed bool
+	// release is what the release of the reservation of a lane this call
+	// handed back came to, made once the save wrote it (releaseAfterWrite).
+	release *handBackRelease
 }
 
 // Start resumes the live run for key, or runs the checks and, when every one
@@ -1320,8 +1327,16 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		}
 		// The run's reservation is renewed at half its lease before a stage
 		// (reservation.go); a renewal that fails is named and the stage runs.
+		// An issue run whose lane is handed back is not renewed here: the
+		// issue is a person's again, and a reservation its release left held
+		// lapses once nothing renews it, though a load-gate waiter in this
+		// copy may still renew it, as gateWaiterRenews says (claim.RenewDue
+		// reads no run).
 		logged := len(st.Record)
-		renewNote := renewReservation(repoRoot, st, now, nil)
+		renewNote := ""
+		if !handedBackIssue(*st) {
+			renewNote = renewReservation(repoRoot, st, now, nil)
+		}
 		renewed := len(st.Record) != logged
 		// A lane stopped on its receipt is no wait: it counts as a refused
 		// step does, and a drain hands it back at the bounds (stuck.go).
@@ -1358,8 +1373,21 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	if err == nil && wait != nil {
 		err = wait
 	}
+	// A landing's withdrawal made after the write (withdrawAfterWrite) is the
+	// step's answer: its refusal where it did not take, the arming as it was,
+	// and its record line where it did.
+	if err == nil && res.release != nil && res.release.atLand {
+		if res.release.refused != nil {
+			err = res.release.refused
+		} else if res.release.arming != "" {
+			res.stepNote = res.release.arming
+		}
+	}
 	if err == nil {
 		res.consumed = counted
+		if n := res.release.next(); n != "" {
+			res.Next = joinNext(res.Next, n)
+		}
 	}
 	if len(stopped) > 0 {
 		// What a consumed receipt became is said in its own words.
@@ -1512,14 +1540,23 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 	var res StepResult
 	var noted *runner.RouteRecord
 	renewNote := ""
+	// release is what the release of the reservation of a lane this hand-in
+	// hands back came to: it is made after the save's write, under its lock
+	// (releaseAfterWrite), never before it.
+	var release *handBackRelease
 	err := saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
+		release = nil
 		i, k := st.findAwait(repoRoot, receipt)
 		if i < 0 {
 			if at, taken, digest, ok := st.collectedAt(repoRoot, receipt); ok {
 				var changed bool
+				var hb *HandBack
 				var err error
-				res, changed, err = answerCollected(repoRoot, root, st, at, taken, digest, route, now)
+				res, hb, changed, err = answerCollected(repoRoot, root, st, at, taken, digest, route, now)
+				if hb != nil && changed && err == nil {
+					release = releaseAfterWrite(repoRoot, st, st.Lanes[at].ID, now)
+				}
 				return changed, err
 			}
 			return false, unknownReceipt(*st)
@@ -1594,7 +1631,7 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 			// The lane's own receipt handed the work back: the verifier has
 			// discarded it, and the lane ends here, before the validators.
 			handBackLane(st, &lane, *lane.HandBack, "", now)
-			releaseOnHandBack(repoRoot, st, *lane.HandBack, now)
+			release = releaseAfterWrite(repoRoot, st, lane.ID, now)
 			st.Lanes[i] = lane
 			st.UpdatedAt = now
 			res = laneResult(*st, lane, "", nil)
@@ -1640,6 +1677,11 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 	}
 	if err == nil && renewNote != "" {
 		res.Next += "; " + renewNote
+	}
+	if err == nil {
+		if n := release.next(); n != "" {
+			res.Next = joinNext(res.Next, n)
+		}
 	}
 	return res, err
 }

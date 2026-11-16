@@ -42,12 +42,15 @@ func limitsRoots(t *testing.T, repo, machine string) layered.Roots {
 // decisions 7 and 8).
 func TestWrittenInterviewTakesTheResolvedLimits(t *testing.T) {
 	var errOut bytes.Buffer
-	l, err := questionLimitsFor(limitsRoots(t, `{"question": {"rows": 40}}`, `{"question": {"label_words": 4}}`), &errOut)
+	l, n, err := questionLimitsFor(limitsRoots(t, `{"question": {"rows": 40}}`, `{"question": {"label_words": 4}}`), &errOut)
 	if err != nil || l.Rows != 40 || l.LabelWords != 4 || errOut.Len() != 0 {
 		t.Errorf("in force: limits %v, err %v, stderr %q", l.Configurable(), err, errOut.String())
 	}
+	if want := []string{".abcd/config.json", abcdhome.Display("config.json"), "bundled"}; !reflect.DeepEqual(n.SetBy, want) || n.Refused != nil {
+		t.Errorf("in force: note %+v, want SetBy %q", n, want)
+	}
 
-	_, err = questionLimitsFor(limitsRoots(t, `{"question": {"rows": 100}}`, ""), &errOut)
+	_, _, err = questionLimitsFor(limitsRoots(t, `{"question": {"rows": 100}}`, ""), &errOut)
 	if err == nil || err.Error() != ".abcd/config.json (repo layer): question.rows is 100: outside 24 to 60" {
 		t.Errorf("refused: err = %v", err)
 	}
@@ -57,13 +60,14 @@ func TestWrittenInterviewTakesTheResolvedLimits(t *testing.T) {
 		t.Fatal(err)
 	}
 	errOut.Reset()
-	l, err = questionLimitsFor(r, &errOut)
-	if err != nil || !reflect.DeepEqual(l, question.Default) {
+	l, n, err = questionLimitsFor(r, &errOut)
+	if err != nil || !reflect.DeepEqual(l, question.Default) || !reflect.DeepEqual(n, question.LimitsNote{}) {
 		t.Errorf("unread: limits %v, err %v; want the defaults and no error", l.Configurable(), err)
 	}
 	line := errOut.String()
-	if !strings.HasPrefix(line, "abcd guard: NOT CHECKED — ") || !strings.Contains(line, abcdhome.Display("config.json")) ||
-		!strings.HasSuffix(line, "The question runs UNGATED.\n") {
-		t.Errorf("unread: stderr %q, want the gate's fail-open line naming the machine file", line)
+	if !strings.HasPrefix(line, "abcd guard: NOT CHECKED at this repository's question limits — they were not read (") ||
+		!strings.Contains(line, abcdhome.Display("config.json")) ||
+		!strings.HasSuffix(line, "so the questions are measured at abcd's defaults instead.\n") || strings.Contains(line, "UNGATED") {
+		t.Errorf("unread: stderr %q, want decision 8's limits line naming the machine file, never UNGATED", line)
 	}
 }

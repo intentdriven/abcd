@@ -11,6 +11,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/repoprompt"
 	"github.com/intentdriven/abcd/internal/adapter/repoprompt/mcptest"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -48,7 +49,7 @@ func laneAtValidate(t *testing.T, repo *gittest.Repo) {
 	repo.Git("-C", wt, "commit", "-q", "-m", "build it")
 	sha := strings.TrimSpace(repo.Git("-C", wt, "rev-parse", "HEAD"))
 	receipt := `{"schema_version":1,"run_id":"` + state.RunID + `","lane":"lane-1","branch":"` + state.Lanes[0].Branch +
-		`","commits":["` + sha + `"],"definition_of_done":{"command":"make check","exit_code":0,"output":"dod.log"},"report":"report.md","model":"a-model"}`
+		`","commits":["` + sha + `"],"definition_of_done":{"command":"make check","exit_code":0,"output":"dod.log"},"report":"report.md","model":"grok-test-1"}`
 	for name, body := range map[string]string{"receipt.json": receipt, "dod.log": "ok\n", "report.md": "built it\n"} {
 		if err := os.WriteFile(filepath.Join(laneDir, name), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
@@ -178,10 +179,15 @@ func verdictSection(text, verdict string) string {
 }
 
 // reviewedHeadLine is the first line a reviewer's brief or request asks its return to
-// open with, "" when text asks for none.
+// open with, "" when text asks for none, followed by the model line it asks for when it
+// asks for one: a model other than the fixtures' writer's.
 func reviewedHeadLine(text string) string {
-	if m := regexp.MustCompile("`(Reviewed head: [0-9a-f]+)`").FindStringSubmatch(text); m != nil {
-		return m[1] + "\n\n"
+	m := regexp.MustCompile("`(Reviewed head: [0-9a-f]+)`").FindStringSubmatch(text)
+	if m == nil {
+		return ""
 	}
-	return ""
+	if strings.Contains(text, "`"+loop.ReviewerModelPrefix+" <model>`") {
+		return m[1] + "\n" + loop.ReviewerModelPrefix + " kimi-test-1\n\n"
+	}
+	return m[1] + "\n\n"
 }

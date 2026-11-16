@@ -182,7 +182,7 @@ func TestHookMalformedStdinExitsZero(t *testing.T) {
 }
 
 // TestHookPromptRouterLoadErrorHasSinglePrefix pins iss-2608261550491547: a
-// rules-load failure must read once, not twice. rules.Load already prefixes its
+// rules-load failure must read once, not twice. rules.LoadWith already prefixes its
 // errors with "rules:", so the hook wrapper must not add a second "rules:" of its
 // own — the user must never see "abcd rules: rules: …".
 func TestHookPromptRouterLoadErrorHasSinglePrefix(t *testing.T) {
@@ -191,7 +191,7 @@ func TestHookPromptRouterLoadErrorHasSinglePrefix(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(cwd, ".abcd"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Malformed JSON drives rules.Load down its fail-closed error path.
+	// Malformed JSON drives rules.LoadWith down its fail-closed error path.
 	if err := os.WriteFile(filepath.Join(cwd, ".abcd", "rules.json"), []byte("{not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}

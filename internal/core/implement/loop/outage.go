@@ -230,10 +230,14 @@ func (g *outageGate) holdsAgent(role string) bool {
 
 // networkMove reports whether lane w's binary move reaches the remote or the
 // forge: the landing past its records commit (the push, the pull request, the
-// arming, the merged check), and a hold that must disarm an armed pull request.
+// arming, the merged check), a hold that must disarm an armed pull request, and
+// the withdrawal of a handed-back lane's arming.
 // A landing's sync and its records commit are offline.
 func networkMove(st State, w want) bool {
 	l := st.Lanes[w.lane]
+	if w.withdraw {
+		return true
+	}
 	if l.Stage != StageLand {
 		return false
 	}

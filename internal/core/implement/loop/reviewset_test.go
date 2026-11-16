@@ -3,12 +3,15 @@ package loop
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/matrix"
 )
 
 // The review set and the class map (itd-2610240922461281, spc-2610240951109420
@@ -365,6 +368,39 @@ func TestAStoredReviewSetTheLoopNeverWritesIsRefused(t *testing.T) {
 // schema_version an edit set below 15: a new run writes one, and no file of
 // an earlier version carries it, so a test that reads a run as an older
 // version reads it as that version would have written it.
+// unmodelOlder drops what version 27 added (validate_other_model_test.go): the
+// review set's class map and unlaunchable classes, each receipt's named model,
+// and each reviewer's writers' and reviewer's models and its mark.
+func unmodelOlder(doc map[string]any) {
+	if rs, ok := doc["review"].(map[string]any); ok {
+		delete(rs, "classes")
+		delete(rs, "unlaunchable")
+	}
+	lanes, _ := doc["lanes"].([]any)
+	for _, l := range lanes {
+		lm, _ := l.(map[string]any)
+		receipts, _ := lm["receipts"].([]any)
+		for _, r := range receipts {
+			if rm, ok := r.(map[string]any); ok {
+				delete(rm, "named")
+			}
+		}
+		rounds, _ := lm["validation"].([]any)
+		for _, r := range rounds {
+			rm, _ := r.(map[string]any)
+			vs, _ := rm["validators"].([]any)
+			for _, v := range vs {
+				if vm, ok := v.(map[string]any); ok {
+					delete(vm, "writer_models")
+					delete(vm, "reviewer_model")
+					delete(vm, "reviewer_named")
+					delete(vm, "models_unrecorded")
+				}
+			}
+		}
+	}
+}
+
 func unreviewOlder(doc map[string]any) {
 	var v int
 	switch n := doc["schema_version"].(type) {
@@ -380,6 +416,9 @@ func unreviewOlder(doc map[string]any) {
 	}
 	if v <= schemaVersionUnadmitted {
 		delete(doc, "admitted")
+	}
+	if v <= schemaVersionUnmodelled {
+		unmodelOlder(doc)
 	}
 	if v <= schemaVersionUnkeyed {
 		unkeyOlder(doc)
@@ -542,4 +581,27 @@ func olderState(t *testing.T, data []byte, v int) []byte {
 		t.Fatal(err)
 	}
 	return out
+}
+
+// TestTheBundledMapReadsAsOtherClassByClass: every model the bundled class map
+// ships is a name the comparison reads, and the models of every two different
+// bundled classes are other models, as each pair was before the comparison
+// read a version only from the numbers straight after the family. So a run on
+// the bundled map is never handed back for a class no comparison can read,
+// and its reviewer moves to every class the map holds beside the writer's.
+func TestTheBundledMapReadsAsOtherClassByClass(t *testing.T) {
+	classes := slices.Sorted(maps.Keys(BundledClasses))
+	if len(classes) < 2 {
+		t.Fatalf("premise: the bundled map holds more than one class: %v", classes)
+	}
+	for _, a := range classes {
+		if !matrix.KnownModel(BundledClasses[a]) {
+			t.Errorf("the %s class's %q is not a name the comparison reads", a, BundledClasses[a])
+		}
+		for _, b := range classes {
+			if a != b && !matrix.OtherModel(BundledClasses[a], BundledClasses[b]) {
+				t.Errorf("the %s class's %q and the %s class's %q read as one model", a, BundledClasses[a], b, BundledClasses[b])
+			}
+		}
+	}
 }

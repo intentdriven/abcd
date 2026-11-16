@@ -387,7 +387,7 @@ func TestALetGoComparesBeforeItTakesTheDrainLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	said := w.said()
-	if !strings.Contains(said, "nothing this drive holds was released") || !strings.Contains(said, "did not finish within 2s") || strings.Contains(said, "lapses with its lease: ") {
+	if !strings.Contains(said, "nothing this drive holds was released") || !strings.Contains(said, "did not finish within 2s") || strings.Contains(said, "lapses with its lease "+unlessWaiterRenews+": ") {
 		t.Fatalf("the let-go says nothing was released because the comparison did not finish, never that the lock was busy:\n%s", said)
 	}
 }

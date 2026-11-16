@@ -65,7 +65,7 @@ func realPath(t *testing.T, p string) string {
 // TestRulesRootWalksUpToDotAbcd is the attack/behaviour test for the rules-loader
 // root fix: run from a subdirectory of a git working tree, rulesRoot must return
 // the nearest directory inside that tree holding a .abcd directory, not cwd.
-// Handing rules.Load a subdirectory silently ignored the per-repo overrides AND
+// Handing rules.LoadWith a subdirectory silently ignored the per-repo overrides AND
 // the kill switch, so a repo that had disabled a domain would still inject it
 // from any nested directory.
 func TestRulesRootWalksUpToDotAbcd(t *testing.T) {

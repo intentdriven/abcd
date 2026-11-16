@@ -344,6 +344,7 @@ func TestAnOlderStateMigratesItsReviewerToIndexZero(t *testing.T) {
 	}
 	doc["schema_version"] = schemaVersionUnkeyed
 	unrenameOlder(doc)
+	unmodelOlder(doc)
 	lane := doc["lanes"].([]any)[0].(map[string]any)
 	for _, a := range lane["awaits"].([]any) {
 		for _, k := range []string{"reviewer", "class", "model"} {
@@ -511,11 +512,13 @@ func TestARunnerRunReviewerIsHandedItsClassModel(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(repo.Root(), "review", "brief.md"), []byte("# review\n\n`Reviewed head: "+strings.Repeat("a", 40)+"`\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		v := ValidatorRun{Role: RoleRuthless, Brief: briefRel, Return: returnRel, Reviewer: 1, Class: ClassDefault, Model: model, Effort: BundledEffort}
+		v := ValidatorRun{Role: RoleRuthless, Brief: briefRel, Return: returnRel, Reviewer: 1, Class: ClassDefault, Model: model, Effort: BundledEffort,
+			WriterModels: []string{"grok-test-1"}, ReviewerModel: model}
 		steps[2] = StageDef{Name: StageImplement, Piece: 7,
 			Run: func(c Context, l *Lane) (Outcome, error) {
 				if len(l.Validation) == 0 {
 					l.Validation = []ValidationRound{{Round: 1, HeadSHA: strings.Repeat("a", 40), Validators: []ValidatorRun{v}}}
+					l.Receipts = []ReceiptRecord{{Role: RoleImplementer, Receipt: "review/receipt.json", Model: "grok-test-1"}}
 				}
 				aw := v.await()
 				return Outcome{Await: &aw}, nil

@@ -711,10 +711,20 @@ The payload's `review`, beside `pace`, carries each role's `reviewers` (each
 `class` with the `model` the map resolves it to, the map's `map_layer` and
 `map_origin`, its `effort` and the `effort_layer` and `effort_origin` that set
 it), the list's `layer` and `origin`, `clamped` when the ceiling cut it, the
-`judge` with its `status` and `effort`, and `max_reviewers`. The run record's
-`review` line, the text output's `review:` line and each verdict line name
-each class with its model and its effort, so a class name is never shown
-alone, and a drive's start names the pair it will run before it asks. A class
+`judge` with its `status` and `effort`, `max_reviewers`, `classes`, the whole
+class map the run started on, from which a reviewer whose class holds a model
+that wrote the lane is moved to another, and, for a run a drive started,
+`unlaunchable`, each role's classes the drive's runners could not launch when
+it started, which a moved reviewer never lands on (`commands/implement.md` says
+how). The
+run record's `review` line, the text output's `review:` line and each verdict
+line name each class with its model and its effort, so a class name is never
+shown alone; a `classes:` line under the text's `review:` line names the class
+map; the run record's verdict lines name every model that wrote the lane and
+the reviewer's model, or the model it was asked for and the one its return
+named where those differ, and, for a reviewer handed out before models were
+recorded, say they were not; and a drive's start names the pair it will run before
+it asks. A class
 the map does not carry, an effort outside the five levels or an effort object
 keyed by anything but the four classes, a list of none or more than two, a
 misspelt key under `review` or `models`, and a route that is not

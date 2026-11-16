@@ -536,7 +536,7 @@ func TestALandingWithNoRecordsCommitsTheSpecTheFirstStepTook(t *testing.T) {
 	if status := f.repo.Git("-C", l.Worktree, "status", "--porcelain"); strings.TrimSpace(status) != "" {
 		t.Fatalf("nothing stays uncommitted: %s", status)
 	}
-	if msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA); !strings.Contains(msg, "Assisted-by: Claude:claude-test-5") {
+	if msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA); !strings.Contains(msg, "Assisted-by: Claude:claude-mythos-5") {
 		t.Fatalf("the commit names the lane's model:\n%s", msg)
 	}
 }
@@ -993,7 +993,7 @@ func TestARecordsCommitIsLabelledFromWhatItHolds(t *testing.T) {
 			if got := strings.Contains(msg, composedAssistedBy()); got != c.abcdHas {
 				t.Errorf("the abcd label present = %v, want %v:\n%s", got, c.abcdHas, msg)
 			}
-			if got := strings.Contains(msg, "Assisted-by: Claude:claude-test-5"); got == c.abcdHas {
+			if got := strings.Contains(msg, "Assisted-by: Claude:claude-mythos-5"); got == c.abcdHas {
 				t.Errorf("the model's label present = %v, want %v:\n%s", got, !c.abcdHas, msg)
 			}
 		})

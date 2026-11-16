@@ -549,7 +549,7 @@ func (c Config) ArmedChecks() int {
 // boundary: it is a committed, cross-repo-clonable file (a hostile clone can
 // commit .abcd/docs-lint.json as a git mode-120000 symlink), and the read is
 // reachable automatically through the session hooks (ahoy.Detect), so it is
-// guarded exactly like its .abcd/*.json siblings guard.Load and rules.Load —
+// guarded exactly like its .abcd/*.json siblings guard.Load and rules.LoadWith —
 // a symlinked config directory or leaf is refused, a FIFO/device leaf returns
 // immediately instead of hanging the open, and an over-cap file is rejected
 // rather than read into an OOM. Error strings stay path-free (iss-29); the

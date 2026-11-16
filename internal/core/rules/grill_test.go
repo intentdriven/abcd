@@ -124,7 +124,7 @@ func TestGrillTextCarriesTheAmendments(t *testing.T) {
 		amendment string
 		phrases   []string
 	}{
-		{"quoted in full", []string{"quoted in full in the question itself", "in paragraphs and lists", "never referred to", "one part per question"}},
+		{"quoted in full", []string{"quoted in full in the question itself", "in paragraphs and lists", "never referred to", "quoted shorter and faithfully", "several decisions or too many answers"}},
 		{"the layout", []string{"at most twelve columns", `"Q1"`, `"Q2/5"`, `"Product Q2"`, "is still read", `"Now:"`, `"Change later:"`, "ends with the question", "two to four options", "at most five words", "at most two sentences", `"Decide later"`, "no bold", "thirty-two rows at eighty columns", "question check refuses"}},
 		{"examples", []string{"one example of the thing being decided", "in the question text", "description says what choosing", "carries no side preview", "hides every option's description"}},
 		{"gain and cost", []string{"description names its gain and its cost", "never one option's alone", "trade-offs"}},
@@ -314,4 +314,62 @@ func TestGrillDomainObeysTheLoaderContracts(t *testing.T) {
 			t.Fatal("two loads of the generated domain sign differently; dedup would re-inject it every prompt")
 		}
 	})
+}
+
+// TestLoadWithARefusalWritesItIntoGrillAndTheNotes (spc-2610301950037469,
+// approach 8): under a refused question limit the GRILL domain states abcd's
+// defaults, names the refused key and why, and says the check refuses every
+// abcd question; the notes carry the refusal as one line; the domain stays
+// bundled; and every other bundled domain loads as before.
+func TestLoadWithARefusalWritesItIntoGrillAndTheNotes(t *testing.T) {
+	const reason = ".abcd/config.json (repo layer): question.rows is 100: outside 24 to 60"
+	note := question.LimitsNote{Refused: &question.RefusedLimit{Key: question.RowsKey, File: ".abcd/config.json", Reason: reason}}
+	rs, err := LoadWith(t.TempDir(), question.Default, note)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, ok := rs.Lookup(GrillDomain)
+	if !ok || d.Source != SourceBundled {
+		t.Fatalf("Lookup(%s) = %+v, %v; want the bundled domain", GrillDomain, d, ok)
+	}
+	if want := question.AskingRulesFrom(question.Default, note); !reflect.DeepEqual(d.Rules, want) {
+		t.Fatalf("GRILL under a refusal is not the asking rules with the refusal written in:\n got %q\nwant %q", d.Rules, want)
+	}
+	layout := ruleWith(d.Rules, "Every question has one layout")
+	for _, want := range []string{"thirty-two rows", "abcd's defaults", "`question.rows` in `.abcd/config.json` is outside", "refuses every abcd question"} {
+		if !strings.Contains(layout, want) {
+			t.Errorf("the layout rule under a refusal does not say %q:\n%s", want, layout)
+		}
+	}
+	var lines []string
+	for _, n := range rs.Notes() {
+		if strings.Contains(n, reason) {
+			lines = append(lines, n)
+		}
+	}
+	if len(lines) != 1 || strings.Contains(lines[0], "\n") || !strings.Contains(lines[0], GrillDomain) {
+		t.Errorf("the notes must carry the refusal as one line naming %s; got %q of %q", GrillDomain, lines, rs.Notes())
+	}
+	// The note says nothing of what GRILL states: a rules.json layer, a
+	// dormant state or the kill switch decide that, not the refusal.
+	for _, n := range lines {
+		if strings.Contains(n, "states abcd's defaults") {
+			t.Errorf("the note claims what GRILL states: %q", n)
+		}
+	}
+	for name := range Defaults().Domains {
+		if _, ok := rs.Domains[name]; !ok {
+			t.Errorf("the bundled domain %s did not load beside the refusal", name)
+		}
+	}
+	plain, err := LoadWith(t.TempDir(), question.Default, question.LimitsNote{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plain.Notes()) != 0 {
+		t.Errorf("a load with no refusal carries notes: %q", plain.Notes())
+	}
+	if p, _ := plain.Lookup(GrillDomain); !reflect.DeepEqual(p.Rules, question.AskingRules(question.Default)) {
+		t.Errorf("LoadWith at the defaults with no note is not the bundled GRILL: %q", p.Rules)
+	}
 }

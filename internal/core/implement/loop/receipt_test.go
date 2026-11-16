@@ -71,7 +71,7 @@ func goodReceipt(t *testing.T, runID string, l Lane, dir string, commits ...stri
 		}
 	}
 	return LaneReceipt{SchemaVersion: ReceiptSchemaVersion, RunID: runID, Lane: l.ID, Branch: l.Branch, Commits: commits,
-		DefinitionOfDone: &DoDRun{Command: "make check", ExitCode: zero(), Output: DoDFileName}, Report: ReportFileName, Model: "a-model"}
+		DefinitionOfDone: &DoDRun{Command: "make check", ExitCode: zero(), Output: DoDFileName}, Report: ReportFileName, Model: "grok-test-1"}
 }
 
 func writeReceipt(t *testing.T, dir string, rc any) string {
