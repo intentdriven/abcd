@@ -55,7 +55,7 @@ func TestCommandPagesNameOnlyWhatTheBinaryHas(t *testing.T) {
 	sort.Strings(names)
 	for _, name := range names {
 		rel := CommandPagesDir + "/" + name + ".md"
-		for _, f := range lint.CommandPageFacts(rel, pages[name], facts) {
+		for _, f := range lint.CommandPageFactsForTest(rel, pages[name], facts) {
 			t.Errorf("%s; correct the page to what the binary says, or mark a line that names an old fact on purpose with %s",
 				f, lint.CommandPageHistorical)
 		}
@@ -77,7 +77,7 @@ func TestCommandPageLintReadsTheRealPages(t *testing.T) {
 	if spliced == page {
 		t.Fatal("commands/ideate.md no longer has its \"Record the verdict\" heading; splice the probe elsewhere")
 	}
-	got := lint.CommandPageFacts("commands/ideate.md", spliced, facts)
+	got := lint.CommandPageFactsForTest("commands/ideate.md", spliced, facts)
 	var msgs []string
 	for _, f := range got {
 		msgs = append(msgs, f.String())
@@ -95,14 +95,14 @@ func TestCommandPageLintReadsTheRealPages(t *testing.T) {
 // holds them, and the facts CommandFacts writes do not.
 func TestCommandPageLintKnowsHelpAndCompletion(t *testing.T) {
 	text := "Run `abcd help status` or `abcd completion zsh --no-descriptions`.\n"
-	if got := lint.CommandPageFacts("commands/example.md", text, commandPageLintFacts()); len(got) != 0 {
+	if got := lint.CommandPageFactsForTest("commands/example.md", text, commandPageLintFacts()); len(got) != 0 {
 		var msgs []string
 		for _, f := range got {
 			msgs = append(msgs, f.String())
 		}
 		t.Errorf("help or completion did not resolve:\n%s", strings.Join(msgs, "\n"))
 	}
-	if got := lint.CommandPageFacts("commands/example.md", text, CommandFacts()); len(got) == 0 {
+	if got := lint.CommandPageFactsForTest("commands/example.md", text, CommandFacts()); len(got) == 0 {
 		t.Error("CommandFacts now holds help and completion; the lint's own tree may go back to it")
 	}
 }
