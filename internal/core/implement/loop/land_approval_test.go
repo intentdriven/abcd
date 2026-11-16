@@ -2,6 +2,7 @@ package loop
 
 import (
 	"fmt"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"os"
 	"path/filepath"
@@ -310,6 +311,69 @@ func TestARecordsRoundThatFailsParksNamingTheFinding(t *testing.T) {
 	f.step(t)
 	if l = currentLane(t, f.repo, f.runID); !l.Landing.Armed {
 		t.Fatalf("a person's pair arms it: %+v\n%s", l.Landing, f.ghLog(t))
+	}
+}
+
+// TestAReceiptInTheLanesWorktreeNeverArmsAParkedLane: after a records round that
+// fails, the loop records no receipt of its own, and a full pair written into the
+// lane's own worktree counts for nothing: the lane stays parked and the reason
+// names the receipt passed over. The same pair in the checkout arms it.
+func TestAReceiptInTheLanesWorktreeNeverArmsAParkedLane(t *testing.T) {
+	f := autoFixture(t)
+	f.validated(t)
+	f.step(t)
+	f.step(t)
+	f.recordsRound(t, "FIX FIRST", "APPROVE")
+	f.step(t)
+	l := f.pushToArm(t)
+	if l.Landing == nil || l.Landing.Armed || !landing.DriveLaneWorktree(l.Worktree) {
+		t.Fatalf("the lane parks, in a worktree read as a drive lane's (%s): %+v", l.Worktree, l.Landing)
+	}
+	plant := func(root string) {
+		t.Helper()
+		rcp := filepath.Join(root, ".abcd", ".work.local", "review-receipts", l.Landing.Pushed)
+		if err := os.MkdirAll(filepath.Dir(rcp), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(rcp, reviewPairReceipt(l.Landing.Pushed), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plant(l.Worktree)
+	// The step waits on the unmerged pull request, and its reason says why.
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
+	if err == nil || !strings.Contains(err.Error(), "was passed over") || !strings.Contains(err.Error(), "nothing is armed") {
+		t.Fatalf("the step's reason names the receipt passed over: %v", err)
+	}
+	l = currentLane(t, f.repo, f.runID)
+	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing.Armed {
+		t.Fatalf("a receipt in the lane's worktree arms nothing: %+v\n%s", l.Landing, f.ghLog(t))
+	}
+	plant(f.repo.Root())
+	f.step(t)
+	if l = currentLane(t, f.repo, f.runID); !l.Landing.Armed {
+		t.Fatalf("a person's pair in the checkout arms it: %+v\n%s", l.Landing, f.ghLog(t))
+	}
+}
+
+// TestTheGateReadsTheLoopsLaneNamesAsDriveLanes: every name laneName mints is one
+// the merge gate reads as a drive lane's worktree, and isLaneWorktree and the
+// gate agree on names it does not mint.
+func TestTheGateReadsTheLoopsLaneNamesAsDriveLanes(t *testing.T) {
+	for _, laneID := range []string{"lane-1", "lane-42", "lane-9999"} {
+		name, err := laneName("run-1234567890123456", laneID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := filepath.Join("/store", "abc", name)
+		if !landing.DriveLaneWorktree(p) || !isLaneWorktree(p) {
+			t.Fatalf("%s: gate %v, loop %v; want both to read it as a lane's", p, landing.DriveLaneWorktree(p), isLaneWorktree(p))
+		}
+	}
+	for _, p := range []string{"/store/abc/mine", "/store/abc/run-123-lane-1", "/store/abc/run-1234567890123456-lane-0", "/store/abc/run-1234567890123456-lane-1-x"} {
+		if landing.DriveLaneWorktree(p) != isLaneWorktree(p) {
+			t.Fatalf("%s: gate %v, loop %v; want them to agree", p, landing.DriveLaneWorktree(p), isLaneWorktree(p))
+		}
 	}
 }
 

@@ -359,7 +359,7 @@ func movedByPush(res *Result, dir, n, head, tip string) error {
 }
 
 // headVouched reports whether a review receipt or a recorded approval in any
-// worktree of the repository at dir names sha.
+// worktree of the repository at dir but a drive lane's names sha.
 func headVouched(dir, sha string) (bool, error) {
 	if p, err := reviewReceipt(dir, sha); err != nil || p != "" {
 		return p != "", err
@@ -380,7 +380,8 @@ func splitRepo(nameWithOwner string) (owner, name string, ok bool) {
 // rearmGate is the merge gate asked about a head already recorded, for a path
 // that arms without landing a branch (the release hold's re-arm and admission):
 // the mode at the default branch as last fetched, the author's role, the
-// approvals and the receipts, in any worktree of root. The rule is left empty
+// approvals and the receipts, in any worktree of root but a drive lane's
+// (DriveLaneWorktree). The rule is left empty
 // since it decides only the method, which the arming already carries. An answer
 // the gate could not read is an error, never a refusal.
 func rearmGate(ask ForgeCall, root, repo, pr, head string) (bool, string, error) {

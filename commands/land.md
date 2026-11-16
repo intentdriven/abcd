@@ -338,9 +338,9 @@ and lands nothing. The forge refuses an author's approval of their own pull
 request, and the facilitator authors most of the pull requests abcd opens, so
 this is how they approve one. It writes
 `.abcd/.work.local/approvals/<full sha>`, found from any worktree as the
-receipts are, which the merge gate counts as an approval of that commit and of
-no other; `--json` carries the `commit` and the `approval` path. It is the
-person's own act: **never run it for the user.** The shell guard refuses it
+review receipts are (never from a drive lane's), which the merge gate counts as
+an approval of that commit and of no other; `--json` carries the `commit` and
+the `approval` path. It is the person's own act: **never run it for the user.** The shell guard refuses it
 to an agent in either mode; tell the user the head is ready for their
 approval and let them run it. It takes no `--no-push`, `--no-enqueue` or
 `--record-review`.
@@ -369,9 +369,13 @@ reviewer in its brief for this too, and give it the name (`git rev-parse HEAD`).
 every verdict passes the
 stop rule, `SHIP` or `APPROVE` (no critical or major finding), the head's review receipt is written to
 `.abcd/.work.local/review-receipts/<full sha>`, beside the preflight receipts
-and found from any worktree the same way, and `--json` carries the `commit` and
-the `receipt` path. A return whose first line does not state this head, has no verdict or more
-than one line opening a verdict, whose verdict names no head, another head or this one
+and found from any worktree the same way but one: The merge gate counts no review
+receipt and no recorded approval in a drive lane's worktree, the one the build
+loop made for a lane, named `run-<id>-lane-<n>` in the worktree store. The gate
+tells it by the path git lists for the worktree, and its reason names each one
+it passed over. Record the pair in your own checkout or a worktree you made.
+`--json` carries the `commit` and the `receipt` path. A return whose first line
+does not state this head, has no verdict or more than one line opening a verdict, whose verdict names no head, another head or this one
 abbreviated, says `FIX FIRST`, `BLOCK` or `NEEDS-INPUT`, or is the
 same text as another return is refused with exit 2, naming the return, and
 nothing is written. The receipt is written only inside the checkout.
@@ -449,8 +453,8 @@ from the head to `<base>`.
 
 The merge gate asks all of this again at landing, against the default branch as
 just fetched and in the build of abcd that runs the gate, and the note says why
-when a delta no longer stands. It reads the receipts for the head in every worktree:
-a full pair in any of them counts. It counts a
+when a delta no longer stands. It reads the receipts for the head in every worktree
+but a drive lane's: a full pair in any of them counts. It counts a
 receipt with no delta only when it holds a passing pair for the head it names.
 `--rests-on` without `--record-review` is refused with exit 2.
 

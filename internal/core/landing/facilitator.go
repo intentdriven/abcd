@@ -12,7 +12,9 @@ package landing
 // ruleset mirror's merge rule at the same tip, the author's permission on the
 // repository, the pull request's reviews, the technical facilitator's recorded
 // approval (RecordApproval), and in auto a review receipt naming the head
-// (RecordReview). The table, in order:
+// (RecordReview). A recorded approval or a review receipt is read from any
+// worktree of the repository but a drive lane's (DriveLaneWorktree): one there
+// counts for nothing, and the reason names it. The table, in order:
 //
 //   - an author whose permission cannot be read, or a custom role whose base
 //     cannot be read, is unverified: nothing is armed, whatever the approvals;
@@ -243,11 +245,13 @@ func (r Review) Approves(head, author string) (note string, ok bool) {
 // so does an approval a later review of the same reviewer superseded. "" with
 // why when none counts.
 func countedApproval(forge ForgeCall, repoRoot, repo, n, head, author string) (by, why string, unread bool) {
-	switch p, err := approvalRecord(repoRoot, head); {
+	switch p, passed, err := approvalRecords(repoRoot, head); {
 	case err != nil:
 		why, unread = "the technical facilitator's recorded approval cannot be read ("+forgeWhy(err)+"); ", true
 	case p != "":
 		return "the technical facilitator's recorded approval (abcd land --approve)", "", false
+	case len(passed) > 0:
+		why = "the recorded approval of " + short(head) + " at " + shownPaths(passed) + " was passed over, since no approval in a drive lane's worktree counts; "
 	}
 	out, err := forge(reviewsArgs(repo, n)...)
 	if err != nil {
@@ -290,9 +294,23 @@ func countedApproval(forge ForgeCall, repoRoot, repo, n, head, author string) (b
 
 // approvalRecord finds the technical facilitator's recorded approval of sha in
 // any worktree git lists for the repository at repoRoot, as findReceipts finds
-// a review receipt, and returns its path, or "" when none names sha.
+// a review receipt, and returns its path, or "" when none names sha. One in a
+// drive lane's worktree is passed over.
 func approvalRecord(repoRoot, sha string) (string, error) {
 	return findReceipt(repoRoot, ApprovalsRelDir, sha)
+}
+
+// approvalRecords is approvalRecord with the paths of the approvals it passed
+// over in a drive lane's worktree, for a reason to name.
+func approvalRecords(repoRoot, sha string) (path string, passed []string, err error) {
+	found, err := findReceipts(repoRoot, ApprovalsRelDir, sha)
+	for _, f := range found {
+		if f.lane {
+			passed = append(passed, f.path)
+		}
+	}
+	path, err = firstReceipt(found, err)
+	return path, passed, err
 }
 
 // ApprovalRecord is approvalRecord for a reader of past landings
@@ -378,6 +396,10 @@ type gateFacts struct {
 	// deltaWhy is why the delta receipt naming head does not stand, "" when
 	// there is none or it does; reviewNote says what a standing one rests on.
 	deltaWhy, reviewNote string
+	// reviewPassed says which review receipts naming head were passed over in
+	// a drive lane's worktree, "" for none; the reason ends with it, whatever
+	// the answer, so a person sees one was not counted.
+	reviewPassed string
 }
 
 // gateDecision is the merge gate's answer: whether to arm the merge and with
@@ -499,6 +521,7 @@ func DecideMerge(q MergeQuery) (MergeDecision, error) {
 	if mode.Mode == ModeAuto {
 		proof := readReviewProof(q.RepoRoot, q.Head, q.Tip)
 		f.reviewed, f.reviewNote, f.deltaWhy, f.reviewWhy, f.reviewUnread = proof.reviewed, proof.note, proof.deltaWhy, proof.unreadable, proof.unread
+		f.reviewPassed = proof.passed
 	}
 	return decided(f), nil
 }
@@ -509,6 +532,9 @@ func DecideMerge(q MergeQuery) (MergeDecision, error) {
 // repository and whether a person's approval counted.
 func decided(f gateFacts) MergeDecision {
 	d := mergeGate(f)
+	if f.reviewPassed != "" {
+		d.why += "; " + f.reviewPassed
+	}
 	return MergeDecision{Arm: d.arm, Method: d.method, Why: d.why,
 		Unread: !d.arm && (f.role == RoleUnverified || f.reviewUnread || f.approvalUnread),
 		Mode:   f.mode.Mode, AuthorCanWrite: f.role == RoleMaintainer, ApprovalCounted: f.approvedBy != ""}

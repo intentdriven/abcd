@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -72,7 +73,8 @@ func ReceiptContext(ctx context.Context, repoRoot, sha string) (string, error) {
 // lists for the repository at repoRoot: a regular file, never a symlink, and
 // that worktree's own: one git tracks came with a commit, and is refused
 // (localtier.Untracked) rather than counted. Preflight and review receipts
-// are found the same way.
+// are found the same way, except that a review receipt or a recorded approval
+// in a drive lane's worktree is passed over (laneBlind).
 func findReceipt(repoRoot, rel, sha string) (string, error) {
 	return firstReceipt(findReceipts(repoRoot, rel, sha))
 }
@@ -82,22 +84,56 @@ func findReceiptContext(ctx context.Context, repoRoot, rel, sha string) (string,
 	return firstReceipt(findReceiptsContext(ctx, repoRoot, rel, sha))
 }
 
-// firstReceipt is the first worktree's receipt of found: its path, or why it
-// does not count, or "" when none was found.
+// firstReceipt is the first worktree's receipt of found that may count: its
+// path, or why it does not count, or "" when none was found. One in a drive
+// lane's worktree (foundReceipt.lane) is passed over.
 func firstReceipt(found []foundReceipt, err error) (string, error) {
-	if err != nil || len(found) == 0 {
+	if err != nil {
 		return "", err
 	}
-	if found[0].err != nil {
-		return "", found[0].err
+	for _, f := range found {
+		if f.lane {
+			continue
+		}
+		if f.err != nil {
+			return "", f.err
+		}
+		return f.path, nil
 	}
-	return found[0].path, nil
+	return "", nil
 }
 
 // foundReceipt is one worktree's receipt: its path, or why it does not count.
 type foundReceipt struct {
 	path string
 	err  error
+	// lane marks a review receipt or a recorded approval found in a drive
+	// lane's worktree (DriveLaneWorktree), which never counts; it is kept so a
+	// reader can say one was passed over. Its tracked check is not asked.
+	lane bool
+}
+
+// laneBlind reports whether a receipt under rel is passed over in a drive
+// lane's worktree: a review receipt or a recorded approval is, since the
+// unattended drive runs model stages in that worktree and they can write any
+// file there. A preflight receipt is not: the drive's preflight mints it in
+// the lane's worktree, and the loop checks it is its own (landPush).
+func laneBlind(rel string) bool {
+	return rel == ReviewReceiptsRelDir || rel == ApprovalsRelDir
+}
+
+// driveLaneName is the name the implement loop gives a lane's worktree in the
+// store, <run-id>-<lane-id> (loop.laneName: run-<16 digits>-lane-<n>).
+var driveLaneName = regexp.MustCompile(`^run-[0-9]{16}-lane-[1-9][0-9]{0,3}$`)
+
+// DriveLaneWorktree reports whether path, a worktree's path as git lists it,
+// is a drive lane's: its last element is a lane's name as the implement loop
+// mints it. The path git lists comes from the repository's own worktree
+// records, outside the worktree, so nothing written inside the worktree
+// changes the answer. A worktree a person names that way is one the drive
+// would adopt as a lane's, and is read as one.
+func DriveLaneWorktree(path string) bool {
+	return driveLaneName.MatchString(filepath.Base(filepath.Clean(path)))
 }
 
 // findReceipts finds every worktree's receipt named sha under rel, in the order
@@ -110,8 +146,13 @@ func findReceipts(repoRoot, rel, sha string) ([]foundReceipt, error) {
 	}
 	var found []foundReceipt
 	for _, wt := range wts {
-		if p := receiptIn(wt, rel, sha); p != "" {
-			found = append(found, foundReceipt{p, localtier.Untracked(wt.Path, rel+"/"+sha)})
+		p := receiptIn(wt, rel, sha)
+		switch {
+		case p == "":
+		case laneBlind(rel) && DriveLaneWorktree(wt.Path):
+			found = append(found, foundReceipt{path: p, lane: true})
+		default:
+			found = append(found, foundReceipt{path: p, err: localtier.Untracked(wt.Path, rel+"/"+sha)})
 		}
 	}
 	return found, nil
@@ -135,12 +176,18 @@ func findReceiptsContext(ctx context.Context, repoRoot, rel, sha string) ([]foun
 func receiptsIn(ctx context.Context, wts []gitutil.Worktree, rel, sha string) ([]foundReceipt, error) {
 	var found []foundReceipt
 	for _, wt := range wts {
-		if p := receiptIn(wt, rel, sha); p != "" {
-			if err := ctx.Err(); err != nil {
-				return nil, err
-			}
-			found = append(found, foundReceipt{p, localtier.UntrackedContext(ctx, wt.Path, rel+"/"+sha)})
+		p := receiptIn(wt, rel, sha)
+		if p == "" {
+			continue
 		}
+		if laneBlind(rel) && DriveLaneWorktree(wt.Path) {
+			found = append(found, foundReceipt{path: p, lane: true})
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		found = append(found, foundReceipt{path: p, err: localtier.UntrackedContext(ctx, wt.Path, rel+"/"+sha)})
 	}
 	return found, nil
 }

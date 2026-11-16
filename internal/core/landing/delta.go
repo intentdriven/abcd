@@ -242,7 +242,7 @@ func RecordDeltaReview(repoRoot, head, base string, returns []ReviewReturn) (str
 	if tip == "" {
 		return "", errors.New("this repository has no default branch to read, so a delta cannot be judged")
 	}
-	reads, err := readReviewReceipts(repoRoot, head)
+	reads, _, err := readReviewReceipts(repoRoot, head)
 	if err != nil {
 		return "", err
 	}
@@ -305,14 +305,18 @@ func storedAncestor(repoRoot, ancestor, descendant string) (bool, error) {
 }
 
 // hasFullPair reports why base has no full pair's receipt: none in any
-// worktree, one that cannot be read, a delta's, or one holding no passing pair.
+// worktree (one in a drive lane's worktree is passed over), one that cannot
+// be read, a delta's, or one holding no passing pair.
 func hasFullPair(repoRoot, base string) error {
 	none := "the base head " + short(base) + " has no full review pair recorded"
-	reads, err := readReviewReceipts(repoRoot, base)
+	reads, passed, err := readReviewReceipts(repoRoot, base)
 	if err != nil {
 		return fmt.Errorf("%s that can be read: %w", none, err)
 	}
 	if len(reads) == 0 {
+		if len(passed) > 0 {
+			return fmt.Errorf("%s (%s)", none, passedOver(base, passed))
+		}
 		return errors.New(none)
 	}
 	for _, r := range reads {
@@ -356,14 +360,20 @@ type reviewReceiptRead struct {
 	err error
 }
 
-// readReviewReceipts reads every worktree's review receipt naming sha.
-func readReviewReceipts(repoRoot, sha string) ([]reviewReceiptRead, error) {
+// readReviewReceipts reads every worktree's review receipt naming sha, but
+// for one in a drive lane's worktree, which is never read and never counts:
+// passed holds the paths of those it passed over, for a reason to name.
+func readReviewReceipts(repoRoot, sha string) (reads []reviewReceiptRead, passed []string, err error) {
 	found, err := findReceipts(repoRoot, ReviewReceiptsRelDir, sha)
 	if err != nil {
-		return nil, notJudged{err}
+		return nil, nil, notJudged{err}
 	}
-	reads := make([]reviewReceiptRead, 0, len(found))
+	reads = make([]reviewReceiptRead, 0, len(found))
 	for _, f := range found {
+		if f.lane {
+			passed = append(passed, f.path)
+			continue
+		}
 		if f.err != nil {
 			// git said it tracks the receipt, or could not be asked.
 			var refused *localtier.Refused
@@ -376,7 +386,23 @@ func readReviewReceipts(repoRoot, sha string) ([]reviewReceiptRead, error) {
 		rec, err := readReviewRecord(f.path)
 		reads = append(reads, reviewReceiptRead{rec, err})
 	}
-	return reads, nil
+	return reads, passed, nil
+}
+
+// passedOver says, for a reason, that the review receipts for sha at paths
+// were passed over because each sits in a drive lane's worktree.
+func passedOver(sha string, paths []string) string {
+	return "the review receipt for " + short(sha) + " at " + shownPaths(paths) +
+		" was passed over, since no receipt in a drive lane's worktree counts"
+}
+
+// shownPaths is paths as a reason shows them, home-redacted and sanitised.
+func shownPaths(paths []string) string {
+	shown := make([]string, len(paths))
+	for i, p := range paths {
+		shown[i] = termsafe.Sanitize(fsutil.RedactHome(p))
+	}
+	return strings.Join(shown, " and ")
 }
 
 // isFullPair reports whether a receipt is a full pair's for sha, read under this
@@ -424,16 +450,23 @@ type reviewProof struct {
 	unreadable string
 	// unread says the gate could not judge them, so no answer rests on them.
 	unread bool
+	// passed says which receipts in a drive lane's worktree were passed over
+	// (passedOver), "" for none.
+	passed string
 }
 
 // readReviewProof reads every worktree's review receipt naming head. A full pair
 // in any of them is the answer; failing that, a delta that stands against the
 // default branch's tip; failing that, the first the gate could not judge, or what is
-// wrong with the first.
-func readReviewProof(repoRoot, head, tip string) reviewProof {
-	reads, err := readReviewReceipts(repoRoot, head)
+// wrong with the first. A receipt in a drive lane's worktree is never read, and
+// passed names it whatever the answer.
+func readReviewProof(repoRoot, head, tip string) (out reviewProof) {
+	reads, passed, err := readReviewReceipts(repoRoot, head)
 	if err != nil {
 		return reviewProof{unreadable: termsafe.Sanitize(fsutil.RedactHome(err.Error())), unread: true}
+	}
+	if len(passed) > 0 {
+		defer func() { out.passed = passedOver(head, passed) }()
 	}
 	for _, r := range reads {
 		if r.err == nil && isFullPair(r.rec, head) {

@@ -285,7 +285,8 @@ Its inputs:
 - **The approvals of the head.** An approval counts when it is the latest
   review by someone with write access, approves the head commit itself and is
   not the author's own; or when the technical facilitator recorded it through
-  the verb's approval act, which writes `.abcd/.work.local/approvals/<sha>`.
+  the verb's approval act, which writes `.abcd/.work.local/approvals/<sha>`,
+  found in any worktree but a drive lane's, as a review receipt is.
   The second exists because the forge refuses an author's approval of their
   own pull request, and the facilitator authors most of the pull requests
   abcd opens. It is the person's act, and the shell guard refuses it to an
@@ -304,7 +305,12 @@ Its inputs:
   `.abcd/.work.local/review-receipts/<sha>`, holding the commit, the reading of a
   verdict it was recorded under, when it was
   recorded and each return's name, verdict and SHA-256; the gate finds it in
-  any worktree of the repository. A return that falls short is refused,
+  any worktree of the repository but a drive lane's. A drive lane's worktree is
+  one the build loop made for a lane, named `run-<id>-lane-<n>` in the worktree
+  store, and the loop's model stages run in it. The gate tells it by the path git
+  lists for the worktree, which nothing written inside the worktree changes. It
+  counts no review receipt and no recorded approval found there, and its note
+  names each one it passed over. A return that falls short is refused,
   exit 2, naming it, and nothing is written. A receipt recorded before a verdict named
   its head does not count, at the gate or as a delta's base, whichever build wrote it:
   it keeps digests and not text, so it cannot be read again, and the head records its
@@ -345,8 +351,8 @@ Its inputs:
   decisions, whose bodies later steps read, and the intents, the specs, this brief, the principles, the research and the ADRs. A merge of a default-branch commit counts for nothing, so merging the
   default branch up needs no full pair, when it is exactly the merge git makes of
   its two parents with no conflict; any other merge is refused. The gate judges
-  all of this again at landing, reads the receipts for the head in every worktree,
-  and counts a receipt with no delta only when it
+  all of this again at landing, reads the receipts for the head in every worktree
+  but a drive lane's, and counts a receipt with no delta only when it
   holds a passing pair for the head it names.
 
 The decision, in order:
