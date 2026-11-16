@@ -1001,8 +1001,8 @@ func namesTheHeadLine(words []verdictWord, subject string) string {
 	}
 	return "It ends with one `### Verdict` section. The first line under that heading opens with exactly one of " + strings.Join(names, ", ") +
 		", and then, on the same line, names what you judged by its full name, which is `" + subject + "`. " +
-		"That line names nothing else that reads as a commit or digest name; a record id such as `iss-N` may stand on it. " +
-		"A verdict that names nothing, abbreviates the name or names anything else is refused and handed out again."
+		"That line holds the verdict word and that name and nothing else; say anything more, another commit included, on the lines below it. " +
+		"The loop reads the first full name after the word as what the verdict judges, so a verdict that names nothing, abbreviates the name or names anything else first is refused and handed out again."
 }
 
 // parseVerdict reads the one verdict a return states of subject, by the rule a

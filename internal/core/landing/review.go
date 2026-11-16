@@ -80,8 +80,10 @@ func NormalizeLineBreaks(text string) string { return lineBreaks.Replace(text) }
 //     emphasis stripped, its words joined by a space, a hyphen or an underscore, in
 //     capitals) that ends the line or is followed by a separator;
 //   - subject is named in full, on that line or on a `Head: <name>` line directly
-//     under the heading, and no other name stands on either: a run of hex holding a
-//     digit is another name, unless it is the number of a record id, all digits
+//     under the heading, and the first full name after the verdict word on its line,
+//     where the line holds one, is subject: what follows that name is not read, and
+//     no other name stands ahead of it or on the `Head:` line. A run of hex holding
+//     a digit is another name, unless it is the number of a record id, all digits
 //     and no more than twenty of them (recordid.IDNumberAt), as the digits of
 //     iss-2611060835372141 are.
 //
@@ -123,9 +125,18 @@ func ReadVerdict(text, subject string) (string, error) {
 	}
 	abbreviated := false
 	for _, at := range verdictNames.FindAllStringIndex(rest, -1) {
-		switch name := rest[at[0]:at[1]]; {
-		case name == subject:
+		name := rest[at[0]:at[1]]
+		if isFullName(name) {
+			// The first full name is what the verdict judges; what follows it on the
+			// line is said of something else, as a records commit's reviewer names the
+			// commit the record resolves with.
+			if name != subject {
+				return "", namesOther(name, subject)
+			}
 			named = true
+			break
+		}
+		switch {
 		case strings.HasPrefix(subject, name):
 			abbreviated = true
 		case recordid.IDNumberAt(rest, at[0], at[1]):
@@ -141,6 +152,10 @@ func ReadVerdict(text, subject string) (string, error) {
 	}
 	return "", fmt.Errorf("its verdict %s names no head; the line under the ### Verdict heading opens with the verdict and names what it judges in full, %s", clip(line), subject)
 }
+
+// isFullName reports whether a name on a verdict line is a whole object name or
+// digest, not an abbreviation of one.
+func isFullName(name string) bool { return fullSHA.MatchString(strings.TrimPrefix(name, "sha256:")) }
 
 // verdictNames is a name on a verdict line. A run of hex letters with no digit in it
 // is a word unless it is the name itself, and a record id's number is that id's.
