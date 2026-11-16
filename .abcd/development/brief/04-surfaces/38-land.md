@@ -316,7 +316,7 @@ Its inputs:
   lane, the paths git lists come from the repository's own worktree records, so
   nothing written inside a lane changes them. The gate counts no review receipt
   and no recorded approval found in a lane. Whenever it reads them, its note
-  names each one it passed over, whether or not another counted: the review
+  names each one it passed over, whether or not another counted: The review
   receipts in `auto`, and the recorded approvals for a contributor's pull request
   or in `human`. Asked from a checkout that is a drive lane's worktree or lies
   inside one, the gate counts no review receipt and no recorded approval at all,

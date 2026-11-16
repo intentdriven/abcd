@@ -379,7 +379,7 @@ tells a lane's worktree, so a directory inside a lane, a repository nested in
 one, or a path of another name that resolves into one counts as the lane: The
 drive's lane worktrees and everything under them are the drive's, so the gate
 reads no record there, whatever path names them. Whenever the gate reads them,
-its reason names each one it passed over, whether or not another counted: the
+its reason names each one it passed over, whether or not another counted: The
 review receipts in `auto` mode, and the recorded approvals for a contributor's
 pull request or in `human` mode. When `abcd land` or the release hold's re-arm
 runs from a drive lane's worktree or from anywhere under one, the gate counts no
