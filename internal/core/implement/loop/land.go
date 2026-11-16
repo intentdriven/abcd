@@ -612,7 +612,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	}
 	// The commit below takes the worktree's HEAD as its parent and moves the branch HEAD
 	// names, so it is made only from the lane's branch at the judged head.
-	if off, err := worktreeHeadOff(*lane); err != nil {
+	if off, err := worktreeHeadOff(*lane, lane.HeadSHA); err != nil {
 		return Outcome{}, err
 	} else if off != "" {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID,
@@ -693,9 +693,10 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 			"git could not commit the landing's records (a repository hook refused it, or no git identity is configured): "+fsutil.RedactHome(err.Error()),
 			"settle what git or the hook reports (the records stay staged in the lane's worktree), then run `abcd implement step` again; the loop never skips a hook")
 	}
-	// The commit is adopted only as a commit found would be: on the branch, at the
-	// worktree's HEAD, with the judged head its one parent and what was judged its change.
-	// A refusal leaves RecordsDone false, so the next call holds the commit to the same.
+	// The commit is adopted only as a commit found would be: on the branch, with the
+	// worktree's HEAD on that branch at it, the judged head its one parent and what was
+	// judged its change. refuseNotTheRecords holds a found commit to all of it, so a
+	// refusal here, which leaves RecordsDone false, holds the next call to the same.
 	head, err := branchTip(c, *lane)
 	if err != nil {
 		return Outcome{}, err
@@ -704,12 +705,6 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID,
 			"git committed the landing's records, but "+lane.Branch+" still stands at the judged head "+shortSHA(judged)+", so the commit is not on the lane's branch",
 			"put the lane's worktree back on its branch "+lane.Branch+" at the judged head "+shortSHA(judged)+", then run `abcd implement step` again; the landing makes its records itself")
-	}
-	at, err := pickGitAsStored(wt, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
-	if at = strings.TrimSpace(at); err != nil || at != head {
-		return Outcome{}, refuse(string(StageLand), "", lane.ID,
-			"after the landing's records commit the lane's worktree has HEAD at "+describeCommit(at)+", not at "+shortSHA(head)+", the tip of "+lane.Branch,
-			"restore the branch to the judged head "+shortSHA(judged)+" with the lane's worktree on it, then run `abcd implement step` again")
 	}
 	if err := refuseNotTheRecords(c, *lane, head, "made"); err != nil {
 		return Outcome{}, err
@@ -721,10 +716,11 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 // refuseNotTheRecords holds a commit at the lane branch's tip to what the landing's
 // records commit is: its one parent the judged head (lane.HeadSHA, not yet moved), its
 // subject the landing's, and its change against that head what the landing judges and
-// holding each of the landing's own records. which says how the commit came ("found",
-// from a killed call, or "made", by this call), so both are held to the same checks.
-// Everything is read as stored: what stands in for the commit, its parents or its
-// objects says nothing of what it holds.
+// holding each of the landing's own records, and the lane's worktree's HEAD on the
+// lane's branch at it. which says how the commit came ("found", from a killed call, or
+// "made", by this call), so both are held to the same checks. Everything is read as
+// stored: what stands in for the commit, its parents or its objects says nothing of
+// what it holds.
 func refuseNotTheRecords(c Context, lane Lane, tip, which string) error {
 	st := c.State
 	parents, _ := gitutil.RunCappedAsStored(c.RepoRoot, maxGitOutput, "log", "-1", "--format=%P", tip, "--")
@@ -753,21 +749,30 @@ func refuseNotTheRecords(c Context, lane Lane, tip, which string) error {
 		return refuse(string(StageLand), "", lane.ID, shortSHA(tip)+", the commit "+which+" on the judged head "+shortSHA(lane.HeadSHA)+", lacks "+lacks+", so it is not the landing's records",
 			"restore the branch to the judged head, then run `abcd implement step` again; the landing makes its records itself")
 	}
+	// The worktree's HEAD is where the landing's later stages stand, so a commit is
+	// adopted only with HEAD on the lane's branch at it, found or made.
+	if off, err := worktreeHeadOff(lane, tip); err != nil {
+		return err
+	} else if off != "" {
+		return refuse(string(StageLand), "", lane.ID,
+			"the lane's worktree has HEAD "+off+", not on refs/heads/"+lane.Branch+" at "+shortSHA(tip)+", the commit "+which+" on the judged head "+shortSHA(lane.HeadSHA),
+			"put the lane's worktree back on its branch "+lane.Branch+" at "+shortSHA(tip)+", or restore the branch to the judged head "+shortSHA(lane.HeadSHA)+" with the lane's worktree on it, then run `abcd implement step` again")
+	}
 	return nil
 }
 
 // worktreeHeadOff says where the lane's worktree's HEAD stands when it is not the lane's
-// branch at the judged head, "" when it is. Both reads are as stored, so no replace ref
-// or graft stands in for the commit HEAD names.
-func worktreeHeadOff(lane Lane) (string, error) {
-	if !gitutil.IsFullSHA(lane.HeadSHA) {
-		return "", fmt.Errorf("the lane's judged head %q is not a full commit name", lane.HeadSHA)
+// branch at want, "" when it is. Both reads are as stored, so no replace ref or graft
+// stands in for the commit HEAD names.
+func worktreeHeadOff(lane Lane, want string) (string, error) {
+	if !gitutil.IsFullSHA(want) {
+		return "", fmt.Errorf("the commit %q the lane's worktree should stand at is not a full commit name", want)
 	}
 	ref, refErr := pickGitAsStored(lane.Worktree, "symbolic-ref", "-q", "HEAD")
 	ref = strings.TrimSpace(ref)
 	at, atErr := pickGitAsStored(lane.Worktree, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
 	at = strings.TrimSpace(at)
-	if refErr == nil && atErr == nil && ref == "refs/heads/"+lane.Branch && at == lane.HeadSHA {
+	if refErr == nil && atErr == nil && ref == "refs/heads/"+lane.Branch && at == want {
 		return "", nil
 	}
 	on := "naming no branch"

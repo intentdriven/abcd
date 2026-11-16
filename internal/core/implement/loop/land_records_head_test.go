@@ -91,7 +91,7 @@ func TestTheRecordsCommitIsCheckedBeforeItIsAdopted(t *testing.T) {
 			"which is not the landing's records commit"},
 		"HEAD moved off the branch after the commit": {"post-commit",
 			"#!/bin/sh\ngit update-ref --no-deref HEAD '{judged}'\n",
-			"has HEAD at"},
+			"has HEAD naming no branch"},
 		"the index restaged before the commit": {"pre-commit",
 			"#!/bin/sh\necho 'Not the landing.' > restaged.txt\ngit add restaged.txt\n",
 			"restaged.txt"},
@@ -103,6 +103,37 @@ func TestTheRecordsCommitIsCheckedBeforeItIsAdopted(t *testing.T) {
 			r := f.wantsRefusedStep(t)
 			if !strings.Contains(r.Reason, c.names) {
 				t.Fatalf("the refusal names what is wrong with the commit: %+v", r)
+			}
+			f.wantsNoRecordsTaken(t, judged)
+		})
+	}
+}
+
+// A records commit refused because a hook took the worktree's HEAD off the branch stays
+// refused: the next call finds the commit on the branch and holds it to the worktree's
+// HEAD as the call that made it did, so with nothing repaired it is refused again and
+// not adopted.
+func TestARecordsCommitWithHEADDetachedIsRefusedAgainWhenFound(t *testing.T) {
+	for name, at := range map[string]string{
+		"HEAD detached at the judged head": "{judged}",
+		"HEAD detached at the new commit":  "HEAD",
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, l := preparedLanding(t)
+			judged := l.HeadSHA
+			installHook(t, f, "post-commit", "#!/bin/sh\ngit update-ref --no-deref HEAD \"$(git rev-parse '"+strings.ReplaceAll(at, "{judged}", judged)+"')\"\n")
+			r := f.wantsRefusedStep(t)
+			if !strings.Contains(r.Reason, "has HEAD ") {
+				t.Fatalf("the first call refuses the commit it made, naming where HEAD stands: %+v", r)
+			}
+			f.wantsNoRecordsTaken(t, judged)
+			tip := f.repo.Git("rev-parse", "refs/heads/"+l.Branch)
+			if tip == judged {
+				t.Fatalf("the commit stands on the branch for the next call to find: %s", tip)
+			}
+			r = f.wantsRefusedStep(t)
+			if !strings.Contains(r.Reason, "has HEAD naming no branch") || !strings.Contains(r.Reason, shortSHA(tip)+", the commit found") {
+				t.Fatalf("the next call refuses the commit it finds, naming where HEAD stands: %+v", r)
 			}
 			f.wantsNoRecordsTaken(t, judged)
 		})
