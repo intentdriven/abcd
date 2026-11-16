@@ -19,11 +19,21 @@
       "flags": [
         {
           "name": "impact",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "additive",
+            "breaking",
+            "fix"
+          ]
         },
         {
           "name": "production-mode",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "hand-written",
+            "dictated-and-formatted",
+            "scribe-transcribed"
+          ]
         },
         {
           "name": "remainder",

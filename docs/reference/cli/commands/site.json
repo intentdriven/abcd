@@ -81,7 +81,11 @@
         },
         {
           "name": "provider",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "cloudflare",
+            "github-pages"
+          ]
         },
         {
           "name": "replace-existing",

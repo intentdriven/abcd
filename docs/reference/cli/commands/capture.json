@@ -42,7 +42,12 @@
         },
         {
           "name": "production-mode",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "hand-written",
+            "dictated-and-formatted",
+            "scribe-transcribed"
+          ]
         },
         {
           "name": "remedy",
@@ -155,7 +160,13 @@
         },
         {
           "name": "state",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "accepted",
+            "rejected",
+            "declined",
+            "held"
+          ]
         },
         {
           "name": "supersedes",
@@ -248,7 +259,12 @@
         },
         {
           "name": "production-mode",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "hand-written",
+            "dictated-and-formatted",
+            "scribe-transcribed"
+          ]
         }
       ],
       "inputs": [],
@@ -302,7 +318,13 @@
         },
         {
           "name": "impact",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "additive",
+            "breaking",
+            "fix",
+            "internal"
+          ]
         },
         {
           "name": "intent",
@@ -310,7 +332,12 @@
         },
         {
           "name": "production-mode",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "hand-written",
+            "dictated-and-formatted",
+            "scribe-transcribed"
+          ]
         },
         {
           "name": "shipped-in",
@@ -352,7 +379,12 @@
         },
         {
           "name": "production-mode",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "hand-written",
+            "dictated-and-formatted",
+            "scribe-transcribed"
+          ]
         }
       ],
       "inputs": [],

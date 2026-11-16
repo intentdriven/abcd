@@ -28,7 +28,13 @@
         },
         {
           "name": "position",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "widening",
+            "entailment",
+            "comparative",
+            "detection"
+          ]
         },
         {
           "name": "target",

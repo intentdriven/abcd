@@ -5,8 +5,24 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/afterupdate"
+	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/banlist"
+	"github.com/intentdriven/abcd/internal/core/changelog"
+	"github.com/intentdriven/abcd/internal/core/checklist"
+	"github.com/intentdriven/abcd/internal/core/condition"
+	"github.com/intentdriven/abcd/internal/core/credential"
+	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/interview"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/launch"
+	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/core/provenance"
+	"github.com/intentdriven/abcd/internal/core/reading"
+	coresession "github.com/intentdriven/abcd/internal/core/session"
+	"github.com/intentdriven/abcd/internal/core/site"
 	"github.com/intentdriven/abcd/internal/core/source"
 	"github.com/intentdriven/abcd/internal/core/surface"
 	"github.com/spf13/cobra"
@@ -133,7 +149,11 @@ func TestCommandFactsFlagDetail(t *testing.T) {
 
 // closedSets is every flag declared through enumFlag, with the slice its
 // reader checks a value against. A new closed-set flag is added here, so the
-// annotation, the help and the reader are held to one slice.
+// annotation, the help and the reader are held to one slice. A flag whose
+// values are a closed set its reader checks is declared through enumFlag, so
+// its allowed values reach `abcd explain` (itd-2610301346085246 ac-1); the
+// flags left out take a list (--readme-parts, --route), an open word
+// (--label) or no value at all (--hold-moscow, reserved and refused whole).
 func closedSets() map[[2]string][]string {
 	return map[[2]string][]string{
 		{"abcd capture", "severity"}:                issueschema.Severities,
@@ -145,6 +165,45 @@ func closedSets() map[[2]string][]string {
 		{"abcd library add", "permission"}:          source.Permissions,
 		{"abcd library declassify", "permission"}:   source.Permissions,
 		{"abcd library ledger", "influence"}:        source.Influences,
+
+		{"abcd", "view"}:   boardViews,
+		{"abcd", "format"}: boardForms,
+
+		{"abcd ahoy connect", "home"}:               oracle.KeyHomes(),
+		{"abcd ahoy credential", "home"}:            credential.Homes(),
+		{"abcd ahoy install", "visibility"}:         ahoy.VisibilityChoices(),
+		{"abcd ahoy install", "docs-target"}:        ahoy.DocsTargetWritable(),
+		{"abcd ahoy install", "oracle-backend"}:     ahoy.OracleBackendChoices(),
+		{"abcd ahoy install", "scan-deep"}:          ahoy.ScanDeepChoices(),
+		{"abcd ahoy install", "live-sessions"}:      ahoy.LiveSessionsValues(),
+		{"abcd ahoy install", "answered-in"}:        interview.AnsweredInPlaces(),
+		{"abcd intent interview", "answered-in"}:    interview.AnsweredInPlaces(),
+		{"abcd reflect interview", "answered-in"}:   interview.AnsweredInPlaces(),
+		{"abcd banlist add", "severity"}:            banlist.Severities(),
+		{"abcd capture disposition", "state"}:       issueschema.DispositionStates,
+		{"abcd capture resolve", "impact"}:          changelog.ImpactNames(),
+		{"abcd intent", "impact"}:                   changelog.IntentImpactNames(),
+		{"abcd intent plan", "impact"}:              changelog.IntentImpactNames(),
+		{"abcd spec close", "impact"}:               changelog.IntentImpactNames(),
+		{"abcd intent", "production-mode"}:          provenance.ModeNames(),
+		{"abcd intent plan", "production-mode"}:     provenance.ModeNames(),
+		{"abcd spec close", "production-mode"}:      provenance.ModeNames(),
+		{"abcd capture", "production-mode"}:         provenance.ModeNames(),
+		{"abcd capture promote", "production-mode"}: provenance.ModeNames(),
+		{"abcd capture resolve", "production-mode"}: provenance.ModeNames(),
+		{"abcd capture wontfix", "production-mode"}: provenance.ModeNames(),
+		{"abcd checklist set", "state"}:             enumWords(checklist.States()),
+		{"abcd history capture", "kind"}:            history.Routes(),
+		{"abcd history reconstruct", "mode"}:        history.ReconstructModes(),
+		{"abcd implement join", "role"}:             enumWords(implement.Roles()),
+		{"abcd implement outage probe", "model"}:    probeVerdicts,
+		{"abcd intent condition", "disposition"}:    condition.Enum,
+		{"abcd intent reclassify", "kind"}:          intent.ReclassifyKinds(),
+		{"abcd launch manifests", "tree"}:           launch.LockstepTrees(),
+		{"abcd reading assemble", "position"}:       enumWords(reading.Positions()),
+		{"abcd session setup", "where"}:             coresession.Wheres(),
+		{"abcd site setup", "provider"}:             site.Providers(),
+		{"abcd update news", "answer"}:              afterupdate.Answers(),
 	}
 }
 

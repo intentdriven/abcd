@@ -104,7 +104,12 @@
         },
         {
           "name": "where",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "local",
+            "cloud",
+            "both"
+          ]
         }
       ],
       "inputs": [],

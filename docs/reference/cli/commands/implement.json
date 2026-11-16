@@ -90,7 +90,11 @@
         },
         {
           "name": "role",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "first",
+            "second"
+          ]
         },
         {
           "name": "session",
@@ -236,7 +240,11 @@
       "flags": [
         {
           "name": "model",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "ok",
+            "fail"
+          ]
         },
         {
           "name": "session",

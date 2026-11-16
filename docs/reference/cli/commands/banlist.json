@@ -30,7 +30,11 @@
         },
         {
           "name": "severity",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "blocker",
+            "warn"
+          ]
         },
         {
           "name": "successor",

@@ -28,7 +28,11 @@
       "flags": [
         {
           "name": "answer",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "yes",
+            "not-now"
+          ]
         },
         {
           "name": "full",

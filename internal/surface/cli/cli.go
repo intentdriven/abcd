@@ -30,7 +30,9 @@ import (
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/board"
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/condition"
 	"github.com/intentdriven/abcd/internal/core/dryrun"
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/history"
@@ -399,8 +401,9 @@ func NewRootCommand() *cobra.Command {
 	root.Flags().BoolVar(&noColor, "no-color", false, "render the banner and the board without color")
 	// Root-local for the same reason: the board's view and form exist only on
 	// the bare invocation (spc-2610031844142274, open question 1).
-	root.Flags().StringVar(&viewFlag, "view", "", "the board's view: product (the default) or facilitator")
-	root.Flags().StringVar(&formatFlag, "format", "", "the board's form: text (the default) or markdown, a list a host session pastes unchanged")
+	enumFlag(root.Flags(), &viewFlag, "view", "", "the board's view: ", boardViews, " (default product)")
+	enumFlag(root.Flags(), &formatFlag, "format", "", "the board's form: ", boardForms,
+		" (default text); markdown is a list a host session pastes unchanged")
 	// Root-local for the same reason: only the root's help has blocks (itd-146).
 	root.Flags().BoolVar(&agentHelp, "agent", false,
 		"with --help, list the verbs agents and hosts call as well, each naming the page to read next")
@@ -3240,7 +3243,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	// optional (a draft is "not judged yet"), but when set it is validated and
 	// travels unchanged to shipped/, where intent_impact_valid requires it — so the
 	// tool's own create->plan->ship path can produce a record that clears the gate.
-	intentCmd.Flags().StringVar(&intentImpact, "impact", "", "stamp the draft's product impact: additive|breaking|fix (optional)")
+	enumFlag(intentCmd.Flags(), &intentImpact, "impact", "", "stamp the draft's product impact: ", changelog.IntentImpactNames(), " (optional)")
 	// --title replaces the H1 the create derives from the text's first sentence.
 	// The text itself always seeds the Press Release; the title is only the
 	// heading over it, held to the same bar as the text (non-empty, one line,
@@ -3250,7 +3253,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	// vocabulary — the same shape as --impact and --severity, both of which
 	// already stamp machine-read enums. There is no flag for `origin`: it is
 	// derived from which command ran (itd-178).
-	intentCmd.Flags().StringVar(&intentProductionMode, "production-mode", "", productionModeFlagHelp)
+	productionModeFlag(intentCmd.Flags(), &intentProductionMode, productionModeLead, productionModeTail)
 
 	// plan <itd-N> — mint the spec, write both link sides, move drafts -> planned.
 	// plan <itd-A> <itd-B> … --bundle <name> — the bundle command (itd-34): one
@@ -3328,10 +3331,11 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
-	planCmd.Flags().StringVar(&planProductionMode, "production-mode", "", productionModeFlagHelp)
+	productionModeFlag(planCmd.Flags(), &planProductionMode, productionModeLead, productionModeTail)
 	// --impact on plan is the same closed choice the create path and `spec close`
 	// carry, taken at the moment the judgement is actually made.
-	planCmd.Flags().StringVar(&planImpact, "impact", "", "stamp the intent's product impact: additive|breaking|fix (optional; refused when it disagrees with one already recorded)")
+	enumFlag(planCmd.Flags(), &planImpact, "impact", "", "stamp the intent's product impact: ", changelog.IntentImpactNames(),
+		" (optional; refused when it disagrees with one already recorded)")
 	planCmd.Flags().StringVar(&planBundle, "bundle", "", "the name of the bundle several intents are planned as: kebab-case, required with two or more intents and refused with one")
 	planCmd.Flags().StringVar(&planTarget, "target", "", "the release the planned intent must land by: vX.Y.Z or next, written as target_release (optional; one intent only)")
 	intentCmd.AddCommand(planCmd)
@@ -3680,7 +3684,7 @@ func newIntentReclassifyCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVar(&kind, "kind", "", "the new kind: standalone, bundle-member, or superseded (a discipline is filed, never reclassified into)")
+	enumFlag(cmd.Flags(), &kind, "kind", "", "the new kind: ", intent.ReclassifyKinds(), " (a discipline is filed, never reclassified into)")
 	cmd.Flags().StringVar(&bundle, "bundle", "", "with --kind bundle-member: the bundle to join, one another record already names")
 	cmd.Flags().StringVar(&by, "by", "", "with --kind superseded: the successor, an intent (itd-M) or an ADR (adr-N)")
 	cmd.Flags().StringVar(&reason, "reason", "", "why, one line, redacted before it is written; required with --kind superseded")
@@ -3747,7 +3751,7 @@ func newIntentConditionCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVar(&disposition, "disposition", "", "the condition's disposition: survived|narrowed|falsified|untested")
+	enumFlag(cmd.Flags(), &disposition, "disposition", "", "the condition's disposition: ", condition.Enum, "")
 	cmd.Flags().StringVar(&occasionedBy, "occasioned-by", "", "what occasioned it: a reading item (rdi-N) or a shipped intent (itd-N)")
 	cmd.Flags().StringVar(&groundsText, "grounds", "", "why: held to the grounds substance floor, redacted before it is written")
 	cmd.Flags().StringVar(&narrowing, "narrowing", "", "what now holds: required on narrowed and refused on every other value")
@@ -3814,10 +3818,25 @@ func resolveProductionMode(repoRoot, flag string) (string, error) {
 	return string(m), nil
 }
 
-// productionModeFlagHelp is the one help string every verb carrying the flag
-// shows, composed from the vocabulary so it cannot drift from the enum.
-var productionModeFlagHelp = "how this record's text was produced: " + provenance.ModeList() +
-	" (default: the repo's declared mode, else " + string(provenance.DefaultMode) + ")"
+// productionModeFlag declares a --production-mode flag on fs, its help lead,
+// the closed set provenance.ParseMode reads, then tail, so every verb carrying
+// the flag shows one help composed from the vocabulary. A minting verb's tail
+// names the default; a restamping verb's says an absent flag leaves the stamp
+// alone.
+func productionModeFlag(fs *pflag.FlagSet, p *string, lead, tail string) {
+	enumFlag(fs, p, "production-mode", "", lead, provenance.ModeNames(), tail)
+}
+
+// The help of --production-mode around the set: the minting verbs' lead and
+// the restamping verbs' lead and tail.
+const (
+	productionModeLead = "how this record's text was produced: "
+	restampModeLead    = "restamp how this record's text was produced: "
+	restampModeTail    = " (default: leave the record's existing stamp alone; refused on a record that predates disclosure)"
+)
+
+// productionModeTail is the minting verbs' tail, naming the default.
+var productionModeTail = " (default: the repo's declared mode, else " + string(provenance.DefaultMode) + ")"
 
 // createIntentFromText is the quoted-text create path behind
 // `abcd intent "<text>"`: it files a new draft via intent.CreateFromText and
@@ -4425,9 +4444,10 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
-	closeCmd.Flags().StringVar(&closeImpact, "impact", "", "product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal); accepted only at the close that ships the intent")
+	enumFlag(closeCmd.Flags(), &closeImpact, "impact", "", "product impact to stamp on an intent that declares none: ", changelog.IntentImpactNames(),
+		" (an intent may not be internal); accepted only at the close that ships the intent")
 	closeCmd.Flags().StringVar(&closeRemainder, "remainder", "", "kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned); it carries the steps not marked landed")
-	closeCmd.Flags().StringVar(&closeMode, "production-mode", "", productionModeFlagHelp)
+	productionModeFlag(closeCmd.Flags(), &closeMode, productionModeLead, productionModeTail)
 	specCmd.AddCommand(closeCmd)
 
 	return specCmd
@@ -4810,15 +4830,17 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().BoolVar(&outbound, "outbound", false, "opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge, which also refuses a pull request body (gh pr create, new or edit) with no Assisted-by line in an accepted form, or one carrying a Co-authored-by line; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both")
 	installCmd.Flags().BoolVar(&allowStale, "allow-stale-binary", false, "proceed even when the running binary is stale against its source tip or its vintage cannot be determined; the default is to refuse before any write and name the rebuild fix")
 	installCmd.Flags().StringVar(&binDir, "bin-dir", "", "directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges")
-	installCmd.Flags().StringVar(&visibility, "visibility", "", "repo visibility: private | public")
-	installCmd.Flags().StringVar(&docsTarget, "docs-target", "", "whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change")
-	installCmd.Flags().StringVar(&oracleBackend, "oracle-backend", "", "oracle backend: host-delegated | native | cli | api | mcp")
-	installCmd.Flags().StringVar(&scanDeep, "scan-deep", "", "enable deep scan: true | false")
+	enumFlag(installCmd.Flags(), &visibility, "visibility", "", "repo visibility: ", ahoy.VisibilityChoices(), "")
+	enumFlag(installCmd.Flags(), &docsTarget, "docs-target", "", "whether AGENTS.md carries the managed block, which names abcd: ", ahoy.DocsTargetWritable(),
+		" (default skip); claude_md and both are refused, with the one setting to change")
+	enumFlag(installCmd.Flags(), &oracleBackend, "oracle-backend", "", "oracle backend: ", ahoy.OracleBackendChoices(), "")
+	enumFlag(installCmd.Flags(), &scanDeep, "scan-deep", "", "enable deep scan: ", ahoy.ScanDeepChoices(), "")
 	installCmd.Flags().StringSliceVar(&installTools, "install-tool", nil, "answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI")
 	installCmd.Flags().StringVar(&answersPath, "answers", "", "answer the setup questions from this answers file (JSON: schema_version, interview \"setup\", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key")
 	installCmd.Flags().StringVar(&readmeParts, "readme-parts", "", "answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included")
-	installCmd.Flags().StringVar(&liveSessions, "live-sessions", "", "answer the live brief session question: where sessions may run, local, cloud or both, or none, which answers no and is not asked again; stored in .abcd/config.json as sessions.live and honoured in any run, the approve-everything flag included; abcd session setup then does the setting up")
-	installCmd.Flags().StringVar(&answeredIn, "answered-in", interview.Terminal, "where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer")
+	enumFlag(installCmd.Flags(), &liveSessions, "live-sessions", "", "answer the live brief session question: ", ahoy.LiveSessionsValues(),
+		"; local, cloud or both say where sessions may run, and none answers no and is not asked again; stored in .abcd/config.json as sessions.live and honoured in any run, the approve-everything flag included; abcd session setup then does the setting up")
+	answeredInFlag(installCmd.Flags(), &answeredIn)
 	addOnlyWaitingFlag(installCmd)
 	ahoyCmd.AddCommand(installCmd)
 
@@ -5181,7 +5203,7 @@ func installOptionsFromFlags(cmd *cobra.Command, yes, adopt, refuseAdopt, dev, a
 		overrides[key] = val
 		return nil
 	}
-	if err := set("visibility", visibility, []string{"private", "public"}); err != nil {
+	if err := set("visibility", visibility, ahoy.VisibilityChoices()); err != nil {
 		return opts, err
 	}
 	// claude_md and both are read in a saved setting but never written, so the
@@ -5191,13 +5213,13 @@ func installOptionsFromFlags(cmd *cobra.Command, yes, adopt, refuseAdopt, dev, a
 			return opts, fmt.Errorf("abcd ahoy install: --docs-target %s is refused: %s", docsTarget, why)
 		}
 	}
-	if err := set("docs_target", docsTarget, []string{"agents_md", "skip"}); err != nil {
+	if err := set("docs_target", docsTarget, ahoy.DocsTargetWritable()); err != nil {
 		return opts, err
 	}
-	if err := set("oracle_backend", oracleBackend, []string{"host-delegated", "native", "cli", "api", "mcp"}); err != nil {
+	if err := set("oracle_backend", oracleBackend, ahoy.OracleBackendChoices()); err != nil {
 		return opts, err
 	}
-	if err := set("scan_deep", scanDeep, []string{"true", "false"}); err != nil {
+	if err := set("scan_deep", scanDeep, ahoy.ScanDeepChoices()); err != nil {
 		return opts, err
 	}
 	if len(overrides) > 0 {
@@ -6012,7 +6034,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// A closed choice, refused outright outside the vocabulary — the same shape
 	// as --severity. There is no flag for `origin`: a capture is
 	// researcher-authored by construction (itd-178).
-	captureCmd.Flags().StringVar(&captureProductionMode, "production-mode", "", productionModeFlagHelp)
+	productionModeFlag(captureCmd.Flags(), &captureProductionMode, productionModeLead, productionModeTail)
 
 	// list — the earned SD001 exception: a filter flag is REQUIRED.
 	var lsOpen, lsResolved, lsWontfix, lsAll bool
@@ -6137,7 +6159,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// refuses an empty impact — but it is not marked cobra-required, to keep the
 	// tree's no-required-flags invariant (TestLiveTreeMarksNoFlagRequired): the
 	// requirement is enforced semantically in the core, not by a usage annotation.
-	resolveCmd.Flags().StringVar(&resolveImpact, "impact", "", "product impact: additive|breaking|fix|internal (required)")
+	enumFlag(resolveCmd.Flags(), &resolveImpact, "impact", "", "product impact: ", changelog.ImpactNames(), " (required)")
 	resolveCmd.Flags().StringVar(&resolveGrounds, "grounds", "", groundsFlagUsage)
 	resolveCmd.Flags().StringVar(&resolveByIntent, "intent", "", "resolved_by provenance: the itd-N that fixed it (must exist)")
 	resolveCmd.Flags().StringVar(&resolveBySpec, "spec", "", "resolved_by provenance: the spc-N that fixed it (must exist)")
@@ -6151,8 +6173,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// A transition RESTAMPS production_mode, so the flag is passed through
 	// unresolved: an undeclared mode must leave the record's existing stamp alone,
 	// and taking the repo default here would silently overwrite it (itd-178).
-	resolveCmd.Flags().StringVar(&resolveModeRestamp, "production-mode", "",
-		"restamp how this record's text was produced: "+provenance.ModeList()+" (default: leave the record's existing stamp alone; refused on a record that predates disclosure)")
+	productionModeFlag(resolveCmd.Flags(), &resolveModeRestamp, restampModeLead, restampModeTail)
 	resolveCmd.Flags().StringVar(&resolveShippedIn, "shipped-in", "", "MIGRATION USE: the release that already carried this work (vX.Y.Z), leaving the record out of the current cut; unnecessary in a repo abcd managed from the start")
 	captureCmd.AddCommand(resolveCmd)
 
@@ -6269,7 +6290,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	}
 	promoteCmd.Flags().StringVar(&promoteIntent, "intent", "", "link mode: link this existing itd-N instead of minting a draft (writes both halves of the join)")
 	promoteCmd.Flags().StringVar(&promoteGrounds, "grounds", "", groundsFlagUsage)
-	promoteCmd.Flags().StringVar(&promoteProductionMode, "production-mode", "", productionModeFlagHelp)
+	productionModeFlag(promoteCmd.Flags(), &promoteProductionMode, productionModeLead, productionModeTail)
 	captureCmd.AddCommand(promoteCmd)
 
 	// migrate — rewrite the promote join's retired back-links (`promoted_to` on
@@ -6371,7 +6392,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// content of the record, and a defaulted judgement is a judgement nobody
 	// made; the core refuses an empty state rather than inventing one. It stays
 	// unmarked as cobra-required to keep the tree's no-required-flags invariant.
-	dispositionCmd.Flags().StringVar(&dispState, "state", "", "the answer: accepted | rejected | declined | held (availability varies by the item's position)")
+	enumFlag(dispositionCmd.Flags(), &dispState, "state", "", "the answer: ", issueschema.DispositionStates, " (availability varies by the item's position)")
 	declareClosedSet(dispositionCmd.Flags(), "state", issueschema.DispositionStates...)
 	dispositionCmd.Flags().StringVar(&dispGrounds, "grounds", "", "disposition_grounds: why this answer (free text; required on every state except held)")
 	dispositionCmd.Flags().StringVar(&dispExit, "exit-condition", "", "what would end a held disposition (required on held; a hold exits only through a superseding disposition that cites it)")
@@ -6557,8 +6578,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// `--grounds declined` and lost the word (iss-2608301212428844).
 	wontfixCmd.Flags().StringVar(&wontfixGrounds, "grounds", "",
 		"override the recorded grounds text (the token stays declined — a wontfix IS that non-action)")
-	wontfixCmd.Flags().StringVar(&wontfixProductionMode, "production-mode", "",
-		"restamp how this record's text was produced: "+provenance.ModeList()+" (default: leave the record's existing stamp alone; refused on a record that predates disclosure)")
+	productionModeFlag(wontfixCmd.Flags(), &wontfixProductionMode, restampModeLead, restampModeTail)
 	wontfixCmd.Flags().StringVar(&wontfixDuplicates, "duplicates", "", capture.DuplicatesFlagHelp)
 	captureCmd.AddCommand(wontfixCmd)
 
@@ -7795,6 +7815,17 @@ func enumFlag(fs *pflag.FlagSet, p *string, name, value, lead string, vals []str
 	if err := fs.SetAnnotation(name, allowedValuesAnnotation, append([]string{}, vals...)); err != nil {
 		panic(err) // the flag was declared on the line above
 	}
+}
+
+// enumWords is a closed set of a string-kinded core type as the words
+// enumFlag takes, in the set's own order, so a flag declares the core's list
+// rather than a copy of it.
+func enumWords[T ~string](vals []T) []string {
+	out := make([]string, 0, len(vals))
+	for _, v := range vals {
+		out = append(out, string(v))
+	}
+	return out
 }
 
 // flagAllowed is the closed set enumFlag recorded on f, or nil for a flag

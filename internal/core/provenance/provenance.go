@@ -153,6 +153,17 @@ func modeOrDefault(v string) (Mode, error) {
 	return ParseMode(v)
 }
 
+// ModeNames returns the set's wire values in the order ModeList names them:
+// the closed set a --production-mode flag declares, read from the one list
+// ParseMode checks against.
+func ModeNames() []string {
+	out := make([]string, 0, len(modeValues))
+	for _, m := range modeValues {
+		out = append(out, string(m))
+	}
+	return out
+}
+
 // ModeList renders the legal set for an error message or a flag's help text.
 func ModeList() string {
 	parts := make([]string, 0, len(modeValues))

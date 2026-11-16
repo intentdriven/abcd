@@ -284,7 +284,9 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "the provider's OpenAI-compatible base URL: https, or http to a server on this machine")
 	cmd.Flags().StringArrayVar(&models, "model", nil, "a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first); "+
 		"omitted at a terminal, the service's models are listed with the key and you pick one")
-	cmd.Flags().StringVar(&home, "home", "", "where the key lives: external (--env, or --file and --field) | abcd (read from stdin, hidden at a terminal, into the owner-only "+credential.StorePath+") | keychain (read from stdin, hidden at a terminal, into the platform keychain) | none (a server that takes no key)")
+	enumFlag(cmd.Flags(), &home, "home", "", "where the key lives: ", oracle.KeyHomes(),
+		"; external reads --env, or --file and --field; abcd reads it from stdin, hidden at a terminal, into the owner-only "+credential.StorePath+
+			"; keychain reads it from stdin, hidden at a terminal, into the platform keychain; none is a server that takes no key")
 	cmd.Flags().StringVar(&keyName, "key", "", "the credential's name (default: the provider's name)")
 	cmd.Flags().BoolVar(&streamUsage, "stream-usage", true, "whether calls ask the server for usage in the stream ("+openaiapi.StreamUsageField+"), written into the block as stream_usage; "+
 		"omitted, the verification asks, and a server that refuses it is asked once more without it and the block is written with false")

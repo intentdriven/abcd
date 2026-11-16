@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -153,6 +154,15 @@ func newImplementOutageRecordCommand(asJSON *bool) *cobra.Command {
 	return cmd
 }
 
+// The canary agent's verdicts on the model service, the closed set probe's
+// --model declares and its reader checks.
+const (
+	probeOK   = "ok"
+	probeFail = "fail"
+)
+
+var probeVerdicts = []string{probeOK, probeFail}
+
 func newImplementOutageProbeCommand(asJSON *bool) *cobra.Command {
 	var session, model string
 	cmd := &cobra.Command{
@@ -168,14 +178,14 @@ func newImplementOutageProbeCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var verdict func() (bool, string)
-			switch model {
-			case "":
-			case "ok":
-				verdict = func() (bool, string) { return true, "the canary agent answered" }
-			case "fail":
-				verdict = func() (bool, string) { return false, "the canary agent failed" }
-			default:
+			switch {
+			case model == "":
+			case !slices.Contains(probeVerdicts, model):
 				return &exitError{Code: 2, Msg: "abcd implement outage probe: --model takes ok or fail (the value given is not repeated here; nothing probed)"}
+			case model == probeOK:
+				verdict = func() (bool, string) { return true, "the canary agent answered" }
+			default:
+				verdict = func() (bool, string) { return false, "the canary agent failed" }
 			}
 			// The exit a rendered outcome carries is returned after withRun, which
 			// would otherwise prefix it with a message the rendered output already
@@ -221,7 +231,7 @@ func newImplementOutageProbeCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&session, "session", "", "this session's id")
-	cmd.Flags().StringVar(&model, "model", "", "the canary agent's verdict on the model service: ok | fail")
+	enumFlag(cmd.Flags(), &model, "model", "", "the canary agent's verdict on the model service: ", probeVerdicts, "")
 	return cmd
 }
 

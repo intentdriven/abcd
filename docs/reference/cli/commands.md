@@ -36,11 +36,11 @@ and staleness it reports are unchanged.
 
 ```
       --agent[=true|false]      with --help, list the verbs agents and hosts call as well, each naming the page to read next
-      --format string           the board's form: text (the default) or markdown, a list a host session pastes unchanged
+      --format string           the board's form: text | markdown (default text); markdown is a list a host session pastes unchanged
       --json[=true|false]       emit machine-readable JSON on stdout; a refusal is a {"abcd":"error","error":…,"exit_code":…} object on stdout too, and exits non-zero
       --no-color[=true|false]   render the banner and the board without color
       --version[=true|false]    print abcd's version, install mode, and vintage, from disk alone (the release check is: abcd update --check)
-      --view string             the board's view: product (the default) or facilitator
+      --view string             the board's view: product | facilitator (default product)
 ```
 
 **Example:**
@@ -120,7 +120,7 @@ Verify a provider and configure it, or guide setup: Writes ~/.abcd.noindex/ and 
       --field string                for --home external: the dotted field of --file that holds the value (auth.token)
       --file string                 for --home external: a tool's JSON configuration file under the home directory, written from ~/
       --guide[=true|false]          work the values out one question a turn and print the command to paste into a terminal; writes nothing, and the provider name is optional
-      --home string                 where the key lives: external (--env, or --file and --field) | abcd (read from stdin, hidden at a terminal, into the owner-only ~/.abcd.noindex/credentials.json) | keychain (read from stdin, hidden at a terminal, into the platform keychain) | none (a server that takes no key)
+      --home string                 where the key lives: external | abcd | keychain | none; external reads --env, or --file and --field; abcd reads it from stdin, hidden at a terminal, into the owner-only ~/.abcd.noindex/credentials.json; keychain reads it from stdin, hidden at a terminal, into the platform keychain; none is a server that takes no key
       --key string                  the credential's name (default: the provider's name)
       --model stringArray           a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first); omitted at a terminal, the service's models are listed with the key and you pick one
       --resume string               with --guide: the last turn's resume object, or - to read it from stdin
@@ -145,7 +145,7 @@ List the credentials abcd reads, explain one, or verify and store it: Writes the
       --env string     for --home external: the environment variable that holds the value
       --field string   for --home external: the dotted field of --file that holds the value (auth.token)
       --file string    for --home external: a tool's JSON configuration file under the home directory, written from ~/
-      --home string    where the credential lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd.noindex/credentials.json) | keychain (read from stdin into the platform keychain)
+      --home string    where the credential lives: external | abcd | keychain; external reads --env, or --file and --field; abcd reads it from stdin into the owner-only ~/.abcd.noindex/credentials.json; keychain reads it from stdin into the platform keychain
 ```
 
 **Example:**
@@ -177,7 +177,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
 ```
       --adopt[=true|false]                adopt an unmanaged repo without prompting
       --allow-stale-binary[=true|false]   proceed even when the running binary is stale against its source tip or its vintage cannot be determined; the default is to refuse before any write and name the rebuild fix
-      --answered-in string                where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer (default "Terminal")
+      --answered-in string                where an answers-file entry that names no place was answered: Terminal | Claude Code; Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer (default "Terminal")
       --answers string                    answer the setup questions from this answers file (JSON: schema_version, interview "setup", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key
       --attribution[=true|false]          opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook
       --bin-dir string                    directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges
@@ -185,7 +185,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --dev[=true|false]                  track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
       --docs-target string                whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change
       --install-tool strings              answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
-      --live-sessions string              answer the live brief session question: where sessions may run, local, cloud or both, or none, which answers no and is not asked again; stored in .abcd/config.json as sessions.live and honoured in any run, the approve-everything flag included; abcd session setup then does the setting up
+      --live-sessions string              answer the live brief session question: local | cloud | both | none; local, cloud or both say where sessions may run, and none answers no and is not asked again; stored in .abcd/config.json as sessions.live and honoured in any run, the approve-everything flag included; abcd session setup then does the setting up
       --only-waiting[=true|false]         ask only the setup that waits after an abcd update: the questions this repository never answered and the settings whose default changed, never one answered or deferred with decide later; every kind of change is approved up front, as the yes to the offer abcd update news makes approves them; with the approve-everything flag no question is answered, so each still waits
       --oracle-backend string             oracle backend: host-delegated | native | cli | api | mcp
       --outbound[=true|false]             opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge, which also refuses a pull request body (gh pr create, new or edit) with no Assisted-by line in an accepted form, or one carrying a Co-authored-by line; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both
@@ -480,7 +480,7 @@ Add one banned-name entry to the layer a flag names: Writes that layer's store; 
 ```
       --private[=true|false]   the gitignored per-machine layer (.abcd/.work.local/private-names.txt)
       --public[=true|false]    the committed, CI-enforced layer (.abcd/docs-lint.json)
-      --severity string        public entry severity: blocker (default) | warn
+      --severity string        public entry severity: blocker | warn (default blocker)
       --successor string       public entry's replacement, cited in the finding (default "a generic term")
 ```
 
@@ -801,7 +801,7 @@ File an issue from quoted text, or render the ledger's status bare: Writes one r
       --found-at string              optional repo-relative path, which must exist in this checkout, or a conceptual location in words
       --found-during string          session/command context (default manual-capture)
       --lapsed-at string             RFC 3339 instant a discipline gave way (the lapse, not the write-up)
-      --production-mode string       how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
+      --production-mode string       how this record's text was produced: hand-written | dictated-and-formatted | scribe-transcribed (default: the repo's declared mode, else hand-written)
       --remedy abcd capture remedy   the proposed fix, one line (required); abcd capture remedy rewrites it later
       --severity string              severity: nitpick | minor | major | critical (default minor)
       --slug string                  override the slug derived from the text
@@ -962,7 +962,7 @@ Graduate an issue or an accepted reading item into an intent draft: Writes the d
 ```
       --grounds string           optional; recorded when given — the conjecture being acted on, not the route taken: "<pursued|deferred|declined>: <what is expected, and what would show it wrong>"
       --intent string            link mode: link this existing itd-N instead of minting a draft (writes both halves of the join)
-      --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
+      --production-mode string   how this record's text was produced: hand-written | dictated-and-formatted | scribe-transcribed (default: the repo's declared mode, else hand-written)
 ```
 
 **Example:**
@@ -1015,9 +1015,9 @@ Move an open issue to resolved/, naming what fixed it: Writes the moved record; 
 ```
       --commit string            resolved_by provenance: the fixing commit sha (7-64 hex chars, shape-checked only)
       --grounds string           optional; recorded when given — the conjecture being acted on, not the route taken: "<pursued|deferred|declined>: <what is expected, and what would show it wrong>"
-      --impact string            product impact: additive|breaking|fix|internal (required)
+      --impact string            product impact: additive | breaking | fix | internal (required)
       --intent string            resolved_by provenance: the itd-N that fixed it (must exist)
-      --production-mode string   restamp how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: leave the record's existing stamp alone; refused on a record that predates disclosure)
+      --production-mode string   restamp how this record's text was produced: hand-written | dictated-and-formatted | scribe-transcribed (default: leave the record's existing stamp alone; refused on a record that predates disclosure)
       --shipped-in string        MIGRATION USE: the release that already carried this work (vX.Y.Z), leaving the record out of the current cut; unnecessary in a repo abcd managed from the start
       --spec string              resolved_by provenance: the spc-N that fixed it (must exist)
 ```
@@ -1057,7 +1057,7 @@ Move an open issue to wontfix/ with the reason it is not acted on: Writes the mo
 ```
       --duplicates string        comma-separated iss-N or itd-N ids this issue duplicates, written to its typed duplicates link; each must exist, and a link the record already carries is kept
       --grounds string           override the recorded grounds text (the token stays declined — a wontfix IS that non-action)
-      --production-mode string   restamp how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: leave the record's existing stamp alone; refused on a record that predates disclosure)
+      --production-mode string   restamp how this record's text was produced: hand-written | dictated-and-formatted | scribe-transcribed (default: leave the record's existing stamp alone; refused on a record that predates disclosure)
 ```
 
 **Example:**
@@ -1151,7 +1151,7 @@ minted, and it stays the same. An unknown id or state is refused (exit 2).
 **Flags:**
 
 ```
-      --state string   the item's new state: working, waiting, done, dropped
+      --state string   the item's new state: working | waiting | done | dropped
 ```
 
 **Example:**
@@ -2798,7 +2798,7 @@ Redact and store a session transcript, or a whole session with --all: Writes one
 
 ```
       --all[=true|false]   capture every transcript of the --session named — its main thread and each sub-agent — found under the paths given (default: ingest_roots)
-      --kind string        source route: native (abcd's own capture of the host's transcript) | import (another tool's export) (default native)
+      --kind string        source route: native | import (default native): native is abcd's own capture of the host's transcript, import another tool's export
       --session string     session id for the record (default: transcript filename; required for stdin)
       --tool string        source tool: the tool that produced the transcript, a lowercase slug (default host on a native capture; required on an import)
 ```
@@ -2907,7 +2907,7 @@ Render one session and its sub-agents as one artefact plus telemetry: Writes bot
 
 ```
       --max-block-bytes int   truncate one rendered tool input or result at this many bytes (0 disables); what is removed is marked and counted (default 8192)
-      --mode string           full (every turn of every agent) | spine (the main thread whole, each sub-agent reduced to its instruction and its conclusion) (default "full")
+      --mode string           full | spine: full is every turn of every agent, spine the main thread whole, each sub-agent reduced to its instruction and its conclusion (default "full")
       --out string            directory to write <session>.md and <session>.telemetry.json into, or - for stdout (default ".")
 ```
 
@@ -4324,8 +4324,8 @@ File a draft intent from quoted text, or render the intent store's status bare: 
 **Flags:**
 
 ```
-      --impact string            stamp the draft's product impact: additive|breaking|fix (optional)
-      --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
+      --impact string            stamp the draft's product impact: additive | breaking | fix (optional)
+      --production-mode string   how this record's text was produced: hand-written | dictated-and-formatted | scribe-transcribed (default: the repo's declared mode, else hand-written)
       --title string             the draft's H1 title (default: the first sentence of the text, cut on a word boundary at 60 characters)
 ```
 
@@ -4386,7 +4386,7 @@ Read or disposition a shipped intent's scope conditions: Writes a dated conditio
 **Flags:**
 
 ```
-      --disposition string     the condition's disposition: survived|narrowed|falsified|untested
+      --disposition string     the condition's disposition: survived | narrowed | falsified | untested
       --grounds string         why: held to the grounds substance floor, redacted before it is written
       --narrowing string       what now holds: required on narrowed and refused on every other value
       --occasioned-by string   what occasioned it: a reading item (rdi-N) or a shipped intent (itd-N)
@@ -4492,7 +4492,7 @@ refuses before anything runs, writing nothing. Off a terminal the questions are 
 **Flags:**
 
 ```
-      --answered-in string   where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer (default "Terminal")
+      --answered-in string   where an answers-file entry that names no place was answered: Terminal | Claude Code; Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer (default "Terminal")
       --answers string       answer the questions from this answers file (JSON: schema_version, interview "planning", answers by ordinal Q1, Q2, ...) instead of drawing them; the run refuses at the first question the file does not answer
 ```
 
@@ -4524,8 +4524,8 @@ Plan a draft, or several as a named bundle, or stamp a planned one's conditions:
 
 ```
       --bundle string            the name of the bundle several intents are planned as: kebab-case, required with two or more intents and refused with one
-      --impact string            stamp the intent's product impact: additive|breaking|fix (optional; refused when it disagrees with one already recorded)
-      --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
+      --impact string            stamp the intent's product impact: additive | breaking | fix (optional; refused when it disagrees with one already recorded)
+      --production-mode string   how this record's text was produced: hand-written | dictated-and-formatted | scribe-transcribed (default: the repo's declared mode, else hand-written)
       --target string            the release the planned intent must land by: vX.Y.Z or next, written as target_release (optional; one intent only)
 ```
 
@@ -4583,7 +4583,7 @@ Change an intent's kind, or retire it as superseded by a named successor: Writes
 ```
       --bundle string   with --kind bundle-member: the bundle to join, one another record already names
       --by string       with --kind superseded: the successor, an intent (itd-M) or an ADR (adr-N)
-      --kind string     the new kind: standalone, bundle-member, or superseded (a discipline is filed, never reclassified into)
+      --kind string     the new kind: standalone | bundle-member | superseded (a discipline is filed, never reclassified into)
       --reason string   why, one line, redacted before it is written; required with --kind superseded
 ```
 
@@ -5169,7 +5169,7 @@ line per field), 2 unreadable. Nothing is written.
 
 ```
       --root string   the tree to check (default: the working directory)
-      --tree string   the polarity to check: public (versions present and agreeing) or dev (versions absent)
+      --tree string   the polarity to check: public | dev; public requires the versions present and agreeing, dev requires them absent
 ```
 
 **Example:**
@@ -5991,7 +5991,7 @@ and its hash, so a run is reproducible from the commit it names.
       --out string             an empty or absent directory the assembled input and the manifest are written to,
                                for inspection: reading ingest finds a run only in the local-tier run directory,
                                so a run written here cannot be ingested (default: the local-tier run directory)
-      --position string        the reading position: widening, entailment, comparative, detection
+      --position string        the reading position: widening | entailment | comparative | detection
                                (comparative derives its candidate set from the record: the one committed
                                widening run at the target whose items carry no disposition and no
                                admission — at the target, or at an ancestor of it across which only the
@@ -6100,7 +6100,7 @@ terminal the questions are answered from --answers, by ordinal (Q1, Q2, ...).
 **Flags:**
 
 ```
-      --answered-in string     where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer (default "Terminal")
+      --answered-in string     where an answers-file entry that names no place was answered: Terminal | Claude Code; Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer (default "Terminal")
       --answers string         answer the questions from this answers file (JSON: schema_version, interview "retrospective", answers by ordinal Q1, Q2, ...) instead of drawing them; the run refuses at the first question the file does not answer
       --proceed[=true|false]   run although intents targeted at the release are unshipped (the person's confirmation)
 ```
@@ -6796,7 +6796,7 @@ that cannot be written afterwards exits 2 with the app and the answer kept.
 ```
       --relay-origin string   the deployed relay's https origin, once Render shows it, as https://host[:port]; recorded in .abcd/relay/relays.json
       --release string        the abcd release the cloud relay pins, as vMAJOR.MINOR.PATCH (default: this abcd's own version, when it is a release)
-      --where string          where sessions may run: local, cloud or both (default: the answer recorded in .abcd/config.json)
+      --where string          where sessions may run: local | cloud | both (default: the answer recorded in .abcd/config.json)
 ```
 
 **Example:**
@@ -6902,7 +6902,7 @@ Take the website from this checkout to a live address: Writes its files, and the
       --domain string                   custom domain to route to the host when the composition names none
       --name string                     host name when the composition names none (default: the repository's name)
       --project[=true|false]            set up a project site; where .abcd/site.json is a composition, its settings and workflow go beside it, in .abcd/project-site.json and .github/workflows/project-site.yml, and the composed site is left as it is
-      --provider string                 hosting provider when the composition names none: cloudflare or github-pages (default cloudflare); github-pages asks whether to switch the project site on
+      --provider string                 hosting provider when the composition names none: cloudflare | github-pages (default cloudflare); github-pages asks whether to switch the project site on
       --replace-existing[=true|false]   publish over a site the host already serves for this repository without asking; with --yes and no --replace-existing, setup refuses when such a site exists
       --yes[=true|false]                confirm the forge and host changes without being asked (never the install of a missing gh, nor publishing over a site already live, which takes --replace-existing); without it an unanswered run declines them
 ```
@@ -6942,8 +6942,8 @@ In the repository whose brief describes the binary, a close that ships an intent
 **Flags:**
 
 ```
-      --impact string            product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal); accepted only at the close that ships the intent
-      --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
+      --impact string            product impact to stamp on an intent that declares none: additive | breaking | fix (an intent may not be internal); accepted only at the close that ships the intent
+      --production-mode string   how this record's text was produced: hand-written | dictated-and-formatted | scribe-transcribed (default: the repo's declared mode, else hand-written)
       --remainder string         kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned); it carries the steps not marked landed
 ```
 
@@ -7187,7 +7187,7 @@ After an abcd update, print what the agent relays at the start of its first repl
 **Flags:**
 
 ```
-      --answer string       record the person's reply to the offer, yes or not-now, once for this repository and release; run it only with their reply
+      --answer string       record the person's reply to the offer, yes | not-now, once for this repository and release; run it only with their reply
       --full[=true|false]   print the full summary of the releases since the last update and what waits here; writes nothing
       --seen[=true|false]   record that the person read the news where no offer was made; run it only after they were shown it
 ```

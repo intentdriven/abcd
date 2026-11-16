@@ -67,7 +67,13 @@
         },
         {
           "name": "home",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "external",
+            "abcd",
+            "keychain",
+            "none"
+          ]
         },
         {
           "name": "key",
@@ -109,7 +115,12 @@
         },
         {
           "name": "home",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "external",
+            "abcd",
+            "keychain"
+          ]
         }
       ],
       "inputs": [],
@@ -139,7 +150,11 @@
         {
           "name": "answered-in",
           "type": "string",
-          "default": "Terminal"
+          "default": "Terminal",
+          "allowed": [
+            "Terminal",
+            "Claude Code"
+          ]
         },
         {
           "name": "answers",
@@ -163,7 +178,11 @@
         },
         {
           "name": "docs-target",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "agents_md",
+            "skip"
+          ]
         },
         {
           "name": "install-tool",
@@ -171,7 +190,13 @@
         },
         {
           "name": "live-sessions",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "local",
+            "cloud",
+            "both",
+            "none"
+          ]
         },
         {
           "name": "only-waiting",
@@ -179,7 +204,14 @@
         },
         {
           "name": "oracle-backend",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "host-delegated",
+            "native",
+            "cli",
+            "api",
+            "mcp"
+          ]
         },
         {
           "name": "outbound",
@@ -195,11 +227,19 @@
         },
         {
           "name": "scan-deep",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "true",
+            "false"
+          ]
         },
         {
           "name": "visibility",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "private",
+            "public"
+          ]
         },
         {
           "name": "yes",
