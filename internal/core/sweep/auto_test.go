@@ -2,6 +2,7 @@ package sweep
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -438,5 +439,135 @@ func TestTheAutomaticSweepsReportReadsRightWhenRefusedOrHomeless(t *testing.T) {
 	s := readAutomatic(layered.Roots{Repo: t.TempDir()}, true)
 	if s.On || !s.Said || !strings.Contains(s.Why, "the home directory is unresolved") {
 		t.Fatalf("a home that cannot be resolved read as %+v", s)
+	}
+}
+
+// spentWithEnv is a merged, clean store worktree named wt holding an ignored
+// .env, the ignore rule set by how: the repository's .gitignore, the global
+// ignore file git reads by default under XDG_CONFIG_HOME, or a
+// core.excludesFile a global git config names. Every file lives under the
+// test's own HOME; the config git reads is the test's, never the machine's.
+func spentWithEnv(t *testing.T, how string) (*gittest.Repo, string, string) {
+	t.Helper()
+	repo, home := sweepRepo(t)
+	config := filepath.Join(home, ".config")
+	t.Setenv("XDG_CONFIG_HOME", config)
+	switch how {
+	case "repository":
+		repo.Write(".gitignore", ".abcd/.work.local/\n.env\n")
+		repo.Commit("ignore .env")
+	case "global ignore file":
+		if err := os.MkdirAll(filepath.Join(config, "git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		write(t, filepath.Join(config, "git", "ignore"), ".env\n")
+	case "global core.excludesFile":
+		write(t, filepath.Join(home, "personal-ignore"), ".env\n")
+		write(t, filepath.Join(home, ".gitconfig"), "[core]\n\texcludesFile = "+filepath.Join(home, "personal-ignore")+"\n")
+	default:
+		t.Fatalf("no ignore rule %q", how)
+	}
+	wt := mergedAdd(t, repo, "wt")
+	env := filepath.Join(wt, ".env")
+	write(t, env, "TOKEN=a person's own\n")
+	return repo, wt, env
+}
+
+// TestTheAutomaticSweepKeepsAStoreWorktreeHoldingIgnoredFiles
+// (iss-2611161722120909, dcn-2611161654034047's ruling extended): a spent
+// store worktree holding an ignored .env is kept by the sweep abcd runs on its
+// own, its row naming .env and the applying form, and the .env still there;
+// the applying sweep a person runs removes the same worktree. The .env is
+// counted however git ignores it in the removal abcd runs: by the
+// repository's .gitignore, or by the global ignore file git reads by default,
+// which a listing with core.excludesFile turned off misses. One a
+// core.excludesFile in a global config ignores is no ignored file to the
+// removal abcd runs, which reads no global config: the worktree reads as
+// dirty, and is kept with its work saved.
+func TestTheAutomaticSweepKeepsAStoreWorktreeHoldingIgnoredFiles(t *testing.T) {
+	for _, how := range []string{"repository", "global ignore file"} {
+		t.Run(how, func(t *testing.T) {
+			repo, wt, env := spentWithEnv(t, how)
+			a := Automatic(context.Background(), repo.Root(), autoOpts(t, repo, sweepOpts()))
+			if !a.Ran || a.Fault != "" {
+				t.Fatalf("ran %v, fault %q", a.Ran, a.Fault)
+			}
+			r := rowFor(t, a.Result, "wt")
+			if r.Outcome != OutcomeKept || !exists(env) {
+				t.Fatalf("the worktree holding an ignored .env: %+v, .env standing %v; want it kept", r, exists(env))
+			}
+			for _, want := range []string{"left for `abcd sweep --apply`", "1 ignored path", ".env"} {
+				if !strings.Contains(r.Reason, want) {
+					t.Fatalf("the row's reason %q lacks %q", r.Reason, want)
+				}
+			}
+			if !hasEvidence(r, KindIgnored, Proven) {
+				t.Fatalf("the row carries no proof of the ignored file: %+v", r.Evidence)
+			}
+			if text := a.Text(); !strings.Contains(text, "[kept  worktree  wt") || !strings.Contains(text, ".env") {
+				t.Fatalf("the report %q does not name the kept worktree's .env", text)
+			}
+
+			if got := rowFor(t, apply(t, repo, sweepOpts()), "wt"); got.Outcome != OutcomeRemoved || exists(wt) {
+				t.Fatalf("the applying sweep: %+v, standing %v; want the worktree removed", got, exists(wt))
+			}
+		})
+	}
+	t.Run("global core.excludesFile", func(t *testing.T) {
+		repo, _, env := spentWithEnv(t, "global core.excludesFile")
+		a := Automatic(context.Background(), repo.Root(), autoOpts(t, repo, sweepOpts()))
+		if r := rowFor(t, a.Result, "wt"); r.Outcome == OutcomeRemoved || !exists(env) {
+			t.Fatalf("the worktree whose .env only a global core.excludesFile ignores: %+v, .env standing %v; want it kept", r, exists(env))
+		}
+	})
+}
+
+// TestTheAutomaticSweepRemovesAWorktreeIgnoringOnlyItsLocalTier: ignored
+// files inside the local tier alone keep nothing, since the removal archives
+// the tier first.
+func TestTheAutomaticSweepRemovesAWorktreeIgnoringOnlyItsLocalTier(t *testing.T) {
+	repo, _ := sweepRepo(t)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	wt := mergedAdd(t, repo, "wt")
+	if err := os.MkdirAll(filepath.Join(wt, ".abcd", ".work.local", "scratch"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(wt, ".abcd", ".work.local", "NEXT.md"), "handover\n")
+	write(t, filepath.Join(wt, ".abcd", ".work.local", "scratch", "x.txt"), "x\n")
+	a := Automatic(context.Background(), repo.Root(), autoOpts(t, repo, sweepOpts()))
+	if r := rowFor(t, a.Result, "wt"); r.Outcome != OutcomeRemoved || exists(wt) {
+		t.Fatalf("the worktree ignoring only its local tier: %+v, standing %v; want it removed", r, exists(wt))
+	}
+}
+
+// TestTheAutomaticSweepKeepsAWorktreeWhoseIgnoredFilesCannotBeListed: a
+// listing that fails, or whose answer cannot be trusted, keeps the worktree
+// on the automatic path, its row saying so.
+func TestTheAutomaticSweepKeepsAWorktreeWhoseIgnoredFilesCannotBeListed(t *testing.T) {
+	for name, c := range map[string]struct {
+		list func(string) (store.IgnoredState, error)
+		want string
+	}{
+		"fails": {func(string) (store.IgnoredState, error) {
+			return store.IgnoredState{}, errors.New("git refused the listing")
+		}, "git refused the listing"},
+		"untrusted": {func(string) (store.IgnoredState, error) { return store.IgnoredState{Unread: true}, nil }, "could not be listed"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo, _ := sweepRepo(t)
+			wt := mergedAdd(t, repo, "wt")
+			o := sweepOpts()
+			o.ignored = c.list
+			a := Automatic(context.Background(), repo.Root(), autoOpts(t, repo, o))
+			r := rowFor(t, a.Result, "wt")
+			if r.Outcome != OutcomeKept || !exists(wt) {
+				t.Fatalf("the worktree whose ignored files could not be listed: %+v; want it kept", r)
+			}
+			for _, want := range []string{"left for `abcd sweep --apply`", c.want} {
+				if !strings.Contains(r.Reason, want) {
+					t.Fatalf("the row's reason %q lacks %q", r.Reason, want)
+				}
+			}
+		})
 	}
 }

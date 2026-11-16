@@ -72,14 +72,24 @@ branch pushed with no commits yet, your own `build/ci-tweak`, or the branch
 of a store worktree it removes, is kept, its row opening "left for `abcd
 sweep --apply`", for you to delete after a dry run. A store worktree's branch
 is no proof abcd made it: `abcd ahoy worktree add` can check your existing
-branch out into the store.
+branch out into the store. For the same reason a spent store worktree that
+holds any ignored file outside its local tier (a `.env`, a local build
+config), which a removal deletes and only the local tier is archived, is kept
+too, its row opening "left for `abcd sweep --apply`" and naming how many
+ignored paths it holds and the first few; so is one whose ignored files cannot
+be listed. A file counts as ignored however git ignores it there, the global
+ignore file git reads by default included. Copy what you need, then remove it
+with `abcd sweep --apply` or `abcd ahoy worktree prune`.
 It never starts the reservation workflow and never files inbox reports, which
 stay with `--apply`. The worktree the running process is in, and any a live
 session holds, are kept.
 
 It runs for two minutes at most: its fetch, its fetch of the reservations
 and each delete on origin end at that bound or at a stop of the drive, and it
-starts no worktree removal past it, so a removal is never cut off midway. Its
+starts no worktree removal past it. After a landing step, at a drain's end and
+at a drive's end it stops between removals, so a removal is never cut off
+midway; as `abcd build` starts or resumes it stops only at the bound, and an
+interrupt there ends the process, perhaps during a removal. Its
 local reads (whether a branch is merged, and what a worktree has changed) are
 short and have no deadline of their own. What it did not reach
 waits for the next landing's sweep, the drain's end or your own `abcd sweep`.

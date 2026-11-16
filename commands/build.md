@@ -1060,7 +1060,9 @@ A lane's stages run in order:
    with the same proofs against a fresh fetch (other merged, clean worktrees
    removed, a dirty one's work saved and kept, the merged lane branches
    deleted locally and on origin, any other merged branch, a store worktree's
-   own included, kept and listed for `abcd sweep --apply`; no reservation
+   own included, kept and listed for `abcd sweep --apply`, and so is a spent
+   store worktree holding any ignored file outside its local tier (a `.env`,
+   say), which a removal would delete unarchived; no reservation
    workflow started, no inbox report filed), its line in `next`, bounded, with
    `abcd sweep` named for the full list. It runs for two minutes at most
    (its fetch, its fetch of the reservations and each delete on origin; its

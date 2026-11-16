@@ -96,7 +96,13 @@ peer's freshly pushed one, a person's own branch under the lane prefix, or the
 branch of a store worktree it removes, is listed with its reason and left for
 the applying form, since no person saw a dry run first. A store worktree's
 branch is no proof abcd made it: adding a worktree to the store can check a
-person's existing branch out there. It starts no reservation workflow and files no
+person's existing branch out there. For the same reason a spent store worktree
+holding any ignored file outside its local tier, which a removal deletes with
+only the tier archived, is kept and listed for the applying form, naming how
+many ignored paths it holds and the first few, and so is one whose ignored
+files cannot be listed (dcn-2611161728290362). A file counts as ignored as the
+store's own removal will delete it, the global ignore file git reads by
+default included. It starts no reservation workflow and files no
 inbox report: those stay with the applying form a person runs. The worktree
 the running process is in, and any a live session holds, are kept by the same
 liveness proof.
@@ -104,7 +110,10 @@ liveness proof.
 It is bounded at two minutes as a whole, well inside a lane's ten-minute
 command bound: its fetch, its fetch of the reservations and each delete on
 origin end with that bound or with a person's stop, and it starts no removal
-past it, so it stops between removals and never inside one. Its local reads,
+past it. After a landing step, at a drain's end and at a drive's end it stops
+between removals and never inside one; as a build starts or resumes it stops
+only at the bound, and an interrupt there ends the process, perhaps during a
+removal. Its local reads,
 the merged judgement and the liveness probe's read of a worktree's changes,
 are short and run with no deadline of their own. What it did not reach is judged again,
 with the same proofs, by the next landing's sweep or the drain's end. The act

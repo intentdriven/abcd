@@ -346,6 +346,10 @@ func TestALaneBranchIsExactlyTheShapeTheLoopGivesALane(t *testing.T) {
 		"build/run-0123456789012345-lane-12345", "build/run-0123456789012345-lane-1x", "build/run-0123456789012345",
 		"run-0123456789012345-lane-1", "feature/build/run-0123456789012345-lane-1", "build/run-0123456789012345-lane-1/x",
 		"build/x-run-0123456789012345-lane-1", "develop", "",
+		// A second -lane-, a bare trailing slash, a trailing newline and an
+		// upper-case prefix.
+		"build/run-0123456789012345-lane-1-lane-2", "build/run-0123456789012345-lane-1/",
+		"build/run-0123456789012345-lane-1\n", "Build/run-0123456789012345-lane-1",
 	} {
 		if LaneBranch(b) {
 			t.Fatalf("%q is read as a lane's branch", b)

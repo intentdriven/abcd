@@ -93,6 +93,10 @@ const (
 	// KindCwd the sweep's own working directory.
 	KindLoop EvidenceKind = "loop"
 	KindCwd  EvidenceKind = "cwd"
+	// KindIgnored is what git ignores in a spent worktree outside its local
+	// tier, which a removal deletes unarchived: the sweep abcd runs on its
+	// own keeps a worktree holding any, or whose listing failed.
+	KindIgnored EvidenceKind = "ignored"
 	// KindProtected is a branch on the never-delete list: the default branch,
 	// a release branch, a reservation or a status branch.
 	KindProtected EvidenceKind = "protected"

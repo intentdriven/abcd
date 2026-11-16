@@ -94,6 +94,13 @@ type Options struct {
 	// listed for the applying sweep a person runs. nil is every branch, as
 	// the applying sweep judges them.
 	ours func(name string) bool
+	// ignored, when set, lists what a removal would delete unarchived from a
+	// worktree judged spent: its ignored paths outside the local tier. The
+	// sweep abcd runs on its own sets it (store.IgnoredForRemoval), and keeps
+	// every such worktree holding any, or whose listing fails, for the
+	// applying sweep a person runs (keptForIgnored). nil lists nothing, as
+	// the applying sweep, whose dry run a person read first, judges them.
+	ignored func(dir string) (store.IgnoredState, error)
 
 	// forgeChecked says Forge was pinned to origin's repository already
 	// (pinnedForge), forgeKey is that repository's key, and forgeUnmatched
@@ -180,6 +187,9 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options, retain bool) (Re
 	sv := &salvager{ctx: ctx, repoRoot: repoRoot, home: home, lane: lane, retain: retain}
 	for i, r := range listing.Worktrees {
 		row := j.row(r)
+		if row.Action == ActionRemove && o.ignored != nil {
+			row = keptForIgnored(row, r.Abs, o.ignored)
+		}
 		if row.Action == ActionSavePatch {
 			if s, ok := sv.plan(r, &row); ok {
 				pl.salvages[i] = s
@@ -188,6 +198,37 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options, retain bool) (Re
 		res.Rows = append(res.Rows, row)
 	}
 	return res, pl, nil
+}
+
+// keptForIgnored is row, a worktree judged spent, as the sweep abcd runs on
+// its own judges it when Options.ignored is set (iss-2611161722120909): a
+// worktree holding any ignored path outside its local tier, which a removal
+// deletes unarchived, is kept, its row naming how many and the first of them
+// and saying it is left for the applying sweep a person runs, whose dry run
+// shows it first; so is one whose listing fails or cannot be trusted.
+// Otherwise row is as it was.
+func keptForIgnored(row Row, abs string, list func(string) (store.IgnoredState, error)) Row {
+	const left = "left for `abcd sweep --apply`: "
+	keep := func(s Strength, why string) Row {
+		row.Action = ActionKeep
+		row.Reason = clean(left + why + "; " + row.Reason)
+		row.Evidence = append(row.Evidence, Evidence{Kind: KindIgnored, Strength: s, Detail: clean(why)})
+		return row
+	}
+	got, err := list(abs)
+	switch {
+	case err != nil:
+		return keep(Hint, "its ignored files could not be listed ("+err.Error()+"), and a removal would delete any unarchived, so abcd does not remove it on its own")
+	case got.Unread:
+		return keep(Hint, "its ignored files could not be listed, and a removal would delete any unarchived, so abcd does not remove it on its own")
+	case got.Count > 0:
+		names := strings.Join(got.Paths, ", ")
+		if got.Count > len(got.Paths) {
+			names += fmt.Sprintf(", and %d more", got.Count-len(got.Paths))
+		}
+		return keep(Proven, fmt.Sprintf("it holds %d ignored path(s) outside its local tier (%s), which a removal deletes unarchived, so abcd does not remove it on its own; copy any you need first", got.Count, names))
+	}
+	return row
 }
 
 // required is why the options cannot run a sweep, nil when they can: Held

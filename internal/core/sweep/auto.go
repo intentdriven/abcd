@@ -11,7 +11,11 @@ package sweep
 // removed when spent, but its branch, unless it has a lane's shape, is kept
 // like any other branch judged deletable and listed for the applying sweep a
 // person runs, who saw a dry run first: `ahoy worktree add` can check a
-// person's existing branch out into the store. It dispatches no reservation
+// person's existing branch out into the store. For the same reason a spent
+// store worktree holding any ignored file outside its local tier, which a
+// removal deletes unarchived (a .env, a local build config), is kept and
+// listed for that sweep, and so is one whose ignored files cannot be listed
+// (iss-2611161722120909). It dispatches no reservation
 // workflow and files no inbox report; both stay with the sweep a person runs.
 // Its answer is never an error: a refusal or a fault is carried in the
 // answer, for the act it follows to report, and that act's own outcome
@@ -24,6 +28,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	store "github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
 )
@@ -129,7 +134,9 @@ type Auto struct {
 // Automatic runs the automatic sweep of the repository at repoRoot: its
 // setting read first, then, when it is on, Run's fetch and an applied sweep of
 // the worktrees, the local branches and the branches on origin, the branches
-// it deletes held to the ones abcd made (abcdMade). It never returns an error
+// it deletes held to the ones abcd made (abcdMade) and the worktrees it
+// removes to ones holding no ignored file outside the local tier
+// (keptForIgnored). It never returns an error
 // and never panics: a refusal, a fault, or a panic in any half, is the
 // answer's Fault. ctx bounds the whole of it, the fetch and each delete's
 // push included; once ctx ends, it stops between removals.
@@ -159,6 +166,9 @@ func Automatic(ctx context.Context, repoRoot string, a AutoOptions) (out Auto) {
 	out.Ran = true
 	opts := a.Options
 	opts.ours = abcdMade
+	if opts.ignored == nil {
+		opts.ignored = store.IgnoredForRemoval
+	}
 	o, err := prepare(ctx, repoRoot, opts)
 	if err != nil {
 		out.Result, _ = refused(err)
