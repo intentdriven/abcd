@@ -1224,7 +1224,8 @@ func (r *owedReader) stacked(name, head, base, baseTip string, p pullRequest, ha
 // unpushed reports whether b holds commits not on its upstream, or, with no
 // upstream configured, not in any remote-tracking ref and not already landed
 // in the default branch (r.landed). A branch whose upstream is gone never
-// counts.
+// counts, and neither does one the default branch has superseded
+// (r.superseded), which a note names for the person to delete.
 func (r *owedReader) unpushed(b *localBranch) bool {
 	if b.upstream != "" {
 		if b.upstreamGone {
@@ -1232,13 +1233,26 @@ func (r *owedReader) unpushed(b *localBranch) bool {
 		}
 		out, err := r.git("rev-list", "--count", b.upstream+".."+b.head, "--")
 		n, _ := strconv.Atoi(strings.TrimSpace(out))
-		return err == nil && n > 0
+		if err != nil || n == 0 {
+			return false
+		}
+		// A branch tracking the default branch itself, as one cut with -b
+		// from it does, is never pushed there: its commits ahead of it may
+		// be work another branch's pull request has already landed.
+		if b.upstream == r.def && r.superseded(b) {
+			return false
+		}
+		return true
 	}
 	out, err := r.git("rev-list", "-n", "1", b.head, "--not", "--remotes", "--")
 	if err != nil || strings.TrimSpace(out) == "" {
 		return false
 	}
-	switch r.landed(b) {
+	verdict := r.landed(b)
+	if verdict != landedYes && r.superseded(b) {
+		return false
+	}
+	switch verdict {
 	case landedYes:
 		return false
 	case landedUnknown:
@@ -1316,6 +1330,102 @@ func (r *owedReader) landed(b *localBranch) landedness {
 		return landedUnknown
 	}
 	return landedYes
+}
+
+// maxSupersededPaths bounds how many paths a branch may change and still be
+// read for r.superseded: each is a pathspec on one git command line.
+const maxSupersededPaths = 2000
+
+// superseded reports whether every change b makes since its merge base with
+// the default branch, as last fetched, is already recorded in a commit the
+// default branch contains: for each path b changes (read without rename
+// detection, so a move is a delete and an add), some commit after the merge
+// base reachable from the default branch, a merge's result against its first
+// parent included, wrote that path with exactly b's mode and object, or
+// deleted it as b does. Deleting b then loses none of its final content: only
+// its own commits, their messages and any state a later commit of its own
+// overwrote, which the default branch's history may not hold. That is not the claim that the default branch's tip ever
+// held b's content: a commit inside a pull request that merged counts, so a
+// change the pull request recorded and then dropped or moved before merging
+// counts as recorded, and the merge that dropped it was the reviewed decision.
+// The usual shape is a records branch whose records another branch's pull
+// request landed, moving some before it merged, and which the ledger has since
+// edited, moved or resolved (iss-2611160240149245): b's older copies change
+// the merged tree and its commits carry other patch ids, so r.landed cannot
+// call it landed. The test is never a guess from paths both sides touched: a
+// change, to content or mode, that no commit the default branch contains ever
+// wrote at that path keeps b from being superseded. When it is, a note names
+// it for the person to delete. Any read that fails or runs past its bound, no
+// default branch, or a branch changing more than maxSupersededPaths paths
+// reads as not superseded, leaving the verdict as it was.
+func (r *owedReader) superseded(b *localBranch) bool {
+	if r.defTip == "" || r.expired() {
+		return false
+	}
+	base, err := r.git("merge-base", r.defTip, b.head)
+	base = strings.TrimSpace(base)
+	if err != nil || !gitutil.IsFullSHA(base) || base == b.head {
+		return false
+	}
+	out, err := gitutil.RunCappedContext(r.ctx, r.root, maxLandedOutput,
+		"diff", "--no-renames", "--no-ext-diff", "--no-textconv", "--raw", "--no-abbrev", "-z", base, b.head, "--")
+	if err != nil {
+		return false
+	}
+	changes := rawChanges(out)
+	if len(changes) == 0 || len(changes) > maxSupersededPaths {
+		return false
+	}
+	args := []string{"--literal-pathspecs", "log", "--no-renames", "--no-ext-diff", "--no-textconv", "--raw", "--no-abbrev",
+		"-z", "--format=", "--diff-merges=first-parent", base + ".." + r.defTip, "--"}
+	for _, c := range changes {
+		args = append(args, c.path)
+	}
+	out, err = gitutil.RunCappedContext(r.ctx, r.root, maxLandedOutput, args...)
+	if err != nil {
+		return false
+	}
+	made := map[rawChange]bool{}
+	for _, c := range rawChanges(out) {
+		made[c] = true
+	}
+	for _, c := range changes {
+		if !made[c] {
+			return false
+		}
+	}
+	r.note("%s is superseded, not owed a push: every change it makes, to each path's exact content and mode, is already in a commit %s contains, so the person may delete it and lose none of its final content",
+		b.name, r.defLabel())
+	return true
+}
+
+// rawChange is one path's change in git's raw diff form: the path, and the
+// mode and object it ends as, all zeros for a deletion. The mode is part of
+// what a change writes, so a change of mode alone is a change of its own.
+type rawChange struct{ path, mode, blob string }
+
+// rawChanges reads `--raw -z` output, a diff's or a log's (with an empty
+// format): each change is a header, ":<modes> <old> <new> <status>", then
+// its path, NUL-separated. With rename detection off no change carries a
+// second path. A header without a full object name, or a status naming a
+// rename or a copy, is skipped with its path.
+func rawChanges(out string) []rawChange {
+	var changes []rawChange
+	fields := strings.Split(out, "\x00")
+	for i := 0; i+1 < len(fields); i++ {
+		head := strings.TrimLeft(fields[i], "\n")
+		if !strings.HasPrefix(head, ":") {
+			continue
+		}
+		path := fields[i+1]
+		i++
+		f := strings.Fields(head)
+		if len(f) != 5 || !gitutil.IsFullSHA(f[3]) || strings.ContainsAny(f[4][:1], "RC") {
+			continue
+		}
+		changes = append(changes, rawChange{path: path, mode: f[1], blob: f[3]})
+	}
+	return changes
 }
 
 // defLabel names the default branch as last fetched, for a note.
