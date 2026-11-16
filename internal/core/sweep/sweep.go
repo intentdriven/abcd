@@ -94,13 +94,17 @@ type Options struct {
 	// listed for the applying sweep a person runs. nil is every branch, as
 	// the applying sweep judges them.
 	ours func(name string) bool
-	// ignored, when set, lists what a removal would delete unarchived from a
-	// worktree judged spent: its ignored paths outside the local tier. The
-	// sweep abcd runs on its own sets it (store.IgnoredForRemoval), and keeps
-	// every such worktree holding any, or whose listing fails, for the
-	// applying sweep a person runs (keptForIgnored). nil lists nothing, as
-	// the applying sweep, whose dry run a person read first, judges them.
+	// ignored lists what a removal would delete unarchived from a worktree
+	// judged spent: its ignored paths outside the local tier; nil is
+	// store.IgnoredForRemoval. Every sweep names them on the worktree's row
+	// (withIgnored). A test sets it to stand in for a listing that fails.
 	ignored func(dir string) (store.IgnoredState, error)
+	// keepIgnored is set by the sweep abcd runs on its own (Automatic): a
+	// worktree holding any ignored path outside its local tier, or whose
+	// listing fails, is kept for the applying sweep a person runs, and the
+	// last check before its removal reads them once more. Unset, as in the
+	// sweep a person runs, the row names them and the worktree is removed.
+	keepIgnored bool
 
 	// forgeChecked says Forge was pinned to origin's repository already
 	// (pinnedForge), forgeKey is that repository's key, and forgeUnmatched
@@ -142,6 +146,9 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options, retain bool) (Re
 	}
 	if err := o.required(); err != nil {
 		return fail(err)
+	}
+	if o.ignored == nil {
+		o.ignored = store.IgnoredForRemoval
 	}
 	o = o.pinnedForge(ctx, repoRoot)
 	listing, err := store.List(repoRoot, store.ListOptions{Forge: o.Forge})
@@ -187,8 +194,8 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options, retain bool) (Re
 	sv := &salvager{ctx: ctx, repoRoot: repoRoot, home: home, lane: lane, retain: retain}
 	for i, r := range listing.Worktrees {
 		row := j.row(r)
-		if row.Action == ActionRemove && o.ignored != nil {
-			row = keptForIgnored(row, r.Abs, o.ignored)
+		if row.Action == ActionRemove {
+			row = withIgnored(row, r.Abs, o.ignored, o.keepIgnored)
 		}
 		if row.Action == ActionSavePatch {
 			if s, ok := sv.plan(r, &row); ok {
@@ -200,35 +207,94 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options, retain bool) (Re
 	return res, pl, nil
 }
 
-// keptForIgnored is row, a worktree judged spent, as the sweep abcd runs on
-// its own judges it when Options.ignored is set (iss-2611161722120909): a
-// worktree holding any ignored path outside its local tier, which a removal
-// deletes unarchived, is kept, its row naming how many and the first of them
-// and saying it is left for the applying sweep a person runs, whose dry run
-// shows it first; so is one whose listing fails or cannot be trusted.
-// Otherwise row is as it was.
-func keptForIgnored(row Row, abs string, list func(string) (store.IgnoredState, error)) Row {
-	const left = "left for `abcd sweep --apply`: "
-	keep := func(s Strength, why string) Row {
-		row.Action = ActionKeep
-		row.Reason = clean(left + why + "; " + row.Reason)
-		row.Evidence = append(row.Evidence, Evidence{Kind: KindIgnored, Strength: s, Detail: clean(why)})
+// withIgnored is row, a worktree judged spent, with what its removal deletes
+// unarchived (iss-2611161722120909): its ignored paths outside the local
+// tier, listed by list, or that they could not be listed. With nothing to
+// name, row is as it was. Otherwise row carries them (Row.Ignored), and:
+//
+//   - keep set, as the sweep abcd runs on its own sets it: the worktree is
+//     kept, its row saying how many and the first of them, or that they could
+//     not be listed, and that it is left for the applying sweep a person runs,
+//     whose rows name them first (keptForIgnored);
+//   - keep unset, as in the sweep a person runs: the row says so as
+//     information and the worktree is still removed, since the person, who
+//     reads the row, decides.
+func withIgnored(row Row, abs string, list func(string) (store.IgnoredState, error), keep bool) Row {
+	st := ignoredFor(abs, list)
+	if st == nil {
 		return row
 	}
+	row.Ignored = st
+	if keep {
+		return keptForIgnored(row, *st)
+	}
+	strength := Proven
+	if st.Unread {
+		strength = Hint
+	}
+	going := ignoredGoing(*st)
+	row.Reason = clean(row.Reason + "; " + going)
+	row.Evidence = append(row.Evidence, Evidence{Kind: KindIgnored, Strength: strength, Detail: clean(going)})
+	return row
+}
+
+// ignoredFor is list's answer for the worktree at abs as a row carries it:
+// nil when nothing outside the local tier is ignored, and a listing that
+// fails, or reads a wholly ignored .abcd/ it cannot read past, marked unread
+// with why.
+func ignoredFor(abs string, list func(string) (store.IgnoredState, error)) *store.IgnoredState {
 	got, err := list(abs)
 	switch {
 	case err != nil:
-		return keep(Hint, "its ignored files could not be listed ("+err.Error()+"), and a removal would delete any unarchived, so abcd does not remove it on its own")
+		return &store.IgnoredState{Paths: []string{}, Unread: true, Why: clean(err.Error())}
 	case got.Unread:
-		return keep(Hint, "its ignored files could not be listed, and a removal would delete any unarchived, so abcd does not remove it on its own")
+		got.Why = "a wholly ignored .abcd/ could not be read past"
+		return &got
 	case got.Count > 0:
-		names := strings.Join(got.Paths, ", ")
-		if got.Count > len(got.Paths) {
-			names += fmt.Sprintf(", and %d more", got.Count-len(got.Paths))
-		}
-		return keep(Proven, fmt.Sprintf("it holds %d ignored path(s) outside its local tier (%s), which a removal deletes unarchived, so abcd does not remove it on its own; copy any you need first", got.Count, names))
+		return &got
 	}
+	return nil
+}
+
+// ignoredNames is st's first paths, and how many more there are.
+func ignoredNames(st store.IgnoredState) string {
+	names := strings.Join(st.Paths, ", ")
+	if st.Count > len(st.Paths) {
+		names += fmt.Sprintf(", and %d more", st.Count-len(st.Paths))
+	}
+	return names
+}
+
+// ignoredGoing is what a person's sweep says on a remove row of the ignored
+// files that go with the worktree, as information.
+func ignoredGoing(st store.IgnoredState) string {
+	if st.Unread {
+		return "its ignored files could not be listed (" + st.Why + "), and any go with it, unarchived"
+	}
+	return fmt.Sprintf("%d ignored path(s) outside its local tier go with it, unarchived: %s; copy any you need first", st.Count, ignoredNames(st))
+}
+
+// keptForIgnored is row, a worktree judged spent whose removal would delete
+// st unarchived, as the sweep abcd runs on its own judges it: kept, its row
+// naming how many and the first of them, or that they could not be listed,
+// and saying it is left for the applying sweep a person runs, whose rows
+// name them first.
+func keptForIgnored(row Row, st store.IgnoredState) Row {
+	const left = "left for `abcd sweep --apply`: "
+	why, strength := ignoredKept(st)
+	row.Action = ActionKeep
+	row.Reason = clean(left + why + "; " + row.Reason)
+	row.Evidence = append(row.Evidence, Evidence{Kind: KindIgnored, Strength: strength, Detail: clean(why)})
 	return row
+}
+
+// ignoredKept is why the sweep abcd runs on its own keeps a worktree whose
+// removal would delete st, and how strong the evidence is.
+func ignoredKept(st store.IgnoredState) (string, Strength) {
+	if st.Unread {
+		return "its ignored files could not be listed (" + st.Why + "), and a removal would delete any unarchived, so abcd does not remove it on its own", Hint
+	}
+	return fmt.Sprintf("it holds %d ignored path(s) outside its local tier (%s), which a removal deletes unarchived, so abcd does not remove it on its own; copy any you need first", st.Count, ignoredNames(st)), Proven
 }
 
 // required is why the options cannot run a sweep, nil when they can: Held

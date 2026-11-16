@@ -571,3 +571,112 @@ func TestTheAutomaticSweepKeepsAWorktreeWhoseIgnoredFilesCannotBeListed(t *testi
 		})
 	}
 }
+
+// TestAPersonsSweepNamesTheIgnoredFilesARemovalTakes: the sweep a person runs,
+// its bare listing and its applying form, names on a remove row the ignored
+// files outside the local tier that go with the worktree, as information,
+// and still removes it.
+func TestAPersonsSweepNamesTheIgnoredFilesARemovalTakes(t *testing.T) {
+	repo, wt, env := spentWithEnv(t, "global ignore file")
+	r := rowFor(t, dryRun(t, repo, sweepOpts()), "wt")
+	if r.Action != ActionRemove {
+		t.Fatalf("the bare listing kept the worktree: %+v", r)
+	}
+	if r.Ignored == nil || r.Ignored.Count != 1 || r.Ignored.Paths[0] != ".env" {
+		t.Fatalf("the bare listing's row does not carry the ignored .env: %+v", r.Ignored)
+	}
+	for _, want := range []string{"1 ignored path(s) outside its local tier go with it, unarchived: .env"} {
+		if !strings.Contains(r.Reason, want) {
+			t.Fatalf("the bare listing's reason %q lacks %q", r.Reason, want)
+		}
+	}
+	if !hasEvidence(r, KindIgnored, Proven) {
+		t.Fatalf("the row carries no proof of the ignored file: %+v", r.Evidence)
+	}
+	got := rowFor(t, apply(t, repo, sweepOpts()), "wt")
+	if got.Outcome != OutcomeRemoved || exists(wt) || exists(env) {
+		t.Fatalf("the applying sweep: %+v; want the worktree removed", got)
+	}
+	if !strings.Contains(got.Reason, ".env") {
+		t.Fatalf("the applying form's row %q does not name the ignored .env", got.Reason)
+	}
+}
+
+// TestAPersonsSweepSaysWhenTheIgnoredFilesCouldNotBeListed: a failed listing
+// does not keep a worktree a person's sweep removes, but its row says so.
+func TestAPersonsSweepSaysWhenTheIgnoredFilesCouldNotBeListed(t *testing.T) {
+	repo, _ := sweepRepo(t)
+	mergedAdd(t, repo, "wt")
+	o := sweepOpts()
+	o.ignored = func(string) (store.IgnoredState, error) {
+		return store.IgnoredState{}, errors.New("git refused the listing")
+	}
+	r := rowFor(t, dryRun(t, repo, o), "wt")
+	if r.Action != ActionRemove {
+		t.Fatalf("a failed listing kept the worktree from a person's sweep: %+v", r)
+	}
+	if !strings.Contains(r.Reason, "its ignored files could not be listed (git refused the listing)") {
+		t.Fatalf("the row %q does not say its ignored files could not be listed", r.Reason)
+	}
+	if r.Ignored == nil || !r.Ignored.Unread {
+		t.Fatalf("the row's ignored state: %+v; want it unread", r.Ignored)
+	}
+}
+
+// TestTheAutomaticLineKeepsTheIgnoredWarningAtRealPathLengths: the bounded
+// line the automatic sweep prints names a kept worktree's ignored count and
+// first path even where its store path is as long as a real one.
+func TestTheAutomaticLineKeepsTheIgnoredWarningAtRealPathLengths(t *testing.T) {
+	repo, home := sweepRepo(t)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	repo.Write(".gitignore", ".abcd/.work.local/\n*.local\n")
+	repo.Commit("ignore local files")
+	name := "lane-bd-sweep-keeps-ignored-files"
+	wt := mergedAdd(t, repo, name)
+	write(t, filepath.Join(wt, ".env.production.local"), "TOKEN=a person's own\n")
+	a := Automatic(context.Background(), repo.Root(), autoOpts(t, repo, sweepOpts()))
+	r := rowFor(t, a.Result, name)
+	if want := len("~/.abcd.noindex/worktrees/") + 40 + 1 + len(name); len(r.Path) < want {
+		t.Fatalf("the row's path %q is shorter than a real store path (%d bytes)", r.Path, want)
+	}
+	text := a.Text()
+	for _, want := range []string{"1 ignored path", ".env.production.local"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the automatic line lacks %q:\n%s", want, text)
+		}
+	}
+}
+
+// TestTheAutomaticSweepReadsTheIgnoredFilesOnceMoreBeforeRemoving: an
+// ignored file written after the judgement and before the removal is seen by
+// the last check before `git worktree remove`, which keeps the worktree.
+func TestTheAutomaticSweepReadsTheIgnoredFilesOnceMoreBeforeRemoving(t *testing.T) {
+	repo, home := sweepRepo(t)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	repo.Write(".gitignore", ".abcd/.work.local/\n.env\n")
+	repo.Commit("ignore .env")
+	wt := mergedAdd(t, repo, "wt")
+	env := filepath.Join(wt, ".env")
+	o := sweepOpts()
+	reads := 0
+	o.ignored = func(dir string) (store.IgnoredState, error) {
+		reads++
+		s, err := store.IgnoredForRemoval(dir)
+		if reads == 1 {
+			// Judged with nothing ignored; the file arrives after.
+			write(t, env, "TOKEN=written after the judgement\n")
+		}
+		return s, err
+	}
+	a := Automatic(context.Background(), repo.Root(), autoOpts(t, repo, o))
+	r := rowFor(t, a.Result, "wt")
+	if r.Outcome != OutcomeKept || !exists(env) {
+		t.Fatalf("the worktree whose .env arrived before the removal: %+v, .env standing %v; want it kept", r, exists(env))
+	}
+	if !strings.Contains(r.Reason, ".env") || !hasEvidence(r, KindIgnored, Proven) {
+		t.Fatalf("the row does not name the .env the last check found: %+v", r)
+	}
+	if reads < 2 {
+		t.Fatalf("the ignored files were read %d time(s); want a last read before the removal", reads)
+	}
+}

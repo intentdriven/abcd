@@ -92,8 +92,9 @@ func runApply(ctx context.Context, repoRoot string, o Options) (Result, error) {
 func (j judge) remove(ctx context.Context, repoRoot string, src store.Row, o Options,
 	prune func(string, string, store.PruneOptions) (store.Pruned, error), row *Row) error {
 	var (
-		last  Liveness
-		asked bool
+		last    Liveness
+		asked   bool
+		ignored *store.IgnoredState
 	)
 	opts := store.PruneOptions{
 		Forge: o.Forge,
@@ -107,7 +108,17 @@ func (j judge) remove(ctx context.Context, repoRoot string, src store.Row, o Opt
 			fresh := j
 			fresh.probe = newProbe(ctx, o.Probe)
 			last = fresh.liveness(abs)
-			return last.Held, last.Reason
+			if last.Held || !o.keepIgnored {
+				return last.Held, last.Reason
+			}
+			// The sweep abcd runs on its own reads the ignored files once
+			// more, last: one written since the judgement is deleted by a
+			// removal git does not refuse.
+			if ignored = ignoredFor(abs, o.ignored); ignored != nil {
+				why, _ := ignoredKept(*ignored)
+				return true, why
+			}
+			return false, ""
 		},
 	}
 	got, err := prune(repoRoot, filepath.Base(filepath.Clean(src.Abs)), opts)
@@ -129,7 +140,14 @@ func (j judge) remove(ctx context.Context, repoRoot string, src store.Row, o Opt
 	}
 	// Kept by the store, or by the fresh probe: the prune row's reason is
 	// already masked and home-redacted.
-	if last.Held {
+	if ignored != nil && !last.Held {
+		// Kept by the last read of its ignored files: the row says so as the
+		// judgement's own keep would, with the paths found.
+		row.Ignored = ignored
+		*row = keptForIgnored(*row, *ignored)
+		row.Outcome = OutcomeKept
+		row.Reason = clean("at the last check before removal, " + row.Reason)
+	} else if last.Held {
 		row.Reason = "held at the last check before removal: " + pr.Reason
 		for _, e := range last.Evidence {
 			e.Detail = clean(e.Detail)
@@ -138,7 +156,7 @@ func (j judge) remove(ctx context.Context, repoRoot string, src store.Row, o Opt
 	} else {
 		row.Reason = "kept by the store's prune: " + pr.Reason
 	}
-	if failedReclaim(pr, asked, last.Held) {
+	if failedReclaim(pr, asked, last.Held || ignored != nil) {
 		row.Reason = "the store's prune failed, so the worktree is kept: " + pr.Reason
 		return errors.New("sweep: the store's prune failed on " + src.Name + ": " + pr.Reason)
 	}

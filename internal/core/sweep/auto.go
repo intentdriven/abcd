@@ -28,7 +28,6 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
-	store "github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
 )
@@ -166,9 +165,7 @@ func Automatic(ctx context.Context, repoRoot string, a AutoOptions) (out Auto) {
 	out.Ran = true
 	opts := a.Options
 	opts.ours = abcdMade
-	if opts.ignored == nil {
-		opts.ignored = store.IgnoredForRemoval
-	}
+	opts.keepIgnored = true
 	o, err := prepare(ctx, repoRoot, opts)
 	if err != nil {
 		out.Result, _ = refused(err)
@@ -222,7 +219,7 @@ func (a Auto) Text() string {
 		shown = shown[:autoRows]
 	}
 	for _, r := range shown {
-		parts = append(parts, "["+clip(RowLine(r, true), autoRowCap)+"]")
+		parts = append(parts, "["+autoRowLine(r)+"]")
 	}
 	tail := "`abcd sweep` lists every row"
 	if more > 0 {
@@ -255,6 +252,46 @@ func RowLine(r Row, applied bool) string {
 		line += "; " + r.Reason
 	}
 	return line
+}
+
+// autoIgnoredCap bounds the ignored-files lead a kept worktree's row opens
+// with in the automatic sweep's report, in bytes; the first path in it is a
+// name the worktree's writer chose.
+const autoIgnoredCap = 160
+
+// autoRowLine is r as the automatic sweep's report shows it, bounded by
+// autoRowCap: RowLine, except that a worktree kept for its ignored files
+// (Row.Ignored) opens, after its verb, kind and name, with how many and the
+// first of them, or that they could not be listed, ahead of its long store
+// path, so the clip never takes the warning.
+func autoRowLine(r Row) string {
+	if r.Ignored == nil || r.Action != ActionKeep {
+		return clip(RowLine(r, true), autoRowCap)
+	}
+	verb := string(r.Action)
+	if r.Outcome != "" {
+		verb = string(r.Outcome)
+	}
+	lead := "its ignored files could not be listed"
+	if !r.Ignored.Unread {
+		lead = fmt.Sprintf("%d ignored path(s) outside its local tier, first %s", r.Ignored.Count, firstOr(r.Ignored.Paths))
+	}
+	lead = clip(strings.Join([]string{verb, string(r.Kind), r.Name}, "  ")+": "+lead, autoIgnoredCap)
+	rest := r
+	rest.Action, rest.Outcome, rest.Kind, rest.Name = "", "", "", ""
+	tail := strings.TrimLeft(RowLine(rest, false), " ")
+	if room := autoRowCap - len(lead) - len("; "); room > 0 {
+		return lead + "; " + clip(tail, room)
+	}
+	return lead
+}
+
+// firstOr is paths' first, or "" when there is none.
+func firstOr(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	return paths[0]
 }
 
 // clip is s cut to at most n bytes at a rune boundary, marked when cut.

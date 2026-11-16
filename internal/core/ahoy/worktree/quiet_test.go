@@ -435,7 +435,7 @@ func TestTheDossierCountsRecordsInAWhollyIgnoredAbcd(t *testing.T) {
 func TestTheDossierSaysWhenTheIgnoredFilesCouldNotBeListed(t *testing.T) {
 	repo, _ := pruneFixture(t)
 	addToLane(t, repo, "idle")
-	defer worktree.SwapIgnoredForTest(func(string, string) ([]string, error) {
+	defer worktree.SwapIgnoredForTest(func(string) ([]gitutil.StatusEntry, error) {
 		return nil, gitutil.ErrLazyFetchFloor
 	})()
 
@@ -466,5 +466,82 @@ func TestTheDossierSaysWhenTheBranchHistoryCouldNotBeRead(t *testing.T) {
 	}
 	if !strings.Contains(r.Dossier.Recommendation, "could not be read") {
 		t.Errorf("the recommendation reads as nothing to lose: %q", r.Dossier.Recommendation)
+	}
+}
+
+// globalIgnore writes the global ignore file git reads by default, under an
+// XDG_CONFIG_HOME of the test's own HOME, matching lines.
+func globalIgnore(t *testing.T, home, lines string) {
+	t.Helper()
+	config := filepath.Join(home, ".config")
+	t.Setenv("XDG_CONFIG_HOME", config)
+	if err := os.MkdirAll(filepath.Join(config, "git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(config, "git", "ignore"), []byte(lines), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestTheDossierCountsAFileOnlyTheDefaultGlobalIgnoreFileMatches
+// (iss-2611161729040358): a removal deletes a .env only the global ignore file
+// git reads by default matches, so the dossier counts it with the removal's
+// own reader.
+func TestTheDossierCountsAFileOnlyTheDefaultGlobalIgnoreFileMatches(t *testing.T) {
+	repo, home := pruneFixture(t)
+	globalIgnore(t, home, ".env\n")
+	idle := addToLane(t, repo, "idle")
+	touchAt(t, idle, ".env", time.Now())
+
+	r := pruneRow(t, quietPrune(t, repo, worktree.PruneOptions{}), "idle")
+	if r.Outcome != worktree.OutcomeQuiet || r.Dossier == nil {
+		t.Fatalf("the idle worktree is a quiet candidate: %+v", r)
+	}
+	if got := r.Dossier.Ignored; got.Count != 1 || len(got.Paths) != 1 || got.Paths[0] != ".env" || got.Unread {
+		t.Errorf("ignored = %+v, want .env alone", got)
+	}
+}
+
+// TestPruneRowsNameTheIgnoredFilesARemovalTakes: a merged worktree prune
+// reclaims, or would, has its row name the ignored files outside the local
+// tier that go with it, as information; the removal still happens.
+func TestPruneRowsNameTheIgnoredFilesARemovalTakes(t *testing.T) {
+	for _, dry := range []bool{true, false} {
+		t.Run(fmt.Sprintf("dry run %v", dry), func(t *testing.T) {
+			repo, home := pruneFixture(t)
+			globalIgnore(t, home, ".env\n")
+			done := mergedWorktree(t, repo, "done")
+			touchAt(t, done, ".env", time.Now())
+
+			r := pruneRow(t, prune(t, repo, worktree.PruneOptions{DryRun: dry}), "done")
+			want := worktree.OutcomeReclaimed
+			if dry {
+				want = worktree.OutcomeWouldReclaim
+			}
+			if r.Outcome != want {
+				t.Fatalf("outcome %q, want %q: %+v", r.Outcome, want, r)
+			}
+			if r.Ignored == nil || r.Ignored.Count != 1 || len(r.Ignored.Paths) != 1 || r.Ignored.Paths[0] != ".env" {
+				t.Fatalf("the row does not name the ignored .env a removal takes: %+v", r.Ignored)
+			}
+		})
+	}
+}
+
+// TestPruneRowsSayWhenTheIgnoredFilesCouldNotBeListed: a listing that fails
+// does not refuse a person's prune, but its row says so.
+func TestPruneRowsSayWhenTheIgnoredFilesCouldNotBeListed(t *testing.T) {
+	repo, _ := pruneFixture(t)
+	mergedWorktree(t, repo, "done")
+	defer worktree.SwapIgnoredForTest(func(string) ([]gitutil.StatusEntry, error) {
+		return nil, gitutil.ErrLazyFetchFloor
+	})()
+
+	r := pruneRow(t, prune(t, repo, worktree.PruneOptions{DryRun: true}), "done")
+	if r.Outcome != worktree.OutcomeWouldReclaim {
+		t.Fatalf("a failed listing kept the worktree: %+v", r)
+	}
+	if r.Ignored == nil || !r.Ignored.Unread || r.Ignored.Why == "" {
+		t.Fatalf("the row does not say its ignored files could not be listed: %+v", r.Ignored)
 	}
 }

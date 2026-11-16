@@ -108,6 +108,11 @@ type PruneRow struct {
 	// Dossier is what a quiet candidate holds, so a person can choose to
 	// name it.
 	Dossier *Dossier `json:"dossier,omitempty"`
+	// Ignored is what a reclaimed worktree, or one a dry run would reclaim,
+	// took or takes with it unarchived: its ignored paths outside the local
+	// tier (IgnoredForRemoval), or that they could not be listed. It informs
+	// the person and keeps nothing; nil when there are none.
+	Ignored *IgnoredState `json:"ignored,omitempty"`
 }
 
 // Pruned is Prune's answer.
@@ -313,11 +318,14 @@ func reclaim(repoRoot string, lane Lane, e entry, opts PruneOptions, row *PruneR
 		return
 	}
 	row.Notes = notesCount(notes)
+	// Read before the removal, which deletes what it names: the person sees
+	// what went, or would go, with the worktree.
+	ignored := ignoredGoing(e.path)
 	if opts.DryRun {
 		if keptByCaller(opts, e, row) {
 			return
 		}
-		row.Outcome = OutcomeWouldReclaim
+		row.Outcome, row.Ignored = OutcomeWouldReclaim, ignored
 		return
 	}
 	entryDir := ""
@@ -352,7 +360,23 @@ func reclaim(repoRoot string, lane Lane, e entry, opts PruneOptions, row *PruneR
 		row.Reason = "git refused the removal: " + firstLine(err.Error())
 		return
 	}
-	row.Outcome = OutcomeReclaimed
+	row.Outcome, row.Ignored = OutcomeReclaimed, ignored
+}
+
+// ignoredGoing is what a removal of the worktree at dir takes with it
+// unarchived, for its prune row: its ignored paths outside the local tier,
+// or that they could not be listed and why; nil when there are none. It
+// informs and keeps nothing: a person's prune removes what it judged, and the
+// row tells them what went with it.
+func ignoredGoing(dir string) *IgnoredState {
+	s, err := IgnoredForRemoval(dir)
+	switch {
+	case err != nil:
+		return &IgnoredState{Paths: []string{}, Unread: true, Why: termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+	case s.Unread || s.Count > 0:
+		return &s
+	}
+	return nil
 }
 
 // keptByCaller asks the caller's PreRemove about e and, on a keep, marks row
