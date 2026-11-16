@@ -304,14 +304,22 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int, carry ma
 	// one carried. Where the line runs a command again or later than its text
 	// places it, the whole line's carry is taken before any git command is
 	// judged (runsOutOfTextOrder).
+	// A line read whole judges each git command under both carries, text
+	// order's and the whole line's, and refuses where either refuses: the
+	// whole line's holds each name's last value only, which a command before
+	// a later change of that name does not run with.
 	carried := map[string]string{}
 	for name, v := range carry {
 		carried[name] = v
 	}
-	whole := runsOutOfTextOrder(placed)
-	if whole {
+	var wholeCarried map[string]string
+	if runsOutOfTextOrder(placed) {
+		wholeCarried = map[string]string{}
+		for name, v := range carry {
+			wholeCarried[name] = v
+		}
 		for _, p := range placed {
-			carryEnvironment(p.seg, carried)
+			carryEnvironment(p.seg, wholeCarried)
 		}
 	}
 	for _, p := range placed {
@@ -319,26 +327,32 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int, carry ma
 		// A command a git setting runs is judged as run from the working
 		// tree, so only where the reading placed git there.
 		states := p.states
-		clean := func(v string) bool {
-			if strings.TrimSpace(v) == "" {
-				return true // no pager
-			}
-			if depth > 0 || wrote {
-				return false
-			}
-			for _, st := range states {
-				if !st.dirOK || st.dir != r.files.dir {
+		judge := func(env map[string]string) (Approval, bool) {
+			clean := func(v string) bool {
+				if strings.TrimSpace(v) == "" {
+					return true // no pager
+				}
+				if depth > 0 || wrote {
 					return false
 				}
+				for _, st := range states {
+					if !st.dirOK || st.dir != r.files.dir {
+						return false
+					}
+				}
+				return approveShellAt(ld, files, v, depth+1, env).Allow
 			}
-			return approveShellAt(ld, files, v, depth+1, carried).Allow
+			return gitConfigRefusal(p.seg, vf, clean, env)
 		}
-		if a, ok := gitConfigRefusal(p.seg, vf, clean, carried); ok {
+		if a, ok := judge(carried); ok {
 			return a
 		}
-		if !whole {
-			carryEnvironment(p.seg, carried)
+		if wholeCarried != nil {
+			if a, ok := judge(wholeCarried); ok {
+				return a
+			}
 		}
+		carryEnvironment(p.seg, carried)
 		for _, st := range p.states {
 			for _, u := range pathUses(rc, p.seg, st) {
 				wrote = true

@@ -244,7 +244,7 @@ func (p runParser) longOption(w string) (string, runTarget, string, bool, bool) 
 		case p.prefixed:
 			match = strings.HasPrefix(n, name)
 			for _, e := range p.exact {
-				match = match && !strings.HasPrefix(n, e)
+				match = match && n != e && !strings.HasPrefix(n, e+"=")
 			}
 		case p.abbrev:
 			match = n == name || len(n) > 2 && strings.HasPrefix(name, n) && !containsString(p.exact, n)

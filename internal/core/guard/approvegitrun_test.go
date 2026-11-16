@@ -121,6 +121,10 @@ func TestApproveCarriesANameTheLineAssignsWithoutAValue(t *testing.T) {
 		{`read -r line <<< x; git log -1`, nil},
 		{`GIT_PAGER=cat git log -1; git status`, nil},
 		{`GIT_EDITOR=true git rebase --continue && git log -1`, nil},
+		// A prefix on a command that runs a line of its own (eval, a shell)
+		// reaches the git commands of that line, so it is carried.
+		{`GIT_PAGER='$T --flag' eval 'git log -1'`, refused},
+		{`GIT_PAGER='$T --flag' bash -c 'git log -1'`, refused},
 	})
 }
 
@@ -140,6 +144,11 @@ func TestApproveCarriesByRunOrder(t *testing.T) {
 		{`for i in 1 2; do git log -1; done`, nil},
 		{`f() { git status; }; f`, nil},
 		{`git status; export GIT_PAGER='$T --flag'`, nil},
+		// A line read whole still judges each git command by what text
+		// order carries to it as well, so a value set before the git
+		// command and changed after it is not judged by the later one alone.
+		{`export GIT_PAGER='$T --flag'; git log -1; export GIT_PAGER=cat; for i in 1; do :; done`, refused},
+		{`export GIT_PAGER=cat; git log -1; for i in 1; do :; done`, nil},
 	})
 }
 
@@ -272,6 +281,8 @@ func TestApproveJudgesTheProgramsGitOptionsPick(t *testing.T) {
 
 		{`git mergetool -g`, nil},
 		{`git mergetool --tool-help`, nil},
+		{`git mergetool --tool-help=all`, nil},
+		{`git mergetool --tool-helpx tool`, refused},
 		{`git mergetool -t tool`, refused},
 		{`git mergetool --tool=tool`, refused},
 		{`git -c merge.guitool=tool mergetool -g`, refused},

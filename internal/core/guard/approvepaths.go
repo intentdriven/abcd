@@ -1123,12 +1123,13 @@ func execPathRefusal(args, valueFlags []string) (string, bool) {
 // out may set any variable, and is carried as GIT_CONFIG_PARAMETERS the line
 // does not fix, which readGitConfig reads as a key it cannot name. A
 // program-naming or GIT_CONFIG_* name the command assigns by any other means
-// (carriesAssigned) is carried as a value the line does not fix.
+// (carryAssigned) is carried as a value the line does not fix.
 //
 // Which command reaches which is read past order only: a pipeline's or a
 // subshell's assignment is carried too. Where the line runs a command again
-// or later than its text places it, approveShellAt takes the carry over the
-// whole line before it judges any git command in it (runsOutOfTextOrder): a
+// or later than its text places it, approveShellAt also takes the carry over
+// the whole line, and judges each git command in it under that carry as well
+// as under text order's, refusing where either refuses (runsOutOfTextOrder): a
 // loop runs its body's export before the next pass's git command, a
 // function's body runs where the function is called, an eval body is read
 // after the line's other commands (its segments are placed at the end), and
@@ -1193,24 +1194,33 @@ func carriesProgram(name string) bool {
 // array or an element of one. An assignment before a command that assigns
 // none of its operands (git, make) holds for that command alone, and is the
 // git reading's own to judge; one before a command that does (read, printf),
-// or one the line does not name, counts as assigned.
+// or one the line does not name, counts as assigned. Only git itself keeps
+// its prefix to itself here: a prefix before any other command (eval, a
+// shell, a function the line defines, make) can reach a git command that
+// command runs, so it is carried with the value it spells, or as a value
+// the line does not fix where it spells none.
 func carryAssigned(s segment, sites []arrival, env map[string]string, set, bare map[string]bool) {
 	names := namesAssigned([]segment{s})
 	prefixOnly := map[string]bool{}
 	if len(sites) > 0 {
 		first, plain := sites[0].idx, true
 		for _, a := range sites {
-			tok := s.tokens[a.idx]
-			if isUnknown(tok) || strings.ContainsRune(tok, varMark) || nameCouldBeAny(tok, operandAssigners) {
+			if s.tokens[a.idx] != "git" {
 				plain = false
 			}
 			if a.idx < first {
 				first = a.idx
 			}
 		}
-		for i := 0; plain && i < first; i++ {
-			if name, _, _, _, ok := splitAssignment(s.tokens[i]); ok {
+		for i := 0; i < first; i++ {
+			name, eq, appends, subscript, ok := splitAssignment(s.tokens[i])
+			switch {
+			case !ok || subscript || !carriesProgram(name):
+			case plain:
 				prefixOnly[name] = true
+			case nameCouldBeAny(s.tokens[sites[0].idx], operandAssigners) || appends:
+			default:
+				env[name], set[name] = s.tokens[i][eq+1:], true
 			}
 		}
 		for i := first; i < len(s.tokens); i++ {
@@ -1233,7 +1243,9 @@ func carryAssigned(s segment, sites []arrival, env map[string]string, set, bare 
 // while, until or select), a function definition (a command starting
 // function, or a lone word followed by a `{` group), an eval, or a
 // ${NAME:=…} (its record a segment with no words). carryEnvironment says
-// why each is read so.
+// why each is read so. A trap's handler is read where its text stands, and
+// a function whose body is a subshell rather than a `{` group is not told
+// apart from a plain command.
 func runsOutOfTextOrder(placed []placedSeg) bool {
 	for k, p := range placed {
 		s := p.seg
