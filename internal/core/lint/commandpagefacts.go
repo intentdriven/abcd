@@ -690,6 +690,31 @@ func shellCommands(s string) []string {
 	}
 }
 
+// opensPlaceholder reports whether the `<` at s[i] opens a placeholder, such
+// as <record-id> or <full commit id>, rather than an input redirection. A
+// placeholder is closed by a later `>` that directly follows a character of
+// its text. A `>` after a blank is an output redirection (`<in.json
+// >out.json`), and so is one after a lone file-descriptor number
+// (`<in.json 2>/dev/null`). A `<` followed by a blank, `<`, `>`, `&` or `(`
+// is a redirection, a here-document or a process substitution, and `<word`
+// with no `>` after it is a redirection, as the shell reads it.
+func opensPlaceholder(s string, i int) bool {
+	if i+1 >= len(s) || strings.IndexByte(" \t<>&(", s[i+1]) >= 0 {
+		return false
+	}
+	j := strings.IndexByte(s[i+1:], '>')
+	if j < 0 {
+		return false
+	}
+	// Step back over the digits directly before the `>`. What stands before
+	// them, or before the `>` when there are none, says which it is.
+	k := i + 1 + j
+	for k > i+1 && s[k-1] >= '0' && s[k-1] <= '9' {
+		k--
+	}
+	return s[k-1] != ' ' && s[k-1] != '\t'
+}
+
 // scanWords is the words of the command s opens, the offset its text ends at,
 // and whether a further command may follow there (the command ended at a
 // pipe, `;` or `&`, not at a redirection, a comment, a substitution or the end
@@ -731,7 +756,7 @@ func scanWords(s string) ([]string, int, bool) {
 		case depth == 0 && (c == '>' || c == '`'):
 			endWord()
 			return words, i, false
-		case c == '<' && (i+1 >= len(s) || s[i+1] == ' ' || s[i+1] == '<' || s[i+1] == '('):
+		case c == '<' && !opensPlaceholder(s, i):
 			// An input redirection, a here-document or a process
 			// substitution, not a placeholder.
 			endWord()

@@ -179,6 +179,18 @@ func TestCommandPageFacts(t *testing.T) {
 			text: "```bash\nabcd status --json | jq --raw-output .x\nabcd status --json 2>&1 >/dev/null --nope\nabcd status   # --verbose for more\nabcd status && git push --force-with-lease\n```\n",
 		},
 		{
+			name: "an input redirection with no space ends the invocation, and is no placeholder",
+			text: "```bash\nabcd ideate record s --verdict-json - <v.json | jq --raw-output .x\nabcd status <in.json >out.json --nope\nabcd status <in.json 2>/dev/null --nope\n```\n",
+		},
+		{
+			name: "a placeholder holding blanks or digits is no redirection",
+			text: "`abcd capture resolve iss-1 note --impact <full kind name> --bogus` and `abcd capture resolve <iss-2> n --impact <kind2> --gone`\n",
+			want: []struct {
+				line int
+				frag string
+			}{{1, "`--bogus`"}, {1, "`--gone`"}},
+		},
+		{
 			name: "an invocation after a pipe is read",
 			text: "```bash\nprintf %s '<p>' | abcd banlist add --private key - --bogus\n```\n",
 			want: []struct {
