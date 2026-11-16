@@ -750,9 +750,12 @@ const questionPointerLine = "Check the next draft with `abcd guard question` bef
 // Under a walled launch the check keeps abcd's defaults, reported as
 // bundled, as the GRILL domain the stage's prompt hook injects states them
 // (rulesForHook): the working tree's .abcd/config.json there is the lane's
-// own writing, never a limit the lane is held to. A value naming no commit
-// is no walled launch, as rules.LoadAt holds, so the files are read: setting
-// the variable to anything at all never drops a person's lower figures.
+// own writing, never a limit the lane is held to, and the person's own lower
+// figures are not applied on a stage either. Only a full sha takes that path
+// here; any other value reads the files, so a person's lower figures hold.
+// The prompt hook is stricter about the variable: it sends any non-empty
+// value to rules.LoadAt, which refuses one that is not a full sha naming a
+// commit, and then injects no rules at all. The runner sets only a full sha.
 func questionLimitsAt(cwd string, st *question.State) {
 	if gitutil.IsFullSHA(os.Getenv(runner.StageBaseEnv)) {
 		st.Limits = question.Default
