@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/testsecret"
@@ -428,7 +429,7 @@ func TestContentsStripsInlineHTMLFromHeadings(t *testing.T) {
 		"- [Install](#-install)",
 		"- [Usage beta](#usage-beta)",
 		"- [OldNew](#oldnew)",
-		"- [a < b > c](#a--b--c)",
+		`- [a \< b > c](#a--b--c)`,
 		"- [Use `<kbd>` here](#use-kbd-here)",
 		"- [The `[x](y)` form](#the-xy-form)",
 		"- [A `tick](#a-tick)",
@@ -498,6 +499,14 @@ func TestContentsKeepsAHeadingsEscapedMarkupAsText(t *testing.T) {
 		"",
 		`## Use <a title='it\'s'> here`,
 		"",
+		"## Option [new]<br>(experimental)",
+		"",
+		"## Hi <img[ src=x](y)>",
+		"",
+		`## <img src="data:` + strings.Repeat("a", 600) + `"> Badge`,
+		"",
+		"## Note <!-- " + strings.Repeat("n", 600) + " --> kept",
+		"",
 	}, "\n")
 	root := readmeRepo(t, "", map[string]string{"README.md": readme})
 	d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
@@ -507,10 +516,28 @@ func TestContentsKeepsAHeadingsEscapedMarkupAsText(t *testing.T) {
 		`- [A b\]c link](`,
 		`- [Tag t end](`,
 		`- [Quote t end](`,
-		`- [Use <a title='it\'s'> here](#use-a-titleits-here)`,
+		`- [Use \<a title='it\'s'> here](#use-a-titleits-here)`,
+		`- [Option \[new\](experimental)](#option-newexperimental)`,
+		`- [Hi \<img src=x>](#hi-img-srcx)`,
+		`Badge](#-badge)`,
+		`- [Note  kept](#note--kept)`,
 	} {
 		if !strings.Contains(d.Body, want) {
 			t.Errorf("the contents list must carry %q:\n%s", want, d.Body)
+		}
+	}
+}
+
+// TestHeadingTextStaysLinear: a hostile heading of many unclosed brackets,
+// up to the file cap, is read in bounded time; read to the end of the line at
+// each bracket it took minutes (iss-2611161558121669).
+func TestHeadingTextStaysLinear(t *testing.T) {
+	for _, unit := range []string{"<!--", `<a b="`, "<a b=c ", "<"} {
+		s := `\! ` + strings.Repeat(unit, (1<<20)/len(unit))
+		start := time.Now()
+		headingText(s)
+		if d := time.Since(start); d > 20*time.Second {
+			t.Errorf("a %d-byte heading of %q took %v", len(s), unit, d)
 		}
 	}
 }

@@ -983,40 +983,70 @@ var inlineTagAtRe = regexp.MustCompile(`^(?:` + inlineTagRe.String() + `)`)
 // escapeHoldRe is a held escape, as dropTagsHoldEscapes writes it.
 var escapeHoldRe = regexp.MustCompile("\x01([0-9]+)\x01")
 
-// headingTagWindow bounds how far one tag is read from its angle bracket, so
-// a heading of many unclosed brackets costs a bounded read at each rather
-// than a read to the end of the line (a hostile README stays linear); a tag
-// in a heading is far shorter.
-const headingTagWindow = 512
+// headingTagWindow bounds how far one tag is first read from its angle
+// bracket. A tag that runs past it is read again over the rest of the line
+// while the heading's budget lasts (headingTagBudget times its length), so a
+// heading's real long tag (a badge's data URL) is still dropped, and a
+// hostile heading of many unclosed brackets costs a bounded read at each
+// once the budget is spent: the reading stays linear.
+const (
+	headingTagWindow = 512
+	headingTagBudget = 4
+)
+
+// tagAt is the length of the tag opening at the start of w, or 0. An
+// unclosed comment is told without a regexp.
+func tagAt(w string) int {
+	if strings.HasPrefix(w, "<!--") && !strings.Contains(w[4:], "-->") {
+		return 0
+	}
+	if m := inlineTagAtRe.FindStringIndex(w); m != nil {
+		return m[1]
+	}
+	return 0
+}
 
 // dropTagsHoldEscapes reads s left to right as the forge does
 // (iss-2611161558121669): an inline tag where one opens is dropped, and a
 // backslash inside it is no escape; a backslash escape elsewhere, a
 // backslash before ASCII punctuation, is replaced with a placeholder the
 // link pattern cannot read as markup, and the returned function puts it
-// back. Only this reading admits a tag, so a held escape can never make one
-// of a bracket the heading shows as text. Text that already holds the
-// placeholder's byte has its tags dropped and nothing held, with an identity
-// restore, as MaskCodeSpans treats a heading holding its own.
+// back. A dropped tag leaves an empty placeholder, so the link pattern never
+// joins a bracket and a parenthesis the tag kept apart. Only this reading
+// admits a tag, so a held escape can never make one of a bracket the heading
+// shows as text.
+//
+// Text that already holds the placeholder's byte is read as before the
+// escapes were held: links, then tags, with an identity restore, as
+// MaskCodeSpans treats a heading holding its own.
 func dropTagsHoldEscapes(s string) (string, func(string) string) {
-	hold := strings.IndexByte(s, 0x01) < 0
+	if strings.IndexByte(s, 0x01) >= 0 {
+		return inlineTagRe.ReplaceAllString(inlineLinkRe.ReplaceAllString(s, "$1"), ""), func(t string) string { return t }
+	}
 	var held []string
+	hold := func(b *strings.Builder, v string) {
+		fmt.Fprintf(b, "\x01%d\x01", len(held))
+		held = append(held, v)
+	}
+	budget := headingTagBudget * len(s)
 	var b strings.Builder
 	b.Grow(len(s))
 	for i := 0; i < len(s); {
 		switch {
 		case s[i] == '<':
-			w := s[i:min(len(s), i+headingTagWindow)]
-			if strings.HasPrefix(w, "<!--") && !strings.Contains(w[4:], "-->") {
-				break // an unclosed comment opens no tag
+			end := min(len(s), i+headingTagWindow)
+			n := tagAt(s[i:end])
+			if n == 0 && end < len(s) && budget >= len(s)-i {
+				budget -= len(s) - i
+				n = tagAt(s[i:])
 			}
-			if m := inlineTagAtRe.FindStringIndex(w); m != nil {
-				i += m[1]
+			if n > 0 {
+				hold(&b, "")
+				i += n
 				continue
 			}
-		case hold && s[i] == '\\' && i+1 < len(s) && isASCIIPunct(s[i+1]):
-			fmt.Fprintf(&b, "\x01%d\x01", len(held))
-			held = append(held, s[i:i+2])
+		case s[i] == '\\' && i+1 < len(s) && isASCIIPunct(s[i+1]):
+			hold(&b, s[i:i+2])
 			i += 2
 			continue
 		}
@@ -1043,7 +1073,10 @@ func dropTagsHoldEscapes(s string) (string, func(string) string) {
 // escape and stays, pair and all, so the list renders what the heading
 // renders; a lone backslash (before anything else, or at the end, where it
 // would escape the link's closing bracket) is doubled, and an unescaped
-// bracket is escaped.
+// bracket is escaped. So is a bare angle bracket: every tag the heading
+// opens was dropped before this, so one left is text the heading shows, and
+// escaped it cannot open a tag in the list that removing a link put
+// together.
 func escapeLinkChars(s string) string {
 	var b strings.Builder
 	b.Grow(len(s) + 8)
@@ -1056,7 +1089,7 @@ func escapeLinkChars(s string) string {
 			i++
 		case c == '\\':
 			b.WriteString(`\\`)
-		case c == '[' || c == ']':
+		case c == '[' || c == ']' || c == '<':
 			b.WriteByte('\\')
 			b.WriteByte(c)
 		default:
