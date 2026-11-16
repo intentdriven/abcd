@@ -412,9 +412,11 @@ func TestTheFenceRenewsPastTheQueueTimeout(t *testing.T) {
 	} {
 		t.Run(tc.minutes, func(t *testing.T) {
 			f := newLandFixture(t, queueRulesetTimed(tc.minutes))
-			f.toArmOnce(t)
+			l := f.toArmOnce(t)
 			now := time.Now().UTC().Truncate(time.Second)
-			reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
+			// The hold names what the lane's branch changes, so the fence's
+			// act is the renewal alone, with no widening after it (widen.go).
+			reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), heldWith([]string{"internal/widget"}, f.branchChanges(t, l))...)
 			before := originReservation(t, f.bare, reservedRef)
 			f.step(t)
 			after := originReservation(t, f.bare, reservedRef)
