@@ -65,9 +65,6 @@ func asCheck(t *testing.T) {
 	t.Cleanup(func() { selfPID = old })
 }
 
-// thisUID is this account's uid, as the process table reads it.
-func thisUID() uint32 { return uint32(os.Geteuid()) }
-
 func liveDrive() machineload.Proc {
 	return machineload.Proc{PID: drivePID, PPID: 1, Age: driveAge, Name: "abcd-darwin-arm64", UID: me()}
 }
