@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/lint"
+	"github.com/intentdriven/abcd/internal/core/surface"
 )
 
 // commandpage_lint_test.go — the prose lint over the committed command pages
@@ -15,6 +16,20 @@ import (
 // "schema_version" the input beside it does not read, fails the test with the
 // page and line. A line that names an old version on purpose carries
 // lint.CommandPageHistorical.
+
+// commandPageLintFacts is the tree the lint reads the pages against: every
+// command CommandFacts walks, hidden ones included, plus the help and
+// completion commands cobra attaches only when the root executes, which the
+// binary answers to and a page may name. They are attached here as
+// GenerateReference attaches them (iss-304), and CommandFacts, which writes the
+// committed facts, is left as it is.
+func commandPageLintFacts() []surface.Facts {
+	root := NewRootCommand()
+	root.InitDefaultHelpCmd()
+	root.InitDefaultCompletionCmd()
+	_, facts := surfaceWalk(root)
+	return surface.CanonicalFacts(facts)
+}
 
 // The lint reads the same generated-block markers the sync writes, so a block
 // the sync renders is always one the lint skips.
@@ -28,7 +43,7 @@ func TestCommandPageLintSkipsTheBlocksTheSyncWrites(t *testing.T) {
 }
 
 func TestCommandPagesNameOnlyWhatTheBinaryHas(t *testing.T) {
-	facts := CommandFacts()
+	facts := commandPageLintFacts()
 	pages := commandFileBodies(t)
 	if len(pages) == 0 {
 		t.Fatalf("%s holds no page", CommandPagesDir)
@@ -52,7 +67,7 @@ func TestCommandPagesNameOnlyWhatTheBinaryHas(t *testing.T) {
 // than pass silently. A misspelt sub-command and flag spliced into a real page
 // are each reported.
 func TestCommandPageLintReadsTheRealPages(t *testing.T) {
-	facts := CommandFacts()
+	facts := commandPageLintFacts()
 	page := commandFileBodies(t)["ideate"]
 	if page == "" {
 		t.Fatal("commands/ideate.md is missing")
@@ -72,5 +87,22 @@ func TestCommandPageLintReadsTheRealPages(t *testing.T) {
 		if !strings.Contains(joined, want) {
 			t.Errorf("the spliced page's findings do not report %s:\n%s", want, joined)
 		}
+	}
+}
+
+// A page may name the help and completion commands the binary answers to,
+// though cobra attaches them only when the root executes: the lint's tree
+// holds them, and the facts CommandFacts writes do not.
+func TestCommandPageLintKnowsHelpAndCompletion(t *testing.T) {
+	text := "Run `abcd help status` or `abcd completion zsh --no-descriptions`.\n"
+	if got := lint.CommandPageFacts("commands/example.md", text, commandPageLintFacts()); len(got) != 0 {
+		var msgs []string
+		for _, f := range got {
+			msgs = append(msgs, f.String())
+		}
+		t.Errorf("help or completion did not resolve:\n%s", strings.Join(msgs, "\n"))
+	}
+	if got := lint.CommandPageFacts("commands/example.md", text, CommandFacts()); len(got) == 0 {
+		t.Error("CommandFacts now holds help and completion; the lint's own tree may go back to it")
 	}
 }
