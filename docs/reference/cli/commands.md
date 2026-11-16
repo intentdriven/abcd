@@ -3851,7 +3851,7 @@ abcd implement stop
 
 #### `abcd implement widen`
 
-Widen an issue lane's hold to a path before it is edited: Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.
+Widen a lane's hold to a path before it is edited: Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.
 
 **Usage:** `abcd implement widen <path>... --lane <lane-id> [--run <run-id>] [flags]`
 
