@@ -368,6 +368,60 @@ func TestACheckoutThatDiffersBeforeThePreflightRunsNone(t *testing.T) {
 	checkoutGone(t, w, parent, "")
 }
 
+// TestASparseCheckoutLeftPartialRunsNoPreflight: with sparse checkout on in
+// the checkout the drive copies, set before the drive starts, `git worktree
+// add` copies its patterns into the drive's checkout, which then lacks every
+// file they leave out. The comparison reads that checkout as missing files, so
+// no preflight runs, the lane does not land, the hold says the checkout is
+// missing files and names sparse checkout, and the checkout is removed. Both
+// cases, patterns that leave out a file at the top (non-cone) and every
+// directory (cone), were watched failing with the staging that read the
+// patterns, where the preflight ran on the partial tree and the lane landed.
+func TestASparseCheckoutLeftPartialRunsNoPreflight(t *testing.T) {
+	for name, c := range map[string]struct {
+		cone     string
+		patterns string
+		missing  string
+	}{
+		"a file left out": {cone: "false", patterns: "/*\n!/a.go\n", missing: "a.go"},
+		// Cone patterns that keep the top level alone leave out every
+		// directory; the hold names the first file git lists, under .abcd/.
+		"every directory left out": {cone: "true", patterns: "/*\n!/*/\n", missing: "\".abcd/"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			parent := ownCheckoutHome(t)
+			w := newTerminalWorld(t)
+			w.plantedReceipt = true
+			sparse := strings.TrimSpace(w.repo.Git("rev-parse", "--path-format=absolute", "--git-path", "info/sparse-checkout"))
+			if err := os.MkdirAll(filepath.Dir(sparse), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(sparse, []byte(c.patterns), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			w.repo.Git("config", "core.sparseCheckout", "true")
+			w.repo.Git("config", "core.sparseCheckoutCone", c.cone)
+			o := oneLane(t, w)
+			res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+			said := strings.Join(w.lines, "\n") + "\n" + res.Why
+			if err != nil {
+				t.Fatalf("%v\n%s", err, said)
+			}
+			if len(w.preflights) != 0 {
+				t.Fatalf("the preflight ran in a checkout sparse checkout left partial: %q\n%s", w.preflights, said)
+			}
+			if len(lanesDone(t, w.repo)) != 0 {
+				t.Fatalf("a lane landed on a partial checkout: %+v\n%s", res, said)
+			}
+			if !strings.Contains(said, "so its preflight is not run") || !strings.Contains(said, "the checkout is missing files the head holds") ||
+				!strings.Contains(said, c.missing) || !strings.Contains(said, "sparse checkout") {
+				t.Fatalf("the hold does not say the checkout is missing files, naming sparse checkout:\n%s", said)
+			}
+			checkoutGone(t, w, parent, "")
+		})
+	}
+}
+
 // TestAGlobalFilterIsReadAsTheCheckoutWasWritten: a content filter defined
 // only in the global settings file (GIT_CONFIG_GLOBAL), as a global large-file
 // install defines one, writes the drive's checkout through its smudge, and the

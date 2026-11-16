@@ -20,10 +20,13 @@ package loop
 // environment; and the global and system attributes files git reads there.
 // In each environment whose commands run hooks it also reads the hooks
 // directory git names there (hooksDirIn), at every depth, each distinct
-// directory once, and the common git directory's info/attributes. A read
-// that gives no answer the hold can take (readFailure) stops the drive or
-// the step; it is never read as nothing there. It holds hashes of them in
-// its own memory, never in a file anything in a lane could rewrite, and
+// directory once, the common git directory's info/attributes, and the
+// sparse-checkout patterns file git names at the checkout
+// (info/sparse-checkout), which `git worktree add` copies into each worktree
+// it makes, the preflight's checkout among them. A read that gives no answer
+// the hold can take (readFailure) stops the drive or the step; it is never
+// read as nothing there. It holds hashes of them in its own memory, never in
+// a file anything in a lane could rewrite, and
 // compares each environment's reading with that environment's own earlier
 // one. Each run of a drain records its watched settings and the checkout's
 // hooks afresh at its first check, so a lane's agent that changed origin's
@@ -89,7 +92,9 @@ import (
 
 // remoteIdentityHeld names, for a refusal and the docs, what settings a drive
 // holds across its lanes (remoteIdentityKey), as each environment its git
-// runs in reads them.
+// runs in reads them. info/attributes and the sparse-checkout patterns file
+// are held with the hooks directories (readHooks), not in this list; the
+// refusals that compare them name them after it.
 const remoteIdentityHeld = "at every scope, as each environment the drive's git runs in reads them: where a networked git goes and how it reaches the remote (origin's and every remote's url, pushurl, uploadpack, receivepack, proxy, proxy authentication method, server options, promisor switch, partial-clone filter, token, mirror switch and vcs; extensions.partialClone and every promisor.*; every url rewrite; core.sshCommand, core.gitProxy and ssh.variant; the protocol allow rules; fetch.bundleURI), whom it trusts and what it sends (every credential.*; core.askPass; push.pushOption; transfer.advertiseSID; the http.* settings that decide where an https fetch or push connects, whom it takes as the remote and what it sends there: the proxy and its authentication, certificate and key, the resolve and redirect settings, the TLS version, ciphers, backend, certificate authorities and pinned key, the client certificate and key, cookies, extra headers, the user agent, credential delegation and the authentication switches, per URL too); " +
 	"the programs a command of the drive starts (core.hooksPath, core.fsmonitor, core.editor, core.alternateRefsCommand, uploadpack.packObjectsHook and gc.recentObjectsHook; content filters, diff and merge drivers and diff.external; every gpg.* and the signing and verifying switches; format.pretty and pretty.*, whose format can check a signature; the Git LFS transfer and extension programs; hook.*; init.templateDir); " +
 	"the settings that change which of them run (merge.renormalize, submodule.recurse and push.recurseSubmodules, status.submoduleSummary, core.attributesFile, core.worktree and extensions.worktreeConfig); " +
@@ -259,8 +264,9 @@ var heldKeyRE = regexp.MustCompile(heldPattern)
 // include setting names in any of them and the global and system attributes
 // files each reads, once by path (files); each entry of every distinct hooks
 // directory git names in an environment whose commands run hooks, and of
-// info/attributes, hashed as the run's fingerprint hashes them (hooks); in
-// each lane worktree, by its path, the keys of driveHeldConfig it sets at its
+// info/attributes and the checkout's sparse-checkout patterns file, hashed
+// as the run's fingerprint hashes them (hooks); in each lane worktree, by its
+// path, the keys of driveHeldConfig it sets at its
 // own scope (lanes: laneScopeSettings), a lane the drive makes added as it
 // makes it (laneMade), and the same keys at the checkout's own worktree
 // scope (checkoutOwn), which `git worktree add` copies into the worktree it
@@ -308,14 +314,15 @@ func remoteIdentityKey(key string) bool { return heldKeyRE.MatchString(key) }
 
 // readRemoteIdentity is what a drive holds as it starts: its settings in
 // every environment its git runs in (readSettings) and every hooks directory
-// git runs and info/attributes (readHooks), hashed under a fresh salt. It
-// fails when a read the hold depends on gives no answer it can take (a
-// readFailure, naming the read), no salt can be drawn, the common git
-// directory cannot be resolved, or a hooks directory holds more than
-// maxHookEntries entries. A hooks directory that cannot be read is recorded
-// as such (hashDir) and compared as an entry is; where it lies inside the
-// checkout and the repository has an origin, the start-time comparison
-// refuses it (proveCheckoutHooks).
+// git runs, info/attributes and the sparse-checkout patterns file
+// (readHooks), hashed under a fresh salt. It fails when a read the hold
+// depends on gives no answer it can take (a readFailure, naming the read), no
+// salt can be drawn, the common git directory or the patterns file cannot be
+// resolved, or a hooks directory holds more than maxHookEntries entries. A
+// hooks directory that cannot be read is recorded as such (hashDir) and
+// compared as an entry is; where it lies inside the checkout and the
+// repository has an origin, the start-time comparison refuses it
+// (proveCheckoutHooks).
 func readRemoteIdentity(repoRoot string) (*remoteIdentity, error) {
 	salt, err := newSalt()
 	if err != nil {
@@ -692,10 +699,11 @@ var errHooksPastCap = fmt.Errorf("the checkout's hooks directory holds more than
 // stageDir, the one the lane's add and commit run (hooksDirAt; read here
 // when ""), and the one git names in each other environment whose commands
 // run hooks (the landing push's and the reservation's, in the person's own),
-// each distinct directory once, hashed with info/attributes
-// (readCheckoutHooks). The reads of the directories and of the common git
-// directory run side by side, under the reading's bounds b, and are waited
-// for. It returns the record and the directories, stageDir first. Past the
+// each distinct directory once, hashed with info/attributes and the
+// sparse-checkout patterns file (readCheckoutHooks). The reads of the
+// directories, of the common git directory and of the patterns file's path
+// run side by side, under the reading's bounds b, and are waited for. It
+// returns the record and the directories, stageDir first. Past the
 // comparison's deadline it walks nothing, and a walk that outlasted it
 // (compareGrace) is errCompareUnfinished, its record its own.
 func readHooks(repoRoot, salt, stageDir string, b readBounds) (map[string]string, []string, error) {
@@ -710,8 +718,8 @@ func readHooks(repoRoot, salt, stageDir string, b readBounds) (map[string]string
 	}
 	found := make([]string, len(envs))
 	errs := make([]error, len(envs))
-	var common string
-	var cerr error
+	var common, sparse string
+	var cerr, perr error
 	var wg sync.WaitGroup
 	for i, e := range envs {
 		wg.Add(1)
@@ -725,6 +733,11 @@ func readHooks(repoRoot, salt, stageDir string, b readBounds) (map[string]string
 		defer wg.Done()
 		common, cerr = commonDirBy(repoRoot, b)
 	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		sparse, perr = sparsePatternsBy(repoRoot, b)
+	}()
 	wg.Wait()
 	for _, err := range errs {
 		if err != nil {
@@ -733,6 +746,9 @@ func readHooks(repoRoot, salt, stageDir string, b readBounds) (map[string]string
 	}
 	if cerr != nil {
 		return nil, nil, cerr
+	}
+	if perr != nil {
+		return nil, nil, perr
 	}
 	var dirs []string
 	if stageDir != "" {
@@ -746,7 +762,7 @@ func readHooks(repoRoot, salt, stageDir string, b readBounds) (map[string]string
 	if b.cut() {
 		return nil, nil, errCompareUnfinished
 	}
-	hooks, err := hashCheckoutHooks(salt, common, dirs...)
+	hooks, err := hashCheckoutHooks(salt, common, sparse, dirs...)
 	if b.cut() {
 		return nil, nil, errCompareUnfinished
 	}
@@ -758,8 +774,25 @@ func readHooks(repoRoot, salt, stageDir string, b readBounds) (map[string]string
 // the reading's bounds b, bounded as every read the hold makes is
 // (gitEnv.readBy).
 func commonDirBy(repoRoot string, b readBounds) (string, error) {
-	what := "resolving the common git directory (git rev-parse --git-common-dir)"
-	a, err := isolatedEnv.readBy(b, repoRoot, what, 1<<16, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	return absGitPathBy(repoRoot, b, "resolving the common git directory (git rev-parse --git-common-dir)", "--git-common-dir")
+}
+
+// sparsePatternsBy is the sparse-checkout patterns file git reads at
+// repoRoot, asked of git (`git rev-parse --path-format=absolute --git-path
+// info/sparse-checkout`, isolated) under the reading's bounds b. git keeps the
+// file per worktree, and `git worktree add` copies the one of the worktree it
+// runs in into the worktree it makes, so a drive's preflight checkout, made
+// from repoRoot, starts from this file's patterns.
+func sparsePatternsBy(repoRoot string, b readBounds) (string, error) {
+	return absGitPathBy(repoRoot, b, "resolving the sparse-checkout patterns file (git rev-parse --git-path info/sparse-checkout)", "--git-path", "info/sparse-checkout")
+}
+
+// absGitPathBy is the one absolute path `git rev-parse --path-format=absolute`
+// answers with for flag at repoRoot, isolated, under the reading's bounds b,
+// bounded as every read the hold makes is (gitEnv.readBy); what names the
+// read in its error.
+func absGitPathBy(repoRoot string, b readBounds, what string, flag ...string) (string, error) {
+	a, err := isolatedEnv.readBy(b, repoRoot, what, 1<<16, append([]string{"rev-parse", "--path-format=absolute"}, flag...)...)
 	if err != nil {
 		return "", err
 	}
@@ -775,20 +808,27 @@ func commonDirBy(repoRoot string, b readBounds) (string, error) {
 
 // readCheckoutHooks hashes, under salt, each entry at every depth of each
 // of dirs (directories git names at the checkout: readHooks), through the
-// fingerprint's own walk (hashDir), and the common git directory's
-// info/attributes. It fails when the common git directory cannot be resolved
-// or a tree is past maxHookEntries entries.
+// fingerprint's own walk (hashDir), the common git directory's
+// info/attributes, and the checkout's sparse-checkout patterns file
+// (sparsePatternsBy). It fails when the common git directory or the patterns
+// file cannot be resolved or a tree is past maxHookEntries entries.
 func readCheckoutHooks(repoRoot, salt string, dirs ...string) (map[string]string, error) {
 	common, err := commonDirBy(repoRoot, boundsNow(isolatedEnv))
 	if err != nil {
 		return nil, err
 	}
-	return hashCheckoutHooks(salt, common, dirs...)
+	sparse, err := sparsePatternsBy(repoRoot, boundsNow(isolatedEnv))
+	if err != nil {
+		return nil, err
+	}
+	return hashCheckoutHooks(salt, common, sparse, dirs...)
 }
 
-// hashCheckoutHooks is readCheckoutHooks with the common git directory
-// already read.
-func hashCheckoutHooks(salt, common string, dirs ...string) (map[string]string, error) {
+// hashCheckoutHooks is readCheckoutHooks with the common git directory and
+// the patterns file's path already read. Each file is hashed as hashFile
+// hashes it: an absent file records nothing, an empty one records its mode
+// and no bytes, so the two read apart and each reads the same every time.
+func hashCheckoutHooks(salt, common, sparse string, dirs ...string) (map[string]string, error) {
 	hooks := map[string]string{}
 	for _, dir := range dirs {
 		if _, over := hashDir(hooks, salt, dir); over {
@@ -796,6 +836,7 @@ func hashCheckoutHooks(salt, common string, dirs ...string) (map[string]string, 
 		}
 	}
 	hashFile(hooks, salt, filepath.Join(common, "info", "attributes"))
+	hashFile(hooks, salt, sparse)
 	return hooks, nil
 }
 
@@ -1368,7 +1409,8 @@ func laneMade(c Context, laneID, path string) error {
 // started) with what every environment its git runs in reads now: the held
 // settings of each (readSettings), every lane worktree's own scope among
 // them (everyLane), and every hooks directory git names in an environment
-// whose commands run hooks, with info/attributes (readHooks), their reads
+// whose commands run hooks, with info/attributes and the sparse-checkout
+// patterns file (readHooks), their reads
 // side by side (readHeld), the comparison bounded as a whole by
 // heldCompareTimeout (boundedCompare). It is made before each step of a
 // drive (advanceWith); at each pass of the drive's loop, which ends on a
@@ -1535,7 +1577,7 @@ func heldBeforeGitReading(repoRoot string, held *remoteIdentity, which lanesRead
 	}
 	slices.Sort(names)
 	return refuse(StageConfig, "", "",
-		"what the drive holds changed since it started ("+strings.Join(slices.Compact(names), ", ")+"): the settings it holds ("+remoteIdentityHeld+"), or a hooks directory its git runs or info/attributes; its next git command would run hooks or reach the network under them, so no git step is taken",
+		"what the drive holds changed since it started ("+strings.Join(slices.Compact(names), ", ")+"): the settings it holds ("+remoteIdentityHeld+"), or a hooks directory its git runs, info/attributes or the sparse-checkout patterns file; its next git command would run hooks or reach the network under them, so no git step is taken",
 		"look at what changed them (`git config --show-origin --show-scope --get-regexp '"+heldPattern+"'`, the hooks directories and the files named), in each environment the drive's git runs in: as yourself for the push's and the ask of origin's, and with HOME set to the stage's home, as the drive sets it, for the lane's add and commit; the drive reads them once, as it starts, so stop it and start it again once they are as they should be; nothing was made")
 }
 
@@ -1595,7 +1637,8 @@ func remoteUnchanged(c Context, laneID string) error {
 }
 
 // checkoutHooksUnchanged refuses the lane's worktree stage when a hooks
-// directory the drive holds, or info/attributes, as read now, differs from
+// directory the drive holds, info/attributes, or the sparse-checkout patterns
+// file, as read now, differs from
 // what the drive read as it started (Context.remote): an entry at any depth
 // added, removed or changed, named, or a tree grown past maxHookEntries
 // entries. git's add runs in the checkout, so it runs the post-checkout hook
@@ -1635,6 +1678,6 @@ func checkoutHooksUnchanged(c Context, laneID, hooksDir string) error {
 		return nil
 	}
 	return refuse(string(StageWorktree), "", laneID,
-		"the checkout's hooks or info/attributes changed since the drive started ("+strings.Join(nameChanges(c.RepoRoot, changed), ", ")+"), and git's add of the lane's worktree and the landing push run the hooks with the drive's rights, so the lane is not made",
-		"look at what changed the hooks directory or info/attributes; the drive reads them once, as it starts, so stop it and start it again once they are as they should be; nothing was made")
+		"the checkout's hooks, info/attributes or sparse-checkout patterns file changed since the drive started ("+strings.Join(nameChanges(c.RepoRoot, changed), ", ")+"), and git's add of the lane's worktree and the landing push run the hooks with the drive's rights, so the lane is not made",
+		"look at what changed the hooks directory, info/attributes or the sparse-checkout patterns file (git rev-parse --git-path info/sparse-checkout); the drive reads them once, as it starts, so stop it and start it again once they are as they should be; nothing was made")
 }

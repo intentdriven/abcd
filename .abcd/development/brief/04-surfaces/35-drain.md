@@ -581,14 +581,19 @@ with what a stage carries too, with Go's own settings file off (`GOENV=off`) and
 nearest one the head tracks, never above the checkout for a Go command started in it, and off (`GOWORK=off`)
 otherwise, and never in the lane's worktree: just before it the drive
 reads again the settings it holds, those that change what a checkout writes among them,
+with the hooks directories, `info/attributes` and the sparse-checkout patterns file git
+names at the checkout (`git rev-parse --git-path info/sparse-checkout`), which `git worktree
+add` copies into the checkout it makes,
 then adds its own checkout of the lane's head as stored, in a directory of a random name
 it makes under `~/.abcd.noindex/preflight-checkouts/` (made at mode 0700 when abcd makes
 it, while one that already stands keeps its mode; the directory for each checkout is
 always 0700),
 compares that checkout with the head's tree by content before the preflight and after it,
 through an index it builds itself in the environment the checkout was made in, so a
-filter the checkout was written through reads it back, and removes it once the preflight
-has ended. Before the preflight any untracked file outside the checkout's local tier is a
+filter the checkout was written through reads it back, with sparse checkout switched off
+for the comparison, so a file the copied patterns left out is a difference (the hold says
+the checkout is missing files the head holds and names sparse checkout as the likely
+reason), and removes it once the preflight has ended. Before the preflight any untracked file outside the checkout's local tier is a
 difference, ignored or not; after it, an untracked file is a difference unless the head's
 own `.gitignore` files ignore it (no other ignore source is read) or it is in the local
 tier, and an untracked `.gitignore` or `.gitattributes` is a difference, ignored or not,

@@ -9,17 +9,21 @@ package loop
 //
 // Before the preflight the drive reads again what it holds (heldBeforeGit:
 // the settings that can name a program or change what a checkout writes, the
-// hooks directories and info/attributes), so the checkout runs under the
-// settings the drive started with. It then adds a linked worktree of the head
-// as stored, detached, in a directory of a random name it makes under abcd's
-// home (preflightCheckoutsDir), never the system's shared temporary
-// directory, through the runner the lane's own worktree add uses
+// hooks directories, info/attributes and the sparse-checkout patterns file),
+// so the checkout runs under the settings the drive started with. It then
+// adds a linked worktree of the head as stored, detached, in a directory of a
+// random name it makes under abcd's home (preflightCheckoutsDir), never the
+// system's shared temporary directory, through the runner the lane's own
+// worktree add uses
 // (worktreeAddGit): the repository's filters and post-checkout hook run as on
 // the person's own checkout, and in a drive under the stage's wall. Before
 // the preflight and again after it, the checkout is compared with the head's
 // stored tree by content, through an index the drive builds itself in the
 // environment the checkout was made in (gitutil.RunWithIndexAsCheckedOut), so
-// the filters that wrote the checkout read it back. Before the preflight
+// the filters that wrote the checkout read it back, and with sparse checkout
+// off for the comparison (wholeCheckout), so a file the checkout lacks because
+// its sparse-checkout patterns, which `git worktree add` copies, leave it out
+// is a difference, said as a missing file. Before the preflight
 // every untracked file outside the checkout's local tier (preflightOutputs),
 // ignored ones included, is a difference. After it, an untracked file is a
 // difference unless the head's own .gitignore files ignore it, read with no
@@ -166,11 +170,14 @@ func (c *preflightCheckout) remove(repoRoot string) error {
 // It builds its own index from the head's tree and stages the checkout's
 // tracked files into it, which reads each through the repository's filters,
 // in the environment the checkout was made in
-// (gitutil.RunWithIndexAsCheckedOut), and lists what differs from the head.
-// Then it lists the files the index does not hold. Before the preflight any
-// such file outside preflightOutputs is a difference, ignored or not. After
-// it, a file is a difference when it is outside preflightOutputs and the
-// head's own .gitignore files do not ignore it, read with no other ignore
+// (gitutil.RunWithIndexAsCheckedOut), with sparse checkout off
+// (wholeCheckout), and lists what differs from the head. Before the
+// preflight, a file of the head's the checkout lacks is said as missing, with
+// sparse checkout as its likely cause. Then it lists the files the index does
+// not hold. Before the preflight any such file outside preflightOutputs is a
+// difference, ignored or not. After it, a file is a difference when it is
+// outside preflightOutputs and the head's own .gitignore files do not ignore
+// it, read with no other ignore
 // source (no info/exclude, no core.excludesFile); and an untracked
 // .gitignore or .gitattributes is, ignored or not, since either changes what
 // the listing ignores or how the tracked files are read, unless it lies below
@@ -182,18 +189,18 @@ func (c *preflightCheckout) differs(head string, after bool) string {
 	if err := os.Remove(index); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return "the drive's own index could not be made afresh"
 	}
-	if _, err := gitutil.RunWithIndexAsCheckedOut(c.dir, index, maxGitOutput, "read-tree", head); err != nil {
+	if _, err := gitutil.RunWithIndexAsCheckedOut(c.dir, index, maxGitOutput, whole("read-tree", head)...); err != nil {
 		return readWhy("the head's tree could not be read into the drive's own index", err)
 	}
-	if _, err := gitutil.RunWithIndexAsCheckedOut(c.dir, index, maxGitOutput, "add", "--update", "--", "."); err != nil {
+	if _, err := gitutil.RunWithIndexAsCheckedOut(c.dir, index, maxGitOutput, whole("add", "--update", "--", ".")...); err != nil {
 		return readWhy("the checkout's files could not be read into the drive's own index", err)
 	}
-	changed, err := gitutil.RunWithIndexAsCheckedOut(c.dir, index, maxGitOutput, "diff-index", "--cached", "--name-only", "-z", "--no-renames", head, "--")
+	changed, err := gitutil.RunWithIndexAsCheckedOut(c.dir, index, maxGitOutput, whole("diff-index", "--cached", "--name-status", "-z", "--no-renames", head, "--")...)
 	if err != nil {
 		return readWhy("the checkout could not be compared with the head", err)
 	}
-	if first, _, _ := strings.Cut(string(changed), "\x00"); first != "" {
-		return fmt.Sprintf("%q is not the head's", termsafe.Sanitize(first))
+	if why := changedWhy(string(changed), after); why != "" {
+		return why
 	}
 	outside := func(name string) bool { return !preflightOutput(name) }
 	if !after {
@@ -209,6 +216,63 @@ func (c *preflightCheckout) differs(head string, after bool) string {
 	return c.strayUntracked(index, func(name string) bool {
 		return ignoreOrAttributesFile(name) && !belowAny(name, ignored)
 	})
+}
+
+// wholeCheckout leads every git command differs runs on its own index: sparse
+// checkout off for that command alone. `git worktree add` copies the
+// sparse-checkout patterns of the checkout it runs in into the worktree it
+// makes, so with sparse checkout on the drive's checkout lacks every file
+// they leave out, and git 2.34 and later leave such a path out of
+// `add --update`, so the comparison would read a partial checkout as the
+// head. With sparse checkout
+// off no git reads the patterns: read-tree marks no entry skip-worktree, and
+// `add --update` stages a file the checkout lacks as removed. `add --sparse`
+// does the same from git 2.34, the release that added it, but the drive runs
+// on git from 2.31 (the hold's --path-format reads), whose add does not know
+// the option.
+var wholeCheckout = []string{"-c", "core.sparseCheckout=false"}
+
+// whole is args led by wholeCheckout.
+func whole(args ...string) []string {
+	return append(append([]string(nil), wholeCheckout...), args...)
+}
+
+// changedWhy says how the head and the checkout differ from diff-index's
+// `--name-status -z --no-renames` listing, "" when they do not. Before the
+// preflight (after false) a file of the head's the checkout lacks is said as
+// missing, with the count of the others, since the likely cause is sparse
+// checkout; any other difference, and any after the preflight, is said by its
+// first path.
+func changedWhy(listing string, after bool) string {
+	fields := strings.Split(strings.TrimSuffix(listing, "\x00"), "\x00")
+	var first, firstMissing string
+	missing := 0
+	for i := 0; i+1 < len(fields); i += 2 {
+		status, name := fields[i], fields[i+1]
+		if first == "" {
+			first = name
+		}
+		if status == "D" {
+			if firstMissing == "" {
+				firstMissing = name
+			}
+			missing++
+		}
+	}
+	if first == "" {
+		return ""
+	}
+	if after || missing == 0 {
+		return fmt.Sprintf("%q is not the head's", termsafe.Sanitize(first))
+	}
+	others := ""
+	switch {
+	case missing == 2:
+		others = " and 1 other file"
+	case missing > 2:
+		others = fmt.Sprintf(" and %d other files", missing-1)
+	}
+	return fmt.Sprintf("the checkout is missing files the head holds: %q%s; sparse checkout is most likely on in the checkout the drive copies from, and its patterns (git sparse-checkout list) leave them out", termsafe.Sanitize(firstMissing), others)
 }
 
 // headIgnoredDirs lists, against index, the untracked directories the head's
@@ -227,7 +291,7 @@ func (c *preflightCheckout) differs(head string, after bool) string {
 func (c *preflightCheckout) headIgnoredDirs(index string) (map[string]bool, string) {
 	var names []string
 	w := &nulNames{each: func(name string) { names = append(names, name) }}
-	if err := gitutil.StreamWithIndexAsCheckedOut(c.dir, index, w, "ls-files", "-z", "--others", "--ignored", "--directory", "--exclude-per-directory=.gitignore"); err != nil {
+	if err := gitutil.StreamWithIndexAsCheckedOut(c.dir, index, w, whole("ls-files", "-z", "--others", "--ignored", "--directory", "--exclude-per-directory=.gitignore")...); err != nil {
 		return nil, readWhy("the directories the head ignores could not be listed", err)
 	}
 	w.flush()
@@ -276,7 +340,7 @@ func (c *preflightCheckout) strayUntracked(index string, stray func(name string)
 			first = name
 		}
 	}}
-	if err := gitutil.StreamWithIndexAsCheckedOut(c.dir, index, w, append([]string{"ls-files", "-z", "--others"}, exclude...)...); err != nil {
+	if err := gitutil.StreamWithIndexAsCheckedOut(c.dir, index, w, whole(append([]string{"ls-files", "-z", "--others"}, exclude...)...)...); err != nil {
 		return readWhy("the checkout's untracked files could not be listed", err)
 	}
 	w.flush()
