@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/core/occupancy"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -120,17 +122,25 @@ func (r *owedReader) driveScope() {
 // driveHolds names the live drive d is, a process its run's control record
 // names with no session (a plain terminal's drive records its own process):
 // its process is running, as the process table proves by its id and start
-// time, and it is neither this check's own process nor one above it, which
-// the walk up from this process must reach the machine's first process to
-// say. False when d names a session, names no process, the process has
-// ended, or the table cannot be read or walked, all of which leave its items
-// owed as before.
+// time; it is abcd, by its program name, running as this account; and it is
+// neither this check's own process nor one above it, which the walk up from
+// this process must reach the machine's first process to say. False when d
+// names a session, names no process, the process has ended, is another
+// program or another account's, or the table cannot be read or walked, all
+// of which leave its items owed as before. The program and account checks
+// keep a record naming some unrelated live process, a child of the session
+// itself included, from passing for a drive.
 func (r *owedReader) driveHolds(d runDriverRec) (string, bool) {
 	if d.session != "" || d.host.PID <= 1 || r.expired() {
 		return "", false
 	}
 	_, tab, err := r.readProcs()
 	if err != nil || !tab.Alive(d.host) {
+		return "", false
+	}
+	euid := uint32(os.Geteuid())
+	i := slices.IndexFunc(tab.Procs, func(p machineload.Proc) bool { return p.PID == d.host.PID })
+	if i < 0 || tab.Procs[i].UID != euid || !machineload.IsAbcdName(tab.Procs[i].Name) {
 		return "", false
 	}
 	up := sessionname.Ancestors(tab, selfPID())

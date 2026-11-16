@@ -51,8 +51,8 @@ func procsOf(reads *int, procs ...machineload.Proc) func(context.Context) (machi
 	return func(context.Context) (machineload.Snapshot, error) {
 		*reads++
 		all := append([]machineload.Proc{
-			{PID: checkPID, PPID: hostPID, Age: time.Second, Name: "abcd"},
-			{PID: hostPID, PPID: 1, Age: hostAge, Name: "host"},
+			{PID: checkPID, PPID: hostPID, Age: time.Second, Name: "abcd", UID: me()},
+			{PID: hostPID, PPID: 1, Age: hostAge, Name: "abcd", UID: me()},
 		}, procs...)
 		return machineload.Snapshot{HasProcs: true, Procs: all}, nil
 	}
@@ -65,8 +65,11 @@ func asCheck(t *testing.T) {
 	t.Cleanup(func() { selfPID = old })
 }
 
+// thisUID is this account's uid, as the process table reads it.
+func thisUID() uint32 { return uint32(os.Geteuid()) }
+
 func liveDrive() machineload.Proc {
-	return machineload.Proc{PID: drivePID, PPID: 1, Age: driveAge, Name: "abcd"}
+	return machineload.Proc{PID: drivePID, PPID: 1, Age: driveAge, Name: "abcd-darwin-arm64", UID: me()}
 }
 
 // TestALiveDrivesLaneIsNamedNotOwed is the detector: the lane of a run a live
@@ -129,7 +132,17 @@ func TestADrivesLaneStaysOwedWhenItsDriverCannotBeTold(t *testing.T) {
 			return procsOf(n)
 		}},
 		{"another process holds its id", drivePID, driveAge, func(n *int) func(context.Context) (machineload.Snapshot, error) {
-			return procsOf(n, machineload.Proc{PID: drivePID, PPID: 1, Age: 5 * time.Second, Name: "abcd"})
+			return procsOf(n, machineload.Proc{PID: drivePID, PPID: 1, Age: 5 * time.Second, Name: "abcd", UID: me()})
+		}},
+		{"the live process is another program", drivePID, driveAge, func(n *int) func(context.Context) (machineload.Snapshot, error) {
+			p := liveDrive()
+			p.Name = "sleep"
+			return procsOf(n, p)
+		}},
+		{"the live process is another account's", drivePID, driveAge, func(n *int) func(context.Context) (machineload.Snapshot, error) {
+			p := liveDrive()
+			p.UID = me() + 1
+			return procsOf(n, p)
 		}},
 		{"the driver is this check's host", hostPID, hostAge, func(n *int) func(context.Context) (machineload.Snapshot, error) {
 			return procsOf(n, liveDrive())
@@ -138,7 +151,7 @@ func TestADrivesLaneStaysOwedWhenItsDriverCannotBeTold(t *testing.T) {
 			return func(context.Context) (machineload.Snapshot, error) {
 				*n++
 				return machineload.Snapshot{HasProcs: true, Procs: []machineload.Proc{
-					{PID: checkPID, PPID: hostPID, Age: time.Second, Name: "abcd"}, liveDrive(),
+					{PID: checkPID, PPID: hostPID, Age: time.Second, Name: "abcd", UID: me()}, liveDrive(),
 				}}, nil
 			}
 		}},

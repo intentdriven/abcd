@@ -50,9 +50,11 @@ import (
 // the reading cut short when that ctx has ended (cutShort): a ctx already
 // ended reads no marker and starts no process read. A read that fails for any
 // other reason is a note, and no item is marked: the two-wake rule applies.
-// The process table is read once, only when a marker is found; the live
-// sessions' read (holders.go) reads it apart, through occupancy, so a check
-// that needs both reads it twice.
+// The process table is read once a check (readProcs), here only when a
+// marker is found, and shared with a drive's hold on its lanes
+// (driveHolds), which may have read it already; the live sessions' read
+// (holders.go) reads it apart, through occupancy, so a check that needs both
+// reads it twice.
 func (r *owedReader) readLiveWork() {
 	if !r.away {
 		return
