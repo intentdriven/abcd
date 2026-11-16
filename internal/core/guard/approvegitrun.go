@@ -64,8 +64,8 @@ type runParser struct {
 	// a long option may be written with one dash, and in any case.
 	getopt bool
 	// prefixed says a word that starts with a long name is that option, as
-	// git mergetool's `--tool*` pattern reads it, unless it starts with one of
-	// exact.
+	// git mergetool's `--tool*` pattern reads it, unless it is one of exact
+	// (the name is read without any `=value`).
 	prefixed bool
 }
 
@@ -244,7 +244,7 @@ func (p runParser) longOption(w string) (string, runTarget, string, bool, bool) 
 		case p.prefixed:
 			match = strings.HasPrefix(n, name)
 			for _, e := range p.exact {
-				match = match && n != e && !strings.HasPrefix(n, e+"=")
+				match = match && n != e
 			}
 		case p.abbrev:
 			match = n == name || len(n) > 2 && strings.HasPrefix(name, n) && !containsString(p.exact, n)

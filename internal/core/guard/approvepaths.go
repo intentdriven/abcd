@@ -1203,10 +1203,13 @@ func carryAssigned(s segment, sites []arrival, env map[string]string, set, bare 
 	names := namesAssigned([]segment{s})
 	prefixOnly := map[string]bool{}
 	if len(sites) > 0 {
-		first, plain := sites[0].idx, true
+		first, plain, assigner := sites[0].idx, true, false
 		for _, a := range sites {
 			if s.tokens[a.idx] != "git" {
 				plain = false
+			}
+			if nameCouldBeAny(s.tokens[a.idx], operandAssigners) {
+				assigner = true
 			}
 			if a.idx < first {
 				first = a.idx
@@ -1218,7 +1221,7 @@ func carryAssigned(s segment, sites []arrival, env map[string]string, set, bare 
 			case !ok || subscript || !carriesProgram(name):
 			case plain:
 				prefixOnly[name] = true
-			case nameCouldBeAny(s.tokens[sites[0].idx], operandAssigners) || appends:
+			case assigner || appends:
 			default:
 				env[name], set[name] = s.tokens[i][eq+1:], true
 			}
