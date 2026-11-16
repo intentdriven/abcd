@@ -31,13 +31,17 @@ func autoOpts(t *testing.T, repo *gittest.Repo, o Options) AutoOptions {
 
 // TestTheAutomaticSweepClearsTheSpentAndStartsNothing: in a managed
 // repository the automatic sweep removes a merged clean worktree of the store
-// and deletes its merged branch, with apply's own proofs, keeps the merged
-// branches abcd did not make for the applying sweep, and neither dispatches
+// and deletes a merged lane branch, with apply's own proofs, keeps the merged
+// branches abcd did not make for the applying sweep, the store worktree's own
+// branch among them (it has no lane's shape), and neither dispatches
 // the reservation workflow nor files the waiting inbox report. Its report
 // counts what it did and shows the rows in the sweep's own wording, naming
 // where the full list is.
 func TestTheAutomaticSweepClearsTheSpentAndStartsNothing(t *testing.T) {
 	repo, o, wf := everyKind(t)
+	branchWith(repo, testLane, "lane.txt")
+	repo.Git("merge", "-q", "--ff-only", testLane)
+	publish(repo)
 
 	a := Automatic(context.Background(), repo.Root(), autoOpts(t, repo, o))
 	if !a.Ran || a.Fault != "" {
@@ -63,8 +67,16 @@ func TestTheAutomaticSweepClearsTheSpentAndStartsNothing(t *testing.T) {
 	if list := repo.Git("worktree", "list", "--porcelain"); strings.Contains(list, "branch refs/heads/wt\n") {
 		t.Fatalf("git still lists the merged clean worktree:\n%s", list)
 	}
-	if out := repo.Git("branch", "--list", "wt"); out != "" {
-		t.Fatalf("the merged store worktree's branch stands: %q", out)
+	if out := repo.Git("branch", "--list", testLane); out != "" {
+		t.Fatalf("the merged lane branch stands: %q: %+v", out, a.Result.Rows)
+	}
+	if out := repo.Git("branch", "--list", "wt"); out == "" {
+		t.Fatal("the store worktree's branch, which has no lane's shape, was deleted unattended")
+	}
+	for _, r := range a.Result.Rows {
+		if r.Kind == RowBranch && r.Name == "wt" && !strings.HasPrefix(r.Reason, "left for `abcd sweep --apply`") {
+			t.Fatalf("the store worktree's branch is not listed for a person: %+v", r)
+		}
 	}
 	if out := repo.Git("branch", "--list", "loc"); out == "" {
 		t.Fatal("the merged local branch abcd did not make was deleted")
@@ -76,7 +88,7 @@ func TestTheAutomaticSweepClearsTheSpentAndStartsNothing(t *testing.T) {
 		t.Fatalf("the inbox report is left waiting: %d, %v", len(waiting), err)
 	}
 	text := a.Text()
-	for _, want := range []string{"abcd swept on its own: 2 removed or deleted", "[removed  worktree  wt", "[deleted  branch  wt", "[kept  branch  feat", "`abcd sweep` lists every row"} {
+	for _, want := range []string{"abcd swept on its own: 2 removed or deleted", "[removed  worktree  wt", "[deleted  branch  " + testLane, "[kept  branch  feat", "`abcd sweep` lists every row"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the report %q lacks %q", text, want)
 		}
@@ -198,6 +210,9 @@ func TestTheAutomaticSweepsReportIsBounded(t *testing.T) {
 	}
 }
 
+// testLane is a branch with the exact shape the build loop gives a lane.
+const testLane = "build/run-2611160000000001-lane-1"
+
 // TestTheAutomaticSweepDeletesOnlyTheBranchesAbcdMade: unattended, a merged
 // lane branch is deleted locally and on origin, while an unprotected develop
 // at the default branch, locally and on origin, and a peer's branch on origin
@@ -206,7 +221,7 @@ func TestTheAutomaticSweepsReportIsBounded(t *testing.T) {
 // (dcn-2611161459048806).
 func TestTheAutomaticSweepDeletesOnlyTheBranchesAbcdMade(t *testing.T) {
 	repo, origin := originRepo(t)
-	const lane = "build/run-1-lane-1"
+	const lane = testLane
 	tip := mergedOnOrigin(repo, lane, "lane.txt")
 	dev := mergedOnOrigin(repo, "develop", "develop.txt")
 	peer := mergedOnOrigin(repo, "peer-work", "peer.txt")
@@ -252,6 +267,78 @@ func TestTheAutomaticSweepDeletesOnlyTheBranchesAbcdMade(t *testing.T) {
 	}
 	if repo.Git("branch", "--list", "develop") != "" {
 		t.Fatalf("the applying sweep kept the local develop: %+v", res.Rows)
+	}
+}
+
+// TestTheAutomaticSweepKeepsAPersonsBranchTheStoreCheckedOut: a person's
+// existing develop, checked out into the worktree store (`ahoy worktree add`
+// with an existing branch), merged and its worktree spent: unattended, the
+// worktree is removed, and develop is kept locally and on origin, listed for
+// the applying sweep, since a store worktree's branch is no proof abcd made
+// it; that sweep, run by a person, still deletes develop.
+func TestTheAutomaticSweepKeepsAPersonsBranchTheStoreCheckedOut(t *testing.T) {
+	repo, origin := originRepo(t)
+	dev := mergedOnOrigin(repo, "develop", "develop.txt")
+	got, err := store.Add(repo.Root(), store.AddOptions{Name: "dev", Branch: "develop", Existing: true,
+		Git: func(dir string, args ...string) (string, error) { return gitutil.Run(dir, args...) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := sweepOpts()
+	o.Forge = (&fakeForge{prs: []pullRequest{mergedPR(5, "develop", dev)}}).gh
+
+	a := Automatic(context.Background(), repo.Root(), autoOpts(t, repo, o))
+	if !a.Ran || a.Fault != "" {
+		t.Fatalf("ran %v, fault %q: %+v", a.Ran, a.Fault, a.Result.Rows)
+	}
+	if r := rowFor(t, a.Result, "dev"); r.Outcome != OutcomeRemoved || exists(got.Path) {
+		t.Fatalf("the spent store worktree: %+v, standing %v; want it removed", r, exists(got.Path))
+	}
+	for _, r := range a.Result.Rows {
+		if r.Name == "develop" && (r.Outcome != OutcomeKept || !strings.HasPrefix(r.Reason, "left for `abcd sweep --apply`")) {
+			t.Fatalf("the person's develop was not kept for a person: %+v", r)
+		}
+	}
+	if repo.Git("branch", "--list", "develop") == "" {
+		t.Fatalf("the local develop was deleted unattended: %+v", a.Result.Rows)
+	}
+	if onOrigin(repo, origin, "develop") == "" {
+		t.Fatalf("origin's develop was deleted unattended: %+v", a.Result.Rows)
+	}
+
+	res, err := runSweep(context.Background(), repo.Root(), o, true)
+	if err != nil {
+		t.Fatalf("%v: %+v", err, res.Rows)
+	}
+	if repo.Git("branch", "--list", "develop") != "" || onOrigin(repo, origin, "develop") != "" {
+		t.Fatalf("the applying sweep kept develop: %+v", res.Rows)
+	}
+}
+
+// TestTheAutomaticSweepKeepsABranchThatOnlyLooksLikeALane: a person's merged
+// build/ci-tweak, and a build/ branch whose run id is not one the loop mints,
+// are kept unattended, locally and on origin; the lane-shaped branch beside
+// them is deleted.
+func TestTheAutomaticSweepKeepsABranchThatOnlyLooksLikeALane(t *testing.T) {
+	repo, origin := originRepo(t)
+	var prs []pullRequest
+	for i, b := range []string{"build/ci-tweak", "build/run-1-lane-1", testLane} {
+		prs = append(prs, mergedPR(10+i, b, mergedOnOrigin(repo, b, strings.ReplaceAll(b, "/", "-")+".txt")))
+	}
+	o := sweepOpts()
+	o.Forge = (&fakeForge{prs: prs}).gh
+
+	a := Automatic(context.Background(), repo.Root(), autoOpts(t, repo, o))
+	if !a.Ran || a.Fault != "" {
+		t.Fatalf("ran %v, fault %q: %+v", a.Ran, a.Fault, a.Result.Rows)
+	}
+	for _, b := range []string{"build/ci-tweak", "build/run-1-lane-1"} {
+		if repo.Git("branch", "--list", b) == "" || onOrigin(repo, origin, b) == "" {
+			t.Fatalf("%s, a person's, was deleted unattended: %+v", b, a.Result.Rows)
+		}
+	}
+	if repo.Git("branch", "--list", testLane) != "" || onOrigin(repo, origin, testLane) != "" {
+		t.Fatalf("the lane's branch stands: %+v", a.Result.Rows)
 	}
 }
 

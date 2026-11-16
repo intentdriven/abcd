@@ -6,27 +6,26 @@ package sweep
 // applied sweep, with exactly the proofs `--apply` uses, judged against a
 // fresh fetch: the worktrees, the local branches and the merged branches on
 // origin. Unattended, it deletes only the branches abcd made
-// (dcn-2611161459048806): the build loop's lane branches and the branches of
-// the worktree store's own worktrees; any other branch judged deletable is
-// kept and listed for the applying sweep a person runs, who saw a dry run
-// first. It dispatches no reservation workflow and files no inbox report;
-// both stay with the sweep a person runs. Its answer is never an error: a
-// refusal or a fault is carried in the answer, for the act it follows to
-// report, and that act's own outcome stands.
+// (dcn-2611161459048806, narrowed by dcn-2611161654034047): a branch with
+// exactly the shape the build loop gives a lane. A worktree store worktree is
+// removed when spent, but its branch, unless it has a lane's shape, is kept
+// like any other branch judged deletable and listed for the applying sweep a
+// person runs, who saw a dry run first: `ahoy worktree add` can check a
+// person's existing branch out into the store. It dispatches no reservation
+// workflow and files no inbox report; both stay with the sweep a person runs.
+// Its answer is never an error: a refusal or a fault is carried in the
+// answer, for the act it follows to report, and that act's own outcome
+// stands.
 
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
-	store "github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
-	"github.com/intentdriven/abcd/internal/fsutil"
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // KeyAutomatic is the one setting that turns the automatic sweep off, in
@@ -158,11 +157,8 @@ func Automatic(ctx context.Context, repoRoot string, a AutoOptions) (out Auto) {
 		return out
 	}
 	out.Ran = true
-	// Which branches abcd made is read before any half runs: the worktree
-	// half removes the store's worktrees whose branches the branch halves
-	// then judge.
 	opts := a.Options
-	opts.ours = abcdMade(ctx, repoRoot)
+	opts.ours = abcdMade
 	o, err := prepare(ctx, repoRoot, opts)
 	if err != nil {
 		out.Result, _ = refused(err)
@@ -272,32 +268,15 @@ func leftForAPerson(row Row, ours func(string) bool) Row {
 	if ours == nil || row.Action != ActionDelete || ours(row.Name) {
 		return row
 	}
-	why := "abcd deletes on its own only the branches it made (a build lane's, or a worktree store worktree's)"
+	why := "abcd deletes on its own only the branches it made, a build lane's, named build/<run-id>-<lane-id>"
 	row.Action = ActionKeep
 	row.Reason = clean("left for `abcd sweep --apply`: " + why + "; " + row.Reason)
 	row.Evidence = append(row.Evidence, Evidence{Kind: KindProtected, Strength: Proven, Detail: why})
 	return row
 }
 
-// abcdMade says which branches abcd made in the repository at repoRoot: a
-// build lane's, under the loop's branch prefix, and the branch of each
-// worktree in the repository's own worktree store, read as the run starts,
-// before its worktree half removes any. A store that cannot be read leaves
-// the lanes' branches alone ours, which deletes fewer, never more.
-func abcdMade(ctx context.Context, repoRoot string) func(string) bool {
-	inStore := map[string]bool{}
-	if lane, err := store.LaneForContext(ctx, repoRoot); err == nil {
-		rctx, cancel := context.WithTimeout(ctx, gitReadTimeout)
-		wts, err := gitutil.ListWorktreesContext(rctx, repoRoot, gitutil.MaxWorktreeListing)
-		cancel()
-		if err == nil {
-			realLane := fsutil.RealExistingPath(lane.Dir)
-			for _, wt := range wts {
-				if wt.Branch != "" && filepath.Dir(fsutil.RealExistingPath(wt.Path)) == realLane {
-					inStore[strings.TrimPrefix(wt.Branch, "refs/heads/")] = true
-				}
-			}
-		}
-	}
-	return func(name string) bool { return strings.HasPrefix(name, loop.BranchPrefix) || inStore[name] }
-}
+// abcdMade is the test of a branch abcd made, as the sweep abcd runs on its
+// own reads it (dcn-2611161654034047): exactly the shape the build loop gives
+// a lane (loop.LaneBranch). A worktree store worktree's branch is no proof:
+// `ahoy worktree add` checks a person's existing branch out into the store.
+func abcdMade(name string) bool { return loop.LaneBranch(name) }
