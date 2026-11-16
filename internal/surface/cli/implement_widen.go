@@ -11,8 +11,8 @@ import (
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
-// newImplementWidenCommand builds `implement widen`: a host session widens an
-// issue run's reservation to a further path before its first edit there,
+// newImplementWidenCommand builds `implement widen`: a host session widens a
+// run's reservation, an issue's or an intent's (iss-2611101316537446), to a further path before its first edit there,
 // backing off another copy's live hold (iss-2610311224444576;
 // dcn-2610311544325397). The loop widens a lane's hold to what its branch
 // changes itself (iss-2611110638266241), so no lane's brief names it.
@@ -20,13 +20,13 @@ func newImplementWidenCommand(asJSON *bool) *cobra.Command {
 	var runID, laneID string
 	cmd := &cobra.Command{
 		Use: "widen <path>... --lane <lane-id> [--run <run-id>]",
-		Long: "Widen an issue run's reservation to each path named before the lane's implementer\n" +
-			"edits it: the issue is reserved again on origin with the footprint its reservation holds\n" +
+		Long: "Widen a run's reservation to each path named before the lane's implementer edits\n" +
+			"it: the run's record is reserved again on origin with the footprint its reservation holds\n" +
 			"and the paths it does not cover yet, judged for overlap and against the cap like any\n" +
 			"reservation. A path already covered adds nothing, and when every one is, nothing is\n" +
 			"pushed. The run record says what was widened. Only the run's current lane, at its\n" +
-			"implement or validate stage, widens; an intent's run holds its spec's footprint and is\n" +
-			"refused. A run holding no reservation has nothing to widen and says so.\n\n" +
+			"implement or validate stage, widens, in an issue's run or an intent's; an intent's spec\n" +
+			"is never edited for it. A run holding no reservation has nothing to widen and says so.\n\n" +
 			"No lane needs it: once an implementer hands its receipt back, the loop reserves every\n" +
 			"path the lane's branch changes beyond the hold itself, from the process driving the run,\n" +
 			"before it judges the receipt, and again before each step at the lane's validators and\n" +

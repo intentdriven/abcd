@@ -282,14 +282,17 @@ advances the lane it belongs to; a path no await names is refused, naming the
 awaits there are, and frees nothing. A path a step already collected (below) is
 answered while the file is what the step took, and refused once it has changed.
 
-An issue lane's hold follows what its branch changes. Once an implementer hands
-its receipt back, the loop itself, from the process driving the run, reserves
-the issue again with the footprint its reservation holds and every path the
-lane's branch changes that the footprint does not cover, judged for overlap and
-against the cap like any reservation, and only then judges the receipt; the
-run record names each path widened to. The run's own records are among them: a
-decision record the implementer wrote, and the issue's record the landing
-moves. The same widening is made before each step at the lane's validators,
+A lane's hold follows what its branch changes, in an issue's run and an
+intent's alike. Once an implementer hands its receipt back, the loop itself,
+from the process driving the run, reserves the run's record again with the
+footprint its reservation holds and every path the lane's branch changes that
+the footprint does not cover, judged for overlap and against the cap like any
+reservation, and only then judges the receipt; the run record names each path
+widened to. The run's own records are among them: a decision record the
+implementer wrote, held by its own name and never by the decisions directory,
+which would hold off every other run's, and the records the landing changes,
+the issue's record or the spec and the intent's. An intent's spec is never
+edited to widen its run's hold: the reservation's footprint is what is held. The same widening is made before each step at the lane's validators,
 so a path a fix round changed is held before a validator judges it, and at the
 fence before the landing's push and its arming. So an implementer runs nothing
 to reserve a file, and a stage `abcd drain --drive` walls off from origin needs
@@ -310,11 +313,11 @@ reservation made again names every path widened to, even when the reservation
 branch was deleted.
 
 `widen` is for a session of your own that wants a path held before its
-edit, run from the checkout the run lives in. It reserves the issue again with
+edit, run from the checkout the run lives in. It reserves the run's record again with
 the footprint its reservation holds and each path named that it does not cover
 yet, and the run record says what was widened; a path already covered adds
 nothing. Only the run's current lane widens, at its implement or validate
-stage; an intent's run holds its spec's footprint and is refused. Exit 3 means
+stage, an issue's run or an intent's. Exit 3 means
 another copy holds a live reservation on one of the paths and nothing was
 pushed.
 
