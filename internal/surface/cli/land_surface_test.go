@@ -373,6 +373,45 @@ func TestLandApproveRecordsTheFacilitatorsApproval(t *testing.T) {
 	}
 }
 
+// TestLandRefusesToRecordInADriveLanesWorktree: --record-review and --approve
+// run inside a drive lane's worktree are refused with exit 2, saying the merge
+// gate never counts a record there and where to run it instead, and nothing is
+// written.
+func TestLandRefusesToRecordInADriveLanesWorktree(t *testing.T) {
+	dir, _ := landWorld(t)
+	lane := filepath.Join(filepath.Dir(dir), "run-0000000000000001-lane-1")
+	gitCmd(t, dir, "worktree", "add", "-q", "--detach", lane, "HEAD")
+	for _, root := range []string{dir, lane} {
+		if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(landing.TierRelDir)), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	head := strings.TrimSpace(gitCmd(t, lane, "rev-parse", "HEAD"))
+	a, b := filepath.Join(t.TempDir(), "ruthless.md"), filepath.Join(t.TempDir(), "security.md")
+	writeReturn(t, a, head, "SHIP")
+	writeReturn(t, b, head, "APPROVE")
+	for name, args := range map[string][]string{
+		"--record-review": {"land", "--record-review", a, "--record-review", b},
+		"--approve":       {"land", "--approve"},
+	} {
+		code, _, stderr := reserveRun(t, lane, args...)
+		flat := strings.Join(strings.Fields(stderr), " ")
+		if code != 2 || !strings.Contains(flat, "never counts a review receipt or a recorded approval in a drive lane's worktree") ||
+			!strings.Contains(flat, "main checkout or your own worktree") || !strings.Contains(flat, "nothing was written") {
+			t.Fatalf("%s in a lane's worktree: exit %d, stderr %q; want 2, saying the gate never counts it there and where to run it", name, code, stderr)
+		}
+	}
+	for _, rel := range []string{landing.ReviewReceiptsRelDir, landing.ApprovalsRelDir} {
+		if _, err := os.Stat(filepath.Join(lane, filepath.FromSlash(rel), head)); !os.IsNotExist(err) {
+			t.Fatalf("%s/%s was written in the lane's worktree: %v", rel, head, err)
+		}
+	}
+	// The same pair recorded in the main checkout is written.
+	if code, _, stderr := reserveRun(t, dir, "land", "--record-review", a, "--record-review", b); code != 0 {
+		t.Fatalf("--record-review in the main checkout: exit %d, stderr %q", code, stderr)
+	}
+}
+
 // land --help says what a return recorded with --record-review opens its verdict
 // with, each word a validator writes and the name, with an example line, and that a
 // delta's return holds no Reviewed head line.

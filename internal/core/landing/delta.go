@@ -227,8 +227,12 @@ func StatesFullPair(text, head string) error { return statesFullPair(text, head)
 // the full pair base has: a review pair as RecordReview takes one, each return
 // also stating that it read base..head, over a delta that stands (judgeDelta).
 // Anything short of that is refused and nothing is written. A delta never
-// replaces a full pair already recorded for head.
+// replaces a full pair already recorded for head. A checkout that is a drive
+// lane's worktree is refused (ErrDriveLaneRecord), as RecordReview refuses it.
 func RecordDeltaReview(repoRoot, head, base string, returns []ReviewReturn) (string, error) {
+	if err := refuseInDriveLane(repoRoot); err != nil {
+		return "", err
+	}
 	if err := holdsCommit(repoRoot, head); err != nil {
 		return "", err
 	}

@@ -43,7 +43,9 @@ it traces that commit instead.
 Each row is classed in order. A person's push is a commit whose subject names
 no pull request, or one the forge says did not merge as that commit. A merge is
 a person's when a recorded approval of its merged head is found in a worktree
-of the checkout, when the forge holds a review approving that head by someone
+of the checkout other than a drive lane's (one the build loop made for a lane,
+named `run-<id>-lane-<n>`, where the merge gate never counts an approval
+either; see [`38-land.md`](38-land.md)), when the forge holds a review approving that head by someone
 other than the author, or when the first parent committed the human mode. Under
 the auto mode, a merge with no approval seen is the drain's when its branch
 carries the drain's admission trailer, and automatic otherwise. A row the

@@ -321,8 +321,12 @@ type reviewRecordEntry struct {
 // commit (ReadVerdict). Anything short of that is refused, naming the return, and
 // nothing is written. sha must be the full object name of a commit the repository
 // holds. A return that states a delta is refused: it is a delta's
-// (RecordDeltaReview).
+// (RecordDeltaReview). A checkout that is a drive lane's worktree is refused
+// (ErrDriveLaneRecord), since the gate never counts a receipt there.
 func RecordReview(repoRoot, sha string, returns []ReviewReturn) (string, error) {
+	if err := refuseInDriveLane(repoRoot); err != nil {
+		return "", err
+	}
 	if err := holdsCommit(repoRoot, sha); err != nil {
 		return "", err
 	}

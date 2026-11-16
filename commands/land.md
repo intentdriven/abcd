@@ -340,7 +340,9 @@ this is how they approve one. It writes
 `.abcd/.work.local/approvals/<full sha>`, found from any worktree as the
 review receipts are (never from a drive lane's), which the merge gate counts as
 an approval of that commit and of no other; `--json` carries the `commit` and
-the `approval` path. It is the person's own act: **never run it for the user.** The shell guard refuses it
+the `approval` path. Run inside a drive lane's worktree, it is refused with
+exit 2, since the gate never counts an approval there; run it from the main
+checkout or your own worktree. It is the person's own act: **never run it for the user.** The shell guard refuses it
 to an agent in either mode; tell the user the head is ready for their
 approval and let them run it. It takes no `--no-push`, `--no-enqueue` or
 `--record-review`.
@@ -372,8 +374,16 @@ stop rule, `SHIP` or `APPROVE` (no critical or major finding), the head's review
 and found from any worktree the same way but one: The merge gate counts no review
 receipt and no recorded approval in a drive lane's worktree, the one the build
 loop made for a lane, named `run-<id>-lane-<n>` in the worktree store. The gate
-tells it by the path git lists for the worktree, and its reason names each one
-it passed over. Record the pair in your own checkout or a worktree you made.
+tells it by the path git lists for the worktree. Whenever the gate reads them,
+its reason names each one it passed over, whether or not another counted: the
+review receipts in `auto` mode, and the recorded approvals for a contributor's
+pull request or in `human` mode. When `abcd land` or the release hold's re-arm
+runs from a drive lane's worktree, the gate counts no review receipt and no
+recorded approval at all, in any worktree, and its reason says so; a forge
+review can still count as an approval, and nothing already armed is withdrawn
+on that answer. `--record-review` run inside a drive lane's worktree is refused
+with exit 2, saying the gate never counts a record there, and nothing is
+written. Record the pair in the main checkout or a worktree you made.
 `--json` carries the `commit` and the `receipt` path. A return whose first line
 does not state this head, has no verdict or more than one line opening a verdict, whose verdict names no head, another head or this one
 abbreviated, says `FIX FIRST`, `BLOCK` or `NEEDS-INPUT`, or is the
@@ -454,7 +464,7 @@ from the head to `<base>`.
 The merge gate asks all of this again at landing, against the default branch as
 just fetched and in the build of abcd that runs the gate, and the note says why
 when a delta no longer stands. It reads the receipts for the head in every worktree
-but a drive lane's: a full pair in any of them counts. It counts a
+but a drive lane's, and a full pair in any of them counts. It counts a
 receipt with no delta only when it holds a passing pair for the head it names.
 `--rests-on` without `--record-review` is refused with exit 2.
 

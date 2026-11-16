@@ -14,7 +14,10 @@ package landing
 // approval (RecordApproval), and in auto a review receipt naming the head
 // (RecordReview). A recorded approval or a review receipt is read from any
 // worktree of the repository but a drive lane's (DriveLaneWorktree): one there
-// counts for nothing, and the reason names it. The table, in order:
+// counts for nothing, and whenever the gate reads them the reason names each
+// one it passed over. Asked from a checkout that is itself a drive lane's
+// worktree, the gate counts none at all, and the reason says so. The table, in
+// order:
 //
 //   - an author whose permission cannot be read, or a custom role whose base
 //     cannot be read, is unverified: nothing is armed, whatever the approvals;
@@ -243,26 +246,37 @@ func (r Review) Approves(head, author string) (note string, ok bool) {
 // review of a reviewer other than the author that approves head, by a
 // maintainer (readRole). An earlier commit's approval counts for nothing, and
 // so does an approval a later review of the same reviewer superseded. "" with
-// why when none counts.
-func countedApproval(forge ForgeCall, repoRoot, repo, n, head, author string) (by, why string, unread bool) {
-	switch p, passed, err := approvalRecords(repoRoot, head); {
-	case err != nil:
-		why, unread = "the technical facilitator's recorded approval cannot be read ("+forgeWhy(err)+"); ", true
-	case p != "":
-		return "the technical facilitator's recorded approval (abcd land --approve)", "", false
-	case len(passed) > 0:
-		why = "the recorded approval of " + short(head) + " at " + shownPaths(passed) + " was passed over, since no approval in a drive lane's worktree counts; "
+// why when none counts. passed names the recorded approvals of head it passed
+// over in a drive lane's worktree, "" for none, whatever the answer. From a
+// checkout that is itself a drive lane's worktree no recorded approval is read,
+// and a forge review alone can count: none counting is an answer it could not
+// read, never a refusal.
+func countedApproval(forge ForgeCall, repoRoot, repo, n, head, author string) (by, why, passed string, unread bool) {
+	if DriveLaneWorktree(repoRoot) {
+		// The gate's reason names the checkout and says why (fromDriveLane).
+		why, unread = "no recorded approval was read from a drive lane's worktree; ", true
+	} else {
+		p, lanes, err := approvalRecords(repoRoot, head)
+		if len(lanes) > 0 {
+			passed = "the recorded approval of " + short(head) + " at " + shownPaths(lanes) + " was passed over, since no approval in a drive lane's worktree counts"
+		}
+		switch {
+		case err != nil:
+			why, unread = "the technical facilitator's recorded approval cannot be read ("+forgeWhy(err)+"); ", true
+		case p != "":
+			return "the technical facilitator's recorded approval (abcd land --approve)", "", passed, false
+		}
 	}
 	out, err := forge(reviewsArgs(repo, n)...)
 	if err != nil {
-		return "", why + "the forge could not be asked for pull request #" + n + "'s reviews: " + forgeWhy(err), true
+		return "", why + "the forge could not be asked for pull request #" + n + "'s reviews: " + forgeWhy(err), passed, true
 	}
 	var reviews []reviewAnswer
 	if json.Unmarshal([]byte(out), &reviews) != nil {
-		return "", why + "the forge's answer listing pull request #" + n + "'s reviews does not parse", true
+		return "", why + "the forge's answer listing pull request #" + n + "'s reviews does not parse", passed, true
 	}
 	if len(reviews) >= maxReviews {
-		return "", why + fmt.Sprintf("pull request #%s has %d reviews or more, a later one may sit beyond the page read, so none counts", n, maxReviews), true
+		return "", why + fmt.Sprintf("pull request #%s has %d reviews or more, a later one may sit beyond the page read, so none counts", n, maxReviews), passed, true
 	}
 	page := make([]Review, len(reviews))
 	for i, r := range reviews {
@@ -281,21 +295,22 @@ func countedApproval(forge ForgeCall, repoRoot, repo, n, head, author string) (b
 		}
 		role, rwhy := readRole(forge, repo, r.Login)
 		if role == RoleMaintainer {
-			return r.Login + "'s approving review (" + rwhy + ")", "", false
+			return r.Login + "'s approving review (" + rwhy + ")", "", passed, false
 		}
 		unread = unread || role == RoleUnverified
 		notes = append(notes, r.Login+"'s approval is not by someone with write access ("+rwhy+")")
 	}
 	if len(notes) == 0 {
-		return "", why + "no review approves " + short(head), unread
+		return "", why + "no review approves " + short(head), passed, unread
 	}
-	return "", why + "no approval of " + short(head) + " counts: " + strings.Join(notes, "; "), unread
+	return "", why + "no approval of " + short(head) + " counts: " + strings.Join(notes, "; "), passed, unread
 }
 
 // approvalRecord finds the technical facilitator's recorded approval of sha in
 // any worktree git lists for the repository at repoRoot, as findReceipts finds
 // a review receipt, and returns its path, or "" when none names sha. One in a
-// drive lane's worktree is passed over.
+// drive lane's worktree is passed over, and every one is when repoRoot is
+// itself a drive lane's worktree.
 func approvalRecord(repoRoot, sha string) (string, error) {
 	return findReceipt(repoRoot, ApprovalsRelDir, sha)
 }
@@ -341,8 +356,13 @@ type approvalEntry struct {
 // sha, the full object name of a commit the repository at repoRoot holds, in
 // that checkout's local tier, and returns the record's path. It is the act
 // `abcd land --approve` runs for a person; nothing in abcd runs it on its own,
-// and the shell guard refuses it to an agent.
+// and the shell guard refuses it to an agent. A checkout that is a drive
+// lane's worktree is refused (ErrDriveLaneRecord), since the gate never counts
+// an approval there.
 func RecordApproval(repoRoot, sha string) (string, error) {
+	if err := refuseInDriveLane(repoRoot); err != nil {
+		return "", err
+	}
 	if !fullSHA.MatchString(sha) {
 		return "", fmt.Errorf("%s is not a commit's full object name", clip(sha))
 	}
@@ -386,6 +406,10 @@ type gateFacts struct {
 	// approvalWhy why none does; approvalUnread says a read it rests on failed.
 	approvedBy, approvalWhy string
 	approvalUnread          bool
+	// approvalPassed says which recorded approvals of head were passed over in
+	// a drive lane's worktree, "" for none; like reviewPassed, the reason ends
+	// with it whatever the answer.
+	approvalPassed string
 	// reviewed is whether a review receipt that stands names head, and
 	// reviewWhy why the receipts could not be read, "" when they were.
 	reviewed  bool
@@ -400,6 +424,10 @@ type gateFacts struct {
 	// a drive lane's worktree, "" for none; the reason ends with it, whatever
 	// the answer, so a person sees one was not counted.
 	reviewPassed string
+	// fromLane says the gate was asked from a checkout that is itself a drive
+	// lane's worktree (fromDriveLane), "" when it was not: it counted no
+	// review receipt or recorded approval, and the reason ends with it.
+	fromLane string
 }
 
 // gateDecision is the merge gate's answer: whether to arm the merge and with
@@ -513,12 +541,17 @@ func DecideMerge(q MergeQuery) (MergeDecision, error) {
 	if err != nil {
 		return MergeDecision{}, fmt.Errorf("%w: %s", ErrModeUnreadable, termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 	}
-	f := gateFacts{mode: mode, rule: q.Rule, def: q.Default, head: q.Head}
+	f := gateFacts{mode: mode, rule: q.Rule, def: q.Default, head: q.Head, fromLane: fromDriveLane(q.RepoRoot)}
 	f.author, f.role, f.roleWhy = readAuthor(q.Forge, q.Repo, q.PR)
 	if f.role == RoleContributor || (f.role == RoleMaintainer && mode.Mode != ModeAuto) {
-		f.approvedBy, f.approvalWhy, f.approvalUnread = countedApproval(q.Forge, q.RepoRoot, q.Repo, q.PR, q.Head, f.author)
+		f.approvedBy, f.approvalWhy, f.approvalPassed, f.approvalUnread = countedApproval(q.Forge, q.RepoRoot, q.Repo, q.PR, q.Head, f.author)
 	}
-	if mode.Mode == ModeAuto {
+	switch {
+	case mode.Mode == ModeAuto && f.fromLane != "":
+		// The worktrees a lane lists are the lane's own, so no receipt is
+		// read: whether one stands is unknown, which is no refusal.
+		f.reviewWhy, f.reviewUnread = "none is read from a drive lane's worktree", true
+	case mode.Mode == ModeAuto:
 		proof := readReviewProof(q.RepoRoot, q.Head, q.Tip)
 		f.reviewed, f.reviewNote, f.deltaWhy, f.reviewWhy, f.reviewUnread = proof.reviewed, proof.note, proof.deltaWhy, proof.unreadable, proof.unread
 		f.reviewPassed = proof.passed
@@ -532,8 +565,10 @@ func DecideMerge(q MergeQuery) (MergeDecision, error) {
 // repository and whether a person's approval counted.
 func decided(f gateFacts) MergeDecision {
 	d := mergeGate(f)
-	if f.reviewPassed != "" {
-		d.why += "; " + f.reviewPassed
+	for _, note := range []string{f.reviewPassed, f.approvalPassed, f.fromLane} {
+		if note != "" {
+			d.why += "; " + note
+		}
 	}
 	return MergeDecision{Arm: d.arm, Method: d.method, Why: d.why,
 		Unread: !d.arm && (f.role == RoleUnverified || f.reviewUnread || f.approvalUnread),

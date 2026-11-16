@@ -24,9 +24,11 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/tools"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/procgroup"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // TierRelDir is the local-ephemeral tier of a checkout, repo-relative and
@@ -74,7 +76,8 @@ func ReceiptContext(ctx context.Context, repoRoot, sha string) (string, error) {
 // that worktree's own: one git tracks came with a commit, and is refused
 // (localtier.Untracked) rather than counted. Preflight and review receipts
 // are found the same way, except that a review receipt or a recorded approval
-// in a drive lane's worktree is passed over (laneBlind).
+// in a drive lane's worktree is passed over (laneBlind), and every one is
+// when repoRoot is itself a drive lane's worktree.
 func findReceipt(repoRoot, rel, sha string) (string, error) {
 	return firstReceipt(findReceipts(repoRoot, rel, sha))
 }
@@ -128,12 +131,38 @@ var driveLaneName = regexp.MustCompile(`^run-[0-9]{16}-lane-[1-9][0-9]{0,3}$`)
 
 // DriveLaneWorktree reports whether path, a worktree's path as git lists it,
 // is a drive lane's: its last element is a lane's name as the implement loop
-// mints it. The path git lists comes from the repository's own worktree
-// records, outside the worktree, so nothing written inside the worktree
-// changes the answer. A worktree a person names that way is one the drive
-// would adopt as a lane's, and is read as one.
+// mints it. Read from a checkout that is not the lane itself, the path git
+// lists comes from the repository's own worktree records, outside the lane, so
+// nothing written inside the lane changes the answer. Read from inside the
+// lane it does not hold: git finds the repository through the lane's own .git
+// file, which sits inside the lane, so the gate counts no review receipt or
+// recorded approval at all from there (fromDriveLane). A worktree a person
+// names that way is one the drive would adopt as a lane's, and is read as one.
 func DriveLaneWorktree(path string) bool {
 	return driveLaneName.MatchString(filepath.Base(filepath.Clean(path)))
+}
+
+// fromDriveLane says, for a reason, that the checkout at dir is a drive lane's
+// worktree, so nothing there counts; "" when it is not one.
+func fromDriveLane(dir string) string {
+	if !DriveLaneWorktree(dir) {
+		return ""
+	}
+	return termsafe.Sanitize(fsutil.RedactHome(dir)) + " is a drive lane's worktree, and the merge gate counts no review receipt or recorded approval when it runs from one, since the worktrees it would read are listed from inside the lane; run it from the main checkout or your own worktree"
+}
+
+// ErrDriveLaneRecord refuses a review receipt or a recorded approval written
+// in a drive lane's worktree, which the merge gate would never count.
+var ErrDriveLaneRecord = errors.New("the merge gate never counts a review receipt or a recorded approval in a drive lane's worktree")
+
+// refuseInDriveLane refuses a record written at repoRoot when it is a drive
+// lane's worktree, naming where to record it instead.
+func refuseInDriveLane(repoRoot string) error {
+	if !DriveLaneWorktree(repoRoot) {
+		return nil
+	}
+	return fmt.Errorf("%s is a drive lane's worktree, and %w: run it from the main checkout or your own worktree",
+		termsafe.Sanitize(fsutil.RedactHome(repoRoot)), ErrDriveLaneRecord)
 }
 
 // findReceipts finds every worktree's receipt named sha under rel, in the order
@@ -144,12 +173,15 @@ func findReceipts(repoRoot, rel, sha string) ([]foundReceipt, error) {
 	if err != nil {
 		return nil, fmt.Errorf("listing the repository's worktrees: %w", err)
 	}
+	// From inside a drive lane's worktree the listing is the lane's own, so
+	// no review receipt or recorded approval it names counts.
+	inLane := laneBlind(rel) && DriveLaneWorktree(repoRoot)
 	var found []foundReceipt
 	for _, wt := range wts {
 		p := receiptIn(wt, rel, sha)
 		switch {
 		case p == "":
-		case laneBlind(rel) && DriveLaneWorktree(wt.Path):
+		case inLane || laneBlind(rel) && DriveLaneWorktree(wt.Path):
 			found = append(found, foundReceipt{path: p, lane: true})
 		default:
 			found = append(found, foundReceipt{path: p, err: localtier.Untracked(wt.Path, rel+"/"+sha)})

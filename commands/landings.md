@@ -76,7 +76,9 @@ come the notes and the tip read.
 The classes:
 
 - `person-approved` — a merge a person approved: a recorded approval of its
-  merged head in the local tier, a forge review approving that head by someone
+  merged head in the local tier of any worktree of the checkout but a drive
+  lane's (one the build loop made for a lane, named `run-<id>-lane-<n>`, where
+  the merge gate never counts an approval either), a forge review approving that head by someone
   other than the pull request's author, or the human facilitator mode its
   first parent committed.
 - `drain` — a merge under the auto mode with no approval seen whose branch

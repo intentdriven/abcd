@@ -308,9 +308,20 @@ Its inputs:
   any worktree of the repository but a drive lane's. A drive lane's worktree is
   one the build loop made for a lane, named `run-<id>-lane-<n>` in the worktree
   store, and the loop's model stages run in it. The gate tells it by the path git
-  lists for the worktree, which nothing written inside the worktree changes. It
-  counts no review receipt and no recorded approval found there, and its note
-  names each one it passed over. A return that falls short is refused,
+  lists for the worktree. Read from a checkout that is not the lane itself, that
+  path comes from the repository's own worktree records, so nothing written
+  inside the lane changes it. The gate counts no review receipt and no recorded
+  approval found there. Whenever it reads them, its note names each one it passed
+  over, whether or not another counted: the review receipts in `auto`, and the
+  recorded approvals for a contributor's pull request or in `human`. Asked from a
+  checkout that is itself a drive lane's worktree, the gate counts no review
+  receipt and no recorded approval at all, in that worktree or any other, since
+  git lists the worktrees from inside the lane there. Its note says so, and a
+  forge review alone can count as an approval. The answer is one the gate could
+  not read, so nothing already armed is withdrawn on it. The review act and the
+  approval act refuse to run in a drive lane's worktree, exit 2, saying the gate
+  never counts a record there and to run them from the main checkout or the
+  person's own worktree, and nothing is written. A return that falls short is refused,
   exit 2, naming it, and nothing is written. A receipt recorded before a verdict named
   its head does not count, at the gate or as a delta's base, whichever build wrote it:
   it keeps digests and not text, so it cannot be read again, and the head records its
@@ -352,7 +363,7 @@ Its inputs:
   default branch up needs no full pair, when it is exactly the merge git makes of
   its two parents with no conflict; any other merge is refused. The gate judges
   all of this again at landing, reads the receipts for the head in every worktree
-  but a drive lane's, and counts a receipt with no delta only when it
+  but a drive lane's (and none when it runs from one), and counts a receipt with no delta only when it
   holds a passing pair for the head it names.
 
 The decision, in order:
