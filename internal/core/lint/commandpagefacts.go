@@ -7,7 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/surface"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // commandpagefacts.go — the prose lint of the command pages
@@ -497,8 +499,11 @@ func fenceOpening(trimmed string) string {
 }
 
 // spansOf is the code spans of one paragraph, the lines whose indexes are
-// given. A span opens with a run of backticks and closes with the next run of
-// the same length; an unclosed run is literal text.
+// given. The spans are the tree's own pairing (mdrecord.CodeSpanRanges, by
+// termsafe.PairCodeSpan's rule) over the paragraph joined with its line
+// breaks, which that rule reads as span content, so a span may wrap; an
+// unclosed run is literal text, and a backtick behind a backslash opens
+// nothing. A span's text is what it renders as (termsafe.CodeSpanText).
 func spansOf(lines []string, para []int) []pageText {
 	if len(para) == 0 {
 		return nil
@@ -518,54 +523,19 @@ func spansOf(lines []string, para []int) []pageText {
 	}
 	text := b.String()
 	var out []pageText
-	for at := 0; at < len(text); {
-		if text[at] != '`' {
-			at++
+	for _, r := range mdrecord.CodeSpanRanges(text) {
+		sp, ok := termsafe.PairCodeSpan(text, r[0])
+		if !ok {
 			continue
 		}
-		run := 0
-		for at+run < len(text) && text[at+run] == '`' {
-			run++
-		}
-		open := at + run
-		closeAt := findRun(text, open, run)
-		if closeAt < 0 {
-			at = open
-			continue
-		}
-		content := strings.ReplaceAll(text[open:closeAt], "\n", " ")
-		if len(content) >= 2 && content[0] == ' ' && content[len(content)-1] == ' ' && strings.Trim(content, " ") != "" {
-			content = content[1 : len(content)-1]
-		}
-		first, last := lineOf[at], lineOf[closeAt]
+		first, last := lineOf[sp.Start], lineOf[sp.End-1]
 		exempt := false
 		for i := first; i <= last; i++ {
 			exempt = exempt || strings.Contains(lines[i], CommandPageHistorical)
 		}
-		out = append(out, pageText{line: first + 1, text: content, exempt: exempt})
-		at = closeAt + run
+		out = append(out, pageText{line: first + 1, text: termsafe.CodeSpanText(sp.Raw(text)), exempt: exempt})
 	}
 	return out
-}
-
-// findRun is the offset of the next run of exactly n backticks at or after
-// from, or -1.
-func findRun(text string, from, n int) int {
-	for at := from; at < len(text); {
-		if text[at] != '`' {
-			at++
-			continue
-		}
-		run := 0
-		for at+run < len(text) && text[at+run] == '`' {
-			run++
-		}
-		if run == n {
-			return at
-		}
-		at += run
-	}
-	return -1
 }
 
 // afterBinary is the text after the binary's spelling when the text starts
