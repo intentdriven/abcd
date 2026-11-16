@@ -1025,7 +1025,10 @@ member in the JSON and a `route:` line in the text, carrying `tier_asked`,
 invocation does not dispatch, a tier outside `local`, `economy`, `frontier` and
 `host-decides`, or a connection this machine has not configured exits 2 before
 anything is written. With no table accepted and no override, the step asks for
-`host-decides` on the harness and nothing is printed.
+`host-decides` on the harness and no stderr fallback line is printed; the
+`routing:` line of a ready emit still reports `host-decides`, decided by
+`none`, via `harness`, and the ingest's `route:` line still reports
+`host-decides` asked and `harness` used.
 
 **A composer routed to a provider runs there.** When the person's
 `oracle.roles.release-changelog-composer` points at a provider, the emit step of
