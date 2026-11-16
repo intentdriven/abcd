@@ -212,10 +212,18 @@
 // recorded creating, or a lane of a run it drives, stays its own. An item
 // whose holder cannot be told stays owed: a record with no session kept, a
 // lane of a run no session drives (unless a live session started in the
-// worktree it is checked out in), a reservation made by hand, a holder that
-// has ended (its work returns to the sessions left), and every item when the
-// session has no id or the live sessions (ReadOptions.LiveSessions,
-// occupancy.Live by default) cannot be read. A branch created again under a
+// worktree it is checked out in, or a live drive holds it, below), a
+// reservation made by hand, a holder that has ended (its work returns to the
+// sessions left), and every session's item when the session has no id or the
+// live sessions (ReadOptions.LiveSessions, occupancy.Live by default) cannot
+// be read. With or without a session id, the lanes of a run whose control
+// record names a live drive as its driver, and a reservation only such runs
+// are for, are the drive's and named in a note (iss-2611150851542274): a
+// drive started in a plain terminal records its own process and no session,
+// and the record is the drive's while the process table proves that process
+// alive, abcd by its program name, this account's, and neither the check's
+// own process nor one above it; a drive that has ended, or any process that
+// cannot be told so, leaves the lane owed. A branch created again under a
 // name the guard recorded is its new creator's. A branch a peer holds still
 // serves as the base of the session's own branch stacked on it. Whenever owed
 // work remains, a copy another live session started in is named, once, as a
