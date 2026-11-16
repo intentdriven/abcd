@@ -31,7 +31,7 @@ GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
 export GOFLAGS := $(strip $(filter-out -trimpath,$(GOFLAGS)) -trimpath)
 
 .PHONY: build test vet clean preflight preflight-stages precheck load-check lint-reviews lint-issues record-lint issue-drift docs-lint site-render smoke \
-	evals-cold-reading check-attribution secrets-check vulncheck scaffold-sync scaffold-sync-check asking-sync asking-sync-check fmt fmt-check
+	evals-cold-reading check-attribution secrets-check vulncheck scaffold-sync scaffold-sync-check asking-sync asking-sync-check command-facts-sync command-facts-sync-check fmt fmt-check
 
 # Cross-compile every supported target to bin/abcd-<goos>-<arch>.
 # Pass VERSION=vX.Y.Z to stamp the version (release builds); omit for a dev build.
@@ -312,6 +312,21 @@ asking-sync:
 
 asking-sync-check:
 	@go run ./cmd/asking-sync -check
+
+# Write the command facts (cli.CommandFacts, read from the command tree) into
+# their derived copies (spc-2610301431075964 step 3): one JSON file per
+# top-level verb under docs/reference/cli/commands/, and the ask-the-binary and
+# command-facts blocks of every page under commands/. Nothing in CI calls
+# either target: the drift is GATED by `go test`
+# (TestCommandFactsFilesMatchTheCommittedCopies and
+# TestCommandPageBlocksMatchTheCommittedPages in internal/surface/cli, under
+# precheck and preflight); these are the read-only look at it and the
+# one-command fix.
+command-facts-sync:
+	@go run ./cmd/command-facts-sync
+
+command-facts-sync-check:
+	@go run ./cmd/command-facts-sync -check
 
 # A records-only change (iss-2610251555094324) takes a shorter preflight: when
 # every path HEAD changes against the merge base with origin's default branch
