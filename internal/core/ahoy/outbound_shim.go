@@ -2,7 +2,6 @@ package ahoy
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -12,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -121,6 +121,24 @@ func (e wordedError) Unwrap() error { return e.cause }
 // rootCommitCommand is the git command a note names when git gave no root
 // commit, so the person can see git's own reason, which the note keeps out.
 const rootCommitCommand = "git rev-list -n 1 --max-parents=0 HEAD"
+
+// rootCommitCause says in words why git gave no root commit, and names
+// rootCommitCommand only when git itself refused, since abcd's own refusals
+// (a git below the lazy-fetch floor, a version it cannot read) are said in
+// full and that command would answer in the person's shell (iss-2611162118486104).
+func rootCommitCause(err error) string {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return causeInWords(err) + "; " + rootCommitCommand + " shows git's reason"
+	}
+	return causeInWords(err)
+}
+
+// shellQuoted quotes s for a POSIX shell, so a command a note names can be
+// pasted as written whatever s holds.
+func shellQuoted(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
 
 // errNoGitDirNamed is gitCommonDir's refusal of an empty answer.
 var errNoGitDirNamed = errors.New("git named no git directory")
@@ -414,8 +432,10 @@ func causeInWords(err error) string {
 		return "git was not found on PATH"
 	case errors.Is(err, errNoGitDirNamed):
 		return errNoGitDirNamed.Error()
-	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
-		return "git did not answer in time"
+	case errors.Is(err, gitutil.ErrLazyFetchFloor):
+		return gitutil.ErrLazyFetchFloor.Error()
+	case errors.Is(err, gitutil.ErrGitVersionUnread):
+		return gitutil.ErrGitVersionUnread.Error()
 	}
 	return "an error abcd keeps out of this note, since it can name a path outside the working tree"
 }

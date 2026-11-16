@@ -1,11 +1,12 @@
 package ahoy
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/provenance"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // MachineIdentity (itd-2610240918547728) covers the person's own commit
@@ -76,7 +77,7 @@ func (a *applyCtx) stepIdentityMigrate() {
 	home := userHome()
 	plan, found, err := identity.PlanMigration(a.cwd, home)
 	if err != nil {
-		a.refuse("did not move the identity this repository stores: " + errText(err))
+		a.refuse("did not move the identity this repository stores: " + identityReadCause(err))
 		return
 	}
 	if !found || !plan.Owner || plan.Blocker != "" {
@@ -190,7 +191,7 @@ func (a *applyCtx) stepGitIdentity() {
 	}
 	prop, ok, err := identity.Propose(a.cwd)
 	if err != nil {
-		a.refuse(did + ": the identity to propose could not be read: " + causeInWords(err) + "; " + rootCommitCommand + " shows git's reason")
+		a.refuse(did + ": the identity to propose could not be read: " + identityReadCause(err))
 		return
 	}
 	if !ok {
@@ -212,7 +213,8 @@ func (a *applyCtx) stepGitIdentity() {
 		return
 	}
 	if err := identity.WriteLocal(a.cwd, prop.Identity); err != nil {
-		a.refuse(did + ": git config could not write it (" + causeInWords(err) + "; git config --local user.name " + fmt.Sprintf("%q", prop.Identity.Name) + " shows git's reason, and a config.lock a crashed git left is the usual cause)")
+		a.refuse(did + ": git config could not write it (" + causeInWords(err) + "; a config.lock a crashed git left is the usual cause, and once it is gone git config --local user.name " + shellQuoted(prop.Identity.Name) +
+			" && git config --local user.email " + shellQuoted(prop.Identity.Email) + " makes the write, or shows git's reason if it fails again)")
 		return
 	}
 	a.note(writeGitIdentity, ".git/config")
@@ -226,4 +228,15 @@ func (a *applyCtx) anyGap(ids []string) bool {
 		}
 	}
 	return false
+}
+
+// identityReadCause says why an identity read failed: git's root-commit
+// failure in words, never git's message or the checkout's path; any other
+// failure is abcd's own sentence about the person's record or the pin, which
+// names only paths a note may show (iss-2611162118486104).
+func identityReadCause(err error) string {
+	if errors.Is(err, gitutil.ErrNoRootAnswer) {
+		return "git gave no root commit (" + rootCommitCause(err) + ")"
+	}
+	return errText(err)
 }

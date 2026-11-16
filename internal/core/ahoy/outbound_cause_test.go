@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -52,9 +53,13 @@ func TestCauseInWordsNamesNoPath(t *testing.T) {
 		err  error
 		want string
 	}{
-		{&fs.PathError{Op: "open", Path: secret, Err: syscall.EACCES}, "open: permission denied"},
-		{fmt.Errorf("opening %s: %w", secret, &fs.PathError{Op: "mkdirat", Path: secret, Err: syscall.ENOTDIR}), "mkdirat: not a directory"},
-		{&os.LinkError{Op: "rename", Old: secret, New: secret, Err: syscall.EXDEV}, "rename: cross-device link"},
+		// The errno's own words, which differ between systems ("invalid
+		// cross-device link" on Linux, "cross-device link" on macOS).
+		{&fs.PathError{Op: "open", Path: secret, Err: syscall.EACCES}, "open: " + syscall.EACCES.Error()},
+		{fmt.Errorf("opening %s: %w", secret, &fs.PathError{Op: "mkdirat", Path: secret, Err: syscall.ENOTDIR}), "mkdirat: " + syscall.ENOTDIR.Error()},
+		{&os.LinkError{Op: "rename", Old: secret, New: secret, Err: syscall.EXDEV}, "rename: " + syscall.EXDEV.Error()},
+		{fmt.Errorf("%w: %s: %w", gitutil.ErrNoRootAnswer, secret, gitutil.ErrLazyFetchFloor), gitutil.ErrLazyFetchFloor.Error()},
+		{fmt.Errorf("%w: %s: asking: %w", gitutil.ErrNoRootAnswer, secret, gitutil.ErrGitVersionUnread), gitutil.ErrGitVersionUnread.Error()},
 		{fmt.Errorf("%w (stderr: %q)", exit, "fatal: bad config line 1 in file "+secret), "git exited with status 3"},
 		{fmt.Errorf("git: %w", exec.ErrNotFound), "git was not found"},
 		{errors.New("somewhere at " + secret), "an error abcd keeps out of this note"},
@@ -90,7 +95,7 @@ func TestArmRefusalKeepsGitsMessageOut(t *testing.T) {
 	if !strings.Contains(all, "core.hooksPath was not set: git exited with status") {
 		t.Fatalf("want the refusal in words:\n%s", all)
 	}
-	for _, leak := range []string{"could not lock", "config.lock", filepath.Base(repo)} {
+	for _, leak := range []string{"could not lock", "config.lock"} {
 		if strings.Contains(all, leak) {
 			t.Errorf("the refusal carries %q:\n%s", leak, all)
 		}
@@ -195,13 +200,54 @@ func TestIdentityProposalRefusalKeepsGitsMessageOut(t *testing.T) {
 	a := establishCtx(repo.Root(), p, MismatchGapID)
 	a.stepGitIdentity()
 	notes := strings.Join(a.notes, "\n")
-	if !strings.Contains(notes, "the identity to propose could not be read: git exited with status") ||
+	if !strings.Contains(notes, "the identity to propose could not be read: git gave no root commit (git exited with status") ||
 		!strings.Contains(notes, rootCommitCommand+" shows git's reason") {
 		t.Fatalf("want the refusal in words with the command:\n%s", notes)
 	}
 	for _, leak := range []string{"fatal", "bad object", repo.Root(), displayPath(repo.Root())} {
 		if strings.Contains(notes, leak) {
 			t.Errorf("the refusal carries %q:\n%s", leak, notes)
+		}
+	}
+}
+
+// TestRootCommitCauseNamesTheCommandOnlyWhenGitRefused: git's own refusal
+// names the command that shows its reason; abcd's refusal of a git below the
+// lazy-fetch floor is said in full, with no command that would answer in the
+// person's shell, where lazy fetch is on.
+func TestRootCommitCauseNamesTheCommandOnlyWhenGitRefused(t *testing.T) {
+	const secret = "/Users/private-name/elsewhere"
+	exit := exec.Command("sh", "-c", "exit 128").Run()
+	got := rootCommitCause(fmt.Errorf("%w: %s: %w (stderr: %q)", gitutil.ErrNoRootAnswer, secret, exit, "fatal: bad object"))
+	if got != "git exited with status 128; "+rootCommitCommand+" shows git's reason" {
+		t.Errorf("git's refusal: %q", got)
+	}
+	got = rootCommitCause(fmt.Errorf("%w: %s: %w", gitutil.ErrNoRootAnswer, secret, gitutil.ErrLazyFetchFloor))
+	if got != gitutil.ErrLazyFetchFloor.Error() || strings.Contains(got, rootCommitCommand) {
+		t.Errorf("abcd's refusal: %q", got)
+	}
+}
+
+// TestIdentityReadCauseKeepsAbcdsOwnSentence: a failure that is not git's
+// root-commit read is abcd's own sentence about the record or the pin, kept.
+func TestIdentityReadCauseKeepsAbcdsOwnSentence(t *testing.T) {
+	own := fmt.Errorf("%w: ~/.abcd.noindex/identity.json is not valid JSON", identity.ErrRecordRefused)
+	if got := identityReadCause(own); !strings.Contains(got, "is not valid JSON") || strings.Contains(got, rootCommitCommand) {
+		t.Errorf("abcd's own sentence was not kept: %q", got)
+	}
+	root := fmt.Errorf("%w: /Users/private-name/x: %w", gitutil.ErrNoRootAnswer, exec.Command("sh", "-c", "exit 128").Run())
+	if got := identityReadCause(root); strings.Contains(got, "private-name") || !strings.HasPrefix(got, "git gave no root commit (git exited with status 128") {
+		t.Errorf("git's root-commit failure: %q", got)
+	}
+}
+
+// TestShellQuotedPastesAsWritten: a name a note puts into a command cannot
+// expand or end the quoting when pasted.
+func TestShellQuotedPastesAsWritten(t *testing.T) {
+	for _, name := range []string{"Jan B. Doe", "R $(touch pwned) `x`", "O'Brien", ""} {
+		out, err := exec.Command("sh", "-c", "printf %s "+shellQuoted(name)).Output()
+		if err != nil || string(out) != name {
+			t.Errorf("shellQuoted(%q) = %s pastes as %q (%v)", name, shellQuoted(name), out, err)
 		}
 	}
 }

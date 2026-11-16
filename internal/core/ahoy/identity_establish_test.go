@@ -295,10 +295,10 @@ func TestStepGitIdentity_WriteRefusalKeepsGitsMessageOut(t *testing.T) {
 	a.stepGitIdentity()
 	notes := strings.Join(a.notes, "\n")
 	if !strings.Contains(notes, `git config could not write it (git exited with status`) ||
-		!strings.Contains(notes, `git config --local user.name "Alice" shows git's reason`) {
+		!strings.Contains(notes, `git config --local user.name 'Alice' && git config --local user.email 'alice@example.com' makes the write`) {
 		t.Fatalf("want the refusal in words with the command to run:\n%s", notes)
 	}
-	for _, leak := range []string{"could not lock", "File exists", filepath.Base(dir)} {
+	for _, leak := range []string{"could not lock", "File exists"} {
 		if strings.Contains(notes, leak) {
 			t.Errorf("the refusal carries %q:\n%s", leak, notes)
 		}

@@ -173,8 +173,8 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	}
 	if gitUnanswered != nil && det.FolderKind == UnmanagedRepo && opts.Adopt == nil {
 		return InstallResult{}, wordedError{
-			text: "git gave no root commit for this repository (" + causeInWords(gitUnanswered) + "; " + rootCommitCommand +
-				" shows git's reason), so abcd cannot tell whether it already manages it; run the install again once git answers, or pass --adopt to adopt it anyway",
+			text: "git gave no root commit for this repository (" + rootCommitCause(gitUnanswered) +
+				"), so abcd cannot tell whether it already manages it; run the install again once git answers, or pass --adopt to adopt it anyway",
 			cause: gitUnanswered,
 		}
 	}
@@ -1338,7 +1338,7 @@ func (a *applyCtx) stepHistory() {
 		// registered or given a store this run, and says so, rather than
 		// being passed over as one with no commits (iss-2610051434156079).
 		a.refuse("could not register this repository on this machine: git gave no root commit for it (" +
-			causeInWords(rerr) + "; " + rootCommitCommand + " shows git's reason); run `abcd ahoy install` again")
+			rootCommitCause(rerr) + "); run `abcd ahoy install` again")
 		return
 	}
 	if sha == "" {

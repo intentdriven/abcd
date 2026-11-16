@@ -387,7 +387,7 @@ func remotePrepare(cwd string) (res RemoteResult, prep remotePrep, done bool) {
 	if rerr := det.RepoIdentity.RootErr(); det.RootSHA == "" && rerr != nil {
 		// git not answering is not a folder outside abcd: say which it was,
 		// and still make no remote write (iss-2610051434156079).
-		return refuseRemote(res, "git gave no root commit for this repository, so abcd cannot tell whether it manages it: "+causeInWords(rerr)+"; "+rootCommitCommand+" shows git's reason"), prep, true
+		return refuseRemote(res, "git gave no root commit for this repository, so abcd cannot tell whether it manages it: "+rootCommitCause(rerr)), prep, true
 	}
 	if det.FolderKind != ManagedRepo {
 		return refuseRemote(res, "this is not a repo abcd manages ("+string(det.FolderKind)+
