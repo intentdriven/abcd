@@ -74,7 +74,7 @@ func (a *applyCtx) stepOutboundBinary() {
 		return
 	}
 	if _, err := gitutil.Run(a.cwd, "config", "--local", abcdBinaryKey, target); err != nil {
-		a.refuse(did + ": git config could not write it (" + causeInWords(err) + "; git config --local abcd.binary with the path above shows git's reason, and a .git/config.lock a crashed git left is the usual cause)")
+		a.refuse(did + ": git config could not write it (" + causeInWords(err) + "; git config --local abcd.binary " + displayPath(target) + " shows git's reason, and a config.lock a crashed git left is the usual cause)")
 		return
 	}
 	a.note(writeOutboundBinary, ".git/config")

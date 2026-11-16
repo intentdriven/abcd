@@ -95,3 +95,30 @@ func TestArmRefusalKeepsGitsMessageOut(t *testing.T) {
 		}
 	}
 }
+
+// TestAbcdBinaryWriteRefusalNamesThePathToSet: when git refuses to write
+// abcd.binary (a lock a crashed git left), the refusal says why in words and
+// names the command to run in full, the verified copy's path included, since
+// nothing else in the run's output may name it.
+func TestAbcdBinaryWriteRefusalNamesThePathToSet(t *testing.T) {
+	setupHermetic(t)
+	target := binTarget()
+	repo := gittest.NewRepo(t)
+	if err := os.WriteFile(filepath.Join(repo.Root(), ".git", "config.lock"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Install(repo.Root(), outboundOpts(), RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := notesJoined(res.Notes)
+	if !strings.Contains(all, "git config could not write it (git exited with status") {
+		t.Fatalf("want the write refusal in words:\n%s", all)
+	}
+	if !strings.Contains(all, "git config --local abcd.binary "+displayPath(target)+" shows git's reason") {
+		t.Errorf("the refusal does not name the command to run in full:\n%s", all)
+	}
+	if strings.Contains(all, "could not lock") {
+		t.Errorf("the refusal carries git's message:\n%s", all)
+	}
+}
