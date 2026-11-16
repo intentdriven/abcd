@@ -24,6 +24,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -49,9 +50,13 @@ const (
 	ClaudeCode = "Claude Code"
 )
 
+// AnsweredInPlaces returns the two places an answer is given, the one list
+// ValidAnsweredIn checks against and an --answered-in flag declares.
+func AnsweredInPlaces() []string { return []string{Terminal, ClaudeCode} }
+
 // ValidAnsweredIn reports whether s is one of the two places an answer is
 // given.
-func ValidAnsweredIn(s string) bool { return s == Terminal || s == ClaudeCode }
+func ValidAnsweredIn(s string) bool { return slices.Contains(AnsweredInPlaces(), s) }
 
 // The targets a setup record names: the repository the install ran in, or the
 // machine, for the machine-wide part of setup.

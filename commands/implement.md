@@ -2405,6 +2405,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd implement [flags]`
+  - An example call is `abcd implement`.
 - `abcd implement check <lane|release|review|audit|land> --session <id> [flags]`
   - An example call is `abcd implement check lane --session s-example`.
 - `abcd implement claim <record> --session <id> --lane <lane> [flags]`
@@ -2420,6 +2421,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 - `abcd implement mode <single|claim|batch|split-roles> --session <id> [flags]`
   - An example call is `abcd implement mode single --session s-example`.
 - `abcd implement outage [flags]`
+  - An example call is `abcd implement outage`.
 - `abcd implement outage ack --session <id> [flags]`
   - An example call is `abcd implement outage ack --session s-example`.
 - `abcd implement outage clear --session <id> --reason <why> [flags]`
@@ -2431,13 +2433,17 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 - `abcd implement receipt <path> [--run <run-id>] [flags]`
   - An example call is `abcd implement receipt review-receipt.json --run run-2609010000000001`.
 - `abcd implement record [--run <run-id>] [--transcript <path>]... [flags]`
+  - An example call is `abcd implement record`.
 - `abcd implement release <record> --session <id> [flags]`
   - An example call is `abcd implement release iss-2609010000000001 --session s-example`.
 - `abcd implement report [--date YYYY-MM-DD | --log <file>] [flags]`
+  - An example call is `abcd implement report`.
 - `abcd implement resume [--run <run-id>] [--take <run-id>] [flags]`
   - An example call is `abcd implement resume --take run-2609010000000001`.
 - `abcd implement status [--run <run-id>] [flags]`
+  - An example call is `abcd implement status`.
 - `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [--route <role>=runner:<name>[@<provider>/<model>]]... [flags]`
+  - An example call is `abcd implement step`.
 - `abcd implement stop [--lift] [flags]`
   - An example call is `abcd implement stop`.
 - `abcd implement widen <path>... --lane <lane-id> [--run <run-id>] [flags]`

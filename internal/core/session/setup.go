@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -30,8 +31,12 @@ const (
 	WhereBoth  = "both"
 )
 
+// Wheres returns where sessions may run, in the order setup offers them: the
+// one list ValidWhere checks against and `session setup --where` declares.
+func Wheres() []string { return []string{WhereLocal, WhereCloud, WhereBoth} }
+
 // ValidWhere reports whether w is where sessions may run.
-func ValidWhere(w string) bool { return w == WhereLocal || w == WhereCloud || w == WhereBoth }
+func ValidWhere(w string) bool { return slices.Contains(Wheres(), w) }
 
 // AllowsLocal reports whether w allows a session on the host's computer.
 func AllowsLocal(w string) bool { return w == WhereLocal || w == WhereBoth }

@@ -139,7 +139,7 @@ func ParseMode(v string) (Mode, error) {
 			return known, nil
 		}
 	}
-	return "", fmt.Errorf("invalid production mode %q: want exactly one of %s (lower-case, no surrounding whitespace)", v, ModeList())
+	return "", fmt.Errorf("invalid production mode %q: want exactly one of %s (lower-case, no surrounding whitespace)", v, modeList())
 }
 
 // modeOrDefault is the ONE defaulting door: an absent value means DefaultMode,
@@ -153,8 +153,19 @@ func modeOrDefault(v string) (Mode, error) {
 	return ParseMode(v)
 }
 
-// ModeList renders the legal set for an error message or a flag's help text.
-func ModeList() string {
+// ModeNames returns the set's wire values in the order modeList names them:
+// the closed set a --production-mode flag declares, read from the one list
+// ParseMode checks against.
+func ModeNames() []string {
+	out := make([]string, 0, len(modeValues))
+	for _, m := range modeValues {
+		out = append(out, string(m))
+	}
+	return out
+}
+
+// modeList renders the legal set for an error message.
+func modeList() string {
 	parts := make([]string, 0, len(modeValues))
 	for _, m := range modeValues {
 		parts = append(parts, string(m))

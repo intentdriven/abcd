@@ -923,6 +923,15 @@ func closeOnResume(repoRoot string, res StartResult, o Options, finishing bool) 
 	}
 	mc, err := closeMergedLanes(repoRoot, res.RunID, o, finishing)
 	res.Diagnostics = append(res.Diagnostics, mc.notes...)
+	if len(mc.closed) > 0 {
+		// Each lane closed is a landing that saw its pull request merged, so
+		// the closing sweeps on its own once, after its state is written and
+		// the run's lock let go (autosweep.go), a refusal met after a lane
+		// closed included; the sweep's line is a diagnostic of the start's.
+		if line := autoSweep(o.sweepCtx, o.sweepStop, repoRoot); line != "" {
+			res.Diagnostics = append(res.Diagnostics, line)
+		}
+	}
 	if err != nil || len(mc.closed) == 0 {
 		return res, err
 	}

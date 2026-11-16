@@ -7,6 +7,7 @@
       "usage": "abcd implement [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd implement",
       "subcommands": [
         "check",
         "claim",
@@ -89,7 +90,11 @@
         },
         {
           "name": "role",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "first",
+            "second"
+          ]
         },
         {
           "name": "session",
@@ -190,6 +195,7 @@
       "usage": "abcd implement outage [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd implement outage",
       "subcommands": [
         "ack",
         "clear",
@@ -234,7 +240,11 @@
       "flags": [
         {
           "name": "model",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "ok",
+            "fail"
+          ]
         },
         {
           "name": "session",
@@ -309,7 +319,8 @@
           "type": "list"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd implement record"
     },
     {
       "path": "abcd implement release",
@@ -338,7 +349,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd implement report"
     },
     {
       "path": "abcd implement resume",
@@ -367,7 +379,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd implement status"
     },
     {
       "path": "abcd implement step",
@@ -403,7 +416,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd implement step"
     },
     {
       "path": "abcd implement stop",

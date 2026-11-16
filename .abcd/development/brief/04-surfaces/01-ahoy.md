@@ -365,7 +365,10 @@ The appendix lists the sub-verbs and their options.
   it cannot archive keeps the worktree. The removal is `git worktree remove`
   without its force option; the prune never deletes a branch and never runs the
   repository-wide `git worktree prune`. Files git ignores outside the local tier
-  go with the worktree unarchived (iss-2610272112319234 holds that finding).
+  go with the worktree unarchived (iss-2610272112319234 holds that finding), so
+  the row of a worktree it reclaims, or would, names them, how many and the
+  first few, or says they could not be listed, and the removal goes ahead
+  (dcn-2611161805215819).
   After a removal it trims the Go build cache. It exits 0 when it reclaimed a
   worktree, 1 when it reclaimed none, and 2 on a refusal or fault. Its dry run
   removes, archives and trims nothing, reports `would reclaim` where a real run

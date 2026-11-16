@@ -137,7 +137,7 @@ its line, which leaves an ordinary draft.
 A single whitespace-free word is refused (exit 2, nothing written): a lone
 token reads as a mistyped sub-verb, never as a draft title. A near-miss of a
 real sub-verb is refused the same way, with the correction named. So is a word
-followed by a record id — `abcd intent shipit itd-5` is a sub-verb call by
+followed by a record id — `abcd intent shipit itd-5` is a sub-verb call by <!-- facts-lint: historical -->
 shape whatever the word is, so it is refused whether or not any sub-verb is
 close enough to suggest, and a refusal with nothing to suggest lists the
 sub-verbs the verb has. What still files is prose: several words, or one quoted
@@ -1461,6 +1461,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd intent [text] [flags]`
+  - An example call is `abcd intent "let a reviewer read the board from a phone"`.
 - `abcd intent audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] [flags]`
   - An example call is `abcd intent audit itd-2609010000000001`.
 - `abcd intent audit ingest --verdict-json <path> [--dry-run] [flags]`
@@ -1469,6 +1470,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 - `abcd intent condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds "<why>" [--narrowing "<what now holds>"]] [flags]`
   - An example call is `abcd intent condition itd-2609010000000001`.
 - `abcd intent consistency [<itd-N>] [flags]`
+  - An example call is `abcd intent consistency`.
 - `abcd intent consistency ingest --findings-json <path> [--findings-json <path>...] [--dry-run] [flags]`
   - Reads `--findings-json`, the consistency findings, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain intent consistency ingest --input findings-json` prints its shape.
   - An example call is `abcd intent consistency ingest --findings-json findings.json`.

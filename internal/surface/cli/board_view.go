@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/board"
@@ -20,27 +21,34 @@ const (
 	formMarkdown    = "markdown"
 )
 
+// boardViews and boardForms are the two axes' closed sets, the default first:
+// the lists --view and --format declare and boardView and boardForm check.
+var (
+	boardViews = []string{viewProduct, viewFacilitator}
+	boardForms = []string{formText, formMarkdown}
+)
+
 // boardView reads --view, the product thinker's when it is omitted, always:
 // never the stored status's role and never the last one chosen (decision 8).
 func boardView(v string) (board.View, error) {
-	switch v {
-	case "", viewProduct:
-		return board.Product, nil
-	case viewFacilitator:
+	if v != "" && !slices.Contains(boardViews, v) {
+		return 0, &exitError{Code: 2, Msg: fmt.Sprintf("--view takes %s or %s (the value given is not repeated here)", viewProduct, viewFacilitator)}
+	}
+	if v == viewFacilitator {
 		return board.Facilitator, nil
 	}
-	return 0, &exitError{Code: 2, Msg: fmt.Sprintf("--view takes %s or %s (the value given is not repeated here)", viewProduct, viewFacilitator)}
+	return board.Product, nil
 }
 
 // boardForm reads --format, text when it is omitted.
 func boardForm(f string) (board.Form, error) {
-	switch f {
-	case "", formText:
-		return board.Text, nil
-	case formMarkdown:
+	if f != "" && !slices.Contains(boardForms, f) {
+		return 0, &exitError{Code: 2, Msg: fmt.Sprintf("--format takes %s or %s (the value given is not repeated here)", formText, formMarkdown)}
+	}
+	if f == formMarkdown {
 		return board.Markdown, nil
 	}
-	return 0, &exitError{Code: 2, Msg: fmt.Sprintf("--format takes %s or %s (the value given is not repeated here)", formText, formMarkdown)}
+	return board.Text, nil
 }
 
 // viewName is the view as --json names it: the role whose view it is.

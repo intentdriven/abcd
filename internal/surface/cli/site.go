@@ -353,7 +353,7 @@ func newSiteSetupCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&name, "name", "", "host name when the composition names none (default: the repository's name)")
 	cmd.Flags().StringVar(&domain, "domain", "", "custom domain to route to the host when the composition names none")
-	cmd.Flags().StringVar(&provider, "provider", "", "hosting provider when the composition names none: "+strings.Join(site.Providers(), " or ")+
+	enumFlag(cmd.Flags(), &provider, "provider", "", "hosting provider when the composition names none: ", site.Providers(),
 		" (default "+site.DefaultProvider+"); github-pages asks whether to switch the project site on")
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "replace a workflow or host configuration that differs from what setup writes")
 	cmd.Flags().BoolVar(&yes, "yes", false, "confirm the forge and host changes without being asked (never the install of a missing gh, "+

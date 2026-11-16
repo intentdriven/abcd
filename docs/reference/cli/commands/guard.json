@@ -7,6 +7,7 @@
       "usage": "abcd guard [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd guard",
       "subcommands": [
         "allow",
         "approve",
@@ -79,14 +80,16 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd guard check --command 'git push --force origin main'"
     },
     {
       "path": "abcd guard hook",
       "sentence": "Judge the shell command in a host's pre-tool-use payload: Writes branch records and a question's mode; refuses a hazard or a badly built question.",
       "usage": "abcd guard hook [flags]",
       "flags": [],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd guard hook < payload.json"
     },
     {
       "path": "abcd guard question",
@@ -98,7 +101,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd guard question draft.json"
     }
   ]
 }

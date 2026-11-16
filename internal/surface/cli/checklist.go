@@ -160,7 +160,7 @@ func newChecklistSetCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVar(&state, "state", "", "the item's new state: "+checklistStateWords())
+	enumFlag(cmd.Flags(), &state, "state", "", "the item's new state: ", enumWords(checklist.States()), "")
 	return cmd
 }
 

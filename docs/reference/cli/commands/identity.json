@@ -7,6 +7,7 @@
       "usage": "abcd identity [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd identity",
       "subcommands": [
         "init",
         "render"
@@ -38,14 +39,16 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd identity init --title \"Example Widgets\" --tagline \"Widgets that explain themselves\""
     },
     {
       "path": "abcd identity render",
       "sentence": "Print the correction for every drifted surface as a unified diff: Writes nothing; refuses a repository that records no identity block.",
       "usage": "abcd identity render [flags]",
       "flags": [],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd identity render"
     }
   ]
 }

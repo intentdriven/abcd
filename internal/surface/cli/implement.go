@@ -292,7 +292,7 @@ func newImplementJoinCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&session, "session", "", "this session's id (letters, digits, '.', '_', '-')")
-	cmd.Flags().StringVar(&role, "role", "", "first | second")
+	enumFlag(cmd.Flags(), &role, "role", "", "", enumWords(implement.Roles()), "")
 	cmd.Flags().StringVar(&model, "model", "", "the model this session runs, recorded on the session_open line")
 	cmd.Flags().StringVar(&reason, "reason", "", "why the session opens (run start, window, resume), recorded on the line")
 	cmd.Flags().IntVar(&ceiling, "ceiling", 0, "this session's own agent ceiling (1 to 64; 0 states none), held against its logged agent_start lines")

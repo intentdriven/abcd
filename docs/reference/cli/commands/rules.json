@@ -15,7 +15,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd rules"
     }
   ]
 }

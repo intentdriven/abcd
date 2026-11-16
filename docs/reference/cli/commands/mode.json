@@ -7,6 +7,7 @@
       "usage": "abcd mode [<state>] [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd mode",
       "subcommands": [
         "autonomous",
         "back",
@@ -27,14 +28,16 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd mode autonomous --until 09:00"
     },
     {
       "path": "abcd mode back",
       "sentence": "End the away mode, printing what was queued and recorded one line each: Writes its ending whatever the record's or lock's state; refuses outside a git checkout.",
       "usage": "abcd mode back [flags]",
       "flags": [],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd mode back"
     },
     {
       "path": "abcd mode queue",

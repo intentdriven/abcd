@@ -184,6 +184,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd lab [flags]`
+  - An example call is `abcd lab`.
 - `abcd lab harvest <lab-id> [flags]`
   - An example call is `abcd lab harvest lab-260901000000-0123abc`.
 - `abcd lab matrix <lab-id> <declaration.json> [flags]`

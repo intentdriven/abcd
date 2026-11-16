@@ -329,6 +329,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd disembark [flags]`
+  - An example call is `abcd disembark`.
 - `abcd disembark coverage <report.json>... [flags]`
   - An example call is `abcd disembark coverage probe-report.json`.
 - `abcd disembark graveyard <lifeboat-dir> --lessons-json <file|-> [--dry-run] [flags]`
@@ -337,6 +338,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 - `abcd disembark pack <repo> <dest> [flags]`
   - An example call is `abcd disembark pack . ../lifeboat`.
 - `abcd disembark plan [repo] [flags]`
+  - An example call is `abcd disembark plan .`.
 - `abcd disembark press-release <lifeboat-dir> [--press-release-json <file|->] [--dry-run] [flags]`
   - Reads `--press-release-json`, the lifeboat press release, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain disembark press-release --input press-release-json` prints its shape.
   - An example call is `abcd disembark press-release ../lifeboat`.
@@ -344,6 +346,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
   - Reads `--principles-json`, the lifeboat principles, at schema_version 2; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain disembark principles --input principles-json` prints its shape.
   - An example call is `abcd disembark principles ../lifeboat`.
 - `abcd disembark probe [repo] [flags]`
+  - An example call is `abcd disembark probe .`.
 - `abcd disembark review <lifeboat-dir> <source-repo> [--review-json <file|->] [--dry-run] [flags]`
   - Reads `--review-json`, the lifeboat review verdict, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain disembark review --input review-json` prints its shape.
   - An example call is `abcd disembark review ../lifeboat .`.

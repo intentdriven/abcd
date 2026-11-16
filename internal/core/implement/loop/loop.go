@@ -153,6 +153,13 @@ type Options struct {
 	// origin's default branch (drain_origin.go). Nil, the check reads the
 	// checkout's.
 	plan *capture.DrainPlan
+	// sweepCtx and sweepStop bound the sweep a landing runs on its own
+	// (autosweep.go): sweepCtx is the caller's context (Drive's, so the
+	// step's, and inside a drive the drive's), nil for none; sweepStop is a
+	// drive's stop (TerminalOptions.Stop), nil outside one. Held in memory
+	// alone, never written.
+	sweepCtx  context.Context
+	sweepStop <-chan struct{}
 	// drain marks a lane start the drain makes: a reservation it pushes backs
 	// off a hand-back whose record is unchanged on origin (claim.Request.Drain),
 	// and an issue run handed back is over, so a lane the drain opens again
@@ -532,6 +539,10 @@ type StepResult struct {
 	// release is what the release of the reservation of a lane this call
 	// handed back came to, made once the save wrote it (releaseAfterWrite).
 	release *handBackRelease
+	// landed is set when this call took a landing's last step: the lane's pull
+	// request merged and its worktree and branch are removed. The call then
+	// sweeps on its own once its save has written (autosweep.go).
+	landed bool
 }
 
 // Start resumes the live run for key, or runs the checks and, when every one
@@ -1425,6 +1436,12 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	}
 	if stopNote != "" {
 		res.Next = joinNext(res.Next, stopNote)
+	}
+	// A landing that saw its pull request merged sweeps on its own, once the
+	// step's save has written the lane done and released the run's lock
+	// (autosweep.go): whatever the sweep comes to, the landing stands.
+	if res.landed {
+		res.Next = joinNext(res.Next, autoSweep(o.sweepCtx, o.sweepStop, repoRoot))
 	}
 	return res, nil
 }

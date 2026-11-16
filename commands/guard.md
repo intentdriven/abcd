@@ -1098,7 +1098,7 @@ read as handed it, so `sh -c 'kill 4242' _ "$(pgrep …)"` is a **block** too.
 A verb that is the person's own act is left to the person. `abcd library ledger
 --flip N` records that a human chose to cite a source publicly, so an agent
 running it is a **block** (`abcd-source-ledger-flip`); recording a line and
-listing the ledger are not. The retired spelling, `abcd source ledger --flip N`,
+listing the ledger are not. The retired spelling, `abcd source ledger --flip N`, <!-- facts-lint: historical -->
 is a **block** too (`abcd-source-ledger-flip-retired`), because a binary older
 than the library verb still answers it. The entries name the program `abcd`,
 so they match the binary on `PATH`, the plugin root's and a `go run` of the
@@ -1394,13 +1394,17 @@ quoted-delimiter heredoc shown above.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd guard [flags]`
+  - An example call is `abcd guard`.
 - `abcd guard allow --once --command <line> [flags]`
   - An example call is `abcd guard allow --once --command 'git branch -D feat/done'`.
 - `abcd guard approve --dir <working-tree> --base <commit> [--run-dir <dir>]... [flags]`
   - An example call is `abcd guard approve --dir /work/example-repo --base 0123456789abcdef0123456789abcdef01234567`.
 - `abcd guard check [flags]`
+  - An example call is `abcd guard check --command 'git push --force origin main'`.
 - `abcd guard hook [flags]`
+  - An example call is `abcd guard hook < payload.json`.
 - `abcd guard question [<file>|-] [flags]`
+  - An example call is `abcd guard question draft.json`.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

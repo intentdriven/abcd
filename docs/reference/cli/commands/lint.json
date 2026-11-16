@@ -12,6 +12,7 @@
         }
       ],
       "inputs": [],
+      "example": "abcd lint",
       "subcommands": [
         "docs",
         "identity",
@@ -37,14 +38,16 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd lint docs"
     },
     {
       "path": "abcd lint identity",
       "sentence": "Show this repository's identity block and every surface held to it: Writes nothing; refuses a repository that records no identity block.",
       "usage": "abcd lint identity [flags]",
       "flags": [],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd lint identity"
     },
     {
       "path": "abcd lint outbound",
@@ -61,7 +64,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd lint outbound pr-body.md"
     },
     {
       "path": "abcd lint site",
@@ -83,7 +87,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd lint site"
     }
   ]
 }

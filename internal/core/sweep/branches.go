@@ -166,8 +166,9 @@ func shortName(ref string) string {
 // judged against refuses the run. A delete git refuses keeps that branch,
 // naming git's refusal, and is the run's fault, carried as its Refusal and
 // returned as the error, so ExitCode reads ExitRefused; the other rows are
-// still acted on.
-func sweepBranches(ctx context.Context, repoRoot string, apply bool) (Result, error) {
+// still acted on. ours, when set, is Options.ours: a branch judged
+// deletable that it does not name is kept, and listed saying so (leftForAPerson).
+func sweepBranches(ctx context.Context, repoRoot string, apply bool, ours func(string) bool) (Result, error) {
 	bj, err := newBranchJudge(ctx, repoRoot)
 	if err != nil {
 		return refused(err)
@@ -183,7 +184,7 @@ func sweepBranches(ctx context.Context, repoRoot string, apply bool) (Result, er
 		if err := ctx.Err(); err != nil {
 			return refused(fmt.Errorf("the run was stopped while judging the local branches: %w", err))
 		}
-		res.Rows = append(res.Rows, bj.row(b))
+		res.Rows = append(res.Rows, leftForAPerson(bj.row(b), ours))
 	}
 	if !apply {
 		return res, nil
