@@ -69,12 +69,20 @@ func TestOpenSkipsWhenTheSystemIsOutOfPseudoTerminals(t *testing.T) {
 	}
 	t.Run("a later try opens it", func(t *testing.T) {
 		tries := 0
+		var real error
 		r, p := openWith(t, func() (*os.File, *os.File, error) {
 			if tries++; tries < exhaustedTries {
 				return nil, nil, fmt.Errorf("/dev/ptmx: %w", syscall.ENXIO)
 			}
-			return open()
+			m, s, err := open()
+			real = err
+			return m, s, err
 		})
+		// The last try is a real open: a machine that refuses it a
+		// pseudo-terminal for the moment skips this case too.
+		if r.skipped != "" && outOfPtys(real) {
+			t.Skipf("the real open was refused a pseudo-terminal: %v", real)
+		}
 		if r.failed != "" || r.skipped != "" || p == nil {
 			t.Fatalf("a try that opens the terminal must be used: skipped %q, failed %q", r.skipped, r.failed)
 		}

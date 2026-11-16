@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/term"
 remedy: "Skip TestRawSessionLeavesNothingBehind (and any sibling that opens /dev/ptmx) with a stated reason when the pseudo-terminal cannot be opened, as the ptytest helpers do, instead of failing the package."
-resolution: "ptytest.Open, which every pseudo-terminal test opens through, now retries a system out of pseudo-terminals (ENXIO, ENOSPC or EAGAIN from /dev/ptmx) a few times with a lengthening pause and then skips the test with the reason; any other failure to open one still fails it. TestOpenSkipsWhenTheSystemIsOutOfPseudoTerminals holds it."
+resolution: "ptytest.Open, which every pseudo-terminal test opens through, now retries a system that refuses a pseudo-terminal for now (ENXIO, ENOSPC or EAGAIN from any step of opening one) a few times with a lengthening pause and then skips the test with the reason; any other failure to open one still fails it. TestOpenSkipsWhenTheSystemIsOutOfPseudoTerminals holds it."
 impact: fix
 ---
 

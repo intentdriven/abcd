@@ -40,9 +40,9 @@ type Pty struct {
 
 // Open opens a pseudo-terminal, sizes it cols by rows, and starts draining the
 // master end into a buffer Output and WaitFor read, so a child never blocks
-// on a full terminal. Both ends are closed when the test ends. A system out
-// of pseudo-terminals is tried a few times and then skips the test with the
-// reason; any other failure to open one fails it.
+// on a full terminal. Both ends are closed when the test ends. A system that
+// refuses a pseudo-terminal for now is tried a few times and then skips the
+// test with the reason; any other failure to open one fails it.
 func Open(t testing.TB, cols, rows int) *Pty {
 	t.Helper()
 	return openHeld(t, cols, rows, nil)
@@ -52,17 +52,18 @@ func Open(t testing.TB, cols, rows int) *Pty {
 // them.
 var openPty = open
 
-// exhaustedTries is how many times Open tries a system out of
-// pseudo-terminals before it skips the test, exhaustedWait the pause before
+// exhaustedTries is how many times Open tries a system that refuses a
+// pseudo-terminal before it skips the test, exhaustedWait the pause before
 // each try after the first, lengthened by each.
 var (
 	exhaustedTries = 5
 	exhaustedWait  = 200 * time.Millisecond
 )
 
-// outOfPtys reports whether err is the system being out of pseudo-terminals,
-// as an open of /dev/ptmx reports it: "device not configured" on macOS,
-// no space on Linux, or try again.
+// outOfPtys reports whether err is the system refusing a pseudo-terminal for
+// now, as a step of open reports it: "device not configured" on macOS (a
+// loaded machine refused one with 40 of 511 in use), no space on Linux at
+// its limit, or try again.
 func outOfPtys(err error) bool {
 	return errors.Is(err, syscall.ENXIO) || errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EAGAIN)
 }
@@ -75,10 +76,10 @@ func openHeld(t testing.TB, cols, rows int, hold chan struct{}) *Pty {
 		if !outOfPtys(err) {
 			t.Fatalf("opening a pseudo-terminal: %v", err)
 		}
-		// A loaded machine can be out of pseudo-terminals for a moment; a
+		// A loaded machine can refuse a pseudo-terminal for a moment; a
 		// test that needs one is not failed for it (iss-2610151050413162).
 		if try == exhaustedTries {
-			t.Skipf("no pseudo-terminal could be opened in %d tries, the system is out of them: %v", try, err)
+			t.Skipf("no pseudo-terminal could be opened in %d tries, the system refused one each time: %v", try, err)
 		}
 		time.Sleep(time.Duration(try) * exhaustedWait)
 		m, s, err = openPty()
