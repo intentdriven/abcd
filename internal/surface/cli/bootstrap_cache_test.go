@@ -746,6 +746,17 @@ func TestBootstrapMigrationRefusesDirectoryAtCacheBinary(t *testing.T) {
 	if !strings.Contains(out, "not a regular file") {
 		t.Errorf("the refusal must name the obstruction; output %q", out)
 	}
+	// The root holds a binary, so the refusal must not say none is installed or
+	// that the guard is off: the binary already there still runs every hook,
+	// and the session-start wrapper now shows this text (iss-2610161125115941).
+	for _, claim := range []string{"is not installed in the plugin root", "UNGUARDED", "start a session with network access"} {
+		if strings.Contains(out, claim) {
+			t.Errorf("a refusal over a root that holds a binary must not say %q; output %q", claim, out)
+		}
+	}
+	if !strings.Contains(out, "already in the plugin root still runs the hooks") {
+		t.Errorf("the refusal must say the binary already in the root still runs the hooks; output %q", out)
+	}
 	entries, err := os.ReadDir(cacheBinDir)
 	if err != nil {
 		t.Fatal(err)

@@ -220,7 +220,9 @@ func TestAReceiptRenewsAtHalfLease(t *testing.T) {
 		t.Fatalf("the implement stage awaits an implementer: %+v %v", res, err)
 	}
 	now := time.Now().UTC().Truncate(time.Second)
-	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-61*time.Minute), "internal/widget")
+	// The hold names one.txt, which the lane commits, so the receipt's act is
+	// the renewal alone, with no widening (widen.go).
+	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-61*time.Minute), "internal/widget", "one.txt")
 	before := originReservation(t, f.bare, reservedRef)
 	l := currentLane(t, f.repo, f.runID)
 	dir := filepath.Join(f.repo.Root(), filepath.FromSlash(RunRelDir), f.runID, l.ID)
