@@ -216,13 +216,14 @@ func approveShell(ld Loaded, files *Files, command string) Approval {
 			"the shell command cannot be approved because "+why+", so a name there could run a command the line never names.",
 			"the same work with every arithmetic operand a written number, comparing a value with `[ \"$n\" -gt 0 ]` rather than `[[ … ]]` or `(( … ))`, and a loop over `seq` rather than `for ((…))`.")
 	}
-	return approveShellAt(ld, files, command, 0)
+	return approveShellAt(ld, files, command, 0, nil)
 }
 
-// approveShellAt is approveShell at depth: a command a git setting on the
-// line runs (commandKeys) is judged one level down, and one that sets such a
-// command again is not judged further, and refused.
-func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval {
+// approveShellAt is approveShell at depth: a command a git setting or option
+// on the line runs (commandKeys, gitRunRefusal) is judged one level down,
+// with carry, the environment carried to the git command that runs it, and
+// one that sets such a command again is not judged further, and refused.
+func approveShellAt(ld Loaded, files *Files, command string, depth int, carry map[string]string) Approval {
 	switch ld.Posture {
 	case LoadUnavailable:
 		return refusal(registryEntryID, "no hazard registry is loaded, so nothing was checked.",
@@ -299,8 +300,20 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 	// have made a link), so they are not judged on their own.
 	wrote := false
 	// carried is the environment the line's earlier commands leave for the
-	// ones after them (carryEnvironment).
+	// ones after them (carryEnvironment), over what the line that runs this
+	// one carried. Where the line runs a command again or later than its text
+	// places it, the whole line's carry is taken before any git command is
+	// judged (runsOutOfTextOrder).
 	carried := map[string]string{}
+	for name, v := range carry {
+		carried[name] = v
+	}
+	whole := runsOutOfTextOrder(placed)
+	if whole {
+		for _, p := range placed {
+			carryEnvironment(p.seg, carried)
+		}
+	}
 	for _, p := range placed {
 		wroteBefore := wrote
 		// A command a git setting runs is judged as run from the working
@@ -318,12 +331,14 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 					return false
 				}
 			}
-			return approveShellAt(ld, files, v, depth+1).Allow
+			return approveShellAt(ld, files, v, depth+1, carried).Allow
 		}
 		if a, ok := gitConfigRefusal(p.seg, vf, clean, carried); ok {
 			return a
 		}
-		carryEnvironment(p.seg, carried)
+		if !whole {
+			carryEnvironment(p.seg, carried)
+		}
 		for _, st := range p.states {
 			for _, u := range pathUses(rc, p.seg, st) {
 				wrote = true

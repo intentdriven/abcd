@@ -249,7 +249,7 @@ func TestApproveJudgesProgramNamingEnvironmentOnTheCommand(t *testing.T) {
 		approveCase{`GIT_SSH_COMMAND='ssh -v' git fetch`, nil},
 		approveCase{`GIT_PAGER='rm -rf ~' git log -1`, refused},
 		approveCase{`GIT_SSH=ssh git fetch`, refused},
-		approveCase{`GIT_EDITOR=true git commit -m x`, refused},
+		approveCase{`GIT_EDITOR=true git commit -m x`, nil},
 		approveCase{`GIT_ALLOW_PROTOCOL=ext git fetch`, refused},
 		approveCase{`GIT_SSH_VARIANT=ssh GIT_TERMINAL_PROMPT=0 git fetch`, nil},
 	))
