@@ -231,10 +231,12 @@ reserves it again, judged for overlap, once the spec has widened it; either
 way it keeps the reservation's term, so a resume never cuts the day the land
 fence gave a waiting pull request. It reserves anew one a release released
 or a run started before reservations never took, recording it in the run's
-state; a run handed back reserves nothing. An issue run's reservation follows
-what its lane changes (iss-2611110638266241): once the implementer hands its
-receipt back, the loop reserves every path the lane's branch changes beyond
-the `found_at` before it judges the receipt, and again before each step at the
+state; a run handed back reserves nothing. A run's reservation follows
+what its lanes change, an intent run's as an issue run's (iss-2611110638266241,
+iss-2611101316537446): once the implementer hands its receipt back, the loop
+reserves every path the lane's branch changes beyond the footprint it holds,
+the `found_at` or the spec's packages, before it judges the receipt, the run's
+own records each by its own name, and again before each step at the
 lane's validators and before its landing's push, judged for overlap and
 against the cap, and another copy's live hold on one is a wait until that hold
 ends (the implement verb's page). A release asked of the

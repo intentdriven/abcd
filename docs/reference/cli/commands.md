@@ -3851,17 +3851,17 @@ abcd implement stop
 
 #### `abcd implement widen`
 
-Widen an issue lane's hold to a path before it is edited: Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.
+Widen a lane's hold to a path before it is edited: Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.
 
 **Usage:** `abcd implement widen <path>... --lane <lane-id> [--run <run-id>] [flags]`
 
-Widen an issue run's reservation to each path named before the lane's implementer
-edits it: the issue is reserved again on origin with the footprint its reservation holds
+Widen a run's reservation to each path named before the lane's implementer edits
+it: the run's record is reserved again on origin with the footprint its reservation holds
 and the paths it does not cover yet, judged for overlap and against the cap like any
 reservation. A path already covered adds nothing, and when every one is, nothing is
 pushed. The run record says what was widened. Only the run's current lane, at its
-implement or validate stage, widens; an intent's run holds its spec's footprint and is
-refused. A run holding no reservation has nothing to widen and says so.
+implement or validate stage, widens, in an issue's run or an intent's; an intent's spec
+is never edited for it. A run holding no reservation has nothing to widen and says so.
 
 No lane needs it: once an implementer hands its receipt back, the loop reserves every
 path the lane's branch changes beyond the hold itself, from the process driving the run,

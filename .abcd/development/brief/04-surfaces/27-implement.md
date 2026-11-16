@@ -587,17 +587,21 @@ the run's transcripts into the history store, one capture per path; a
 transcript stored without the scanner coverage the repository armed carries its
 scan gap on the record, as the history verb reports it for a capture.
 
-An issue lane's hold follows what its branch changes (iss-2610311224444576,
+A lane's hold follows what its branch changes, an issue's and an intent's alike (iss-2610311224444576,
 iss-2611110638266241, iss-2611101316537446; dcn-2610311251002713,
 dcn-2610311544325397). The loop widens it itself, from the process that drives
 the run, which holds the credential for origin a drive's walled stage is kept
 from: once an implementer hands its receipt back, and before the receipt is
-judged, the issue is reserved again with the footprint its reservation holds
+judged, the run's record is reserved again with the footprint its reservation holds
 and every path the lane's branch changes that the footprint does not cover,
 judged for overlap and against the cap like any reservation, and the run
 record names the paths widened to. The run's own records are reserved the same
-way: a decision record the implementer wrote, and the issue's record the
-landing's records commit moves. The widening is made again before each step at
+way: a decision record the implementer wrote, by its own name and never by
+the decisions directory, which would hold off every other run's, and the records
+the landing's records commit changes, the issue's, or the spec and the
+intent's. An intent's spec is never edited to widen its run's hold, and a
+reservation made again over a hold this copy holds keeps every path that hold
+names beside the record's footprint. The widening is made again before each step at
 the lane's validators, so a path a fix round changed is held before a
 validator judges it, and at the fence before a landing's push and its arming,
 since no receipt stands between a lane at its validators and its landing; the
@@ -631,8 +635,8 @@ The widen verb is for a session of a person's own that wants a path held
 before its edit, run from the run's checkout with the run, the lane and each
 further path; it is the same widening. A path already covered adds nothing,
 and a run holding no reservation has nothing to widen. Only the run's current
-lane widens, at its implement or validate stage, and an intent's run, whose
-footprint is its spec's, is refused. Another copy's live hold on one of the
+lane widens, at its implement or validate stage, in an issue's run or an
+intent's. Another copy's live hold on one of the
 paths is contention: nothing is pushed and the record line says the widening
 backed off.
 

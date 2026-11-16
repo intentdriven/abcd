@@ -929,10 +929,11 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 // A renewal the fetched tip shows the view was stale for (the reservation
 // gone, released by a tombstone, or moved to this person's other copy)
 // falls back to the reservation any other resume makes: a reserve with the
-// record's footprint, --take-over passed through. For an issue whose tip
-// this copy holds, live, lapsed or released, that footprint is the found_at with the
-// tip's paths beside it, so a path the lane widened to (widen.go) is never
-// dropped by a widening, a revival or a fallback; a tip since deleted loses
+// record's footprint, --take-over passed through. For a record whose tip
+// this copy holds, live, lapsed or released, that footprint is the found_at, or
+// the spec's packages, with the tip's paths beside it, so a path the lane
+// widened to (widen.go) is never dropped by a widening, a revival or a
+// fallback (iss-2611101316537446); a tip since deleted loses
 // nothing, since the caller's fp already names what the run record says the lane
 // widened to (widenedPaths). A drain's act (drain) carries
 // the drain's mark on every reservation it pushes, so a hand-back standing on the
@@ -945,12 +946,12 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver, drain, landing bo
 		return reserveKey(repoRoot, key, plain, now)
 	}
 	r, ok := snap.Lookup(key)
-	// An issue's tip this copy holds, live or lapsed, or released with a tombstone
-	// that keeps its footprint, as a drive lets a lane go for a limit, names the
-	// paths its lane widened to beyond the found_at (widen.go), and
-	// the lane's branch changes them: a reservation made again keeps them beside
-	// the found_at rather than dropping them.
-	if validIssueKey(key) && ok && r.Copy == claim.CopyThis &&
+	// A tip this copy holds, live or lapsed, or released with a tombstone that
+	// keeps its footprint, as a drive lets a lane go for a limit, names the
+	// paths its lanes widened to beyond the found_at or the spec's packages
+	// (widen.go), and the lanes' branches change them: a reservation made again
+	// keeps them beside the record's footprint rather than dropping them.
+	if ok && r.Copy == claim.CopyThis &&
 		(r.State == claim.StateLive || r.State == claim.StateExpired || r.ReleasedBy == claim.ReleasedByTombstone) {
 		fp = heldWith(fp, r.Footprint)
 		plain.Footprint = fp
