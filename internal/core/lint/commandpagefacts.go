@@ -210,18 +210,20 @@ func sortedPaths(m map[string]surface.Facts) []string {
 }
 
 // pageText is one stretch of a page's prose the lint reads: a fenced line
-// (with its continuation lines joined) or a code span, with the line it
-// starts on.
+// (with its continuation lines joined) or a code span, with the lines it
+// starts and ends on.
 type pageText struct {
 	line   int
+	last   int
 	text   string
 	exempt bool
 }
 
 // pageInvocation is one invocation of abcd on a page: the words after the
-// binary's spelling, with the line the text holding it starts on.
+// binary's spelling, with the lines the text holding it starts and ends on.
 type pageInvocation struct {
 	line   int
+	last   int
 	exempt bool
 	rest   string
 }
@@ -234,7 +236,7 @@ func pageInvocations(lines []string, fences []mdrecord.Span) []pageInvocation {
 	for _, t := range pageTexts(lines, fences) {
 		for _, cmd := range shellCommands(t.text) {
 			if rest, ok := afterBinary(cmd); ok {
-				out = append(out, pageInvocation{line: t.line, exempt: t.exempt, rest: rest})
+				out = append(out, pageInvocation{line: t.line, last: t.last, exempt: t.exempt, rest: rest})
 			}
 		}
 	}
@@ -278,6 +280,9 @@ func CommandPageFacts(page, text string, facts []surface.Facts) []CommandPageFin
 	}
 
 	var anchors []anchor
+	// inInvocation is, per line, the flags an invocation spanning the line
+	// passes: every line of a call continued over several lines, or of a
+	// span wrapped onto the next, so a flag there anchors with its command.
 	inInvocation := map[int]map[string]bool{}
 	for _, t := range pageInvocations(lines, reading.Fences) {
 		inv := parseInvocation(ix, t.rest)
@@ -294,10 +299,12 @@ func CommandPageFacts(page, text string, facts []surface.Facts) []CommandPageFin
 				report(t.line, "%s is not a flag of %s, nor a persistent flag on its path",
 					quoteCode("--"+fl), quoteCode(inv.path))
 			}
-			if inInvocation[t.line] == nil {
-				inInvocation[t.line] = map[string]bool{}
+			for ln := t.line; ln <= t.last; ln++ {
+				if inInvocation[ln] == nil {
+					inInvocation[ln] = map[string]bool{}
+				}
+				inInvocation[ln][fl] = true
 			}
-			inInvocation[t.line][fl] = true
 		}
 		anchors = append(anchors, anchor{line: t.line, section: sections[t.line-1], command: inv.path, flags: inv.flags})
 	}
@@ -471,7 +478,7 @@ func pageTexts(lines []string, fences []mdrecord.Span) []pageText {
 					exempt = exempt || strings.Contains(lines[j], CommandPageHistorical)
 					joined = strings.TrimSuffix(joined, `\`) + " " + strings.TrimLeft(lines[j], " \t")
 				}
-				out = append(out, pageText{line: start + 1, text: joined, exempt: exempt})
+				out = append(out, pageText{line: start + 1, last: j + 1, text: joined, exempt: exempt})
 			}
 			i = end - 1
 			continue
@@ -521,7 +528,7 @@ func spansOf(lines []string, para []int) []pageText {
 		for i := first; i <= last; i++ {
 			exempt = exempt || strings.Contains(lines[i], CommandPageHistorical)
 		}
-		out = append(out, pageText{line: first + 1, text: termsafe.CodeSpanText(sp.Raw(text)), exempt: exempt})
+		out = append(out, pageText{line: first + 1, last: last + 1, text: termsafe.CodeSpanText(sp.Raw(text)), exempt: exempt})
 	}
 	return out
 }

@@ -243,6 +243,24 @@ func TestCommandPageFacts(t *testing.T) {
 			}{{4, "`abcd ideate` has no sub-command `recrod`"}},
 		},
 		{
+			name: "an input flag on a continuation line anchors with its command: a stale version is reported",
+			text: "## Record\n\n```bash\nabcd ideate record slug \\\n  --verdict-json v.json\n```\n\n```json\n{\"schema_version\": 1}\n```\n",
+			want: []struct {
+				line int
+				frag string
+			}{{9, "`\"schema_version\": 1` stands next to `--verdict-json` (line 4), which `abcd ideate record` reads at schema_version 2"}},
+		},
+		{
+			name: "an input flag on a continuation line anchors with its command: its own version passes on another verb's page",
+			page: "commands/ideate.md",
+			text: "## Record\n\n```bash\nabcd docs fidelity record \\\n  --verdict-json v.json\n```\n\n```json\n{\"schema_version\": 1}\n```\n",
+		},
+		{
+			name: "an input flag on a wrapped span's second line anchors with its command",
+			page: "commands/ideate.md",
+			text: "Run `abcd docs fidelity record\n--verdict-json v` with `{\"schema_version\": 1}`.\n",
+		},
+		{
 			name: "a schema_version beside a call that passes no input is not checked",
 			text: "## Receipts\n\n```bash\nabcd docs cite confirm --receipt receipts.json\n```\n\n```json\n{\"schema_version\": 7}\n```\n",
 		},
