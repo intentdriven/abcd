@@ -10,6 +10,12 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/ahoy/readme_derive.go"
 remedy: "Keep a backslash that escapes ASCII punctuation as written and escape only a lone backslash (one before a non-punctuation character or at the end) and an unescaped bracket, outside code spans; add the two headings above to TestContentsStripsInlineHTMLFromHeadings."
+resolution: "The README contents part now keeps a heading's markdown escapes as written: a backslash before ASCII punctuation stays, pair and all, and only a lone backslash and an unescaped bracket are escaped, so the list renders what the heading renders; TestContentsKeepsAHeadingsEscapesAsWritten holds it."
+impact: fix
 ---
 
 The README contents part doubles every backslash in a heading's text, so a markdown escape renders wrong in the list: `## A \* b` is listed as `[A \\* b](#a--b)`, which the forge shows as 'A \* b' while the heading reads 'A * b'; an escaped backtick (a backslash before a backtick) becomes a literal backslash before a backtick that can then open a code span. escapeLinkText (internal/core/ahoy/readme_derive.go) escapes \ to keep a trailing backslash from escaping the link's closing bracket, but it also re-escapes the backslash of every escape the owner wrote. Found while making the contents part read code spans literally (lane-3 fix round 1, run-2610110908176735).
+
+## Grounds
+
+- pursued: a heading such as A \* b is listed as it renders, not with a doubled backslash; a contents line whose text renders differently from its heading would show it wrong
