@@ -1249,7 +1249,8 @@ func (e *footprintEntryError) Error() string {
 }
 
 // releaseKey releases a reservation a start took and then could not create
-// its run for, best effort: a failure leaves it to lapse with its lease.
+// its run for, best effort: a failure leaves it to lapse with its lease
+// unless a load-gate waiter in this copy renews it (gateWaiterRenews).
 func releaseKey(repoRoot, key string, now time.Time) {
 	_, _ = claim.Reserve(repoRoot, claim.Request{Record: key, Release: true}, claimOptions(now))
 }
@@ -1273,18 +1274,33 @@ func ReleaseReservation(repoRoot, key string, o Options) (claim.Result, error) {
 // failed, at reservation_release_failed, which the drain routing the
 // hand-back tries again (releaseHandedBack). An intent's run keeps its
 // reservation: its held lanes may still land.
-func releaseOnHandBack(repoRoot string, st *State, hb HandBack, now time.Time) {
+//
+// A failed release's line ends by what the lease as this checkout last
+// fetched it leaves (lapseTail): a lease still to run lapses unless a drain
+// routing the hand-back releases it, or, where the view shows it live and this
+// copy's, a load-gate waiter in this copy renews it; one already lapsed gets
+// no waiter's clause, since the waiter renews only a live reservation of this
+// copy's. It returns that lease's end and whether it has passed, "" and false
+// where the release was made or that view does not show the reservation as
+// this copy's.
+func releaseOnHandBack(repoRoot string, st *State, hb HandBack, now time.Time) (until string, ended bool) {
 	if st.ReservedAt == nil || st.Issue() == "" {
-		return
+		return "", false
 	}
 	clause, failed := releaseReservation(repoRoot, st.Key, tombstoneKind(hb), now)
 	stage := StageReservationReleased
 	if failed {
-		clause += ", so it lapses with its lease unless a drain routing the hand-back releases it"
+		var tail string
+		tail, until, ended = lapseTail(repoRoot, *st, now)
+		clause += tail
+		if !ended {
+			clause += " or a drain routing the hand-back releases it"
+		}
 		stage = StageReservationReleaseFailed
 	}
 	st.Record = append(st.Record, Entry{At: now, Stage: stage, Note: clause})
 	st.UpdatedAt = now
+	return until, ended
 }
 
 // issueFootprint is the footprint a drain reserves an issue with: the
@@ -1323,6 +1339,16 @@ func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) s
 	if run.ReservedAt == nil || run.Issue() == "" {
 		return ""
 	}
+	// A lane handed back with its pull request still armed keeps the
+	// reservation until a step has withdrawn the arming (releaseAfterWrite);
+	// a drain reads such a lane as in progress (laneOutcome) and routes it only
+	// once the arming is gone, and its steps and the drain's moves renew the
+	// reservation until then (handedBackIssue, renewInProgress).
+	for _, l := range run.Lanes {
+		if armingOwed(l) {
+			return fmt.Sprintf("the reservation on %s is kept, and renewed by each step and drain move, while pull request #%d is armed: `abcd implement step --run %s` tries the withdrawal again and then releases it", run.Key, l.PR, run.RunID)
+		}
+	}
 	// The step that handed the lane back has already released it, and its
 	// record says how (releaseOnHandBack). A failed release is a different
 	// stage, so it is never reused: the tombstone is pushed again below.
@@ -1333,7 +1359,8 @@ func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) s
 	}
 	clause, failed := releaseReservation(repoRoot, run.Key, tombstoneKind(hb), now)
 	if failed {
-		return clause + ", so it lapses with its lease"
+		tail, _, _ := lapseTail(repoRoot, run, now)
+		return clause + tail
 	}
 	// The retry released it: the run's record says so (iss-2610150616434848),
 	// so its last reservation entry is no longer the failure, and a later

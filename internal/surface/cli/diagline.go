@@ -19,10 +19,10 @@ import (
 // the whole formatted line, not each argument, is deliberate: an error's text
 // embeds its input in ways the format string cannot see (a JSON type error names
 // the map key it failed under, raw), and the next such message must not be the
-// one that reaches the terminal. Sanitize, not SanitizeBlock: a diagnostic is
-// one line, and a newline inside it would forge a second.
+// one that reaches the terminal. SanitizeLine, not SanitizeBlock: a diagnostic
+// is one line, and a newline or a line separator inside it would forge a second.
 func diagnosticLine(w io.Writer, format string, a ...any) string {
-	msg := termsafe.Sanitize(fmt.Sprintf(format, a...))
+	msg := termsafe.SanitizeLine(fmt.Sprintf(format, a...))
 	fmt.Fprintln(w, msg)
 	return msg
 }

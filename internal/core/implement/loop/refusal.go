@@ -82,6 +82,11 @@ type Refusal struct {
 	// gateUnread marks a merge gate that could not read what it asks at the
 	// arming: a wait by design, asked again on a later turn (stuck.go).
 	gateUnread bool
+	// runnerWait is the record line of a landing waiting at its arming for
+	// the report of a runner that ran one of its implementers
+	// (land_runner_wait.go): a wait by design, bounded by the land stage
+	// itself, whose first call writes the line on the lane once.
+	runnerWait string
 	// originUnread marks a land fence that could not read the reservation
 	// from origin: a wait by design, never logged on a drain's lane
 	// (stuck.go).

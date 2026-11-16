@@ -54,7 +54,8 @@ const (
 	// TerminalUntil: the bound the person set with --until has passed.
 	TerminalUntil = "until"
 	// TerminalKilled: the context ended, a second signal: the agent's process
-	// group was killed, and what it held lapses on its own.
+	// group was killed, and what it held lapses on its own unless a load-gate
+	// waiter in this copy renews it (gateWaiterRenews).
 	TerminalKilled = "killed"
 	// TerminalPassedLanes: the only lanes the drain has left in progress are ones the
 	// drive passed over, since it may not save them (PassedLane): the drain stays open,
@@ -2067,7 +2068,8 @@ func dropMovedRun(repoRoot string, run State, why string, now time.Time, o Optio
 		clause, failed := releaseReservationAt(repoRoot, run.Key, tip, "", now)
 		why += "; " + clause
 		if failed {
-			why += ", so it lapses with its lease"
+			tail, _, _ := lapseTail(repoRoot, run, now)
+			why += tail
 		} else if err := mutateReservation(repoRoot, run.RunID, func(st *State) (bool, error) {
 			st.Record = append(st.Record, Entry{At: now, Stage: StageReservationReleased, Note: clause})
 			st.UpdatedAt = now
@@ -2482,7 +2484,7 @@ func (t *terminal) letGo() {
 		return nil
 	})
 	if err != nil {
-		t.say("what this run holds was not released, and lapses with its lease: %s", err.Error())
+		t.say("what this run holds was not released, and lapses with its lease "+unlessRenewedEither+": %s", err.Error())
 	}
 }
 
@@ -2499,10 +2501,14 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 	t.say("nothing this drive holds was released: releasing is a push, and the drive runs none while %s", termsafe.Sanitize(fsutil.RedactHome(reason)))
 	st, live, err := readDrain(t.repoRoot)
 	if err != nil {
-		t.say("which reservations this drive holds could not be read, and each lapses with its lease: %s", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		t.say("which reservations this drive holds could not be read, and each lapses with its lease "+unlessRenewedEither+": %s", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 		return
 	}
-	var ids []string
+	type left struct {
+		id  string
+		run bool
+	}
+	var ids []left
 	for _, l := range st.Lanes {
 		if l.Outcome != DrainLaneInProgress || t.passedLane(l.RunID) {
 			continue
@@ -2514,22 +2520,37 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 		if c, err := runControl(t.repoRoot, l.RunID); err == nil && c.Stop != nil {
 			continue
 		}
-		ids = append(ids, run.Key)
+		ids = append(ids, left{id: run.Key, run: true})
 	}
 	if j := st.Judging; j != nil && live && j.Hold != nil {
-		ids = append(ids, j.Issue)
+		ids = append(ids, left{id: j.Issue})
 	}
 	snap, verr := claim.View(t.repoRoot, now)
-	for _, id := range ids {
-		lapses := "lapses with its lease"
-		if verr == nil {
-			if r, ok := snap.Lookup(id); ok && r.Copy == claim.CopyThis && r.State == claim.StateLive {
-				lapses = "lapses at " + stamp(r.EffectiveExpiry)
-			}
+	for _, l := range ids {
+		var r claim.Reservation
+		read := verr == nil
+		if read {
+			r, _ = snap.Lookup(l.id)
 		}
 		t.say("%s: its reservation was not released and %s; once what the drive holds is as it should be, release it with `abcd reserve %s --release`, or start the drive again, which takes the run up",
-			termsafe.Sanitize(id), lapses, termsafe.Sanitize(id))
+			termsafe.Sanitize(l.id), heldLapse(r, read, l.run), termsafe.Sanitize(l.id))
 	}
+}
+
+// heldLapse says when a reservation leftHeld names lapses. Only a live
+// reservation this copy's last push takes can be renewed here, so only its
+// lapse takes a clause; read is false when the view could not be read. A
+// lane's run still in progress (run) is renewed by a step or `abcd drain` run
+// in this copy as well as by a load-gate waiter (UnlessRunRenewed); a
+// judgement's hold by the waiter alone (claim.RenewDue).
+func heldLapse(r claim.Reservation, read, run bool) string {
+	if !read || r.Copy != claim.CopyThis || r.State != claim.StateLive {
+		return "lapses with its lease"
+	}
+	if run {
+		return "lapses at " + stamp(r.EffectiveExpiry) + " " + UnlessRunRenewed
+	}
+	return "lapses at " + stamp(r.EffectiveExpiry) + " " + unlessWaiterRenews
 }
 
 // ended is the run's result as it ends: unless a kill or a stop from elsewhere

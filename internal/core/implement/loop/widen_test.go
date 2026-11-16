@@ -32,7 +32,7 @@ func (f *narrowFixture) handBack(t *testing.T, o Options, names ...string) error
 	sha := commitIn(t, f.repo, l, names...)
 	dir := filepath.Join(f.repo.Root(), filepath.FromSlash(RunRelDir), f.runID, l.ID)
 	rc := goodReceipt(t, f.runID, l, dir, sha)
-	rc.Model = "claude-test-5"
+	rc.Model = "claude-mythos-5"
 	rc.Resolves = []Resolution{{Issue: secondIssue, Commit: sha, Note: "the page names the flag", Impact: "fix",
 		Grounds: "pursued: the page names the flag; shown wrong if it still does not"}}
 	_, err := Receipt(f.repo.Root(), f.runID, writeReceipt(t, dir, rc), f.stages, o)
@@ -148,7 +148,7 @@ func (f *narrowFixture) walledStage(t *testing.T, names ...string) string {
 	sha := commitIn(t, f.repo, l, names...)
 	dir := filepath.Join(f.repo.Root(), filepath.FromSlash(RunRelDir), f.runID, l.ID)
 	rc := goodReceipt(t, f.runID, l, dir, sha)
-	rc.Model = "claude-test-5"
+	rc.Model = "claude-mythos-5"
 	rc.Resolves = []Resolution{{Issue: secondIssue, Commit: sha, Note: "the page names the flag", Impact: "fix",
 		Grounds: "pursued: the page names the flag; shown wrong if it still does not"}}
 	path := writeReceipt(t, dir, rc)

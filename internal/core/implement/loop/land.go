@@ -505,7 +505,9 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	// abcd's label instead (composed_attribution.go); what is staged settles that
 	// below, after the mark is written, and a refusal there leaves the mark in the
 	// worktree for the next call.
-	if note := rereadModels(c, lane); note != "" {
+	if note, hb := rereadModels(c, lane); hb != nil {
+		return Outcome{HandBack: hb, Note: note}, nil
+	} else if note != "" {
 		return Outcome{Stay: true, Note: note}, nil
 	}
 	assisted := []string{composedAssistedBy()}
@@ -1860,7 +1862,15 @@ func nameable(model string) bool {
 // everything else stays as it verified. It returns the run log's note naming
 // each receipt it changed, "" when it changed none; a receipt it could not
 // mend is still refused by assistedByTrailers.
-func rereadModels(c Context, lane *Lane) string {
+//
+// A model taken so is a writer of the lane as its trailer names it, and is
+// held to the lane's reviewers as one learned late (resettleWriters): the
+// writers each reviewer records are recomputed in the same change, and where
+// a reviewer is no longer another model than every writer, its review no
+// longer counts and the lane is handed back as stuck, hb carrying why.
+func rereadModels(c Context, lane *Lane) (string, *HandBack) {
+	before := *lane
+	lane.Receipts = slices.Clone(lane.Receipts)
 	var filled []string
 	var root *os.Root
 	defer func() {
@@ -1874,6 +1884,7 @@ func rereadModels(c Context, lane *Lane) string {
 			continue
 		}
 		if r.Route != nil && r.Route.Model != "" && plainWritten(r.Route.Model) && nameable(r.Route.Model) {
+			r.Named = keptName(*r)
 			r.Model = r.Route.Model
 			filled = append(filled, r.Receipt+" from the route that ran it")
 			continue
@@ -1881,20 +1892,41 @@ func rereadModels(c Context, lane *Lane) string {
 		if root == nil {
 			var err error
 			if root, err = os.OpenRoot(c.RepoRoot); err != nil {
-				return ""
+				break
 			}
 		}
 		rc, err := readReceipt(c.RepoRoot, root, r.Receipt, lane.ID)
-		if err != nil || rc.Model == r.Model || !plainWritten(rc.Model) || !nameable(rc.Model) {
+		if err != nil || rc.Model == r.Model || !plainWritten(rc.Model) || !nameable(rc.Model) || !writerKnown(rc.Model) {
 			continue
 		}
+		r.Named = keptName(*r)
 		r.Model = rc.Model
 		filled = append(filled, r.Receipt+" from its file, read again")
 	}
 	if len(filled) == 0 {
-		return ""
+		return "", nil
 	}
-	return "took the model of " + strings.Join(filled, "; ") + ", since the receipt verified with none the trailer can name"
+	note := "took the model of " + strings.Join(filled, "; ") + ", since the receipt verified with none the trailer can name"
+	if withdrawn, _ := resettleWriters(c.State, before, lane); len(withdrawn) > 0 {
+		return note + "; " + withdrawnNote(withdrawn, false), lateWriterHandBack(c.State, *lane, withdrawn)
+	}
+	return note, nil
+}
+
+// keptName is the name a receipt record keeps as the one its receipt named
+// when its model is replaced: the one it kept from an earlier replacement,
+// else its model, so the lane's writers read the same before and after
+// (laneWriters). Only a name the comparison reads is kept (writerKnown): any
+// other, an overlong or malformed one included, is kept as nothing, since it
+// was never a writer, and a stored name is bounded where it is stored.
+func keptName(r ReceiptRecord) string {
+	if r.Named != "" {
+		return r.Named
+	}
+	if writerKnown(r.Model) {
+		return r.Model
+	}
+	return ""
 }
 
 // modelGap is the refusal of a landing step whose text must name the models
@@ -2139,6 +2171,15 @@ func prBodyParked(st State, lane Lane, assisted []string, parked bool) string {
 		} else {
 			p("- Validation round %d at %s passed: %s.\n", r.Round, shortSHA(r.HeadSHA), verdictsLine(r))
 		}
+		for _, v := range r.Validators {
+			if m := v.models(); m != "" {
+				who := v.Role
+				if v.Class != "" {
+					who += fmt.Sprintf(", reviewer %d", v.Reviewer)
+				}
+				p("- %s: %s.\n", who, m)
+			}
+		}
 		if parked {
 			p("- No round read its records commit %s, so the lane is parked at this pull request for a person.\n", shortSHA(lane.HeadSHA))
 		}
@@ -2177,7 +2218,9 @@ func landPullRequest(c Context, lane *Lane) (Outcome, error) {
 		// The disclosure is settled before the forge is called. The records
 		// commit settled it already on a lane that records something; a lane
 		// that records nothing made no records commit, so it is settled here.
-		if note := rereadModels(c, lane); note != "" {
+		if note, hb := rereadModels(c, lane); hb != nil {
+			return Outcome{HandBack: hb, Note: note}, nil
+		} else if note != "" {
 			return Outcome{Stay: true, Note: note}, nil
 		}
 		assisted, gap := assistedByTrailers(lane.Receipts)
@@ -2308,6 +2351,12 @@ const gateUnreadBound = 30 * time.Minute
 // an approval given later arms it. A pull request the forge reports
 // conflicting is refused, unarmed.
 func landArm(c Context, lane *Lane) (Outcome, error) {
+	// No lane is armed here, or its merge gate asked, while a runner has not
+	// said which model ran one of its implementers; one armed before that wait
+	// existed has its arming withdrawn by landMerged (land_runner_wait.go).
+	if out, waits, err := awaitRunnerReport(c, *lane); waits {
+		return out, err
+	}
 	ld := lane.Landing
 	def, err := defaultBranch(c, *lane)
 	if err != nil {
@@ -2590,10 +2639,23 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 			}
 			return Outcome{}, conflictRefusal(c, *lane, def, tracking, m)
 		}
+		// An armed lane whose runner has not reported is not asked, recorded
+		// or armed again: its arming is withdrawn once the step's save has
+		// written, so a refused save leaves the forge as it was, and from the
+		// next step it waits at its arming as an unarmed lane does
+		// (withdrawAfterWrite, land_runner_wait.go).
+		if r, unreported := unreportedRunner(*lane); unreported && ld.Armed {
+			return Outcome{Stay: true, withdraw: &landWithdrawal{
+				why:  "the runner that ran the implementer whose receipt is " + r.Receipt + " has not said which model ran it",
+				then: "the lane waits at its arming for that report, and is handed back as stuck if it has not come within the stuck bound's minutes"}}, nil
+		}
 		// A pull request left open is asked about again: an approval of its
 		// head, or a review receipt naming it, given since arms it now, and
 		// the reason it waits is brought up to date otherwise.
 		if !ld.Armed {
+			if out, waits, err := awaitRunnerReport(c, *lane); waits {
+				return out, err
+			}
 			rule, err := readMergeRule(c, *lane, def)
 			if err != nil {
 				return Outcome{}, err

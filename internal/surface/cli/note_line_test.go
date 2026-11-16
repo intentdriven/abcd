@@ -471,6 +471,7 @@ func TestTheFunctionsThatResolveLayersArePinned(t *testing.T) {
 		"questionLimitsAt: layered.RootsFor: notes discarded",
 		"resolveMatch: layered.RootsFor: notes printed",
 		"routeFlag.resolve: layered.RootsFor: notes printed",
+		"rulesWithLimits: layered.HomeRoots: one note, spelled by the caller",
 		"runAhoyProviders: layered.RootsFor: notes printed",
 		"runConnectGuide: layered.RootsFor: notes printed",
 		"runDrain: layered.RootsFor: notes printed",

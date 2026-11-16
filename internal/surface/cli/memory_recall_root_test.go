@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/core/recall"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -136,7 +137,7 @@ func TestPromptRootLookupHasADeadline(t *testing.T) {
 		// git hung until the deadline: the real lookup returns ctx's own error.
 		return "", fmt.Errorf("git rev-list -n 1 --max-parents=0 HEAD: %w", context.DeadlineExceeded)
 	}
-	rs, err := rules.Load(repo)
+	rs, err := rules.LoadWith(repo, question.Default, question.LimitsNote{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +166,7 @@ func TestARecallPanicKeepsTheRules(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 	_, repo := memoryFixture(t)
 	addRaceNote(t, "session-one") // tied to this repository, so the root is asked
-	rs, err := rules.Load(repo)
+	rs, err := rules.LoadWith(repo, question.Default, question.LimitsNote{})
 	if err != nil {
 		t.Fatal(err)
 	}

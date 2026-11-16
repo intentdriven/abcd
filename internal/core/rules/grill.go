@@ -1,6 +1,11 @@
 package rules
 
-import "github.com/intentdriven/abcd/internal/core/question"
+import (
+	"fmt"
+
+	"github.com/intentdriven/abcd/internal/core/question"
+	"github.com/intentdriven/abcd/internal/termsafe"
+)
 
 // GrillDomain is the bundled domain that carries the asking rules every abcd
 // interview follows (itd-201; spc-2610030944505997, "GRILL generated from one
@@ -18,7 +23,10 @@ import "github.com/intentdriven/abcd/internal/core/question"
 // is an ordinary bundled domain to every loader contract: per-field user and
 // repository overrides, dormant (a repository silences it with
 // {"GRILL": {"state": "dormant"}}), the kill switch, the *GRILL star command,
-// dedup and provenance.
+// dedup and provenance. The front doors that load a repository's rules
+// regenerate it at the question limits in force there (LoadWith,
+// withRepoGrillDomain); this init-time domain is the bundled layer, at
+// question.Default, and the form LoadAt and LoadWith with no limits set return.
 const GrillDomain = "GRILL"
 
 // grillDomain generates the asking-rules domain from the one source.
@@ -28,6 +36,28 @@ func grillDomain() Domain {
 		Recall: question.AskingRecall(),
 		Rules:  question.AskingRules(question.Default),
 	}
+}
+
+// withRepoGrillDomain regenerates the GRILL domain's rules on rs at the
+// question limits in force for one repository and the note saying where they
+// came from (spc-2610301950037469, approach 8). Its state and recall stay the
+// bundled domain's, and its provenance is not touched: no override layer named
+// it. A refusal in n is appended to the notes as one line, in the resolver's
+// words, masked to one line; it says nothing of what GRILL states, which a
+// rules.json layer, a dormant state or the kill switch may still decide.
+func withRepoGrillDomain(rs RuleSet, l question.Limits, n question.LimitsNote) RuleSet {
+	d, ok := rs.Domains[GrillDomain]
+	if !ok {
+		return rs
+	}
+	d.Rules = question.AskingRulesFrom(l, n)
+	rs.Domains[GrillDomain] = d
+	if n.Refused != nil {
+		rs.notes = append(rs.notes, fmt.Sprintf(
+			"rules: %s: a question limit is refused (%s); abcd's question check refuses every abcd question until the file is fixed",
+			GrillDomain, termsafe.SanitizeLine(n.Refused.Reason)))
+	}
+	return rs
 }
 
 // withGrillDomain adds the generated asking-rules domain to the parsed bundled

@@ -40,6 +40,11 @@ func plantEveryString(t *testing.T, v reflect.Value, path string) {
 		}
 		for i := range v.NumField() {
 			f := v.Type().Field(i)
+			if !f.IsExported() && f.Type.Kind() == reflect.Func {
+				// A step a save registers (State.written) carries no string
+				// and is never stored.
+				continue
+			}
 			if !f.IsExported() {
 				t.Fatalf("%s.%s is unexported: teach masked and this test its shape", path, f.Name)
 			}

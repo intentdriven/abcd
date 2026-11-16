@@ -286,7 +286,7 @@ func stopRefusal(runID string, rec RunStop) error {
 	case rec.HaltedAt != nil:
 		state = "and has let its claims go"
 	case heldBySave(&rec):
-		state = "with work that could not be saved aside left uncommitted in its worktree and nowhere else; its claims lapse at their lease unless renewed, which a gated waiter or `abcd implement status` does and neither does for a run parked at land; the run record names it"
+		state = "with work that could not be saved aside left uncommitted in its worktree and nowhere else; its claims lapse at their lease unless renewed, which the run renewal of a load-gate waiter or `abcd implement status` does; that run renewal skips a run parked at land, though the waiter's renewal of this copy's own reservations, which reads no run, still may renew its reservation; the run record names it"
 	}
 	remedy := "the person's own `abcd implement stop --lift` lifts it; hand back any receipt you hold with `abcd implement receipt`, then stop"
 	if !rec.FromFile {
@@ -297,6 +297,14 @@ func stopRefusal(runID string, rec RunStop) error {
 	if rec.PageFailed != "" {
 		reason += "; " + termsafe.Sanitize(rec.PageFailed)
 	}
+	// A lane the stop left handed back with its pull request still armed
+	// (settleStop) is named, and the pull request once, with the person's
+	// disarm (ArmedLine), as the stop's page and the run's listing name it.
+	for _, l := range rec.Left {
+		if l.Stage == StageHandedBack && l.ArmedPR > 0 {
+			reason += "; " + termsafe.Sanitize(l.Lane+" was "+l.Note) + "; " + ArmedLine(l.ArmedPR)
+		}
+	}
 	return contend(StageStop, "", "", reason, remedy)
 }
 
@@ -304,7 +312,7 @@ func stopRefusal(runID string, rec RunStop) error {
 // run (drive_stop.go). They are two things, and neither answers for the other. Nothing
 // is settled while both stand, since what the run says is not known to be the driver's:
 // its work is not saved aside and its reservation is not released, which lapses with its
-// lease. Lifting the stop leaves the drive's stop, and removing that leaves the stop, which
+// lease unless a load-gate waiter in this copy renews it (gateWaiterRenews). Lifting the stop leaves the drive's stop, and removing that leaves the stop, which
 // the run then takes in its order.
 func stopOverDriveStop(runID string, s runstop.Stop) error {
 	return contend(StageStop, "", "", fmt.Sprintf("a stop set by %s at %s holds, and a drive stopped on %s because its state changed, so nothing is settled from what it now says",
@@ -669,6 +677,20 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 	for i := range st.Lanes {
 		lane := st.Lanes[i]
 		if stopFinished(lane) {
+			// A lane handed back with its pull request still armed (armingOwed)
+			// is left as it is, its arming with it: the stop withdraws nothing,
+			// so its record line says once that the pull request is still armed
+			// and a person withdraws it. What it left names the lane's state,
+			// and ArmedPR the pull request, which every account of the stop
+			// names once (ArmedLine).
+			if armingOwed(lane) {
+				if p, ok := prior[lane.ID]; ok {
+					left = append(left, p)
+					continue
+				}
+				st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageStop, Note: owedAtStop(lane)})
+				left = append(left, StopLeft{Lane: lane.ID, Stage: lane.Stage, Settled: true, Note: owedLeft, ArmedPR: lane.PR})
+			}
 			continue
 		}
 		if p, ok := prior[lane.ID]; ok && p.Settled {
@@ -721,7 +743,8 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 		clause, failed := releaseReservation(repoRoot, st.Key, "", now)
 		stage := StageReservationReleased
 		if failed {
-			clause += ", so it lapses with its lease"
+			tail, _, _ := lapseTail(repoRoot, *st, now)
+			clause += tail
 			stage = StageReservationReleaseFailed
 		}
 		// A run a drive already let go keeps the note made then, which is what its lane
@@ -738,6 +761,18 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 	rec.HaltedAt = &now
 	st.Record = append(st.Record, Entry{At: now, Stage: StageStop, Note: "halted: every lane has settled and the run's claims are let go"})
 }
+
+// owedAtStop is what a stop says of lane, handed back with its pull request
+// still armed and its withdrawal not yet taken (armingOwed).
+func owedAtStop(lane Lane) string {
+	return fmt.Sprintf("pull request #%d is still armed: %s and the withdrawal has not taken, and the stop withdraws nothing, so it can still merge until a person withdraws it with `gh pr merge %d --disable-auto`, taking it out of the merge queue on its page if it is there",
+		lane.PR, lateHandBack(lane), lane.PR)
+}
+
+// owedLeft is what a stop left says of a lane handed back with its pull
+// request still armed (armingOwed), the pull request itself named apart
+// (ArmedLine).
+const owedLeft = "handed back with the withdrawal of its arming not yet taken, and the stop withdraws nothing"
 
 // newestAside is the newest aside holding files saved for the lane. An aside that cannot
 // be read is passed over.
@@ -846,8 +881,10 @@ func laneWorktreeGone(repoRoot, runID string, lane Lane) bool {
 // is done, and one over work saved nowhere until the work is saved. That holds only
 // where something still renews: under a stop in force a move and a step refuse before
 // any renewal, so only a gated waiter's round, implement status or a drive still in an
-// agent's call or a preflight renews a run, and only that drive renews one parked at
-// land. With none of them, the claim lapses at its lease, with
+// agent's call or a preflight renews a run, and of those only that drive and a
+// load-gate waiter in this copy renew one parked at land: the waiter's renewal
+// (claim.RenewDue) reads no run, so it renews a run parked there as any other
+// (gateWaiterRenews). With none of them, the claim lapses at its lease, with
 // the lane's work still on its branch and in its worktree.
 func stopEndsRenewal(repoRoot string, st State, now time.Time) bool {
 	c, err := runControl(repoRoot, st.RunID)
