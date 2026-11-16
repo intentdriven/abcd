@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/question"
 )
 
@@ -174,7 +175,7 @@ func TestGuardPageDocumentsTheQuestionVerb(t *testing.T) {
 	for _, want := range []string{
 		"`limits`, `limits_source`",
 		"`.abcd/config.json` sets them under `question`",
-		"`~/.abcd.noindex/config.json` may set each lower",
+		"`" + abcdhome.Display("config.json") + "` may set each lower",
 		"refused where it sets one higher",
 		"within the bounds the asking rules state",
 		"Take the limits from here, never from either file",
@@ -327,7 +328,7 @@ func TestConfigurationChapterListsTheQuestionKeys(t *testing.T) {
 	prose := strings.Join(strings.Fields(section), " ")
 	for _, want := range []string{
 		"The repository sets them",
-		"`~/.abcd.noindex/config.json`",
+		"`" + abcdhome.Display("config.json") + "`",
 		"may only tighten it",
 		"one above it is refused",
 		"`abcd guard question` exits 2",
