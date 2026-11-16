@@ -285,7 +285,8 @@ Its inputs:
 - **The approvals of the head.** An approval counts when it is the latest
   review by someone with write access, approves the head commit itself and is
   not the author's own; or when the technical facilitator recorded it through
-  the verb's approval act, which writes `.abcd/.work.local/approvals/<sha>`.
+  the verb's approval act, which writes `.abcd/.work.local/approvals/<sha>`,
+  found in any worktree but a drive lane's, as a review receipt is.
   The second exists because the forge refuses an author's approval of their
   own pull request, and the facilitator authors most of the pull requests
   abcd opens. It is the person's act, and the shell guard refuses it to an
@@ -304,7 +305,32 @@ Its inputs:
   `.abcd/.work.local/review-receipts/<sha>`, holding the commit, the reading of a
   verdict it was recorded under, when it was
   recorded and each return's name, verdict and SHA-256; the gate finds it in
-  any worktree of the repository. A return that falls short is refused,
+  any worktree of the repository but a drive lane's. A drive lane's worktree is
+  one the build loop made for a lane, named `run-<id>-lane-<n>` in any case in the
+  worktree store, and the loop's model stages run in it. The gate resolves a path, its
+  symlinks followed, before it tells a drive lane's worktree, and anything under
+  a lane's worktree counts as the lane: A directory inside it, a repository
+  nested in it, or a path of another name that resolves into it. The drive's
+  lane worktrees and everything under them are the drive's, so the gate reads no
+  record there, whatever path names them. Read from a checkout that is not in a
+  lane, the paths git lists come from the repository's own worktree records, so
+  nothing written inside a lane changes them. The gate counts no review receipt
+  and no recorded approval found in a lane. Whenever it reads them, its note
+  names each one it passed over, whether or not another counted: The review
+  receipts in `auto`, and the recorded approvals for a contributor's pull request
+  or in `human`. Asked from a checkout that is a drive lane's worktree or lies
+  inside one, the gate counts no review receipt and no recorded approval at all,
+  in that worktree or any other, since git lists the worktrees from inside the
+  lane there. Its note says so, and a forge review alone can count as an
+  approval. `abcd land` run from another checkout for a branch checked out in a
+  drive lane's worktree counts none either, and its note says the branch is
+  checked out in a drive lane's worktree: The drive lands that branch itself,
+  and to land it by hand the lane must be handed back and its worktree removed
+  first. Either answer is one the gate could not read, so nothing already armed
+  is withdrawn on it. The review act and the approval act refuse to run in a
+  drive lane's worktree or anywhere inside one, exit 2, saying the gate never
+  counts a record there and to run them from the main checkout or the person's
+  own worktree, and nothing is written. A return that falls short is refused,
   exit 2, naming it, and nothing is written. A receipt recorded before a verdict named
   its head does not count, at the gate or as a delta's base, whichever build wrote it:
   it keeps digests and not text, so it cannot be read again, and the head records its
@@ -345,8 +371,9 @@ Its inputs:
   decisions, whose bodies later steps read, and the intents, the specs, this brief, the principles, the research and the ADRs. A merge of a default-branch commit counts for nothing, so merging the
   default branch up needs no full pair, when it is exactly the merge git makes of
   its two parents with no conflict; any other merge is refused. The gate judges
-  all of this again at landing, reads the receipts for the head in every worktree,
-  and counts a receipt with no delta only when it
+  all of this again at landing, reads the receipts for the head in every worktree
+  but a drive lane's (and none when it runs from one or lands a branch checked
+  out in one), and counts a receipt with no delta only when it
   holds a passing pair for the head it names.
 
 The decision, in order:

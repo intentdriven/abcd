@@ -197,6 +197,12 @@ type Options struct {
 	// check `abcd announce` uses, its ForgeUser nil the forge's user
 	// endpoint, asked only when git's identity does not name the sender.
 	Announce claim.Options
+
+	// from is the checkout the landing was asked from, resolved: the
+	// toplevel git finds from the working directory. The merge gate reads no
+	// review receipt or recorded approval when it, or the branch's own
+	// checkout, is a drive lane's worktree or lies inside one (fromDriveLane).
+	from string
 }
 
 // Step is what one step of the landing did.
@@ -293,6 +299,7 @@ func Land(cwd string, o Options) (Result, error) {
 	if err != nil {
 		return res, err
 	}
+	o.from = fsutil.RealExistingPath(root)
 	res.Branch, res.Checkout = branch, fsutil.RedactHome(dir)
 	// The default as this checkout last fetched it is only a first reading:
 	// origin/HEAD can be stale or missing, so checkOrigin asks the forge and
@@ -413,7 +420,10 @@ func branchRepoRoot(r layered.Roots, dir string) string {
 }
 
 // resolveBranch finds the checkout to land from: the one at root on its
-// current branch, or the worktree that has branch checked out.
+// current branch, or the worktree that has branch checked out. The path it
+// returns is resolved (fsutil.RealExistingPath), never the string git lists,
+// so the merge gate tells a drive lane's worktree by where the checkout is,
+// whatever path names it.
 func resolveBranch(root, branch string) (dir, name string, err error) {
 	wts, err := gitutil.ListWorktrees(root, gitutil.MaxWorktreeListing)
 	if err != nil {
@@ -430,7 +440,7 @@ func resolveBranch(root, branch string) (dir, name string, err error) {
 				return "", "", refuse("HEAD is detached, so there is no branch to land",
 					"check out the branch to land (or name it: abcd land <branch>), then run abcd land again")
 			}
-			return wt.Path, name, nil
+			return here, name, nil
 		}
 		return "", "", refuse("git lists no worktree at this checkout", "run abcd land from the branch's checkout")
 	}
@@ -442,7 +452,7 @@ func resolveBranch(root, branch string) (dir, name string, err error) {
 	}
 	for _, wt := range wts {
 		if !wt.Bare && wt.Branch == "refs/heads/"+branch {
-			return wt.Path, branch, nil
+			return fsutil.RealExistingPath(wt.Path), branch, nil
 		}
 	}
 	return "", "", refuse(branch+" is not checked out in any worktree, and the preflight runs in the branch's own checkout",
@@ -1421,7 +1431,7 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 	// just fetched and the machine layer declare it, never the branch's own
 	// checkout (dcn-2610230058333177), the author's role, the approvals of
 	// the head, and in auto a review receipt naming it.
-	d, err := DecideMerge(MergeQuery{RepoRoot: dir, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
+	d, err := DecideMerge(MergeQuery{RepoRoot: dir, From: o.from, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
 		Rule: rule, Repo: nameWithOwner, PR: n, Head: res.Head, Forge: func(args ...string) (string, error) { return o.Forge(dir, args...) }})
 	if err == nil {
 		// The spot-check's record of the decision, made from the decision

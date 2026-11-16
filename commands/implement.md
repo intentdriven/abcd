@@ -748,8 +748,9 @@ that judged it, and the line of the first try and that of the try that takes
 both say so. A review receipt for that head of other returns is left in place,
 and the record says it stands as its recorder's: one a person recorded with
 `abcd land --record-review` still counts, and so does any receipt in another
-worktree, which is never moved. A person's receipt of the very same return
-files is identical to the loop's in every return it counts, so it is moved
+worktree, which is never moved. A receipt in the lane's own worktree is not
+moved either, since the merge gate never counts one in a drive lane's worktree.
+A person's receipt of the very same return files is identical to the loop's in every return it counts, so it is moved
 aside with it; the move is
 reversible, by renaming `<head>.voided` back to `<head>`.
 

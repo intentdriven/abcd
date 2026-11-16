@@ -78,7 +78,12 @@ The classes:
 - `person-approved` — a merge a person approved: a recorded approval of its
   merged head in the local tier, a forge review approving that head by someone
   other than the pull request's author, or the human facilitator mode its
-  first parent committed.
+  first parent committed. The recorded approval counts from any worktree of the
+  checkout but a drive lane's (one the build loop made for a lane, named
+  `run-<id>-lane-<n>` in any case, where the merge gate never counts an approval
+  either) or
+  one under a lane's worktree, its path resolved first, and from none when
+  `abcd landings` runs from a drive lane's worktree or from anywhere under one.
 - `drain` — a merge under the auto mode with no approval seen whose branch
   carries the drain's `Admitted-by:` trailer; its rule is the drain rule record.
 - `automatic` — every other merge under the auto mode with no approval seen; its
