@@ -76,9 +76,12 @@ func startDrive(t *testing.T, repo *gittest.Repo) (*terminal, error) {
 
 // TestADriveHoldsTheWatchedSettingsAtEveryScopeAcrossLanes: a content filter
 // and an attributes line set in the shared git directory during lane N, the
-// attributes line alone, and a watched key set only in the person's global
-// settings, each refuse lane N+1 at its worktree stage, naming what changed,
-// before its add: no worktree is made and the filter writes no marker.
+// attributes line alone, a sparse-checkout patterns file written at the
+// checkout (one with patterns, and an empty one where there was none), and a
+// watched key set only in the person's global settings, each refuse lane N+1
+// at its worktree stage, naming what changed, before its add: no worktree is
+// made and the filter writes no marker. The two patterns-file cases were
+// watched failing before the drive held that file.
 func TestADriveHoldsTheWatchedSettingsAtEveryScopeAcrossLanes(t *testing.T) {
 	for name, tc := range map[string]struct {
 		global bool
@@ -97,6 +100,18 @@ func TestADriveHoldsTheWatchedSettingsAtEveryScopeAcrossLanes(t *testing.T) {
 				writeMode(t, filepath.Join(repo.Root(), ".git", "info", "attributes"), "* filter=lfs\n", 0o644)
 			},
 			want: "attributes (added)",
+		},
+		"a sparse-checkout patterns file": {
+			change: func(t *testing.T, repo *gittest.Repo, _, _ string) {
+				writeMode(t, filepath.Join(repo.Root(), ".git", "info", "sparse-checkout"), "/*\n!/commands/\n", 0o644)
+			},
+			want: "sparse-checkout (added)",
+		},
+		"an empty sparse-checkout patterns file where there was none": {
+			change: func(t *testing.T, repo *gittest.Repo, _, _ string) {
+				writeMode(t, filepath.Join(repo.Root(), ".git", "info", "sparse-checkout"), "", 0o644)
+			},
+			want: "sparse-checkout (added)",
 		},
 		"a filter in the person's global settings": {
 			global: true,
@@ -126,6 +141,42 @@ func TestADriveHoldsTheWatchedSettingsAtEveryScopeAcrossLanes(t *testing.T) {
 			absent(t, lane, "no second lane worktree is made")
 			absent(t, marker, "no filter ran")
 		})
+	}
+}
+
+// TestTheSparsePatternsFileIsHeldAsInfoAttributesIs: the patterns file git
+// names at the checkout is hashed beside info/attributes, at the path git
+// gives; an absent file records nothing and reads the same each time, and an
+// empty one records an entry, so the two read apart.
+func TestTheSparsePatternsFileIsHeldAsInfoAttributesIs(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	repo.Write("a.go", "package a\n")
+	repo.Commit("a commit")
+	sparse := strings.TrimSpace(repo.Git("rev-parse", "--path-format=absolute", "--git-path", "info/sparse-checkout"))
+	read := func() map[string]string {
+		t.Helper()
+		hooks, err := readCheckoutHooks(repo.Root(), "salt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return hooks
+	}
+	none := read()
+	if _, ok := none[sparse]; ok {
+		t.Fatalf("an absent patterns file records an entry: %v", none)
+	}
+	if again := read(); !maps.Equal(none, again) {
+		t.Fatalf("an absent patterns file does not read the same twice: %v and %v", none, again)
+	}
+	mkdirs(t, filepath.Dir(sparse))
+	writeMode(t, sparse, "", 0o644)
+	empty := read()
+	if empty[sparse] == "" {
+		t.Fatalf("an empty patterns file at %s records no entry: %v", sparse, empty)
+	}
+	writeMode(t, sparse, "/*\n", 0o644)
+	if full := read(); full[sparse] == "" || full[sparse] == empty[sparse] {
+		t.Fatalf("a patterns file with a pattern reads as the empty one: %v", full)
 	}
 }
 

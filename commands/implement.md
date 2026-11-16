@@ -1375,8 +1375,9 @@ and abcd expands no path itself; where git cannot answer, the lane stops. The
 run's fingerprint records that directory at the run's first check, which is
 normally the step that makes the lane, and within a run a later change to it
 is refused at the next step. Across the lanes of one drive the drive holds it:
-as it starts it reads that directory and the git directory's
-`info/attributes`, and keeps hashes of them in its own memory; just before each lane's add the
+as it starts it reads that directory, the git directory's
+`info/attributes` and the sparse-checkout patterns file git names at the
+checkout, and keeps hashes of them in its own memory; just before each lane's add the
 worktree stage reads them again, and an entry added, removed or changed since
 the drive started, and still so at that read, refuses the lane, naming the
 file, before that lane's add. The directory is read at every depth: a file by
@@ -1552,11 +1553,23 @@ fsmonitor, the editor, content filters, diff and merge drivers and
 and `init.templateDir`); the settings that change which of them run
 (`merge.renormalize`, `submodule.recurse` and `push.recurseSubmodules`,
 `status.submoduleSummary`, `core.attributesFile`, the worktree settings and
-`extensions.worktreeConfig`); and the include paths.
+`extensions.worktreeConfig`); the settings that change what a checkout
+writes or how its files are read (`core.autocrlf`, `core.eol`,
+`core.symlinks`, `core.fileMode`, `core.ignoreCase`,
+`core.precomposeUnicode`, `core.checkRoundtripEncoding`,
+`core.sparseCheckout` and `core.sparseCheckoutCone`), since the drive's own
+preflight checkout is made and compared under them; and the include paths.
 It holds as well the bytes of each file an `include.path` or
 `includeIf.*.path` setting names, whether or not its condition holds at the
-checkout, since it can hold in a lane, its path resolved by git; and the
-global and system attributes files git names. It reads all of these in each
+checkout, since it can hold in a lane, its path resolved by git; the
+global and system attributes files git names; and, with the hooks directory
+and `info/attributes`, the sparse-checkout patterns file git names at the
+checkout (`git rev-parse --git-path info/sparse-checkout`), which
+`git worktree add` copies into the preflight checkout. That checkout is
+compared with the head with sparse checkout switched off for the comparison,
+so a file its patterns leave out is a difference: the drive says the checkout
+is missing files the head holds, names sparse checkout as the likely reason,
+and runs no preflight. It reads all of these in each
 environment a drive's git runs in: your own (your home and global settings),
 where the landing push and the reservation's pushes and fetches run with the
 repository's hooks on and the ask of `origin` runs with them off; the lane's
@@ -1785,8 +1798,8 @@ change like any other, which stops the next step until you accept it; and each
 run records the watched settings afresh when it first checks them, so a
 setting changed before a run's first check is that run's starting point (each
 lane of a drain is a run of its own, and a drive holds across its lanes only
-the settings, the checkout's hooks directory and `info/attributes` named
-above), and you must look at what changes between runs yourself. The run's
+the settings, the checkout's hooks directory, `info/attributes` and the
+sparse-checkout patterns file named above), and you must look at what changes between runs yourself. The run's
 fingerprint does not watch your global and system settings; a drive holds
 them across its lanes, as above. The file holds salted hashes, never
 a value: a credential helper's value may carry a secret, so only key names and

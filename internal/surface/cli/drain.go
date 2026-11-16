@@ -107,7 +107,9 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"another subscription, and a limit waits for that profile's reset. Nothing moves a drive\n" +
 			"from one profile to another. It then judges each eligible issue,\n" +
 			"drives each lane to its landing, every role on that separate login, and runs each\n" +
-			"landing's preflight behind the load gate, printing one line per step and logging them\n" +
+			"landing's preflight behind the load gate, in a checkout of the lane's head the drive\n" +
+			"makes itself and removes after, never in the lane's worktree, printing one line per\n" +
+			"step and logging them\n" +
 			"under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/, the active\n" +
 			"hooks, the forge's workflow folder (.github/) or abcd's configuration, receipts or\n" +
 			"approvals is handed back at its landing, and an issue that names one is passed over,\n" +

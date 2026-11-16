@@ -131,17 +131,30 @@ var drivePreflightProgram = func() (string, []string, error) {
 // issue (drivePassOver).
 const hooksPathRemedy = "look at what git answers for the setting with `git config --show-scope --show-origin --get-all core.hooksPath` in the repository, settle the value it names (a path git cannot expand, such as one under a home that does not exist, cannot be read), then start the drive again"
 
+// maxLaneChangeList is the most the gate check reads of a lane's change list,
+// one name after another; a longer list is not read whole, and holds the
+// landing as one that could not be read.
+const maxLaneChangeList = 16 << 20
+
 // driveGateCheck says whether a lane's landing may go on: not over a lane that
 // changes what judges it, which a person's own session handles, and not when what
-// the lane changed cannot be read. The hooks path is placed both in the lane's
+// the lane changed cannot be read. What the lane changed is read from the
+// repository at repoRoot, from base to head, the commit its landing lands, and
+// never from what the lane's worktree has checked out, which anything run there
+// can move. It is read as stored, so no replace ref or graft stands another
+// commit or tree in for either end: the landing pushes the stored head, and the
+// change judged is the one it pushes. The hooks path is placed both in the lane's
 // worktree and in the checkout at repoRoot, since a value that names a directory
 // inside that checkout is where git runs hooks from whichever worktree it runs
 // in, and the lane's change reaches it there once landed; each place is the same
 // path relative to its tree, so it is read against the lane's change list as it
 // stands.
-func driveGateCheck(repoRoot string) func(worktree, base string) error {
-	return func(worktree, base string) error {
-		out, err := gitutil.Run(worktree, "diff", "--name-only", "-z", "--no-renames", base, "HEAD", "--")
+func driveGateCheck(repoRoot string) func(worktree, base, head string) error {
+	return func(worktree, base, head string) error {
+		if !gitutil.IsFullSHA(base) || !gitutil.IsFullSHA(head) {
+			return &loop.PreflightRefused{Reason: "the lane records no base and head to read what it changed, so its landing does not go on"}
+		}
+		out, err := gitutil.RunCappedAsStored(repoRoot, maxLaneChangeList, "diff", "--name-only", "-z", "--no-renames", base, head, "--")
 		if err != nil {
 			return &loop.PreflightRefused{Reason: "what the lane changed could not be read, so its landing does not go on"}
 		}
@@ -881,12 +894,13 @@ func driveLog(repoRoot string, w io.Writer) (say func(string), detail io.Writer,
 		}
 }
 
-// drivePreflight runs the repository's preflight in a lane's worktree behind
-// the load gate, as a process group of its own, so the terminal's interrupt
-// does not reach it, and with only what a stage carries of the environment,
-// since the lane's own files decide what it runs.
-func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, worktree string) error {
-	return func(ctx context.Context, worktree string) error {
+// drivePreflight runs the repository's preflight in checkout, the drive's own
+// checkout of a lane's head, whose full commit id is head, behind the load gate, as a process group of its
+// own, so the terminal's interrupt does not reach it, and with only what a
+// stage carries of the environment, since the lane's own files decide what it
+// runs (preflightGoEnv).
+func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, checkout, head string) error {
+	return func(ctx context.Context, checkout, head string) error {
 		program, args, err := drivePreflightProgram()
 		if err != nil {
 			return err
@@ -896,8 +910,8 @@ func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, wor
 		}
 		// #nosec G204 -- program is the running binary; the arguments are fixed.
 		cmd := exec.CommandContext(ctx, program, args...)
-		cmd.Dir = worktree
-		cmd.Env = runner.PreflightEnv(p)
+		cmd.Dir = checkout
+		cmd.Env = preflightGoEnv(runner.PreflightEnv(p), checkout, head)
 		cmd.Stdout, cmd.Stderr = w, w
 		procgroup.Lead(cmd)
 		cmd.Cancel = func() error { return procgroup.Kill(cmd) }
@@ -905,6 +919,54 @@ func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, wor
 		procgroup.KillLeft(cmd)
 		return err
 	}
+}
+
+// preflightGoEnv is env with no GOWORK of its own and Go told to read no
+// settings file of its own (GOENV=off), which lies under the stage's home;
+// GOWORK is then off unless head tracks a go.work at the checkout's root
+// (headTracksRootGoWork), when it is left unset, so Go's own search upward
+// from a directory inside the checkout finds the nearest go.work the head
+// tracks and stops at the checkout's root at the latest; a Go command started
+// outside the checkout searches from where it starts, as it does in any run. GOFLAGS is stated, empty, when
+// env carries none, so nothing else supplies it.
+func preflightGoEnv(env []string, checkout, head string) []string {
+	out := make([]string, 0, len(env)+3)
+	flags := false
+	for _, kv := range env {
+		k, _, _ := strings.Cut(kv, "=")
+		switch k {
+		case "GOWORK", "GOENV":
+			continue
+		case "GOFLAGS":
+			flags = true
+		}
+		out = append(out, kv)
+	}
+	if !headTracksRootGoWork(checkout, head) {
+		out = append(out, "GOWORK=off")
+	}
+	out = append(out, "GOENV=off")
+	if !flags {
+		out = append(out, "GOFLAGS=")
+	}
+	return out
+}
+
+// headTracksRootGoWork says whether head, a full commit id, tracks go.work at
+// its root as a regular file, read as stored in the repository of checkout,
+// whose content the drive has just compared with the head's. A read that
+// fails, or a head that is not a full commit id, answers no.
+func headTracksRootGoWork(checkout, head string) bool {
+	if !gitutil.IsFullSHA(head) {
+		return false
+	}
+	out, err := gitutil.RunCappedAsStored(checkout, 4096, "ls-tree", "-z", head, "--", "go.work")
+	if err != nil {
+		return false
+	}
+	meta, name, ok := strings.Cut(out, "\t")
+	f := strings.Fields(meta)
+	return ok && strings.TrimRight(name, "\x00") == "go.work" && len(f) == 3 && f[1] == "blob" && (f[0] == "100644" || f[0] == "100755")
 }
 
 // driveWhy is what stopped a drive, as a clause to follow its end words.

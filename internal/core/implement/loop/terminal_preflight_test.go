@@ -55,7 +55,7 @@ func TestAStopReachesAPreflight(t *testing.T) {
 	w.needsPreflight = true
 	o := oneLane(t, w)
 	ended := make(chan bool, 1)
-	o.Preflight = func(ctx context.Context, _ string) error {
+	o.Preflight = func(ctx context.Context, _, _ string) error {
 		close(w.stop)
 		select {
 		case <-ctx.Done():
@@ -84,7 +84,7 @@ func TestAPreflightTheHookRefusesNeverRuns(t *testing.T) {
 	w := newTerminalWorld(t)
 	w.needsPreflight = true
 	o := oneLane(t, w)
-	o.PreflightAllowed = func(string, string) error {
+	o.PreflightAllowed = func(string, string, string) error {
 		return &PreflightRefused{Reason: "the lane changes what its gates run"}
 	}
 	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
@@ -265,7 +265,7 @@ func TestAStagesLineCannotRewriteTheRunState(t *testing.T) {
 func TestTheGateCheckRunsWhateverReceiptExists(t *testing.T) {
 	w := newTerminalWorld(t)
 	o := oneLane(t, w)
-	o.PreflightAllowed = func(string, string) error {
+	o.PreflightAllowed = func(string, string, string) error {
 		return &PreflightRefused{Reason: "the lane changes what its gates run"}
 	}
 	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {

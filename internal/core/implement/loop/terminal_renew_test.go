@@ -76,12 +76,12 @@ func TestAReservationRenewsDuringAPreflight(t *testing.T) {
 	o.Drain.Max = 1
 	renewed := false
 	inner := o.Preflight
-	o.Preflight = func(ctx context.Context, wt string) error {
+	o.Preflight = func(ctx context.Context, wt, head string) error {
 		at.Add(int64(90 * time.Minute))
 		st, _, err := readDrain(w.repo.Root())
 		if err != nil || len(st.Lanes) == 0 {
 			t.Errorf("no drain: %v", err)
-			return inner(ctx, wt)
+			return inner(ctx, wt, head)
 		}
 		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline) && !renewed; time.Sleep(20 * time.Millisecond) {
 			run, err := ReadState(w.repo.Root(), st.Lanes[0].RunID)
@@ -92,7 +92,7 @@ func TestAReservationRenewsDuringAPreflight(t *testing.T) {
 				renewed = renewed || e.Stage == StageReservationRenewed
 			}
 		}
-		return inner(ctx, wt)
+		return inner(ctx, wt, head)
 	}
 	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
 		t.Fatalf("%v\n%s", err, strings.Join(w.lines, "\n"))

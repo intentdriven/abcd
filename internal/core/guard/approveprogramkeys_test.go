@@ -313,6 +313,17 @@ var heldProgramRows = map[string][]struct {
 		{"core.alternaterefscommand", true, ""},
 		{"core.attributesfile", false, "says which filters and drivers apply to a path; each filter and driver is listed by its own key"},
 	},
+	`core\.(autocrlf|eol|symlinks|filemode|ignorecase|precomposeunicode|checkroundtripencoding|sparsecheckout|sparsecheckoutcone)`: {
+		{"core.autocrlf", false, "how a checkout writes line endings, naming no program"},
+		{"core.eol", false, "as core.autocrlf"},
+		{"core.symlinks", false, "whether a checkout writes a link as a link, naming no program"},
+		{"core.filemode", false, "whether the executable bit is compared, naming no program"},
+		{"core.ignorecase", false, "how paths are compared, naming no program"},
+		{"core.precomposeunicode", false, "how path names are read, naming no program"},
+		{"core.checkroundtripencoding", false, "which encodings a checkout checks, naming no program"},
+		{"core.sparsecheckout", false, "which paths a checkout writes, naming no program"},
+		{"core.sparsecheckoutcone", false, "as core.sparsecheckout"},
+	},
 	`diff\.external`: {{"diff.external", true, ""}},
 	`merge\.(renormalize|verifysignatures)`: {
 		{"merge.verifysignatures", true, ""},

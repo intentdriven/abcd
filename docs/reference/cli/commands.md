@@ -1556,7 +1556,9 @@ started on: a drive on another refuses before it takes that run's lane up, since
 another subscription, and a limit waits for that profile's reset. Nothing moves a drive
 from one profile to another. It then judges each eligible issue,
 drives each lane to its landing, every role on that separate login, and runs each
-landing's preflight behind the load gate, printing one line per step and logging them
+landing's preflight behind the load gate, in a checkout of the lane's head the drive
+makes itself and removes after, never in the lane's worktree, printing one line per
+step and logging them
 under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/, the active
 hooks, the forge's workflow folder (.github/) or abcd's configuration, receipts or
 approvals is handed back at its landing, and an issue that names one is passed over,
