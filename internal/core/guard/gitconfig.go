@@ -305,9 +305,19 @@ type gitConfigRead struct {
 // where git's own parser reads them — `git log -c` past the subcommand is a
 // combined-diff flag, not a config setting.
 func readGitConfig(prefix, args, valueFlags []string) gitConfigRead {
+	return readGitConfigIn(nil, prefix, args, valueFlags)
+}
+
+// readGitConfigIn is readGitConfig for a command whose environment already
+// holds carried, the variables earlier commands of the line set
+// (carryEnvironment); the command's own assignments are read over them.
+func readGitConfigIn(carried map[string]string, prefix, args, valueFlags []string) gitConfigRead {
 	c := gitConfigRead{aliases: map[string]string{}}
 
 	env := map[string]string{}
+	for name, v := range carried {
+		env[name] = v
+	}
 	for _, tok := range prefix {
 		name, eq, appends, subscript, ok := splitAssignment(tok)
 		switch {

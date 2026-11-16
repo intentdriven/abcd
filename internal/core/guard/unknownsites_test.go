@@ -130,7 +130,7 @@ var wordReaders = map[string]string{
 	"expandGitAliasesAt":     "sitesNamed",
 	"anyAliasRewrite":        "sitesNamed",
 	"rewriteGitAliases":      "firstOperands",
-	"readGitConfig":          "firstOperandLimit, and flagCouldBe on every unknown word",
+	"readGitConfigIn":        "firstOperandLimit, and flagCouldBe on every unknown word",
 	"hooksPathRewrite":       "sitesNamed and firstOperands",
 	"bareStash":              "sitesNamed and operandReadings",
 	"forgePostsOf":           "sitesNamed and operandReadings",
@@ -244,6 +244,8 @@ var wordReaders = map[string]string{
 	"longFlagIs":       "isUnknown, knownLead and flagCouldBe: an unknown word is read by what its lead can still become",
 	"shortValueLetter": "exempt: gitFlagRefusal refuses every unknown short-option word before it reads one",
 	"flagWhat":         "exempt: reads one of programFlags, not a word of the line",
+	"execPathRefusal":  "firstOperandLimit, isUnknown, knownLead and flagCouldBe: an unknown word that may become --exec-path= is refused",
+	"carryEnvironment": "commandSites and sitesNamed place the declarer; isUnknown on an operand, whose name the line does not fix, carries a setting it cannot name",
 	"execPinKeys":      "exempt: reads gitutil's own -c pins, not a command word",
 
 	// approvecode.go: code reaching an interpreter outside its inline flag.

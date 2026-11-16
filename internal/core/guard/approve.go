@@ -298,6 +298,9 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 	// are judged against files the line may have changed (a directory it may
 	// have made a link), so they are not judged on their own.
 	wrote := false
+	// carried is the environment the line's earlier commands leave for the
+	// ones after them (carryEnvironment).
+	carried := map[string]string{}
 	for _, p := range placed {
 		wroteBefore := wrote
 		// A command a git setting runs is judged as run from the working
@@ -317,9 +320,10 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 			}
 			return approveShellAt(ld, files, v, depth+1).Allow
 		}
-		if a, ok := gitConfigRefusal(p.seg, vf, clean); ok {
+		if a, ok := gitConfigRefusal(p.seg, vf, clean, carried); ok {
 			return a
 		}
+		carryEnvironment(p.seg, carried)
 		for _, st := range p.states {
 			for _, u := range pathUses(rc, p.seg, st) {
 				wrote = true

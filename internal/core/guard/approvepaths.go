@@ -993,10 +993,13 @@ var commandKeys = []string{"core.pager", "core.sshcommand"}
 // commandKeys, or one of commandEnv, to a value the line fixes is not refused
 // when clean, which judges the value as the command line git runs, approves
 // it.
-func gitConfigRefusal(s segment, valueFlags []string, clean func(string) bool) (Approval, bool) {
+func gitConfigRefusal(s segment, valueFlags []string, clean func(string) bool, carried map[string]string) (Approval, bool) {
 	for _, site := range sitesNamed(s, "git") {
 		args := s.tokens[site.idx+1:]
-		read := readGitConfig(s.tokens[:site.idx], args, valueFlags)
+		if why, ok := execPathRefusal(args, valueFlags); ok {
+			return refusal(gitConfigWriteEntryID, why, "the same git command without the option."), true
+		}
+		read := readGitConfigIn(carried, s.tokens[:site.idx], args, valueFlags)
 		for i, k := range read.keys {
 			if movesTree(k) {
 				return refusal(gitConfigWriteEntryID, treeKeyWhy(k), "the same git command without the setting."), true
@@ -1046,6 +1049,70 @@ func valueOf(ops []string) string {
 		return ""
 	}
 	return ops[1]
+}
+
+// execPathRefusal reads git's own options, before its subcommand, for
+// --exec-path given a directory (git(1)): the option form of GIT_EXEC_PATH,
+// the directory git runs its sub-programs and transport helpers from. The
+// option with no word after it prints the path and is not refused. git's own
+// options take no abbreviation.
+func execPathRefusal(args, valueFlags []string) (string, bool) {
+	limit := firstOperandLimit(args, valueFlags)
+	for i := 0; i < limit && i < len(args); i++ {
+		w := args[i]
+		glued := strings.HasPrefix(w, "--exec-path=") ||
+			isUnknown(w) && (strings.HasPrefix(knownLead(w), "--exec-path=") || unknownFlagCouldBe(w, "--exec-path=") && !strings.Contains(knownLead(w), "="))
+		if glued || flagCouldBe(w, "--exec-path") && i+1 < len(args) {
+			return "this git command names, with --exec-path, the directory git runs its sub-programs from (as GIT_EXEC_PATH does), which the guard does not read.", true
+		}
+	}
+	return "", false
+}
+
+// carryEnvironment adds to env what one command of a line leaves in the
+// environment of the commands after it: each NAME=value of a command that is
+// nothing but assignments, and each NAME=value operand of export, declare,
+// typeset, local or readonly (declarers). A plain assignment reaches a later
+// command only once exported, or when the environment exports the name
+// already, so each is carried. An operand whose name the line does not spell
+// out may set any variable, and is carried as GIT_CONFIG_PARAMETERS the line
+// does not fix, which readGitConfig reads as a key it cannot name. Which
+// command reaches which is read past order only: a pipeline's or a
+// subshell's assignment is carried too.
+func carryEnvironment(s segment, env map[string]string) {
+	assign := func(tok string) {
+		name, eq, appends, subscript, ok := splitAssignment(tok)
+		switch {
+		case !ok:
+			if isUnknown(tok) || strings.ContainsRune(tok, varMark) {
+				env["GIT_CONFIG_PARAMETERS"] = unknownText
+			}
+		case subscript:
+		case appends:
+			env[name] = unknownText + tok[eq+1:]
+		default:
+			env[name] = tok[eq+1:]
+		}
+	}
+	sites := commandSites(s)
+	if len(sites) == 0 {
+		for _, tok := range s.tokens {
+			if _, _, _, _, ok := splitAssignment(tok); ok {
+				assign(tok)
+			}
+		}
+		return
+	}
+	for name := range declarers {
+		for _, site := range sitesNamed(s, name) {
+			for _, tok := range s.tokens[site.idx+1:] {
+				if strings.HasPrefix(tok, "-") || tok == "" {
+					continue
+				}
+				assign(tok)
+			}
+		}
+	}
 }
 
 // keyName is a configuration key as a refusal names it.

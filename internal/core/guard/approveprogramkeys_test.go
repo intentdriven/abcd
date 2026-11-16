@@ -461,3 +461,47 @@ func patternAlternatives(t *testing.T, p string) []string {
 	}
 	return append(out, body[start:])
 }
+
+// TestApproveJudgesGitsExecPathOption: `git --exec-path=<dir>`, and the
+// option with a word after it, is judged as GIT_EXEC_PATH is (git(1)); the
+// option alone prints the path and is not refused.
+func TestApproveJudgesGitsExecPathOption(t *testing.T) {
+	refused := refusedAs(gitConfigWriteEntryID)
+	r, _ := gitRig(t)
+	r.run(t, []approveCase{
+		{`git --exec-path=./bin fetch`, refused},
+		{`git --exec-path ./bin fetch`, refused},
+		{`git --exec-path="$D" status`, refused},
+		{`git -C . --exec-path=./bin status`, refused},
+		{`git --exec-path`, nil},
+		{`git status --exec-path=x`, nil},
+	})
+}
+
+// TestApproveCarriesTheEnvironmentAnEarlierCommandSets: a variable an
+// earlier command of the same line assigns or exports reaches every later
+// git command, and is judged there as if set on it: a program-naming
+// variable, and the GIT_CONFIG_* settings.
+func TestApproveCarriesTheEnvironmentAnEarlierCommandSets(t *testing.T) {
+	refused := refusedAs(gitConfigWriteEntryID)
+	r, _ := gitRig(t)
+	r.run(t, []approveCase{
+		{`export GIT_PAGER='python3 -c x'; git log -1`, refused},
+		{`export A=1 GIT_SSH='python3 -c x'; git fetch`, refused},
+		{`export GIT_EXEC_PATH=./bin && git status`, refused},
+		{`true || export GIT_EDITOR=vi; git commit -m x`, refused},
+		{"export GIT_ASKPASS=./x.sh\ngit fetch", refused},
+		{`declare -x GIT_EXTERNAL_DIFF=./x.sh; git diff`, refused},
+		{`typeset -x GIT_SEQUENCE_EDITOR=./x.sh; git status`, refused},
+		{`GIT_PAGER='python3 -c x'; export GIT_PAGER; git log -1`, refused},
+		{`export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.pager GIT_CONFIG_VALUE_0='python3 -c x'; git log -1`, refused},
+		{`GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.pager GIT_CONFIG_VALUE_0='python3 -c x'; export GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0; git log -1`, refused},
+		{`export GIT_CONFIG_PARAMETERS="'core.pager=python3 -c x'"; git log -1`, refused},
+		{`export "$N"=x; git log -1`, refusedAs(gitConfigWriteEntryID, arithmeticEntryID)},
+		{`export "$N"; git log -1`, refusedAs(gitConfigWriteEntryID, arithmeticEntryID)},
+		{`export GIT_PAGER=cat; git log -1`, nil},
+		{`export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=color.ui GIT_CONFIG_VALUE_0=never; git log -1`, nil},
+		{`export GOFLAGS=-count=1; git status`, nil},
+		{`git status; export GIT_PAGER='python3 -c x'`, nil},
+	})
+}
