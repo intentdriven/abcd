@@ -694,10 +694,11 @@ func shellCommands(s string) []string {
 // as <record-id> or <full commit id>, rather than an input redirection. A
 // placeholder is closed by a later `>` that directly follows a character of
 // its text. A `>` after a blank is an output redirection (`<in.json
-// >out.json`), and so is one after a lone file-descriptor number
-// (`<in.json 2>/dev/null`). A `<` followed by a blank, `<`, `>`, `&` or `(`
-// is a redirection, a here-document or a process substitution, and `<word`
-// with no `>` after it is a redirection, as the shell reads it.
+// >out.json`), and so is one after a lone file-descriptor number naming its
+// target (`<in.json 2>/dev/null`); a number closed by `>` and a blank, as in
+// <chunk 1>, ends a placeholder's text. A `<` followed by a blank, `<`, `>`,
+// `&` or `(` is a redirection, a here-document or a process substitution, and
+// `<word` with no `>` after it is a redirection, as the shell reads it.
 func opensPlaceholder(s string, i int) bool {
 	if i+1 >= len(s) || strings.IndexByte(" \t<>&(", s[i+1]) >= 0 {
 		return false
@@ -708,11 +709,19 @@ func opensPlaceholder(s string, i int) bool {
 	}
 	// Step back over the digits directly before the `>`. What stands before
 	// them, or before the `>` when there are none, says which it is.
-	k := i + 1 + j
+	gt := i + 1 + j
+	k := gt
 	for k > i+1 && s[k-1] >= '0' && s[k-1] <= '9' {
 		k--
 	}
-	return s[k-1] != ' ' && s[k-1] != '\t'
+	if s[k-1] != ' ' && s[k-1] != '\t' {
+		return true
+	}
+	// A blank before the digits makes them a file-descriptor number only when
+	// the redirection names its target straight after the `>` (`2>/dev/null`,
+	// `2>&1`); a blank or the end of the text there closes a placeholder
+	// whose text ends in a number, such as <chunk 1>.
+	return k < gt && (gt+1 >= len(s) || s[gt+1] == ' ' || s[gt+1] == '\t')
 }
 
 // scanWords is the words of the command s opens, the offset its text ends at,

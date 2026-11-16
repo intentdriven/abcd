@@ -184,11 +184,11 @@ func TestCommandPageFacts(t *testing.T) {
 		},
 		{
 			name: "a placeholder holding blanks or digits is no redirection",
-			text: "`abcd capture resolve iss-1 note --impact <full kind name> --bogus` and `abcd capture resolve <iss-2> n --impact <kind2> --gone`\n",
+			text: "`abcd capture resolve iss-1 note --impact <full kind name> --bogus` and `abcd capture resolve <iss-2> n --impact <kind2> --gone`\n```bash\nabcd capture resolve iss-1 note --impact <chunk 1> --impact <chunk 2> --bogus\n```\n",
 			want: []struct {
 				line int
 				frag string
-			}{{1, "`--bogus`"}, {1, "`--gone`"}},
+			}{{1, "`--bogus`"}, {1, "`--gone`"}, {3, "`--bogus`"}},
 		},
 		{
 			name: "an invocation after a pipe is read",
