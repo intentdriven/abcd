@@ -1620,7 +1620,8 @@ reads what it holds only as it starts, so a change of yours to a watched
 setting while a drive runs (a new credential helper, an editor, an include)
 ends it too. Look at the change and start it again. When a drive ends that way
 it releases nothing, since releasing is a push: it names each reservation it
-leaves and when its lease lapses unless a load-gate waiter in this copy renews
+leaves and when its lease lapses unless someone runs a step, `abcd drain` or
+`abcd implement status` in this copy, or a load-gate waiter in this copy renews
 it, and once the setting is as it should be you release one with `abcd reserve
 <id> --release`, or start the drive again, which takes the run up. What changes
 between a comparison and git's own run of the command is not seen.

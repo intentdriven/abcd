@@ -607,7 +607,8 @@ what it did in `next`:
   network act, and releases nothing then. A drain killed outright
   (`SIGKILL`) releases
   nothing, and its reservation lapses after one lease (two hours by default)
-  unless a load-gate waiter in this copy renews it.
+  unless someone runs a step, `abcd drain` or `abcd implement status` in
+  this copy, or a load-gate waiter in this copy renews it.
   Each release is a fetch and one tombstone push over the commit the drain's
   reservation made, made only while that commit is still the tip, so a
   reservation you made or renewed with `abcd reserve` since is left as it
