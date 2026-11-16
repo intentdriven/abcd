@@ -514,7 +514,7 @@ func TestACommitFoundOfTheMarkAloneDeclaresAbcd(t *testing.T) {
 		t.Fatalf("the landing's own commit is found: %s, %s", got.HeadSHA, tip)
 	}
 	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B")
-	f.repo.Git("-C", l.Worktree, "commit", "-q", "--amend", "-m", strings.ReplaceAll(msg, composedAssistedBy(), "Assisted-by: Claude:claude-test-5"))
+	f.repo.Git("-C", l.Worktree, "commit", "-q", "--amend", "-m", strings.ReplaceAll(msg, composedAssistedBy(), "Assisted-by: Claude:claude-mythos-5"))
 	f.rollBackToJudged(t, judged)
 	if r := f.wantsRefusedStep(t); !strings.Contains(r.Reason, "lacks the landing's trailers") {
 		t.Fatalf("a model's label on a commit of the mark alone is not the landing's: %+v", r)

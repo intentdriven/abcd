@@ -583,6 +583,9 @@ func renderReview(w io.Writer, rs *loop.ReviewSet) {
 		return
 	}
 	fmt.Fprintf(w, "  review:  %s\n", termsafe.Sanitize(rs.String()))
+	if m := rs.ClassMapPhrase(); m != "" {
+		fmt.Fprintf(w, "  classes: %s\n", termsafe.Sanitize(m))
+	}
 }
 
 // renderStartHead renders a build's first lines: what it did with the run
@@ -1568,7 +1571,11 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 			if p := v.ReviewerPhrase(); p != "" {
 				role += " (" + p + ")"
 			}
-			fmt.Fprintf(w, "    round %d at %s: %s %s%s%s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(role), termsafe.Sanitize(v.Verdict), located, routeSuffix(v.Route))
+			models := ""
+			if m := v.ModelsPhrase(); m != "" {
+				models = "; " + termsafe.Sanitize(m)
+			}
+			fmt.Fprintf(w, "    round %d at %s: %s %s%s%s%s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(role), termsafe.Sanitize(v.Verdict), located, models, routeSuffix(v.Route))
 			renderFindings(w, v.Findings)
 		}
 		if len(l.Resolves) > 0 {

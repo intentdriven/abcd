@@ -24,9 +24,11 @@ import (
 // nothing further runs in it, and its issue is a person's. A lane handed back
 // and then discarded, the remedy a stuck hand-back names, still was: its run
 // reads as complete (State.Complete), which would otherwise pass the issue
-// over for good as one whose landing settles it.
+// over for good as one whose landing settles it. One whose lane still owes the
+// withdrawal of its pull request's arming (owedArming) is not yet: its steps
+// still run, and its reservation is kept.
 func (s State) issueHandedBack() bool {
-	if s.Issue() == "" {
+	if s.Issue() == "" || owedArming(s) > 0 {
 		return false
 	}
 	if outcome, _, _ := laneOutcome(s); outcome == DrainLaneHandedBack {

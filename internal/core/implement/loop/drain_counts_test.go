@@ -23,10 +23,15 @@ func landLaneOf(t *testing.T, repo interface{ Root() string }, runID string, pr 
 	t.Helper()
 	err := mutate(repo.Root(), runID, func(_ *os.Root, st *State) (bool, error) {
 		l := &st.Lanes[0]
-		l.Receipts = []ReceiptRecord{{Role: RoleImplementer, Receipt: "r1.json"}, {Role: RoleImplementer, Receipt: "r2.json"}}
+		l.Receipts = []ReceiptRecord{{Role: RoleImplementer, Receipt: "r1.json", Model: "grok-test-1"}, {Role: RoleImplementer, Receipt: "r2.json", Model: "grok-test-1"}}
+		// Each reviewer records the lane's writer and the model it ran on,
+		// as the loop writes them.
+		judged := func(role, verdict string, pass bool) ValidatorRun {
+			return ValidatorRun{Role: role, Verdict: verdict, Pass: pass, WriterModels: []string{"grok-test-1"}, ReviewerModel: "claude-sonnet-5-5"}
+		}
 		l.Validation = []ValidationRound{
-			{Round: 1, HeadSHA: "a", Validators: []ValidatorRun{{Role: RoleRuthless, Verdict: "NEEDS_WORK"}, {Role: RoleSecurity, Verdict: "SHIP", Pass: true}}, Fix: "r2.json"},
-			{Round: 2, HeadSHA: "b", Validators: []ValidatorRun{{Role: RoleRuthless, Verdict: "SHIP", Pass: true}, {Role: RoleSecurity, Verdict: "SHIP", Pass: true}}},
+			{Round: 1, HeadSHA: "a", Validators: []ValidatorRun{judged(RoleRuthless, "NEEDS_WORK", false), judged(RoleSecurity, "SHIP", true)}, Fix: "r2.json"},
+			{Round: 2, HeadSHA: "b", Validators: []ValidatorRun{judged(RoleRuthless, "SHIP", true), judged(RoleSecurity, "SHIP", true)}},
 		}
 		l.Landing = &Landing{RecordsDone: true, Merge: "queue", Armed: true}
 		l.PR, l.Stage, l.Awaits = pr, StageDone, nil

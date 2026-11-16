@@ -182,6 +182,12 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 		if v.Verdict != "" || lane.awaited(v.Return) {
 			continue
 		}
+		// The model the reviewer is handed out on, to the host or to a
+		// runner (the await carries it), is settled before either: never the
+		// writer's (reviewers.go).
+		if hb := chooseReviewerModel(c.State, *lane, *cur, v); hb != nil {
+			return Outcome{HandBack: hb}, nil
+		}
 		route, moved, err := routeRound(c, *lane, cur, v.Role, failedBefore(*lane, cur.Round))
 		if err != nil {
 			return Outcome{}, err
@@ -635,6 +641,7 @@ func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRu
 	} else {
 		p("## What you hand back\n\n")
 		p("%s\n\n", reviewedHeadLine(r.HeadSHA))
+		p("%s\n\n", reviewerModelLine)
 		p("Write your whole return, in your agent definition's shape, to:\n\n`%s`\n\n", abs(c.RepoRoot, v.Return))
 		p("%s\n", oneVerdictLine)
 		p("%s The loop reads that\n", namesTheHeadLine(reviewerVerdicts[v.Role], r.HeadSHA))
@@ -900,16 +907,21 @@ func verifyValidation(c Context, lane *Lane, receiptRel string) error {
 			return refuse("receipt", "", lane.ID, fmt.Sprintf("%s states no verdict the loop can record: %v", receiptRel, err),
 				"start a fresh "+v.Role+" with the brief "+v.Brief+"; its return ends with one `### Verdict` section whose first line opens with the verdict and names the head, `"+cur.HeadSHA+"`, then hand it back")
 		}
-		v.Verdict, v.Pass = word.word, word.pass
-		// The route's answer, as its step placed and recorded it, is the
-		// route's review: judged on the bytes this verifier read, once.
-		// Only a reviewer's verdict parses, so only a reviewer reaches here.
-		if a := c.Await.Answered; a != nil && a.Route == oracle.ReviewRP && a.SHA256 == answerDigest(raw) {
-			v.Route = &runner.RouteRecord{Asked: a.Route, Ran: a.Route}
-		}
 		reported := ""
 		if c.Route != nil {
 			reported = c.Route.Model
+		}
+		// The route's answer, as its step placed and recorded it, is the
+		// route's review: judged on the bytes this verifier read, once.
+		// Only a reviewer's verdict parses, so only a reviewer reaches here.
+		a := c.Await.Answered
+		unsent := a != nil && a.Route == oracle.ReviewRP && a.SHA256 == answerDigest(raw)
+		if err := v.recordReviewerModel(*lane, receiptRel, reported, string(raw), unsent); err != nil {
+			return err
+		}
+		v.Verdict, v.Pass = word.word, word.pass
+		if unsent {
+			v.Route = &runner.RouteRecord{Asked: a.Route, Ran: a.Route}
 		}
 		v.recordModelStatus(reported)
 		v.recordFindings(landing.NormalizeLineBreaks(string(raw)), lane.Worktree)
@@ -1168,6 +1180,9 @@ func validationNote(lane Lane, receipt string) string {
 		note := fmt.Sprintf("the loop recorded %s's verdict %s from its return", v.Role, v.Verdict)
 		if p := v.phrase(); p != "" {
 			note += " (" + p + "; " + modelStatusPhrase(v.ModelStatus) + ")"
+		}
+		if m := v.models(); m != "" {
+			note += "; " + m
 		}
 		if v.Audit != nil {
 			note += fmt.Sprintf(" over the whole delivery %s..%s (receipt %s, for the close to consume)", shortSHA(v.Audit.BaseSHA), shortSHA(v.Audit.HeadSHA), v.Audit.ReceiptID)
@@ -1930,6 +1945,7 @@ func reviewRequest(repoRoot, runID, laneID string, aw Await, agentPrompt func(st
 	p("## The diff\n\n%s\n\n", fenced("diff", string(diff)))
 	p("## What you answer\n\n")
 	p("%s\n\n", reviewedHeadLine(r.HeadSHA))
+	p("%s\n\n", reviewerModelLine)
 	p("Answer with your whole return, in your agent definition's shape.\n")
 	p("%s\n", oneVerdictLine)
 	p("%s The loop writes your answer to the review's return and\n", namesTheHeadLine(reviewerVerdicts[aw.Role], r.HeadSHA))

@@ -939,6 +939,10 @@ func TestTheMostFindingsReviewersCanWriteLeaveAStateTheReadAccepts(t *testing.T)
 			for _, h := range hostile {
 				v := &r.Validators[h]
 				v.Verdict, v.Pass = "FIX FIRST", false
+				// Every reviewer handed out records its writers and model,
+				// as the dispatched one does.
+				v.WriterModels, v.ReviewerModel = tmpl.Validators[hostile[0]].WriterModels, v.Model
+				v.ModelStatus = ModelAsked
 				v.recordFindings(hostileFindings("FIX FIRST"), l.Worktree)
 			}
 			markCitedBy(&r)
