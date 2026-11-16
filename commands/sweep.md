@@ -64,3 +64,12 @@ applied, `outcome`; then `lane`, the notes above, `forge_note`, `workflow`,
 Exit 0 when the run acted on something (a dry run: when `--apply` would), 1
 when it completed and acted on nothing, and 2 on a refusal or a fault:
 outside a git checkout, or when the fetch fails, before anything is judged.
+
+**Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
+provisions the binary into the plugin root, so this is the rung that fires for a
+plugin user. If that path does not exist, try `abcd` on `PATH`; if that fails
+too, you are in a source checkout of this repo, where — and only there —
+`go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
+binary on `PATH`, run `ahoy install` through whichever rung just resolved:
+`"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
+`go run ./cmd/abcd ahoy install` in a source checkout.
