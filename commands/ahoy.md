@@ -1830,7 +1830,11 @@ and the row names that entry; a file the redaction cannot vouch for (not text,
 over 4 MiB, or a secret it cannot mask) fails the archive and keeps the
 worktree. It then runs `git worktree remove` without `--force`, so git checks
 the tree and the lock again and refuses a tree that changed. Files git ignores
-outside the local tier go with the worktree and are not archived. `prune` never
+outside the local tier go with the worktree and are not archived, so a
+`reclaimed` or `would reclaim` row, a merged worktree's included, names them:
+how many and the first few, or that they could not be listed (a listing that
+fails says so and does not stop the removal; you decide). With `--json` the
+row carries them as `ignored`. `prune` never
 deletes a branch and never runs the repository-wide `git worktree prune`. After
 it removes a worktree it trims the Go build cache, as `worktree trim-cache`
 below does, and a trim that fails never fails the prune.

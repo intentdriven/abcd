@@ -28,7 +28,10 @@ per item, in this order:
 - **Worktrees** of this repository, in the worktree store and outside it, with
   the store's strays and the embargo store. A merged, clean worktree is
   `remove`: `--apply` reclaims it through the store's prune, which archives its
-  notes first. A dirty one that no live session holds is `save-patch`: its
+  notes first. Its row names the ignored files outside its local tier that go
+  with it unarchived, how many and the first few, or says they could not be
+  listed; `--apply` removes it all the same, so copy any you need first. A
+  dirty one that no live session holds is `save-patch`: its
   uncommitted work is saved as a patch in the notes archive,
   `~/.abcd.noindex/notes/<root-sha>/`, and the worktree is kept.
 - **Local branches** with no worktree. A merged one is `delete`, with
@@ -77,9 +80,18 @@ holds any ignored file outside its local tier (a `.env`, a local build
 config), which a removal deletes and only the local tier is archived, is kept
 too, its row opening "left for `abcd sweep --apply`" and naming how many
 ignored paths it holds and the first few; so is one whose ignored files cannot
-be listed. A file counts as ignored however git ignores it there, the global
-ignore file git reads by default included. Copy what you need, then remove it
-with `abcd sweep --apply` or `abcd ahoy worktree prune`.
+be listed. A file counts as ignored as the removal will delete it: by the
+repository's `.gitignore` files, its `info/exclude`, or the global ignore file
+git reads by default (`~/.config/git/ignore`). A file that only a
+`core.excludesFile` in your own global git config matches is not ignored to
+abcd, whose git reads no global config: it reads as untracked, so the worktree
+is kept as changed (`save-patch`) and its work, that file included and
+redacted, saved as a patch in the notes archive,
+`~/.abcd.noindex/notes/<root-sha>/`. At the last check before each removal
+the sweep reads the ignored files once more, and keeps a worktree in which one
+has appeared. Copy what you need, then remove it with `abcd sweep --apply` or
+`abcd ahoy worktree prune`, whose rows name the ignored files the removal
+takes.
 It never starts the reservation workflow and never files inbox reports, which
 stay with `--apply`. The worktree the running process is in, and any a live
 session holds, are kept.
@@ -90,11 +102,13 @@ starts no worktree removal past it. After a landing step, at a drain's end and
 at a drive's end it stops between removals, so a removal is never cut off
 midway; as `abcd build` starts or resumes it stops only at the bound, and an
 interrupt there ends the process, perhaps during a removal. Its
-local reads (whether a branch is merged, and what a worktree has changed) are
-short and have no deadline of their own. What it did not reach
+local reads (whether a branch is merged, what a worktree has changed, and
+which ignored files it holds) are short and have no deadline of their own. What it did not reach
 waits for the next landing's sweep, the drain's end or your own `abcd sweep`.
 The act it follows reports it on one line: how many items it removed or
-deleted, saved and left, the first few rows in this page's row wording, then
+deleted, saved and left, the first few rows in this page's row wording (a
+worktree kept for its ignored files naming their count and the first of them
+ahead of its path, so the line's bound never cuts that off), then
 `abcd sweep` for the full list. A refusal before anything was judged (a failed
 fetch) says so instead of counting nothing removed. A refusal or fault is
 reported there too, and the act's own outcome stands.
@@ -108,7 +122,9 @@ not `true` or `false`, reads as off, and the act's line says so.
 ## The result
 
 `--json` is the core's result: `rows`, each with `kind`, `name`, `path`,
-`state`, `action`, `reason`, `evidence` (each piece `proven` or a `hint`) and,
+`state`, `action`, `reason`, `evidence` (each piece `proven` or a `hint`),
+`ignored` on a worktree whose removal takes ignored files (`count`, the first
+`paths`, and `unread` with `why` when they could not be listed) and,
 applied, `outcome`; then `lane`, the notes above, `forge_note`, `workflow`,
 `refusal` and `applied`.
 

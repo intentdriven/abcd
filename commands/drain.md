@@ -866,7 +866,8 @@ what it did in `next`:
   deleted locally and on origin; any other merged branch, a store worktree's
   own included, is kept and listed for `abcd sweep --apply`, and so is a
   spent store worktree holding any ignored file outside its local tier (a
-  `.env`, say), which a removal would delete unarchived. It starts no
+  `.env`, say), which a removal would delete unarchived, or whose ignored
+  files cannot be listed. It starts no
   reservation workflow and files no inbox report, and runs for two minutes at
   most (its fetch, its fetch of the reservations and each delete on origin;
   its local reads are short and have no deadline of their own), stopping

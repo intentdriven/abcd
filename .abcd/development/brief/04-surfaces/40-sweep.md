@@ -37,7 +37,10 @@ One row per item, in this order:
 - **Worktrees**, in the worktree store and outside it, with the store's strays
   and the embargo store. A merged, clean worktree is removed through the
   store's own reclaim, which archives its notes first; there is no second
-  reclaim. A dirty worktree no live session holds has its uncommitted work
+  reclaim. Its row names the ignored files outside its local tier that go
+  with it unarchived, how many and the first few, or says they could not be
+  listed; the person decides, and the applying form removes it all the same
+  (dcn-2611161805215819). A dirty worktree no live session holds has its uncommitted work
   saved as a patch in the notes archive, and is kept. The embargo store is
   never read, saved or removed, and a stray is listed and never touched.
 - **Local branches** with no worktree. A merged one is deleted the way git
@@ -101,8 +104,15 @@ holding any ignored file outside its local tier, which a removal deletes with
 only the tier archived, is kept and listed for the applying form, naming how
 many ignored paths it holds and the first few, and so is one whose ignored
 files cannot be listed (dcn-2611161728290362). A file counts as ignored as the
-store's own removal will delete it, the global ignore file git reads by
-default included. It starts no reservation workflow and files no
+store's own removal will delete it: by the repository's own ignore rules or
+by the global ignore file git reads by default. A file only an ignore file
+named in the person's own global git configuration matches reads as
+untracked, since abcd's git reads no global configuration, so the worktree
+is kept as changed and its work, that file included, saved as a patch in the
+notes archive. At the last check before each removal it reads the ignored
+files once more, and keeps a worktree in which one has appeared. Its line
+names a kept worktree's ignored count and first path ahead of the worktree's
+path, so the bound never cuts the warning off. It starts no reservation workflow and files no
 inbox report: those stay with the applying form a person runs. The worktree
 the running process is in, and any a live session holds, are kept by the same
 liveness proof.
@@ -114,8 +124,8 @@ past it. After a landing step, at a drain's end and at a drive's end it stops
 between removals and never inside one; as a build starts or resumes it stops
 only at the bound, and an interrupt there ends the process, perhaps during a
 removal. Its local reads,
-the merged judgement and the liveness probe's read of a worktree's changes,
-are short and run with no deadline of their own. What it did not reach is judged again,
+the merged judgement, the liveness probe's read of a worktree's changes and
+the read of the ignored files a worktree holds, are short and run with no deadline of their own. What it did not reach is judged again,
 with the same proofs, by the next landing's sweep or the drain's end. The act
 it follows reports it on one line, bounded: what it removed and what it left,
 counted, the first few rows in the sweep's row wording, then where the full
