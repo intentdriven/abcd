@@ -132,8 +132,9 @@ func TestEveryCommandPageOpensWithTheAskTheBinaryCall(t *testing.T) {
 
 // Criterion 3's third test: `abcd explain <path> --json` is byte-equal to that
 // command's slice of its committed JSON file, the file's document cut to the
-// one command and encoded as explain encodes it, for every command a file
-// holds. A file is decoded strictly, so a field explain does not print fails
+// one command and encoded as the files are (EncodeCommandFacts, so with no
+// HTML escaping), never with explain's own encoder, which would hold explain
+// to itself, for every command a file holds. A file is decoded strictly, so a field explain does not print fails
 // here too.
 func TestExplainJSONIsTheCommittedFileSliceForEveryCommand(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
@@ -155,9 +156,8 @@ func TestExplainJSONIsTheCommittedFileSliceForEveryCommand(t *testing.T) {
 		}
 		for _, f := range doc.Commands {
 			seen++
-			var want bytes.Buffer
-			slice := CommandFactsDocument{FormatVersion: doc.FormatVersion, Commands: []surface.Facts{f}}
-			if err := render(&want, true, slice, nil); err != nil {
+			want, err := EncodeCommandFacts(CommandFactsDocument{FormatVersion: doc.FormatVersion, Commands: []surface.Facts{f}})
+			if err != nil {
 				t.Fatal(err)
 			}
 			code, out, errOut := explainRun(t, append(explainWords(f.Path), "--json")...)
@@ -165,9 +165,9 @@ func TestExplainJSONIsTheCommittedFileSliceForEveryCommand(t *testing.T) {
 				t.Errorf("%s: `abcd explain %s --json` exits %d: %s", rel, explainArgs(f.Path), code, errOut)
 				continue
 			}
-			if out != want.String() {
+			if out != string(want) {
 				t.Errorf("%s: `abcd explain %s --json` is not the file's slice for the command:\ngot  %s\nwant %s",
-					rel, explainArgs(f.Path), out, want.String())
+					rel, explainArgs(f.Path), out, want)
 			}
 		}
 	}
