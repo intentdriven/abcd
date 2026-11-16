@@ -261,6 +261,14 @@ func TestCommandPageFacts(t *testing.T) {
 			text: "Run `abcd docs fidelity record\n--verdict-json v` with `{\"schema_version\": 1}`.\n",
 		},
 		{
+			name: "a span holding only the binary's name hides no call before it",
+			text: "## Record\n\nRun `abcd ideate record s --verdict-json v`; `abcd` reads it.\n\n`abcd` is on PATH.\n\n```json\n{\"schema_version\": 1}\n```\n",
+			want: []struct {
+				line int
+				frag string
+			}{{8, "`abcd ideate record` reads at schema_version 2"}},
+		},
+		{
 			name: "a schema_version beside a call that passes no input is not checked",
 			text: "## Receipts\n\n```bash\nabcd docs cite confirm --receipt receipts.json\n```\n\n```json\n{\"schema_version\": 7}\n```\n",
 		},

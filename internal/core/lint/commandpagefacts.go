@@ -281,8 +281,9 @@ func CommandPageFacts(page, text string, facts []surface.Facts) []CommandPageFin
 
 	var anchors []anchor
 	// inInvocation is, per line, the flags an invocation spanning the line
-	// passes: every line of a call continued over several lines, or of a
-	// span wrapped onto the next, so a flag there anchors with its command.
+	// passes. Every line of a call continued over several lines, or of a
+	// span wrapped onto the next, is marked, so a flag there anchors with its
+	// command.
 	inInvocation := map[int]map[string]bool{}
 	for _, t := range pageInvocations(lines, reading.Fences) {
 		inv := parseInvocation(ix, t.rest)
@@ -305,6 +306,12 @@ func CommandPageFacts(page, text string, facts []surface.Facts) []CommandPageFin
 				}
 				inInvocation[ln][fl] = true
 			}
+		}
+		// A span holding only the binary's name, or the root with an argument
+		// and no flag, names no command a document is passed to, and is no
+		// anchor, since it would hide the real call before it.
+		if len(inv.pathWords) == 0 && len(inv.flags) == 0 {
+			continue
 		}
 		anchors = append(anchors, anchor{line: t.line, section: sections[t.line-1], command: inv.path, flags: inv.flags})
 	}
