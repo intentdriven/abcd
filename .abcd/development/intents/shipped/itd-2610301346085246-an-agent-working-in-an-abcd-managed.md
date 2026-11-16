@@ -174,82 +174,72 @@ refusal-code question moved with itd-2610301428378830._
 Fidelity review — receipt rcp-12272bfa9de1 (verifier intent-auditor claude-opus-5-5).
 
 Provenance: intent-auditor@claude-opus-5-5 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:81f18ed857e14fcf9782f87e0141d12dec8999d08ca71a86f55aa457618b2230
-Input attestations: intent:.abcd/development/intents/shipped/itd-2610301346085246-an-agent-working-in-an-abcd-managed.md@-; spec:.abcd/development/specs/closed/spc-2610301431075964-an-agent-working-in-an-abcd-managed.md@-; diff:commits naming itd-2610301346085246 in 1df3eedf1^..a4d22271d2a3b53a2125b60fc9d97e1e78ee97e4@-;
+Input attestations: intent:.abcd/development/intents/shipped/itd-2610301346085246-an-agent-working-in-an-abcd-managed.md@-; spec:.abcd/development/specs/closed/spc-2610301431075964-an-agent-working-in-an-abcd-managed.md@-; diff:commits naming itd-2610301346085246 or iss-2611161802565435 in 1df3eedf1^..318a868fc7c580d40ee76eec771dacc7147efcfa@-;
 
-Acceptance rollup: MET 1 · MET_WITH_CONCERNS 3 · NOT_MET 1 · INCONCLUSIVE 0
-
-Audit owed (receipt rcp-12272bfa9de1): ac-1 NOT_MET. Remedy: fix, then re-run the audit. Carried by iss-2611161802565435.
+Acceptance rollup: MET 1 · MET_WITH_CONCERNS 4 · NOT_MET 0 · INCONCLUSIVE 0
 
 Per-criterion verdicts:
-- ac-1 — NOT_MET: explain prints the sentence, usage, typed flags and versioned inputs from CommandFacts, and a test holds every command to 40 lines. But the criterion promises one example and allowed values for any visible command: of the 167 visible leaf commands in the committed facts, 73 carry no example (examples exist only for verbs that take a required input, so explain prints none for them), and allowed values reach the facts only through enumFlag (9 of 464 flags). A closed-set flag such as capture resolve --impact (additive|breaking|fix|internal) is printed as a bare < string>, since explainFlagLine prints no help text.
+- ac-1 — MET_WITH_CONCERNS: All 205 visible commands in docs/reference/cli/commands/*.json now carry an example and a test holds every visible command to one; 46 of 464 flags carry allowed values, which explain prints as [one of ...]; explain prints the sentence, usage, typed flags, versioned inputs and example from CommandFacts, at most 27 lines for the longest command, and a test holds every command to 40. Concerns: ahoy install --readme-parts and --route take a list whose members come from a closed set, and their facts carry no allowed values; abcd drain keeps its builder's seven-call example rather than one call.
+  evidence: internal/core/surface/examples.go:5 — "// examples.go — one worked example per visible command, leaf or parent"
+  evidence: internal/surface/cli/examples_test.go:77 — "func TestEveryVisibleCommandCarriesAWorkedExample(t *testing.T) {"
   evidence: internal/surface/cli/explain.go:28 — "const explainMaxLines = 40"
-  evidence: internal/surface/cli/explain.go:59 — "facts := CommandFacts()"
+  evidence: internal/surface/cli/explain.go:295 — "b.WriteString(" [one of " + strings.Join(fl.Allowed, " | ") + "]")"
   evidence: internal/surface/cli/explain_test.go:55 — "if len(lines) > explainMaxLines {"
-  evidence: internal/surface/cli/explain.go:251 — "if f.Example != "" {"
-  evidence: internal/core/surface/examples.go:5 — "// examples.go — one worked example per verb that takes a required input"
-  evidence: docs/reference/cli/commands/banlist.json:43 — ""path": "abcd banlist list","
   evidence: internal/surface/cli/surface.go:153 — "Allowed: flagAllowed(fl),"
-  evidence: internal/surface/cli/cli.go:6140 — "resolveCmd.Flags().StringVar(&resolveImpact, "impact", "", "product impact: additive|breaking|fix|internal (required)")"
-  evidence: docs/reference/cli/commands/capture.json:300 — ""name": "impact","
-- ac-2 — MET_WITH_CONCERNS: Every -json input is registered with its owning package's version constant and an example held beside its type; explain --input --json returns that shape, and a test runs the printed example through the owning package's check and refuses version+1. Concern: for several inputs the check runs only the record-free part of the command's validator (the intent audit verdict, with no rollup or criteria-against-intent check; the changelog, with no check against the cut), so the test proves the example passes the decoder and a structural subset of the validator.
+  evidence: internal/surface/cli/facts_test.go:155 — "// flags left out take a list (--readme-parts, --route), an open word"
+  evidence: internal/core/ahoy/readme_apply.go:48 — "const ReadmePartsChoices = "licence|links|contents|release-badge|build-badge|abcd-badge|none""
+  evidence: internal/surface/cli/examples_test.go:70 — "var ownExamples = map[string]bool{"abcd drain": true}"
+- ac-2 — MET_WITH_CONCERNS: Every -json input is registered with its owning package's version and an example; explain --input returns that shape, and tests run the printed example through the owning package's check and refuse version+1. Concern: for several inputs the check runs only the record-free part of the command's validator (the intent audit verdict, the changelog), so the test proves the decoder and a structural subset of the validator.
   evidence: internal/surface/cli/inputs.go:67 — "var inputRegistry = []inputEntry{"
   evidence: internal/surface/cli/explain_test.go:270 — "if err := e.check(t.TempDir(), []byte(shape.Example)); err != nil {"
-  evidence: internal/surface/cli/inputs_test.go:95 — "if err := e.check(t.TempDir(), []byte(e.example)); err != nil {"
   evidence: internal/surface/cli/inputs_test.go:137 — "if err := e.check(t.TempDir(), raw); err == nil {"
-  evidence: internal/core/intent/audit.go:1394 — "v, err := decodeVerdict(raw)"
   evidence: internal/core/intent/inputs.go:73 — "// CheckVerdict runs the part of the ingest's validator that needs no record:"
-  evidence: internal/core/release/inputs.go:28 — "// What needs the cut (the next tag it derives, the bijection between the"
-- ac-3 — MET_WITH_CONCERNS: The JSON files, both page blocks and explain's output are all rendered from CommandFacts; drift tests fail on a stale or missing committed copy and on explain --json that is not the file's slice, and the preflight's race stage runs ./internal/surface/cli while the records-only preflight runs the tests named Committed or Page. Concern: the build checks the copies rather than producing them, since a hand-run make command-facts-sync writes them and nothing in CI invokes it; hidden commands are also left out of the JSON files and answered only by the running binary.
+- ac-3 — MET_WITH_CONCERNS: The JSON files, both page blocks and explain's output are all rendered from CommandFacts; drift tests fail on a stale or missing committed copy and on explain --json that is not the file's slice, and the preflight's race stage runs ./internal/surface/cli. Concern: the build checks the copies rather than producing them (a hand-run command-facts-sync writes them), and hidden commands are answered only by the running binary.
   evidence: internal/surface/cli/commandfacts.go:149 — "func CommandFactsFiles(facts []surface.Facts) (map[string] []byte, error) {"
   evidence: internal/surface/cli/commandfacts_drift_test.go:51 — "func TestCommandFactsFilesMatchTheCommittedCopies(t *testing.T) {"
-  evidence: internal/surface/cli/commandfacts_drift_test.go:83 — "func TestCommandPageBlocksMatchTheCommittedPages(t *testing.T) {"
   evidence: internal/surface/cli/commandfacts_drift_test.go:139 — "func TestExplainJSONIsTheCommittedFileSliceForEveryCommand(t *testing.T) {"
-  evidence: Makefile:523 — "race go test -race -p "$$p" -timeout "$$t" ./internal/surface/cli"
-  evidence: Makefile:319 — "Nothing in CI calls"
-  evidence: internal/surface/cli/commandfacts.go:90 — "func visibleFacts(facts []surface.Facts) []surface.Facts {"
-- ac-4 — MET_WITH_CONCERNS: CommandPageFacts reports page:line for a sub-command the tree lacks, an unregistered flag and a stale schema_version, skips generated blocks and lines marked historical, and a test runs it over every committed page with fixtures for each finding. Concern: it checks flags only inside abcd invocations (a bare prose --flag is anchored only when it is a known input flag), reads versions only as a schema_version member (a stale version in a reading or scribe input's _type tag is not caught), and runs as a go test rather than an abcd lint target.
-  evidence: internal/core/lint/commandpagefacts.go:266 — "func CommandPageFacts(page, text string, facts []surface.Facts) []CommandPageFinding {"
-  evidence: internal/core/lint/commandpagefacts.go:322 — "if ix.inputFlags[m[1]] && !inInvocation[i+1] [m[1]] {"
+  evidence: Makefile:319 — "# command-facts blocks of every page under commands/. Nothing in CI calls"
+- ac-4 — MET_WITH_CONCERNS: CommandPageFactsForTest reports page:line for a command path the tree lacks, an unregistered flag in an invocation and a schema_version the adjacent input does not read, and a test runs it over every committed page. Concerns: flags are checked only inside invocations, versions are read only as a schema_version member, and it runs as a go test seam rather than an abcd lint target (dcn-2611161928510891).
+  evidence: internal/core/lint/commandpagefacts.go:270 — "func CommandPageFactsForTest(page, text string, facts []surface.Facts) []CommandPageFinding {"
   evidence: internal/core/lint/commandpagefacts_test.go:115 — "name: "a stale schema_version beside the input's call","
   evidence: internal/surface/cli/commandpage_lint_test.go:45 — "func TestCommandPagesNameOnlyWhatTheBinaryHas(t *testing.T) {"
-- ac-5 — MET: The generator writes the ask-the-binary block straight after each page's H1; it sends the agent to explain < verb> and says to follow the binary where the two disagree, and a test holds it as the first content after the H1 on every commands/*.md page, naming the page's verb. A scan of all 42 pages found no content between the frontmatter and the H1.
+- ac-5 — MET: The generator writes the ask-the-binary block straight after each page's H1; it sends the agent to explain < verb> and says to follow the binary where the two disagree, and a test holds it as the first content after the H1 on every page, naming the page's verb.
   evidence: internal/surface/cli/commandfacts.go:197 — "func AskTheBinaryBlock(name, rung string) string {"
-  evidence: internal/surface/cli/commandfacts_drift_test.go:114 — "if !strings.HasPrefix(first, AskTheBinaryBegin+"\n") {"
-  evidence: commands/ideate.md:11 — "Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain ideate`, and where its answer and this page disagree, follow the binary, since this page may be older than it."
+  evidence: internal/surface/cli/commandfacts_drift_test.go:105 — "func TestEveryCommandPageOpensWithTheAskTheBinaryCall(t *testing.T) {"
 
 Gap audit:
 - honoured:
-  - an agent asks the running binary for one command's instructions and gets them in a few lines
-    evidence: internal/surface/cli/explain.go:28 — "const explainMaxLines = 40"
-  - the exact form an input must take, at the version the binary reads, with an example that works
-    evidence: internal/surface/cli/explain_test.go:270 — "if err := e.check(t.TempDir(), []byte(shape.Example)); err != nil {"
+  - an agent asks the running binary for one command's instructions, with one example, and gets them in a few lines
+    evidence: internal/surface/cli/examples_test.go:77 — "func TestEveryVisibleCommandCarriesAWorkedExample(t *testing.T) {"
+  - a command's options are given with their allowed values for every single-valued closed-set flag
+    evidence: internal/surface/cli/cli.go:7813 — "func enumFlag(fs *pflag.FlagSet, p *string, name, value, lead string, vals []string, tail string) {"
   - pages, a plain list per command and the program's answers are made from one place and checked at every build
     evidence: internal/surface/cli/commandfacts_drift_test.go:51 — "func TestCommandFactsFilesMatchTheCommittedCopies(t *testing.T) {"
   - each page opens by sending the agent to the binary
     evidence: internal/surface/cli/commandfacts_drift_test.go:105 — "func TestEveryCommandPageOpensWithTheAskTheBinaryCall(t *testing.T) {"
 - diverged:
-  - every command's facts include an example: delivered only for commands that take a required input, as the spec scoped it
-    evidence: internal/core/surface/examples.go:5 — "// examples.go — one worked example per verb that takes a required input"
-  - every command's options include their allowed values: delivered only for flags declared through enumFlag
-    evidence: internal/surface/cli/cli.go:7793 — "func enumFlag(fs *pflag.FlagSet, p *string, name, value, lead string, vals []string, tail string) {"
-  - the example is checked by the command's own validator: for several inputs only the record-free part of it runs
+  - list-valued closed sets (--readme-parts, --route's tiers) print as a bare type
+    evidence: internal/surface/cli/facts_test.go:155 — "// flags left out take a list (--readme-parts, --route), an open word"
+  - abcd drain keeps its builder's seven-call example
+    evidence: internal/surface/cli/examples_test.go:70 — "var ownExamples = map[string]bool{"abcd drain": true}"
+  - the example is checked by the record-free part of the command's validator
     evidence: internal/core/intent/inputs.go:73 — "// CheckVerdict runs the part of the ingest's validator that needs no record:"
-  - the build produces the copies: a hand-run sync writes them and the build only checks them
-    evidence: Makefile:319 — "Nothing in CI calls"
+  - the build checks the copies rather than producing them
+    evidence: Makefile:319 — "# command-facts blocks of every page under commands/. Nothing in CI calls"
 - missing:
-  - one example in explain's answer for 73 of the 167 visible leaf commands
-    evidence: docs/reference/cli/commands/banlist.json:43 — ""path": "abcd banlist list","
-  - allowed values for closed-set flags not declared through enumFlag, such as capture resolve --impact
-    evidence: docs/reference/cli/commands/capture.json:300 — ""name": "impact","
+  - allowed values for ahoy install --readme-parts, whose reader checks a closed set of part names
+    evidence: internal/core/ahoy/readme_apply.go:48 — "const ReadmePartsChoices = "licence|links|contents|release-badge|build-badge|abcd-badge|none""
 
 Scope-condition dispositions:
-- cond-2610301431075477 — survived: explain answers as plain text lines on stdout by default, which an agent reading output as text consumes directly, and as JSON only on request
+- cond-2610301431075477 — survived: explain answers as plain text lines on stdout by default, and as JSON only on request
   evidence: internal/surface/cli/explain.go:85 — "for _, line := range explainLines(at, hidden, explainInherited(facts, at.Path)) {"
-- cond-2610301431077637 — survived: explain is a verb of the binary that reads no plugin file, and the pages spell the call with the plugin-root rung or the binary on PATH, so a host with or without the plugin reaches the same answer
+- cond-2610301431077637 — survived: explain is a verb of the binary that reads no plugin file, and the pages call it through the plugin-root binary or the binary on PATH
   evidence: internal/surface/cli/explain.go:31 — "func newExplainCommand(asJSON *bool) *cobra.Command {"
   evidence: internal/surface/cli/commandfacts.go:57 — "pluginRung = `"${CLAUDE_PLUGIN_ROOT}/abcd"`"
-- cond-2610301431077983 — untested: the delivery places the instruction first on every page, but nothing in it observes whether an agent actually asks the binary before filling in an input
+- cond-2610301431077983 — untested: the delivery puts the instruction first on every page, but nothing in it checks whether an agent asks the binary before filling in an input
 <!-- abcd-review-end receipt=rcp-12272bfa9de1 -->
+
+Audit owed flag cleared 2026-11-16 (receipt rcp-12272bfa9de1): a re-run of the audit judged no criterion NOT_MET or INCONCLUSIVE, and iss-2611161802565435 is resolved.
 
 ## Grounds
 
