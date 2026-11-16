@@ -44,8 +44,9 @@ questions prints it.
 
 The machine-readable form for a command is a document holding the facts'
 format version and a list of commands with the one command's facts in it, the
-shape the per-command JSON files will carry, cut to one command. For an input
-it is the input's shape as the registry builds it.
+shape each per-command JSON file under `docs/reference/cli/commands/` carries,
+cut to one command. For an input it is the input's shape as the registry
+builds it.
 
 ## Where the facts come from
 
