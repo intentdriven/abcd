@@ -636,7 +636,7 @@ func TestTheAutomaticLineKeepsTheIgnoredWarningAtRealPathLengths(t *testing.T) {
 	write(t, filepath.Join(wt, ".env.production.local"), "TOKEN=a person's own\n")
 	a := Automatic(context.Background(), repo.Root(), autoOpts(t, repo, sweepOpts()))
 	r := rowFor(t, a.Result, name)
-	if want := len("~/.abcd.noindex/worktrees/") + 40 + 1 + len(name); len(r.Path) < want {
+	if want := len(abcdhome.Display("worktrees")+"/") + 40 + 1 + len(name); len(r.Path) < want {
 		t.Fatalf("the row's path %q is shorter than a real store path (%d bytes)", r.Path, want)
 	}
 	text := a.Text()
