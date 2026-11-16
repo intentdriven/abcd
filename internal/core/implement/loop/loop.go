@@ -1434,7 +1434,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	// step's save has written the lane done and released the run's lock
 	// (autosweep.go): whatever the sweep comes to, the landing stands.
 	if res.landed {
-		res.Next = joinNext(res.Next, AutoSweep(context.Background(), repoRoot))
+		res.Next = joinNext(res.Next, autoSweep(context.Background(), repoRoot))
 	}
 	return res, nil
 }

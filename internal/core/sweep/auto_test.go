@@ -3,10 +3,10 @@ package sweep
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	store "github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/report"
@@ -122,10 +122,10 @@ func TestTheAutomaticSweepIsOffWhereTheSettingSaysSo(t *testing.T) {
 				repo.Write(".abcd/config.json", c.repoFile)
 			}
 			if c.homeFile != "" {
-				if err := os.MkdirAll(filepath.Join(home, ".abcd.noindex"), 0o700); err != nil {
+				if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(filepath.Join(home, ".abcd.noindex", "config.json"), []byte(c.homeFile), 0o600); err != nil {
+				if err := os.WriteFile(abcdhome.Path(home, "config.json"), []byte(c.homeFile), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			}

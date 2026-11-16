@@ -440,7 +440,7 @@ func Drain(repoRoot string, o Options, d DrainOptions) (DrainResult, error) {
 	}
 	finished := slices.ContainsFunc(res.Finished, func(f DrainFinished) bool { return f.Done })
 	if finished || (res.Complete && !d.driveEnds) {
-		res.Next = joinNext(res.Next, AutoSweep(d.Context, repoRoot))
+		res.Next = joinNext(res.Next, autoSweep(d.Context, repoRoot))
 	}
 	return res, nil
 }

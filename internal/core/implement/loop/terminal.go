@@ -2602,7 +2602,7 @@ func (t *terminal) ended(why string) TerminalResult {
 	// own once, after it has let its lanes go (autosweep.go); a stop's ended
 	// context sweeps nothing.
 	if why != TerminalKilled && why != TerminalHalted {
-		if res.Swept = AutoSweep(t.ctx, t.repoRoot); res.Swept != "" {
+		if res.Swept = autoSweep(t.ctx, t.repoRoot); res.Swept != "" {
 			t.say("%s", res.Swept)
 		}
 	}

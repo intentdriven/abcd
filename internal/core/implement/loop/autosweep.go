@@ -48,11 +48,11 @@ func SetAutoSweeper(f AutoSweeper) (restore func()) {
 	}
 }
 
-// AutoSweep runs the installed sweep once, bounded by autoSweepTimeout and by
+// autoSweep runs the installed sweep once, bounded by autoSweepTimeout and by
 // ctx (nil is none), and answers its line, cleaned for the act's output. No
 // sweep installed, or a ctx already ended, sweeps nothing and answers "". A
 // panic in the sweep is answered as its fault: the act it follows stands.
-func AutoSweep(ctx context.Context, repoRoot string) (line string) {
+func autoSweep(ctx context.Context, repoRoot string) (line string) {
 	autoSweepMu.Lock()
 	f := autoSweeper
 	autoSweepMu.Unlock()
@@ -75,3 +75,7 @@ func AutoSweep(ctx context.Context, repoRoot string) (line string) {
 	}()
 	return f(ctx, repoRoot)
 }
+
+// AutoSweepForTest is autoSweep, for a front door's test to prove that the
+// sweep it installs is the one the loop runs.
+func AutoSweepForTest(ctx context.Context, repoRoot string) string { return autoSweep(ctx, repoRoot) }

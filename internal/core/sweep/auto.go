@@ -45,7 +45,7 @@ type Setting struct {
 	Said bool
 }
 
-// ReadAutomatic resolves sweep.automatic for a repository through the layered
+// readAutomatic resolves sweep.automatic for a repository through the layered
 // configuration reader at r, which claims the sweep namespace, so a misspelt
 // key is refused naming its file. managed says the repository is one abcd
 // manages: outside one the sweep is off whatever a layer says. Every layer
@@ -53,7 +53,7 @@ type Setting struct {
 // read, a misspelt key or a value that is not a bool reads as off, and so does
 // a home the reader refused, whose machine-wide off cannot be read; each says
 // why.
-func ReadAutomatic(r layered.Roots, managed bool) Setting {
+func readAutomatic(r layered.Roots, managed bool) Setting {
 	if !managed {
 		return Setting{Why: "not a repository abcd manages"}
 	}
@@ -136,7 +136,7 @@ func Automatic(ctx context.Context, repoRoot string, a AutoOptions) (out Auto) {
 		r, _ := layered.RootsFor(repoRoot)
 		roots = &r
 	}
-	out.Setting = ReadAutomatic(*roots, m)
+	out.Setting = readAutomatic(*roots, m)
 	if !out.Setting.On {
 		return out
 	}

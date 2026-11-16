@@ -24,7 +24,7 @@ func TestTheLoopsAutomaticSweepIsThisFrontDoorsSweep(t *testing.T) {
 	repo, done := sweepFixture(t)
 	repo.Write("AGENTS.md", managedMarker)
 
-	line := loop.AutoSweep(context.Background(), repo.Root())
+	line := loop.AutoSweepForTest(context.Background(), repo.Root())
 	if !strings.HasPrefix(line, "abcd swept on its own: ") || !strings.Contains(line, "[removed  worktree  done") || !strings.Contains(line, "[deleted  branch  loc") {
 		t.Fatalf("the loop's sweep answered %q", line)
 	}
@@ -43,7 +43,7 @@ func TestTheAutomaticSweepHonoursTheRepositorysOff(t *testing.T) {
 	t.Cleanup(loop.SetAutoSweeper(nil))
 	installAutoSweep()
 	repo, done := sweepFixture(t)
-	line := loop.AutoSweep(context.Background(), repo.Root())
+	line := loop.AutoSweepForTest(context.Background(), repo.Root())
 	if line != "" {
 		t.Fatalf("outside a managed checkout the sweep said %q", line)
 	}
@@ -53,7 +53,7 @@ func TestTheAutomaticSweepHonoursTheRepositorysOff(t *testing.T) {
 
 	repo.Write("AGENTS.md", managedMarker)
 	repo.Write(".abcd/config.json", `{"sweep": {"automatic": false}}`)
-	line = loop.AutoSweep(context.Background(), repo.Root())
+	line = loop.AutoSweepForTest(context.Background(), repo.Root())
 	if !strings.Contains(line, "abcd did not sweep on its own: sweep.automatic is off (repo layer, .abcd/config.json)") {
 		t.Fatalf("the off sweep said %q", line)
 	}
