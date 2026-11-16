@@ -2808,7 +2808,7 @@
     {
       "path": "abcd implement widen",
       "hidden": false,
-      "sentence": "Widen an issue lane's hold to a path before it is edited: Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.",
+      "sentence": "Widen a lane's hold to a path before it is edited: Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.",
       "flags": [
         {
           "name": "lane",

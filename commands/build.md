@@ -100,9 +100,12 @@ spec's `- packages:` line to the files the work changes. A step's own
 
 `implement step` then renews the reservation, fences the landing on it and
 tombstones it once the run's last lane lands (`/abcd:implement`); a run whose
-issue lane is handed back releases it then. An issue's reservation follows
-what its lane changes: once the implementer hands its receipt back, the run
-reserves every path the lane's branch changes beyond the `found_at`, and again
+issue lane is handed back releases it then. A run's reservation follows
+what its lanes change, an intent's as an issue's: once the implementer hands
+its receipt back, the run reserves every path the lane's branch changes beyond
+the footprint it holds (the `found_at`, or the spec's `- packages:` line), the
+decision records it wrote and the records its landing changes among them, each
+by its own name, and again
 before each step at its validators and before its landing's push, judged for
 overlap, and another copy's live hold on one of them is a wait until that hold
 ends (`/abcd:implement`). Starting again while the run is in

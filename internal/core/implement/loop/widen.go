@@ -1,21 +1,25 @@
 package loop
 
-// widen.go is the widening of an issue lane's hold to the files the lane
-// changes beyond it (iss-2610311224444576, iss-2611110638266241,
-// iss-2611101316537446; dcn-2610311251002713, dcn-2610311544325397). A build
-// and a drain reserve an issue with the path its found_at names, and a fix may
-// need to change a further file. The loop widens the hold itself, from the
+// widen.go is the widening of a lane's hold, an issue run's or an intent
+// run's, to the files the lane changes beyond it (iss-2610311224444576,
+// iss-2611110638266241, iss-2611101316537446; dcn-2610311251002713,
+// dcn-2610311544325397). A build and a drain reserve an issue with the path
+// its found_at names, and a build an intent with its spec's packages, and a
+// lane may need to change a further file. The loop widens the hold itself, from the
 // process that drives the run, outside any wall a drive puts round a stage:
 // once an implementer hands its receipt back, and before the receipt is
-// judged, it reserves the issue again with the footprint its reservation holds
+// judged, it reserves the record again with the footprint its reservation holds
 // and every path the lane's branch changes that the footprint does not cover
 // (widenLaneChanges), judged for overlap and against the cap like any
 // reservation. The same widening is made again before each step at the lane's
 // validators (holdBeforeValidators) and at the fence before a landing's push
 // and its arming (holdLaneChanges), so a path the lane's branch came to change
 // since is reserved before anything judges or lands it. The run's own records
-// the lane changes, a decision record, the issue's record its landing moves,
-// are reserved like any other path.
+// the lane changes, a decision record, the issue's record, the spec and the
+// intent's record its landing changes, are reserved like any other path, each
+// by its own name: the decisions directory is never held, since that would
+// hold off every other run's decision records. An intent's spec is never
+// edited to widen its run's hold; the reservation's footprint is what is held.
 //
 // Another copy's live hold on one of the paths is contention, and a wait by
 // design: nothing is pushed, the receipt is taken all the same, and the lane
@@ -62,14 +66,14 @@ type WidenResult struct {
 // implementer the lane.
 var widenStages = []Stage{StageImplement, StageValidate}
 
-// Widen widens the reservation of issue run runID, for its current lane
+// Widen widens the reservation of run runID, for its current lane
 // laneID, to cover paths before the lane's implementer edits them: a host
 // session's step, since the loop widens the hold to what the lane's branch
 // changes itself once the receipt is handed back (widenLaneChanges). A path
 // the reservation already covers adds nothing, and when it covers every one
 // nothing is pushed. A run that holds no reservation (no origin) has nothing
-// to widen and says so. Refused for a person (exit 2): an intent's run, whose
-// footprint is its spec's; a lane that is not the run's current one or not at
+// to widen and says so. Refused for a person (exit 2): a lane that is not the
+// run's current one or not at
 // an editing stage; a path no reservation may carry; a reservation the view
 // does not show this copy holding. Contention (exit 3): another copy's live
 // hold on one of the paths, with nothing pushed and a run record line saying
@@ -82,10 +86,6 @@ func Widen(repoRoot, runID, laneID string, paths []string, o Options) (WidenResu
 	err := mutateReservation(repoRoot, runID, func(st *State) (bool, error) {
 		now := o.now()
 		res.Record = st.Key
-		if st.Issue() == "" {
-			return false, refuse(StageReservation, "", laneID, st.Key+"'s run holds the footprint its spec names, and only an issue lane widens its hold",
-				"name the path on the `- packages:` line of "+specOf(*st)+"'s `## Footprint` section, then run `abcd build "+st.Key+"` again")
-		}
 		i := st.current()
 		if i < 0 || st.Lanes[i].ID != laneID {
 			named := laneID
@@ -179,12 +179,12 @@ func overCapRefusal(key string, n int, more bool) *Refusal {
 	r := refuse(StageReservation, CheckReservation, "", fmt.Sprintf(
 		"the reservation on %s cannot carry that many paths: %s its hold would name pass what a reservation message holds within its %d-byte cap",
 		key, count, claim.MaxMessageBytes),
-		"take up fewer paths beyond the issue's place in one lane")
+		"take up fewer paths beyond the run's footprint in one lane")
 	r.overCap = true
 	return r
 }
 
-// widenHold is the one widening of an issue run's hold, whoever asks for it:
+// widenHold is the one widening of a run's hold, whoever asks for it:
 // Widen, for a host session's implementer that names the paths before its
 // edit, and the loop's own (widenLaneChanges), once a lane hands its receipt
 // back, before each step at its validators and at the fence before its
@@ -323,10 +323,10 @@ func peerHold(repoRoot, key string, paths []string, err error, now time.Time) bo
 	return snap.Contention(key, paths, now, claim.Self{}) != ""
 }
 
-// laneHold is what the loop's own widening of an issue lane's hold came to
+// laneHold is what the loop's own widening of a lane's hold came to
 // (widenLaneChanges).
 type laneHold struct {
-	// own is the reservation this copy held on the issue before the widening.
+	// own is the reservation this copy held on the record before the widening.
 	own claim.Reservation
 	// paths is each path the lane's branch changes that own did not cover.
 	paths []string
@@ -359,14 +359,14 @@ func (h laneHold) shown() string {
 	return strings.Join(out, ", ")
 }
 
-// widenLaneChanges is the loop's own widening of issue lane's hold to every
+// widenLaneChanges is the loop's own widening of lane's hold to every
 // path its branch changes, at its tip, that the reservation this copy holds
 // does not cover (unheldPaths), made by the process driving the run, which
 // holds the credential for origin a drive's stage is walled off from
 // (iss-2611110638266241). Each path is checked as Widen checks a path named
-// (widenPaths) and reserved through the one widening (widenHold). An intent's
-// run, and a reservation the view does not show this copy holding, widen
-// nothing; the caller decides what a run that recorded no reservation does.
+// (widenPaths) and reserved through the one widening (widenHold). A
+// reservation the view does not show this copy holding widens nothing; the
+// caller decides what a run that recorded no reservation does.
 func widenLaneChanges(c Context, lane Lane) laneHold {
 	var h laneHold
 	h.own, h.paths, h.gap = unheldPaths(c, lane, c.Now)
@@ -396,7 +396,7 @@ func widenLaneChanges(c Context, lane Lane) laneHold {
 }
 
 // receiptHoldGaps is the receipt's check of the files lane's branch changes
-// against the issue's reservation, made after the loop's own widening
+// against the run's reservation, made after the loop's own widening
 // (widenLaneChanges), so a receipt is refused on the hold only when the
 // widening could not be made. A gap names what could not be read, or a path
 // the widening refused for a reason the implementer can act on (a path no
@@ -404,9 +404,8 @@ func widenLaneChanges(c Context, lane Lane) laneHold {
 // another holder's live hold on a path, an origin it could not reach, or the
 // cap; the receipt is taken, the record says so, and the widening is made
 // again before the lane's validators (holdBeforeValidators), which wait for
-// it. A run that holds no reservation, an intent's run, and a reservation the
-// view does not show this copy holding (the land fence's to settle) give
-// none. The record's lines go to c.widened.
+// it. A run that holds no reservation, and a reservation the view does not
+// show this copy holding (the land fence's to settle), give none. The record's lines go to c.widened.
 func receiptHoldGaps(c Context, lane Lane) []string {
 	st := c.State
 	if st.ReservedAt == nil {
@@ -452,7 +451,7 @@ func receiptHoldGaps(c Context, lane Lane) []string {
 // (holdBeforeValidators) says the lane does not do.
 var validatorsAct = fenceAct{not: "go on to its validators", none: "no validator is started", stays: "no validator is started"}
 
-// holdBeforeValidators is the loop's own widening of an issue lane's hold
+// holdBeforeValidators is the loop's own widening of a lane's hold
 // before each step at its validators (holdLaneChanges): a path the lane's
 // branch changes beyond its reservation, which a receipt's widening could not
 // reserve yet or a fix round has changed since, is reserved before a validator
@@ -471,16 +470,13 @@ func holdBeforeValidators(c Context, lane Lane) ([]Entry, error) {
 }
 
 // unheldPaths is the reading every widening of the loop shares: the
-// reservation this copy holds on the issue, and each path lane's branch
+// reservation this copy holds on the run's record, and each path lane's branch
 // changes at its tip, as git names it, that the reservation does not cover,
 // the records the lane's landing moves among them. gap, set when one of them
-// cannot be read, says what is missing in a receipt's words. An intent's run,
-// and a reservation the view does not show this copy holding, give none.
+// cannot be read, says what is missing in a receipt's words. A reservation
+// the view does not show this copy holding gives none.
 func unheldPaths(c Context, lane Lane, now time.Time) (own claim.Reservation, unheld []string, gap string) {
 	st := c.State
-	if st.Issue() == "" {
-		return own, nil, ""
-	}
 	snap, err := claim.View(c.RepoRoot, now)
 	if err != nil {
 		return own, nil, "a reservation that can be read to check the files the lane changed (" + fsutil.RedactHome(err.Error()) + ")"
@@ -506,7 +502,7 @@ func unheldPaths(c Context, lane Lane, now time.Time) (own claim.Reservation, un
 	return own, unheld, ""
 }
 
-// holdLaneChanges is the loop's own widening of an issue lane's hold as a step
+// holdLaneChanges is the loop's own widening of a lane's hold as a step
 // makes it, at stage: before the lane's validators (holdBeforeValidators), and
 // at the fence before its landing's push and its arming, where no receipt
 // stands between a lane at its validators and its landing, so a path its

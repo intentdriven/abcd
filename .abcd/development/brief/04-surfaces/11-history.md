@@ -258,7 +258,11 @@ empty error banner with the text thrown away. The shell wrapper the host
 registers, `hooks/session-start.sh`, does not: it exits 2 when a legacy
 `~/.abcd` stands with no plugin binary in the plugin root, or when no plugin
 binary is installed and `hooks/bootstrap.sh` did not fail, and it passes on a
-non-zero exit from `hooks/bootstrap.sh` or from the entrypoints it runs. The
+non-zero exit from the entrypoints it runs, or from `hooks/bootstrap.sh` when
+no plugin binary is installed. When `hooks/bootstrap.sh` fails but a plugin
+binary is already installed, the entrypoints run on it, and the wrapper exits
+with their status and names the bootstrap's failure in a notice on the error
+stream (iss-2610161125115941). The
 notices themselves go to the error stream, where a person reads them. What the hook prints on its output stream is one fixed
 sentence and a count, pointing at the verbs that hold the detail: whatever a
 session-start hook prints there is folded into the session's own context, and
