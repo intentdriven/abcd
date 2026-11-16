@@ -357,8 +357,9 @@ func TestAReceiptInTheLanesWorktreeNeverArmsAParkedLane(t *testing.T) {
 }
 
 // TestTheGateReadsTheLoopsLaneNamesAsDriveLanes: every name laneName mints is one
-// the merge gate reads as a drive lane's worktree, and isLaneWorktree and the
-// gate agree on names it does not mint.
+// the merge gate reads as a drive lane's worktree, isLaneWorktree and the
+// gate agree on lower-case names it does not mint, and the gate alone reads a
+// lane's name in another case as a lane's.
 func TestTheGateReadsTheLoopsLaneNamesAsDriveLanes(t *testing.T) {
 	for _, laneID := range []string{"lane-1", "lane-42", "lane-9999"} {
 		name, err := laneName("run-1234567890123456", laneID)
@@ -373,6 +374,14 @@ func TestTheGateReadsTheLoopsLaneNamesAsDriveLanes(t *testing.T) {
 	for _, p := range []string{"/store/abc/mine", "/store/abc/run-123-lane-1", "/store/abc/run-1234567890123456-lane-0", "/store/abc/run-1234567890123456-lane-1-x"} {
 		if landing.DriveLaneWorktree(p) != isLaneWorktree(p) {
 			t.Fatalf("%s: gate %v, loop %v; want them to agree", p, landing.DriveLaneWorktree(p), isLaneWorktree(p))
+		}
+	}
+	// The gate is broader than the loop in one way: It reads a lane's name in
+	// any case, since a case-insensitive volume opens the lane by its name in
+	// another case, while the loop mints and recognises lower case alone.
+	for _, p := range []string{"/store/abc/RUN-1234567890123456-LANE-1", "/store/abc/Run-1234567890123456-Lane-42"} {
+		if !landing.DriveLaneWorktree(p) || isLaneWorktree(p) {
+			t.Fatalf("%s: gate %v, loop %v; want the gate alone to read it as a lane's", p, landing.DriveLaneWorktree(p), isLaneWorktree(p))
 		}
 	}
 }

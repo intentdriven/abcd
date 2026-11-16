@@ -373,10 +373,10 @@ stop rule, `SHIP` or `APPROVE` (no critical or major finding), the head's review
 `.abcd/.work.local/review-receipts/<full sha>`, beside the preflight receipts
 and found from any worktree the same way but one: The merge gate counts no review
 receipt and no recorded approval in a drive lane's worktree, the one the build
-loop made for a lane, named `run-<id>-lane-<n>` in the worktree store, nor in
+loop made for a lane, named `run-<id>-lane-<n>` in any case in the worktree store, nor in
 anything under one. The gate resolves a path, its symlinks followed, before it
 tells a lane's worktree, so a directory inside a lane, a repository nested in
-one, or a path of another name that resolves into one counts as the lane: the
+one, or a path of another name that resolves into one counts as the lane: The
 drive's lane worktrees and everything under them are the drive's, so the gate
 reads no record there, whatever path names them. Whenever the gate reads them,
 its reason names each one it passed over, whether or not another counted: the
@@ -387,7 +387,7 @@ review receipt and no recorded approval at all, in any worktree, and its reason
 says so; a forge review can still count as an approval, and nothing already
 armed is withdrawn on that answer. `abcd land <branch>` run from another
 checkout for a branch checked out in a drive lane's worktree counts none either,
-and its reason says the branch is checked out in a drive lane's worktree: the
+and its reason says the branch is checked out in a drive lane's worktree: The
 drive lands that branch itself, and to land it by hand the lane must be handed
 back and its worktree removed first. `--record-review` run inside a drive lane's
 worktree, or anywhere under one, is refused with exit 2, saying the gate never

@@ -2,6 +2,7 @@ package landing
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -141,17 +142,21 @@ func TestAPathInsideADriveLaneIsToldResolved(t *testing.T) {
 		t.Fatal(err)
 	}
 	for path, want := range map[string]bool{
-		lane:                                  true,
-		filepath.Join(lane, "x"):              true,
-		filepath.Join(lane, "x", "y"):         true,
-		filepath.Join(lane, "s"):              true,
-		filepath.Join(lane, "not-yet"):        true,
-		filepath.Join(mine, "into"):           true,
-		filepath.Join(mine, "into", "x"):      true,
-		mine:                                  false,
-		filepath.Join(store, "lane-1"):        false,
-		"":                                    false,
-		"/home/u/run-0000000000000001-lane-0": false,
+		lane:                                       true,
+		filepath.Join(lane, "x"):                   true,
+		filepath.Join(lane, "x", "y"):              true,
+		filepath.Join(lane, "s"):                   true,
+		filepath.Join(lane, "not-yet"):             true,
+		filepath.Join(mine, "into"):                true,
+		filepath.Join(mine, "into", "x"):           true,
+		mine:                                       false,
+		filepath.Join(store, "lane-1"):             false,
+		"":                                         false,
+		"/home/u/run-0000000000000001-lane-0":      false,
+		"/home/u/RUN-1234567890123456-LANE-1/x":    true,
+		"/home/u/Run-1234567890123456-Lane-12/x/y": true,
+		filepath.Join(store, strings.ToUpper(laneName), "x"): true,
+		"/home/u/RUN-1234567890123456-LANE-0/x":              false,
 	} {
 		if got := insideDriveLane(path); got != want {
 			t.Errorf("insideDriveLane(%q) = %v, want %v", path, got, want)
@@ -207,6 +212,131 @@ func TestLandOfABranchALaneHoldsSaysTheDriveLandsIt(t *testing.T) {
 	wantNotArmed(t, f, s, "the branch is checked out in a drive lane's worktree", laneName, "the drive lands that branch itself", "handed back and its worktree removed first")
 	if strings.Contains(s.Note, "run it from the main checkout") {
 		t.Fatalf("enqueue note = %q; want no bidding to run it from where it ran", s.Note)
+	}
+}
+
+// needsCaseInsensitiveTemp skips a test unless the temporary directory's
+// filesystem opens a file by its name in another case, as the macOS default
+// volume does.
+func needsCaseInsensitiveTemp(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "probe"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "PROBE")); err != nil {
+		t.Skip("the temporary directory's filesystem is case-sensitive")
+	}
+}
+
+// runGit runs git in dir with the test's environment and fails the test on
+// an error.
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = gittest.Env(t)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+}
+
+// recasedLane builds a drive lane's worktree on lanebr whose own .git file
+// names a repository inside the lane, lane/forged, that sets core.worktree to
+// the lane's path with its name in upper case and lists a worktree there on
+// lanebr. On a case-insensitive filesystem that path is the lane itself, so git
+// run in the lane gives the upper-case path as its toplevel, and nothing that
+// resolves it changes the case. It returns the lane and the upper-case path.
+func recasedLane(t *testing.T, f *fixture) (lane, upper string) {
+	t.Helper()
+	lane = laneWorktree(t, f, "lanebr")
+	upper = filepath.Join(filepath.Dir(lane), strings.ToUpper(laneName))
+	forged := filepath.Join(lane, "forged")
+	gittest.CloneBare(t, f.repo.Root(), forged)
+	runGit(t, forged, "config", "core.bare", "false")
+	runGit(t, forged, "config", "core.worktree", upper)
+	runGit(t, forged, "symbolic-ref", "HEAD", "refs/heads/lanebr")
+	runGit(t, forged, "remote", "set-url", "origin", f.bare)
+	runGit(t, forged, "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
+	runGit(t, forged, "fetch", "-q", "origin")
+	w := filepath.Join(forged, "worktrees", "w")
+	if err := os.MkdirAll(w, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"gitdir":    filepath.Join(upper, ".git") + "\n",
+		"HEAD":      "ref: refs/heads/lanebr\n",
+		"commondir": "../..\n",
+	} {
+		if err := os.WriteFile(filepath.Join(w, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(forged, "info"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(forged, "info", "exclude"), []byte("forged/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(lane, ".git"), []byte("gitdir: "+forged+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "read-tree", "lanebr")
+	cmd.Dir = lane
+	cmd.Env = append(gittest.Env(t), "GIT_DIR="+forged, "GIT_WORK_TREE="+lane)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git read-tree: %v\n%s", err, out)
+	}
+	if top, err := gitutil.Toplevel(lane); err != nil || filepath.Base(top) != filepath.Base(upper) {
+		t.Fatalf("git gives %q, %v as the lane's toplevel; want %s", top, err, upper)
+	}
+	wts, err := gitutil.ListWorktrees(lane, gitutil.MaxWorktreeListing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := false
+	for _, wt := range wts {
+		listed = listed || filepath.Base(wt.Path) == filepath.Base(upper) && wt.Branch == "refs/heads/lanebr"
+	}
+	if !listed {
+		t.Fatalf("git lists %+v from the lane; want %s on lanebr", wts, upper)
+	}
+	return lane, upper
+}
+
+// A drive lane's worktree whose repository names the lane's path in upper
+// case, on a filesystem that opens it by that name, is still the lane: a
+// review receipt under the upper-case path arms nothing when landing from the
+// lane, on its current branch or on the branch named, and the note names the
+// lane; it vouches for nothing, and an approval recorded there is refused.
+// git lists lane/forged first on lanebr, so with the branch named the checkout
+// is found inside the lane by its own name; the note must still name the
+// upper-case path landed from.
+func TestARecasedLaneIsStillTheLane(t *testing.T) {
+	needsCaseInsensitiveTemp(t)
+	for _, branch := range []string{"", "lanebr"} {
+		t.Run("branch="+branch, func(t *testing.T) {
+			f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
+			lane, upper := recasedLane(t, f)
+			head := f.head()
+			writeReceiptAt(t, upper, head, fullPairBody(head), 0o600)
+			s := landFrom(t, f, lane, branch)
+			wantNotArmed(t, f, s, strings.ToUpper(laneName), "is a drive lane's worktree or lies inside one", "main checkout or your own worktree")
+			top, err := gitutil.Toplevel(lane)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, dir := range []string{lane, upper, top} {
+				if vouched, err := headVouched(dir, head); err != nil || vouched {
+					t.Errorf("headVouched(%s) = %v, %v; want nothing vouched in a lane", dir, vouched, err)
+				}
+			}
+			for _, root := range []string{upper, top} {
+				if _, err := RecordApproval(root, head); !errors.Is(err, ErrDriveLaneRecord) {
+					t.Errorf("RecordApproval(%s) = %v; want it refused in a lane", root, err)
+				}
+			}
+		})
 	}
 }
 

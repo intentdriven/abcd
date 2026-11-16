@@ -250,11 +250,11 @@ func (r Review) Approves(head, author string) (note string, ok bool) {
 // why when none counts. passed names the recorded approvals of head it passed
 // over in a drive lane's worktree, "" for none, whatever the answer. When
 // fromLane is set (fromDriveLane: the gate was asked from a drive lane's
-// worktree or about a branch checked out in one) no recorded approval is read,
-// and a forge review alone can count: none counting is an answer it could not
-// read, never a refusal.
+// worktree or about a branch checked out in one, repoRoot's own among them) no
+// recorded approval is read, and a forge review alone can count: none counting
+// is an answer it could not read, never a refusal.
 func countedApproval(forge ForgeCall, repoRoot, repo, n, head, author string, fromLane bool) (by, why, passed string, unread bool) {
-	if fromLane || insideDriveLane(repoRoot) {
+	if fromLane {
 		// The gate's reason names the checkout and says why (fromDriveLane).
 		why, unread = "no recorded approval was read from a drive lane's worktree; ", true
 	} else {

@@ -126,13 +126,19 @@ func laneBlind(rel string) bool {
 }
 
 // driveLaneName is the name the implement loop gives a lane's worktree in the
-// store, <run-id>-<lane-id> (loop.laneName: run-<16 digits>-lane-<n>).
-var driveLaneName = regexp.MustCompile(`^run-[0-9]{16}-lane-[1-9][0-9]{0,3}$`)
+// store, <run-id>-<lane-id> (loop.laneName: run-<16 digits>-lane-<n>), matched
+// in any case. The loop mints it in lower case, but a case-insensitive volume
+// (the macOS default) opens the lane by its name in any case, and git, the
+// toplevel check and symlink resolution all keep the case a path was given
+// in, so a lane named in another case must still read as the lane. A
+// directory a person names like a lane in another case only loses its
+// receipts, and the gate's reason names it.
+var driveLaneName = regexp.MustCompile(`(?i)^run-[0-9]{16}-lane-[1-9][0-9]{0,3}$`)
 
 // DriveLaneWorktree reports whether path names a drive lane's worktree by
-// its last element alone: a lane's name as the implement loop mints it. It
-// neither resolves path nor looks at its ancestors; the merge gate asks
-// insideDriveLane, which does both.
+// its last element alone: a lane's name as the implement loop mints it, in
+// any case. It neither resolves path nor looks at its ancestors; the merge
+// gate asks insideDriveLane, which does both.
 func DriveLaneWorktree(path string) bool {
 	return driveLaneName.MatchString(filepath.Base(filepath.Clean(path)))
 }
@@ -140,11 +146,12 @@ func DriveLaneWorktree(path string) bool {
 // insideDriveLane reports whether path is a drive lane's worktree or lies
 // anywhere under one: an element of the path as given, made absolute, or of
 // the path with its symlinks resolved (fsutil.RealExistingPath) is a lane's
-// name (DriveLaneWorktree). The drive's lane worktrees and everything under
-// them are the drive's, so the merge gate reads no review receipt or recorded
-// approval there, whatever path names them: a worktree listed under another
-// name that resolves into a lane, a directory inside a lane, or a repository
-// nested in one. Read from a checkout that is not in a lane, the paths git
+// name in any case (DriveLaneWorktree). The drive's lane worktrees and
+// everything under them are the drive's, so the merge gate reads no review
+// receipt or recorded approval there, whatever path names them: a worktree
+// listed under another name that resolves into a lane, a directory inside a
+// lane, a repository nested in one, or a lane named in another case on a
+// filesystem that opens it by that name. Read from a checkout that is not in a lane, the paths git
 // lists come from the repository's own worktree records, outside every lane.
 // Read from a checkout in a lane they do not: git finds the repository
 // through the lane's own .git file, which sits inside the lane, so the gate

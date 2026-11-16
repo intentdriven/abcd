@@ -46,7 +46,7 @@ a person's when a recorded approval of its merged head is found in a worktree
 of the checkout, when the forge holds a review approving that head by someone
 other than the author, or when the first parent committed the human mode. The
 recorded approval is looked for in every worktree of the checkout but a drive
-lane's (one the build loop made for a lane, named `run-<id>-lane-<n>`, where
+lane's (one the build loop made for a lane, named `run-<id>-lane-<n>` in any case, where
 the merge gate never counts an approval either; see [`38-land.md`](38-land.md))
 or one under a lane's worktree, its path resolved first, and in none when the
 reader runs from a drive lane's worktree or from anywhere under one. Under

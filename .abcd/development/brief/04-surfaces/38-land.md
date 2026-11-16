@@ -306,10 +306,10 @@ Its inputs:
   verdict it was recorded under, when it was
   recorded and each return's name, verdict and SHA-256; the gate finds it in
   any worktree of the repository but a drive lane's. A drive lane's worktree is
-  one the build loop made for a lane, named `run-<id>-lane-<n>` in the worktree
-  store, and the loop's model stages run in it. The gate resolves a path, its
+  one the build loop made for a lane, named `run-<id>-lane-<n>` in any case in the
+  worktree store, and the loop's model stages run in it. The gate resolves a path, its
   symlinks followed, before it tells a drive lane's worktree, and anything under
-  a lane's worktree counts as the lane: a directory inside it, a repository
+  a lane's worktree counts as the lane: A directory inside it, a repository
   nested in it, or a path of another name that resolves into it. The drive's
   lane worktrees and everything under them are the drive's, so the gate reads no
   record there, whatever path names them. Read from a checkout that is not in a
@@ -324,7 +324,7 @@ Its inputs:
   lane there. Its note says so, and a forge review alone can count as an
   approval. `abcd land` run from another checkout for a branch checked out in a
   drive lane's worktree counts none either, and its note says the branch is
-  checked out in a drive lane's worktree: the drive lands that branch itself,
+  checked out in a drive lane's worktree: The drive lands that branch itself,
   and to land it by hand the lane must be handed back and its worktree removed
   first. Either answer is one the gate could not read, so nothing already armed
   is withdrawn on it. The review act and the approval act refuse to run in a
