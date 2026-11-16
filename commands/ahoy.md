@@ -504,7 +504,7 @@ it can, each on one line
    restore, never only a note behind `--details`. `--details` adds the full
    record (every path written and every note). A repository already fully set
    up is reported in one line, `abcd is already set up here; nothing
-   changed.`, and nothing is written.
+   changed.`, and nothing is written. <!-- facts-lint: historical -->
 
 A first run at a terminal with the suggested answers therefore asks the plan
 and the person-only questions alone: the abcd download, the shell settings,
@@ -2001,23 +2001,34 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd ahoy [flags]`
+  - An example call is `abcd ahoy`.
 - `abcd ahoy connect [<provider>] [flags]`
   - An example call is `abcd ahoy connect local --base-url http://127.0.0.1:8080/v1 --model example-model --home none`.
 - `abcd ahoy credential [<name>] [flags]`
+  - An example call is `abcd ahoy credential`.
 - `abcd ahoy doctor [flags]`
+  - An example call is `abcd ahoy doctor`.
 - `abcd ahoy install [flags]`
   - Reads `--answers`, the interview answers.
+  - An example call is `abcd ahoy install`.
 - `abcd ahoy remote [flags]`
+  - An example call is `abcd ahoy remote`.
 - `abcd ahoy remote apply [flags]`
+  - An example call is `abcd ahoy remote apply`.
 - `abcd ahoy shared-folder [<folder>] [--person <account>] [flags]`
   - An example call is `abcd ahoy shared-folder /Users/Shared`.
 - `abcd ahoy uninstall [flags]`
+  - An example call is `abcd ahoy uninstall`.
 - `abcd ahoy worktree [flags]`
+  - An example call is `abcd ahoy worktree`.
 - `abcd ahoy worktree add <name> [flags]`
   - An example call is `abcd ahoy worktree add example-lane`.
 - `abcd ahoy worktree list [flags]`
+  - An example call is `abcd ahoy worktree list`.
 - `abcd ahoy worktree prune [flags]`
+  - An example call is `abcd ahoy worktree prune --dry-run`.
 - `abcd ahoy worktree trim-cache [flags]`
+  - An example call is `abcd ahoy worktree trim-cache --dry-run`.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

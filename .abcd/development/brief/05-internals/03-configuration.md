@@ -2194,20 +2194,22 @@ A Go binary plus the markdown plugin surface that shells to it:
 ```
 abcd/
 ├── .claude-plugin/                     # plugin.json + marketplace.json
-├── cmd/                                # the shipped entrypoint plus eleven build-time binaries
+├── cmd/                                # the shipped entrypoint plus thirteen build-time binaries
 │   ├── abcd/main.go                    #   entrypoint — wires the CLI front door to the core
 │   ├── record-lint/                    #   the record gate `make preflight` runs (06-lint.md)
 │   ├── scaffold-sync/                  #   keeps the scaffolded release workflows in step
 │   ├── scaffold-render/                #   writes every scaffolded workflow profile for CI's workflow audit
 │   ├── asking-sync/                    #   writes the asking rules into the generated blocks of commands/intent.md and agents/question-drafter.md
+│   ├── command-facts-sync/             #   writes the per-command facts files under docs/reference/cli/commands/ and the generated blocks of every page under commands/
 │   ├── abcd-gen-surface/               #   writes the command-surface snapshot and the surface chapters' appendices
 │   ├── abcd-gen-cli-ref/               #   writes the generated CLI reference page
 │   ├── test-parallelism/               #   prints the go test -p `make preflight`'s test stages take
+│   ├── precheck-audits/                #   runs `make precheck`'s tree-auditing tests in the packages it does not already cover
 │   ├── check-tests/                    #   runs `make preflight`'s test stages from the check directory, replaying what the test cache holds
 │   ├── ci-watchdog/                    #   the shell CI's test jobs run go test under, stopping a hang with its dumps before the job's cap
 │   ├── ci-shard/                       #   prints the packages one shard of CI's macOS suite tests, computed from `go list`
 │   └── record-slug-rename/             #   one-off: renames records over the repository's slug cap (iss-2610100626320367)
-│                                       #   The eleven are developer tooling, not user surface: they run
+│                                       #   The thirteen are developer tooling, not user surface: they run
 │                                       #   from the Makefile, `go generate`, CI or by hand, and ship in no release
 ├── internal/
 │   ├── core/                           # transport-agnostic core, one package per capability

@@ -8,11 +8,21 @@
       "flags": [
         {
           "name": "impact",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "additive",
+            "breaking",
+            "fix"
+          ]
         },
         {
           "name": "production-mode",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "hand-written",
+            "dictated-and-formatted",
+            "scribe-transcribed"
+          ]
         },
         {
           "name": "title",
@@ -20,6 +30,7 @@
         }
       ],
       "inputs": [],
+      "example": "abcd intent \"let a reviewer read the board from a phone\"",
       "subcommands": [
         "audit",
         "condition",
@@ -104,7 +115,13 @@
       "flags": [
         {
           "name": "disposition",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "survived",
+            "narrowed",
+            "falsified",
+            "untested"
+          ]
         },
         {
           "name": "grounds",
@@ -138,6 +155,7 @@
         }
       ],
       "inputs": [],
+      "example": "abcd intent consistency",
       "subcommands": [
         "ingest"
       ]
@@ -217,7 +235,11 @@
         {
           "name": "answered-in",
           "type": "string",
-          "default": "Terminal"
+          "default": "Terminal",
+          "allowed": [
+            "Terminal",
+            "Claude Code"
+          ]
         },
         {
           "name": "answers",
@@ -252,11 +274,21 @@
         },
         {
           "name": "impact",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "additive",
+            "breaking",
+            "fix"
+          ]
         },
         {
           "name": "production-mode",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "hand-written",
+            "dictated-and-formatted",
+            "scribe-transcribed"
+          ]
         },
         {
           "name": "target",
@@ -319,7 +351,12 @@
         },
         {
           "name": "kind",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "standalone",
+            "bundle-member",
+            "superseded"
+          ]
         },
         {
           "name": "reason",

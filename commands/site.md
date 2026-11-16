@@ -353,8 +353,11 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd site [flags]`
+  - An example call is `abcd site`.
 - `abcd site build [flags]`
+  - An example call is `abcd site build`.
 - `abcd site setup [flags]`
+  - An example call is `abcd site setup`.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

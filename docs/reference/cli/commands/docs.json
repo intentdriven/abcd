@@ -7,6 +7,7 @@
       "usage": "abcd docs [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd docs",
       "subcommands": [
         "cite",
         "fidelity"
@@ -18,6 +19,7 @@
       "usage": "abcd docs cite [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd docs cite",
       "subcommands": [
         "confirm",
         "refresh"
@@ -41,7 +43,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd docs cite confirm https://example.com/article.html"
     },
     {
       "path": "abcd docs cite refresh",
@@ -57,7 +60,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd docs cite refresh"
     },
     {
       "path": "abcd docs fidelity",
@@ -82,6 +86,7 @@
         }
       ],
       "inputs": [],
+      "example": "abcd docs fidelity",
       "subcommands": [
         "record"
       ]

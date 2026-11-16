@@ -7,6 +7,7 @@
       "usage": "abcd memory [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd memory",
       "subcommands": [
         "add",
         "list",
@@ -51,7 +52,8 @@
       "sentence": "List every memory note with its body, recall words, stamps and reach: Writes nothing; refuses any argument.",
       "usage": "abcd memory list [flags]",
       "flags": [],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd memory list"
     },
     {
       "path": "abcd memory remove",

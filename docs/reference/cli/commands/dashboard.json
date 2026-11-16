@@ -7,6 +7,7 @@
       "usage": "abcd dashboard [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd dashboard",
       "subcommands": [
         "start",
         "status",
@@ -24,21 +25,24 @@
           "default": "8080"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd dashboard start"
     },
     {
       "path": "abcd dashboard status",
       "sentence": "Report whether the dashboard runs, where, and the devices that opened it: Writes nothing; refuses any argument.",
       "usage": "abcd dashboard status [flags]",
       "flags": [],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd dashboard status"
     },
     {
       "path": "abcd dashboard stop",
       "sentence": "Stop the dashboard after checking its process is the one start launched: Writes the run file's removal; refuses when another start or stop holds the lock.",
       "usage": "abcd dashboard stop [flags]",
       "flags": [],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd dashboard stop"
     }
   ]
 }

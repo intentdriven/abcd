@@ -144,9 +144,11 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd checklist [flags]`
+  - An example call is `abcd checklist`.
 - `abcd checklist add "<title>" [flags]`
   - An example call is `abcd checklist add "Regenerate the CLI reference"`.
 - `abcd checklist render [flags]`
+  - An example call is `abcd checklist render`.
 - `abcd checklist set <id> --state <state> [flags]`
   - An example call is `abcd checklist set regenerate-the-cli-reference --state done`.
 - `abcd checklist show <id> [flags]`

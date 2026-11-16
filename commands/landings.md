@@ -173,4 +173,5 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd landings [commit] [flags]`
+  - An example call is `abcd landings --since v0.11.0`.
 <!-- /generated -->

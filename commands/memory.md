@@ -146,9 +146,11 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd memory [flags]`
+  - An example call is `abcd memory`.
 - `abcd memory add --title <title> --recall <word> --by <vendor:model> [flags]`
   - An example call is `abcd memory add --title "The tests need the race flag" --recall test --recall race --by Example:model-1 < note.txt`.
 - `abcd memory list [flags]`
+  - An example call is `abcd memory list`.
 - `abcd memory remove <mem-id> [flags]`
   - An example call is `abcd memory remove mem-2609010000000001`.
 <!-- /generated -->

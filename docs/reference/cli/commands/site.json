@@ -13,6 +13,7 @@
         }
       ],
       "inputs": [],
+      "example": "abcd site",
       "subcommands": [
         "build",
         "setup"
@@ -54,7 +55,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd site build"
     },
     {
       "path": "abcd site setup",
@@ -79,7 +81,11 @@
         },
         {
           "name": "provider",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "cloudflare",
+            "github-pages"
+          ]
         },
         {
           "name": "replace-existing",
@@ -90,7 +96,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd site setup"
     }
   ]
 }

@@ -7,6 +7,7 @@
       "usage": "abcd scribe [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd scribe",
       "subcommands": [
         "assemble",
         "ingest"

@@ -1207,6 +1207,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 - `abcd build <itd-N|iss-N> [--auto-plan] [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] [--release] [flags]`
   - An example call is `abcd build itd-2609010000000001`.
 - `abcd build next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--max <n>] [--until-empty] [flags]`
+  - An example call is `abcd build next`.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

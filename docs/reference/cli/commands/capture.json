@@ -42,7 +42,12 @@
         },
         {
           "name": "production-mode",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "hand-written",
+            "dictated-and-formatted",
+            "scribe-transcribed"
+          ]
         },
         {
           "name": "remedy",
@@ -81,6 +86,7 @@
         }
       ],
       "inputs": [],
+      "example": "abcd capture \"the board drops its last row on an empty ledger\" --remedy \"render the row before the count\"",
       "subcommands": [
         "admit",
         "defer",
@@ -154,7 +160,13 @@
         },
         {
           "name": "state",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "accepted",
+            "rejected",
+            "declined",
+            "held"
+          ]
         },
         {
           "name": "supersedes",
@@ -203,7 +215,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd capture list --open"
     },
     {
       "path": "abcd capture mentions",
@@ -215,7 +228,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd capture mentions"
     },
     {
       "path": "abcd capture migrate",
@@ -227,7 +241,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd capture migrate"
     },
     {
       "path": "abcd capture promote",
@@ -244,7 +259,12 @@
         },
         {
           "name": "production-mode",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "hand-written",
+            "dictated-and-formatted",
+            "scribe-transcribed"
+          ]
         }
       ],
       "inputs": [],
@@ -298,7 +318,13 @@
         },
         {
           "name": "impact",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "additive",
+            "breaking",
+            "fix",
+            "internal"
+          ]
         },
         {
           "name": "intent",
@@ -306,7 +332,12 @@
         },
         {
           "name": "production-mode",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "hand-written",
+            "dictated-and-formatted",
+            "scribe-transcribed"
+          ]
         },
         {
           "name": "shipped-in",
@@ -348,7 +379,12 @@
         },
         {
           "name": "production-mode",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "hand-written",
+            "dictated-and-formatted",
+            "scribe-transcribed"
+          ]
         }
       ],
       "inputs": [],

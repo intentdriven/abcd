@@ -71,7 +71,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd build next"
     }
   ]
 }

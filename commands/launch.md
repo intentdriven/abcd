@@ -1421,14 +1421,18 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd launch [flags]`
+  - An example call is `abcd launch --dry-run`.
 - `abcd launch archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] [flags]`
   - An example call is `abcd launch archive --out dist`.
 - `abcd launch manifests --tree public|dev [--root <dir>] [flags]`
   - An example call is `abcd launch manifests --tree public`.
 - `abcd launch receipts [flags]`
+  - An example call is `abcd launch receipts`.
 - `abcd launch scaffold [--confirm] [--dependency-reauthor] [flags]`
+  - An example call is `abcd launch scaffold`.
 - `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [--dry-run] [flags]`
   - Reads `--changelog-json`, the composed changelog, at schema_version 2; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain launch ship --input changelog-json` prints its shape.
+  - An example call is `abcd launch ship --dry-run`.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

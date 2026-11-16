@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -105,6 +106,12 @@ type ReclassifyResult struct {
 	RelinkError string           `json:"relink_error,omitempty"`
 }
 
+// ReclassifyKinds returns the kinds Reclassify takes: the one list its kind
+// check reads and `intent reclassify --kind` declares. A discipline is not
+// among them: it passes the check only to meet the refusal that says how a
+// discipline is filed instead.
+func ReclassifyKinds() []string { return []string{KindStandalone, KindBundleMember, KindSuperseded} }
+
 // Reclassify changes one intent's kind, or retires it as superseded, in one
 // write (criteria 3 and 4). See the file comment for what each shape writes
 // and what it refuses.
@@ -112,9 +119,7 @@ func Reclassify(repoRoot, intentID string, req ReclassifyRequest) (ReclassifyRes
 	if !recordid.ValidIntentID(intentID) {
 		return ReclassifyResult{}, fmt.Errorf("intent: id %q must match ^itd-[0-9]+$", intentID)
 	}
-	switch req.Kind {
-	case KindStandalone, KindBundleMember, KindSuperseded, KindDiscipline:
-	default:
+	if !slices.Contains(ReclassifyKinds(), req.Kind) && req.Kind != KindDiscipline {
 		return ReclassifyResult{}, fmt.Errorf("intent: --kind %q is not one of standalone, bundle-member, superseded (nothing written)", req.Kind)
 	}
 	if req.By != "" && req.Kind != KindSuperseded {

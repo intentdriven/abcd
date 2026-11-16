@@ -21,7 +21,11 @@
         {
           "name": "answered-in",
           "type": "string",
-          "default": "Terminal"
+          "default": "Terminal",
+          "allowed": [
+            "Terminal",
+            "Claude Code"
+          ]
         },
         {
           "name": "answers",

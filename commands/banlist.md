@@ -151,10 +151,13 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd banlist [flags]`
+  - An example call is `abcd banlist`.
 - `abcd banlist add --private|--public <key> <pattern|-> [flags]`
   - An example call is `abcd banlist add --private acme-internal 'acme-internal\.example\.com'`.
 - `abcd banlist list [--private | --public] [flags]`
+  - An example call is `abcd banlist list --private`.
 - `abcd banlist migrate [flags]`
+  - An example call is `abcd banlist migrate`.
 - `abcd banlist remove --private|--public <key> [flags]`
   - An example call is `abcd banlist remove --private acme-internal`.
 <!-- /generated -->

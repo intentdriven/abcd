@@ -52,6 +52,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -83,6 +84,10 @@ const (
 	// its opening instruction and its closing turn, with the omission stated.
 	ModeSpine ReconstructMode = "spine"
 )
+
+// ReconstructModes returns the two modes, the default first: the one list
+// Reconstruct checks a mode against and `history reconstruct --mode` declares.
+func ReconstructModes() []string { return []string{string(ModeFull), string(ModeSpine)} }
 
 // ReconstructOptions carries what reconstruction needs beyond the store key.
 //
@@ -307,7 +312,7 @@ func Reconstruct(repoRoot, rootSHA string, opts ReconstructOptions) (Reconstruct
 	if opts.Mode == "" {
 		opts.Mode = ModeFull
 	}
-	if opts.Mode != ModeFull && opts.Mode != ModeSpine {
+	if !slices.Contains(ReconstructModes(), string(opts.Mode)) {
 		return Reconstruction{}, fmt.Errorf("history: reconstruct mode %q is not one of full, spine", opts.Mode)
 	}
 	if opts.MaxBlockBytes < 0 {

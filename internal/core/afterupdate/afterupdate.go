@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -41,6 +42,10 @@ const (
 	AnswerYes    = "yes"
 	AnswerNotNow = "not-now"
 )
+
+// Answers returns the answers the offer takes: the one list Record checks an
+// answer against and `update news --answer` declares.
+func Answers() []string { return []string{AnswerYes, AnswerNotNow} }
 
 // FullCommand is the command that shows the full summary, named on every
 // news line.
@@ -233,7 +238,7 @@ func Full(cwd, from string) (FullSummary, error) {
 // exclusively: a second answer for the same repository and release is
 // ErrAlreadyAnswered and changes nothing.
 func Record(cwd, answer string) (Answer, error) {
-	if answer != AnswerYes && answer != AnswerNotNow {
+	if !slices.Contains(Answers(), answer) {
 		return Answer{}, ErrBadAnswer
 	}
 	running, ok := release(runningVersion())

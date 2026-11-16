@@ -16,6 +16,7 @@
         }
       ],
       "inputs": [],
+      "example": "abcd update --check",
       "subcommands": [
         "news"
       ]
@@ -27,7 +28,11 @@
       "flags": [
         {
           "name": "answer",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "yes",
+            "not-now"
+          ]
         },
         {
           "name": "full",
@@ -38,7 +43,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd update news"
     }
   ]
 }

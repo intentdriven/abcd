@@ -84,7 +84,8 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	captureCmd.Flags().StringVar(&session, "session", "", "session id for the record (default: transcript filename; required for stdin)")
-	captureCmd.Flags().StringVar(&kind, "kind", "", "source route: native (abcd's own capture of the host's transcript) | import (another tool's export) (default native)")
+	enumFlag(captureCmd.Flags(), &kind, "kind", "", "source route: ", history.Routes(),
+		" (default native): native is abcd's own capture of the host's transcript, import another tool's export")
 	captureCmd.Flags().StringVar(&tool, "tool", "", "source tool: the tool that produced the transcript, a lowercase slug (default host on a native capture; required on an import)")
 	captureCmd.Flags().BoolVar(&captureAll, "all", false,
 		"capture every transcript of the --session named — its main thread and each sub-agent — found under the paths given (default: ingest_roots)")
@@ -597,7 +598,7 @@ func captureWholeSession(cmd *cobra.Command, asJSON bool, session, kind, tool st
 	if session == "" {
 		return fmt.Errorf("history capture: --all captures one named session; pass --session <id>")
 	}
-	if kind != "" && kind != "native" {
+	if kind != "" && kind != history.RouteNative {
 		return errors.New("history capture: --all stores native transcripts only; a --kind other than native cannot apply (the value given is not repeated here)")
 	}
 	if tool != "" {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -36,6 +37,15 @@ var (
 	// judge it (collect-missing, override, would-change).
 	scanDeepChoices = []string{"true", "false"}
 )
+
+// VisibilityChoices, DocsTargetWritable, OracleBackendChoices and
+// ScanDeepChoices return copies of the sets above, for the install flags that
+// override those settings: each flag declares, and its reader checks, the one
+// list the detection judges a saved value by.
+func VisibilityChoices() []string    { return slices.Clone(visibilityChoices) }
+func DocsTargetWritable() []string   { return slices.Clone(docsTargetWritable) }
+func OracleBackendChoices() []string { return slices.Clone(oracleBackendChoices) }
+func ScanDeepChoices() []string      { return slices.Clone(scanDeepChoices) }
 
 const (
 	// docsTargetDefault is skip: the managed block names abcd and documents its

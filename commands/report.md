@@ -87,6 +87,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd report [<file>|-] [flags]`
+  - An example call is `abcd report --template`.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

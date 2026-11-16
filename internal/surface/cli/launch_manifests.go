@@ -62,7 +62,8 @@ func newLaunchManifestsCommand(asJSON *bool) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&tree, "tree", "", "the polarity to check: public (versions present and agreeing) or dev (versions absent)")
+	enumFlag(cmd.Flags(), &tree, "tree", "", "the polarity to check: ", launch.LockstepTrees(),
+		"; public requires the versions present and agreeing, dev requires them absent")
 	cmd.Flags().StringVar(&root, "root", "", "the tree to check (default: the working directory)")
 	return cmd
 }

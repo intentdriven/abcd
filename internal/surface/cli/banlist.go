@@ -197,7 +197,7 @@ func newBanlistAddCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	addLayerFlags(addCmd, &private, &public)
-	addCmd.Flags().StringVar(&severity, "severity", "", "public entry severity: blocker (default) | warn")
+	enumFlag(addCmd.Flags(), &severity, "severity", "", "public entry severity: ", banlist.Severities(), " (default blocker)")
 	addCmd.Flags().StringVar(&successor, "successor", "", "public entry's replacement, cited in the finding (default \"a generic term\")")
 	return addCmd
 }

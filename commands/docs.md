@@ -156,10 +156,15 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd docs [flags]`
+  - An example call is `abcd docs`.
 - `abcd docs cite [flags]`
+  - An example call is `abcd docs cite`.
 - `abcd docs cite confirm [url...] [flags]`
+  - An example call is `abcd docs cite confirm https://example.com/article.html`.
 - `abcd docs cite refresh [flags]`
+  - An example call is `abcd docs cite refresh`.
 - `abcd docs fidelity [flags]`
+  - An example call is `abcd docs fidelity`.
 - `abcd docs fidelity record --verdict-json <file|-> [--dry-run] [flags]`
   - Reads `--verdict-json`, the docs review verdict, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain docs fidelity record --input verdict-json` prints its shape.
   - An example call is `abcd docs fidelity record --verdict-json verdict.json`.

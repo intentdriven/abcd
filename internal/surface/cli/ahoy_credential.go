@@ -132,7 +132,9 @@ func newAhoyCredentialCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVar(&home, "home", "", "where the credential lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only "+credential.StorePath+") | keychain (read from stdin into the platform keychain)")
+	enumFlag(cmd.Flags(), &home, "home", "", "where the credential lives: ", credential.Homes(),
+		"; external reads --env, or --file and --field; abcd reads it from stdin into the owner-only "+credential.StorePath+
+			"; keychain reads it from stdin into the platform keychain")
 	pointerFlags(cmd, &ptr)
 	return cmd
 }

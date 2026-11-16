@@ -365,11 +365,17 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd session [flags]`
+  - An example call is `abcd session`.
 - `abcd session blueprint [flags]`
+  - An example call is `abcd session blueprint`.
 - `abcd session page [flags]`
+  - An example call is `abcd session page --out brief-page`.
 - `abcd session serve [flags]`
+  - An example call is `abcd session serve`.
 - `abcd session setup [flags]`
+  - An example call is `abcd session setup --where local`.
 - `abcd session start [flags]`
+  - An example call is `abcd session start`.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

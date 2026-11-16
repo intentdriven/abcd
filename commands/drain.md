@@ -168,7 +168,7 @@ two minutes, and serve as the approver and the hooks of the live launch that pro
 drive. Only then does it replace the installed binary, the previous one kept beside it as
 `.<name>.previous`. The drive re-executes itself and goes on from the drain's own state,
 with the same cap, bound, skips and profile, asking nothing and printing
-`abcd updated from <old> to <new>`. What the state holds is not given again, so a change
+`abcd updated from <old> to <new>`. What the state holds is not given again, so a change <!-- facts-lint: historical -->
 made to the pace or the skips since the start stands. A release that fails the checks or the live launch is
 said once and is not taken again in that run, and the drive goes on with the version it has.
 A read-only run that fails is said once per reason and tried again at later checks. A fault that
