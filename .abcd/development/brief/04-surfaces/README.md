@@ -58,6 +58,7 @@ it does not order the table.
 | 37 | `/abcd:session` | shipped | Run the relay a team's live brief session goes through, on the host's machine over Tailscale Serve or on the team's own relay, write that relay's blueprint, and write the session's static page | [`37-session.md`](37-session.md) |
 | 22 | `/abcd:site` | shipped | Render the project website from the repository's own text, and gate what it publishes | [`22-site.md`](22-site.md) |
 | 39 | `/abcd:status` | shipped | Read everyone's status on the shared remote: the announcements every session posted, who holds which reservation and each release being cut | [`39-status.md`](39-status.md) |
+| 40 | `/abcd:sweep` | shipped | See every worktree, branch, reservation and inbox report a repository has left lying around, and clear only what is provably finished | [`40-sweep.md`](40-sweep.md) |
 | 21 | `/abcd:update` | shipped | Complete a chosen update of the installed binary, verified and atomic | [`21-update.md`](21-update.md) |
 | 25 | `/abcd:worktree` | staged | Keep session and agent worktrees in a machine-scoped store rather than beside the checkout; no `/abcd:worktree` page exists, and the store's verbs ship as `ahoy worktree add`, `list`, `prune`, which reclaims merged, clean worktrees and a quiet one the person names, and `trim-cache`, which keeps the Go build cache under its limit ([itd-2609091014076309](../../intents/shipped/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md)); its layout is in [`../05-internals/03-configuration.md` § The worktree store](../05-internals/03-configuration.md#the-worktree-store) | [`01-ahoy.md` § The worktree store](01-ahoy.md#the-worktree-store) |
 
@@ -210,6 +211,7 @@ and `help` are the framework's own commands, filed under set-up.
 | `spec` | agents and hosts | — |
 | `status` | people | records |
 | `statusline` | agents and hosts | — |
+| `sweep` | people | set-up |
 | `update` | people | set-up |
 
 The placement is presentation. No verb is hidden, renamed, moved or nested by
@@ -445,7 +447,7 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `embark`, `explain`, `guard`, `history`, `ideate`, `identity`, `implement`,
 `inbox`, `intent`, `lab`, `land`, `landings`, `launch`, `library`, `lint`,
 `memory`, `mode`, `peers`, `reading`, `reflect`, `report`, `reserve`, `scribe`,
-`session`, `site`, `status`, `update`.
+`session`, `site`, `status`, `sweep`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.

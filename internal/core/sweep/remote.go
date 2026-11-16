@@ -10,9 +10,11 @@ package sweep
 //   - no open pull request heads it, or targets it as its base, as the forge
 //     lists them (a branch an open pull request merges into is still in use,
 //     which keeps more than "heads it" alone);
-//   - no reservation names it: a live reservation whose record id its name
-//     holds; a reservation that cannot be read, or reservations never
-//     fetched, hold every branch. A reservation carries no branch, and a
+//   - no reservation names it: a reservation names the branch its own copy
+//     is on, the local worktree its tip names by copy key (the liveness
+//     probe's proof, through each local worktree on the branch, below), never
+//     a branch whose name merely holds its record id. A reservation that
+//     cannot be read, or reservations never fetched, hold every branch. A
 //     merged branch's own changes are already on the default branch, so a
 //     footprint is compared with a branch only through a local worktree on
 //     it, below;
@@ -509,7 +511,7 @@ func (rj *remoteJudge) holds(b remoteBranch, open, bases map[string][]string, op
 			ev = append(ev, Evidence{Kind: KindPullRequest, Strength: Proven, Detail: "open pull request #" + strings.Join(nums, ", #") + " targets it as its base"})
 		}
 	}
-	ev = append(ev, rj.reservationsNaming(b)...)
+	ev = append(ev, rj.reservationsHoldingEvery()...)
 	if pr, bad := branchHazard(rj.def, rj.wts, rj.held, b.name); bad {
 		ev = append(ev, Evidence{Kind: KindDeleteProof, Strength: Proven, Detail: pr.Failed})
 	}
@@ -530,31 +532,31 @@ func (rj *remoteJudge) holds(b remoteBranch, open, bases map[string][]string, op
 	return ev
 }
 
-// reservationsNaming is the reservations that name the branch b: a live one
-// whose record id the branch's name holds. Reservations never fetched hold
-// every branch, as they hold every worktree, and so does an unreadable one
-// still within its hold, its footprint unknown.
-func (rj *remoteJudge) reservationsNaming(b remoteBranch) []Evidence {
+// reservationsHoldingEvery is the reservations that hold every branch:
+// reservations never fetched, as they hold every worktree, and an unreadable
+// one still within its hold, its footprint and its copy unknown. A live
+// reservation holds only the branch its own copy is on: holds finds it
+// through the liveness of each local worktree on the branch, whose tip names
+// that worktree's copy key. A record id in a branch's name holds nothing,
+// since a reservation records its copy's branch, not one named after its
+// record (spc-2610230730269295, step 5).
+func (rj *remoteJudge) reservationsHoldingEvery() []Evidence {
 	p := rj.live.probe
 	var ev []Evidence
 	if p.unread != "" {
 		ev = append(ev, Evidence{Kind: KindReservationCheck, Strength: Hint, Detail: "reservations unread: " + p.unread})
 	}
-	lower := strings.ToLower(b.name)
 	for _, r := range p.reservations.Reservations {
 		until := r.EffectiveExpiry.UTC().Format(time.RFC3339)
-		switch {
-		case r.State == claim.StateLive && r.Record != "" && strings.Contains(lower, strings.ToLower(r.Record)):
-			ev = append(ev, Evidence{Kind: KindReservation, Strength: Proven, Detail: fmt.Sprintf(
-				"reserved as %s by %s until %s, the record its name holds", r.Record, r.Holder, until)})
-		case r.State == claim.StateUnreadable && r.EffectiveExpiry.After(p.now):
-			holder := r.Holder
-			if holder == "" {
-				holder = "a holder its tip does not name readably"
-			}
-			ev = append(ev, Evidence{Kind: KindReservation, Strength: Hint, Detail: fmt.Sprintf(
-				"reservation %s by %s is unreadable (%s) and holds until %s, its footprint unknown", r.Record, holder, r.Unreadable, until)})
+		if r.State != claim.StateUnreadable || !r.EffectiveExpiry.After(p.now) {
+			continue
 		}
+		holder := r.Holder
+		if holder == "" {
+			holder = "a holder its tip does not name readably"
+		}
+		ev = append(ev, Evidence{Kind: KindReservation, Strength: Hint, Detail: fmt.Sprintf(
+			"reservation %s by %s is unreadable (%s) and holds until %s, its footprint unknown", r.Record, holder, r.Unreadable, until)})
 	}
 	return ev
 }

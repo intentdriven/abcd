@@ -419,6 +419,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newReserveCommand(&asJSON))
 	root.AddCommand(newAnnounceCommand(&asJSON))
 	root.AddCommand(newStatusCommand(&asJSON))
+	root.AddCommand(newSweepCommand(&asJSON))
 	root.AddCommand(newLandingsCommand(&asJSON))
 	root.AddCommand(newAgentsCommand(&asJSON))
 	root.AddCommand(newExplainCommand(&asJSON))

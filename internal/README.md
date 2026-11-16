@@ -154,6 +154,16 @@ plugin surface, and a future MCP server share one engine.
   path (`lab.BinaryIdentity`). The run record and its declaration pass the
   repository's secret scanner (`adapter/scanner`) before they are written, and
   are written together or not at all (`lab.Procedure.WriteStates`).
+- **`core/sweep/`** — one sweep over everything a repository leaves lying
+  around (itd-2610222214476887): its worktrees, local branches, merged branches
+  on origin, reservation branches and waiting inbox reports, one row each with
+  the action an applied run takes or the reason it keeps the item. `Run` fetches
+  first, then composes the worktree store's list, merged judgement and prune,
+  the reservation sweep's judgement and workflow, and the inbox's promote with
+  its own liveness probe and patch salvage; it acts only on what is provably
+  spent, forces nothing and stops no process. `abcd sweep` is its front door,
+  and its delete prover is the shell guard's proof of a branch or worktree
+  delete.
 - **`core/surface/`** — the compatibility surface as DATA: the snapshot of every
   command, flag, and manifest entry a consumer binds to, and the diff that names
   what a release narrowed. It shares a word with the `surface/` front-door tier

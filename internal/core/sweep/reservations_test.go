@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/reservesweep"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -231,6 +232,51 @@ func TestSpentReservationsDispatchTheWorkflowAndNameItsRun(t *testing.T) {
 		}
 	}
 	assertPinned(t, f.calls)
+}
+
+// TestApplyLeavesASpentReservationOnOrigin is criterion 9 against a real
+// origin and the reservation sweep's own judgement: a reservation released
+// two days before the run is spent, and apply dispatches the workflow for it,
+// yet the branch stands on origin at the tip it had, since only the workflow
+// deletes a reservation.
+func TestApplyLeavesASpentReservationOnOrigin(t *testing.T) {
+	repo, origin := originRepo(t)
+	withWorkflow(t, repo, `    - cron: "37 4 * * *"`)
+	noWaitBetweenRunListings(t)
+	if err := os.MkdirAll(filepath.Join(repo.Root(), ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	co := claim.Options{Now: at(sweepClock.Add(-48 * time.Hour)), Home: filepath.Dir(origin),
+		ForgeUser: func(string) (string, int64, error) { return "a-tester", 1, nil }}
+	for _, req := range []claim.Request{
+		{Record: spentRecord, Footprint: []string{"a.txt"}},
+		{Record: spentRecord, Release: true},
+	} {
+		if _, err := claim.Reserve(repo.Root(), req, co); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ref := "refs/heads/abcd-reserved/" + spentRecord
+	tipOnOrigin := func() string { return repo.Git("ls-remote", "origin", ref) }
+	before := tipOnOrigin()
+	if before == "" {
+		t.Fatal("the release did not reach origin")
+	}
+
+	f := &workflowForge{runs: []string{runListing(t, 10), runListing(t, 11)}}
+	res, err := sweepReservations(context.Background(), repo.Root(), Options{Probe: ProbeOptions{Now: at(sweepClock)}, Forge: f.gh}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := reservationRowFor(t, res, spentRecord); r.Outcome != OutcomeDispatched {
+		t.Fatalf("the released reservation: %+v; want it dispatched to the workflow", r)
+	}
+	if len(f.dispatches()) != 1 {
+		t.Fatalf("dispatched %d times; want once", len(f.dispatches()))
+	}
+	if after := tipOnOrigin(); after != before {
+		t.Fatalf("the sweep changed the reservation on origin: %q before, %q after", before, after)
+	}
 }
 
 // TestTheDispatchGoesToTheBranchOriginNamesItsDefault: the workflow is

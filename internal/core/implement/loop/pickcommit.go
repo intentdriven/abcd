@@ -115,6 +115,18 @@ func pickGitCommand(dir, stdin string, args []string) *exec.Cmd {
 	return cmd
 }
 
+// pickGitAsStored is pickGit reading objects as git stores them
+// (gitutil.AsStoredEnv): no replace ref, graft file or commit-graph stands in
+// for a commit's tree or parents. It is for a read that compares the index with
+// a commit, whose answer depends on that commit's tree. Everything else about
+// the command is pickGit's, so the person's filters and ignore files read the
+// tree as before.
+func pickGitAsStored(dir string, args ...string) (string, error) {
+	cmd := pickGitCommand(dir, "", args)
+	cmd.Env = gitutil.AsStoredEnv(cmd.Env)
+	return gitutil.RunTreeCommand(cmd, args)
+}
+
 // commitGit is pickGit for a command that runs the repository's hooks on the
 // person's own git, in a lane's worktree: the pick commit and a sync's merge,
 // and, on the same command with a bound of its own, the reset --hard that a
@@ -257,6 +269,17 @@ func pickGitIndexInput(dir, index, stdin string, args ...string) (string, error)
 	if err != nil {
 		return "", err
 	}
+	return gitutil.RunTreeCommand(cmd, args)
+}
+
+// pickGitIndexAsStored is pickGitIndex reading objects as git stores them, as
+// pickGitAsStored reads them.
+func pickGitIndexAsStored(dir, index string, args ...string) (string, error) {
+	cmd, err := pickGitIndexCommand(dir, index, "", args)
+	if err != nil {
+		return "", err
+	}
+	cmd.Env = gitutil.AsStoredEnv(cmd.Env)
 	return gitutil.RunTreeCommand(cmd, args)
 }
 

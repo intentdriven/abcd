@@ -790,7 +790,9 @@ func (l *lister) push(row Row, said string, wts []gitutil.Worktree) Row {
 // recorded is the technical facilitator's recorded approval of sha in wts as
 // a row's approval: Seen from the local tier, or none seen. A record that
 // cannot be counted (one git tracks, say) counts for nothing, as the merge
-// gate counts it.
+// gate counts it, and so does one in a drive lane's worktree or under one,
+// and every one when the checkout read from is in a lane
+// (landing.ApprovalRecord).
 func (l *lister) recorded(sha string, wts []gitutil.Worktree) Approval {
 	if p, err := landing.ApprovalRecord(l.ctx, l.root, sha, wts); err == nil && p != "" {
 		return Approval{Seen: true, Source: SourceLocalTier}

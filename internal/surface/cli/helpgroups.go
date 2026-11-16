@@ -112,14 +112,18 @@ var helpPlacements = map[string]helpPlacement{
 	"ahoy":      {group: groupSetUp},
 	"dashboard": {group: groupSetUp},
 	"session":   {group: groupSetUp},
-	"update":    {group: groupSetUp},
-	"agents":    {group: groupRecords},
-	"build":     {group: groupRecords},
-	"capture":   {group: groupRecords},
-	"decide":    {group: groupRecords},
-	"ideate":    {group: groupRecords},
-	"intent":    {group: groupRecords},
-	"land":      {group: groupRecords},
+	// sweep is a person's verb under set-up, beside ahoy, whose worktree
+	// prune it calls (itd-2610222214476887): the person asked for one verb
+	// that clears what a repository has left lying around.
+	"sweep":   {group: groupSetUp},
+	"update":  {group: groupSetUp},
+	"agents":  {group: groupRecords},
+	"build":   {group: groupRecords},
+	"capture": {group: groupRecords},
+	"decide":  {group: groupRecords},
+	"ideate":  {group: groupRecords},
+	"intent":  {group: groupRecords},
+	"land":    {group: groupRecords},
 	// landings is the reader of how each change landed, beside status and
 	// land (spc-2610301950480609 approach 8): land pushes and arms, status
 	// lists what lapses within the hour.
