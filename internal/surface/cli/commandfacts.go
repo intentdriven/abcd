@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/surface"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // commandfacts.go — the derived copies of the command facts
@@ -266,24 +268,11 @@ func factsInputLine(path string, in surface.InputFact, rung string) string {
 		codeSpan(explainCall(rung, explainArgs(path)+" --input "+in.Flag)))
 }
 
-// codeSpan is s as a Markdown code span, fenced by a run of backticks longer
-// than any run inside it, and padded by a space where s starts or ends with a
-// backtick, so any text reads back as written.
+// codeSpan is s as a Markdown code span, through termsafe.CodeSpan: fenced by
+// a run of backticks longer than any run inside it, and padded where CommonMark
+// needs it, so any text reads back as written.
 func codeSpan(s string) string {
-	longest, run := 0, 0
-	for _, r := range s {
-		if r == '`' {
-			run++
-			longest = max(longest, run)
-		} else {
-			run = 0
-		}
-	}
-	fence := strings.Repeat("`", longest+1)
-	if strings.HasPrefix(s, "`") || strings.HasSuffix(s, "`") {
-		s = " " + s + " "
-	}
-	return fence + s + fence
+	return termsafe.CodeSpan(s)
 }
 
 // SyncCommandPage returns page with both generated blocks rendered from facts
@@ -360,12 +349,8 @@ func withoutGeneratedBlocks(page []byte) []byte {
 // headingEnd is the offset just past the newline that ends the page's first
 // H1 heading, read after the frontmatter, or -1 when the page has none.
 func headingEnd(page string) int {
-	at := 0
-	if strings.HasPrefix(page, "---\n") {
-		if end := strings.Index(page[4:], "\n---\n"); end >= 0 {
-			at = 4 + end + len("\n---\n")
-		}
-	}
+	head, _ := frontmatter.Split(page)
+	at := len(head)
 	for at < len(page) {
 		next := strings.IndexByte(page[at:], '\n')
 		line := page[at:]
