@@ -8,6 +8,10 @@ user-invocable: false
 
 # `/abcd:announce`
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain announce`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Post a short fixed-form announcement on the shared remote, so every other
 session sees what this one is doing: on the same computer, under a colleague's
 account on another computer, or in a hosted cloud session. This verb is an
@@ -144,5 +148,13 @@ too, you are in a source checkout of this repo, where — and only there —
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
 `go run ./cmd/abcd ahoy install` in a source checkout.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain announce` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd announce <kind> <item> [flags]`
+  - An example call is `abcd announce merging iss-2609010000000001`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

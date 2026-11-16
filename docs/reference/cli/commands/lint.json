@@ -1,0 +1,89 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd lint",
+      "sentence": "Check this repository against the conventions, every target but outbound: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.",
+      "usage": "abcd lint [flags]",
+      "flags": [
+        {
+          "name": "root",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "subcommands": [
+        "docs",
+        "identity",
+        "outbound",
+        "site"
+      ]
+    },
+    {
+      "path": "abcd lint docs",
+      "sentence": "Lint the docs for change-narration, broken links, citations, and stray root markdown: Writes nothing; refuses a tree with a blocker finding.",
+      "usage": "abcd lint docs [flags]",
+      "flags": [
+        {
+          "name": "config",
+          "type": "string"
+        },
+        {
+          "name": "release-gate",
+          "type": "bool"
+        },
+        {
+          "name": "root",
+          "type": "string"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": "abcd lint identity",
+      "sentence": "Show this repository's identity block and every surface held to it: Writes nothing; refuses a repository that records no identity block.",
+      "usage": "abcd lint identity [flags]",
+      "flags": [],
+      "inputs": []
+    },
+    {
+      "path": "abcd lint outbound",
+      "sentence": "Judge one outbound text against the session-URL and tool-footer policy: Writes nothing; refuses a text carrying either with exit 1.",
+      "usage": "abcd lint outbound [FILE] [flags]",
+      "flags": [
+        {
+          "name": "label",
+          "type": "string",
+          "default": "outbound-artefact"
+        },
+        {
+          "name": "root",
+          "type": "string"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": "abcd lint site",
+      "sentence": "Gate the built website, rendering it first when absent: Writes only inside the output directory; refuses a site failing any gate with exit 1.",
+      "usage": "abcd lint site [flags]",
+      "flags": [
+        {
+          "name": "base-path",
+          "type": "string",
+          "default": "/"
+        },
+        {
+          "name": "out",
+          "type": "string",
+          "default": "site"
+        },
+        {
+          "name": "project",
+          "type": "bool"
+        }
+      ],
+      "inputs": []
+    }
+  ]
+}

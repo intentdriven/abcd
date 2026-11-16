@@ -6,6 +6,10 @@ block: people
 
 # `/abcd:lab`
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain lab`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Run a lab against a pinned snapshot of this repository. The lab's evidence lives
 in the machine-scoped lab store (`~/.abcd.noindex/lab/<root-sha>/<lab-id>/`), its
 knowledge enters the record only through capture, and **no lab verb writes into
@@ -174,5 +178,24 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain lab` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd lab [flags]`
+- `abcd lab harvest <lab-id> [flags]`
+  - An example call is `abcd lab harvest lab-260901000000-0123abc`.
+- `abcd lab matrix <lab-id> <declaration.json> [flags]`
+  - An example call is `abcd lab matrix lab-260901000000-0123abc matrix.json`.
+- `abcd lab mint <question> [flags]`
+  - An example call is `abcd lab mint "does the snapshot keep the checkout's hooks from firing?"`.
+- `abcd lab preflight <lab-id> [flags]`
+  - An example call is `abcd lab preflight lab-260901000000-0123abc`.
+- `abcd lab record <lab-id> <probe> [flags]`
+  - An example call is `abcd lab record lab-260901000000-0123abc bare-status`.
+- `abcd lab sweep <lab-id> [flags]`
+  - An example call is `abcd lab sweep lab-260901000000-0123abc`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

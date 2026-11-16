@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:intent` — intent lifecycle
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain intent`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 `abcd --help` lists `intent` in the person's records group. `intent audit
 ingest`, which applies a host-produced audit verdict, `intent consistency
 ingest`, which files host-produced consistency findings, and `intent prepass`,
@@ -1451,5 +1455,45 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain intent` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd intent [text] [flags]`
+- `abcd intent audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] [flags]`
+  - An example call is `abcd intent audit itd-2609010000000001`.
+- `abcd intent audit ingest --verdict-json <path> [--dry-run] [flags]`
+  - Reads `--verdict-json`, the intent audit verdict, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain intent audit ingest --input verdict-json` prints its shape.
+  - An example call is `abcd intent audit ingest --verdict-json verdict.json`.
+- `abcd intent condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds "<why>" [--narrowing "<what now holds>"]] [flags]`
+  - An example call is `abcd intent condition itd-2609010000000001`.
+- `abcd intent consistency [<itd-N>] [flags]`
+- `abcd intent consistency ingest --findings-json <path> [--findings-json <path>...] [--dry-run] [flags]`
+  - Reads `--findings-json`, the consistency findings, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain intent consistency ingest --input findings-json` prints its shape.
+  - An example call is `abcd intent consistency ingest --findings-json findings.json`.
+- `abcd intent edge <itd-N> [--blocked-by <itd-M,...>] [--unblock <itd-M,...>] [--builds-on <itd-M,...>] [--drop-builds-on <itd-M,...>] [flags]`
+  - An example call is `abcd intent edge itd-2609010000000001 --blocked-by itd-2609010000000002`.
+- `abcd intent hold <itd-N> --reason "<text>" [flags]`
+  - An example call is `abcd intent hold itd-2609010000000001 --reason "waiting on the product thinker's ruling on scope"`.
+- `abcd intent interview <itd-N> [--answers <file>] [--answered-in <place>] [flags]`
+  - Reads `--answers`, the interview answers.
+  - An example call is `abcd intent interview itd-2609010000000001`.
+- `abcd intent link <itd-N> <spc-N> [flags]`
+  - An example call is `abcd intent link itd-2609010000000001 spc-2609010000000002`.
+- `abcd intent plan <itd-N> [<itd-N>…] [--bundle <name>] [--target <vX.Y.Z|next>] [flags]`
+  - An example call is `abcd intent plan itd-2609010000000001`.
+- `abcd intent prepass <itd-N> [--findings-json <path> [--dry-run]] [flags]`
+  - Reads `--findings-json`, the pre-pass findings, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain intent prepass --input findings-json` prints its shape.
+  - An example call is `abcd intent prepass itd-2609010000000001 --json`.
+- `abcd intent ready <itd-N> [--grounds "<pursued|deferred|declined>: <conjecture>"] [flags]`
+  - An example call is `abcd intent ready itd-2609010000000001`.
+- `abcd intent reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason "<why>"> [flags]`
+  - An example call is `abcd intent reclassify itd-2609010000000001 --kind superseded --by itd-2609010000000002 --reason "absorbed by the later intent"`.
+- `abcd intent target <itd-N> <vX.Y.Z|next> [flags]`
+  - An example call is `abcd intent target itd-2609010000000001 v0.11.0`.
+- `abcd intent unhold <itd-N> [flags]`
+  - An example call is `abcd intent unhold itd-2609010000000001`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

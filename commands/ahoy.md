@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:ahoy` install/update detector
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain ahoy`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 `abcd --help` lists `ahoy` in the person's set-up group. `statusline`, the
 harness-invoked row that `install` wires, and `rules`, which renders the rule
 loader `install` sets up, are in the agents-and-hosts block of
@@ -1987,5 +1991,29 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain ahoy` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd ahoy [flags]`
+- `abcd ahoy connect [<provider>] [flags]`
+  - An example call is `abcd ahoy connect local --base-url http://127.0.0.1:8080/v1 --model example-model --home none`.
+- `abcd ahoy credential [<name>] [flags]`
+- `abcd ahoy doctor [flags]`
+- `abcd ahoy install [flags]`
+  - Reads `--answers`, the interview answers.
+- `abcd ahoy remote [flags]`
+- `abcd ahoy remote apply [flags]`
+- `abcd ahoy shared-folder [<folder>] [--person <account>] [flags]`
+  - An example call is `abcd ahoy shared-folder /Users/Shared`.
+- `abcd ahoy uninstall [flags]`
+- `abcd ahoy worktree [flags]`
+- `abcd ahoy worktree add <name> [flags]`
+  - An example call is `abcd ahoy worktree add example-lane`.
+- `abcd ahoy worktree list [flags]`
+- `abcd ahoy worktree prune [flags]`
+- `abcd ahoy worktree trim-cache [flags]`
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

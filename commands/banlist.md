@@ -8,6 +8,10 @@ user-invocable: false
 
 # `/abcd:banlist` — banned names, two layers
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain banlist`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Some names must not appear in what a repo publishes: a specific agent harness (so
 the surface stays host-agnostic), a partner's product, a private project whose very
 name is confidential — and, most sensitively, the user's own machine identifiers:
@@ -141,5 +145,18 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain banlist` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd banlist [flags]`
+- `abcd banlist add --private|--public <key> <pattern|-> [flags]`
+  - An example call is `abcd banlist add --private acme-internal 'acme-internal\.example\.com'`.
+- `abcd banlist list [--private | --public] [flags]`
+- `abcd banlist migrate [flags]`
+- `abcd banlist remove --private|--public <key> [flags]`
+  - An example call is `abcd banlist remove --private acme-internal`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

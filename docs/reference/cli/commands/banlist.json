@@ -1,0 +1,83 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd banlist",
+      "sentence": "Render both banned-names layers: Writes nothing; refuses an unknown word without echoing it.",
+      "usage": "abcd banlist [flags]",
+      "flags": [],
+      "inputs": [],
+      "subcommands": [
+        "add",
+        "list",
+        "migrate",
+        "remove"
+      ]
+    },
+    {
+      "path": "abcd banlist add",
+      "sentence": "Add one banned-name entry to the layer a flag names: Writes that layer's store; refuses without exactly one of --private or --public.",
+      "usage": "abcd banlist add --private|--public <key> <pattern|-> [flags]",
+      "flags": [
+        {
+          "name": "private",
+          "type": "bool"
+        },
+        {
+          "name": "public",
+          "type": "bool"
+        },
+        {
+          "name": "severity",
+          "type": "string"
+        },
+        {
+          "name": "successor",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd banlist add --private acme-internal 'acme-internal\\.example\\.com'"
+    },
+    {
+      "path": "abcd banlist list",
+      "sentence": "Render the banned-names layers, private entries by key only: Writes nothing; refuses --private and --public together.",
+      "usage": "abcd banlist list [--private | --public] [flags]",
+      "flags": [
+        {
+          "name": "private",
+          "type": "bool"
+        },
+        {
+          "name": "public",
+          "type": "bool"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": "abcd banlist migrate",
+      "sentence": "Key a legacy private store in place, every line matching what it matched: Writes the private store; refuses when no private store exists.",
+      "usage": "abcd banlist migrate [flags]",
+      "flags": [],
+      "inputs": []
+    },
+    {
+      "path": "abcd banlist remove",
+      "sentence": "Remove one banned-name entry from the layer a flag names: Writes that layer's store; refuses a public entry curated by hand.",
+      "usage": "abcd banlist remove --private|--public <key> [flags]",
+      "flags": [
+        {
+          "name": "private",
+          "type": "bool"
+        },
+        {
+          "name": "public",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd banlist remove --private acme-internal"
+    }
+  ]
+}

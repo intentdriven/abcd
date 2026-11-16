@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:embargo` private security advisories
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain embargo`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 When someone reports a security hole privately, `embargo` keeps it private
 until its fix ships, then closes or publishes it with the person. Each
 advisory becomes a private record in the **embargo store**, a worktree in the
@@ -321,3 +325,17 @@ too, you are in a source checkout of this repo, where — and only there —
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
 `go run ./cmd/abcd ahoy install` in a source checkout.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain embargo` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd embargo [flags]`
+- `abcd embargo check [flags]`
+- `abcd embargo close <iss-N|GHSA-id> [flags]`
+  - An example call is `abcd embargo close GHSA-xxxx-xxxx-xxxx`.
+- `abcd embargo intake [flags]`
+- `abcd embargo publish [flags]`
+- `abcd embargo triage <iss-N|GHSA-id> <verdict> [flags]`
+  - An example call is `abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by "<who decided>" --reason "the behaviour is the documented one"`.
+<!-- /generated -->

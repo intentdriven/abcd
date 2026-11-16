@@ -1,0 +1,21 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd rules",
+      "sentence": "Render the active rule set, or the one domain named: Writes nothing; refuses an unknown domain.",
+      "usage": "abcd rules [domain] [flags]",
+      "flags": [
+        {
+          "name": "fill",
+          "type": "number"
+        },
+        {
+          "name": "prompt",
+          "type": "string"
+        }
+      ],
+      "inputs": []
+    }
+  ]
+}

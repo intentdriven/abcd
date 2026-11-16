@@ -1,0 +1,18 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd announce",
+      "sentence": "Post a fixed-form announcement on the shared remote: Writes one commit to your status branch; refuses free text, a record not yet public and an embargoed one.",
+      "usage": "abcd announce <kind> <item> [flags]",
+      "flags": [
+        {
+          "name": "expires-in",
+          "type": "duration"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd announce merging iss-2609010000000001"
+    }
+  ]
+}

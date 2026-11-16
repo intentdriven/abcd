@@ -95,7 +95,7 @@ func TestExplainAnswersEveryCommandFromItsFactsWithinTheBound(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("--json: exit %d, stderr %q", code, errOut)
 			}
-			var doc explainDocument
+			var doc CommandFactsDocument
 			if err := json.Unmarshal([]byte(out), &doc); err != nil {
 				t.Fatalf("--json does not decode: %v\n%s", err, out)
 			}

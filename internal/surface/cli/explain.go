@@ -27,14 +27,6 @@ import (
 // saying how many more there are and that --json lists them all.
 const explainMaxLines = 40
 
-// explainDocument is the --json answer for one command: the facts' format
-// version and the command's facts. It is the shape the per-command JSON files
-// carry (spc-2610301431075964 approach 4), cut to the one command.
-type explainDocument struct {
-	FormatVersion int             `json:"format_version"`
-	Commands      []surface.Facts `json:"commands"`
-}
-
 // newExplainCommand builds the `explain` verb.
 func newExplainCommand(asJSON *bool) *cobra.Command {
 	var input string
@@ -77,13 +69,23 @@ func newExplainCommand(asJSON *bool) *cobra.Command {
 				}
 				return render(cmd.OutOrStdout(), *asJSON, shape, func(w io.Writer) { renderExplainInput(w, shape, hidden) })
 			}
-			doc := explainDocument{FormatVersion: surface.FactsFormatVersion, Commands: []surface.Facts{at}}
-			inherited := explainInherited(facts, at.Path)
-			return render(cmd.OutOrStdout(), *asJSON, doc, func(w io.Writer) {
-				for _, line := range explainLines(at, hidden, inherited) {
-					fmt.Fprintln(w, line)
+			// The --json answer for one command is the per-command files'
+			// document (spc-2610301431075964 approach 4) cut to the one
+			// command, and written by the files' own encoder, with no HTML
+			// escaping, so it is byte for byte that command's slice of its
+			// file and a usage line's <file> reads as written.
+			if *asJSON {
+				data, err := EncodeCommandFacts(CommandFactsDocument{FormatVersion: surface.FactsFormatVersion, Commands: []surface.Facts{at}})
+				if err != nil {
+					return err
 				}
-			})
+				_, err = cmd.OutOrStdout().Write(data)
+				return err
+			}
+			for _, line := range explainLines(at, hidden, explainInherited(facts, at.Path)) {
+				fmt.Fprintln(cmd.OutOrStdout(), line)
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&input, "input", "",

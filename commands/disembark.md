@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:disembark` — pack a lifeboat
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain disembark`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Mine a repository's record into a portable lifeboat at `<dest>`. The source is
 **never written** — a probe and plan read it read-only, and the pack writes only
 to the destination. This is the out-of-tree model (adr-35): point it at any repo,
@@ -319,5 +323,30 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain disembark` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd disembark [flags]`
+- `abcd disembark coverage <report.json>... [flags]`
+  - An example call is `abcd disembark coverage probe-report.json`.
+- `abcd disembark graveyard <lifeboat-dir> --lessons-json <file|-> [--dry-run] [flags]`
+  - Reads `--lessons-json`, the graveyard lessons, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain disembark graveyard --input lessons-json` prints its shape.
+  - An example call is `abcd disembark graveyard ../lifeboat --lessons-json lessons.json`.
+- `abcd disembark pack <repo> <dest> [flags]`
+  - An example call is `abcd disembark pack . ../lifeboat`.
+- `abcd disembark plan [repo] [flags]`
+- `abcd disembark press-release <lifeboat-dir> [--press-release-json <file|->] [--dry-run] [flags]`
+  - Reads `--press-release-json`, the lifeboat press release, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain disembark press-release --input press-release-json` prints its shape.
+  - An example call is `abcd disembark press-release ../lifeboat`.
+- `abcd disembark principles <lifeboat-dir> [--principles-json <file|->] [--dry-run] [flags]`
+  - Reads `--principles-json`, the lifeboat principles, at schema_version 2; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain disembark principles --input principles-json` prints its shape.
+  - An example call is `abcd disembark principles ../lifeboat`.
+- `abcd disembark probe [repo] [flags]`
+- `abcd disembark review <lifeboat-dir> <source-repo> [--review-json <file|->] [--dry-run] [flags]`
+  - Reads `--review-json`, the lifeboat review verdict, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain disembark review --input review-json` prints its shape.
+  - An example call is `abcd disembark review ../lifeboat .`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

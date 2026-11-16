@@ -1,0 +1,74 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd scribe",
+      "sentence": "Assemble a ledger scribe's context and ingest what it transcribed: Writes nothing bare; refuses an unknown sub-verb.",
+      "usage": "abcd scribe [flags]",
+      "flags": [],
+      "inputs": [],
+      "subcommands": [
+        "assemble",
+        "ingest"
+      ]
+    },
+    {
+      "path": "abcd scribe assemble",
+      "sentence": "Build a scribe session's context from the ledger and supplied dispositions: Writes it and a hashed manifest; refuses an uningested run or a symlinked ledger.",
+      "usage": "abcd scribe assemble --run <rdg-N> --dispositions <path> [flags]",
+      "flags": [
+        {
+          "name": "dispositions",
+          "type": "string"
+        },
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "out",
+          "type": "string"
+        },
+        {
+          "name": "run",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd scribe assemble --run rdg-2609010000000001 --dispositions dispositions.md"
+    },
+    {
+      "path": "abcd scribe ingest",
+      "sentence": "Validate a scribe's output against the supplied dispositions: Writes what it transcribed through the capture verbs; refuses anything the scribe authored.",
+      "usage": "abcd scribe ingest --scribe-json <path> --dispositions <path> [--dry-run] [flags]",
+      "flags": [
+        {
+          "name": "context",
+          "type": "string"
+        },
+        {
+          "name": "dispositions",
+          "type": "string"
+        },
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "scribe-json",
+          "type": "string"
+        }
+      ],
+      "inputs": [
+        {
+          "flag": "scribe-json",
+          "kind": "json",
+          "name": "scribe output",
+          "schema_version": 1,
+          "version_in": "_type"
+        }
+      ],
+      "example": "abcd scribe ingest --scribe-json scribe.json --dispositions dispositions.md"
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd",
+      "sentence": "Render the status board, or say what one record id is and its next move: Writes nothing; refuses any other positional argument.",
+      "usage": "abcd [<record-id>] [flags]",
+      "flags": [
+        {
+          "name": "agent",
+          "type": "bool"
+        },
+        {
+          "name": "format",
+          "type": "string"
+        },
+        {
+          "name": "json",
+          "type": "bool",
+          "persistent": true
+        },
+        {
+          "name": "no-color",
+          "type": "bool"
+        },
+        {
+          "name": "version",
+          "type": "bool"
+        },
+        {
+          "name": "view",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "subcommands": [
+        "agents",
+        "ahoy",
+        "announce",
+        "banlist",
+        "build",
+        "capture",
+        "checklist",
+        "dashboard",
+        "decide",
+        "disembark",
+        "docs",
+        "drain",
+        "embargo",
+        "embark",
+        "explain",
+        "guard",
+        "history",
+        "ideate",
+        "identity",
+        "implement",
+        "inbox",
+        "intent",
+        "lab",
+        "land",
+        "landings",
+        "launch",
+        "library",
+        "lint",
+        "memory",
+        "mode",
+        "peers",
+        "reading",
+        "reflect",
+        "report",
+        "reserve",
+        "rules",
+        "scribe",
+        "session",
+        "site",
+        "spec",
+        "status",
+        "statusline",
+        "sweep",
+        "update"
+      ]
+    }
+  ]
+}

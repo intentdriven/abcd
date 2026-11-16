@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:update`
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain update`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Complete a chosen update of the PATH-installed binary. The verb's documented
 meaning IS the fetch: it resolves the latest release (or takes an explicit
 tag), verifies the platform binary against the same release's
@@ -259,5 +263,13 @@ each with the record it cites, then what waits in this repository. It writes
 nothing, so it can be shown again at any time, and it is the way to see the
 summary on a host that runs no session-start hook. `--answer` takes neither
 `--full` nor `--seen`.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain update` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd update [tag] [flags]`
+- `abcd update news [flags]`
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

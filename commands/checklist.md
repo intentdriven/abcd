@@ -8,6 +8,10 @@ user-invocable: false
 
 # `/abcd:checklist`
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain checklist`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 The working copy's checklist: what this session is working on, what it waits
 on and what it has promised. It lives in `.abcd/.work.local/checklist.json`,
 one file per working copy, so a resumed or a fresh session in the same copy
@@ -134,5 +138,19 @@ too, you are in a source checkout of this repo, where — and only there —
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
 `go run ./cmd/abcd ahoy install` in a source checkout.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain checklist` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd checklist [flags]`
+- `abcd checklist add "<title>" [flags]`
+  - An example call is `abcd checklist add "Regenerate the CLI reference"`.
+- `abcd checklist render [flags]`
+- `abcd checklist set <id> --state <state> [flags]`
+  - An example call is `abcd checklist set regenerate-the-cli-reference --state done`.
+- `abcd checklist show <id> [flags]`
+  - An example call is `abcd checklist show regenerate-the-cli-reference`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

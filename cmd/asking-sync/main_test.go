@@ -139,12 +139,16 @@ func TestRenderStatesEveryAskingRule(t *testing.T) {
 }
 
 // TestSyncRefusesAPageWithoutOneBlock: a page with no block, an unclosed
-// block, or two blocks is a fault, never a guess about where to write.
+// block (at the page's end, or before the next generated block opens, whose
+// end marker would otherwise be taken and the text between deleted), or two
+// blocks is a fault, never a guess about where to write.
 func TestSyncRefusesAPageWithoutOneBlock(t *testing.T) {
 	for name, page := range map[string]string{
 		"no block": "# Page\n\nText.\n",
 		"unclosed": "# Page\n\n" + beginMarker + "\nold\n",
-		"two":      beginMarker + "\n" + endMarker + "\n" + beginMarker + "\n" + endMarker + "\n",
+		"unclosed before the next block": "# Page\n\n" + beginMarker + "\nold\n\nHand-written text.\n\n" +
+			"<!-- generated: command-facts -->\nfacts\n" + endMarker + "\n",
+		"two": beginMarker + "\n" + endMarker + "\n" + beginMarker + "\n" + endMarker + "\n",
 	} {
 		if _, err := sync([]byte(page), question.Default); err == nil {
 			t.Errorf("%s: sync accepted the page", name)

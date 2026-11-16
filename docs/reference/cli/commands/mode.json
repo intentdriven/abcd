@@ -1,0 +1,48 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd mode",
+      "sentence": "Print or set whose answer the agent loop is waiting on: Writes the state only when setting it; refuses an unknown state or a checkout with no local tier.",
+      "usage": "abcd mode [<state>] [flags]",
+      "flags": [],
+      "inputs": [],
+      "subcommands": [
+        "autonomous",
+        "back",
+        "queue"
+      ]
+    },
+    {
+      "path": "abcd mode autonomous",
+      "sentence": "Record that the person is away and sessions work on, until a time or open-ended: Writes the away record; refuses an end already past or past seven days.",
+      "usage": "abcd mode autonomous [flags]",
+      "flags": [
+        {
+          "name": "hold-pushes",
+          "type": "bool"
+        },
+        {
+          "name": "until",
+          "type": "string"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": "abcd mode back",
+      "sentence": "End the away mode, printing what was queued and recorded one line each: Writes its ending whatever the record's or lock's state; refuses outside a git checkout.",
+      "usage": "abcd mode back [flags]",
+      "flags": [],
+      "inputs": []
+    },
+    {
+      "path": "abcd mode queue",
+      "sentence": "Queue one step for the person's return while they are away: Writes the away record; refuses when no away record holds.",
+      "usage": "abcd mode queue <step> [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd mode queue \"approve the embargo close for the example advisory\""
+    }
+  ]
+}

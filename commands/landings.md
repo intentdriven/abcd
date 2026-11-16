@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:landings`
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain landings`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Say how each change landed on the default branch: who or what let it in, and
 under which rule. The verb reads history as this checkout last fetched it. It
 fetches nothing and pushes nothing; its one network act is the forge client
@@ -163,3 +167,10 @@ too, you are in a source checkout of this repo, where — and only there —
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
 `go run ./cmd/abcd ahoy install` in a source checkout.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain landings` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd landings [commit] [flags]`
+<!-- /generated -->

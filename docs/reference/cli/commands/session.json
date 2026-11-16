@@ -1,0 +1,126 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd session",
+      "sentence": "Set up live brief sessions, start one here, or run, deploy or write the team's relay and page: Writes nothing bare; refuses an unknown sub-verb.",
+      "usage": "abcd session [flags]",
+      "flags": [],
+      "inputs": [],
+      "subcommands": [
+        "blueprint",
+        "page",
+        "serve",
+        "setup",
+        "start"
+      ]
+    },
+    {
+      "path": "abcd session blueprint",
+      "sentence": "Write the team relay's Render blueprint and Dockerfile, pinned to a release: Writes render.yaml and .abcd/relay/; refuses an edited file or no GitHub origin.",
+      "usage": "abcd session blueprint [flags]",
+      "flags": [
+        {
+          "name": "origin",
+          "type": "list"
+        },
+        {
+          "name": "relay-origin",
+          "type": "string"
+        },
+        {
+          "name": "release",
+          "type": "string"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": "abcd session page",
+      "sentence": "Write the brief session's static page and its editor bundle into a directory: Writes only the page's six files; refuses a directory holding anything else.",
+      "usage": "abcd session page [flags]",
+      "flags": [
+        {
+          "name": "base-path",
+          "type": "string",
+          "default": "/"
+        },
+        {
+          "name": "out",
+          "type": "string"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": "abcd session serve",
+      "sentence": "Run the brief session relay in the foreground, on loopback by default: Writes nothing; refuses a bad --listen, or no repository to serve beyond loopback.",
+      "usage": "abcd session serve [flags]",
+      "flags": [
+        {
+          "name": "behind-proxy",
+          "type": "bool"
+        },
+        {
+          "name": "client-id",
+          "type": "string"
+        },
+        {
+          "name": "listen",
+          "type": "string",
+          "default": "127.0.0.1:8787"
+        },
+        {
+          "name": "origin",
+          "type": "list"
+        },
+        {
+          "name": "owner",
+          "type": "list"
+        },
+        {
+          "name": "repo",
+          "type": "list"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": "abcd session setup",
+      "sentence": "Set up live brief sessions with the team's own GitHub sign-in app: Writes its client id, the answer and the blueprint; refuses no GitHub origin or no answer.",
+      "usage": "abcd session setup [flags]",
+      "flags": [
+        {
+          "name": "relay-origin",
+          "type": "string"
+        },
+        {
+          "name": "release",
+          "type": "string"
+        },
+        {
+          "name": "where",
+          "type": "string"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": "abcd session start",
+      "sentence": "Start a live brief session on this computer, over your tailnet: Writes only an answer it asks; refuses no recorded GitHub App, no Tailscale or no GitHub origin.",
+      "usage": "abcd session start [flags]",
+      "flags": [
+        {
+          "name": "client-id",
+          "type": "string"
+        },
+        {
+          "name": "port",
+          "type": "int",
+          "default": "8787"
+        }
+      ],
+      "inputs": []
+    }
+  ]
+}

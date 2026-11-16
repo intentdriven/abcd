@@ -8,6 +8,10 @@ user-invocable: false
 
 # `/abcd:guard` shell-hazard check
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain guard`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Decide whether a shell command is safe to run, using abcd's hazard registry —
 the bundled hazard entries merged with this repo's `.abcd/guard.json`. The
 check performs **zero writes**. The hook writes the record of a branch the
@@ -1384,5 +1388,19 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 
 Whichever rung fires, the candidate still goes in on stdin via the
 quoted-delimiter heredoc shown above.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain guard` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd guard [flags]`
+- `abcd guard allow --once --command <line> [flags]`
+  - An example call is `abcd guard allow --once --command 'git branch -D feat/done'`.
+- `abcd guard approve --dir <working-tree> --base <commit> [--run-dir <dir>]... [flags]`
+  - An example call is `abcd guard approve --dir /work/example-repo --base 0123456789abcdef0123456789abcdef01234567`.
+- `abcd guard check [flags]`
+- `abcd guard hook [flags]`
+- `abcd guard question [<file>|-] [flags]`
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

@@ -1,0 +1,65 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd memory",
+      "sentence": "Count the memory notes in both layers and name any layer it cannot read: Writes nothing; refuses an unknown sub-verb.",
+      "usage": "abcd memory [flags]",
+      "flags": [],
+      "inputs": [],
+      "subcommands": [
+        "add",
+        "list",
+        "remove"
+      ]
+    },
+    {
+      "path": "abcd memory add",
+      "sentence": "Write one memory note, its body read from stdin: Writes ~/.abcd.noindex/memory.json only; refuses a secret, a network address or a private name.",
+      "usage": "abcd memory add --title <title> --recall <word> --by <vendor:model> [flags]",
+      "flags": [
+        {
+          "name": "by",
+          "type": "string"
+        },
+        {
+          "name": "everywhere",
+          "type": "bool"
+        },
+        {
+          "name": "moved-from-host",
+          "type": "bool"
+        },
+        {
+          "name": "recall",
+          "type": "list"
+        },
+        {
+          "name": "session",
+          "type": "string"
+        },
+        {
+          "name": "title",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd memory add --title \"The tests need the race flag\" --recall test --recall race --by Example:model-1 < note.txt"
+    },
+    {
+      "path": "abcd memory list",
+      "sentence": "List every memory note with its body, recall words, stamps and reach: Writes nothing; refuses any argument.",
+      "usage": "abcd memory list [flags]",
+      "flags": [],
+      "inputs": []
+    },
+    {
+      "path": "abcd memory remove",
+      "sentence": "Remove one personal memory note, whoever wrote it: Writes ~/.abcd.noindex/memory.json only; refuses a note in the project's file.",
+      "usage": "abcd memory remove <mem-id> [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd memory remove mem-2609010000000001"
+    }
+  ]
+}

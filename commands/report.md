@@ -8,6 +8,10 @@ user-invocable: false
 
 # `/abcd:report` — report back to abcd
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain report`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Use this when working in a repository abcd manages turns up something about
 **abcd itself**: a verb that misbehaved, a refusal that was wrong, a page that
 said one thing while the binary did another, or an enhancement worth proposing.
@@ -77,5 +81,12 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain report` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd report [<file>|-] [flags]`
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

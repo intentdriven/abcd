@@ -1,0 +1,12 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd statusline",
+      "sentence": "Render abcd's status-line row from the host's payload on stdin: Writes nothing; never refuses.",
+      "usage": "abcd statusline [flags]",
+      "flags": [],
+      "inputs": []
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd embark",
+      "sentence": "Unpack a verified lifeboat into a target repository, probing first: Writes only its record families and marker block; refuses the whole write on any conflict.",
+      "usage": "abcd embark [flags]",
+      "flags": [],
+      "inputs": [],
+      "subcommands": [
+        "from",
+        "lessons",
+        "probe"
+      ]
+    },
+    {
+      "path": "abcd embark from",
+      "sentence": "Unpack a lifeboat's record families into a target repository: Writes those families and the marker block; refuses the whole write on any conflict.",
+      "usage": "abcd embark from <lifeboat-dir> [target-dir] [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd embark from ../lifeboat"
+    },
+    {
+      "path": "abcd embark lessons",
+      "sentence": "Rank a lifeboat's retrospective lessons against the new voyage's brief: Writes only shadow pairs to the lab home; refuses a lifeboat that fails its manifest.",
+      "usage": "abcd embark lessons <lifeboat-dir> [target-dir] [flags]",
+      "flags": [
+        {
+          "name": "brief",
+          "type": "string"
+        },
+        {
+          "name": "scores",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd embark lessons ../lifeboat"
+    },
+    {
+      "path": "abcd embark probe",
+      "sentence": "Report what a lifeboat would write into a target, coverage blanks first: Writes nothing; refuses a lifeboat whose manifest does not verify.",
+      "usage": "abcd embark probe <lifeboat-dir> [target-dir] [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd embark probe ../lifeboat"
+    }
+  ]
+}
