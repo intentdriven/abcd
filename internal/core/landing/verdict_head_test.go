@@ -314,6 +314,8 @@ func TestARecordIDOnTheVerdictLineNamesNoOtherCommit(t *testing.T) {
 		"a twenty-digit record id":  "SHIP " + sha + " \u2014 iss-26110608353721410000",
 		"another commit after it":   "SHIP " + sha + " — the record's resolved_by matches " + other,
 		"a short run after it":      "SHIP " + sha + " — iss-2611060835372141abc, 2611060835372141",
+		"the head in underscores":   "**SHIP** _" + sha + "_",
+		"the head in capitals":      "SHIP — " + strings.ToUpper(sha),
 	} {
 		t.Run(name, func(t *testing.T) {
 			text := "### Verdict\n\n" + line + "\n"
@@ -332,11 +334,19 @@ func TestARecordIDOnTheVerdictLineNamesNoOtherCommit(t *testing.T) {
 		"a digest's length of digits after a family": "SHIP — iss-" + strings.Repeat("1234567890", 6) + "1234 at " + sha,
 		"the head abbreviated beside a record":       "SHIP " + sha[:9] + " — fixes iss-2611060835372141",
 		"the head abbreviated after a family":        "SHIP iss-" + sha[:9],
+		"a twenty-one-digit run after a family":      "SHIP — iss-" + strings.Repeat("1234567", 3) + " at " + sha,
+		"another commit in underscores first":        "**SHIP** _" + other + "_ — " + sha,
+		"another commit in capitals first":           "SHIP — " + strings.ToUpper(other) + " " + sha,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if word, err := ReadVerdict("### Verdict\n\n"+line+"\n", sha); err == nil {
 				t.Fatalf("ReadVerdict = %q; want the line refused", word)
 			}
 		})
+	}
+	// A Head: line names the head, and the verdict line under it names
+	// another in underscores: the verdict is of that other.
+	if word, err := ReadVerdict("### Verdict\n\nHead: "+sha+"\n**SHIP** _"+other+"_\n", sha); err == nil {
+		t.Fatalf("ReadVerdict = %q; want a Head: line over another commit in underscores refused", word)
 	}
 }
