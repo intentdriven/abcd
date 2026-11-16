@@ -103,7 +103,7 @@ func (f *landFixture) parkIssueLane(t *testing.T) Lane {
 	dir := filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), f.runID, l.ID)
 	sha := laneCommit(t, repo, l, "fix.txt")
 	rc := goodReceipt(t, f.runID, l, dir, sha)
-	rc.Model = "claude-test-5"
+	rc.Model = "claude-mythos-5"
 	rc.Resolves = []Resolution{{Issue: f.issue, Commit: sha, Note: "the page names the flag", Impact: "fix",
 		Grounds: "pursued: the page names the flag; shown wrong if it still does not"}}
 	if _, err := Receipt(repo.Root(), f.runID, writeReceipt(t, dir, rc), f.stages, Options{}); err != nil {

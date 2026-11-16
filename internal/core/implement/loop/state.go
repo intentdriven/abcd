@@ -323,10 +323,33 @@ const lockFileName = ".lock"
 // refused naming it. Releases that write version 25 refuse a version-26 file as
 // a newer abcd's before any strict decode.
 //
+// Version 27 added the writers' and the reviewer's models
+// (itd-2610301750162657, spc-2610301925429250 step 4): a reviewer's
+// `writer_models`, every model that wrote into the lane up to the round, in the
+// order they wrote; `reviewer_model`, the model it was asked for, or the one
+// its runner reported once it returned; `reviewer_named`, the model its return
+// named where that is not the same model; and `models_unrecorded`, set when a
+// file of an earlier version is read on a reviewer it had already handed out.
+// The review set gained `classes`, the whole class map the run started on,
+// from which a reviewer whose class holds a writer's model takes another, and
+// `unlaunchable`, the classes a drive's runners could not launch for each role
+// when the run started. A receipt record gained `named`, the model its receipt
+// named before the landing replaced it, and a lane `writers_launched`, each
+// model a runner was started on for a role that writes into it. Version 26 is its strict subset, read
+// as a run whose reviewers were dispatched before the comparison, and written
+// back at version 27; a file of version 26 or lower carrying any of them is not
+// one its version wrote, and is refused naming it. Releases that write version
+// 26 refuse a version-27 file as a newer abcd's before any strict decode, and
+// leave the run to the abcd that wrote it.
+//
 // A version raises when the abcd driving the run writes it. A lane's own abcd
 // may be a version ahead of its driver, and what it saves leaves the version
 // where it was (mutateReservation, iss-2611020719494343).
-const SchemaVersion = 26
+const SchemaVersion = 27
+
+// schemaVersionUnmodelled is the last version before a reviewer kept the
+// writer's model and its own: read, never written.
+const schemaVersionUnmodelled = 26
 
 // schemaVersionUnadmitted is the last version before a run kept the rule its lanes
 // were admitted under: read, never written.
@@ -574,6 +597,9 @@ type State struct {
 	// Frozen is a trial's frozen commit (Options.Frozen), which its lanes are
 	// cut from; "" on every other run.
 	Frozen string `json:"frozen,omitempty"`
+	// written is the step a save's callback registered (afterWritten) to run
+	// once storeState has written this state; it is never stored.
+	written func(st *State, rewrite func() error)
 }
 
 // Transcript is one transcript the run record captured into the history store.
@@ -692,6 +718,12 @@ type Lane struct {
 	// the implement stage's and each fix round's, with the model each runner
 	// reported (criterion 10).
 	Receipts []ReceiptRecord `json:"receipts,omitempty"`
+	// Launched are the models a runner was started on for the lane's
+	// implementer, fix and conflict-resolution roles, each with how many of
+	// the lane's receipts were verified before it was started (reviewers.go):
+	// every one is a writer of the lane from its next receipt on, whether or
+	// not a receipt came back from it.
+	Launched []LaunchedWriter `json:"writers_launched,omitempty"`
 	// Resolves are the captures the lane's receipts declared fixed, each with
 	// the lane's commit that fixed it; the landing resolves each (piece 9).
 	Resolves []Resolution `json:"resolves,omitempty"`
@@ -721,6 +753,20 @@ type ReceiptRecord struct {
 	// asked for, the one that ran and the model it reported. Absent when the
 	// host ran it, so a host-run receipt reads as it always has.
 	Route *runner.RouteRecord `json:"route,omitempty"`
+	// Named is the model the receipt named when the landing replaced Model
+	// with one its trailer can name (rereadModels), kept only where the
+	// comparison can read it (keptName); empty while Model is the receipt's
+	// own. The writers of the lane are read from it and from Model alike
+	// (laneWriters).
+	Named string `json:"named,omitempty"`
+}
+
+// LaunchedWriter is one model a runner was started on for a role that writes
+// into the lane, and After how many of the lane's receipts were verified
+// before it was started.
+type LaunchedWriter struct {
+	Model string `json:"model"`
+	After int    `json:"after"`
 }
 
 // HandBack is a lane stopped and handed back to the person, with what the last
@@ -852,6 +898,23 @@ type ValidatorRun struct {
 	// reviewer is out, and on a verdict recorded before version 24.
 	Located  *int      `json:"located,omitempty"`
 	Findings []Finding `json:"findings,omitempty"`
+	// WriterModels are every model that wrote into the lane up to the round
+	// the reviewer judges, in the order they wrote (laneWriters): for each
+	// implementer's receipt, the model its runner reported and the one the
+	// receipt named, where each is known. ReviewerModel is the model the
+	// reviewer was asked for, its class's or the class the loop took instead
+	// when that class held a writer's model (reviewers.go), and once it
+	// returned the model its runner reported, where one did; for a reviewer no
+	// class was asked of, the model its runner reported, else the one its
+	// return named. ReviewerNamed is the model its return named, kept only
+	// where that is not the same model as ReviewerModel. All three are written
+	// on the code-review roles alone. ModelsUnrecorded marks a reviewer an
+	// earlier version had handed out before any of them were recorded: it is
+	// set only as such a file is read, and keeps none of them.
+	WriterModels     []string `json:"writer_models,omitempty"`
+	ReviewerModel    string   `json:"reviewer_model,omitempty"`
+	ReviewerNamed    string   `json:"reviewer_named,omitempty"`
+	ModelsUnrecorded bool     `json:"models_unrecorded,omitempty"`
 }
 
 // The statuses of a reviewer's model.
@@ -1325,6 +1388,7 @@ var versionChecks = []versionCheck{
 	{highest: schemaVersionUnrenamed, carries: State.renamed},
 	{highest: schemaVersionUnrenamed, carries: State.efforted},
 	{highest: schemaVersionUnadmitted, carries: carrying("an admission", func(s State) bool { return s.Admitted != nil })},
+	{highest: schemaVersionUnmodelled, carries: State.modelled},
 }
 
 // unwritten names the first thing the state carries that a file stating
@@ -1528,10 +1592,11 @@ func readListedStated(root *os.Root, runID string) (State, int, error) {
 				"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 		}
 		st.SchemaVersion = SchemaVersion
-	case st.SchemaVersion == schemaVersionUnadmitted:
-		// Read as the current version with no admission, its class labels
-		// already the names it wrote; the next write carries it, and this read
-		// writes nothing.
+	case st.SchemaVersion >= schemaVersionUnadmitted && st.SchemaVersion <= schemaVersionUnmodelled:
+		// Read as the current version, with no admission at version 25 and no
+		// reviewer's models or class map at either, its class labels already
+		// the names it wrote; the next write carries it, and this read writes
+		// nothing.
 		st.SchemaVersion = SchemaVersion
 	case st.SchemaVersion != SchemaVersion:
 		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d to %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),
@@ -1577,9 +1642,15 @@ func readListedStated(root *os.Root, runID string) (State, int, error) {
 	// names for its role at its index, so a hand edit never reaches a
 	// runner's request or an awaiting payload with a model the run did not
 	// resolve for that class.
+	// A reviewer an earlier version handed out records no models: it is
+	// marked so as such a file is read, and only then (markUnrecorded).
+	if stated < SchemaVersion {
+		st.markUnrecorded()
+	}
 	if !st.reviewersWritten() {
 		return State{}, 0, refuse("state", "", "", rel+" carries a reviewer the loop never writes: an index past its role's reviewers, "+
-			"a class or model other than the one the run's review set names for that reviewer, "+
+			"a class or model other than the one the run's review set names for that reviewer or the move from it takes, "+
+			"writers other than the lane's receipts give, a reviewer's model that counts as a writer's or names no model where one is due, "+
 			"or a model status other than asked, reported, or unsent on a review the reviewer route answered",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
@@ -1766,19 +1837,55 @@ func serialCarries(st State, version int) error {
 // The repository and tool text the state carries is stored masked
 // (State.masked, iss-2610121542240257), and no larger than its read accepts
 // (stateData).
+//
+// Once the write has returned without error, the step the save's callback
+// registered (afterWritten) runs, still under the caller's lock, and is handed
+// the state as written and a rewrite that writes it again in the same way; what
+// the step does after that write, and whether its rewrite is written, is the
+// step's to report, so the save itself has succeeded.
 func storeState(root *os.Root, st State, right wholeSave) error {
 	if err := right.covers(root, st.RunID); err != nil {
 		return err
 	}
-	data, err := stateData(st)
-	if err != nil {
+	write := func() error {
+		data, err := stateData(st)
+		if err != nil {
+			return err
+		}
+		rel := StateRelPath(st.RunID)
+		if err := fsutil.WriteFileAtomicInRoot(root, rel, data, filePerm); err != nil {
+			return fmt.Errorf("writing %s: %w", rel, err)
+		}
+		return nil
+	}
+	if err := write(); err != nil {
 		return err
 	}
-	rel := StateRelPath(st.RunID)
-	if err := fsutil.WriteFileAtomicInRoot(root, rel, data, filePerm); err != nil {
-		return fmt.Errorf("writing %s: %w", rel, err)
+	if step := st.written; step != nil {
+		st.written = nil
+		step(&st, write)
 	}
 	return nil
+}
+
+// afterWritten registers step to run once, after storeState has written st
+// without error and before the lock the save took is let go: a save whose
+// callback refuses, writes nothing, or whose write fails, never runs it. The
+// step is handed the state as written; a change it makes is written only by
+// its own call of rewrite, a second write under the same hold, whose error the
+// step keeps: storeState returns nil whatever the step's rewrite did, so a
+// step that does not keep and report that error itself loses it
+// (releaseAfterWrite keeps it as handBackRelease.unwritten). A second registration runs after the first. Only a whole save
+// (saveRun, storeState) runs a step; a reservation save (saveRecord) does not.
+func (st *State) afterWritten(step func(st *State, rewrite func() error)) {
+	if prev := st.written; prev != nil {
+		st.written = func(s *State, rewrite func() error) {
+			prev(s, rewrite)
+			step(s, rewrite)
+		}
+		return
+	}
+	st.written = step
 }
 
 // stateData is the file storeState stores for st: masked, with located
@@ -1790,6 +1897,9 @@ func storeState(root *os.Root, st State, right wholeSave) error {
 func stateData(st State) ([]byte, error) {
 	m := st.masked()
 	m.keepLatestFindings()
+	if err := modelsCheck(m); err != nil {
+		return nil, err
+	}
 	for {
 		data, err := json.MarshalIndent(m, "", "  ")
 		if err != nil {
@@ -1800,6 +1910,33 @@ func stateData(st State) ([]byte, error) {
 			return data, stateFits(st.RunID, data)
 		}
 	}
+}
+
+// modelsCheck is the models check every save makes (modelsSavable); a test
+// stands in for it to refuse a save the loop's own changes never leave
+// unreadable. It is the package's, as its other seams are, so a test that swaps
+// it must not run in parallel.
+var modelsCheck = modelsSavable
+
+// modelsSavable refuses a save of a state whose stored models its own read
+// would refuse: the review set's checks (ReviewSet.written) and the
+// reviewers' (reviewersUnwritten, with modelsWritten and writersAt), run on
+// exactly what the save would write. The change that would leave such a file
+// is refused as that change, naming where, and the file already there
+// stands; it is never written to be refused later.
+func modelsSavable(m State) error {
+	what := ""
+	switch {
+	case m.Review != nil && !m.Review.written():
+		what = "its review set is one the loop never writes"
+	default:
+		what = m.reviewersUnwritten()
+	}
+	if what == "" {
+		return nil
+	}
+	return refuse("state", "", "", fmt.Sprintf("%s was not saved: the change would leave %s, which its own read refuses; nothing was written, and the file already there stands",
+		StateRelPath(m.RunID), what), "this is a fault in abcd, so report it")
 }
 
 // stateFits refuses a state file past maxStateBytes, the most its read

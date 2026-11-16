@@ -798,7 +798,9 @@ func autoPlanDoneMove(st State) string {
 }
 
 // releaseAutoPlan releases an auto-plan run's reservation once its lane is
-// done or handed back: the run builds nothing, so nothing else will.
+// done or handed back: the run builds nothing, so nothing else will. It runs
+// only in the step a save makes once it has written the lane so
+// (releaseAfterWrite), so a save refused or failed leaves it held.
 func releaseAutoPlan(repoRoot string, st *State, now time.Time) {
 	if st.ReservedAt == nil || !st.autoPlanning() {
 		return
@@ -806,7 +808,7 @@ func releaseAutoPlan(repoRoot string, st *State, now time.Time) {
 	clause, failed := releaseReservation(repoRoot, st.Key, "", now)
 	stage := StageReservationReleased
 	if failed {
-		clause += ", so it lapses with its lease"
+		clause += ", so it lapses with its lease once nothing renews it; " + gateWaiterRenews
 		stage = StageReservationReleaseFailed
 	}
 	st.Record = append(st.Record, Entry{At: now, Stage: stage, Note: clause})

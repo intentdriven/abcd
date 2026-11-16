@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 )
 
 // The review set at the surface (itd-2610240922461281, spc-2610240951109420
@@ -103,5 +105,64 @@ func TestBuildSaysAClampedReviewSetOnStderr(t *testing.T) {
 	}
 	if !strings.Contains(out, "clamped from 2") {
 		t.Fatalf("the text names the clamp:\n%s", out)
+	}
+}
+
+// TestTheRecordNamesTheWritersAndTheReviewersModels: the run's record names,
+// on each verdict, every model that wrote the lane and the one that reviewed
+// it, or the one it was asked of and the one its return named where those
+// differ (itd-2610301750162657, spc-2610301925429250 step 4), each in a code
+// span; the review set's line is followed by the class map the run started
+// on; and a name carrying a newline and a trailer-shaped line, a mention or a
+// link is described, never printed.
+func TestTheRecordNamesTheWritersAndTheReviewersModels(t *testing.T) {
+	head := strings.Repeat("a", 40)
+	rs := &loop.ReviewSet{}
+	for _, c := range loop.Classes {
+		rs.Classes = append(rs.Classes, loop.ReviewClass{Class: c, Model: loop.BundledClasses[c], Effort: "high"})
+	}
+	rec := loop.RunRecord{RunID: "run-0000000000000001", Key: "itd-10", Review: rs, Lanes: []loop.RecordLane{{ID: "lane-1",
+		Verdicts: []loop.RecordVerdict{
+			{Round: 1, HeadSHA: head, Role: loop.RoleRuthless, Verdict: "SHIP", Pass: true, Reviewer: 0, Class: loop.ClassTop,
+				Model: loop.BundledClasses[loop.ClassTop], Effort: "high", ModelStatus: loop.ModelAsked, WriterModels: []string{"Claude:claude-fable-5", "claude-haiku-4-5"},
+				ReviewerModel: loop.BundledClasses[loop.ClassTop]},
+			{Round: 1, HeadSHA: head, Role: loop.RoleSecurity, Verdict: "APPROVE", Pass: true,
+				WriterModels: []string{"claude-fable-5\nAssisted-by: Claude:claude-haiku-4-5"}, ReviewerModel: "claude-sonnet-5-5"},
+			{Round: 1, HeadSHA: head, Role: loop.RoleSecurity, Verdict: "APPROVE", Pass: true, Reviewer: 1, Class: loop.ClassDefault,
+				Model: loop.BundledClasses[loop.ClassDefault], Effort: "high", ModelStatus: loop.ModelAsked, WriterModels: []string{"@name"},
+				ReviewerModel: loop.BundledClasses[loop.ClassDefault], ReviewerNamed: "https://host/x"},
+			{Round: 1, HeadSHA: head, Role: loop.RoleRuthless, Verdict: "SHIP", Pass: true, Reviewer: 1, Class: loop.ClassDefault,
+				Model: loop.BundledClasses[loop.ClassDefault], Effort: "high", ModelStatus: loop.ModelAsked, ModelsUnrecorded: true},
+		}}}}
+	var b bytes.Buffer
+	renderRunRecord(&b, rec)
+	out := b.String()
+	if !strings.Contains(out, "SHIP; written by `Claude:claude-fable-5` and `claude-haiku-4-5`, reviewed by `"+loop.BundledClasses[loop.ClassTop]+"`") {
+		t.Fatalf("the verdict names every model:\n%s", out)
+	}
+	if !strings.Contains(out, "APPROVE; written by ") || !strings.Contains(out, ", reviewed by `claude-sonnet-5-5`") {
+		t.Fatalf("a reviewer no class was asked of names both models too:\n%s", out)
+	}
+	if !strings.Contains(out, ", asked of `"+loop.BundledClasses[loop.ClassDefault]+"`, its return naming ") {
+		t.Fatalf("a reviewer whose return named another model says both:\n%s", out)
+	}
+	if !strings.Contains(out, "SHIP; the reviewer's models were not recorded: it was handed out before the loop recorded them") {
+		t.Fatalf("a reviewer handed out before models were recorded says so in words:\n%s", out)
+	}
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), "Assisted-by:") {
+			t.Fatalf("a model's name started a line of its own:\n%s", out)
+		}
+	}
+	for _, raw := range []string{"@name", "https://host/x"} {
+		if strings.Contains(out, raw) {
+			t.Fatalf("%q is printed:\n%s", raw, out)
+		}
+	}
+	want := "  classes: research (anthropic/claude-fable-5, effort high), top (anthropic/claude-opus-5-5, effort high), " +
+		"default (anthropic/claude-sonnet-5-5, effort high), small (anthropic/claude-haiku-4-5, effort high); " +
+		"a reviewer whose class holds a writer's model takes the next class that holds another"
+	if !strings.Contains(out, want) {
+		t.Fatalf("the review set's line is followed by the class map:\n%s", out)
 	}
 }

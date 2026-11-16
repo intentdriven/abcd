@@ -152,6 +152,17 @@ func TestTheDrivesEndNamesTheRunTheLaneAndTheResume(t *testing.T) {
 	if !strings.Contains(b.String(), "2026-11-06T09:00:00Z") {
 		t.Errorf("the kill names when the reservation lapses:\n%s", b.String())
 	}
+	// The run a kill leaves is still in progress, so a step and a drain
+	// renew it as the waiter does; `abcd implement status` does not renew a
+	// lane parked at its pull request, which a kill can leave too.
+	if strings.Contains(b.String(), "implement status") {
+		t.Errorf("the kill's lapse line names `abcd implement status`:\n%s", b.String())
+	}
+	for _, want := range []string{"a step", "`abcd drain`", "a load-gate waiter in this copy"} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("the kill's lapse line does not name %q as a renewer:\n%s", want, b.String())
+		}
+	}
 }
 
 // TestAKillExitsWithItsOwnCode.

@@ -25,10 +25,12 @@ func completedRun(t *testing.T, root string) string {
 		Lanes: []loop.Lane{{
 			ID: "lane-1", Key: "itd-10", SpecStep: 1, StepTitle: "The state file", Stage: loop.StageDone,
 			Branch: "build/" + id + "-lane-1", BaseSHA: strings.Repeat("a", 40), HeadSHA: head, PR: 7,
-			Receipts: []loop.ReceiptRecord{{Role: loop.RoleImplementer, Receipt: "receipt.json", Model: "a-model"}},
+			Receipts: []loop.ReceiptRecord{{Role: loop.RoleImplementer, Receipt: "receipt.json", Model: "grok-test-1"}},
 			Validation: []loop.ValidationRound{{Round: 1, HeadSHA: head, Validators: []loop.ValidatorRun{
-				{Role: loop.RoleRuthless, Brief: "b.md", Return: "r.md", Verdict: "SHIP", Pass: true},
-				{Role: loop.RoleSecurity, Brief: "b.md", Return: "s.md", Verdict: "APPROVE", Pass: true},
+				{Role: loop.RoleRuthless, Brief: "b.md", Return: "r.md", Verdict: "SHIP", Pass: true,
+					WriterModels: []string{"grok-test-1"}, ReviewerModel: "claude-sonnet-5-5"},
+				{Role: loop.RoleSecurity, Brief: "b.md", Return: "s.md", Verdict: "APPROVE", Pass: true,
+					WriterModels: []string{"grok-test-1"}, ReviewerModel: "claude-sonnet-5-5"},
 			}}},
 			Resolves: []loop.Resolution{{Issue: "iss-5", Commit: head, Note: "n", Impact: "fix", Grounds: "pursued: g"}},
 			Landing:  &loop.Landing{RecordsDone: true, Records: head, Pushed: head, BodyChecked: true, Merge: "left open", Merged: head},
@@ -59,7 +61,7 @@ func TestImplementRecordRendersTheRunAndCapturesItsTranscripts(t *testing.T) {
 	id := completedRun(t, repo.Root())
 
 	text := mustImplement(t, "implement", "record")
-	for _, want := range []string{"run " + id, "complete", "lane-1", "model a-model", "ruthless-reviewer SHIP",
+	for _, want := range []string{"run " + id, "complete", "lane-1", "model grok-test-1", "ruthless-reviewer SHIP",
 		"security-reviewer APPROVE", "resolves iss-5", "pull request #7", "transcripts: 0"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the record names %q:\n%s", want, text)
@@ -78,7 +80,7 @@ func TestImplementRecordRendersTheRunAndCapturesItsTranscripts(t *testing.T) {
 	if len(rec.Transcripts) != 1 || rec.Transcripts[0].Session != "session-one" || !rec.Transcripts[0].Wrote {
 		t.Fatalf("the transcript is captured into the history store and recorded: %+v", rec.Transcripts)
 	}
-	if len(rec.Lanes) != 1 || rec.Lanes[0].Receipts[0].Model != "a-model" || len(rec.Lanes[0].Verdicts) != 2 {
+	if len(rec.Lanes) != 1 || rec.Lanes[0].Receipts[0].Model != "grok-test-1" || len(rec.Lanes[0].Verdicts) != 2 {
 		t.Fatalf("the --json record names the lane's receipts and verdicts: %+v", rec.Lanes)
 	}
 	if !strings.Contains(mustImplement(t, "history", "list"), "session-one") {

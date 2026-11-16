@@ -112,9 +112,13 @@ func (l Lane) masked() Lane {
 	l.Validation = maskEach(l.Validation, ValidationRound.masked)
 	l.HandBack = maskPtr(l.HandBack, HandBack.masked)
 	l.Receipts = maskEach(l.Receipts, func(r ReceiptRecord) ReceiptRecord {
-		r.Role, r.Receipt, r.Model = line(r.Role), line(r.Receipt), line(r.Model)
+		r.Role, r.Receipt, r.Model, r.Named = line(r.Role), line(r.Receipt), line(r.Model), line(r.Named)
 		r.Route = maskPtr(r.Route, maskRoute)
 		return r
+	})
+	l.Launched = maskEach(l.Launched, func(w LaunchedWriter) LaunchedWriter {
+		w.Model = line(w.Model)
+		return w
 	})
 	l.Resolves = maskEach(l.Resolves, func(r Resolution) Resolution {
 		r.Issue, r.Commit, r.Impact = line(r.Issue), line(r.Commit), line(r.Impact)
@@ -149,6 +153,7 @@ func (r ValidationRound) masked() ValidationRound {
 	r.Validators = maskEach(r.Validators, func(v ValidatorRun) ValidatorRun {
 		v.Role, v.Brief, v.Return, v.Verdict = line(v.Role), line(v.Brief), line(v.Return), line(v.Verdict)
 		v.Class, v.Model, v.ModelStatus, v.Effort = line(v.Class), line(v.Model), line(v.ModelStatus), line(v.Effort)
+		v.WriterModels, v.ReviewerModel, v.ReviewerNamed = maskEach(v.WriterModels, line), line(v.ReviewerModel), line(v.ReviewerNamed)
 		v.Audit = maskPtr(v.Audit, func(a AuditRun) AuditRun {
 			a.ReceiptID, a.Request, a.BaseSHA, a.HeadSHA, a.Worst = line(a.ReceiptID), line(a.Request), line(a.BaseSHA), line(a.HeadSHA), line(a.Worst)
 			a.NotMet, a.Inconclusive = maskEach(a.NotMet, line), maskEach(a.Inconclusive, line)
@@ -199,14 +204,20 @@ func (p Pace) masked() Pace {
 // masked is State.masked for the review set a run started on.
 func (rs ReviewSet) masked() ReviewSet {
 	rs.MaxReviewers.Layer, rs.MaxReviewers.Origin = line(rs.MaxReviewers.Layer), line(rs.MaxReviewers.Origin)
+	class := func(c ReviewClass) ReviewClass {
+		c.Class, c.Model, c.MapLayer, c.MapOrigin = line(c.Class), line(c.Model), line(c.MapLayer), line(c.MapOrigin)
+		c.Effort, c.EffortLayer, c.EffortOrigin = line(c.Effort), line(c.EffortLayer), line(c.EffortOrigin)
+		return c
+	}
 	rs.Roles = maskEach(rs.Roles, func(r RoleReviewers) RoleReviewers {
 		r.Role, r.Layer, r.Origin = line(r.Role), line(r.Layer), line(r.Origin)
-		r.Reviewers = maskEach(r.Reviewers, func(c ReviewClass) ReviewClass {
-			c.Class, c.Model, c.MapLayer, c.MapOrigin = line(c.Class), line(c.Model), line(c.MapLayer), line(c.MapOrigin)
-			c.Effort, c.EffortLayer, c.EffortOrigin = line(c.Effort), line(c.EffortLayer), line(c.EffortOrigin)
-			return c
-		})
+		r.Reviewers = maskEach(r.Reviewers, class)
 		return r
+	})
+	rs.Classes = maskEach(rs.Classes, class)
+	rs.Unlaunchable = maskEach(rs.Unlaunchable, func(u RoleClasses) RoleClasses {
+		u.Role, u.Classes = line(u.Role), maskEach(u.Classes, line)
+		return u
 	})
 	rs.Judge = maskPtr(rs.Judge, func(j ReviewJudge) ReviewJudge {
 		j.Class, j.Model, j.MapLayer, j.MapOrigin = line(j.Class), line(j.Model), line(j.MapLayer), line(j.MapOrigin)
