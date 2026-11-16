@@ -45,9 +45,12 @@ One row per item, in this order:
 - **Branches on origin.** A merged one is deleted under a lease on the tip
   that was judged, once nothing still needs it: no open pull request from it
   or into it, no reservation recording it, and no live session in a worktree
-  on it. A reservation records the branch its own copy is on: one made from a
-  local worktree holds that worktree's branch. A record id in a branch's name
-  holds nothing by itself. The default branch, release branches, tags and
+  on it. A reservation records no branch, only the copy that made it, so it
+  holds the branch of a local worktree that copy is on; a reservation made on
+  another machine or under another account holds no branch on origin, and
+  such a branch is kept by the other proofs alone (merged at the judged tip,
+  no open pull request). A record id in a branch's name holds nothing by
+  itself. The default branch, release branches, tags and
   abcd's own coordination branches are never deleted.
 - **Reservations.** A spent one is cleared by the reservation sweep's
   workflow, which the applying form starts; the sweep never deletes one
@@ -70,8 +73,10 @@ with its kind, name, path, the state read, the action, the reason, and each
 piece of evidence marked proven or a hint; applied, each row also carries what
 was done. It exits 0 when the run acted on something (bare: when the applying
 form would), 1 when it completed and acted on nothing, and 2 on a refusal or a
-fault. It writes only under the machine's abcd home and the local tier, the
-fetch aside.
+fault. Bare, it writes only under the machine's abcd home and the local tier,
+the fetch aside; applied, it also removes worktrees and local branches, deletes
+branches on origin, starts the reservation sweep's workflow and files the
+waiting inbox reports as ledger records.
 
 ## Where it is named
 
