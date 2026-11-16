@@ -234,7 +234,7 @@ A single whitespace-free word is refused (exit 2, nothing written): a lone
 token reads as a mistyped sub-verb, never as issue text. A near-miss of a real
 sub-verb is refused the same way, with the correction named, so a two-word input
 containing a space is not automatically safe. Neither is a word followed by an
-issue id — `abcd capture closeit iss-1 "…"` is a sub-verb call by shape whatever
+issue id — `abcd capture closeit iss-1 "…"` is a sub-verb call by shape whatever <!-- facts-lint: historical -->
 the word is, so it is refused whether or not any sub-verb is close enough to
 suggest, and a refusal with nothing to suggest lists the sub-verbs the verb has.
 

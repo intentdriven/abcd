@@ -237,7 +237,7 @@ none.
 `ruling` is needed only when the reviewers' verdicts differ, and `reframing` only
 with a `reframed` verdict, which the binary refuses without one; a reframing beside
 any other verdict is refused too. The binary records version 2 only: a payload of
-`"schema_version": 1` is refused with a message naming version 2.
+`"schema_version": 1` is refused with a message naming version 2. <!-- facts-lint: historical -->
 
 **Rejected alternatives are not optional.** If genuinely none were considered,
 say so explicitly with `"no_rejected_alternatives": true` and an empty list; the

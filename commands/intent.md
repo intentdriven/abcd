@@ -137,7 +137,7 @@ its line, which leaves an ordinary draft.
 A single whitespace-free word is refused (exit 2, nothing written): a lone
 token reads as a mistyped sub-verb, never as a draft title. A near-miss of a
 real sub-verb is refused the same way, with the correction named. So is a word
-followed by a record id — `abcd intent shipit itd-5` is a sub-verb call by
+followed by a record id — `abcd intent shipit itd-5` is a sub-verb call by <!-- facts-lint: historical -->
 shape whatever the word is, so it is refused whether or not any sub-verb is
 close enough to suggest, and a refusal with nothing to suggest lists the
 sub-verbs the verb has. What still files is prose: several words, or one quoted

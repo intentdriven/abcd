@@ -504,7 +504,7 @@ it can, each on one line
    restore, never only a note behind `--details`. `--details` adds the full
    record (every path written and every note). A repository already fully set
    up is reported in one line, `abcd is already set up here; nothing
-   changed.`, and nothing is written.
+   changed.`, and nothing is written. <!-- facts-lint: historical -->
 
 A first run at a terminal with the suggested answers therefore asks the plan
 and the person-only questions alone: the abcd download, the shell settings,

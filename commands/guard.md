@@ -1098,7 +1098,7 @@ read as handed it, so `sh -c 'kill 4242' _ "$(pgrep …)"` is a **block** too.
 A verb that is the person's own act is left to the person. `abcd library ledger
 --flip N` records that a human chose to cite a source publicly, so an agent
 running it is a **block** (`abcd-source-ledger-flip`); recording a line and
-listing the ledger are not. The retired spelling, `abcd source ledger --flip N`,
+listing the ledger are not. The retired spelling, `abcd source ledger --flip N`, <!-- facts-lint: historical -->
 is a **block** too (`abcd-source-ledger-flip-retired`), because a binary older
 than the library verb still answers it. The entries name the program `abcd`,
 so they match the binary on `PATH`, the plugin root's and a `go run` of the

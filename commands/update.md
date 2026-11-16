@@ -16,7 +16,7 @@ meaning IS the fetch: it resolves the latest release (or takes an explicit
 tag), verifies the platform binary against the same release's
 `checksums.txt` and against the SLSA build provenance the release workflow
 signed for it, and swaps the PATH copy atomically, printing a receipt that
-opens with `abcd updated from <old> to <new>` and names the path, origin,
+opens with `abcd updated from <old> to <new>` and names the path, origin, <!-- facts-lint: historical -->
 digest and the provenance signer. abcd never checks for or
 applies updates on its own, with one exception the person says yes to: a drive
 (`abcd drain --drive`), whose question names the check, asks the origin about
