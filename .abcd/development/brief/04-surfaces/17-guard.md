@@ -261,13 +261,16 @@ teaching it.
 
 abcd's question is held to the field limits (`question.CheckLimits`) wherever
 the hook runs, managed or not: the setup interview asks before a repository is
-managed, and the limits need no store. The limits are the resolver's
+managed, and the limits need no managed checkout: where neither file sets them they are abcd's defaults. The limits are the resolver's
 (`layered.QuestionLimits`, itd-2610301914350541): `question.Default` with the
 rows, label words and description sentences the repository's
 `.abcd/config.json` sets as `question.rows`, `question.label_words` and
 `question.description_sentences`, at the root the rules loader
 resolves rather than git's toplevel, each
 tightened where the person's own `~/.abcd.noindex/config.json` sets it lower.
+On a stage of a walled launch the check keeps abcd's defaults, reported as
+`bundled`, as the GRILL domain that stage's prompt hook injects does: the
+working tree's `.abcd/config.json` there is the lane's own writing.
 A value the resolver read and refused, outside its bounds, not a whole number,
 another key under the same namespace, or a personal value looser than
 the limit in force, refuses every abcd question with the host's deny, whatever

@@ -22,7 +22,7 @@ import (
 // defaultLimitsAllowed are the files still allowed to pass question.Default by
 // name: the resolver, the asking-sync command (the pages ship with the plugin
 // and state the defaults, decision 12), and the rules package's one
-// bundled-layer statement of the GRILL domain, which rules.Load delegates
+// bundled-layer statement of the GRILL domain, which rules.LoadWith delegates
 // through. Tests are allowed everywhere and are not walked.
 var defaultLimitsAllowed = []string{
 	"internal/core/layered/question.go",

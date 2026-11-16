@@ -63,8 +63,10 @@ var targets = []target{
 }
 
 // render is the block between the markers: a note for whoever edits the page,
-// the paragraph's lead, every asking rule as its own list item, and the link
-// to the knowledge floor. The rules are rendered one per line, unwrapped, so
+// the paragraph's lead, every asking rule as its own list item, the sentence
+// saying the figures are abcd's defaults and where the values in force are
+// read (question.PageLimitsSentence; spc-2610301950037469, approach 10), and
+// the link to the knowledge floor. The rules are rendered one per line, unwrapped, so
 // no continuation line can be read as markdown of its own.
 func render(l question.Limits) string {
 	var b strings.Builder
@@ -73,13 +75,16 @@ func render(l question.Limits) string {
 	for _, r := range question.AskingRules(l) {
 		b.WriteString("- " + r + "\n")
 	}
+	b.WriteString("\n" + question.PageLimitsSentence() + "\n")
 	fmt.Fprintf(&b, "\nThe knowledge floor every explanation is measured against: [%s](../%s).\n",
 		filepath.Base(question.KnowledgeFloorPage), question.KnowledgeFloorPage)
 	return b.String()
 }
 
 // renderDrafter is the question-writer's block: a note for whoever edits the
-// page, every asking rule as its own list item, how each draft is headed and
+// page, every asking rule as its own list item, the sentence saying the
+// figures are abcd's defaults and that the values in force are the check's
+// `limits` (question.PageLimitsSentence), how each draft is headed and
 // checked with `abcd guard question` and what of the check's answer is
 // returned, and the row count the check makes, kept for a host that gives the
 // writer no shell, each figure filled from l (spc-2610301917245442, step 4).
@@ -94,9 +99,10 @@ func renderDrafter(l question.Limits) string {
 	for _, r := range question.AskingRules(l) {
 		b.WriteString("- " + r + "\n")
 	}
+	b.WriteString("\n" + question.PageLimitsSentence() + "\n")
 	b.WriteString("\n## Checking each draft\n\n")
 	fmt.Fprintf(&b, "Head every draft with abcd's number: %s, a letter after the number for one part of a question split in parts, and a total after the slash only when the interview's length is known. ", numberHeaders())
-	b.WriteString("Then run `abcd guard question` after every edit, the draft passed on standard input, and read its JSON: the `findings` to fix, every one at once; the `rows` of each tab; the `limits` the draft was judged at, which are the ones in force in this checkout where they differ from the figures below; the `ready` input; the `badge`, whether the mode is read here, which tells a tab `unnamed` because the mode was never set (`badge: true`) from one where no mode is read (`badge: false`); and the `version` of the binary that checked it. ")
+	b.WriteString("Then run `abcd guard question` after every edit, the draft passed on standard input, and read its JSON: the `findings` to fix, every one at once; the `rows` of each tab; the `limits` the draft was judged at, the values in force in this checkout; the `ready` input; the `badge`, whether the mode is read here, which tells a tab `unnamed` because the mode was never set (`badge: true`) from one where no mode is read (`badge: false`); and the `version` of the binary that checked it. ")
 	b.WriteString("Return the check's `rows`, the `questions` array of its `ready` input as your `questions`, and its `version`, never figures of your own.\n")
 	b.WriteString("\n## Counting rows by hand, only where the host gives you no shell\n\n")
 	b.WriteString("Count by hand only where the host gives you no shell to run the check in. Where it gives you one, the check's `rows` are the count, and a check that cannot answer is a refusal, never a reason to count by hand. ")

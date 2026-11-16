@@ -48,6 +48,19 @@ func (v QuestionLimitsValue) SetByFile() bool {
 	return false
 }
 
+// Note is where the limits came from, as the asking rules say it
+// (question.AskingRulesFrom): one origin per key, in question.Bounds' order,
+// where any file set a figure, and the zero note where every key is bundled.
+func (v QuestionLimitsValue) Note() question.LimitsNote {
+	var n question.LimitsNote
+	if v.SetByFile() {
+		for _, s := range v.Sources {
+			n.SetBy = append(n.SetBy, s.Origin)
+		}
+	}
+	return n
+}
+
 // KeyRefusedError is a question value read and refused: outside its bounds,
 // not a whole number, or, for a personal value, looser than the limit
 // otherwise in force (LimitOrigin set). Nothing falls through to a lower

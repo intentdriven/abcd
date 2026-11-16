@@ -233,7 +233,7 @@ the message they type next, and `abcd mode <state>` clears a marker naming
 another state, keeping one naming the state it sets. At a stop that is not a question the agent sets the
 state itself with `abcd mode`, naming whom it addresses. A repository abcd
 does not manage, or one without the local tier, has no badge, and its
-questions are not gated.
+questions are still held to their limits by the guard hook ([`17-guard.md`](17-guard.md)); there the mode is neither read nor set.
 
 **Session names** (itd-2610111707085098, spc-2610152057143798). Each session
 the hooks run in takes a persona name, unique across the machine: the

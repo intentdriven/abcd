@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
+	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -77,7 +79,7 @@ func TestAStagesRulesAreTheBases(t *testing.T) {
 	base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
 	repo.Write(".abcd/rules.json", `{"schema_version":1,"disabled":false,"domains":{"LANEONE":{"recall":["word"],"rules":["the lane's"]}}}`)
 	t.Setenv(runner.StageBaseEnv, base)
-	rs, err := rulesForHook(repo.Root())
+	rs, err := rulesForHook(repo.Root(), io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +87,7 @@ func TestAStagesRulesAreTheBases(t *testing.T) {
 		t.Fatal("a rule the lane wrote reached the hook")
 	}
 	t.Setenv(runner.StageBaseEnv, "")
-	if rs, err = rulesForHook(repo.Root()); err != nil {
+	if rs, err = rulesForHook(repo.Root(), io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := rs.Domains["LANEONE"]; !ok {
@@ -883,7 +885,7 @@ func TestTheHooksStandAsideOnAStage(t *testing.T) {
 		t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 		_, repo := memoryFixture(t)
 		id := addRaceNote(t, "session-one")
-		rs, err := rules.Load(repo)
+		rs, err := rules.LoadWith(repo, question.Default, question.LimitsNote{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1102,4 +1104,42 @@ func TestADrivesLogKeepsItsStartLines(t *testing.T) {
 func checkedOutHead(t *testing.T, dir string) string {
 	t.Helper()
 	return strings.TrimSpace(gittest.OpenRepo(t, dir).Git("rev-parse", "HEAD"))
+}
+
+// TestAStagesQuestionCheckKeepsTheDefaultLimits (spc-2610301950037469): under
+// a walled launch the question check measures at abcd's defaults, as the GRILL
+// domain the stage's prompt hook injects states them, since the working
+// tree's .abcd/config.json is the lane's own writing; outside one it reads
+// the file.
+func TestAStagesQuestionCheckKeepsTheDefaultLimits(t *testing.T) {
+	repo := unmanagedRepo(t)
+	writeRepoQuestionConfig(t, repo, `{"question":{"rows":40}}`)
+	t.Setenv(runner.StageBaseEnv, "0123456789abcdef0123456789abcdef01234567")
+	var st question.State
+	questionLimitsAt(repo, &st)
+	if !reflect.DeepEqual(st.Limits, question.Default) || st.LimitsErr != nil || st.LimitsRefused != nil {
+		t.Errorf("a stage's check took the lane's file: limits %v", st.Limits.Configurable())
+	}
+	for i, src := range st.LimitsSource {
+		if src != "bundled" {
+			t.Errorf("a stage's limits_source[%d] = %q, want bundled", i, src)
+		}
+	}
+	t.Setenv(runner.StageBaseEnv, "")
+	st = question.State{}
+	questionLimitsAt(repo, &st)
+	if st.Limits.Rows != 40 {
+		t.Errorf("outside a stage the check does not read the file: rows %d", st.Limits.Rows)
+	}
+	// A value naming no commit is no walled launch, as rules.LoadAt holds for
+	// the prompt hook: the check reads the files, so a person's own lower
+	// figures are never dropped by setting the variable to anything at all.
+	for _, bogus := range []string{"1", "HEAD", "0123456789abcdef"} {
+		t.Setenv(runner.StageBaseEnv, bogus)
+		st = question.State{}
+		questionLimitsAt(repo, &st)
+		if st.Limits.Rows != 40 || st.LimitsSource[0] != ".abcd/config.json" {
+			t.Errorf("stage base %q, naming no commit, switched the check to the defaults: rows %d, source %v", bogus, st.Limits.Rows, st.LimitsSource)
+		}
+	}
 }

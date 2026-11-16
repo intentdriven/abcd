@@ -97,7 +97,7 @@ func TestGuardHookHonoursTheRepoKillSwitchWhenGitRefuses(t *testing.T) {
 // TestHookPromptRouterHonoursTheRepoKillSwitchWhenGitIsAbsent is the rules half,
 // with git absent from the hook's PATH rather than refusing: a repo that set
 // "disabled": true must inject nothing into a session in a subdirectory. Under
-// the collapsed resolution the root became the subdirectory, rules.Load found no
+// the collapsed resolution the root became the subdirectory, rules.LoadWith found no
 // file there, returned the bundled defaults with no error, and the kill switch
 // the repo committed was simply not read.
 func TestHookPromptRouterHonoursTheRepoKillSwitchWhenGitIsAbsent(t *testing.T) {

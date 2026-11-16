@@ -429,8 +429,8 @@ func TestQuestionFitsTwentyFourRowsAt80(t *testing.T) {
 	all := criteriaTab("Product Q1", 1, 2, 3, 4, 5)
 	fs := CheckLimits(one(all), Default, productThinker())
 	onlyRule(t, fs, RuleRows)
-	if !strings.Contains(fs[0].Remedy, "tabs") || !strings.Contains(fs[0].Remedy, "one part per question") {
-		t.Errorf("remedy does not say to split into tabs or successive questions: %q", fs[0].Remedy)
+	if !strings.Contains(fs[0].Remedy, "tabs") || !strings.Contains(fs[0].Remedy, "several decisions") {
+		t.Errorf("remedy does not say that several decisions go as tabs: %q", fs[0].Remedy)
 	}
 	four := Fields{Tabs: []Tab{
 		criteriaTab("Product Q1", 1), criteriaTab("Product Q2", 2),
@@ -441,6 +441,42 @@ func TestQuestionFitsTwentyFourRowsAt80(t *testing.T) {
 	}
 	if fs := CheckLimits(one(criteriaTab("Product Q5", 5)), Default, productThinker()); len(fs) != 0 {
 		t.Errorf("the fifth alone refused:\n%s", render(fs))
+	}
+}
+
+// TestTooLongMaterialIsQuotedShorterBeforeItIsSplit (itd-2610230756259215
+// decision 33; spc-2610301950037469, step 4): the rows finding's remedy and
+// the asking rule on material too long for one question say the same thing.
+// One decision's material is quoted shorter and faithfully, keeping every
+// answer's gain and cost, since spreading one decision over parts asks the
+// same choice twice; only material holding several decisions or too many
+// answers is split into parts; and nothing moves into a message before the
+// question or into a preview. Neither tells the agent to split any material
+// that is too long.
+func TestTooLongMaterialIsQuotedShorterBeforeItIsSplit(t *testing.T) {
+	fs := CheckLimits(one(criteriaTab("Q1", 1, 2, 3, 4, 5)), Default, productThinker())
+	onlyRule(t, fs, RuleRows)
+	var rule string
+	for _, r := range AskingRules(Default) {
+		if strings.Contains(r, "quoted in full in the question itself") {
+			rule = r
+		}
+	}
+	if rule == "" {
+		t.Fatal("no asking rule says the thing being decided is quoted in full")
+	}
+	for name, text := range map[string]string{"the rows remedy": fs[0].Remedy, "the quoted-in-full rule": rule} {
+		lower := strings.ToLower(text)
+		for _, want := range []string{"one decision's material", "quoted shorter and faithfully", "every answer's gain and cost", "several decisions", "too many answers", "never", "a message before the question", "preview"} {
+			if !strings.Contains(lower, want) {
+				t.Errorf("%s does not say %q: %s", name, want, text)
+			}
+		}
+		for _, gone := range []string{"split the material into parts", "one part per question"} {
+			if strings.Contains(lower, gone) {
+				t.Errorf("%s still says %q, splitting any material that is too long: %s", name, gone, text)
+			}
+		}
 	}
 }
 
@@ -890,12 +926,13 @@ func TestTabsStayFixedAtTheCeilings(t *testing.T) {
 }
 
 // TestBoundsAreStatedOnce: no reader of a configurable limit writes a bound
-// of its own; each renders question.Bounds. The resolver is checked here; the
-// loader's note and the generated page sentence join the list as they land
+// of its own; each renders question.Bounds. The resolver, the asking rules
+// and the generated page sentence (asking.go), the renderers that write the
+// pages (cmd/asking-sync), and the loader's GRILL domain are checked here
 // (spc-2610301950037469 steps 3 and 4).
 func TestBoundsAreStatedOnce(t *testing.T) {
 	literal := regexp.MustCompile(`\b(24|60|4|8|2) to (60|8|4)\b|Floor:\s*\d|Ceiling:\s*\d`)
-	for _, rel := range []string{"../layered/question.go"} {
+	for _, rel := range []string{"../layered/question.go", "asking.go", "../../../cmd/asking-sync/main.go", "../rules/grill.go"} {
 		data, err := os.ReadFile(filepath.FromSlash(rel))
 		if err != nil {
 			t.Fatal(err)

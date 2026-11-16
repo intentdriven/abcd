@@ -352,7 +352,7 @@ func questionCheckOf(form string, v question.Verdict, structural []question.Find
 		for i, r := range u.Rules {
 			rules[i] = string(r)
 		}
-		res.Unread = append(res.Unread, questionUnreadJSON{Store: string(u.Store), Why: termsafe.Sanitize(scrubPaths(u.Err)), Rules: rules, File: u.File})
+		res.Unread = append(res.Unread, questionUnreadJSON{Store: string(u.Store), Why: termsafe.SanitizeLine(scrubPaths(u.Err)), Rules: rules, File: u.File})
 		limitsUnreadSeen = limitsUnreadSeen || u.Store == question.StoreLimits
 	}
 	if st := reads.state; st.LimitsErr != nil && !limitsUnreadSeen {
@@ -360,11 +360,11 @@ func questionCheckOf(form string, v question.Verdict, structural []question.Find
 		// limit; the verb still says the limits could not be read, since a
 		// draft relabelled as abcd's would meet them.
 		res.Partial = true
-		res.Unread = append(res.Unread, questionUnreadJSON{Store: string(question.StoreLimits), Why: termsafe.Sanitize(scrubPaths(st.LimitsErr)), Rules: []string{}, File: st.LimitsFile})
+		res.Unread = append(res.Unread, questionUnreadJSON{Store: string(question.StoreLimits), Why: termsafe.SanitizeLine(scrubPaths(st.LimitsErr)), Rules: []string{}, File: st.LimitsFile})
 	}
 	if r := reads.state.LimitsRefused; r != nil {
-		res.Refused = &questionRefusedJSON{Key: r.Key, Value: termsafe.Sanitize(r.Value), Bounds: r.Bounds, File: r.File,
-			Limit: r.Limit, LimitFile: r.LimitFile, Why: termsafe.Sanitize(scrubPaths(errors.New(r.Reason)))}
+		res.Refused = &questionRefusedJSON{Key: r.Key, Value: termsafe.SanitizeLine(r.Value), Bounds: r.Bounds, File: r.File,
+			Limit: r.Limit, LimitFile: r.LimitFile, Why: termsafe.SanitizeLine(scrubPaths(errors.New(r.Reason)))}
 	} else {
 		c := reads.state.Limits.Configurable()
 		res.Limits = &questionLimitsJSON{Rows: c[0], LabelWords: c[1], DescriptionSentences: c[2]}
