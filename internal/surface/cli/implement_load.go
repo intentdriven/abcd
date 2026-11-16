@@ -189,7 +189,9 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"waiter ahead with a higher pid, as after the process ids wrap, may run an abcd\n" +
 			"built before this order, which waits on every lower pid and so on yours, so once\n" +
 			"such waiters alone have kept yours shut for " + implement.WaitCrossedCap.String() + " on end, and a step more\n" +
-			"for each such waiter ahead beyond the first, yours stops counting them. A\n" +
+			"for each such waiter ahead beyond the first, yours stops counting them.\n" +
+			"\"Alone\" is judged as at one preflight at a time, the strictest setting: while a\n" +
+			"preflight, a waiter running its command or a race run is live, the count waits. A\n" +
 			"preflight whose own\n" +
 			"waiter is queued\n" +
 			"takes that waiter's place in the queue, and a waiter beneath a waiter running its\n" +

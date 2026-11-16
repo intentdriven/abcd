@@ -2926,7 +2926,9 @@ under and whatever its own account's wait limit is, with one exception: a
 waiter ahead with a higher pid, as after the process ids wrap, may run an abcd
 built before this order, which waits on every lower pid and so on yours, so once
 such waiters alone have kept yours shut for 5m0s on end, and a step more
-for each such waiter ahead beyond the first, yours stops counting them. A
+for each such waiter ahead beyond the first, yours stops counting them.
+"Alone" is judged as at one preflight at a time, the strictest setting: while a
+preflight, a waiter running its command or a race run is live, the count waits. A
 preflight whose own
 waiter is queued
 takes that waiter's place in the queue, and a waiter beneath a waiter running its
