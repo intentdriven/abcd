@@ -297,8 +297,13 @@ waits on it, and nothing in the table tells it apart. Every cycle of waits
 passes through a crossed wait, since every other wait from any abcd points at a
 lower pid, so a wait stops counting crossed waiters once they alone have kept
 it shut for five minutes on end (`WaitCrossedCap`), longer than a waiter that
-orders by start shows queued while the machine is free to another account,
-plus a step for each crossed waiter ahead beyond the first, so the earlier of
+orders by start shows queued while the machine is free to another account.
+"Alone" is judged at one slot, the strictest setting an account can hold: a
+running preflight or a live race run leaves a slot free at two but shuts the
+gate at one, so while either runs the count does not run, and an earlier
+crossed waiter at one slot is never passed by an account at two
+(iss-2611151649449938). The cap grows by a step for each crossed waiter
+ahead beyond the first, so the earlier of
 two waiters behind the same one opens before the later stops counting it; no
 back-off breaks that cycle, since the back-off cap bounds only the last look,
 and a stand-back starts the count again.
