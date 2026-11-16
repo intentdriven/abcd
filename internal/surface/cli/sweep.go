@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
@@ -26,8 +25,34 @@ import (
 
 // sweepOptions is the options the verb hands the core beside the forge,
 // the build loop's reader and the working directory: nil in a release, and
-// set by a test to fix the probe's clock or process listing.
+// set by a test to fix the probe's clock or process listing. The automatic
+// sweep takes them too.
 var sweepOptions func(*sweep.Options)
+
+// installAutoSweep installs the automatic sweep (iss-2611150649557869,
+// dcn-2611161331159806) in the loop, which runs it after a landing sees its
+// pull request merged and at the end of a drain. Each verb that can land a
+// lane or end a drain installs it just before it moves the loop; it is not
+// installed at init, so no hook, whose git calls must run under the hook's
+// deadline, ever reaches the sweep.
+func installAutoSweep() { loop.SetAutoSweeper(sweepOnOwn) }
+
+// sweepOnOwn is the automatic sweep of the checkout at repoRoot, with the
+// readers `abcd sweep --apply` is handed, from the process's own working
+// directory, so the worktree the process is in is kept; it answers the line
+// the act it followed reports. It reads sweep.automatic itself: off, or
+// outside a repository abcd manages, it removes nothing.
+func sweepOnOwn(ctx context.Context, repoRoot string) string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = repoRoot
+	}
+	o := sweep.Options{Forge: worktreeForge, Held: loop.HeldWorktrees, Cwd: cwd}
+	if sweepOptions != nil {
+		sweepOptions(&o)
+	}
+	return sweep.Automatic(ctx, repoRoot, sweep.AutoOptions{Options: o}).Text()
+}
 
 // newSweepCommand builds `abcd sweep [--apply]`.
 func newSweepCommand(asJSON *bool) *cobra.Command {
@@ -135,22 +160,7 @@ func renderSweepRows(w io.Writer, res sweep.Result) {
 		fmt.Fprintln(w, "  (nothing to sweep)")
 	}
 	for _, r := range res.Rows {
-		verb := string(r.Action)
-		if res.Applied && r.Outcome != "" {
-			verb = string(r.Outcome)
-		}
-		fields := []string{verb, string(r.Kind), r.Name}
-		if r.Path != "" {
-			fields = append(fields, r.Path)
-		}
-		if r.State != "" {
-			fields = append(fields, r.State)
-		}
-		line := "  " + strings.Join(fields, "  ")
-		if r.Reason != "" {
-			line += "; " + r.Reason
-		}
-		fmt.Fprintln(w, termsafe.Sanitize(line))
+		fmt.Fprintln(w, termsafe.Sanitize("  "+sweep.RowLine(r, res.Applied)))
 	}
 	if res.Refusal != "" {
 		fmt.Fprintln(w, "refused: "+termsafe.Sanitize(res.Refusal))

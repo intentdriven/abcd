@@ -532,6 +532,10 @@ type StepResult struct {
 	// release is what the release of the reservation of a lane this call
 	// handed back came to, made once the save wrote it (releaseAfterWrite).
 	release *handBackRelease
+	// landed is set when this call took a landing's last step: the lane's pull
+	// request merged and its worktree and branch are removed. The call then
+	// sweeps on its own once its save has written (autosweep.go).
+	landed bool
 }
 
 // Start resumes the live run for key, or runs the checks and, when every one
@@ -1425,6 +1429,12 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	}
 	if stopNote != "" {
 		res.Next = joinNext(res.Next, stopNote)
+	}
+	// A landing that saw its pull request merged sweeps on its own, once the
+	// step's save has written the lane done and released the run's lock
+	// (autosweep.go): whatever the sweep comes to, the landing stands.
+	if res.landed {
+		res.Next = joinNext(res.Next, AutoSweep(context.Background(), repoRoot))
 	}
 	return res, nil
 }

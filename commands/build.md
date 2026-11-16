@@ -1052,7 +1052,17 @@ A lane's stages run in order:
    pushed head is an ancestor of the default branch on `origin`; stop driving
    the run and come back later. Once it is, the loop removes the lane's
    worktree and branch, the lane is done, and the next pending step opens the
-   next lane. A pull request closed without merging, or merged in a way that
+   next lane. In a repository abcd manages, that step then sweeps on its own
+   once its save is written: the provably spent part of `abcd sweep --apply`,
+   with the same proofs against a fresh fetch (other merged, clean worktrees
+   removed, a dirty one's work saved and kept, merged local branches and
+   merged branches on origin deleted; no reservation workflow started, no
+   inbox report filed), its line in `next`, bounded, with `abcd sweep` named
+   for the full list. A refusal or fault of that sweep is reported there and
+   the landing stands. A run ends at its last landing, so this is also the
+   sweep at the end of a build run. `"sweep": {"automatic": false}` in
+   `.abcd/config.json` or `~/.abcd.noindex/config.json` turns it off
+   (`commands/sweep.md`). A pull request closed without merging, or merged in a way that
    rewrote its head, is refused and nothing is cleaned up: report it as it is.
    A pull request the forge reports `CONFLICTING` (`gh pr view <n> --json
    mergeable,mergeStateStatus`) is refused at exit 2, before arming or at the

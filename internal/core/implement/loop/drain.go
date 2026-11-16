@@ -273,6 +273,10 @@ type DrainOptions struct {
 	// The outage and origin stops end the drain as before. Held in the drive's
 	// memory alone, never written.
 	PassedLanes []string
+	// driveEnds is set by a terminal drive, which sweeps on its own at its
+	// own end (terminal.go), so a move that ends the drain does not sweep
+	// for it as well (autosweep.go).
+	driveEnds bool
 }
 
 // passedLane reports whether the drive passed the lane of runID over this run.
@@ -424,7 +428,25 @@ type DrainSpend struct {
 // progress, honours the window clock, routes the last lane's outcome, and
 // opens the next eligible issue's lane, or says why it opens none. A drain
 // without the repository's rule is refused before anything is written.
+//
+// A move that finished a merged lane (finishMerged), or that ended the drain,
+// then sweeps on its own once (autosweep.go), the sweep's line joining the
+// move's Next; a drive's move that ends the drain leaves that to the drive's
+// own end. A refused move sweeps nothing, and the sweep never refuses one.
 func Drain(repoRoot string, o Options, d DrainOptions) (DrainResult, error) {
+	res, err := drainOnce(repoRoot, o, d)
+	if err != nil {
+		return res, err
+	}
+	finished := slices.ContainsFunc(res.Finished, func(f DrainFinished) bool { return f.Done })
+	if finished || (res.Complete && !d.driveEnds) {
+		res.Next = joinNext(res.Next, AutoSweep(d.Context, repoRoot))
+	}
+	return res, nil
+}
+
+// drainOnce is Drain's one move, under the drain's lock, before any sweep.
+func drainOnce(repoRoot string, o Options, d DrainOptions) (DrainResult, error) {
 	if d.Max < 0 {
 		return DrainResult{}, refuse(StageDrain, "", "", fmt.Sprintf("--max %d is not a number of lanes", d.Max),
 			"give --max a whole number of lanes, 1 or more, or leave it out to drain all")

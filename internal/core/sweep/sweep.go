@@ -207,20 +207,32 @@ func (o Options) required() error {
 // fails refuses the run before anything is judged, since every judgement
 // after it would read origin as it was at some earlier fetch.
 func Run(ctx context.Context, repoRoot string, o Options, apply bool) (Result, error) {
-	if err := o.required(); err != nil {
+	o, err := prepare(ctx, repoRoot, o)
+	if err != nil {
 		return refused(err)
 	}
+	return runSweep(ctx, repoRoot, o, apply)
+}
+
+// prepare is what Run does before any half judges: the options checked, the
+// fetch, and the probe given the reservations as fetched and the build loop's
+// runs, unless the options already carry them. An error refuses the run before
+// anything is judged.
+func prepare(ctx context.Context, repoRoot string, o Options) (Options, error) {
+	if err := o.required(); err != nil {
+		return o, err
+	}
 	if err := ctx.Err(); err != nil {
-		return refused(fmt.Errorf("sweep: stopped before the fetch: %w", err))
+		return o, fmt.Errorf("sweep: stopped before the fetch: %w", err)
 	}
 	fetched, err := fetchFirst(repoRoot)
 	if err != nil {
-		return refused(err)
+		return o, err
 	}
 	if fetched && o.Probe.Reservations.FetchedAt.IsZero() {
 		snap, err := claim.View(repoRoot, o.probeNow())
 		if err != nil {
-			return refused(fmt.Errorf("sweep: reading the reservations after the fetch: %w; nothing was judged", err))
+			return o, fmt.Errorf("sweep: reading the reservations after the fetch: %w; nothing was judged", err)
 		}
 		o.Probe.Reservations = snap
 	}
@@ -231,7 +243,7 @@ func Run(ctx context.Context, repoRoot string, o Options, apply bool) (Result, e
 		}
 		o.Probe.Runs = runs
 	}
-	return runSweep(ctx, repoRoot, o, apply)
+	return o, nil
 }
 
 // fetchFirst is the sweep's fetch: origin's branches with pruning, then the
@@ -279,6 +291,13 @@ func (o Options) probeNow() time.Time {
 // faulted. Each failed-closed check is said once: the first half's note for
 // each, and every distinct forge note.
 func runSweep(ctx context.Context, repoRoot string, o Options, apply bool) (Result, error) {
+	return runHalves(ctx, repoRoot, o, apply, false)
+}
+
+// runHalves is runSweep, with automatic the sweep abcd runs on its own
+// (auto.go): the worktrees, the local branches and the branches on origin
+// alone, so it dispatches no reservation workflow and files no inbox report.
+func runHalves(ctx context.Context, repoRoot string, o Options, apply, automatic bool) (Result, error) {
 	if err := o.required(); err != nil {
 		return refused(err)
 	}
@@ -299,6 +318,16 @@ func runSweep(ctx context.Context, repoRoot string, o Options, apply bool) (Resu
 		{"origin's branches", func() (Result, error) { return sweepRemote(ctx, repoRoot, o, apply) }},
 		{"reservations", func() (Result, error) { return sweepReservations(ctx, repoRoot, o, apply) }},
 		{"inbox", func() (Result, error) { return sweepInbox(ctx, repoRoot, o, apply) }},
+	}
+	if automatic {
+		// The reservations' half dispatches a workflow and the inbox's files
+		// records: both stay with the sweep a person runs.
+		halves = slices.DeleteFunc(halves, func(h struct {
+			name string
+			run  func() (Result, error)
+		}) bool {
+			return h.name == "reservations" || h.name == "inbox"
+		})
 	}
 	out := Result{Rows: []Row{}, Applied: apply}
 	var (

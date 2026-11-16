@@ -61,7 +61,7 @@ shipped behaviour. Everything after them is **staged**, per the truth rule in
 
 ### The keys the binary reads
 
-Twenty-two keys plus a `meta` block. Install asks about visibility, the docs target,
+Twenty-three keys plus a `meta` block. Install asks about visibility, the docs target,
 the oracle backend, the deep scan (the last only when visibility is private
 and the deep scanner is on `PATH`), and the README question (only of a person
 at a terminal, in a run without the approve-everything flag, once
@@ -81,7 +81,7 @@ written by `ahoy install --attribution`, and `outbound.hook` and
 switch; the shell guard reads `outbound.forge`, and an install
 completes a repository that records only one of the two and leaves the other
 absent, while a key set to `false` is the repository's choice and is left as it
-is. The remaining thirteen —
+is. The remaining fourteen —
 whether abcd should enable the forge's own secret scanning, the rules loader's
 refresh backstop, the filing-time match's threshold and compared fields,
 whether `abcd land` pushes and queues, whether a reservation may be made on
@@ -92,7 +92,8 @@ repository adopts, so no install sets it), who merges (`facilitator.mode`,
 `human` by default or `auto`, read by the merge gate, the board and the shell
 guard at the default branch's tip, where `human` from any layer wins), the
 file a release cut appends its digest to (`release.digest`, read from the
-repository layer alone) and the workflow `abcd status` watches
+repository layer alone), whether abcd sweeps on its own (`sweep.automatic`)
+and the workflow `abcd status` watches
 (`status.scheduled_workflow`, read at the default branch's tip) — are
 hand-set: the binary reads them and never writes them.
 
@@ -167,6 +168,10 @@ hand-set: the binary reads them and never writes them.
                                         //   verdict is named by the verb and the prompt's block until a green
                                         //   replaces it. Absent is off: the forge is not asked
   },
+  "sweep": {                            // the sweep abcd runs on its own (04-surfaces/40-sweep.md)
+    "automatic": true                   // on by default in a repository abcd manages, never outside one;
+                                        //   false from any layer holds
+  },
   "land": {                             // `abcd land` (04-surfaces/38-land.md)
     "push": true,                       // push the branch once a preflight receipt names its head
     "enqueue": true                     // arm and confirm its pull request where the merge gate allows
@@ -224,6 +229,16 @@ repository layer is read in the working directory's checkout and in the landed
 branch's own, and both are ANDed; a home the reader refuses hides the machine
 layer and its offs, so both acts read as off. The verb names the layer and file
 that turned an act off.
+
+The `sweep.automatic` key is read through the same reader, which claims the
+`sweep` namespace, and is a restriction (adr-2611011332427073): every layer
+that holds it is decoded, and false in the repository's file or the machine's
+holds. It decides only within a repository abcd manages; outside one the
+sweep abcd runs on its own after a landing and at a drain's end never runs,
+whatever a layer says. A file the reader cannot read, a misspelt key under
+`sweep`, a value that is not a boolean and a home the reader refuses each
+read as off, and the act the sweep would have followed names why
+(`internal/core/sweep/auto.go`).
 
 The `reservation.fork_origin` key is read through the same reader, in the
 ordinary precedence: `.abcd/config.json` wins, then `~/.abcd.noindex/config.json`,

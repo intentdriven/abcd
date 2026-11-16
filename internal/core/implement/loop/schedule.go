@@ -791,6 +791,9 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 	st.UpdatedAt = now
 	res := laneResult(*st, lane, performed, handed)
 	res.release = release
+	// The landing's last step saw the pull request merged: the step sweeps
+	// once its save has written (autosweep.go).
+	res.landed = performed == StageLand
 	if out.withdraw != nil {
 		res.release = withdrawAfterWrite(repoRoot, st, lane.ID, *out.withdraw, now)
 	}

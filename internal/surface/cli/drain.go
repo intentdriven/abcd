@@ -444,6 +444,7 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 	// the process (drainSignalContext).
 	ctx, stop := drainSignalContext()
 	defer stop()
+	installAutoSweep()
 	res, err := loop.Drain(repoRoot, o, loop.DrainOptions{Max: maxLanes, Judgement: judgement,
 		Transcripts: &lazyHistoryStore{cmd: cmd}, Context: ctx, Skip: sk.skip, SkipReason: sk.reason, Unskip: sk.unskip})
 	if isDrainRuleRefusal(err) {

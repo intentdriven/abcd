@@ -822,6 +822,7 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 	if !f.noSelfUpdate && f.self.Refusal == nil {
 		terminal.BoundaryCeiling, terminal.AtBoundary = driveCheckEvery, updates.atBoundary
 	}
+	installAutoSweep()
 	res, err := driveTerminal(sig.ctx, repoRoot, terminal)
 	// What was typed to choose the profile is what going on takes.
 	if res.Resume != "" && f.profile != "" {
@@ -1002,6 +1003,9 @@ func renderDriveEnd(w io.Writer, res loop.TerminalResult) {
 		}
 	} else if res.Resume != "" {
 		fmt.Fprintf(w, "  to resume: %s\n", res.Resume)
+	}
+	if res.Swept != "" {
+		fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(res.Swept))
 	}
 }
 

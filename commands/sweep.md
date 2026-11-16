@@ -54,6 +54,29 @@ reservations that could not be read, holds every item it could have cleared,
 and the result says so once at the top (`process_check_unavailable`,
 `reservations_unread`, `runs_unread`).
 
+## When abcd sweeps on its own
+
+In a repository abcd manages, abcd also runs the provably spent part of
+`--apply` itself, with the same proofs against a fresh fetch, so finished
+worktrees and branches do not pile up: once a landing sees its pull request
+merged (a build's or a drain's lane), at the end of a drain move that ends the
+drain, and at the end of `abcd drain --drive`. A build run ends at its last
+landing, which has swept already. That sweep removes merged, clean worktrees,
+saves a dirty one's work as a patch and keeps it, and deletes merged local
+branches and merged branches on origin; it never starts the reservation
+workflow and never files inbox reports, which stay with `--apply`. The
+worktree the running process is in, and any a live session holds, are kept.
+The act it follows reports it on one line: how many items it removed or
+deleted, saved and left, the first few rows in this page's row wording, then
+`abcd sweep` for the full list. A refusal or fault is reported there too, and
+the act's own outcome stands.
+
+A repository turns it off with `"sweep": {"automatic": false}` in
+`.abcd/config.json`, or every repository on the machine with the same line
+in `~/.abcd.noindex/config.json`; off in either holds, and outside a
+repository abcd manages it never runs. A setting that cannot be read, or is
+not `true` or `false`, reads as off, and the act's line says so.
+
 ## The result
 
 `--json` is the core's result: `rows`, each with `kind`, `name`, `path`,

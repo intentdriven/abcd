@@ -857,6 +857,20 @@ what it did in `next`:
   take the issue, with what the lane committed on its branch and the rest in its worktree alone. A halted run waits for
   `abcd implement resume --take <run-id>`; a mark from a person's stop that has not settled
   goes on as any other if the stop has lifted, and one from a signal to a drive waits for that same take-over.
+- **It sweeps on its own.** In a repository abcd manages, a move that
+  finished a merged lane, and a move that ends the drain, then run the
+  provably spent part of `abcd sweep --apply` once, with the same proofs
+  against a fresh fetch: merged, clean worktrees removed, a dirty one's work
+  saved as a patch and the worktree kept, merged local branches and merged
+  branches on origin deleted. It starts no reservation workflow and files no
+  inbox report. A step that lands a lane sweeps the same way, and so does
+  `--drive` once at its own end (unless it was killed), its line in the
+  drive's summary; the move that ends a drive's drain leaves it to that. The
+  line joins `next`: what it removed and what it left, counted, the first few
+  rows, then `abcd sweep` for the full list. A refusal or fault of that sweep
+  is reported there and the move stands. `"sweep": {"automatic": false}` in
+  `.abcd/config.json`, or in `~/.abcd.noindex/config.json` for every
+  repository on the machine, turns it off (`commands/sweep.md`).
 - **It reads parked lanes from their pull requests.** A move that finds a
   lane parked at land lists your latest 100 pull requests once
   (`gh pr list --state all --author @me`), and reads each parked lane whose

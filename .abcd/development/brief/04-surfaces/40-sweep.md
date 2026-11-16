@@ -78,6 +78,30 @@ the fetch aside; applied, it also removes worktrees and local branches, deletes
 branches on origin, starts the reservation sweep's workflow and files the
 waiting inbox reports as ledger records.
 
+## When abcd sweeps on its own
+
+In a repository abcd manages, abcd runs the provably spent part of the
+applying form itself (iss-2611150649557869, dcn-2611161331159806), with the
+same proofs against a fresh fetch: once a landing sees its pull request
+merged, whether a build's lane or a drain's, at the end of a drain move that
+ends the drain, and at the end of a drive. A build run ends at its last
+landing, which has swept already. It removes merged, clean worktrees, saves a
+dirty one's work and keeps it, and deletes merged local branches and merged
+branches on origin. It starts no reservation workflow and files no inbox
+report: those stay with the applying form a person runs. The worktree the
+running process is in, and any a live session holds, are kept by the same
+liveness proof. The act it follows reports it on one line, bounded: what it
+removed and what it left, counted, the first few rows in the sweep's row
+wording, then where the full list is. A refusal or fault of that sweep is
+reported there and never fails the act it follows.
+
+One setting turns it off: `sweep.automatic`, a boolean read through the
+layered configuration reader from the repository's `.abcd/config.json` and
+the machine's `~/.abcd.noindex/config.json`. It only restricts: false in
+either layer holds, no layer turns the sweep on outside a repository abcd
+manages, and a value that cannot be read reads as off, which the act's line
+names.
+
 ## Where it is named
 
 The shell guard refuses a delete of a branch or a worktree it cannot prove

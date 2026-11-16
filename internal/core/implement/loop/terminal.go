@@ -214,6 +214,9 @@ type TerminalResult struct {
 	PassedLanes []PassedLane `json:"passed_lanes,omitempty"`
 	// Why is what stopped the run when a check did.
 	Why string `json:"why,omitempty"`
+	// Swept is the line of the sweep the drive ran on its own at its end
+	// (autosweep.go), "" when it ran none or it said nothing.
+	Swept string `json:"swept,omitempty"`
 }
 
 // terminal is one run in progress.
@@ -336,6 +339,7 @@ func RunTerminal(ctx context.Context, repoRoot string, o TerminalOptions) (Termi
 	}
 	o.Drain.Context = ctx
 	o.Drain.AskJudgeAgain = true
+	o.Drain.driveEnds = true
 	if o.Drain.Transcripts == nil {
 		o.Drain.Transcripts = o.Runners.Transcripts
 	}
@@ -2594,6 +2598,14 @@ func (t *terminal) ended(why string) TerminalResult {
 		t.letGo()
 	}
 	res := TerminalResult{Ended: why, Last: t.last, HeldBack: t.heldBack, PassedOver: t.passedOver, PassedLanes: t.passedLanes}
+	// A drive that ends, other than killed or halted on a check, sweeps on its
+	// own once, after it has let its lanes go (autosweep.go); a stop's ended
+	// context sweeps nothing.
+	if why != TerminalKilled && why != TerminalHalted {
+		if res.Swept = AutoSweep(t.ctx, t.repoRoot); res.Swept != "" {
+			t.say("%s", res.Swept)
+		}
+	}
 	if why == TerminalWall || why == TerminalHalted {
 		res.Why = t.why
 	}
