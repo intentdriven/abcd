@@ -21,7 +21,7 @@ import (
 // ReviewReceiptsRelDir holds one review receipt per commit, named by its full
 // object name, beside the preflight receipts (spc-2610161609350616 step 3).
 // The merge gate reads one in auto mode, from any worktree of the repository
-// but a drive lane's (DriveLaneWorktree).
+// but one that is a drive lane's or lies inside one (insideDriveLane).
 const ReviewReceiptsRelDir = TierRelDir + "/review-receipts"
 
 // MaxReviewReturnBytes bounds one review return read for a receipt.
@@ -321,8 +321,9 @@ type reviewRecordEntry struct {
 // commit (ReadVerdict). Anything short of that is refused, naming the return, and
 // nothing is written. sha must be the full object name of a commit the repository
 // holds. A return that states a delta is refused: it is a delta's
-// (RecordDeltaReview). A checkout that is a drive lane's worktree is refused
-// (ErrDriveLaneRecord), since the gate never counts a receipt there.
+// (RecordDeltaReview). A checkout that is a drive lane's worktree or lies
+// inside one (insideDriveLane) is refused (ErrDriveLaneRecord), since the gate
+// never counts a receipt there.
 func RecordReview(repoRoot, sha string, returns []ReviewReturn) (string, error) {
 	if err := refuseInDriveLane(repoRoot); err != nil {
 		return "", err
@@ -418,7 +419,7 @@ func writeReviewRecord(repoRoot string, rec reviewRecord) (string, error) {
 // reviewReceipt finds the review receipt for sha in any worktree git lists
 // for the repository at repoRoot, as Receipt finds a preflight receipt, and
 // returns its path, or "" when none names sha. One in a drive lane's worktree
-// is passed over (DriveLaneWorktree).
+// is passed over (insideDriveLane).
 func reviewReceipt(repoRoot, sha string) (string, error) {
 	return findReceipt(repoRoot, ReviewReceiptsRelDir, sha)
 }

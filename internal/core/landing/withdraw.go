@@ -249,7 +249,12 @@ func withdrawBeforePush(res *Result, o Options, dir, tracking, nameWithOwner str
 					return atHead, err
 				}
 				if !a.own(viewer) {
-					vouched, err := headVouched(dir, a.HeadRefOid)
+					vouched, err := false, error(nil)
+					if !insideDriveLane(o.from) {
+						// From a drive lane's worktree, or a checkout inside
+						// one, no receipt is read (fromDriveLane).
+						vouched, err = headVouched(dir, a.HeadRefOid)
+					}
 					if err != nil {
 						return atHead, refuse("the receipts for "+short(a.HeadRefOid)+" cannot be read ("+forgeWhy(err)+"), so land leaves pull request #"+n+"'s arming by another account as it is",
 							"settle it, then run abcd land again; nothing was pushed")
@@ -328,7 +333,7 @@ func gateAtLocalHead(res *Result, o Options, dir, tracking, nameWithOwner, n str
 	if err != nil || !gitutil.IsFullSHA(tip) {
 		return "", Remote + "/" + res.Default + " cannot be read"
 	}
-	d, err := DecideMerge(MergeQuery{RepoRoot: dir, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
+	d, err := DecideMerge(MergeQuery{RepoRoot: dir, From: o.from, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
 		Repo: nameWithOwner, PR: n, Head: res.Head, Forge: ask})
 	switch {
 	case err != nil:
@@ -359,7 +364,9 @@ func movedByPush(res *Result, dir, n, head, tip string) error {
 }
 
 // headVouched reports whether a review receipt or a recorded approval in any
-// worktree of the repository at dir but a drive lane's names sha.
+// worktree of the repository at dir names sha, by findReceipts' rule: one in a
+// worktree that is a drive lane's or lies inside one vouches for nothing, and
+// none does when dir is a drive lane's worktree or lies inside one.
 func headVouched(dir, sha string) (bool, error) {
 	if p, err := reviewReceipt(dir, sha); err != nil || p != "" {
 		return p != "", err
@@ -381,7 +388,7 @@ func splitRepo(nameWithOwner string) (owner, name string, ok bool) {
 // that arms without landing a branch (the release hold's re-arm and admission):
 // the mode at the default branch as last fetched, the author's role, the
 // approvals and the receipts, in any worktree of root but a drive lane's
-// (DriveLaneWorktree). The rule is left empty
+// (insideDriveLane). The rule is left empty
 // since it decides only the method, which the arming already carries. An answer
 // the gate could not read is an error, never a refusal.
 func rearmGate(ask ForgeCall, root, repo, pr, head string) (bool, string, error) {

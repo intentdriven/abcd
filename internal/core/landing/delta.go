@@ -228,7 +228,8 @@ func StatesFullPair(text, head string) error { return statesFullPair(text, head)
 // also stating that it read base..head, over a delta that stands (judgeDelta).
 // Anything short of that is refused and nothing is written. A delta never
 // replaces a full pair already recorded for head. A checkout that is a drive
-// lane's worktree is refused (ErrDriveLaneRecord), as RecordReview refuses it.
+// lane's worktree or lies inside one is refused (ErrDriveLaneRecord), as
+// RecordReview refuses it.
 func RecordDeltaReview(repoRoot, head, base string, returns []ReviewReturn) (string, error) {
 	if err := refuseInDriveLane(repoRoot); err != nil {
 		return "", err
