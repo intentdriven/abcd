@@ -18,7 +18,7 @@ import (
 // The generated blocks of a command page are written from the command facts
 // and gated by drift tests; the hand-written prose around them is not, and it
 // is where a page names a flag that was renamed, a command that was removed or
-// an input version the binary no longer reads. CommandPageFacts reads that
+// an input version the binary no longer reads. CommandPageFactsForTest reads that
 // prose against the facts and reports each such claim with its page and line.
 //
 // It is a pure function: the page text and the facts are passed in, and
@@ -253,7 +253,7 @@ type anchor struct {
 	flags   []string
 }
 
-// CommandPageFacts lints one command page's hand-written prose against the
+// CommandPageFactsForTest lints one command page's hand-written prose against the
 // command facts: page is the page as findings name it (its basename less
 // ".md" is the verb it documents, or the root's own name for the dispatcher
 // page), text is its content, and facts is the whole command tree, hidden
@@ -263,7 +263,11 @@ type anchor struct {
 // "schema_version" member whose value is not a version the input beside it
 // reads (nextTo says which input that is). Generated blocks are skipped, and
 // a line carrying CommandPageHistorical is exempt.
-func CommandPageFacts(page, text string, facts []surface.Facts) []CommandPageFinding {
+//
+// Its one caller is the test in internal/surface/cli that runs it over the
+// committed pages with the real command tree, which this package cannot
+// import, so it carries the cross-package test seam's name.
+func CommandPageFactsForTest(page, text string, facts []surface.Facts) []CommandPageFinding {
 	ix := newCommandIndex(facts)
 	if ix.root == "" {
 		return nil

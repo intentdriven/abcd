@@ -312,7 +312,7 @@ func TestCommandPageFacts(t *testing.T) {
 			if page == "" {
 				page = "commands/example.md"
 			}
-			got := CommandPageFacts(page, tc.text, facts)
+			got := CommandPageFactsForTest(page, tc.text, facts)
 			if len(got) != len(tc.want) {
 				t.Fatalf("got %d findings, want %d:\n%s", len(got), len(tc.want), findingLines(got))
 			}
@@ -329,12 +329,12 @@ func TestCommandPageFacts(t *testing.T) {
 // an empty tree reports nothing, and the same input gives the same findings.
 func TestCommandPageFactsIsPure(t *testing.T) {
 	text := "`abcd ideate recrod` and `abcd status --bogus`\n"
-	if got := CommandPageFacts("p.md", text, nil); len(got) != 0 {
+	if got := CommandPageFactsForTest("p.md", text, nil); len(got) != 0 {
 		t.Errorf("an empty tree reported %d findings:\n%s", len(got), findingLines(got))
 	}
 	facts := pageFactsFixture()
-	a := findingLines(CommandPageFacts("p.md", text, facts))
-	b := findingLines(CommandPageFacts("p.md", text, facts))
+	a := findingLines(CommandPageFactsForTest("p.md", text, facts))
+	b := findingLines(CommandPageFactsForTest("p.md", text, facts))
 	if a != b || a == "" {
 		t.Errorf("two calls disagree or report nothing:\n%s---\n%s", a, b)
 	}
