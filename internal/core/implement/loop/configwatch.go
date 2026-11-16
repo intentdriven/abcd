@@ -7,13 +7,21 @@ package loop
 // loop's git steps keep running the repository's settings as they are and
 // never blank, pin or override them (the abcd-fixes-what-it-adds principle).
 // What the loop adds is a tripwire: the first check of a run records a
-// fingerprint of every repository-level setting that can name a program, and
-// of the hooks directory and info/attributes (and, for each lane worktree,
+// fingerprint of the repository-level settings watchedConfig names (content
+// filters, the hooks path and the core programs, credential helpers, a
+// remote's programs and addresses, url rewrites, the protocol allow rules,
+// diff and merge drivers, gpg programs, include paths), and of the hooks
+// directory and info/attributes (and, for each lane worktree,
 // every watched setting git reads there and the hooks directory git runs
 // there), and every later check, made at the start of the loop's next step,
 // compares against it. A change stops the step before it reaches its git,
 // naming each changed key or file, until the person has looked and accepts it
-// (`abcd implement step --accept-config-change`).
+// (`abcd implement step --accept-config-change`). That is not every setting
+// that can name a program: the others a drive's git reads (the signing
+// programs and switches, gc.recentObjectsHook, Git LFS's transfer and
+// extension programs, hook.*, init.templateDir and the rest) a drive holds
+// across its lanes (driveHeldConfig in remoteid.go), and a run outside a
+// drive does not watch them.
 //
 // The fingerprint lives in its own file beside the run's state. It holds
 // salted hashes, never a value: a credential helper's value may carry a
@@ -65,8 +73,10 @@ const AcceptConfigFlag = "--accept-config-change"
 const configFingerprintVersion = 1
 
 // watchedConfig matches, as `git config --get-regexp` matches a canonical key
-// (section and variable lower-cased), every repository-level setting that can
-// name a program git starts, or a file that adds more settings.
+// (section and variable lower-cased), the repository-level settings the run's
+// fingerprint watches: those naming a program git starts or where a networked
+// git goes that the file's header lists, and a file that adds more settings.
+// The rest a drive holds is driveHeldConfig.
 const watchedConfig = `^(` +
 	`filter\..+` +
 	`|core\.(hookspath|sshcommand|fsmonitor|pager|editor|worktree|askpass|gitproxy)` +

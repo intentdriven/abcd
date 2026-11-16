@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
@@ -610,21 +611,56 @@ func (f approveFacts) protectedName(p string) (string, bool) {
 }
 
 // The git configuration keys that start a program, folded: every key
-// gitutil.ExecPins pins, read from it, and the others git documents. A key is
-// matched exactly, or by its section and variable around any subsection.
+// gitutil.ExecPins pins, read from it, and each setting git 2.52's
+// git-config(1) and Git LFS 3.7.1's git-lfs-config(5) document whose value is
+// a command, a program path or a helper name, or that switches on a program
+// git starts (the signing and verifying switches; protocol.allow and
+// protocol.ext.allow, which let a remote address of the ext transport run the
+// command it names; init.templateDir, whose hooks git init copies in). A key
+// is matched exactly, or by its section and variable around any subsection,
+// or by programKeyRE. hook.<name>.command is no setting of git 2.52; a later
+// git runs it as a configured hook.
+//
+// Left off as naming no program of its own: format.pretty and pretty.<name>
+// (a format; a signature it checks starts gpg.program), merge.renormalize and
+// core.attributesFile (which filters and drivers apply; each is listed by its
+// own key), gpg.format (which gpg.<format>.program runs), ssh.variant (how
+// core.sshCommand's program is called), help.format (which of man.viewer and
+// help.browser runs), protocol.<name>.allow for any other transport, and a
+// remote's url and url.<base>.insteadOf (the ext transport needs the protocol
+// keys above).
+//
+// A drive's hold across its lanes (driveHeldConfig and watchedConfig in
+// internal/core/implement/loop) is a list of its own: it answers which
+// settings the drive's own git commands read, network and trust settings
+// included and programs no drive command starts (an alias, a pager, an
+// editor, send-email) left out, while this one answers which settings an
+// agent's command may make any git start. Each program class the drive holds
+// is held here too: TestApproverListHoldsEachProgramClassTheDriveHolds.
 var (
 	programKeys = append(execPinKeys(), "core.sshcommand", "core.pager", "core.editor", "core.askpass",
 		"core.gitproxy", "core.alternaterefscommand", "sequence.editor", "gpg.program", "gpg.ssh.defaultkeycommand",
 		"diff.external", "credential.helper", "web.browser", "tag.gpgsign", "push.gpgsign", "include.path",
-		"uploadpack.packobjectshook", "sendemail.smtpserver", "sendemail.sendmailcmd", "sendemail.tocmd", "sendemail.cccmd")
+		"uploadpack.packobjectshook", "tag.forcesignannotated", "gc.recentobjectshook", "init.templatedir",
+		"help.browser", "man.viewer", "imap.tunnel", "instaweb.browser", "instaweb.httpd", "instaweb.modulepath",
+		"interactive.difffilter", "diff.tool", "diff.guitool", "merge.tool", "merge.guitool",
+		"protocol.allow", "protocol.ext.allow")
 	// programSubKeys are section.*.variable keys; a "" variable is any.
 	programSubKeys = [][2]string{
 		{"alias", ""}, {"pager", ""}, {"includeif", "path"}, {"credential", "helper"}, {"diff", "command"},
 		{"diff", "textconv"}, {"difftool", "cmd"}, {"difftool", "path"}, {"mergetool", "cmd"}, {"mergetool", "path"},
-		{"merge", "driver"}, {"filter", "clean"}, {"filter", "smudge"}, {"filter", "process"}, {"browser", "cmd"},
-		{"browser", "path"}, {"man", "cmd"}, {"man", "path"}, {"remote", "uploadpack"}, {"remote", "receivepack"},
-		{"remote", "vcs"}, {"gpg", "program"},
+		{"merge", "driver"}, {"merge", "recursive"}, {"filter", "clean"}, {"filter", "smudge"}, {"filter", "process"},
+		{"browser", "cmd"}, {"browser", "path"}, {"man", "cmd"}, {"man", "path"}, {"guitool", "cmd"},
+		{"remote", "uploadpack"}, {"remote", "receivepack"}, {"remote", "vcs"}, {"gpg", "program"},
+		{"sendemail", "smtpserver"}, {"sendemail", "sendmailcmd"}, {"sendemail", "tocmd"}, {"sendemail", "cccmd"},
+		{"sendemail", "headercmd"}, {"trailer", "cmd"}, {"trailer", "command"}, {"submodule", "update"},
+		{"hook", "command"},
 	}
+	// programKeyRE matches the Git LFS keys whose subsection is itself
+	// named: a custom transfer's program and its arguments (which the shell
+	// expands), an extension's clean and smudge commands, and the
+	// standalone transfer agent, plain or per URL.
+	programKeyRE = regexp.MustCompile(`^lfs\.(customtransfer\..+\.(path|args)|extension\..+\.(clean|smudge)|(.+\.)?standalonetransferagent)$`)
 )
 
 // treeKeys are the configuration keys, folded, that move the working tree
@@ -663,7 +699,7 @@ func startsProgram(key string) bool {
 		return true
 	}
 	k := strings.ToLower(strings.TrimSpace(key))
-	if containsString(programKeys, k) {
+	if containsString(programKeys, k) || programKeyRE.MatchString(k) {
 		return true
 	}
 	first, rest, ok := strings.Cut(k, ".")
