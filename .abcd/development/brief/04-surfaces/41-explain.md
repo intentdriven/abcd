@@ -75,8 +75,21 @@ named. A refusal names only paths and flags the tree has, never a word that
 matched none. Bare, the verb prints its own help, which is its entry in the
 bare-invocation exceptions ([`README.md`](README.md#bare-invocation)).
 
-The page blocks generated from the same facts, and the first instruction on
-every command page that sends an agent here, are the spec's later steps.
+`make command-facts-sync` (`cmd/command-facts-sync`) writes the same facts
+into derived copies: one JSON file for the root and one for each visible
+top-level verb, under `docs/reference/cli/commands/`, and two generated blocks
+on every page under `commands/`. The first stands straight after the page's
+heading and tells an agent to run `abcd explain <verb>` before it fills in an
+input, and to follow the binary where the page disagrees with it. The second
+ends the page, or stands just before its closing user-input line, and lists
+each visible command's usage line, the inputs it reads with their schema
+versions, and its example. The drift tests in
+`internal/surface/cli/commandfacts_drift_test.go` fail when a committed copy
+differs from a fresh rendering of the tree. The command-page facts lint
+(`internal/core/lint/commandpagefacts.go`) reads each page's own prose outside
+those blocks and reports, by page and line, an invocation that names a command
+or flag the tree lacks, or a `schema_version` the input does not have; a line
+marked `<!-- facts-lint: historical -->` is left unread.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
