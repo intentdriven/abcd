@@ -218,8 +218,14 @@ const WaitBackoffCap = 3
 // or v0.15.1's waits on no later start, so another account sees it queued
 // while the machine is free only for what its own account alone sees: its
 // account's settle hold (WaitSettle), the poll after it, its jitter and its
-// open look, which the cap outlasts. One held shut longer by its own account's
-// stricter wait limit is passed, as v0.15.1 passes every crossed waiter.
+// open look, which the cap outlasts. Its account's slots (load.preflights) are
+// the person's own as well: at one slot a running preflight or a live race run
+// holds its gate shut, where at two it leaves a slot free. So the cap counts
+// only at looks where nothing but crossed waiters would hold the gate shut at
+// one slot, the strictest setting; counting at this account's own slots let
+// later starters at two pass an earlier crossed waiter at one for hours
+// (iss-2611151649449938). One held shut longer by its own account's stricter
+// wait limit or memory floor is passed, as v0.15.1 passes every crossed waiter.
 var WaitCrossedCap = 5 * time.Minute
 
 // crossedLook is what one look read of the crossed waiters, when they alone
@@ -1120,8 +1126,12 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 			if waiter {
 				shut = append(shut, WaitOnWaiter)
 				res.Waiters = ahead.TakingSlots(res.Slots).Waiters
-				_, without := ahead.Uncrossed().Shut(res.Slots)
-				crossedShut = !without
+				// The crossed waiters alone hold it shut only where nothing
+				// else would at one slot either: each may be another
+				// account's, at one slot, held shut by the work this account
+				// counts as a free slot (WaitCrossedCap).
+				onPreflight, onWaiter := ahead.Uncrossed().Shut(1)
+				crossedShut = !onPreflight && !onWaiter && len(racing) == 0
 			}
 		}
 	}
