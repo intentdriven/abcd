@@ -105,11 +105,13 @@ type DirtyState struct {
 
 // IgnoredState is a candidate's ignored paths outside the local tier: the
 // count, and the first of them (a wholly ignored directory is one path).
-// Unread says git refused the listing, so the count says nothing.
+// Unread says git refused the listing, so the count says nothing, and Why,
+// where a prune row carries it, is why.
 type IgnoredState struct {
 	Count  int      `json:"count"`
 	Paths  []string `json:"paths"`
 	Unread bool     `json:"unread"`
+	Why    string   `json:"why,omitempty"`
 }
 
 // quietness is the quiet rule's answer for one worktree.
@@ -229,21 +231,91 @@ func dossierFor(repoRoot string, e entry, q quietness) *Dossier {
 	return d
 }
 
-// ignoredOutsideTier fills d.Ignored with what git ignores in the worktree at
-// dir, less the local tier, which the archive keeps. A wholly ignored .abcd/
-// is listed by its entries, so the records beside the tier are counted. A
-// listing git refuses is marked unread rather than read as nothing ignored.
+// ignoredOutsideTier fills d.Ignored with what a removal of the worktree at
+// dir deletes unarchived, read by the one reader the removals use
+// (readIgnored, through IgnoredForRemoval's own read), less the local tier,
+// which the archive keeps. A candidate's dossier is often of a dirty tree, so
+// the changes the status also names are its dirty line's, not a failure of
+// this one. A listing git refuses is marked unread rather than read as nothing
+// ignored (iss-2611161729040358).
 func ignoredOutsideTier(dir string, d *Dossier) {
-	paths, err := ignoredUnder(dir, ".")
+	s, _, err := readIgnored(dir)
 	if err != nil {
 		d.Ignored.Unread = true
 		return
 	}
+	d.Ignored = s
+}
+
+// ignoredStatus is git's status of the worktree at dir, ignored files
+// included; a test stands in for a git that refuses it.
+var ignoredStatus = func(dir string) ([]gitutil.StatusEntry, error) {
+	return gitutil.Status(dir, removalStatusCap, gitutil.StatusOptions{Ignored: true})
+}
+
+// removalStatusCap bounds the read of a worktree's status for its ignored
+// files: past it the read is refused, and the listing fails.
+const removalStatusCap = 4 << 20
+
+// IgnoredForRemoval is what a removal of the worktree at dir deletes
+// unarchived: its ignored paths outside the local tier, counted as the
+// store's own removal will delete them (iss-2611161722120909). It is the one
+// reader every form of a removal shows or judges by: the sweep abcd runs on
+// its own, the sweep and prune a person runs, and a quiet candidate's
+// dossier (readIgnored). They are read by git's status of ignored files
+// (gitutil.Status), in the environment prune's `git worktree remove` runs in,
+// so a path the global ignore file git reads by default matches is counted,
+// which a listing with core.excludesFile turned off would miss. A path a
+// global config's core.excludesFile alone ignores is no ignored file to that
+// environment: it reads as untracked, so the worktree is dirty and the
+// removal refuses it. The error is a status git refused or that passed its
+// cap; a status naming anything but ignored paths is an error too, since the
+// worktree it read is not the clean one its caller judged. Unread says a
+// wholly ignored .abcd/ could not be read past.
+func IgnoredForRemoval(dir string) (IgnoredState, error) {
+	s, changed, err := readIgnored(dir)
+	if err != nil {
+		return s, err
+	}
+	if changed != "" {
+		return s, fmt.Errorf("its status names a change (%s), so it is no longer the clean worktree judged", changed)
+	}
+	return s, nil
+}
+
+// readIgnored is the ignored paths outside the local tier of the worktree at
+// dir, and the first change the same status names besides them ("" when
+// none), masked. The error is a status git refused or that passed its cap.
+func readIgnored(dir string) (IgnoredState, string, error) {
+	s := IgnoredState{Paths: []string{}}
+	st, err := ignoredStatus(dir)
+	if err != nil {
+		return s, "", fmt.Errorf("its status could not be read: %w", err)
+	}
+	var paths []string
+	changed := ""
+	for _, e := range st {
+		if e.XY != "!!" {
+			if changed == "" {
+				changed = e.XY + " " + termsafe.Sanitize(e.Path)
+			}
+			continue
+		}
+		paths = append(paths, e.Path)
+	}
+	outsideTier(dir, paths, &s)
+	return s, changed, nil
+}
+
+// outsideTier counts each of paths, what git ignores in the worktree at dir,
+// in s, less the local tier. A wholly ignored .abcd/ is counted by its
+// entries, and one that cannot be read marks s unread.
+func outsideTier(dir string, paths []string, s *IgnoredState) {
 	for _, p := range paths {
 		if p == ".abcd/" {
 			entries, err := os.ReadDir(filepath.Join(dir, ".abcd"))
 			if err != nil {
-				d.Ignored.Unread = true
+				s.Unread = true
 				continue
 			}
 			for _, en := range entries {
@@ -251,26 +323,22 @@ func ignoredOutsideTier(dir string, d *Dossier) {
 				if en.IsDir() {
 					rel += "/"
 				}
-				addIgnored(d, rel)
+				addIgnored(s, rel)
 			}
 			continue
 		}
-		addIgnored(d, p)
+		addIgnored(s, p)
 	}
 }
 
-// ignoredUnder lists what git ignores; a test stands in for a git that
-// refuses the listing.
-var ignoredUnder = gitutil.IgnoredUnder
-
-// addIgnored counts p in d.Ignored unless it is the local tier or under it.
-func addIgnored(d *Dossier, p string) {
+// addIgnored counts p in s unless it is the local tier or under it.
+func addIgnored(s *IgnoredState, p string) {
 	if p == tierRel+"/" || strings.HasPrefix(p, tierRel+"/") {
 		return
 	}
-	d.Ignored.Count++
-	if len(d.Ignored.Paths) < dossierPaths {
-		d.Ignored.Paths = append(d.Ignored.Paths, termsafe.Sanitize(p))
+	s.Count++
+	if len(s.Paths) < dossierPaths {
+		s.Paths = append(s.Paths, termsafe.Sanitize(p))
 	}
 }
 

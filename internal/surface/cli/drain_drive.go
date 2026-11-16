@@ -1003,6 +1003,9 @@ func renderDriveEnd(w io.Writer, res loop.TerminalResult) {
 	} else if res.Resume != "" {
 		fmt.Fprintf(w, "  to resume: %s\n", res.Resume)
 	}
+	if res.Swept != "" {
+		fmt.Fprintf(w, "  %s\n", termsafe.SanitizeLine(res.Swept))
+	}
 }
 
 // driveEndWords says why a drive ended.

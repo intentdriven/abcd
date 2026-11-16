@@ -4,7 +4,11 @@ package sweep
 // item, each with the action `--apply` would take or the reason it leaves the
 // item, and the exit code a run maps to.
 
-import "strings"
+import (
+	"strings"
+
+	store "github.com/intentdriven/abcd/internal/core/ahoy/worktree"
+)
 
 // RowKind is what a row is about: worktrees, strays and the embargo store,
 // local branches, branches on origin, reservations and inbox reports.
@@ -93,6 +97,10 @@ const (
 	// KindCwd the sweep's own working directory.
 	KindLoop EvidenceKind = "loop"
 	KindCwd  EvidenceKind = "cwd"
+	// KindIgnored is what git ignores in a spent worktree outside its local
+	// tier, which a removal deletes unarchived: the sweep abcd runs on its
+	// own keeps a worktree holding any, or whose listing failed.
+	KindIgnored EvidenceKind = "ignored"
 	// KindProtected is a branch on the never-delete list: the default branch,
 	// a release branch, a reservation or a status branch.
 	KindProtected EvidenceKind = "protected"
@@ -135,6 +143,12 @@ type Row struct {
 	Evidence []Evidence `json:"evidence,omitempty"`
 	// Outcome is what an applied run did with the item; "" in a dry run.
 	Outcome Outcome `json:"outcome,omitempty"`
+	// Ignored is, on a worktree judged spent, what its removal deletes
+	// unarchived: its ignored paths outside the local tier, or that they
+	// could not be listed and why (store.IgnoredForRemoval). The sweep a
+	// person runs names them on the remove row and removes it; the sweep abcd
+	// runs on its own keeps the worktree. nil when there are none.
+	Ignored *store.IgnoredState `json:"ignored,omitempty"`
 }
 
 // The exit codes a sweep maps to (spc-2610230730269295, Rows).

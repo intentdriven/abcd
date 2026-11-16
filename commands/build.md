@@ -1059,7 +1059,29 @@ A lane's stages run in order:
    pushed head is an ancestor of the default branch on `origin`; stop driving
    the run and come back later. Once it is, the loop removes the lane's
    worktree and branch, the lane is done, and the next pending step opens the
-   next lane. A pull request closed without merging, or merged in a way that
+   next lane. In a repository abcd manages, that step then sweeps on its own
+   once its save is written: the provably spent part of `abcd sweep --apply`,
+   with the same proofs against a fresh fetch (other merged, clean worktrees
+   removed, a dirty one's work saved and kept, the merged lane branches
+   deleted locally and on origin, any other merged branch, a store worktree's
+   own included, kept and listed for `abcd sweep --apply`, and so is a spent
+   store worktree holding any ignored file outside its local tier (a `.env`,
+   say), which a removal would delete unarchived, or whose ignored files
+   cannot be listed; no reservation
+   workflow started, no inbox report filed), its line in `next`, bounded, with
+   `abcd sweep` named for the full list. It runs for two minutes at most
+   (its fetch, its fetch of the reservations and each delete on origin; its
+   local reads are short and have no deadline of their own), under the step's
+   own context, so an interrupted step stops it between removals; give the
+   step a timeout of about two minutes more than you otherwise would. A
+   refusal or fault of that sweep is reported there and the landing stands.
+   `abcd build` and `abcd build next` that close a merged lane as they start
+   or resume sweep too, the line among their diagnostics, with the same
+   two-minute bound but no stop between removals: an interrupt there ends the
+   process, perhaps during a removal. A run ends at its last landing, so
+   this is also the sweep at the end of a build run. `"sweep": {"automatic": false}` in
+   `.abcd/config.json` or `~/.abcd.noindex/config.json` turns it off
+   (`commands/sweep.md`). A pull request closed without merging, or merged in a way that
    rewrote its head, is refused and nothing is cleaned up: report it as it is.
    A pull request the forge reports `CONFLICTING` (`gh pr view <n> --json
    mergeable,mergeStateStatus`) is refused at exit 2, before arming or at the

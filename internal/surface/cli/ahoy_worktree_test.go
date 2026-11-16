@@ -944,6 +944,40 @@ func TestAhoyWorktreePruneDossierShowsIgnoredFiles(t *testing.T) {
 	}
 }
 
+// TestAhoyWorktreePruneRowsNameTheIgnoredFilesARemovalTakes: a merged
+// worktree's would-reclaim row names the ignored file that goes with it, and
+// the worktree is still offered for reclaiming.
+func TestAhoyWorktreePruneRowsNameTheIgnoredFilesARemovalTakes(t *testing.T) {
+	repo := worktreeFixture(t)
+	done := mergedLaneWorktree(t, repo, "done")
+	exclude := filepath.Join(repo.Root(), ".git", "info", "exclude")
+	if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(exclude, []byte("*.local\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(done, "env.local"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, _ := runWorktree(t, false, "prune", "--dry-run")
+	if !strings.Contains(out, "would reclaim  done") || !strings.Contains(out, "1 ignored path(s) outside its local tier go with it, unarchived: env.local") {
+		t.Fatalf("the would-reclaim row does not name the ignored file a removal takes:\n%s", out)
+	}
+}
+
+// TestRenderPrunedSaysWhenTheIgnoredFilesCouldNotBeListed: a failed listing
+// reads as such on a row prune reclaims, never as nothing ignored.
+func TestRenderPrunedSaysWhenTheIgnoredFilesCouldNotBeListed(t *testing.T) {
+	var b strings.Builder
+	renderPruned(&b, worktree.Pruned{Rows: []worktree.PruneRow{{Name: "done", Outcome: worktree.OutcomeReclaimed,
+		Ignored: &worktree.IgnoredState{Unread: true, Why: "its status could not be read"}}}})
+	if !strings.Contains(b.String(), "its ignored files could not be listed (its status could not be read), and any went with it") {
+		t.Fatalf("the row does not say its ignored files could not be listed:\n%s", b.String())
+	}
+}
+
 // TestRenderDossierSaysWhenTheIgnoredFilesCouldNotBeListed: an unread listing
 // prints as such, never as a dossier with no ignored line.
 func TestRenderDossierSaysWhenTheIgnoredFilesCouldNotBeListed(t *testing.T) {

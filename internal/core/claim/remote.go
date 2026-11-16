@@ -1192,13 +1192,20 @@ func echoName(n string) string {
 // before it keep their stamps, each true, and it and those after it keep the
 // stamp of their last fetch that recorded one.
 func fetch(root string, now time.Time, outcome string, spaces ...namespace) (gap string, err error) {
-	return fetchWith(root, now, outcome, originDefault(root), spaces...)
+	return fetchWithContext(context.Background(), root, now, outcome, originDefault(root), spaces...)
 }
 
 // fetchWith is fetch with the default branch's remote-tracking ref named by
 // the caller: ref is refs/remotes/origin/<branch>, or "" to fetch the
 // namespaces alone.
 func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namespace) (gap string, err error) {
+	return fetchWithContext(context.Background(), root, now, outcome, ref, spaces...)
+}
+
+// fetchWithContext is fetchWith with its git fetch bounded by ctx as well as
+// by gitutil.NetTimeout (gitutil.NetInputContext): a fetch still running when
+// ctx ends is killed, and fails as any other fetch does.
+func fetchWithContext(ctx context.Context, root string, now time.Time, outcome, ref string, spaces ...namespace) (gap string, err error) {
 	if len(spaces) == 0 {
 		return "", refuse("a fetch names no namespace; %s", outcome)
 	}
@@ -1242,7 +1249,7 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 	if ferr == nil {
 		if len(withDefault) > bare || len(listed) > 0 {
 			trace(withDefault...)
-			_, ferr = gitutil.NetInput(root, stdin, withDefault...)
+			_, ferr = gitutil.NetInputContext(ctx, root, stdin, withDefault...)
 		}
 		// A fetch the drive's check stopped is not tried again without the
 		// default branch: git was not run, and a second try asks again.
@@ -1251,7 +1258,7 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 			ferr = nil
 			if len(args) > bare || len(listed) > 0 {
 				trace(args...)
-				_, ferr = gitutil.NetInput(root, stdin, args...)
+				_, ferr = gitutil.NetInputContext(ctx, root, stdin, args...)
 			}
 		}
 	}

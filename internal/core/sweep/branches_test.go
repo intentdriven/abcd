@@ -61,7 +61,7 @@ func TestTheBranchDryRunJudgesEachLocalBranchAndWritesNothing(t *testing.T) {
 	repo, origin := branchFixture(t)
 	roots := []string{repo.Root(), origin}
 	before := treeHash(t, roots...)
-	res, err := sweepBranches(context.Background(), repo.Root(), false)
+	res, err := sweepBranches(context.Background(), repo.Root(), false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestTheBranchDryRunJudgesEachLocalBranchAndWritesNothing(t *testing.T) {
 // deleted by `git branch -d` and named; every kept branch stands.
 func TestApplyDeletesAMergedBranchWithBranchDashD(t *testing.T) {
 	repo, _ := branchFixture(t)
-	res, err := sweepBranches(context.Background(), repo.Root(), true)
+	res, err := sweepBranches(context.Background(), repo.Root(), true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestARefusalOfGitBranchDashDIsKeptAndIsTheRunsFault(t *testing.T) {
 	beforeBranchDelete = func(string) { repo.Git("switch", "-q", "--detach", before) }
 	t.Cleanup(func() { beforeBranchDelete = nil })
 
-	res, err := sweepBranches(context.Background(), repo.Root(), true)
+	res, err := sweepBranches(context.Background(), repo.Root(), true, nil)
 	if err == nil || res.ExitCode() != ExitRefused || res.Refusal == "" {
 		t.Fatalf("a refused delete is the run's fault: err %v, exit %d, refusal %q", err, res.ExitCode(), res.Refusal)
 	}
@@ -162,7 +162,7 @@ func TestABranchThatMovedAfterItsJudgementIsKept(t *testing.T) {
 	repo, _ := branchFixture(t)
 	beforeBranchDelete = func(string) { repo.Git("branch", "-f", "ff", "main~2") }
 	t.Cleanup(func() { beforeBranchDelete = nil })
-	res, err := sweepBranches(context.Background(), repo.Root(), true)
+	res, err := sweepBranches(context.Background(), repo.Root(), true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

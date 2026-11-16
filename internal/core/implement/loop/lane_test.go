@@ -325,3 +325,34 @@ func TestALaneNameRefusalNamesTheIDItRefuses(t *testing.T) {
 		}
 	}
 }
+
+// TestALaneBranchIsExactlyTheShapeTheLoopGivesALane: a branch is a lane's only
+// when it is the loop's prefix followed by a run id and a lane id the loop
+// mints, as laneWorktree composes it (BranchPrefix and laneName); a person's
+// build/ branch, a malformed run or lane id, or anything around the shape is
+// not one.
+func TestALaneBranchIsExactlyTheShapeTheLoopGivesALane(t *testing.T) {
+	for _, lane := range []string{"lane-1", "lane-7", "lane-9999"} {
+		name, err := laneName("run-0123456789012345", lane)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !LaneBranch(BranchPrefix + name) {
+			t.Fatalf("the loop's own lane branch %q is not read as a lane's", BranchPrefix+name)
+		}
+	}
+	for _, b := range []string{
+		"build/ci-tweak", "build/run-1-lane-1", "build/run-0123456789012345-lane-0", "build/run-0123456789012345-lane-01",
+		"build/run-0123456789012345-lane-12345", "build/run-0123456789012345-lane-1x", "build/run-0123456789012345",
+		"run-0123456789012345-lane-1", "feature/build/run-0123456789012345-lane-1", "build/run-0123456789012345-lane-1/x",
+		"build/x-run-0123456789012345-lane-1", "develop", "",
+		// A second -lane-, a bare trailing slash, a trailing newline and an
+		// upper-case prefix.
+		"build/run-0123456789012345-lane-1-lane-2", "build/run-0123456789012345-lane-1/",
+		"build/run-0123456789012345-lane-1\n", "Build/run-0123456789012345-lane-1",
+	} {
+		if LaneBranch(b) {
+			t.Fatalf("%q is read as a lane's branch", b)
+		}
+	}
+}

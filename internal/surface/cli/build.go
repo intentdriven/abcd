@@ -236,6 +236,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			const prefix = "abcd build"
+			defer installAutoSweep()()
 			if release {
 				var with []string
 				for _, f := range []string{"session", "pace", "sub-agents", "fix-rounds", "take-over", "auto-plan"} {
@@ -410,6 +411,7 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const prefix = "abcd build next"
+			defer installAutoSweep()()
 			root, err := loopRoot()
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
@@ -1238,6 +1240,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const prefix = "abcd implement step"
+			defer installAutoSweep()()
 			root, err := loopRoot()
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
