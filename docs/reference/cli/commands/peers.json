@@ -1,0 +1,12 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd peers",
+      "sentence": "List what peers hold that this checkout lacks, and the reservations: Writes the fetched reservations, re-arms withdrawn merges; refuses outside a git checkout.",
+      "usage": "abcd peers [flags]",
+      "flags": [],
+      "inputs": []
+    }
+  ]
+}

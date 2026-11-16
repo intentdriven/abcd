@@ -1,0 +1,68 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd reflect",
+      "sentence": "Render the seed a cut release's retrospective interview opens from: Writes nothing; refuses a release that shipped no intent, or an intent id.",
+      "usage": "abcd reflect <release-tag> [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd reflect v0.11.0",
+      "subcommands": [
+        "interview",
+        "write"
+      ]
+    },
+    {
+      "path": "abcd reflect interview",
+      "sentence": "Run a cut release's retrospective interview in a plain Terminal on your own route: Writes the answers record and README; refuses with no route of yours.",
+      "usage": "abcd reflect interview <release-tag> [--answers <file>] [--answered-in <place>] [--proceed] [flags]",
+      "flags": [
+        {
+          "name": "answered-in",
+          "type": "string",
+          "default": "Terminal"
+        },
+        {
+          "name": "answers",
+          "type": "string"
+        },
+        {
+          "name": "proceed",
+          "type": "bool"
+        }
+      ],
+      "inputs": [
+        {
+          "flag": "answers",
+          "kind": "answers",
+          "name": "interview answers"
+        }
+      ],
+      "example": "abcd reflect interview v0.11.0"
+    },
+    {
+      "path": "abcd reflect write",
+      "sentence": "Write a cut release's retrospective from the interview's answers: Writes its README once; refuses a thin answer or unconfirmed unshipped work.",
+      "usage": "abcd reflect write <release-tag> --answers <file> [flags]",
+      "flags": [
+        {
+          "name": "answers",
+          "type": "string"
+        },
+        {
+          "name": "proceed",
+          "type": "bool"
+        }
+      ],
+      "inputs": [
+        {
+          "flag": "answers",
+          "kind": "answers",
+          "name": "interview answers"
+        }
+      ],
+      "example": "abcd reflect write v0.11.0 --answers answers.json"
+    }
+  ]
+}

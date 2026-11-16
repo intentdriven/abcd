@@ -1,0 +1,44 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd update",
+      "sentence": "Swap the PATH-installed binary for a verified release, or with --check only compare: Writes the swapped binary; refuses a binary it cannot prove is abcd's.",
+      "usage": "abcd update [tag] [flags]",
+      "flags": [
+        {
+          "name": "check",
+          "type": "bool"
+        },
+        {
+          "name": "yes",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "subcommands": [
+        "news"
+      ]
+    },
+    {
+      "path": "abcd update news",
+      "sentence": "Say what changed since the update, and offer the setup that waits: Writes only an answer or --seen, to ~/.abcd.noindex/; refuses --answer with --full or --seen.",
+      "usage": "abcd update news [flags]",
+      "flags": [
+        {
+          "name": "answer",
+          "type": "string"
+        },
+        {
+          "name": "full",
+          "type": "bool"
+        },
+        {
+          "name": "seen",
+          "type": "bool"
+        }
+      ],
+      "inputs": []
+    }
+  ]
+}

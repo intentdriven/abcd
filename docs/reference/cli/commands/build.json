@@ -1,0 +1,77 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd build",
+      "sentence": "Start the loop that takes one READY intent to delivered: Writes the run's state and its reservation; refuses an open question, a hold or a peer holding it.",
+      "usage": "abcd build <itd-N|iss-N> [--auto-plan] [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] [--release] [flags]",
+      "flags": [
+        {
+          "name": "auto-plan",
+          "type": "bool"
+        },
+        {
+          "name": "fix-rounds",
+          "type": "string"
+        },
+        {
+          "name": "pace",
+          "type": "string"
+        },
+        {
+          "name": "release",
+          "type": "bool"
+        },
+        {
+          "name": "session",
+          "type": "string"
+        },
+        {
+          "name": "sub-agents",
+          "type": "string"
+        },
+        {
+          "name": "take-over",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd build itd-2609010000000001",
+      "subcommands": [
+        "next"
+      ]
+    },
+    {
+      "path": "abcd build next",
+      "sentence": "Pick the readiest planned intent and start its run: Writes the run's state and the reason as the lane's first commit; refuses when nothing passes the checks.",
+      "usage": "abcd build next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--max <n>] [--until-empty] [flags]",
+      "flags": [
+        {
+          "name": "fix-rounds",
+          "type": "string"
+        },
+        {
+          "name": "max",
+          "type": "int"
+        },
+        {
+          "name": "pace",
+          "type": "string"
+        },
+        {
+          "name": "session",
+          "type": "string"
+        },
+        {
+          "name": "sub-agents",
+          "type": "string"
+        },
+        {
+          "name": "until-empty",
+          "type": "bool"
+        }
+      ],
+      "inputs": []
+    }
+  ]
+}

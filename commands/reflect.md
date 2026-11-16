@@ -8,6 +8,10 @@ user-invocable: false
 
 # `/abcd:reflect` — a cut release's retrospective
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain reflect`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Look back on a release once it is cut, in a short interview that opens from what
 the release actually shipped, and file what it taught as
 `.abcd/development/retrospectives/<release-tag>/README.md`. The next voyage's
@@ -140,5 +144,19 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain reflect` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd reflect <release-tag> [flags]`
+  - An example call is `abcd reflect v0.11.0`.
+- `abcd reflect interview <release-tag> [--answers <file>] [--answered-in <place>] [--proceed] [flags]`
+  - Reads `--answers`, the interview answers.
+  - An example call is `abcd reflect interview v0.11.0`.
+- `abcd reflect write <release-tag> --answers <file> [flags]`
+  - Reads `--answers`, the interview answers.
+  - An example call is `abcd reflect write v0.11.0 --answers answers.json`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

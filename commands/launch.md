@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:launch` release preview and release cut
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain launch`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 `abcd --help` lists `launch` in the person's release group. The preview
 (`--dry-run`) also renders the release cut the next ship would make; there is
 no separate changelog command.
@@ -1411,5 +1415,20 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain launch` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd launch [flags]`
+- `abcd launch archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] [flags]`
+  - An example call is `abcd launch archive --out dist`.
+- `abcd launch manifests --tree public|dev [--root <dir>] [flags]`
+  - An example call is `abcd launch manifests --tree public`.
+- `abcd launch receipts [flags]`
+- `abcd launch scaffold [--confirm] [--dependency-reauthor] [flags]`
+- `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [--dry-run] [flags]`
+  - Reads `--changelog-json`, the composed changelog, at schema_version 2; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain launch ship --input changelog-json` prints its shape.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

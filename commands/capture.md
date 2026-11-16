@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:capture` — issue ledger
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain capture`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 The lightweight write side of the structured issue ledger under
 `.abcd/work/issues/`. Every issue gets a stable `iss-N` id, schema-checked
 frontmatter, and folder-as-status (`open/`, `resolved/`, `wontfix/`). Bare
@@ -839,5 +843,35 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain capture` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd capture [text] [flags]`
+- `abcd capture admit <rdi-N> --grounds "<why>" [flags]`
+  - An example call is `abcd capture admit rdi-2609010000000001 --grounds "the widened configuration is one the next release has to serve"`.
+- `abcd capture defer <iss-N> --after <vX.Y.Z> --reason <text> [flags]`
+  - An example call is `abcd capture defer iss-2609010000000001 --after v0.1.0 --reason "the fix needs the parser rewrite that lands next cycle"`.
+- `abcd capture disposition <rdi-N> --state <accepted|rejected|declined|held> (--grounds <text>, or --exit-condition <text> when held) [--supersedes <dsp-N>] [--recurs <rdi-N,...>] [flags]`
+  - An example call is `abcd capture disposition rdi-2609010000000001 --state accepted --grounds "pursued: the tension is real and the next reading will show it again"`.
+- `abcd capture link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] [flags]`
+  - An example call is `abcd capture link iss-2609010000000001 --blocked-by iss-2609010000000002`.
+- `abcd capture list [flags]`
+- `abcd capture mentions [--ref <branch>] [flags]`
+- `abcd capture migrate [--apply] [flags]`
+- `abcd capture promote <iss-N> [--grounds "<token>: <text>"] | promote <rdi-N> [flags]`
+  - An example call is `abcd capture promote iss-2609010000000001`.
+- `abcd capture reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds "<why>" [--open] | --complete <rfm-N> [flags]`
+  - An example call is `abcd capture reframe --occasioned-by rdi-2609010000000001 --grounds "the reading showed the construal assumed a single operator" --open`.
+- `abcd capture remedy <iss-N> <text> [flags]`
+  - An example call is `abcd capture remedy iss-2609010000000001 "make the map before the first write"`.
+- `abcd capture resolve <iss-N> <note> --impact <additive|breaking|fix|internal> [--grounds "<token>: <text>"] [--intent itd-N] [--spec spc-N] [--commit sha] [--shipped-in vX.Y.Z] [flags]`
+  - An example call is `abcd capture resolve iss-2609010000000001 "fixed by the parser change" --impact fix`.
+- `abcd capture surprise --occasioned-by <rdi-N|adm-N|dsp-N> "<what was unexpected>" [flags]`
+  - An example call is `abcd capture surprise --occasioned-by rdi-2609010000000001 "the proposal nobody expected ranked first"`.
+- `abcd capture wontfix <iss-N> <reason> [--grounds "declined: <text>"] [--duplicates <iss-N|itd-N,...>] [flags]`
+  - An example call is `abcd capture wontfix iss-2609010000000001 "the behaviour is the documented one"`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

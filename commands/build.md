@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:build`
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain build`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Take one intent from READY towards delivered with the loop holding the run, not
 this conversation. The run lives in a state file; every invocation reads it,
 does at most one stage, writes it and exits, so a session that stops, is
@@ -1160,5 +1164,14 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain build` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd build <itd-N|iss-N> [--auto-plan] [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] [--release] [flags]`
+  - An example call is `abcd build itd-2609010000000001`.
+- `abcd build next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--max <n>] [--until-empty] [flags]`
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

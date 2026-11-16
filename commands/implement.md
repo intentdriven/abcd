@@ -8,6 +8,10 @@ user-invocable: false
 
 # `/abcd:implement` — share a run between sessions
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain implement`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 An autonomous run is one session's by default. A second session may join it
 for a window, and the run divides the work one of three ways — a claim per
 record, whole batches per session, or the first building while the second
@@ -2163,5 +2167,49 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain implement` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd implement [flags]`
+- `abcd implement check <lane|release|review|audit|land> --session <id> [flags]`
+  - An example call is `abcd implement check lane --session s-example`.
+- `abcd implement claim <record> --session <id> --lane <lane> [flags]`
+  - An example call is `abcd implement claim iss-2609010000000001 --session s-example --lane cli`.
+- `abcd implement join --session <id> --role first|second [flags]`
+  - An example call is `abcd implement join --session s-example --role first`.
+- `abcd implement leave --session <id> [flags]`
+  - An example call is `abcd implement leave --session s-example`.
+- `abcd implement load --site preflight|eval-harness | --wait [--narrow] [--timeout <duration>] [-- <command>...] | --race-gate [--timeout <duration>] [flags]`
+  - An example call is `abcd implement load --site preflight`.
+- `abcd implement log <event> --session <id> [--field key=value ...] [flags]`
+  - An example call is `abcd implement log lane_open --session s-example`.
+- `abcd implement mode <single|claim|batch|split-roles> --session <id> [flags]`
+  - An example call is `abcd implement mode single --session s-example`.
+- `abcd implement outage [flags]`
+- `abcd implement outage ack --session <id> [flags]`
+  - An example call is `abcd implement outage ack --session s-example`.
+- `abcd implement outage clear --session <id> --reason <why> [flags]`
+  - An example call is `abcd implement outage clear --session s-example --reason "the network is back"`.
+- `abcd implement outage probe --session <id> [--model ok|fail] [flags]`
+  - An example call is `abcd implement outage probe --session s-example`.
+- `abcd implement outage record --session <id> --service network|model --kind host|agent|tool --lane <lane> --what <text> [flags]`
+  - An example call is `abcd implement outage record --session s-example --service network --kind tool --lane cli --what "git push"`.
+- `abcd implement receipt <path> [--run <run-id>] [flags]`
+  - An example call is `abcd implement receipt review-receipt.json --run run-2609010000000001`.
+- `abcd implement record [--run <run-id>] [--transcript <path>]... [flags]`
+- `abcd implement release <record> --session <id> [flags]`
+  - An example call is `abcd implement release iss-2609010000000001 --session s-example`.
+- `abcd implement report [--date YYYY-MM-DD | --log <file>] [flags]`
+- `abcd implement resume [--run <run-id>] [--take <run-id>] [flags]`
+  - An example call is `abcd implement resume --take run-2609010000000001`.
+- `abcd implement status [--run <run-id>] [flags]`
+- `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [--route <role>=runner:<name>[@<provider>/<model>]]... [flags]`
+- `abcd implement stop [--lift] [flags]`
+  - An example call is `abcd implement stop`.
+- `abcd implement widen <path>... --lane <lane-id> [--run <run-id>] [flags]`
+  - An example call is `abcd implement widen internal/widget/b.go --lane lane-1 --run run-2609010000000001`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

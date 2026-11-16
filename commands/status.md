@@ -6,6 +6,10 @@ block: people
 
 # `/abcd:status`
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain status`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Show what everyone else is doing on this project: the announcements every
 session posted with `/abcd:announce`, on this computer, under a colleague's
 account on another computer or in a hosted cloud session, then who holds which
@@ -345,5 +349,9 @@ too, you are in a source checkout of this repo, where — and only there —
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
 `go run ./cmd/abcd ahoy install` in a source checkout.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain status` from the running binary disagree, follow the binary.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

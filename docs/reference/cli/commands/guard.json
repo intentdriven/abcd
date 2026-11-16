@@ -1,0 +1,104 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd guard",
+      "sentence": "Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.",
+      "usage": "abcd guard [flags]",
+      "flags": [],
+      "inputs": [],
+      "subcommands": [
+        "allow",
+        "approve",
+        "check",
+        "hook",
+        "question"
+      ]
+    },
+    {
+      "path": "abcd guard allow",
+      "sentence": "Let one exact unproven delete through the hook, once: Writes one allow record in your home folder; refuses without --once, and when an agent runs it.",
+      "usage": "abcd guard allow --once --command <line> [flags]",
+      "flags": [
+        {
+          "name": "command",
+          "type": "string"
+        },
+        {
+          "name": "once",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd guard allow --once --command 'git branch -D feat/done'"
+    },
+    {
+      "path": "abcd guard approve",
+      "sentence": "Answer a headless agent's permission prompts over MCP: Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.",
+      "usage": "abcd guard approve --dir <working-tree> --base <commit> [--run-dir <dir>]... [flags]",
+      "flags": [
+        {
+          "name": "base",
+          "type": "string"
+        },
+        {
+          "name": "declared",
+          "type": "list"
+        },
+        {
+          "name": "dir",
+          "type": "string"
+        },
+        {
+          "name": "harness",
+          "type": "string"
+        },
+        {
+          "name": "protect",
+          "type": "list"
+        },
+        {
+          "name": "run-dir",
+          "type": "list"
+        },
+        {
+          "name": "stage-home",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd guard approve --dir /work/example-repo --base 0123456789abcdef0123456789abcdef01234567"
+    },
+    {
+      "path": "abcd guard check",
+      "sentence": "Judge one shell command against the hazard registry: Writes nothing; refuses a hazard with exit 1 and a command it cannot parse with exit 2.",
+      "usage": "abcd guard check [flags]",
+      "flags": [
+        {
+          "name": "command",
+          "type": "string"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": "abcd guard hook",
+      "sentence": "Judge the shell command in a host's pre-tool-use payload: Writes branch records and a question's mode; refuses a hazard or a badly built question.",
+      "usage": "abcd guard hook [flags]",
+      "flags": [],
+      "inputs": []
+    },
+    {
+      "path": "abcd guard question",
+      "sentence": "Check a draft question as the hook will judge it: Writes nothing; refuses an unreadable draft, a store it cannot read, and any finding.",
+      "usage": "abcd guard question [<file>|-] [flags]",
+      "flags": [
+        {
+          "name": "ask",
+          "type": "bool"
+        }
+      ],
+      "inputs": []
+    }
+  ]
+}

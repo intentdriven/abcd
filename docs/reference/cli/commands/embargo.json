@@ -1,0 +1,100 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd embargo",
+      "sentence": "Keep private security advisories off the public ledger until closed or published: Writes nothing bare, only the embargo store; refuses an unknown sub-verb.",
+      "usage": "abcd embargo [flags]",
+      "flags": [],
+      "inputs": [],
+      "subcommands": [
+        "check",
+        "close",
+        "intake",
+        "publish",
+        "triage"
+      ]
+    },
+    {
+      "path": "abcd embargo check",
+      "sentence": "Check a commit range or texts for what would disclose an advisory under embargo: Writes nothing; refuses on each id, reserved CVE id, title or store path found.",
+      "usage": "abcd embargo check [flags]",
+      "flags": [
+        {
+          "name": "allow",
+          "type": "list"
+        },
+        {
+          "name": "file",
+          "type": "list"
+        },
+        {
+          "name": "range",
+          "type": "string"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": "abcd embargo close",
+      "sentence": "Show an advisory's closing text and digest, or close it on GitHub with it: Writes GitHub and the store only with --approve; refuses a digest for other text.",
+      "usage": "abcd embargo close <iss-N|GHSA-id> [flags]",
+      "flags": [
+        {
+          "name": "approve",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd embargo close GHSA-xxxx-xxxx-xxxx"
+    },
+    {
+      "path": "abcd embargo intake",
+      "sentence": "Take this repository's private advisories into private records in the embargo store: Writes only the embargo store; refuses a remote that is not on GitHub.",
+      "usage": "abcd embargo intake [flags]",
+      "flags": [],
+      "inputs": []
+    },
+    {
+      "path": "abcd embargo publish",
+      "sentence": "Show the publication plan with computed patched versions, or publish it: Writes GitHub and the store only with --approve; refuses a digest for another plan.",
+      "usage": "abcd embargo publish [flags]",
+      "flags": [
+        {
+          "name": "approve",
+          "type": "string"
+        },
+        {
+          "name": "release",
+          "type": "string"
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": "abcd embargo triage",
+      "sentence": "Record a verdict on a private advisory, drafting a closing verdict's text: Writes the embargo store; refuses an unknown verdict or one missing its reason.",
+      "usage": "abcd embargo triage <iss-N|GHSA-id> <verdict> [flags]",
+      "flags": [
+        {
+          "name": "by",
+          "type": "string"
+        },
+        {
+          "name": "cannot-help",
+          "type": "string"
+        },
+        {
+          "name": "exists-without",
+          "type": "string"
+        },
+        {
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by \"<who decided>\" --reason \"the behaviour is the documented one\""
+    }
+  ]
+}
