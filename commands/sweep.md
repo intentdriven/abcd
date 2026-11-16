@@ -65,17 +65,23 @@ resumes), at the end of a drain move that ends the drain, and at the end of
 run ends at its last landing, which has swept already. That sweep removes
 merged, clean worktrees of the worktree store, saves a dirty one's work as a
 patch and keeps it, and deletes only the merged branches abcd made, locally
-and on origin: a build lane's (`build/…`) and a worktree store worktree's.
-Any other merged branch, such as an unprotected `develop` at the default
-branch or a peer's branch pushed with no commits yet, is kept, its row
-opening "left for `abcd sweep --apply`", for you to delete after a dry run.
+and on origin: a build lane's, named exactly as the build loop names a lane
+(`build/<run-id>-<lane-id>`, each id one the loop mints). Any other merged
+branch, such as an unprotected `develop` at the default branch, a peer's
+branch pushed with no commits yet, your own `build/ci-tweak`, or the branch
+of a store worktree it removes, is kept, its row opening "left for `abcd
+sweep --apply`", for you to delete after a dry run. A store worktree's branch
+is no proof abcd made it: `abcd ahoy worktree add` can check your existing
+branch out into the store.
 It never starts the reservation workflow and never files inbox reports, which
 stay with `--apply`. The worktree the running process is in, and any a live
 session holds, are kept.
 
-It runs for two minutes at most: its fetch, its reads and each delete on
-origin end at that bound or at a stop of the drive, and it starts no worktree
-removal past it, so a removal is never cut off midway. What it did not reach
+It runs for two minutes at most: its fetch, its fetch of the reservations
+and each delete on origin end at that bound or at a stop of the drive, and it
+starts no worktree removal past it, so a removal is never cut off midway. Its
+local reads (whether a branch is merged, and what a worktree has changed) are
+short and have no deadline of their own. What it did not reach
 waits for the next landing's sweep, the drain's end or your own `abcd sweep`.
 The act it follows reports it on one line: how many items it removed or
 deleted, saved and left, the first few rows in this page's row wording, then

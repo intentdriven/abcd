@@ -1058,16 +1058,20 @@ A lane's stages run in order:
    next lane. In a repository abcd manages, that step then sweeps on its own
    once its save is written: the provably spent part of `abcd sweep --apply`,
    with the same proofs against a fresh fetch (other merged, clean worktrees
-   removed, a dirty one's work saved and kept, the merged branches abcd made
-   deleted locally and on origin, any other merged branch kept and listed for
-   `abcd sweep --apply`; no reservation workflow started, no inbox report
-   filed), its line in `next`, bounded, with `abcd sweep` named for the full
-   list. It runs for two minutes at most, under the step's own context, so an
-   interrupted step stops it between removals; give the step a timeout of
-   about two minutes more than you otherwise would. A refusal or fault of that
-   sweep is reported there and the landing stands. `abcd build` and `abcd
-   build next` that close a merged lane as they start or resume sweep the same
-   way, the line among their diagnostics. A run ends at its last landing, so
+   removed, a dirty one's work saved and kept, the merged lane branches
+   deleted locally and on origin, any other merged branch, a store worktree's
+   own included, kept and listed for `abcd sweep --apply`; no reservation
+   workflow started, no inbox report filed), its line in `next`, bounded, with
+   `abcd sweep` named for the full list. It runs for two minutes at most
+   (its fetch, its fetch of the reservations and each delete on origin; its
+   local reads are short and have no deadline of their own), under the step's
+   own context, so an interrupted step stops it between removals; give the
+   step a timeout of about two minutes more than you otherwise would. A
+   refusal or fault of that sweep is reported there and the landing stands.
+   `abcd build` and `abcd build next` that close a merged lane as they start
+   or resume sweep too, the line among their diagnostics, with the same
+   two-minute bound but no stop between removals: an interrupt there ends the
+   process, perhaps during a removal. A run ends at its last landing, so
    this is also the sweep at the end of a build run. `"sweep": {"automatic": false}` in
    `.abcd/config.json` or `~/.abcd.noindex/config.json` turns it off
    (`commands/sweep.md`). A pull request closed without merging, or merged in a way that

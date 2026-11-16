@@ -861,11 +861,14 @@ what it did in `next`:
   finished a merged lane, and a move that ends the drain, then run the
   provably spent part of `abcd sweep --apply` once, with the same proofs
   against a fresh fetch: merged, clean worktrees removed, a dirty one's work
-  saved as a patch and the worktree kept, and the merged branches abcd made
-  (a lane's `build/…` branch, a worktree store worktree's) deleted locally and
-  on origin; any other merged branch is kept and listed for `abcd sweep
-  --apply`. It starts no reservation workflow and files no inbox report, and
-  runs for two minutes at most, stopping between removals. A step that lands
+  saved as a patch and the worktree kept, and the merged lane branches abcd
+  made (named exactly `build/<run-id>-<lane-id>`, as the loop names a lane)
+  deleted locally and on origin; any other merged branch, a store worktree's
+  own included, is kept and listed for `abcd sweep --apply`. It starts no
+  reservation workflow and files no inbox report, and runs for two minutes at
+  most (its fetch, its fetch of the reservations and each delete on origin;
+  its local reads are short and have no deadline of their own), stopping
+  between removals. A step that lands
   a lane sweeps the same way, and so does `--drive` once at its own end
   (unless it was killed, halted or stopped), its line printed once in the
   drive's summary; a stop of the drive also ends a sweep under way and starts

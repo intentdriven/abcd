@@ -88,19 +88,25 @@ resume closes, at the end of a drain move that ends the drain, and at the end
 of a drive a person did not stop and nothing killed or halted. A build run
 ends at its last landing, which has swept already. It removes merged, clean
 worktrees of the worktree store, saves a dirty one's work and keeps it, and
-deletes the merged branches abcd made, locally and on origin: a build lane's
-and a worktree store worktree's (dcn-2611161459048806). Any other merged
-branch, a long-lived one at or behind the default branch or a peer's freshly
-pushed one, is listed with its reason and left for the applying form, since
-no person saw a dry run first. It starts no reservation workflow and files no
+deletes the merged branches abcd made, locally and on origin: a branch named
+exactly as the build loop names a lane, its prefix followed by a run id and a
+lane id the loop mints (dcn-2611161459048806, dcn-2611161654034047). Any
+other merged branch, a long-lived one at or behind the default branch, a
+peer's freshly pushed one, a person's own branch under the lane prefix, or the
+branch of a store worktree it removes, is listed with its reason and left for
+the applying form, since no person saw a dry run first. A store worktree's
+branch is no proof abcd made it: adding a worktree to the store can check a
+person's existing branch out there. It starts no reservation workflow and files no
 inbox report: those stay with the applying form a person runs. The worktree
 the running process is in, and any a live session holds, are kept by the same
 liveness proof.
 
 It is bounded at two minutes as a whole, well inside a lane's ten-minute
-command bound: its fetch, its reads and each delete on origin end with that
-bound or with a person's stop, and it starts no removal past it, so it stops
-between removals and never inside one. What it did not reach is judged again,
+command bound: its fetch, its fetch of the reservations and each delete on
+origin end with that bound or with a person's stop, and it starts no removal
+past it, so it stops between removals and never inside one. Its local reads,
+the merged judgement and the liveness probe's read of a worktree's changes,
+are short and run with no deadline of their own. What it did not reach is judged again,
 with the same proofs, by the next landing's sweep or the drain's end. The act
 it follows reports it on one line, bounded: what it removed and what it left,
 counted, the first few rows in the sweep's row wording, then where the full
