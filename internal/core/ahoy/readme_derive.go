@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -962,11 +963,64 @@ var inlineTagRe = regexp.MustCompile(`<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Z
 // span shows its text as written, so neither reaches into one; the span is
 // kept with its backticks, which the list shows as code.
 //
+// An escape is text, not markup: an escaped angle bracket or bracket opens no
+// tag or link, and an escaped bracket or parenthesis inside a link does not
+// end it, so each escape is held while the tags and links are read and put
+// back after (iss-2610112021163993 keeps it as written in the list).
+//
 // The text comes back masked, with the function that restores its spans: the
 // spans are read once, from the heading as written (iss-2610112237411831).
 func headingText(src string) (string, func(string, bool) string) {
 	masked, unmask := mdrecord.MaskCodeSpans(src)
-	return inlineTagRe.ReplaceAllString(inlineLinkRe.ReplaceAllString(masked, "$1"), ""), unmask
+	held, restore := holdEscapes(masked)
+	return restore(inlineTagRe.ReplaceAllString(inlineLinkRe.ReplaceAllString(held, "$1"), "")), unmask
+}
+
+// inlineTagAtRe is inlineTagRe anchored where the reading stands.
+var inlineTagAtRe = regexp.MustCompile(`^(?:` + inlineTagRe.String() + `)`)
+
+// escapeHoldRe is a held escape, as holdEscapes writes it.
+var escapeHoldRe = regexp.MustCompile("\x01([0-9]+)\x01")
+
+// holdEscapes replaces each backslash escape in s, a backslash before ASCII
+// punctuation, with a placeholder the tag and link patterns cannot read as
+// markup (iss-2611161558121669), and returns the function that puts them
+// back. It reads s left to right as the forge does: a tag where one opens is
+// copied as written, since a backslash inside raw HTML is no escape. Text
+// that already holds the placeholder's byte is returned as it is, with an
+// identity restore, as MaskCodeSpans treats a heading holding its own.
+func holdEscapes(s string) (string, func(string) string) {
+	if strings.IndexByte(s, 0x01) >= 0 || strings.IndexByte(s, '\\') < 0 {
+		return s, func(t string) string { return t }
+	}
+	var held []string
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		switch {
+		case s[i] == '<':
+			if m := inlineTagAtRe.FindStringIndex(s[i:]); m != nil {
+				b.WriteString(s[i : i+m[1]])
+				i += m[1]
+				continue
+			}
+		case s[i] == '\\' && i+1 < len(s) && isASCIIPunct(s[i+1]):
+			fmt.Fprintf(&b, "\x01%d\x01", len(held))
+			held = append(held, s[i:i+2])
+			i += 2
+			continue
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String(), func(t string) string {
+		return escapeHoldRe.ReplaceAllStringFunc(t, func(m string) string {
+			n, err := strconv.Atoi(m[1 : len(m)-1])
+			if err != nil || n >= len(held) {
+				return m
+			}
+			return held[n]
+		})
+	}
 }
 
 // escapeLinkChars escapes what could close or break the link a heading's

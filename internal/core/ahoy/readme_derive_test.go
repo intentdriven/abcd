@@ -475,6 +475,38 @@ func TestContentsKeepsAHeadingsEscapesAsWritten(t *testing.T) {
 	}
 }
 
+// TestContentsKeepsAHeadingsEscapedMarkupAsText (iss-2611161558121669): an
+// escaped angle bracket or bracket is text, not markup, so the tag or link
+// it opens is listed as the heading renders it rather than stripped; an
+// escaped bracket inside a link's text does not cut the link short; and a
+// backslash inside a raw tag is no escape, so the tag is still stripped.
+func TestContentsKeepsAHeadingsEscapedMarkupAsText(t *testing.T) {
+	readme := strings.Join([]string{
+		"# P",
+		"",
+		`## Use \<b> here`,
+		"",
+		`## Not \[a link](x) here`,
+		"",
+		`## A [b\]c](x) link`,
+		"",
+		`## Tag <a title="x\y">t</a> end`,
+		"",
+	}, "\n")
+	root := readmeRepo(t, "", map[string]string{"README.md": readme})
+	d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
+	for _, want := range []string{
+		`- [Use \<b> here](`,
+		`- [Not \[a link\](x) here](`,
+		`- [A b\]c link](`,
+		`- [Tag t end](`,
+	} {
+		if !strings.Contains(d.Body, want) {
+			t.Errorf("the contents list must carry %q:\n%s", want, d.Body)
+		}
+	}
+}
+
 // TestContentsMasksCodeSpansOnce: a heading's code spans are read once, from
 // the heading as written (iss-2610112237411831). Where a stripped tag or link
 // sat between two spans, the anchor is made from both spans' rendered text and
