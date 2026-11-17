@@ -4270,7 +4270,7 @@ inbox in the user account's machine store (`~/.abcd.noindex/inbox/`).
 Bare `abcd inbox` lists the waiting reports newest first, naming each sender
 repository plainly: the newest 200 read whole, and a line counting any older
 ones it leaves unlisted; the tally counts every waiting report. `abcd inbox
-show <id>` renders one whole, reading that report alone. Both are
+show <id>` renders one whole, reading only the files that carry its id. Both are
 read-only and file nothing. A report written to a template version this abcd
 does not know is listed as unreadable, naming the version, and is never
 dropped. Everything a report says is another repository's words and is

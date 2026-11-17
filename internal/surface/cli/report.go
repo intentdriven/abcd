@@ -274,7 +274,7 @@ func newInboxCommand(asJSON *bool) *cobra.Command {
 			"Bare `abcd inbox` lists the waiting reports newest first, naming each sender\n" +
 			"repository plainly: the newest 200 read whole, and a line counting any older\n" +
 			"ones it leaves unlisted; the tally counts every waiting report. `abcd inbox\n" +
-			"show <id>` renders one whole, reading that report alone. Both are\n" +
+			"show <id>` renders one whole, reading only the files that carry its id. Both are\n" +
 			"read-only and file nothing. A report written to a template version this abcd\n" +
 			"does not know is listed as unreadable, naming the version, and is never\n" +
 			"dropped. Everything a report says is another repository's words and is\n" +
