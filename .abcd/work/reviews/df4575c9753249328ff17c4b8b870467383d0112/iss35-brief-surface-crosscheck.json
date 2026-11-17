@@ -1,0 +1,283 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "df4575c9753249328ff17c4b8b870467383d0112"
+    }
+  },
+  "verifier": {
+    "id": "iss35-brief-surface-crosscheck@release"
+  },
+  "timeVerified": "2026-11-17T02:30:14Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5-5+claude-sonnet-5-5",
+  "tier": "full",
+  "manifestHash": "sha256:95bc3092c9cad660515718ecdbbe27260867fdab2539682c8218babe625657f1",
+  "policy": {
+    "detector": "iss35-brief-surface-crosscheck",
+    "version": "1",
+    "promptHash": "sha256:b93e557f8c9958a71b769599d6093b4860ec0f24542bf3c7403ab65b2bee0c08",
+    "briefVersion": "0.17.0"
+  },
+  "categories": {
+    "false-claim": 10,
+    "fictional-layout": 1,
+    "stale-count": 6,
+    "undocumented-surface": 11
+  },
+  "failing": [
+    {
+      "id": "x-001",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/02-constraints/04-naming.md:56-61",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:56-61 (.abcd/development/brief/02-constraints/04-naming.md; raised by opus in a00): claim: The exemption register names every remaining surface (announce ... update) 'so the exemption is on the record'; with the maritime table and the rationale exemptions it is the namespace's complete register / reality: Three registered top-level verbs appear nowhere in the chapter: `agents` (Records group in `abcd --help`), `explain` (agent verbs, commands/explain.md) and `sweep` (Set-up group, commands/sweep.md); all three are in the root's sub-command list (also raised by sonnet in a00 at .abcd/development/brief/02-constraints/04-naming.md:56-64, folded here as one finding)",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-002",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/02-constraints/04-naming.md:14",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:14 (.abcd/development/brief/02-constraints/04-naming.md; raised by opus in a00): claim: ahoy's write paths are `install`, `uninstall`, `connect`, `remote apply`, `worktree add`, `worktree prune` and `credential` (with `--home`); the bare form and the read-only sub-verbs report / reality: `abcd ahoy shared-folder` 'Writes the choice given a folder' and `abcd ahoy worktree trim-cache` 'Delete[s] the Go build cache's oldest entries' (and writes its answer for the next lane); neither is in the enumerated write paths, so by the row both read as read-only sub-verbs",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-003",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/README.md:52",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:52 (.abcd/development/brief/04-surfaces/README.md; raised by opus in a01): claim: The register says its # column 'is the number the chapter's file name carries' (line 16), and the /abcd:peers row carries # 28 / reality: The row's File column is 08-abcd.md, and no 28-*.md chapter exists in .abcd/development/brief/04-surfaces/; the number matches no file name (also raised by sonnet in a01 at .abcd/development/brief/04-surfaces/README.md:52 (row for /abcd:peers), folded here as one finding)",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-004",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/08-abcd.md:316",
+      "summary": ".abcd/development/brief/04-surfaces/08-abcd.md:316 (.abcd/development/brief/04-surfaces/08-abcd.md; raised by opus in a02): claim: The reservations listing 'is the verb's one network act: a fetch from origin' of the abcd-reserved/ branches, default branch and release tags. / reality: `abcd peers --help` (and its one-line summary 'Writes the fetched reservations, re-arms withdrawn merges') says one more act follows the fetch when a release has ended: tombstones are pushed, withdrawn pull requests are re-armed through gh, and a fixed comment is posted on each. So the fetch is not the verb's only network act; the chapter's own `settled` field (line 368) describes the re-arm, contradicting line 316.",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-005",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/08-abcd.md:70-72",
+      "summary": ".abcd/development/brief/04-surfaces/08-abcd.md:70-72 (.abcd/development/brief/04-surfaces/08-abcd.md; raised by opus in a02): claim: The directory is named home-relative 'in the text form's first line'. / reality: `abcd --view facilitator` prints 'view for the facilitator' on line 1 and 'abcd — ~/…' on line 2; the chapter itself (line 514) says the first line stays the view label alone.",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-006",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:564-722 (user-scope tree) vs .abcd/development/brief/05-internals/03-configuration.md:1530-1545",
+      "summary": ".abcd/development/brief/04-surfaces/01-ahoy.md:564-722 (user-scope tree) vs .abcd/development/brief/05-internals/03-configuration.md:1530-1545 (.abcd/development/brief/04-surfaces/01-ahoy.md; raised by opus in a04): claim: The ~/.abcd.noindex/ tree and the prose inventory under 'The two .abcd/ scopes' 'are one list and must agree'. / reality: The configuration chapter's list carries fill/ (the status line's context-fill files) and load-wait-narrow.json (the load gate's third hold); the ahoy tree lists neither. Both exist in code: internal/core/rules/fill.go (~/.abcd.noindex/fill/<sha256>.json), internal/core/implement/load_narrow.go (load-wait-narrow.json). (also raised by opus in a04 at .abcd/development/brief/04-surfaces/01-ahoy.md:564-717 (user-scope tree), folded here as one finding)",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-007",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:129-148 (sub-verb bullets) and :564-716 (~/.abcd.noindex inventory)",
+      "summary": ".abcd/development/brief/04-surfaces/01-ahoy.md:129-148 (sub-verb bullets) and :564-716 (~/.abcd.noindex inventory) (.abcd/development/brief/04-surfaces/01-ahoy.md; raised by sonnet in a04): claim: The table and appendix list `shared-folder` as shipped, but no prose bullet, section or home-inventory entry describes it; the inventory omits `shared-folder.json`. / reality: `abcd ahoy shared-folder [<folder>] [--person]` ships and writes ~/.abcd.noindex/shared-folder.json (per its --help).",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-008",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:1314-1330 (non-interactive flags paragraph)",
+      "summary": ".abcd/development/brief/04-surfaces/01-ahoy.md:1314-1330 (non-interactive flags paragraph) (.abcd/development/brief/04-surfaces/01-ahoy.md; raised by sonnet in a04): claim: The paragraph enumerating the install's pre-answer flags does not mention `--live-sessions`; the prose names it nowhere. / reality: `abcd ahoy install --live-sessions local|cloud|both|none` ships (appendix lists it; stored as sessions.live).",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-009",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/38-announce.md:85",
+      "summary": ".abcd/development/brief/04-surfaces/38-announce.md:85 (.abcd/development/brief/04-surfaces/38-announce.md; raised by opus in a05): claim: a hosted session runs no hook, so there the ruleset on refs/heads/abcd-status/** and abcd's reader are the guards / reality: scripts/cloud/connectors/claude/setup.sh:336 sets `core.hooksPath .githooks` in the hosted checkout, and .githooks/pre-push (its status-branch comment) says a hosted session set up by abcd runs the hook; only a session that skips the setup runs none",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-010",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/34-build.md:277",
+      "summary": ".abcd/development/brief/04-surfaces/34-build.md:277 (.abcd/development/brief/04-surfaces/34-build.md; raised by opus in a07): claim: The pick commit is made under the configured git identity, with hooks off and the isolated environment less the global-config neutralisers. / reality: internal/core/implement/loop/pickcommit.go:18-21 runs the repository hooks and commit signing as on the person own commit (commitGit, iss-2610111729399920), a refusing hook refusing the stage; abcd build next --help says the same (hooks run, signed where git signs, ten-minute deadline).",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-011",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/34-build.md:474",
+      "summary": ".abcd/development/brief/04-surfaces/34-build.md:474 (.abcd/development/brief/04-surfaces/34-build.md; raised by opus in a07): claim: Each earlier version is read as a run predating the addition and written back at version 20 by its next mutation (and, at lines 480-481 and 484, versions 1-3 written back at version 4 / version 2). / reality: internal/core/implement/loop/state.go:348 declares SchemaVersion = 27 and state.go:1594/1600 set every migrated earlier version to SchemaVersion, so the next mutation writes version 27, not 20 (nor 4 or 2). (also raised by sonnet in a07 at .abcd/development/brief/04-surfaces/34-build.md:471-474 (The state file), folded here as one finding)",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-012",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/40-checklist.md:39-44, :141",
+      "summary": ".abcd/development/brief/04-surfaces/40-checklist.md:39-44, :141 (.abcd/development/brief/04-surfaces/40-checklist.md; raised by opus in a09): claim: Each item carries the references it is about and an optional credential (kind, scope, expiry); the list is behind unless an item names the session's work in its owner_refs, and the list is kept current as the session works / reality: No shipped write sets either field: checklist add has only --next-look/--promise/--waits-on, set has only --state, and no non-test code assigns OwnerRefs or Credential (internal/core/checklist/checklist.go:138-139 is schema only); CheckBehind (internal/core/autonomy/checklist_behind.go) counts only owner_refs, so through the verbs a session-owned branch is always unlisted. Already filed as open iss-2611040554222004",
+      "disposition": "deferred",
+      "record": "iss-2611040554222004",
+      "note": "The open record holds this finding: checklist items carry references and a credential that no shipped command sets, so the behind check counts only what a hand edit writes."
+    },
+    {
+      "id": "x-013",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/36-dashboard.md:3-4",
+      "summary": ".abcd/development/brief/04-surfaces/36-dashboard.md:3-4 (.abcd/development/brief/04-surfaces/36-dashboard.md; raised by opus in a10): claim: /abcd:dashboard runs 'one of abcd's two network listeners (the other is the brief session relay)'. / reality: The shipped binary opens a third listener: `abcd session setup` serves GitHub's App manifest flow on a loopback listener (internal/surface/session/appsetup.go:90 LoopbackListener, net.Listen(\"tcp\", \"127.0.0.1:0\"), called from internal/surface/cli/session.go:821; `session setup --help` prints 'an address on this computer'). Neither this chapter nor the invariant's listener clause (02-constraints/03-invariants.md:219-223, 'one second listener') counts it.",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-014",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/35-drain.md (The run, the drive; appendix row --max)",
+      "summary": ".abcd/development/brief/04-surfaces/35-drain.md (The run, the drive; appendix row --max) (.abcd/development/brief/04-surfaces/35-drain.md; raised by opus in a14): claim: The chapter states no default for the lanes a drive opens; it says only that --max caps the lanes and that a drain ends at its cap. The drive's own default cap is not documented anywhere in the brief. / reality: internal/surface/cli/drain_drive.go:37 sets driveDefaultCap = 8, and `drain --help` says a drive shows the cap 'eight unless --max says otherwise', while the same help's --max line says 'the default is all' (true only without --drive).",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-015",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/11-history.md:477-480",
+      "summary": ".abcd/development/brief/04-surfaces/11-history.md:477-480 (.abcd/development/brief/04-surfaces/11-history.md; raised by opus in a19): claim: The design is that 'the memory store' distils knowledge out of the transcripts, and 'the memory store's ingest takes a document or a web address, never a stored transcript' / reality: No memory verb has an ingest: the snapshot's abcd memory sub-verbs are add, list and remove, the notes command (04-surfaces/README.md says the merge gave the name memory to the notes command). Ingesting a document or URL is abcd library ingest (with library add), so the chapter names the sources corpus by its retired name",
+      "disposition": "invalid",
+      "note": "Re-verified: 'memory store' is the library's current name for its second store (.abcd/memory/), whose ingest is `abcd library ingest` taking a local file or an https address; the finding read it as the sources corpus. Both re-check reviewers upheld this."
+    },
+    {
+      "id": "x-016",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/05-intent.md:332-333 (Consistency and Consistency ingest rows) and :616 (Role 2)",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:332-333 (Consistency and Consistency ingest rows) and :616 (Role 2) (.abcd/development/brief/04-surfaces/05-intent.md; raised by opus in a24): claim: The consistency pass assembles the corpus into one input with one request, and its ingest takes a findings JSON path (singular); no prose mentions splitting the corpus. / reality: `abcd intent consistency --help` has `--max-chunks int` (on a provider route, the most chunks of an overflowing corpus sent in one run; a plan of more is refused; default 8), and `abcd intent consistency ingest` takes `--findings-json` as a stringArray, given once per chunk of an overflowing corpus (internal/core/intent/consistency_chunk.go). The chunking behaviour is listed only as flag rows in the generated appendix; no prose documents it.",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-017",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/05-intent.md:322 (Planning interview row)",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:322 (Planning interview row) (.abcd/development/brief/04-surfaces/05-intent.md; raised by opus in a24): claim: The row describes the answers file (answers by ordinal) but no way to record where an answer was given. / reality: `abcd intent interview --help` has `--answered-in string` (Terminal | Claude Code, default \"Terminal\"; recorded with each answer, passed by the plugin page). It appears only in the generated appendix (line 811), with no prose.",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-018",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/38-land.md:490-491",
+      "summary": ".abcd/development/brief/04-surfaces/38-land.md:490-491 (.abcd/development/brief/04-surfaces/38-land.md; raised by opus in a26): claim: The JSON steps are `origin` when it reports a stale default, `gate`, `announce`, `push` and `enqueue`, or `land` alone. / reality: The landing also emits a `withdraw` step (internal/core/landing/withdraw.go:237,277,281,297, status done or left) before the push; the enumeration omits it. (also raised by sonnet in a26 at .abcd/development/brief/04-surfaces/38-land.md:489-491, folded here as one finding)",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-019",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/38-land.md:108-259 (Enqueue step)",
+      "summary": ".abcd/development/brief/04-surfaces/38-land.md:108-259 (Enqueue step) (.abcd/development/brief/04-surfaces/38-land.md; raised by opus in a26): claim: The enqueue step's stop conditions are listed (merge gate, Depends-On dependencies, no pull request, etc.); no stacked-branch condition is stated. / reality: `land --help` and internal/core/landing/stacked.go (land.go:1545-1553): where a merge queue gates the default branch, a branch sharing a commit not on it with another queued or armed pull request is not armed (enqueue stopped, naming it), and a head not in the checkout is fetched by refs/pull/<n>/head to compare. The brief has no home for this.",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-020",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/38-land.md:494-495 (Exits)",
+      "summary": ".abcd/development/brief/04-surfaces/38-land.md:494-495 (Exits) (.abcd/development/brief/04-surfaces/38-land.md; raised by opus in a26): claim: Only the review act's JSON document is described (`commit` and `receipt`). / reality: `abcd land --approve --json` emits its own document with `commit` and `approval` (internal/surface/cli/land.go:310-313); the brief documents no output for the approval act.",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-021",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/38-land.md (whole chapter)",
+      "summary": ".abcd/development/brief/04-surfaces/38-land.md (whole chapter) (.abcd/development/brief/04-surfaces/38-land.md; raised by opus in a26): claim: No refusal for a detached HEAD or a tree with uncommitted changes is stated (only never pushing the default branch). / reality: `land --help` says it is refused on the default branch, a detached HEAD and a tree with uncommitted changes, and its one-line summary reads 'refuses the default branch or a dirty tree'; the brief states neither the detached-HEAD nor the dirty-tree refusal.",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-022",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/37-session.md:40-90 (Where the relay listens; Who may do what)",
+      "summary": ".abcd/development/brief/04-surfaces/37-session.md:40-90 (Where the relay listens; Who may do what) (.abcd/development/brief/04-surfaces/37-session.md; raised by opus in a38): claim: The chapter describes who may join and sign in, and that GitHub must report push access to 'the repository', but never says which repositories a relay serves or that it is limited to a named set. / reality: `abcd session serve --help`: the relay serves sessions only for the repositories it is given (each --repo owner/name, every repository of each --owner, and the ABCD_SESSION_REPOS comma list), and nobody signs in against or hosts any other. Listening beyond loopback it refuses to start without one; on loopback it serves the checkout's origin repository. `--owner` and `--repo` appear only as appendix flag rows. The behaviour is documented outside the brief, in docs/how-to/run-a-brief-session-relay.md and docs/reference/cli/commands.md.",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-023",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/37-session.md:80-82 and :99-109 (sign-in)",
+      "summary": ".abcd/development/brief/04-surfaces/37-session.md:80-82 and :99-109 (sign-in) (.abcd/development/brief/04-surfaces/37-session.md; raised by opus in a38): claim: The relay takes only a GitHub App user access token (`ghu_`); nothing is said about configuring the app type. / reality: `abcd session serve --help`: setting ABCD_SESSION_GITHUB_APP_TYPE to anything but github-app is refused, because the relay takes no OAuth app. The brief does not mention this env-var refusal. It is documented only in docs/how-to/run-a-brief-session-relay.md and docs/reference/cli/commands.md.",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-024",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/05-internals/03-configuration.md:7-8,64,84",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:7-8,64,84 (.abcd/development/brief/05-internals/03-configuration.md; raised by opus in a44): claim: Line 7 says thirteen keys are hand-set, making twenty-three in all (lines 8 and 64). Line 84 says the remaining hand-set keys are fourteen. / reality: The hand-set list at lines 85-97 names fourteen keys: scan.native_secret_scanning, rules.force_refresh_every_n, match.threshold, match.fields, land.push, land.enqueue, reservation.fork_origin, github.keep, github.required_checks, outbound.declare_mentions, facilitator.mode, release.digest, sweep.automatic and status.scheduled_workflow. The schema block at lines 100-208 holds 24 keys besides meta: 7 written by install, 3 by --attribution/--outbound and 14 hand-set. So thirteen and twenty-three are each one short, and the chapter disagrees with itself. (also raised by sonnet in a44 at .abcd/development/brief/05-internals/03-configuration.md:5-8 and 64, 84, folded here as one finding)",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-025",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/05-internals/03-configuration.md:261-264",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:261-264 (.abcd/development/brief/05-internals/03-configuration.md; raised by opus+sonnet in a44): claim: This repository's own config carries nine blocks: docs, facilitator, meta, oracle, outbound, readme, release, repo and sessions. All but facilitator and release are what an ordinary managed repo carries. / reality: .abcd/config.json in the tree has ten top-level blocks. The tenth is status, which holds the hand-set status.scheduled_workflow key. The count and the list both leave it out.",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-026",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/06-delivery/01-build-sequence.md:62",
+      "summary": ".abcd/development/brief/06-delivery/01-build-sequence.md:62 (.abcd/development/brief/06-delivery/01-build-sequence.md; raised by opus in a47): claim: Besides the read-only bare invocation, its --dry-run/--identity/--remote/--providers modes and doctor, 'Six further forms write': uninstall, remote apply, connect, credential --home, worktree add and worktree prune. / reality: The ahoy tree ships two more writing forms the count leaves out: `abcd ahoy shared-folder <folder>` ('Writes the choice given a folder') and `abcd ahoy worktree trim-cache` ('Delete the Go build cache's oldest entries ... Writes its answer for the next lane'); both are shipped rows in 04-surfaces/01-ahoy.md, so the writing forms number eight, not six (the read-only list likewise omits worktree list and bare credential). (also raised by sonnet in a47 at .abcd/development/brief/06-delivery/01-build-sequence.md:62-68, folded here as one finding)",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-027",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/05-internals/07-memory.md:160",
+      "summary": ".abcd/development/brief/05-internals/07-memory.md:160 (plugin agent surface; raised by opus in b02): claim: The agent count stays at 15 (itd-31 precedent). / reality: agents/ ships 18 agent prompts, and 05-internals/01-agents.md:18, 01-product/01-press-release.md:27 and 01-product/04-scope.md:32 all say eighteen; the unmarked 15 is stale.",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    },
+    {
+      "id": "x-028",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/05-internals/README.md:7",
+      "summary": ".abcd/development/brief/05-internals/README.md:7 (plugin agent surface; raised by opus in b02): claim: 01-agents.md covers 'the eighteen shipped agent prompts ... each with declared JSON inputs/outputs'. / reality: 01-agents.md:55-58 itself says four shipped prompts (docs-currency-reviewer, ruthless-reviewer, security-reviewer, sota-researcher) declare no JSON contract (a table, verdict-headed prose, a ranked list); only fourteen return JSON.",
+      "disposition": "fixed",
+      "note": "Fixed in the reviewed tree R2: the release branch reverted R1, fixed the brief in 2854547b and b456024c (each re-reviewed by an Opus and a Sonnet docs-currency pass, both PROMOTE at b456024c), and rolled R2."
+    }
+  ],
+  "_reviewProvenance": "Full tier for a breaking release: both directions, the manifest's 54 checkers (Direction A over the 49 brief docs, Direction B over the 5 surfaces), each run twice as a pair, an Opus 5.5 agent and a Sonnet 5.5 agent, each reading its prompt verbatim from a file holding the manifest's pinned context and direction template filled for its item. Run by hand through the host's agent tool in 13 groups, each group run as an Opus 5.5 and a Sonnet 5.5 agent, at most 6 agents at a time. The checkers read an exact export of 8d84aac7bf9062ebae1bc9ea733b129f066e5db1 (this receipt names df4575c9753249328ff17c4b8b870467383d0112; provenanceExtra states the difference) with the binary built from it. Findings were merged by the detector's merge (the finding's where plus the first sixty characters of its claim, first kept): Opus raised 27 and Sonnet raised 9, 35 merged, 26 from Opus alone and 8 from Sonnet alone. 7 merged findings repeating another were folded into the finding they repeat. Each remaining finding was re-verified against df4575c9753249328ff17c4b8b870467383d0112. 28 remain: 26 fixed, 1 invalid on re-verification, and 1 deferred, each to its own open record, 1 of them to records captured at earlier releases that still hold the same finding. The checkers read R1 8d84aac7bf9062ebae1bc9ea733b129f066e5db1. R1 was reverted on the release branch, the brief findings were fixed in 2854547b and b456024c (two Opus+Sonnet docs-currency re-checks, both PROMOTE at b456024c), iss-2611052230577572 was resolved in 07134944, the changelog and release page were recomposed for the docs-currency findings, and R2 was rolled. R2 differs from R1 in 27 files: brief chapters, commands/build.md, docs/explanation/README.md, docs/reference/cli/commands.md, .abcd/work/brief-review-flags.json, the resolved issue record, CHANGELOG.md, RELEASE.md, the plugin pin, the release digest, and two help strings in internal/surface/cli (build.go, drain.go); no behaviour changed. Coverage limits the checkers stated are in each return's coverage note (long chapters 34-build, 35-drain, 17-guard, 37-reserve and 03-configuration were scanned for surface claims in part)."
+}
