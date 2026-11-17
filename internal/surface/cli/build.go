@@ -179,7 +179,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"level, or a malformed set, is refused at the review stage and writes nothing.\n" +
 			"The classes were renamed: top is now research, middle is top, below is default and smallest\n" +
 			"is small. A file naming middle, below or smallest is refused with that mapping, and so is a\n" +
-			"machine class map that sets top without research; a review list or judge naming top, while\n" +
+			"machine class map that sets top without research; a review list naming top, while\n" +
 			"no file names research, default or small, runs and says on stderr what top now stands for.\n" +
 			"The result's review and the run record name each class with its model and each layer.\n\n" +
 			"The run then moves one step per `abcd implement step`, driven by the host session.\n\n" +

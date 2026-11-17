@@ -50,17 +50,21 @@ One row per item, in this order:
   or into it, no reservation recording it, and no live session in a worktree
   on it. A reservation records no branch, only the copy that made it, so it
   holds the branch of a local worktree that copy is on; a reservation made on
-  another machine or under another account holds no branch on origin, and
-  such a branch is kept by the other proofs alone (merged at the judged tip,
-  no open pull request). A record id in a branch's name holds nothing by
+  another machine or under another account holds no branch on origin, so
+  for such a branch the reservation adds no hold: it is deleted once it is
+  merged at the judged tip, unless an open pull request or another hold
+  named here keeps it.
+  A record id in a branch's name holds nothing by
   itself. The default branch, release branches, tags and
   abcd's own coordination branches are never deleted.
 - **Reservations.** A spent one is cleared by the reservation sweep's
   workflow, which the applying form starts; the sweep never deletes one
   itself. Where it cannot start the workflow, it says when the daily run will.
-- **Inbox reports.** Each waiting report is filed into the ledger with the
+- **Inbox reports.** A report is about abcd, so it is filed only in abcd's
+  own checkout: there each waiting report is filed into the ledger with the
   automatic filer's remedy, so the drain leaves it until a person writes one.
-  A report's text stays data.
+  In any other repository every report is kept and the row says why. A
+  report's text stays data.
 
 Everything else is kept and named with the reason: a dirty or unmerged tree, a
 lock another tool holds, a live session, a write within the last day, or an
@@ -78,8 +82,8 @@ was done. It exits 0 when the run acted on something (bare: when the applying
 form would), 1 when it completed and acted on nothing, and 2 on a refusal or a
 fault. Bare, it writes only under the machine's abcd home and the local tier,
 the fetch aside; applied, it also removes worktrees and local branches, deletes
-branches on origin, starts the reservation sweep's workflow and files the
-waiting inbox reports as ledger records.
+branches on origin, starts the reservation sweep's workflow and, in abcd's
+own checkout, files the waiting inbox reports as ledger records.
 
 ## When abcd sweeps on its own
 
