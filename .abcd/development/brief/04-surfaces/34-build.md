@@ -363,8 +363,16 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 26. Version 26
-added the run's `admitted`, the rule its lanes were admitted under, which each
+under a run id it does not name. The state is schema version 27. Version 27
+added the models that wrote and reviewed each lane (itd-2610301750162657): a
+reviewer's writers' models, the model it was asked for and the one its return
+named, and a mark for a reviewer an earlier version handed out with none of
+them; the review set's whole class map and the classes the runners could not
+launch; the model a receipt named before the landing replaced it; and each
+model a runner was started on for a role that writes into a lane. A file of
+version 26 reads as a run whose reviewers were dispatched before the
+comparison, and one of version 26 or lower carrying any of them is refused.
+Version 26 added the run's `admitted`, the rule its lanes were admitted under, which each
 records commit carries as its `Admitted-by:` trailer (itd-2610301850454860): a
 file of version 25 or lower reads as a run that recorded none, and one carrying
 it is refused. Version 25
