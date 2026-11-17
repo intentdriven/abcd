@@ -61,7 +61,7 @@ func DeclaredMode(root string) (Mode, error) {
 	}
 	m, err = modeOrDefault(strings.TrimSpace(f.ProductionMode))
 	if err != nil {
-		return "", fmt.Errorf("malformed %s: %w", LegacyPinRelPath, err)
+		return "", MalformedModeFile(LegacyPinRelPath)
 	}
 	return m, nil
 }
@@ -80,7 +80,7 @@ func ReadDeclaredModeFile(root string) (Mode, bool, error) {
 	}
 	m, err := ParseMode(strings.TrimSpace(f.ProductionMode))
 	if err != nil {
-		return "", false, fmt.Errorf("malformed %s: %w", DeclaredModeRelPath, err)
+		return "", false, MalformedModeFile(DeclaredModeRelPath)
 	}
 	return m, true, nil
 }

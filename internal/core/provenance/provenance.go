@@ -142,6 +142,15 @@ func ParseMode(v string) (Mode, error) {
 	return "", fmt.Errorf("invalid production mode %q: want exactly one of %s (lower-case, no surrounding whitespace)", v, modeList())
 }
 
+// MalformedModeFile is the refusal of a production mode read from the
+// repository file at rel: it names the file and the closed set and leaves the
+// value out, since a file in the repository chose it and the refusal reaches
+// the person and the agent as written (iss-2611170005148886). ParseMode's own
+// error, which quotes the value, stays for a value the person typed.
+func MalformedModeFile(rel string) error {
+	return fmt.Errorf("malformed %s: its production_mode is not exactly one of %s (lower-case, no surrounding whitespace)", rel, modeList())
+}
+
 // modeOrDefault is the ONE defaulting door: an absent value means DefaultMode,
 // and anything else goes through ParseMode. Every write path normalises here, so
 // the "absent means hand-written" rule is stated once rather than at each

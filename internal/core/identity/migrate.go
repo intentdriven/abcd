@@ -77,7 +77,7 @@ func loadLegacyPin(root string) (LegacyPin, bool, error) {
 	sort.Strings(p.Unknown)
 	if p.ProductionMode != "" {
 		if _, err := provenance.ParseMode(p.ProductionMode); err != nil {
-			return LegacyPin{}, false, fmt.Errorf("malformed %s: %w", LegacyPinRelPath, err)
+			return LegacyPin{}, false, provenance.MalformedModeFile(LegacyPinRelPath)
 		}
 	}
 	return p, true, nil
