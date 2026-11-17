@@ -89,6 +89,13 @@ func (o Origin) String() string {
 // impact parser reads its enum. The frontmatter scanner already trims the value
 // it hands over, so whitespace still present here came from inside the value and
 // is an authoring defect worth naming rather than absorbing.
+// OriginList names the origin vocabulary in words, for a refusal that leaves
+// the value it refused out.
+func OriginList() string {
+	return fmt.Sprintf("%s, %s, or %s <%s-N>/<%s-N>", KindResearcherAuthored, KindExtractedFromRecord,
+		KindContributedByReading, issueschema.ReadingRunFamily, issueschema.ReadingItemFamily)
+}
+
 func ParseOrigin(v string) (Origin, error) {
 	switch Kind(v) {
 	case KindResearcherAuthored, KindExtractedFromRecord:
@@ -96,9 +103,7 @@ func ParseOrigin(v string) (Origin, error) {
 	}
 	rest, isReading := strings.CutPrefix(v, string(KindContributedByReading)+" ")
 	if !isReading {
-		return Origin{}, fmt.Errorf("invalid origin %q: want %s, %s, or %s <%s-N>/<%s-N>",
-			v, KindResearcherAuthored, KindExtractedFromRecord, KindContributedByReading,
-			issueschema.ReadingRunFamily, issueschema.ReadingItemFamily)
+		return Origin{}, fmt.Errorf("invalid origin %q: want %s", v, OriginList())
 	}
 	run, item, hasSlash := strings.Cut(rest, "/")
 	if !hasSlash || !readingRunRe.MatchString(run) || !readingItemRe.MatchString(item) {

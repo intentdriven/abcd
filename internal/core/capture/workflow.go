@@ -580,8 +580,8 @@ func restampField(fm map[string]any, issID, mode string) ([]kv, error) {
 	// into the pair a command writes.
 	if _, err := provenance.ParseOrigin(origin); err != nil {
 		return nil, fmt.Errorf(
-			"%s carries %s %q, which is outside the vocabulary, so a restamp would write a pair no command produces: correct the %s first (nothing written — or re-run without --production-mode): %w",
-			issID, provenance.KeyOrigin, origin, provenance.KeyOrigin, err)
+			"%s carries an %s outside the vocabulary (want %s), so a restamp would write a pair no command produces: correct the %s first (nothing written — or re-run without --production-mode)",
+			issID, provenance.KeyOrigin, provenance.OriginList(), provenance.KeyOrigin)
 	}
 	m, err := provenance.ParseMode(mode)
 	if err != nil {

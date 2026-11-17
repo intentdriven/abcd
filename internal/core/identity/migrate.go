@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -110,6 +111,10 @@ type MigrationPlan struct {
 // PlanMigration reads the repository's committed pin and says what moving it
 // would do for the person whose home directory is home. found is false when the
 // repository stores no pin.
+//
+// A blocker never quotes text the pin chose beyond a member name that is a
+// short plain identifier: the pin is repository content, and the blocker
+// reaches the person and the agent as written (iss-2611170055409898).
 func PlanMigration(root, home string) (MigrationPlan, bool, error) {
 	pin, found, err := loadLegacyPin(root)
 	if err != nil || !found {
@@ -117,7 +122,7 @@ func PlanMigration(root, home string) (MigrationPlan, bool, error) {
 	}
 	plan := MigrationPlan{Pin: pin}
 	if len(pin.Unknown) > 0 {
-		plan.Blocker = LegacyPinRelPath + " holds " + strings.Join(pin.Unknown, ", ") + ", which abcd does not know where to keep, so it is left in place"
+		plan.Blocker = LegacyPinRelPath + " holds " + unknownMembers(pin.Unknown) + ", which abcd does not know where to keep, so it is left in place"
 	}
 	if pin.ProductionMode != "" {
 		declared, has, err := provenance.ReadDeclaredModeFile(root)
@@ -237,4 +242,33 @@ func ApplyMigration(root, home string, plan MigrationPlan) (MigrationResult, err
 	}
 	res.Removed = true
 	return res, nil
+}
+
+// plainMemberName is a member name the blocker may name as written.
+var plainMemberName = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,40}$`)
+
+// unknownMembers names the pin's unknown members that are plain identifiers
+// and counts the rest, so a member name the repository chose as prose is
+// never quoted.
+func unknownMembers(names []string) string {
+	var plain []string
+	others := 0
+	for _, n := range names {
+		if plainMemberName.MatchString(n) {
+			plain = append(plain, n)
+		} else {
+			others++
+		}
+	}
+	switch {
+	case others == 0:
+		return strings.Join(plain, ", ")
+	case len(plain) == 0 && others == 1:
+		return "a member whose name is not a plain identifier"
+	case len(plain) == 0:
+		return fmt.Sprintf("%d members whose names are not plain identifiers", others)
+	case others == 1:
+		return strings.Join(plain, ", ") + " and a member whose name is not a plain identifier"
+	}
+	return fmt.Sprintf("%s and %d members whose names are not plain identifiers", strings.Join(plain, ", "), others)
 }
