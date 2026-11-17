@@ -221,6 +221,9 @@ The following are non-negotiable invariants — any architectural choice that vi
    (`internal/surface/dashboard`); a later listener is admitted only by
    amending that record in the open. Its amendment of 2026-10-14 admits one
    second listener, the brief session's relay (`internal/surface/session`).
+   The same package also opens, only while the session setup waits for
+   GitHub's answer to the sign-in app's manifest, a listener on this
+   computer's loopback address.
    The relay is started on purpose and listens on loopback unless an address
    is chosen on that run. On a person's machine it is reached through
    Tailscale Serve, never Funnel. It admits people by the host's join code

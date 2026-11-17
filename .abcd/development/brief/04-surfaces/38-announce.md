@@ -82,7 +82,8 @@ while the tip stands is refused at once. Nothing is
 ever forced. The committed pre-push hook lets a push under `abcd-status/`
 through without a preflight receipt only as a fast-forward of commits that
 change no file, refuses a deletion, and gates every other push as any branch
-is; a hosted session runs no hook, so there the ruleset on
+is; a hosted session abcd's cloud setup prepared runs the hook too, and where
+no hook runs (a hosted session that skipped that setup) the ruleset on
 `refs/heads/abcd-status/**` and abcd's reader are the guards
 (adr-2610150729333337).
 
