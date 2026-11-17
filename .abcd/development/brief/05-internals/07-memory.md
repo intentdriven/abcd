@@ -157,7 +157,7 @@ total_source_coverage_pct(source_hash) =
 | `spec_modification_grammar` (new at itd-37) | A spec's `## Modification Grammar` section at spec completion | Append per-spec page; run domain-curator pass to update `modification_grammar_<domain>.md` |
 | `dredge_synthesis` (itd-25, a draft intent) | `/abcd:dredge synth` runs | Write synthesised entries to memory with `source.class: dredge_synthesis` |
 
-**The agent count stays at 15** (per itd-31 precedent: agent count grows by user-facing responsibility, not by audit subtype). `principle-distiller` gains role responsibilities, not agent peers. Soft-cap risk acknowledged: if the third role ever burst coherence, fork the curator role into a sibling agent.
+**No agent is added for this** (per itd-31 precedent: agent count grows by user-facing responsibility, not by audit subtype). `principle-distiller` gains role responsibilities, not agent peers. Soft-cap risk acknowledged: if the third role ever burst coherence, fork the curator role into a sibling agent.
 
 ## 7. The memory verbs of `/abcd:library`
 

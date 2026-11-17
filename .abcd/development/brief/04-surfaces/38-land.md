@@ -25,7 +25,8 @@ person's records group beside `build`, and its page is on a person's `/abcd:` me
 ## The steps
 
 The verb takes at most one operand, the branch, and lands the checkout's
-current branch without one. A named branch is landed from the worktree that
+current branch without one, and is refused on the default branch, on a
+detached HEAD and on a tree with uncommitted changes. A named branch is landed from the worktree that
 has it checked out, because the preflight runs in the branch's own checkout.
 Every step is idempotent, so running the verb again resumes where it stopped.
 A person's stop is read before anything runs, again after the preflight and again at the
@@ -246,6 +247,12 @@ bound: the refusal says so and gives the push to run by hand.
    merge) make no dependency check: a dependant one of them arms is not
    held. Rebuilding a dependant on the default branch once its dependency
    merges is the spec's step 9 and is not done yet.
+   Where a merge queue gates the default branch, a branch that shares a commit
+   not on it with another pull request queued or armed into it (a branch cut
+   from that one's) is not armed: the step stops naming it, since the queue
+   would remove this one. A head not in the checkout is fetched from `origin`
+   by its pull request's ref to compare, and a listing or head land cannot
+   read arms nothing.
    With no
    pull request the step stops with the `gh pr create` command; the verb never opens one (ruling R2), and the next run
    queues it. The command names a body land composed from the branch's commits, merge commits left out (iss-220): each subject, then,
@@ -488,11 +495,13 @@ the merged pull request's),
 landed, and `steps`, each
 with `name`, `status` (`done`, `skipped`, `off`, `stopped`, `left` or
 `landed`; the steps are `origin` when it reports a stale default, `gate`,
-`announce`, `push` and `enqueue`, or `land` alone), `note` and an optional
+`announce`, `withdraw` when it takes off or leaves an arming before the push,
+`push` and `enqueue`, or `land` alone), `note` and an optional
 `command`; and `notices` when there are
 lines to show beside the steps (a release dated ahead that the hold did not
 count, a stop file the read refused, a stop another account left). The review act's document carries `commit` and `receipt`, the
-receipt's path.
+receipt's path, and the approval act's carries `commit` and `approval`, the
+recorded approval's path.
 
 A landing a person's stop holds exits 3, contention: while a person's stop
 holds, or the read cannot tell whether one does, nothing more is pushed, armed or queued, and

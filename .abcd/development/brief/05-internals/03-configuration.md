@@ -4,8 +4,8 @@ Almost nothing here is a decision anyone has to make. Installing abcd asks
 four questions and, at a terminal, a fifth about the README and two about live
 brief sessions, records the answers and whether it created the README, and gets
 on with it; `ahoy install --attribution` writes one more key and `ahoy install
---outbound` two more, and thirteen further keys can be hand-set and are read but
-never written. Beyond those twenty-three, the binary reads only keys a person
+--outbound` two more, and fourteen further keys can be hand-set and are read but
+never written. Beyond those twenty-four, the binary reads only keys a person
 opts into: the provider adapter's `oracle` keys (the reviewer route's
 `oracle.review` among them) and the interview's list style, both below, the
 implement loop's `pace` (`pace.work_minutes`, `pace.pause_minutes`,
@@ -61,7 +61,7 @@ shipped behaviour. Everything after them is **staged**, per the truth rule in
 
 ### The keys the binary reads
 
-Twenty-three keys plus a `meta` block. Install asks about visibility, the docs target,
+Twenty-four keys plus a `meta` block. Install asks about visibility, the docs target,
 the oracle backend, the deep scan (the last only when visibility is private
 and the deep scanner is on `PATH`), and the README question (only of a person
 at a terminal, in a run without the approve-everything flag, once
@@ -253,15 +253,15 @@ origin's push URLs a fork, so a malformed value (neither `"refuse"` nor one
 plain owner and one plain name), or a misspelt key under `reservation`, refuses
 a reservation on a fork naming the file and never stops one anywhere else. The machine layer's `reservation.github_username`
 (04-surfaces/37-reserve.md) shares the namespace; it is read from the machine
-layer alone and is not one of the twenty-three. The holder lookup reads the
+layer alone and is not one of the twenty-four. The holder lookup reads the
 machine's own file whatever origin is, so a misspelt key under `reservation`
 there refuses every reservation that reaches that lookup, on a fork or not.
 
 There is no separate `.abcd/meta.json` at repo scope: setup metadata is the `meta`
-block. This repository's own config carries nine of these blocks — `docs`,
-`facilitator`, `meta`, `oracle`, `outbound`, `readme`, `release`, `repo` and `sessions`. All
-but `facilitator` and `release`, which this repository sets by hand for its own
-merging and release cuts, are what an unremarkable managed repo carries.
+block. This repository's own config carries ten of these blocks — `docs`,
+`facilitator`, `meta`, `oracle`, `outbound`, `readme`, `release`, `repo`, `sessions` and `status`. All
+but `facilitator`, `release` and `status`, which this repository sets by hand for its own
+merging, release cuts and scheduled workflow, are what an unremarkable managed repo carries.
 
 ### The provider adapter's keys
 
@@ -1537,7 +1537,11 @@ session-name register in `sessions/names.json`, the rules loader's per-session
 ledgers in `rules-state/`, the dashboard's run file, seen devices and lock in
 `dashboard/`, this account's holder id in `holder-id`, the load gate's three
 holds in `load-wait.json`, `load-wait-race.json` and `load-wait-narrow.json` (taken under
-`.load-wait.lock`), its memory admission in `load-memory-admit.json`, the context
+`.load-wait.lock`), its memory admission in `load-memory-admit.json`, the
+markers of the preflights' test stages queued or running in `whole-runs/`, the
+check directory those stages run from in `tests/<root-sha>/` ([the check
+directory](#the-check-directory)), the drive's separate logins in `profiles/`,
+the folder this account shares with another in `shared-folder.json`, the context
 fill the status line leaves in `fill/`, the record of the line install added to a shell startup
 file in `shell-path.json`, the installed-tools record in `tools.json`, and the
 person's commit identity in `identity/<root-sha>.json` for one repository and
