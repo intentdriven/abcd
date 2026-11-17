@@ -39,7 +39,10 @@ Bare invocation is read-only and files nothing:
 ```
 
 Present the `notice`, the `tally` and each report newest first: its `id`, `received_at`, the
-sender repository (`sender_name`), `kind`, `severity` and `title`. A report in
+sender repository (`sender_name`), `kind`, `severity` and `title`. The listing
+reads the newest 200 waiting reports; `left` counts the older ones it does not
+list, which the `tally` still counts, so say how many wait unlisted when it is
+not zero. A report in
 state `unreadable` was written to a template version this abcd does not know,
 or is not a report at all; relay its `unreadable` reason, which names the
 version, and its `sender_name` when the envelope still names the sender. It is

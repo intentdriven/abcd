@@ -350,8 +350,10 @@ func stampTime(stamp string) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// scan reads every report file in one folder of the inbox.
-func scan(root *os.Root, sub, state string) ([]Entry, error) {
+// reportNames lists the report file names in one folder of the inbox. It reads
+// the folder and nothing in it, so its cost does not grow with the reports'
+// size.
+func reportNames(root *os.Root, sub string) ([]string, error) {
 	dirRel := "."
 	if sub != "" {
 		dirRel = sub
@@ -368,11 +370,19 @@ func scan(root *os.Root, sub, state string) ([]Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	var out []Entry
+	out := names[:0]
 	for _, name := range names {
-		if !fileNameRe.MatchString(name) {
-			continue
+		if fileNameRe.MatchString(name) {
+			out = append(out, name)
 		}
+	}
+	return out, nil
+}
+
+// readEntries reads the named report files in one folder of the inbox.
+func readEntries(root *os.Root, sub, state string, names []string) []Entry {
+	out := make([]Entry, 0, len(names))
+	for _, name := range names {
 		rel := name
 		if sub != "" {
 			rel = path.Join(sub, name)
@@ -383,7 +393,24 @@ func scan(root *os.Root, sub, state string) ([]Entry, error) {
 		}
 		out = append(out, e)
 	}
-	return out, nil
+	return out
+}
+
+// scanFor reads the report files in one folder of the inbox whose received
+// stamp is stamp, the digits of the one id a caller is looking for, so finding
+// one report reads that report and no other.
+func scanFor(root *os.Root, sub, state, stamp string) ([]Entry, error) {
+	names, err := reportNames(root, sub)
+	if err != nil {
+		return nil, err
+	}
+	keep := names[:0]
+	for _, name := range names {
+		if strings.HasPrefix(name, stamp+"-") {
+			keep = append(keep, name)
+		}
+	}
+	return readEntries(root, sub, state, keep), nil
 }
 
 // newestFirst orders entries newest first: by the received second in the id,
@@ -400,31 +427,76 @@ func newestFirst(es []Entry) {
 	})
 }
 
-// List returns the waiting reports, the unreadable ones among them, newest
-// first. It reads and never writes: an absent inbox is an empty list, and
-// nothing is filed.
+// ListLimit is how many waiting reports a listing reads whole: the newest
+// ones. The rest are counted from their file names alone.
+const ListLimit = 200
+
+// Listing is the inbox's waiting reports, newest first: at most ListLimit of
+// them read whole, how many were left out, and the tally of every one that
+// waits, the left-out ones included.
+type Listing struct {
+	Reports []Entry
+	Left    int
+	Tally   Tally
+}
+
+// List returns the newest ListLimit waiting reports, the unreadable ones among
+// them, newest first. It reads and never writes: an absent inbox is an empty
+// list, and nothing is filed.
 func List() ([]Entry, error) {
+	l, err := Waiting()
+	return l.Reports, err
+}
+
+// Waiting is List with how many waiting reports it left out and the tally of
+// all of them. It reads the inbox's file names, then whole only the reports it
+// lists, so a listing costs the same however many reports wait
+// (iss-2611150658164454).
+func Waiting() (Listing, error) {
 	dir, err := peekInbox()
 	if err != nil || dir == "" {
-		return []Entry{}, err
+		return Listing{Reports: []Entry{}}, err
 	}
 	root, err := os.OpenRoot(dir)
 	if err != nil {
-		return nil, err
+		return Listing{}, err
 	}
 	defer root.Close()
-	out, err := scan(root, "", StateWaiting)
+	names, err := reportNames(root, "")
 	if err != nil {
-		return nil, err
+		return Listing{}, err
 	}
+	senders := map[string]bool{}
+	for _, name := range names {
+		senders[fileNameRe.FindStringSubmatch(name)[2]] = true
+	}
+	out := readEntries(root, "", StateWaiting, newestNames(names, ListLimit))
 	for i := range out {
 		out[i].Report = nil
 	}
 	newestFirst(out)
-	if out == nil {
-		out = []Entry{}
+	if len(out) > ListLimit {
+		out = out[:ListLimit]
 	}
-	return out, nil
+	return Listing{Reports: out, Left: len(names) - len(out), Tally: Tally{Reports: len(names), Senders: len(senders)}}, nil
+}
+
+// newestNames is the report file names a listing of the newest limit reads:
+// the limit newest by received second, and every other name received in the
+// same second as the last of them, since newestFirst orders those by when
+// each file was written, which only its file information tells.
+func newestNames(names []string, limit int) []string {
+	sorted := slices.Clone(names)
+	slices.SortFunc(sorted, func(a, b string) int { return strings.Compare(b, a) })
+	if len(sorted) <= limit {
+		return sorted
+	}
+	end := limit
+	second := sorted[limit-1][:12]
+	for end < len(sorted) && sorted[end][:12] == second {
+		end++
+	}
+	return sorted[:end]
 }
 
 // Tally is the greeting's two numbers.
@@ -480,7 +552,7 @@ func Show(id string) (Entry, error) {
 	}
 	defer root.Close()
 	for _, where := range []struct{ sub, state string }{{"", StateWaiting}, {promotedDirName, StatePromoted}} {
-		es, err := scan(root, where.sub, where.state)
+		es, err := scanFor(root, where.sub, where.state, m[1])
 		if err != nil {
 			return Entry{}, err
 		}
@@ -604,7 +676,7 @@ func Promote(ledgerRoot, id string, mc *match.Config) (Promoted, error) {
 			return err
 		}
 		defer root.Close()
-		waiting, err := scan(root, "", StateWaiting)
+		waiting, err := scanFor(root, "", StateWaiting, m[1])
 		if err != nil {
 			return err
 		}

@@ -253,6 +253,8 @@ type inboxListOutput struct {
 	Notice  string         `json:"notice"`
 	Tally   report.Tally   `json:"tally"`
 	Reports []report.Entry `json:"reports"`
+	// Left is how many waiting reports, the oldest, the listing did not read.
+	Left int `json:"left"`
 }
 
 // inboxShowOutput is `abcd inbox show --json`: the entry's own fields, framed.
@@ -270,7 +272,9 @@ func newInboxCommand(asJSON *bool) *cobra.Command {
 		Long: "Read the reports repositories abcd manages filed with `abcd report`, from the\n" +
 			"inbox in the user account's machine store (`" + abcdhome.Display("inbox/") + "`).\n\n" +
 			"Bare `abcd inbox` lists the waiting reports newest first, naming each sender\n" +
-			"repository plainly; `abcd inbox show <id>` renders one whole. Both are\n" +
+			"repository plainly: the newest 200 read whole, and a line counting any older\n" +
+			"ones it leaves unlisted; the tally counts every waiting report. `abcd inbox\n" +
+			"show <id>` renders one whole, reading that report alone. Both are\n" +
 			"read-only and file nothing. A report written to a template version this abcd\n" +
 			"does not know is listed as unreadable, naming the version, and is never\n" +
 			"dropped. Everything a report says is another repository's words and is\n" +
@@ -286,15 +290,12 @@ func newInboxCommand(asJSON *bool) *cobra.Command {
 			"Exit 2 on a refusal, with nothing written.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			list, err := report.List()
+			waiting, err := report.Waiting()
 			if err != nil {
 				return reportRefusal("inbox", err, "nothing read")
 			}
-			senders := map[string]bool{}
-			for _, e := range list {
-				senders[e.SenderKey] = true
-			}
-			out := inboxListOutput{Notice: inboxUntrustedNotice, Tally: report.Tally{Reports: len(list), Senders: len(senders)}, Reports: list}
+			list := waiting.Reports
+			out := inboxListOutput{Notice: inboxUntrustedNotice, Tally: waiting.Tally, Reports: list, Left: waiting.Left}
 			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
 				if len(list) == 0 {
 					fmt.Fprintln(w, "abcd inbox — nothing waits")
@@ -317,6 +318,13 @@ func newInboxCommand(asJSON *bool) *cobra.Command {
 					}
 					fmt.Fprintf(w, "  %s  %s  %s  %s/%s  %s\n", e.ID, e.ReceivedAt, termsafe.Sanitize(e.SenderName),
 						e.Kind, e.Severity, termsafe.Sanitize(e.Title))
+				}
+				if out.Left > 0 {
+					older := "older reports wait"
+					if out.Left == 1 {
+						older = "older report waits"
+					}
+					fmt.Fprintf(w, "  %d %s unlisted: the listing reads the newest %d\n", out.Left, older, report.ListLimit)
 				}
 			})
 		},
