@@ -163,17 +163,21 @@ func TestEachWorkedExampleIsShapedLikeItsCommand(t *testing.T) {
 	}
 }
 
-// TestNoWorkedExampleAnswersAConsentPromptAhead holds every worked example off
-// --yes unless the command's Use line requires it. An agent reads a page's
-// example as a call it may run as written, so an example that answers a
-// confirmation in advance is a step past the person's consent; where a command
-// cannot run without --yes, its Use line says so and the example follows it.
-// consentFlags are the flags that give a person's yes: a confirmation
-// answered ahead (--yes, --confirm, --proceed), an approval recorded
-// (--approve), or a run taken over (--take). A worked example is copied as it
-// stands, so one passing any of them teaches an agent to give that yes itself.
-var consentFlags = []string{"--yes", "--confirm", "--proceed", "--approve", "--take"}
+// consentFlags are the flags that give a person's yes: a confirmation or
+// prompt answered ahead (--yes, --confirm, --proceed, --replace-existing,
+// --adopt), an approval or acceptance recorded (--approve,
+// --accept-config-change), a source cited publicly (--flip), or a run taken
+// over (--take).
+var consentFlags = []string{
+	"--yes", "--confirm", "--proceed", "--replace-existing", "--adopt",
+	"--approve", "--accept-config-change", "--flip", "--take",
+}
 
+// TestNoWorkedExampleAnswersAConsentPromptAhead holds every worked example off
+// each of consentFlags unless the command's Use line requires that flag. An
+// agent reads a page's example as a call it may run as written, so an example
+// passing one of them gives the person's yes before they have; where a command
+// cannot run without the flag, its Use line says so and the example follows it.
 func TestNoWorkedExampleAnswersAConsentPromptAhead(t *testing.T) {
 	root := NewRootCommand()
 	byPath := map[string]*cobra.Command{}
