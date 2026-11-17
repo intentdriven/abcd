@@ -318,11 +318,13 @@ from `origin` of every `abcd-reserved/` branch, with pruning, of the default
 branch and of `origin`'s release tags, which updates the remote-tracking
 reservation branches and the release tags abcd keeps under
 `refs/abcd/release-tags/` ([`37-reserve.md`](37-reserve.md#the-release-hold)),
-and stamps when it ran in the local tier. One more follows only when a release
-of the reader's has ended with pull requests it withdrew not yet re-armed: a
-tombstone is pushed, each is re-armed on the forge or skipped, a second
-tombstone records every state, and each gets one fixed comment (`settled`
-below). Each reservation is listed with its
+and stamps when it ran in the local tier. A release tip that records
+withdrawals not yet settled is also read against the forge's record of who
+pushed it, once per tip. More follows when a release of the reader's has ended
+with pull requests it withdrew not yet re-armed: a tombstone is pushed, each is
+re-armed on the forge or skipped, a second tombstone records every state, each
+one re-armed, found armed or skipped for its owner gets one fixed comment
+(`settled` below), and the reservations are fetched again. Each reservation is listed with its
 record, holder, footprint, effective expiry and state (`live`, `expired`,
 `released` by its tombstone, by the record being finished on origin's default
 branch or, for a release, by its tag being on origin, or `unreadable` with its

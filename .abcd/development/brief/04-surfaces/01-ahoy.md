@@ -150,7 +150,8 @@ flags.
   share is for and which one this account chose; given a folder, it records
   the choice in `~/.abcd.noindex/shared-folder.json`, so a stop set from the
   person's own account reaches the runs of a second account that chose the
-  same folder. Choosing is the person's act: it is refused to an agent, to a
+  same folder and named the person's account as the one it takes a stop
+  from. Choosing is the person's act: it is refused to an agent, to a
   caller with no terminal and for a folder other accounts could tamper with.
 
 **Not built yet:** `destroy`, a nuclear uninstall that would remove the `.abcd/`
@@ -699,7 +700,8 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  named packages, the same way
   whole-runs/<pid>.json          one marker per preflight's test stages queued or
                                  running, naming the checkout and its commit, which
-                                 the load gate counts as a whole run
+                                 the away mode's stop check reads as live work
+                                 for a branch still owed its preflight
   load-memory-admit.json         the load gates' memory admission: when a waiter last
                                  saw the pressure at the floor and which it admitted
                                  last, under load-memory-admit.lock

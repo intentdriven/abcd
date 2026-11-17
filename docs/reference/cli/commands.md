@@ -628,7 +628,7 @@ repository's ceiling, class map or effort is skipped with a warning. An unknown 
 level, or a malformed set, is refused at the review stage and writes nothing.
 The classes were renamed: top is now research, middle is top, below is default and smallest
 is small. A file naming middle, below or smallest is refused with that mapping, and so is a
-machine class map that sets top without research; a review list or judge naming top, while
+machine class map that sets top without research; a review list naming top, while
 no file names research, default or small, runs and says on stderr what top now stands for.
 The result's review and the run record name each class with its model and each layer.
 
@@ -1968,7 +1968,7 @@ drain or run holds the state lock.
       --dry-run[=true|false]          show every open issue's disposition and the order a drain takes them; writes nothing
       --fix-rounds string             the fix rounds a lane may take before it is handed back; wins over every configured layer
       --judgement string              the host's answer to the judgement the drain awaits, at the path its request names
-      --max int                       cap the lanes this drain opens; the default is all
+      --max int                       cap the lanes this drain opens; the default is all, and eight for a drive
       --no-self-update[=true|false]   with --drive: take no new release of abcd during the run, and ask the release origin nothing
       --pace string                   the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
       --profile string                with --drive: the profile directory to run on, by name; needed when there are several

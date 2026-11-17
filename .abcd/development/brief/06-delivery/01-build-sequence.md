@@ -59,7 +59,7 @@ core and the packaging boundary holds.
   user-scope history store. There is no `abcd init` and no config get/set pair:
   install is the write path a person reaches for, and the bare invocation,
   its `--dry-run`, `--identity`, `--remote` and `--providers` modes, `doctor`,
-  and the bare and listing forms of the sub-verbs are the read-only halves.
+  and the listing forms of the sub-verbs are the read-only halves.
   Eight further forms write: `uninstall` takes abcd back
   out again, `remote apply` applies every differing setting of the GitHub
   settings baseline the ahoy chapter lists, with abcd's own rulesets and their
