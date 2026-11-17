@@ -444,7 +444,8 @@ type Listing struct {
 }
 
 // List returns the newest ListLimit waiting reports, the unreadable ones among
-// them, newest first. It reads and never writes: an absent inbox is an empty
+// them, newest first: Waiting's reports alone, for a caller that needs no
+// count of the rest. It reads and never writes: an absent inbox is an empty
 // list, and nothing is filed.
 func List() ([]Entry, error) {
 	l, err := Waiting()
@@ -481,11 +482,13 @@ func Waiting() (Listing, error) {
 	return Listing{Reports: out, Left: len(names) - len(out), Tally: Tally{Reports: len(names), Senders: len(senders)}}, nil
 }
 
-// newestNames is the report file names a listing of the newest limit reads
-// whole, in newestFirst's order: by received second, then, within the oldest
-// second it reaches, by when each file was written, read from its file
-// information alone, then by stamp. So however many reports share that
-// second, no more than limit are read whole.
+// newestNames picks the report file names a listing of the newest limit
+// reads whole: the ones newestFirst would put first, by received second, then,
+// within the oldest second it reaches, by when each file was written, read
+// from its file information alone, then by stamp. So however many reports
+// share that second, no more than limit are read whole. It picks them, it does
+// not order them: names within a newer second come back by name, and the
+// caller sorts what it reads with newestFirst.
 func newestNames(root *os.Root, names []string, limit int) []string {
 	sorted := slices.Clone(names)
 	slices.SortFunc(sorted, func(a, b string) int { return strings.Compare(b, a) })
