@@ -247,14 +247,15 @@ func ApplyMigration(root, home string, plan MigrationPlan) (MigrationResult, err
 // plainMemberName is a member name the blocker may name as written.
 var plainMemberName = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,40}$`)
 
-// unknownMembers names the pin's unknown members that are plain identifiers
-// and counts the rest, so a member name the repository chose as prose is
-// never quoted.
+// unknownMembers names at most namedMembers of the pin's unknown members whose
+// names are plain identifiers and counts the rest, so neither a member name
+// the repository wrote as prose nor a run of plain names it chose to spell a
+// sentence reaches the blocker as written (iss-2611170055409898).
 func unknownMembers(names []string) string {
 	var plain []string
 	others := 0
 	for _, n := range names {
-		if plainMemberName.MatchString(n) {
+		if len(plain) < namedMembers && plainMemberName.MatchString(n) {
 			plain = append(plain, n)
 		} else {
 			others++
@@ -264,11 +265,14 @@ func unknownMembers(names []string) string {
 	case others == 0:
 		return strings.Join(plain, ", ")
 	case len(plain) == 0 && others == 1:
-		return "a member whose name is not a plain identifier"
+		return "a member abcd does not name"
 	case len(plain) == 0:
-		return fmt.Sprintf("%d members whose names are not plain identifiers", others)
+		return fmt.Sprintf("%d members abcd does not name", others)
 	case others == 1:
-		return strings.Join(plain, ", ") + " and a member whose name is not a plain identifier"
+		return strings.Join(plain, ", ") + " and one more member"
 	}
-	return fmt.Sprintf("%s and %d members whose names are not plain identifiers", strings.Join(plain, ", "), others)
+	return fmt.Sprintf("%s and %d more members", strings.Join(plain, ", "), others)
 }
+
+// namedMembers is how many unknown pin members the blocker names.
+const namedMembers = 3

@@ -218,7 +218,7 @@ func TestMigration_AProseMemberNameIsCountedNotQuoted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(plan.Blocker, chosen) || !strings.Contains(plan.Blocker, "signing_key and a member whose name is not a plain identifier") {
+	if strings.Contains(plan.Blocker, chosen) || !strings.Contains(plan.Blocker, "signing_key and one more member") {
 		t.Fatalf("blocker %q", plan.Blocker)
 	}
 }
@@ -229,10 +229,12 @@ func TestUnknownMembersNamesPlainOnesAndCountsTheRest(t *testing.T) {
 		want string
 	}{
 		{[]string{"a", "b"}, "a, b"},
-		{[]string{"x y"}, "a member whose name is not a plain identifier"},
-		{[]string{"x y", "p q"}, "2 members whose names are not plain identifiers"},
-		{[]string{"a", "x y", "p q"}, "a and 2 members whose names are not plain identifiers"},
-		{[]string{strings.Repeat("k", 41)}, "a member whose name is not a plain identifier"},
+		{[]string{"x y"}, "a member abcd does not name"},
+		{[]string{"x y", "p q"}, "2 members abcd does not name"},
+		{[]string{"a", "x y", "p q"}, "a and 2 more members"},
+		{[]string{strings.Repeat("k", 41)}, "a member abcd does not name"},
+		{[]string{"a", "b", "c"}, "a, b, c"},
+		{[]string{"a01_run", "a02_the", "a03_cleanup", "a04_now", "a05_please"}, "a01_run, a02_the, a03_cleanup and 2 more members"},
 	} {
 		if got := unknownMembers(c.in); got != c.want {
 			t.Errorf("unknownMembers(%q) = %q, want %q", c.in, got, c.want)
