@@ -223,15 +223,20 @@ const verifyPlainTimeoutMinutes = 40
 // 45 to 85 as its runs grew (dcn-2610181756328249, dcn-2610282036219503) and which
 // still reached that ceiling on slow runners (iss-2610181757540736). A third of
 // the slowest passing run was about 30 minutes, so it was 50, half as much again.
-// It is 90 since internal/core/implement/loop took 2137 to 2189 seconds on its own
-// shard: runners vary about twofold, so a slow one takes about 73 minutes, plus
-// set-up and a release cut's uncached build, and a slow runner may not fail a cut
-// with no failing test (dcn-2611062201286033).
-const checkMacOSCeilingMinutes = 90
+// It was 90 once internal/core/implement/loop took 2137 to 2189 seconds on its own
+// shard, on the reading that runners vary about twofold. On 17 Nov 2026 that shard
+// ran past its 80-minute package timeout on two runners in a row, a release cut's
+// both times, with every test still moving and no test failed, while the package
+// took 1976 seconds on the ubuntu runner and about 1830 on a local machine. A slow
+// runner may not fail a cut with no failing test (dcn-2611062201286033), and no
+// shard runs on the merge queue's clock, so the ceiling is 160 and the shard's
+// runner is held that long only by a run that is stuck (dcn-2611170900489974).
+const checkMacOSCeilingMinutes = 160
 
-// macOSPackageTimeoutMinutes is the -timeout of a macOS shard's race pass: twice
-// the slowest package's own shard, about 73 minutes, rounded up.
-const macOSPackageTimeoutMinutes = 80
+// macOSPackageTimeoutMinutes is the -timeout of a macOS shard's race pass: the
+// ceiling less the watchdog's margin and the set-up, so a hang still fails at this
+// timeout with the stuck test named, ahead of the watchdog.
+const macOSPackageTimeoutMinutes = 150
 
 // checkUbuntuCeilingMinutes is the check job's ceiling on the ubuntu runner: 30
 // under ruling Z; 45 from 2026-10-17, when the drain bundle
