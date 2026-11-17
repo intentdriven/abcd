@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/lint"
@@ -162,7 +163,7 @@ func AddPublic(req AddPublicRequest) (PublicResult, error) {
 	if severity == "" {
 		severity = SeverityBlocker
 	}
-	if severity != SeverityBlocker && severity != SeverityWarn {
+	if !slices.Contains(Severities(), severity) {
 		return PublicResult{}, fmt.Errorf("%w: %q (want %s|%s)", ErrInvalidSeverity, req.Severity, SeverityBlocker, SeverityWarn)
 	}
 	successor := strings.TrimSpace(req.Successor)

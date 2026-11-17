@@ -7,6 +7,7 @@
       "usage": "abcd history [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd history",
       "subcommands": [
         "capture",
         "discard",
@@ -31,7 +32,11 @@
         },
         {
           "name": "kind",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "native",
+            "import"
+          ]
         },
         {
           "name": "session",
@@ -42,7 +47,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd history capture 0123abcd-session.jsonl"
     },
     {
       "path": "abcd history discard",
@@ -70,7 +76,8 @@
       "sentence": "Redact and store every transcript staged for this repository: Writes the records into the store; refuses outside a git checkout.",
       "usage": "abcd history drain [flags]",
       "flags": [],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd history drain"
     },
     {
       "path": "abcd history ingest",
@@ -86,7 +93,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd history ingest --into ."
     },
     {
       "path": "abcd history list",
@@ -98,7 +106,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd history list"
     },
     {
       "path": "abcd history migrate",
@@ -114,7 +123,8 @@
           "type": "list"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd history migrate"
     },
     {
       "path": "abcd history reconstruct",
@@ -129,7 +139,11 @@
         {
           "name": "mode",
           "type": "string",
-          "default": "full"
+          "default": "full",
+          "allowed": [
+            "full",
+            "spine"
+          ]
         },
         {
           "name": "out",
@@ -145,7 +159,8 @@
       "sentence": "Report whether a retained transcript held both a reading and one run's ledger: Writes a missing store or a legacy corpus move; refuses outside a git checkout.",
       "usage": "abcd history separation [flags]",
       "flags": [],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd history separation"
     },
     {
       "path": "abcd history show",
@@ -169,7 +184,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd history staged"
     }
   ]
 }

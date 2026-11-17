@@ -173,6 +173,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd scribe [flags]`
+  - An example call is `abcd scribe`.
 - `abcd scribe assemble --run <rdg-N> --dispositions <path> [flags]`
   - An example call is `abcd scribe assemble --run rdg-2609010000000001 --dispositions dispositions.md`.
 - `abcd scribe ingest --scribe-json <path> --dispositions <path> [--dry-run] [flags]`

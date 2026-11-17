@@ -331,11 +331,15 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd embargo [flags]`
+  - An example call is `abcd embargo`.
 - `abcd embargo check [flags]`
+  - An example call is `abcd embargo check --range v0.11.0..HEAD`.
 - `abcd embargo close <iss-N|GHSA-id> [flags]`
   - An example call is `abcd embargo close GHSA-xxxx-xxxx-xxxx`.
 - `abcd embargo intake [flags]`
+  - An example call is `abcd embargo intake`.
 - `abcd embargo publish [flags]`
+  - An example call is `abcd embargo publish`.
 - `abcd embargo triage <iss-N|GHSA-id> <verdict> [flags]`
   - An example call is `abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by "<who decided>" --reason "the behaviour is the documented one"`.
 <!-- /generated -->

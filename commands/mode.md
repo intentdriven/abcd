@@ -199,8 +199,11 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd mode [<state>] [flags]`
+  - An example call is `abcd mode`.
 - `abcd mode autonomous [flags]`
+  - An example call is `abcd mode autonomous --until 09:00`.
 - `abcd mode back [flags]`
+  - An example call is `abcd mode back`.
 - `abcd mode queue <step> [flags]`
   - An example call is `abcd mode queue "approve the embargo close for the example advisory"`.
 <!-- /generated -->

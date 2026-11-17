@@ -112,9 +112,13 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd dashboard [flags]`
+  - An example call is `abcd dashboard`.
 - `abcd dashboard start [flags]`
+  - An example call is `abcd dashboard start`.
 - `abcd dashboard status [flags]`
+  - An example call is `abcd dashboard status`.
 - `abcd dashboard stop [flags]`
+  - An example call is `abcd dashboard stop`.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

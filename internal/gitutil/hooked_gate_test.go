@@ -21,7 +21,10 @@ var hookedRunners = map[string]func(dir string, args ...string) error{
 	"NetEach": func(dir string, args ...string) error {
 		return gitutil.NetEach(dir, 64, func(string) {}, args...)
 	},
-	"NetInput": func(dir string, args ...string) error { _, err := gitutil.NetInput(dir, "x\n", args...); return err },
+	"NetInputContext": func(dir string, args ...string) error {
+		_, err := gitutil.NetInputContext(context.Background(), dir, "x\n", args...)
+		return err
+	},
 	"NetContext": func(dir string, args ...string) error {
 		_, err := gitutil.NetContext(context.Background(), dir, args...)
 		return err

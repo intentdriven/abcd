@@ -171,14 +171,13 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
-	assembleCmd.Flags().StringVar(&position, "position", "",
-		"the reading position: "+positionTokens()+"\n"+
-			"(comparative derives its candidate set from the record: the one committed\n"+
-			"widening run at the target whose items carry no disposition and no\n"+
-			"admission — at the target, or at an ancestor of it across which only the\n"+
-			"readings store and the issue ledger changed, so a run's own records can be\n"+
-			"committed between its ingest and this assembly. None, or more than one,\n"+
-			"refuses and lists the runs)")
+	enumFlag(assembleCmd.Flags(), &position, "position", "", "the reading position: ", enumWords(reading.Positions()), "\n"+
+		"(comparative derives its candidate set from the record: the one committed\n"+
+		"widening run at the target whose items carry no disposition and no\n"+
+		"admission — at the target, or at an ancestor of it across which only the\n"+
+		"readings store and the issue ledger changed, so a run's own records can be\n"+
+		"committed between its ingest and this assembly. None, or more than one,\n"+
+		"refuses and lists the runs)")
 	assembleCmd.Flags().StringVar(&target, "target", "",
 		"the commit the assembly describes: HEAD, or a hexadecimal sha of 7 to 40 digits")
 	assembleCmd.Flags().StringVar(&outDir, "out", "",

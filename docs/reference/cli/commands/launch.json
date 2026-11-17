@@ -24,6 +24,7 @@
         }
       ],
       "inputs": [],
+      "example": "abcd launch --dry-run",
       "subcommands": [
         "archive",
         "manifests",
@@ -68,7 +69,11 @@
         },
         {
           "name": "tree",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "public",
+            "dev"
+          ]
         }
       ],
       "inputs": [],
@@ -79,7 +84,8 @@
       "sentence": "Run the release job's semantic-receipt gate locally, before the merge: Writes nothing; refuses with exit 1 when the release job would refuse the receipts.",
       "usage": "abcd launch receipts [flags]",
       "flags": [],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd launch receipts"
     },
     {
       "path": "abcd launch scaffold",
@@ -95,7 +101,8 @@
           "type": "bool"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd launch scaffold"
     },
     {
       "path": "abcd launch ship",
@@ -135,7 +142,8 @@
           "schema_version": 2,
           "version_in": "schema_version"
         }
-      ]
+      ],
+      "example": "abcd launch ship --dry-run"
     }
   ]
 }

@@ -168,6 +168,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd embark [flags]`
+  - An example call is `abcd embark`.
 - `abcd embark from <lifeboat-dir> [target-dir] [flags]`
   - An example call is `abcd embark from ../lifeboat`.
 - `abcd embark lessons <lifeboat-dir> [target-dir] [flags]`

@@ -307,10 +307,15 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd lint [flags]`
+  - An example call is `abcd lint`.
 - `abcd lint docs [flags]`
+  - An example call is `abcd lint docs`.
 - `abcd lint identity [flags]`
+  - An example call is `abcd lint identity`.
 - `abcd lint outbound [FILE] [flags]`
+  - An example call is `abcd lint outbound pr-body.md`.
 - `abcd lint site [flags]`
+  - An example call is `abcd lint site`.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

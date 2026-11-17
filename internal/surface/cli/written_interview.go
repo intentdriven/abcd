@@ -36,6 +36,7 @@ import (
 	"github.com/intentdriven/abcd/internal/term"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // writtenFlags are the flags both AI-written interviews take.
@@ -47,8 +48,15 @@ type writtenFlags struct {
 func (f *writtenFlags) register(cmd *cobra.Command, name string) {
 	cmd.Flags().StringVar(&f.answers, "answers", "", "answer the questions from this answers file (JSON: schema_version, interview \""+name+
 		"\", answers by ordinal Q1, Q2, ...) instead of drawing them; the run refuses at the first question the file does not answer")
-	cmd.Flags().StringVar(&f.answeredIn, "answered-in", interview.Terminal, "where an answers-file entry that names no place was answered: "+
-		"Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer")
+	answeredInFlag(cmd.Flags(), &f.answeredIn)
+}
+
+// answeredInFlag declares --answered-in on fs: where an answers-file entry
+// that names no place was answered, one of the places interview.ValidAnsweredIn
+// checks against, Terminal by default.
+func answeredInFlag(fs *pflag.FlagSet, p *string) {
+	enumFlag(fs, p, "answered-in", interview.Terminal, "where an answers-file entry that names no place was answered: ", interview.AnsweredInPlaces(),
+		"; Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer")
 }
 
 // interruptContext relays an interrupt, a termination or a hang-up to the

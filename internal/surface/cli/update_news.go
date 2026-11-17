@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/afterupdate"
@@ -56,7 +57,7 @@ func newUpdateNewsCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd update news: --answer records the reply to the offer and takes neither --full nor --seen; nothing was written"}
 			case full && seen:
 				return &exitError{Code: 2, Msg: "abcd update news: --full shows the summary and writes nothing, so it takes no --seen; nothing was written"}
-			case answered && answer != afterupdate.AnswerYes && answer != afterupdate.AnswerNotNow:
+			case answered && !slices.Contains(afterupdate.Answers(), answer):
 				return &exitError{Code: 2, Msg: "abcd update news: --answer is yes or not-now; nothing was written"}
 			}
 			cwd, err := os.Getwd()
@@ -83,7 +84,8 @@ func newUpdateNewsCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&full, "full", false, "print the full summary of the releases since the last update and what waits here; writes nothing")
-	cmd.Flags().StringVar(&answer, "answer", "", "record the person's reply to the offer, yes or not-now, once for this repository and release; run it only with their reply")
+	enumFlag(cmd.Flags(), &answer, "answer", "", "record the person's reply to the offer, ", afterupdate.Answers(),
+		", once for this repository and release; run it only with their reply")
 	cmd.Flags().BoolVar(&seen, "seen", false, "record that the person read the news where no offer was made; run it only after they were shown it")
 	return cmd
 }

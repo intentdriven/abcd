@@ -7,6 +7,7 @@
       "usage": "abcd embargo [flags]",
       "flags": [],
       "inputs": [],
+      "example": "abcd embargo",
       "subcommands": [
         "check",
         "close",
@@ -33,7 +34,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd embargo check --range v0.11.0..HEAD"
     },
     {
       "path": "abcd embargo close",
@@ -53,7 +55,8 @@
       "sentence": "Take this repository's private advisories into private records in the embargo store: Writes only the embargo store; refuses a remote that is not on GitHub.",
       "usage": "abcd embargo intake [flags]",
       "flags": [],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd embargo intake"
     },
     {
       "path": "abcd embargo publish",
@@ -69,7 +72,8 @@
           "type": "string"
         }
       ],
-      "inputs": []
+      "inputs": [],
+      "example": "abcd embargo publish"
     },
     {
       "path": "abcd embargo triage",

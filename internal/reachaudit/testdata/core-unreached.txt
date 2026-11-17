@@ -30,7 +30,6 @@ internal/core/guard.Validate
 internal/core/history.DefaultConfig
 internal/core/implement.LoadResultFromEvent
 internal/core/implement.ReadingCorpus
-internal/core/implement.Roles
 internal/core/implement.TouchesReadingCorpus
 internal/core/implement/loop.Check
 internal/core/implement/loop.ValidLaneID
@@ -75,7 +74,6 @@ internal/core/lint.CitationAgeSummaryAt
 internal/core/lint.LintAt
 internal/core/lint.PrincipleEvidence
 internal/core/lint.UnresolvedProseCitationsInText
-internal/core/mdrecord.IsHeading
 internal/core/memory.Dir
 internal/core/memory.IsMemoryPageName
 internal/core/memory.LoadRegistry

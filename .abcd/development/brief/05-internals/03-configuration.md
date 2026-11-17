@@ -61,7 +61,7 @@ shipped behaviour. Everything after them is **staged**, per the truth rule in
 
 ### The keys the binary reads
 
-Twenty-two keys plus a `meta` block. Install asks about visibility, the docs target,
+Twenty-three keys plus a `meta` block. Install asks about visibility, the docs target,
 the oracle backend, the deep scan (the last only when visibility is private
 and the deep scanner is on `PATH`), and the README question (only of a person
 at a terminal, in a run without the approve-everything flag, once
@@ -81,7 +81,7 @@ written by `ahoy install --attribution`, and `outbound.hook` and
 switch; the shell guard reads `outbound.forge`, and an install
 completes a repository that records only one of the two and leaves the other
 absent, while a key set to `false` is the repository's choice and is left as it
-is. The remaining thirteen —
+is. The remaining fourteen —
 whether abcd should enable the forge's own secret scanning, the rules loader's
 refresh backstop, the filing-time match's threshold and compared fields,
 whether `abcd land` pushes and queues, whether a reservation may be made on
@@ -92,7 +92,8 @@ repository adopts, so no install sets it), who merges (`facilitator.mode`,
 `human` by default or `auto`, read by the merge gate, the board and the shell
 guard at the default branch's tip, where `human` from any layer wins), the
 file a release cut appends its digest to (`release.digest`, read from the
-repository layer alone) and the workflow `abcd status` watches
+repository layer alone), whether abcd sweeps on its own (`sweep.automatic`)
+and the workflow `abcd status` watches
 (`status.scheduled_workflow`, read at the default branch's tip) — are
 hand-set: the binary reads them and never writes them.
 
@@ -167,6 +168,10 @@ hand-set: the binary reads them and never writes them.
                                         //   verdict is named by the verb and the prompt's block until a green
                                         //   replaces it. Absent is off: the forge is not asked
   },
+  "sweep": {                            // the sweep abcd runs on its own (04-surfaces/40-sweep.md)
+    "automatic": true                   // on by default in a repository abcd manages, never outside one;
+                                        //   false from any layer holds
+  },
   "land": {                             // `abcd land` (04-surfaces/38-land.md)
     "push": true,                       // push the branch once a preflight receipt names its head
     "enqueue": true                     // arm and confirm its pull request where the merge gate allows
@@ -224,6 +229,16 @@ repository layer is read in the working directory's checkout and in the landed
 branch's own, and both are ANDed; a home the reader refuses hides the machine
 layer and its offs, so both acts read as off. The verb names the layer and file
 that turned an act off.
+
+The `sweep.automatic` key is read through the same reader, which claims the
+`sweep` namespace, and is a restriction (adr-2611011332427073): every layer
+that holds it is decoded, and false in the repository's file or the machine's
+holds. It decides only within a repository abcd manages; outside one the
+sweep abcd runs on its own after a landing and at a drain's end never runs,
+whatever a layer says. A file the reader cannot read, a misspelt key under
+`sweep`, a value that is not a boolean and a home the reader refuses each
+read as off, and the act the sweep would have followed names why
+(`internal/core/sweep/auto.go`).
 
 The `reservation.fork_origin` key is read through the same reader, in the
 ordinary precedence: `.abcd/config.json` wins, then `~/.abcd.noindex/config.json`,
@@ -2179,20 +2194,22 @@ A Go binary plus the markdown plugin surface that shells to it:
 ```
 abcd/
 ├── .claude-plugin/                     # plugin.json + marketplace.json
-├── cmd/                                # the shipped entrypoint plus eleven build-time binaries
+├── cmd/                                # the shipped entrypoint plus thirteen build-time binaries
 │   ├── abcd/main.go                    #   entrypoint — wires the CLI front door to the core
 │   ├── record-lint/                    #   the record gate `make preflight` runs (06-lint.md)
 │   ├── scaffold-sync/                  #   keeps the scaffolded release workflows in step
 │   ├── scaffold-render/                #   writes every scaffolded workflow profile for CI's workflow audit
 │   ├── asking-sync/                    #   writes the asking rules into the generated blocks of commands/intent.md and agents/question-drafter.md
+│   ├── command-facts-sync/             #   writes the per-command facts files under docs/reference/cli/commands/ and the generated blocks of every page under commands/
 │   ├── abcd-gen-surface/               #   writes the command-surface snapshot and the surface chapters' appendices
 │   ├── abcd-gen-cli-ref/               #   writes the generated CLI reference page
 │   ├── test-parallelism/               #   prints the go test -p `make preflight`'s test stages take
+│   ├── precheck-audits/                #   runs `make precheck`'s tree-auditing tests in the packages it does not already cover
 │   ├── check-tests/                    #   runs `make preflight`'s test stages from the check directory, replaying what the test cache holds
 │   ├── ci-watchdog/                    #   the shell CI's test jobs run go test under, stopping a hang with its dumps before the job's cap
 │   ├── ci-shard/                       #   prints the packages one shard of CI's macOS suite tests, computed from `go list`
 │   └── record-slug-rename/             #   one-off: renames records over the repository's slug cap (iss-2610100626320367)
-│                                       #   The eleven are developer tooling, not user surface: they run
+│                                       #   The thirteen are developer tooling, not user surface: they run
 │                                       #   from the Makefile, `go generate`, CI or by hand, and ship in no release
 ├── internal/
 │   ├── core/                           # transport-agnostic core, one package per capability

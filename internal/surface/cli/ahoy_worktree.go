@@ -273,6 +273,9 @@ func renderPruned(w io.Writer, got worktree.Pruned) {
 		case r.Notes != "":
 			line += "; notes: " + r.Notes
 		}
+		if r.Ignored != nil {
+			line += "; " + ignoredGoingLine(*r.Ignored, r.Outcome == worktree.OutcomeReclaimed)
+		}
 		fmt.Fprintln(w, line)
 		if r.Dossier != nil {
 			renderDossier(w, *r.Dossier)
@@ -376,6 +379,29 @@ func cacheSizeText(n uint64) string {
 
 // shownCacheTrimText is text bound for the terminal: home-redacted and masked.
 func shownCacheTrimText(s string) string { return termsafe.Sanitize(fsutil.RedactHome(s)) }
+
+// ignoredGoingLine is what a prune row says of the ignored files outside the
+// local tier that a removal took (gone) or takes with it, unarchived: how
+// many and the first of them, or that they could not be listed and why. The
+// fields are masked already (worktree.IgnoredState).
+func ignoredGoingLine(s worktree.IgnoredState, gone bool) string {
+	verb := "go"
+	if gone {
+		verb = "went"
+	}
+	if s.Unread {
+		line := "its ignored files could not be listed"
+		if s.Why != "" {
+			line += " (" + s.Why + ")"
+		}
+		return line + ", and any " + verb + " with it, unarchived"
+	}
+	line := fmt.Sprintf("%d ignored path(s) outside its local tier %s with it, unarchived: %s", s.Count, verb, strings.Join(s.Paths, ", "))
+	if more := s.Count - len(s.Paths); more > 0 {
+		line += fmt.Sprintf(" and %d more", more)
+	}
+	return line
+}
 
 // renderDossier lays out a quiet candidate's dossier under its row, in the
 // spec's order: dirty state first, so uncommitted work is the first thing

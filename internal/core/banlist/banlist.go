@@ -103,6 +103,11 @@ const (
 	SeverityWarn    = "warn"
 )
 
+// Severities returns the severities a public entry may carry, the default
+// first: the one list AddPublic checks a severity against and the --severity
+// flag declares.
+func Severities() []string { return []string{SeverityBlocker, SeverityWarn} }
+
 // Sentinel errors. A message never contains a pattern value: on the private layer
 // the pattern is the secret, and an error is output like any other.
 var (

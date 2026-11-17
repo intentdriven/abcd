@@ -58,8 +58,10 @@ package sweep
 // caller read after its fetch, as the worktree apply reads them.
 //
 // Every git command this file runs goes through gitutil. The reads are bound
-// to the run's context and a deadline; the delete's push is bound to
-// gitutil.NetTimeout, the hooked runner taking no context; and the shared
+// to the run's context and a deadline; the delete's push is bound to the
+// run's context and gitutil.NetTimeout, through the hooked runner
+// (gitutil.NetInputContext), so the repository's pre-push hook still judges
+// it; and the shared
 // merged judgement (store.Merged) and the liveness probe's changed-paths
 // read run their own git reads with no deadline. Every forge call is bounded
 // by forgeTimeout and the context.
@@ -180,7 +182,7 @@ func sweepRemote(ctx context.Context, repoRoot string, o Options, apply bool) (R
 		if err := ctx.Err(); err != nil {
 			return refused(fmt.Errorf("the run was stopped while judging origin's branches: %w", err))
 		}
-		res.Rows = append(res.Rows, rj.row(b))
+		res.Rows = append(res.Rows, leftForAPerson(rj.row(b), o.ours))
 	}
 	if !apply {
 		return res, nil
@@ -749,14 +751,17 @@ func (rj *remoteJudge) delete(b remoteBranch, addrHold, head, headTip string, he
 	if err := stopped(); err != nil {
 		return err
 	}
-	// The delete goes through the push the repository's own hooks see
-	// (gitutil.Net, the runner the reservation sweep's delete uses), so its
-	// pre-push hook judges this push as it judges the person's own. No
-	// exported hooked runner takes a context, so this one call is bounded by
-	// gitutil.NetTimeout rather than the run's context, which is checked just
-	// before it starts; bounding the wait here would leave git running past
-	// it.
-	out, err := gitutil.Net(rj.root, remoteDeleteArgs(b.ref, b.tip)...)
+	// The delete goes through the push the repository's own hooks see (the
+	// hooked runner Net and the reservation sweep's delete use), so its
+	// pre-push hook judges this push as it judges the person's own. It is
+	// bound to the run's context as well as to gitutil.NetTimeout, so a run
+	// whose bound ends mid-push has git killed rather than waited on; the
+	// lease on the judged tip holds whether or not origin took it.
+	out, err := gitutil.NetInputContext(rj.ctx, rj.root, "", remoteDeleteArgs(b.ref, b.tip)...)
+	if cerr := rj.ctx.Err(); err != nil && cerr != nil {
+		row.Reason = clean("the run was stopped while the delete was pushed, so whether origin took it is not known; `abcd sweep` reads it again")
+		return fmt.Errorf("the run was stopped while the delete of %s was pushed: %w", clean(b.name), cerr)
+	}
 	if err == nil {
 		row.Outcome = OutcomeDeleted
 		row.Reason = clean("deleted on origin under a lease on its judged tip " + short(b.tip) + "; " + row.Reason)

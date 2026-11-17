@@ -56,11 +56,18 @@ const (
 	ToolHost    = "host"
 )
 
+// Routes returns the closed route vocabulary, native first: the set
+// validRoutes is built from and `history capture --kind` declares.
+func Routes() []string { return []string{RouteNative, RouteImport} }
+
 // validRoutes are the accepted source_kind values.
-var validRoutes = map[string]struct{}{
-	RouteNative: {},
-	RouteImport: {},
-}
+var validRoutes = func() map[string]struct{} {
+	m := map[string]struct{}{}
+	for _, r := range Routes() {
+		m[r] = struct{}{}
+	}
+	return m
+}()
 
 // legacyKinds are the source_kind values a record written before the split
 // may carry that fused a tool into the route. Each maps to the two labels it

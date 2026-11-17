@@ -168,7 +168,7 @@ two minutes, and serve as the approver and the hooks of the live launch that pro
 drive. Only then does it replace the installed binary, the previous one kept beside it as
 `.<name>.previous`. The drive re-executes itself and goes on from the drain's own state,
 with the same cap, bound, skips and profile, asking nothing and printing
-`abcd updated from <old> to <new>`. What the state holds is not given again, so a change
+`abcd updated from <old> to <new>`. What the state holds is not given again, so a change <!-- facts-lint: historical -->
 made to the pace or the skips since the start stands. A release that fails the checks or the live launch is
 said once and is not taken again in that run, and the drive goes on with the version it has.
 A read-only run that fails is said once per reason and tried again at later checks. A fault that
@@ -861,6 +861,30 @@ what it did in `next`:
   take the issue, with what the lane committed on its branch and the rest in its worktree alone. A halted run waits for
   `abcd implement resume --take <run-id>`; a mark from a person's stop that has not settled
   goes on as any other if the stop has lifted, and one from a signal to a drive waits for that same take-over.
+- **It sweeps on its own.** In a repository abcd manages, a move that
+  finished a merged lane, and a move that ends the drain, then run the
+  provably spent part of `abcd sweep --apply` once, with the same proofs
+  against a fresh fetch: merged, clean worktrees removed, a dirty one's work
+  saved as a patch and the worktree kept, and the merged lane branches abcd
+  made (named exactly `build/<run-id>-<lane-id>`, as the loop names a lane)
+  deleted locally and on origin; any other merged branch, a store worktree's
+  own included, is kept and listed for `abcd sweep --apply`, and so is a
+  spent store worktree holding any ignored file outside its local tier (a
+  `.env`, say), which a removal would delete unarchived, or whose ignored
+  files cannot be listed. It starts no
+  reservation workflow and files no inbox report, and runs for two minutes at
+  most (its fetch, its fetch of the reservations and each delete on origin;
+  its local reads are short and have no deadline of their own), stopping
+  between removals. A step that lands
+  a lane sweeps the same way, and so does `--drive` once at its own end
+  (unless it was killed, halted or stopped), its line printed once in the
+  drive's summary; a stop of the drive also ends a sweep under way and starts
+  no other. The move that ends a drive's drain leaves it to that. The
+  line joins `next`: what it removed and what it left, counted, the first few
+  rows, then `abcd sweep` for the full list. A refusal or fault of that sweep
+  is reported there and the move stands. `"sweep": {"automatic": false}` in
+  `.abcd/config.json`, or in `~/.abcd.noindex/config.json` for every
+  repository on the machine, turns it off (`commands/sweep.md`).
 - **It reads parked lanes from their pull requests.** A move that finds a
   lane parked at land lists your latest 100 pull requests once
   (`gh pr list --state all --author @me`), and reads each parked lane whose

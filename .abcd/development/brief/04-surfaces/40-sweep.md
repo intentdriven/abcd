@@ -37,7 +37,10 @@ One row per item, in this order:
 - **Worktrees**, in the worktree store and outside it, with the store's strays
   and the embargo store. A merged, clean worktree is removed through the
   store's own reclaim, which archives its notes first; there is no second
-  reclaim. A dirty worktree no live session holds has its uncommitted work
+  reclaim. Its row names the ignored files outside its local tier that go
+  with it unarchived, how many and the first few, or says they could not be
+  listed; the person decides, and the applying form removes it all the same
+  (dcn-2611161805215819). A dirty worktree no live session holds has its uncommitted work
   saved as a patch in the notes archive, and is kept. The embargo store is
   never read, saved or removed, and a stray is listed and never touched.
 - **Local branches** with no worktree. A merged one is deleted the way git
@@ -47,9 +50,11 @@ One row per item, in this order:
   or into it, no reservation recording it, and no live session in a worktree
   on it. A reservation records no branch, only the copy that made it, so it
   holds the branch of a local worktree that copy is on; a reservation made on
-  another machine or under another account holds no branch on origin, and
-  such a branch is kept by the other proofs alone (merged at the judged tip,
-  no open pull request). A record id in a branch's name holds nothing by
+  another machine or under another account holds no branch on origin, so
+  for such a branch the reservation adds no hold: it is deleted once it is
+  merged at the judged tip, unless an open pull request or another hold
+  named here keeps it.
+  A record id in a branch's name holds nothing by
   itself. The default branch, release branches, tags and
   abcd's own coordination branches are never deleted.
 - **Reservations.** A spent one is cleared by the reservation sweep's
@@ -77,6 +82,64 @@ fault. Bare, it writes only under the machine's abcd home and the local tier,
 the fetch aside; applied, it also removes worktrees and local branches, deletes
 branches on origin, starts the reservation sweep's workflow and files the
 waiting inbox reports as ledger records.
+
+## When abcd sweeps on its own
+
+In a repository abcd manages, abcd runs the provably spent part of the
+applying form itself (iss-2611150649557869, dcn-2611161331159806), with the
+same proofs against a fresh fetch: once a landing sees its pull request
+merged, whether a build's lane, a drain's, or a merged lane a build's start or
+resume closes, at the end of a drain move that ends the drain, and at the end
+of a drive a person did not stop and nothing killed or halted. A build run
+ends at its last landing, which has swept already. It removes merged, clean
+worktrees of the worktree store, saves a dirty one's work and keeps it, and
+deletes the merged branches abcd made, locally and on origin: a branch named
+exactly as the build loop names a lane, its prefix followed by a run id and a
+lane id the loop mints (dcn-2611161459048806, dcn-2611161654034047). Any
+other merged branch, a long-lived one at or behind the default branch, a
+peer's freshly pushed one, a person's own branch under the lane prefix, or the
+branch of a store worktree it removes, is listed with its reason and left for
+the applying form, since no person saw a dry run first. A store worktree's
+branch is no proof abcd made it: adding a worktree to the store can check a
+person's existing branch out there. For the same reason a spent store worktree
+holding any ignored file outside its local tier, which a removal deletes with
+only the tier archived, is kept and listed for the applying form, naming how
+many ignored paths it holds and the first few, and so is one whose ignored
+files cannot be listed (dcn-2611161728290362). A file counts as ignored as the
+store's own removal will delete it: by the repository's own ignore rules or
+by the global ignore file git reads by default. A file only an ignore file
+named in the person's own global git configuration matches reads as
+untracked, since abcd's git reads no global configuration, so the worktree
+is kept as changed and its work, that file included, saved as a patch in the
+notes archive. At the last check before each removal it reads the ignored
+files once more, and keeps a worktree in which one has appeared. Its line
+names a kept worktree's ignored count and first path ahead of the worktree's
+path, so the bound never cuts the warning off. It starts no reservation workflow and files no
+inbox report: those stay with the applying form a person runs. The worktree
+the running process is in, and any a live session holds, are kept by the same
+liveness proof.
+
+It is bounded at two minutes as a whole, well inside a lane's ten-minute
+command bound: its fetch, its fetch of the reservations and each delete on
+origin end with that bound or with a person's stop, and it starts no removal
+past it. After a landing step, at a drain's end and at a drive's end it stops
+between removals and never inside one; as a build starts or resumes it stops
+only at the bound, and an interrupt there ends the process, perhaps during a
+removal. Its local reads,
+the merged judgement, the liveness probe's read of a worktree's changes and
+the read of the ignored files a worktree holds, are short and run with no deadline of their own. What it did not reach is judged again,
+with the same proofs, by the next landing's sweep or the drain's end. The act
+it follows reports it on one line, bounded: what it removed and what it left,
+counted, the first few rows in the sweep's row wording, then where the full
+list is. A refusal before anything is judged says so; a refusal or fault of
+that sweep is reported there and never fails the act it follows.
+
+One setting turns it off: `sweep.automatic`, a boolean read through the
+layered configuration reader from the repository's `.abcd/config.json` and
+the machine's `~/.abcd.noindex/config.json`. It only restricts: false in
+either layer holds, no layer turns the sweep on outside a repository abcd
+manages, and a value that cannot be read reads as off, which the act's line
+names.
 
 ## Where it is named
 

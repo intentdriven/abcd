@@ -140,6 +140,8 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 			return r.Runner, r.Override()
 		}
 	}
+	// A landing's own sweep ends with the step's context (autosweep.go).
+	o.sweepCtx = ctx
 	res, err := advanceWith(repoRoot, runID, steps, o, routed, overrides)
 	if err != nil || rs.Config == nil {
 		return res, err

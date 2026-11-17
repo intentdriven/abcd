@@ -234,7 +234,7 @@ A single whitespace-free word is refused (exit 2, nothing written): a lone
 token reads as a mistyped sub-verb, never as issue text. A near-miss of a real
 sub-verb is refused the same way, with the correction named, so a two-word input
 containing a space is not automatically safe. Neither is a word followed by an
-issue id — `abcd capture closeit iss-1 "…"` is a sub-verb call by shape whatever
+issue id — `abcd capture closeit iss-1 "…"` is a sub-verb call by shape whatever <!-- facts-lint: historical -->
 the word is, so it is refused whether or not any sub-verb is close enough to
 suggest, and a refusal with nothing to suggest lists the sub-verbs the verb has.
 
@@ -849,6 +849,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd capture [text] [flags]`
+  - An example call is `abcd capture "the board drops its last row on an empty ledger" --remedy "render the row before the count"`.
 - `abcd capture admit <rdi-N> --grounds "<why>" [flags]`
   - An example call is `abcd capture admit rdi-2609010000000001 --grounds "the widened configuration is one the next release has to serve"`.
 - `abcd capture defer <iss-N> --after <vX.Y.Z> --reason <text> [flags]`
@@ -858,8 +859,11 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 - `abcd capture link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] [flags]`
   - An example call is `abcd capture link iss-2609010000000001 --blocked-by iss-2609010000000002`.
 - `abcd capture list [flags]`
+  - An example call is `abcd capture list --open`.
 - `abcd capture mentions [--ref <branch>] [flags]`
+  - An example call is `abcd capture mentions`.
 - `abcd capture migrate [--apply] [flags]`
+  - An example call is `abcd capture migrate`.
 - `abcd capture promote <iss-N> [--grounds "<token>: <text>"] | promote <rdi-N> [flags]`
   - An example call is `abcd capture promote iss-2609010000000001`.
 - `abcd capture reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds "<why>" [--open] | --complete <rfm-N> [flags]`

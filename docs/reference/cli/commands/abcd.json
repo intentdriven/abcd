@@ -12,7 +12,11 @@
         },
         {
           "name": "format",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "text",
+            "markdown"
+          ]
         },
         {
           "name": "json",
@@ -29,10 +33,15 @@
         },
         {
           "name": "view",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "product",
+            "facilitator"
+          ]
         }
       ],
       "inputs": [],
+      "example": "abcd",
       "subcommands": [
         "agents",
         "ahoy",

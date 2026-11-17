@@ -1,6 +1,7 @@
 package gitutil_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -45,8 +46,8 @@ func TestAFetchAbcdMakesGoesIntoNoSubmodule(t *testing.T) {
 		fetch func() error
 	}{
 		{"Net", func() error { _, err := gitutil.Net(down.Root(), "fetch", "origin"); return err }},
-		{"NetInput", func() error {
-			_, err := gitutil.NetInput(down.Root(), "+refs/heads/main:refs/remotes/origin/main\n", "fetch", "--stdin", "origin")
+		{"NetInputContext", func() error {
+			_, err := gitutil.NetInputContext(context.Background(), down.Root(), "+refs/heads/main:refs/remotes/origin/main\n", "fetch", "--stdin", "origin")
 			return err
 		}},
 	} {
