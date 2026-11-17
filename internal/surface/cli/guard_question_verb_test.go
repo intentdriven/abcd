@@ -328,6 +328,17 @@ func TestGuardQuestionMarksAPartialResult(t *testing.T) {
 		if !strings.Contains(text, "this question was checked and has no finding, but the mode store could not be read") {
 			t.Errorf("the text does not say the clean chipped draft was checked; stdout:\n%s", text)
 		}
+		// A chipped --ask draft with no id has a structural finding alone,
+		// and the outcome line says so rather than that it has none
+		// (iss-2611011943547454).
+		noID := strings.Replace(structuredDraft("x"), `"id":"labels"`, `"id":""`, 1)
+		text, _, code = runGuard(noID, "guard", "question", "--ask")
+		if code != 2 || !strings.Contains(text, "this question was checked and its only finding is structural, which the hook never sees, but the mode store could not be read") || strings.Contains(text, "has no finding") {
+			t.Errorf("exit %d; the outcome line does not agree with the structural finding; stdout:\n%s", code, text)
+		}
+		if !strings.Contains(text, "findings: 1, 0 of them refusing") {
+			t.Errorf("the findings line is gone; stdout:\n%s", text)
+		}
 	})
 	t.Run("away", func(t *testing.T) {
 		root := awayCheckout(t)

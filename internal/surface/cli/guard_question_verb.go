@@ -476,10 +476,36 @@ func outcomeLineOf(res questionCheckResult) string {
 		// abcd's question is checked whatever store was unread: an
 		// older-form chip with the mode store unread is judged on its chip,
 		// and a number header by every rule but the register.
-		return "this question was checked and has no finding, but " + unreadStores(res) +
+		return "this question was checked and " + checkedFindings(res.Findings) + ", but " + unreadStores(res) +
 			" could not be read, so the hook would let it through on its loud status"
 	}
 	return outcomeLine(res.Hook)
+}
+
+// checkedFindings says what a checked draft's findings come to, so the outcome
+// line agrees with the findings the render lists below it: none, only
+// structural ones the hook never sees, or some that refuse
+// (iss-2611011943547454).
+func checkedFindings(fs []questionFindingJSON) string {
+	if len(fs) == 0 {
+		return "has no finding"
+	}
+	refusing := 0
+	for _, f := range fs {
+		if f.Refuses {
+			refusing++
+		}
+	}
+	structural := !slices.ContainsFunc(fs, func(f questionFindingJSON) bool { return f.Rule != string(question.RuleStructure) })
+	switch {
+	case refusing == 0 && structural && len(fs) == 1:
+		return "its only finding is structural, which the hook never sees"
+	case refusing == 0 && structural:
+		return fmt.Sprintf("its only findings are %d structural ones, which the hook never sees", len(fs))
+	case refusing == 0:
+		return fmt.Sprintf("has %d findings, none of them refusing", len(fs))
+	}
+	return fmt.Sprintf("has %d findings, %d of them refusing", len(fs), refusing)
 }
 
 // limitsLine is the text render's statement of the question limits: each
