@@ -240,14 +240,3 @@ func TestIdentityReadCauseKeepsAbcdsOwnSentence(t *testing.T) {
 		t.Errorf("git's root-commit failure: %q", got)
 	}
 }
-
-// TestShellQuotedPastesAsWritten: a name a note puts into a command cannot
-// expand or end the quoting when pasted.
-func TestShellQuotedPastesAsWritten(t *testing.T) {
-	for _, name := range []string{"Jan B. Doe", "R $(touch pwned) `x`", "O'Brien", ""} {
-		out, err := exec.Command("sh", "-c", "printf %s "+shellQuoted(name)).Output()
-		if err != nil || string(out) != name {
-			t.Errorf("shellQuoted(%q) = %s pastes as %q (%v)", name, shellQuoted(name), out, err)
-		}
-	}
-}

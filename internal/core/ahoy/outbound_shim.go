@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -132,12 +131,6 @@ func rootCommitCause(err error) string {
 		return causeInWords(err) + "; " + rootCommitCommand + " shows git's reason"
 	}
 	return causeInWords(err)
-}
-
-// shellQuoted quotes s for a POSIX shell, so a command a note names can be
-// pasted as written whatever s holds.
-func shellQuoted(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // errNoGitDirNamed is gitCommonDir's refusal of an empty answer.

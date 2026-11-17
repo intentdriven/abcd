@@ -7,6 +7,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 // MachineIdentity (itd-2610240918547728) covers the person's own commit
@@ -213,8 +214,8 @@ func (a *applyCtx) stepGitIdentity() {
 		return
 	}
 	if err := identity.WriteLocal(a.cwd, prop.Identity); err != nil {
-		a.refuse(did + ": git config could not write it (" + causeInWords(err) + "; a config.lock a crashed git left is the usual cause, and once it is gone git config --local user.name " + shellQuoted(prop.Identity.Name) +
-			" && git config --local user.email " + shellQuoted(prop.Identity.Email) + " makes the write, or shows git's reason if it fails again)")
+		a.refuse(did + ": git config could not write it (" + causeInWords(err) + "; a config.lock a crashed git left is the usual cause, and once it is gone git config --local user.name " + shellquote.Single(prop.Identity.Name) +
+			" && git config --local user.email " + shellquote.Single(prop.Identity.Email) + " makes the write, or shows git's reason if it fails again)")
 		return
 	}
 	a.note(writeGitIdentity, ".git/config")
