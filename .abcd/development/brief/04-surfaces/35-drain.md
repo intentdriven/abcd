@@ -962,7 +962,8 @@ shares with the run state's (no drain flag sets an override);
 the third added a judge fallback receipt's `spent`, and an earlier version's state carrying it is refused, naming it; a first- or second-version state is read as the third's strict subset and written back at
 the third, and a first-version one that carries any of the second's fields is refused naming the
 field, which the first version never wrote. A drain that has ended is
-kept for reading, and the next invocation begins a new one. The cap is set when
+kept for reading, and the next invocation begins a new one. With no cap named,
+a drain's lanes are uncapped and a drive's are capped at eight. The cap is set when
 a drain begins, and a different cap named while it runs is refused rather than
 ignored. The pace is the implement loop's, resolved through the same layers when
 the drain begins, and every lane the drain opens starts on the drain's pace, not

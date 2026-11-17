@@ -1,7 +1,9 @@
 # `/abcd:dashboard` — The Product Thinker's Dashboard, Through Tailscale
 
-`/abcd:dashboard` runs one of abcd's two network listeners (the other is the
-brief session relay, [`37-session.md`](37-session.md)): a server on this
+`/abcd:dashboard` runs one of abcd's network listeners (the others are the
+brief session relay and, only while the session setup waits for GitHub's answer
+to the sign-in app's manifest, a listener on this computer's loopback address,
+both in [`37-session.md`](37-session.md)): a server on this
 computer that the product thinker opens from a phone, an iPad or another
 computer on their own Tailscale network (itd-2610032150577708,
 spc-2610040741034208). Who may reach it, and on what terms, is the standing

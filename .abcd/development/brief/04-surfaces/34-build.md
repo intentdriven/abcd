@@ -274,8 +274,10 @@ run <run-id> on <date>`, then every candidate with its score, the rule, the
 runner-up and why it lost, and the falsifier. The first lane's worktree stage
 appends it to the intent in the lane's own worktree, through the intent store's
 grounds writer and lock, and commits that one file as the lane branch's first
-commit (decision 6), under the configured git identity, with hooks off and the
-isolated environment less the global-config neutralisers. Its message is
+commit (decision 6), under the configured git identity, in the isolated
+environment less the global-config neutralisers, with the repository's hooks
+and commit signing run as on the person's own commit, so a hook that refuses
+the commit refuses the stage. Its message is
 computed too, so it ends with the abcd label, `Assisted-by: abcd:<version>`,
 naming the binary's release version or `dev` for a build with none: abcd
 composed the text from record facts, so neither a model's trailer nor the
@@ -471,17 +473,17 @@ added the fix-round cap (ruling DR1): the pace's `fix_rounds` and a lane's
 `validation`). Each earlier version is the next one's strict subset, read as a
 run that predates the addition (a version-5 run runs on the bundled cap, a
 version-7 run is one the host ran every agent of) and
-written back at version 20 by its next mutation; an earlier version carrying what
+written back at the current version, 27, by its next mutation; an earlier version carrying what
 only a later one writes is refused. Version 4
 renamed the lane's stage (BU1, iss-2609291313276243): a lane's and a record
 line's `step` became `stage`, so "step" names only the spec's steps (`spec_step`,
 `step_title`, `pending`). Versions 1 to 3 wrote `step`, and are migrated on
 read: the read carries each `step` over to `stage` and writes nothing, and the
-run's next mutation writes the file back at version 4; one of them that already
+run's next mutation writes the file back at the current version; one of them that already
 says `stage` is not one its version wrote, and is refused. Version 3 added the
 pick and version 2 the pace. Version 1 is version 2's strict subset, so a version-1 file is read as a run
 started before the loop paced a run: it carries no pace, runs unpaced, and is
-written back at version 2 by its next mutation. A version-1 file carrying a
+written back at the current version by its next mutation. A version-1 file carrying a
 pace is not one version 1 wrote, and is refused. A state file or run directory that is a symlink, or that
 the filesystem will not hand over, is refused in the same shape (exit 2, naming
 the file and the remedy), never followed.
