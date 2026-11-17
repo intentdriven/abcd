@@ -95,7 +95,7 @@ func TestArmRefusalKeepsGitsMessageOut(t *testing.T) {
 	if !strings.Contains(all, "core.hooksPath was not set: git exited with status") {
 		t.Fatalf("want the refusal in words:\n%s", all)
 	}
-	for _, leak := range []string{"could not lock", "config.lock"} {
+	for _, leak := range []string{"could not lock", "config.lock", repo, displayPath(repo)} {
 		if strings.Contains(all, leak) {
 			t.Errorf("the refusal carries %q:\n%s", leak, all)
 		}
@@ -231,7 +231,7 @@ func TestRootCommitCauseNamesTheCommandOnlyWhenGitRefused(t *testing.T) {
 // TestIdentityReadCauseKeepsAbcdsOwnSentence: a failure that is not git's
 // root-commit read is abcd's own sentence about the record or the pin, kept.
 func TestIdentityReadCauseKeepsAbcdsOwnSentence(t *testing.T) {
-	own := fmt.Errorf("%w: ~/.abcd.noindex/identity.json is not valid JSON", identity.ErrRecordRefused)
+	own := fmt.Errorf("%w: the record is not valid JSON", identity.ErrRecordRefused)
 	if got := identityReadCause(own); !strings.Contains(got, "is not valid JSON") || strings.Contains(got, rootCommitCommand) {
 		t.Errorf("abcd's own sentence was not kept: %q", got)
 	}
