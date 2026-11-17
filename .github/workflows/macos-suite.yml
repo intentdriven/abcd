@@ -53,10 +53,10 @@ jobs:
   # pass's -timeout is 150m and the watchdog sits at 155, so a slow runner finishes
   # and a stuck one still fails at the timeout with its test named. A stuck shard
   # holds its runner for 160 minutes, on a nightly run or a cut only
-  # (dcn-2611170900489974). The single job
-  # before the split had reached 85 (dcn-2610282036219503); the remedy for a shard
-  # past the warning at 150 is a faster suite or a rebalance in cmd/ci-shard, which
-  # is why internal/core/implement/loop holds the last shard alone.
+  # (dcn-2611170900489974). The single job before the split had reached 85
+  # (dcn-2610282036219503); the remedy for a shard past the warning at 150 is a
+  # faster suite or a rebalance in cmd/ci-shard, which is why
+  # internal/core/implement/loop holds the last shard alone.
   # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds it.
   shard:
     timeout-minutes: 160

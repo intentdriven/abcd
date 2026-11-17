@@ -73,7 +73,10 @@ The merge queue tests on Linux, so nothing else tests that commit on macOS befor
 it ships. `release.yml` runs four jobs, `macos-suite-1` to `macos-suite-4`, beside
 `verify`. Each calls `macos-suite.yml`, the workflow `ci.yml`'s nightly suite calls,
 so a shard runs the same steps, over what `cmd/ci-shard` assigns it, under the same
-50-minute ceiling, except that the release path restores and saves no Go cache. The
+ceiling, the `timeout-minutes` of `macos-suite.yml`'s shard job (160 minutes,
+dcn-2611170900489974), except that the release path restores and saves no Go cache.
+A shard still running past an hour is a slow runner, not a stuck one, until that
+ceiling ends it. The
 jobs hold `contents: read` and no secret.
 
 The `macos-gate` job reads each shard's result, and `tag`, `release` and `site` all
