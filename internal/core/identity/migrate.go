@@ -248,9 +248,10 @@ func ApplyMigration(root, home string, plan MigrationPlan) (MigrationResult, err
 var plainMemberName = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,40}$`)
 
 // unknownMembers names at most namedMembers of the pin's unknown members whose
-// names are plain identifiers and counts the rest, so neither a member name
-// the repository wrote as prose nor a run of plain names it chose to spell a
-// sentence reaches the blocker as written (iss-2611170055409898).
+// names are plain identifiers and counts the rest, so what the repository
+// chose reaches the blocker as at most three plain names inside abcd's own
+// list, never as prose or as a run of names of any length
+// (iss-2611170055409898).
 func unknownMembers(names []string) string {
 	var plain []string
 	others := 0
