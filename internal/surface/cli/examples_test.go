@@ -168,6 +168,12 @@ func TestEachWorkedExampleIsShapedLikeItsCommand(t *testing.T) {
 // example as a call it may run as written, so an example that answers a
 // confirmation in advance is a step past the person's consent; where a command
 // cannot run without --yes, its Use line says so and the example follows it.
+// consentFlags are the flags that give a person's yes: a confirmation
+// answered ahead (--yes, --confirm, --proceed), an approval recorded
+// (--approve), or a run taken over (--take). A worked example is copied as it
+// stands, so one passing any of them teaches an agent to give that yes itself.
+var consentFlags = []string{"--yes", "--confirm", "--proceed", "--approve", "--take"}
+
 func TestNoWorkedExampleAnswersAConsentPromptAhead(t *testing.T) {
 	root := NewRootCommand()
 	byPath := map[string]*cobra.Command{}
@@ -180,18 +186,20 @@ func TestNoWorkedExampleAnswersAConsentPromptAhead(t *testing.T) {
 			continue
 		}
 		ex, _ := surface.ExampleFor(path)
-		required := false
+		required := map[string]bool{}
 		for _, group := range usageRequirements(c.Use) {
 			for _, f := range group {
-				required = required || f == "--yes"
+				required[f] = true
 			}
 		}
-		if required {
-			continue
-		}
 		for _, tok := range exampleTokens(ex) {
-			if tok == "--yes" || strings.HasPrefix(tok, "--yes=") {
-				t.Errorf("%q's example passes --yes, which answers the command's confirmation before the person has: %q", path, ex)
+			for _, flag := range consentFlags {
+				if required[flag] {
+					continue
+				}
+				if tok == flag || strings.HasPrefix(tok, flag+"=") {
+					t.Errorf("%q's example passes %s, which gives the person's yes before they have: %q", path, flag, ex)
+				}
 			}
 		}
 	}

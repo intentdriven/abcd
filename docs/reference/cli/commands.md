@@ -3876,7 +3876,7 @@ stop released: back off.
 **Example:**
 
 ```
-abcd implement resume --take run-2609010000000001
+abcd implement resume --run run-2609010000000001
 ```
 
 #### `abcd implement status`
