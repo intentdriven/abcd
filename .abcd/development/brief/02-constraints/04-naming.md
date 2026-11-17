@@ -11,7 +11,7 @@ record, so an exemption is a decision rather than an omission.
 
 | Path / command | Meaning |
 |---|---|
-| `/abcd:ahoy` | hail a project → install abcd into it, or report what is installed. The bare form and the read-only sub-verbs report; `install`, `uninstall`, `connect`, `remote apply`, `worktree add`, `worktree prune` and `credential` (with `--home`) are the write paths. See [`../04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md) |
+| `/abcd:ahoy` | hail a project → install abcd into it, or report what is installed. The bare form and the read-only sub-verbs report; `install`, `uninstall`, `connect`, `remote apply`, `worktree add`, `worktree prune`, `worktree trim-cache`, `shared-folder` (given a folder) and `credential` (with `--home`) are the write paths. See [`../04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md) |
 | `/abcd:disembark` | leave the ship → pack a lifeboat for the journey |
 | `/abcd:embark` | board a new ship → unpack the lifeboat |
 | `/abcd:launch` | put the (cleaned) ship to sea publicly |
@@ -54,11 +54,11 @@ The exemptions carrying a rationale of their own:
   `abcd help` prints the root help, a different render from the bare board.
 
 The remaining surfaces are exempt for the plain reason that no maritime cognate
-adds meaning: `announce`, `banlist`, `build`, `checklist`, `dashboard`,
-`decide`, `docs`, `drain`, `embargo`, `guard`, `history`, `hook`, `ideate`,
+adds meaning: `agents`, `announce`, `banlist`, `build`, `checklist`, `dashboard`,
+`decide`, `docs`, `drain`, `embargo`, `explain`, `guard`, `history`, `hook`, `ideate`,
 `identity`, `implement`, `inbox`, `lab`, `land`, `landings`, `library`, `lint`,
 `memory`, `mode`, `peers`, `reading`, `report`, `reserve`, `rules`, `scribe`,
-`session`, `site`, `spec`, `status`, `statusline`, and `update`. They are registered here so the
+`session`, `site`, `spec`, `status`, `statusline`, `sweep`, and `update`. They are registered here so the
 exemption is on the record. `embargo` is meant in its disclosure sense, an
 advisory held private until it is closed or published, not the maritime order
 that once kept ships in port.
