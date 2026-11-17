@@ -679,7 +679,7 @@ The classes were renamed one for one: `top` is now `research`, `middle` is
 effort object is refused at the `review` stage with that mapping, and nothing
 is written. A machine class map that sets `top` and not `research` is refused
 too: `top` once named the strongest class and now names the second, so a map
-that sets `top` sets `research` as well. A review list or a judge naming `top`,
+that sets `top` sets `research` as well. A review list naming `top`,
 while no configuration file names `research`, `default` or `small`, resolves,
 with one line on stderr saying which model `top` now stands for.
 

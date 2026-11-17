@@ -68,8 +68,8 @@ every field whichever view it names, with `view` naming it.
 The full board, the facilitator's view, is a snapshot of the current
 directory: the directory itself, whether it is a git repo, whether an abcd
 record is present, and which of the `.abcd/` work tiers exist. The directory is named home-relative
-(`~/…`), or by its directory name outside HOME, in the text form's first line
-and in the JSON form's `dir` alike, never by an absolute path
+(`~/…`), or by its directory name outside HOME, in the text form's line after
+the view label and in the JSON form's `dir` alike, never by an absolute path
 (iss-2609281613094952): the board is the output most often pasted, and no
 consumer acts on `dir`. The text line masks a control character or bidi control
 in that name, as every other board line does (iss-2609281736483740); `dir`
@@ -313,12 +313,18 @@ lookup fails. That reader writes nothing, takes no lock and fetches nothing.
 
 **The reservations in `/abcd:peers`** (itd-2609091034175565,
 spc-2610031753359849). Below the peer rows, `abcd peers` lists the
-reservations on the shared remote. It is the verb's one network act: a fetch
+reservations on the shared remote. Its first network act is a fetch
 from `origin` of every `abcd-reserved/` branch, with pruning, of the default
 branch and of `origin`'s release tags, which updates the remote-tracking
 reservation branches and the release tags abcd keeps under
 `refs/abcd/release-tags/` ([`37-reserve.md`](37-reserve.md#the-release-hold)),
-and stamps when it ran in the local tier. Each reservation is listed with its
+and stamps when it ran in the local tier. A release tip that records
+withdrawals not yet settled is also read against the forge's record of who
+pushed it, once per tip. More follows when a release of the reader's has ended
+with pull requests it withdrew not yet re-armed: a tombstone is pushed, each is
+re-armed on the forge or skipped, a second tombstone records every state, each
+one re-armed, found armed or skipped for its owner gets one fixed comment
+(`settled` below), and the reservations are fetched again. Each reservation is listed with its
 record, holder, footprint, effective expiry and state (`live`, `expired`,
 `released` by its tombstone, by the record being finished on origin's default
 branch or, for a release, by its tag being on origin, or `unreadable` with its

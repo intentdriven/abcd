@@ -58,14 +58,17 @@ core and the packaging boundary holds.
   the conventions marker block and the rules loader (itd-3), and bootstrapping the
   user-scope history store. There is no `abcd init` and no config get/set pair:
   install is the write path a person reaches for, and the bare invocation,
-  its `--dry-run`, `--identity`, `--remote` and `--providers` modes, and `doctor`
-  are the read-only halves. Six further forms write: `uninstall` takes abcd back
+  its `--dry-run`, `--identity`, `--remote` and `--providers` modes, `doctor`,
+  and the listing forms of the sub-verbs are the read-only halves.
+  Eight further forms write: `uninstall` takes abcd back
   out again, `remote apply` applies every differing setting of the GitHub
   settings baseline the ahoy chapter lists, with abcd's own rulesets and their
   mirrors, `connect` configures a provider on this machine after one
   verification call, `credential --home` stores a verified key, `worktree add`
-  makes a worktree in the store, and `worktree prune` reclaims the merged, clean
-  ones, archiving their notes first. The full surface is
+  makes a worktree in the store, `worktree prune` reclaims the merged, clean
+  ones, archiving their notes first, `worktree trim-cache` trims the Go build
+  cache to its size limit, and `shared-folder`, given a folder, records the
+  folder two accounts of one computer share. The full surface is
   the machine-checked table in
   [`04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md); this milestone is what
   install has to do, not the whole verb.
