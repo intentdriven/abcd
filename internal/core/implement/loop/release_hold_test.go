@@ -215,7 +215,9 @@ func TestTheFenceCountsAReleaseDatedAheadFromItsFirstSighting(t *testing.T) {
 			reserveRun(t, f.repo, f.runID, "itd-10", now, "internal/widget")
 			ahead := now.Add(5 * 365 * 24 * time.Hour)
 			pushDatedTip(t, f.bare, "rel-v0.16.0", c.msg(ahead), ahead)
-			lane := Lane{ID: "lane-1"}
+			// A lane whose branch changes nothing beyond the hold, so the
+			// fence's widening (widen.go) adds nothing to what is judged.
+			lane := Lane{ID: "lane-1", Branch: "main"}
 			st := State{Key: "itd-10", ReservedAt: &now}
 			until := stamp(now.Add(c.hold))
 			for _, at := range []time.Duration{0, c.hold / 2, c.hold - time.Minute} {

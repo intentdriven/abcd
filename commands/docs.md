@@ -8,6 +8,10 @@ user-invocable: false
 
 # `/abcd:docs` documentation currency and citations
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain docs`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 One job lives here: `cite` maintains the committed citation baseline that the
 docs lint enforces offline. The lint itself, which grades the documentation and
 writes nothing, is `/abcd:lint docs` — run `abcd lint docs`.
@@ -146,5 +150,24 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain docs` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd docs [flags]`
+  - An example call is `abcd docs`.
+- `abcd docs cite [flags]`
+  - An example call is `abcd docs cite`.
+- `abcd docs cite confirm [url...] [flags]`
+  - An example call is `abcd docs cite confirm https://example.com/article.html`.
+- `abcd docs cite refresh [flags]`
+  - An example call is `abcd docs cite refresh`.
+- `abcd docs fidelity [flags]`
+  - An example call is `abcd docs fidelity`.
+- `abcd docs fidelity record --verdict-json <file|-> [--dry-run] [flags]`
+  - Reads `--verdict-json`, the docs review verdict, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain docs fidelity record --input verdict-json` prints its shape.
+  - An example call is `abcd docs fidelity record --verdict-json verdict.json`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

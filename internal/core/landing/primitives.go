@@ -19,13 +19,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/tools"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/procgroup"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // TierRelDir is the local-ephemeral tier of a checkout, repo-relative and
@@ -72,7 +75,9 @@ func ReceiptContext(ctx context.Context, repoRoot, sha string) (string, error) {
 // lists for the repository at repoRoot: a regular file, never a symlink, and
 // that worktree's own: one git tracks came with a commit, and is refused
 // (localtier.Untracked) rather than counted. Preflight and review receipts
-// are found the same way.
+// are found the same way, except that a review receipt or a recorded approval
+// in a drive lane's worktree is passed over (laneBlind), and every one is
+// when repoRoot is itself a drive lane's worktree.
 func findReceipt(repoRoot, rel, sha string) (string, error) {
 	return firstReceipt(findReceipts(repoRoot, rel, sha))
 }
@@ -82,36 +87,171 @@ func findReceiptContext(ctx context.Context, repoRoot, rel, sha string) (string,
 	return firstReceipt(findReceiptsContext(ctx, repoRoot, rel, sha))
 }
 
-// firstReceipt is the first worktree's receipt of found: its path, or why it
-// does not count, or "" when none was found.
+// firstReceipt is the first worktree's receipt of found that may count: its
+// path, or why it does not count, or "" when none was found. One in a drive
+// lane's worktree (foundReceipt.lane) is passed over.
 func firstReceipt(found []foundReceipt, err error) (string, error) {
-	if err != nil || len(found) == 0 {
+	if err != nil {
 		return "", err
 	}
-	if found[0].err != nil {
-		return "", found[0].err
+	for _, f := range found {
+		if f.lane {
+			continue
+		}
+		if f.err != nil {
+			return "", f.err
+		}
+		return f.path, nil
 	}
-	return found[0].path, nil
+	return "", nil
 }
 
 // foundReceipt is one worktree's receipt: its path, or why it does not count.
 type foundReceipt struct {
 	path string
 	err  error
+	// lane marks a review receipt or a recorded approval found in a drive
+	// lane's worktree (insideDriveLane), which never counts; it is kept so a
+	// reader can say one was passed over. Its tracked check is not asked.
+	lane bool
+}
+
+// laneBlind reports whether a receipt under rel is passed over in a drive
+// lane's worktree: a review receipt or a recorded approval is, since the
+// unattended drive runs model stages in that worktree and they can write any
+// file there. A preflight receipt is not: the drive's preflight mints it in
+// the lane's worktree, and the loop checks it is its own (landPush).
+func laneBlind(rel string) bool {
+	return rel == ReviewReceiptsRelDir || rel == ApprovalsRelDir
+}
+
+// driveLaneName is the name the implement loop gives a lane's worktree in the
+// store, <run-id>-<lane-id> (loop.laneName: run-<16 digits>-lane-<n>), matched
+// in any case. The loop mints it in lower case, but a case-insensitive volume
+// (the macOS default) opens the lane by its name in any case, and git, the
+// toplevel check and symlink resolution all keep the case a path was given
+// in, so a lane named in another case must still read as the lane. A
+// directory a person names like a lane in another case only loses its
+// receipts, and the gate's reason names it.
+var driveLaneName = regexp.MustCompile(`(?i)^run-[0-9]{16}-lane-[1-9][0-9]{0,3}$`)
+
+// driveLaneWorktree reports whether path names a drive lane's worktree by
+// its last element alone: a lane's name as the implement loop mints it, in
+// any case. It neither resolves path nor looks at its ancestors; the merge
+// gate asks insideDriveLane, which does both.
+func driveLaneWorktree(path string) bool {
+	return driveLaneName.MatchString(filepath.Base(filepath.Clean(path)))
+}
+
+// DriveLaneWorktreeForTest is driveLaneWorktree, for the implement loop's parity
+// test, which holds the loop's own lane check to the gate's.
+func DriveLaneWorktreeForTest(path string) bool { return driveLaneWorktree(path) }
+
+// insideDriveLane reports whether path is a drive lane's worktree or lies
+// anywhere under one: an element of the path as given, made absolute, or of
+// the path with its symlinks resolved (fsutil.RealExistingPath) is a lane's
+// name in any case (driveLaneWorktree). The drive's lane worktrees and
+// everything under them are the drive's, so the merge gate reads no review
+// receipt or recorded approval there, whatever path names them: a worktree
+// listed under another name that resolves into a lane, a directory inside a
+// lane, a repository nested in one, or a lane named in another case on a
+// filesystem that opens it by that name. Read from a checkout that is not in a lane, the paths git
+// lists come from the repository's own worktree records, outside every lane.
+// Read from a checkout in a lane they do not: git finds the repository
+// through the lane's own .git file, which sits inside the lane, so the gate
+// counts no review receipt or recorded approval at all from there
+// (fromDriveLane). A worktree a person names that way is one the drive would
+// adopt as a lane's, and is read as one.
+func insideDriveLane(path string) bool {
+	if path == "" {
+		return false
+	}
+	given, err := filepath.Abs(path)
+	if err != nil {
+		given = filepath.Clean(path)
+	}
+	for _, p := range []string{given, fsutil.RealExistingPath(path)} {
+		for {
+			if driveLaneWorktree(p) {
+				return true
+			}
+			up := filepath.Dir(p)
+			if up == p {
+				break
+			}
+			p = up
+		}
+	}
+	return false
+}
+
+// laneShown is path as a reason names it: resolved, so the lane it lies in
+// shows, with the home directory masked and sanitised.
+func laneShown(path string) string {
+	return termsafe.Sanitize(fsutil.RedactHome(fsutil.RealExistingPath(path)))
+}
+
+// fromDriveLane says, for a reason, why the gate counts no review receipt or
+// recorded approval for the checkout at dir, asked from the checkout at from
+// ("" when dir is the one asked from): from, or else dir, is a drive lane's
+// worktree or lies inside one. When the landing was asked from a checkout
+// that is not in a lane and only the branch's own checkout is, it says the
+// branch is checked out in a drive lane's worktree. "" when neither is in one.
+func fromDriveLane(dir, from string) string {
+	switch {
+	case insideDriveLane(from):
+		return inLaneWhy(from)
+	case !insideDriveLane(dir):
+		return ""
+	case from != "":
+		return "the branch is checked out in a drive lane's worktree (" + laneShown(dir) + "), and the merge gate counts no review receipt or recorded approval there: the drive lands that branch itself, and to land it by hand the lane must be handed back and its worktree removed first"
+	}
+	return inLaneWhy(dir)
+}
+
+// inLaneWhy is the reason for a gate asked from the checkout at dir, which is
+// a drive lane's worktree or lies inside one.
+func inLaneWhy(dir string) string {
+	return laneShown(dir) + " is a drive lane's worktree or lies inside one, and the merge gate counts no review receipt or recorded approval when it runs from there, since the worktrees it would read are listed from inside the lane; run it from the main checkout or your own worktree"
+}
+
+// ErrDriveLaneRecord refuses a review receipt or a recorded approval written
+// in a drive lane's worktree, which the merge gate would never count.
+var ErrDriveLaneRecord = errors.New("the merge gate never counts a review receipt or a recorded approval in a drive lane's worktree")
+
+// refuseInDriveLane refuses a record written at repoRoot when it is a drive
+// lane's worktree or lies inside one (insideDriveLane), naming where to
+// record it instead.
+func refuseInDriveLane(repoRoot string) error {
+	if !insideDriveLane(repoRoot) {
+		return nil
+	}
+	return fmt.Errorf("%s is a drive lane's worktree or lies inside one, and %w: run it from the main checkout or your own worktree",
+		laneShown(repoRoot), ErrDriveLaneRecord)
 }
 
 // findReceipts finds every worktree's receipt named sha under rel, in the order
-// git lists the worktrees, by findReceipt's rule. Its git calls run with no
-// deadline; a reader on one uses findReceiptsContext.
+// git lists the worktrees, by findReceipt's rule. A review receipt or a
+// recorded approval in a worktree that is a drive lane's or lies inside one
+// (insideDriveLane, on the path git lists) is passed over, and every one is
+// when repoRoot is a drive lane's worktree or lies inside one, since the
+// listing is then the lane's own. Its git calls run with no deadline; a reader
+// on one uses findReceiptsContext.
 func findReceipts(repoRoot, rel, sha string) ([]foundReceipt, error) {
 	wts, err := gitutil.ListWorktrees(repoRoot, gitutil.MaxWorktreeListing)
 	if err != nil {
 		return nil, fmt.Errorf("listing the repository's worktrees: %w", err)
 	}
+	inLane := laneBlind(rel) && insideDriveLane(repoRoot)
 	var found []foundReceipt
 	for _, wt := range wts {
-		if p := receiptIn(wt, rel, sha); p != "" {
-			found = append(found, foundReceipt{p, localtier.Untracked(wt.Path, rel+"/"+sha)})
+		p := receiptIn(wt, rel, sha)
+		switch {
+		case p == "":
+		case inLane || laneBlind(rel) && insideDriveLane(wt.Path):
+			found = append(found, foundReceipt{path: p, lane: true})
+		default:
+			found = append(found, foundReceipt{path: p, err: localtier.Untracked(wt.Path, rel+"/"+sha)})
 		}
 	}
 	return found, nil
@@ -128,19 +268,29 @@ func findReceiptsContext(ctx context.Context, repoRoot, rel, sha string) ([]foun
 	if err != nil {
 		return nil, fmt.Errorf("listing the repository's worktrees: %w", err)
 	}
-	return receiptsIn(ctx, wts, rel, sha)
+	return receiptsIn(ctx, repoRoot, wts, rel, sha)
 }
 
-// receiptsIn is findReceiptsContext over worktrees already listed.
-func receiptsIn(ctx context.Context, wts []gitutil.Worktree, rel, sha string) ([]foundReceipt, error) {
+// receiptsIn is findReceiptsContext over worktrees already listed for the
+// repository at repoRoot, by findReceipts' rule: when repoRoot is a drive
+// lane's worktree or lies inside one, the listing is the lane's own, so no
+// review receipt or recorded approval it names counts.
+func receiptsIn(ctx context.Context, repoRoot string, wts []gitutil.Worktree, rel, sha string) ([]foundReceipt, error) {
+	inLane := laneBlind(rel) && insideDriveLane(repoRoot)
 	var found []foundReceipt
 	for _, wt := range wts {
-		if p := receiptIn(wt, rel, sha); p != "" {
-			if err := ctx.Err(); err != nil {
-				return nil, err
-			}
-			found = append(found, foundReceipt{p, localtier.UntrackedContext(ctx, wt.Path, rel+"/"+sha)})
+		p := receiptIn(wt, rel, sha)
+		if p == "" {
+			continue
 		}
+		if inLane || laneBlind(rel) && insideDriveLane(wt.Path) {
+			found = append(found, foundReceipt{path: p, lane: true})
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		found = append(found, foundReceipt{path: p, err: localtier.UntrackedContext(ctx, wt.Path, rel+"/"+sha)})
 	}
 	return found, nil
 }

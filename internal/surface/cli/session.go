@@ -955,7 +955,7 @@ func newSessionSetupCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
-	c.Flags().StringVar(&where, "where", "", "where sessions may run: local, cloud or both (default: the answer recorded in .abcd/config.json)")
+	enumFlag(c.Flags(), &where, "where", "", "where sessions may run: ", coresession.Wheres(), " (default: the answer recorded in .abcd/config.json)")
 	c.Flags().StringVar(&relayOrigin, "relay-origin", "", "the deployed relay's https origin, once Render shows it, as https://host[:port]; recorded in .abcd/relay/relays.json")
 	c.Flags().StringVar(&release, "release", "", "the abcd release the cloud relay pins, as vMAJOR.MINOR.PATCH (default: this abcd's own version, when it is a release)")
 	return c

@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:reading` — cold-reading input assembler
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain reading`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Blindness is a property of the input, not a promise the reader makes. A
 positive include table names what may travel; fields are projected out of
 records rather than files copied whole; and every run emits a manifest naming
@@ -507,5 +511,18 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain reading` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd reading [flags]`
+  - An example call is `abcd reading`.
+- `abcd reading assemble --position <position> --target <HEAD|sha> [flags]`
+  - An example call is `abcd reading assemble --position widening --target HEAD`.
+- `abcd reading ingest --reading-json <path> [--dry-run] [flags]`
+  - Reads `--reading-json`, the reading output, at schema version 1, in its _type tag; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain reading ingest --input reading-json` prints its shape.
+  - An example call is `abcd reading ingest --reading-json reading.json`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

@@ -8,6 +8,10 @@ user-invocable: false
 
 # `/abcd:guard` shell-hazard check
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain guard`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Decide whether a shell command is safe to run, using abcd's hazard registry —
 the bundled hazard entries merged with this repo's `.abcd/guard.json`. The
 check performs **zero writes**. The hook writes the record of a branch the
@@ -105,12 +109,15 @@ Then read the JSON (`_type` `abcd/question-check/v1`):
 - `rows` — each tab's rows at 80 columns, as `header_and_frame`,
   `question_text`, `options` and `total`, against `rows_limit`. Report these
   figures; never count rows by hand.
-- `limits`, `limits_source` — the rows, label words and description sentences
+- `limits`, `limits_source`: the rows, label words and description sentences
   the draft was judged at, which are the ones the hook holds abcd's question
-  to in this checkout (`.abcd/config.json` sets them under `question`, and your
-  own `~/.abcd.noindex/config.json` may set each lower), and where each came
-  from: `bundled`, `.abcd/config.json` or `~/.abcd.noindex/config.json`. Take
-  the limits from here, never from either file; `rows_limit` is `limits.rows`.
+  to in this checkout, and where each came from (`bundled`,
+  `.abcd/config.json` or `~/.abcd.noindex/config.json`). abcd's defaults hold
+  until a file sets one: `.abcd/config.json` sets them under `question`
+  (`rows`, `label_words`, `description_sentences`), within the bounds the
+  asking rules state, and your own `~/.abcd.noindex/config.json` may set each
+  lower and is refused where it sets one higher. Take the limits from here,
+  never from either file; `rows_limit` is `limits.rows`.
 - `refused` — present instead of `limits` while a limit is refused: the
   `key`, the `value`, the `bounds` and the `file`, and for a personal value
   that loosens the `limit` in force and the `limit_file` that set it, with
@@ -1091,7 +1098,7 @@ read as handed it, so `sh -c 'kill 4242' _ "$(pgrep …)"` is a **block** too.
 A verb that is the person's own act is left to the person. `abcd library ledger
 --flip N` records that a human chose to cite a source publicly, so an agent
 running it is a **block** (`abcd-source-ledger-flip`); recording a line and
-listing the ledger are not. The retired spelling, `abcd source ledger --flip N`,
+listing the ledger are not. The retired spelling, `abcd source ledger --flip N`, <!-- facts-lint: historical -->
 is a **block** too (`abcd-source-ledger-flip-retired`), because a binary older
 than the library verb still answers it. The entries name the program `abcd`,
 so they match the binary on `PATH`, the plugin root's and a `go run` of the
@@ -1381,5 +1388,23 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 
 Whichever rung fires, the candidate still goes in on stdin via the
 quoted-delimiter heredoc shown above.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain guard` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd guard [flags]`
+  - An example call is `abcd guard`.
+- `abcd guard allow --once --command <line> [flags]`
+  - An example call is `abcd guard allow --once --command 'git branch -D feat/done'`.
+- `abcd guard approve --dir <working-tree> --base <commit> [--run-dir <dir>]... [flags]`
+  - An example call is `abcd guard approve --dir /work/example-repo --base 0123456789abcdef0123456789abcdef01234567`.
+- `abcd guard check [flags]`
+  - An example call is `abcd guard check --command 'git push --force origin main'`.
+- `abcd guard hook [flags]`
+  - An example call is `abcd guard hook < payload.json`.
+- `abcd guard question [<file>|-] [flags]`
+  - An example call is `abcd guard question draft.json`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

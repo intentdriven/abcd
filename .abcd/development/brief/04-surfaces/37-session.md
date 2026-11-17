@@ -65,6 +65,13 @@ refused with 403.
 
 ## Who may do what
 
+The relay serves sessions only for the repositories the host gives it: by
+name, every repository of a named user or organisation, or through
+`ABCD_SESSION_REPOS`. Nobody signs in against, or hosts, any other. Listening
+beyond loopback it refuses to start without one; on loopback it serves the
+checkout's origin repository, or any repository when started outside a GitHub
+checkout.
+
 A connection is a guest until GitHub says otherwise. The host signs in, and
 GitHub must report that the login may push to the repository before a session
 opens; the relay answers with a six-character join code drawn from a
@@ -80,7 +87,8 @@ cleaned of control and format characters. A participant who presents the
 GitHub App user access token their sign-in gave them (`ghu_`; any other kind
 is refused before GitHub is asked, so nobody pastes a token) becomes a team
 member when GitHub reports push access, and the token is dropped straight
-after the check. Team members'
+after the check. The relay takes no OAuth app: `ABCD_SESSION_GITHUB_APP_TYPE`
+set to anything but `github-app` is refused. Team members'
 updates are logged and forwarded; awareness (cursors and selections) is
 forwarded from anyone and never logged. A team member registers the Yjs client
 ids their page edits under, which the roster carries for credit.

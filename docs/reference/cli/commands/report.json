@@ -1,0 +1,18 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd report",
+      "sentence": "File a defect report or an enhancement proposal about abcd: Writes it into your account's inbox; refuses a malformed field or a filesystem path.",
+      "usage": "abcd report [<file>|-] [flags]",
+      "flags": [
+        {
+          "name": "template",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd report --template"
+    }
+  ]
+}

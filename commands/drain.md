@@ -8,6 +8,10 @@ user-invocable: false
 
 # `/abcd:drain`
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain drain`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Work the open issue ledger: fix, one lane at a time, the issues this
 repository's own rule says need no decision, and hand every other one back by
 kind. The dry run shows what a drain would do and performs **zero writes**; the
@@ -164,7 +168,7 @@ two minutes, and serve as the approver and the hooks of the live launch that pro
 drive. Only then does it replace the installed binary, the previous one kept beside it as
 `.<name>.previous`. The drive re-executes itself and goes on from the drain's own state,
 with the same cap, bound, skips and profile, asking nothing and printing
-`abcd updated from <old> to <new>`. What the state holds is not given again, so a change
+`abcd updated from <old> to <new>`. What the state holds is not given again, so a change <!-- facts-lint: historical -->
 made to the pace or the skips since the start stands. A release that fails the checks or the live launch is
 said once and is not taken again in that run, and the drive goes on with the version it has.
 A read-only run that fails is said once per reason and tried again at later checks. A fault that
@@ -340,7 +344,7 @@ what it still holds, a lane parked at its open pull request included, read from 
 and only when its renewal is due. A claim that lapsed anyway, a machine asleep past its
 lease, is reserved again on waking; a peer who took the issue meanwhile keeps it, and the
 lane goes back as stuck, as it does when its reservation was released during the wait.
-A judge's hold is the one thing left to lapse in a wait that long: the next move drops the
+A judge's hold is the one thing left to lapse in a wait that long, unless a load-gate waiter in this copy renews it: the next move drops the
 request and asks again, after the drain's other eligible work.
 
 With no `--until` no probe runs: the lane's own launch finds out, as the yes said.
@@ -368,7 +372,7 @@ holds it. A preflight queued at the load gate or running ends at the next look t
 start. A run that stop halted waits for `abcd implement resume --take <run-id>`, also
 after the stop lifts: a new drive names it, passes over it and goes on to other work. A take-over made from a plain terminal records as the run's driver the nearest process above it that is not a shell or abcd; a terminal multiplexer, or a terminal program shared by several windows, is that one process for all of its panes and windows. A drive whose own nearest such process is the recorded driver takes the run from it, with a line in the run's record saying so, only when the recorded driver names no session, no process on the way up from the drive holds a session marker, every session marker could be read, and only shells run beneath that process besides the drive, the processes the drive runs under and the ones it started. Otherwise it waits. Where another process runs beneath the recorded driver, a session marker could not be read, or the process table could not be read again under the run's lock, its wait says which, naming the process or the number of files, and it looks again later. In every other case it gives the plain reason that the run is driven by that process. A drive whose output is piped to another program, or a long-lived helper under the same terminal, is such another process and keeps the drive waiting while it runs. A drive started through a program that stays as its parent, such as one that keeps the machine awake or a recorder, is not under the terminal by this rule and waits. The rule cannot tell a terminal from a host that left no marker and has no other process beneath it: an agent a host runs inside its own process is not in the process table. Nor does it see a step whose shell ended after it claimed, which the process table no longer shows beneath the terminal. A lane parked on its pull request that a signal halted waits the same way: the drive's end names that take-over and no resume command, and a new drive names it and passes over it. A stop and a drive's stop on a run whose state changed are two things: while both
 stand the run is not settled, its work is not saved aside and its reservation lapses with
-its lease. Lifting the stop leaves the other, and removing the other leaves the stop.
+its lease unless a load-gate waiter in this copy renews it. Lifting the stop leaves the other, and removing the other leaves the stop.
 
 ## The rule
 
@@ -606,7 +610,8 @@ what it did in `next`:
   once, as it would any program, which is the way out of a move waiting on a
   network act, and releases nothing then. A drain killed outright
   (`SIGKILL`) releases
-  nothing, and its reservation lapses after one lease (two hours by default).
+  nothing, and its reservation lapses after one lease (two hours by default)
+  unless a load-gate waiter in this copy renews it.
   Each release is a fetch and one tombstone push over the commit the drain's
   reservation made, made only while that commit is still the tip, so a
   reservation you made or renewed with `abcd reserve` since is left as it
@@ -766,7 +771,10 @@ what it did in `next`:
   counts toward the bound of minutes alone, and the hand-back names the path
   and the record whose hold it is.
   The bounds are `pace.stuck_refusals` and `pace.stuck_minutes` in
-  `.abcd/config.json` or `~/.abcd.noindex/config.json`, read at every move that reads a lane in progress. A
+  `.abcd/config.json` or `~/.abcd.noindex/config.json`, read at every move that reads a lane in progress.
+  `pace.stuck_minutes` also bounds a landing's wait at its arming for a
+  runner's report, and past it hands that lane back as stuck, an intent
+  run's lane as well as a drain's (`commands/implement.md`). A
   stuck lane keeps its worktree and branch:
   `abcd implement step --run <run-id> --discard <lane-id>` removes them, closes
   its pull request if it opened one, and ends the run. The run ended this way
@@ -775,7 +783,28 @@ what it did in `next`:
   it does any issue it handed back.
 - **It routes.** Once the lane is handed back or its pull request is open, the
   next drain records the outcome in `lanes`, routes a hand-back (below), and
-  opens the next lane. Before its records and its push, the lane's sync
+  opens the next lane. A lane handed back with its pull request still armed is
+  not finished: it reads as in progress, `next` names the step that tries the
+  arming's withdrawal again (`abcd implement step --run <run-id>`, which
+  `abcd drain --drive` takes), each move renews its reservation at half its
+  lease, and the hand-back is routed only once the forge reports no arming. A
+  newer lane in progress is driven first; past `pace.stuck_minutes` of tries
+  (or since the hand-back, where the record holds no try),
+  `next` says a person withdraws the arming or decides the lane, naming the
+  pull request, and the reservation is still kept and renewed. Past it, while
+  that lane is the only one in progress, the drain opens no new lane and
+  `abcd drain --drive` keeps stepping it, each try that does not take waited
+  out, thirty seconds at least, as any wait on a person is, and the drive ends
+  as any drive with nothing moving does (eight hours with no `--until`, the
+  bound with one): a drive that ended sooner would stop renewing the
+  reservation kept while the pull request is armed, and going on to the next
+  issue would put two lanes in hand past the drain's cap. Once the drive has
+  ended, the reservation is renewed only when someone runs a step, `abcd
+  drain` or `abcd implement status`, or by a load-gate waiter in this copy,
+  so it can lapse at its lease while the pull request is still armed. The
+  person's act ends it: once they disarm the pull request with the `gh pr merge <n>
+  --disable-auto` the refusal names, the next step records it and releases the
+  reservation, and the next move routes the hand-back. Before its records and its push, the lane's sync
   fetches `origin`'s default branch and merges it whenever it has moved, a fresh
   round judging the merge (`commands/implement.md`): a conflict confined to
   files `origin` declares `linguist-generated` goes back to an implementer to
@@ -828,10 +857,34 @@ what it did in `next`:
   run with work a save could not take has its reservation renewed. A read that holds the run
   refuses the move first, so only a drive still in an agent's call or a preflight renews it then. Under a stop in force only a drive
   still in an agent's call or a preflight renews it, and once none is: a run that settles releases its reservation, and
-  one with work a save could not take leaves it to lapse at its lease, so a peer can then
+  one with work a save could not take leaves it to lapse at its lease unless a load-gate waiter in this copy renews it, so a peer can then
   take the issue, with what the lane committed on its branch and the rest in its worktree alone. A halted run waits for
   `abcd implement resume --take <run-id>`; a mark from a person's stop that has not settled
   goes on as any other if the stop has lifted, and one from a signal to a drive waits for that same take-over.
+- **It sweeps on its own.** In a repository abcd manages, a move that
+  finished a merged lane, and a move that ends the drain, then run the
+  provably spent part of `abcd sweep --apply` once, with the same proofs
+  against a fresh fetch: merged, clean worktrees removed, a dirty one's work
+  saved as a patch and the worktree kept, and the merged lane branches abcd
+  made (named exactly `build/<run-id>-<lane-id>`, as the loop names a lane)
+  deleted locally and on origin; any other merged branch, a store worktree's
+  own included, is kept and listed for `abcd sweep --apply`, and so is a
+  spent store worktree holding any ignored file outside its local tier (a
+  `.env`, say), which a removal would delete unarchived, or whose ignored
+  files cannot be listed. It starts no
+  reservation workflow and files no inbox report, and runs for two minutes at
+  most (its fetch, its fetch of the reservations and each delete on origin;
+  its local reads are short and have no deadline of their own), stopping
+  between removals. A step that lands
+  a lane sweeps the same way, and so does `--drive` once at its own end
+  (unless it was killed, halted or stopped), its line printed once in the
+  drive's summary; a stop of the drive also ends a sweep under way and starts
+  no other. The move that ends a drive's drain leaves it to that. The
+  line joins `next`: what it removed and what it left, counted, the first few
+  rows, then `abcd sweep` for the full list. A refusal or fault of that sweep
+  is reported there and the move stands. `"sweep": {"automatic": false}` in
+  `.abcd/config.json`, or in `~/.abcd.noindex/config.json` for every
+  repository on the machine, turns it off (`commands/sweep.md`).
 - **It reads parked lanes from their pull requests.** A move that finds a
   lane parked at land lists your latest 100 pull requests once
   (`gh pr list --state all --author @me`), and reads each parked lane whose
@@ -1134,5 +1187,20 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain drain` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd drain [--drive [--yes] [--until <date>] [--profile <name>] [--no-self-update]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
+  - The example calls are these:
+    - `abcd drain --drive`
+    - `abcd drain --drive --yes --max 3`
+    - `abcd drain --dry-run`
+    - `abcd drain --dry-run --json`
+    - `abcd drain --max 3`
+    - `abcd drain --json`
+    - `abcd drain --judgement .abcd/.work.local/run/drain-judgement.json --json`
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

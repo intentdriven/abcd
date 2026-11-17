@@ -121,8 +121,9 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 		// and the renewal says so. Below, its claim is renewed at the version its
 		// file states while an agent may still be in its call, or while that check
 		// has left work a save could not take (stopEndsRenewal). Otherwise it is
-		// neither renewed nor let go, and lapses at its lease with its work on
-		// its branch and in its worktree, none of it saved aside.
+		// neither renewed nor let go, and lapses at its lease unless a load-gate
+		// waiter in this copy renews it (claim.RenewDue, gateWaiterRenews), with
+		// its work on its branch and in its worktree, none of it saved aside.
 		_, left := settleDueStop(root, st.RunID)
 		r := RunRenewal{Root: root, RunID: st.RunID, Key: st.Key}
 		err := mutateReservation(root, st.RunID, func(st *State) (bool, error) {
@@ -194,19 +195,36 @@ func renewalRuns(root, runID string) ([]State, []RunRenewal) {
 // run whose lane was handed back, whose reservation the hand-back released
 // (or the drain's routing of it releases), nor one parked at land, which the
 // drain's move renews once it has read the lane's pull request
-// (drain_finish.go), as the drain's own renewal leaves it (renewable).
+// (drain_finish.go), as the drain's own renewal leaves it (renewable). A lane
+// handed back that still owes its arming's withdrawal is renewed: its
+// reservation is kept until the forge reports no arming (handedBackIssue).
 func renewsWhereItWaits(st State) bool {
 	if st.ReservedAt == nil || st.Complete() || parkedAtLand(st) >= 0 {
 		return false
 	}
-	if st.Issue() != "" {
-		for _, l := range st.Lanes {
-			if l.HandBack != nil || l.Stage == StageHandedBack {
-				return false
-			}
+	return !handedBackIssue(st)
+}
+
+// handedBackIssue reports whether st is an issue's run with a lane handed
+// back: its reservation is the person's to have released, so no run renewal
+// renews it, neither a waiter's (renewsWhereItWaits) nor a step's
+// (advanceWith). A load-gate waiter's renewal of this copy's own reservations
+// (claim.RenewDue) reads no run, and may still renew it, as gateWaiterRenews
+// says. A lane handed back with its pull request still armed (armingOwed) is
+// not counted: the hand-back keeps the reservation until the forge reports no
+// arming, so each step that tries the withdrawal again renews it, as the
+// drain's move does (renewable), and a peer cannot take the issue while the
+// pull request can still merge.
+func handedBackIssue(st State) bool {
+	if st.Issue() == "" {
+		return false
+	}
+	for _, l := range st.Lanes {
+		if (l.HandBack != nil || l.Stage == StageHandedBack) && !armingOwed(l) {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 // realPath is p with its symbolic links resolved, or cleaned when they cannot

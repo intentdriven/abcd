@@ -1,0 +1,48 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd dashboard",
+      "sentence": "Report whether the dashboard runs, where, and the devices that opened it: Writes nothing; refuses any argument.",
+      "usage": "abcd dashboard [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd dashboard",
+      "subcommands": [
+        "start",
+        "status",
+        "stop"
+      ]
+    },
+    {
+      "path": "abcd dashboard start",
+      "sentence": "Start the dashboard on this computer's own Tailscale addresses: Writes its run file under ~/.abcd.noindex/; refuses when Tailscale is not running.",
+      "usage": "abcd dashboard start [flags]",
+      "flags": [
+        {
+          "name": "port",
+          "type": "int",
+          "default": "8080"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd dashboard start"
+    },
+    {
+      "path": "abcd dashboard status",
+      "sentence": "Report whether the dashboard runs, where, and the devices that opened it: Writes nothing; refuses any argument.",
+      "usage": "abcd dashboard status [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd dashboard status"
+    },
+    {
+      "path": "abcd dashboard stop",
+      "sentence": "Stop the dashboard after checking its process is the one start launched: Writes the run file's removal; refuses when another start or stop holds the lock.",
+      "usage": "abcd dashboard stop [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd dashboard stop"
+    }
+  ]
+}

@@ -44,8 +44,10 @@ func stateAtVersion(t *testing.T, root, runID string, version int) []byte {
 		// none. It is cut while the file is laid out as writeState lays it.
 		data = admittedField.ReplaceAll(data, nil)
 	}
-	if version <= schemaVersionUnrenamed {
-		// The classes that version stored are named as it named them.
+	if version <= schemaVersionUnrenamed || version <= schemaVersionUnmodelled {
+		// The classes that version stored are named as it named them, and
+		// a file before version 27 carries no class map and no reviewer's
+		// models (unreviewOlder).
 		var doc map[string]any
 		if err := json.Unmarshal(data, &doc); err != nil {
 			t.Fatal(err)

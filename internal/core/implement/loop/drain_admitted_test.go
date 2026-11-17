@@ -99,7 +99,7 @@ func TestDrainLaneCommitsItsRule(t *testing.T) {
 	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
 	block := trailerBlock(msg)
 	at := slices.Index(block, "Admitted-by: drain adr-2609300000000001")
-	if at < 0 || !slices.Contains(block[:at], "Resolves: "+f.issue) || !slices.Contains(block[at:], "Assisted-by: Claude:claude-test-5") {
+	if at < 0 || !slices.Contains(block[:at], "Resolves: "+f.issue) || !slices.Contains(block[at:], "Assisted-by: Claude:claude-mythos-5") {
 		t.Fatalf("the records commit carries the drain's rule after its resolution and before its disclosure:\n%s", msg)
 	}
 	if strings.Contains(msg, "Refs:") || strings.Contains(msg, rule.Path) {

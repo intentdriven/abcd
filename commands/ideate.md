@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:ideate` — the idea-admission gauntlet
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain ideate`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 An exciting idea is cheapest to kill in its first hour and most expensive to kill
 after it has minted intents, specs, and branches. This runs the admission
 interview and records the outcome.
@@ -233,7 +237,7 @@ none.
 `ruling` is needed only when the reviewers' verdicts differ, and `reframing` only
 with a `reframed` verdict, which the binary refuses without one; a reframing beside
 any other verdict is refused too. The binary records version 2 only: a payload of
-`"schema_version": 1` is refused with a message naming version 2.
+`"schema_version": 1` is refused with a message naming version 2. <!-- facts-lint: historical -->
 
 **Rejected alternatives are not optional.** If genuinely none were considered,
 say so explicitly with `"no_rejected_alternatives": true` and an empty list; the
@@ -328,5 +332,16 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain ideate` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd ideate [flags]`
+  - An example call is `abcd ideate`.
+- `abcd ideate record <idea-slug> [--private | --public] --verdict-json <file|-> [--dry-run] [flags]`
+  - Reads `--verdict-json`, the ideate verdict, at schema_version 2; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain ideate record --input verdict-json` prints its shape.
+  - An example call is `abcd ideate record widen-the-public-api --verdict-json verdict.json`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

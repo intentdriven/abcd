@@ -1,0 +1,379 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd ahoy",
+      "sentence": "Detect abcd's install state and list its gaps, or report one mode a flag names: Writes nothing; refuses any argument or two modes at once.",
+      "usage": "abcd ahoy [flags]",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "identity",
+          "type": "bool"
+        },
+        {
+          "name": "providers",
+          "type": "bool"
+        },
+        {
+          "name": "remote",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd ahoy",
+      "subcommands": [
+        "connect",
+        "credential",
+        "doctor",
+        "install",
+        "remote",
+        "shared-folder",
+        "uninstall",
+        "worktree"
+      ]
+    },
+    {
+      "path": "abcd ahoy connect",
+      "sentence": "Verify a provider and configure it, or guide setup: Writes ~/.abcd.noindex/ and the key's home, nothing guided; refuses no --model off a terminal.",
+      "usage": "abcd ahoy connect [<provider>] [flags]",
+      "flags": [
+        {
+          "name": "answer",
+          "type": "string"
+        },
+        {
+          "name": "base-url",
+          "type": "string"
+        },
+        {
+          "name": "env",
+          "type": "string"
+        },
+        {
+          "name": "field",
+          "type": "string"
+        },
+        {
+          "name": "file",
+          "type": "string"
+        },
+        {
+          "name": "guide",
+          "type": "bool"
+        },
+        {
+          "name": "home",
+          "type": "string",
+          "allowed": [
+            "external",
+            "abcd",
+            "keychain",
+            "none"
+          ]
+        },
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "model",
+          "type": "list"
+        },
+        {
+          "name": "resume",
+          "type": "string"
+        },
+        {
+          "name": "stream-usage",
+          "type": "bool",
+          "default": "true"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd ahoy connect local --base-url http://127.0.0.1:8080/v1 --model example-model --home none"
+    },
+    {
+      "path": "abcd ahoy credential",
+      "sentence": "List the credentials abcd reads, explain one, or verify and store it: Writes the chosen home only with --home; refuses a value the adapter's call fails.",
+      "usage": "abcd ahoy credential [<name>] [flags]",
+      "flags": [
+        {
+          "name": "env",
+          "type": "string"
+        },
+        {
+          "name": "field",
+          "type": "string"
+        },
+        {
+          "name": "file",
+          "type": "string"
+        },
+        {
+          "name": "home",
+          "type": "string",
+          "allowed": [
+            "external",
+            "abcd",
+            "keychain"
+          ]
+        }
+      ],
+      "inputs": [],
+      "example": "abcd ahoy credential"
+    },
+    {
+      "path": "abcd ahoy doctor",
+      "sentence": "Report every install gap, user-scope state included: Writes nothing; refuses any argument.",
+      "usage": "abcd ahoy doctor [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd ahoy doctor"
+    },
+    {
+      "path": "abcd ahoy install",
+      "sentence": "Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks and the PATH entry, and installs a tool only on a yes; refuses a stale binary.",
+      "usage": "abcd ahoy install [flags]",
+      "flags": [
+        {
+          "name": "adopt",
+          "type": "bool"
+        },
+        {
+          "name": "allow-stale-binary",
+          "type": "bool"
+        },
+        {
+          "name": "answered-in",
+          "type": "string",
+          "default": "Terminal",
+          "allowed": [
+            "Terminal",
+            "Claude Code"
+          ]
+        },
+        {
+          "name": "answers",
+          "type": "string"
+        },
+        {
+          "name": "attribution",
+          "type": "bool"
+        },
+        {
+          "name": "bin-dir",
+          "type": "string"
+        },
+        {
+          "name": "details",
+          "type": "bool"
+        },
+        {
+          "name": "dev",
+          "type": "bool"
+        },
+        {
+          "name": "docs-target",
+          "type": "string",
+          "allowed": [
+            "agents_md",
+            "skip"
+          ]
+        },
+        {
+          "name": "install-tool",
+          "type": "list"
+        },
+        {
+          "name": "live-sessions",
+          "type": "string",
+          "allowed": [
+            "local",
+            "cloud",
+            "both",
+            "none"
+          ]
+        },
+        {
+          "name": "only-waiting",
+          "type": "bool"
+        },
+        {
+          "name": "oracle-backend",
+          "type": "string",
+          "allowed": [
+            "host-delegated",
+            "native",
+            "cli",
+            "api",
+            "mcp"
+          ]
+        },
+        {
+          "name": "outbound",
+          "type": "bool"
+        },
+        {
+          "name": "readme-parts",
+          "type": "string"
+        },
+        {
+          "name": "refuse-adopt",
+          "type": "bool"
+        },
+        {
+          "name": "scan-deep",
+          "type": "string",
+          "allowed": [
+            "true",
+            "false"
+          ]
+        },
+        {
+          "name": "visibility",
+          "type": "string",
+          "allowed": [
+            "private",
+            "public"
+          ]
+        },
+        {
+          "name": "yes",
+          "type": "bool"
+        }
+      ],
+      "inputs": [
+        {
+          "flag": "answers",
+          "kind": "answers",
+          "name": "interview answers"
+        }
+      ],
+      "example": "abcd ahoy install"
+    },
+    {
+      "path": "abcd ahoy remote",
+      "sentence": "Apply abcd's GitHub settings baseline: Writes nothing bare, only the settings, rulesets and their mirrors through apply; refuses an unknown sub-verb.",
+      "usage": "abcd ahoy remote [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd ahoy remote",
+      "subcommands": [
+        "apply"
+      ]
+    },
+    {
+      "path": "abcd ahoy remote apply",
+      "sentence": "Apply every GitHub setting the remote audit finds differing: Writes those settings, abcd's own rulesets and their mirrors; refuses an unconfirmed run.",
+      "usage": "abcd ahoy remote apply [flags]",
+      "flags": [
+        {
+          "name": "yes",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd ahoy remote apply"
+    },
+    {
+      "path": "abcd ahoy shared-folder",
+      "sentence": "Say what the shared folder is for, or choose it so a stop can cross accounts: Writes the choice given a folder; refuses no terminal or an unsafe folder.",
+      "usage": "abcd ahoy shared-folder [<folder>] [--person <account>] [flags]",
+      "flags": [
+        {
+          "name": "person",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd ahoy shared-folder /Users/Shared"
+    },
+    {
+      "path": "abcd ahoy uninstall",
+      "sentence": "Remove abcd from this repository, leaving .abcd/ in place: Writes the removal of the marker block, PATH copy, and provenance record; refuses any argument.",
+      "usage": "abcd ahoy uninstall [flags]",
+      "flags": [
+        {
+          "name": "bin-dir",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd ahoy uninstall"
+    },
+    {
+      "path": "abcd ahoy worktree",
+      "sentence": "List this repository's worktrees and its lane in the worktree store: Writes nothing; refuses a store it cannot trust or a directory outside a checkout.",
+      "usage": "abcd ahoy worktree [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd ahoy worktree",
+      "subcommands": [
+        "add",
+        "list",
+        "prune",
+        "trim-cache"
+      ]
+    },
+    {
+      "path": "abcd ahoy worktree add",
+      "sentence": "Add a worktree in this repository's lane of the worktree store: Writes the worktree, its start record and its local tier; refuses a taken or reserved name.",
+      "usage": "abcd ahoy worktree add <name> [flags]",
+      "flags": [
+        {
+          "name": "branch",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd ahoy worktree add example-lane"
+    },
+    {
+      "path": "abcd ahoy worktree list",
+      "sentence": "List this repository's worktrees and its lane, or every lane with --all: Writes nothing; refuses a store it cannot trust, or outside a checkout without --all.",
+      "usage": "abcd ahoy worktree list [flags]",
+      "flags": [
+        {
+          "name": "all",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd ahoy worktree list"
+    },
+    {
+      "path": "abcd ahoy worktree prune",
+      "sentence": "Reclaim this lane's merged, clean worktrees and trim the Go cache to its limit: Writes the notes archive and removes both; refuses a store it cannot trust.",
+      "usage": "abcd ahoy worktree prune [flags]",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "yes",
+          "type": "list"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd ahoy worktree prune --dry-run"
+    },
+    {
+      "path": "abcd ahoy worktree trim-cache",
+      "sentence": "Delete the Go build cache's oldest entries down to its size limit: Writes its answer for the next lane; refuses a cache it cannot prove is Go's.",
+      "usage": "abcd ahoy worktree trim-cache [flags]",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd ahoy worktree trim-cache --dry-run"
+    }
+  ]
+}

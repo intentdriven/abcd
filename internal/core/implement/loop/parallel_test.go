@@ -219,7 +219,7 @@ func (f *parFixture) receipt(t *testing.T, laneID string, a Await, commits ...st
 		}
 	}
 	rc := LaneReceipt{SchemaVersion: ReceiptSchemaVersion, RunID: f.runID, Lane: laneID, Branch: l.Branch, Commits: commits,
-		DefinitionOfDone: &DoDRun{Command: "make check", ExitCode: zero(), Output: prefix + DoDFileName}, Report: prefix + ReportFileName, Model: "claude-test-5"}
+		DefinitionOfDone: &DoDRun{Command: "make check", ExitCode: zero(), Output: prefix + DoDFileName}, Report: prefix + ReportFileName, Model: "claude-mythos-5"}
 	data, _ := json.Marshal(rc)
 	if err := os.WriteFile(f.abs(a.Receipt), data, 0o600); err != nil {
 		t.Fatal(err)
@@ -759,7 +759,7 @@ func TestAConflictingSyncGoesToAFreshImplementer(t *testing.T) {
 	}
 	rc := LaneReceipt{SchemaVersion: ReceiptSchemaVersion, RunID: f.runID, Lane: "lane-2", Branch: l2.Branch, Commits: []string{plain},
 		DefinitionOfDone: &DoDRun{Command: "make check", ExitCode: zero(), Output: filepath.ToSlash(filepath.Join(rel, DoDFileName))},
-		Report:           filepath.ToSlash(filepath.Join(rel, ReportFileName)), Model: "claude-test-5"}
+		Report:           filepath.ToSlash(filepath.Join(rel, ReportFileName)), Model: "claude-mythos-5"}
 	data, _ := json.Marshal(rc)
 	if err := os.WriteFile(f.abs(a.Receipt), data, 0o600); err != nil {
 		t.Fatal(err)

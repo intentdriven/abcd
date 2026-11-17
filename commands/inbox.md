@@ -8,6 +8,10 @@ user-invocable: false
 
 # `/abcd:inbox` — read and promote reports
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain inbox`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Repositories abcd manages file reports about abcd with `/abcd:report`; they
 wait in the user account's inbox (`~/.abcd.noindex/inbox/`), and the session-start
 greeting says how many wait and from how many repositories. This page reads
@@ -99,5 +103,9 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain inbox` from the running binary disagree, follow the binary.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

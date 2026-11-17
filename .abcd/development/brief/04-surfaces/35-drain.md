@@ -576,8 +576,32 @@ The driver's commit, merge and reset hooks, and any filter run inside those comm
 the same variables and home as a stage, and read the git configuration the drive wrote
 rather than any a stage left in that home; its network commands, its other filters and its
 forge calls keep the person's environment. A preflight runs
-with what a stage carries too, and only a receipt from a preflight the drive ran itself
-lands a lane. A lane at its landing that changes the Makefile, `scripts/`, the active
+with what a stage carries too, with Go's own settings file off (`GOENV=off`) and
+`GOWORK` left unset when the head tracks a `go.work` at its root, so Go finds the
+nearest one the head tracks, never above the checkout for a Go command started in it, and off (`GOWORK=off`)
+otherwise, and never in the lane's worktree: just before it the drive
+reads again the settings it holds, those that change what a checkout writes among them,
+with the hooks directories, `info/attributes` and the sparse-checkout patterns file git
+names at the checkout (`git rev-parse --git-path info/sparse-checkout`), which `git worktree
+add` copies into the checkout it makes,
+then adds its own checkout of the lane's head as stored, in a directory of a random name
+it makes under `~/.abcd.noindex/preflight-checkouts/` (made at mode 0700 when abcd makes
+it, while one that already stands keeps its mode; the directory for each checkout is
+always 0700),
+compares that checkout with the head's tree by content before the preflight and after it,
+through an index it builds itself in the environment the checkout was made in, so a
+filter the checkout was written through reads it back, with sparse checkout switched off
+for the comparison, so a file the copied patterns left out is a difference (the hold says
+the checkout is missing files the head holds and names sparse checkout as the likely
+reason), and removes it once the preflight has ended. Before the preflight any untracked file outside the checkout's local tier is a
+difference, ignored or not; after it, an untracked file is a difference unless the head's
+own `.gitignore` files ignore it (no other ignore source is read) or it is in the local
+tier, and an untracked `.gitignore` or `.gitattributes` is a difference, ignored or not,
+unless a directory above it is one the head's `.gitignore` files ignore as a whole, as a
+tool's cache directory such as `.pytest_cache/` often is. A hold after a preflight that exited 0 stands for that head: the drive does not
+run the preflight on it again. Only a head the drive saw
+pass there lands a lane, and the receipt that preflight minted is taken into the main
+checkout's local tier, where the pre-push hook finds it. A lane at its landing that changes the Makefile, `scripts/`, the active
 hooks, the forge's workflow folder (`.github/`) or abcd's configuration, receipts or
 approvals, measured from what it last merged of the default branch, is handed back, and an issue that names one is passed over before a lane
 opens, whatever the case of the name: that change needs a person's own session, and the
@@ -938,7 +962,8 @@ shares with the run state's (no drain flag sets an override);
 the third added a judge fallback receipt's `spent`, and an earlier version's state carrying it is refused, naming it; a first- or second-version state is read as the third's strict subset and written back at
 the third, and a first-version one that carries any of the second's fields is refused naming the
 field, which the first version never wrote. A drain that has ended is
-kept for reading, and the next invocation begins a new one. The cap is set when
+kept for reading, and the next invocation begins a new one. With no cap named,
+a drain's lanes are uncapped and a drive's are capped at eight. The cap is set when
 a drain begins, and a different cap named while it runs is refused rather than
 ignored. The pace is the implement loop's, resolved through the same layers when
 the drain begins, and every lane the drain opens starts on the drain's pace, not

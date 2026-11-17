@@ -146,6 +146,13 @@ flags.
   merged and a quiet unmerged worktree the person names, and keep the Go build
   cache under its size limit. Adding, pruning and the cache trim write; listing
   does not. See below.
+- **The shared folder** says what the folder two accounts of one computer
+  share is for and which one this account chose; given a folder, it records
+  the choice in `~/.abcd.noindex/shared-folder.json`, so a stop set from the
+  person's own account reaches the runs of a second account that chose the
+  same folder and named the person's account as the one it takes a stop
+  from. Choosing is the person's act: it is refused to an agent, to a
+  caller with no terminal and for a folder other accounts could tamper with.
 
 **Not built yet:** `destroy`, a nuclear uninstall that would remove the `.abcd/`
 namespace too (itd-10), as distinct from the uninstall's reversible behaviour.
@@ -365,7 +372,10 @@ The appendix lists the sub-verbs and their options.
   it cannot archive keeps the worktree. The removal is `git worktree remove`
   without its force option; the prune never deletes a branch and never runs the
   repository-wide `git worktree prune`. Files git ignores outside the local tier
-  go with the worktree unarchived (iss-2610272112319234 holds that finding).
+  go with the worktree unarchived (iss-2610272112319234 holds that finding), so
+  the row of a worktree it reclaims, or would, names them, how many and the
+  first few, or says they could not be listed, and the removal goes ahead
+  (dcn-2611161805215819).
   After a removal it trims the Go build cache. It exits 0 when it reclaimed a
   worktree, 1 when it reclaimed none, and 2 on a refusal or fault. Its dry run
   removes, archives and trims nothing, reports `would reclaim` where a real run
@@ -592,6 +602,12 @@ earlier version wrote wider is narrowed when abcd next writes it
   runs/<root-sha>/               an autonomous run's shared state: the run log, one
                                  claim per record, one record per joined session
                                  (itd-2609221656373558)
+  tests/<root-sha>/              the check directory make preflight's test stages
+                                 run from, outside every working tree, so Go's test
+                                 cache holds across worktrees
+  profiles/                      the drive's separate logins, each directory made
+                                 and logged in by the person; abcd never reads,
+                                 stores or forwards the login
   dogfood/<root-sha>/            builds of the reviewed default branch for the
                                  checkouts dogfood-roots lists, one per commit, with
                                  the record of the last check (iss-2610070547057816)
@@ -612,6 +628,9 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  with names.json.lock beside it (itd-2610111707085098)
   rules-state/                   the rules loader's per-session ledgers of the
                                  domains already injected
+  fill/                          the status line's context-fill files, one per
+                                 session, from which the prompt router reads how
+                                 full the session is
   dashboard/                     run.json naming the one dashboard server this
                                  computer runs, seen.json the devices that opened it,
                                  and the control.lock start and stop take
@@ -668,6 +687,8 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  on and the command the harness ran before abcd
                                  took the row; written on the status-line offer's
                                  consent, left by uninstall
+  shared-folder.json             the folder this account shares with another
+                                 account of this computer, chosen by the person
   holder-id                      this account's holder id, h_ and 32 hex characters,
                                  minted once and kept: the opaque name its
                                  reservations and announcements carry
@@ -675,6 +696,12 @@ earlier version wrote wider is narrowed when abcd next writes it
   load-wait.json                 the load gate's hold for the test stages, taken by
                                  the waiter that opens, under .load-wait.lock
   load-wait-race.json            the race gate's hold, the same way
+  load-wait-narrow.json          the load gate's third hold, for a test of a few
+                                 named packages, the same way
+  whole-runs/<pid>.json          one marker per preflight's test stages queued or
+                                 running, naming the checkout and its commit, which
+                                 the away mode's stop check reads as live work
+                                 for a branch still owed its preflight
   load-memory-admit.json         the load gates' memory admission: when a waiter last
                                  saw the pressure at the floor and which it admitted
                                  last, under load-memory-admit.lock
@@ -1316,7 +1343,9 @@ the adoption question and before any write, the writability probe of a named
 `PATH` directory included, and names the rebuild fix), name the directory for the `PATH` entry,
 opt the repo into the attribution prompt hook and into both outbound checks,
 answer the README question with the parts abcd keeps current (or none), answer
-yes to installing a named missing tool, and answer the setup questions from an
+yes to installing a named missing tool, answer the live brief session question
+(where sessions may run, or none, which is not asked again), and answer the
+setup questions from an
 answers file, naming where an entry that names no place of its own was
 answered. A value flag (marker
 target, oracle backend, deep-scan toggle, visibility) is held to the

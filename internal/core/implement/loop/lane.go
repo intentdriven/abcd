@@ -55,6 +55,24 @@ var laneIDRe = regexp.MustCompile(`^lane-[1-9][0-9]{0,3}$`)
 // ValidLaneID reports whether id is a lane id the loop opens.
 func ValidLaneID(id string) bool { return laneIDRe.MatchString(id) }
 
+// LaneBranch reports whether name is a branch with exactly the shape the loop
+// gives a lane: BranchPrefix followed by <run-id>-<lane-id>, each id one the
+// loop mints (ValidRunID, ValidLaneID), as laneName composes them. A person's
+// own branch under the prefix is not one.
+func LaneBranch(name string) bool {
+	rest, ok := strings.CutPrefix(name, BranchPrefix)
+	if !ok {
+		return false
+	}
+	// A run id holds no "-lane-", so the last one is where the lane id starts.
+	i := strings.LastIndex(rest, "-lane-")
+	if i < 0 {
+		return false
+	}
+	got, err := laneName(rest[:i], rest[i+1:])
+	return err == nil && got == rest
+}
+
 // safeSegment reports whether s is one path segment that cannot escape the
 // directory it is joined onto and cannot be read as an option: the store's
 // own test of a worktree name (worktree.ValidName).

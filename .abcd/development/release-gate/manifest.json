@@ -60,6 +60,7 @@
     ".abcd/development/brief/04-surfaces/37-session.md",
     ".abcd/development/brief/04-surfaces/22-site.md",
     ".abcd/development/brief/04-surfaces/39-status.md",
+    ".abcd/development/brief/04-surfaces/40-sweep.md",
     ".abcd/development/brief/04-surfaces/21-update.md",
     ".abcd/development/brief/05-internals/01-agents.md",
     ".abcd/development/brief/05-internals/03-configuration.md",
@@ -109,6 +110,7 @@
     "session",
     "site",
     "status",
+    "sweep",
     "update"
   ],
   "agents": [

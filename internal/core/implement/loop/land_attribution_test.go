@@ -20,13 +20,13 @@ import (
 // lane's receipt reported, in the vendor form the attribution gate takes.
 func TestTheRecordsCommitTrailerIsTheReceiptsModel(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.model = "claude-test-7[1m]"
+	f.model = "claude-mythos-7[1m]"
 	f.validatedOnce(t)
 	f.step(t)
 	f.step(t)
 	l := currentLane(t, f.repo, f.runID)
 	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
-	if !slices.Contains(strings.Split(msg, "\n"), "Assisted-by: Claude:claude-test-7[1m]") || strings.Contains(msg, "Assisted-by: None") {
+	if !slices.Contains(strings.Split(msg, "\n"), "Assisted-by: Claude:claude-mythos-7[1m]") || strings.Contains(msg, "Assisted-by: None") {
 		t.Fatalf("the records commit discloses the receipt's model, never None:\n%s", msg)
 	}
 }
@@ -129,7 +129,7 @@ func TestARefusingCommitMsgHookStopsTheLanding(t *testing.T) {
 	if r.Stage != string(StageLand) || !strings.Contains(r.Reason, "refused by the test") {
 		t.Fatalf("a refusing commit-msg hook stops the landing, naming what it said: %+v", r)
 	}
-	if b, err := os.ReadFile(seen); err != nil || !strings.Contains(string(b), "Assisted-by: Claude:claude-test-5") {
+	if b, err := os.ReadFile(seen); err != nil || !strings.Contains(string(b), "Assisted-by: Claude:claude-mythos-5") {
 		t.Fatalf("the hook judged the records commit's message: %q %v", b, err)
 	}
 	if got := currentLane(t, f.repo, f.runID); got.HeadSHA != head || got.Landing.RecordsDone {
@@ -146,7 +146,7 @@ func TestARefusingCommitMsgHookStopsTheLanding(t *testing.T) {
 		t.Fatalf("the landing resumes once the hook passes: %+v", l.Landing)
 	}
 	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
-	for _, want := range []string{"Delivers: itd-10", "Resolves: " + f.issue, "Assisted-by: Claude:claude-test-5"} {
+	for _, want := range []string{"Delivers: itd-10", "Resolves: " + f.issue, "Assisted-by: Claude:claude-mythos-5"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("the resumed records commit carries %q:\n%s", want, msg)
 		}
@@ -269,7 +269,7 @@ func TestTheLandedRangePassesTheAttributionGate(t *testing.T) {
 	t.Run("a drain's lane", func(t *testing.T) {
 		f := drainLandFixture(t)
 		l, msg := landed(t, f, f.walkIssueLaneToLand(t))
-		want := []string{"Resolves: " + f.issue, drainRule.Trailer(), "Assisted-by: Claude:claude-test-5"}
+		want := []string{"Resolves: " + f.issue, drainRule.Trailer(), "Assisted-by: Claude:" + issueLaneWriterModel}
 		if got := trailerBlock(msg); !slices.Equal(got, want) {
 			t.Fatalf("the drain lane's records commit's trailers are %q, want %q:\n%s", got, want, msg)
 		}
@@ -329,7 +329,7 @@ func TestADrainLanesRecordsCommitPassesTheRepositorysCommitMsgHook(t *testing.T)
 		t.Fatalf("the records commit is made through the hook: %+v", l.Landing)
 	}
 	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
-	want := []string{"Resolves: " + f.issue, drainRule.Trailer(), "Assisted-by: Claude:claude-test-5"}
+	want := []string{"Resolves: " + f.issue, drainRule.Trailer(), "Assisted-by: Claude:" + issueLaneWriterModel}
 	if got := trailerBlock(msg); !slices.Equal(got, want) {
 		t.Fatalf("the records commit's trailers are %q, want %q:\n%s", got, want, msg)
 	}

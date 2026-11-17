@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:embark` — unpack a lifeboat into a repo
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain embark`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Take a packed lifeboat (produced by `/abcd:disembark`) and write its record
 families back into a target repository. This is the inverse of `disembark` and the
 write half of the round-trip (adr-35): ADRs, issues, intents, specs and release
@@ -158,5 +162,19 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain embark` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd embark [flags]`
+  - An example call is `abcd embark`.
+- `abcd embark from <lifeboat-dir> [target-dir] [flags]`
+  - An example call is `abcd embark from ../lifeboat`.
+- `abcd embark lessons <lifeboat-dir> [target-dir] [flags]`
+  - An example call is `abcd embark lessons ../lifeboat`.
+- `abcd embark probe <lifeboat-dir> [target-dir] [flags]`
+  - An example call is `abcd embark probe ../lifeboat`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

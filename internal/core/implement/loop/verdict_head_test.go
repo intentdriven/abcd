@@ -28,7 +28,7 @@ func TestAReturnsVerdictNamesTheRoundsHead(t *testing.T) {
 	}
 	path := filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt))
 	head := currentLane(t, repo, id).HeadSHA
-	first := "Reviewed head: " + head + "\n\n"
+	first := "Reviewed head: " + head + "\n" + testReviewerModelLine
 	hand := func(body string) error {
 		if err := os.WriteFile(path, []byte(first+body), 0o600); err != nil {
 			t.Fatal(err)
@@ -81,7 +81,8 @@ func TestALaunchThatStoppedForLengthIsNoPass(t *testing.T) {
 				Run: func(c Context, l *Lane) (Outcome, error) {
 					if len(l.Validation) == 0 {
 						l.Validation = []ValidationRound{{Round: 1, HeadSHA: head,
-							Validators: []ValidatorRun{{Role: RoleRuthless, Brief: briefRel, Return: returnRel}}}}
+							Validators: []ValidatorRun{{Role: RoleRuthless, Brief: briefRel, Return: returnRel, WriterModels: []string{"grok-test-1"}}}}}
+						l.Receipts = []ReceiptRecord{{Role: RoleImplementer, Receipt: "review/receipt.json", Model: "grok-test-1"}}
 					}
 					return Outcome{Await: &Await{Role: RoleRuthless, Brief: briefRel, Receipt: returnRel}}, nil
 				},

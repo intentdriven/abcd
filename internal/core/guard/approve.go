@@ -216,13 +216,14 @@ func approveShell(ld Loaded, files *Files, command string) Approval {
 			"the shell command cannot be approved because "+why+", so a name there could run a command the line never names.",
 			"the same work with every arithmetic operand a written number, comparing a value with `[ \"$n\" -gt 0 ]` rather than `[[ … ]]` or `(( … ))`, and a loop over `seq` rather than `for ((…))`.")
 	}
-	return approveShellAt(ld, files, command, 0)
+	return approveShellAt(ld, files, command, 0, nil)
 }
 
-// approveShellAt is approveShell at depth: a command a git setting on the
-// line runs (commandKeys) is judged one level down, and one that sets such a
-// command again is not judged further, and refused.
-func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval {
+// approveShellAt is approveShell at depth: a command a git setting or option
+// on the line runs (commandKeys, gitRunRefusal) is judged one level down,
+// with carry, the environment carried to the git command that runs it, and
+// one that sets such a command again is not judged further, and refused.
+func approveShellAt(ld Loaded, files *Files, command string, depth int, carry map[string]string) Approval {
 	switch ld.Posture {
 	case LoadUnavailable:
 		return refusal(registryEntryID, "no hazard registry is loaded, so nothing was checked.",
@@ -298,28 +299,60 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 	// are judged against files the line may have changed (a directory it may
 	// have made a link), so they are not judged on their own.
 	wrote := false
+	// carried is the environment the line's earlier commands leave for the
+	// ones after them (carryEnvironment), over what the line that runs this
+	// one carried. Where the line runs a command again or later than its text
+	// places it, the whole line's carry is taken before any git command is
+	// judged (runsOutOfTextOrder).
+	// A line read whole judges each git command under both carries, text
+	// order's and the whole line's, and refuses where either refuses: the
+	// whole line's holds each name's last value only, which a command before
+	// a later change of that name does not run with.
+	carried := map[string]string{}
+	for name, v := range carry {
+		carried[name] = v
+	}
+	var wholeCarried map[string]string
+	if runsOutOfTextOrder(placed) {
+		wholeCarried = map[string]string{}
+		for name, v := range carry {
+			wholeCarried[name] = v
+		}
+		for _, p := range placed {
+			carryEnvironment(p.seg, wholeCarried)
+		}
+	}
 	for _, p := range placed {
 		wroteBefore := wrote
 		// A command a git setting runs is judged as run from the working
 		// tree, so only where the reading placed git there.
 		states := p.states
-		clean := func(v string) bool {
-			if strings.TrimSpace(v) == "" {
-				return true // no pager
-			}
-			if depth > 0 || wrote {
-				return false
-			}
-			for _, st := range states {
-				if !st.dirOK || st.dir != r.files.dir {
+		judge := func(env map[string]string) (Approval, bool) {
+			clean := func(v string) bool {
+				if strings.TrimSpace(v) == "" {
+					return true // no pager
+				}
+				if depth > 0 || wrote {
 					return false
 				}
+				for _, st := range states {
+					if !st.dirOK || st.dir != r.files.dir {
+						return false
+					}
+				}
+				return approveShellAt(ld, files, v, depth+1, env).Allow
 			}
-			return approveShellAt(ld, files, v, depth+1).Allow
+			return gitConfigRefusal(p.seg, vf, clean, env)
 		}
-		if a, ok := gitConfigRefusal(p.seg, vf, clean); ok {
+		if a, ok := judge(carried); ok {
 			return a
 		}
+		if wholeCarried != nil {
+			if a, ok := judge(wholeCarried); ok {
+				return a
+			}
+		}
+		carryEnvironment(p.seg, carried)
 		for _, st := range p.states {
 			for _, u := range pathUses(rc, p.seg, st) {
 				wrote = true

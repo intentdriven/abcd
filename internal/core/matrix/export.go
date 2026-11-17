@@ -557,6 +557,8 @@ var snapshotRe = regexp.MustCompile(`^[-@:]([0-9]{8}|[0-9]{4}-[0-9]{2}(-[0-9]{2}
 // read as one: it cannot be told from a size or a version without a vendor's
 // list, and a different model read as the same would hide a substitution, so
 // it exports as a fallback, which a reader can see is a snapshot.
+// OtherModel (samemodel.go) leans the other way, to "the same", since there a
+// different model read as the same is the safe side of a reviewer's check.
 func sameModel(asked, served string) bool {
 	rest, ok := strings.CutPrefix(served, asked)
 	return ok && (rest == "" || snapshotRe.MatchString(rest))

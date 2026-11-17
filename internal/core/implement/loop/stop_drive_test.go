@@ -27,7 +27,7 @@ func TestAStopEndsAPreflightAtItsNextLook(t *testing.T) {
 	o := w.options(t)
 	o.Options.stopHome = home
 	started := make(chan struct{})
-	o.Preflight = func(ctx context.Context, _ string) error {
+	o.Preflight = func(ctx context.Context, _, _ string) error {
 		close(started)
 		<-ctx.Done()
 		return ctx.Err()
@@ -36,7 +36,7 @@ func TestAStopEndsAPreflightAtItsNextLook(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	done := make(chan error, 1)
-	go func() { done <- tm.preflight(ctx, "the worktree") }()
+	go func() { done <- tm.preflight(ctx, "the checkout", "") }()
 	<-started
 	if _, err := runstop.Set(home, time.Now()); err != nil {
 		t.Fatal(err)
@@ -60,7 +60,7 @@ func TestAPreflightAStopEndedIsNoFailure(t *testing.T) {
 		Options:   Options{stopHome: home},
 		Stages:    DefaultStages(),
 		Say:       func(s string) { said = append(said, s) },
-		Preflight: func(context.Context, string) error { return context.Canceled },
+		Preflight: func(context.Context, string, string) error { return context.Canceled },
 		Sleep:     func(_ context.Context, d time.Duration) { slept = append(slept, d.String()) },
 	})
 	again, ended, err := tm.stepRefused(context.Background(), runID, &Refusal{checkWait: time.Now()})

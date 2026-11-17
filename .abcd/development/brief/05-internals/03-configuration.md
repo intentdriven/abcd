@@ -4,8 +4,8 @@ Almost nothing here is a decision anyone has to make. Installing abcd asks
 four questions and, at a terminal, a fifth about the README and two about live
 brief sessions, records the answers and whether it created the README, and gets
 on with it; `ahoy install --attribution` writes one more key and `ahoy install
---outbound` two more, and thirteen further keys can be hand-set and are read but
-never written. Beyond those twenty-three, the binary reads only keys a person
+--outbound` two more, and fourteen further keys can be hand-set and are read but
+never written. Beyond those twenty-four, the binary reads only keys a person
 opts into: the provider adapter's `oracle` keys (the reviewer route's
 `oracle.review` among them) and the interview's list style, both below, the
 implement loop's `pace` (`pace.work_minutes`, `pace.pause_minutes`,
@@ -61,7 +61,7 @@ shipped behaviour. Everything after them is **staged**, per the truth rule in
 
 ### The keys the binary reads
 
-Twenty-two keys plus a `meta` block. Install asks about visibility, the docs target,
+Twenty-four keys plus a `meta` block. Install asks about visibility, the docs target,
 the oracle backend, the deep scan (the last only when visibility is private
 and the deep scanner is on `PATH`), and the README question (only of a person
 at a terminal, in a run without the approve-everything flag, once
@@ -81,7 +81,7 @@ written by `ahoy install --attribution`, and `outbound.hook` and
 switch; the shell guard reads `outbound.forge`, and an install
 completes a repository that records only one of the two and leaves the other
 absent, while a key set to `false` is the repository's choice and is left as it
-is. The remaining thirteen —
+is. The remaining fourteen —
 whether abcd should enable the forge's own secret scanning, the rules loader's
 refresh backstop, the filing-time match's threshold and compared fields,
 whether `abcd land` pushes and queues, whether a reservation may be made on
@@ -92,7 +92,8 @@ repository adopts, so no install sets it), who merges (`facilitator.mode`,
 `human` by default or `auto`, read by the merge gate, the board and the shell
 guard at the default branch's tip, where `human` from any layer wins), the
 file a release cut appends its digest to (`release.digest`, read from the
-repository layer alone) and the workflow `abcd status` watches
+repository layer alone), whether abcd sweeps on its own (`sweep.automatic`)
+and the workflow `abcd status` watches
 (`status.scheduled_workflow`, read at the default branch's tip) — are
 hand-set: the binary reads them and never writes them.
 
@@ -167,6 +168,10 @@ hand-set: the binary reads them and never writes them.
                                         //   verdict is named by the verb and the prompt's block until a green
                                         //   replaces it. Absent is off: the forge is not asked
   },
+  "sweep": {                            // the sweep abcd runs on its own (04-surfaces/40-sweep.md)
+    "automatic": true                   // on by default in a repository abcd manages, never outside one;
+                                        //   false from any layer holds
+  },
   "land": {                             // `abcd land` (04-surfaces/38-land.md)
     "push": true,                       // push the branch once a preflight receipt names its head
     "enqueue": true                     // arm and confirm its pull request where the merge gate allows
@@ -225,6 +230,16 @@ branch's own, and both are ANDed; a home the reader refuses hides the machine
 layer and its offs, so both acts read as off. The verb names the layer and file
 that turned an act off.
 
+The `sweep.automatic` key is read through the same reader, which claims the
+`sweep` namespace, and is a restriction (adr-2611011332427073): every layer
+that holds it is decoded, and false in the repository's file or the machine's
+holds. It decides only within a repository abcd manages; outside one the
+sweep abcd runs on its own after a landing and at a drain's end never runs,
+whatever a layer says. A file the reader cannot read, a misspelt key under
+`sweep`, a value that is not a boolean and a home the reader refuses each
+read as off, and the act the sweep would have followed names why
+(`internal/core/sweep/auto.go`).
+
 The `reservation.fork_origin` key is read through the same reader, in the
 ordinary precedence: `.abcd/config.json` wins, then `~/.abcd.noindex/config.json`,
 then the bundled `"refuse"` (dcn-2610161141338923). It names a fork,
@@ -238,15 +253,15 @@ origin's push URLs a fork, so a malformed value (neither `"refuse"` nor one
 plain owner and one plain name), or a misspelt key under `reservation`, refuses
 a reservation on a fork naming the file and never stops one anywhere else. The machine layer's `reservation.github_username`
 (04-surfaces/37-reserve.md) shares the namespace; it is read from the machine
-layer alone and is not one of the twenty-three. The holder lookup reads the
+layer alone and is not one of the twenty-four. The holder lookup reads the
 machine's own file whatever origin is, so a misspelt key under `reservation`
 there refuses every reservation that reaches that lookup, on a fork or not.
 
 There is no separate `.abcd/meta.json` at repo scope: setup metadata is the `meta`
-block. This repository's own config carries nine of these blocks — `docs`,
-`facilitator`, `meta`, `oracle`, `outbound`, `readme`, `release`, `repo` and `sessions`. All
-but `facilitator` and `release`, which this repository sets by hand for its own
-merging and release cuts, are what an unremarkable managed repo carries.
+block. This repository's own config carries ten of these blocks — `docs`,
+`facilitator`, `meta`, `oracle`, `outbound`, `readme`, `release`, `repo`, `sessions` and `status`. All
+but `facilitator`, `release` and `status`, which this repository sets by hand for its own
+merging, release cuts and scheduled workflow, are what an unremarkable managed repo carries.
 
 ### The provider adapter's keys
 
@@ -737,13 +752,36 @@ only set them lower:
 - **A refused value falls through to nothing.** Nothing is passed over for the
   default: the binary's own interviews (`abcd intent interview`, `abcd reflect
   interview`) and `abcd ahoy install` refuse before their first question, exit
-  2, naming the key, the value, the bounds and the file.
+  2, naming the key, the value, the bounds and the file; the question gate in
+  `abcd guard hook` refuses every question carrying abcd's header; and
+  `abcd guard question` exits 2 with `refused` and no `ready` input, whatever
+  the draft. On a stage of a walled launch neither file is read: the check
+  holds abcd's question to abcd's defaults there, as that stage's GRILL
+  domain states them, so a value in the lane's own file is neither applied
+  nor refused.
+- **The check reports the values in force.** `abcd guard question` returns
+  them as `limits` and the file that set each as `limits_source` (`bundled`,
+  `.abcd/config.json` or `~/.abcd.noindex/config.json`), and the GRILL
+  domain's layout rule states them in words, naming the file. The pages abcd
+  ships state the bundled defaults, since they are written before any
+  repository sets a value, and send the question writer to `limits` for the
+  values in force, never to either file.
 - **A file the resolver cannot read fails open and loud.** A `.abcd/config.json`
-  that is a symlink or not a regular file, and a `~/.abcd.noindex/config.json`
-  behind a symlinked `~/.abcd.noindex`, writable by group or other, or owned by
-  another account, whatever keys it holds, leave abcd's defaults in force with
-  one line on stderr naming the file, in the question gate's `NOT CHECKED`
-  form. A symlinked `~/.abcd.noindex` holding no `config.json` reads as
+  that is a symlink, not a regular file, over the size cap, unparseable or
+  holding a key twice, and a `~/.abcd.noindex/config.json` with any of those
+  faults or behind a symlinked `~/.abcd.noindex`, writable by group or other,
+  or owned by another account, whatever keys it holds, leave abcd's defaults
+  in force, and each front door names the file. The guard hook and setup
+  write the gate's line, `NOT CHECKED at this repository's question limits`,
+  saying the questions are checked at abcd's defaults instead: the hook at
+  the head of a deny's reason or a rows note, or on stderr at exit 1 for a
+  question the defaults admit, and nothing for another tool's question,
+  which it does not check. The written interviews read their routing from
+  the same files first, so there a file that cannot be read refuses the
+  interview with exit 2, naming it, and nothing is run. `abcd rules` and the
+  prompt hook write `abcd rules: GRILL: the question limits were not read`
+  on stderr, and `abcd guard question` exits 2 with `unread` naming the
+  file. A symlinked `~/.abcd.noindex` holding no `config.json` reads as
   absent, and nothing is said.
 - **No verb writes them.** The keys are edited by hand, as `pace.*` and
   `interview.list` are; `abcd ahoy install` asks no question about them.
@@ -1499,7 +1537,11 @@ session-name register in `sessions/names.json`, the rules loader's per-session
 ledgers in `rules-state/`, the dashboard's run file, seen devices and lock in
 `dashboard/`, this account's holder id in `holder-id`, the load gate's three
 holds in `load-wait.json`, `load-wait-race.json` and `load-wait-narrow.json` (taken under
-`.load-wait.lock`), its memory admission in `load-memory-admit.json`, the context
+`.load-wait.lock`), its memory admission in `load-memory-admit.json`, the
+markers of the preflights' test stages queued or running in `whole-runs/`, the
+check directory those stages run from in `tests/<root-sha>/` ([the check
+directory](#the-check-directory)), the drive's separate logins in `profiles/`,
+the folder this account shares with another in `shared-folder.json`, the context
 fill the status line leaves in `fill/`, the record of the line install added to a shell startup
 file in `shell-path.json`, the installed-tools record in `tools.json`, and the
 person's commit identity in `identity/<root-sha>.json` for one repository and
@@ -1845,7 +1887,12 @@ written once in `internal/core/question`, beside the question's field limits,
 and every limit they state (the header chip's width, the options per question,
 the words per label, the rows at eighty columns) is filled from the one value
 the question check in `abcd guard hook` enforces, so the rules and the check
-cannot state a limit differently. Its recall keywords are words of asking and
+cannot state a limit differently. In a repository that sets the question keys
+(above), the prompt hook and `abcd rules` regenerate it at the limits the
+resolver returns for the rules root (`rules.LoadWith`), and its layout rule
+names the file that set each figure; a refused value leaves it at the defaults
+with the refusal written in and named on stderr, and the domain stays bundled
+either way. Its recall keywords are words of asking and
 choosing (`which`, `choose`, `decide`, `options`, `interview`, …), so it lands
 in most sessions, at about 1,100 tokens. A bundled `rules.json` that declares
 it by hand panics at load, as one declaring `SHELL` does. It reaches every
@@ -2151,20 +2198,22 @@ A Go binary plus the markdown plugin surface that shells to it:
 ```
 abcd/
 ├── .claude-plugin/                     # plugin.json + marketplace.json
-├── cmd/                                # the shipped entrypoint plus eleven build-time binaries
+├── cmd/                                # the shipped entrypoint plus thirteen build-time binaries
 │   ├── abcd/main.go                    #   entrypoint — wires the CLI front door to the core
 │   ├── record-lint/                    #   the record gate `make preflight` runs (06-lint.md)
 │   ├── scaffold-sync/                  #   keeps the scaffolded release workflows in step
 │   ├── scaffold-render/                #   writes every scaffolded workflow profile for CI's workflow audit
 │   ├── asking-sync/                    #   writes the asking rules into the generated blocks of commands/intent.md and agents/question-drafter.md
+│   ├── command-facts-sync/             #   writes the per-command facts files under docs/reference/cli/commands/ and the generated blocks of every page under commands/
 │   ├── abcd-gen-surface/               #   writes the command-surface snapshot and the surface chapters' appendices
 │   ├── abcd-gen-cli-ref/               #   writes the generated CLI reference page
 │   ├── test-parallelism/               #   prints the go test -p `make preflight`'s test stages take
+│   ├── precheck-audits/                #   runs `make precheck`'s tree-auditing tests in the packages it does not already cover
 │   ├── check-tests/                    #   runs `make preflight`'s test stages from the check directory, replaying what the test cache holds
 │   ├── ci-watchdog/                    #   the shell CI's test jobs run go test under, stopping a hang with its dumps before the job's cap
 │   ├── ci-shard/                       #   prints the packages one shard of CI's macOS suite tests, computed from `go list`
 │   └── record-slug-rename/             #   one-off: renames records over the repository's slug cap (iss-2610100626320367)
-│                                       #   The eleven are developer tooling, not user surface: they run
+│                                       #   The thirteen are developer tooling, not user surface: they run
 │                                       #   from the Makefile, `go generate`, CI or by hand, and ship in no release
 ├── internal/
 │   ├── core/                           # transport-agnostic core, one package per capability

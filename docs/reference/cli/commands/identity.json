@@ -1,0 +1,54 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd identity",
+      "sentence": "Record the identity block and propose drift corrections: Writes nothing bare, only the block and its pointer; refuses an unknown sub-verb.",
+      "usage": "abcd identity [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd identity",
+      "subcommands": [
+        "init",
+        "render"
+      ]
+    },
+    {
+      "path": "abcd identity init",
+      "sentence": "Record this repository's identity block and the pointer to it: Writes the block and the pointer; refuses without --title and --tagline when no block exists.",
+      "usage": "abcd identity init [flags]",
+      "flags": [
+        {
+          "name": "file",
+          "type": "string"
+        },
+        {
+          "name": "heading",
+          "type": "string"
+        },
+        {
+          "name": "pitch",
+          "type": "string"
+        },
+        {
+          "name": "tagline",
+          "type": "string"
+        },
+        {
+          "name": "title",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd identity init --title \"Example Widgets\" --tagline \"Widgets that explain themselves\""
+    },
+    {
+      "path": "abcd identity render",
+      "sentence": "Print the correction for every drifted surface as a unified diff: Writes nothing; refuses a repository that records no identity block.",
+      "usage": "abcd identity render [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd identity render"
+    }
+  ]
+}

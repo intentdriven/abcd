@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -21,10 +22,14 @@ const (
 	TreePublic LockstepTree = "public"
 )
 
+// LockstepTrees returns the two polarities by name, public first: the one
+// list ParseLockstepTree reads a name against and `launch manifests --tree`
+// declares.
+func LockstepTrees() []string { return []string{string(TreePublic), string(TreeDev)} }
+
 // ParseLockstepTree reads a polarity by its name, refusing any other.
 func ParseLockstepTree(s string) (LockstepTree, error) {
-	switch LockstepTree(s) {
-	case TreeDev, TreePublic:
+	if slices.Contains(LockstepTrees(), s) {
 		return LockstepTree(s), nil
 	}
 	return "", fmt.Errorf("tree %q is neither %q nor %q", s, TreeDev, TreePublic)

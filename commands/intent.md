@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:intent` — intent lifecycle
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain intent`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 `abcd --help` lists `intent` in the person's records group. `intent audit
 ingest`, which applies a host-produced audit verdict, `intent consistency
 ingest`, which files host-produced consistency findings, and `intent prepass`,
@@ -133,7 +137,7 @@ its line, which leaves an ordinary draft.
 A single whitespace-free word is refused (exit 2, nothing written): a lone
 token reads as a mistyped sub-verb, never as a draft title. A near-miss of a
 real sub-verb is refused the same way, with the correction named. So is a word
-followed by a record id — `abcd intent shipit itd-5` is a sub-verb call by
+followed by a record id — `abcd intent shipit itd-5` is a sub-verb call by <!-- facts-lint: historical -->
 shape whatever the word is, so it is refused whether or not any sub-verb is
 close enough to suggest, and a refusal with nothing to suggest lists the
 sub-verbs the verb has. What still files is prose: several words, or one quoted
@@ -344,8 +348,8 @@ any question is a valid answer, but silence is not consent.
 
 - Ask one thing at a time, through the host's interactive question tool, never as a numbered list in a message. The parts of one thing (the criteria of one feature, the paragraphs of one text) are asked as tabs, up to four on a screen, each short, and the rest on the next screen. A question whose answer depends on an earlier one is asked alone, after that answer. A host with no question tool asks one question per message, in the same order and the same words.
 - A question is put to the person only where two or more answers are each defensible on the record; where the record settles the answer, stating it is reporting, not recommending. The options are exactly those defensible answers plus the decide-later answer, never alternatives made up to fill a set. A decision with one defensible answer is not asked: It is recorded as a decision line naming the answer and why no question was put.
-- The thing being decided is quoted in full in the question itself, in paragraphs and lists, never referred to: The criterion before "does it stand?", the paragraph before "confirm or change?", the open question before "resolve or defer?". Prose written between tool calls is invisible while the question shows, so a question about text the person cannot see cannot be answered. Material too long for one question is put one part per question, never into a message before the question or into a preview.
-- Every question has one layout, and abcd's question check refuses a question that breaks it, naming the part, the value, and the limit; fix each part and ask again. The header is at most twelve columns and is abcd's number for the question: "Q1", "Q1a", or "Q2/5", a letter after the number for one part of a question split in parts, and a total after the slash only when the interview's length is known; the header is what the check knows abcd's question by, and the older form with a role word first ("Product Q2", "Tech Q3", or "Setup Q1/4", the role one of Product, Tech, or Setup) is still read. The question text gives the material first, then a line starting "Now:" and a line starting "Change later:" (each saying "not applicable" where it does not apply), and ends with the question on its own line. It offers two to four options, the last "Decide later" or "None of these"; each label is at most five words, and each description at most two sentences. There is no bold (no ** or __) and no side preview, and one question, or one tab, fits thirty-two rows at eighty columns, counting the header, the host's frame, the question text, and every option's label and description. The rows limit is the one the check does not refuse on: a question over it is shown, and the agent is told afterwards to keep the next question within it.
+- The thing being decided is quoted in full in the question itself, in paragraphs and lists, never referred to: The criterion before "does it stand?", the paragraph before "confirm or change?", the open question before "resolve or defer?". Prose written between tool calls is invisible while the question shows, so a question about text the person cannot see cannot be answered. Material too long for one question never goes into a message before the question or into a preview: One decision's material is quoted shorter and faithfully, keeping every answer's gain and cost, and only material holding several decisions or too many answers is split into parts.
+- Every question has one layout, and abcd's question check refuses a question that breaks it, naming the part, the value, and the limit; fix each part and ask again. The header is at most twelve columns and is abcd's number for the question: "Q1", "Q1a", or "Q2/5", a letter after the number for one part of a question split in parts, and a total after the slash only when the interview's length is known; the header is what the check knows abcd's question by, and the older form with a role word first ("Product Q2", "Tech Q3", or "Setup Q1/4", the role one of Product, Tech, or Setup) is still read. The question text gives the material first, then a line starting "Now:" and a line starting "Change later:" (each saying "not applicable" where it does not apply), and ends with the question on its own line. It offers two to four options, the last "Decide later" or "None of these"; each label is at most five words, and each description at most two sentences. There is no bold (no ** or __) and no side preview, and one question, or one tab, fits thirty-two rows at eighty columns, counting the header, the host's frame, the question text, and every option's label and description. The rows limit is the one the check does not refuse on: a question over it is shown, and the agent is told afterwards to keep the next question within it. A repository may set `question.rows` from twenty-four to sixty, `question.label_words` from four to eight, and `question.description_sentences` from two to four in its `.abcd/config.json`. A person's own `~/.abcd.noindex/config.json` may set each lower, never higher.
 - In abcd's own interviews, write each question through the abcd:question-drafter agent, abcd's question writer: hand it the material to quote, whom the question is for, the decision, and the defensible answers. It writes the question to these rules, runs `abcd guard question` on each draft, fixes every fault the check names, and checks again until the check is clean, then returns the question with the rows the check counted. Ask only the question the writer returns, and never write or edit a question yourself. When it refuses, fix the brief and redraft it without telling the person: The writer's refusals and retries are the agent's own work, and the next thing the person sees is the question itself; a question abandoned after a refusal is followed by `abcd mode managed`, since nothing asked will reset the mode. A host with no agents writes the question itself, to the same rules, and checks each draft with `abcd guard question` before asking it.
 - Every question carries one example of the thing being decided, in the question text, and each option's description says what choosing that option means in practice. An abcd question carries no side preview: While a preview shows, the host hides every option's description and cuts the preview to the rows it has, so the meaning goes where it always shows. A question that offers a choice between two forms explains the difference between them, so an answer is never given on wording alone.
 - Each option's description names its gain and its cost, never one option's alone, so the trade-offs between the options read in the same neutral form.
@@ -356,6 +360,8 @@ any question is a valid answer, but silence is not consent.
 - What each person can be assumed to know, the knowledge floor an explanation is measured against, is stated in full at .abcd/development/brief/glossary/interview/knowledge-floor.md under abcd's plugin root (in abcd's own repository, at that path from its root).
 - In abcd's own interviews, before a stop that is not a question (a hand-off, or a step the person runs), record whose answer is owed with `abcd mode facilitator` or `abcd mode product-thinker`, and set it back with `abcd mode managed` once the answer is in. Where the host has no status surface, the set form prints one line naming the addressee; relay it verbatim, because that line is the whole of the fallback.
 - In abcd's own interviews, classify each question's addressee first (the product thinker or the technical facilitator), and set the mode to that person with `abcd mode product-thinker` or `abcd mode facilitator` before the question is written, so its check reads the person it is for: the number in the header names no person, and the answer sets the mode back to managed. The status line names the person the question on screen is for, so the tabs of one question are for one person, and a mixed interview re-sets the mode per question, never once at the start.
+
+The figures stated here are abcd's defaults, in force where neither `.abcd/config.json` nor the person's own `~/.abcd.noindex/config.json` sets `question.rows`, `question.label_words`, or `question.description_sentences` within the bounds named above; `abcd guard question` reports the values in force in its `limits` field, and whoever writes a question takes them from there, never from either file.
 
 The knowledge floor every explanation is measured against: [knowledge-floor.md](../.abcd/development/brief/glossary/interview/knowledge-floor.md).
 <!-- /generated -->
@@ -1449,5 +1455,47 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain intent` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd intent [text] [flags]`
+  - An example call is `abcd intent "let a reviewer read the board from a phone"`.
+- `abcd intent audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] [flags]`
+  - An example call is `abcd intent audit itd-2609010000000001`.
+- `abcd intent audit ingest --verdict-json <path> [--dry-run] [flags]`
+  - Reads `--verdict-json`, the intent audit verdict, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain intent audit ingest --input verdict-json` prints its shape.
+  - An example call is `abcd intent audit ingest --verdict-json verdict.json`.
+- `abcd intent condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds "<why>" [--narrowing "<what now holds>"]] [flags]`
+  - An example call is `abcd intent condition itd-2609010000000001`.
+- `abcd intent consistency [<itd-N>] [flags]`
+  - An example call is `abcd intent consistency`.
+- `abcd intent consistency ingest --findings-json <path> [--findings-json <path>...] [--dry-run] [flags]`
+  - Reads `--findings-json`, the consistency findings, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain intent consistency ingest --input findings-json` prints its shape.
+  - An example call is `abcd intent consistency ingest --findings-json findings.json`.
+- `abcd intent edge <itd-N> [--blocked-by <itd-M,...>] [--unblock <itd-M,...>] [--builds-on <itd-M,...>] [--drop-builds-on <itd-M,...>] [flags]`
+  - An example call is `abcd intent edge itd-2609010000000001 --blocked-by itd-2609010000000002`.
+- `abcd intent hold <itd-N> --reason "<text>" [flags]`
+  - An example call is `abcd intent hold itd-2609010000000001 --reason "waiting on the product thinker's ruling on scope"`.
+- `abcd intent interview <itd-N> [--answers <file>] [--answered-in <place>] [flags]`
+  - Reads `--answers`, the interview answers.
+  - An example call is `abcd intent interview itd-2609010000000001`.
+- `abcd intent link <itd-N> <spc-N> [flags]`
+  - An example call is `abcd intent link itd-2609010000000001 spc-2609010000000002`.
+- `abcd intent plan <itd-N> [<itd-N>…] [--bundle <name>] [--target <vX.Y.Z|next>] [flags]`
+  - An example call is `abcd intent plan itd-2609010000000001`.
+- `abcd intent prepass <itd-N> [--findings-json <path> [--dry-run]] [flags]`
+  - Reads `--findings-json`, the pre-pass findings, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain intent prepass --input findings-json` prints its shape.
+  - An example call is `abcd intent prepass itd-2609010000000001 --json`.
+- `abcd intent ready <itd-N> [--grounds "<pursued|deferred|declined>: <conjecture>"] [flags]`
+  - An example call is `abcd intent ready itd-2609010000000001`.
+- `abcd intent reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason "<why>"> [flags]`
+  - An example call is `abcd intent reclassify itd-2609010000000001 --kind superseded --by itd-2609010000000002 --reason "absorbed by the later intent"`.
+- `abcd intent target <itd-N> <vX.Y.Z|next> [flags]`
+  - An example call is `abcd intent target itd-2609010000000001 v0.11.0`.
+- `abcd intent unhold <itd-N> [flags]`
+  - An example call is `abcd intent unhold itd-2609010000000001`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

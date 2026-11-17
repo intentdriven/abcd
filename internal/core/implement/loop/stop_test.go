@@ -609,7 +609,9 @@ func TestAGoneWorktreeHoldsNothingBack(t *testing.T) {
 }
 
 // TestAFailedReleaseLapses: a release that cannot reach origin says the claim
-// lapses with its lease, so nothing may renew it after the run has halted.
+// lapses with its lease, so nothing may renew it after the run has halted; a
+// lease already past as last fetched is said to have lapsed, with no load-gate
+// waiter's clause, since the waiter renews only a live reservation.
 func TestAFailedReleaseLapses(t *testing.T) {
 	repo, runID, _, _, _ := deadLane(t)
 	onOriginAccepted(t, repo, runID)
@@ -625,7 +627,7 @@ func TestAFailedReleaseLapses(t *testing.T) {
 
 	wantStopRefusal(t, checkOnce(repo.Root(), runID, o))
 	c := controlOf(t, repo.Root(), runID)
-	if c.Stop == nil || c.Stop.HaltedAt == nil || !strings.Contains(c.Stop.Released, "lapses") {
+	if c.Stop == nil || c.Stop.HaltedAt == nil || !strings.Contains(c.Stop.Released, "; its lease lapsed at ") || strings.Contains(c.Stop.Released, "load-gate waiter") {
 		t.Fatalf("the stop's account: %+v", c.Stop)
 	}
 	st, err := ReadState(repo.Root(), runID)

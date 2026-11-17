@@ -13,6 +13,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
@@ -610,21 +612,66 @@ func (f approveFacts) protectedName(p string) (string, bool) {
 }
 
 // The git configuration keys that start a program, folded: every key
-// gitutil.ExecPins pins, read from it, and the others git documents. A key is
-// matched exactly, or by its section and variable around any subsection.
+// gitutil.ExecPins pins, read from it, and each setting whose job is to start
+// a program that these pages document: git 2.52's git-config(1), and
+// git-archive(1) for tar.<format>.command, which git-config(1) does not list,
+// and Git LFS 3.7.1's git-lfs-config(5). The one rule: a setting is listed
+// when its job is to name a command, a program path or a helper; to pick the
+// tool, viewer, browser or signing program git starts (diff.tool, merge.tool,
+// help.browser, help.format, man.viewer, instaweb.browser, gpg.format,
+// merge.<driver>.recursive, lfs.standalonetransferagent); or to switch on a
+// program git starts (the signing and verifying switches; protocol.allow and
+// protocol.ext.allow, which let a remote address of the ext transport run the
+// command it names; init.templateDir, whose hooks git init copies in). A key
+// is matched exactly, or by its section and variable around any subsection,
+// or by programKeyRE. hook.<name>.command is no setting of git 2.52; a later
+// git runs it as a configured hook. submodule.<name>.update starts a program
+// only for a value beginning with `!` (settingStartsProgram).
+//
+// Left off, as settings whose job is something else, even where a listed or
+// default program may run after them: format.pretty and pretty.<name> (a
+// format; a signature it checks starts gpg.program), merge.renormalize and
+// core.attributesFile (which filters and drivers apply; each is listed by its
+// own key), ssh.variant (how core.sshCommand's program is called),
+// protocol.<name>.allow for any other transport, a remote's url and
+// url.<base>.insteadOf (an address; the ext transport needs the protocol keys
+// above), receive.procReceiveRefs (which pushed refs the proc-receive hook is
+// given; the hook is a file in the hooks directory, judged as a path), and
+// gitcvs.dbDriver (a Perl database driver git cvsserver loads by name; no
+// program starts).
+//
+// A drive's hold across its lanes (driveHeldConfig and watchedConfig in
+// internal/core/implement/loop) is a list of its own: it answers which
+// settings the drive's own git commands read, network and trust settings
+// included and programs no drive command starts (an alias, core.pager and
+// pager.<cmd>, sequence.editor, send-email's commands) left out, while this
+// one answers which settings an agent's command may make any git start. Each
+// program class the drive holds is held here too:
+// TestApproverListHoldsEachProgramClassTheDriveHolds.
 var (
 	programKeys = append(execPinKeys(), "core.sshcommand", "core.pager", "core.editor", "core.askpass",
 		"core.gitproxy", "core.alternaterefscommand", "sequence.editor", "gpg.program", "gpg.ssh.defaultkeycommand",
 		"diff.external", "credential.helper", "web.browser", "tag.gpgsign", "push.gpgsign", "include.path",
-		"uploadpack.packobjectshook", "sendemail.smtpserver", "sendemail.sendmailcmd", "sendemail.tocmd", "sendemail.cccmd")
+		"uploadpack.packobjectshook", "tag.forcesignannotated", "gc.recentobjectshook", "init.templatedir",
+		"help.browser", "man.viewer", "imap.tunnel", "instaweb.browser", "instaweb.httpd", "instaweb.modulepath",
+		"interactive.difffilter", "diff.tool", "diff.guitool", "merge.tool", "merge.guitool",
+		"protocol.allow", "protocol.ext.allow", "help.format", "gpg.format")
 	// programSubKeys are section.*.variable keys; a "" variable is any.
 	programSubKeys = [][2]string{
 		{"alias", ""}, {"pager", ""}, {"includeif", "path"}, {"credential", "helper"}, {"diff", "command"},
 		{"diff", "textconv"}, {"difftool", "cmd"}, {"difftool", "path"}, {"mergetool", "cmd"}, {"mergetool", "path"},
-		{"merge", "driver"}, {"filter", "clean"}, {"filter", "smudge"}, {"filter", "process"}, {"browser", "cmd"},
-		{"browser", "path"}, {"man", "cmd"}, {"man", "path"}, {"remote", "uploadpack"}, {"remote", "receivepack"},
-		{"remote", "vcs"}, {"gpg", "program"},
+		{"merge", "driver"}, {"merge", "recursive"}, {"filter", "clean"}, {"filter", "smudge"}, {"filter", "process"},
+		{"browser", "cmd"}, {"browser", "path"}, {"man", "cmd"}, {"man", "path"}, {"guitool", "cmd"},
+		{"remote", "uploadpack"}, {"remote", "receivepack"}, {"remote", "vcs"}, {"gpg", "program"},
+		{"sendemail", "smtpserver"}, {"sendemail", "sendmailcmd"}, {"sendemail", "tocmd"}, {"sendemail", "cccmd"},
+		{"sendemail", "headercmd"}, {"trailer", "cmd"}, {"trailer", "command"}, {"submodule", "update"},
+		{"hook", "command"}, {"tar", "command"},
 	}
+	// programKeyRE matches the Git LFS keys whose subsection is itself
+	// named: a custom transfer's program and its arguments (which the shell
+	// expands), an extension's clean and smudge commands, and the
+	// standalone transfer agent, plain or per URL.
+	programKeyRE = regexp.MustCompile(`^lfs\.(customtransfer\..+\.(path|args)|extension\..+\.(clean|smudge)|(.+\.)?standalonetransferagent)$`)
 )
 
 // treeKeys are the configuration keys, folded, that move the working tree
@@ -663,7 +710,7 @@ func startsProgram(key string) bool {
 		return true
 	}
 	k := strings.ToLower(strings.TrimSpace(key))
-	if containsString(programKeys, k) {
+	if containsString(programKeys, k) || programKeyRE.MatchString(k) {
 		return true
 	}
 	first, rest, ok := strings.Cut(k, ".")
@@ -682,6 +729,286 @@ func startsProgram(key string) bool {
 	return false
 }
 
+// settingStartsProgram reports whether setting key to value may start a
+// program: startsProgram's answer, except that submodule.<name>.update starts
+// one only for a value beginning with `!` (git-config(1)), so a value the
+// line fixes that does not is no program, and an editor or askpass setting
+// (noOpKeys) given a value noOpCommand takes starts none. known says the
+// setting's value is given; a value is fixed when it is given and holds no
+// substitution or variable.
+func settingStartsProgram(key, value string, known bool) bool {
+	if !startsProgram(key) {
+		return false
+	}
+	k := strings.ToLower(strings.TrimSpace(key))
+	if known && containsString(noOpKeys, k) && noOpCommand(value) {
+		return false
+	}
+	if !strings.HasPrefix(k, "submodule.") || !strings.HasSuffix(k, ".update") || isUnknown(k) {
+		return true
+	}
+	if !known || isUnknown(value) || strings.ContainsRune(value, varMark) {
+		return true
+	}
+	return strings.HasPrefix(strings.TrimSpace(value), "!")
+}
+
+// programSections are the configuration sections, folded, that hold a listed
+// key: a section renamed onto one of them may carry any of its keys.
+func programSections() []string {
+	out := []string{"lfs"}
+	add := func(s string) {
+		if !containsString(out, s) {
+			out = append(out, s)
+		}
+	}
+	for _, k := range append(append([]string{}, programKeys...), treeKeys...) {
+		first, _, _ := strings.Cut(k, ".")
+		add(first)
+	}
+	for _, sk := range programSubKeys {
+		add(sk[0])
+	}
+	return out
+}
+
+// renameStartsProgram reports whether a section renamed to name, as a line
+// spells it, may land on a section that holds a listed key, or on one the
+// line does not spell out.
+func renameStartsProgram(name string) bool {
+	if isUnknown(name) || strings.ContainsRune(name, varMark) {
+		return true
+	}
+	section, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(name)), ".")
+	if i := strings.IndexAny(section, " \t"); i >= 0 {
+		section = section[:i]
+	}
+	return containsString(programSections(), section)
+}
+
+// programFlags are, per git subcommand, the long options git documents as
+// the command-line form of a listed setting: --upload-pack on clone, fetch,
+// pull, ls-remote and fetch-pack, the --exec of ls-remote, archive and
+// fetch-pack, and the --receive-pack and --exec of push and send-pack name
+// the program git starts for the other side (remote.<name>.uploadpack and
+// .receivepack), run on this machine when that side is a local repository
+// (git-clone(1), git-fetch(1), git-pull(1), git-ls-remote(1),
+// git-archive(1), git-push(1), git-fetch-pack(1), git-send-pack(1));
+// --template on clone and init names the directory whose hooks git copies in
+// (init.templateDir; git-clone(1), git-init(1)). fetch and pull are read for
+// --exec as well, the name fetch-pack gives the same program: git 2.52's
+// fetch and pull refuse it as an unknown option, so reading it there refuses
+// only a command git would not run. Each takes a value. No other option of
+// these subcommands is a strict prefix of one of them, so a word that is one
+// is that option abbreviated, as git's option parser reads it, or one git
+// refuses as ambiguous.
+var programFlags = map[string][]string{
+	"clone":      {"--upload-pack", "--template"},
+	"init":       {"--template"},
+	"fetch":      {"--upload-pack", "--exec"},
+	"pull":       {"--upload-pack", "--exec"},
+	"ls-remote":  {"--upload-pack", "--exec"},
+	"archive":    {"--exec"},
+	"push":       {"--receive-pack", "--exec"},
+	"fetch-pack": {"--upload-pack", "--exec"},
+	"send-pack":  {"--receive-pack", "--exec"},
+}
+
+// cloneShortValues are the letters of git clone's short options that take a
+// value (git-clone(1)): -j, -o, -b, -u (--upload-pack) and -c (--config).
+const cloneShortValues = "jobuc"
+
+// longFlagIs reports whether a word can be the long option flag, written
+// whole or abbreviated, with or without its `=value`.
+func longFlagIs(w, flag string) bool {
+	if isUnknown(w) {
+		lead := knownLead(w)
+		if strings.Contains(lead, "=") {
+			return longFlagIs(lead, flag)
+		}
+		return flagCouldBe(w, flag)
+	}
+	name, _, _ := strings.Cut(w, "=")
+	return name == flag || len(name) > 2 && strings.HasPrefix(name, "--") && strings.HasPrefix(flag, name)
+}
+
+// gitFlagRefusal reads one git subcommand's arguments, after its name, for
+// an option that is the command-line form of a listed setting, and says why
+// it is refused, if it is: one of programFlags, or a key git clone's -c or
+// --config writes into the new repository's configuration that a `git
+// config` write would be refused for.
+func gitFlagRefusal(sub string, args []string) (string, bool) {
+	subs := []string{sub}
+	if isUnknown(sub) {
+		subs = []string{"clone", "init", "fetch", "pull", "ls-remote", "archive", "push", "fetch-pack", "send-pack"}
+	}
+	var flags []string
+	clone := false
+	for _, s := range subs {
+		flags = append(flags, programFlags[s]...)
+		clone = clone || s == "clone"
+	}
+	for i := 0; i < len(args); i++ {
+		w := args[i]
+		if w == "--" {
+			break
+		}
+		if !strings.HasPrefix(w, "-") {
+			continue
+		}
+		for _, f := range flags {
+			if longFlagIs(w, f) {
+				return "this git command names, with " + f + ", " + flagWhat(f) + ", which the guard does not read.", true
+			}
+		}
+		if !clone {
+			continue
+		}
+		var setting string
+		var given bool
+		switch {
+		case isUnknown(w) && (flagCouldBe(w, "--config") || clusterCouldCarry(w, 'c') || clusterCouldCarry(w, 'u')):
+			return "this git clone carries an option the line does not spell out, which may name a program git starts or a key it writes into the new repository.", true
+		case longFlagIs(w, "--config"):
+			if _, v, ok := strings.Cut(w, "="); ok {
+				setting, given = v, true
+			} else if i+1 < len(args) {
+				i++
+				setting, given = args[i], true
+			}
+		case !strings.HasPrefix(w, "--"):
+			letter, glued, ok := shortValueLetter(w, cloneShortValues)
+			if !ok {
+				continue
+			}
+			switch {
+			case letter == 'u':
+				return "this git command names, with -u, " + flagWhat("--upload-pack") + ", which the guard does not read.", true
+			case letter != 'c':
+				if glued == "" {
+					i++
+				}
+				continue
+			case glued != "":
+				setting, given = glued, true
+			case i+1 < len(args):
+				i++
+				setting, given = args[i], true
+			}
+		}
+		if !given {
+			continue
+		}
+		k, v, hasValue := strings.Cut(setting, "=")
+		switch {
+		case isUnknown(k) || strings.ContainsRune(k, varMark):
+			return "this git clone writes " + keyName(k) + " into the new repository's configuration.", true
+		case movesTree(k):
+			return treeKeyWhy(k), true
+		case settingStartsProgram(k, v, hasValue):
+			return "this git clone writes " + keyName(k) + " into the new repository's configuration, a setting that starts a program the guard does not read.", true
+		}
+	}
+	return "", false
+}
+
+// flagWhat names what one of programFlags gives git.
+func flagWhat(flag string) string {
+	if flag == "--template" {
+		return "a template directory whose hooks git copies into the repository (as init.templateDir does)"
+	}
+	return "a program git starts for the other side of the transfer (as remote.<name>.uploadpack and .receivepack do)"
+}
+
+// shortValueLetter reads a short-option cluster for a parser whose
+// value-taking letters are takes: the first such letter the cluster carries,
+// and the value glued after it ("" when the next word is the value).
+func shortValueLetter(w, takes string) (byte, string, bool) {
+	if len(w) < 2 || w[0] != '-' || w[1] == '-' {
+		return 0, "", false
+	}
+	for i := 1; i < len(w); i++ {
+		if strings.IndexByte(takes, w[i]) >= 0 {
+			return w[i], w[i+1:], true
+		}
+	}
+	return 0, "", false
+}
+
+// programEnv maps each environment variable git documents as naming a
+// program it starts, or the directory it takes one from, to the setting it
+// stands for, as a refusal names it: git(1)'s GIT_SSH, GIT_SSH_COMMAND,
+// GIT_PAGER, GIT_EDITOR, GIT_SEQUENCE_EDITOR, GIT_EXTERNAL_DIFF, GIT_ASKPASS,
+// GIT_ALLOW_PROTOCOL and GIT_PROTOCOL_FROM_USER (both read as protocol.allow
+// is) and GIT_EXEC_PATH (where git finds its sub-programs and transport
+// helpers); git-var(1)'s PAGER, EDITOR and VISUAL, which git falls back to;
+// git-config(1)'s SSH_ASKPASS and GIT_PROXY_COMMAND; git-init(1)'s
+// GIT_TEMPLATE_DIR; and git-help(1)'s GIT_MAN_VIEWER. Left off, as naming no
+// program: GIT_SSH_VARIANT (as ssh.variant), GIT_ATTR_SOURCE (as
+// core.attributesFile), GIT_EXTERNAL_DIFF_TRUST_EXIT_CODE (how a listed
+// program's exit is read), GIT_TERMINAL_PROMPT, GIT_SSL_NO_VERIFY and the
+// GIT_TRACE family (a file written). GIT_CONFIG_* is read as the settings it
+// carries (readGitConfig).
+var programEnv = map[string]string{
+	"GIT_SSH": "core.sshcommand", "GIT_SSH_COMMAND": "core.sshcommand",
+	"GIT_PAGER": "core.pager", "PAGER": "core.pager",
+	"GIT_EDITOR": "core.editor", "EDITOR": "core.editor", "VISUAL": "core.editor",
+	"GIT_SEQUENCE_EDITOR": "sequence.editor", "GIT_EXTERNAL_DIFF": "diff.external",
+	"GIT_ASKPASS": "core.askpass", "SSH_ASKPASS": "core.askpass",
+	"GIT_TEMPLATE_DIR": "init.templatedir", "GIT_PROXY_COMMAND": "core.gitproxy",
+	"GIT_ALLOW_PROTOCOL": "protocol.allow", "GIT_PROTOCOL_FROM_USER": "protocol.allow",
+	"GIT_EXEC_PATH": "", "GIT_MAN_VIEWER": "man.viewer",
+}
+
+// commandEnv are the variables of programEnv whose value is a command line
+// git runs through a shell, as core.pager's and core.sshCommand's is: a
+// value the line fixes is judged as that command. GIT_SSH names a program
+// alone, run with no shell, and keeps no such reading.
+var commandEnv = []string{"GIT_PAGER", "PAGER", "GIT_SSH_COMMAND"}
+
+// noOpEnv and noOpKeys are the editor and askpass variables of programEnv
+// and their settings, folded, approved when the value is one noOpCommand
+// takes. git appends a file to the editor's value and a prompt to askpass's
+// before it runs them, so a value is judged by what it is, not as a command
+// line of its own: only one that exits at once whatever follows it passes.
+var (
+	noOpEnv  = []string{"GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "EDITOR", "VISUAL", "GIT_ASKPASS", "SSH_ASKPASS"}
+	noOpKeys = []string{"core.editor", "sequence.editor", "core.askpass"}
+)
+
+// noOpCommand reports whether v, trimmed, is exactly `true` or `:`: a
+// command that runs nothing and exits 0, whatever words git adds after it.
+func noOpCommand(v string) bool {
+	t := strings.TrimSpace(v)
+	return t == "true" || t == ":"
+}
+
+// programEnvRefused names the first variable of programEnv, in name order,
+// that env sets and that is refused: any of them, but one of commandEnv set
+// to a value the line fixes that clean approves, and one of noOpEnv set to a
+// value noOpCommand takes.
+func programEnvRefused(env map[string]string, clean func(string) bool) (string, bool) {
+	names := make([]string, 0, len(programEnv))
+	for name := range programEnv {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		v, ok := env[name]
+		if !ok {
+			continue
+		}
+		if containsString(commandEnv, name) && clean != nil && !isUnknown(v) && !strings.ContainsRune(v, varMark) && clean(v) {
+			continue
+		}
+		if containsString(noOpEnv, name) && noOpCommand(v) {
+			continue
+		}
+		return name, true
+	}
+	return "", false
+}
+
 // commandKeys are the program keys, folded, whose value is the command git
 // runs for that one invocation (through a shell, as a bang alias is): a
 // `-c` setting of one to a command the line fixes is read as that command.
@@ -690,14 +1017,23 @@ var commandKeys = []string{"core.pager", "core.sshcommand"}
 // gitConfigRefusal reports a git command in s that writes configuration
 // outside the repository's own file or sets a key that starts a program:
 // `git config` with --global, --system or --file on a write, or setting such
-// a key, or opening the editor; and any git command setting such a key for
-// itself (-c, --config-env, GIT_CONFIG_*). A `-c` setting of one of
-// commandKeys to a value the line fixes is not refused when clean, which
-// judges the value as the command line git runs, approves it.
-func gitConfigRefusal(s segment, valueFlags []string, clean func(string) bool) (Approval, bool) {
+// a key, or renaming a section onto one that holds such a key, or opening the
+// editor, or with GIT_CONFIG set; any git command setting such a key for
+// itself (-c, --config-env, GIT_CONFIG_*), reading configuration from a file
+// the guard does not read (GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM, an include),
+// or run with one of programEnv set; an option that is the command-line form
+// of such a key (gitFlagRefusal); and an option that hands git a command line
+// to run or picks the program it starts (gitRunRefusal). A `-c` setting of
+// one of commandKeys, or one of commandEnv, to a value the line fixes is not
+// refused when clean, which judges the value as the command line git runs,
+// approves it.
+func gitConfigRefusal(s segment, valueFlags []string, clean func(string) bool, carried map[string]string) (Approval, bool) {
 	for _, site := range sitesNamed(s, "git") {
 		args := s.tokens[site.idx+1:]
-		read := readGitConfig(s.tokens[:site.idx], args, valueFlags)
+		if why, ok := execPathRefusal(args, valueFlags); ok {
+			return refusal(gitConfigWriteEntryID, why, "the same git command without the option."), true
+		}
+		read := readGitConfigIn(carried, s.tokens[:site.idx], args, valueFlags)
 		for i, k := range read.keys {
 			if movesTree(k) {
 				return refusal(gitConfigWriteEntryID, treeKeyWhy(k), "the same git command without the setting."), true
@@ -706,23 +1042,236 @@ func gitConfigRefusal(s segment, valueFlags []string, clean func(string) bool) (
 				!isUnknown(v) && !strings.ContainsRune(v, varMark) && clean(v) {
 				continue
 			}
-			if startsProgram(k) {
+			v, given := read.values[i]
+			if settingStartsProgram(k, v, given) {
 				return refusal(gitConfigWriteEntryID,
 					"this git command sets "+keyName(k)+" for itself, a setting that starts a program the guard does not read.",
 					"the same git command without the setting."), true
 			}
 		}
+		if read.unread {
+			// Set on the command itself, the same reading already raised the
+			// guard's own warning; carried from an earlier command, only here.
+			return refusal(gitConfigWriteEntryID,
+				"this git command reads configuration the guard does not read (a file GIT_CONFIG_GLOBAL or GIT_CONFIG_SYSTEM names, or one an include pulls in), which may set a program git starts.",
+				"the same git command without the variable or the setting."), true
+		}
+		if name, ok := programEnvRefused(read.env, clean); ok {
+			key := programEnv[name]
+			as := ""
+			if key != "" {
+				as = " (as " + key + " does)"
+			}
+			return refusal(gitConfigWriteEntryID,
+				"this git command runs with "+name+" set, which names a program git starts"+as+" that the guard does not read.",
+				"the same git command without the variable."), true
+		}
 		for _, f := range firstOperands(args, valueFlags) {
+			if why, ok := gitFlagRefusal(args[f], args[f+1:]); ok {
+				return refusal(gitConfigWriteEntryID, why,
+					"the same git command without the option, or say in the receipt that the task needs it."), true
+			}
+			if why, ok := gitRunRefusal(args[f], args[f+1:], clean); ok {
+				return refusal(gitConfigWriteEntryID, why,
+					"the same git command with the command line it hands git spelled out in full, and one the guard clears, or without the option."), true
+			}
 			if args[f] != "config" && !isUnknown(args[f]) {
 				continue
 			}
-			if why, ok := gitConfigWrite(args[f+1:]); ok {
+			if why, ok := gitConfigWrite(args[f+1:], read.env); ok {
 				return refusal(gitConfigWriteEntryID, why,
 					"leave git's configuration as it is, or say in the receipt that the task needs it changed."), true
 			}
 		}
 	}
 	return Approval{}, false
+}
+
+// valueOf is the value a `git config` setting's operands give, after its
+// key: "" when there is none.
+func valueOf(ops []string) string {
+	if len(ops) < 2 {
+		return ""
+	}
+	return ops[1]
+}
+
+// execPathRefusal reads git's own options, before its subcommand, for
+// --exec-path given a directory (git(1)): the option form of GIT_EXEC_PATH,
+// the directory git runs its sub-programs and transport helpers from. The
+// option with no word after it prints the path and is not refused. git's own
+// options take no abbreviation.
+func execPathRefusal(args, valueFlags []string) (string, bool) {
+	limit := firstOperandLimit(args, valueFlags)
+	for i := 0; i < limit && i < len(args); i++ {
+		w := args[i]
+		glued := strings.HasPrefix(w, "--exec-path=") ||
+			isUnknown(w) && (strings.HasPrefix(knownLead(w), "--exec-path=") || unknownFlagCouldBe(w, "--exec-path=") && !strings.Contains(knownLead(w), "="))
+		if glued || flagCouldBe(w, "--exec-path") && i+1 < len(args) {
+			return "this git command names, with --exec-path, the directory git runs its sub-programs from (as GIT_EXEC_PATH does), which the guard does not read.", true
+		}
+	}
+	return "", false
+}
+
+// carryEnvironment adds to env what one command of a line leaves in the
+// environment of the commands after it: each NAME=value of a command that is
+// nothing but assignments, and each NAME=value operand of export, declare,
+// typeset, local or readonly (declarers). A plain assignment reaches a later
+// command only once exported, or when the environment exports the name
+// already, so each is carried. An operand whose name the line does not spell
+// out may set any variable, and is carried as GIT_CONFIG_PARAMETERS the line
+// does not fix, which readGitConfig reads as a key it cannot name. A
+// program-naming or GIT_CONFIG_* name the command assigns by any other means
+// (carryAssigned) is carried as a value the line does not fix.
+//
+// Which command reaches which is read past order only: a pipeline's or a
+// subshell's assignment is carried too. Where the line runs a command again
+// or later than its text places it, approveShellAt also takes the carry over
+// the whole line, and judges each git command in it under that carry as well
+// as under text order's, refusing where either refuses (runsOutOfTextOrder): a
+// loop runs its body's export before the next pass's git command, a
+// function's body runs where the function is called, an eval body is read
+// after the line's other commands (its segments are placed at the end), and
+// a ${NAME:=…} is assigned where its word is expanded, though its record
+// rides on a segment placed at the end of the line. unset and env -u are
+// not read as dropping a carried name: the carry also holds the stand-in
+// for an operand the line does not spell out, which no name it unsets can
+// be shown to remove, so a carried name only ever refuses more.
+func carryEnvironment(s segment, env map[string]string) {
+	// set is each name this command gives a value the line spells; bare each
+	// name a declarer only names, which keeps the value it holds.
+	set, bare := map[string]bool{}, map[string]bool{}
+	assign := func(tok string) {
+		name, eq, appends, subscript, ok := splitAssignment(tok)
+		switch {
+		case !ok:
+			if isUnknown(tok) || strings.ContainsRune(tok, varMark) {
+				env["GIT_CONFIG_PARAMETERS"] = unknownText
+				set["GIT_CONFIG_PARAMETERS"] = true
+			} else if isName(tok) {
+				bare[tok] = true
+			}
+		case subscript:
+		case appends:
+			env[name], set[name] = unknownText+tok[eq+1:], true
+		default:
+			env[name], set[name] = tok[eq+1:], true
+		}
+	}
+	sites := commandSites(s)
+	if len(sites) == 0 {
+		for _, tok := range s.tokens {
+			if _, _, _, _, ok := splitAssignment(tok); ok {
+				assign(tok)
+			}
+		}
+	}
+	for name := range declarers {
+		for _, site := range sitesNamed(s, name) {
+			for _, tok := range s.tokens[site.idx+1:] {
+				if strings.HasPrefix(tok, "-") || tok == "" {
+					continue
+				}
+				assign(tok)
+			}
+		}
+	}
+	carryAssigned(s, sites, env, set, bare)
+}
+
+// carriesProgram reports whether a carried name is one the approver reads on
+// a git command: a variable of programEnv, or one of the GIT_CONFIG family.
+func carriesProgram(name string) bool {
+	_, ok := programEnv[name]
+	return ok || strings.HasPrefix(name, "GIT_CONFIG")
+}
+
+// carryAssigned carries, as a value the line does not fix, each name
+// namesAssigned reports s assigns that carriesProgram reads and that s gives
+// no value the line spells (set) nor only names after a declarer (bare): a
+// read, mapfile or printf -v operand, a for loop's name, a ${NAME:=…}, an
+// array or an element of one. An assignment before a command that assigns
+// none of its operands (git, make) holds for that command alone, and is the
+// git reading's own to judge; one before a command that does (read, printf),
+// or one the line does not name, counts as assigned. Only git itself keeps
+// its prefix to itself here: a prefix before any other command (eval, a
+// shell, a function the line defines, make) can reach a git command that
+// command runs, so it is carried with the value it spells, or as a value
+// the line does not fix where it spells none.
+func carryAssigned(s segment, sites []arrival, env map[string]string, set, bare map[string]bool) {
+	names := namesAssigned([]segment{s})
+	prefixOnly := map[string]bool{}
+	if len(sites) > 0 {
+		first, plain, assigner := sites[0].idx, true, false
+		for _, a := range sites {
+			if s.tokens[a.idx] != "git" {
+				plain = false
+			}
+			if nameCouldBeAny(s.tokens[a.idx], operandAssigners) {
+				assigner = true
+			}
+			if a.idx < first {
+				first = a.idx
+			}
+		}
+		for i := 0; i < first; i++ {
+			name, eq, appends, subscript, ok := splitAssignment(s.tokens[i])
+			switch {
+			case !ok || subscript || !carriesProgram(name):
+			case plain:
+				prefixOnly[name] = true
+			case assigner || appends:
+			default:
+				env[name], set[name] = s.tokens[i][eq+1:], true
+			}
+		}
+		for i := first; i < len(s.tokens); i++ {
+			if name, _, _, _, ok := splitAssignment(s.tokens[i]); ok {
+				delete(prefixOnly, name)
+			}
+		}
+	}
+	for name := range names {
+		if set[name] || bare[name] || prefixOnly[name] || !carriesProgram(name) {
+			continue
+		}
+		env[name] = unknownText
+	}
+}
+
+// runsOutOfTextOrder reports whether a line runs a command again, or later
+// than its text places it, so that what a command after a git command
+// leaves in the environment can reach it: a loop (a command starting for,
+// while, until or select), a function definition (a command starting
+// function, or a lone word followed by a `{` group), an eval, or a
+// ${NAME:=…} (its record a segment with no words). carryEnvironment says
+// why each is read so. A trap's handler is read where its text stands, and
+// a function whose body is a subshell rather than a `{` group is not told
+// apart from a plain command.
+func runsOutOfTextOrder(placed []placedSeg) bool {
+	for k, p := range placed {
+		s := p.seg
+		if len(s.tokens) == 0 {
+			if len(s.assignsInText) > 0 {
+				return true
+			}
+			continue
+		}
+		switch s.tokens[0] {
+		case "for", "while", "until", "select", "function":
+			return true
+		}
+		if len(sitesNamed(s, "eval")) > 0 {
+			return true
+		}
+		if len(s.tokens) == 1 && k+1 < len(placed) {
+			if next := placed[k+1].seg.tokens; len(next) > 0 && next[0] == "{" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // keyName is a configuration key as a refusal names it.
@@ -734,10 +1283,16 @@ func keyName(k string) string {
 }
 
 // gitConfigWrite reads one `git config` command's arguments, after the
-// subcommand, and says why it is refused, if it is.
-func gitConfigWrite(args []string) (string, bool) {
+// subcommand, and says why it is refused, if it is. env is the environment
+// it runs with: GIT_CONFIG set there names the file git config reads and
+// writes in place of the repository's (git-config(1)), so a write with it
+// is refused as a --file write is.
+func gitConfigWrite(args []string, env map[string]string) (string, bool) {
 	var scope string
-	var read, write, setting, edit, unknownFlag bool
+	if _, ok := env["GIT_CONFIG"]; ok {
+		scope = "GIT_CONFIG set"
+	}
+	var read, write, setting, edit, unknownFlag, rename bool
 	var ops []string
 	for i := 0; i < len(args); i++ {
 		t := args[i]
@@ -763,7 +1318,9 @@ func gitConfigWrite(args []string) (string, bool) {
 			read = true
 		case t == "--add" || t == "--replace-all":
 			write, setting = true, true
-		case t == "--unset" || t == "--unset-all" || t == "--rename-section" || t == "--remove-section":
+		case t == "--rename-section":
+			write, rename = true, true
+		case t == "--unset" || t == "--unset-all" || t == "--remove-section":
 			write = true
 		case t == "-e" || t == "--edit":
 			write, edit = true, true
@@ -781,7 +1338,9 @@ func gitConfigWrite(args []string) (string, bool) {
 			read, ops = true, ops[1:]
 		case "set":
 			write, setting, ops = true, true, ops[1:]
-		case "unset", "rename-section", "remove-section":
+		case "rename-section":
+			write, rename, ops = true, true, ops[1:]
+		case "unset", "remove-section":
 			write, ops = true, ops[1:]
 		case "edit":
 			write, edit, ops = true, true, ops[1:]
@@ -802,7 +1361,13 @@ func gitConfigWrite(args []string) (string, bool) {
 		return "this writes git configuration with a word the line does not spell out, which may name a scope outside the repository or any key.", true
 	case setting && len(ops) > 0 && movesTree(ops[0]):
 		return treeKeyWhy(ops[0]), true
-	case setting && (len(ops) == 0 || startsProgram(ops[0])):
+	case rename && (len(ops) < 2 || renameStartsProgram(ops[1])):
+		to := "a name the line does not spell out"
+		if len(ops) >= 2 && !isUnknown(ops[1]) && !strings.ContainsRune(ops[1], varMark) {
+			to = termsafe.Sanitize(ops[1])
+		}
+		return "this renames a section of git's configuration to " + to + ", which may hold a setting that starts a program the guard does not read.", true
+	case setting && (len(ops) == 0 || settingStartsProgram(ops[0], valueOf(ops), len(ops) >= 2)):
 		key := "a key"
 		if len(ops) > 0 {
 			key = keyName(ops[0])

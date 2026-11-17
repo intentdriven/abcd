@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:build`
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain build`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Take one intent from READY towards delivered with the loop holding the run, not
 this conversation. The run lives in a state file; every invocation reads it,
 does at most one stage, writes it and exits, so a session that stops, is
@@ -96,9 +100,12 @@ spec's `- packages:` line to the files the work changes. A step's own
 
 `implement step` then renews the reservation, fences the landing on it and
 tombstones it once the run's last lane lands (`/abcd:implement`); a run whose
-issue lane is handed back releases it then. An issue's reservation follows
-what its lane changes: once the implementer hands its receipt back, the run
-reserves every path the lane's branch changes beyond the `found_at`, and again
+issue lane is handed back releases it then. A run's reservation follows
+what its lanes change, an intent's as an issue's: once the implementer hands
+its receipt back, the run reserves every path the lane's branch changes beyond
+the footprint it holds (the `found_at`, or the spec's `- packages:` line), the
+decision records it wrote and the records its landing changes among them, each
+by its own name, and again
 before each step at its validators and before its landing's push, judged for
 overlap, and another copy's live hold on one of them is a wait until that hold
 ends (`/abcd:implement`). Starting again while the run is in
@@ -672,7 +679,7 @@ The classes were renamed one for one: `top` is now `research`, `middle` is
 effort object is refused at the `review` stage with that mapping, and nothing
 is written. A machine class map that sets `top` and not `research` is refused
 too: `top` once named the strongest class and now names the second, so a map
-that sets `top` sets `research` as well. A review list or a judge naming `top`,
+that sets `top` sets `research` as well. A review list naming `top`,
 while no configuration file names `research`, `default` or `small`, resolves,
 with one line on stderr saying which model `top` now stands for.
 
@@ -711,10 +718,20 @@ The payload's `review`, beside `pace`, carries each role's `reviewers` (each
 `class` with the `model` the map resolves it to, the map's `map_layer` and
 `map_origin`, its `effort` and the `effort_layer` and `effort_origin` that set
 it), the list's `layer` and `origin`, `clamped` when the ceiling cut it, the
-`judge` with its `status` and `effort`, and `max_reviewers`. The run record's
-`review` line, the text output's `review:` line and each verdict line name
-each class with its model and its effort, so a class name is never shown
-alone, and a drive's start names the pair it will run before it asks. A class
+`judge` with its `status` and `effort`, `max_reviewers`, `classes`, the whole
+class map the run started on, from which a reviewer whose class holds a model
+that wrote the lane is moved to another, and, for a run a drive started,
+`unlaunchable`, each role's classes the drive's runners could not launch when
+it started, which a moved reviewer never lands on (`commands/implement.md` says
+how). The
+run record's `review` line, the text output's `review:` line and each verdict
+line name each class with its model and its effort, so a class name is never
+shown alone; a `classes:` line under the text's `review:` line names the class
+map; the run record's verdict lines name every model that wrote the lane and
+the reviewer's model, or the model it was asked for and the one its return
+named where those differ, and, for a reviewer handed out before models were
+recorded, say they were not; and a drive's start names the pair it will run before
+it asks. A class
 the map does not carry, an effort outside the five levels or an effort object
 keyed by anything but the four classes, a list of none or more than two, a
 misspelt key under `review` or `models`, and a route that is not
@@ -1042,7 +1059,29 @@ A lane's stages run in order:
    pushed head is an ancestor of the default branch on `origin`; stop driving
    the run and come back later. Once it is, the loop removes the lane's
    worktree and branch, the lane is done, and the next pending step opens the
-   next lane. A pull request closed without merging, or merged in a way that
+   next lane. In a repository abcd manages, that step then sweeps on its own
+   once its save is written: the provably spent part of `abcd sweep --apply`,
+   with the same proofs against a fresh fetch (other merged, clean worktrees
+   removed, a dirty one's work saved and kept, the merged lane branches
+   deleted locally and on origin, any other merged branch, a store worktree's
+   own included, kept and listed for `abcd sweep --apply`, and so is a spent
+   store worktree holding any ignored file outside its local tier (a `.env`,
+   say), which a removal would delete unarchived, or whose ignored files
+   cannot be listed; no reservation
+   workflow started, no inbox report filed), its line in `next`, bounded, with
+   `abcd sweep` named for the full list. It runs for two minutes at most
+   (its fetch, its fetch of the reservations and each delete on origin; its
+   local reads are short and have no deadline of their own), under the step's
+   own context, so an interrupted step stops it between removals; give the
+   step a timeout of about two minutes more than you otherwise would. A
+   refusal or fault of that sweep is reported there and the landing stands.
+   `abcd build` and `abcd build next` that close a merged lane as they start
+   or resume sweep too, the line among their diagnostics, with the same
+   two-minute bound but no stop between removals: an interrupt there ends the
+   process, perhaps during a removal. A run ends at its last landing, so
+   this is also the sweep at the end of a build run. `"sweep": {"automatic": false}` in
+   `.abcd/config.json` or `~/.abcd.noindex/config.json` turns it off
+   (`commands/sweep.md`). A pull request closed without merging, or merged in a way that
    rewrote its head, is refused and nothing is cleaned up: report it as it is.
    A pull request the forge reports `CONFLICTING` (`gh pr view <n> --json
    mergeable,mergeStateStatus`) is refused at exit 2, before arming or at the
@@ -1160,5 +1199,15 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain build` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd build <itd-N|iss-N> [--auto-plan] [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] [--release] [flags]`
+  - An example call is `abcd build itd-2609010000000001`.
+- `abcd build next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--max <n>] [--until-empty] [flags]`
+  - An example call is `abcd build next`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

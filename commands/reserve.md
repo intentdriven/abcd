@@ -8,6 +8,10 @@ user-invocable: false
 
 # `/abcd:reserve`
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain reserve`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Reserve an issue or an intent on the shared remote before starting work on it,
 so every other participant (a second person, a second computer, a hosted cloud
 session) sees that it is taken before starting the same item. This verb is an
@@ -711,5 +715,13 @@ too, you are in a source checkout of this repo, where — and only there —
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
 `go run ./cmd/abcd ahoy install` in a source checkout.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain reserve` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd reserve <record-id> [flags]`
+  - An example call is `abcd reserve iss-2609010000000001 --footprint internal/core/example/example.go`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

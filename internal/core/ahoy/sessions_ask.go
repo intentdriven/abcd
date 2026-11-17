@@ -109,10 +109,14 @@ func withNow(h PromptHelp) PromptHelp {
 	return h
 }
 
+// LiveSessionsValues returns what --live-sessions takes: Q2's answers, then
+// the stored no.
+func LiveSessionsValues() []string { return append(slices.Clone(liveSessionsWhere), LiveSessionsNone) }
+
 // ParseLiveSessions refuses a --live-sessions value that is not local, cloud,
 // both or none.
 func ParseLiveSessions(v string) error {
-	if v == LiveSessionsNone || slices.Contains(liveSessionsWhere, v) {
+	if slices.Contains(LiveSessionsValues(), v) {
 		return nil
 	}
 	return fmt.Errorf("--live-sessions takes local, cloud, both or none, not %q", termsafe.Sanitize(v))

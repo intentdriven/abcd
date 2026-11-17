@@ -68,6 +68,30 @@ func ParseImpact(v string) (Impact, error) {
 	return "", fmt.Errorf("invalid impact %q: want exactly one of %s (lower-case, no surrounding whitespace)", v, impactList())
 }
 
+// ImpactNames returns the enum's wire values in the order the messages name
+// them: the closed set a flag that takes an impact declares, read from the one
+// list ParseImpact checks against.
+func ImpactNames() []string {
+	out := make([]string, 0, len(impactValues))
+	for _, v := range impactValues {
+		out = append(out, string(v))
+	}
+	return out
+}
+
+// IntentImpactNames returns the impacts an intent may declare: every member
+// but internal, which an intent refuses after ParseImpact accepts it, since an
+// intent is user-facing by definition.
+func IntentImpactNames() []string {
+	out := make([]string, 0, len(impactValues))
+	for _, v := range impactValues {
+		if v != ImpactInternal {
+			out = append(out, string(v))
+		}
+	}
+	return out
+}
+
 // impactList renders the legal set for an error message.
 func impactList() string {
 	out := ""

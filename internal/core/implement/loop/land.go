@@ -427,33 +427,8 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, err
 	}
 	if tip != lane.HeadSHA {
-		// A commit found is read as stored throughout: what stands in for it, its parents
-		// or its objects says nothing of what it holds.
-		parents, _ := gitutil.RunCappedAsStored(c.RepoRoot, maxGitOutput, "log", "-1", "--format=%P", tip, "--")
-		subject, _ := gitutil.RunCappedAsStored(c.RepoRoot, maxGitOutput, "log", "-1", "--format=%s", tip, "--")
-		if parents != lane.HeadSHA || subject != landSubject(st, *lane) {
-			return Outcome{}, refuse(string(StageLand), "", lane.ID,
-				fmt.Sprintf("%s moved to %s, which is not the landing's records commit on the judged head %s", lane.Branch, shortSHA(tip), shortSHA(lane.HeadSHA)),
-				"restore the branch to the judged head, then run `abcd implement step` again")
-		}
-		found, err := gitutil.RunCappedAsStored(c.RepoRoot, maxBaseListing, "diff-tree", "-r", "--raw", "--no-renames", "--no-abbrev", "--ignore-submodules=none", "-z", lane.HeadSHA, tip, "--")
-		if err != nil {
-			return Outcome{}, fmt.Errorf("reading what %s changes: %w", shortSHA(tip), err)
-		}
-		if why, err := judgeLandingDiff(c.RepoRoot, st, *lane, found); err != nil {
+		if err := refuseNotTheRecords(c, *lane, tip, "found"); err != nil {
 			return Outcome{}, err
-		} else if why != "" {
-			return Outcome{}, refuse(string(StageLand), "", lane.ID, shortSHA(tip)+", the commit found on the judged head "+shortSHA(lane.HeadSHA)+", holds "+why+", and "+strayRule,
-				"restore the branch to the judged head, then run `abcd implement step` again")
-		}
-		if err := refuseFoundCloseRecords(c, *lane, tip, ld.Closes); err != nil {
-			return Outcome{}, err
-		}
-		if lacks, err := foundCommitLacks(c, *lane, tip, found); err != nil {
-			return Outcome{}, err
-		} else if lacks != "" {
-			return Outcome{}, refuse(string(StageLand), "", lane.ID, shortSHA(tip)+", the commit found on the judged head "+shortSHA(lane.HeadSHA)+", lacks "+lacks+", so it is not the landing's records",
-				"restore the branch to the judged head, then run `abcd implement step` again; the landing makes its records itself")
 		}
 		// A call killed after its commit and before its state write: found.
 		ld.Records, ld.RecordsDone, lane.HeadSHA = tip, true, tip
@@ -505,7 +480,9 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	// abcd's label instead (composed_attribution.go); what is staged settles that
 	// below, after the mark is written, and a refusal there leaves the mark in the
 	// worktree for the next call.
-	if note := rereadModels(c, lane); note != "" {
+	if note, hb := rereadModels(c, lane); hb != nil {
+		return Outcome{HandBack: hb, Note: note}, nil
+	} else if note != "" {
 		return Outcome{Stay: true, Note: note}, nil
 	}
 	assisted := []string{composedAssistedBy()}
@@ -633,6 +610,15 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	if beforeLandingStage != nil {
 		beforeLandingStage(wt)
 	}
+	// The commit below takes the worktree's HEAD as its parent and moves the branch HEAD
+	// names, so it is made only from the lane's branch at the judged head.
+	if off, err := worktreeHeadOff(*lane, lane.HeadSHA); err != nil {
+		return Outcome{}, err
+	} else if off != "" {
+		return Outcome{}, refuse(string(StageLand), "", lane.ID,
+			"the lane's worktree has HEAD "+off+", not on refs/heads/"+lane.Branch+" at the judged head "+shortSHA(lane.HeadSHA)+", so the landing's records commit would not sit on the judged head",
+			"put the lane's worktree back on its branch "+lane.Branch+" at the judged head "+shortSHA(lane.HeadSHA)+", then run `abcd implement step` again")
+	}
 	if _, err := addAllGit(wt, "."); err != nil {
 		return Outcome{}, fmt.Errorf("staging the landing's records: %w", err)
 	}
@@ -643,8 +629,9 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, fmt.Errorf("keeping the local tier out of the landing's records: %w", err)
 	}
 	// What the commit would hold is judged as staged, so a write during the close meets
-	// the rule the top of the call read.
-	raw, err := pickGit(wt, stagedRawArgs(lane.HeadSHA)...)
+	// the rule the top of the call read. Both reads of the index take the judged head's
+	// tree as its commit stores it (pickGitAsStored).
+	raw, err := pickGitAsStored(wt, stagedRawArgs(lane.HeadSHA)...)
 	if err != nil {
 		return Outcome{}, fmt.Errorf("reading the landing's staged records: %w", err)
 	}
@@ -653,7 +640,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	} else if why != "" {
 		return Outcome{}, strayRefusal(*lane, why)
 	}
-	staged, err := pickGit(wt, "--no-replace-objects", "diff", "--cached", "--no-renames", "--ignore-submodules=none", "--name-only", "-z")
+	staged, err := pickGitAsStored(wt, "diff", "--cached", "--no-renames", "--ignore-submodules=none", "--name-only", "-z", lane.HeadSHA, "--")
 	if err != nil {
 		return Outcome{}, fmt.Errorf("reading the landing's staged records: %w", err)
 	}
@@ -697,6 +684,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	// it is made with the repository's hooks running (never through pickGit's
 	// hooks-off configuration), so the commit-msg outbound gate judges it.
 	msg := recordsMessage(st, *lane, done, append(trailers, assisted...))
+	judged := lane.HeadSHA
 	// gitutil.LocalGit runs a local git command under the developer's own
 	// configuration with the repository's hooks running, and none of the
 	// networked runner's settings.
@@ -705,12 +693,105 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 			"git could not commit the landing's records (a repository hook refused it, or no git identity is configured): "+fsutil.RedactHome(err.Error()),
 			"settle what git or the hook reports (the records stay staged in the lane's worktree), then run `abcd implement step` again; the loop never skips a hook")
 	}
+	// The commit is adopted only as a commit found would be: on the branch, with the
+	// worktree's HEAD on that branch at it, the judged head its one parent and what was
+	// judged its change. refuseNotTheRecords holds a found commit to all of it, so a
+	// refusal here, which leaves RecordsDone false, holds the next call to the same.
 	head, err := branchTip(c, *lane)
 	if err != nil {
 		return Outcome{}, err
 	}
+	if head == judged {
+		return Outcome{}, refuse(string(StageLand), "", lane.ID,
+			"git committed the landing's records, but "+lane.Branch+" still stands at the judged head "+shortSHA(judged)+", so the commit is not on the lane's branch",
+			"put the lane's worktree back on its branch "+lane.Branch+" at the judged head "+shortSHA(judged)+", then run `abcd implement step` again; the landing makes its records itself")
+	}
+	if err := refuseNotTheRecords(c, *lane, head, "made"); err != nil {
+		return Outcome{}, err
+	}
 	ld.Records, ld.RecordsDone, lane.HeadSHA = head, true, head
 	return Outcome{Stay: true, Note: "committed the landing's records as " + shortSHA(head) + ": " + strings.Join(done, "; ")}, nil
+}
+
+// refuseNotTheRecords holds a commit at the lane branch's tip to what the landing's
+// records commit is: its one parent the judged head (lane.HeadSHA, not yet moved), its
+// subject the landing's, and its change against that head what the landing judges and
+// holding each of the landing's own records, and the lane's worktree's HEAD on the
+// lane's branch at it. which says how the commit came ("found", from a killed call, or
+// "made", by this call), so both are held to the same checks. Everything is read as
+// stored: what stands in for the commit, its parents or its objects says nothing of
+// what it holds.
+func refuseNotTheRecords(c Context, lane Lane, tip, which string) error {
+	st := c.State
+	parents, _ := gitutil.RunCappedAsStored(c.RepoRoot, maxGitOutput, "log", "-1", "--format=%P", tip, "--")
+	subject, _ := gitutil.RunCappedAsStored(c.RepoRoot, maxGitOutput, "log", "-1", "--format=%s", tip, "--")
+	if parents != lane.HeadSHA || subject != landSubject(st, lane) {
+		return refuse(string(StageLand), "", lane.ID,
+			fmt.Sprintf("%s moved to %s, which is not the landing's records commit on the judged head %s", lane.Branch, shortSHA(tip), shortSHA(lane.HeadSHA)),
+			"restore the branch to the judged head, then run `abcd implement step` again")
+	}
+	raw, err := gitutil.RunCappedAsStored(c.RepoRoot, maxBaseListing, "diff-tree", "-r", "--raw", "--no-renames", "--no-abbrev", "--ignore-submodules=none", "-z", lane.HeadSHA, tip, "--")
+	if err != nil {
+		return fmt.Errorf("reading what %s changes: %w", shortSHA(tip), err)
+	}
+	if why, err := judgeLandingDiff(c.RepoRoot, st, lane, raw); err != nil {
+		return err
+	} else if why != "" {
+		return refuse(string(StageLand), "", lane.ID, shortSHA(tip)+", the commit "+which+" on the judged head "+shortSHA(lane.HeadSHA)+", holds "+why+", and "+strayRule,
+			"restore the branch to the judged head, then run `abcd implement step` again")
+	}
+	if err := refuseFoundCloseRecords(c, lane, tip, which, lane.Landing.Closes); err != nil {
+		return err
+	}
+	if lacks, err := foundCommitLacks(c, lane, tip, raw); err != nil {
+		return err
+	} else if lacks != "" {
+		return refuse(string(StageLand), "", lane.ID, shortSHA(tip)+", the commit "+which+" on the judged head "+shortSHA(lane.HeadSHA)+", lacks "+lacks+", so it is not the landing's records",
+			"restore the branch to the judged head, then run `abcd implement step` again; the landing makes its records itself")
+	}
+	// The worktree's HEAD is where the landing's later stages stand, so a commit is
+	// adopted only with HEAD on the lane's branch at it, found or made.
+	if off, err := worktreeHeadOff(lane, tip); err != nil {
+		return err
+	} else if off != "" {
+		return refuse(string(StageLand), "", lane.ID,
+			"the lane's worktree has HEAD "+off+", not on refs/heads/"+lane.Branch+" at "+shortSHA(tip)+", the commit "+which+" on the judged head "+shortSHA(lane.HeadSHA),
+			"put the lane's worktree back on its branch "+lane.Branch+" at "+shortSHA(tip)+", or restore the branch to the judged head "+shortSHA(lane.HeadSHA)+" with the lane's worktree on it, then run `abcd implement step` again")
+	}
+	return nil
+}
+
+// worktreeHeadOff says where the lane's worktree's HEAD stands when it is not the lane's
+// branch at want, "" when it is. Both reads are as stored, so no replace ref or graft
+// stands in for the commit HEAD names.
+func worktreeHeadOff(lane Lane, want string) (string, error) {
+	if !gitutil.IsFullSHA(want) {
+		return "", fmt.Errorf("the commit %q the lane's worktree should stand at is not a full commit name", want)
+	}
+	ref, refErr := pickGitAsStored(lane.Worktree, "symbolic-ref", "-q", "HEAD")
+	ref = strings.TrimSpace(ref)
+	at, atErr := pickGitAsStored(lane.Worktree, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+	at = strings.TrimSpace(at)
+	if refErr == nil && atErr == nil && ref == "refs/heads/"+lane.Branch && at == want {
+		return "", nil
+	}
+	on := "naming no branch"
+	if refErr == nil && ref != "" {
+		on = "on " + strconv.Quote(termsafe.Sanitize(ref))
+	}
+	if atErr != nil {
+		at = ""
+	}
+	return on + " at " + describeCommit(at), nil
+}
+
+// describeCommit names a commit read from git for a refusal: its short name, or that
+// it names none.
+func describeCommit(sha string) string {
+	if !gitutil.IsFullSHA(sha) {
+		return "no commit"
+	}
+	return shortSHA(sha)
 }
 
 // relinkRefusal stops a call whose moves stand with links not repointed: a commit made
@@ -992,10 +1073,11 @@ func refuseChangedCloseRecords(c Context, lane Lane, closes bool) error {
 	})
 }
 
-// refuseFoundCloseRecords holds a commit found on the judged head to it.
-func refuseFoundCloseRecords(c Context, lane Lane, tip string, closes bool) error {
+// refuseFoundCloseRecords holds a commit on the judged head to it, one found ("found")
+// or one this call made ("made").
+func refuseFoundCloseRecords(c Context, lane Lane, tip, which string, closes bool) error {
 	refused := func(rel, how string) error {
-		return refuse(string(StageLand), "", lane.ID, strconv.Quote(termsafe.Sanitize(rel))+" "+how+" in "+shortSHA(tip)+", the commit found on the judged head "+shortSHA(lane.HeadSHA)+", and "+headDecides(c.State),
+		return refuse(string(StageLand), "", lane.ID, strconv.Quote(termsafe.Sanitize(rel))+" "+how+" in "+shortSHA(tip)+", the commit "+which+" on the judged head "+shortSHA(lane.HeadSHA)+", and "+headDecides(c.State),
 			"restore the branch to the judged head, then run `abcd implement step` again")
 	}
 	return judgeCloseRecords(c, lane, closes, refused, func(store closeStore) ([]closeRecord, error) {
@@ -1278,9 +1360,10 @@ func strayRefusal(lane Lane, why string) error {
 }
 
 // stagedRawArgs is git's list of what the index changes against head, one form for
-// every judgement to read, with head's objects as stored.
+// every judgement to read. Each caller runs it through pickGitAsStored or
+// pickGitIndexAsStored, so head's tree is the one its commit stores.
 func stagedRawArgs(head string) []string {
-	return []string{"--no-replace-objects", "diff", "--cached", "--raw", "--no-renames", "--no-abbrev", "--no-ext-diff", "--ignore-submodules=none", "-z", head, "--"}
+	return []string{"diff", "--cached", "--raw", "--no-renames", "--no-abbrev", "--no-ext-diff", "--ignore-submodules=none", "-z", head, "--"}
 }
 
 // strayChanges judges the lane's worktree as `git add` would stage it, on a copy of the
@@ -1315,7 +1398,7 @@ func strayChanges(st State, lane Lane) (string, error) {
 	if _, err := pickGitIndex(wt, index, "reset", "-q", "--", TierRelDir); err != nil {
 		return "", err
 	}
-	raw, err := pickGitIndex(wt, index, stagedRawArgs(lane.HeadSHA)...)
+	raw, err := pickGitIndexAsStored(wt, index, stagedRawArgs(lane.HeadSHA)...)
 	if err != nil {
 		return "", err
 	}
@@ -1858,7 +1941,15 @@ func nameable(model string) bool {
 // everything else stays as it verified. It returns the run log's note naming
 // each receipt it changed, "" when it changed none; a receipt it could not
 // mend is still refused by assistedByTrailers.
-func rereadModels(c Context, lane *Lane) string {
+//
+// A model taken so is a writer of the lane as its trailer names it, and is
+// held to the lane's reviewers as one learned late (resettleWriters): the
+// writers each reviewer records are recomputed in the same change, and where
+// a reviewer is no longer another model than every writer, its review no
+// longer counts and the lane is handed back as stuck, hb carrying why.
+func rereadModels(c Context, lane *Lane) (string, *HandBack) {
+	before := *lane
+	lane.Receipts = slices.Clone(lane.Receipts)
 	var filled []string
 	var root *os.Root
 	defer func() {
@@ -1872,6 +1963,7 @@ func rereadModels(c Context, lane *Lane) string {
 			continue
 		}
 		if r.Route != nil && r.Route.Model != "" && plainWritten(r.Route.Model) && nameable(r.Route.Model) {
+			r.Named = keptName(*r)
 			r.Model = r.Route.Model
 			filled = append(filled, r.Receipt+" from the route that ran it")
 			continue
@@ -1879,20 +1971,41 @@ func rereadModels(c Context, lane *Lane) string {
 		if root == nil {
 			var err error
 			if root, err = os.OpenRoot(c.RepoRoot); err != nil {
-				return ""
+				break
 			}
 		}
 		rc, err := readReceipt(c.RepoRoot, root, r.Receipt, lane.ID)
-		if err != nil || rc.Model == r.Model || !plainWritten(rc.Model) || !nameable(rc.Model) {
+		if err != nil || rc.Model == r.Model || !plainWritten(rc.Model) || !nameable(rc.Model) || !writerKnown(rc.Model) {
 			continue
 		}
+		r.Named = keptName(*r)
 		r.Model = rc.Model
 		filled = append(filled, r.Receipt+" from its file, read again")
 	}
 	if len(filled) == 0 {
-		return ""
+		return "", nil
 	}
-	return "took the model of " + strings.Join(filled, "; ") + ", since the receipt verified with none the trailer can name"
+	note := "took the model of " + strings.Join(filled, "; ") + ", since the receipt verified with none the trailer can name"
+	if withdrawn, _ := resettleWriters(c.State, before, lane); len(withdrawn) > 0 {
+		return note + "; " + withdrawnNote(withdrawn, false), lateWriterHandBack(c.State, *lane, withdrawn)
+	}
+	return note, nil
+}
+
+// keptName is the name a receipt record keeps as the one its receipt named
+// when its model is replaced: the one it kept from an earlier replacement,
+// else its model, so the lane's writers read the same before and after
+// (laneWriters). Only a name the comparison reads is kept (writerKnown): any
+// other, an overlong or malformed one included, is kept as nothing, since it
+// was never a writer, and a stored name is bounded where it is stored.
+func keptName(r ReceiptRecord) string {
+	if r.Named != "" {
+		return r.Named
+	}
+	if writerKnown(r.Model) {
+		return r.Model
+	}
+	return ""
 }
 
 // modelGap is the refusal of a landing step whose text must name the models
@@ -2137,6 +2250,15 @@ func prBodyParked(st State, lane Lane, assisted []string, parked bool) string {
 		} else {
 			p("- Validation round %d at %s passed: %s.\n", r.Round, shortSHA(r.HeadSHA), verdictsLine(r))
 		}
+		for _, v := range r.Validators {
+			if m := v.models(); m != "" {
+				who := v.Role
+				if v.Class != "" {
+					who += fmt.Sprintf(", reviewer %d", v.Reviewer)
+				}
+				p("- %s: %s.\n", who, m)
+			}
+		}
 		if parked {
 			p("- No round read its records commit %s, so the lane is parked at this pull request for a person.\n", shortSHA(lane.HeadSHA))
 		}
@@ -2175,7 +2297,9 @@ func landPullRequest(c Context, lane *Lane) (Outcome, error) {
 		// The disclosure is settled before the forge is called. The records
 		// commit settled it already on a lane that records something; a lane
 		// that records nothing made no records commit, so it is settled here.
-		if note := rereadModels(c, lane); note != "" {
+		if note, hb := rereadModels(c, lane); hb != nil {
+			return Outcome{HandBack: hb, Note: note}, nil
+		} else if note != "" {
 			return Outcome{Stay: true, Note: note}, nil
 		}
 		assisted, gap := assistedByTrailers(lane.Receipts)
@@ -2306,6 +2430,12 @@ const gateUnreadBound = 30 * time.Minute
 // an approval given later arms it. A pull request the forge reports
 // conflicting is refused, unarmed.
 func landArm(c Context, lane *Lane) (Outcome, error) {
+	// No lane is armed here, or its merge gate asked, while a runner has not
+	// said which model ran one of its implementers; one armed before that wait
+	// existed has its arming withdrawn by landMerged (land_runner_wait.go).
+	if out, waits, err := awaitRunnerReport(c, *lane); waits {
+		return out, err
+	}
 	ld := lane.Landing
 	def, err := defaultBranch(c, *lane)
 	if err != nil {
@@ -2588,10 +2718,23 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 			}
 			return Outcome{}, conflictRefusal(c, *lane, def, tracking, m)
 		}
+		// An armed lane whose runner has not reported is not asked, recorded
+		// or armed again: its arming is withdrawn once the step's save has
+		// written, so a refused save leaves the forge as it was, and from the
+		// next step it waits at its arming as an unarmed lane does
+		// (withdrawAfterWrite, land_runner_wait.go).
+		if r, unreported := unreportedRunner(*lane); unreported && ld.Armed {
+			return Outcome{Stay: true, withdraw: &landWithdrawal{
+				why:  "the runner that ran the implementer whose receipt is " + r.Receipt + " has not said which model ran it",
+				then: "the lane waits at its arming for that report, and is handed back as stuck if it has not come within the stuck bound's minutes"}}, nil
+		}
 		// A pull request left open is asked about again: an approval of its
 		// head, or a review receipt naming it, given since arms it now, and
 		// the reason it waits is brought up to date otherwise.
 		if !ld.Armed {
+			if out, waits, err := awaitRunnerReport(c, *lane); waits {
+				return out, err
+			}
 			rule, err := readMergeRule(c, *lane, def)
 			if err != nil {
 				return Outcome{}, err

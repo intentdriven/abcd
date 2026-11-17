@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:ahoy` install/update detector
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain ahoy`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 `abcd --help` lists `ahoy` in the person's set-up group. `statusline`, the
 harness-invoked row that `install` wires, and `rules`, which renders the rule
 loader `install` sets up, are in the agents-and-hosts block of
@@ -500,7 +504,7 @@ it can, each on one line
    restore, never only a note behind `--details`. `--details` adds the full
    record (every path written and every note). A repository already fully set
    up is reported in one line, `abcd is already set up here; nothing
-   changed.`, and nothing is written.
+   changed.`, and nothing is written. <!-- facts-lint: historical -->
 
 A first run at a terminal with the suggested answers therefore asks the plan
 and the person-only questions alone: the abcd download, the shell settings,
@@ -1830,7 +1834,11 @@ and the row names that entry; a file the redaction cannot vouch for (not text,
 over 4 MiB, or a secret it cannot mask) fails the archive and keeps the
 worktree. It then runs `git worktree remove` without `--force`, so git checks
 the tree and the lock again and refuses a tree that changed. Files git ignores
-outside the local tier go with the worktree and are not archived. `prune` never
+outside the local tier go with the worktree and are not archived, so a
+`reclaimed` or `would reclaim` row, a merged worktree's included, names them:
+how many and the first few, or that they could not be listed (a listing that
+fails says so and does not stop the removal; you decide). With `--json` the
+row carries them as `ignored`. `prune` never
 deletes a branch and never runs the repository-wide `git worktree prune`. After
 it removes a worktree it trims the Go build cache, as `worktree trim-cache`
 below does, and a trim that fails never fails the prune.
@@ -1987,5 +1995,40 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain ahoy` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd ahoy [flags]`
+  - An example call is `abcd ahoy`.
+- `abcd ahoy connect [<provider>] [flags]`
+  - An example call is `abcd ahoy connect local --base-url http://127.0.0.1:8080/v1 --model example-model --home none`.
+- `abcd ahoy credential [<name>] [flags]`
+  - An example call is `abcd ahoy credential`.
+- `abcd ahoy doctor [flags]`
+  - An example call is `abcd ahoy doctor`.
+- `abcd ahoy install [flags]`
+  - Reads `--answers`, the interview answers.
+  - An example call is `abcd ahoy install`.
+- `abcd ahoy remote [flags]`
+  - An example call is `abcd ahoy remote`.
+- `abcd ahoy remote apply [flags]`
+  - An example call is `abcd ahoy remote apply`.
+- `abcd ahoy shared-folder [<folder>] [--person <account>] [flags]`
+  - An example call is `abcd ahoy shared-folder /Users/Shared`.
+- `abcd ahoy uninstall [flags]`
+  - An example call is `abcd ahoy uninstall`.
+- `abcd ahoy worktree [flags]`
+  - An example call is `abcd ahoy worktree`.
+- `abcd ahoy worktree add <name> [flags]`
+  - An example call is `abcd ahoy worktree add example-lane`.
+- `abcd ahoy worktree list [flags]`
+  - An example call is `abcd ahoy worktree list`.
+- `abcd ahoy worktree prune [flags]`
+  - An example call is `abcd ahoy worktree prune --dry-run`.
+- `abcd ahoy worktree trim-cache [flags]`
+  - An example call is `abcd ahoy worktree trim-cache --dry-run`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

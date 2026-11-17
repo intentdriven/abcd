@@ -1,6 +1,10 @@
 package worktree
 
-import "os"
+import (
+	"os"
+
+	"github.com/intentdriven/abcd/internal/gitutil"
+)
 
 // SwapFlushForTest replaces the archive's flush for one test, so the test can
 // watch what is made durable and when; restore puts the real one back.
@@ -31,12 +35,12 @@ func SwapOwnerForTest(fn func(path string) (uint32, error)) (restore func()) {
 	return func() { ownerOf = prev }
 }
 
-// SwapIgnoredForTest replaces the ignored-path listing for one test, so a test
-// can stand in for a git that refuses it.
-func SwapIgnoredForTest(fn func(root, rel string) ([]string, error)) (restore func()) {
-	prev := ignoredUnder
-	ignoredUnder = fn
-	return func() { ignoredUnder = prev }
+// SwapIgnoredForTest replaces the status read of ignored files for one test,
+// so a test can stand in for a git that refuses it.
+func SwapIgnoredForTest(fn func(dir string) ([]gitutil.StatusEntry, error)) (restore func()) {
+	prev := ignoredStatus
+	ignoredStatus = fn
+	return func() { ignoredStatus = prev }
 }
 
 // SwapOpenCacheRootForTest replaces how the trim opens the cache for one test.

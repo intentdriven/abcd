@@ -874,6 +874,29 @@ func TestTheInterviewMeasuresWithItsLimits(t *testing.T) {
 	}
 }
 
+// TestBriefNamesTheFileThatSetTheLimits (spc-2610301950037469, approach 6):
+// under a repository whose .abcd/config.json sets question.rows to 40, the
+// brief's asking rules, at the limits and note the resolver returns, state
+// forty rows and name that file as having set them.
+func TestBriefNamesTheFileThatSetTheLimits(t *testing.T) {
+	r := newWrittenRun(t, "")
+	p := filepath.Join(r.repo, filepath.FromSlash(layered.Config.RepoRel))
+	if err := os.WriteFile(p, []byte(`{"question":{"rows":40}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	v, err := layered.QuestionLimits(layered.Roots{Repo: r.repo, Home: r.home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.w.Limits, r.w.LimitsNote = v.V, v.Note()
+	brief := r.w.brief(1, 0, nil, carried{})
+	for _, want := range []string{"fits forty rows at eighty columns", "In this repository, `.abcd/config.json` set the rows."} {
+		if !strings.Contains(brief, want) {
+			t.Errorf("the brief under a repository's rows 40 does not say %q:\n%s", want, brief)
+		}
+	}
+}
+
 // TestBriefSetsTheHostOnlyRulesAside (spc-2610301917245442, step 4): the
 // asking rules the brief carries send a host session's questions through the
 // question-writing agent and `abcd guard question`, head them with abcd's

@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:landings`
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain landings`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Say how each change landed on the default branch: who or what let it in, and
 under which rule. The verb reads history as this checkout last fetched it. It
 fetches nothing and pushes nothing; its one network act is the forge client
@@ -78,7 +82,12 @@ The classes:
 - `person-approved` — a merge a person approved: a recorded approval of its
   merged head in the local tier, a forge review approving that head by someone
   other than the pull request's author, or the human facilitator mode its
-  first parent committed.
+  first parent committed. The recorded approval counts from any worktree of the
+  checkout but a drive lane's (one the build loop made for a lane, named
+  `run-<id>-lane-<n>` in any case, where the merge gate never counts an approval
+  either) or
+  one under a lane's worktree, its path resolved first, and from none when
+  `abcd landings` runs from a drive lane's worktree or from anywhere under one.
 - `drain` — a merge under the auto mode with no approval seen whose branch
   carries the drain's `Admitted-by:` trailer; its rule is the drain rule record.
 - `automatic` — every other merge under the auto mode with no approval seen; its
@@ -158,3 +167,11 @@ too, you are in a source checkout of this repo, where — and only there —
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
 `go run ./cmd/abcd ahoy install` in a source checkout.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain landings` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd landings [commit] [flags]`
+  - An example call is `abcd landings --since v0.11.0`.
+<!-- /generated -->

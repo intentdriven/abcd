@@ -107,7 +107,9 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"another subscription, and a limit waits for that profile's reset. Nothing moves a drive\n" +
 			"from one profile to another. It then judges each eligible issue,\n" +
 			"drives each lane to its landing, every role on that separate login, and runs each\n" +
-			"landing's preflight behind the load gate, printing one line per step and logging them\n" +
+			"landing's preflight behind the load gate, in a checkout of the lane's head the drive\n" +
+			"makes itself and removes after, never in the lane's worktree, printing one line per\n" +
+			"step and logging them\n" +
 			"under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/, the active\n" +
 			"hooks, the forge's workflow folder (.github/) or abcd's configuration, receipts or\n" +
 			"approvals is handed back at its landing, and an issue that names one is passed over,\n" +
@@ -291,6 +293,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 		Example: "  abcd drain --drive\n  abcd drain --drive --yes --max 3\n  abcd drain --dry-run\n  abcd drain --dry-run --json\n  abcd drain --max 3\n  abcd drain --json\n  abcd drain --judgement .abcd/.work.local/run/drain-judgement.json --json",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			defer installAutoSweep()()
 			repoRoot, err := ledgerRootFor(cmd, "abcd drain")
 			if err != nil {
 				return err
@@ -384,7 +387,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 		}
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show every open issue's disposition and the order a drain takes them; writes nothing")
-	cmd.Flags().IntVar(&maxLanes, "max", 0, "cap the lanes this drain opens; the default is all")
+	cmd.Flags().IntVar(&maxLanes, "max", 0, "cap the lanes this drain opens; the default is all, and eight for a drive")
 	cmd.Flags().StringVar(&pace, "pace", "", "the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer")
 	cmd.Flags().StringVar(&subAgents, "sub-agents", "", "the ceiling on lanes and validators alive at once; wins over every configured layer")
 	cmd.Flags().StringVar(&fixRounds, "fix-rounds", "", "the fix rounds a lane may take before it is handed back; wins over every configured layer")

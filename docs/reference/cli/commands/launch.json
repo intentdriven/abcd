@@ -1,0 +1,149 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd launch",
+      "sentence": "Preview the release cut, the launch bundle, its secret scan and the gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run.",
+      "usage": "abcd launch [flags]",
+      "flags": [
+        {
+          "name": "baseline",
+          "type": "string"
+        },
+        {
+          "name": "deep-smoke",
+          "type": "bool"
+        },
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "fetch-baseline",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd launch --dry-run",
+      "subcommands": [
+        "archive",
+        "manifests",
+        "receipts",
+        "scaffold",
+        "ship"
+      ]
+    },
+    {
+      "path": "abcd launch archive",
+      "sentence": "Render the release's plugin archive: Writes the archive into --out; refuses a dirty tree without --verify, and exits 1 when --verify finds it unpinned.",
+      "usage": "abcd launch archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] [flags]",
+      "flags": [
+        {
+          "name": "out",
+          "type": "string"
+        },
+        {
+          "name": "repository",
+          "type": "string"
+        },
+        {
+          "name": "tag",
+          "type": "string"
+        },
+        {
+          "name": "verify",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd launch archive --out dist"
+    },
+    {
+      "path": "abcd launch manifests",
+      "sentence": "Check the release manifests agree on the version, or carry none on a dev tree: Writes nothing; refuses with exit 1 on drift and exit 2 on an unreadable input.",
+      "usage": "abcd launch manifests --tree public|dev [--root <dir>] [flags]",
+      "flags": [
+        {
+          "name": "root",
+          "type": "string"
+        },
+        {
+          "name": "tree",
+          "type": "string",
+          "allowed": [
+            "public",
+            "dev"
+          ]
+        }
+      ],
+      "inputs": [],
+      "example": "abcd launch manifests --tree public"
+    },
+    {
+      "path": "abcd launch receipts",
+      "sentence": "Run the release job's semantic-receipt gate locally, before the merge: Writes nothing; refuses with exit 1 when the release job would refuse the receipts.",
+      "usage": "abcd launch receipts [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd launch receipts"
+    },
+    {
+      "path": "abcd launch scaffold",
+      "sentence": "Scaffold the release gate for the declared artefact kind: Writes its workflows and runbook; refuses an undeclared kind, or a hand-edited file without --confirm.",
+      "usage": "abcd launch scaffold [--confirm] [--dependency-reauthor] [flags]",
+      "flags": [
+        {
+          "name": "confirm",
+          "type": "bool"
+        },
+        {
+          "name": "dependency-reauthor",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd launch scaffold"
+    },
+    {
+      "path": "abcd launch ship",
+      "sentence": "Cut a release, deriving its version and records from what shipped: Writes the CHANGELOG heading, RELEASE.md, and the archive pin; refuses a cut its gates stop.",
+      "usage": "abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [--dry-run] [flags]",
+      "flags": [
+        {
+          "name": "allow-dirty",
+          "type": "bool"
+        },
+        {
+          "name": "changelog-json",
+          "type": "string"
+        },
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "fetch-baseline",
+          "type": "bool"
+        },
+        {
+          "name": "payload-dir",
+          "type": "string"
+        },
+        {
+          "name": "route",
+          "type": "list"
+        }
+      ],
+      "inputs": [
+        {
+          "flag": "changelog-json",
+          "kind": "json",
+          "name": "composed changelog",
+          "schema_version": 2,
+          "version_in": "schema_version"
+        }
+      ],
+      "example": "abcd launch ship --dry-run"
+    }
+  ]
+}

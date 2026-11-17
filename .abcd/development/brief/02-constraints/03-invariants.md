@@ -191,6 +191,15 @@ The following are non-negotiable invariants — any architectural choice that vi
    merged as another commit, the forge's word that a number names no pull
    request); every other answer is asked again on the next listing, and no
    body is kept. A trace makes the same reads over at most two listings.
+   `sweep` (itd-2610222214476887) fetches before it judges: origin's
+   branches, pruned, then the reservations and origin's default branch. Its
+   meaning also includes the forge client's reads of origin's repository and
+   of its pull requests, and, under its applying form alone, a push deleting
+   each merged branch on origin that nothing still needs, under a lease on
+   the tip that was judged, with origin asked for its default branch and tip
+   around each such delete, and the reservation sweep's workflow started
+   through the forge client (`gh workflow run`) with its newest run read
+   back. It never pushes a reservation deletion itself.
    Setup (`abcd ahoy install`) downloads abcd only on a yes to the question
    that names the download, the release and the file it is written to, which
    is that fetch's documented meaning: the release's binary for this computer,
@@ -212,6 +221,9 @@ The following are non-negotiable invariants — any architectural choice that vi
    (`internal/surface/dashboard`); a later listener is admitted only by
    amending that record in the open. Its amendment of 2026-10-14 admits one
    second listener, the brief session's relay (`internal/surface/session`).
+   The same package also opens, only while the session setup waits for
+   GitHub's answer to the sign-in app's manifest, a listener on this
+   computer's loopback address.
    The relay is started on purpose and listens on loopback unless an address
    is chosen on that run. On a person's machine it is reached through
    Tailscale Serve, never Funnel. It admits people by the host's join code

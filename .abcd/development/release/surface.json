@@ -2808,7 +2808,7 @@
     {
       "path": "abcd implement widen",
       "hidden": false,
-      "sentence": "Widen an issue lane's hold to a path before it is edited: Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.",
+      "sentence": "Widen a lane's hold to a path before it is edited: Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.",
       "flags": [
         {
           "name": "lane",
@@ -4723,6 +4723,22 @@
       "block": "agents",
       "sentence": "Render abcd's status-line row from the host's payload on stdin: Writes nothing; never refuses.",
       "flags": []
+    },
+    {
+      "path": "abcd sweep",
+      "hidden": false,
+      "group": "set-up",
+      "block": "people",
+      "sentence": "List the worktrees, branches, reservations and reports left lying around, or clear the spent: Writes only the fetch bare; refuses a failed fetch.",
+      "flags": [
+        {
+          "name": "apply",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd update",

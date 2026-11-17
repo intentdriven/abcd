@@ -54,7 +54,8 @@ const (
 	// TerminalUntil: the bound the person set with --until has passed.
 	TerminalUntil = "until"
 	// TerminalKilled: the context ended, a second signal: the agent's process
-	// group was killed, and what it held lapses on its own.
+	// group was killed, and what it held lapses on its own unless a load-gate
+	// waiter in this copy renews it (gateWaiterRenews).
 	TerminalKilled = "killed"
 	// TerminalPassedLanes: the only lanes the drain has left in progress are ones the
 	// drive passed over, since it may not save them (PassedLane): the drain stays open,
@@ -102,12 +103,15 @@ type TerminalOptions struct {
 	Stages Stages
 	// Review is the reviewer route, as `implement step` hands it.
 	Review *ReviewRoute
-	// Preflight runs the repository's preflight in a lane's worktree, behind
-	// the load gate.
-	Preflight func(ctx context.Context, worktree string) error
+	// Preflight runs the repository's preflight behind the load gate in
+	// checkout, the drive's own checkout of a lane's head, whose full commit
+	// id is head (preflightcheckout.go), never the lane's worktree.
+	Preflight func(ctx context.Context, checkout, head string) error
 	// PreflightAllowed says whether a lane's preflight may run, given its
-	// worktree and base; a *PreflightRefused hands the lane back. Nil allows all.
-	PreflightAllowed func(worktree, base string) error
+	// worktree, base and head: the head its landing lands, the judged head or
+	// the landing's records commit on it, never what the worktree has checked
+	// out. A *PreflightRefused hands the lane back. Nil allows all.
+	PreflightAllowed func(worktree, base, head string) error
 	// Stop is closed when a stop is asked for. The context stays live, so a
 	// call in flight finishes.
 	Stop <-chan struct{}
@@ -210,6 +214,9 @@ type TerminalResult struct {
 	PassedLanes []PassedLane `json:"passed_lanes,omitempty"`
 	// Why is what stopped the run when a check did.
 	Why string `json:"why,omitempty"`
+	// Swept is the line of the sweep the drive ran on its own at its end
+	// (autosweep.go), "" when it ran none or it said nothing.
+	Swept string `json:"swept,omitempty"`
 }
 
 // terminal is one run in progress.
@@ -230,8 +237,12 @@ type terminal struct {
 	unmarked []string
 	// idleSince is when the run last stopped moving, zero while it moves.
 	idleSince time.Time
-	// ranClean names the lane and head a preflight last exited 0 on.
-	ranClean string
+	// ranClean names the lane and head a preflight last exited 0 on, and
+	// ranCleanHeld why that landing was held once it had, "" when it was not
+	// (ownPreflight): a later step on the same head is refused again with it,
+	// and the preflight is not run again.
+	ranClean     string
+	ranCleanHeld string
 	// ctx is the run's, which says whether a failed launch was the run ending.
 	ctx context.Context
 	// evidence keeps what the run's first limit showed (limit_evidence.go).
@@ -295,7 +306,9 @@ type terminal struct {
 	wallEnded string
 	// judge is what the last move's routed judgement came to.
 	judge JudgeOutcome
-	// minted names each head a preflight this run ran exited 0 on, and bases each
+	// minted names each head a preflight this run ran exited 0 on in the
+	// drive's own checkout of that head, which held the head's content before
+	// and after (ownPreflight); it is the drive's memory, never a file. bases each
 	// lane's base as the run first read it.
 	minted map[string]bool
 	bases  map[string]string
@@ -326,6 +339,7 @@ func RunTerminal(ctx context.Context, repoRoot string, o TerminalOptions) (Termi
 	}
 	o.Drain.Context = ctx
 	o.Drain.AskJudgeAgain = true
+	o.Drain.driveEnds = true
 	if o.Drain.Transcripts == nil {
 		o.Drain.Transcripts = o.Runners.Transcripts
 	}
@@ -343,6 +357,9 @@ func newTerminal(repoRoot string, o TerminalOptions) *terminal {
 		t.o.Sleep = func(ctx context.Context, d time.Duration) { sleepOr(ctx, d, o.Stop, t.stopHolds) }
 	}
 	t.o.Options.driverIsSelf = true
+	// A person's stop ends every sweep the drive runs on its own, a lane's
+	// landing's and a drain move's, at once (autosweep.go).
+	t.o.Options.sweepStop = o.Stop
 	t.o.Drain.JudgeOutcome = &t.judge
 	t.o.Options.RunStateWatch = true
 	t.o.Options.ReceiptOwn = func(sha string) bool { return t.minted[sha] }
@@ -1119,7 +1136,7 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 			}
 			if lane.Stage == StageLand && t.o.PreflightAllowed != nil {
 				var refused *PreflightRefused
-				if perr := t.o.PreflightAllowed(lane.Worktree, diffBase(lane)); errors.As(perr, &refused) {
+				if perr := t.o.PreflightAllowed(lane.Worktree, diffBase(lane), lane.HeadSHA); errors.As(perr, &refused) {
 					_, ended, err := t.laneRefused(ctx, runID, lane.ID, refused.Reason, refused.Reason)
 					return ended, err
 				} else if perr != nil {
@@ -1828,21 +1845,34 @@ func (t *terminal) stepRefused(ctx context.Context, runID string, err error) (ag
 	lane := run.Lanes[i]
 	head := runID + " " + lane.ID + " " + lane.HeadSHA
 	if t.ranClean == head {
-		// It exited 0 and the receipt is still not there, which running it again
-		// would not change: the lane goes to the stuck check.
-		return t.laneRefused(ctx, runID, lane.ID, "its preflight exits 0 and leaves no receipt naming the lane's head", "")
+		// It exited 0 on this head, and the landing was held after it or the
+		// receipt is still not there, which running it again would not change:
+		// the lane goes to the stuck check.
+		why := t.ranCleanHeld
+		if why == "" {
+			why = "its preflight exits 0 and leaves no receipt naming the lane's head"
+		}
+		return t.laneRefused(ctx, runID, lane.ID, why, "")
 	}
 	if !t.wallHeld() {
 		return false, TerminalWall, nil
 	}
-	t.say("%s %s: running the preflight", runID, lane.ID)
-	switch perr := t.preflight(ctx, lane.Worktree); {
-	case perr == nil:
-		t.ranClean = head
-		t.minted[lane.HeadSHA] = true
-		return true, "", nil
+	// The preflight runs in the drive's own checkout of the lane's stored head,
+	// never in the lane's worktree (preflightcheckout.go), and a receipt is the
+	// drive's own only for a head it saw pass there.
+	held, passed, perr := t.ownPreflight(ctx, runID, lane)
+	switch {
 	case ctx.Err() != nil || t.stopped() || t.stopHolds():
 		return false, "", nil
+	case held != "":
+		if passed {
+			t.ranClean, t.ranCleanHeld = head, held
+		}
+		return t.laneRefused(ctx, runID, lane.ID, held, "")
+	case perr == nil:
+		t.ranClean, t.ranCleanHeld = head, ""
+		t.minted[lane.HeadSHA] = true
+		return true, "", nil
 	default:
 		return t.laneRefused(ctx, runID, lane.ID, "its preflight failed: "+perr.Error(), "")
 	}
@@ -1850,7 +1880,7 @@ func (t *terminal) stepRefused(ctx context.Context, runID string, err error) (ag
 
 // preflight runs a lane's preflight on a context a stop also ends, this terminal's or one
 // set from outside it, so one queued at the load gate or running does not outlast it.
-func (t *terminal) preflight(ctx context.Context, worktree string) error {
+func (t *terminal) preflight(ctx context.Context, checkout, head string) error {
 	pctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	looked := make(chan struct{})
@@ -1875,7 +1905,7 @@ func (t *terminal) preflight(ctx context.Context, worktree string) error {
 	}()
 	var err error
 	t.beginCall("the preflight")
-	t.renewing(func() { err = t.o.Preflight(pctx, worktree) })
+	t.renewing(func() { err = t.o.Preflight(pctx, checkout, head) })
 	cancel()
 	<-looked
 	return err
@@ -2067,7 +2097,8 @@ func dropMovedRun(repoRoot string, run State, why string, now time.Time, o Optio
 		clause, failed := releaseReservationAt(repoRoot, run.Key, tip, "", now)
 		why += "; " + clause
 		if failed {
-			why += ", so it lapses with its lease"
+			tail, _, _ := lapseTail(repoRoot, run, now)
+			why += tail
 		} else if err := mutateReservation(repoRoot, run.RunID, func(st *State) (bool, error) {
 			st.Record = append(st.Record, Entry{At: now, Stage: StageReservationReleased, Note: clause})
 			st.UpdatedAt = now
@@ -2482,7 +2513,7 @@ func (t *terminal) letGo() {
 		return nil
 	})
 	if err != nil {
-		t.say("what this run holds was not released, and lapses with its lease: %s", err.Error())
+		t.say("what this run holds was not released, and lapses with its lease "+unlessRenewedEither+": %s", err.Error())
 	}
 }
 
@@ -2499,10 +2530,14 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 	t.say("nothing this drive holds was released: releasing is a push, and the drive runs none while %s", termsafe.Sanitize(fsutil.RedactHome(reason)))
 	st, live, err := readDrain(t.repoRoot)
 	if err != nil {
-		t.say("which reservations this drive holds could not be read, and each lapses with its lease: %s", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		t.say("which reservations this drive holds could not be read, and each lapses with its lease "+unlessRenewedEither+": %s", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 		return
 	}
-	var ids []string
+	type left struct {
+		id  string
+		run bool
+	}
+	var ids []left
 	for _, l := range st.Lanes {
 		if l.Outcome != DrainLaneInProgress || t.passedLane(l.RunID) {
 			continue
@@ -2514,22 +2549,37 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 		if c, err := runControl(t.repoRoot, l.RunID); err == nil && c.Stop != nil {
 			continue
 		}
-		ids = append(ids, run.Key)
+		ids = append(ids, left{id: run.Key, run: true})
 	}
 	if j := st.Judging; j != nil && live && j.Hold != nil {
-		ids = append(ids, j.Issue)
+		ids = append(ids, left{id: j.Issue})
 	}
 	snap, verr := claim.View(t.repoRoot, now)
-	for _, id := range ids {
-		lapses := "lapses with its lease"
-		if verr == nil {
-			if r, ok := snap.Lookup(id); ok && r.Copy == claim.CopyThis && r.State == claim.StateLive {
-				lapses = "lapses at " + stamp(r.EffectiveExpiry)
-			}
+	for _, l := range ids {
+		var r claim.Reservation
+		read := verr == nil
+		if read {
+			r, _ = snap.Lookup(l.id)
 		}
 		t.say("%s: its reservation was not released and %s; once what the drive holds is as it should be, release it with `abcd reserve %s --release`, or start the drive again, which takes the run up",
-			termsafe.Sanitize(id), lapses, termsafe.Sanitize(id))
+			termsafe.Sanitize(l.id), heldLapse(r, read, l.run), termsafe.Sanitize(l.id))
 	}
+}
+
+// heldLapse says when a reservation leftHeld names lapses. Only a live
+// reservation this copy's last push takes can be renewed here, so only its
+// lapse takes a clause; read is false when the view could not be read. A
+// lane's run still in progress (run) is renewed by a step or `abcd drain` run
+// in this copy as well as by a load-gate waiter (UnlessRunRenewed); a
+// judgement's hold by the waiter alone (claim.RenewDue).
+func heldLapse(r claim.Reservation, read, run bool) string {
+	if !read || r.Copy != claim.CopyThis || r.State != claim.StateLive {
+		return "lapses with its lease"
+	}
+	if run {
+		return "lapses at " + stamp(r.EffectiveExpiry) + " " + UnlessRunRenewed
+	}
+	return "lapses at " + stamp(r.EffectiveExpiry) + " " + unlessWaiterRenews
 }
 
 // ended is the run's result as it ends: unless a kill or a stop from elsewhere
@@ -2551,6 +2601,13 @@ func (t *terminal) ended(why string) TerminalResult {
 		t.letGo()
 	}
 	res := TerminalResult{Ended: why, Last: t.last, HeldBack: t.heldBack, PassedOver: t.passedOver, PassedLanes: t.passedLanes}
+	// A drive that ends, other than killed, halted on a check or stopped by
+	// a person, sweeps on its own once, after it has let its lanes go
+	// (autosweep.go); the line is the drive's end's to print (Swept). A
+	// stop that comes while it sweeps ends it between removals.
+	if why != TerminalKilled && why != TerminalHalted && why != TerminalStopped {
+		res.Swept = autoSweep(t.ctx, t.o.Stop, t.repoRoot)
+	}
 	if why == TerminalWall || why == TerminalHalted {
 		res.Why = t.why
 	}

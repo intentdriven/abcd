@@ -36,6 +36,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
+	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"syscall"
@@ -255,20 +256,31 @@ func readGuarded(path string, limit int64) ([]byte, error) {
 	return data, nil
 }
 
-// Load returns the bundled defaults merged with the user scope's
+// LoadWith returns the bundled defaults merged with the user scope's
 // ~/.abcd.noindex/rules.json and then with <repoRoot>/.abcd/rules.json — bundled, then
 // user, then repo, each layer overriding per field (itd-117, spc-23). An absent
 // file contributes nothing, so a machine with neither file gets the defaults
 // unchanged; a present file that cannot be read, parsed or validated is a
 // fail-closed error naming that file, and no partial set is returned with it.
-func Load(repoRoot string) (RuleSet, error) {
+//
+// The GRILL domain states the question limits l, the limits in force for
+// repoRoot as the front door resolved them, and n, where they came from
+// (spc-2610301950037469, approach 8); a caller with no repository's limits
+// passes question.Default and no note, which is the bundled domain. The domain
+// is regenerated on the bundled base before any rules.json layer lands, so a
+// repository that overrides GRILL's rules still wins, and its Source stays
+// bundled: setting a figure is not replacing the rules. A refusal in n is also one line of the
+// notes, so every front door surfaces it out of band.
+func LoadWith(repoRoot string, l question.Limits, n question.LimitsNote) (RuleSet, error) {
 	ld := guard.LoadRepo(repoRoot)
-	return load(func() (RuleSet, bool, error) { return readRepoLayer(repoRoot) }, ld)
+	return load(func() (RuleSet, bool, error) { return readRepoLayer(repoRoot) }, ld,
+		func(rs RuleSet) RuleSet { return withRepoGrillDomain(rs, l, n) })
 }
 
-// LoadAt is Load with the repository's rules and guard registry as they stood at
+// LoadAt is LoadWith with the repository's rules and guard registry as they stood at
 // commit base, for an agent whose working tree is not what it is judged by: what
-// it wrote there since, committed or not, is not read.
+// it wrote there since, committed or not, is not read. GRILL stays the
+// bundled domain, at abcd's default question limits.
 func LoadAt(repoRoot, base string) (RuleSet, error) {
 	if !gitutil.IsFullSHA(base) {
 		return RuleSet{}, fmt.Errorf("rules: %q names no commit to read the rules at", base)
@@ -286,11 +298,13 @@ func LoadAt(repoRoot, base string) (RuleSet, error) {
 			return RuleSet{}, false, err
 		}
 		return over, true, nil
-	}, guard.Loaded{Registry: guard.RegistryAt(repoRoot, base), Posture: guard.LoadClean})
+	}, guard.Loaded{Registry: guard.RegistryAt(repoRoot, base), Posture: guard.LoadClean}, nil)
 }
 
-// load is Load, given how to read the repository's layer and its guard registry.
-func load(readRepo func() (RuleSet, bool, error), ld guard.Loaded) (RuleSet, error) {
+// load is LoadWith, given how to read the repository's layer and its guard
+// registry, and how to regenerate GRILL for the repository (nil keeps the
+// bundled domain).
+func load(readRepo func() (RuleSet, bool, error), ld guard.Loaded, grill func(RuleSet) RuleSet) (RuleSet, error) {
 	home, _ := userHomeDir()
 	user, haveUser, err := readUserLayer(home)
 	if err != nil {
@@ -303,6 +317,11 @@ func load(readRepo func() (RuleSet, bool, error), ld guard.Loaded) (RuleSet, err
 	// SHELL is regenerated from the guard registry in force for this
 	// repository before any rules.json layer lands on it (ruling CK1).
 	base := withRepoShellDomain(Defaults(), ld)
+	// GRILL is regenerated at the repository's question limits on the same
+	// base, before any layer lands (spc-2610301950037469, approach 8).
+	if grill != nil {
+		base = grill(base)
+	}
 	if !haveUser && !haveRepo {
 		return base, nil
 	}

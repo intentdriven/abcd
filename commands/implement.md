@@ -8,6 +8,10 @@ user-invocable: false
 
 # `/abcd:implement` — share a run between sessions
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain implement`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 An autonomous run is one session's by default. A second session may join it
 for a window, and the run divides the work one of three ways — a claim per
 record, whole batches per session, or the first building while the second
@@ -282,14 +286,17 @@ advances the lane it belongs to; a path no await names is refused, naming the
 awaits there are, and frees nothing. A path a step already collected (below) is
 answered while the file is what the step took, and refused once it has changed.
 
-An issue lane's hold follows what its branch changes. Once an implementer hands
-its receipt back, the loop itself, from the process driving the run, reserves
-the issue again with the footprint its reservation holds and every path the
-lane's branch changes that the footprint does not cover, judged for overlap and
-against the cap like any reservation, and only then judges the receipt; the
-run record names each path widened to. The run's own records are among them: a
-decision record the implementer wrote, and the issue's record the landing
-moves. The same widening is made before each step at the lane's validators,
+A lane's hold follows what its branch changes, in an issue's run and an
+intent's alike. Once an implementer hands its receipt back, the loop itself,
+from the process driving the run, reserves the run's record again with the
+footprint its reservation holds and every path the lane's branch changes that
+the footprint does not cover, judged for overlap and against the cap like any
+reservation, and only then judges the receipt; the run record names each path
+widened to. The run's own records are among them: a decision record the
+implementer wrote, held by its own name and never by the decisions directory,
+which would hold off every other run's, and the records the landing changes,
+the issue's record or the spec and the intent's. An intent's spec is never
+edited to widen its run's hold: the reservation's footprint is what is held. The same widening is made before each step at the lane's validators,
 so a path a fix round changed is held before a validator judges it, and at the
 fence before the landing's push and its arming. So an implementer runs nothing
 to reserve a file, and a stage `abcd drain --drive` walls off from origin needs
@@ -310,11 +317,11 @@ reservation made again names every path widened to, even when the reservation
 branch was deleted.
 
 `widen` is for a session of your own that wants a path held before its
-edit, run from the checkout the run lives in. It reserves the issue again with
+edit, run from the checkout the run lives in. It reserves the run's record again with
 the footprint its reservation holds and each path named that it does not cover
 yet, and the run record says what was widened; a path already covered adds
 nothing. Only the run's current lane widens, at its implement or validate
-stage; an intent's run holds its spec's footprint and is refused. Exit 3 means
+stage, an issue's run or an intent's. Exit 3 means
 another copy holds a live reservation on one of the paths and nothing was
 pushed.
 
@@ -604,7 +611,199 @@ failing verdicts, `BLOCK` and `NEEDS-INPUT`, agree), and `none` when the role
 ran one reviewer, so no comparison was made. The comparison decides nothing: any
 failing reviewer fails the round, the stricter verdict. Keyed rounds are state
 schema version 20's; an older run's rounds read as one reviewer per role, index
-0, asked for no class. Each reviewer's record also carries its `located`
+0, asked for no class.
+
+A model other than every writer's reviews each change a code reviewer judges.
+The writers of a lane are every model that wrote into it up to the round: each
+model a runner was started on for the lane's implementer, a fix round or a
+conflict resolver, whether or not a receipt came back from it (kept on the lane
+as `writers_launched`, so a restarted lane keeps the gone agent's model among
+its writers where a runner started it), and, for each implementer's receipt on
+the lane, the model its runner reported, the model the receipt named and the
+model the landing took for its trailer, each where it is a known name. Where no
+runner reported, the receipt's own word is believed. A writer is unknown in two
+ways: a runner reported a model no comparison can read, or no runner reported
+and the receipt names no model the comparison reads. Either way no reviewer can
+be shown to differ from it, and the lane is handed back as `stuck` with the
+reason `no reviewer model other than the writer's`, naming which and saying the
+name holds no model family the comparison recognises; the remedy is to discard
+the lane and build again with an implementer whose model holds a family the
+comparison recognises, on a runner that reports such a model or with a receipt
+naming it as a plain id, since a verified receipt is not read again for its
+model before the landing. A host-run agent the loop restarted leaves no model
+among the writers, since nothing reported one, and so does an agent of a runner
+on its harness's default model that left no receipt, since such a runner
+records no launched model.
+
+Two model names count as other models only when that is shown, and every
+doubtful pair counts as the same model. Each name is lower-cased and a
+bracketed suffix such as `[1m]` is dropped; it is split into tokens on every
+character that is not an ASCII letter or digit and at each boundary between
+letters and digits, so `opus5` gives `opus` and `5`. A name is known only when
+it is ASCII with no control character, at most 200 bytes, and names exactly one
+model family on the closed list in `internal/core/matrix/samemodel.go`: `opus`,
+`sonnet`, `haiku`, `fable`, `mythos`, `gpt`, the o-series written as `o` and a
+digit, `gemini`, `gemma`, `llama`, `mistral`, `mixtral`, `codestral`,
+`devstral`, `magistral`, `ministral`, `pixtral`, `grok`, `deepseek`, `qwen`,
+`kimi`, `glm` and `phi`. The family is read from the last segment after a slash
+where that segment names exactly one, else from the whole name, so
+`mistral/codestral-latest` is codestral and `azure/eastus2/gpt-5` is gpt. A
+family glued to another word is no family (`codellama`, `chatgpt-4o-latest`),
+and a family not on the list reads as no family, so a name of either is unknown
+and counts as the writer's own model, and a writer or a class whose name is
+unknown hands the lane back. The name's version is the run of numbers of at
+most three digits written straight after its family, in that segment, its
+digits in order; where the family is written with its digit, as in `o3`, that
+digit is the version's first, and a family written twice in the segment it is
+read from carries no version. The run ends at the first token that is not such
+a number: a letter such as `v`, `p`, `b` or `latest`, a number of four or more
+digits, a number written straight before a letter, a size or a tag such as
+`1m`, `70b` or `4o`, or a number of two or three digits that starts with `0`,
+so `claude-opus-5-5-001` and `claude-opus-5-5-002` are the same model while
+`gpt-4-0` keeps its single `0`. So a region number before the family (`us-east-1`,
+`eastus2`, `europe-west4`) is never part of the version, nor a date after its
+year (`claude-opus-5-5-2026-10-14` and `claude-opus-5-5-2026-11-13` are the
+same model), nor a revision tag (`-v1:0`, `-v2` and `-v3`), and a name with no
+number straight after its family carries no version: `llama-v3p1-70b` is the
+same model as any llama, and `claude-3-5-sonnet-20241022`, written in the older
+order, the same as any sonnet. A number glued to a letter is no version, so
+`gpt-4o` is the same model as `gpt-5` and any other gpt, and a class map whose
+every name is such a name, with a writer of that family, hands the lane back. Two known names are other models only when their
+families differ, or the family is the same, both carry a version, and neither
+version's digits are a prefix of the other's. Every other pair is the same
+model: `opus` and `claude-opus-5-5`, `claude-opus-5-5-thinking` and
+`claude-opus-5-5-fast`, `gpt-4-0613` and `gpt-4-1106`, `gpt-5` and
+`gpt-5-mini`, `opus5.5` and `claude-opus-5-5`, an alias with no family word such
+as `default` or `opusplan` against any name, and a name holding two families
+where its family is read. `claude-opus-5-5` and `claude-sonnet-5-5` are other models, and so are
+`claude-opus-5-5` and `claude-opus-4-8`, and `gpt-5` and `gpt-4`. So a class map
+whose classes are one family's nesting names, `gpt-5`, `gpt-5-mini` and
+`gpt-5-nano` with a writer on `gpt-5`, holds no class other than the writer's,
+and every lane is handed back.
+
+Before a reviewer of either code-review role is handed out, to the host or to a
+runner, the loop compares every writer's model with the model the reviewer's
+class holds. Where the class holds a writer's model, the reviewer is handed out
+on the next class, in the order `research`, `top`, `default`, `small` and
+wrapping round, whose model differs from every writer's in the class map the run
+started on (kept in the run's `review` as `classes`), passing over a class a
+drive's runners could not launch for that role (kept as `unlaunchable`, for a
+run a drive started, asked at its start as the drive asks it of the listed
+reviewers; a run started on the host and driven later keeps none) and, while a
+further class qualifies, a class whose model another reviewer of the same role
+holds. Nothing requires a role's two reviewers to be different models; the move
+only prefers a class no sibling holds. A run started before the map was kept
+chooses among the classes its review set names. When no class qualifies, the
+lane is handed back as `stuck` with the same reason. The choice is made once and
+recorded: each reviewer's record carries `writer_models`, every writer in the
+order they wrote, and `reviewer_model`, and a later step never decides it again.
+
+A model the loop learns after a reviewer was handed out is a writer from that
+moment. Where a runner's report reaches a receipt a step collected before the
+report arrived, and where the landing takes a receipt's model for its trailer,
+the writers each reviewer records are recomputed in the same write; a reviewer
+of the open round that any model it holds (asked for, reported or named) no
+longer differs from is withdrawn as an uncounted return is, its verdict, if
+recorded, not counted, and the next step hands it out again by the same move,
+or hands the lane back as `stuck`. Where its round is settled or the lane has
+gone on to its landing, the lane is handed back as `stuck`.
+
+The landing does not arm a lane's pull request while a runner that ran one of
+its implementers has not reported which model ran it: the lane waits at its
+arming, and the run record says once which receipt it waits for. That wait is
+no refusal. Once `pace.stuck_minutes` have passed since that record line, the
+lane is handed back as `stuck`, naming the receipt; a line of the lane at
+another stage, or a change of the receipt waited for, starts the minutes
+again. A lane already armed when such a wait applies has its arming withdrawn
+once the step is written, so a step whose save is refused asks nothing of the
+forge, and then waits the same way; a withdrawal there that does not take is
+the step's refusal, the lane left armed, and the next step tries again. When a
+late report hands back a lane whose pull request is armed, the arming is
+withdrawn once the hand-back is written: the record says what came of it, a
+pull request already merged is said as merged, and one with no arming left is
+said to have none. A withdrawal that does not take (the forge unread,
+refusing, or still reporting the arming) leaves the lane unfinished: each later
+`abcd implement step` tries it again, a drain reads the lane as in progress and
+drives it (as `abcd drain --drive` does), routing the hand-back only once the
+forge reports no arming, and an issue run's reservation is kept, renewed by
+those steps and drain moves at half its lease, and released only once the
+arming is gone. A drain drives any newer lane it has in progress first, and
+names this lane's step once none is. Once `pace.stuck_minutes` have passed
+since the record's first line of a try that did not take (the hand-back's
+time where it holds none), the step's refusal and the drain's `next` say a
+person withdraws the arming (`gh pr merge <n> --disable-auto`, taking it out of
+the merge queue on its page if it is there) or decides the lane, naming the
+pull request, and the minutes they count are of tries, or since the lane was
+handed back where the record holds no try; the reservation is still kept and
+renewed, and each step still tries the withdrawal. Past the bound a drain
+whose only lane in progress is this one opens no new lane, and `abcd drain
+--drive` keeps stepping it, thirty seconds apart at least, ending as any
+drive with nothing moving does, so the reservation stays renewed while the
+drive runs (after it ends, only a step, `abcd drain` or `abcd implement
+status` someone runs, or a load-gate waiter in this copy, renews it) and no
+second lane is in hand past the drain's cap
+(`commands/drain.md`). The
+person's act ends it: once they disarm the pull request with the command the
+refusal names, the next step records that and releases the reservation. A
+person's stop of the run leaves such a lane as it is: its record line says the
+pull request is still armed and that a person withdraws it, and its answer,
+the stop's page and the run's listing name the pull request once, with its
+disarm. The review receipt the loop itself recorded for that pull
+request's head, from the lane's round, is moved aside in this checkout (to the
+head's name with `.voided` after it), so no re-arm of that head counts the pair
+that judged it, and the line of the first try and that of the try that takes
+both say so. A review receipt for that head of other returns is left in place,
+and the record says it stands as its recorder's: one a person recorded with
+`abcd land --record-review` still counts, and so does any receipt in another
+worktree, which is never moved. A receipt in the lane's own worktree is not
+moved either, since the merge gate never counts one in a drive lane's worktree.
+A person's receipt of the very same return files is identical to the loop's in every return it counts, so it is moved
+aside with it; the move is
+reversible, by renaming `<head>.voided` back to `<head>`.
+
+A reviewer's brief and a routed request ask its return to name the model it ran
+on in a line `Reviewer model: <model>`; the loop looks for that line among the
+return's first seven lines. At the return the loop holds up to three names for
+the reviewer: the class's model it asked for, the model its runner reported,
+and the model its return names. Each one present must be another model than
+every writer's, and a return naming no model is refused, so its verdict is not
+recorded. A reviewer route that answers without a model line is not counted, and
+that review falls back to the host. The record keeps the model the runner
+reported, else the model asked for (or, where the reviewer route answered or no
+class was asked of the reviewer, the model its return named), and, where its
+return named another model than that one, keeps both. The run record, its text
+output and the pull request's body name every writer on each verdict, and the
+reviewer as `reviewed by` its model where a runner reported it or its return
+named the same model, as `asked of` its class's model only where the loop asked
+for one and holds no report or return, and by both names where its return named
+another. In the pull request's body, the run record and their text each name is
+printed only as one plain token of ASCII letters, digits, `.`, `_` and `-`, with
+a `/` or `:` only between two of those, in a code span, and any other name is
+described rather than printed; the text output's `classes:` line prints each
+class's model as the plain token, outside a code span.
+
+A run read from a state file of an earlier version, whose reviewers were handed
+out before their models were recorded, keeps each such reviewer marked
+`models_unrecorded`. That reviewer is checked at its return against the lane's
+writers, records no model, and its verdict line in the pull request's body, the
+run record and the text says in words that the reviewer's models were not
+recorded, naming no model. A reviewer that run hands out after the read is
+compared and recorded as any other. Reading a run's state file back, the loop
+holds each reviewer's stored writers to what the lane's own receipts and
+launches give, each entry of the stored class map to the set's reviewer of that
+class, and a moved reviewer to the move recomputed from those; a reviewer that
+was handed out naming no model reads only with the mark, in a run that keeps no
+class map. Every save runs the same checks on what it would write, and a change
+that would fail them is refused, naming where, with the file already there left
+as it stands.
+
+What is not compared: the intent-auditor's verdict, and the plan-review stage's
+two reviewers of an automatic plan, are handed out with no comparison of models.
+
+These fields are state schema version 27's: a version-26 file carrying them is
+refused, one without them reads as version 27 and is written back at it, and an
+abcd that writes version 26 refuses a version-27 file as a newer abcd's, writes
+nothing to it, and leaves the run to the abcd that wrote it. Each reviewer's record also carries its `located`
 findings: the `file:line` each finding bullet under its Findings heading leads
 with (`- **file:line** — ...`) is one finding (`file`, `line`); a location cited
 in a bullet's text or its nested Evidence lines is not one, and a line inside a
@@ -765,7 +964,9 @@ over each of the run's lanes' own diff.
    run's state; the run log names where the model came from, and a lane with
    no model in any of them is refused. The commit runs the
    repository's hooks; one that refuses stops the landing, which resumes once
-   what the hook names is settled.
+   what the hook names is settled. The landing checks that the lane's worktree
+   is on its branch at the judged head before it commits, and that the commit it
+   adopts sits on the judged head and changes only what was judged.
 3. It pushes the lane's branch only once the repository's preflight receipt
    (`.abcd/.work.local/preflight-receipts/<head>`, in any worktree) names the
    lane's head. Without one, the lane waits for its full check (exit 3 when
@@ -936,7 +1137,11 @@ say on what merges before its tag, as contention (exit 3); the pull request
 stays open for the cutting session to merge or hold. A release whose tag is on
 `origin`, or whose holder released it, holds nothing. Past the fence the reservation holds only
 while something renews it at half its lease: each step of the run does,
-whatever its stage, an implementer's long stage included, so does handing an
+whatever its stage, an implementer's long stage included (but not a run keyed
+by an issue whose lane is handed back: no step and no run renewal renews that reservation, unless
+the hand-back still owes the withdrawal of its pull request's arming, though
+the load gate's waiter below may still renew it, as it renews each live reservation that is not a
+release, is half through its lease, and whose tip is the commit this copy last pushed), so does handing an
 agent's receipt back with `receipt`, so does `status`, so does the load gate's
 waiter (`implement load --wait` or `--race-gate`) an agent's `go test` or
 `make preflight` runs under, while it waits and while its command runs, and
@@ -951,9 +1156,21 @@ over for longer than its lease loses the reservation, and another person may
 then take the record over. A step or a receipt that finds the reservation held
 by another person or copy says so in its answer and logs `reservation_lost` in
 the run record, once. A run keyed by an issue whose lane is handed back
-releases its reservation as the step hands it back: it pushes the tombstone
+releases its reservation as the step hands it back, once the hand-back is
+written and under the same lock, so a save refused or failed releases nothing
+and hands nothing back: it pushes the tombstone
 while the reservation is still this copy's and logs `reservation_released`
-with the outcome, since the issue is the person's again; a fetch or push that
+with the outcome, since the issue is the person's again. A crash between the
+hand-back's write and the release leaves the lane handed back and the
+reservation held, with no line for it, until a drain routing the hand-back
+releases it or its lease runs out. No step and no run renewal renews it, but a
+load-gate waiter in this copy (`abcd implement load --wait`, and `--race-gate`,
+which preflight's race stage uses) renews, while it waits and while its command
+runs, each live reservation that is not a release, is half through its lease,
+and whose tip is the commit this copy last pushed; that renewal, which reads no
+run, never revives one that has lapsed or been released, so the lease can run past the time the answer
+gives; an answer whose lease has already lapsed says so, and that nothing
+revives it. A fetch or push that
 fails, and a release the reservation's tip refuses for a reason of its own (a
 tombstone it may not write, a tip it cannot read), is logged
 `reservation_release_failed` instead, never `reservation_released`. A
@@ -961,7 +1178,7 @@ tombstone that would pass the message cap with its hand-back on it is pushed
 plain, and the logged line says the hand-back was not published, and why. For a lane a drain
 opened, the drain routing the hand-back pushes the tombstone again. A run
 `build <iss-N>` started has no drain routing it, so nothing retries a failed
-release: its reservation lapses with its lease. An intent's run keeps
+release: its reservation lapses with its lease unless a load-gate waiter in this copy renews it. An intent's run keeps
 its reservation through a hand-back, for the lanes it still holds. A run whose state records no
 reservation is neither renewed nor fenced.
 
@@ -1004,7 +1221,7 @@ directory in the shared folder, naming the stop and every run of this account's 
 page that cannot be written changes nothing about the stop: its answer and the listing say so. A
 pull request armed before the stop can still merge under it: the page and the listing's text name each
 with its disarm command, and nothing disarms it on its own. A drain's move does nothing for a parked run
-with the stop's mark, a merged lane's last step included, until the take-over or the lift that lets it go on. A save that fails holds the lane and keeps the claims only while something renews them, and under a stop in force only a drive still in an agent's call or a preflight renews a parked run's, which otherwise lapses at its lease with the work it could not take still uncommitted in its worktree and nowhere else. A stop file any
+with the stop's mark, a merged lane's last step included, until the take-over or the lift that lets it go on. A save that fails holds the lane and keeps the claims only while something renews them, and under a stop in force only a drive still in an agent's call or a preflight renews a parked run's, which otherwise lapses at its lease unless a load-gate waiter in this copy renews it, with the work it could not take still uncommitted in its worktree and nowhere else. A stop file any
 other account wrote, a symlink or an oversized file is no stop, and each step's answer names it.
 A run fixes the shared folder at its start and reads it before each move, with the
 platform's shared folder for the account it expects. A setting that cannot be read, that has gone or changed during the run, or a folder the run
@@ -1037,7 +1254,7 @@ may make it: one that falls due under a stop settles the run first only where it
 renewing abcd's version, and otherwise names the run it left unsettled for its own driver's check. Its
 claim is still renewed, with a line in its record and its file left at its own version, while an agent
 may be in its call or while that check has left work a save could not take; otherwise it is neither
-renewed nor let go, and lapses at its lease with the lane's work on its branch and in its worktree, none
+renewed nor let go, and lapses at its lease unless a load-gate waiter in this copy renews it, with the lane's work on its branch and in its worktree, none
 of it saved aside. A drain's move judges each whole save the same way. Under a stop it halts only the
 runs it may save, its refusal naming each run it leaves and that the run's own driver's next check takes
 the stop. With no stop, a run it finishes, syncs again, watches in the merge queue or hands back closed,
@@ -1052,8 +1269,8 @@ driver, so a lifted stop's mark on it is not taken up by a drain, which reads it
 `next`, once each move, and the move is not refused for it: a lane in progress left that way ends the
 move as any lane in progress does, and one a new pace leaves keeps its pace. With no agent left in its
 call and its work saved it no longer renews. Work a save could not take stays uncommitted in its
-worktree and nowhere else, and its claim lapses at its lease unless a gated waiter, `abcd implement status` or a drive still
-in an agent's call or a preflight renews it; only that drive renews a run parked at land. A
+worktree and nowhere else, and its claim lapses at its lease unless the run renewal of a load-gate waiter, `abcd implement status` or a drive still
+in an agent's call or a preflight renews it; of those only that drive renews a run parked at land, since the waiter's run renewal skips one, though the waiter's renewal of this copy's own reservations, which reads no run, still may renew its reservation. A
 lift names any stop it cannot reach. A stop another account left is not honoured, and each
 step's answer and the listing name it.
 
@@ -1168,8 +1385,9 @@ and abcd expands no path itself; where git cannot answer, the lane stops. The
 run's fingerprint records that directory at the run's first check, which is
 normally the step that makes the lane, and within a run a later change to it
 is refused at the next step. Across the lanes of one drive the drive holds it:
-as it starts it reads that directory and the git directory's
-`info/attributes`, and keeps hashes of them in its own memory; just before each lane's add the
+as it starts it reads that directory, the git directory's
+`info/attributes` and the sparse-checkout patterns file git names at the
+checkout, and keeps hashes of them in its own memory; just before each lane's add the
 worktree stage reads them again, and an entry added, removed or changed since
 the drive started, and still so at that read, refuses the lane, naming the
 file, before that lane's add. The directory is read at every depth: a file by
@@ -1345,11 +1563,23 @@ fsmonitor, the editor, content filters, diff and merge drivers and
 and `init.templateDir`); the settings that change which of them run
 (`merge.renormalize`, `submodule.recurse` and `push.recurseSubmodules`,
 `status.submoduleSummary`, `core.attributesFile`, the worktree settings and
-`extensions.worktreeConfig`); and the include paths.
+`extensions.worktreeConfig`); the settings that change what a checkout
+writes or how its files are read (`core.autocrlf`, `core.eol`,
+`core.symlinks`, `core.fileMode`, `core.ignoreCase`,
+`core.precomposeUnicode`, `core.checkRoundtripEncoding`,
+`core.sparseCheckout` and `core.sparseCheckoutCone`), since the drive's own
+preflight checkout is made and compared under them; and the include paths.
 It holds as well the bytes of each file an `include.path` or
 `includeIf.*.path` setting names, whether or not its condition holds at the
-checkout, since it can hold in a lane, its path resolved by git; and the
-global and system attributes files git names. It reads all of these in each
+checkout, since it can hold in a lane, its path resolved by git; the
+global and system attributes files git names; and, with the hooks directory
+and `info/attributes`, the sparse-checkout patterns file git names at the
+checkout (`git rev-parse --git-path info/sparse-checkout`), which
+`git worktree add` copies into the preflight checkout. That checkout is
+compared with the head with sparse checkout switched off for the comparison,
+so a file its patterns leave out is a difference: the drive says the checkout
+is missing files the head holds, names sparse checkout as the likely reason,
+and runs no preflight. It reads all of these in each
 environment a drive's git runs in: your own (your home and global settings),
 where the landing push and the reservation's pushes and fetches run with the
 repository's hooks on and the ask of `origin` runs with them off; the lane's
@@ -1413,10 +1643,13 @@ reads what it holds only as it starts, so a change of yours to a watched
 setting while a drive runs (a new credential helper, an editor, an include)
 ends it too. Look at the change and start it again. When a drive ends that way
 it releases nothing, since releasing is a push: it names each reservation it
-leaves and when its lease lapses, and once the setting is as it should be you
-release one with `abcd reserve <id> --release`, or start the drive again,
-which takes the run up. What changes between a comparison and git's own run of
-the command is not seen.
+leaves and when its lease lapses, unless a step or `abcd drain` run in this
+copy, or a load-gate waiter in this copy, renews it for a lane's run still in
+progress (`abcd implement status` passes over a lane parked at its pull
+request), and a load-gate waiter alone for the hold a judgement took; once the setting is as it should be you release one
+with `abcd reserve <id> --release`, or start the drive again, which takes the
+run up. What changes
+between a comparison and git's own run of the command is not seen.
 
 One comparison is about a dozen reads of git (in each of the three
 environments, its settings listing and its two attributes files, then any
@@ -1575,8 +1808,8 @@ change like any other, which stops the next step until you accept it; and each
 run records the watched settings afresh when it first checks them, so a
 setting changed before a run's first check is that run's starting point (each
 lane of a drain is a run of its own, and a drive holds across its lanes only
-the settings, the checkout's hooks directory and `info/attributes` named
-above), and you must look at what changes between runs yourself. The run's
+the settings, the checkout's hooks directory, `info/attributes` and the
+sparse-checkout patterns file named above), and you must look at what changes between runs yourself. The run's
 fingerprint does not watch your global and system settings; a drive holds
 them across its lanes, as above. The file holds salted hashes, never
 a value: a credential helper's value may carry a secret, so only key names and
@@ -1697,8 +1930,11 @@ machine's process ids wrap: it may run an abcd built before the start order
 each would wait on the other until its timeout. So once such waiters alone
 have kept yours shut for five minutes on end, longer than a waiter that orders
 by start ever shows queued while the machine is free to you, yours stops
-counting them; anything else that shuts the gate in between, or standing back
-at the last look, starts the count again. The five minutes grow by about a
+counting them. "Alone" is judged as at one preflight at a time, the strictest
+setting any account can hold: while a preflight, a waiter running its command or
+a race run is live, the count does not run even where your own slots leave room,
+since a waiter at one slot is held shut by that work. Anything else that shuts
+the gate in between, or standing back at the last look, starts the count again. The five minutes grow by about a
 minute and a half for each such waiter ahead beyond the first, so of two
 waiters behind the same one the earlier stops counting it first and opens
 before the later stops counting the earlier. A preflight whose own waiter is queued takes that waiter's place in the
@@ -2163,5 +2399,55 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain implement` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd implement [flags]`
+  - An example call is `abcd implement`.
+- `abcd implement check <lane|release|review|audit|land> --session <id> [flags]`
+  - An example call is `abcd implement check lane --session s-example`.
+- `abcd implement claim <record> --session <id> --lane <lane> [flags]`
+  - An example call is `abcd implement claim iss-2609010000000001 --session s-example --lane cli`.
+- `abcd implement join --session <id> --role first|second [flags]`
+  - An example call is `abcd implement join --session s-example --role first`.
+- `abcd implement leave --session <id> [flags]`
+  - An example call is `abcd implement leave --session s-example`.
+- `abcd implement load --site preflight|eval-harness | --wait [--narrow] [--timeout <duration>] [-- <command>...] | --race-gate [--timeout <duration>] [flags]`
+  - An example call is `abcd implement load --site preflight`.
+- `abcd implement log <event> --session <id> [--field key=value ...] [flags]`
+  - An example call is `abcd implement log lane_open --session s-example`.
+- `abcd implement mode <single|claim|batch|split-roles> --session <id> [flags]`
+  - An example call is `abcd implement mode single --session s-example`.
+- `abcd implement outage [flags]`
+  - An example call is `abcd implement outage`.
+- `abcd implement outage ack --session <id> [flags]`
+  - An example call is `abcd implement outage ack --session s-example`.
+- `abcd implement outage clear --session <id> --reason <why> [flags]`
+  - An example call is `abcd implement outage clear --session s-example --reason "the network is back"`.
+- `abcd implement outage probe --session <id> [--model ok|fail] [flags]`
+  - An example call is `abcd implement outage probe --session s-example`.
+- `abcd implement outage record --session <id> --service network|model --kind host|agent|tool --lane <lane> --what <text> [flags]`
+  - An example call is `abcd implement outage record --session s-example --service network --kind tool --lane cli --what "git push"`.
+- `abcd implement receipt <path> [--run <run-id>] [flags]`
+  - An example call is `abcd implement receipt review-receipt.json --run run-2609010000000001`.
+- `abcd implement record [--run <run-id>] [--transcript <path>]... [flags]`
+  - An example call is `abcd implement record`.
+- `abcd implement release <record> --session <id> [flags]`
+  - An example call is `abcd implement release iss-2609010000000001 --session s-example`.
+- `abcd implement report [--date YYYY-MM-DD | --log <file>] [flags]`
+  - An example call is `abcd implement report`.
+- `abcd implement resume [--run <run-id>] [--take <run-id>] [flags]`
+  - An example call is `abcd implement resume --take run-2609010000000001`.
+- `abcd implement status [--run <run-id>] [flags]`
+  - An example call is `abcd implement status`.
+- `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [--route <role>=runner:<name>[@<provider>/<model>]]... [flags]`
+  - An example call is `abcd implement step`.
+- `abcd implement stop [--lift] [flags]`
+  - An example call is `abcd implement stop`.
+- `abcd implement widen <path>... --lane <lane-id> [--run <run-id>] [flags]`
+  - An example call is `abcd implement widen internal/widget/b.go --lane lane-1 --run run-2609010000000001`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

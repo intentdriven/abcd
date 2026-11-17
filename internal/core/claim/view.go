@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -147,6 +148,14 @@ func (s Snapshot) LiveByHolder() map[string]int {
 // lease.Skew ahead (and each whose date cannot be read), when this copy first
 // fetched it, so the view, which writes nothing, counts it from then.
 func Fetch(root string, o Options) (gap string, err error) {
+	return FetchContext(context.Background(), root, o)
+}
+
+// FetchContext is Fetch with its git fetch bounded by ctx as well as by
+// gitutil.NetTimeout: a fetch still running when ctx ends is killed, and is
+// refused as any failed fetch is. An act with a deadline of its own (the
+// sweep abcd runs on its own) fetches through it.
+func FetchContext(ctx context.Context, root string, o Options) (gap string, err error) {
 	defer func() {
 		if err == nil {
 			keepFirstFetched(root, o.now(), nil)
@@ -159,7 +168,7 @@ func Fetch(root string, o Options) (gap string, err error) {
 	if !slices.Contains(strings.Fields(out), Remote) {
 		return "", ErrNoOrigin
 	}
-	return fetch(root, o.now(), noReservation, reservations)
+	return fetchWithContext(ctx, root, o.now(), noReservation, originDefault(root), reservations)
 }
 
 // View reads the reservations from this checkout's disk only, as last

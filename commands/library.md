@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:library` — the sources corpus and the memory store
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain library`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Two stores under one command, never connected to each other:
 
 - **The sources corpus**, at `~/.abcd.noindex/sources/` (another with
@@ -387,5 +391,33 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain library` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd library [flags]`
+  - An example call is `abcd library`.
+- `abcd library add [document] [flags]`
+  - An example call is `abcd library add article.md --public --key example-paper-2026 --title "Example Widgets in Practice"`.
+- `abcd library ask <question> [--dry-run] [flags]`
+  - Reads `--page-json`, the answer page, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain library ask --input page-json` prints its shape.
+  - An example call is `abcd library ask "why do record ids carry a timestamp?"`.
+- `abcd library cite-check <file|-> [flags]`
+  - An example call is `abcd library cite-check draft.md`.
+- `abcd library declassify <key> [flags]`
+  - An example call is `abcd library declassify example-paper-2026`.
+- `abcd library ingest <path-or-https-url> [--dry-run] [flags]`
+  - Reads `--pages-json`, the distilled pages, at schema_version 1 (the input carries none); `"${CLAUDE_PLUGIN_ROOT}/abcd" explain library ingest --input pages-json` prints its shape.
+  - An example call is `abcd library ingest https://example.com/article.html`.
+- `abcd library init [flags]`
+  - An example call is `abcd library init`.
+- `abcd library ledger [flags]`
+  - An example call is `abcd library ledger --list`.
+- `abcd library lint [flags]`
+  - An example call is `abcd library lint`.
+- `abcd library sync-banlist [flags]`
+  - An example call is `abcd library sync-banlist`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

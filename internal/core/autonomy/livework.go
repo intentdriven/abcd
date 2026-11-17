@@ -50,9 +50,11 @@ import (
 // the reading cut short when that ctx has ended (cutShort): a ctx already
 // ended reads no marker and starts no process read. A read that fails for any
 // other reason is a note, and no item is marked: the two-wake rule applies.
-// The process table is read once, only when a marker is found; the live
-// sessions' read (holders.go) reads it apart, through occupancy, so a check
-// that needs both reads it twice.
+// The process table is read once a check (readProcs), here only when a
+// marker is found, and shared with a drive's hold on its lanes
+// (driveHolds), which may have read it already; the live sessions' read
+// (holders.go) reads it apart, through occupancy, so a check that needs both
+// reads it twice.
 func (r *owedReader) readLiveWork() {
 	if !r.away {
 		return
@@ -74,16 +76,7 @@ func (r *owedReader) readLiveWork() {
 	if len(marks) == 0 || r.cutShort(r.expired()) {
 		return
 	}
-	read := r.procTable
-	if read == nil {
-		read = machineload.ReadContext
-	}
-	before := time.Now()
-	snap, err := read(r.ctx)
-	took := time.Since(before)
-	if err == nil && !snap.HasProcs {
-		err = fmt.Errorf("the process table was not read")
-	}
+	snap, tab, err := r.readProcs()
 	if r.cutShort(err != nil) {
 		r.note("the process table was not read before the check's deadline, so no whole test run is counted as live")
 		return
@@ -92,7 +85,7 @@ func (r *owedReader) readLiveWork() {
 		r.note("whether a whole test run is live for an owed item was not read (%s), so none is counted as waiting on one", termsafe.CleanProseLine(fsutil.RedactHome(err.Error()), 256))
 		return
 	}
-	runs := liveWholeRuns(marks, snap, sessionname.Table{Procs: snap.Procs, ReadAt: before, Took: took}, uint32(os.Geteuid()))
+	runs := liveWholeRuns(marks, snap, tab, uint32(os.Geteuid()))
 	if len(runs) == 0 {
 		return
 	}
@@ -167,4 +160,26 @@ func runFor(runs []liveRun, wts []gitutil.Worktree, branch, head string) (liveRu
 		}
 	}
 	return liveRun{}, false
+}
+
+// readProcs reads the machine's process table once a check, under the
+// check's ctx, for the live work standing for an owed item and for a drive's
+// hold on its run's lanes (driveHolds): the snapshot, the table the
+// liveness judgements read it as, and why it could not be read.
+func (r *owedReader) readProcs() (machineload.Snapshot, sessionname.Table, error) {
+	if !r.procsRead {
+		r.procsRead = true
+		read := r.procTable
+		if read == nil {
+			read = machineload.ReadContext
+		}
+		before := time.Now()
+		r.procSnap, r.procErr = read(r.ctx)
+		took := time.Since(before)
+		if r.procErr == nil && !r.procSnap.HasProcs {
+			r.procErr = fmt.Errorf("the process table was not read")
+		}
+		r.procTab = sessionname.Table{Procs: r.procSnap.Procs, ReadAt: before, Took: took}
+	}
+	return r.procSnap, r.procTab, r.procErr
 }

@@ -100,7 +100,7 @@ var driveGitCommands = []driveGitCommand{
 	// repository's hooks on (pre-push, reference-transaction).
 	{"gitutil.Net", personEnv, true},
 	{"gitutil.NetEach", personEnv, true},
-	{"gitutil.NetInput", personEnv, true},
+	{"gitutil.NetInputContext", personEnv, true},
 	// The ask of origin and other commands in the person's own environment,
 	// the hooks pinned off (core.hooksPath=/dev/null or every exec pin).
 	{"gitutil.NetContext", personEnv, false},
@@ -118,6 +118,10 @@ var driveGitCommands = []driveGitCommand{
 	{"gitutil.RunCommitCommandBounded", stageEnv, true},
 	{"gitutil.RunCommitCommandBoundedAsStored", stageEnv, true},
 	{"gitutil.BuiltinMergeDriver", stageEnv, false},
+	// The comparison of the drive's own preflight checkout with the head,
+	// in the environment that checkout was made in, the hooks pinned off.
+	{"gitutil.RunWithIndexAsCheckedOut", stageEnv, false},
+	{"gitutil.StreamWithIndexAsCheckedOut", stageEnv, false},
 	// abcd's own reads of refs, objects and the repository's settings.
 	{"gitutil.CatFileBatch", isolatedEnv, false},
 	{"gitutil.CheckoutRoot", isolatedEnv, false},

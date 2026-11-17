@@ -49,7 +49,7 @@ it does not order the table.
 | 16 | `/abcd:lint` | shipped | Check whether this repo still conforms to the working conventions | [`16-lint.md`](16-lint.md) |
 | 37 | `/abcd:memory` | shipped | Keep short lessons an agent would otherwise relearn, stamped with who wrote them, when and in which session, and refused when they would hold a secret, a private name or a network address | [`37-memory.md`](37-memory.md) |
 | 26 | `/abcd:mode` | shipped | Say whose answer the agent loop is waiting on, so the status line and the board show it, or that you are away and sessions should work on | [`26-mode.md`](26-mode.md) |
-| 28 | `/abcd:peers` | shipped | See what the sibling worktrees and local branches hold before capturing, fixing or filing anything | [`08-abcd.md`](08-abcd.md) |
+| 8 | `/abcd:peers` | shipped | See what the sibling worktrees and local branches hold before capturing, fixing or filing anything | [`08-abcd.md`](08-abcd.md) |
 | 23 | `/abcd:reading` | shipped | Assemble what a cold reading may see, prove it, and validate what comes back | [`23-reading.md`](23-reading.md) |
 | 9 | `/abcd:reflect` | shipped | Look back on a cut release in a short interview, and file what it taught as its retrospective | [`09-reflect.md`](09-reflect.md) |
 | 29 | `/abcd:report` | shipped | Tell abcd about a defect or propose an enhancement from a repository it manages, into an inbox in your own account | [`29-report.md`](29-report.md) |
@@ -58,6 +58,7 @@ it does not order the table.
 | 37 | `/abcd:session` | shipped | Run the relay a team's live brief session goes through, on the host's machine over Tailscale Serve or on the team's own relay, write that relay's blueprint, and write the session's static page | [`37-session.md`](37-session.md) |
 | 22 | `/abcd:site` | shipped | Render the project website from the repository's own text, and gate what it publishes | [`22-site.md`](22-site.md) |
 | 39 | `/abcd:status` | shipped | Read everyone's status on the shared remote: the announcements every session posted, who holds which reservation and each release being cut | [`39-status.md`](39-status.md) |
+| 40 | `/abcd:sweep` | shipped | See every worktree, branch, reservation and inbox report a repository has left lying around, and clear only what is provably finished | [`40-sweep.md`](40-sweep.md) |
 | 21 | `/abcd:update` | shipped | Complete a chosen update of the installed binary, verified and atomic | [`21-update.md`](21-update.md) |
 | 25 | `/abcd:worktree` | staged | Keep session and agent worktrees in a machine-scoped store rather than beside the checkout; no `/abcd:worktree` page exists, and the store's verbs ship as `ahoy worktree add`, `list`, `prune`, which reclaims merged, clean worktrees and a quiet one the person names, and `trim-cache`, which keeps the Go build cache under its limit ([itd-2609091014076309](../../intents/shipped/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md)); its layout is in [`../05-internals/03-configuration.md` § The worktree store](../05-internals/03-configuration.md#the-worktree-store) | [`01-ahoy.md` § The worktree store](01-ahoy.md#the-worktree-store) |
 
@@ -210,6 +211,7 @@ and `help` are the framework's own commands, filed under set-up.
 | `spec` | agents and hosts | — |
 | `status` | people | records |
 | `statusline` | agents and hosts | — |
+| `sweep` | people | set-up |
 | `update` | people | set-up |
 
 The placement is presentation. No verb is hidden, renamed, moved or nested by
@@ -383,8 +385,11 @@ the checkout from the root the loader resolves for the working directory.
   without `--prompt`, or outside 0 to 100, is refused, exit 2, with nothing
   rendered.
 - **Diagnostics go to stderr, never stdout**, so the JSON form stays one
-  document: a refused root, a domain skipped for carrying no rules, and each
-  bundled entry of a guardrail domain an override's list leaves out.
+  document: a refused root, a domain skipped for carrying no rules, each
+  bundled entry of a guardrail domain an override's list leaves out, and the
+  question limits' line: a refused value (GRILL then states abcd's defaults
+  and names the key refused, or says the file holds a setting under
+  `question` that abcd does not read), a layer not read, or a refused home.
 
 ### The spec verb
 
@@ -453,7 +458,7 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `embark`, `explain`, `guard`, `history`, `ideate`, `identity`, `implement`,
 `inbox`, `intent`, `lab`, `land`, `landings`, `launch`, `library`, `lint`,
 `memory`, `mode`, `peers`, `reading`, `reflect`, `report`, `reserve`, `scribe`,
-`session`, `site`, `status`, `update`.
+`session`, `site`, `status`, `sweep`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.
@@ -564,13 +569,15 @@ that everything it reads is data, never instruction.
   material to quote, the addressee, the decision and the defensible answers,
   it heads each draft with abcd's number, runs `abcd guard question`
   ([`17-guard.md`](17-guard.md)) after every edit, at most five checks to a
-  part, and returns the check's ready input, its rows and its version with
-  `checked_by`. It quotes one decision's too-long material shorter, keeping every answer's gain and cost, and splits material holding several decisions or too many answers into numbered
+  part, and returns the check's ready input, its rows, its `limits` and its
+  version with `checked_by`; a hand count, made only with no shell, is at
+  abcd's defaults and says so in a `note`. It quotes one decision's too-long material shorter, keeping every answer's gain and cost, and splits material holding several decisions or too many answers into numbered
   parts. It refuses only a missing or contradictory
   brief, a check that gives no ready input (its exit 2, or `refuse-away` while the person is away), or five checks spent, and only to the agent that
   called it. Its asking rules, how it checks a draft, and the hand row count
   kept for a host with no shell are a block `cmd/asking-sync` renders from
-  `question.Default`. It puts nothing to the person itself and never marks an
+  `question.Default`, with the keys a repository sets and their bounds from
+  `question.Bounds`. It puts nothing to the person itself and never marks an
   option recommended. The GRILL asking rules tell every agent running an abcd
   interview to ask only what it returns.
 

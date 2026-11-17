@@ -1,0 +1,453 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd implement",
+      "sentence": "Share one autonomous run between sessions and drive the implement loop: Writes nothing bare, only the run state its sub-verbs name; refuses an unknown sub-verb.",
+      "usage": "abcd implement [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd implement",
+      "subcommands": [
+        "check",
+        "claim",
+        "join",
+        "leave",
+        "load",
+        "log",
+        "mode",
+        "outage",
+        "receipt",
+        "record",
+        "release",
+        "report",
+        "resume",
+        "status",
+        "step",
+        "stop",
+        "widen"
+      ]
+    },
+    {
+      "path": "abcd implement check",
+      "sentence": "Ask whether this session may take a stage before taking it: Writes a run-log line only on a refusal; refuses a stage the second session's bounds forbid.",
+      "usage": "abcd implement check <lane|release|review|audit|land> --session <id> [flags]",
+      "flags": [
+        {
+          "name": "path",
+          "type": "list"
+        },
+        {
+          "name": "session",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement check lane --session s-example"
+    },
+    {
+      "path": "abcd implement claim",
+      "sentence": "Claim a record for this session before opening its lane: Writes the claim and a run-log line; refuses a record another session holds.",
+      "usage": "abcd implement claim <record> --session <id> --lane <lane> [flags]",
+      "flags": [
+        {
+          "name": "lane",
+          "type": "string"
+        },
+        {
+          "name": "lease",
+          "type": "duration",
+          "default": "2h0m0s"
+        },
+        {
+          "name": "path",
+          "type": "list"
+        },
+        {
+          "name": "session",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement claim iss-2609010000000001 --session s-example --lane cli"
+    },
+    {
+      "path": "abcd implement join",
+      "sentence": "Join the run with a stated role: Writes the session's record and a session_open line; refuses the other role on a resume.",
+      "usage": "abcd implement join --session <id> --role first|second [flags]",
+      "flags": [
+        {
+          "name": "ceiling",
+          "type": "int"
+        },
+        {
+          "name": "model",
+          "type": "string"
+        },
+        {
+          "name": "reason",
+          "type": "string"
+        },
+        {
+          "name": "role",
+          "type": "string",
+          "allowed": [
+            "first",
+            "second"
+          ]
+        },
+        {
+          "name": "session",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement join --session s-example --role first"
+    },
+    {
+      "path": "abcd implement leave",
+      "sentence": "Leave the run, releasing every claim this session holds: Writes the releases and a session_close line; refuses without --session.",
+      "usage": "abcd implement leave --session <id> [flags]",
+      "flags": [
+        {
+          "name": "reason",
+          "type": "string"
+        },
+        {
+          "name": "session",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement leave --session s-example"
+    },
+    {
+      "path": "abcd implement load",
+      "sentence": "Check the load before abcd's tests start, or wait for capacity: Writes a run-log event or the wait's hold; refuses an unknown --site, never a loaded machine.",
+      "usage": "abcd implement load --site preflight|eval-harness | --wait [--narrow] [--timeout <duration>] [-- <command>...] | --race-gate [--timeout <duration>] [flags]",
+      "flags": [
+        {
+          "name": "narrow",
+          "type": "bool"
+        },
+        {
+          "name": "race-gate",
+          "type": "bool"
+        },
+        {
+          "name": "site",
+          "type": "string",
+          "allowed": [
+            "preflight",
+            "eval-harness"
+          ]
+        },
+        {
+          "name": "timeout",
+          "type": "duration",
+          "default": "6h0m0s"
+        },
+        {
+          "name": "wait",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement load --site preflight"
+    },
+    {
+      "path": "abcd implement log",
+      "sentence": "Append one of the run's events to today's run log: Writes one line; refuses the claim, window, and session events their own verbs write.",
+      "usage": "abcd implement log <event> --session <id> [--field key=value ...] [flags]",
+      "flags": [
+        {
+          "name": "field",
+          "type": "list"
+        },
+        {
+          "name": "session",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement log lane_open --session s-example"
+    },
+    {
+      "path": "abcd implement mode",
+      "sentence": "Open a window by logging its division mode: Writes a window_mode line; refuses any session but the first.",
+      "usage": "abcd implement mode <single|claim|batch|split-roles> --session <id> [flags]",
+      "flags": [
+        {
+          "name": "session",
+          "type": "string"
+        },
+        {
+          "name": "window",
+          "type": "int"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement mode single --session s-example"
+    },
+    {
+      "path": "abcd implement outage",
+      "sentence": "Render the run's shared lost connection and when its next probe is due: Writes nothing; refuses any argument.",
+      "usage": "abcd implement outage [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd implement outage",
+      "subcommands": [
+        "ack",
+        "clear",
+        "probe",
+        "record"
+      ]
+    },
+    {
+      "path": "abcd implement outage ack",
+      "sentence": "Acknowledge the notification an outage's give-up raised: Writes the outage record; refuses when no notification is pending.",
+      "usage": "abcd implement outage ack --session <id> [flags]",
+      "flags": [
+        {
+          "name": "session",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement outage ack --session s-example"
+    },
+    {
+      "path": "abcd implement outage clear",
+      "sentence": "Close the run's outage by hand, with the reason: Writes an outage_end and an intervention line; refuses without --reason.",
+      "usage": "abcd implement outage clear --session <id> --reason <why> [flags]",
+      "flags": [
+        {
+          "name": "reason",
+          "type": "string"
+        },
+        {
+          "name": "session",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement outage clear --session s-example --reason \"the network is back\""
+    },
+    {
+      "path": "abcd implement outage probe",
+      "sentence": "Run the shared outage probe when it is due: Writes the probe's result and its run-log lines; refuses a run that gave up.",
+      "usage": "abcd implement outage probe --session <id> [--model ok|fail] [flags]",
+      "flags": [
+        {
+          "name": "model",
+          "type": "string",
+          "allowed": [
+            "ok",
+            "fail"
+          ]
+        },
+        {
+          "name": "session",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement outage probe --session s-example"
+    },
+    {
+      "path": "abcd implement outage record",
+      "sentence": "Report a lost network or model-service connection: Writes the outage record and, opening it, an outage_start line; refuses an unknown service or kind.",
+      "usage": "abcd implement outage record --session <id> --service network|model --kind host|agent|tool --lane <lane> --what <text> [flags]",
+      "flags": [
+        {
+          "name": "kind",
+          "type": "string",
+          "allowed": [
+            "agent",
+            "host",
+            "tool"
+          ]
+        },
+        {
+          "name": "lane",
+          "type": "string"
+        },
+        {
+          "name": "service",
+          "type": "string",
+          "allowed": [
+            "model",
+            "network"
+          ]
+        },
+        {
+          "name": "session",
+          "type": "string"
+        },
+        {
+          "name": "what",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement outage record --session s-example --service network --kind tool --lane cli --what \"git push\""
+    },
+    {
+      "path": "abcd implement receipt",
+      "sentence": "Hand back the receipt an agent stage of a loop run awaits: Writes the run's state when the receipt verifies; refuses a receipt that does not verify.",
+      "usage": "abcd implement receipt <path> [--run <run-id>] [flags]",
+      "flags": [
+        {
+          "name": "run",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement receipt review-receipt.json --run run-2609010000000001"
+    },
+    {
+      "path": "abcd implement record",
+      "sentence": "Render a loop run's record and capture its transcripts: Writes only with --transcript; refuses it on a run in progress.",
+      "usage": "abcd implement record [--run <run-id>] [--transcript <path>]... [flags]",
+      "flags": [
+        {
+          "name": "run",
+          "type": "string"
+        },
+        {
+          "name": "transcript",
+          "type": "list"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement record"
+    },
+    {
+      "path": "abcd implement release",
+      "sentence": "Release this session's claim on a record: Writes the release and a claim_released line; refuses a claim another session holds.",
+      "usage": "abcd implement release <record> --session <id> [flags]",
+      "flags": [
+        {
+          "name": "session",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement release iss-2609010000000001 --session s-example"
+    },
+    {
+      "path": "abcd implement report",
+      "sentence": "Derive the comparison of the division modes from the run log: Writes nothing; refuses --date and --log together.",
+      "usage": "abcd implement report [--date YYYY-MM-DD | --log <file>] [flags]",
+      "flags": [
+        {
+          "name": "date",
+          "type": "string"
+        },
+        {
+          "name": "log",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement report"
+    },
+    {
+      "path": "abcd implement resume",
+      "sentence": "List every unfinished run on the machine, or take one over: Writes nothing bare; refuses a take-over while a stop holds or another driver is alive.",
+      "usage": "abcd implement resume [--run <run-id>] [--take <run-id>] [flags]",
+      "flags": [
+        {
+          "name": "run",
+          "type": "string"
+        },
+        {
+          "name": "take",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement resume --take run-2609010000000001"
+    },
+    {
+      "path": "abcd implement status",
+      "sentence": "Render the implement loop's runs in this checkout, lane by lane: Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.",
+      "usage": "abcd implement status [--run <run-id>] [flags]",
+      "flags": [
+        {
+          "name": "run",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement status"
+    },
+    {
+      "path": "abcd implement step",
+      "sentence": "Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.",
+      "usage": "abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [--route <role>=runner:<name>[@<provider>/<model>]]... [flags]",
+      "flags": [
+        {
+          "name": "accept-config-change",
+          "type": "bool"
+        },
+        {
+          "name": "discard",
+          "type": "string"
+        },
+        {
+          "name": "release",
+          "type": "string"
+        },
+        {
+          "name": "restart",
+          "type": "string"
+        },
+        {
+          "name": "route",
+          "type": "list"
+        },
+        {
+          "name": "run",
+          "type": "string"
+        },
+        {
+          "name": "yielded",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement step"
+    },
+    {
+      "path": "abcd implement stop",
+      "sentence": "Stop the unattended runs of each account that chose this folder, or lift it: Writes the stop file; refuses no terminal, and a file no run would honour.",
+      "usage": "abcd implement stop [--lift] [flags]",
+      "flags": [
+        {
+          "name": "lift",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement stop"
+    },
+    {
+      "path": "abcd implement widen",
+      "sentence": "Widen a lane's hold to a path before it is edited: Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.",
+      "usage": "abcd implement widen <path>... --lane <lane-id> [--run <run-id>] [flags]",
+      "flags": [
+        {
+          "name": "lane",
+          "type": "string"
+        },
+        {
+          "name": "run",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd implement widen internal/widget/b.go --lane lane-1 --run run-2609010000000001"
+    }
+  ]
+}

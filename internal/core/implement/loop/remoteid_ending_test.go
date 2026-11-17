@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/claim"
 )
 
 // TestADriveEndedByAHeldChangeSaysWhatItLeftAndHowToReleaseIt: a
@@ -37,7 +39,7 @@ func TestADriveEndedByAHeldChangeSaysWhatItLeftAndHowToReleaseIt(t *testing.T) {
 	if !strings.Contains(said, "nothing this drive holds was released: releasing is a push, and the drive runs none while what the drive holds changed since it started (core.sshcommand") {
 		t.Fatalf("the person is told nothing was released, and why:\n%s", said)
 	}
-	left := regexp.MustCompile("(?m)^(\\S+): its reservation was not released and lapses at (\\S+); once what the drive holds is as it should be, release it with `abcd reserve (\\S+) --release`, or start the drive again, which takes the run up$").FindStringSubmatch(said)
+	left := regexp.MustCompile("(?m)^(\\S+): its reservation was not released and lapses at (\\S+) " + regexp.QuoteMeta(UnlessRunRenewed) + "; once what the drive holds is as it should be, release it with `abcd reserve (\\S+) --release`, or start the drive again, which takes the run up$").FindStringSubmatch(said)
 	if left == nil || left[1] != res.Issue || left[3] != res.Issue {
 		t.Fatalf("the reservation left is named with when it lapses and how to release it (issue %q):\n%s", res.Issue, said)
 	}
@@ -46,5 +48,37 @@ func TestADriveEndedByAHeldChangeSaysWhatItLeftAndHowToReleaseIt(t *testing.T) {
 	}
 	if strings.Contains(said, "git push was not run") {
 		t.Fatalf("no release push is tried under the change:\n%s", said)
+	}
+}
+
+// TestALeftReservationNamesTheRenewersOfWhatHoldsIt pins heldLapse: a lane's
+// run still in progress is renewed by a step or `abcd drain` run in this copy
+// as well as by a load-gate waiter, while a judgement's hold is renewed by the
+// waiter alone, so only the run's line names the commands. `abcd implement
+// status` is not named: it passes over a lane parked at its pull request
+// (renewsWhereItWaits), and the lanes named here include such a lane. A reservation that is not this copy's live one takes no
+// clause.
+func TestALeftReservationNamesTheRenewersOfWhatHoldsIt(t *testing.T) {
+	at := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
+	live := claim.Reservation{Copy: claim.CopyThis, State: claim.StateLive, EffectiveExpiry: at}
+	run := heldLapse(live, true, true)
+	hold := heldLapse(live, true, false)
+	for _, want := range []string{"2026-11-16T09:00:00Z", "a step", "`abcd drain`", "a load-gate waiter in this copy"} {
+		if !strings.Contains(run, want) {
+			t.Errorf("a run's lapse does not name %q: %q", want, run)
+		}
+	}
+	if strings.Contains(run, "implement status") {
+		t.Errorf("a run's lapse names `abcd implement status`, which does not renew a lane parked at its pull request: %q", run)
+	}
+	if !strings.Contains(hold, unlessWaiterRenews) || strings.Contains(hold, "implement status") || strings.Contains(hold, "a step") {
+		t.Errorf("a judgement hold's lapse names the waiter alone: %q", hold)
+	}
+	other := claim.Reservation{Copy: claim.CopyAnother, State: claim.StateLive, EffectiveExpiry: at}
+	if got := heldLapse(other, true, true); got != "lapses with its lease" {
+		t.Errorf("another copy's reservation takes no clause: %q", got)
+	}
+	if got := heldLapse(live, false, true); got != "lapses with its lease" {
+		t.Errorf("an unread view takes no clause: %q", got)
 	}
 }

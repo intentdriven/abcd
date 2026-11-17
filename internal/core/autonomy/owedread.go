@@ -74,8 +74,9 @@ type ReadOptions struct {
 	SessionID string
 	// ProcTable reads the machine's process table under the check's ctx, for
 	// the live work standing for an owed item (livework.go); nil means
-	// machineload.ReadContext. It is read at most once a check, only while
-	// away, and only when a whole run's marker is found.
+	// machineload.ReadContext. It is read at most once a check, and only
+	// when a run's recorded driver is a process with no session (a drive's
+	// hold, holders.go) or, while away, a whole run's marker is found.
 	ProcTable func(ctx context.Context) (machineload.Snapshot, error)
 	// LiveSessions reads the sessions running on the machine, each with the
 	// checkout it started in; nil means occupancy.Live under Home with the
@@ -273,14 +274,20 @@ type owedReader struct {
 	live       map[string]string // a live session's id -> the checkout it started in
 	liveTried  bool
 	liveOK     bool
-	recordedBy map[string]string   // a recorded branch -> the session that created it, "" when none was kept
-	runDrivers map[string][]string // a live run's key -> each unfinished run's driving session, "" when none
-	elsewhere  map[string]string   // a branch -> the other worktree it is checked out in
-	heldRes    map[string]string   // a reservation -> the live session whose run it is for
-	held       map[string]*holding // by session: what another live session holds
+	recordedBy map[string]string         // a recorded branch -> the session that created it, "" when none was kept
+	runDrivers map[string][]runDriverRec // a live run's key -> each unfinished run's recorded driver
+	elsewhere  map[string]string         // a branch -> the other worktree it is checked out in
+	heldRes    map[string]string         // a reservation -> the live session or drive whose run it is for
+	driveHeld  map[string][]string       // a live drive's process -> the items it holds, for its note
+	held       map[string]*holding       // by session: what another live session holds
 
-	// procTable reads the process table for the live work (livework.go).
+	// procTable reads the process table for the live work (livework.go) and
+	// for a drive's hold on its lanes (holders.go), once a check (readProcs).
 	procTable func(ctx context.Context) (machineload.Snapshot, error)
+	procsRead bool
+	procSnap  machineload.Snapshot
+	procTab   sessionname.Table
+	procErr   error
 
 	receiptsMinted bool
 	own            map[string]bool
@@ -311,6 +318,9 @@ type laneState struct {
 	// driver is the session its run's control record names as the run's
 	// driver, "" when it names none.
 	driver string
+	// driverHost is the process that record names as the driver, the zero
+	// Host when it names none.
+	driverHost sessionname.Host
 }
 
 type laneReview struct {
@@ -564,7 +574,7 @@ const runRelDir = ".abcd/.work.local/run"
 // tier whose reservation is live under this copy's key.
 func (r *owedReader) readLanes() {
 	r.lanes = map[string]laneState{}
-	r.runDrivers = map[string][]string{}
+	r.runDrivers = map[string][]runDriverRec{}
 	rt, err := os.OpenRoot(r.root)
 	if err != nil {
 		return
@@ -615,7 +625,7 @@ func (r *owedReader) readLanes() {
 			if l.Branch == "" || l.Stage == "done" || l.Stage == "discarded" || l.Stage == "handed-back" {
 				continue
 			}
-			ls := laneState{key: run.Key, driver: driver}
+			ls := laneState{key: run.Key, driver: driver.session, driverHost: driver.host}
 			for _, v := range l.Validation {
 				pass := len(v.Validators) > 0
 				for _, val := range v.Validators {
@@ -632,24 +642,43 @@ func (r *owedReader) readLanes() {
 // bound on it).
 const maxControlBytes = 1 << 20
 
-// runDriver is the session a run's control record names as its live driver
-// (the loop's ClaimDriver writes it as each step starts), read leniently: ""
-// when the record is absent, unreadable, or names no session abcd keys on,
-// which says nothing of whose the run is.
-func runDriver(rt *os.Root, runDir string) string {
+// runDriverRec is a run's recorded driver: the session abcd keys on, "" when
+// the record names none, and the process it names, the zero Host when none.
+type runDriverRec struct {
+	session string
+	host    sessionname.Host
+}
+
+// runDriver is the driver a run's control record names (the loop's
+// ClaimDriver writes it as each step starts), read leniently: the zero
+// record when the control record is absent or unreadable, and no session
+// when it names none abcd keys on, which alone says nothing of whose the run
+// is. A drive started in a plain terminal names its own process and no
+// session (the loop's selfDriver).
+func runDriver(rt *os.Root, runDir string) runDriverRec {
 	raw, err := fsutil.ReadGuardedInRoot(rt, runDir+"/control.json", maxControlBytes)
 	if err != nil {
-		return ""
+		return runDriverRec{}
 	}
 	var c struct {
 		Driver *struct {
-			Session string `json:"session"`
+			Session   string `json:"session"`
+			PID       int    `json:"pid"`
+			StartUnix int64  `json:"start_unix"`
+			SlackMS   int64  `json:"slack_ms"`
 		} `json:"driver"`
 	}
-	if json.Unmarshal(raw, &c) != nil || c.Driver == nil || !ValidSessionID(c.Driver.Session) {
-		return ""
+	if json.Unmarshal(raw, &c) != nil || c.Driver == nil {
+		return runDriverRec{}
 	}
-	return c.Driver.Session
+	var d runDriverRec
+	if ValidSessionID(c.Driver.Session) {
+		d.session = c.Driver.Session
+	}
+	if c.Driver.PID > 1 && c.Driver.StartUnix > 0 && c.Driver.SlackMS >= 0 {
+		d.host = sessionname.Host{PID: c.Driver.PID, StartUnix: c.Driver.StartUnix, Slack: time.Duration(c.Driver.SlackMS) * time.Millisecond}
+	}
+	return d
 }
 
 // reflogBranches are the branches this working copy's HEAD reflog has
@@ -1224,7 +1253,8 @@ func (r *owedReader) stacked(name, head, base, baseTip string, p pullRequest, ha
 // unpushed reports whether b holds commits not on its upstream, or, with no
 // upstream configured, not in any remote-tracking ref and not already landed
 // in the default branch (r.landed). A branch whose upstream is gone never
-// counts.
+// counts, and neither does one the default branch has superseded
+// (r.superseded), which a note names for the person to delete.
 func (r *owedReader) unpushed(b *localBranch) bool {
 	if b.upstream != "" {
 		if b.upstreamGone {
@@ -1232,13 +1262,26 @@ func (r *owedReader) unpushed(b *localBranch) bool {
 		}
 		out, err := r.git("rev-list", "--count", b.upstream+".."+b.head, "--")
 		n, _ := strconv.Atoi(strings.TrimSpace(out))
-		return err == nil && n > 0
+		if err != nil || n == 0 {
+			return false
+		}
+		// A branch tracking the default branch itself, as one cut with -b
+		// from it does, is never pushed there: its commits ahead of it may
+		// be work another branch's pull request has already landed.
+		if b.upstream == r.def && r.superseded(b) {
+			return false
+		}
+		return true
 	}
 	out, err := r.git("rev-list", "-n", "1", b.head, "--not", "--remotes", "--")
 	if err != nil || strings.TrimSpace(out) == "" {
 		return false
 	}
-	switch r.landed(b) {
+	verdict := r.landed(b)
+	if verdict != landedYes && r.superseded(b) {
+		return false
+	}
+	switch verdict {
 	case landedYes:
 		return false
 	case landedUnknown:
@@ -1316,6 +1359,102 @@ func (r *owedReader) landed(b *localBranch) landedness {
 		return landedUnknown
 	}
 	return landedYes
+}
+
+// maxSupersededPaths bounds how many paths a branch may change and still be
+// read for r.superseded: each is a pathspec on one git command line.
+const maxSupersededPaths = 2000
+
+// superseded reports whether every change b makes since its merge base with
+// the default branch, as last fetched, is already recorded in a commit the
+// default branch contains: for each path b changes (read without rename
+// detection, so a move is a delete and an add), some commit after the merge
+// base reachable from the default branch, a merge's result against its first
+// parent included, wrote that path with exactly b's mode and object, or
+// deleted it as b does. Deleting b then loses none of its final content: only
+// its own commits, their messages and any state a later commit of its own
+// overwrote, which the default branch's history may not hold. That is not the claim that the default branch's tip ever
+// held b's content: a commit inside a pull request that merged counts, so a
+// change the pull request recorded and then dropped or moved before merging
+// counts as recorded, and the merge that dropped it was the reviewed decision.
+// The usual shape is a records branch whose records another branch's pull
+// request landed, moving some before it merged, and which the ledger has since
+// edited, moved or resolved (iss-2611160240149245): b's older copies change
+// the merged tree and its commits carry other patch ids, so r.landed cannot
+// call it landed. The test is never a guess from paths both sides touched: a
+// change, to content or mode, that no commit the default branch contains ever
+// wrote at that path keeps b from being superseded. When it is, a note names
+// it for the person to delete. Any read that fails or runs past its bound, no
+// default branch, or a branch changing more than maxSupersededPaths paths
+// reads as not superseded, leaving the verdict as it was.
+func (r *owedReader) superseded(b *localBranch) bool {
+	if r.defTip == "" || r.expired() {
+		return false
+	}
+	base, err := r.git("merge-base", r.defTip, b.head)
+	base = strings.TrimSpace(base)
+	if err != nil || !gitutil.IsFullSHA(base) || base == b.head {
+		return false
+	}
+	out, err := gitutil.RunCappedContext(r.ctx, r.root, maxLandedOutput,
+		"diff", "--no-renames", "--no-ext-diff", "--no-textconv", "--raw", "--no-abbrev", "-z", base, b.head, "--")
+	if err != nil {
+		return false
+	}
+	changes := rawChanges(out)
+	if len(changes) == 0 || len(changes) > maxSupersededPaths {
+		return false
+	}
+	args := []string{"--literal-pathspecs", "log", "--no-renames", "--no-ext-diff", "--no-textconv", "--raw", "--no-abbrev",
+		"-z", "--format=", "--diff-merges=first-parent", base + ".." + r.defTip, "--"}
+	for _, c := range changes {
+		args = append(args, c.path)
+	}
+	out, err = gitutil.RunCappedContext(r.ctx, r.root, maxLandedOutput, args...)
+	if err != nil {
+		return false
+	}
+	made := map[rawChange]bool{}
+	for _, c := range rawChanges(out) {
+		made[c] = true
+	}
+	for _, c := range changes {
+		if !made[c] {
+			return false
+		}
+	}
+	r.note("%s is superseded, not owed a push: every change it makes, to each path's exact content and mode, is already in a commit %s contains, so the person may delete it and lose none of its final content",
+		b.name, r.defLabel())
+	return true
+}
+
+// rawChange is one path's change in git's raw diff form: the path, and the
+// mode and object it ends as, all zeros for a deletion. The mode is part of
+// what a change writes, so a change of mode alone is a change of its own.
+type rawChange struct{ path, mode, blob string }
+
+// rawChanges reads `--raw -z` output, a diff's or a log's (with an empty
+// format): each change is a header, ":<modes> <old> <new> <status>", then
+// its path, NUL-separated. With rename detection off no change carries a
+// second path. A header without a full object name, or a status naming a
+// rename or a copy, is skipped with its path.
+func rawChanges(out string) []rawChange {
+	var changes []rawChange
+	fields := strings.Split(out, "\x00")
+	for i := 0; i+1 < len(fields); i++ {
+		head := strings.TrimLeft(fields[i], "\n")
+		if !strings.HasPrefix(head, ":") {
+			continue
+		}
+		path := fields[i+1]
+		i++
+		f := strings.Fields(head)
+		if len(f) != 5 || !gitutil.IsFullSHA(f[3]) || strings.ContainsAny(f[4][:1], "RC") {
+			continue
+		}
+		changes = append(changes, rawChange{path: path, mode: f[1], blob: f[3]})
+	}
+	return changes
 }
 
 // defLabel names the default branch as last fetched, for a note.

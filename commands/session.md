@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:session`
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain session`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 The relay a team's live brief session goes through. During a call, the host
 starts a session on the project's brief, and everyone else joins by the invite
 link, its QR code or a six-character code. Members of the project's team sign
@@ -355,5 +359,23 @@ too, you are in a source checkout of this repo, where — and only there —
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
 `go run ./cmd/abcd ahoy install` in a source checkout.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain session` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd session [flags]`
+  - An example call is `abcd session`.
+- `abcd session blueprint [flags]`
+  - An example call is `abcd session blueprint`.
+- `abcd session page [flags]`
+  - An example call is `abcd session page --out brief-page`.
+- `abcd session serve [flags]`
+  - An example call is `abcd session serve`.
+- `abcd session setup [flags]`
+  - An example call is `abcd session setup --where local`.
+- `abcd session start [flags]`
+  - An example call is `abcd session start`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

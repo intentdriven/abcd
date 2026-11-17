@@ -1,0 +1,81 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd reading",
+      "sentence": "Render the cold-reading assembler's state: Writes nothing; refuses any argument.",
+      "usage": "abcd reading [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd reading",
+      "subcommands": [
+        "assemble",
+        "ingest"
+      ]
+    },
+    {
+      "path": "abcd reading assemble",
+      "sentence": "Assemble one reading's input and its hashed manifest at one position: Writes both artefacts; refuses a target that is not HEAD or a commit sha.",
+      "usage": "abcd reading assemble --position <position> --target <HEAD|sha> [flags]",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "out",
+          "type": "string"
+        },
+        {
+          "name": "position",
+          "type": "string",
+          "allowed": [
+            "widening",
+            "entailment",
+            "comparative",
+            "detection"
+          ]
+        },
+        {
+          "name": "target",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd reading assemble --position widening --target HEAD"
+    },
+    {
+      "path": "abcd reading ingest",
+      "sentence": "Validate the JSON one cold reading returned: Writes its reading records; refuses output the position's licence does not allow.",
+      "usage": "abcd reading ingest --reading-json <path> [--dry-run] [flags]",
+      "flags": [
+        {
+          "name": "dispatch",
+          "type": "string"
+        },
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "reading-json",
+          "type": "string"
+        },
+        {
+          "name": "route",
+          "type": "list"
+        }
+      ],
+      "inputs": [
+        {
+          "flag": "reading-json",
+          "kind": "json",
+          "name": "reading output",
+          "schema_version": 1,
+          "version_in": "_type"
+        }
+      ],
+      "example": "abcd reading ingest --reading-json reading.json"
+    }
+  ]
+}

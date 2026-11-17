@@ -1,0 +1,120 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd docs",
+      "sentence": "Keep the citation baseline `abcd lint docs` enforces, and judge the brief against the binary: Writes nothing bare; refuses an unknown sub-verb.",
+      "usage": "abcd docs [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd docs",
+      "subcommands": [
+        "cite",
+        "fidelity"
+      ]
+    },
+    {
+      "path": "abcd docs cite",
+      "sentence": "Keep the citation baseline the docs lint enforces offline: Writes nothing bare, and only that baseline; refuses an unknown sub-verb.",
+      "usage": "abcd docs cite [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd docs cite",
+      "subcommands": [
+        "confirm",
+        "refresh"
+      ]
+    },
+    {
+      "path": "abcd docs cite confirm",
+      "sentence": "Record that a person verified a cited URL the fetcher could not read: Writes a dated manual entry in the baseline; refuses a URL the docs do not cite.",
+      "usage": "abcd docs cite confirm [url...] [flags]",
+      "flags": [
+        {
+          "name": "config",
+          "type": "string"
+        },
+        {
+          "name": "receipt",
+          "type": "string"
+        },
+        {
+          "name": "root",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd docs cite confirm https://example.com/article.html"
+    },
+    {
+      "path": "abcd docs cite refresh",
+      "sentence": "Fetch every cited URL once, the one documentation verb that reaches the network: Writes the citation baseline; refuses an unreadable docs-lint configuration.",
+      "usage": "abcd docs cite refresh [flags]",
+      "flags": [
+        {
+          "name": "config",
+          "type": "string"
+        },
+        {
+          "name": "root",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd docs cite refresh"
+    },
+    {
+      "path": "abcd docs fidelity",
+      "sentence": "Judge the brief against every shipped surface and the saved docs review: Writes drafted edits only with --apply; refuses a surface no chapter names.",
+      "usage": "abcd docs fidelity [flags]",
+      "flags": [
+        {
+          "name": "apply",
+          "type": "bool"
+        },
+        {
+          "name": "autonomous",
+          "type": "bool"
+        },
+        {
+          "name": "intent",
+          "type": "list"
+        },
+        {
+          "name": "report",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd docs fidelity",
+      "subcommands": [
+        "record"
+      ]
+    },
+    {
+      "path": "abcd docs fidelity record",
+      "sentence": "Save a docs review's verdict as the receipt for HEAD: Writes the receipt in the local tier; refuses a verdict naming no judge.",
+      "usage": "abcd docs fidelity record --verdict-json <file|-> [--dry-run] [flags]",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "verdict-json",
+          "type": "string"
+        }
+      ],
+      "inputs": [
+        {
+          "flag": "verdict-json",
+          "kind": "json",
+          "name": "docs review verdict",
+          "schema_version": 1,
+          "version_in": "schema_version"
+        }
+      ],
+      "example": "abcd docs fidelity record --verdict-json verdict.json"
+    }
+  ]
+}

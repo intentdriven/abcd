@@ -44,8 +44,9 @@ questions prints it.
 
 The machine-readable form for a command is a document holding the facts'
 format version and a list of commands with the one command's facts in it, the
-shape the per-command JSON files will carry, cut to one command. For an input
-it is the input's shape as the registry builds it.
+shape each per-command JSON file under `docs/reference/cli/commands/` carries,
+cut to one command. For an input it is the input's shape as the registry
+builds it.
 
 ## Where the facts come from
 
@@ -74,8 +75,27 @@ named. A refusal names only paths and flags the tree has, never a word that
 matched none. Bare, the verb prints its own help, which is its entry in the
 bare-invocation exceptions ([`README.md`](README.md#bare-invocation)).
 
-The page blocks generated from the same facts, and the first instruction on
-every command page that sends an agent here, are the spec's later steps.
+`make command-facts-sync` (`cmd/command-facts-sync`) writes the same facts
+into derived copies: one JSON file for the root and one for each visible
+top-level verb of the command tree as built, under
+`docs/reference/cli/commands/` (the `help` and `completion` verbs, which cobra
+adds only when the binary runs, have none), and two generated blocks on every
+page under `commands/`. The first stands straight after the page's heading and
+tells an agent to run `abcd explain <verb>` before it fills in an input, and to
+follow the binary where the page disagrees with it. The second ends the page,
+or stands just before its closing user-input line. Its first line names the
+facts' format version. Where the page's commands declare a visible flag or read
+an input, the block then lists each visible command's usage line, the inputs it
+reads (a filled-in JSON input with its schema version) and its example;
+otherwise the first line is all it holds. The drift tests in
+`internal/surface/cli/commandfacts_drift_test.go` fail when a committed copy
+differs from a fresh rendering of the tree. The command-page facts lint
+(`internal/core/lint/commandpagefacts.go`) reads each page's own prose outside
+those blocks and reports, by page and line, an invocation naming a command the
+tree lacks, a flag that neither the command nor a persistent flag on its path
+registers, or a `schema_version` the input does not have. It reports nothing on
+a line marked `<!-- facts-lint: historical -->`, though it still reads that
+line to tell which input a nearby `schema_version` belongs to.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 

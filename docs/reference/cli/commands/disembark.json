@@ -1,0 +1,186 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd disembark",
+      "sentence": "Pack a repository into a lifeboat, probing and planning first: Writes nothing in the source, only inside the lifeboat; refuses an unknown sub-verb.",
+      "usage": "abcd disembark [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd disembark",
+      "subcommands": [
+        "coverage",
+        "graveyard",
+        "pack",
+        "plan",
+        "press-release",
+        "principles",
+        "probe",
+        "review"
+      ]
+    },
+    {
+      "path": "abcd disembark coverage",
+      "sentence": "Aggregate saved probe reports into the section-by-repository coverage table: Writes nothing; refuses a file that is not a probe report.",
+      "usage": "abcd disembark coverage <report.json>... [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd disembark coverage probe-report.json"
+    },
+    {
+      "path": "abcd disembark graveyard",
+      "sentence": "Validate host-produced lesson JSON against a packed lifeboat: Writes the lessons that cite their evidence; refuses without --lessons-json.",
+      "usage": "abcd disembark graveyard <lifeboat-dir> --lessons-json <file|-> [--dry-run] [flags]",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "lessons-json",
+          "type": "string"
+        },
+        {
+          "name": "route",
+          "type": "list"
+        }
+      ],
+      "inputs": [
+        {
+          "flag": "lessons-json",
+          "kind": "json",
+          "name": "graveyard lessons",
+          "schema_version": 1,
+          "version_in": "schema_version"
+        }
+      ],
+      "example": "abcd disembark graveyard ../lifeboat --lessons-json lessons.json"
+    },
+    {
+      "path": "abcd disembark pack",
+      "sentence": "Pack a lifeboat from a repository into a destination directory: Writes the destination only; refuses when the secret scanner is unavailable.",
+      "usage": "abcd disembark pack <repo> <dest> [flags]",
+      "flags": [
+        {
+          "name": "include-ignored",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd disembark pack . ../lifeboat"
+    },
+    {
+      "path": "abcd disembark plan",
+      "sentence": "Show the file set a pack would write: Writes nothing; refuses a repository path that is not a directory.",
+      "usage": "abcd disembark plan [repo] [flags]",
+      "flags": [
+        {
+          "name": "include-ignored",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd disembark plan ."
+    },
+    {
+      "path": "abcd disembark press-release",
+      "sentence": "Compose a lifeboat's press release, or validate the host's: Writes the press-release files in the lifeboat; refuses a host draft citing nothing resolvable.",
+      "usage": "abcd disembark press-release <lifeboat-dir> [--press-release-json <file|->] [--dry-run] [flags]",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "press-release-json",
+          "type": "string"
+        },
+        {
+          "name": "route",
+          "type": "list"
+        }
+      ],
+      "inputs": [
+        {
+          "flag": "press-release-json",
+          "kind": "json",
+          "name": "lifeboat press release",
+          "schema_version": 1,
+          "version_in": "schema_version"
+        }
+      ],
+      "example": "abcd disembark press-release ../lifeboat"
+    },
+    {
+      "path": "abcd disembark principles",
+      "sentence": "Distil a lifeboat's principles from its ADRs, or validate the host's: Writes the principles files in the lifeboat; refuses a directory that is not a lifeboat.",
+      "usage": "abcd disembark principles <lifeboat-dir> [--principles-json <file|->] [--dry-run] [flags]",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "principles-json",
+          "type": "string"
+        },
+        {
+          "name": "route",
+          "type": "list"
+        }
+      ],
+      "inputs": [
+        {
+          "flag": "principles-json",
+          "kind": "json",
+          "name": "lifeboat principles",
+          "schema_version": 2,
+          "version_in": "schema_version"
+        }
+      ],
+      "example": "abcd disembark principles ../lifeboat"
+    },
+    {
+      "path": "abcd disembark probe",
+      "sentence": "Report which brief sections a lifeboat could ground from a repository: Writes nothing; refuses a repository path that is not a directory.",
+      "usage": "abcd disembark probe [repo] [flags]",
+      "flags": [
+        {
+          "name": "include-ignored",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd disembark probe ."
+    },
+    {
+      "path": "abcd disembark review",
+      "sentence": "Review a packed lifeboat against its source repository, or validate the host's verdict: Writes the review in the lifeboat; refuses an unregistered verdict.",
+      "usage": "abcd disembark review <lifeboat-dir> <source-repo> [--review-json <file|->] [--dry-run] [flags]",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "review-json",
+          "type": "string"
+        },
+        {
+          "name": "route",
+          "type": "list"
+        }
+      ],
+      "inputs": [
+        {
+          "flag": "review-json",
+          "kind": "json",
+          "name": "lifeboat review verdict",
+          "schema_version": 1,
+          "version_in": "schema_version"
+        }
+      ],
+      "example": "abcd disembark review ../lifeboat ."
+    }
+  ]
+}

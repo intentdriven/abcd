@@ -7,6 +7,10 @@ block: people
 
 # `/abcd:dashboard`
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain dashboard`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 The product thinker's dashboard: one server on this computer, reachable only
 from devices on the person's own Tailscale network. It listens on this
 computer's own Tailscale addresses alone, over plain HTTP with no certificate,
@@ -102,5 +106,19 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain dashboard` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd dashboard [flags]`
+  - An example call is `abcd dashboard`.
+- `abcd dashboard start [flags]`
+  - An example call is `abcd dashboard start`.
+- `abcd dashboard status [flags]`
+  - An example call is `abcd dashboard status`.
+- `abcd dashboard stop [flags]`
+  - An example call is `abcd dashboard stop`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

@@ -343,6 +343,39 @@ exit 1
 	}
 }
 
+// TestSessionStartReportsABootstrapFailureAsANotice (iss-2610161125115941):
+// when the bootstrap fails but a plugin binary is already in the root, both
+// binary calls run, and the hook exits 0 with the bootstrap's message and a
+// notice of the failure on stderr. A non-zero SessionStart exit makes the host
+// show an empty error banner and drop the notices the entrypoint just printed
+// (iss-2608241115201044), so the bootstrap's code must not become the hook's.
+func TestSessionStartReportsABootstrapFailureAsANotice(t *testing.T) {
+	root, calls := sessionStartRoot(t, `#!/bin/sh
+printf 'abcd bootstrap: the latest release tag could not be resolved\n' >&2
+exit 1
+`, stubBinary)
+	_, stderr, code := sessionStartRun(t, root, sessionStartPayload, "ABCD_CALLS="+calls)
+
+	if code != 0 {
+		t.Errorf("a failed bootstrap with a binary present must not fail the hook; code = %d\nstderr:\n%s", code, stderr)
+	}
+	log := callLog(t, calls)
+	for _, want := range []string{"hook session-start", "hook prompt-router-reset"} {
+		if !strings.Contains(log, want) {
+			t.Errorf("%q must still run after a failed bootstrap when a binary is present; call log = %q", want, log)
+		}
+	}
+	for _, want := range []string{
+		"abcd bootstrap: the latest release tag could not be resolved",
+		"abcd: a session-start notice",
+		"hooks/bootstrap.sh failed (exit 1)",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr must carry %q; stderr:\n%s", want, stderr)
+		}
+	}
+}
+
 // TestSessionStartWithoutAPluginRootDoesNothing: the manifest is only ever run
 // by the harness, but a command that dereferences an unset CLAUDE_PLUGIN_ROOT
 // would reach for /hooks/bootstrap.sh and report a raw shell error.

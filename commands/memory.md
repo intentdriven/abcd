@@ -8,6 +8,10 @@ user-invocable: false
 
 # `/abcd:memory`
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain memory`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Memory notes are short lessons you keep so that a later session does not have
 to learn them again: a flag the tests need, a preference the person stated, a
 trap in the tooling. You write a note without asking. Each one is stamped with
@@ -136,5 +140,19 @@ too, you are in a source checkout of this repo, where — and only there —
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
 `go run ./cmd/abcd ahoy install` in a source checkout.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain memory` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd memory [flags]`
+  - An example call is `abcd memory`.
+- `abcd memory add --title <title> --recall <word> --by <vendor:model> [flags]`
+  - An example call is `abcd memory add --title "The tests need the race flag" --recall test --recall race --by Example:model-1 < note.txt`.
+- `abcd memory list [flags]`
+  - An example call is `abcd memory list`.
+- `abcd memory remove <mem-id> [flags]`
+  - An example call is `abcd memory remove mem-2609010000000001`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

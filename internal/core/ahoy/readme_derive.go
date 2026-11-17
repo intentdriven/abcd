@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -962,11 +963,144 @@ var inlineTagRe = regexp.MustCompile(`<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Z
 // span shows its text as written, so neither reaches into one; the span is
 // kept with its backticks, which the list shows as code.
 //
+// An escape is text, not markup: an escaped angle bracket or bracket opens no
+// tag or link, and an escaped bracket or parenthesis inside a link does not
+// end it, so each escape is held while the links are read and put back after
+// (iss-2610112021163993 keeps it as written in the list). The tags are
+// dropped in the same reading, which alone decides where one opens.
+//
 // The text comes back masked, with the function that restores its spans: the
 // spans are read once, from the heading as written (iss-2610112237411831).
 func headingText(src string) (string, func(string, bool) string) {
 	masked, unmask := mdrecord.MaskCodeSpans(src)
-	return inlineTagRe.ReplaceAllString(inlineLinkRe.ReplaceAllString(masked, "$1"), ""), unmask
+	held, restore := dropTagsHoldEscapes(masked)
+	return restore(inlineLinkRe.ReplaceAllString(held, "$1")), unmask
+}
+
+// inlineTagAtRe is inlineTagRe anchored where the reading stands.
+var inlineTagAtRe = regexp.MustCompile(`^(?:` + inlineTagRe.String() + `)`)
+
+// escapeHoldRe is a held escape, as dropTagsHoldEscapes writes it.
+var escapeHoldRe = regexp.MustCompile("\x01([0-9]+)\x01")
+
+// headingTagWindow bounds how far one tag is first read from its angle
+// bracket. A tag that runs past it is read again over the rest of the line
+// while the heading's budget lasts (headingTagBudget times its length), so a
+// heading's real long tag (a badge's data URL) is still dropped, and a
+// hostile heading of many unclosed brackets costs a bounded read at each
+// once the budget is spent: the reading stays linear.
+const (
+	headingTagWindow = 512
+	headingTagBudget = 4
+)
+
+// tagAt is the length of the tag opening at the start of w, or 0. An
+// unclosed comment is told without a regexp.
+func tagAt(w string) int {
+	if strings.HasPrefix(w, "<!--") && !strings.Contains(w[4:], "-->") {
+		return 0
+	}
+	if m := inlineTagAtRe.FindStringIndex(w); m != nil {
+		return m[1]
+	}
+	return 0
+}
+
+// dropTagsHoldEscapes reads s left to right as the forge does
+// (iss-2611161558121669): an inline tag where one opens is dropped, and a
+// backslash inside it is no escape; a backslash escape elsewhere, a
+// backslash before ASCII punctuation, is replaced with a placeholder the
+// link pattern cannot read as markup, and the returned function puts it
+// back. A dropped tag leaves an empty placeholder, so the link pattern never
+// joins a bracket and a parenthesis the tag kept apart. Only this reading
+// admits a tag, so a held escape can never make one of a bracket the heading
+// shows as text. A placeholder byte the heading itself holds is held too, as
+// itself, so every one the link pattern sees is part of a placeholder.
+func dropTagsHoldEscapes(s string) (string, func(string) string) {
+	var held []string
+	hold := func(b *strings.Builder, v string) {
+		fmt.Fprintf(b, "\x01%d\x01", len(held))
+		held = append(held, v)
+	}
+	budget := headingTagBudget * len(s)
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); {
+		switch {
+		case s[i] == '<':
+			end := min(len(s), i+headingTagWindow)
+			n := tagAt(s[i:end])
+			if n == 0 && end < len(s) && budget >= len(s)-i {
+				budget -= len(s) - i
+				n = tagAt(s[i:])
+			}
+			if n > 0 {
+				hold(&b, "")
+				i += n
+				continue
+			}
+		case s[i] == '\\' && i+1 < len(s) && isASCIIPunct(s[i+1]):
+			hold(&b, s[i:i+2])
+			i += 2
+			continue
+		case s[i] == 0x01:
+			hold(&b, s[i:i+1])
+			i++
+			continue
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	if len(held) == 0 {
+		return b.String(), func(t string) string { return t }
+	}
+	return b.String(), func(t string) string {
+		return escapeHoldRe.ReplaceAllStringFunc(t, func(m string) string {
+			n, err := strconv.Atoi(m[1 : len(m)-1])
+			if err != nil || n >= len(held) {
+				return m
+			}
+			return held[n]
+		})
+	}
+}
+
+// escapeLinkChars escapes what could close or break the link a heading's
+// masked text sits in, keeping the owner's own escapes as written
+// (iss-2610112021163993): a backslash before ASCII punctuation is a markdown
+// escape and stays, pair and all, so the list renders what the heading
+// renders; a lone backslash (before anything else, or at the end, where it
+// would escape the link's closing bracket) is doubled, and an unescaped
+// bracket is escaped. So is a bare angle bracket: every tag the heading
+// opens was dropped before this, so one left is text the heading shows, and
+// escaped it cannot open a tag in the list that removing a link put
+// together.
+func escapeLinkChars(s string) string {
+	var b strings.Builder
+	b.Grow(len(s) + 8)
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '\\' && i+1 < len(s) && isASCIIPunct(s[i+1]):
+			b.WriteByte(c)
+			b.WriteByte(s[i+1])
+			i++
+		case c == '\\':
+			b.WriteString(`\\`)
+		case c == '[' || c == ']' || c == '<':
+			b.WriteByte('\\')
+			b.WriteByte(c)
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
+// isASCIIPunct reports whether c is ASCII punctuation, the characters a
+// markdown backslash escapes (CommonMark 2.4).
+func isASCIIPunct(c byte) bool {
+	return strings.IndexByte("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", c) >= 0
 }
 
 // spanJoinRe is a masked code span with a backtick or another span directly
@@ -980,7 +1114,7 @@ var spanJoinRe = regexp.MustCompile("(\x00[0-9]+\x00)(\x00|`)|(`)(\x00[0-9]+\x00
 // stripped tag or link left a span touching another span or a backtick, a
 // space keeps them apart, as the list shows a setext heading's line break.
 func escapeLinkText(masked string, unmask func(string, bool) string) string {
-	escaped := strings.NewReplacer(`\`, `\\`, `[`, `\[`, `]`, `\]`).Replace(masked)
+	escaped := escapeLinkChars(masked)
 	for spanJoinRe.MatchString(escaped) {
 		escaped = spanJoinRe.ReplaceAllString(escaped, "$1$3 $2$4")
 	}

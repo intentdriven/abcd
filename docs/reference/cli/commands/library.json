@@ -1,0 +1,280 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd library",
+      "sentence": "Render the sources corpus and the checkout's memory store, read-only: Writes nothing; refuses only when neither store can be read.",
+      "usage": "abcd library [flags]",
+      "flags": [
+        {
+          "name": "corpus",
+          "type": "string",
+          "persistent": true
+        }
+      ],
+      "inputs": [],
+      "example": "abcd library",
+      "subcommands": [
+        "add",
+        "ask",
+        "cite-check",
+        "declassify",
+        "ingest",
+        "init",
+        "ledger",
+        "lint",
+        "sync-banlist"
+      ]
+    },
+    {
+      "path": "abcd library add",
+      "sentence": "Register a source in its class folder, with its entry and text: Writes the corpus and commits it, asking its class at a terminal; refuses off one with no class.",
+      "usage": "abcd library add [document] [flags]",
+      "flags": [
+        {
+          "name": "alias",
+          "type": "list"
+        },
+        {
+          "name": "author",
+          "type": "list"
+        },
+        {
+          "name": "ban-authors",
+          "type": "bool"
+        },
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "keywords",
+          "type": "list"
+        },
+        {
+          "name": "meta",
+          "type": "string"
+        },
+        {
+          "name": "permission",
+          "type": "string",
+          "allowed": [
+            "citable",
+            "no-public-citation",
+            "internal-never-cite",
+            "ai-generated-never-cite",
+            "ask-author"
+          ]
+        },
+        {
+          "name": "private",
+          "type": "bool"
+        },
+        {
+          "name": "public",
+          "type": "bool"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "type",
+          "type": "string"
+        },
+        {
+          "name": "url",
+          "type": "string"
+        },
+        {
+          "name": "venue",
+          "type": "string"
+        },
+        {
+          "name": "year",
+          "type": "int"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd library add article.md --public --key example-paper-2026 --title \"Example Widgets in Practice\""
+    },
+    {
+      "path": "abcd library ask",
+      "sentence": "Query memory and synthesise a cited answer: Writes a memory page only with --file-back; refuses outside a git checkout.",
+      "usage": "abcd library ask <question> [--dry-run] [flags]",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "file-back",
+          "type": "bool"
+        },
+        {
+          "name": "page-json",
+          "type": "string"
+        },
+        {
+          "name": "top-n",
+          "type": "int"
+        }
+      ],
+      "inputs": [
+        {
+          "flag": "page-json",
+          "kind": "json",
+          "name": "answer page",
+          "schema_version": 1,
+          "version_in": "schema_version"
+        }
+      ],
+      "example": "abcd library ask \"why do record ids carry a timestamp?\""
+    },
+    {
+      "path": "abcd library cite-check",
+      "sentence": "Scan text for confidential sources and report each hit by key only: Writes nothing; refuses without a corpus, and exits 1 on a hit.",
+      "usage": "abcd library cite-check <file|-> [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd library cite-check draft.md"
+    },
+    {
+      "path": "abcd library declassify",
+      "sentence": "Move a published confidential source to public/ in one visible commit: Writes the corpus and commits it; refuses a key that is not confidential.",
+      "usage": "abcd library declassify <key> [flags]",
+      "flags": [
+        {
+          "name": "permission",
+          "type": "string",
+          "allowed": [
+            "citable",
+            "no-public-citation",
+            "internal-never-cite",
+            "ai-generated-never-cite",
+            "ask-author"
+          ]
+        }
+      ],
+      "inputs": [],
+      "example": "abcd library declassify example-paper-2026"
+    },
+    {
+      "path": "abcd library ingest",
+      "sentence": "Distil a local file or an https source into cited memory pages: Writes the pages; refuses a URL that is not https.",
+      "usage": "abcd library ingest <path-or-https-url> [--dry-run] [flags]",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "keep-original",
+          "type": "bool"
+        },
+        {
+          "name": "pages-json",
+          "type": "string"
+        }
+      ],
+      "inputs": [
+        {
+          "flag": "pages-json",
+          "kind": "json",
+          "name": "distilled pages",
+          "schema_version": 1,
+          "version_in": "none"
+        }
+      ],
+      "example": "abcd library ingest https://example.com/article.html"
+    },
+    {
+      "path": "abcd library init",
+      "sentence": "Create an empty sources corpus, a git repository with no remote: Writes the corpus in one commit; refuses an existing corpus or one inside another working tree.",
+      "usage": "abcd library init [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd library init"
+    },
+    {
+      "path": "abcd library ledger",
+      "sentence": "Append an influence line to this repository's ledger, or flip one to cited: Writes one ledger line; refuses a flip for a source that is not public and citable.",
+      "usage": "abcd library ledger [flags]",
+      "flags": [
+        {
+          "name": "claim",
+          "type": "string"
+        },
+        {
+          "name": "corrects",
+          "type": "int"
+        },
+        {
+          "name": "decision",
+          "type": "string"
+        },
+        {
+          "name": "flip",
+          "type": "int"
+        },
+        {
+          "name": "influence",
+          "type": "string",
+          "allowed": [
+            "supports",
+            "contradicts",
+            "method",
+            "background"
+          ]
+        },
+        {
+          "name": "list",
+          "type": "bool"
+        },
+        {
+          "name": "locator",
+          "type": "string"
+        },
+        {
+          "name": "repo",
+          "type": "string"
+        },
+        {
+          "name": "source",
+          "type": "string"
+        },
+        {
+          "name": "used-in",
+          "type": "list"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd library ledger --list"
+    },
+    {
+      "path": "abcd library lint",
+      "sentence": "Health-check the whole memory store: Writes a lint report; refuses a store with a blocker finding.",
+      "usage": "abcd library lint [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd library lint"
+    },
+    {
+      "path": "abcd library sync-banlist",
+      "sentence": "Project confidential titles and aliases into the private banlist: Writes the store's generated block; refuses a corpus whose folders and entries disagree.",
+      "usage": "abcd library sync-banlist [flags]",
+      "flags": [
+        {
+          "name": "refresh",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd library sync-banlist"
+    }
+  ]
+}

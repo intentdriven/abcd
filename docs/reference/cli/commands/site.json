@@ -1,0 +1,103 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd site",
+      "sentence": "Report what the website declares and what was built: Writes nothing; refuses any argument.",
+      "usage": "abcd site [flags]",
+      "flags": [
+        {
+          "name": "out",
+          "type": "string",
+          "default": "site"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd site",
+      "subcommands": [
+        "build",
+        "setup"
+      ]
+    },
+    {
+      "path": "abcd site build",
+      "sentence": "Render the website into the output directory: Writes there, plus a missing label into site-src/ui.json; refuses a non-empty directory it did not write.",
+      "usage": "abcd site build [flags]",
+      "flags": [
+        {
+          "name": "base-path",
+          "type": "string",
+          "default": "/"
+        },
+        {
+          "name": "commit",
+          "type": "string"
+        },
+        {
+          "name": "date",
+          "type": "string"
+        },
+        {
+          "name": "out",
+          "type": "string",
+          "default": "site"
+        },
+        {
+          "name": "preview",
+          "type": "bool"
+        },
+        {
+          "name": "project",
+          "type": "bool"
+        },
+        {
+          "name": "version",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd site build"
+    },
+    {
+      "path": "abcd site setup",
+      "sentence": "Take the website from this checkout to a live address: Writes its files, and the forge and host changes once confirmed; refuses a folder abcd does not manage.",
+      "usage": "abcd site setup [flags]",
+      "flags": [
+        {
+          "name": "confirm",
+          "type": "bool"
+        },
+        {
+          "name": "domain",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "project",
+          "type": "bool"
+        },
+        {
+          "name": "provider",
+          "type": "string",
+          "allowed": [
+            "cloudflare",
+            "github-pages"
+          ]
+        },
+        {
+          "name": "replace-existing",
+          "type": "bool"
+        },
+        {
+          "name": "yes",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd site setup"
+    }
+  ]
+}

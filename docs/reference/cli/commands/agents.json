@@ -1,0 +1,26 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd agents",
+      "sentence": "List the agents abcd started for this session and add them up: Writes nothing; refuses when launches are on record and no session or scope says whose.",
+      "usage": "abcd agents [flags]",
+      "flags": [
+        {
+          "name": "all",
+          "type": "bool"
+        },
+        {
+          "name": "run",
+          "type": "string"
+        },
+        {
+          "name": "session",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd agents --all"
+    }
+  ]
+}

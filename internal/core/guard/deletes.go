@@ -211,6 +211,8 @@ func deleteRefusal(failed, settle []string) payloadSignal {
 	if successor != "" {
 		successor += " "
 	}
+	successor += "A spent branch or worktree is settled by `abcd sweep`, which lists what is provably finished, " +
+		"and `abcd sweep --apply`, which clears it once the person asks for the cleanup. "
 	successor += "If the person decides it is safe anyway, they can allow this one exact command, once, by running " +
 		"`abcd guard allow --once --command '<the command>'` themselves; an agent cannot."
 	return payloadSignal{

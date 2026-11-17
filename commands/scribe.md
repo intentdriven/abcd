@@ -8,6 +8,10 @@ user-invocable: false
 
 # `/abcd:scribe` — the ledger scribe's context and ingest
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain scribe`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 The scribe (the `abcd:scribe` agent) transcribes a reading run's records and the
 researcher's dispositions into the ledger's declared shapes, and authors
 nothing. Its access rule is the reading assembler's exact inverse: a reading is
@@ -163,5 +167,18 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain scribe` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd scribe [flags]`
+  - An example call is `abcd scribe`.
+- `abcd scribe assemble --run <rdg-N> --dispositions <path> [flags]`
+  - An example call is `abcd scribe assemble --run rdg-2609010000000001 --dispositions dispositions.md`.
+- `abcd scribe ingest --scribe-json <path> --dispositions <path> [--dry-run] [flags]`
+  - Reads `--scribe-json`, the scribe output, at schema version 1, in its _type tag; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain scribe ingest --input scribe-json` prints its shape.
+  - An example call is `abcd scribe ingest --scribe-json scribe.json --dispositions dispositions.md`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

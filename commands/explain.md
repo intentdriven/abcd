@@ -8,6 +8,10 @@ user-invocable: false
 
 # `/abcd:explain` — ask the binary how to call a command
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain explain`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 The running binary answers for itself. A command page ships with the plugin
 version this session loaded, and the binary it runs may be newer or older, so
 when a page and `explain` disagree about a flag, a value or an input's schema
@@ -105,5 +109,13 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain explain` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd explain [<verb> [<sub-verb>...]] [flags]`
+  - An example call is `abcd explain ideate record --input verdict-json`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

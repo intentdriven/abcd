@@ -1,0 +1,49 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd ideate",
+      "sentence": "Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one verdict record, private or public; refuses an unknown sub-verb.",
+      "usage": "abcd ideate [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd ideate",
+      "subcommands": [
+        "record"
+      ]
+    },
+    {
+      "path": "abcd ideate record",
+      "sentence": "Validate a host-composed gauntlet verdict: Writes the dated record, private unless --public; refuses without an idea slug or --verdict-json.",
+      "usage": "abcd ideate record <idea-slug> [--private | --public] --verdict-json <file|-> [--dry-run] [flags]",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "private",
+          "type": "bool"
+        },
+        {
+          "name": "public",
+          "type": "bool"
+        },
+        {
+          "name": "verdict-json",
+          "type": "string"
+        }
+      ],
+      "inputs": [
+        {
+          "flag": "verdict-json",
+          "kind": "json",
+          "name": "ideate verdict",
+          "schema_version": 2,
+          "version_in": "schema_version"
+        }
+      ],
+      "example": "abcd ideate record widen-the-public-api --verdict-json verdict.json"
+    }
+  ]
+}

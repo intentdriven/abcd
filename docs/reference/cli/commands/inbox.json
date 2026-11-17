@@ -1,0 +1,33 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd inbox",
+      "sentence": "List the reports managed repositories filed back to abcd, newest first: Writes nothing; refuses any argument.",
+      "usage": "abcd inbox [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd inbox",
+      "subcommands": [
+        "promote",
+        "show"
+      ]
+    },
+    {
+      "path": "abcd inbox promote",
+      "sentence": "File one report as a capture in abcd's own ledger: Writes the capture and marks the report promoted; refuses outside abcd's own checkout.",
+      "usage": "abcd inbox promote <id> [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd inbox promote rpt-2609010000000001"
+    },
+    {
+      "path": "abcd inbox show",
+      "sentence": "Render one report whole: Writes nothing; refuses an id the inbox does not hold.",
+      "usage": "abcd inbox show <id> [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd inbox show rpt-2609010000000001"
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd checklist",
+      "sentence": "List this working copy's checklist, every item and field: Writes nothing; refuses outside a git checkout.",
+      "usage": "abcd checklist [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd checklist",
+      "subcommands": [
+        "add",
+        "render",
+        "set",
+        "show"
+      ]
+    },
+    {
+      "path": "abcd checklist add",
+      "sentence": "Add one item to the checklist under a new stable id: Writes checklist.json and its last-good copy; refuses a schema violation or a secret, naming the field.",
+      "usage": "abcd checklist add \"<title>\" [flags]",
+      "flags": [
+        {
+          "name": "next-look",
+          "type": "string"
+        },
+        {
+          "name": "promise",
+          "type": "string"
+        },
+        {
+          "name": "waits-on",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd checklist add \"Regenerate the CLI reference\""
+    },
+    {
+      "path": "abcd checklist render",
+      "sentence": "Print the checklist as one block of text, open items first: Writes nothing; refuses outside a git checkout.",
+      "usage": "abcd checklist render [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd checklist render"
+    },
+    {
+      "path": "abcd checklist set",
+      "sentence": "Set one checklist item's state by its id: Writes checklist.json and its last-good copy; refuses an unknown id or state.",
+      "usage": "abcd checklist set <id> --state <state> [flags]",
+      "flags": [
+        {
+          "name": "state",
+          "type": "string",
+          "allowed": [
+            "working",
+            "waiting",
+            "done",
+            "dropped"
+          ]
+        }
+      ],
+      "inputs": [],
+      "example": "abcd checklist set regenerate-the-cli-reference --state done"
+    },
+    {
+      "path": "abcd checklist show",
+      "sentence": "Show one checklist item, every field, by its id: Writes nothing; refuses an id the checklist does not hold.",
+      "usage": "abcd checklist show <id> [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd checklist show regenerate-the-cli-reference"
+    }
+  ]
+}

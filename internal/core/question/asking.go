@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // KnowledgeFloorPage is where the knowledge floor is stated in full: a glossary
@@ -32,7 +34,64 @@ func AskingRecall() []string { return append([]string(nil), askingRecall...) }
 // The register rule, the ask-the-role-first rule, the writer rule and the mode
 // rules open with "In abcd's own interviews": they hold for abcd's command pages, never for
 // another tool's questions in a managed repository (itd-201 decision 10).
-func AskingRules(l Limits) []string {
+//
+// It is AskingRulesFrom with no note, byte for byte: the text every
+// repository whose limits no file sets reads.
+func AskingRules(l Limits) []string { return AskingRulesFrom(l, LimitsNote{}) }
+
+// LimitsNote is where the limits the asking rules state came from, for the
+// layout rule to say so (spc-2610301950037469, approach 7). SetBy is one
+// origin per configurable key, in Bounds' order, as the question check's
+// limits_source carries them: "bundled", the repository's file, or the
+// person's own file where it tightened the figure; any other origin is not
+// named. Refused is set when a value was read and refused; the figures are
+// then abcd's defaults. The zero value adds nothing to the text every
+// repository reads.
+type LimitsNote struct {
+	SetBy   []string
+	Refused *RefusedLimit
+}
+
+// RefusedLimit is a refused question limit, in the closed fields the layout
+// rule states it from (spc-2610301950037469, approach 7). The rule names Key
+// only when it is one of Bounds' keys, File and LimitFile only when each is
+// one of the two configuration files (LimitFile "bundled" reads as abcd's
+// default), and states the bounds from Bounds and Limit as a number; any
+// other key or file is stated by a fixed phrase. Reason is the resolver's
+// refusal in its own words, for the loader's out-of-band note alone: the
+// asking rules never render it.
+type RefusedLimit struct {
+	// Key is the refused key; "" or any key not in Bounds is a setting abcd
+	// does not read (an unknown key, or a question that is not an object).
+	Key string
+	// File is the file that holds the refused value, as the resolver names it.
+	File string
+	// NotInteger marks a value that is not a whole number.
+	NotInteger bool
+	// Limit and LimitFile are set for a personal value looser than the limit
+	// in force: that limit, and the file that set it.
+	Limit     int
+	LimitFile string
+	// Reason is the resolver's words, never rendered into a rule.
+	Reason string
+}
+
+// repoConfigFile and machineConfigFile are the two files that set the
+// configurable limits, named as the resolver names them in limits_source.
+const repoConfigFile = ".abcd/config.json"
+
+var machineConfigFile = abcdhome.Display("config.json")
+
+// limitNames are the configurable figures as the layout rule names them, in
+// Bounds' order.
+var limitNames = [...]string{"the rows", "the label words", "the description sentences"}
+
+// AskingRulesFrom is the asking rules at the limits l, with the layout rule
+// ending on where the configurable figures came from (n): the file that set
+// each, or, under a refusal, that the figures are abcd's defaults and why. The
+// rule states the three keys a repository may set and their bounds in every
+// repository, from Bounds.
+func AskingRulesFrom(l Limits, n LimitsNote) []string {
 	return []string{
 		fmt.Sprintf("Ask one thing at a time, through the host's interactive question tool, never as a numbered list in a message. "+
 			"The parts of one thing (the criteria of one feature, the paragraphs of one text) are asked as tabs, up to %s on a screen, each short, and the rest on the next screen. "+
@@ -46,19 +105,21 @@ func AskingRules(l Limits) []string {
 
 		"The thing being decided is quoted in full in the question itself, in paragraphs and lists, never referred to: The criterion before \"does it stand?\", the paragraph before \"confirm or change?\", the open question before \"resolve or defer?\". " +
 			"Prose written between tool calls is invisible while the question shows, so a question about text the person cannot see cannot be answered. " +
-			"Material too long for one question is put one part per question, never into a message before the question or into a preview.",
+			"Material too long for one question never goes into a message before the question or into a preview: One decision's material is quoted shorter and faithfully, keeping every answer's gain and cost, and only material holding several decisions or too many answers is split into parts.",
 
 		fmt.Sprintf("Every question has one layout, and abcd's question check refuses a question that breaks it, naming the part, the value, and the limit; fix each part and ask again. "+
 			"The header is at most %s columns and is abcd's number for the question: %s, a letter after the number for one part of a question split in parts, and a total after the slash only when the interview's length is known; the header is what the check knows abcd's question by, and the older form with a role word first (%s, the role one of %s) is still read. "+
 			"The question text gives the material first, then a line starting %q and a line starting %q (each saying %q where it does not apply), and ends with the question on its own line. "+
 			"It offers %s to %s options, the last %s; each label is at most %s words, and each description at most %s sentences. "+
 			"There is no bold (no ** or __) and no side preview, and one question, or one tab, fits %s rows at %s columns, counting the header, the host's frame, the question text, and every option's label and description. "+
-			"The rows limit is the one the check does not refuse on: a question over it is shown, and the agent is told afterwards to keep the next question within it.",
+			"The rows limit is the one the check does not refuse on: a question over it is shown, and the agent is told afterwards to keep the next question within it. "+
+			"%s%s",
 			numberWord(l.HeaderColumns), joinOr(numberExamples, true), chipExamples(l.ChipRoles), joinOr(l.ChipRoles, false),
 			l.NowPrefix, l.ChangeLaterPrefix, l.NotApplicable,
 			numberWord(l.OptionsPerQ[0]), numberWord(l.OptionsPerQ[1]), joinOr(l.LaterLabels, true),
 			numberWord(l.LabelWords), numberWord(l.MeaningSentences),
-			numberWord(l.Rows), numberWord(l.Columns)),
+			numberWord(l.Rows), numberWord(l.Columns),
+			boundsSentences(), n.sentence()),
 
 		"In abcd's own interviews, write each question through the abcd:question-drafter agent, abcd's question writer: hand it the material to quote, whom the question is for, the decision, and the defensible answers. " +
 			"It writes the question to these rules, runs `abcd guard question` on each draft, fixes every fault the check names, and checks again until the check is clean, then returns the question with the rows the check counted. " +
@@ -96,6 +157,140 @@ func AskingRules(l Limits) []string {
 	}
 }
 
+// boundsSentences state the keys a repository may set, each with its bounds
+// in words, and that a person's own file may only set them lower
+// (itd-2610301914350541 decisions 3 and 5). They render Bounds and write no
+// bound of their own.
+func boundsSentences() string {
+	keys := make([]string, len(Bounds))
+	for i, b := range Bounds {
+		keys[i] = fmt.Sprintf("`%s` from %s to %s", b.Key, numberWord(b.Floor), numberWord(b.Ceiling))
+	}
+	return "A repository may set " + joinList(keys, "and") + " in its `" + repoConfigFile + "`. " +
+		"A person's own `" + machineConfigFile + "` may set each lower, never higher."
+}
+
+// PageLimitsSentence is the sentence the two generated pages carry after the
+// asking rules (spc-2610301950037469, approach 10; itd-2610301914350541
+// decisions 10 and 12). The pages are rendered from Default at build time and
+// ship with the plugin, so they cannot state a repository's values: the
+// sentence says the figures stated are abcd's defaults, names the keys from
+// Bounds without restating their bounds, which the layout rule already
+// states, and sends whoever writes a question to the check's `limits` for the
+// values in force, never to either file.
+func PageLimitsSentence() string {
+	keys := make([]string, len(Bounds))
+	for i, b := range Bounds {
+		keys[i] = "`" + b.Key + "`"
+	}
+	return "The figures stated here are abcd's defaults, in force where neither `" + repoConfigFile +
+		"` nor the person's own `" + machineConfigFile + "` sets " + joinList(keys, "or") +
+		" within the bounds named above; `abcd guard question` reports the values in force in its `limits` field," +
+		" and whoever writes a question takes them from there, never from either file."
+}
+
+// sentence is the layout rule's last sentence for n: under a refusal, that
+// the figures are abcd's defaults, the refusal, and that the check refuses
+// every abcd question until the file is fixed; otherwise the file that set
+// each figure a file set, key by key, the person's own file as having
+// tightened it. It is "" where no file set a figure and nothing was refused.
+func (n LimitsNote) sentence() string {
+	if n.Refused != nil {
+		return " In this repository, the figures stated here are abcd's defaults, because " + n.Refused.clause() +
+			". Until that file is fixed, abcd's question check refuses every abcd question."
+	}
+	type group struct {
+		origin string
+		names  []string
+	}
+	var groups []group
+	for i, origin := range n.SetBy {
+		if i >= len(limitNames) || !isConfigFile(origin) {
+			continue
+		}
+		j := 0
+		for j < len(groups) && groups[j].origin != origin {
+			j++
+		}
+		if j == len(groups) {
+			groups = append(groups, group{origin: origin})
+		}
+		groups[j].names = append(groups[j].names, limitNames[i])
+	}
+	if len(groups) == 0 {
+		return ""
+	}
+	// The person's own file is named last: it tightens what the repository's
+	// file, or abcd's default, set.
+	for i, g := range groups {
+		if g.origin == machineConfigFile && i < len(groups)-1 {
+			groups = append(append(groups[:i:i], groups[i+1:]...), g)
+			break
+		}
+	}
+	clauses := make([]string, len(groups))
+	for i, g := range groups {
+		if g.origin == machineConfigFile {
+			clauses[i] = "the person's own `" + g.origin + "` tightened " + joinList(g.names, "and")
+			continue
+		}
+		clauses[i] = "`" + g.origin + "` set " + joinList(g.names, "and")
+	}
+	joined := joinList(clauses, "and")
+	if len(clauses) == 2 {
+		joined = clauses[0] + ", and " + clauses[1]
+	}
+	return " In this repository, " + joined + "."
+}
+
+// isConfigFile reports whether origin is one of the two files that set the
+// configurable limits, the only origins the layout rule names.
+func isConfigFile(origin string) bool { return origin == repoConfigFile || origin == machineConfigFile }
+
+// fileClause names the config file origin in the layout rule's words, the
+// person's own file as theirs; "" for any other origin.
+func fileClause(origin string) string {
+	switch origin {
+	case repoConfigFile:
+		return "`" + repoConfigFile + "`"
+	case machineConfigFile:
+		return "the person's own `" + machineConfigFile + "`"
+	}
+	return ""
+}
+
+// clause states the refusal from r's closed fields alone: the key when it is
+// one of Bounds' keys, the file when it is a configuration file, the bounds
+// in words, and for a personal value that loosens, the limit in force in
+// words with the file that set it or abcd's default. No other text of r
+// reaches it.
+func (r *RefusedLimit) clause() string {
+	where := fileClause(r.File)
+	b, known := boundFor(r.Key)
+	if !known {
+		if where == "" {
+			where = "`" + repoConfigFile + "` or the person's own `" + machineConfigFile + "`"
+		}
+		return where + " holds a setting under `question` that abcd does not read"
+	}
+	key := "`" + b.Key + "`"
+	if where != "" {
+		key += " in " + where
+	}
+	bounds := "from " + numberWord(b.Floor) + " to " + numberWord(b.Ceiling)
+	switch {
+	case r.NotInteger:
+		return key + " is not a whole number " + bounds
+	case r.Limit > 0:
+		limit := "abcd's default"
+		if isConfigFile(r.LimitFile) {
+			limit = "the limit `" + r.LimitFile + "` sets"
+		}
+		return key + " is looser than " + numberWord(r.Limit) + ", " + limit + ", and a personal value may only tighten"
+	}
+	return key + " is outside " + numberWord(b.Floor) + " to " + numberWord(b.Ceiling)
+}
+
 // numberExamples are the headers the layout rule shows in abcd's number form:
 // a plain number, a part, and a number with the interview's total. The
 // grammar is the check's (chipRe); no limit sets it.
@@ -126,15 +321,21 @@ func joinOr(items []string, quoted bool) string {
 		}
 		q[i] = s
 	}
+	return joinList(q, "or")
+}
+
+// joinList joins items as an English list ending in conj, with the serial
+// comma before the last of three or more.
+func joinList(q []string, conj string) string {
 	switch len(q) {
 	case 0:
 		return ""
 	case 1:
 		return q[0]
 	case 2:
-		return q[0] + " or " + q[1]
+		return q[0] + " " + conj + " " + q[1]
 	}
-	return strings.Join(q[:len(q)-1], ", ") + ", or " + q[len(q)-1]
+	return strings.Join(q[:len(q)-1], ", ") + ", " + conj + " " + q[len(q)-1]
 }
 
 var (

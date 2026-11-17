@@ -179,7 +179,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"level, or a malformed set, is refused at the review stage and writes nothing.\n" +
 			"The classes were renamed: top is now research, middle is top, below is default and smallest\n" +
 			"is small. A file naming middle, below or smallest is refused with that mapping, and so is a\n" +
-			"machine class map that sets top without research; a review list or judge naming top, while\n" +
+			"machine class map that sets top without research; a review list naming top, while\n" +
 			"no file names research, default or small, runs and says on stderr what top now stands for.\n" +
 			"The result's review and the run record name each class with its model and each layer.\n\n" +
 			"The run then moves one step per `abcd implement step`, driven by the host session.\n\n" +
@@ -236,6 +236,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			const prefix = "abcd build"
+			defer installAutoSweep()()
 			if release {
 				var with []string
 				for _, f := range []string{"session", "pace", "sub-agents", "fix-rounds", "take-over", "auto-plan"} {
@@ -410,6 +411,7 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const prefix = "abcd build next"
+			defer installAutoSweep()()
 			root, err := loopRoot()
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
@@ -583,6 +585,9 @@ func renderReview(w io.Writer, rs *loop.ReviewSet) {
 		return
 	}
 	fmt.Fprintf(w, "  review:  %s\n", termsafe.Sanitize(rs.String()))
+	if m := rs.ClassMapPhrase(); m != "" {
+		fmt.Fprintf(w, "  classes: %s\n", termsafe.Sanitize(m))
+	}
 }
 
 // renderStartHead renders a build's first lines: what it did with the run
@@ -1235,6 +1240,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const prefix = "abcd implement step"
+			defer installAutoSweep()()
 			root, err := loopRoot()
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
@@ -1568,7 +1574,11 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 			if p := v.ReviewerPhrase(); p != "" {
 				role += " (" + p + ")"
 			}
-			fmt.Fprintf(w, "    round %d at %s: %s %s%s%s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(role), termsafe.Sanitize(v.Verdict), located, routeSuffix(v.Route))
+			models := ""
+			if m := v.ModelsPhrase(); m != "" {
+				models = "; " + termsafe.Sanitize(m)
+			}
+			fmt.Fprintf(w, "    round %d at %s: %s %s%s%s%s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(role), termsafe.Sanitize(v.Verdict), located, models, routeSuffix(v.Route))
 			renderFindings(w, v.Findings)
 		}
 		if len(l.Resolves) > 0 {

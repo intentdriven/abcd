@@ -474,10 +474,10 @@ func runSetup(cwd string, p ahoy.Prompter, errOut io.Writer, install func() (aho
 	}()
 	res, err = install()
 	// A question-limits layer setup could not read left its questions at
-	// abcd's defaults: said once, in the question gate's fail-open form
+	// abcd's defaults: said once, in the gate's limits form
 	// (itd-2610301914350541 decision 8).
 	if err == nil && res.LimitsUnread() != "" {
-		_ = questionFailOpen(errOut, "%s; setup's questions were measured at abcd's defaults", errors.New(res.LimitsUnread()))
+		fmt.Fprint(errOut, limitsUnreadLineFor(errors.New(res.LimitsUnread()), "setup's questions were measured"))
 	}
 	return res, err
 }

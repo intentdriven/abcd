@@ -929,10 +929,11 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 // A renewal the fetched tip shows the view was stale for (the reservation
 // gone, released by a tombstone, or moved to this person's other copy)
 // falls back to the reservation any other resume makes: a reserve with the
-// record's footprint, --take-over passed through. For an issue whose tip
-// this copy holds, live, lapsed or released, that footprint is the found_at with the
-// tip's paths beside it, so a path the lane widened to (widen.go) is never
-// dropped by a widening, a revival or a fallback; a tip since deleted loses
+// record's footprint, --take-over passed through. For a record whose tip
+// this copy holds, live, lapsed or released, that footprint is the found_at, or
+// the spec's packages, with the tip's paths beside it, so a path the lane
+// widened to (widen.go) is never dropped by a widening, a revival or a
+// fallback (iss-2611101316537446); a tip since deleted loses
 // nothing, since the caller's fp already names what the run record says the lane
 // widened to (widenedPaths). A drain's act (drain) carries
 // the drain's mark on every reservation it pushes, so a hand-back standing on the
@@ -945,12 +946,12 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver, drain, landing bo
 		return reserveKey(repoRoot, key, plain, now)
 	}
 	r, ok := snap.Lookup(key)
-	// An issue's tip this copy holds, live or lapsed, or released with a tombstone
-	// that keeps its footprint, as a drive lets a lane go for a limit, names the
-	// paths its lane widened to beyond the found_at (widen.go), and
-	// the lane's branch changes them: a reservation made again keeps them beside
-	// the found_at rather than dropping them.
-	if validIssueKey(key) && ok && r.Copy == claim.CopyThis &&
+	// A tip this copy holds, live or lapsed, or released with a tombstone that
+	// keeps its footprint, as a drive lets a lane go for a limit, names the
+	// paths its lanes widened to beyond the found_at or the spec's packages
+	// (widen.go), and the lanes' branches change them: a reservation made again
+	// keeps them beside the record's footprint rather than dropping them.
+	if ok && r.Copy == claim.CopyThis &&
 		(r.State == claim.StateLive || r.State == claim.StateExpired || r.ReleasedBy == claim.ReleasedByTombstone) {
 		fp = heldWith(fp, r.Footprint)
 		plain.Footprint = fp
@@ -1249,7 +1250,8 @@ func (e *footprintEntryError) Error() string {
 }
 
 // releaseKey releases a reservation a start took and then could not create
-// its run for, best effort: a failure leaves it to lapse with its lease.
+// its run for, best effort: a failure leaves it to lapse with its lease
+// unless a load-gate waiter in this copy renews it (gateWaiterRenews).
 func releaseKey(repoRoot, key string, now time.Time) {
 	_, _ = claim.Reserve(repoRoot, claim.Request{Record: key, Release: true}, claimOptions(now))
 }
@@ -1273,18 +1275,33 @@ func ReleaseReservation(repoRoot, key string, o Options) (claim.Result, error) {
 // failed, at reservation_release_failed, which the drain routing the
 // hand-back tries again (releaseHandedBack). An intent's run keeps its
 // reservation: its held lanes may still land.
-func releaseOnHandBack(repoRoot string, st *State, hb HandBack, now time.Time) {
+//
+// A failed release's line ends by what the lease as this checkout last
+// fetched it leaves (lapseTail): a lease still to run lapses unless a drain
+// routing the hand-back releases it, or, where the view shows it live and this
+// copy's, a load-gate waiter in this copy renews it; one already lapsed gets
+// no waiter's clause, since the waiter renews only a live reservation of this
+// copy's. It returns that lease's end and whether it has passed, "" and false
+// where the release was made or that view does not show the reservation as
+// this copy's.
+func releaseOnHandBack(repoRoot string, st *State, hb HandBack, now time.Time) (until string, ended bool) {
 	if st.ReservedAt == nil || st.Issue() == "" {
-		return
+		return "", false
 	}
 	clause, failed := releaseReservation(repoRoot, st.Key, tombstoneKind(hb), now)
 	stage := StageReservationReleased
 	if failed {
-		clause += ", so it lapses with its lease unless a drain routing the hand-back releases it"
+		var tail string
+		tail, until, ended = lapseTail(repoRoot, *st, now)
+		clause += tail
+		if !ended {
+			clause += " or a drain routing the hand-back releases it"
+		}
 		stage = StageReservationReleaseFailed
 	}
 	st.Record = append(st.Record, Entry{At: now, Stage: stage, Note: clause})
 	st.UpdatedAt = now
+	return until, ended
 }
 
 // issueFootprint is the footprint a drain reserves an issue with: the
@@ -1323,6 +1340,16 @@ func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) s
 	if run.ReservedAt == nil || run.Issue() == "" {
 		return ""
 	}
+	// A lane handed back with its pull request still armed keeps the
+	// reservation until a step has withdrawn the arming (releaseAfterWrite);
+	// a drain reads such a lane as in progress (laneOutcome) and routes it only
+	// once the arming is gone, and its steps and the drain's moves renew the
+	// reservation until then (handedBackIssue, renewInProgress).
+	for _, l := range run.Lanes {
+		if armingOwed(l) {
+			return fmt.Sprintf("the reservation on %s is kept, and renewed by each step and drain move, while pull request #%d is armed: `abcd implement step --run %s` tries the withdrawal again and then releases it", run.Key, l.PR, run.RunID)
+		}
+	}
 	// The step that handed the lane back has already released it, and its
 	// record says how (releaseOnHandBack). A failed release is a different
 	// stage, so it is never reused: the tombstone is pushed again below.
@@ -1333,7 +1360,8 @@ func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) s
 	}
 	clause, failed := releaseReservation(repoRoot, run.Key, tombstoneKind(hb), now)
 	if failed {
-		return clause + ", so it lapses with its lease"
+		tail, _, _ := lapseTail(repoRoot, run, now)
+		return clause + tail
 	}
 	// The retry released it: the run's record says so (iss-2610150616434848),
 	// so its last reservation entry is no longer the failure, and a later

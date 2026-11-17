@@ -8,6 +8,10 @@ user-invocable: false
 
 # `/abcd:history` — session-transcript store
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain history`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 The native session-transcript store at
 `~/.abcd.noindex/transcripts/<root-sha>/records/`, keyed on this repo's root-commit SHA.
 The store is **user-level and self-creating**: it belongs to the machine rather
@@ -454,5 +458,33 @@ checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
 the path of a build of the reviewed branch's tip, as the remote that line
 declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain history` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd history [flags]`
+  - An example call is `abcd history`.
+- `abcd history capture [<transcript-file> | - | --session <id> --all <path>...] [flags]`
+  - An example call is `abcd history capture 0123abcd-session.jsonl`.
+- `abcd history discard <staged-filename> --yes [flags]`
+  - An example call is `abcd history discard 0123abcd-session.raw --yes`.
+- `abcd history drain [flags]`
+  - An example call is `abcd history drain`.
+- `abcd history ingest [<path>...] [flags]`
+  - An example call is `abcd history ingest --into .`.
+- `abcd history list [flags]`
+  - An example call is `abcd history list`.
+- `abcd history migrate [flags]`
+  - An example call is `abcd history migrate`.
+- `abcd history reconstruct <session-id> [flags]`
+  - An example call is `abcd history reconstruct 0123abcd-session`.
+- `abcd history separation [flags]`
+  - An example call is `abcd history separation`.
+- `abcd history show <session-id-or-filename> [flags]`
+  - An example call is `abcd history show 0123abcd-session`.
+- `abcd history staged [flags]`
+  - An example call is `abcd history staged`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

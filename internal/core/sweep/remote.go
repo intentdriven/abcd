@@ -10,9 +10,11 @@ package sweep
 //   - no open pull request heads it, or targets it as its base, as the forge
 //     lists them (a branch an open pull request merges into is still in use,
 //     which keeps more than "heads it" alone);
-//   - no reservation names it: a live reservation whose record id its name
-//     holds; a reservation that cannot be read, or reservations never
-//     fetched, hold every branch. A reservation carries no branch, and a
+//   - no reservation names it: a reservation names the branch its own copy
+//     is on, the local worktree its tip names by copy key (the liveness
+//     probe's proof, through each local worktree on the branch, below), never
+//     a branch whose name merely holds its record id. A reservation that
+//     cannot be read, or reservations never fetched, hold every branch. A
 //     merged branch's own changes are already on the default branch, so a
 //     footprint is compared with a branch only through a local worktree on
 //     it, below;
@@ -56,8 +58,10 @@ package sweep
 // caller read after its fetch, as the worktree apply reads them.
 //
 // Every git command this file runs goes through gitutil. The reads are bound
-// to the run's context and a deadline; the delete's push is bound to
-// gitutil.NetTimeout, the hooked runner taking no context; and the shared
+// to the run's context and a deadline; the delete's push is bound to the
+// run's context and gitutil.NetTimeout, through the hooked runner
+// (gitutil.NetInputContext), so the repository's pre-push hook still judges
+// it; and the shared
 // merged judgement (store.Merged) and the liveness probe's changed-paths
 // read run their own git reads with no deadline. Every forge call is bounded
 // by forgeTimeout and the context.
@@ -178,7 +182,7 @@ func sweepRemote(ctx context.Context, repoRoot string, o Options, apply bool) (R
 		if err := ctx.Err(); err != nil {
 			return refused(fmt.Errorf("the run was stopped while judging origin's branches: %w", err))
 		}
-		res.Rows = append(res.Rows, rj.row(b))
+		res.Rows = append(res.Rows, leftForAPerson(rj.row(b), o.ours))
 	}
 	if !apply {
 		return res, nil
@@ -509,7 +513,7 @@ func (rj *remoteJudge) holds(b remoteBranch, open, bases map[string][]string, op
 			ev = append(ev, Evidence{Kind: KindPullRequest, Strength: Proven, Detail: "open pull request #" + strings.Join(nums, ", #") + " targets it as its base"})
 		}
 	}
-	ev = append(ev, rj.reservationsNaming(b)...)
+	ev = append(ev, rj.reservationsHoldingEvery()...)
 	if pr, bad := branchHazard(rj.def, rj.wts, rj.held, b.name); bad {
 		ev = append(ev, Evidence{Kind: KindDeleteProof, Strength: Proven, Detail: pr.Failed})
 	}
@@ -530,31 +534,31 @@ func (rj *remoteJudge) holds(b remoteBranch, open, bases map[string][]string, op
 	return ev
 }
 
-// reservationsNaming is the reservations that name the branch b: a live one
-// whose record id the branch's name holds. Reservations never fetched hold
-// every branch, as they hold every worktree, and so does an unreadable one
-// still within its hold, its footprint unknown.
-func (rj *remoteJudge) reservationsNaming(b remoteBranch) []Evidence {
+// reservationsHoldingEvery is the reservations that hold every branch:
+// reservations never fetched, as they hold every worktree, and an unreadable
+// one still within its hold, its footprint and its copy unknown. A live
+// reservation holds only the branch its own copy is on: holds finds it
+// through the liveness of each local worktree on the branch, whose tip names
+// that worktree's copy key. A record id in a branch's name holds nothing,
+// since a reservation records its copy's branch, not one named after its
+// record (spc-2610230730269295, step 5).
+func (rj *remoteJudge) reservationsHoldingEvery() []Evidence {
 	p := rj.live.probe
 	var ev []Evidence
 	if p.unread != "" {
 		ev = append(ev, Evidence{Kind: KindReservationCheck, Strength: Hint, Detail: "reservations unread: " + p.unread})
 	}
-	lower := strings.ToLower(b.name)
 	for _, r := range p.reservations.Reservations {
 		until := r.EffectiveExpiry.UTC().Format(time.RFC3339)
-		switch {
-		case r.State == claim.StateLive && r.Record != "" && strings.Contains(lower, strings.ToLower(r.Record)):
-			ev = append(ev, Evidence{Kind: KindReservation, Strength: Proven, Detail: fmt.Sprintf(
-				"reserved as %s by %s until %s, the record its name holds", r.Record, r.Holder, until)})
-		case r.State == claim.StateUnreadable && r.EffectiveExpiry.After(p.now):
-			holder := r.Holder
-			if holder == "" {
-				holder = "a holder its tip does not name readably"
-			}
-			ev = append(ev, Evidence{Kind: KindReservation, Strength: Hint, Detail: fmt.Sprintf(
-				"reservation %s by %s is unreadable (%s) and holds until %s, its footprint unknown", r.Record, holder, r.Unreadable, until)})
+		if r.State != claim.StateUnreadable || !r.EffectiveExpiry.After(p.now) {
+			continue
 		}
+		holder := r.Holder
+		if holder == "" {
+			holder = "a holder its tip does not name readably"
+		}
+		ev = append(ev, Evidence{Kind: KindReservation, Strength: Hint, Detail: fmt.Sprintf(
+			"reservation %s by %s is unreadable (%s) and holds until %s, its footprint unknown", r.Record, holder, r.Unreadable, until)})
 	}
 	return ev
 }
@@ -747,14 +751,17 @@ func (rj *remoteJudge) delete(b remoteBranch, addrHold, head, headTip string, he
 	if err := stopped(); err != nil {
 		return err
 	}
-	// The delete goes through the push the repository's own hooks see
-	// (gitutil.Net, the runner the reservation sweep's delete uses), so its
-	// pre-push hook judges this push as it judges the person's own. No
-	// exported hooked runner takes a context, so this one call is bounded by
-	// gitutil.NetTimeout rather than the run's context, which is checked just
-	// before it starts; bounding the wait here would leave git running past
-	// it.
-	out, err := gitutil.Net(rj.root, remoteDeleteArgs(b.ref, b.tip)...)
+	// The delete goes through the push the repository's own hooks see (the
+	// hooked runner Net and the reservation sweep's delete use), so its
+	// pre-push hook judges this push as it judges the person's own. It is
+	// bound to the run's context as well as to gitutil.NetTimeout, so a run
+	// whose bound ends mid-push has git killed rather than waited on; the
+	// lease on the judged tip holds whether or not origin took it.
+	out, err := gitutil.NetInputContext(rj.ctx, rj.root, "", remoteDeleteArgs(b.ref, b.tip)...)
+	if cerr := rj.ctx.Err(); err != nil && cerr != nil {
+		row.Reason = clean("the run was stopped while the delete was pushed, so whether origin took it is not known; `abcd sweep` reads it again")
+		return fmt.Errorf("the run was stopped while the delete of %s was pushed: %w", clean(b.name), cerr)
+	}
 	if err == nil {
 		row.Outcome = OutcomeDeleted
 		row.Reason = clean("deleted on origin under a lease on its judged tip " + short(b.tip) + "; " + row.Reason)

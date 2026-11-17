@@ -246,7 +246,7 @@ var sentences = map[string]string{
 		"Writes the release and a claim_released line; refuses a claim another session holds.",
 	"abcd implement report": "Derive the comparison of the division modes from the run log: " +
 		"Writes nothing; refuses --date and --log together.",
-	"abcd implement widen": "Widen an issue lane's hold to a path before it is edited: " +
+	"abcd implement widen": "Widen a lane's hold to a path before it is edited: " +
 		"Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.",
 	"abcd implement status": "Render the implement loop's runs in this checkout, lane by lane: " +
 		"Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.",
@@ -415,6 +415,9 @@ var sentences = map[string]string{
 
 	"abcd status": "List everyone's announcements, reservations and releases being cut: " +
 		"Writes the fetched status branches and reservations; refuses outside a git checkout.",
+
+	"abcd sweep": "List the worktrees, branches, reservations and reports left lying around, or clear the spent: " +
+		"Writes only the fetch bare; refuses a failed fetch.",
 
 	"abcd landings": "List how each change landed on the default branch and what admitted it: " +
 		"Writes only its forge cache in the local tier; refuses no default branch or no range.",

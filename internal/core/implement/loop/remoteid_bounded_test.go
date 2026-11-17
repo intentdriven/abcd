@@ -235,12 +235,13 @@ func TestAPushUnderAPrePushChangedSinceTheDriveStartedDoesNotRun(t *testing.T) {
 }
 
 // slowGit makes every read the comparison makes in each environment (the
-// settings listing, the attributes files, the hooks directory and the common
-// git directory) wait far past any bound, and shortens the comparison's
+// settings listing, the attributes files, the hooks directory, the common
+// git directory and the sparse-checkout patterns file's path) wait far past
+// any bound, and shortens the comparison's
 // overall bound to whole while each read keeps a longer one of its own.
 func slowGit(t *testing.T, whole time.Duration) {
 	t.Helper()
-	standInGit(t, `*"--show-scope --show-origin"*|*"var GIT_ATTR_"*|*"--git-path hooks"*|*"--git-common-dir"*) exec /bin/sleep 600 ;;`)
+	standInGit(t, `*"--show-scope --show-origin"*|*"var GIT_ATTR_"*|*"--git-path hooks"*|*"--git-common-dir"*|*"--git-path info/sparse-checkout"*) exec /bin/sleep 600 ;;`)
 	bound, wait, overall := heldReadTimeout, heldReadRetryWait, heldCompareTimeout
 	heldReadTimeout, heldReadRetryWait, heldCompareTimeout = 10*time.Minute, 200*time.Millisecond, whole
 	t.Cleanup(func() { heldReadTimeout, heldReadRetryWait, heldCompareTimeout = bound, wait, overall })
@@ -300,7 +301,7 @@ func TestNoReadOfAComparisonIsLeftRunningOnceItEndsAtItsDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 	log := filepath.Join(t.TempDir(), "reads")
-	standInGit(t, `*"--show-scope --show-origin"*|*"var GIT_ATTR_"*|*"--git-path hooks"*|*"--git-common-dir"*) echo start >> '`+log+`'; /bin/sleep 4; exit 0 ;;`)
+	standInGit(t, `*"--show-scope --show-origin"*|*"var GIT_ATTR_"*|*"--git-path hooks"*|*"--git-common-dir"*|*"--git-path info/sparse-checkout"*) echo start >> '`+log+`'; /bin/sleep 4; exit 0 ;;`)
 	const retry = 200 * time.Millisecond
 	bound, wait, overall := heldReadTimeout, heldReadRetryWait, heldCompareTimeout
 	heldReadTimeout, heldReadRetryWait, heldCompareTimeout = 10*time.Minute, retry, time.Second
@@ -345,7 +346,7 @@ func TestAComparisonsReadsRunSideBySide(t *testing.T) {
 		t.Fatal(err)
 	}
 	log := filepath.Join(t.TempDir(), "reads")
-	standInGit(t, `*"--show-scope --show-origin"*|*"var GIT_ATTR_"*|*"--git-path hooks"*|*"--git-common-dir"*) echo start >> '`+log+`'; `+
+	standInGit(t, `*"--show-scope --show-origin"*|*"var GIT_ATTR_"*|*"--git-path hooks"*|*"--git-common-dir"*|*"--git-path info/sparse-checkout"*) echo start >> '`+log+`'; `+
 		`while [ "$(grep -c start '`+log+`')" -lt 2 ]; do /bin/sleep 0.05; done; echo end >> '`+log+`' ;;`)
 	if err := heldBeforeGit(repo.Root(), id); err != nil {
 		t.Fatalf("the comparison finishes, its reads side by side: %v", err)
@@ -387,7 +388,7 @@ func TestALetGoComparesBeforeItTakesTheDrainLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	said := w.said()
-	if !strings.Contains(said, "nothing this drive holds was released") || !strings.Contains(said, "did not finish within 2s") || strings.Contains(said, "lapses with its lease: ") {
+	if !strings.Contains(said, "nothing this drive holds was released") || !strings.Contains(said, "did not finish within 2s") || strings.Contains(said, "lapses with its lease "+unlessWaiterRenews+": ") {
 		t.Fatalf("the let-go says nothing was released because the comparison did not finish, never that the lock was busy:\n%s", said)
 	}
 }

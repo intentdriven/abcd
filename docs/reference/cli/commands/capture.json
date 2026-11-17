@@ -1,0 +1,394 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd capture",
+      "sentence": "File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a missing --remedy, a lone word or no checkout.",
+      "usage": "abcd capture [text] [flags]",
+      "flags": [
+        {
+          "name": "blocked-by",
+          "type": "string"
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "allowed": [
+            "bug",
+            "documentation",
+            "drift",
+            "inconsistency",
+            "tech-debt",
+            "security",
+            "ux",
+            "process",
+            "architectural-insight",
+            "future-work-seed",
+            "observation",
+            "lapse"
+          ]
+        },
+        {
+          "name": "found-at",
+          "type": "string"
+        },
+        {
+          "name": "found-during",
+          "type": "string"
+        },
+        {
+          "name": "lapsed-at",
+          "type": "string"
+        },
+        {
+          "name": "production-mode",
+          "type": "string",
+          "allowed": [
+            "hand-written",
+            "dictated-and-formatted",
+            "scribe-transcribed"
+          ]
+        },
+        {
+          "name": "remedy",
+          "type": "string"
+        },
+        {
+          "name": "severity",
+          "type": "string",
+          "allowed": [
+            "nitpick",
+            "minor",
+            "major",
+            "critical"
+          ]
+        },
+        {
+          "name": "slug",
+          "type": "string"
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "allowed": [
+            "plan-review",
+            "impl-review",
+            "manual-test",
+            "review-followup",
+            "agent-finding",
+            "agent-observation",
+            "user-observation",
+            "drift-detection",
+            "memory-curation",
+            "managed-repo",
+            "security-advisory"
+          ]
+        }
+      ],
+      "inputs": [],
+      "example": "abcd capture \"the board drops its last row on an empty ledger\" --remedy \"render the row before the count\"",
+      "subcommands": [
+        "admit",
+        "defer",
+        "disposition",
+        "link",
+        "list",
+        "mentions",
+        "migrate",
+        "promote",
+        "reframe",
+        "remedy",
+        "resolve",
+        "surprise",
+        "wontfix"
+      ]
+    },
+    {
+      "path": "abcd capture admit",
+      "sentence": "Admit one widening proposal into its run's candidate set: Writes its accepted disposition and an adm-N record; refuses before a committed comparative run.",
+      "usage": "abcd capture admit <rdi-N> --grounds \"<why>\" [flags]",
+      "flags": [
+        {
+          "name": "grounds",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd capture admit rdi-2609010000000001 --grounds \"the widened configuration is one the next release has to serve\""
+    },
+    {
+      "path": "abcd capture defer",
+      "sentence": "Carry an open major or critical issue past one release cut: Writes deferred_after and deferral_reason; refuses a minor or nitpick issue, or an empty reason.",
+      "usage": "abcd capture defer <iss-N> --after <vX.Y.Z> --reason <text> [flags]",
+      "flags": [
+        {
+          "name": "after",
+          "type": "string"
+        },
+        {
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd capture defer iss-2609010000000001 --after v0.1.0 --reason \"the fix needs the parser rewrite that lands next cycle\""
+    },
+    {
+      "path": "abcd capture disposition",
+      "sentence": "Answer one reading item with a disposition record: Writes the record keyed to the item; refuses a second answer without --supersedes.",
+      "usage": "abcd capture disposition <rdi-N> --state <accepted|rejected|declined|held> (--grounds <text>, or --exit-condition <text> when held) [--supersedes <dsp-N>] [--recurs <rdi-N,...>] [flags]",
+      "flags": [
+        {
+          "name": "exit-condition",
+          "type": "string"
+        },
+        {
+          "name": "grounds",
+          "type": "string"
+        },
+        {
+          "name": "hold-frame-location",
+          "type": "string"
+        },
+        {
+          "name": "hold-moscow",
+          "type": "string"
+        },
+        {
+          "name": "recurs",
+          "type": "string"
+        },
+        {
+          "name": "state",
+          "type": "string",
+          "allowed": [
+            "accepted",
+            "rejected",
+            "declined",
+            "held"
+          ]
+        },
+        {
+          "name": "supersedes",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd capture disposition rdi-2609010000000001 --state accepted --grounds \"pursued: the tension is real and the next reading will show it again\""
+    },
+    {
+      "path": "abcd capture link",
+      "sentence": "Add or remove blocked_by edges on an issue: Writes the issue's blocked_by list; refuses an id the ledger does not hold.",
+      "usage": "abcd capture link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] [flags]",
+      "flags": [
+        {
+          "name": "blocked-by",
+          "type": "string"
+        },
+        {
+          "name": "unblock",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd capture link iss-2609010000000001 --blocked-by iss-2609010000000002"
+    },
+    {
+      "path": "abcd capture list",
+      "sentence": "List the issues in one status folder or all three: Writes nothing; refuses when no status flag is given.",
+      "usage": "abcd capture list [flags]",
+      "flags": [
+        {
+          "name": "all",
+          "type": "bool"
+        },
+        {
+          "name": "open",
+          "type": "bool"
+        },
+        {
+          "name": "resolved",
+          "type": "bool"
+        },
+        {
+          "name": "wontfix",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd capture list --open"
+    },
+    {
+      "path": "abcd capture mentions",
+      "sentence": "List open issues that default-branch history names with no resolution behind them: Writes nothing; refuses outside a git checkout.",
+      "usage": "abcd capture mentions [--ref <branch>] [flags]",
+      "flags": [
+        {
+          "name": "ref",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd capture mentions"
+    },
+    {
+      "path": "abcd capture migrate",
+      "sentence": "Rewrite retired promote back-links as related_intents and related_issues: Writes the records only with --apply; refuses outside a git checkout.",
+      "usage": "abcd capture migrate [--apply] [flags]",
+      "flags": [
+        {
+          "name": "apply",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd capture migrate"
+    },
+    {
+      "path": "abcd capture promote",
+      "sentence": "Graduate an issue or an accepted reading item into an intent draft: Writes the draft and both back-links; refuses a promoted issue or an unaccepted item.",
+      "usage": "abcd capture promote <iss-N> [--grounds \"<token>: <text>\"] | promote <rdi-N> [flags]",
+      "flags": [
+        {
+          "name": "grounds",
+          "type": "string"
+        },
+        {
+          "name": "intent",
+          "type": "string"
+        },
+        {
+          "name": "production-mode",
+          "type": "string",
+          "allowed": [
+            "hand-written",
+            "dictated-and-formatted",
+            "scribe-transcribed"
+          ]
+        }
+      ],
+      "inputs": [],
+      "example": "abcd capture promote iss-2609010000000001"
+    },
+    {
+      "path": "abcd capture reframe",
+      "sentence": "Record a reframe a reading occasioned: Writes one rfm-N fingerprinting the frame before and after; refuses an uncommitted occasion or frame edit without --open.",
+      "usage": "abcd capture reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds \"<why>\" [--open] | --complete <rfm-N> [flags]",
+      "flags": [
+        {
+          "name": "complete",
+          "type": "string"
+        },
+        {
+          "name": "grounds",
+          "type": "string"
+        },
+        {
+          "name": "occasioned-by",
+          "type": "string"
+        },
+        {
+          "name": "open",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd capture reframe --occasioned-by rdi-2609010000000001 --grounds \"the reading showed the construal assumed a single operator\" --open"
+    },
+    {
+      "path": "abcd capture remedy",
+      "sentence": "Write or replace the fix an open issue proposes: Writes the issue's remedy; refuses an empty text, the automatic filers' value or an issue that is not open.",
+      "usage": "abcd capture remedy <iss-N> <text> [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd capture remedy iss-2609010000000001 \"make the map before the first write\""
+    },
+    {
+      "path": "abcd capture resolve",
+      "sentence": "Move an open issue to resolved/, naming what fixed it: Writes the moved record; refuses without --impact or on an id this ledger does not hold.",
+      "usage": "abcd capture resolve <iss-N> <note> --impact <additive|breaking|fix|internal> [--grounds \"<token>: <text>\"] [--intent itd-N] [--spec spc-N] [--commit sha] [--shipped-in vX.Y.Z] [flags]",
+      "flags": [
+        {
+          "name": "commit",
+          "type": "string"
+        },
+        {
+          "name": "grounds",
+          "type": "string"
+        },
+        {
+          "name": "impact",
+          "type": "string",
+          "allowed": [
+            "additive",
+            "breaking",
+            "fix",
+            "internal"
+          ]
+        },
+        {
+          "name": "intent",
+          "type": "string"
+        },
+        {
+          "name": "production-mode",
+          "type": "string",
+          "allowed": [
+            "hand-written",
+            "dictated-and-formatted",
+            "scribe-transcribed"
+          ]
+        },
+        {
+          "name": "shipped-in",
+          "type": "string"
+        },
+        {
+          "name": "spec",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd capture resolve iss-2609010000000001 \"fixed by the parser change\" --impact fix"
+    },
+    {
+      "path": "abcd capture surprise",
+      "sentence": "Record one surprise a reading item, admission or disposition occasioned: Writes one srp-N record; refuses an unresolved occasion or a text below the floor.",
+      "usage": "abcd capture surprise --occasioned-by <rdi-N|adm-N|dsp-N> \"<what was unexpected>\" [flags]",
+      "flags": [
+        {
+          "name": "occasioned-by",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd capture surprise --occasioned-by rdi-2609010000000001 \"the proposal nobody expected ranked first\""
+    },
+    {
+      "path": "abcd capture wontfix",
+      "sentence": "Move an open issue to wontfix/ with the reason it is not acted on: Writes the moved record; refuses an id this ledger does not hold.",
+      "usage": "abcd capture wontfix <iss-N> <reason> [--grounds \"declined: <text>\"] [--duplicates <iss-N|itd-N,...>] [flags]",
+      "flags": [
+        {
+          "name": "duplicates",
+          "type": "string"
+        },
+        {
+          "name": "grounds",
+          "type": "string"
+        },
+        {
+          "name": "production-mode",
+          "type": "string",
+          "allowed": [
+            "hand-written",
+            "dictated-and-formatted",
+            "scribe-transcribed"
+          ]
+        }
+      ],
+      "inputs": [],
+      "example": "abcd capture wontfix iss-2609010000000001 \"the behaviour is the documented one\""
+    }
+  ]
+}

@@ -7,6 +7,10 @@ block: people
 
 # `/abcd` where-am-i
 
+<!-- generated: ask-the-binary -->
+Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain abcd`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
+<!-- /generated -->
+
 Run the abcd binary's read-only status board for the current repo and show it to
 the user. This command performs **zero writes**.
 
@@ -286,5 +290,13 @@ order, no toolchain needed:
 `go run ./cmd/abcd` and `go build ./cmd/abcd` serve only a source checkout of this
 repo (contributors) or a platform carrying no released binary; they are never a
 prerequisite for a plugin or CLI user.
+
+<!-- generated: command-facts -->
+**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain abcd` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd [<record-id>] [flags]`
+  - An example call is `abcd`.
+<!-- /generated -->
 
 **User input:** $ARGUMENTS

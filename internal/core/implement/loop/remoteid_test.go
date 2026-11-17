@@ -580,6 +580,8 @@ func TestRemoteIdentityKeyMatchesTheHeldFamiliesOnly(t *testing.T) {
 		"gpg.ssh.program":              true,
 		"include.path":                 true,
 		"includeif.onbranch:main.path": true,
+		"core.autocrlfx":               false,
+		"submodule.x.recurse":          false,
 
 		"remote.origin.urlx":         false,
 		"remote.origin.fetch":        false,

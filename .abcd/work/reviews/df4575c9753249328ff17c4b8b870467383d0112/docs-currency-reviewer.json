@@ -1,0 +1,121 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "df4575c9753249328ff17c4b8b870467383d0112"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-11-17T02:30:14Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5-5+claude-sonnet-5-5",
+  "tier": "full",
+  "manifestHash": "sha256:95bc3092c9cad660515718ecdbbe27260867fdab2539682c8218babe625657f1",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.17.0"
+  },
+  "categories": {
+    "false-claim": 1,
+    "misleading": 6,
+    "stale": 1,
+    "undocumented": 2
+  },
+  "failing": [
+    {
+      "id": "dc-1",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": "CHANGELOG.md:25",
+      "summary": "CHANGELOG.md:25 (raised by opus as its dc-01): Claim: 'a review list or judge naming only `top` still resolves, with a line saying which model `top` now stands for'. Reality: any review.judge that a configuration file sets is refused at the review stage. The calibration gate never clears in production: judgeGate returns false with no test fixture (internal/core/implement/loop/reviewset.go:520-526), and a non-bundled judge is refused (reviewset.go:635-644). Only a review list naming `top` resolves with the line (topNote, reviewset.go:880-895). The same contradiction is in commands/build.md:681-683 ('A review list or a judge naming `top` ... resolves'), which also says at :643-651 that a configured judge is refused. Fix: drop 'or judge'/'or a judge' in both places, e.g. 'a review list naming only `top` still resolves, with a line ...'.",
+      "disposition": "fixed",
+      "note": "Fixed in R2: the changelog and release page were recomposed (payload-2/3) to say what the code does, and the brief and pages fixed in 2854547b and b456024c."
+    },
+    {
+      "id": "dc-2",
+      "category": "misleading",
+      "severity": "minor",
+      "where": "RELEASE.md:3",
+      "summary": "RELEASE.md:3 (raised by opus as its dc-02): Claim: 'A configuration file written with the old names (`middle`, `below`, `smallest`, or `top` for the strongest class) is refused naming the new ones'. Reality: `top` is refused only in a machine class map that sets `top` without `research` (oldClassFault, reviewset.go:850-869). A review list naming `top` is not refused: it runs the new `top`, the second class, with one stderr line (reviewset.go:880-895; CHANGELOG.md:25 states this correctly). A person relying on the refusal to find every old-name file keeps a `top` review list and gets the second-strongest model. Fix: '... (`middle`, `below` or `smallest`, or a class map that sets `top` without `research`) is refused naming the new ones; a review list naming `top` runs the second class and says so on one line.' The page carries quoted press-release text, so the intent's press release needs the same correction.",
+      "disposition": "fixed",
+      "note": "Fixed in R2: the changelog and release page were recomposed (payload-2/3) to say what the code does, and the brief and pages fixed in 2854547b and b456024c."
+    },
+    {
+      "id": "dc-3",
+      "category": "misleading",
+      "severity": "minor",
+      "where": "CHANGELOG.md:27",
+      "summary": "CHANGELOG.md:27 (raised by opus as its dc-03): Claim: 'Bare, it changes nothing'. The same claim is in RELEASE.md:5 ('`abcd sweep` run bare changes nothing'). Reality: the bare sweep fetches origin's branches and the reservations first. The binary's Short says 'Writes only the fetch bare', the --apply flag help says 'without it the sweep changes nothing but the fetch', and commands/sweep.md:16 says 'it changes nothing but the fetch'. Fix: 'Bare, it changes nothing but its fetch of origin'.",
+      "disposition": "fixed",
+      "note": "Fixed in R2: the changelog and release page were recomposed (payload-2/3) to say what the code does, and the brief and pages fixed in 2854547b and b456024c."
+    },
+    {
+      "id": "dc-4",
+      "category": "undocumented",
+      "severity": "nitpick",
+      "where": "CHANGELOG.md:27",
+      "summary": "CHANGELOG.md:27 (raised by opus as its dc-04): Claim: '--apply ... files the waiting inbox reports into the ledger'. Reality: it promotes them only in abcd's own checkout. In any other repository every report is kept (commands/sweep.md 'Inbox reports'; internal/core/sweep/inbox.go:6-10, where report.Promote refuses any checkout but abcd's). The binary's long help omits the qualifier too. Fix: '... and, in abcd's own checkout, files the waiting inbox reports into the ledger'. (also raised by the docs-currency review at CHANGELOG.md:27 and RELEASE.md paragraph 2 (sweep, inbox reports), folded here as one finding)",
+      "disposition": "fixed",
+      "note": "Fixed in R2: the changelog and release page were recomposed (payload-2/3) to say what the code does, and the brief and pages fixed in 2854547b and b456024c."
+    },
+    {
+      "id": "dc-5",
+      "category": "misleading",
+      "severity": "nitpick",
+      "where": "CHANGELOG.md:29",
+      "summary": "CHANGELOG.md:29 (raised by opus as its dc-05): Claim: 'A release that fails any of those steps changes nothing and is reported once'. Reality (abcd drain --help, self-update paragraph): a release that fails the checks or the live launch is said once and not taken again. A failed read-only run is said once per reason and tried again at later checks. A network fault, rate limit or timeout while fetching, and a limit or outage during the live launch, are no verdict, and each check says so in one line. Fix: 'A release the checks or the live launch refuse changes nothing and is reported once'. (also raised by the docs-currency review at CHANGELOG.md:30 (the drain --drive self-update entry); RELEASE.md paragraph 3, folded here as one finding)",
+      "disposition": "fixed",
+      "note": "Fixed in R2: the changelog and release page were recomposed (payload-2/3) to say what the code does, and the brief and pages fixed in 2854547b and b456024c."
+    },
+    {
+      "id": "dc-6",
+      "category": "misleading",
+      "severity": "minor",
+      "where": "RELEASE.md:11",
+      "summary": "RELEASE.md:11 (raised by opus as its dc-06): Claim: 'An abcd question now reaches the person on its first try.' Reality: CHANGELOG.md:31 says of the same feature 'The writer was proven in labs; its run in a live host session has not yet been seen.' The hook can still refuse a checked draft when the mode or away record changes between the check and the ask (abcd guard question --help: 'a mode set, or the person marked away, before the ask can change it'). 'now' is also change narration. Fix: 'An abcd question is checked before it reaches the person ...', adding that its run in a live host session has not yet been seen. Correct the intent's press release to match, since the page quotes it.",
+      "disposition": "fixed",
+      "note": "Fixed in R2: the changelog and release page were recomposed (payload-2/3) to say what the code does, and the brief and pages fixed in 2854547b and b456024c."
+    },
+    {
+      "id": "dc-7",
+      "category": "misleading",
+      "severity": "nitpick",
+      "where": "CHANGELOG.md:37",
+      "summary": "CHANGELOG.md:37 (raised by opus as its dc-07): Claim: 'every session's land step waits until the cut is done'. Reality: `abcd land` pushes, arms and queues nothing and exits 3 while another session's release reservation holds (abcd land --help, release-hold paragraph and exit 3). The copy cutting the release lands through its own hold. Only a build or drain lane waits on the hold (internal/core/implement/loop/queue.go:482). Fix: 'every other session's landing holds until the cut is done: `abcd land` refuses with exit 3 and a lane waits'.",
+      "disposition": "fixed",
+      "note": "Fixed in R2: the changelog and release page were recomposed (payload-2/3) to say what the code does, and the brief and pages fixed in 2854547b and b456024c."
+    },
+    {
+      "id": "dc-8",
+      "category": "stale",
+      "severity": "nitpick",
+      "where": "docs/explanation/README.md:11",
+      "summary": "docs/explanation/README.md:11 (raised by opus as its dc-08): The index describes roles.md as 'The product thinker and the technical facilitator.' Reality: roles.md:3 counts three roles (product thinker, technical facilitator, team of AI agents). CHANGELOG.md:92 says rationale.md was corrected to count three roles 'as the roles page does'. Fix: 'The three roles: the product thinker, the technical facilitator and the team of AI agents.'",
+      "disposition": "fixed",
+      "note": "Fixed in R2: the changelog and release page were recomposed (payload-2/3) to say what the code does, and the brief and pages fixed in 2854547b and b456024c."
+    },
+    {
+      "id": "dc-9",
+      "category": "undocumented",
+      "severity": "minor",
+      "where": "docs/how-to/README.md:9-14 (no upgrade-to-v0.17.0 page)",
+      "summary": "docs/how-to/README.md:9-14 (no upgrade-to-v0.17.0 page) (raised by sonnet as its dc-02): This release has two Breaking entries (class rename with refusal of old names; verdict shape with receipts that no longer count). Earlier breaking releases each have a docs/how-to/upgrade-to-vX page. The rename mapping is in RELEASE.md, commands/build.md and docs/reference/cli/commands.md, but no how-to walks a user through rewriting each configuration file or re-recording receipts. Judgement call: add a page or accept RELEASE.md as the upgrade note. (also raised by the docs-currency review at docs/how-to/README.md, folded here as one finding)",
+      "disposition": "deferred",
+      "record": "iss-2611170230132696",
+      "note": "Deferred to its own record: an upgrade page is new user-facing documentation that needs its own review, and the steps it would hold are already on the release page and the build page."
+    },
+    {
+      "id": "dc-10",
+      "category": "misleading",
+      "severity": "nitpick",
+      "where": "docs-currency-lint output: RELEASE.md (root) and docs/reference/writing-style.md:40",
+      "summary": "docs-currency-lint output: RELEASE.md (root) and docs/reference/writing-style.md:40 (raised by sonnet as its dc-04): The lint reports RELEASE.md as stray root markdown (its allow-list: README, AGENTS, CHANGELOG, CONTRIBUTING, SECURITY, LICENSE, ACKNOWLEDGEMENTS) and flags the word 'previously' in a writing-style.md row that already carries a docs-lint: allow marker, which docs-currency-lint does not appear to honour. Both are likely expected for a release cut (the release page is the cut's own file; the row documents the banned token). Confirm the stray-root rule accepts RELEASE.md at the cut.",
+      "disposition": "invalid",
+      "note": "Both lint hits are by design: RELEASE.md is the release page the ship writes at the root, and the writing-style row lists the banned words under its own allow marker."
+    }
+  ],
+  "_reviewProvenance": "Host-run docs-currency-reviewer pair (an Opus 5.5 agent and a Sonnet 5.5 agent on the same brief, full tier for a breaking release) over an exact export of 8d84aac7bf9062ebae1bc9ea733b129f066e5db1 (this receipt names df4575c9753249328ff17c4b8b870467383d0112; provenanceExtra states the difference) with the binary built from it: every line of the 0.17.0 CHANGELOG section and RELEASE.md, and every user-facing page changed since v0.16.2, checked against the code and the binary. Opus PROMOTE; Sonnet PROMOTE. 10 findings recorded: 8 fixed, 1 invalid on re-verification, 1 deferred, each to its own open record. The checkers read R1 8d84aac7bf9062ebae1bc9ea733b129f066e5db1. R1 was reverted on the release branch, the brief findings were fixed in 2854547b and b456024c (two Opus+Sonnet docs-currency re-checks, both PROMOTE at b456024c), iss-2611052230577572 was resolved in 07134944, the changelog and release page were recomposed for the docs-currency findings, and R2 was rolled. R2 differs from R1 in 27 files: brief chapters, commands/build.md, docs/explanation/README.md, docs/reference/cli/commands.md, .abcd/work/brief-review-flags.json, the resolved issue record, CHANGELOG.md, RELEASE.md, the plugin pin, the release digest, and two help strings in internal/surface/cli (build.go, drain.go); no behaviour changed. Coverage limits the checkers stated are in each return's coverage note (long chapters 34-build, 35-drain, 17-guard, 37-reserve and 03-configuration were scanned for surface claims in part)."
+}

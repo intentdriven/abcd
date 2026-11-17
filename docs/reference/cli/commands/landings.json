@@ -1,0 +1,26 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd landings",
+      "sentence": "List how each change landed on the default branch and what admitted it: Writes only its forge cache in the local tier; refuses no default branch or no range.",
+      "usage": "abcd landings [commit] [flags]",
+      "flags": [
+        {
+          "name": "reverted",
+          "type": "bool"
+        },
+        {
+          "name": "since",
+          "type": "string"
+        },
+        {
+          "name": "unattended",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd landings --since v0.11.0"
+    }
+  ]
+}

@@ -83,8 +83,8 @@ func newHistoryReconstructCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&out, "out", ".",
 		"directory to write <session>.md and <session>.telemetry.json into, or - for stdout")
-	cmd.Flags().StringVar(&mode, "mode", string(history.ModeFull),
-		"full (every turn of every agent) | spine (the main thread whole, each sub-agent reduced to its instruction and its conclusion)")
+	enumFlag(cmd.Flags(), &mode, "mode", string(history.ModeFull), "", history.ReconstructModes(),
+		": full is every turn of every agent, spine the main thread whole, each sub-agent reduced to its instruction and its conclusion")
 	cmd.Flags().IntVar(&maxBlock, "max-block-bytes", defaultMaxBlockBytes,
 		"truncate one rendered tool input or result at this many bytes (0 disables); what is removed is marked and counted")
 	return cmd

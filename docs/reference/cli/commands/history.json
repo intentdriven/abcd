@@ -1,0 +1,191 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd history",
+      "sentence": "Keep session transcripts in the user-level store and read them back: Writes nothing bare, and redacts each one it stores; refuses an unknown sub-verb.",
+      "usage": "abcd history [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd history",
+      "subcommands": [
+        "capture",
+        "discard",
+        "drain",
+        "ingest",
+        "list",
+        "migrate",
+        "reconstruct",
+        "separation",
+        "show",
+        "staged"
+      ]
+    },
+    {
+      "path": "abcd history capture",
+      "sentence": "Redact and store a session transcript, or a whole session with --all: Writes one record per transcript; refuses stdin or --all without --session.",
+      "usage": "abcd history capture [<transcript-file> | - | --session <id> --all <path>...] [flags]",
+      "flags": [
+        {
+          "name": "all",
+          "type": "bool"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "allowed": [
+            "native",
+            "import"
+          ]
+        },
+        {
+          "name": "session",
+          "type": "string"
+        },
+        {
+          "name": "tool",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd history capture 0123abcd-session.jsonl"
+    },
+    {
+      "path": "abcd history discard",
+      "sentence": "Delete one staged or quarantined raw transcript for good: Writes the deletion; refuses without --yes.",
+      "usage": "abcd history discard <staged-filename> --yes [flags]",
+      "flags": [
+        {
+          "name": "pending",
+          "type": "bool"
+        },
+        {
+          "name": "root-sha",
+          "type": "string"
+        },
+        {
+          "name": "yes",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd history discard 0123abcd-session.raw --yes"
+    },
+    {
+      "path": "abcd history drain",
+      "sentence": "Redact and store every transcript staged for this repository: Writes the records into the store; refuses outside a git checkout.",
+      "usage": "abcd history drain [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd history drain"
+    },
+    {
+      "path": "abcd history ingest",
+      "sentence": "Redact and store transcripts already on disk into a named repository: Writes that repository's store; refuses without --into.",
+      "usage": "abcd history ingest [<path>...] [flags]",
+      "flags": [
+        {
+          "name": "adopt",
+          "type": "list"
+        },
+        {
+          "name": "into",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd history ingest --into ."
+    },
+    {
+      "path": "abcd history list",
+      "sentence": "List this repository's stored transcripts, newest first: Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.",
+      "usage": "abcd history list [flags]",
+      "flags": [
+        {
+          "name": "session",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd history list"
+    },
+    {
+      "path": "abcd history migrate",
+      "sentence": "Repair records filed under a composite session id: Writes a missing store, and the repaired records only with --apply; refuses outside a git checkout.",
+      "usage": "abcd history migrate [flags]",
+      "flags": [
+        {
+          "name": "apply",
+          "type": "bool"
+        },
+        {
+          "name": "sidecar-root",
+          "type": "list"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd history migrate"
+    },
+    {
+      "path": "abcd history reconstruct",
+      "sentence": "Render one session and its sub-agents as one artefact plus telemetry: Writes both files into --out; refuses an --out that is not an existing directory.",
+      "usage": "abcd history reconstruct <session-id> [flags]",
+      "flags": [
+        {
+          "name": "max-block-bytes",
+          "type": "int",
+          "default": "8192"
+        },
+        {
+          "name": "mode",
+          "type": "string",
+          "default": "full",
+          "allowed": [
+            "full",
+            "spine"
+          ]
+        },
+        {
+          "name": "out",
+          "type": "string",
+          "default": "."
+        }
+      ],
+      "inputs": [],
+      "example": "abcd history reconstruct 0123abcd-session"
+    },
+    {
+      "path": "abcd history separation",
+      "sentence": "Report whether a retained transcript held both a reading and one run's ledger: Writes a missing store or a legacy corpus move; refuses outside a git checkout.",
+      "usage": "abcd history separation [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd history separation"
+    },
+    {
+      "path": "abcd history show",
+      "sentence": "Show one stored transcript's metadata and redacted body: Writes only a missing store and a legacy corpus moved into it; refuses an id the store does not hold.",
+      "usage": "abcd history show <session-id-or-filename> [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd history show 0123abcd-session"
+    },
+    {
+      "path": "abcd history staged",
+      "sentence": "List the ended transcripts not yet redacted into the store: Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.",
+      "usage": "abcd history staged [flags]",
+      "flags": [
+        {
+          "name": "all-repos",
+          "type": "bool"
+        },
+        {
+          "name": "root-sha",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd history staged"
+    }
+  ]
+}

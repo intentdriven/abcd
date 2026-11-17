@@ -1,0 +1,51 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd reserve",
+      "sentence": "Reserve an issue, intent or release on the shared remote, or release it: Writes one commit to its origin branch; refuses what someone else holds, with exit 3.",
+      "usage": "abcd reserve <record-id> [flags]",
+      "flags": [
+        {
+          "name": "admit",
+          "type": "int"
+        },
+        {
+          "name": "apply",
+          "type": "bool"
+        },
+        {
+          "name": "footprint",
+          "type": "list"
+        },
+        {
+          "name": "holder",
+          "type": "bool"
+        },
+        {
+          "name": "lease",
+          "type": "duration"
+        },
+        {
+          "name": "older-than",
+          "type": "int",
+          "default": "7"
+        },
+        {
+          "name": "release",
+          "type": "bool"
+        },
+        {
+          "name": "sweep",
+          "type": "bool"
+        },
+        {
+          "name": "take-over",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd reserve iss-2609010000000001 --footprint internal/core/example/example.go"
+    }
+  ]
+}

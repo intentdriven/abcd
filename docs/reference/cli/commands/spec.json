@@ -1,0 +1,47 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd spec",
+      "sentence": "Render the spec store's status: Writes nothing; refuses outside a git checkout.",
+      "usage": "abcd spec [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd spec",
+      "subcommands": [
+        "close"
+      ]
+    },
+    {
+      "path": "abcd spec close",
+      "sentence": "Close a spec, and ship its intent when no open spec names it: Writes the moves to closed/ and shipped/; refuses to ship an intent with no impact.",
+      "usage": "abcd spec close <spc-N> [flags]",
+      "flags": [
+        {
+          "name": "impact",
+          "type": "string",
+          "allowed": [
+            "additive",
+            "breaking",
+            "fix"
+          ]
+        },
+        {
+          "name": "production-mode",
+          "type": "string",
+          "allowed": [
+            "hand-written",
+            "dictated-and-formatted",
+            "scribe-transcribed"
+          ]
+        },
+        {
+          "name": "remainder",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd spec close spc-2609010000000001"
+    }
+  ]
+}

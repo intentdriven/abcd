@@ -765,7 +765,7 @@ func TestAFixRoundsConsumedReceiptMovesNothingButItself(t *testing.T) {
 			rc := LaneReceipt{SchemaVersion: ReceiptSchemaVersion, RunID: id, Lane: l.ID, Branch: l.Branch,
 				Commits:          []string{laneCommit(t, repo, l, "fix.txt")},
 				DefinitionOfDone: &DoDRun{Command: "make check", ExitCode: &one, Output: prefix + DoDFileName},
-				Report:           prefix + ReportFileName, Model: "a-model"}
+				Report:           prefix + ReportFileName, Model: "grok-test-1"}
 			roundConsumed(t, repo.Root(), id, stages, Options{}, l.ID, res.Awaiting.Receipt, rc)
 		})
 	}
@@ -797,7 +797,7 @@ func TestASyncRoundsConsumedReceiptMovesNothingButItself(t *testing.T) {
 	rc := LaneReceipt{SchemaVersion: ReceiptSchemaVersion, RunID: f.runID, Lane: "lane-2", Branch: l2.Branch,
 		Commits:          []string{laneCommit(t, f.repo, l2, "other.txt")},
 		DefinitionOfDone: &DoDRun{Command: "make check", ExitCode: &one, Output: DoDFileName},
-		Report:           ReportFileName, Model: "a-model"}
+		Report:           ReportFileName, Model: "grok-test-1"}
 	roundConsumed(t, f.repo.Root(), f.runID, f.stages, f.opts(), "lane-2", res.Awaiting.Receipt, rc)
 }
 

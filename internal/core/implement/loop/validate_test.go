@@ -82,9 +82,13 @@ func implemented(t *testing.T, repo *gittest.Repo, runID string, stages Stages, 
 
 // reviewerReturn is a validator's return in its agent definition's shape.
 func reviewerReturn(verdict string) string {
-	return "### Analysis\n\nRead the lane's diff; nothing else.\n\n### Findings\n\n- none survived refutation\n\n### Verdict\n\n- **" +
+	return testReviewerModelLine + "### Analysis\n\nRead the lane's diff; nothing else.\n\n### Findings\n\n- none survived refutation\n\n### Verdict\n\n- **" +
 		verdict + "** — as stated.\n"
 }
+
+// testReviewerModelLine is the model line a test reviewer's return names: a
+// model other than the fixtures' writer, grok-test-1 (goodReceipt).
+const testReviewerModelLine = ReviewerModelPrefix + " kimi-test-1\n\n"
 
 var provenanceRe = regexp.MustCompile(`(?m)^- (rubric_hash|prompt_hash): (sha256:[0-9a-f]{64})$`)
 
@@ -163,7 +167,7 @@ func statingHeadAt(t *testing.T, root, runID, rel, body string) string {
 		for _, r := range l.Validation {
 			for _, v := range r.Validators {
 				if rel != "" && v.Return == rel {
-					return "Reviewed head: " + r.HeadSHA + "\n\n" + namingHead(body, r.HeadSHA)
+					return "Reviewed head: " + r.HeadSHA + "\n" + namingModel(body) + namingHead(body, r.HeadSHA)
 				}
 			}
 		}
@@ -174,7 +178,16 @@ func statingHeadAt(t *testing.T, root, runID, rel, body string) string {
 	}
 	v := st.Lanes[i].Validation
 	head := v[len(v)-1].HeadSHA
-	return "Reviewed head: " + head + "\n\n" + namingHead(body, head)
+	return "Reviewed head: " + head + "\n" + namingModel(body) + namingHead(body, head)
+}
+
+// namingModel is the model line a reviewer's return names after its first line,
+// testReviewerModelLine, unless body names one itself; a blank line when it does.
+func namingModel(body string) string {
+	if strings.Contains(body, ReviewerModelPrefix) {
+		return "\n"
+	}
+	return testReviewerModelLine
 }
 
 // namingHead is a return with its Verdict section naming head, directly under the
@@ -396,7 +409,7 @@ func fixed(t *testing.T, repo *gittest.Repo, runID string, stages Stages, report
 		}
 	}
 	rc := LaneReceipt{SchemaVersion: ReceiptSchemaVersion, RunID: runID, Lane: l.ID, Branch: l.Branch, Commits: commits,
-		DefinitionOfDone: &DoDRun{Command: "make check", ExitCode: zero(), Output: rel + "/" + DoDFileName}, Report: rel + "/" + ReportFileName, Model: "a-model"}
+		DefinitionOfDone: &DoDRun{Command: "make check", ExitCode: zero(), Output: rel + "/" + DoDFileName}, Report: rel + "/" + ReportFileName, Model: "grok-test-1"}
 	data, _ := json.Marshal(rc)
 	path := filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt))
 	if err := os.WriteFile(path, data, 0o600); err != nil {
@@ -505,6 +518,51 @@ func TestAVerdictWordEndsItsLineOrMeetsASeparator(t *testing.T) {
 		if w, ok := leadingVerdict(line, words); ok {
 			t.Errorf("leadingVerdict(%q) = %+v; want no verdict", line, w)
 		}
+	}
+}
+
+// The commit a verdict names is the first full name after its word on the verdict
+// line, and what follows it on that line is not read: a records round's reviewer who
+// names the judged commit and then the commit the record resolves with passes, and a
+// line naming another commit first, or only another, is refused
+// (iss-2611141504118241).
+func TestAVerdictNamesTheFirstFullCommitAfterItsWord(t *testing.T) {
+	words := reviewerVerdicts[RoleRuthless]
+	head := "4f2c9a1be07d3e5f6a8b9c0d1e2f3a4b5c6d7e8f"
+	other := "0123456789abcdef0123456789abcdef01234567"
+	verdict := func(section string) (verdictWord, error) {
+		return parseVerdict("### Analysis\n\nThe records commit reads.\n\n### Verdict\n\n"+section+"\n", words, head)
+	}
+	for name, section := range map[string]string{
+		"the judged commit, then the commit it resolves with": "SHIP " + head + " — the record's resolved_by matches the lane's commit " + other + ".",
+		"the judged commit, then itself again and another":    "**SHIP** `" + head + "` (" + head + "; resolved by " + other + ")",
+		"a head line, then the judged commit and another":     "Head: " + head + "\nSHIP " + head + " — resolved by " + other,
+	} {
+		if w, err := verdict(section); err != nil || w.word != "SHIP" {
+			t.Errorf("%s: parseVerdict = %+v, %v; want SHIP", name, w, err)
+		}
+	}
+	for name, section := range map[string]string{
+		"only another commit":                         "SHIP " + other + " — nothing survived.",
+		"another commit, then the judged commit":      "SHIP " + other + " — as was " + head,
+		"a head line, then another commit first":      "Head: " + head + "\nSHIP " + other + ", and " + head,
+		"another commit abbreviated, then the judged": "SHIP 0123456789a, then " + head,
+	} {
+		w, err := verdict(section)
+		if err == nil {
+			t.Errorf("%s: parseVerdict = %+v; want a refusal", name, w)
+			continue
+		}
+		if !strings.Contains(err.Error(), "names \"0123456789") {
+			t.Errorf("%s: refused with %q; want it to name the other commit", name, err)
+		}
+	}
+	if w, err := verdict("SHIP " + head[:9] + " — resolved by " + other[:9]); err == nil {
+		t.Errorf("a line with no full name: parseVerdict = %+v; want a refusal", w)
+	}
+	brief := namesTheHeadLine(words, head)
+	if !strings.Contains(brief, "That line holds the verdict word and that name and nothing else") {
+		t.Errorf("the reviewer's brief does not say the verdict line holds the word and the judged name alone: %s", brief)
 	}
 }
 
@@ -650,7 +708,13 @@ func TestAVersion4StateReadsAsOneNoValidatorHasJudged(t *testing.T) {
 	if err != nil || st.SchemaVersion != SchemaVersion {
 		t.Fatalf("a version-4 file reads as the current version: %d %v", st.SchemaVersion, err)
 	}
-	handBack(t, repo, id, stages, RoleRuthless, reviewerReturn("SHIP"))
+	// A version-4 file records no receipt, so no writer's model: the round it
+	// opens hands the lane back, since no reviewer can be told from the writer
+	// (reviewers.go), and that is the next mutation.
+	res, err := advance(repo.Root(), id, stages, Options{})
+	if err != nil || res.HandBack == nil || !strings.HasPrefix(res.HandBack.Reason, noOtherModel) {
+		t.Fatalf("the round opens and the lane, whose writer no receipt names, is handed back: %+v %v", res, err)
+	}
 	if !strings.Contains(string(stateBytes(t, repo.Root(), id)), cur) {
 		t.Fatalf("the next mutation writes the file back at version %d", SchemaVersion)
 	}

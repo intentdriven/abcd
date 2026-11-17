@@ -124,11 +124,13 @@ func resolveStuckBounds(roots layered.Roots) (stuckBounds, error) {
 // waitByDesign reports whether r is a wait the loop makes on purpose rather
 // than a refusal: the landing's wait for its preflight receipt, an outage's,
 // a land fence's that could not read origin, a merge gate's that could not
-// read what it asks at the arming, and a lane whose hold could not be widened
+// read what it asks at the arming, a landing waiting at its arming for a
+// runner's report (land_runner_wait.go), which bounds that wait itself, and a
+// lane whose hold could not be widened
 // to a path another holder holds live (widen.go), which noteRefusal alone
 // still logs, against the minutes bound.
 func waitByDesign(r *Refusal) bool {
-	return !r.checkWait.IsZero() || r.Outage != nil || r.outage != nil || r.Stage == StageOutage || r.originUnread || r.releaseHeld || r.gateUnread || r.pathHeld
+	return !r.checkWait.IsZero() || r.Outage != nil || r.outage != nil || r.Stage == StageOutage || r.originUnread || r.releaseHeld || r.gateUnread || r.runnerWait != "" || r.pathHeld
 }
 
 // noteRefusal logs err on the lane it names, in an issue run (stuck.go's
@@ -242,8 +244,11 @@ func stuckReason(run State, b stuckBounds) string {
 	if i < 0 || run.Issue() == "" {
 		return ""
 	}
+	// A lane already handed back is no lane to hand back as stuck: one whose
+	// pull request is still armed is in progress only for the withdrawal its
+	// hand-back owes (laneOutcome), which each step tries again.
 	r := run.Lanes[i].Refused
-	if r == nil {
+	if r == nil || run.Lanes[i].HandBack != nil || run.Lanes[i].Stage == StageHandedBack {
 		return ""
 	}
 	at := refusedAt(*r)
@@ -289,15 +294,18 @@ func times(n int) string {
 }
 
 // handBackStuck hands the run's lane in progress back as stuck by the bounds
-// b, and releases the issue's reservation with the hand-back's tombstone
-// (releaseOnHandBack), under the run's lock; it returns the run as written.
+// b, and releases the issue's reservation with the hand-back's tombstone once
+// the save has written the hand-back, under the same lock (releaseAfterWrite);
+// it returns the run as written, the release's line included.
 // The lane is judged again under the lock, so a step running at the same time
 // that succeeded, or handed the lane back itself, since the drain read it
 // leaves the lane as that step wrote it. The hand-back saves the run whole, through
 // save (Options.laneSave).
 func handBackStuck(repoRoot, runID string, b stuckBounds, now time.Time, save saveFrame) (State, error) {
 	var out State
+	var release *handBackRelease
 	err := save(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		release = nil
 		i := st.current()
 		why := stuckReason(*st, b)
 		if i < 0 || st.Lanes[i].HandBack != nil || why == "" {
@@ -309,11 +317,14 @@ func handBackStuck(repoRoot, runID string, b stuckBounds, now time.Time, save sa
 			Home: "a person: the issue stays open, and the lane's run " + st.RunID + " keeps its worktree and branch until `abcd implement step --run " +
 				st.RunID + " --discard " + lane.ID + "` discards them"}
 		handBackLane(st, &lane, hb, "", now)
-		releaseOnHandBack(repoRoot, st, *lane.HandBack, now)
 		st.Lanes[i] = lane
 		st.UpdatedAt = now
 		out = *st
+		release = releaseAfterWrite(repoRoot, st, lane.ID, now)
 		return true, nil
 	})
+	if err == nil && release != nil && release.ran {
+		out = release.state
+	}
 	return out, err
 }

@@ -36,6 +36,7 @@ import (
 	"github.com/intentdriven/abcd/internal/term"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // writtenFlags are the flags both AI-written interviews take.
@@ -47,8 +48,15 @@ type writtenFlags struct {
 func (f *writtenFlags) register(cmd *cobra.Command, name string) {
 	cmd.Flags().StringVar(&f.answers, "answers", "", "answer the questions from this answers file (JSON: schema_version, interview \""+name+
 		"\", answers by ordinal Q1, Q2, ...) instead of drawing them; the run refuses at the first question the file does not answer")
-	cmd.Flags().StringVar(&f.answeredIn, "answered-in", interview.Terminal, "where an answers-file entry that names no place was answered: "+
-		"Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer")
+	answeredInFlag(cmd.Flags(), &f.answeredIn)
+}
+
+// answeredInFlag declares --answered-in on fs: where an answers-file entry
+// that names no place was answered, one of the places interview.ValidAnsweredIn
+// checks against, Terminal by default.
+func answeredInFlag(fs *pflag.FlagSet, p *string) {
+	enumFlag(fs, p, "answered-in", interview.Terminal, "where an answers-file entry that names no place was answered: ", interview.AnsweredInPlaces(),
+		"; Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer")
 }
 
 // interruptContext relays an interrupt, a termination or a hang-up to the
@@ -95,11 +103,11 @@ func runWrittenInterview(cmd *cobra.Command, w *interview.Written, f writtenFlag
 	if !interview.Reaches(cfg, w.Role) {
 		return interview.WrittenResult{}, &exitError{Code: 2, Msg: termsafe.SanitizeBlock(w.NoRoute().Error())}
 	}
-	limits, err := questionLimitsFor(roots, errOut)
+	limits, note, err := questionLimitsFor(roots, errOut)
 	if err != nil {
 		return interview.WrittenResult{}, &exitError{Code: 2, Msg: w.Verb + ": " + err.Error() + " (nothing was run)"}
 	}
-	w.Limits = limits
+	w.Limits, w.LimitsNote = limits, note
 	w.Config = cfg
 	w.Transcripts = &lazyHistoryStore{cmd: cmd}
 	w.Verbs = verbsOf(cmd.Root())
@@ -228,16 +236,24 @@ func labelOf(q question.Question, value string) string {
 // returned as the error, sanitised, for the door to refuse before any
 // question; a layer that could not be read fails open and loud: one line on
 // errOut in the question gate's own form, naming the file, and the defaults.
-func questionLimitsFor(roots layered.Roots, errOut io.Writer) (question.Limits, error) {
+// The note is where the limits in force came from, for the asking rules to
+// name the file that set each figure (spc-2610301950037469, approach 6); it
+// is empty at the defaults, an unread layer's included, and a refusal never
+// reaches it, since the door refuses before any question.
+func questionLimitsFor(roots layered.Roots, errOut io.Writer) (question.Limits, question.LimitsNote, error) {
 	v, err := layered.QuestionLimits(roots)
 	var unread *layered.UnreadError
 	switch {
 	case err == nil:
-		return v.V, nil
+		return v.V, v.Note(), nil
 	case errors.As(err, &unread):
-		// The resolver hands back the defaults with an unread layer.
-		_ = questionFailOpen(errOut, "%s; the questions are measured at abcd's defaults", err)
-		return v.V, nil
+		// The resolver hands back the defaults with an unread layer. The
+		// verb has read the same files through runner.Load just before and
+		// refused on a fault there, so this is reached only when a file
+		// changes between the two reads; it stays so that case is measured
+		// at the defaults and said, as the gate says it, rather than refused.
+		fmt.Fprint(errOut, limitsUnreadLineFor(err, "the questions are measured"))
+		return v.V, question.LimitsNote{}, nil
 	}
-	return question.Limits{}, errors.New(termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+	return question.Limits{}, question.LimitsNote{}, errors.New(termsafe.SanitizeLine(fsutil.RedactHome(err.Error())))
 }

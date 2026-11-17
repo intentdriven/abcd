@@ -232,7 +232,7 @@ func newLandFixtureWith(t *testing.T, files map[string]string) *landFixture {
 	asPatInEnv(t)
 	w.putGHFirst(t)
 	return &landFixture{repo: w.repo, bare: w.bare, gh: w.gh, issue: v.issue, runID: v.runID, stages: DefaultStages(),
-		model: "claude-test-5", world: w}
+		model: "claude-mythos-5", world: w}
 }
 
 // walked is walk, from newLandFixture, once a process per fixture and model;
@@ -372,7 +372,7 @@ func TestTheLandingClosesTheSpecResolvesTheCapturesAndArmsTheMerge(t *testing.T)
 		t.Fatalf("the landing's records are committed on the lane: head still %s", implHead)
 	}
 	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
-	for _, want := range []string{"Delivers: itd-10", "Resolves: " + f.issue, "Assisted-by: Claude:claude-test-5"} {
+	for _, want := range []string{"Delivers: itd-10", "Resolves: " + f.issue, "Assisted-by: Claude:claude-mythos-5"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("the records commit carries %q:\n%s", want, msg)
 		}
@@ -430,7 +430,7 @@ func TestTheLandingClosesTheSpecResolvesTheCapturesAndArmsTheMerge(t *testing.T)
 			t.Fatalf("the body is built from the records (%q missing):\n%s", want, body)
 		}
 	}
-	if !strings.HasSuffix(string(body), "\n"+composedAssistedBy()+"\nAssisted-by: Claude:claude-test-5\n") {
+	if !strings.HasSuffix(string(body), "\n"+composedAssistedBy()+"\nAssisted-by: Claude:claude-mythos-5\n") {
 		t.Fatalf("the body ends with the abcd label and the receipt's model:\n%s", body)
 	}
 	if l = currentLane(t, f.repo, f.runID); l.PR != 7 {

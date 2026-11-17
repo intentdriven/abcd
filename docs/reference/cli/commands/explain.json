@@ -1,0 +1,18 @@
+{
+  "format_version": 1,
+  "commands": [
+    {
+      "path": "abcd explain",
+      "sentence": "Print how to call one command, or the shape of one input it reads: Writes nothing; refuses a command path the tree does not have.",
+      "usage": "abcd explain [<verb> [<sub-verb>...]] [flags]",
+      "flags": [
+        {
+          "name": "input",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd explain ideate record --input verdict-json"
+    }
+  ]
+}
