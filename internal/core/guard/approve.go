@@ -77,6 +77,10 @@ const (
 	// launched working tree, the run's own directories and the temporary
 	// directory.
 	outsideRemovalEntryID = "removal-outside-tree"
+	// gitDirEntryID: a git command whose git directory stands inside the
+	// working tree and is not the working tree's own, or one the line does
+	// not fix (approvegitdir.go).
+	gitDirEntryID = "git-dir-not-own"
 	// groupBrokenEntryID: the text that runs the command from the working
 	// tree under bash does not read back as that change of directory and one
 	// bash call holding the whole command, so part of it could run outside
@@ -350,6 +354,18 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int, carry ma
 		if wholeCarried != nil {
 			if a, ok := judge(wholeCarried); ok {
 				return a
+			}
+		}
+		// The git directory each git command reads, under both carries.
+		envs := []map[string]string{carried}
+		if wholeCarried != nil {
+			envs = append(envs, wholeCarried)
+		}
+		for _, st := range states {
+			for _, env := range envs {
+				if a, ok := facts.gitDirRefusal(rc, p.seg, st, vf, env); ok {
+					return a
+				}
 			}
 		}
 		carryEnvironment(p.seg, carried)

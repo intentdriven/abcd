@@ -253,7 +253,13 @@ var wordReaders = map[string]string{
 	"shortOption":             "exempt: refusal reads a word the line does not fix (clusterCouldCarry) before it calls this, so only a spelled word reaches it",
 	"submoduleForeachRefusal": "isUnknown: a subcommand word the line does not spell out may be foreach, and is refused",
 	"filterBranchRefusal":     "isUnknown: a word the line does not spell out where filter-branch reads its options may be a filter, and is refused",
-	"execPinKeys":             "exempt: reads gitutil's own -c pins, not a command word",
+
+	// approvegitdir.go: the approver's reading of which git directory a git
+	// command reads.
+	"gitDirRefusal":  "sitesNamed and readGitConfigIn place git and the environment it runs with",
+	"gitDirOf":       "firstOperandLimit, fixedToken, isUnknown, knownLead, flagCouldBe and unknownFlagCouldBe: an unknown word that may become -C, --git-dir or --bare, or a directory the line does not fix, is refused",
+	"separateGitDir": "firstOperands, isUnknown, fixedToken and longFlagIs: an unknown subcommand is read as init, and an unknown word that may become --separate-git-dir, or its value the line does not fix, is refused",
+	"execPinKeys":    "exempt: reads gitutil's own -c pins, not a command word",
 
 	// approvecode.go: code reaching an interpreter outside its inline flag.
 	"otherCode":         "exempt: hands the site to the readers below, each listed",

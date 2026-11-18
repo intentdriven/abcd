@@ -481,6 +481,19 @@ A shell command is approved only when the guard reads it whole and clears it:
   removes a file (`git -c core.pager=cat log` is approved)
   (`git-config-write`). Reading configuration, and setting an ordinary key in
   the repository's own file, is approved;
+- no git command reads a second git directory inside the working tree
+  (`git-dir-not-own`): git takes its configuration, and the programs it
+  names, from the git directory it runs against, so a command whose git
+  directory stands inside the working tree and is not the working tree's own
+  is refused, naming that directory. The directory is read as git finds it:
+  from where `-C` and a `cd` the line fixes leave git, by git's walk upward
+  (a `.git` there, or a bare repository), or as `--git-dir`, `GIT_DIR` (set on
+  the command or exported earlier in the line), `GIT_COMMON_DIR` or `--bare`
+  names it; `git init --separate-git-dir` aimed inside the working tree is
+  refused too. A plain subdirectory, a submodule (whose `.git` file points
+  into the working tree's own git directory) and a git directory outside the
+  working tree are left to the other rules; a directory the line does not
+  spell out is refused;
 - nothing removes, moves or recursively changes (`chmod -R`, `chown -R`) a
   path that is, or may be, the root, a top-level directory, the home directory
   or a directory directly in it, the working tree or a directory above it, or
