@@ -93,7 +93,9 @@ core and the packaging boundary holds.
 - **capture**: the issue ledger (itd-4), so an observation reaches a durable
   record in one line.
 - **memory**: the curated knowledge substrate (itd-36); a vendor memory harvest
-  is an opt-in, read-only source over it.
+  *(design target)* is an opt-in, read-only source over it, which no verb or
+  flag offers yet (`memory.harvest` is staged in
+  [`../05-internals/03-configuration.md`](../05-internals/03-configuration.md)).
 
 ## 3. Intent, brief, and review through the host-delegated oracle
 
