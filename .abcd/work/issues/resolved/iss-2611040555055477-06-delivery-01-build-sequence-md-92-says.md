@@ -10,6 +10,14 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/01-build-sequence.md"
 remedy: "Mark the clause as a design target."
+resolution: "The delivery chapter's memory bullet now marks the vendor memory harvest clause *(design target)* and points at the configuration chapter, which lists memory.harvest as staged; a lint-package test holds the clause to the marker."
+impact: internal
+resolved_by:
+  commit: "53326ec6fb9a5d745df5d6e990d16b2287b6900e"
 ---
 
 06-delivery/01-build-sequence.md:92 says a vendor memory harvest is an opt-in, read-only source over the memory substrate, unmarked, though the chapter marks unbuilt items as design targets (:111, :129, :134). No Go source reads memory.harvest and no verb or flag offers one; 05-internals/03-configuration.md:684 and :1323 list it as staged. The shipping abcd lab harvest is unrelated.
+
+## Grounds
+
+- pursued: the build sequence marks every unbuilt item a design target, and the harvest is unbuilt (no verb, flag or Go source reads memory.harvest; the configuration chapter lists it among the keys no shipped code reads). This would be shown wrong if a shipping verb or flag offered a vendor memory harvest.
