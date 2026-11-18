@@ -93,11 +93,20 @@ const routeFlagName = "route"
 // refusals are spelled once.
 func addRouteFlag(cmd *cobra.Command, agents ...string) *routeFlag {
 	rf := &routeFlag{agents: agents}
-	cmd.Flags().StringArrayVar(&rf.texts, routeFlagName, nil,
-		"route one agent for this run: "+oracle.RouteSyntax+", tier one of "+tierHelp()+
-			" (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)")
+	enumSegmentFlag(cmd.Flags(), &rf.texts, routeFlagName, routeTierSegment,
+		"route one agent for this run: "+oracle.RouteSyntax+", tier one of ", routeTiers(),
+		" (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)")
 	return rf
 }
+
+// routeTierSegment names the segment of each tier --route value the tier
+// vocabulary applies to, the <tier> of oracle.RouteSyntax.
+const routeTierSegment = "tier"
+
+// routeTiers is the tier vocabulary as the words a tier --route declares: the
+// set oracle.ParseTier admits a value's tier from, in the order its refusal
+// names them.
+func routeTiers() []string { return enumWords(oracle.Tiers()) }
 
 // addRunnerRouteFlag registers --route on a verb that launches a runner for
 // the roles it hands to an agent (the build loop's step), naming those roles.
@@ -126,17 +135,6 @@ func (rf *routeFlag) applyRunners(cfg *runner.Config) error {
 			Remedy: "correct the --route, or leave it out to run each role on its configured route"}
 	}
 	return nil
-}
-
-func tierHelp() string {
-	s := ""
-	for i, t := range oracle.Tiers() {
-		if i > 0 {
-			s += " | "
-		}
-		s += string(t)
-	}
-	return s
 }
 
 // resolve returns the route for agent, the one agent this invocation

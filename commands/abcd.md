@@ -292,7 +292,7 @@ repo (contributors) or a platform carrying no released binary; they are never a
 prerequisite for a plugin or CLI user.
 
 <!-- generated: command-facts -->
-**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain abcd` from the running binary disagree, follow the binary.
+**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain abcd` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd [<record-id>] [flags]`

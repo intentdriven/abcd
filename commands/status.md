@@ -351,7 +351,7 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `go run ./cmd/abcd ahoy install` in a source checkout.
 
 <!-- generated: command-facts -->
-**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain status` from the running binary disagree, follow the binary.
+**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain status` from the running binary disagree, follow the binary.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

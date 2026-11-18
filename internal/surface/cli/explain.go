@@ -277,9 +277,10 @@ func explainLines(f surface.Facts, hidden bool, inherited []explainInheritedFlag
 	return append(out, tail...)
 }
 
-// explainFlagLine is one flag: its spelling, its type, its closed set, its
-// default and whether it is required. A boolean takes no value, so its type is
-// said in parentheses rather than as a value placeholder.
+// explainFlagLine is one flag: its spelling, its type, its closed set (and,
+// on a list flag, what in each value the set applies to), its default and
+// whether it is required. A boolean takes no value, so its type is said in
+// parentheses rather than as a value placeholder.
 func explainFlagLine(fl surface.FlagFact) string {
 	var b strings.Builder
 	if fl.Shorthand != "" {
@@ -292,7 +293,7 @@ func explainFlagLine(fl surface.FlagFact) string {
 		b.WriteString(" <" + fl.Type + ">")
 	}
 	if len(fl.Allowed) > 0 {
-		b.WriteString(" [one of " + strings.Join(fl.Allowed, " | ") + "]")
+		b.WriteString(" [" + explainSetLead(fl.Each) + strings.Join(fl.Allowed, " | ") + "]")
 	}
 	if fl.Default != "" {
 		b.WriteString(" (default " + fl.Default + ")")
@@ -301,6 +302,20 @@ func explainFlagLine(fl surface.FlagFact) string {
 		b.WriteString(" (required)")
 	}
 	return b.String()
+}
+
+// explainSetLead is the words before a flag's closed set: "one of" for a flag
+// that takes one value of it, and for a list flag the member or the segment of
+// each value that is one of it, so a list is never read as one value of the
+// set (iss-2611162111195582).
+func explainSetLead(each string) string {
+	switch each {
+	case "":
+		return "one of "
+	case surface.EachMember:
+		return "each one of "
+	}
+	return "each value's " + each + " one of "
 }
 
 // explainVersionText says which schema version an input is read at and where
