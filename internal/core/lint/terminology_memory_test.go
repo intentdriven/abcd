@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // TestTerminologyMemoryRowCoversBothHalves holds the crosswalk's Memory row to
@@ -41,7 +43,7 @@ func TestTerminologyMemoryRowCoversBothHalves(t *testing.T) {
 	}
 	for _, want := range []string{
 		"`abcd memory add`",
-		"`~/.abcd.noindex/memory.json`",
+		"`" + abcdhome.Display("memory.json") + "`",
 		"`.abcd/memory.json`",
 		"promote",
 		"when a prompt matches",
