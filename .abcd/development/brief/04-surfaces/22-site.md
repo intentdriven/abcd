@@ -165,7 +165,7 @@ abcd does not write fails the site's gate, on every page, the record's own
 included, and so does a site with no title.
 Files under `.abcd/` (but the local tier) and `CHANGELOG.md` are abcd's; `docs/`,
 `README.md` and every other file are not. The build and the gate name the route
-explicitly, with `--project`, and refuse settings of the other shape: a
+explicitly, by the project flag, and refuse settings of the other shape: a
 composed build of a project site's settings, and a project build whose settings
 are a composition.
 
@@ -173,7 +173,7 @@ are a composition.
 site at once, as abcd's own does (itd-2610142145236613): its documentation
 composed for its own host, and its record built on the project route onto its
 GitHub Pages. The two cannot share one file, so where `.abcd/site.json` holds a
-composition, `site setup --project` writes the project site's settings to
+composition, setting up a project site writes its settings to
 `.abcd/project-site.json` and its workflow to
 `.github/workflows/project-site.yml`, beside the composed site's own, and
 leaves the composed site as it is. The project route, build and gate alike,
