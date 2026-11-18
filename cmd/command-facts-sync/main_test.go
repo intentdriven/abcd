@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -174,7 +175,7 @@ func TestTheBlocksStandAfterTheHeadingAndAboveTheUserInput(t *testing.T) {
 	}
 	block := page[start:]
 	for _, want := range []string{
-		cli.CommandFactsBegin + "\n**Command facts, format version 1.** Where this block and `\"${CLAUDE_PLUGIN_ROOT}/abcd\" explain alpha` from the running binary disagree, follow the binary.\n",
+		cli.CommandFactsBegin + "\n" + fmt.Sprintf("**Command facts, format version %d.**", surface.FactsFormatVersion) + " Where this block and `\"${CLAUDE_PLUGIN_ROOT}/abcd\" explain alpha` from the running binary disagree, follow the binary.\n",
 		"- `abcd alpha [flags]`\n",
 		"- `abcd alpha record --verdict-json <file> [flags]`\n",
 		"  - Reads `--verdict-json`, the alpha verdict, at schema_version 3; `\"${CLAUDE_PLUGIN_ROOT}/abcd\" explain alpha record --input verdict-json` prints its shape.\n",
@@ -202,7 +203,7 @@ func TestAQuietVerbGetsAOneLineBlockInThePagesOwnRung(t *testing.T) {
 	want := "---\nname: quiet\n---\n\n# Quiet\n\n" +
 		cli.AskTheBinaryBegin + "\nBefore you fill in an input for this command, run `abcd explain quiet`, and where its answer and this page disagree, follow the binary, since this page may be older than it.\n" + cli.GeneratedEnd + "\n\n" +
 		"Run `abcd quiet`.\n\n" +
-		cli.CommandFactsBegin + "\n**Command facts, format version 1.** Where this block and `abcd explain quiet` from the running binary disagree, follow the binary.\n" + cli.GeneratedEnd + "\n"
+		cli.CommandFactsBegin + "\n" + fmt.Sprintf("**Command facts, format version %d.**", surface.FactsFormatVersion) + " Where this block and `abcd explain quiet` from the running binary disagree, follow the binary.\n" + cli.GeneratedEnd + "\n"
 	if got != want {
 		t.Errorf("the page reads\n%s\nwant\n%s", got, want)
 	}

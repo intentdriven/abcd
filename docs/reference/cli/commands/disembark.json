@@ -1,5 +1,5 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "commands": [
     {
       "path": "abcd disembark",
@@ -42,7 +42,14 @@
         },
         {
           "name": "route",
-          "type": "list"
+          "type": "list",
+          "allowed": [
+            "local",
+            "economy",
+            "frontier",
+            "host-decides"
+          ],
+          "each": "tier"
         }
       ],
       "inputs": [
@@ -97,7 +104,14 @@
         },
         {
           "name": "route",
-          "type": "list"
+          "type": "list",
+          "allowed": [
+            "local",
+            "economy",
+            "frontier",
+            "host-decides"
+          ],
+          "each": "tier"
         }
       ],
       "inputs": [
@@ -126,7 +140,14 @@
         },
         {
           "name": "route",
-          "type": "list"
+          "type": "list",
+          "allowed": [
+            "local",
+            "economy",
+            "frontier",
+            "host-decides"
+          ],
+          "each": "tier"
         }
       ],
       "inputs": [
@@ -168,7 +189,14 @@
         },
         {
           "name": "route",
-          "type": "list"
+          "type": "list",
+          "allowed": [
+            "local",
+            "economy",
+            "frontier",
+            "host-decides"
+          ],
+          "each": "tier"
         }
       ],
       "inputs": [

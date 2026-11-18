@@ -1,5 +1,5 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "commands": [
     {
       "path": "abcd ahoy",
@@ -186,7 +186,11 @@
         },
         {
           "name": "install-tool",
-          "type": "list"
+          "type": "list",
+          "allowed": [
+            "gitleaks"
+          ],
+          "each": "member"
         },
         {
           "name": "live-sessions",
@@ -219,7 +223,17 @@
         },
         {
           "name": "readme-parts",
-          "type": "string"
+          "type": "string",
+          "allowed": [
+            "release-badge",
+            "build-badge",
+            "abcd-badge",
+            "licence",
+            "links",
+            "contents",
+            "none"
+          ],
+          "each": "member"
         },
         {
           "name": "refuse-adopt",

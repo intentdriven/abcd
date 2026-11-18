@@ -1,7 +1,9 @@
 package surface
 
 import (
+	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -45,7 +47,7 @@ func TestZeroDefaultIsTheKindsOwnZero(t *testing.T) {
 
 func TestCanonicalFactsSortsWithoutTouchingItsInput(t *testing.T) {
 	in := []Facts{
-		{Path: "abcd z", Flags: []FlagFact{{Name: "b"}, {Name: "a", Allowed: []string{"y", "x"}}},
+		{Path: "abcd z", Flags: []FlagFact{{Name: "b"}, {Name: "a", Allowed: []string{"y", "x"}, Each: EachMember}},
 			Inputs: []InputFact{{Flag: "z-json"}, {Flag: "a-json"}}, Subcommands: []string{"q", "p"}},
 		{Path: "abcd a"},
 	}
@@ -61,6 +63,9 @@ func TestCanonicalFactsSortsWithoutTouchingItsInput(t *testing.T) {
 	if !reflect.DeepEqual(out[1].Flags[0].Allowed, []string{"y", "x"}) {
 		t.Errorf("the closed set was reordered: %v", out[1].Flags[0].Allowed)
 	}
+	if out[1].Flags[0].Each != EachMember {
+		t.Errorf("what the closed set applies to was lost: %q", out[1].Flags[0].Each)
+	}
 	if out[0].Flags == nil || out[0].Inputs == nil {
 		t.Error("a command with no flags or inputs encodes them as null, not as an empty list")
 	}
@@ -70,5 +75,25 @@ func TestCanonicalFactsSortsWithoutTouchingItsInput(t *testing.T) {
 	out[1].Flags[0].Allowed[0] = "changed"
 	if in[0].Flags[1].Allowed[0] != "y" {
 		t.Error("the canonical facts share a closed set's backing array with the input")
+	}
+}
+
+// TestFlagFactEachIsOmittedOnASingleValueFlag keeps the facts of a flag that
+// takes one value of its set as they read before Each was added, and carries
+// Each, beside the set, on a list flag.
+func TestFlagFactEachIsOmittedOnASingleValueFlag(t *testing.T) {
+	one, err := json.Marshal(FlagFact{Name: "pick", Type: FlagString, Allowed: []string{"a", "b"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(one), `"each"`) {
+		t.Errorf("a single-value flag's facts carry each: %s", one)
+	}
+	list, err := json.Marshal(FlagFact{Name: "route", Type: FlagList, Allowed: []string{"a"}, Each: "tier"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(list), `"allowed":["a"],"each":"tier"`) {
+		t.Errorf("a list flag's facts do not carry each beside its set: %s", list)
 	}
 }
