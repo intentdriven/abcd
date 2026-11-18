@@ -154,7 +154,7 @@ view for the product thinker
 abcd vX.Y.Z
 ```
 
-`abcd --view facilitator` shows the full board: the repository, the record, the work tiers, the presence line and every intent with its spec.
+`abcd --view facilitator` shows the full board: the repository, the record, the work tiers, the presence line, and the intents being built or ready to build, each with its spec, then a count of the rest.
 
 
 ### Recording your first issue
