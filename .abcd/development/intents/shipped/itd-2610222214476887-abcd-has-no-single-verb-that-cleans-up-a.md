@@ -184,13 +184,13 @@ Acceptance rollup: MET 6 · MET_WITH_CONCERNS 5 · NOT_MET 0 · INCONCLUSIVE 0
 
 Per-criterion verdicts:
 - ac-1 — MET_WITH_CONCERNS: A bare run lists all five kinds with an action or keep reason, and tests hash the repo and home before and after and dispatch nothing. Concern: 'nothing changes' holds except for the fetch. Run does `fetch --prune` and the reservation fetch first, which moves remote-tracking refs, and the whole-dry-run tests call runSweep, which skips the fetch.
-  evidence: internal/core/sweep/runsweep_test.go:74 — "if len(seen) != 5 {"
+  evidence: internal/core/sweep/runsweep_test.go:75 — "if len(seen) != 5 {"
   evidence: internal/core/sweep/runsweep_test.go:162 — "func TestAWholeDryRunChangesNothing(t *testing.T) {"
   evidence: internal/core/sweep/sweep.go:372 — "gitutil.NetInputContext(ctx, repoRoot, "", "fetch", "--prune", "--quiet", claim.Remote)"
   evidence: .abcd/development/brief/04-surfaces/40-sweep.md:7 — "Bare, it changes nothing"
 - ac-2 — MET: A squash-merged (patch-equivalent, not ancestor) clean worktree is judged 'merged, judged by content', removed through PruneOne, and named with outcome removed.
   evidence: internal/core/sweep/apply_test.go:54 — "func TestApplyReclaimsASquashMergedWorktreeThroughThePrune(t *testing.T) {"
-  evidence: internal/core/sweep/apply_test.go:66 — "Detail: "merged, judged by content""
+  evidence: internal/core/sweep/apply_test.go:67 — "Detail: "merged, judged by content""
   evidence: internal/core/sweep/apply.go:134 — "if pr.Outcome == store.OutcomeReclaimed {"
 - ac-3 — MET: A worktree at the default branch's tip with a process cwd inside it is kept with reason 'in use: process … works in it'. Liveness holds rank ahead of every merged or clean judgement. Under --apply, a fresh probe runs immediately before each removal (PreRemove). The store reads a worktree with no commit of its own as unmerged anyway, so the keep holds either way.
   evidence: internal/core/sweep/sweep_test.go:426 — "func TestAWorktreeOnTheDefaultBranchWithALiveDirectoryIsKept(t *testing.T) {"
@@ -202,7 +202,7 @@ Per-criterion verdicts:
   evidence: internal/core/sweep/salvage_test.go:133 — "r.Outcome != OutcomeSaved || !strings.Contains(r.Reason, fsutil.RedactHome(entry))"
   evidence: internal/core/sweep/sweep.go:582 — "case r.Where != store.WhereStore:"
   evidence: internal/core/sweep/salvage_test.go:421 — "func TestAChangeGitWritesAsABinaryPatchIsRefused(t *testing.T) {"
-- ac-5 — MET: The embargo store is matched first, by storepath.IsStorePath or the sibling location, and kept as 'never read, saved or removed'. Tests show the probe never asks about it, and an apply over a detached embargo worktree holding an untracked advisory writes no salvage.
+- ac-5 — MET: The embargo store is matched first, by storepath.IsStorePath or the sibling location, and kept as 'never read, saved or removed'. Tests show the probe never asks about it, and an apply over a detached embargo worktree holding an untracked file writes no salvage.
   evidence: internal/core/sweep/sweep.go:530 — "if r.Where == store.WhereSibling || storepath.IsStorePath(j.home, abs) {"
   evidence: internal/core/sweep/salvage_test.go:308 — "func TestTheEmbargoStoreAndAnOutsideWorktreeAreNeverSalvaged(t *testing.T) {"
   evidence: internal/core/sweep/sweep_test.go:291 — "if slices.Contains(asked, real) || slices.Contains(asked, emb) {"
