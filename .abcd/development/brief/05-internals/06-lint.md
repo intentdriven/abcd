@@ -41,8 +41,8 @@ Three severities, resolved per rule:
 
 | Severity | Meaning | Effect |
 |---|---|---|
-| `blocker` | The record or docs must not ship with this finding | Fails the gate: non-zero exit, CI fails |
-| `warn` | Surfaced for attention, does not by itself mean the record is wrong | Raises the exit code to 1 on an otherwise-clean run (the tri-state grammar in §3) |
+| `blocker` | The record or docs must not ship with this finding | Fails the gate: exit 1, CI fails (§3) |
+| `warn` | Surfaced for attention, does not by itself mean the record is wrong | Reported, and never affects either tree gate's exit code: a run with warnings and no blocker exits 0 (§3) |
 | `info` | Advisory only | Never affects the exit code |
 
 Severity is a per-rule field in the owning JSON config (`.abcd/record-lint.json` or `.abcd/docs-lint.json`). Raising or lowering a rule's weight, or disabling it (`enabled: false`), is a config edit, never an engine change; the config is the authority for its gate's armed set and severities.
@@ -56,7 +56,7 @@ Two gates are armed today; the finer-grained tiers below them are design targets
 - **`make record-lint`** runs `cmd/record-lint` over the design record, and CI runs it on every pull request, every merge-queue entry and the nightly run of the default branch. It fails the build on any `blocker` finding.
 - **`make docs-lint`** runs `abcd lint docs` over `docs/` and the repo root, and CI runs it on the Linux leg. It fails on change-narration in a doc body, a broken relative link, a stray root markdown file, or any other `blocker`-severity rule.
 
-The two tree gates read git-tracked bytes through `internal/core/lint` and honour the severity model in §2. Their exit code follows the standalone tri-state grammar — **blocker → 2, warn → 1, clean → 0** (an error dominates a warning; the tri-state lives in `internal/core/repolint`) — so a CI job that branches on the exit code treats any non-zero value as failure.
+The two tree gates read git-tracked bytes through `internal/core/lint` and honour the severity model in §2. Each exits **blocker → 1, could not run → 2, otherwise 0**: any `blocker` finding exits 1, a lint that could not run (an unreadable config, an engine fault) exits 2, and every other run exits 0, warnings included (`cmd/record-lint`, and `abcd lint docs` in `internal/surface/cli`). The 2/1/0 tri-state, where a blocker exits 2 and a warning alone exits 1, belongs to bare `abcd lint` alone (`internal/core/repolint`), not to these two gates. So a CI job keyed on exit 2 for a blocker would pass a tree full of them: treat any non-zero exit as failure.
 
 **Design targets (not yet built).** These tiers are planned; the record describes them as intent, not as present reality:
 
@@ -68,7 +68,7 @@ Until those ship, the two armed gates above are the whole of CI's lint coverage:
 
 ## 4. Output format
 
-Each gate prints human-readable findings by default and machine-readable JSON on `--json`. A finding names its rule id, severity, the repo-relative file, the 1-based line, a message, and (where the rule offers one) a remediation fix. The run result carries the findings, the list of skipped rules, and the tri-state exit code (§3). The human render adds colour on a TTY; the JSON form is the stable contract for tooling that consumes gate output.
+Each gate prints human-readable findings by default and machine-readable JSON on `--json`. A finding names its rule id, severity, the repo-relative file, the 1-based line, a message, and (where the rule offers one) a remediation fix. The run result carries the findings, the list of skipped rules, and the exit code (§3). The human render adds colour on a TTY; the JSON form is the stable contract for tooling that consumes gate output.
 
 ## 5. Adding or changing a lint rule
 
@@ -83,12 +83,12 @@ The `documentation-auditor` agent (per `01-agents.md`) audits this contract on e
 ## 6. Acceptance (the lint contract is itself acceptance-checked)
 
 - **Given** the record names a lint gate, rule, or config, **when** the `documentation-auditor` runs at disembark, **then** the auditor fails if the named gate or rule does not resolve to a live entry in `.abcd/record-lint.json` / `.abcd/docs-lint.json` or a check in `internal/core/lint`.
-- **Given** a rule's severity is changed in its config, **when** the owning gate runs, **then** the finding is emitted at the configured severity and the exit code follows the tri-state grammar in §3.
+- **Given** a rule's severity is changed in its config, **when** the owning gate runs, **then** the finding is emitted at the configured severity and the exit code follows that gate's grammar in §3.
 - **Given** a planned lint tier that is not yet built (§3), **when** the record describes it, **then** it is written as intent — a design target — rather than in the present tense that would read as shipped.
 
 ## References
 
 - `.abcd/record-lint.json`, `.abcd/docs-lint.json`: the armed rule configs — the single source of truth for what each gate checks and at what severity.
-- `internal/core/lint`, `internal/core/repolint`: the Go lint engine and its tri-state exit grammar.
+- `internal/core/lint`, `internal/core/repolint`: the Go lint engine, and the tri-state exit grammar of bare `abcd lint`.
 - `05-prompt-quality.md`: the prompt-quality discipline this contract sits alongside.
 - `01-agents.md`: the `documentation-auditor` that audits this contract.
