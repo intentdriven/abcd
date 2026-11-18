@@ -530,15 +530,22 @@ func TestContentsKeepsAHeadingsEscapedMarkupAsText(t *testing.T) {
 
 // TestHeadingTextStaysLinear: a hostile heading of many unclosed brackets,
 // up to the file cap, is read in bounded time; read to the end of the line at
-// each bracket it took minutes (iss-2611161558121669). The bound holds only
-// without the race detector, whose instrumentation sets the time under -race
-// (a macOS runner took 24s there); the plain-only guards step runs it without.
+// each bracket it took minutes (iss-2611161558121669).
+//
+// Its only assertion is the wall-clock bound, which holds in the plain lane
+// alone (raceEnabled), and the reader runs on the caller's goroutine, so
+// under -race it asserts nothing and gives the detector nothing to watch: it
+// skips there, where a slow macOS runner spent over a minute on it. The
+// plain-only guards steps run it by name.
 func TestHeadingTextStaysLinear(t *testing.T) {
+	if raceEnabled {
+		t.Skip("asserts only a wall-clock bound, which the plain lane holds; nothing here is concurrent for -race to watch")
+	}
 	for _, unit := range []string{"<!--", `<a b="`, "<a b=c ", "<", "<!--<b>"} {
 		s := "\x01" + `\! ` + strings.Repeat(unit, (1<<20)/len(unit))
 		start := time.Now()
 		headingText(s)
-		if d := time.Since(start); !raceEnabled && d > 20*time.Second {
+		if d := time.Since(start); d > 20*time.Second {
 			t.Errorf("a %d-byte heading of %q took %v", len(s), unit, d)
 		}
 	}
