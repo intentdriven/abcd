@@ -178,7 +178,7 @@ func candidatesAt(repoRoot, session string, now time.Time) (CandidateSet, error)
 			continue
 		}
 		if reserves {
-			fp, err := specPackages(repoRoot, chk.Spec)
+			fp, err := specPackages(repoRoot, chk.Spec, nil)
 			var entry *footprintEntryError
 			if errors.As(err, &entry) {
 				set.Excluded = append(set.Excluded, Excluded{ID: id, Check: CheckFootprint, Reason: termsafe.Sanitize(entry.Error())})

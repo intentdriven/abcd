@@ -46,25 +46,27 @@ the reservation keeps people apart. In a checkout with a remote named
 checks below pass and before the run is created: the branch
 `abcd-reserved/<id>` on `origin`, naming you (by your holder id, kept in
 `~/.abcd.noindex/holder-id`, never by your GitHub username), this copy, and
-the files the spec's
-`## Footprint` `- packages:` line names (an issue's `found_at` path for
-`build <iss-N>`). Every other participant, a second person, a second
+the files the spec's steps still to build name on their `- packages:` lines,
+those steps with no `- landed:` line (the spec's `## Footprint` `- packages:`
+line when it lists no steps or a step still to build names no packages; an
+issue's `found_at` path for `build <iss-N>`). Every other participant, a second person, a second
 computer, a cloud session, sees it before starting the same item. The
 payload's `reservation` says what was done (`reserved <id> on origin for this
 copy until <expiry>, footprint: …`); a run in a checkout without `origin`
 reserves nothing and carries none.
 
-The reservation names exactly the paths that line names, so a file named there
-is reserved as that file, and one reservation holds them for every step of the
-run. A path naming a directory git tracks is reserved as it stands, and the
+The reservation names exactly the paths those lines name, so a file named there
+is reserved as that file, and one reservation holds them for every step the
+run builds; a package only a landed step names is not reserved, and a resume
+after every step has landed reserves the packages of the steps the run built.
+A path naming a directory git tracks is reserved as it stands, and the
 start warns on stderr, `abcd build: warning: footprint "<path>" is a directory
 covering <n> tracked files on <branch>, …; reserved anyway: name the files the
 work changes instead` (`reservation_warnings` in `--json`, a list of those
 lines). `build next` warns the same way for the run it starts, and its
 `--json` carries the list under `start`. A directory holds off every other
 reservation of a file inside it, so tell the user, and suggest narrowing the
-spec's `- packages:` line to the files the work changes. A step's own
-`- packages:` line is not read for the reservation.
+spec's `- packages:` lines to the files the work changes.
 
 - A spec with no footprint is refused at the `reservation` stage, exit 2,
   starting nothing: `<spc-N> has no footprint under ## Footprint to reserve
@@ -103,7 +105,7 @@ tombstones it once the run's last lane lands (`/abcd:implement`); a run whose
 issue lane is handed back releases it then. A run's reservation follows
 what its lanes change, an intent's as an issue's: once the implementer hands
 its receipt back, the run reserves every path the lane's branch changes beyond
-the footprint it holds (the `found_at`, or the spec's `- packages:` line), the
+the footprint it holds (the `found_at`, or the spec's packages), the
 decision records it wrote and the records its landing changes among them, each
 by its own name, and again
 before each step at its validators and before its landing's push, judged for
@@ -112,7 +114,7 @@ ends (`/abcd:implement`). Starting again while the run is in
 progress reserves again: it renews this copy's live reservation (keeping its
 footprint and term, so another reservation over the same files that a race let
 in does not refuse it) while that footprint still covers every path the spec's
-`- packages:` line names; once the spec has widened its footprint, it reserves
+packages name; once the spec has widened its footprint, it reserves
 again with the widened one, which is judged for overlap like any reservation
 and keeps the term, so origin names every path the build will change. An
 issue's reservation that its landing narrowed to the files the lane changed
