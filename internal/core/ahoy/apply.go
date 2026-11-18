@@ -172,7 +172,11 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		gitUnanswered = nil
 	}
 	if gitUnanswered != nil && det.FolderKind == UnmanagedRepo && opts.Adopt == nil {
-		return InstallResult{}, fmt.Errorf("git gave no root commit for this repository, so abcd cannot tell whether it already manages it; run the install again once git answers, or pass --adopt to adopt it anyway: %w", gitUnanswered)
+		return InstallResult{}, wordedError{
+			text: "git gave no root commit for this repository (" + rootCommitCause(gitUnanswered) +
+				"), so abcd cannot tell whether it already manages it; run the install again once git answers, or pass --adopt to adopt it anyway",
+			cause: gitUnanswered,
+		}
 	}
 
 	// The plan screen (setup_plan.go): for a repository abcd does not manage
@@ -1334,7 +1338,7 @@ func (a *applyCtx) stepHistory() {
 		// registered or given a store this run, and says so, rather than
 		// being passed over as one with no commits (iss-2610051434156079).
 		a.refuse("could not register this repository on this machine: git gave no root commit for it (" +
-			fsutil.RedactRoot(errText(rerr), a.cwd, ".") + "); run `abcd ahoy install` again")
+			rootCommitCause(rerr) + "); run `abcd ahoy install` again")
 		return
 	}
 	if sha == "" {

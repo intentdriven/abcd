@@ -5,7 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 
@@ -103,6 +106,36 @@ type outboundShimPlan struct {
 	note   string     // why the check is not wired, or a copy was left; "" when neither
 }
 
+// wordedError says in words why a step failed, keeping its cause in the chain
+// for errors.Is and errors.As but out of the text, which can name a path
+// outside the working tree or carry git's own message (iss-2611162118486104).
+type wordedError struct {
+	text  string
+	cause error
+}
+
+func (e wordedError) Error() string { return e.text }
+func (e wordedError) Unwrap() error { return e.cause }
+
+// rootCommitCommand is the git command a note names when git gave no root
+// commit, so the person can see git's own reason, which the note keeps out.
+const rootCommitCommand = "git rev-list -n 1 --max-parents=0 HEAD"
+
+// rootCommitCause says in words why git gave no root commit, and names
+// rootCommitCommand only when git itself refused, since abcd's own refusals
+// (a git below the lazy-fetch floor, a version it cannot read) are said in
+// full and that command would answer in the person's shell (iss-2611162118486104).
+func rootCommitCause(err error) string {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return causeInWords(err) + "; " + rootCommitCommand + " shows git's reason"
+	}
+	return causeInWords(err)
+}
+
+// errNoGitDirNamed is gitCommonDir's refusal of an empty answer.
+var errNoGitDirNamed = errors.New("git named no git directory")
+
 // gitCommonDir names the clone's common git directory, absolute: the one every
 // worktree shares, and so the one whose hooks git runs for each of them.
 func gitCommonDir(cwd string) (string, error) {
@@ -111,7 +144,7 @@ func gitCommonDir(cwd string) (string, error) {
 		return "", err
 	}
 	if out == "" {
-		return "", errors.New("git named no git directory")
+		return "", errNoGitDirNamed
 	}
 	if !filepath.IsAbs(out) {
 		out = filepath.Join(cwd, out)
@@ -190,11 +223,11 @@ func hookDirRunsCheck(dir string) (state HookState, runsCheck, chains bool) {
 func planOutboundShim(cwd string) outboundShimPlan {
 	gitDir, err := gitCommonDir(cwd)
 	if err != nil {
-		return outboundShimPlan{note: notWiredNoCopy("git could not name this clone's git directory (" + errText(err) + ")")}
+		return outboundShimPlan{note: notWiredNoCopy("git could not name this clone's git directory (" + causeInWords(err) + "; git rev-parse --git-common-dir says why)")}
 	}
 	root, err := os.OpenRoot(gitDir)
 	if err != nil {
-		return outboundShimPlan{note: notWiredNoCopy("this clone's git directory could not be opened (" + errText(err) + ")")}
+		return outboundShimPlan{note: notWiredNoCopy("this clone's git directory could not be opened (" + causeInWords(err) + ")")}
 	}
 	defer root.Close()
 	plan := outboundShimPlan{gitDir: gitDir}
@@ -211,7 +244,7 @@ func planOutboundShim(cwd string) outboundShimPlan {
 		// git could not answer, so which hooks git runs here is not known:
 		// abcd writes no hook git runs, and says it could not tell.
 		lead = unreadLead
-		why = "the read of core.hooksPath (git config --get-all core.hooksPath) failed (" + errText(err) +
+		why = "the read of core.hooksPath (git config --get-all core.hooksPath) failed (" + causeInWords(err) +
 			"), so abcd wrote no hook git runs; check that git can read this clone's settings and your own"
 		where = "the commit-msg hook git runs in this clone"
 	case len(paths) > 0 && paths[len(paths)-1] == "":
@@ -327,7 +360,7 @@ func (a *applyCtx) stepOutboundShim() {
 // writeShim writes the plan's file, and reports whether it did.
 func (a *applyCtx) writeShim(plan outboundShimPlan) bool {
 	failed := func(err error) bool {
-		a.refuse(notWiredNoCopy(plan.shown + " could not be written (" + errText(err) + ")"))
+		a.refuse(notWiredNoCopy(plan.shown + " could not be written (" + causeInWords(err) + ")"))
 		return false
 	}
 	root, err := os.OpenRoot(plan.gitDir)
@@ -369,4 +402,33 @@ func (a *applyCtx) writeShim(plan outboundShimPlan) bool {
 	}
 	a.note(kind, plan.shown)
 	return true
+}
+
+// causeInWords says in words why a step of the install failed, for its note
+// (iss-2610152204588951): a file error by what was done and the
+// system's reason, git's failure by its exit status, and anything else by
+// a fixed sentence. The error's own text is left out, since it can name a
+// path outside the working tree (the shared git directory, the person's own
+// git config) and git's message quotes the file it could not read.
+func causeInWords(err error) string {
+	var pe *fs.PathError
+	var le *os.LinkError
+	var ee *exec.ExitError
+	switch {
+	case errors.As(err, &pe) && pe.Err != nil:
+		return displayText(pe.Op + ": " + pe.Err.Error())
+	case errors.As(err, &le) && le.Err != nil:
+		return displayText(le.Op + ": " + le.Err.Error())
+	case errors.As(err, &ee):
+		return fmt.Sprintf("git exited with status %d", ee.ExitCode())
+	case errors.Is(err, exec.ErrNotFound):
+		return "git was not found on PATH"
+	case errors.Is(err, errNoGitDirNamed):
+		return errNoGitDirNamed.Error()
+	case errors.Is(err, gitutil.ErrLazyFetchFloor):
+		return gitutil.ErrLazyFetchFloor.Error()
+	case errors.Is(err, gitutil.ErrGitVersionUnread):
+		return gitutil.ErrGitVersionUnread.Error()
+	}
+	return "an error abcd keeps out of this note, since it can name a path outside the working tree"
 }

@@ -275,3 +275,35 @@ func TestStepIdentityRecord_RefusesAToolIdentity(t *testing.T) {
 		t.Fatal("the refusal to record a tool identity was not said")
 	}
 }
+
+// TestStepGitIdentity_WriteRefusalKeepsGitsMessageOut (iss-2611162118486104):
+// when git refuses the confirmed write (a lock a crashed git left), the refusal
+// says why in words and names the command to run in full, never git's message,
+// which names the config file by its full path, outside the working tree for
+// a linked worktree.
+func TestStepGitIdentity_WriteRefusalKeepsGitsMessageOut(t *testing.T) {
+	clearIdentityEnv(t)
+	dir := idGitRepo(t, "Test User", "test@example.com")
+	idWritePin(t, dir, pinAlice)
+	p := &identityPrompter{terminal: true, answer: true}
+	p.onAsk = func(string) {
+		if err := os.WriteFile(filepath.Join(dir, ".git", "config.lock"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := establishCtx(dir, p, MismatchGapID)
+	a.stepGitIdentity()
+	notes := strings.Join(a.notes, "\n")
+	if !strings.Contains(notes, `git config could not write it (git exited with status`) ||
+		!strings.Contains(notes, `git config --local user.name 'Alice' && git config --local user.email 'alice@example.com' makes the write`) {
+		t.Fatalf("want the refusal in words with the command to run:\n%s", notes)
+	}
+	for _, leak := range []string{"could not lock", "File exists"} {
+		if strings.Contains(notes, leak) {
+			t.Errorf("the refusal carries %q:\n%s", leak, notes)
+		}
+	}
+	if len(a.writes) != 0 {
+		t.Errorf("a refused write was reported as made: %v", a.writes)
+	}
+}

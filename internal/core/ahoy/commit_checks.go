@@ -179,9 +179,9 @@ func (a *applyCtx) stepArmHooks() {
 		return
 	}
 	if _, err := gitutil.Run(a.cwd, "config", "--local", "core.hooksPath", guardHooksDirRelPath); err != nil {
-		a.refuse("core.hooksPath was not set: " + errText(err) + ".")
+		a.refuse("core.hooksPath was not set: " + causeInWords(err) + "; " + ArmHooksCommand + " shows git's reason.")
 		a.needYou("Switch on the commit checks yourself: "+ArmHooksCommand,
-			"you said yes, and git refused to set it: "+strings.TrimSuffix(errText(err), ".")+".")
+			"you said yes, and git refused to set it: "+causeInWords(err)+".")
 		return
 	}
 	// Read back: the write is the key git now runs hooks from.
