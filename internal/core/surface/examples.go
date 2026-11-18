@@ -151,7 +151,7 @@ var examples = map[string]string{
 	"abcd implement record":        "abcd implement record",
 	"abcd implement release":       "abcd implement release iss-2609010000000001 --session s-example",
 	"abcd implement report":        "abcd implement report",
-	"abcd implement resume":        "abcd implement resume --take run-2609010000000001",
+	"abcd implement resume":        "abcd implement resume --run run-2609010000000001",
 	"abcd implement status":        "abcd implement status",
 	"abcd implement step":          "abcd implement step",
 	"abcd implement stop":          "abcd implement stop",

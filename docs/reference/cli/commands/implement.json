@@ -367,7 +367,7 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement resume --take run-2609010000000001"
+      "example": "abcd implement resume --run run-2609010000000001"
     },
     {
       "path": "abcd implement status",

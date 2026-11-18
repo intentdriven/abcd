@@ -2439,7 +2439,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 - `abcd implement report [--date YYYY-MM-DD | --log <file>] [flags]`
   - An example call is `abcd implement report`.
 - `abcd implement resume [--run <run-id>] [--take <run-id>] [flags]`
-  - An example call is `abcd implement resume --take run-2609010000000001`.
+  - An example call is `abcd implement resume --run run-2609010000000001`.
 - `abcd implement status [--run <run-id>] [flags]`
   - An example call is `abcd implement status`.
 - `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [--route <role>=runner:<name>[@<provider>/<model>]]... [flags]`

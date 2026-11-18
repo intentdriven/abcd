@@ -163,11 +163,21 @@ func TestEachWorkedExampleIsShapedLikeItsCommand(t *testing.T) {
 	}
 }
 
+// consentFlags are the flags that give a person's yes: a confirmation or
+// prompt answered ahead (--yes, --confirm, --proceed, --replace-existing,
+// --adopt), an approval or acceptance recorded (--approve,
+// --accept-config-change), a source cited publicly (--flip), or a run taken
+// over (--take).
+var consentFlags = []string{
+	"--yes", "--confirm", "--proceed", "--replace-existing", "--adopt",
+	"--approve", "--accept-config-change", "--flip", "--take",
+}
+
 // TestNoWorkedExampleAnswersAConsentPromptAhead holds every worked example off
-// --yes unless the command's Use line requires it. An agent reads a page's
-// example as a call it may run as written, so an example that answers a
-// confirmation in advance is a step past the person's consent; where a command
-// cannot run without --yes, its Use line says so and the example follows it.
+// each of consentFlags unless the command's Use line requires that flag. An
+// agent reads a page's example as a call it may run as written, so an example
+// passing one of them gives the person's yes before they have; where a command
+// cannot run without the flag, its Use line says so and the example follows it.
 func TestNoWorkedExampleAnswersAConsentPromptAhead(t *testing.T) {
 	root := NewRootCommand()
 	byPath := map[string]*cobra.Command{}
@@ -180,18 +190,20 @@ func TestNoWorkedExampleAnswersAConsentPromptAhead(t *testing.T) {
 			continue
 		}
 		ex, _ := surface.ExampleFor(path)
-		required := false
+		required := map[string]bool{}
 		for _, group := range usageRequirements(c.Use) {
 			for _, f := range group {
-				required = required || f == "--yes"
+				required[f] = true
 			}
 		}
-		if required {
-			continue
-		}
 		for _, tok := range exampleTokens(ex) {
-			if tok == "--yes" || strings.HasPrefix(tok, "--yes=") {
-				t.Errorf("%q's example passes --yes, which answers the command's confirmation before the person has: %q", path, ex)
+			for _, flag := range consentFlags {
+				if required[flag] {
+					continue
+				}
+				if tok == flag || strings.HasPrefix(tok, flag+"=") {
+					t.Errorf("%q's example passes %s, which gives the person's yes before they have: %q", path, flag, ex)
+				}
 			}
 		}
 	}
