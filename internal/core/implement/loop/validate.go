@@ -810,7 +810,7 @@ func writeFixBrief(c Context, lane Lane, r ValidationRound, failing []ValidatorR
 	}
 	p("\nThe round's verdicts, as the loop recorded them: %s.\n\n", verdictsLine(r))
 	if j := r.Judge; j != nil && j.Ruled {
-		p("Where the %s' reviewers disagreed, the round's judge ruled on their returns. It may only strike\n", strings.Join(j.Roles, " and "))
+		p("Where the reviewers of %s disagreed, the round's judge ruled on their returns. It may only strike\n", strings.Join(j.Roles, " and "))
 		p("a finding it rules false, and passes nothing: the stricter verdict stands. A struck finding is\n")
 		p("not yours: neither apply it nor answer it in your report.\n\n")
 		if handsOnNothing(r, failing) {

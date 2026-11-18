@@ -145,7 +145,7 @@ func launchJudge(c Context, lane Lane, r *ValidationRound) (*Await, string, erro
 			rj.Unlaunched = "its agent does not clear itd-81's calibration gate"
 		}
 		r.Judge = rj
-		return nil, fmt.Sprintf("the run's judge, %s, was not launched on the %s' disagreement: %s; the stricter verdict decides",
+		return nil, fmt.Sprintf("the run's judge, %s, was not launched on the disagreement over %s: %s; the stricter verdict decides",
 			j.phrase(), strings.Join(rj.Roles, " and "), rj.Unlaunched), nil
 	}
 	dir, err := roundDir(c.State.RunID, lane.ID, r.Round, JudgeDirName)
@@ -158,7 +158,7 @@ func launchJudge(c Context, lane Lane, r *ValidationRound) (*Await, string, erro
 		return nil, "", err
 	}
 	a := Await{Role: RoleJudge, Brief: rj.Brief, Receipt: rj.Return, Class: rj.Class, Model: rj.Model, Effort: rj.Effort}
-	return &a, fmt.Sprintf("round %d: the %s' reviewers disagree, so %s's head %s and their returns go to the run's judge, %s, which may strike a finding it rules false and passes nothing; awaiting its return at %s",
+	return &a, fmt.Sprintf("round %d: the reviewers of %s disagree, so %s's head %s and their returns go to the run's judge, %s, which may strike a finding it rules false and passes nothing; awaiting its return at %s",
 		r.Round, strings.Join(rj.Roles, " and "), lane.ID, shortSHA(r.HeadSHA), classPhrase(rj.Class, rj.Model, rj.Effort), rj.Return), nil
 }
 
@@ -208,7 +208,7 @@ func writeJudgeBrief(c Context, lane Lane, r ValidationRound) error {
 	p("- the lane: %s, its worktree `%s`, branch `%s`\n", lane.ID, lane.Worktree, lane.Branch)
 	p("- the round's head: `%s`; the lane's diff: `%s..%s` (`git -C %s %s %s..%s`)\n", r.HeadSHA, lane.BaseSHA, r.HeadSHA, lane.Worktree, readerDiff, lane.BaseSHA, r.HeadSHA)
 	for _, role := range j.Roles {
-		p("- the %s' returns:\n", role)
+		p("- the returns of %s:\n", role)
 		for _, v := range r.Validators {
 			if v.Role != role {
 				continue
@@ -373,7 +373,7 @@ func judgeNote(r ValidationRound) string {
 	if len(struck) > 0 {
 		what = fmt.Sprintf("struck %d located finding(s) as false (%s), each with its reason on the finding", j.Struck, strings.Join(struck, ", "))
 	}
-	return fmt.Sprintf("the round's judge, %s, ruled on the %s' disagreement and %s; it passes nothing, so the stricter verdict decides and the round goes to a fix round",
+	return fmt.Sprintf("the round's judge, %s, ruled on the disagreement over %s and %s; it passes nothing, so the stricter verdict decides and the round goes to a fix round",
 		classPhrase(j.Class, j.Model, j.Effort), strings.Join(j.Roles, " and "), what)
 }
 
