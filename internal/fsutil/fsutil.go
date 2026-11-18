@@ -659,7 +659,13 @@ func syncParent(dir string) {
 // It checks the LEAF only: every ancestor component is resolved by the kernel,
 // so a symlinked parent passes. Where a write must be contained against a
 // symlinked ancestor too, route it through CreateExclusiveIn under an os.Root
-// opened at the trust boundary, which refuses symlink traversal at every level.
+// opened at the trust boundary. os.Root resolves every component, ancestors
+// included, and refuses a path that would escape the root, so an ancestor
+// symlinked out of the tree cannot redirect the write; it does NOT refuse every
+// symlink, and an ancestor linked to somewhere inside the root is followed, the
+// write landing at its in-root target. Where each level must be a real
+// directory rather than merely inside the root, walk it with EnsureRealDirAll
+// (or ProbeRealDirAll to read) (iss-2610112206165535).
 func IsRealDir(path string) bool {
 	fi, err := os.Lstat(path)
 	return err == nil && fi.IsDir() && fi.Mode()&os.ModeSymlink == 0
