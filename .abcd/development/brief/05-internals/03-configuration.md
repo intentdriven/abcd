@@ -1529,13 +1529,18 @@ explicit init does, and every other corpus verb and the page say so and stop
 when it is absent). It keeps abcd's own working records there too: the builds
 of the reviewed default branch in `dogfood/<root-sha>/` ([the dogfood
 store](#the-dogfood-store)), the private idea verdicts in `ideas/<root-sha>/`,
-the away mode's record in `away/<root-sha>/`, the one-shot allows `abcd guard
-allow --once` writes in `guard-allow/<root-sha>/`, each repository's answer to
-the offer after an update and the newest release whose news was shown in
-`after-update/`, one marker per running host session in `occupancy/`, the
-session-name register in `sessions/names.json`, the rules loader's per-session
-ledgers in `rules-state/`, the dashboard's run file, seen devices and lock in
-`dashboard/`, this account's holder id in `holder-id`, the load gate's three
+the away mode's record in `away/<root-sha>/`
+([`../04-surfaces/26-mode.md`](../04-surfaces/26-mode.md#the-away-mode)), the
+one-shot allows `abcd guard allow --once` writes in `guard-allow/<root-sha>/`,
+each repository's answer to the offer after an update and the newest release
+whose news was shown in `after-update/`
+([`../04-surfaces/21-update.md`](../04-surfaces/21-update.md#an-update-says-so-once)),
+one marker per running host session in `occupancy/`, the session-name register
+in `sessions/names.json`
+([`../04-surfaces/08-abcd.md`](../04-surfaces/08-abcd.md#what-ships-today)), the
+rules loader's per-session ledgers in `rules-state/`, the dashboard's run file,
+seen devices and lock in `dashboard/`
+([`../04-surfaces/36-dashboard.md`](../04-surfaces/36-dashboard.md#starting-stopping-reading-the-state)), this account's holder id in `holder-id`, the load gate's three
 holds in `load-wait.json`, `load-wait-race.json` and `load-wait-narrow.json` (taken under
 `.load-wait.lock`), its memory admission in `load-memory-admit.json`, the
 markers of the preflights' test stages queued or running in `whole-runs/`, the
