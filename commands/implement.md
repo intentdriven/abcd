@@ -826,9 +826,9 @@ as it stands.
 What is not compared: the intent-auditor's verdict, and the plan-review stage's
 two reviewers of an automatic plan, are handed out with no comparison of models.
 
-These fields are state schema version 27's: a version-26 file carrying them is
-refused, one without them reads as version 27 and is written back at it, and an
-abcd that writes version 26 refuses a version-27 file as a newer abcd's, writes
+These fields came with state schema version 27: a version-26 file carrying them
+is refused, one without them reads as the current version and is written back
+at it, and an abcd that writes version 26 refuses a later file as a newer abcd's, writes
 nothing to it, and leaves the run to the abcd that wrote it. Each reviewer's record also carries its `located`
 findings: the `file:line` each finding bullet under its Findings heading leads
 with (`- **file:line** — ...`) is one finding (`file`, `line`); a location cited
