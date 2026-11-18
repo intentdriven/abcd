@@ -378,3 +378,34 @@ func TestAHostileKeyInTheModeRefusalIsEscaped(t *testing.T) {
 		t.Fatalf("armed: %v", f.forge.calls)
 	}
 }
+
+// The brief's merge gate section cites the ruling mergeGate replaces by the
+// decision record that holds it, and that record names the ruling
+// (iss-2611040554426316): a citation of a chapter that never names AM1 leads a
+// reader to nothing.
+func TestTheLandChapterCitesTheRulingMergeGateReplaces(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	data, err := os.ReadFile(filepath.Join(root, ".abcd", "development", "brief", "04-surfaces", "38-land.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prose := strings.Join(strings.Fields(string(data)), " ")
+	const want = "replaces ruling AM1 (dcn-2609300000000025)"
+	if !strings.Contains(prose, want) {
+		t.Errorf("38-land.md does not say %q", want)
+	}
+	if strings.Contains(prose, "AM1 ([`34-build.md`]") {
+		t.Error("38-land.md still cites 34-build.md for ruling AM1, which that chapter does not name")
+	}
+	records, err := filepath.Glob(filepath.Join(root, ".abcd", "work", "decisions", "dcn-2609300000000025-*.md"))
+	if err != nil || len(records) != 1 {
+		t.Fatalf("decision record dcn-2609300000000025: found %v (%v)", records, err)
+	}
+	rec, err := os.ReadFile(records[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(rec), "AM1") {
+		t.Errorf("%s does not name ruling AM1", records[0])
+	}
+}
