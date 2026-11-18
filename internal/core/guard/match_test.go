@@ -49,6 +49,7 @@ func TestCommandOfStepsOverWrapperArguments(t *testing.T) {
 		{"sudo's end-of-options marker", "sudo -- rm -rf *", "rm"},
 		{"env clearing the environment", "env -i rm -rf *", "rm"},
 		{"env unsetting a name", "env -u PATH rm -rf *", "rm"},
+		{"env with its search-path flag", "env -P /usr/bin rm -rf *", "rm"},
 		{"env with an assignment after its flags", "env -i FOO=bar rm -rf *", "rm"},
 		{"time with a boolean flag", "time -p rm -rf *", "rm"},
 		{"time with a value flag", "time -o timings.txt rm -rf *", "rm"},
@@ -66,11 +67,10 @@ func TestCommandOfStepsOverWrapperArguments(t *testing.T) {
 		{"timeout with a joined flag", "timeout --signal=KILL 30 rm -rf *", "rm"},
 		{"wrappers nest", "sudo -u bob timeout 5 env -i rm -rf *", "rm"},
 		{"a wrapper with no command launches nothing", "sudo -u bob", ""},
-		// The documented miss: an unknown value-taking flag (here a bundled
-		// short cluster the table cannot name) is not stepped over, so its value
-		// is read as the command and nothing fires. A miss is a non-match, never
-		// a false block — the same trade subcommandOf already makes.
-		{"an unrecognised value flag misses rather than over-blocks", "sudo -Hu bob rm -rf *", "bob"},
+		// A cluster whose last letter is a value flag is read both ways
+		// (readWrapperWord): its first site is the word after it, and the
+		// command behind it is a site too (TestWrapperWalkReadsAbbreviations).
+		{"a cluster ending in a value flag is read both ways", "sudo -Hu bob rm -rf *", "bob"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -79,6 +79,37 @@ func TestCommandOfStepsOverWrapperArguments(t *testing.T) {
 				t.Fatalf("commandOf(%q) = %q, want %q", tc.line, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestWrapperWalkReadsAbbreviations: a wrapper's parser reads a long option
+// written as an abbreviation, and short options clustered in one word, as it
+// reads them whole, so a word that may take the next word as one of the
+// wrapper's value flags that way is read both as taking it and as standing
+// alone (readWrapperWord), and the command behind it is a site. Watched
+// failing before: the word after the option was the only site.
+func TestWrapperWalkReadsAbbreviations(t *testing.T) {
+	for _, line := range []string{
+		"env --chd dir rm -rf *",
+		"env --ch dir rm -rf *",
+		"env --un X rm -rf *",
+		"sudo --us bob rm -rf *",
+		"unshare --w dir rm -rf *",
+		"env -iC dir rm -rf *",
+		"sudo -Hu bob rm -rf *",
+	} {
+		s := firstSegment(t, line)
+		if len(sitesNamed(s, "rm")) == 0 {
+			t.Errorf("%q: the walk does not arrive at rm", line)
+		}
+	}
+	// A cluster whose value letter is not its last takes the rest of the
+	// word, and a long option glued to its value takes nothing more.
+	for _, line := range []string{"env -Cdir prog", "env --chd=dir prog", "env -uCX prog"} {
+		s := firstSegment(t, line)
+		if got := sitesNamed(s, "prog"); len(got) != 1 || len(commandSites(s)) != 1 {
+			t.Errorf("%q: want prog as the one site, got %v", line, commandSites(s))
+		}
 	}
 }
 

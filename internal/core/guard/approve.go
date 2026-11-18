@@ -77,6 +77,10 @@ const (
 	// launched working tree, the run's own directories and the temporary
 	// directory.
 	outsideRemovalEntryID = "removal-outside-tree"
+	// gitDirEntryID: a git command whose git directory stands inside the
+	// working tree and is not the working tree's own, or one the line does
+	// not fix (approvegitdir.go).
+	gitDirEntryID = "git-dir-not-own"
 	// groupBrokenEntryID: the text that runs the command from the working
 	// tree under bash does not read back as that change of directory and one
 	// bash call holding the whole command, so part of it could run outside
@@ -313,7 +317,16 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int, carry ma
 		carried[name] = v
 	}
 	var wholeCarried map[string]string
-	if runsOutOfTextOrder(placed) {
+	// gitWrote is wrote for the git directory rule (approvegitdir.go), which
+	// also counts an earlier git command not known to leave the working tree
+	// alone (gitLeavesTreeAlone); unordered says the line runs its commands
+	// out of text order and writes or changes directory somewhere, so a git
+	// command in it may run after any of them. For that rule a command run
+	// in the background (backgrounded) runs out of text order too: what the
+	// line does after it may come first.
+	gitWrote, unordered := false, false
+	outOfOrder := runsOutOfTextOrder(placed)
+	if outOfOrder {
 		wholeCarried = map[string]string{}
 		for name, v := range carry {
 			wholeCarried[name] = v
@@ -322,8 +335,21 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int, carry ma
 			carryEnvironment(p.seg, wholeCarried)
 		}
 	}
+	if outOfOrder || backgrounded(placed) {
+		for _, p := range placed {
+			if segChangesDir(p.seg) || !gitLeavesTreeAlone(p.seg, vf) {
+				unordered = true
+			}
+			for _, st := range p.states {
+				if len(pathUses(rc, p.seg, st)) > 0 {
+					unordered = true
+				}
+			}
+		}
+	}
 	for _, p := range placed {
 		wroteBefore := wrote
+		gitWroteBefore := wrote || gitWrote
 		// A command a git setting runs is judged as run from the working
 		// tree, so only where the reading placed git there.
 		states := p.states
@@ -351,6 +377,21 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int, carry ma
 			if a, ok := judge(wholeCarried); ok {
 				return a
 			}
+		}
+		// The git directory each git command reads, under both carries.
+		envs := []map[string]string{carried}
+		if wholeCarried != nil {
+			envs = append(envs, wholeCarried)
+		}
+		for _, st := range states {
+			for _, env := range envs {
+				if a, ok := facts.gitDirRefusal(rc, p.seg, st, vf, env, gitWroteBefore, unordered); ok {
+					return a
+				}
+			}
+		}
+		if !gitLeavesTreeAlone(p.seg, vf) {
+			gitWrote = true
 		}
 		carryEnvironment(p.seg, carried)
 		for _, st := range p.states {

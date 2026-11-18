@@ -243,7 +243,9 @@ var wrapperValueFlags = map[string][]string{
 	// `env`'s -S/--split-string are deliberately NOT here: the execute-a-string
 	// pre-pass (payload.go) owns them on the raw token chain, because the wrapper
 	// walk would otherwise consume and discard the value it needs to inspect.
-	"env":     {"-u", "--unset", "-C", "--chdir"},
+	// -P is the BSD env's search path for the program, and -a or --argv0 the
+	// GNU env's name for it, each a value-taking flag.
+	"env":     {"-u", "--unset", "-C", "--chdir", "-P", "-a", "--argv0"},
 	"time":    {"-f", "--format", "-o", "--output"},
 	"xargs":   {"-a", "--arg-file", "-d", "--delimiter", "-E", "-I", "-J", "-L", "-n", "--max-args", "-P", "--max-procs", "-R", "-s", "-S", "--max-chars", "--process-slot-var"},
 	"timeout": {"-k", "--kill-after", "-s", "--signal"},

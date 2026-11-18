@@ -478,9 +478,75 @@ A shell command is approved only when the guard reads it whole and clears it:
   except `-c core.pager=<command>` or `-c core.sshCommand=<command>` with a
   command the line spells out, which is judged as the command git runs and
   approved when it is clean, unless an earlier part of the line writes or
-  removes a file (`git -c core.pager=cat log` is approved)
-  (`git-config-write`). Reading configuration, and setting an ordinary key in
-  the repository's own file, is approved;
+  removes a file (`git -c core.pager=cat log` is approved), and no internal
+  command of git's, named with `--` inside it (`git submodule--helper`,
+  `git web--browse`), runs at all, since the approver does not read git's
+  internal commands and some of them run a command line or a configured
+  program (`git-config-write`). Reading configuration, and
+  setting an ordinary key in the repository's own file, is approved;
+- no git command runs against a second git directory the approver finds
+  inside the working tree, from the forms it reads below (`git-dir-not-own`):
+  git takes its configuration, and the programs it names, from the git
+  directory it runs against, so a command whose git directory, so read,
+  stands inside the working tree and is not the working tree's own is
+  refused, naming that directory. The directory is read as git finds it:
+  from where `-C` and a `cd` the line fixes leave git, by git's walk upward
+  (a `.git` there, or a bare repository, whose `HEAD` may be a symlink), or
+  as `--git-dir`, `GIT_DIR` (set on the command or exported earlier in the
+  line), `GIT_COMMON_DIR` or `--bare` names it, `--bare` read where git
+  stands when it reads it; a git file, or a worktree's `commondir`, is
+  followed to where it points, even from outside the working tree; `git
+  init --separate-git-dir` aimed inside the working tree is refused too, and
+  so is a local path among the operands of `push`, `fetch`, `pull`,
+  `ls-remote`, `clone` or `submodule`, or given to `--repo` or `archive
+  --remote`, that holds such a git directory (`git push ./nested HEAD` is
+  refused). A repository these commands take from the configuration, such
+  as a remote's URL, is not read. A change of directory by `env -C` or
+  `--chdir`, `sudo -D` or `--chdir`, or `unshare -w` or `--wd` before git is
+  read the way `-C` is, written whole, abbreviated (`env --chd`) or in a
+  cluster (`env -iC`); one wrapper given two of them, and `sudo -i` or
+  `--login`, which runs git from the target user's home directory, are
+  refused. A wrapper the approver steps through to find the command it runs
+  is judged from a short list whose options the approver classifies as
+  leaving the directory alone or changing it (`env`, `sudo`, `unshare`,
+  `nice`, `nohup`, `timeout`, `time`, `command`, `exec`, `stdbuf`,
+  `ionice`); a git command behind any other wrapper it steps through
+  (`xargs`, which may add git's options from its input, among them), or
+  behind an option the list does not classify (`sudo -R`, `sudo -s`,
+  `unshare -R`, or an abbreviation of an option that leaves the directory
+  alone), is refused (`timeout 5 git log` is judged as `git log` is). Git
+  standing behind any other program, as a word naming git (`git`, or a
+  fixed path ending in `git`) whose next word starts with `-`, is one the
+  line does not spell out, or is a subcommand git 2.52 documents, is
+  refused too, since the line does not say where that program runs it
+  (`echo git status` is refused; `grep git notes` is left alone). The
+  words after a git command the approver reaches are that command's own
+  arguments and are judged with it, so a value naming git among them is
+  not read again (`git -C vendor/git status`, `git log --grep git`),
+  except the command `git submodule foreach` (or `git
+  submodule--helper foreach`, the command it runs) or `git bisect run` is
+  given to run, which is read as git standing behind it. Still not
+  read: git behind such a program followed by a word git does not
+  document, such as an alias, a `git-<name>` command of its own or a
+  subcommand a git release after 2.52 adds, and git that a program starts
+  by a name the line does not spell, such as a script that runs git.
+  A plain subdirectory, a submodule (whose `.git` file points into the
+  working tree's own git directory) and a git directory outside the working
+  tree that points nowhere inside it are left to the other rules; a
+  directory the line does not spell out is refused, and so is a git command
+  run after a `cd` the line leaves unknown. After an earlier command of the
+  line writes, which may make a repository where none stood, a git command
+  that runs in a directory inside the working tree other than its root, or
+  names a git directory inside it other than its own, is refused (`touch
+  notes && git -C sub log` is refused; `touch notes && git log` is
+  approved); an earlier git command counts as such a write unless it is one
+  known to leave the working tree alone (`status`, `log`, `diff`, `show` and
+  other readers, and `branch` or `remote` with no arguments), so `git switch
+  other && cd sub && git log` is refused. A line that runs its commands out
+  of text order, a loop, a function or a command run in the background
+  with `&`, and writes or changes directory anywhere has every git command
+  in it refused (`for i in 1 2; do git status; cd sub; done` and `git
+  status & cd sub` are refused);
 - nothing removes, moves or recursively changes (`chmod -R`, `chown -R`) a
   path that is, or may be, the root, a top-level directory, the home directory
   or a directory directly in it, the working tree or a directory above it, or

@@ -192,6 +192,13 @@ func TestApproveJudgesTheCommandLinesGitOptionsRun(t *testing.T) {
 		{`git submodule foreach '$T --flag'`, refused},
 		{`git submodule foreach tool "$A"`, refused},
 		{`git submodule status`, nil},
+		// git's internal commands, named with -- inside: none is read here,
+		// so each is refused whatever it is given.
+		{`git submodule--helper foreach '$T --flag'`, refused},
+		{`git submodule--helper foreach 'tool --flag'`, refused},
+		{`git difftool--helper a b`, refused},
+		{`git web--browse https://example.com`, refused},
+		{`git checkout--worker`, refused},
 
 		{`git bisect run tool --flag`, nil},
 		{`git bisect run '$T' --flag`, refused},

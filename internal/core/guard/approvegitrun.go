@@ -11,6 +11,7 @@ package guard
 // installed git 2.52 parses them, each checked against its own page.
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -141,6 +142,13 @@ var gitRunSubcommands = []string{"rebase", "difftool", "mergetool", "grep", "sen
 // it starts, and says why it is refused, if it is. clean judges a command
 // line as the guard reads it at the next depth.
 func gitRunRefusal(sub string, args []string, clean func(string) bool) (string, bool) {
+	// A subcommand named with -- inside it (submodule--helper, difftool--helper,
+	// web--browse, checkout--worker) is one of git's internal commands, which
+	// git's other commands run for themselves. None is read here, and some run
+	// a command line or a configured program, so each is refused.
+	if !isUnknown(sub) && !strings.ContainsRune(sub, varMark) && strings.Index(sub, "--") > 0 {
+		return fmt.Sprintf("git %s is one of git's internal commands, which the approver does not read", sub), true
+	}
 	subs := []string{sub}
 	if isUnknown(sub) || strings.ContainsRune(sub, varMark) {
 		subs = gitRunSubcommands

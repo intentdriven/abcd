@@ -203,6 +203,11 @@ type segment struct {
 	// its chain, so it runs only when that one succeeded (script.go follows a
 	// `cd` only that far).
 	afterAnd bool
+	// background records that a lone `&` ended this command, or, where the
+	// command it ends was already read (a subshell's close), the one read
+	// last before it: the shell runs it beside the commands after it rather
+	// than before them.
+	background bool
 	// end is the byte offset, in the text the outermost tokenize call read,
 	// where the command ended; the script reading names a script's line by it.
 	end int
@@ -1884,6 +1889,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				parenNext = glued || len(toks) > 0 && !allReserved(toks)
 			}
 			flushSegment()
+			if c == '&' && !(i+1 < len(line) && line[i+1] == '&') && len(segs) > 0 {
+				segs[len(segs)-1].background = true
+			}
 			if c == '(' && i+1 < len(line) && line[i+1] == '(' {
 				// The bare arithmetic command `(( … ))` is read as the
 				// expansion is, when its parens close as one: an expression,

@@ -56,6 +56,10 @@ type approveFacts struct {
 	// no path can then be checked against them, so no write or removal is
 	// approved (hooksUnreadRefusal).
 	hooksUnread string
+	// gitTrees are the launched working tree and the repository's toplevel,
+	// and ownGitDirs the git directories that are theirs: the common
+	// directory and each one's .git, each spelling (approvegitdir.go).
+	gitTrees, ownGitDirs []string
 }
 
 // approveTempDirs is the temporary directories a removal may reach: the
@@ -110,6 +114,8 @@ func factsFor(f *Files) approveFacts {
 	if filepath.IsAbs(f.dir) {
 		tops = append(tops, f.dir)
 		facts.trees = append(facts.trees, both(f.dir)...)
+		facts.gitTrees = append(facts.gitTrees, both(f.dir)...)
+		facts.ownGitDirs = append(facts.ownGitDirs, both(filepath.Join(f.dir, ".git"))...)
 		// The toplevel is asked through gitutil.Toplevel, which checks its
 		// shape; either answer missing skips the repository's facts, as a
 		// directory outside any checkout has none.
@@ -121,6 +127,9 @@ func factsFor(f *Files) approveFacts {
 		if err == nil {
 			add(common)
 			top = filepath.Clean(top)
+			facts.ownGitDirs = append(facts.ownGitDirs, both(filepath.Clean(common))...)
+			facts.ownGitDirs = append(facts.ownGitDirs, both(filepath.Join(top, ".git"))...)
+			facts.gitTrees = append(facts.gitTrees, both(top)...)
 			if top != f.dir {
 				tops = append(tops, top)
 			}
@@ -1181,10 +1190,11 @@ func carryEnvironment(s segment, env map[string]string) {
 }
 
 // carriesProgram reports whether a carried name is one the approver reads on
-// a git command: a variable of programEnv, or one of the GIT_CONFIG family.
+// a git command: a variable of programEnv, one of the GIT_CONFIG family, or
+// one that names the git directory git reads (gitDirEnv).
 func carriesProgram(name string) bool {
 	_, ok := programEnv[name]
-	return ok || strings.HasPrefix(name, "GIT_CONFIG")
+	return ok || strings.HasPrefix(name, "GIT_CONFIG") || containsString(gitDirEnv, name)
 }
 
 // carryAssigned carries, as a value the line does not fix, each name
