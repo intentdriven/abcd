@@ -21,6 +21,13 @@ package site
 // pages, the graph, the timeline, the glossary and the status page), and the
 // header's link to it. Each other switch removes its page, its navigation entry
 // and every link the renderer would have drawn to it.
+//
+// The explorer writes five more pages that carry no switch here, each gone with
+// the explorer and built only when it has something to show (explorer.go,
+// Pages): foundations and development, from the record they deal; the decision
+// log, opt-in through record.decisions; contributors, on every site but a
+// project site; and references, where the bibliography holds an entry. The
+// brief's page set (04-surfaces/22-site.md) names all of them.
 
 // PageSwitches is the `pages` block. A nil field is on.
 type PageSwitches struct {

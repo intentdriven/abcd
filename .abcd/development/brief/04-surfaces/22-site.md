@@ -168,13 +168,33 @@ not a project site: it renders its documentation and stays as it is.
 
 ## The page set
 
-Every repository gets the same pages: the landing page, the record explorer,
-one page per record, the relationship graph, the timeline, the glossary and the
-status page. The composition declaration's `pages` block switches pages off and
-cannot add one. A page switched off takes its navigation entry and every link to
-it with it, and switching the explorer off takes every explorer page. The landing
-page and the record pages carry the site, so a declaration switching either off
-beneath the explorer is refused.
+Every repository gets pages from the same closed set. Seven of them carry a
+switch in the composition declaration's `pages` block: the landing page (`/`),
+the record explorer (`/record/`), one page per record
+(`/record/<type>/<id>/`), the relationship graph (`/record/graph/`), the
+timeline (a panel on the explorer's own page, `/record/`), the glossary
+(`/record/glossary/`, with a page per term beneath it) and the status page
+(`/record/health/`). The block switches pages off and cannot add one. A page
+switched off takes its navigation entry and every link to it with it, and
+switching the explorer off takes every explorer page. The landing page and the
+record pages carry the site, so a declaration switching either off beneath the
+explorer is refused.
+
+The rest of the set has no switch of its own. Each is an explorer page, gone
+when the explorer is switched off, and each is built only when it has
+something to show:
+
+- the foundations page (`/record/foundations/`), where the record keeps a
+  principle or an intent that states a discipline;
+- the development page (`/record/development/`), where the record publishes a
+  record that moves, anything but a principle or a discipline;
+- the decision log (`/record/decision-log/`), which is opt-in: it and a page per
+  decision exist only where the settings carry `"record": {"decisions": true}`
+  and the record holds a decision, as an issue's page exists only under
+  `"record": {"issue_ledger": true}`;
+- the contributors page (`/contributors/`), on every site but a project site;
+- the references page (`/references/`), where the bibliography holds an entry,
+  and never on a project site.
 
 The status page is the record health page, `/record/health/`. It opens with the
 Now / Next / Later block the bare `abcd` board carries
@@ -257,7 +277,14 @@ parsers; one pass of git history; `CHANGELOG.md`; the two prose files whose
 text the site publishes, which are the acknowledgements at the root behind the
 references page and the authorship section of the contribution guide in `.github/`
 behind the contributors page;
-and `docs/` with its committed assets. It writes the landing page, the record explorer, the machine-readable
+and `docs/` with its committed assets. It writes the landing page; the record
+explorer, which is its own page (`/record/`), a page per record, and whichever
+of the relationship graph (`/record/graph/`), the foundations page
+(`/record/foundations/`), the development page (`/record/development/`), the
+decision log (`/record/decision-log/`), the status page (`/record/health/`) and
+the glossary (`/record/glossary/`) the page set builds; the contributors page
+(`/contributors/`) and the references page (`/references/`) where the page set
+builds them; the machine-readable
 record export, the install script from its committed template, the redirect and
 header maps, the stylesheets and scripts, every referenced raster, and its own
 build marker. The one write outside the output directory is the missing-label
