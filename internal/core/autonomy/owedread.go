@@ -1476,7 +1476,7 @@ func (r *owedReader) reservationItems() {
 		if r.heldRes[res.Record] != "" {
 			continue
 		}
-		half := res.ClaimedAt.Add(res.EffectiveExpiry.Sub(res.ClaimedAt) / 2)
+		half := claim.HalfThroughAt(res)
 		if r.nextRenewal.IsZero() || half.Before(r.nextRenewal) {
 			r.nextRenewal = half
 		}

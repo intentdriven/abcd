@@ -116,7 +116,16 @@ func renewDue(root string, o Options) ([]Renewal, error) {
 // RenewalTerm are exported so the implement loop's renewals call them rather
 // than keep copies that could drift from the waiter's (iss-2610171047088861).
 func HalfThrough(r Reservation, now time.Time) bool {
-	return !now.Before(r.ClaimedAt.Add(r.EffectiveExpiry.Sub(r.ClaimedAt) / 2))
+	return !now.Before(HalfThroughAt(r))
+}
+
+// HalfThroughAt is the instant r is half through its lease, counted from its
+// claimed-at to its effective expiry: the point a renewal is due, from which
+// HalfThrough answers. It is exported so the owed-read's next renewal and wake
+// time take the same point rather than keep a copy that could drift from it
+// (iss-2611141342176969).
+func HalfThroughAt(r Reservation) time.Time {
+	return r.ClaimedAt.Add(r.EffectiveExpiry.Sub(r.ClaimedAt) / 2)
 }
 
 // RenewalTerm is the lease a renewal of r pushes: r's own term, never shorter
