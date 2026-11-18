@@ -144,10 +144,10 @@ var gitRunSubcommands = []string{"rebase", "difftool", "mergetool", "grep", "sen
 func gitRunRefusal(sub string, args []string, clean func(string) bool) (string, bool) {
 	// A subcommand named with -- inside it (submodule--helper, difftool--helper,
 	// web--browse, checkout--worker) is one of git's internal commands, which
-	// the commands git documents run for themselves. None is read here, and
-	// some run a command line or a configured program, so each is refused.
+	// git's other commands run for themselves. None is read here, and some run
+	// a command line or a configured program, so each is refused.
 	if !isUnknown(sub) && !strings.ContainsRune(sub, varMark) && strings.Index(sub, "--") > 0 {
-		return fmt.Sprintf("git %s is one of git's internal commands, which the approver does not read; run the documented command it serves instead", sub), true
+		return fmt.Sprintf("git %s is one of git's internal commands, which the approver does not read", sub), true
 	}
 	subs := []string{sub}
 	if isUnknown(sub) || strings.ContainsRune(sub, varMark) {

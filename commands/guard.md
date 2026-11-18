@@ -480,8 +480,9 @@ A shell command is approved only when the guard reads it whole and clears it:
   approved when it is clean, unless an earlier part of the line writes or
   removes a file (`git -c core.pager=cat log` is approved), and no internal
   command of git's, named with `--` inside it (`git submodule--helper`,
-  `git web--browse`), runs at all, since the approver reads only the
-  commands git documents (`git-config-write`). Reading configuration, and
+  `git web--browse`), runs at all, since the approver does not read git's
+  internal commands and some of them run a command line or a configured
+  program (`git-config-write`). Reading configuration, and
   setting an ordinary key in the repository's own file, is approved;
 - no git command runs against a second git directory the approver finds
   inside the working tree, from the forms it reads below (`git-dir-not-own`):
