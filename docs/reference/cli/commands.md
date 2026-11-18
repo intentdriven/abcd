@@ -573,10 +573,13 @@ the intent instead of taking one named.
 
 In a checkout with a remote named origin, the run reserves its key there, as
 `abcd reserve` does, once the checks pass and before the run is created: a new run, and a
-resumed one, with the files the spec's `## Footprint` packages line names (an issue's
-found_at path for an issue id), so every other participant sees it is taken. A spec with
-no footprint, or an issue with no found_at path, is refused at the reservation and nothing
-is started. Another person's reservation, or your own from another copy, refuses
+resumed one, with the files the `- packages:` lines of the spec's steps still to build
+name, those with no `- landed:` line, or its `## Footprint` packages line when the steps
+cannot say: the spec lists no steps, its steps section cannot be read, a step still to
+build names no packages, or an entry on such a step's line names no path (an issue's
+found_at path for an issue id), so every other participant sees it is taken. A spec whose
+steps cannot say and whose footprint names no packages, or an issue with no found_at
+path, is refused at the reservation and nothing is started. Another person's reservation, or your own from another copy, refuses
 the start as contention; --take-over moves your own live reservation from another copy
 to this one, never another person's. `abcd implement step` renews the reservation, fences
 the landing's push and its arming with it and releases it once the run lands; a run

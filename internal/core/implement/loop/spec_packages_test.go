@@ -71,7 +71,7 @@ func TestAFootprintEntryWithASpaceThatNamesAFileIsKept(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo.Root(), "docs", "a note.md"), []byte("x\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := specPackages(repo.Root(), "spc-1")
+	got, err := specPackages(repo.Root(), "spc-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestAPathEndingInAParenthesisIsNotANote(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(repo.Root(), "docs", "Archive (2019)"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	got, err := specPackages(repo.Root(), "spc-1")
+	got, err := specPackages(repo.Root(), "spc-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

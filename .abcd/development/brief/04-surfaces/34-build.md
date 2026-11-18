@@ -203,22 +203,30 @@ step 13). The claim above keeps one person's sessions in one copy apart; the
 reservation keeps people, and one person's computers, apart. In a checkout
 with a remote named `origin`, a run reserves its key there once its checks and
 its budget check pass and before the run is created, through
-`internal/core/claim`, as `abcd reserve` does: with the packages its spec's
-`## Footprint` `- packages:` line names, each read as written when that names
+`internal/core/claim`, as `abcd reserve` does: for an intent, with the
+packages of the steps its spec still has to build, the `- packages:` lines of
+the steps with no `- landed:` line taken together, so a package only a landed
+step touched holds no one off (iss-2611181755106054), and with the spec's
+`## Footprint` `- packages:` line when the steps cannot say: the spec lists no
+steps, its steps section cannot be read, a step still to build names no
+packages, or an entry on such a step's line names no path; each entry read as written when that names
 something in the tree and otherwise as its path alone (a trailing
 parenthetical note set off by a space dropped, a comma inside one not
-splitting the entry), and cleaned of a trailing slash, for an intent, and the
-path an issue's `found_at` names for an issue. The reservation names exactly
+splitting the entry), and cleaned of a trailing slash; for an issue, with the
+path its `found_at` names. The reservation names exactly
 those paths, so a file named there is reserved as
-that file, and one reservation holds them for every step of the run; a step's
-own packages line is not read for it. A path naming a directory git tracks is
+that file, and one reservation holds them for every step the run builds; a
+resumed run whose every step has since landed reserves the packages of the
+steps it built, never wider than its start. A path naming a directory git tracks is
 reserved as it stands, and the start warns of it as the reserve verb does,
 naming the directory and its tracked files (`reservation_warnings`, a warning
-on stderr in the text form; iss-2610230016544142). A spec with
-no footprint, or an issue with no such path, is refused at the `reservation`
-stage, starting nothing (C35), and so is a spec whose packages entry is still
-prose once its note is dropped, holding a space and naming nothing in the
-tree, the refusal naming the spec and the entry (iss-2610241549334990);
+on stderr in the text form; iss-2610230016544142). A spec whose
+steps cannot say and whose `## Footprint` names no packages, or an issue with
+no such path, is refused at the `reservation` stage, starting nothing (C35),
+and so is a spec whose `## Footprint` packages entry, read because the steps
+cannot say, is still prose once its note is dropped, holding a space and
+naming nothing in the tree, the refusal naming the spec and the entry
+(iss-2610241549334990);
 another's hold, a person's or this person's other copy's, is contention at the
 same stage; a take-over asked for passes
 through, moving this person's own live reservation from another copy and never
