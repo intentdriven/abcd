@@ -472,7 +472,18 @@ the same function, less one this checkout already has a run in progress for.
 In a checkout with `origin`, an intent whose spec's `## Footprint` names no
 packages, or names one by prose rather than by its path, is excluded too, at
 the check `footprint`, since its start would be refused at the reservation;
-the pick moves to the next candidate.
+the pick moves to the next candidate. So is an intent whose footprint (the
+one its start reserves with: the packages of the steps still to build, or
+the `## Footprint` packages line) shares a path with another copy's live
+reservation of another record, as this checkout last fetched them, at the
+check `overlap`: its reason names the path, the record holding it, the
+holder and the hold's expiry. It is the reservation's own overlap rule, so a
+hold that expired or was released, and this copy's own reservations, exclude
+nothing; run `abcd peers` first to judge against what `origin` holds now. A
+hold that reached `origin` since that fetch still refuses the picked intent's
+start, and the refusal opens `build next picked <itd-N>, and its start was
+refused:`. The board's next-up head passes over an intent excluded at
+`overlap` too.
 Each is scored from its record, three parts at equal weight, each 0 to 100:
 
 - criteria clarity: the share of its acceptance criteria written in

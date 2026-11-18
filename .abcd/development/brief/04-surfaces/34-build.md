@@ -262,9 +262,19 @@ The pick sub-verb chooses the intent instead of taking one named
 intents that pass every check above, judged by the same function, less one
 this checkout already has a run in progress for, and, in a checkout with a
 remote named `origin`, less one whose spec's `## Footprint` names no packages
-to reserve it with, or names one by prose (the check `footprint`), since its
-start would be refused
-at the reservation; a planned intent a check excludes is named with the first
+to reserve it with, or names one by prose (the check `footprint`), and less
+one whose footprint shares a path with another copy's live reservation of
+another record as this checkout last fetched them (the check `overlap`,
+iss-2611182334466021), since its start would be refused
+at the reservation. The footprint is the one the start reserves with, those
+of the steps still to build or the packages line, and the overlap is the
+reservation act's own rule (`claim.Snapshot.Contention`), so an expired or
+released hold, and this copy's own, exclude nothing; the reason names the
+path, the record holding it, its holder and the hold's expiry, and the pick
+moves to the next candidate. The board's next-up head passes over such an
+intent too. A hold that reached `origin` after the last fetch still refuses
+the picked intent's start, which fetches, and that refusal names the intent
+picked. A planned intent a check excludes is named with the first
 check that excluded it. Each candidate is
 scored from its record, three parts of 0 to 100 at equal weight (decision 7,
 the bundled default): criteria clarity (the share of its acceptance criteria
