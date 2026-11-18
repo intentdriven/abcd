@@ -174,8 +174,114 @@ Ruled by the product thinker in the planning walk on 2026-10-23, relayed by the 
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-fe7b7d5fc3f5 -->
-Fidelity review OWED (receipt rcp-fe7b7d5fc3f5).
+<!-- abcd-review: INGESTED receipt=rcp-fe7b7d5fc3f5 -->
+Fidelity review — receipt rcp-fe7b7d5fc3f5 (verifier intent-auditor claude-opus-5-5).
+
+Provenance: intent-auditor@claude-opus-5-5 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:4160b7c451b574170d076c9ba19b604f197af248836c6b8e06c72fcee3f715fd
+Input attestations: diff:spc-2610230730269295 landed commits 5ce7c0e88 f9df29257 527becba3 bd0524e47 6c00c054c ab6f7a214 a81c24e06 d4a18d9e9, spec close 4ce803a4a@-; repo:origin/main cb2e6157c (worktree audit-sweep-1118)@-;
+
+Acceptance rollup: MET 6 · MET_WITH_CONCERNS 5 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: A bare run lists all five kinds with an action or keep reason, and tests hash the repo and home before and after and dispatch nothing. Concern: 'nothing changes' holds except for the fetch. Run does `fetch --prune` and the reservation fetch first, which moves remote-tracking refs, and the whole-dry-run tests call runSweep, which skips the fetch.
+  evidence: internal/core/sweep/runsweep_test.go:75 — "if len(seen) != 5 {"
+  evidence: internal/core/sweep/runsweep_test.go:162 — "func TestAWholeDryRunChangesNothing(t *testing.T) {"
+  evidence: internal/core/sweep/sweep.go:372 — "gitutil.NetInputContext(ctx, repoRoot, "", "fetch", "--prune", "--quiet", claim.Remote)"
+  evidence: .abcd/development/brief/04-surfaces/40-sweep.md:7 — "Bare, it changes nothing"
+- ac-2 — MET: A squash-merged (patch-equivalent, not ancestor) clean worktree is judged 'merged, judged by content', removed through PruneOne, and named with outcome removed.
+  evidence: internal/core/sweep/apply_test.go:54 — "func TestApplyReclaimsASquashMergedWorktreeThroughThePrune(t *testing.T) {"
+  evidence: internal/core/sweep/apply_test.go:67 — "Detail: "merged, judged by content""
+  evidence: internal/core/sweep/apply.go:134 — "if pr.Outcome == store.OutcomeReclaimed {"
+- ac-3 — MET: A worktree at the default branch's tip with a process cwd inside it is kept with reason 'in use: process … works in it'. Liveness holds rank ahead of every merged or clean judgement. Under --apply, a fresh probe runs immediately before each removal (PreRemove). The store reads a worktree with no commit of its own as unmerged anyway, so the keep holds either way.
+  evidence: internal/core/sweep/sweep_test.go:426 — "func TestAWorktreeOnTheDefaultBranchWithALiveDirectoryIsKept(t *testing.T) {"
+  evidence: internal/core/sweep/sweep.go:580 — "case len(reasons) > 0:"
+  evidence: internal/core/sweep/apply.go:106 — "PreRemove: func(abs string) (bool, string) {"
+  evidence: internal/core/sweep/apply_test.go:89 — "func TestAWorktreeThatGainsALiveProcessBeforeRemovalIsKept(t *testing.T) {"
+- ac-4 — MET_WITH_CONCERNS: For a dirty store worktree, the unstaged and staged patches and a tar of untracked files are written under the notes archive with a manifest. The worktree stays as it was, and the row names the home-redacted entry. Concern: this is narrower than 'a dirty worktree'. A dirty worktree outside the store is kept unsaved. So are a change git writes as a binary patch and a worktree mid-merge.
+  evidence: internal/core/sweep/salvage_test.go:106 — "func TestApplySavesADirtyWorktreesChangesAndKeepsIt(t *testing.T) {"
+  evidence: internal/core/sweep/salvage_test.go:133 — "r.Outcome != OutcomeSaved || !strings.Contains(r.Reason, fsutil.RedactHome(entry))"
+  evidence: internal/core/sweep/sweep.go:582 — "case r.Where != store.WhereStore:"
+  evidence: internal/core/sweep/salvage_test.go:421 — "func TestAChangeGitWritesAsABinaryPatchIsRefused(t *testing.T) {"
+- ac-5 — MET: The embargo store is matched first, by storepath.IsStorePath or the sibling location, and kept as 'never read, saved or removed'. Tests show the probe never asks about it, and an apply over a detached embargo worktree holding an untracked file writes no salvage.
+  evidence: internal/core/sweep/sweep.go:530 — "if r.Where == store.WhereSibling || storepath.IsStorePath(j.home, abs) {"
+  evidence: internal/core/sweep/salvage_test.go:308 — "func TestTheEmbargoStoreAndAnOutsideWorktreeAreNeverSalvaged(t *testing.T) {"
+  evidence: internal/core/sweep/sweep_test.go:291 — "if slices.Contains(asked, real) || slices.Contains(asked, emb) {"
+- ac-6 — MET: A git-locked worktree is kept with the lock's whole reason. A JSON reason's owner is named ('locked by agent-tool'). Apply never asks the prune about it.
+  evidence: internal/core/sweep/sweep.go:608 — "func lockedBy(reason string) string {"
+  evidence: internal/core/sweep/sweep_test.go:267 — "kept(t, r, "locked by agent-tool")"
+  evidence: internal/core/sweep/apply_test.go:202 — "kept(t, rowFor(t, res, "locked"), "locked by git: on a removable disk")"
+- ac-7 — MET: A non-directory entry in the store lane is a stray row, kept as 'not a worktree; listed and never touched'. Apply acts only on remove and save-patch rows, so the stray stays.
+  evidence: internal/core/sweep/sweep.go:537 — "row.Kind, row.State = RowStray, "an entry in the store's lane that is not a directory""
+  evidence: internal/core/sweep/sweep_test.go:296 — "t.Run("a stray", func(t *testing.T) {"
+  evidence: internal/core/sweep/apply.go:71 — "switch row.Action {"
+- ac-8 — MET_WITH_CONCERNS: A merged origin branch is deleted under a lease and named, and one an open PR heads (or targets as its base) or a live local session holds is kept, naming the hold. Concern: 'no reservation naming it' is narrowed. A reservation holds an origin branch only through a local worktree of the copy that made it, or through its footprint over a local worktree on that branch. A reservation made on another machine or account adds no hold (iss-2611161232540905 open, dcn-2611161144499939).
+  evidence: internal/core/sweep/remote_test.go:162 — "func TestAMergedBranchOnOriginIsDeletedUnderALeaseAndNamed(t *testing.T) {"
+  evidence: internal/core/sweep/remote_test.go:253 — "func TestAMergedBranchSomethingStillNeedsIsKeptNamingIt(t *testing.T) {"
+  evidence: internal/core/sweep/remote.go:540 — "reservation holds only the branch its own copy is on: holds finds it"
+  evidence: .abcd/work/issues/open/iss-2611161232540905-a-reservation-records-no-branch-only-the.md:15 — "a reservation made on another machine or under another account holds no branch on origin"
+- ac-9 — MET: Under apply, spent reservations trigger `gh workflow run reservation-sweep.yml` and the run listed afterwards is reported. A test proves the reservation's tip on origin is unchanged. With gh absent or the dispatch refused, the report names the next scheduled time from the workflow's cron. The workflow carries workflow_dispatch.
+  evidence: internal/core/sweep/reservations.go:270 — "forgeCall(ctx, gh, root, "workflow", "run", reservationWorkflow, "--ref="+def)"
+  evidence: internal/core/sweep/reservations_test.go:242 — "func TestApplyLeavesASpentReservationOnOrigin(t *testing.T) {"
+  evidence: internal/core/sweep/reservations_test.go:339 — "func TestWithNoForgeClientTheNextScheduledTimeIsGiven(t *testing.T) {"
+  evidence: .github/workflows/reservation-sweep.yml:29 — "workflow_dispatch:"
+- ac-10 — MET_WITH_CONCERNS: In abcd's own checkout, every waiting report is promoted through report.Promote with issueschema.MachineRemedy, and the row names the record filed. Concern: in any other repository, every report is kept ('promoted only in abcd's own checkout'). 'Every one is promoted' therefore holds for abcd's checkout only.
+  evidence: internal/core/sweep/inbox_test.go:113 — "func TestEveryWaitingReportIsPromotedWithTheAutomaticFilersRemedyAndNamed(t *testing.T) {"
+  evidence: internal/core/sweep/inbox.go:117 — "filed := "promoted: filed as " + p.Capture + " at " + p.Path + ", with the remedy ""
+  evidence: internal/core/sweep/inbox.go:151 — "a report is about abcd and is promoted only in abcd's own checkout"
+  evidence: internal/core/sweep/inbox_test.go:258 — "func TestAReportIsPromotedOnlyInAbcdsOwnCheckout(t *testing.T) {"
+- ac-11 — MET_WITH_CONCERNS: Removal is store.PruneOne only. A fetch of origin and the reservations comes first, and a failed fetch refuses the run. A local branch is deleted with `branch -d` and an origin branch only with --force-with-lease on the judged tip; no `worktree remove --force` and no process kill. --json is the root persistent flag. Codes are 0/1/2. Concerns: a bare run exits 0 when --apply would act, not when something was acted on. An applied run also writes outside ~/.abcd.noindex/ and the local tier: ledger records (ac-10), local branch refs and origin deletes, which the brief says only for the bare form.
+  evidence: internal/core/sweep/apply.go:52 — "prune = store.PruneOne"
+  evidence: internal/core/sweep/sweep.go:368 — "func fetchFirst(ctx context.Context, repoRoot string) (fetched bool, err error) {"
+  evidence: internal/core/sweep/branches.go:329 — "gitutil.LocalGit(bj.root, "branch", "-d", "--", name)"
+  evidence: internal/core/sweep/rows.go:228 — "case !r.Applied && row.Action != ActionKeep && row.Action != "":"
+  evidence: internal/surface/cli/sweep_test.go:92 — "func TestSweepVerbRowsJSONAndExitCodes(t *testing.T) {"
+  evidence: .abcd/development/brief/04-surfaces/40-sweep.md:83 — "Bare, it writes only under the machine's abcd home and the local tier,"
+
+Gap audit:
+- honoured:
+  - Dry run by default; --apply acts only on what is provably spent
+    evidence: internal/surface/cli/sweep.go:100 — "act on what is provably spent; without it the sweep changes nothing but the fetch"
+  - One reclaim primitive: the store's prune, which archives notes first
+    evidence: internal/core/sweep/apply.go:124 — "got, err := prune(repoRoot, filepath.Base(filepath.Clean(src.Abs)), opts)"
+  - A dead session's dirty work is saved as a patch before anything else, and the worktree kept
+    evidence: internal/core/sweep/salvage.go:145 — "its changes are saved as a patch to the notes archive, and the worktree kept"
+  - Reservations are never deleted directly; the workflow is dispatched or its schedule named
+    evidence: internal/core/sweep/reservations_test.go:370 — "func TestAFailedDispatchFallsBackToTheSchedule(t *testing.T) {"
+  - Live means proven: reservation, process cwd and build-run proofs, failing closed when the process check cannot be made
+    evidence: internal/core/sweep/sweep_test.go:450 — "func TestAFailedProcessCheckKeepsEveryWorktreeAndSaysSoOnce(t *testing.T) {"
+  - A report's untrusted text stays inert
+    evidence: internal/core/sweep/inbox_test.go:217 — "func TestHostileReportTextIsInertInTheRow(t *testing.T) {"
+- diverged:
+  - Inbox reports are filed into the ledger: only in abcd's own checkout; elsewhere every report is kept
+    evidence: internal/core/sweep/inbox.go:151 — "a report is about abcd and is promoted only in abcd's own checkout"
+  - No reservation names it: a reservation holds an origin branch only through a local worktree of its copy
+    evidence: .abcd/development/brief/04-surfaces/40-sweep.md:52 — "holds the branch of a local worktree that copy is on; a reservation made on"
+  - Exit 0 when something was acted on: a bare run exits 0 when --apply would act
+    evidence: .abcd/development/brief/04-surfaces/40-sweep.md:81 — "It exits 0 when the run acted on something (bare: when the applying"
+  - Running on its own is out of scope: an automatic sweep after landings and drains shipped under a later ruling
+    evidence: internal/core/sweep/sweep.go:413 — "// runHalves is runSweep, with automatic the sweep abcd runs on its own"
+  - Every worktree in and outside the store is judged: worktrees outside the store are listed but never removed or salvaged
+    evidence: internal/core/sweep/sweep.go:583 — "return keep("outside the store; never touched", ev...)"
+  - Writes only under ~/.abcd.noindex/ and the local tier: an applied run files ledger records and deletes refs
+    evidence: .abcd/development/brief/04-surfaces/40-sweep.md:86 — "own checkout, files the waiting inbox reports as ledger records."
+- missing:
+  - Never deletes a branch another person holds: a reservation made on another machine or account adds no hold on a merged origin branch (reservation records no branch; remedy open)
+    evidence: .abcd/work/issues/open/iss-2611161232540905-a-reservation-records-no-branch-only-the.md:15 — "for a merged branch it still works on the reservation adds no hold"
+
+Scope-condition dispositions:
+- cond-2610230730267813 — survived: The verb resolves one checkout's toplevel and sweeps that repository alone, and the process probe reads this machine's /proc or lsof only.
+  evidence: internal/surface/cli/sweep.go:111 — "root, err := gitutil.Toplevel(cwd)"
+  evidence: internal/core/sweep/liveness.go:682 — "var hostLsof = lsofCommand{path: "/usr/sbin/lsof", timeout: 5 * time.Second, limit: 4 << 20}"
+- cond-2610230730264974 — survived: Merged is judged after a fresh `fetch --prune` against the default ref as fetched, by ancestry or patch-equivalence. The store also accepts the forge's MERGED record, but only at the exact current tip, so a branch rewritten after its merge stays unmerged.
+  evidence: internal/core/sweep/sweep.go:372 — ""fetch", "--prune", "--quiet", claim.Remote"
+  evidence: internal/core/ahoy/worktree/merged.go:154 — "// The forge's answer counts only at the local tip: a branch that gained"
+  evidence: internal/core/ahoy/worktree/merged.go:166 — "if ok, err := gitutil.IsAncestor(dir, tip, def); err == nil && ok {"
+- cond-2610230730264235 — narrowed: For worktrees, another machine's session is seen through its live reservation's footprint overlapping a local worktree's changes. For branches on origin, a reservation holds only through a local worktree on that branch, matched by the copy that made it or by that footprint overlap. A reservation records no branch, so one made on another machine or account adds no hold on a merged origin branch.
+  narrowing: Holds for worktrees on this machine, which a remote reservation's footprint can hold. For branches on origin, a session elsewhere is seen only through a local worktree on that branch. A reservation from another machine or account with no such local worktree adds no hold, and the merged branch is deleted (iss-2611161232540905 open).
+  evidence: internal/core/sweep/liveness.go:365 — "// ways is named once. A reservation carries no branch, so none is matched to"
+  evidence: internal/core/sweep/remote.go:520 — "for _, wt := range rj.wts {"
+  evidence: .abcd/development/brief/04-surfaces/40-sweep.md:53 — "another machine or under another account holds no branch on origin, so"
+  evidence: .abcd/work/decisions/dcn-2611161144499939-decided-by-the-technical-facilitator.md:6 — "Consequence: a reservation made on another machine holds no branch on origin by name"
 <!-- abcd-review-end receipt=rcp-fe7b7d5fc3f5 -->
 
 ## Grounds
