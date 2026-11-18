@@ -49,6 +49,7 @@ func TestCommandOfStepsOverWrapperArguments(t *testing.T) {
 		{"sudo's end-of-options marker", "sudo -- rm -rf *", "rm"},
 		{"env clearing the environment", "env -i rm -rf *", "rm"},
 		{"env unsetting a name", "env -u PATH rm -rf *", "rm"},
+		{"env with its search-path flag", "env -P /usr/bin rm -rf *", "rm"},
 		{"env with an assignment after its flags", "env -i FOO=bar rm -rf *", "rm"},
 		{"time with a boolean flag", "time -p rm -rf *", "rm"},
 		{"time with a value flag", "time -o timings.txt rm -rf *", "rm"},
