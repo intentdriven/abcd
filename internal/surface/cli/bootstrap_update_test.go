@@ -166,3 +166,39 @@ func TestDiscardedSalvageRunsPassUnseen(t *testing.T) {
 		t.Fatal("no hook entry runs hooks/bootstrap.sh, so this test checked nothing; read the commands through resolveHookCommand")
 	}
 }
+
+// TestUpdatePageNamesEveryUnseenSalvageEvent: the update page's account of the
+// one exception to "an update says so once" names, by its event, every hook
+// entry that runs the bootstrap salvage with --unseen, read from
+// hooks/hooks.json, so the page cannot count fewer events than the manifest
+// wires (iss-2611040554531297).
+func TestUpdatePageNamesEveryUnseenSalvageEvent(t *testing.T) {
+	page := mustReadFile(t, filepath.Join(repoRootFromTest(t), ".abcd", "development", "brief", "04-surfaces", "21-update.md"))
+	const heading = "## An update says so once\n"
+	start := strings.Index(page, heading)
+	if start < 0 {
+		t.Fatalf("21-update.md has no %q section", strings.TrimSpace(heading))
+	}
+	section := page[start+len(heading):]
+	if end := strings.Index(section, "\n## "); end >= 0 {
+		section = section[:end]
+	}
+	doc := decodedHooksManifest(t)
+	named := 0
+	for event, entries := range doc.Hooks {
+		for _, entry := range entries {
+			for _, h := range entry.Hooks {
+				if !strings.Contains(resolveHookCommand(t, h.Command), `bootstrap.sh" --unseen`) {
+					continue
+				}
+				named++
+				if !strings.Contains(section, "`"+event+"`") {
+					t.Errorf("21-update.md's %q section must name `%s`, whose hook runs the bootstrap salvage with --unseen", strings.TrimSpace(heading), event)
+				}
+			}
+		}
+	}
+	if named == 0 {
+		t.Fatal("no hook entry passes --unseen, so this test checked nothing; read the commands through resolveHookCommand")
+	}
+}
