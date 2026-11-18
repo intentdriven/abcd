@@ -494,8 +494,15 @@ A shell command is approved only when the guard reads it whole and clears it:
   `--chdir`, or `unshare -w` or `--wd` before git is read the way `-C` is,
   written whole, abbreviated (`env --chd`) or in a cluster (`env -iC`); `sudo
   -i` or `--login`, which runs git from the target user's home directory, is
-  refused, and so is a wrapper option that abbreviates one of the wrapper's
-  options taking a value, since whether it takes the next word is not known.
+  refused. A wrapper is read only from a short list whose options the
+  approver classifies as leaving the directory alone or changing it (`env`,
+  `sudo`, `unshare`, `nice`, `nohup`, `timeout`, `time`, `command`, `exec`,
+  `stdbuf`, `ionice`); a git command behind any other wrapper (`xargs`,
+  which may add git's options from its input, among them), or behind an
+  option the list does not classify (`sudo -R`, `sudo -s`, `unshare -R`, or
+  an abbreviation of an option that leaves the directory alone), is refused,
+  so a wrapper the approver does not know fails closed (`timeout 5 git log`
+  is judged as `git log` is).
   A plain subdirectory, a submodule (whose `.git` file points into the
   working tree's own git directory) and a git directory outside the working
   tree are left to the other rules; a directory the line does not spell out is refused, and so is

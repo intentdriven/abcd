@@ -29,9 +29,10 @@ package guard
 // it, then as each env -C or --chdir (env(1)), sudo -D or --chdir (sudo(8))
 // and unshare -w or --wd (unshare(1)) before git changes it, resolved the way
 // -C is. sudo -i or --login runs git from the target user's home directory,
-// which the line does not fix, and a wrapper option written so that the
-// reading cannot tell whether it takes the next word (an abbreviation of one
-// of the wrapper's value flags) leaves where git runs unfixed too.
+// which the line does not fix. A wrapper is read only when it is on the short
+// list of wrappers the approver knows (wrapperDirFlags), and only through the
+// options that list classifies as leaving the directory alone or changing
+// it; behind any other wrapper or option, where git runs is not fixed.
 //
 // A submodule's git file points into the working tree's own git directory,
 // and is left alone; so is a git directory outside the working tree, which
@@ -81,24 +82,90 @@ func (f approveFacts) gitDirRefusal(rc *readCtx, s segment, st *shellState, valu
 	return Approval{}, false
 }
 
-// wrapperChdirFlags names, per wrapper, the options that change the directory
-// the command after it runs in. One of its wrapperValueFlags changes it to
-// its value: env's -C and --chdir (env(1)), sudo's -D and --chdir (sudo(8)),
-// and unshare's -w and --wd (unshare(1)). Another changes it to a directory
-// the line does not fix: sudo's -i and --login run the command from the
-// target user's home directory (sudo(8)).
-var wrapperChdirFlags = map[string][]string{
-	"env":     {"-C", "--chdir"},
-	"sudo":    {"-D", "--chdir", "-i", "--login"},
-	"unshare": {"-w", "--wd"},
+// wrapperDirOptions is one wrapper's options in wrapperDirFlags, by what each
+// does to the directory the command after the wrapper runs in: chdir changes
+// it, keep leaves it alone.
+type wrapperDirOptions struct{ chdir, keep []string }
+
+// wrapperDirFlags is the short list of wrappers the approver can read the
+// directory of, each with its documented options classified. A git command
+// behind a wrapper the list does not name, or behind an option of a listed
+// one that it does not classify, runs in a directory the line does not fix
+// and is refused (wrapperDir): an unknown wrapper fails closed, since naming
+// the wrappers that change the directory one by one never closes the set.
+// Which options take the next word is the wrapper's wrapperValueFlags.
+//
+// A chdir option changes the directory to its value, or, when it takes none,
+// to one the line does not fix: env's -C and --chdir (env(1)), sudo's -D and
+// --chdir (sudo(8)) and unshare's -w and --wd (unshare(1)) take a value;
+// sudo's -i and --login run the command from the target user's home
+// directory (sudo(8)). Left out on purpose: sudo's -R and --chroot and
+// unshare's -R and --root, which change the root the directory is read
+// against; sudo's -s and --shell, which hand the command to the target
+// user's shell; and xargs, which adds git's arguments, -C and --git-dir
+// among them, from its input, which the line does not fix.
+var wrapperDirFlags = map[string]wrapperDirOptions{
+	// env(1), GNU and BSD: environment and signal options.
+	"env": {
+		chdir: []string{"-C", "--chdir"},
+		keep: []string{
+			"-i", "--ignore-environment", "-0", "--null", "-u", "--unset", "-v", "--debug",
+			"--default-signal", "--ignore-signal", "--block-signal", "--list-signal-handling",
+		},
+	},
+	// sudo(8): who the command runs as, how sudo asks, and what it keeps.
+	"sudo": {
+		chdir: []string{"-D", "--chdir", "-i", "--login"},
+		keep: []string{
+			"-A", "--askpass", "-B", "--bell", "-b", "--background", "-C", "--close-from",
+			"-E", "--preserve-env", "-e", "--edit", "-g", "--group", "-H", "--set-home",
+			"-h", "--host", "-K", "--remove-timestamp", "-k", "--reset-timestamp",
+			"-l", "--list", "-N", "--no-update", "-n", "--non-interactive",
+			"-P", "--preserve-groups", "-p", "--prompt", "-r", "--role", "-S", "--stdin",
+			"-T", "--command-timeout", "-t", "--type", "-U", "--other-user", "-u", "--user",
+			"-V", "--version", "-v", "--validate",
+		},
+	},
+	// unshare(1): the namespaces made, and the ids and clocks set in them.
+	"unshare": {
+		chdir: []string{"-w", "--wd"},
+		keep: []string{
+			"-i", "--ipc", "-m", "--mount", "-n", "--net", "-p", "--pid", "-u", "--uts",
+			"-U", "--user", "-C", "--cgroup", "-T", "--time", "-f", "--fork", "--kill-child",
+			"--mount-proc", "-r", "--map-root-user", "-c", "--map-current-user", "--map-auto",
+			"--map-user", "--map-group", "--map-users", "--map-groups", "-S", "--setuid",
+			"-G", "--setgid", "--propagation", "--setgroups", "--monotonic", "--boottime",
+		},
+	},
+	// nice(1): the adjustment.
+	"nice": {keep: []string{"-n", "--adjustment"}},
+	// nohup(1) takes no options.
+	"nohup": {},
+	// timeout(1), GNU and BSD: the signal, when to send it, and the exit.
+	"timeout": {keep: []string{
+		"-k", "--kill-after", "-s", "--signal", "--preserve-status", "-p",
+		"--foreground", "-f", "-v", "--verbose",
+	}},
+	// time(1), GNU and BSD, and the shell's time -p: what is reported, and where.
+	"time": {keep: []string{
+		"-p", "--portability", "-v", "--verbose", "-q", "--quiet", "-a", "--append",
+		"-f", "--format", "-o", "--output", "-l", "-h",
+	}},
+	// The shell's command and exec: the default path, a name printed, the
+	// name the program is given, its environment cleared, a login dash.
+	"command": {keep: []string{"-p", "-v", "-V"}},
+	"exec":    {keep: []string{"-a", "-c", "-l"}},
+	// stdbuf(1): each stream's buffering.
+	"stdbuf": {keep: []string{"-i", "-o", "-e", "--input", "--output", "--error"}},
+	// ionice(1): the class and its data, and whether a failure is ignored.
+	"ionice": {keep: []string{"-c", "--class", "-n", "--classdata", "-t", "--ignore"}},
 }
 
 // wrapperChdir is one change of directory a wrapper makes before the command
 // it runs: the option that makes it, the index of the word holding its value
 // and the value, with whether the shell expands a leading ~ in it. unfixed
-// says the line does not fix where it leads: an option that names no
-// directory, or a word the reading cannot tell takes a value
-// (abbreviatesValueFlag).
+// says the option names no directory, so the line does not fix where it
+// leads.
 type wrapperChdir struct {
 	flag    string
 	idx     int
@@ -109,20 +176,15 @@ type wrapperChdir struct {
 
 // wrapperDir is the shell state st as the wrappers before the git site at
 // index end of s leave it: each change of directory wrapperChdirs reads,
-// resolved in order the way git's -C is. One whose value the line does not
-// fix is refused; so, where wrapperChdirs cannot place the site, is any word
-// before it that may be a change of directory (mayChangeDir).
+// resolved in order the way git's -C is. A change whose value the line does
+// not fix is refused, and so is a site behind a wrapper or an option
+// wrapperChdirs cannot read.
 func wrapperDir(rc *readCtx, s segment, end int, st *shellState) (*shellState, Approval, bool) {
 	at := *st
 	at.dirOK = st.dirOK && st.dir != ""
-	changes, placed := wrapperChdirs(s, end)
-	if !placed {
-		for i := 0; i < end; i++ {
-			if mayChangeDir(s.tokens[i]) {
-				return nil, gitDirUnfixedRefusal("a wrapper's change of directory"), true
-			}
-		}
-		return &at, Approval{}, false
+	changes, stop := wrapperChdirs(s, end)
+	if stop != "" {
+		return nil, gitDirUnfixedRefusal(stop), true
 	}
 	for _, c := range changes {
 		if c.unfixed {
@@ -144,15 +206,17 @@ func wrapperDir(rc *readCtx, s segment, end int, st *shellState) (*shellState, A
 // position reads known words (commandArrivals): assignments and reserved
 // words stepped, and each wrapper with its options, the value of each of its
 // wrapperValueFlags, and its wrapperOperands. It returns each change of
-// directory wrapperChdirFlags names, written whole, abbreviated, glued or in a
-// short-option cluster, and whether the reading arrives at end. A long option
-// that abbreviates one of the wrapper's other value flags ends the reading
-// with an unfixed change, since whether it takes the next word is not known.
-// A word the line does not fix, a program that is not a wrapper, or a word
-// left over leaves the site unplaced.
-func wrapperChdirs(s segment, end int) ([]wrapperChdir, bool) {
+// directory a chdir option of wrapperDirFlags makes, written whole,
+// abbreviated, glued or in a short-option cluster. A keep option is read
+// written whole only: what an abbreviation stands for depends on every
+// option the wrapper has, and the list names only those it classifies. When
+// the reading meets a word the line does not fix, a program wrapperDirFlags
+// does not list, an option it does not classify, or does not arrive at end,
+// it stops and returns what stopped it, which wrapperDir refuses.
+func wrapperChdirs(s segment, end int) ([]wrapperChdir, string) {
 	toks := s.tokens
 	var out []wrapperChdir
+	const short = "a value the line does not reach"
 	value := func(flag string, i int) (wrapperChdir, bool) {
 		if i >= end {
 			return wrapperChdir{}, false
@@ -166,12 +230,20 @@ func wrapperChdirs(s segment, end int) ([]wrapperChdir, bool) {
 			i++
 			continue
 		}
-		w := strings.ToLower(path.Base(tok))
-		if isUnknown(tok) || !wrappers[w] {
-			return nil, false
+		if isUnknown(tok) {
+			return nil, "a wrapper the line does not spell out"
+		}
+		name := path.Base(tok)
+		w := strings.ToLower(name)
+		opts, listed := wrapperDirFlags[w]
+		if !listed || !wrappers[w] {
+			return nil, "the wrapper " + name + ", which the approver does not read as leaving the directory alone"
+		}
+		unread := func(o string) string {
+			return "the option " + o + " of " + name + ", which the approver does not read as leaving the directory alone"
 		}
 		assigns = envAssigns[w]
-		vf, cf := wrapperValueFlags[w], wrapperChdirFlags[w]
+		vf := wrapperValueFlags[w]
 		for i++; i < end; i++ {
 			o := toks[i]
 			if o == "--" {
@@ -182,30 +254,33 @@ func wrapperChdirs(s segment, end int) ([]wrapperChdir, bool) {
 				break
 			}
 			if isUnknown(o) {
-				return nil, false
+				return nil, "an option of " + name + " the line does not spell out"
 			}
 			if strings.HasPrefix(o, "--") {
-				name, v, glued := strings.Cut(o, "=")
-				cd, isCd := longChdirFlag(o, cf)
+				long, v, glued := strings.Cut(o, "=")
+				if containsString(opts.keep, long) {
+					if !glued && containsString(vf, long) {
+						if i++; i >= end {
+							return nil, short
+						}
+					}
+					continue
+				}
+				cd, isCd := longChdirFlag(o, opts.chdir)
 				switch {
-				case isCd && !containsString(vf, cd):
+				case !isCd:
+					return nil, unread(long)
+				case !containsString(vf, cd):
 					out = append(out, wrapperChdir{flag: cd, idx: i, unfixed: true})
-				case isCd && glued:
-					out = append(out, wrapperChdir{flag: name, idx: i, word: v})
-				case isCd:
+				case glued:
+					out = append(out, wrapperChdir{flag: long, idx: i, word: v})
+				default:
 					i++
-					c, ok := value(name, i)
+					c, ok := value(long, i)
 					if !ok {
-						return nil, false
+						return nil, short
 					}
 					out = append(out, c)
-				case glued:
-				case containsString(vf, o):
-					i++
-				case abbreviatesValueFlag(o, vf):
-					// Whether it takes the next word is not something the
-					// reading can tell, so where the command runs is not either.
-					return append(out, wrapperChdir{flag: o, idx: i, unfixed: true}), true
 				}
 				continue
 			}
@@ -213,8 +288,12 @@ func wrapperChdirs(s segment, end int) ([]wrapperChdir, bool) {
 			// value takes the rest of the word, or the next word.
 			for k := 1; k < len(o); k++ {
 				flag := "-" + o[k:k+1]
+				isCd := containsString(opts.chdir, flag)
+				if !isCd && !containsString(opts.keep, flag) {
+					return nil, unread(flag)
+				}
 				if !containsString(vf, flag) {
-					if containsString(cf, flag) {
+					if isCd {
 						out = append(out, wrapperChdir{flag: flag, idx: i, unfixed: true})
 					}
 					continue
@@ -224,10 +303,10 @@ func wrapperChdirs(s segment, end int) ([]wrapperChdir, bool) {
 					i++
 					var ok bool
 					if c, ok = value(flag, i); !ok {
-						return nil, false
+						return nil, short
 					}
 				}
-				if containsString(cf, flag) {
+				if isCd {
 					out = append(out, c)
 				}
 				break
@@ -235,17 +314,20 @@ func wrapperChdirs(s segment, end int) ([]wrapperChdir, bool) {
 		}
 		for left := wrapperOperands[w]; left > 0; left-- {
 			if i >= end {
-				return nil, false
+				return nil, short
 			}
 			i++
 		}
 	}
-	return out, i == end
+	if i != end {
+		return nil, "a wrapper's words the approver cannot place"
+	}
+	return out, ""
 }
 
-// longChdirFlag is the first long option of a wrapper's wrapperChdirFlags,
-// cf, that the known word o can be, written whole or abbreviated, with or
-// without its `=value` (longFlagIs).
+// longChdirFlag is the first long option of a wrapper's chdir options in
+// wrapperDirFlags, cf, that the known word o can be, written whole or
+// abbreviated, with or without its `=value` (longFlagIs).
 func longChdirFlag(o string, cf []string) (string, bool) {
 	for _, f := range cf {
 		if strings.HasPrefix(f, "--") && longFlagIs(o, f) {
@@ -253,30 +335,6 @@ func longChdirFlag(o string, cf []string) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-// mayChangeDir reports whether a word may be one of wrapperChdirFlags, written
-// whole, abbreviated or glued, or a short-option cluster carrying one, read
-// as flagCouldBe and longFlagIs read a word the line does not fix.
-func mayChangeDir(tok string) bool {
-	lead := knownLead(tok)
-	for _, flags := range wrapperChdirFlags {
-		for _, flag := range flags {
-			if strings.HasPrefix(flag, "--") {
-				if strings.HasPrefix(lead, "--") && longFlagIs(tok, flag) || isUnknown(tok) && flagCouldBe(tok, flag) {
-					return true
-				}
-				continue
-			}
-			if isUnknown(tok) && (flagCouldBe(tok, flag) || clusterCouldCarry(tok, flag[1])) {
-				return true
-			}
-			if strings.HasPrefix(lead, "-") && !strings.HasPrefix(lead, "--") && strings.IndexByte(lead[1:], flag[1]) >= 0 {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // gitDirName is one git directory a command names, with what names it.
@@ -586,6 +644,6 @@ func (f approveFacts) gitDirStrayRefusal(p string) Approval {
 // git directory, what names in a way the line does not fix.
 func gitDirUnfixedRefusal(what string) Approval {
 	return refusal(gitDirEntryID,
-		"this git command runs in, or reads its git directory from, a place the line does not fix ("+termsafe.Sanitize(what)+"): a word the line does not spell out, a directory or relative path after a change of directory the line leaves unknown, or a directory inside the working tree after an earlier command of the line writes, which may have made a repository there, so the guard cannot say which repository's configuration git reads.",
+		"this git command runs in, or reads its git directory from, a place the line does not fix ("+termsafe.Sanitize(what)+"): a word the line does not spell out, a wrapper or a wrapper's option the approver does not read as leaving the directory alone, a directory or relative path after a change of directory the line leaves unknown, or a directory inside the working tree after an earlier command of the line writes, which may have made a repository there, so the guard cannot say which repository's configuration git reads.",
 		"the same git command with the directory spelled out in full, run from the working tree's root or in a line of its own.")
 }

@@ -261,9 +261,8 @@ var wordReaders = map[string]string{
 	"gitDirRefusal":  "sitesNamed and readGitConfigIn place git and the environment it runs with",
 	"gitDirOf":       "firstOperandLimit, fixedToken, isUnknown, knownLead, flagCouldBe and unknownFlagCouldBe: an unknown word that may become -C, --git-dir or --bare, or a directory the line does not fix, is refused",
 	"separateGitDir": "firstOperands, isUnknown, fixedToken and longFlagIs: an unknown subcommand is read as init, and an unknown word that may become --separate-git-dir, or its value the line does not fix, is refused",
-	"wrapperChdirs":  "isUnknown, isWrapperAssignment and envAssigns: a word the line does not fix leaves the site unplaced, and wrapperDir then refuses any word mayChangeDir reads as a change of directory",
+	"wrapperChdirs":  "isUnknown, isWrapperAssignment and envAssigns: a word the line does not fix, a wrapper wrapperDirFlags does not list or an option it does not classify stops the reading, and wrapperDir refuses",
 	"longChdirFlag":  "exempt: wrapperChdirs hands it only a known word, after isUnknown",
-	"mayChangeDir":   "knownLead, flagCouldBe and clusterCouldCarry: an unknown word that may become a wrapper's change of directory is read as one",
 	"execPinKeys":    "exempt: reads gitutil's own -c pins, not a command word",
 
 	// approvecode.go: code reaching an interpreter outside its inline flag.

@@ -252,3 +252,71 @@ func TestApproveReadsEveryWrapperThatChangesTheDirectory(t *testing.T) {
 		}
 	}
 }
+
+// TestApproveRefusesGitBehindAWrapperItCannotRead: the approver reads the
+// directory git runs in through a short list of wrappers (wrapperDirFlags),
+// each option of which it classifies as leaving the directory alone or
+// changing it. A git command behind any other wrapper, one the walk knows
+// (nsenter, chroot, runuser, doas, xargs) or one a later table adds, or
+// behind an option the list does not classify (sudo -R, unshare -R, an
+// abbreviated option that leaves the directory alone), is refused as
+// unfixed: an unknown wrapper fails closed. Behind a listed wrapper and its
+// listed options git is judged as plain git. Watched failing before: each
+// refused line here was approved.
+func TestApproveRefusesGitBehindAWrapperItCannotRead(t *testing.T) {
+	r, _ := gitDirRig(t)
+	// An invented wrapper the walk knows and the list does not name.
+	wrappers["prog"] = true
+	t.Cleanup(func() { delete(wrappers, "prog") })
+	refused := []string{
+		`nsenter -w git log -1`,
+		`nsenter --wd=nested git log -1`,
+		`nsenter -t 1 git log -1`,
+		`chroot sub git log -1`,
+		`sudo -R sub git log -1`,
+		`sudo --chroot=sub git log -1`,
+		`sudo -s git log -1`,
+		`unshare -R sub git log -1`,
+		`unshare --root=sub git log -1`,
+		`runuser -l prog git log -1`,
+		`runuser -u prog git log -1`,
+		`doas git log -1`,
+		`setsid git log -1`,
+		`flock prog git log -1`,
+		`xargs git log -1`,
+		`prog git log -1`,
+		`nice prog git log -1`,
+		`env -x git log -1`,
+		`env --ignore git log -1`,
+		`timeout --kill 1 5 git log -1`,
+		`nice -n 5 -x git log -1`,
+	}
+	for _, line := range refused {
+		a := approveShell(clean(), r.files(), line)
+		if a.Allow || a.EntryID != gitDirEntryID {
+			t.Errorf("%q: want a refusal under %s, got %+v", line, gitDirEntryID, a)
+		}
+	}
+	// Judged as plain git.
+	r.run(t, []approveCase{
+		{`nice git log -1`, nil},
+		{`timeout 5 git log -1`, nil},
+		{`nice -n 5 git log -1`, nil},
+		{`timeout -s INT 5 git log -1`, nil},
+		{`nohup git log -1`, nil},
+		{`time -p git log -1`, nil},
+		{`stdbuf -o0 git log -1`, nil},
+		{`ionice -c 3 git log -1`, nil},
+		{`env -i GIT_PAGER=cat git log -1`, nil},
+	})
+	for _, line := range []string{
+		`sudo -u prog -n git log -1`,
+		`command git log -1`,
+		`exec git log -1`,
+		`unshare -r git log -1`,
+	} {
+		if a := approveShell(clean(), r.files(), line); a.EntryID == gitDirEntryID {
+			t.Errorf("%q: refused under %s, which leaves it alone: %s", line, gitDirEntryID, a.Reason)
+		}
+	}
+}
