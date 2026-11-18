@@ -3,11 +3,13 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/report"
@@ -491,5 +493,43 @@ func TestARefusedInboxIsNamedAtSessionStartAndOnTheBoard(t *testing.T) {
 		if strings.Contains(stdout, "inbox:") || strings.Contains(stdout, `"inbox"`) {
 			t.Errorf("board %v renders a count for a refused inbox: %q", args, stdout)
 		}
+	}
+}
+
+// TestInboxCountsTheReportsItLeavesUnlisted: past the newest report.ListLimit
+// the listing names how many older reports wait unlisted, and the header and
+// --json tally still count every one (iss-2611150658164454).
+func TestInboxCountsTheReportsItLeavesUnlisted(t *testing.T) {
+	repo, home := gitRepoNoStore(t)
+	t.Chdir(repo)
+	fileOneReport(t, "the newest finding")
+	files := inboxFiles(t, home)
+	data, err := os.ReadFile(abcdhome.Path(home, "inbox", files[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := strings.TrimSuffix(files[0][17:], ".md")
+	for i := range report.ListLimit {
+		stamp := time.Date(2026, 1, 1, 0, 0, i, 0, time.UTC).Format("060102150405") + "0000"
+		if err := os.WriteFile(abcdhome.Path(home, "inbox", stamp+"-"+key+".md"), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list := string(runCLI(t, "inbox"))
+	total := report.ListLimit + 1
+	if !strings.Contains(list, fmt.Sprintf("%d waiting from 1 repository", total)) {
+		t.Errorf("inbox header does not count all %d:\n%s", total, list[:min(len(list), 200)])
+	}
+	want := fmt.Sprintf("1 older report waits unlisted: the listing reads the newest %d", report.ListLimit)
+	if !strings.Contains(list, want) {
+		t.Errorf("inbox does not say %q", want)
+	}
+	var js struct {
+		Reports []report.Entry `json:"reports"`
+		Tally   report.Tally   `json:"tally"`
+		Left    int            `json:"left"`
+	}
+	if err := json.Unmarshal(runCLI(t, "inbox", "--json"), &js); err != nil || len(js.Reports) != report.ListLimit || js.Left != 1 || js.Tally.Reports != total {
+		t.Errorf("inbox --json: %d reports, left %d, tally %+v, %v; want %d, 1, %d", len(js.Reports), js.Left, js.Tally, err, report.ListLimit, total)
 	}
 }

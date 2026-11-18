@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/report/inbox.go"
 remedy: "Have List read the file names first, as Count does, read whole only the newest 200 waiting reports, and end the listing with a line counting the reports it left out."
+resolution: "abcd inbox reads the file names first and whole only the newest 200 waiting reports, ending the listing with a line counting the rest; show and promote read only the report they look for."
+impact: fix
 ---
 
 `List` in `internal/core/report/inbox.go` reads every waiting report whole before it drops their bodies, so the cost of one `abcd inbox` listing grows with the number of reports waiting, with no bound on that number. `Count` in the same file already reads file names only.

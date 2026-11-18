@@ -23,8 +23,14 @@ inbox files itself.
 
 Bare `abcd inbox` lists the waiting reports newest first — by the received
 second, then by when each file was written — with each report's id, received
-time, sender repository named plainly, kind, severity and title. Showing one
-report by its id renders it whole, waiting or promoted. Both are read-only: an
+time, sender repository named plainly, kind, severity and title. It reads the
+inbox's file names first and then whole only the newest 200 reports, ending
+with a line that counts the older ones it leaves unlisted, so no more than 200
+are read whole however many wait. Where reports share the oldest second it
+reaches, it orders them by their file information alone before it cuts. Every
+name is still listed and sorted, and the tally counts them all from their
+names. Showing one report by its id renders it
+whole, waiting or promoted, and reads only the files that carry its id. Both are read-only: an
 absent inbox is an empty list and is not created.
 
 A waiting file this abcd cannot read is listed as unreadable with its reason,
