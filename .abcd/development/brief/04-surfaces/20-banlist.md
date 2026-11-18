@@ -219,9 +219,10 @@ its own source.
 
 ## Scaffolded, not hand-wired
 
-A repo becomes name-safe by being abcd-managed. `abcd ahoy install` lays down the
-guard artefacts, and four of the five carry a condition, because a scaffolded file
-abcd would immediately declare unenforceable is worse than an absent one.
+A repo becomes name-safe by being abcd-managed. The [ahoy installer](01-ahoy.md)
+lays down the guard artefacts (bare `abcd ahoy` only reports, and writes none of
+them), and four of the five carry a condition, because a scaffolded file abcd
+would immediately declare unenforceable is worse than an absent one.
 
 | artefact | where | written when |
 |---|---|---|
