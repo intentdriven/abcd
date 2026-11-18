@@ -105,6 +105,9 @@ func TestTheRenewalRule(t *testing.T) {
 		return Reservation{ClaimedAt: t0, EffectiveExpiry: t0.Add(term)}
 	}
 	r := held(4 * time.Hour)
+	if got, want := HalfThroughAt(r), t0.Add(2*time.Hour); !got.Equal(want) {
+		t.Errorf("HalfThroughAt of a four-hour hold = %s, want %s", got, want)
+	}
 	for _, c := range []struct {
 		at  time.Duration
 		due bool

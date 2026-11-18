@@ -12,23 +12,33 @@ import (
 
 // TestTheLoopTakesTheRenewalRuleFromClaim: when a reservation is due for
 // renewal and the term a renewal pushes are claim's rules (claim.HalfThrough,
-// claim.RenewalTerm), which the load gate's renewal keeps too
-// (iss-2610171047088861). Both start from a reservation's term, its effective
-// expiry less its claimed-at, so a copy of either kept here starts with that
-// subtraction.
+// claim.HalfThroughAt, claim.RenewalTerm), which the load gate's renewal keeps
+// too (iss-2610171047088861). Both start from a reservation's term, its
+// effective expiry less its claimed-at, so a copy of either kept here starts
+// with that subtraction. The owed-read in internal/core/autonomy wakes a
+// session for a renewal at the same due point, so that package's sources are
+// held to the rule here as well (iss-2611141342176969).
 //
-// What it measures: no non-test source of this package calls Sub with one
-// side an expiry and the other a claimed-at, in either order, where
-// termReckonings says which spellings count as each. What it cannot see: a
-// term reached any other way, such as a local under another name handed in
+// What it measures: no non-test source of this package or of autonomy calls
+// Sub with one side an expiry and the other a claimed-at, in either order,
+// where termReckonings says which spellings count as each. What it cannot see:
+// a term reached any other way, such as a local under another name handed in
 // from another function, a value read through a helper or a struct field of
-// another name, or arithmetic on Unix stamps; nor a copy of the rule in
-// another package.
+// another name, or arithmetic on Unix stamps; nor a copy of the rule in any
+// other package.
 func TestTheLoopTakesTheRenewalRuleFromClaim(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	if err != nil {
 		t.Fatal(err)
 	}
+	autonomy, err := filepath.Glob(filepath.Join("..", "..", "autonomy", "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(autonomy) == 0 {
+		t.Fatal("found no source of internal/core/autonomy to hold to the rule")
+	}
+	files = append(files, autonomy...)
 	fset := token.NewFileSet()
 	var found []string
 	for _, p := range files {
@@ -40,12 +50,12 @@ func TestTheLoopTakesTheRenewalRuleFromClaim(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, pos := range termReckonings(f) {
-			found = append(found, fmt.Sprintf("%s:%d: reckons a reservation's term itself; call claim.HalfThrough or claim.RenewalTerm",
+			found = append(found, fmt.Sprintf("%s:%d: reckons a reservation's term itself; call claim.HalfThrough, claim.HalfThroughAt or claim.RenewalTerm",
 				p, fset.Position(pos).Line))
 		}
 	}
 	if len(found) > 0 {
-		t.Fatalf("the loop keeps its own copy of claim's renewal rule:\n%s", strings.Join(found, "\n"))
+		t.Fatalf("the loop or the owed-read keeps its own copy of claim's renewal rule:\n%s", strings.Join(found, "\n"))
 	}
 }
 
