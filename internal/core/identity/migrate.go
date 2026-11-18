@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -77,7 +78,7 @@ func loadLegacyPin(root string) (LegacyPin, bool, error) {
 	sort.Strings(p.Unknown)
 	if p.ProductionMode != "" {
 		if _, err := provenance.ParseMode(p.ProductionMode); err != nil {
-			return LegacyPin{}, false, fmt.Errorf("malformed %s: %w", LegacyPinRelPath, err)
+			return LegacyPin{}, false, provenance.MalformedModeFile(LegacyPinRelPath)
 		}
 	}
 	return p, true, nil
@@ -110,6 +111,10 @@ type MigrationPlan struct {
 // PlanMigration reads the repository's committed pin and says what moving it
 // would do for the person whose home directory is home. found is false when the
 // repository stores no pin.
+//
+// A blocker never quotes text the pin chose beyond a member name that is a
+// short plain identifier: the pin is repository content, and the blocker
+// reaches the person and the agent as written (iss-2611170055409898).
 func PlanMigration(root, home string) (MigrationPlan, bool, error) {
 	pin, found, err := loadLegacyPin(root)
 	if err != nil || !found {
@@ -117,7 +122,7 @@ func PlanMigration(root, home string) (MigrationPlan, bool, error) {
 	}
 	plan := MigrationPlan{Pin: pin}
 	if len(pin.Unknown) > 0 {
-		plan.Blocker = LegacyPinRelPath + " holds " + strings.Join(pin.Unknown, ", ") + ", which abcd does not know where to keep, so it is left in place"
+		plan.Blocker = LegacyPinRelPath + " holds " + unknownMembers(pin.Unknown) + ", which abcd does not know where to keep, so it is left in place"
 	}
 	if pin.ProductionMode != "" {
 		declared, has, err := provenance.ReadDeclaredModeFile(root)
@@ -238,3 +243,37 @@ func ApplyMigration(root, home string, plan MigrationPlan) (MigrationResult, err
 	res.Removed = true
 	return res, nil
 }
+
+// plainMemberName is a member name the blocker may name as written.
+var plainMemberName = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,40}$`)
+
+// unknownMembers names at most namedMembers of the pin's unknown members whose
+// names are plain identifiers and counts the rest, so what the repository
+// chose reaches the blocker as at most three plain names inside abcd's own
+// list, never as prose or as a run of names of any length
+// (iss-2611170055409898).
+func unknownMembers(names []string) string {
+	var plain []string
+	others := 0
+	for _, n := range names {
+		if len(plain) < namedMembers && plainMemberName.MatchString(n) {
+			plain = append(plain, n)
+		} else {
+			others++
+		}
+	}
+	switch {
+	case others == 0:
+		return strings.Join(plain, ", ")
+	case len(plain) == 0 && others == 1:
+		return "a member abcd does not name"
+	case len(plain) == 0:
+		return fmt.Sprintf("%d members abcd does not name", others)
+	case others == 1:
+		return strings.Join(plain, ", ") + " and one more member"
+	}
+	return fmt.Sprintf("%s and %d more members", strings.Join(plain, ", "), others)
+}
+
+// namedMembers is how many unknown pin members the blocker names.
+const namedMembers = 3

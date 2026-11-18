@@ -96,9 +96,7 @@ func ParseOrigin(v string) (Origin, error) {
 	}
 	rest, isReading := strings.CutPrefix(v, string(KindContributedByReading)+" ")
 	if !isReading {
-		return Origin{}, fmt.Errorf("invalid origin %q: want %s, %s, or %s <%s-N>/<%s-N>",
-			v, KindResearcherAuthored, KindExtractedFromRecord, KindContributedByReading,
-			issueschema.ReadingRunFamily, issueschema.ReadingItemFamily)
+		return Origin{}, fmt.Errorf("invalid origin %q: want %s", v, OriginList())
 	}
 	run, item, hasSlash := strings.Cut(rest, "/")
 	if !hasSlash || !readingRunRe.MatchString(run) || !readingItemRe.MatchString(item) {
@@ -107,6 +105,13 @@ func ParseOrigin(v string) (Origin, error) {
 			v, KindContributedByReading, issueschema.ReadingRunFamily, issueschema.ReadingItemFamily)
 	}
 	return Origin{Kind: KindContributedByReading, Run: run, Item: item}, nil
+}
+
+// OriginList names the origin vocabulary in words, for a refusal that leaves
+// the value it refused out.
+func OriginList() string {
+	return fmt.Sprintf("%s, %s, or %s <%s-N>/<%s-N>", KindResearcherAuthored, KindExtractedFromRecord,
+		KindContributedByReading, issueschema.ReadingRunFamily, issueschema.ReadingItemFamily)
 }
 
 // Mode is how a record's text was produced.
@@ -140,6 +145,15 @@ func ParseMode(v string) (Mode, error) {
 		}
 	}
 	return "", fmt.Errorf("invalid production mode %q: want exactly one of %s (lower-case, no surrounding whitespace)", v, modeList())
+}
+
+// MalformedModeFile is the refusal of a production mode read from the
+// repository file at rel: it names the file and the closed set and leaves the
+// value out, since a file in the repository chose it and the refusal reaches
+// the person and the agent as written (iss-2611170005148886). ParseMode's own
+// error, which quotes the value, stays for a value the person typed.
+func MalformedModeFile(rel string) error {
+	return fmt.Errorf("malformed %s: its production_mode is not exactly one of %s (lower-case, no surrounding whitespace)", rel, modeList())
 }
 
 // modeOrDefault is the ONE defaulting door: an absent value means DefaultMode,
