@@ -475,7 +475,7 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	var declared []string
 	if rs.Config.OnWalledLogin() {
 		if st, err := ReadState(repoRoot, runID); err == nil {
-			declared, _ = runFootprint(repoRoot, st.Key, st.Spec, st.builtSteps(), runID+" is unchanged")
+			declared = declaredPaths(repoRoot, st, runID+" is unchanged")
 		}
 	}
 	req := runner.Request{

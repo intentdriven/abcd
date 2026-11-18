@@ -114,3 +114,133 @@ func TestAResumeWithEveryStepLandedReservesTheStepsItBuilt(t *testing.T) {
 		t.Fatalf("with no step built by the run, the Footprint line stands: %q", got)
 	}
 }
+
+// TestAProseStepPackagesLineReservesTheFootprintLine: a step still to build
+// whose packages line holds an entry that names no path cannot say what the
+// build touches, so the build reserves the `## Footprint` packages line, as
+// the other fallbacks do, rather than refusing over a line the Footprint
+// section never held.
+func TestAProseStepPackagesLineReservesTheFootprintLine(t *testing.T) {
+	steps := "1. One\n   - packages: internal/widget\n   - landed: #1\n" +
+		"2. Two\n   - packages: the loop and commands, internal/widget\n"
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(steps)+
+		"\n## Footprint\n\n- packages: internal/widget, commands/\n- tests: the widget\n")
+	got, err := specPackages(repo.Root(), "spc-1", nil)
+	if err != nil {
+		t.Fatalf("a prose step line falls back to the Footprint line, never a refusal: %v", err)
+	}
+	if want := []string{"internal/widget", "commands"}; !slices.Equal(got, want) {
+		t.Fatalf("specPackages = %q, want the Footprint line %q", got, want)
+	}
+}
+
+// memoryRecallSpec is spc-1 in the shape of spc-2610111627213138: seven
+// steps landed, step 8's packages line prose ("this spec (...)"), and a
+// Footprint line of real paths, each line as that spec writes it.
+var memoryRecallSpec = specWithSteps(
+	"1. The notes store\n   - packages: internal/core/memnote (new: schema.go)\n   - landed: c8d1ab0df\n"+
+		"2. One recall\n   - packages: internal/core/recall (new)\n   - landed: e6d2a7df7\n"+
+		"3. Pages join the same recall\n   - packages: internal/core/memory\n   - landed: 57b55ed1f\n"+
+		"4. The relevance ranking\n   - packages: internal/core/recall (ranking.go)\n   - landed: f752318ff\n"+
+		"5. How full the session is\n   - packages: internal/core/statusline\n   - landed: a5b89898725f\n"+
+		"6. Context brackets\n   - packages: internal/core/rules\n   - landed: acb18d1836fc\n"+
+		"7. The docs and the brief\n   - packages: docs/explanation\n   - landed: b0ea88c41\n"+
+		"8. The live session, the doc-fidelity review and the close\n"+
+		"   - packages: this spec (the live captures under a `## Live captures` heading after Steps), .abcd/development/intents (both intents move to shipped by the close)\n") +
+	"\n## Footprint\n\n- packages: internal/core/memnote, internal/core/recall, internal/core/rules, internal/core/memory, internal/core/recordid, internal/core/statusline, internal/core/history, internal/core/surface, internal/surface/cli, commands/memory.md, commands/ahoy.md, .abcd/rules.json, .abcd/development/release/surface.json, docs/reference, docs/explanation, docs/how-to, mkdocs.yml, README.md, AGENTS.md, .abcd/development/brief/04-surfaces, .abcd/development/brief/05-internals, .abcd/development/brief/glossary\n- tests: the recall\n"
+
+// TestTheMemoryRecallSpecsShapeIsReservedWithItsFootprintLine: the build of
+// spc-2610111627213138's intent, whose last step's packages line is prose,
+// starts and reserves the Footprint line, as it did before steps were read.
+func TestTheMemoryRecallSpecsShapeIsReservedWithItsFootprintLine(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), memoryRecallSpec)
+	bare := onOrigin(t, repo)
+	if _, err := Start(repo.Root(), "itd-10", Options{}); err != nil {
+		t.Fatalf("the build starts: %v", err)
+	}
+	fp := footprintOf(t, bare, "itd-10")
+	for _, want := range []string{"internal/core/memnote", "internal/surface/cli", ".abcd/development/brief/glossary"} {
+		if !slices.Contains(fp, want) {
+			t.Fatalf("the reservation is the Footprint line, %q missing: %q", want, fp)
+		}
+	}
+	for _, p := range fp {
+		if strings.ContainsFunc(p, func(r rune) bool { return r == ' ' }) {
+			t.Fatalf("the reservation names a prose entry %q: %q", p, fp)
+		}
+	}
+}
+
+// TestAnUnreadableStepsSectionReservesTheFootprintLine: a steps section that
+// cannot be read (here a parked HTML comment in it) says nothing of what is
+// left, so the build reserves the Footprint line; the steps check is where
+// the section itself is refused.
+func TestAnUnreadableStepsSectionReservesTheFootprintLine(t *testing.T) {
+	content := specWithSteps("1. One\n   - packages: internal/other\n<!-- 2. Parked\n   - packages: elsewhere -->\n") +
+		"\n## Footprint\n\n- packages: internal/widget, commands/\n- tests: the widget\n"
+	repo := loopRepo(t, readyIntent("", settledQuestions), content)
+	got, err := specPackages(repo.Root(), "spc-1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"internal/widget", "commands"}; !slices.Equal(got, want) {
+		t.Fatalf("specPackages = %q, want the Footprint line %q", got, want)
+	}
+}
+
+// TestAResumeReadsTheStepsItsLanesBuilt drives builtSteps through the resume
+// path: a run started at step 5 with nothing reserved, whose step 5 has since
+// landed, reserves step 5's packages when it is resumed, never the Footprint
+// line, since its lane is the step it built.
+func TestAResumeReadsTheStepsItsLanesBuilt(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), fiveStepSpec)
+	res, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := ReadState(repo.Root(), res.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.ReservedAt != nil {
+		t.Fatalf("with no origin nothing is reserved: %+v", st.ReservedAt)
+	}
+	if !slices.ContainsFunc(st.Lanes, func(l Lane) bool { return l.SpecStep == 5 }) {
+		t.Fatalf("the start opens a lane for step 5: %+v", st.Lanes)
+	}
+	allLanded := strings.Replace(fiveStepSpec, "   - packages: internal/core/implement/loop, commands\n\n",
+		"   - packages: internal/core/implement/loop, commands\n   - landed: 0123456789ab\n\n", 1)
+	if allLanded == fiveStepSpec {
+		t.Fatal("the fixture's step 5 was not marked landed")
+	}
+	repo.Write(specRel, allLanded)
+	repo.Commit("step 5 lands")
+	bare := onOrigin(t, repo)
+
+	again, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil || !again.Resumed || again.RunID != res.RunID {
+		t.Fatalf("starting again resumes the run: %+v %v", again, err)
+	}
+	if fp, want := footprintOf(t, bare, "itd-10"), []string{"internal/core/implement/loop", "commands"}; !slices.Equal(fp, want) {
+		t.Fatalf("the resume reserves the step its lane built, %q, not the Footprint line: %q", want, fp)
+	}
+}
+
+// TestAWalledStageIsDeclaredTheFootprintLineAndTheSteps: the paths declared
+// to a walled stage are never narrower than the Footprint line, though the
+// reservation narrows to the steps still to build; a step's own path outside
+// the line joins them.
+func TestAWalledStageIsDeclaredTheFootprintLineAndTheSteps(t *testing.T) {
+	content := strings.Replace(fiveStepSpec, "5. The judge strikes false findings only\n   - packages: internal/core/implement/loop, commands\n",
+		"5. The judge strikes false findings only\n   - packages: internal/core/implement/loop, commands, internal/core/judge\n", 1)
+	if content == fiveStepSpec {
+		t.Fatal("the fixture's step 5 was not widened")
+	}
+	repo := loopRepo(t, readyIntent("", settledQuestions), content)
+	st := State{Key: "itd-10", Intent: "itd-10", Spec: "spc-1"}
+	got := declaredPaths(repo.Root(), st, "nothing")
+	want := []string{"internal/core/implement/loop", "internal/core/runner", "internal/core/layered", "internal/surface/cli", "commands", "internal/core/judge"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("declared = %q, want the Footprint line and the steps' packages %q", got, want)
+	}
+}

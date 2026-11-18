@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/reservation.go"
 remedy: "Reserve the union of the packages lines of the steps not yet landed, falling back to the Footprint packages line when a remaining step names none or every step has landed."
-resolution: "A build reserves the union of the packages lines of the spec steps still to build, the Footprint line when the steps cannot say, and the steps the run built once every step has landed."
+resolution: "A build reserves the union of the packages lines of the spec steps still to build, and the steps the run built once every step has landed. The Footprint line stands when the steps cannot say: the spec lists no steps, its steps section cannot be read, a step still to build names no packages, or an entry on such a line names no path. A walled stage is still declared the whole Footprint line beside those packages."
 impact: fix
 resolved_by:
   commit: "7e2f2051b"

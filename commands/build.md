@@ -47,9 +47,11 @@ checks below pass and before the run is created: the branch
 `abcd-reserved/<id>` on `origin`, naming you (by your holder id, kept in
 `~/.abcd.noindex/holder-id`, never by your GitHub username), this copy, and
 the files the spec's steps still to build name on their `- packages:` lines,
-those steps with no `- landed:` line (the spec's `## Footprint` `- packages:`
-line when it lists no steps or a step still to build names no packages; an
-issue's `found_at` path for `build <iss-N>`). Every other participant, a second person, a second
+those steps with no `- landed:` line, or the spec's `## Footprint`
+`- packages:` line when the steps cannot say: the spec lists no steps, its
+steps section cannot be read, a step still to build names no packages, or an
+entry on such a step's line names no path (an issue's `found_at` path for
+`build <iss-N>`). Every other participant, a second person, a second
 computer, a cloud session, sees it before starting the same item. The
 payload's `reservation` says what was done (`reserved <id> on origin for this
 copy until <expiry>, footprint: …`); a run in a checkout without `origin`
@@ -68,18 +70,19 @@ lines). `build next` warns the same way for the run it starts, and its
 reservation of a file inside it, so tell the user, and suggest narrowing the
 spec's `- packages:` lines to the files the work changes.
 
-- A spec with no footprint is refused at the `reservation` stage, exit 2,
-  starting nothing: `<spc-N> has no footprint under ## Footprint to reserve
+- A spec whose steps cannot say and whose `## Footprint` names no packages
+  is refused at the `reservation` stage, exit 2, starting nothing: `<spc-N> has no footprint under ## Footprint to reserve
   <itd-N> with; fill its packages line, then run abcd build again; nothing was
   started`. An issue whose `found_at` names no repository-relative path is
   refused the same way. Report the refusal as it stands: the footprint is the spec's to name, never one invented here.
-- Each entry of that line is read as its path alone. An entry that names
+- Each entry of those lines is read as its path alone. An entry that names
   something in the tree as written is reserved as written; otherwise a
   trailing parenthetical note set off by a space is dropped
   (`internal/core/x (new)` reserves `internal/core/x`, while
   `app/(marketing)` stays whole), and a comma inside a note does not split
-  the entry. An entry that is still prose
+  the entry. A step's entry that is still prose
   once its note is dropped, holding a space and naming nothing in the tree,
+  sends the build to the `## Footprint` line; such an entry on that line
   is refused at the `reservation` stage, exit 2, starting nothing: `<spc-N>'s
   packages entry "<entry>" under ## Footprint names no path; write it as its
   path alone, any note in a trailing parenthetical, then run abcd build
