@@ -516,11 +516,13 @@ A shell command is approved only when the guard reads it whole and clears it:
   fixed path ending in `git`) whose next word starts with `-`, is one the
   line does not spell out, or is a subcommand git 2.52 documents, is
   refused too, since the line does not say where that program runs it
-  (`echo git status` is refused; `grep git notes` is left alone). The words after a git command the approver reaches are that
-  command's own arguments and are judged with it, so a value naming git
-  among them is not read again (`git -C vendor/git status`, `git log
-  --grep git`), except the command `git submodule foreach` or `git bisect
-  run` is given to run, which is read as git standing behind it. Still not
+  (`echo git status` is refused; `grep git notes` is left alone). The
+  words after a git command the approver reaches are that command's own
+  arguments and are judged with it, so a value naming git among them is
+  not read again (`git -C vendor/git status`, `git log --grep git`),
+  except the command `git submodule foreach` (or `git
+  submodule--helper foreach`, the command it runs) or `git bisect run` is
+  given to run, which is read as git standing behind it. Still not
   read: git behind such a program followed by a word git does not
   document, such as an alias, a `git-<name>` command of its own or a
   subcommand a git release after 2.52 adds, and git that a program starts

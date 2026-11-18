@@ -189,7 +189,9 @@ func gitRunsCommandFrom(s segment, site int) (int, string, bool) {
 			continue
 		}
 		switch w {
-		case "submodule":
+		case "submodule", "submodule--helper":
+			// submodule--helper is the internal command `git submodule`
+			// runs; git still accepts it typed, foreach included.
 			k := j + 1
 			for ; k < len(s.tokens); k++ {
 				if v, ok := fixedToken(s, k); !ok || !strings.HasPrefix(v, "-") {

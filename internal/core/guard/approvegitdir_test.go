@@ -572,6 +572,7 @@ func TestApproveReadsAReachedGitSitesOwnWordsOnce(t *testing.T) {
 		`git submodule foreach git -C nested status`:            "git submodule foreach",
 		`git submodule --quiet foreach --recursive git status`:  "git submodule foreach",
 		`git bisect run git -C nested status`:                   "git bisect run",
+		`git submodule--helper foreach git -C nested status`:    "git submodule foreach",
 		`git -C sub submodule foreach /usr/bin/git log -1`:      "git submodule foreach",
 		`sudo git submodule foreach prog git --git-dir=x log`:   "git submodule foreach",
 		`git -c core.pager=less bisect run git rev-parse --git`: "git bisect run",
