@@ -41,9 +41,15 @@ package guard
 // which the line does not fix. A wrapper is read only when it is on the short
 // list of wrappers the approver knows (wrapperDirFlags), and only through the
 // options that list classifies as leaving the directory alone or changing
-// it; behind any other wrapper or option, where git runs is not fixed, and so
-// it is behind a wrapper given two changes of directory, which its parser
-// may not apply in order as git's -C is.
+// it; behind any other wrapper the walk to a command steps through, or any
+// other option, where git runs is not fixed, and so it is behind a wrapper
+// given two changes of directory, which its parser may not apply in order as
+// git's -C is. Behind a program the walk does not step through, git is no
+// command site at all, so a word naming git there, followed by a git option,
+// a word the line does not fix or a subcommand git documents, is refused as
+// unfixed too (gitBehindProgram); a word git does not document after it (an
+// alias, a git-<name> command) and git a program starts by a name the line
+// does not spell are not read.
 //
 // A submodule's git file points into the working tree's own git directory,
 // and is left alone; so is a git directory outside the working tree that
@@ -55,9 +61,10 @@ package guard
 // other than its root or its own git directories, or names a git directory
 // inside the working tree other than its own; a git command not known to
 // leave the working tree alone (gitLeavesTreeAlone) counts as such a write.
-// A line that runs its commands out of text order (runsOutOfTextOrder) and
-// writes or changes directory anywhere has every git command in it refused,
-// since a later command's write or cd may come first.
+// A line that runs its commands out of text order (runsOutOfTextOrder, or a
+// command run in the background, backgrounded) and writes or changes
+// directory anywhere has every git command in it refused, since a later
+// command's write or cd may come first.
 
 import (
 	"os"
@@ -81,7 +88,9 @@ var gitDirEnv = []string{"GIT_DIR", "GIT_COMMON_DIR"}
 // earlier command of the line writes or removes a path, or is a git command
 // not known to leave the working tree alone; unordered that the line runs
 // its commands out of text order and writes or changes directory somewhere,
-// which refuses every git command in it.
+// which refuses every git command in it. A word naming git that the walk to
+// a command did not reach, standing behind a program, is refused as unfixed
+// (gitBehindProgram).
 func (f approveFacts) gitDirRefusal(rc *readCtx, s segment, st *shellState, valueFlags []string, carried map[string]string, wrote, unordered bool) (Approval, bool) {
 	if len(f.gitTrees) == 0 {
 		return Approval{}, false
@@ -102,7 +111,63 @@ func (f approveFacts) gitDirRefusal(rc *readCtx, s segment, st *shellState, valu
 			return a, true
 		}
 	}
+	if program, ok := gitBehindProgram(s); ok {
+		return gitDirUnfixedRefusal("git, standing behind " + program + ", a program the approver does not step through"), true
+	}
 	return Approval{}, false
+}
+
+// gitBehindProgram reports a word of s naming git (git, or a fixed path whose
+// last element is git) that the walk to a command did not reach as a git
+// site, followed by a git option, a word the line does not fix or a
+// subcommand git documents (gitSubcommands), with the program it stands
+// behind: the nearest word before it the walk reached. The walk steps only
+// through the wrappers it knows, so behind any other program git is no site
+// and its directory is never read; such a word is read as git that program
+// runs. A word naming git with nothing after it, or an ordinary word after
+// it, is left alone (grep git file).
+func gitBehindProgram(s segment) (string, bool) {
+	sites := map[int]bool{}
+	for _, site := range sitesNamed(s, "git") {
+		sites[site.idx] = true
+	}
+	arrivals := arrivalsOf(s)
+	for i := 0; i+1 < len(s.tokens); i++ {
+		tok, fixed := fixedToken(s, i)
+		if !fixed || sites[i] || strings.HasSuffix(tok, "/") || !strings.EqualFold(path.Base(tok), "git") {
+			continue
+		}
+		next, fixed := fixedToken(s, i+1)
+		if fixed && !strings.HasPrefix(next, "-") && !gitSubcommands[next] {
+			continue
+		}
+		program, at := "a program the line does not spell out", -1
+		for _, a := range arrivals {
+			if a.idx < i && a.idx > at {
+				at = a.idx
+				if w, ok := fixedToken(s, a.idx); ok {
+					program = w
+				} else {
+					program = "a program the line does not spell out"
+				}
+			}
+		}
+		return program, true
+	}
+	return "", false
+}
+
+// backgrounded reports whether a command of the line is run in the
+// background, ended by a lone & (segment.background): the shell starts it
+// and goes on, so a command after it in the text may write or change
+// directory before it looks for its repository.
+func backgrounded(placed []placedSeg) bool {
+	for _, p := range placed {
+		if p.seg.background {
+			return true
+		}
+	}
+	return false
 }
 
 // wrapperDirOptions is one wrapper's options in wrapperDirFlags, by what each
@@ -114,8 +179,10 @@ type wrapperDirOptions struct{ chdir, keep []string }
 // directory of, each with its documented options classified. A git command
 // behind a wrapper the list does not name, or behind an option of a listed
 // one that it does not classify, runs in a directory the line does not fix
-// and is refused (wrapperDir): an unknown wrapper fails closed, since naming
-// the wrappers that change the directory one by one never closes the set.
+// and is refused (wrapperDir): a wrapper the walk to a command steps through
+// and this list does not name fails closed, since naming the wrappers that
+// change the directory one by one never closes the set. git behind a program
+// the walk does not step through is gitBehindProgram's.
 // Which options take the next word is the wrapper's wrapperValueFlags.
 //
 // A chdir option changes the directory to its value, or, when it takes none,
@@ -629,6 +696,59 @@ var gitReadsOnly = map[string]bool{
 	"show-ref": false, "for-each-ref": false, "describe": false, "merge-base": false,
 	"blame": false, "shortlog": false, "version": false,
 	"branch": true, "remote": true,
+}
+
+// gitSubcommands are the subcommands git(1) documents, in its lists of
+// porcelain, ancillary, interacting, low-level and helper commands, which
+// gitReadsOnly and gitRemoteSubcommands are drawn from. A word naming git
+// that the walk to a command did not reach, followed by one of these, is git
+// run by a program the walk does not step through (gitBehindProgram).
+var gitSubcommands = map[string]bool{
+	// Main porcelain commands.
+	"add": true, "am": true, "archive": true, "backfill": true, "bisect": true,
+	"branch": true, "bundle": true, "checkout": true, "cherry-pick": true,
+	"citool": true, "clean": true, "clone": true, "commit": true, "describe": true,
+	"diff": true, "fetch": true, "format-patch": true, "gc": true, "grep": true, "gui": true, "init": true, "log": true, "maintenance": true,
+	"merge": true, "mv": true, "notes": true, "pull": true, "push": true,
+	"range-diff": true, "rebase": true, "reset": true, "restore": true,
+	"revert": true, "rm": true, "shortlog": true, "show": true,
+	"sparse-checkout": true, "stash": true, "status": true, "submodule": true,
+	"switch": true, "tag": true, "worktree": true,
+	// Ancillary manipulators and interrogators.
+	"config": true, "fast-export": true, "fast-import": true, "filter-branch": true,
+	"mergetool": true, "pack-refs": true, "prune": true, "reflog": true,
+	"refs": true, "remote": true, "repack": true, "replace": true,
+	"annotate": true, "blame": true, "bugreport": true, "count-objects": true,
+	"diagnose": true, "difftool": true, "fsck": true, "help": true,
+	"instaweb": true, "merge-tree": true, "rerere": true, "show-branch": true,
+	"verify-commit": true, "verify-tag": true, "version": true, "whatchanged": true,
+	// Interacting with others.
+	"archimport": true, "cvsexportcommit": true, "cvsimport": true,
+	"cvsserver": true, "imap-send": true, "p4": true, "quiltimport": true,
+	"request-pull": true, "send-email": true, "svn": true,
+	// Low-level manipulators and interrogators.
+	"apply": true, "checkout-index": true, "commit-graph": true, "commit-tree": true,
+	"hash-object": true, "index-pack": true, "merge-file": true, "merge-index": true,
+	"mktag": true, "mktree": true, "multi-pack-index": true, "pack-objects": true,
+	"prune-packed": true, "read-tree": true, "replay": true, "symbolic-ref": true,
+	"unpack-objects": true, "update-index": true, "update-ref": true, "write-tree": true,
+	"cat-file": true, "cherry": true, "diff-files": true, "diff-index": true,
+	"diff-pairs": true, "diff-tree": true, "for-each-ref": true, "for-each-repo": true,
+	"get-tar-commit-id": true, "ls-files": true, "ls-remote": true, "ls-tree": true,
+	"merge-base": true, "name-rev": true, "pack-redundant": true, "rev-list": true,
+	"rev-parse": true, "show-index": true, "show-ref": true, "unpack-file": true,
+	"var": true, "verify-pack": true,
+	// Syncing repositories, and the helpers pulling and pushing run.
+	"daemon": true, "fetch-pack": true, "http-backend": true, "send-pack": true,
+	"update-server-info": true, "http-fetch": true, "http-push": true,
+	"receive-pack": true, "shell": true, "upload-archive": true, "upload-pack": true,
+	// Internal helper commands.
+	"check-attr": true, "check-ignore": true, "check-mailmap": true,
+	"check-ref-format": true, "column": true, "credential": true,
+	"credential-cache": true, "credential-store": true, "fmt-merge-msg": true,
+	"hook": true, "interpret-trailers": true, "mailinfo": true, "mailsplit": true,
+	"merge-one-file": true, "patch-id": true, "sh-i18n": true, "sh-setup": true,
+	"stripspace": true,
 }
 
 // gitLeavesTreeAlone reports whether every git command in s is one of

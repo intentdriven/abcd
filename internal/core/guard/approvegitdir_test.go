@@ -256,7 +256,7 @@ func TestApproveReadsEveryWrapperThatChangesTheDirectory(t *testing.T) {
 // (nsenter, chroot, runuser, doas, xargs) or one a later table adds, or
 // behind an option the list does not classify (sudo -R, unshare -R, an
 // abbreviated option that leaves the directory alone), is refused as
-// unfixed: an unknown wrapper fails closed. Behind a listed wrapper and its
+// unfixed: a wrapper the walk knows and the list does not fails closed. Behind a listed wrapper and its
 // listed options git is judged as plain git. Watched failing before: each
 // refused line here was approved, except `timeout --kill 1 5 git log -1`,
 // already refused under git-dir-not-own as an abbreviation of a value flag
@@ -483,4 +483,93 @@ func TestApproveJudgesGitDirWhereTheLineCannotBeReadInOrder(t *testing.T) {
 			t.Errorf("%q: refused under %s, which leaves it alone: %s", line, gitDirEntryID, a.Reason)
 		}
 	}
+}
+
+// TestApproveRefusesGitBehindAProgramTheWalkDoesNotStepThrough: the walk to
+// a command steps through only the wrappers it knows, so git behind any other
+// program is no git site, and its directory is never judged. A word naming
+// git (git, or a fixed path ending in git) that the walk did not reach as a
+// git site, followed by a git option, a word the line does not fix or a
+// subcommand git documents, is refused under git-dir-not-own as unfixed,
+// naming git and the program it stands behind. A word naming git with
+// nothing after it, or with an ordinary word after it, is left alone. Watched
+// failing before: each refused line here was approved.
+func TestApproveRefusesGitBehindAProgramTheWalkDoesNotStepThrough(t *testing.T) {
+	r, _ := gitDirRig(t)
+	for line, program := range map[string]string{
+		`caffeinate git -C nested log -1`:       "caffeinate",
+		`xcrun git -C nested status`:            "xcrun",
+		`watch git -C nested status`:            "watch",
+		`arch -arm64 git -C nested status`:      "arch",
+		`cd nested && caffeinate git status`:    "caffeinate",
+		`echo git status`:                       "echo",
+		`prog /usr/bin/git log -1`:              "prog",
+		`prog git --git-dir=bare.git log -1`:    "prog",
+		`nice prog git -C nested log -1`:        "prog",
+		`prog -x prog git -C nested log -1`:     "prog",
+		`git status; prog git -C nested status`: "prog",
+	} {
+		a := approveShell(clean(), r.files(), line)
+		if a.Allow || a.EntryID != gitDirEntryID || !strings.Contains(a.Reason, "git, standing behind "+program) {
+			t.Errorf("%q: want a refusal under %s naming git behind %s, got %+v", line, gitDirEntryID, program, a)
+		}
+	}
+	// A word after git that the line does not fix may be a subcommand; the
+	// registry refuses this one first, and either way it is refused.
+	if a := approveShell(clean(), r.files(), `prog git "$X" -C nested log -1`); a.Allow {
+		t.Errorf("git behind prog with an unfixed word after it was approved")
+	}
+	for _, line := range []string{
+		`grep git file`,
+		`echo git`,
+		`brew info git`,
+		`printf 'git log -1'`,
+		`prog git/ -l`,
+	} {
+		if a := approveShell(clean(), r.files(), line); a.EntryID == gitDirEntryID {
+			t.Errorf("%q: refused under %s, which leaves it alone: %s", line, gitDirEntryID, a.Reason)
+		}
+	}
+}
+
+// TestGitSubcommandsHoldEveryListedOne: the read-only and remote lists are
+// drawn from git's documented subcommands, so each of theirs is one.
+func TestGitSubcommandsHoldEveryListedOne(t *testing.T) {
+	for name := range gitReadsOnly {
+		if !gitSubcommands[name] {
+			t.Errorf("gitReadsOnly holds %q, which gitSubcommands does not", name)
+		}
+	}
+	for name := range gitRemoteSubcommands {
+		if !gitSubcommands[name] {
+			t.Errorf("gitRemoteSubcommands holds %q, which gitSubcommands does not", name)
+		}
+	}
+}
+
+// TestApproveReadsABackgroundedGitCommandAsOutOfTextOrder: a command ended
+// by & runs beside the ones after it, so a write or change of directory
+// later in the text may come before git looks for its repository. A line
+// holding one is read as running out of text order for git-dir-not-own:
+// where it writes or changes directory anywhere, every git command in it is
+// refused. Watched failing before: each refused line here was approved, or
+// refused under another rule.
+func TestApproveReadsABackgroundedGitCommandAsOutOfTextOrder(t *testing.T) {
+	r, _ := gitDirRig(t)
+	for _, line := range []string{
+		`git status & cd nested`,
+		`git status & cd sub`,
+		`git log -1 & touch notes; wait`,
+		`(git status) & touch notes`,
+		`git log -1 & mkdir -p sub/x`,
+	} {
+		a := approveShell(clean(), r.files(), line)
+		if a.Allow || a.EntryID != gitDirEntryID {
+			t.Errorf("%q: want a refusal under %s, got %+v", line, gitDirEntryID, a)
+		}
+	}
+	r.run(t, []approveCase{
+		{`git status & git log -1`, nil},
+		{`git log -1 && git status`, nil},
+	})
 }

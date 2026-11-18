@@ -321,9 +321,12 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int, carry ma
 	// also counts an earlier git command not known to leave the working tree
 	// alone (gitLeavesTreeAlone); unordered says the line runs its commands
 	// out of text order and writes or changes directory somewhere, so a git
-	// command in it may run after any of them.
+	// command in it may run after any of them. For that rule a command run
+	// in the background (backgrounded) runs out of text order too: what the
+	// line does after it may come first.
 	gitWrote, unordered := false, false
-	if runsOutOfTextOrder(placed) {
+	outOfOrder := runsOutOfTextOrder(placed)
+	if outOfOrder {
 		wholeCarried = map[string]string{}
 		for name, v := range carry {
 			wholeCarried[name] = v
@@ -331,6 +334,8 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int, carry ma
 		for _, p := range placed {
 			carryEnvironment(p.seg, wholeCarried)
 		}
+	}
+	if outOfOrder || backgrounded(placed) {
 		for _, p := range placed {
 			if segChangesDir(p.seg) || !gitLeavesTreeAlone(p.seg, vf) {
 				unordered = true

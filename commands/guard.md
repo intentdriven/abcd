@@ -503,15 +503,23 @@ A shell command is approved only when the guard reads it whole and clears it:
   read the way `-C` is, written whole, abbreviated (`env --chd`) or in a
   cluster (`env -iC`); one wrapper given two of them, and `sudo -i` or
   `--login`, which runs git from the target user's home directory, are
-  refused. A wrapper is read only from a short list whose options the
-  approver classifies as leaving the directory alone or changing it (`env`,
-  `sudo`, `unshare`, `nice`, `nohup`, `timeout`, `time`, `command`, `exec`,
-  `stdbuf`, `ionice`); a git command behind any other wrapper (`xargs`,
-  which may add git's options from its input, among them), or behind an
-  option the list does not classify (`sudo -R`, `sudo -s`, `unshare -R`, or
-  an abbreviation of an option that leaves the directory alone), is refused,
-  so a wrapper the approver does not know fails closed (`timeout 5 git log`
-  is judged as `git log` is).
+  refused. A wrapper the approver steps through to find the command it runs
+  is judged from a short list whose options the approver classifies as
+  leaving the directory alone or changing it (`env`, `sudo`, `unshare`,
+  `nice`, `nohup`, `timeout`, `time`, `command`, `exec`, `stdbuf`,
+  `ionice`); a git command behind any other wrapper it steps through
+  (`xargs`, which may add git's options from its input, among them), or
+  behind an option the list does not classify (`sudo -R`, `sudo -s`,
+  `unshare -R`, or an abbreviation of an option that leaves the directory
+  alone), is refused (`timeout 5 git log` is judged as `git log` is). Git
+  standing behind any other program, as a word naming git (`git`, or a
+  fixed path ending in `git`) followed by a git option, a word the line
+  does not spell out or a subcommand git documents, is refused too, since
+  the line does not say where that program runs it (`echo git status` is
+  refused; `grep git notes` is left alone). Still not read: git behind such
+  a program followed by a word git does not document, such as an alias or
+  a `git-<name>` command of its own, and git that a program starts by a
+  name the line does not spell, such as a script that runs git.
   A plain subdirectory, a submodule (whose `.git` file points into the
   working tree's own git directory) and a git directory outside the working
   tree that points nowhere inside it are left to the other rules; a
@@ -525,9 +533,10 @@ A shell command is approved only when the guard reads it whole and clears it:
   known to leave the working tree alone (`status`, `log`, `diff`, `show` and
   other readers, and `branch` or `remote` with no arguments), so `git switch
   other && cd sub && git log` is refused. A line that runs its commands out
-  of text order, a loop or a function, and writes or changes directory
-  anywhere has every git command in it refused (`for i in 1 2; do git
-  status; cd sub; done`);
+  of text order, a loop, a function or a command run in the background
+  with `&`, and writes or changes directory anywhere has every git command
+  in it refused (`for i in 1 2; do git status; cd sub; done` and `git
+  status & cd sub` are refused);
 - nothing removes, moves or recursively changes (`chmod -R`, `chown -R`) a
   path that is, or may be, the root, a top-level directory, the home directory
   or a directory directly in it, the working tree or a directory above it, or
