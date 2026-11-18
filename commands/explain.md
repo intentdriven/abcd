@@ -28,9 +28,12 @@ It prints, in at most 40 lines and in this order:
 - the command's path and its one sentence (what it does, what it writes and
   when it refuses);
 - the usage line;
-- each flag with its type, the values it accepts when it takes a closed set,
-  its default and whether it is required, then the flags it inherits from the
-  commands above it, such as `--json`;
+- each flag with its type, the values it accepts when it takes a closed set
+  (`one of` for a single value; on a list flag, `each one of` for every member,
+  or `each value's tier one of` where the set applies to one segment of each
+  value, so a route value is `<agent>=<tier>`, never a tier alone), its default
+  and whether it is required, then the flags it inherits from the commands
+  above it, such as `--json`;
 - each filled-in input it reads, with the schema version this binary reads and
   the call that prints the input's shape;
 - the worked example, when it has one;
@@ -73,9 +76,13 @@ questions prints it.
 For a command, `--json` prints `format_version` and `commands`, a list holding
 the command's facts: `path`, `hidden` when the command itself is declared
 hidden, `sentence`, `usage`, `flags` (each with `name`, `shorthand`, `type`,
-`default`, `required`, `allowed`, `persistent` and `hidden`, a field left out
-when it is empty or false), `inputs` (each with `flag`, `kind`, `name`,
-`schema_version` and `version_in`), `example` and `subcommands`. A sub-command
+`default`, `required`, `allowed`, `each`, `persistent` and `hidden`, a field
+left out when it is empty or false; `each` is present only on a list flag and
+says what in each value `allowed` applies to: `member` when every member of a
+comma-list or repeated value is one of the set, or the name of the segment
+that is, such as `tier` in a route's `<agent>=<tier>`), `inputs` (each with
+`flag`, `kind`, `name`, `schema_version` and `version_in`), `example` and
+`subcommands`. A sub-command
 of a hidden parent, such as one on the hook plane, carries no `hidden` key of
 its own, though its text answer says `(hidden)`. With `--input` it prints the
 input's shape: `path`, `flag`, `name`, `schema_version`, `version_in`, `root`
