@@ -25,13 +25,23 @@ package guard
 //   - git init --separate-git-dir <git-dir>: the repository is made there,
 //     or, on a reinitialization, moved there.
 //
+// The directory git runs in is the shell's, as each cd the line fixes leaves
+// it, then as each env -C or --chdir (env(1)) and sudo -D or --chdir
+// (sudo(8)) before git changes it, resolved the way -C is.
+//
 // A submodule's git file points into the working tree's own git directory,
 // and is left alone; so is a git directory outside the working tree, which
 // the approver's other rules judge. A directory the line does not fix is
-// refused.
+// refused, and so is one git would find its repository from when the line
+// leaves it unknown. After an earlier command of the line writes, which may
+// make a repository where none stood, a git command is refused that runs in
+// a directory inside the working tree other than its root or its own git
+// directories, or names a git directory inside the working tree other than
+// its own.
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -47,19 +57,187 @@ var gitDirEnv = []string{"GIT_DIR", "GIT_COMMON_DIR"}
 // gitDirRefusal reports a git command in s, run in the shell state st with
 // carried the environment the line's earlier commands leave it, whose git
 // directory stands inside the working tree and is not the working tree's
-// own, or is named by a directory the line does not fix.
-func (f approveFacts) gitDirRefusal(rc *readCtx, s segment, st *shellState, valueFlags []string, carried map[string]string) (Approval, bool) {
+// own, or is named by a directory the line does not fix. wrote says an
+// earlier command of the line writes or removes a path.
+func (f approveFacts) gitDirRefusal(rc *readCtx, s segment, st *shellState, valueFlags []string, carried map[string]string, wrote bool) (Approval, bool) {
 	if len(f.gitTrees) == 0 {
 		return Approval{}, false
 	}
 	for _, site := range sitesNamed(s, "git") {
 		from := site.idx + 1
 		env := readGitConfigIn(carried, s.tokens[:site.idx], s.tokens[from:], valueFlags).env
-		if a, ok := f.gitDirOf(rc, s, from, st, valueFlags, env); ok {
+		at, a, refused := wrapperDir(rc, s, site.idx, st)
+		if refused {
+			return a, true
+		}
+		if a, ok := f.gitDirOf(rc, s, from, at, valueFlags, env, wrote); ok {
 			return a, true
 		}
 	}
 	return Approval{}, false
+}
+
+// wrapperChdirFlags names, per wrapper, the options of its
+// wrapperValueFlags that change the directory the command after it runs in:
+// env's -C and --chdir (env(1)) and sudo's -D and --chdir (sudo(8)).
+var wrapperChdirFlags = map[string][]string{
+	"env":  {"-C", "--chdir"},
+	"sudo": {"-D", "--chdir"},
+}
+
+// wrapperChdir is one change of directory a wrapper makes before the command
+// it runs: the option that makes it, the index of the word holding its value
+// and the value, with whether the shell expands a leading ~ in it.
+type wrapperChdir struct {
+	flag  string
+	idx   int
+	word  string
+	tilde bool
+}
+
+// wrapperDir is the shell state st as the wrappers before the git site at
+// index end of s leave it: each change of directory wrapperChdirs reads,
+// resolved in order the way git's -C is. One whose value the line does not
+// fix is refused; so, where wrapperChdirs cannot place the site, is any word
+// before it that may be a change of directory (mayChangeDir).
+func wrapperDir(rc *readCtx, s segment, end int, st *shellState) (*shellState, Approval, bool) {
+	at := *st
+	at.dirOK = st.dirOK && st.dir != ""
+	changes, placed := wrapperChdirs(s, end)
+	if !placed {
+		for i := 0; i < end; i++ {
+			if mayChangeDir(s.tokens[i]) {
+				return nil, gitDirUnfixedRefusal("a wrapper's change of directory"), true
+			}
+		}
+		return &at, Approval{}, false
+	}
+	for _, c := range changes {
+		if _, ok := fixedToken(s, c.idx); !ok {
+			return nil, gitDirUnfixedRefusal(c.flag), true
+		}
+		p, ok := at.resolve(rc, c.word, c.tilde)
+		if !ok {
+			return nil, gitDirUnfixedRefusal(c.flag), true
+		}
+		at.dir, at.dirOK = p, true
+	}
+	return &at, Approval{}, false
+}
+
+// wrapperChdirs reads the words of s before index end as the walk to command
+// position reads known words (commandArrivals): assignments and reserved
+// words stepped, and each wrapper with its options, the value of each of its
+// wrapperValueFlags, and its wrapperOperands. It returns each change of
+// directory wrapperChdirFlags names, written whole, abbreviated, glued or
+// last in a short-option cluster, and whether the reading arrives at end. A
+// word the line does not fix, a program that is not a wrapper, or a word
+// left over leaves the site unplaced.
+func wrapperChdirs(s segment, end int) ([]wrapperChdir, bool) {
+	toks := s.tokens
+	var out []wrapperChdir
+	value := func(flag string, i int) (wrapperChdir, bool) {
+		if i >= end {
+			return wrapperChdir{}, false
+		}
+		return wrapperChdir{flag, i, toks[i], strings.HasPrefix(toks[i], "~")}, true
+	}
+	i, assigns := 0, false
+	for i < end {
+		tok := toks[i]
+		if isAssignment(tok) || reserved[tok] || assigns && isWrapperAssignment(tok) {
+			i++
+			continue
+		}
+		w := strings.ToLower(path.Base(tok))
+		if isUnknown(tok) || !wrappers[w] {
+			return nil, false
+		}
+		assigns = envAssigns[w]
+		vf, cf := wrapperValueFlags[w], wrapperChdirFlags[w]
+		long := containsString(cf, "--chdir")
+		for i++; i < end; i++ {
+			o := toks[i]
+			if o == "--" {
+				i++
+				break
+			}
+			if o == "-" || !strings.HasPrefix(o, "-") {
+				break
+			}
+			if isUnknown(o) {
+				return nil, false
+			}
+			if strings.HasPrefix(o, "--") {
+				name, v, glued := strings.Cut(o, "=")
+				switch {
+				case long && longFlagIs(o, "--chdir") && glued:
+					out = append(out, wrapperChdir{name, i, v, false})
+				case long && longFlagIs(o, "--chdir"):
+					i++
+					c, ok := value(name, i)
+					if !ok {
+						return nil, false
+					}
+					out = append(out, c)
+				case !glued && containsString(vf, o):
+					i++
+				}
+				continue
+			}
+			// A short option, or a cluster of them: the first that takes a
+			// value takes the rest of the word, or the next word.
+			for k := 1; k < len(o); k++ {
+				flag := "-" + o[k:k+1]
+				if !containsString(vf, flag) {
+					continue
+				}
+				c := wrapperChdir{flag, i, o[k+1:], false}
+				if c.word == "" {
+					i++
+					var ok bool
+					if c, ok = value(flag, i); !ok {
+						return nil, false
+					}
+				}
+				if containsString(cf, flag) {
+					out = append(out, c)
+				}
+				break
+			}
+		}
+		for left := wrapperOperands[w]; left > 0; left-- {
+			if i >= end {
+				return nil, false
+			}
+			i++
+		}
+	}
+	return out, i == end
+}
+
+// mayChangeDir reports whether a word may be one of wrapperChdirFlags, written
+// whole, abbreviated or glued, or a short-option cluster carrying one, read
+// as flagCouldBe and longFlagIs read a word the line does not fix.
+func mayChangeDir(tok string) bool {
+	lead := knownLead(tok)
+	for _, flags := range wrapperChdirFlags {
+		for _, flag := range flags {
+			if strings.HasPrefix(flag, "--") {
+				if strings.HasPrefix(lead, "--") && longFlagIs(tok, flag) || isUnknown(tok) && flagCouldBe(tok, flag) {
+					return true
+				}
+				continue
+			}
+			if isUnknown(tok) && (flagCouldBe(tok, flag) || clusterCouldCarry(tok, flag[1])) {
+				return true
+			}
+			if strings.HasPrefix(lead, "-") && !strings.HasPrefix(lead, "--") && strings.IndexByte(lead[1:], flag[1]) >= 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // gitDirName is one git directory a command names, with what names it.
@@ -71,12 +249,13 @@ type gitDirName struct {
 }
 
 // gitDirOf judges the one git command whose arguments start at index from of
-// s: git's own options up to its subcommand, read in order as git reads
-// them, then the git directory they leave it with.
-func (f approveFacts) gitDirOf(rc *readCtx, s segment, from int, st *shellState, valueFlags []string, env map[string]string) (Approval, bool) {
+// s, run in the directory start leaves it: git's own options up to its
+// subcommand, read in order as git reads them, then the git directory they
+// leave it with. wrote says an earlier command of the line writes or removes
+// a path (writtenStray).
+func (f approveFacts) gitDirOf(rc *readCtx, s segment, from int, start *shellState, valueFlags []string, env map[string]string, wrote bool) (Approval, bool) {
 	args := s.tokens[from:]
-	at := *st
-	at.dirOK = st.dirOK && st.dir != ""
+	at := *start
 	var named []gitDirName
 	var dir *gitDirName
 	if v, ok := env["GIT_DIR"]; ok {
@@ -131,9 +310,12 @@ func (f approveFacts) gitDirOf(rc *readCtx, s segment, from int, st *shellState,
 		named = append(named, *dir)
 	}
 	for _, n := range named {
-		if a, ok := f.namedGitDir(rc, &at, n, true); ok {
+		if a, ok := f.namedGitDir(rc, &at, n, true, wrote); ok {
 			return a, true
 		}
+	}
+	if wrote && at.dirOK && f.writtenStray(at.dir, true) {
+		return gitDirUnfixedRefusal(writtenWhat("the directory git runs in")), true
 	}
 	switch {
 	case dir == nil && bare:
@@ -147,14 +329,55 @@ func (f approveFacts) gitDirOf(rc *readCtx, s segment, from int, st *shellState,
 		if name, ok := f.discoveredStray(at.dir); ok {
 			return f.gitDirStrayRefusal(name), true
 		}
+	case dir == nil:
+		// git finds its repository by its walk upward from a directory the
+		// line leaves unknown. A program name the line does not fix is
+		// refused as unnamed (unnamedProgramEntryID), whose reason says more.
+		if _, ok := fixedToken(s, from-1); ok {
+			return gitDirUnfixedRefusal("the directory git runs in"), true
+		}
 	}
-	return f.separateGitDir(rc, s, from, &at, valueFlags)
+	return f.separateGitDir(rc, s, from, &at, valueFlags, wrote)
+}
+
+// writtenWhat names what a refusal after an earlier write judged.
+func writtenWhat(what string) string {
+	return what + ", after an earlier command of the line writes"
+}
+
+// writtenStray reports whether p, a clean absolute path git runs in (dir) or
+// reads as its git directory, may stand where an earlier command of the
+// line made a repository: inside the working tree, judged as written and
+// with its existing directories resolved through symlinks, and neither in
+// the working tree's own git directories nor, for a directory git runs in,
+// the working tree's root, from which git finds the tree's own .git.
+func (f approveFacts) writtenStray(p string, dir bool) bool {
+	for _, c := range []string{p, fsutil.RealExistingPath(p)} {
+		if !f.within(c, f.gitTrees) || f.within(c, f.ownGitDirs) {
+			continue
+		}
+		if dir && f.isGitTree(c) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// isGitTree reports whether p is one of gitTrees itself.
+func (f approveFacts) isGitTree(p string) bool {
+	for _, t := range f.gitTrees {
+		if fsutil.PathWithin(p, t, f.fold) && fsutil.PathWithin(t, p, f.fold) {
+			return true
+		}
+	}
+	return false
 }
 
 // namedGitDir judges a git directory n names, read from the directory at
 // leaves git in; follow says a git file there is read for the directory it
-// names.
-func (f approveFacts) namedGitDir(rc *readCtx, at *shellState, n gitDirName, follow bool) (Approval, bool) {
+// names, and wrote that an earlier command of the line writes (writtenStray).
+func (f approveFacts) namedGitDir(rc *readCtx, at *shellState, n gitDirName, follow, wrote bool) (Approval, bool) {
 	if isUnknown(n.word) || strings.ContainsRune(n.word, varMark) {
 		return gitDirUnfixedRefusal(n.what), true
 	}
@@ -164,6 +387,9 @@ func (f approveFacts) namedGitDir(rc *readCtx, at *shellState, n gitDirName, fol
 	p, ok := at.resolve(rc, n.word, n.tilde)
 	if !ok {
 		return gitDirUnfixedRefusal(n.what), true
+	}
+	if wrote && f.writtenStray(p, false) {
+		return gitDirUnfixedRefusal(writtenWhat(n.what)), true
 	}
 	stray := f.strayGitDir
 	if !follow {
@@ -178,7 +404,7 @@ func (f approveFacts) namedGitDir(rc *readCtx, at *shellState, n gitDirName, fol
 // separateGitDir reads `git init --separate-git-dir <git-dir>`
 // (git-init(1)), the option written whole or abbreviated, its value glued
 // after `=` or the next word, read from the directory at leaves git in.
-func (f approveFacts) separateGitDir(rc *readCtx, s segment, from int, at *shellState, valueFlags []string) (Approval, bool) {
+func (f approveFacts) separateGitDir(rc *readCtx, s segment, from int, at *shellState, valueFlags []string, wrote bool) (Approval, bool) {
 	args := s.tokens[from:]
 	for _, op := range firstOperands(args, valueFlags) {
 		if args[op] != "init" && !isUnknown(args[op]) {
@@ -211,7 +437,7 @@ func (f approveFacts) separateGitDir(rc *readCtx, s segment, from int, at *shell
 			default:
 				continue
 			}
-			if a, ok := f.namedGitDir(rc, at, n, false); ok {
+			if a, ok := f.namedGitDir(rc, at, n, false, wrote); ok {
 				return a, true
 			}
 		}
@@ -318,9 +544,9 @@ func (f approveFacts) gitDirStrayRefusal(p string) Approval {
 }
 
 // gitDirUnfixedRefusal is the refusal of a git command whose directory, or
-// git directory, what names by a word the line does not fix.
+// git directory, what names in a way the line does not fix.
 func gitDirUnfixedRefusal(what string) Approval {
 	return refusal(gitDirEntryID,
-		"this git command names the directory it runs in or the git directory it reads ("+termsafe.Sanitize(what)+") by a word the line does not spell out, or by a relative path after a change of directory the line leaves unknown, so the guard cannot say which repository's configuration git reads.",
-		"the same git command with the directory spelled out in full.")
+		"this git command runs in, or reads its git directory from, a place the line does not fix ("+termsafe.Sanitize(what)+"): a word the line does not spell out, a directory or relative path after a change of directory the line leaves unknown, or a directory inside the working tree after an earlier command of the line writes, which may have made a repository there, so the guard cannot say which repository's configuration git reads.",
+		"the same git command with the directory spelled out in full, run from the working tree's root or in a line of its own.")
 }

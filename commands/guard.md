@@ -490,10 +490,17 @@ A shell command is approved only when the guard reads it whole and clears it:
   (a `.git` there, or a bare repository), or as `--git-dir`, `GIT_DIR` (set on
   the command or exported earlier in the line), `GIT_COMMON_DIR` or `--bare`
   names it; `git init --separate-git-dir` aimed inside the working tree is
-  refused too. A plain subdirectory, a submodule (whose `.git` file points
-  into the working tree's own git directory) and a git directory outside the
-  working tree are left to the other rules; a directory the line does not
-  spell out is refused;
+  refused too. A change of directory by `env -C` or `--chdir`, or by `sudo -D`
+  or `--chdir`, before git is read the way `-C` is. A plain subdirectory, a
+  submodule (whose `.git` file points into the working tree's own git
+  directory) and a git directory outside the working tree are left to the
+  other rules; a directory the line does not spell out is refused, and so is
+  a git command run after a `cd` the line leaves unknown. After an earlier
+  command of the line writes, which may make a repository where none stood,
+  a git command that runs in a directory inside the working tree other than
+  its root, or names a git directory inside it other than its own, is
+  refused (`touch notes && git -C sub log` is refused; `touch notes && git
+  log` is approved);
 - nothing removes, moves or recursively changes (`chmod -R`, `chown -R`) a
   path that is, or may be, the root, a top-level directory, the home directory
   or a directory directly in it, the working tree or a directory above it, or

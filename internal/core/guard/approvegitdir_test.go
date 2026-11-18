@@ -118,3 +118,79 @@ func TestApproveRefusesAGitCommandAimedAtASecondGitDirectoryInTheTree(t *testing
 		}
 	}
 }
+
+// TestApproveJudgesTheDirectoryGitRunsInAfterAnUnfixedCdAWriteOrAWrapper:
+// git finds its repository from the directory it runs in, so a git command
+// is refused under git-dir-not-own when that directory is one the line does
+// not fix (after a cd the line leaves unknown), when an earlier command of
+// the line writes and the directory or the git directory named stands inside
+// the working tree away from its root and its own git directories (the write
+// may have made a repository there), and when a wrapper's change of directory
+// (env -C or --chdir, sudo -D or --chdir) moves git to a second git directory
+// or to a directory the line does not fix. A launch directory the reading
+// knows, with no cd, a write followed by git at the root, and a wrapper's
+// change to a plain subdirectory are left alone. Watched failing before:
+// each refused line here was approved, or refused under path-not-fixed for
+// git's -C alone.
+func TestApproveJudgesTheDirectoryGitRunsInAfterAnUnfixedCdAWriteOrAWrapper(t *testing.T) {
+	r, outside := gitDirRig(t)
+	// out is a link in the tree to the repository outside it, which a write
+	// earlier in a line may point elsewhere.
+	if err := os.Symlink(outside, filepath.Join(r.dir, "out")); err != nil {
+		t.Fatal(err)
+	}
+	refused := []string{
+		// The directory git runs in is unknown.
+		`cd nested; git log -1`,
+		`cd "$D" && git log -1`,
+		`cd "$(echo nested)" && git status`,
+		// An earlier command of the line writes.
+		`cp -R bare.git sub/copy && git -C sub/copy log -1`,
+		`cp -R bare.git sub/copy && cd sub/copy && git log -1`,
+		`mkdir -p sub/x && git -C sub/x log -1`,
+		`touch prog && git --git-dir=out/.git log -1`,
+		`touch prog && GIT_DIR=out/.git git log -1`,
+		// A wrapper changes the directory.
+		`env -C nested git log -1`,
+		`env -Cnested git log -1`,
+		`env --chdir=nested git log -1`,
+		`env --chdir nested git log -1`,
+		`env -i -C bare.git git log -1`,
+		`env -C sub git -C ../nested log -1`,
+		`env -C sub env -C ../bare.git git log -1`,
+		`env -u X -C nested git log -1`,
+		`timeout 5 env --chd=nested git log -1`,
+		`env --unset=$(echo X) -C nested git log -1`,
+		`sudo -D nested git log -1`,
+		`sudo --chdir=bare.git git log -1`,
+		`env -C "$D" git log -1`,
+		`sudo -D "$D" git log -1`,
+		`env -C "" git log -1`,
+	}
+	for _, line := range refused {
+		a := approveShell(clean(), r.files(), line)
+		if a.Allow || a.EntryID != gitDirEntryID {
+			t.Errorf("%q: want a refusal under %s, got %+v", line, gitDirEntryID, a)
+		}
+	}
+	r.run(t, []approveCase{
+		{`git log -1`, nil},
+		{`git status`, nil},
+		{`touch prog && git log -1`, nil},
+		{`touch prog && git --git-dir=.git log -1`, nil},
+		{`env -C sub git log -1`, nil},
+		{`env --chdir=sub git log -1`, nil},
+		{`env -C mod git log -1`, nil},
+	})
+	// Left to the approver's other rules, as git's own -C is.
+	for _, line := range []string{
+		`git --git-dir=out/.git log -1`,
+		`env -C ` + outside + ` git log -1`,
+		`sudo -D sub git log -1`,
+		`sudo -u prog git log -1`,
+	} {
+		if a := approveShell(clean(), r.files(), line); a.EntryID == gitDirEntryID {
+			t.Errorf("%q: refused under %s, which leaves it alone: %s", line, gitDirEntryID, a.Reason)
+		}
+	}
+}

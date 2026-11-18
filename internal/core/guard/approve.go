@@ -363,7 +363,7 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int, carry ma
 		}
 		for _, st := range states {
 			for _, env := range envs {
-				if a, ok := facts.gitDirRefusal(rc, p.seg, st, vf, env); ok {
+				if a, ok := facts.gitDirRefusal(rc, p.seg, st, vf, env, wroteBefore); ok {
 					return a
 				}
 			}
