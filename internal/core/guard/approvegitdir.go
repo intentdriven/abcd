@@ -21,9 +21,18 @@ package guard
 //   - GIT_COMMON_DIR: where the files a worktree shares, its config among
 //     them, are taken from;
 //   - --bare with no git directory named: "it is set to the current working
-//     directory";
+//     directory", the one current when git reads --bare, so the first
+//     --bare counts and a later -C does not move it;
 //   - git init --separate-git-dir <git-dir>: the repository is made there,
-//     or, on a reinitialization, moved there.
+//     or, on a reinitialization, moved there;
+//   - a path among the operands of a subcommand that reaches another
+//     repository (push, fetch, pull, ls-remote, clone, submodule, and
+//     archive's --remote): git runs against the repository it names
+//     (gitRemoteSubcommands).
+//
+// A git directory that is a git file, or that holds a commondir file, is
+// judged by where that file points, wherever the file itself stands, so a
+// git file outside the working tree that points inside it is refused.
 //
 // The directory git runs in is the shell's, as each cd the line fixes leaves
 // it, then as each env -C or --chdir (env(1)), sudo -D or --chdir (sudo(8))
@@ -32,17 +41,23 @@ package guard
 // which the line does not fix. A wrapper is read only when it is on the short
 // list of wrappers the approver knows (wrapperDirFlags), and only through the
 // options that list classifies as leaving the directory alone or changing
-// it; behind any other wrapper or option, where git runs is not fixed.
+// it; behind any other wrapper or option, where git runs is not fixed, and so
+// it is behind a wrapper given two changes of directory, which its parser
+// may not apply in order as git's -C is.
 //
 // A submodule's git file points into the working tree's own git directory,
-// and is left alone; so is a git directory outside the working tree, which
-// the approver's other rules judge. A directory the line does not fix is
-// refused, and so is one git would find its repository from when the line
-// leaves it unknown. After an earlier command of the line writes, which may
-// make a repository where none stood, a git command is refused that runs in
-// a directory inside the working tree other than its root or its own git
-// directories, or names a git directory inside the working tree other than
-// its own.
+// and is left alone; so is a git directory outside the working tree that
+// points nowhere inside it, which the approver's other rules judge. A
+// directory the line does not fix is refused, and so is one git would find
+// its repository from when the line leaves it unknown. After an earlier
+// command of the line writes, which may make a repository where none stood,
+// a git command is refused that runs in a directory inside the working tree
+// other than its root or its own git directories, or names a git directory
+// inside the working tree other than its own; a git command not known to
+// leave the working tree alone (gitLeavesTreeAlone) counts as such a write.
+// A line that runs its commands out of text order (runsOutOfTextOrder) and
+// writes or changes directory anywhere has every git command in it refused,
+// since a later command's write or cd may come first.
 
 import (
 	"os"
@@ -63,12 +78,20 @@ var gitDirEnv = []string{"GIT_DIR", "GIT_COMMON_DIR"}
 // carried the environment the line's earlier commands leave it, whose git
 // directory stands inside the working tree and is not the working tree's
 // own, or is named by a directory the line does not fix. wrote says an
-// earlier command of the line writes or removes a path.
-func (f approveFacts) gitDirRefusal(rc *readCtx, s segment, st *shellState, valueFlags []string, carried map[string]string, wrote bool) (Approval, bool) {
+// earlier command of the line writes or removes a path, or is a git command
+// not known to leave the working tree alone; unordered that the line runs
+// its commands out of text order and writes or changes directory somewhere,
+// which refuses every git command in it.
+func (f approveFacts) gitDirRefusal(rc *readCtx, s segment, st *shellState, valueFlags []string, carried map[string]string, wrote, unordered bool) (Approval, bool) {
 	if len(f.gitTrees) == 0 {
 		return Approval{}, false
 	}
 	for _, site := range sitesNamed(s, "git") {
+		// A program name the line does not fix is refused as unnamed
+		// (unnamedProgramEntryID), whose reason says more.
+		if _, named := fixedToken(s, site.idx); unordered && named {
+			return gitDirUnfixedRefusal("a line that runs its commands out of text order, and writes or changes directory"), true
+		}
 		from := site.idx + 1
 		env := readGitConfigIn(carried, s.tokens[:site.idx], s.tokens[from:], valueFlags).env
 		at, a, refused := wrapperDir(rc, s, site.idx, st)
@@ -105,12 +128,15 @@ type wrapperDirOptions struct{ chdir, keep []string }
 // user's shell; and xargs, which adds git's arguments, -C and --git-dir
 // among them, from its input, which the line does not fix.
 var wrapperDirFlags = map[string]wrapperDirOptions{
-	// env(1), GNU and BSD: environment and signal options.
+	// env(1), GNU and BSD: environment and signal options, the name the
+	// program is given (GNU -a and --argv0) and the path searched for it
+	// (BSD -P).
 	"env": {
 		chdir: []string{"-C", "--chdir"},
 		keep: []string{
 			"-i", "--ignore-environment", "-0", "--null", "-u", "--unset", "-v", "--debug",
 			"--default-signal", "--ignore-signal", "--block-signal", "--list-signal-handling",
+			"-a", "--argv0", "-P",
 		},
 	},
 	// sudo(8): who the command runs as, how sudo asks, and what it keeps.
@@ -212,7 +238,10 @@ func wrapperDir(rc *readCtx, s segment, end int, st *shellState) (*shellState, A
 // option the wrapper has, and the list names only those it classifies. When
 // the reading meets a word the line does not fix, a program wrapperDirFlags
 // does not list, an option it does not classify, or does not arrive at end,
-// it stops and returns what stopped it, which wrapperDir refuses.
+// it stops and returns what stopped it, which wrapperDir refuses. It stops,
+// too, at one wrapper given two changes of directory: env, sudo and unshare
+// keep one value and change to it from where they start, not each in turn as
+// git's -C does, and the reading does not model which one each keeps.
 func wrapperChdirs(s segment, end int) ([]wrapperChdir, string) {
 	toks := s.tokens
 	var out []wrapperChdir
@@ -244,6 +273,7 @@ func wrapperChdirs(s segment, end int) ([]wrapperChdir, string) {
 		}
 		assigns = envAssigns[w]
 		vf := wrapperValueFlags[w]
+		first := len(out)
 		for i++; i < end; i++ {
 			o := toks[i]
 			if o == "--" {
@@ -312,6 +342,9 @@ func wrapperChdirs(s segment, end int) ([]wrapperChdir, string) {
 				break
 			}
 		}
+		if len(out)-first > 1 {
+			return nil, "a second change of directory given to " + name
+		}
 		for left := wrapperOperands[w]; left > 0; left-- {
 			if i >= end {
 				return nil, short
@@ -361,7 +394,11 @@ func (f approveFacts) gitDirOf(rc *readCtx, s segment, from int, start *shellSta
 	if v, ok := env["GIT_COMMON_DIR"]; ok {
 		named = append(named, gitDirName{"GIT_COMMON_DIR", v, strings.HasPrefix(v, "~")})
 	}
-	bare := false
+	// bareAt is where git stands when it reads the first --bare, which sets
+	// the git directory to that directory unless one is already named
+	// (git(1)): a later -C does not move it, and a later --git-dir names
+	// another.
+	var bareAt *shellState
 	limit := firstOperandLimit(args, valueFlags)
 	for i := 0; i < limit && i < len(args); i++ {
 		w := args[i]
@@ -393,7 +430,10 @@ func (f approveFacts) gitDirOf(rc *readCtx, s segment, from int, start *shellSta
 			}
 			dir = &gitDirName{"--git-dir", strings.TrimPrefix(w, "--git-dir="), false}
 		case w == "--bare":
-			bare = true
+			if bareAt == nil {
+				b := at
+				bareAt = &b
+			}
 		case isUnknown(w):
 			if flagCouldBe(w, "-C") || flagCouldBe(w, "--git-dir") || flagCouldBe(w, "--bare") ||
 				strings.HasPrefix(knownLead(w), "--git-dir=") || unknownFlagCouldBe(w, "--git-dir=") {
@@ -415,11 +455,14 @@ func (f approveFacts) gitDirOf(rc *readCtx, s segment, from int, start *shellSta
 		return gitDirUnfixedRefusal(writtenWhat("the directory git runs in")), true
 	}
 	switch {
-	case dir == nil && bare:
-		if !at.dirOK {
+	case dir == nil && bareAt != nil:
+		if !bareAt.dirOK {
 			return gitDirUnfixedRefusal("--bare"), true
 		}
-		if name, ok := f.strayGitDir(at.dir); ok {
+		if wrote && f.writtenStray(bareAt.dir, false) {
+			return gitDirUnfixedRefusal(writtenWhat("--bare")), true
+		}
+		if name, ok := f.strayGitDir(bareAt.dir); ok {
 			return f.gitDirStrayRefusal(name), true
 		}
 	case dir == nil && at.dirOK:
@@ -434,7 +477,182 @@ func (f approveFacts) gitDirOf(rc *readCtx, s segment, from int, start *shellSta
 			return gitDirUnfixedRefusal("the directory git runs in"), true
 		}
 	}
+	if a, ok := f.remoteRepoRefusal(rc, s, from, &at, valueFlags); ok {
+		return a, true
+	}
 	return f.separateGitDir(rc, s, from, &at, valueFlags, wrote)
+}
+
+// gitRemoteSubcommands are git's subcommands that run against a second
+// repository named among their operands, by a path or a URL: push, fetch,
+// pull and ls-remote take "the remote repository" (git-push(1),
+// git-fetch(1), git-pull(1), git-ls-remote(1)), clone "the (possibly
+// remote) repository to clone from" (git-clone(1)), and submodule add "the
+// URL of the new submodule's origin repository" (git-submodule(1)); a local
+// path there runs git against that repository, its config read and its
+// hooks run. archive reaches one only through --remote (git-archive(1)),
+// marked true, so its other operands, a tree and paths, are not read.
+var gitRemoteSubcommands = map[string]bool{
+	"push": false, "fetch": false, "pull": false, "ls-remote": false,
+	"clone": false, "submodule": false, "archive": true,
+}
+
+// remoteRepoRefusal reads a git command whose subcommand reaches another
+// repository (gitRemoteSubcommands), its arguments starting at index from of
+// s, run in the directory at leaves git in: each operand, and the value of a
+// --repo or --remote option (glued, or for archive the next word), that is
+// an existing path holding a git directory other than the working tree's own
+// is refused (strayRepoAt). An unknown subcommand is read as one of these,
+// and an operand the line does not fix is refused, since it may name such a
+// path. A URL with a scheme or an scp-like host: names no local path, and
+// file:// is read as the path after it.
+func (f approveFacts) remoteRepoRefusal(rc *readCtx, s segment, from int, at *shellState, valueFlags []string) (Approval, bool) {
+	args := s.tokens[from:]
+	for _, op := range firstOperands(args, valueFlags) {
+		sub := args[op]
+		remoteOnly, known := gitRemoteSubcommands[sub]
+		if !known && !isUnknown(sub) {
+			continue
+		}
+		what := "an operand of git " + sub
+		if isUnknown(sub) {
+			what = "an operand of a git subcommand the line does not spell out"
+		}
+		judge := func(j int, word string, glued bool) (Approval, bool) {
+			if _, ok := fixedToken(s, from+j); !ok {
+				return gitDirUnfixedRefusal(what), true
+			}
+			p, tilde := word, !glued && strings.HasPrefix(word, "~")
+			if rest, ok := strings.CutPrefix(p, "file://"); ok {
+				p, tilde = rest, false
+			} else if strings.Contains(p, "://") {
+				return Approval{}, false
+			}
+			if c := strings.IndexByte(p, ':'); c >= 0 && !strings.Contains(p[:c], "/") {
+				return Approval{}, false // host:path, which git reads as a remote host
+			}
+			if p == "" {
+				return Approval{}, false
+			}
+			path, ok := at.resolve(rc, p, tilde)
+			if !ok {
+				return gitDirUnfixedRefusal(what), true
+			}
+			if name, ok := f.strayRepoAt(path); ok {
+				return f.gitDirStrayRefusal(name), true
+			}
+			return Approval{}, false
+		}
+		for j := op + 1; j < len(args); j++ {
+			w := args[j]
+			switch {
+			case w == "--":
+				continue
+			case isUnknown(w):
+				// A word the line does not spell out may be such an operand,
+				// or archive's --remote.
+				if lead := knownLead(w); !remoteOnly || lead == "" || strings.HasPrefix("--remote", lead) || longFlagIs(w, "--remote") {
+					return gitDirUnfixedRefusal(what), true
+				}
+			case strings.HasPrefix(w, "--"):
+				name, v, glued := strings.Cut(w, "=")
+				switch {
+				case glued && (longFlagIs(name, "--repo") || longFlagIs(name, "--remote")):
+					if a, ok := judge(j, v, true); ok {
+						return a, true
+					}
+				case remoteOnly && !glued && longFlagIs(name, "--remote") && j+1 < len(args):
+					j++
+					if a, ok := judge(j, args[j], false); ok {
+						return a, true
+					}
+				}
+			case strings.HasPrefix(w, "-") || remoteOnly:
+				continue
+			default:
+				if a, ok := judge(j, w, false); ok {
+					return a, true
+				}
+			}
+		}
+	}
+	return Approval{}, false
+}
+
+// strayRepoAt reports whether the local path p, an operand naming a
+// repository, holds a git directory other than the working tree's own, as
+// git looks for one there: p/.git, p itself as a git directory or a git
+// file, then p.git/.git and p.git. Each found is judged as strayGitDir
+// judges it; a plain directory, or nothing at all, holds none.
+func (f approveFacts) strayRepoAt(p string) (string, bool) {
+	real := fsutil.RealExistingPath(p)
+	for _, base := range []string{real, real + ".git"} {
+		if _, err := os.Lstat(filepath.Join(base, ".git")); err == nil {
+			return f.strayGitDir(filepath.Join(base, ".git"))
+		}
+		fi, err := os.Stat(base)
+		if err != nil {
+			continue
+		}
+		if fi.IsDir() && gitDirShaped(base) {
+			return f.strayGitDir(base)
+		}
+		if fi.Mode().IsRegular() {
+			if _, ok := pointedTo(base, "gitdir: "); ok {
+				return f.strayGitDir(base)
+			}
+		}
+	}
+	return "", false
+}
+
+// gitReadsOnly are git's subcommands known to leave the working tree alone,
+// each by its page's own account of what it does: status "displays paths
+// that have differences" (git-status(1)); log "shows the commit logs"
+// (git-log(1)); diff "shows changes" (git-diff(1)); show "shows one or more
+// objects" (git-show(1)); rev-parse picks out and massages parameters
+// (git-rev-parse(1)); rev-list lists commit objects (git-rev-list(1));
+// ls-files "shows information about files in the index and the working
+// tree" (git-ls-files(1)); ls-tree lists the contents of a tree object
+// (git-ls-tree(1)); cat-file provides the contents of repository objects
+// (git-cat-file(1)); show-ref and for-each-ref list references
+// (git-show-ref(1), git-for-each-ref(1)); describe gives an object a name
+// (git-describe(1)); merge-base finds common ancestors (git-merge-base(1));
+// blame shows who last changed each line (git-blame(1)); shortlog
+// summarizes the log (git-shortlog(1)); version prints git's version. With
+// true, branch and remote are on the list only with no arguments, where they
+// list (git-branch(1), git-remote(1)). Any other subcommand may change the
+// working tree, and so counts as a write for git-dir-not-own.
+var gitReadsOnly = map[string]bool{
+	"status": false, "log": false, "diff": false, "show": false, "rev-parse": false,
+	"rev-list": false, "ls-files": false, "ls-tree": false, "cat-file": false,
+	"show-ref": false, "for-each-ref": false, "describe": false, "merge-base": false,
+	"blame": false, "shortlog": false, "version": false,
+	"branch": true, "remote": true,
+}
+
+// gitLeavesTreeAlone reports whether every git command in s is one of
+// gitReadsOnly, read from its subcommand on: a subcommand the line does not
+// spell out, or one off the list, may change the working tree, and so may a
+// listed one given a word the line does not spell out or --output, written
+// whole or abbreviated, which writes the diff to a file (git-diff(1)).
+func gitLeavesTreeAlone(s segment, valueFlags []string) bool {
+	for _, site := range sitesNamed(s, "git") {
+		args := s.tokens[site.idx+1:]
+		for _, op := range firstOperands(args, valueFlags) {
+			bare, listed := gitReadsOnly[args[op]]
+			rest := args[op+1:]
+			if isUnknown(args[op]) || !listed || bare && len(rest) > 0 {
+				return false
+			}
+			for _, w := range rest {
+				if isUnknown(w) || longFlagIs(w, "--output") {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 // writtenWhat names what a refusal after an earlier write judged.
@@ -553,43 +771,83 @@ func (f approveFacts) strayPath(p string) (string, bool) {
 	return p, true
 }
 
-// strayGitDir is strayPath for a git directory git reads: a git file
-// (a .git that is a regular file) is judged by the directory its "gitdir: "
-// line names (gitutil.GitfileTarget), and one that names none, or a regular
-// file by another name, is refused.
+// strayGitDir is strayPath for a git directory git reads, wherever it
+// stands: a git file (a regular file, as git reads one named by --git-dir
+// or GIT_DIR, or found as a .git) is judged by the directory its "gitdir: "
+// line names, and one that names none is refused; a directory, and the
+// directory a git file names, is judged with the one its commondir file
+// names (strayRepoDir).
 func (f approveFacts) strayGitDir(p string) (string, bool) {
-	name, ok := f.strayPath(p)
-	if !ok {
-		return "", false
-	}
 	real := fsutil.RealExistingPath(p)
 	if fi, err := os.Stat(real); err == nil && fi.Mode().IsRegular() {
-		if !strings.EqualFold(filepath.Base(real), ".git") {
-			return name, true
-		}
-		target, ok := gitutil.GitfileTarget(filepath.Dir(real))
+		target, ok := pointedTo(real, "gitdir: ")
 		if !ok {
-			return name, true
+			return p, true
 		}
-		return f.strayPath(target)
+		return f.strayRepoDir(target)
 	}
-	return name, true
+	return f.strayRepoDir(p)
+}
+
+// strayRepoDir judges the git directory p and, where it holds a commondir
+// file, the directory that names, from which git takes the config a
+// worktree shares (gitrepository-layout(5)). A commondir that is there and
+// cannot be read is refused.
+func (f approveFacts) strayRepoDir(p string) (string, bool) {
+	if name, ok := f.strayPath(p); ok {
+		return name, true
+	}
+	cd := filepath.Join(fsutil.RealExistingPath(p), "commondir")
+	if _, err := os.Lstat(cd); err != nil {
+		return "", false
+	}
+	common, ok := pointedTo(cd, "")
+	if !ok {
+		return cd, true
+	}
+	return f.strayPath(common)
+}
+
+// pointerCap bounds a git file or commondir file pointedTo reads.
+const pointerCap = 4 << 10
+
+// pointedTo is the path the first line of the file p holds after prefix
+// ("gitdir: " for a git file, nothing for commondir), joined to p's
+// directory when relative and cleaned. It reads through fsutil.ReadGuarded,
+// so a symlinked, non-regular or oversized file, or a first line without
+// prefix or with nothing after it, answers false.
+func pointedTo(p, prefix string) (string, bool) {
+	b, err := fsutil.ReadGuarded(p, pointerCap)
+	if err != nil {
+		return "", false
+	}
+	line, _, _ := strings.Cut(string(b), "\n")
+	target, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), prefix)
+	if !ok || target == "" {
+		return "", false
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(p), target)
+	}
+	return filepath.Clean(target), true
 }
 
 // discoveredStray judges the git directory git finds from dir by its walk
 // upward: the first directory at or above dir that is itself a repository
 // (gitDirShaped), below the nearest one holding a .git entry
-// (gitutil.RepoShapedRoot), else that entry. A dir outside the working
-// tree, or inside its own git directories, is left alone.
+// (gitutil.RepoShapedRoot), else that entry, each judged as strayGitDir
+// judges it, so a walk from outside the working tree that reaches a git
+// file or commondir pointing inside it is refused. A dir inside the working
+// tree's own git directories is left alone.
 func (f approveFacts) discoveredStray(dir string) (string, bool) {
 	real := fsutil.RealExistingPath(dir)
-	if !f.within(real, f.gitTrees) || f.within(real, f.ownGitDirs) {
+	if f.within(real, f.ownGitDirs) {
 		return "", false
 	}
 	marker := gitutil.RepoShapedRoot(real)
-	for d := real; d != marker && f.within(d, f.gitTrees); d = filepath.Dir(d) {
+	for d := real; d != marker; d = filepath.Dir(d) {
 		if gitDirShaped(d) {
-			return d, true
+			return f.strayGitDir(d)
 		}
 		if filepath.Dir(d) == d {
 			break
@@ -602,11 +860,12 @@ func (f approveFacts) discoveredStray(dir string) (string, bool) {
 }
 
 // gitDirShaped reports whether d has the shape of a git directory, a bare
-// repository's or a worktree's: a HEAD file, with an objects or refs
-// directory or a commondir file beside it. It is looser than git's own
-// check, so it refuses more, never less.
+// repository's or a worktree's: a HEAD entry, a file or a symlink whether
+// it leads anywhere or not (git takes a symlink HEAD by its text), with an
+// objects or refs directory or a commondir file beside it. It is looser
+// than git's own check, so it refuses more, never less.
 func gitDirShaped(d string) bool {
-	if fi, err := os.Stat(filepath.Join(d, "HEAD")); err != nil || !fi.Mode().IsRegular() {
+	if fi, err := os.Lstat(filepath.Join(d, "HEAD")); err != nil || !fi.Mode().IsRegular() && fi.Mode()&os.ModeSymlink == 0 {
 		return false
 	}
 	for _, n := range []string{"objects", "refs", "commondir"} {

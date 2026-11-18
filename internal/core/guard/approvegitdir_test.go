@@ -103,8 +103,8 @@ func TestApproveRefusesAGitCommandAimedAtASecondGitDirectoryInTheTree(t *testing
 		{`echo GIT_DIR=bare.git`, nil},
 	})
 	// A git command with -C is judged by the approver's other rules as
-	// before (git's writes there are not placed); this rule leaves these
-	// alone.
+	// before (git's writes there are not placed, so path-not-fixed refuses
+	// each); this rule leaves these alone.
 	for _, line := range []string{
 		`git -C . log -1`,
 		`git -C sub log -1`,
@@ -112,6 +112,8 @@ func TestApproveRefusesAGitCommandAimedAtASecondGitDirectoryInTheTree(t *testing
 		`git -C mod log -1`,
 		`git -C .git log -1`,
 		`git -C ` + outside + ` log -1`,
+		`git status && git -C sub log -1`,
+		`git log --oneline && git -C sub log -1`,
 	} {
 		if a := approveShell(clean(), r.files(), line); a.EntryID == gitDirEntryID {
 			t.Errorf("%q: refused under %s, which leaves it alone: %s", line, gitDirEntryID, a.Reason)
@@ -181,13 +183,13 @@ func TestApproveJudgesTheDirectoryGitRunsInAfterAnUnfixedCdAWriteOrAWrapper(t *t
 		{`env -C sub git log -1`, nil},
 		{`env --chdir=sub git log -1`, nil},
 		{`env -C mod git log -1`, nil},
+		{`env -C ` + outside + ` git log -1`, nil},
+		{`sudo -D sub git log -1`, nil},
+		{`sudo -u prog git log -1`, nil},
 	})
 	// Left to the approver's other rules, as git's own -C is.
 	for _, line := range []string{
 		`git --git-dir=out/.git log -1`,
-		`env -C ` + outside + ` git log -1`,
-		`sudo -D sub git log -1`,
-		`sudo -u prog git log -1`,
 	} {
 		if a := approveShell(clean(), r.files(), line); a.EntryID == gitDirEntryID {
 			t.Errorf("%q: refused under %s, which leaves it alone: %s", line, gitDirEntryID, a.Reason)
@@ -241,16 +243,10 @@ func TestApproveReadsEveryWrapperThatChangesTheDirectory(t *testing.T) {
 		{`unshare --wd=sub git log -1`, nil},
 		{`env -i git log -1`, nil},
 		{`env -iC sub git log -1`, nil},
+		{`env --chd sub git log -1`, nil},
+		{`sudo -u prog git log -1`, nil},
+		{`sudo -n git log -1`, nil},
 	})
-	for _, line := range []string{
-		`env --chd sub git log -1`,
-		`sudo -u prog git log -1`,
-		`sudo -n git log -1`,
-	} {
-		if a := approveShell(clean(), r.files(), line); a.EntryID == gitDirEntryID {
-			t.Errorf("%q: refused under %s, which leaves it alone: %s", line, gitDirEntryID, a.Reason)
-		}
-	}
 }
 
 // TestApproveRefusesGitBehindAWrapperItCannotRead: the approver reads the
@@ -262,7 +258,9 @@ func TestApproveReadsEveryWrapperThatChangesTheDirectory(t *testing.T) {
 // abbreviated option that leaves the directory alone), is refused as
 // unfixed: an unknown wrapper fails closed. Behind a listed wrapper and its
 // listed options git is judged as plain git. Watched failing before: each
-// refused line here was approved.
+// refused line here was approved, except `timeout --kill 1 5 git log -1`,
+// already refused under git-dir-not-own as an abbreviation of a value flag
+// and kept to hold that.
 func TestApproveRefusesGitBehindAWrapperItCannotRead(t *testing.T) {
 	r, _ := gitDirRig(t)
 	// An invented wrapper the walk knows and the list does not name.
@@ -308,12 +306,178 @@ func TestApproveRefusesGitBehindAWrapperItCannotRead(t *testing.T) {
 		{`stdbuf -o0 git log -1`, nil},
 		{`ionice -c 3 git log -1`, nil},
 		{`env -i GIT_PAGER=cat git log -1`, nil},
+		{`sudo -u prog -n git log -1`, nil},
+		{`command git log -1`, nil},
+		{`exec git log -1`, nil},
+		{`unshare -r git log -1`, nil},
+	})
+}
+
+// gitDirPointerRig is gitDirRig with the fixtures that point git elsewhere:
+// in the tree, linked, a directory whose HEAD is a symlink that leads
+// nowhere, beside objects and refs; outside it, w, a working tree whose .git
+// is a git file pointing at the tree's bare.git, wt, a worktree's git
+// directory whose commondir names bare.git, and pointer, a git file by
+// another name pointing there.
+func gitDirPointerRig(t *testing.T) (approveRig, string, string) {
+	t.Helper()
+	r, outside := gitDirRig(t)
+	linked := filepath.Join(r.dir, "linked")
+	for _, d := range []string{"objects", "refs"} {
+		if err := os.MkdirAll(filepath.Join(linked, d), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink("refs/heads/main", filepath.Join(linked, "HEAD")); err != nil {
+		t.Fatal(err)
+	}
+	away := t.TempDir()
+	bare := filepath.Join(r.dir, "bare.git")
+	for _, d := range []string{"w", "wt"} {
+		if err := os.MkdirAll(filepath.Join(away, d), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, text := range map[string]string{
+		filepath.Join("w", ".git"):       "gitdir: " + bare + "\n",
+		filepath.Join("wt", "HEAD"):      "ref: refs/heads/main\n",
+		filepath.Join("wt", "commondir"): bare + "\n",
+		"pointer":                        "gitdir: " + bare + "\n",
+	} {
+		if err := os.WriteFile(filepath.Join(away, name), []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return r, outside, away
+}
+
+// TestApproveJudgesGitDirWhereTheLineCannotBeReadInOrder: git-dir-not-own
+// refuses, as unfixed, what the line's text cannot place exactly, and
+// follows each pointer git follows. Refused: a wrapper given two changes of
+// directory, which its parser keeps one of rather than applying both in
+// turn; a line that runs its commands out of text order (a loop, a
+// function) and writes or changes directory anywhere; --bare read where it
+// stands, before a later -C; a git file, or a worktree's commondir, outside
+// the tree that points inside it, reached by --git-dir, GIT_DIR, -C or a
+// cd; a directory whose HEAD is a symlink, leading anywhere or not; a git
+// command after an earlier git command not known to leave the working tree
+// alone; and a git command that reaches a second repository in the tree by
+// a local path among its operands. Left alone: nested wrappers each with one
+// change, a loop that neither writes nor changes directory, a later
+// --git-dir over --bare, git commands after read-only ones, remote names and
+// plain directories as operands, and env's -P, -a and --argv0, now read as
+// leaving the directory alone. Watched failing before: each refused line
+// here was approved or refused under another rule; env -P and --argv0=
+// were refused under git-dir-not-own as options it did not classify, and
+// env -a and --argv0 written apart kept git out of the walk, so a git command
+// behind them went unjudged.
+func TestApproveJudgesGitDirWhereTheLineCannotBeReadInOrder(t *testing.T) {
+	r, outside, away := gitDirPointerRig(t)
+	w, wt, pointer := filepath.Join(away, "w"), filepath.Join(away, "wt"), filepath.Join(away, "pointer")
+	refused := []string{
+		// One wrapper, two changes of directory.
+		`env -C sub -C nested git log -1`,
+		`env -C .. -C nested git log -1`,
+		`env -C ` + outside + ` -C nested git log -1`,
+		`env -C nested --chdir=.. git log -1`,
+		`sudo -D sub -D nested git log -1`,
+		`unshare -w sub -w nested git log -1`,
+		// Out of text order, with a write or a change of directory.
+		`for i in 1 2; do git status; cd nested; done`,
+		`for i in 1 2; do git -C sub/c status; cp -R bare.git sub/c; done`,
+		`while true; do git log -1; mkdir -p sub/x; done`,
+		`f() { git log -1; }; cd nested; f`,
+		`f() { git status; }; touch prog; f`,
+		`f() { git -C sub log -1; }; mkdir -p sub/.git; f`,
+		`for i in 1 2; do git log -1; git switch prog; done`,
+		// --bare where git reads it.
+		`git -C bare.git --bare -C ` + outside + ` log -1`,
+		`git -C bare.git --bare -C ../.git log -1`,
+		`git -C bare.git --bare -C ` + outside + ` --bare log -1`,
+		// A pointer outside the tree into it.
+		`git --git-dir=` + filepath.Join(w, ".git") + ` log -1`,
+		`GIT_DIR=` + filepath.Join(w, ".git") + ` git log -1`,
+		`git -C ` + w + ` log -1`,
+		`cd ` + w + ` && git log -1`,
+		`git --git-dir=` + wt + ` log -1`,
+		`git -C ` + wt + ` log -1`,
+		`git --git-dir=` + pointer + ` log -1`,
+		// A HEAD that is a symlink.
+		`git -C linked status`,
+		`cd linked && git log -1`,
+		// An earlier git command that may change the working tree.
+		`git switch prog && git -C sub log -1`,
+		`git merge prog && git -C sub log -1`,
+		`git stash pop && cd sub && git log -1`,
+		`git diff --output=prog && git -C sub log -1`,
+		`git log --out=prog && git -C sub log -1`,
+		`git branch prog && git -C sub log -1`,
+		// A second repository named by a local path.
+		`git push ./nested HEAD:refs/heads/t`,
+		`git push nested HEAD`,
+		`git fetch bare.git`,
+		`git fetch bare`,
+		`git pull ./nested`,
+		`git ls-remote nested`,
+		`git clone nested sub/copy`,
+		`git clone file://` + filepath.Join(r.dir, "nested") + ` sub/copy`,
+		`git push --repo=nested HEAD`,
+		`git archive --remote=bare.git HEAD`,
+		`git archive --remote bare.git HEAD`,
+		`git submodule add ./nested sub/n`,
+		`git -C sub fetch ../nested`,
+		`git push ` + w + ` HEAD`,
+		`git fetch linked`,
+		`git fetch "$R"`,
+		// env's newly read options still find git behind them.
+		`env -a prog git -C nested log -1`,
+		`env --argv0 prog git -C nested log -1`,
+	}
+	for _, line := range refused {
+		a := approveShell(clean(), r.files(), line)
+		if a.Allow || a.EntryID != gitDirEntryID {
+			t.Errorf("%q: want a refusal under %s, got %+v", line, gitDirEntryID, a)
+		}
+	}
+	// The names a refusal gives.
+	for line, names := range map[string]string{
+		`git -C bare.git --bare -C ` + outside + ` log -1`: "bare.git",
+		`git -C ` + w + ` log -1`:                          "bare.git",
+		`git -C ` + wt + ` log -1`:                         "bare.git",
+		`git -C linked status`:                             "linked",
+		`git push ./nested HEAD:refs/heads/t`:              "nested",
+		`git fetch bare`:                                   "bare.git",
+	} {
+		if a := approveShell(clean(), r.files(), line); !strings.Contains(a.Reason, names) {
+			t.Errorf("%q: want a reason naming %s, got %+v", line, names, a)
+		}
+	}
+	r.run(t, []approveCase{
+		{`env -C sub env -C .. git log -1`, nil},
+		{`for i in 1 2; do git log -1; done`, nil},
+		{`for i in 1 2; do git status; git log -1; done`, nil},
+		{`f() { git log -1; }; f`, nil},
+		{`git status && cd sub && git log -1`, nil},
+		{`git log --oneline && cd sub && git log -1`, nil},
+		{`git branch && cd sub && git log -1`, nil},
+		{`git switch prog && git log -1`, nil},
+		{`git fetch origin`, nil},
+		{`git push origin HEAD`, nil},
+		{`git fetch origin sub`, nil},
+		{`git push . HEAD:refs/heads/t`, nil},
+		{`git fetch mod`, nil},
+		{`git ls-remote ` + outside, nil},
+		{`git archive HEAD nested`, nil},
+		{`env -P /usr/bin git log -1`, nil},
+		{`env -a prog git log -1`, nil},
+		{`env --argv0=prog git log -1`, nil},
+		{`env --argv0 prog git log -1`, nil},
 	})
 	for _, line := range []string{
-		`sudo -u prog -n git log -1`,
-		`command git log -1`,
-		`exec git log -1`,
-		`unshare -r git log -1`,
+		`git -C bare.git --bare --git-dir=` + filepath.Join(outside, ".git") + ` log -1`,
+		`git -C ` + outside + ` log -1`,
+		`git status && git -C sub log -1`,
+		`git log --oneline && git -C sub log -1`,
 	} {
 		if a := approveShell(clean(), r.files(), line); a.EntryID == gitDirEntryID {
 			t.Errorf("%q: refused under %s, which leaves it alone: %s", line, gitDirEntryID, a.Reason)

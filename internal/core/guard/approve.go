@@ -317,6 +317,12 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int, carry ma
 		carried[name] = v
 	}
 	var wholeCarried map[string]string
+	// gitWrote is wrote for the git directory rule (approvegitdir.go), which
+	// also counts an earlier git command not known to leave the working tree
+	// alone (gitLeavesTreeAlone); unordered says the line runs its commands
+	// out of text order and writes or changes directory somewhere, so a git
+	// command in it may run after any of them.
+	gitWrote, unordered := false, false
 	if runsOutOfTextOrder(placed) {
 		wholeCarried = map[string]string{}
 		for name, v := range carry {
@@ -325,9 +331,20 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int, carry ma
 		for _, p := range placed {
 			carryEnvironment(p.seg, wholeCarried)
 		}
+		for _, p := range placed {
+			if segChangesDir(p.seg) || !gitLeavesTreeAlone(p.seg, vf) {
+				unordered = true
+			}
+			for _, st := range p.states {
+				if len(pathUses(rc, p.seg, st)) > 0 {
+					unordered = true
+				}
+			}
+		}
 	}
 	for _, p := range placed {
 		wroteBefore := wrote
+		gitWroteBefore := wrote || gitWrote
 		// A command a git setting runs is judged as run from the working
 		// tree, so only where the reading placed git there.
 		states := p.states
@@ -363,10 +380,13 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int, carry ma
 		}
 		for _, st := range states {
 			for _, env := range envs {
-				if a, ok := facts.gitDirRefusal(rc, p.seg, st, vf, env, wroteBefore); ok {
+				if a, ok := facts.gitDirRefusal(rc, p.seg, st, vf, env, gitWroteBefore, unordered); ok {
 					return a
 				}
 			}
+		}
+		if !gitLeavesTreeAlone(p.seg, vf) {
+			gitWrote = true
 		}
 		carryEnvironment(p.seg, carried)
 		for _, st := range p.states {
