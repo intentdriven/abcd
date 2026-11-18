@@ -776,7 +776,7 @@ func reserveStart(repoRoot string, chk CheckResult, o Options) (reserved, error)
 	}
 	fp := o.reserve
 	if fp == nil {
-		if fp, err = runFootprint(repoRoot, chk.Key, chk.Spec, "nothing was started"); err != nil {
+		if fp, err = runFootprint(repoRoot, chk.Key, chk.Spec, nil, "nothing was started"); err != nil {
 			return reserved{}, err
 		}
 	}
@@ -853,7 +853,7 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 		// An auto-plan run has no spec yet: it reserves the draft's two
 		// paths, as its start did (autoplan.go).
 		fp = autoPlanFootprint(*ap)
-	} else if fp, err = runFootprint(repoRoot, st.Key, st.Spec, res.RunID+" is unchanged"); err != nil {
+	} else if fp, err = runFootprint(repoRoot, st.Key, st.Spec, st.builtSteps(), res.RunID+" is unchanged"); err != nil {
 		return err
 	} else {
 		fp = heldWith(fp, widenedPaths(st))
@@ -1021,7 +1021,7 @@ func reserveOnLeavingLand(repoRoot string, st State, lane Lane, to Stage, now ti
 	issue := st.Issue() != ""
 	var fp []string
 	if issue {
-		if fp, err = runFootprint(repoRoot, st.Key, st.Spec, "the lane stays at its landing and nothing is pushed"); err != nil {
+		if fp, err = runFootprint(repoRoot, st.Key, st.Spec, st.builtSteps(), "the lane stays at its landing and nothing is pushed"); err != nil {
 			return "", err
 		}
 	}
@@ -1117,13 +1117,15 @@ func covers(held, fp []string) bool {
 }
 
 // runFootprint is the footprint a run's record names to reserve its key
-// with: an intent's spec's `## Footprint` packages line, each cleaned, and an
+// with: an intent's spec's packages (specPackages: those of the steps still
+// to build, or the `## Footprint` packages line), each cleaned, and an
 // issue's found_at path, read from whichever status folder holds the issue:
 // a resume is not re-judged, and the run's own lane resolves its issue, so an
-// issue that has left open/ mid-run still names its footprint. A record that
+// issue that has left open/ mid-run still names its footprint. built is the
+// spec steps the run has opened lanes for, nil for a start. A record that
 // names none is refused at the reservation, its reason ending with outcome
 // (what was not done).
-func runFootprint(repoRoot, key, specID, outcome string) ([]string, error) {
+func runFootprint(repoRoot, key, specID string, built []int, outcome string) ([]string, error) {
 	if validIssueKey(key) {
 		lr, err := capture.List(capture.ListRequest{RepoRoot: repoRoot, State: capture.StateAll})
 		if err != nil {
@@ -1140,7 +1142,7 @@ func runFootprint(repoRoot, key, specID, outcome string) ([]string, error) {
 		return nil, refuse(StageReservation, "", "", key+" has no found_at path to reserve it with; give it a found_at naming the file the fix changes, then run abcd build again; "+outcome,
 			"give the issue's record a found_at naming the file the fix changes, which the build reserves it with")
 	}
-	fp, err := specPackages(repoRoot, specID)
+	fp, err := specPackages(repoRoot, specID, built)
 	var entry *footprintEntryError
 	if errors.As(err, &entry) {
 		return nil, refuse(StageReservation, "", "", entry.Error()+", then run abcd build again; "+outcome,
@@ -1165,41 +1167,130 @@ func noFootprint(specID, key string) string {
 // maxSpecBytes caps a spec read the loop makes for its footprint.
 const maxSpecBytes = 1 << 20
 
-// specPackages is the packages specID's `## Footprint` section names, each
-// read as written when that names something in the tree and otherwise as its
-// leading path alone, a trailing parenthetical note dropped, and cleaned (a
-// trailing slash dropped), in the order written; empty when the
-// spec has no such section or it names none. An entry that is still prose,
-// holding whitespace and naming nothing in the tree, is a
+// specPackages is the packages specID names for a build to reserve: those
+// of its steps still to build (stepEntries), or, when the steps cannot say,
+// its `## Footprint` packages line (footprintLine). Each entry is read as
+// written when that names something in the tree and otherwise as its leading
+// path alone, a trailing parenthetical note dropped, and cleaned (a trailing
+// slash dropped), in the order written, each once; empty when the spec names
+// none. A step entry that is still prose, holding whitespace and naming
+// nothing in the tree, means the steps cannot say, so the Footprint line
+// stands (iss-2611181755106054); a Footprint entry that is still prose is a
 // *footprintEntryError rather than a path that shares nothing with the
 // package it means (iss-2610241549334990).
-func specPackages(repoRoot, specID string) ([]string, error) {
-	store, err := spec.Load(repoRoot)
+func specPackages(repoRoot, specID string, built []int) ([]string, error) {
+	content, err := specContent(repoRoot, specID)
 	if err != nil {
 		return nil, err
+	}
+	if entries := stepEntries(content, built); len(entries) > 0 {
+		if out, prose := packagePaths(repoRoot, entries); prose == "" && len(out) > 0 {
+			return out, nil
+		}
+	}
+	return footprintLine(repoRoot, specID, content)
+}
+
+// footprintLine is the packages content's `## Footprint` packages line
+// names, read as specPackages reads an entry; an entry that is still prose
+// is a *footprintEntryError naming specID.
+func footprintLine(repoRoot, specID, content string) ([]string, error) {
+	out, prose := packagePaths(repoRoot, spec.ReadFootprint(content).Packages)
+	if prose != "" {
+		return nil, &footprintEntryError{Spec: specID, Entry: prose}
+	}
+	return out, nil
+}
+
+// specContent is specID's text, read from the spec store under maxSpecBytes.
+func specContent(repoRoot, specID string) (string, error) {
+	store, err := spec.Load(repoRoot)
+	if err != nil {
+		return "", err
 	}
 	sp, ok := store.Lookup(specID)
 	if !ok {
-		return nil, fmt.Errorf("%s is not in the spec store", specID)
+		return "", fmt.Errorf("%s is not in the spec store", specID)
 	}
 	data, err := fsutil.ReadGuarded(filepath.Join(repoRoot, filepath.FromSlash(sp.Path)), maxSpecBytes)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
+	return string(data), nil
+}
+
+// packagePaths is entries read as paths (specPackages says how), each once,
+// or the first entry that is still prose, as written, with nothing else.
+func packagePaths(repoRoot string, entries []string) ([]string, string) {
 	var out []string
-	for _, entry := range spec.ReadFootprint(string(data)).Packages {
+	for _, entry := range entries {
 		p := strings.TrimSpace(entry)
 		if !inTree(repoRoot, p) {
 			p = leadingPath(p)
 		}
 		if strings.ContainsFunc(p, unicode.IsSpace) && !inTree(repoRoot, p) {
-			return nil, &footprintEntryError{Spec: specID, Entry: entry}
+			return nil, entry
 		}
 		if p = path.Clean(p); p != "." && !slices.Contains(out, p) {
 			out = append(out, p)
 		}
 	}
-	return out, nil
+	return out, ""
+}
+
+// stepEntries is the packages entries of a spec's content its steps say a
+// build reserves, as written (iss-2611181755106054): the union, in step
+// order, of the `- packages:` lines of the steps still to build, those with
+// no `- landed:` line, so a package only a landed step touched holds no one
+// off. With every step landed, which a start refuses at the steps check and
+// so only a resumed run meets, it is the steps the run built (built), so a
+// resume reserves no wider than the run's start did and is never refused over
+// a package only a step landed before the run touched. Nil when the steps
+// cannot say, and the `## Footprint` packages line stands: a spec listing no
+// steps or a steps section that cannot be read (the steps check is that
+// refusal's place), a step to build that names no packages, since its
+// footprint is then unknown, or every step landed with none built by the run.
+// specPackages adds a fourth: an entry that names no path.
+func stepEntries(content string, built []int) []string {
+	steps, err := spec.ParseSteps(content)
+	if err != nil || len(steps) == 0 {
+		return nil
+	}
+	rest := spec.Unlanded(steps)
+	if len(rest) == 0 {
+		rest = slices.DeleteFunc(steps, func(s spec.Step) bool { return !slices.Contains(built, s.Number) })
+	}
+	var out []string
+	for _, s := range rest {
+		entries := s.PackageEntries()
+		if len(entries) == 0 {
+			return nil
+		}
+		out = append(out, entries...)
+	}
+	return out
+}
+
+// declaredPaths is the paths a walled stage of st is declared to change
+// (runner.Request.Declared): an intent's spec's `## Footprint` packages line
+// together with what the run reserves, its steps still to build, so the
+// declaration is never narrower than the Footprint line it was before the
+// reservation narrowed to the steps (iss-2611181755106054); an issue's
+// found_at alone. Nil when the record names none.
+func declaredPaths(repoRoot string, st State, outcome string) []string {
+	fp, _ := runFootprint(repoRoot, st.Key, st.Spec, st.builtSteps(), outcome)
+	if validIssueKey(st.Key) || st.Spec == "" {
+		return fp
+	}
+	content, err := specContent(repoRoot, st.Spec)
+	if err != nil {
+		return fp
+	}
+	line, err := footprintLine(repoRoot, st.Spec, content)
+	if err != nil {
+		return fp
+	}
+	return heldWith(line, fp)
 }
 
 // leadingPath is a packages entry less a trailing parenthetical note, one
@@ -1395,4 +1486,16 @@ func (s State) autoPlanLane() *AutoPlan {
 		}
 	}
 	return nil
+}
+
+// builtSteps is the spec steps s has opened a lane for, in lane order: what
+// a resumed run whose every step has landed reserves (stepEntries).
+func (s State) builtSteps() []int {
+	var out []int
+	for _, l := range s.Lanes {
+		if l.AutoPlan == nil && l.SpecStep > 0 && !slices.Contains(out, l.SpecStep) {
+			out = append(out, l.SpecStep)
+		}
+	}
+	return out
 }
