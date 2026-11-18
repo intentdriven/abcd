@@ -47,23 +47,25 @@ jobs:
   # counts none of the wait for one, and no shard runs on the merge queue's clock.
   # The ceiling only frees a scarce runner from a stuck run and does not judge speed
   # (dcn-2611062201286033), and a release cut needs this suite green.
-  # internal/core/implement/loop alone took 2137 to 2189 seconds on its own shard and
-  # runners vary about twofold, so a slow one takes about 73 minutes: the race pass's
-  # -timeout of 80m holds that, and the watchdog at 85 holds it with the set-up and a
-  # cut's uncached build. A stuck shard holds its runner for 90 minutes rather than
-  # 50, on a nightly run or a cut only. The single job before the split had reached
-  # 85 (dcn-2610282036219503); the remedy for a shard past the warning at 80 is a
+  # internal/core/implement/loop alone took 2137 to 2189 seconds on its own shard,
+  # and on 17 Nov 2026 it ran past an 80-minute -timeout on two runners in a row, a
+  # release cut's both times, with its tests still moving and none failed. The race
+  # pass's -timeout is 150m and the watchdog sits at 155, so a slow runner finishes
+  # and a stuck one still fails at the timeout with its test named. A stuck shard
+  # holds its runner for 160 minutes, on a nightly run or a cut only
+  # (dcn-2611170900489974). The single job before the split had reached 85
+  # (dcn-2610282036219503); the remedy for a shard past the warning at 150 is a
   # faster suite or a rebalance in cmd/ci-shard, which is why
   # internal/core/implement/loop holds the last shard alone.
   # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds it.
   shard:
-    timeout-minutes: 90
+    timeout-minutes: 160
     runs-on: macos-latest
     permissions:
       contents: read
     env:
       ABCD_CI_LEG: macos-suite (${{ inputs.shard }})
-      ABCD_CI_JOB_CAP_MINUTES: 90
+      ABCD_CI_JOB_CAP_MINUTES: 160
     steps:
       # The clock for the warning and the watchdog, as in ci.yml's check job.
       - name: Record the job's start
@@ -127,7 +129,7 @@ jobs:
           ABCD_CI_SHARDS: ${{ inputs.shards }}
         run: |
           pkgs=$(go run ./cmd/ci-shard -shard "$ABCD_CI_SHARD" -of "$ABCD_CI_SHARDS")
-          go test -race -count=1 -timeout 80m $pkgs
+          go test -race -count=1 -timeout 150m $pkgs
 
       # The plain-only guards on macOS (iss-2610180542030806): the same command as
       # the check job's "Test (plain-only guards)", about a minute, in the first
@@ -146,8 +148,8 @@ jobs:
         continue-on-error: true
         env:
           STARTED_AT: ${{ steps.started.outputs.epoch }}
-          WARN_AFTER_MINUTES: 80
-          CEILING_MINUTES: 90
+          WARN_AFTER_MINUTES: 150
+          CEILING_MINUTES: 160
         run: |
           case "${STARTED_AT:-}" in
             '' | *[!0-9]*)
