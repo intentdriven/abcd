@@ -194,3 +194,61 @@ func TestApproveJudgesTheDirectoryGitRunsInAfterAnUnfixedCdAWriteOrAWrapper(t *t
 		}
 	}
 }
+
+// TestApproveReadsEveryWrapperThatChangesTheDirectory: a wrapper's option
+// that changes the directory git runs in is read however its parser takes
+// it, so git is judged in the directory it reaches: a long option written as
+// an abbreviation (env --chd), short options clustered in one word (env
+// -iC), and unshare's -w and --wd, read as env -C is. sudo -i and --login run
+// git from the target user's home directory, which the line does not fix,
+// and a wrapper option that abbreviates one of the wrapper's value flags,
+// which the reading cannot tell takes the next word or not, leaves where git
+// runs unfixed: each is refused. Watched failing before: each refused line
+// here was approved.
+func TestApproveReadsEveryWrapperThatChangesTheDirectory(t *testing.T) {
+	r, _ := gitDirRig(t)
+	refused := []string{
+		// An abbreviated long option, or a cluster, hid git from the walk.
+		`env --chd nested git log -1`,
+		`env --ch bare.git git log -1`,
+		`env -iC nested git log -1`,
+		`timeout 5 env --chd nested git log -1`,
+		`env --un X git log -1`,
+		`sudo --us prog git log -1`,
+		// unshare's -w and --wd change the directory as env -C does.
+		`unshare -w nested git log -1`,
+		`unshare -wnested git log -1`,
+		`unshare --wd nested git log -1`,
+		`unshare --wd=bare.git git log -1`,
+		`unshare --w nested git log -1`,
+		`unshare -r -w bare.git git log -1`,
+		`unshare -w "$D" git log -1`,
+		// sudo -i and --login run git from a home directory.
+		`sudo -i git log -1`,
+		`sudo --login git log -1`,
+		`sudo --log git log -1`,
+		`sudo -iu prog git log -1`,
+		`sudo -u prog -i git log -1`,
+	}
+	for _, line := range refused {
+		a := approveShell(clean(), r.files(), line)
+		if a.Allow || a.EntryID != gitDirEntryID {
+			t.Errorf("%q: want a refusal under %s, got %+v", line, gitDirEntryID, a)
+		}
+	}
+	r.run(t, []approveCase{
+		{`unshare -w sub git log -1`, nil},
+		{`unshare --wd=sub git log -1`, nil},
+		{`env -i git log -1`, nil},
+		{`env -iC sub git log -1`, nil},
+	})
+	for _, line := range []string{
+		`env --chd sub git log -1`,
+		`sudo -u prog git log -1`,
+		`sudo -n git log -1`,
+	} {
+		if a := approveShell(clean(), r.files(), line); a.EntryID == gitDirEntryID {
+			t.Errorf("%q: refused under %s, which leaves it alone: %s", line, gitDirEntryID, a.Reason)
+		}
+	}
+}

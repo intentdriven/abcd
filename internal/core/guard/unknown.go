@@ -1406,6 +1406,51 @@ func readWord(tok string, valueFlags []string) wordReadings {
 	return r
 }
 
+// readWrapperWord is readWord for a wrapper's own options, which its parser
+// reads as getopt_long does: a long option written whole or as an
+// abbreviation, and short options clustered in one word. A known word that
+// may take the next word as one of valueFlags that way (abbreviatesValueFlag)
+// is read both as taking it and as standing alone, since the table names a
+// wrapper's value flags, not its every option: an abbreviation may be shared
+// with an option it does not name, and a letter in a cluster may be one. So
+// the walk arrives at the command behind `env --chd <dir>` and `env -iC
+// <dir>`, and at the word after the option as well.
+func readWrapperWord(tok string, valueFlags []string) wordReadings {
+	r := readWord(tok, valueFlags)
+	if !isUnknown(tok) && r.flag && abbreviatesValueFlag(tok, valueFlags) {
+		r.takes = true
+	}
+	return r
+}
+
+// abbreviatesValueFlag reports whether a known option word, not one of
+// valueFlags written whole, may take the next word as one of them: a long
+// option with no `=` that is a shorter spelling of one, or a short-option
+// cluster whose first letter among them is its last (an earlier one takes
+// the rest of the word).
+func abbreviatesValueFlag(tok string, valueFlags []string) bool {
+	if strings.HasPrefix(tok, "--") {
+		if len(tok) <= 2 || strings.Contains(tok, "=") {
+			return false
+		}
+		for _, f := range valueFlags {
+			if f != tok && strings.HasPrefix(f, "--") && strings.HasPrefix(f, tok) {
+				return true
+			}
+		}
+		return false
+	}
+	if len(tok) < 3 || !isShortCluster(tok) {
+		return false
+	}
+	for k := 1; k < len(tok); k++ {
+		if containsString(valueFlags, "-"+tok[k:k+1]) {
+			return k == len(tok)-1
+		}
+	}
+	return false
+}
+
 // arrival is one place the walk to command position reaches: the word at idx
 // is read there as a program name.
 type arrival struct {
@@ -1589,7 +1634,7 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 				operands(st.pos, st.wrapper, st.noglob)
 				continue
 			}
-			r := readWord(tok, wrapperValueFlags[st.wrapper])
+			r := readWrapperWord(tok, wrapperValueFlags[st.wrapper])
 			if st.wrapper == someWrapper && (r.flag || r.takes) {
 				r.flag, r.takes = true, true
 			}

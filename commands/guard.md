@@ -490,11 +490,15 @@ A shell command is approved only when the guard reads it whole and clears it:
   (a `.git` there, or a bare repository), or as `--git-dir`, `GIT_DIR` (set on
   the command or exported earlier in the line), `GIT_COMMON_DIR` or `--bare`
   names it; `git init --separate-git-dir` aimed inside the working tree is
-  refused too. A change of directory by `env -C` or `--chdir`, or by `sudo -D`
-  or `--chdir`, before git is read the way `-C` is. A plain subdirectory, a
-  submodule (whose `.git` file points into the working tree's own git
-  directory) and a git directory outside the working tree are left to the
-  other rules; a directory the line does not spell out is refused, and so is
+  refused too. A change of directory by `env -C` or `--chdir`, `sudo -D` or
+  `--chdir`, or `unshare -w` or `--wd` before git is read the way `-C` is,
+  written whole, abbreviated (`env --chd`) or in a cluster (`env -iC`); `sudo
+  -i` or `--login`, which runs git from the target user's home directory, is
+  refused, and so is a wrapper option that abbreviates one of the wrapper's
+  options taking a value, since whether it takes the next word is not known.
+  A plain subdirectory, a submodule (whose `.git` file points into the
+  working tree's own git directory) and a git directory outside the working
+  tree are left to the other rules; a directory the line does not spell out is refused, and so is
   a git command run after a `cd` the line leaves unknown. After an earlier
   command of the line writes, which may make a repository where none stood,
   a git command that runs in a directory inside the working tree other than
