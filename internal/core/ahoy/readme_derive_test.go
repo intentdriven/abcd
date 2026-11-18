@@ -536,7 +536,10 @@ func TestHeadingTextStaysLinear(t *testing.T) {
 		s := "\x01" + `\! ` + strings.Repeat(unit, (1<<20)/len(unit))
 		start := time.Now()
 		headingText(s)
-		if d := time.Since(start); d > 20*time.Second {
+		// The bound is wall time, so the race detector's instrumentation and a
+		// slow runner can carry a linear read past it; under -race the read
+		// still runs, and the plain pass asserts the bound.
+		if d := time.Since(start); !raceEnabled && d > 20*time.Second {
 			t.Errorf("a %d-byte heading of %q took %v", len(s), unit, d)
 		}
 	}
