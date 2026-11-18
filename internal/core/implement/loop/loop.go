@@ -277,6 +277,9 @@ type Context struct {
 	planGuard func() error
 	// remote is Options.remote, for the worktree stage; nil checks nothing.
 	remote *remoteIdentity
+	// judgeGate is Options.judgeGate, asked again as a round's judge launches
+	// (judge.go); nil asks production's gate.
+	judgeGate func() (bool, string)
 }
 
 // Outcome is what a stage's body returns. A body that hands its work to an agent
@@ -1354,7 +1357,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		if noteStopped(st, stopped, now) {
 			renewed = true
 		}
-		r, moved, err := move(repoRoot, st, steps.takingReceipts(o.ReceiptOwn), now, g, newRoundRouter(o), o.PlanGuard, o.remote)
+		r, moved, err := move(repoRoot, st, steps.takingReceipts(o.ReceiptOwn), now, g, newRoundRouter(o), o.PlanGuard, o.remote, o.judgeGate)
 		if err != nil {
 			if rf, ok := AsRefusal(err); ok && renewNote != "" {
 				rf.Remedy += "; " + renewNote
@@ -1544,7 +1547,7 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 // verifier holds to the branch.
 func judgesWork(role string) bool {
 	_, reviewer := reviewerVerdicts[role]
-	return reviewer || role == RoleAuditor
+	return reviewer || role == RoleAuditor || role == RoleJudge
 }
 
 // handIn is receipt; stood says a step found the receipt where it stood
@@ -1744,6 +1747,14 @@ func handedMove(a Await, tier oracle.Tier) string {
 	at := ""
 	if tier != "" {
 		at = " at model tier " + string(tier)
+	}
+	if a.Role == RoleJudge {
+		// The round's judge (judge.go): asked for its class's model, as a
+		// reviewer is, and never confirmed.
+		at += fmt.Sprintf(" on %s, the model of the %s class (the round's judge)", a.Model, a.Class)
+		if a.Effort != "" {
+			at += fmt.Sprintf(", at effort %s, the class's, asked, not confirmed", a.Effort)
+		}
 	}
 	if a.Reviewer != nil {
 		// A review set's reviewer: the host is asked for the class's model,

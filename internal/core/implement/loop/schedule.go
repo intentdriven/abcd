@@ -393,9 +393,15 @@ func laneWant(st State, i int) want {
 		}
 		for _, v := range cur.Validators {
 			if !v.Pass {
-				if l.fixRoundsTaken() >= st.FixRoundCap() || l.readsRecords(cur) {
+				switch {
+				case l.fixRoundsTaken() >= st.FixRoundCap() || l.readsRecords(cur):
 					w.kind = wantBinary
-				} else {
+				case judgeStep(st, l, cur) == judgeOut:
+				case judgeStep(st, l, cur) == judgeLaunch:
+					// The judge may not launch after all (its gate is asked
+					// again at the launch), and the fix round then takes its slot.
+					w.kind, w.role = wantAgent, RoleJudge
+				default:
 					w.kind, w.role = wantAgent, RoleImplementer
 				}
 				return w
@@ -480,7 +486,7 @@ func agentWants(st State) []want {
 // it waits on the shared probe as a landing waits on its merge, and a stage
 // that met a network failure waits the same way, its report collected for the
 // call to record (outage.go).
-func move(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate, rt *roundRouter, guard func() error, remote *remoteIdentity) (StepResult, bool, error) {
+func move(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate, rt *roundRouter, guard func() error, remote *remoteIdentity, judge func() (bool, string)) (StepResult, bool, error) {
 	// A landing waiting on the forge's merge or on its full check (a
 	// contention refusal, ruling DR6d-2) holds only its own lane: the call
 	// moves the next lane and names the wait beside what it did; when nothing
@@ -504,7 +510,7 @@ func move(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate
 		if g.holdsMove(*st, w) {
 			err = g.networkWait(string(st.Lanes[i].Stage), st.Lanes[i].ID, st.Lanes[i].ID+"'s landing")
 		} else {
-			res, err = performMove(repoRoot, st, steps, w, now, rt, guard, remote)
+			res, err = performMove(repoRoot, st, steps, w, now, rt, guard, remote, judge)
 		}
 		if err != nil {
 			r, ok := AsRefusal(err)
@@ -531,7 +537,7 @@ func move(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate
 	// stage body succeeds replaces a slice or appends past its length, so the
 	// shallow copy is the state as it was.
 	before := *st
-	res, did, err := moveAgent(repoRoot, st, steps, now, g, rt, guard, remote)
+	res, did, err := moveAgent(repoRoot, st, steps, now, g, rt, guard, remote, judge)
 	if err != nil {
 		*st = before
 		return StepResult{}, began, err
@@ -635,7 +641,7 @@ func withBlocked(next string, blocked []Refusal) string {
 // moveAgent hands the first waiting work an agent when a slot is free, or
 // records the work the ceiling, or the want of a free helper, holds back; it
 // reports whether it moved or wrote.
-func moveAgent(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate, rt *roundRouter, guard func() error, remote *remoteIdentity) (StepResult, bool, error) {
+func moveAgent(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate, rt *roundRouter, guard func() error, remote *remoteIdentity, judge func() (bool, string)) (StepResult, bool, error) {
 	c := chooseAgent(*st, g)
 	switch c.pick {
 	case pickNone:
@@ -664,7 +670,7 @@ func moveAgent(repoRoot string, st *State, steps Stages, now time.Time, g *outag
 		// implementer takes the slot left for it.
 		w = want{lane: openLaneRecorded(st, w.open, now), kind: wantBinary, open: -1}
 	}
-	res, err := performMove(repoRoot, st, steps, w, now, rt, guard, remote)
+	res, err := performMove(repoRoot, st, steps, w, now, rt, guard, remote, judge)
 	if err != nil {
 		return StepResult{}, false, err
 	}
@@ -675,11 +681,13 @@ func moveAgent(repoRoot string, st *State, steps Stages, now time.Time, g *outag
 }
 
 // performMove runs one lane's next stage body and applies its outcome. remote
-// is a drive's record of origin's identity (Options.remote), nil for none.
-func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time, rt *roundRouter, guard func() error, remote *remoteIdentity) (StepResult, error) {
+// is a drive's record of origin's identity (Options.remote), nil for none;
+// judge is the calibration gate a round's judge is asked again as it launches
+// (Options.judgeGate), nil for production's.
+func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time, rt *roundRouter, guard func() error, remote *remoteIdentity, judge func() (bool, string)) (StepResult, error) {
 	i := w.lane
 	lane := st.Lanes[i]
-	c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now, router: rt, planGuard: guard, remote: remote}
+	c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now, router: rt, planGuard: guard, remote: remote, judgeGate: judge}
 	if w.withdraw {
 		return withdrawOwed(repoRoot, st, i, c, now)
 	}

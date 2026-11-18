@@ -613,6 +613,32 @@ failing reviewer fails the round, the stricter verdict. Keyed rounds are state
 schema version 20's; an older run's rounds read as one reviewer per role, index
 0, asked for no class.
 
+Where a role's reviewers `disagree` and the run's judge is `active`
+(`commands/build.md`), the round's judge rules once every validator of the
+round has returned, before any fix round; agreeing reviewers start none, and a
+`waiting` judge is never launched or awaited. The launch asks itd-81's
+calibration gate again and never rests on the stored status alone: a judge
+whose agent no longer clears it is not launched, the round's `judge` records
+why as `unlaunched`, and the fix round follows with every finding. Otherwise
+the result's `awaiting` names the `review-judge` role, its `class`, `model`
+and `effort` (`next` says "on <model>, the model of the <class> class (the
+round's judge)"): start that agent with its brief, which names both reviewers'
+returns and the round's head, at `validate/round-<n>/judge/`. Its return opens
+with `Reviewed head: <sha>` and lists each finding it strikes under one
+`### Struck` heading, `- file:line — reason`, a reason of at most 300 bytes of
+plain text; it may strike only a located finding of a failing reviewer of the
+role that disagreed, and a strike of any other, or with no reason, is refused
+and the judge handed out again. A struck finding carries `status` `struck` and
+the judge's `reason`, and leaves the fix brief, which names it as struck and not
+handed on; the round's `judge` records the roles, whether it `ruled` and how
+many it `struck`, and `implement record --json` lists it under the lane's
+`judges`. The judge never passes a round: nothing its return says is read as a
+verdict, the round goes to its fix round as the stricter verdict decides, and a
+round whose every failing finding was struck goes to one whose brief hands on no
+finding. A round's judge and a struck finding are state schema version 28's: a
+version-27 file carrying either is refused naming it, and an abcd that writes
+version 27 refuses a version-28 file as a newer abcd's.
+
 A model other than every writer's reviews each change a code reviewer judges.
 The writers of a lane are every model that wrote into it up to the round: each
 model a runner was started on for the lane's implementer, a fix round or a

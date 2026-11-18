@@ -68,6 +68,9 @@ type Finding struct {
 	// verified, and on the findings of a reviewer that passed the round,
 	// which no fix brief hands on.
 	Status string `json:"status,omitempty"`
+	// Reason is the round's judge's reason for striking the finding, set
+	// exactly where Status is FindingStruck (judge.go).
+	Reason string `json:"reason,omitempty"`
 	// CitedBy names every reviewer of the round citing the same file and
 	// line, this one included, in the round's validator order; absent when
 	// only this reviewer cites it.
@@ -242,7 +245,11 @@ func leadLocation(ln string) (location, bool) {
 // `# comment` in a quoted snippet does not end the section, nor a bullet in a
 // snippet or a commented-out note count as a finding. The text is split once
 // and read in one pass.
-func eachFindingsLine(text string, fn func(string)) {
+func eachFindingsLine(text string, fn func(string)) { eachSectionLine(text, findingsHeading, fn) }
+
+// eachSectionLine is eachFindingsLine for the sections under any heading
+// heading matches: a judge's Struck heading reads as a Findings one does.
+func eachSectionLine(text string, heading *regexp.Regexp, fn func(string)) {
 	lines := strings.Split(text, "\n")
 	mask := mdrecord.Read(lines, mdrecord.ListNested).Mask
 	depth := 0
@@ -252,7 +259,7 @@ func eachFindingsLine(text string, fn func(string)) {
 		}
 		d := headingDepth(ln)
 		switch {
-		case d > 0 && findingsHeading.MatchString(ln):
+		case d > 0 && heading.MatchString(ln):
 			if depth == 0 || d < depth {
 				depth = d
 			}
@@ -337,6 +344,10 @@ func joinFixReport(r *ValidationRound, report, worktree string) {
 		}
 		v.Findings = slices.Clone(v.Findings)
 		for j := range v.Findings {
+			if v.Findings[j].Status == FindingStruck {
+				// Struck by the round's judge: not handed on (judge.go).
+				continue
+			}
 			s, ok := said[v.Findings[j].at()]
 			if !ok {
 				s = FindingUnknown
@@ -512,6 +523,8 @@ func (s State) findingsWritten() bool {
 					}
 					seen[f.at()] = true
 					switch f.Status {
+					case FindingStruck:
+						// A strike's own checks are judgesWritten's.
 					case "":
 						if answered {
 							return false
