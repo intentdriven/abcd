@@ -178,7 +178,9 @@ every finding applied here); the two open questions above are the product thinke
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-d394a998ba03 -->
+Fidelity review OWED (receipt rcp-d394a998ba03).
+<!-- abcd-review-end receipt=rcp-d394a998ba03 -->
 
 ## Grounds
 
