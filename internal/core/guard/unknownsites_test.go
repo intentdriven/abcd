@@ -264,6 +264,7 @@ var wordReaders = map[string]string{
 	"wrapperChdirs":      "isUnknown, isWrapperAssignment and envAssigns: a word the line does not fix, a wrapper wrapperDirFlags does not list or an option it does not classify stops the reading, and wrapperDir refuses",
 	"longChdirFlag":      "exempt: wrapperChdirs hands it only a known word, after isUnknown",
 	"gitBehindProgram":   "sitesNamed, arrivalsOf and fixedToken: a word naming git the walk did not reach is read whatever program stands before it, and a word after it the line does not fix counts as a subcommand",
+	"gitRunsCommandFrom": "exempt: reads only words fixedToken fixes, a word the line does not spell out ending nothing, and submoduleForeachRefusal and bisectRunRefusal refuse a subcommand word the line does not fix",
 	"gitLeavesTreeAlone": "sitesNamed, firstOperands, isUnknown and longFlagIs: a subcommand or an argument the line does not spell out counts as a write",
 	"remoteRepoRefusal":  "firstOperands, isUnknown, knownLead, fixedToken and longFlagIs: an unknown subcommand is read as one that reaches a repository, and an operand the line does not spell out, or an unknown word that may be archive's --remote, is refused",
 	"execPinKeys":        "exempt: reads gitutil's own -c pins, not a command word",

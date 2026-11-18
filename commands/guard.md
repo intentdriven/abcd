@@ -513,13 +513,18 @@ A shell command is approved only when the guard reads it whole and clears it:
   `unshare -R`, or an abbreviation of an option that leaves the directory
   alone), is refused (`timeout 5 git log` is judged as `git log` is). Git
   standing behind any other program, as a word naming git (`git`, or a
-  fixed path ending in `git`) followed by a git option, a word the line
-  does not spell out or a subcommand git documents, is refused too, since
-  the line does not say where that program runs it (`echo git status` is
-  refused; `grep git notes` is left alone). Still not read: git behind such
-  a program followed by a word git does not document, such as an alias or
-  a `git-<name>` command of its own, and git that a program starts by a
-  name the line does not spell, such as a script that runs git.
+  fixed path ending in `git`) whose next word starts with `-`, is one the
+  line does not spell out, or is a subcommand git 2.52 documents, is
+  refused too, since the line does not say where that program runs it
+  (`echo git status` is refused; `grep git notes` is left alone). The words after a git command the approver reaches are that
+  command's own arguments and are judged with it, so a value naming git
+  among them is not read again (`git -C vendor/git status`, `git log
+  --grep git`), except the command `git submodule foreach` or `git bisect
+  run` is given to run, which is read as git standing behind it. Still not
+  read: git behind such a program followed by a word git does not
+  document, such as an alias, a `git-<name>` command of its own or a
+  subcommand a git release after 2.52 adds, and git that a program starts
+  by a name the line does not spell, such as a script that runs git.
   A plain subdirectory, a submodule (whose `.git` file points into the
   working tree's own git directory) and a git directory outside the working
   tree that points nowhere inside it are left to the other rules; a

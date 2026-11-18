@@ -45,11 +45,15 @@ package guard
 // other option, where git runs is not fixed, and so it is behind a wrapper
 // given two changes of directory, which its parser may not apply in order as
 // git's -C is. Behind a program the walk does not step through, git is no
-// command site at all, so a word naming git there, followed by a git option,
-// a word the line does not fix or a subcommand git documents, is refused as
-// unfixed too (gitBehindProgram); a word git does not document after it (an
-// alias, a git-<name> command) and git a program starts by a name the line
-// does not spell are not read.
+// command site at all, so a word naming git there, followed by a word
+// starting with -, a word the line does not fix or a subcommand git 2.52
+// documents, is refused as unfixed too (gitBehindProgram); the words after a
+// git site the walk reached are that site's own, judged with it, and are not
+// read this way, except the command git submodule foreach or git bisect run
+// is given to run. A word git does
+// not document after it (an alias, a git-<name> command, a subcommand a later
+// release adds) and git a program starts by a name the line does not spell
+// are not read.
 //
 // A submodule's git file points into the working tree's own git directory,
 // and is left alone; so is a git directory outside the working tree that
@@ -119,42 +123,89 @@ func (f approveFacts) gitDirRefusal(rc *readCtx, s segment, st *shellState, valu
 
 // gitBehindProgram reports a word of s naming git (git, or a fixed path whose
 // last element is git) that the walk to a command did not reach as a git
-// site, followed by a git option, a word the line does not fix or a
+// site, followed by a word starting with -, a word the line does not fix or a
 // subcommand git documents (gitSubcommands), with the program it stands
 // behind: the nearest word before it the walk reached. The walk steps only
 // through the wrappers it knows, so behind any other program git is no site
 // and its directory is never read; such a word is read as git that program
 // runs. A word naming git with nothing after it, or an ordinary word after
-// it, is left alone (grep git file).
+// it, is left alone (grep git file). The words after a git site the walk
+// reached are git's own arguments, which gitDirOf judges at that site, so
+// they are not read here (git -C vendor/git status, git log --grep git),
+// except the command git submodule foreach or git bisect run is given to run
+// (gitRunsCommandFrom), which is read as standing behind that subcommand.
 func gitBehindProgram(s segment) (string, bool) {
 	sites := map[int]bool{}
 	for _, site := range sitesNamed(s, "git") {
 		sites[site.idx] = true
 	}
-	arrivals := arrivalsOf(s)
+	arrived := map[int]bool{}
+	for _, a := range arrivalsOf(s) {
+		arrived[a.idx] = true
+	}
+	const unspelled = "a program the line does not spell out"
+	program, own := unspelled, -1
 	for i := 0; i+1 < len(s.tokens); i++ {
+		if sites[i] {
+			own = len(s.tokens)
+			if from, runner, ok := gitRunsCommandFrom(s, i); ok {
+				own, program = from-1, runner
+			}
+			continue
+		}
+		if i <= own {
+			continue
+		}
 		tok, fixed := fixedToken(s, i)
-		if !fixed || sites[i] || strings.HasSuffix(tok, "/") || !strings.EqualFold(path.Base(tok), "git") {
-			continue
-		}
-		next, fixed := fixedToken(s, i+1)
-		if fixed && !strings.HasPrefix(next, "-") && !gitSubcommands[next] {
-			continue
-		}
-		program, at := "a program the line does not spell out", -1
-		for _, a := range arrivals {
-			if a.idx < i && a.idx > at {
-				at = a.idx
-				if w, ok := fixedToken(s, a.idx); ok {
-					program = w
-				} else {
-					program = "a program the line does not spell out"
-				}
+		if fixed && !strings.HasSuffix(tok, "/") && strings.EqualFold(path.Base(tok), "git") {
+			next, fixed := fixedToken(s, i+1)
+			if !fixed || strings.HasPrefix(next, "-") || gitSubcommands[next] {
+				return program, true
 			}
 		}
-		return program, true
+		if arrived[i] {
+			program = unspelled
+			if w, ok := fixedToken(s, i); ok {
+				program = w
+			}
+		}
 	}
 	return "", false
+}
+
+// gitRunsCommandFrom reports where, among the words after the git site at
+// site, the command begins that git submodule foreach (git-submodule(1):
+// "Evaluates an arbitrary shell command") or git bisect run (git-bisect(1))
+// is given to run, and names that subcommand. Every word submodule, then the
+// first word after it not starting with -, is read as the subcommand, and so
+// is every word bisect, so a value of git's own spelled the same way only
+// reads more. A word the line does not spell out ends nothing here; the
+// readers in approvegitrun.go refuse a subcommand word the line does not fix
+// that may be foreach or run.
+func gitRunsCommandFrom(s segment, site int) (int, string, bool) {
+	for j := site + 1; j < len(s.tokens); j++ {
+		w, fixed := fixedToken(s, j)
+		if !fixed {
+			continue
+		}
+		switch w {
+		case "submodule":
+			k := j + 1
+			for ; k < len(s.tokens); k++ {
+				if v, ok := fixedToken(s, k); !ok || !strings.HasPrefix(v, "-") {
+					break
+				}
+			}
+			if v, ok := fixedToken(s, k); ok && v == "foreach" {
+				return k + 1, "git submodule foreach", true
+			}
+		case "bisect":
+			if v, ok := fixedToken(s, j+1); ok && v == "run" {
+				return j + 2, "git bisect run", true
+			}
+		}
+	}
+	return 0, "", false
 }
 
 // backgrounded reports whether a command of the line is run in the
@@ -699,10 +750,13 @@ var gitReadsOnly = map[string]bool{
 }
 
 // gitSubcommands are the subcommands git(1) documents, in its lists of
-// porcelain, ancillary, interacting, low-level and helper commands, which
-// gitReadsOnly and gitRemoteSubcommands are drawn from. A word naming git
-// that the walk to a command did not reach, followed by one of these, is git
-// run by a program the walk does not step through (gitBehindProgram).
+// porcelain, ancillary, interacting, low-level and helper commands, as git
+// 2.52 gives them (git help -a), which gitReadsOnly and gitRemoteSubcommands
+// are drawn from. A word naming git that the walk to a command did not
+// reach, followed by one of these, is git run by a program the walk does not
+// step through (gitBehindProgram). A subcommand a git release after 2.52 adds
+// is not on the list, so git behind a program followed by it is a case this
+// rule does not read.
 var gitSubcommands = map[string]bool{
 	// Main porcelain commands.
 	"add": true, "am": true, "archive": true, "backfill": true, "bisect": true,
@@ -734,10 +788,10 @@ var gitSubcommands = map[string]bool{
 	"unpack-objects": true, "update-index": true, "update-ref": true, "write-tree": true,
 	"cat-file": true, "cherry": true, "diff-files": true, "diff-index": true,
 	"diff-pairs": true, "diff-tree": true, "for-each-ref": true, "for-each-repo": true,
-	"get-tar-commit-id": true, "ls-files": true, "ls-remote": true, "ls-tree": true,
-	"merge-base": true, "name-rev": true, "pack-redundant": true, "rev-list": true,
-	"rev-parse": true, "show-index": true, "show-ref": true, "unpack-file": true,
-	"var": true, "verify-pack": true,
+	"get-tar-commit-id": true, "last-modified": true, "ls-files": true, "ls-remote": true,
+	"ls-tree": true, "merge-base": true, "name-rev": true, "pack-redundant": true,
+	"repo": true, "rev-list": true, "rev-parse": true, "show-index": true,
+	"show-ref": true, "unpack-file": true, "var": true, "verify-pack": true,
 	// Syncing repositories, and the helpers pulling and pushing run.
 	"daemon": true, "fetch-pack": true, "http-backend": true, "send-pack": true,
 	"update-server-info": true, "http-fetch": true, "http-push": true,

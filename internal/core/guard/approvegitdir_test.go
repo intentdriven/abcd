@@ -502,6 +502,7 @@ func TestApproveRefusesGitBehindAProgramTheWalkDoesNotStepThrough(t *testing.T) 
 		`watch git -C nested status`:            "watch",
 		`arch -arm64 git -C nested status`:      "arch",
 		`cd nested && caffeinate git status`:    "caffeinate",
+		`cd nested && caffeinate git repo info`: "caffeinate",
 		`echo git status`:                       "echo",
 		`prog /usr/bin/git log -1`:              "prog",
 		`prog git --git-dir=bare.git log -1`:    "prog",
@@ -528,6 +529,79 @@ func TestApproveRefusesGitBehindAProgramTheWalkDoesNotStepThrough(t *testing.T) 
 	} {
 		if a := approveShell(clean(), r.files(), line); a.EntryID == gitDirEntryID {
 			t.Errorf("%q: refused under %s, which leaves it alone: %s", line, gitDirEntryID, a.Reason)
+		}
+	}
+}
+
+// TestApproveReadsAReachedGitSitesOwnWordsOnce: the words after a git
+// command the walk reached are git's own arguments, which git-dir-not-own
+// judges at that site, so a value naming git among them (a -C target, a
+// pattern, a URL) is not read again as git behind a program. Reading resumes
+// after git submodule foreach and git bisect run, which take a command to
+// run, so git standing there is still judged, as standing behind that
+// subcommand. Watched failing before: each left-alone line here was read as
+// git standing behind git, and git in the command those subcommands run was
+// named as standing behind git.
+func TestApproveReadsAReachedGitSitesOwnWordsOnce(t *testing.T) {
+	r, _ := gitDirRig(t)
+	if err := os.MkdirAll(filepath.Join(r.dir, "vendor", "git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	beside := filepath.Join(filepath.Dir(r.dir), "git")
+	if _, err := os.Stat(beside); err == nil {
+		t.Fatalf("%s already exists", beside)
+	}
+	if err := os.Mkdir(beside, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	gittest.NewRepoAt(t, beside)
+	r.run(t, []approveCase{
+		{`git log --grep git --oneline`, nil},
+	})
+	for _, line := range []string{
+		`git -C ../git log -1`,
+		`git -C vendor/git status`,
+		`git clone https://github.com/git/git --depth 1`,
+		`sudo git -C vendor/git log -1`,
+	} {
+		if a := approveShell(clean(), r.files(), line); a.EntryID == gitDirEntryID {
+			t.Errorf("%q: refused under %s, which leaves it alone: %s", line, gitDirEntryID, a.Reason)
+		}
+	}
+	for line, runner := range map[string]string{
+		`git submodule foreach git -C nested status`:            "git submodule foreach",
+		`git submodule --quiet foreach --recursive git status`:  "git submodule foreach",
+		`git bisect run git -C nested status`:                   "git bisect run",
+		`git -C sub submodule foreach /usr/bin/git log -1`:      "git submodule foreach",
+		`sudo git submodule foreach prog git --git-dir=x log`:   "git submodule foreach",
+		`git -c core.pager=less bisect run git rev-parse --git`: "git bisect run",
+	} {
+		// Another rule may refuse the whole line first, so the reading of
+		// the command these subcommands run is asked of gitBehindProgram.
+		if a := approveShell(clean(), r.files(), line); a.Allow {
+			t.Errorf("%q was approved; git after a subcommand that runs a command is read", line)
+		}
+		segs, err := tokenize(line)
+		if err != nil || len(segs) != 1 {
+			t.Fatalf("%q: tokenize gave %d segments, %v", line, len(segs), err)
+		}
+		if program, ok := gitBehindProgram(segs[0]); !ok || program != runner {
+			t.Errorf("%q: gitBehindProgram = %q, %v; want git behind %q", line, program, ok, runner)
+		}
+	}
+	for _, line := range []string{
+		`git log --grep git --oneline`,
+		`git -C vendor/git status`,
+		`sudo git -C vendor/git log -1`,
+		`git submodule add ../git vendor/git --quiet`,
+		`git bisect start git -- x`,
+	} {
+		segs, err := tokenize(line)
+		if err != nil || len(segs) != 1 {
+			t.Fatalf("%q: tokenize gave %d segments, %v", line, len(segs), err)
+		}
+		if program, ok := gitBehindProgram(segs[0]); ok {
+			t.Errorf("%q: gitBehindProgram read git behind %q among a reached git site's own words", line, program)
 		}
 	}
 }
