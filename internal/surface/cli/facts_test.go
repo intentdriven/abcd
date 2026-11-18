@@ -2,6 +2,7 @@ package cli
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -151,9 +152,11 @@ func TestCommandFactsFlagDetail(t *testing.T) {
 // reader checks a value against. A new closed-set flag is added here, so the
 // annotation, the help and the reader are held to one slice. A flag whose
 // values are a closed set its reader checks is declared through enumFlag, so
-// its allowed values reach `abcd explain` (itd-2610301346085246 ac-1); the
-// flags left out take a list (--readme-parts, --route), an open word
-// (--label) or no value at all (--hold-moscow, reserved and refused whole).
+// its allowed values reach `abcd explain` (itd-2610301346085246 ac-1); a
+// list flag whose members, or one segment of whose values, come from a closed
+// set is declared through a list variant and held by listSets instead; the
+// flags left out take an open word (--label) or no value at all
+// (--hold-moscow, reserved and refused whole).
 func closedSets() map[[2]string][]string {
 	return map[[2]string][]string{
 		{"abcd capture", "severity"}:                issueschema.Severities,
@@ -218,8 +221,8 @@ func TestEnumFlagAnnotationsAreTheReadersSlices(t *testing.T) {
 		path := cmd.CommandPath()
 		cmd.LocalFlags().VisitAll(func(f *pflag.Flag) {
 			got := flagAllowed(f)
-			if got == nil {
-				return
+			if got == nil || flagEach(f) != "" {
+				return // a list variant's set is listSets' to hold
 			}
 			annotated++
 			slice, ok := want[[2]string{path, f.Name}]
@@ -272,4 +275,164 @@ func factsFor(all []surface.Facts, path string) (surface.Facts, bool) {
 		}
 	}
 	return surface.Facts{}, false
+}
+
+// listSet is one list flag declared through a list variant of enumFlag: the
+// slice its reader checks, what in each value the slice applies to, a value
+// whose checked member or segment is a given word, and the reader itself.
+type listSet struct {
+	vals  []string
+	each  string
+	value func(word string) string
+	read  func(value string) error
+}
+
+// listSets is every list flag declared through enumListFlag, enumSliceFlag or
+// enumSegmentFlag, with its reader (iss-2611162111195582). A new one is added
+// here, so its annotation, its help, its facts and its reader are held to one
+// slice, and its reader is shown to refuse a value outside it.
+func listSets() map[[2]string]listSet {
+	whole := func(word string) string { return word }
+	sets := map[[2]string]listSet{
+		{"abcd ahoy install", "readme-parts"}: {
+			vals: ahoy.ReadmePartsMembers(), each: surface.EachMember, value: whole,
+			read: func(v string) error { _, err := ahoy.ParseReadmeParts(v); return err },
+		},
+		{"abcd ahoy install", "install-tool"}: {
+			vals: ahoy.DependencyTools, each: surface.EachMember, value: whole,
+			read: func(v string) error { _, err := installToolNames([]string{v}); return err },
+		},
+	}
+	// Each delegating verb's tier --route, by the agent it dispatches; the
+	// reader is the parse resolve hands every value to.
+	for path, agent := range map[string]string{
+		"abcd disembark graveyard":       graveyardAgent,
+		"abcd disembark press-release":   pressReleaseAgent,
+		"abcd disembark principles":      principlesAgent,
+		"abcd disembark review":          reviewAgent,
+		"abcd intent audit":              auditAgent,
+		"abcd intent audit ingest":       auditAgent,
+		"abcd intent consistency":        auditAgent,
+		"abcd intent consistency ingest": auditAgent,
+		"abcd launch ship":               changelogAgent,
+		"abcd reading ingest":            readingAgentPrefix + string(reading.Positions()[0]),
+	} {
+		sets[[2]string{path, routeFlagName}] = listSet{
+			vals: enumWords(oracle.Tiers()), each: routeTierSegment,
+			value: func(tier string) string { return agent + "=" + tier },
+			read: func(v string) error {
+				_, err := oracle.ParseRoutes([]string{v}, []string{agent}, nil)
+				return err
+			},
+		}
+	}
+	return sets
+}
+
+// TestListFlagAnnotationsAreTheReadersSlices holds each list flag's closed
+// set, as its annotation, its help line and its facts carry it, to the slice
+// its reader checks, says in the facts what in each value the set applies to,
+// and holds the reader to accepting every word of the set and refusing one
+// outside it. Every list-variant flag in the tree has an entry in listSets.
+func TestListFlagAnnotationsAreTheReadersSlices(t *testing.T) {
+	want := listSets()
+	facts := CommandFacts()
+	annotated := 0
+	for _, cmd := range allCommands(NewRootCommand()) {
+		path := cmd.CommandPath()
+		cmd.LocalFlags().VisitAll(func(f *pflag.Flag) {
+			each := flagEach(f)
+			if each == "" {
+				return
+			}
+			annotated++
+			set, ok := want[[2]string{path, f.Name}]
+			if !ok {
+				t.Errorf("%s --%s carries a closed set for each %s, and no entry in listSets names it", path, f.Name, each)
+				return
+			}
+			if got := flagAllowed(f); !reflect.DeepEqual(got, set.vals) {
+				t.Errorf("%s --%s: annotation %v, its reader checks %v", path, f.Name, got, set.vals)
+			}
+			if each != set.each {
+				t.Errorf("%s --%s: the set applies to each %q, want %q", path, f.Name, each, set.each)
+			}
+			if !strings.Contains(f.Usage, enumHelp(set.vals)) {
+				t.Errorf("%s --%s: the help %q does not render the set %q", path, f.Name, f.Usage, enumHelp(set.vals))
+			}
+			if surface.FlagKind(f.Value.Type()) != surface.FlagList && f.Value.Type() != "string" {
+				t.Errorf("%s --%s: a list variant declared a %s flag", path, f.Name, f.Value.Type())
+			}
+			ff, _ := factsFor(facts, path)
+			for _, fl := range ff.Flags {
+				if fl.Name == f.Name && (!reflect.DeepEqual(fl.Allowed, set.vals) || fl.Each != set.each) {
+					t.Errorf("%s --%s: the facts allow %v for each %q, its reader checks %v for each %q",
+						path, f.Name, fl.Allowed, fl.Each, set.vals, set.each)
+				}
+			}
+			for _, word := range set.vals {
+				if err := set.read(set.value(word)); err != nil {
+					t.Errorf("%s --%s: the reader refuses %q, a word of the set: %v", path, f.Name, set.value(word), err)
+				}
+			}
+			if err := set.read(set.value("not-in-the-set")); err == nil {
+				t.Errorf("%s --%s: the reader accepts %q, outside the set", path, f.Name, set.value("not-in-the-set"))
+			}
+		})
+	}
+	if annotated != len(want) {
+		t.Errorf("the tree carries %d list flags with a closed set; listSets names %d", annotated, len(want))
+	}
+}
+
+// TestReadmePartsChoicesNamesTheMembers holds the summary's spelling of what
+// --readme-parts takes to the set the flag declares, in any order, so the hint
+// a run prints cannot name a part the parse refuses or leave one out.
+func TestReadmePartsChoicesNamesTheMembers(t *testing.T) {
+	got := strings.Split(ahoy.ReadmePartsChoices, "|")
+	want := ahoy.ReadmePartsMembers()
+	slices.Sort(got)
+	slices.Sort(want)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ReadmePartsChoices names %v; the flag declares %v", got, want)
+	}
+}
+
+// TestListFlagVariantsRecordTheSetAndWhatItAppliesTo pins each list variant's
+// help line, its copy of the caller's slice, and what it records the set as
+// applying to; enumFlag records no such thing.
+func TestListFlagVariantsRecordTheSetAndWhatItAppliesTo(t *testing.T) {
+	vals := []string{"a", "b"}
+	cmd := &cobra.Command{Use: "x"}
+	var one, comma string
+	var slice, array []string
+	enumFlag(cmd.Flags(), &one, "pick", "", "pick: ", vals, "")
+	enumListFlag(cmd.Flags(), &comma, "parts", "parts, each one of ", vals, ".")
+	enumSliceFlag(cmd.Flags(), &slice, "tool", "a tool, one of ", vals, " (repeatable)")
+	enumSegmentFlag(cmd.Flags(), &array, "route", "tier", "route: <agent>=<tier>, tier one of ", vals, "")
+	for _, tc := range []struct {
+		name, help, each, kind string
+	}{
+		{"pick", "pick: a | b", "", "string"},
+		{"parts", "parts, each one of a | b.", surface.EachMember, "string"},
+		{"tool", "a tool, one of a | b (repeatable)", surface.EachMember, "stringSlice"},
+		{"route", "route: <agent>=<tier>, tier one of a | b", "tier", "stringArray"},
+	} {
+		f := cmd.Flags().Lookup(tc.name)
+		if f.Usage != tc.help || flagEach(f) != tc.each || f.Value.Type() != tc.kind {
+			t.Errorf("--%s: help %q, each %q, type %s; want %q, %q, %s", tc.name, f.Usage, flagEach(f), f.Value.Type(), tc.help, tc.each, tc.kind)
+		}
+	}
+	vals[0] = "z"
+	for _, name := range []string{"pick", "parts", "tool", "route"} {
+		if got := flagAllowed(cmd.Flags().Lookup(name)); !reflect.DeepEqual(got, []string{"a", "b"}) {
+			t.Errorf("--%s: the annotation followed a write to the caller's slice: %v", name, got)
+		}
+	}
+	if err := cmd.Flags().Parse([]string{"--parts", "a,b", "--tool", "a,b", "--tool", "a", "--route", "x=a,b"}); err != nil {
+		t.Fatal(err)
+	}
+	if comma != "a,b" || !reflect.DeepEqual(slice, []string{"a", "b", "a"}) || !reflect.DeepEqual(array, []string{"x=a,b"}) {
+		t.Errorf("the list variants read %q, %v, %v; want the value whole, split on commas and repeated, and repeated whole", comma, slice, array)
+	}
 }

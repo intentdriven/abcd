@@ -50,6 +50,12 @@ const ReadmePartsChoices = "licence|links|contents|release-badge|build-badge|abc
 // readmeNone is --readme-parts' answer of no to every part.
 const readmeNone = "none"
 
+// ReadmePartsMembers is the closed set each member of a --readme-parts list
+// is one of, the set ParseReadmeParts checks against: the parts abcd writes,
+// in their fixed order, then none, which stands alone. The flag declares this
+// slice, so its help, its facts and the parse read one list.
+func ReadmePartsMembers() []string { return append(slices.Clone(readmePartOrder), readmeNone) }
+
 // ParseReadmeParts reads a --readme-parts value: a comma-separated list of
 // part names, returned once each in the fixed order, or `none`, returned as an
 // empty, non-nil list. An unknown name, an empty one, or none beside a name is

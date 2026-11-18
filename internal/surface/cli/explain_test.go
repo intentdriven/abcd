@@ -118,6 +118,30 @@ func explainNormal(f surface.Facts) surface.Facts {
 	return out
 }
 
+// A flag's closed set is said as what the flag takes: one of the set for a
+// flag that takes one value, each one of it for a list whose members are
+// checked, and the named segment of each value for a list whose values are
+// checked by one segment, so a list is never read as one value of the set.
+func TestExplainSaysWhatAClosedSetAppliesTo(t *testing.T) {
+	for _, tc := range []struct {
+		fl   surface.FlagFact
+		want string
+	}{
+		{surface.FlagFact{Name: "pick", Type: surface.FlagString, Allowed: []string{"a", "b"}},
+			"--pick <string> [one of a | b]"},
+		{surface.FlagFact{Name: "parts", Type: surface.FlagString, Allowed: []string{"a", "b"}, Each: surface.EachMember},
+			"--parts <string> [each one of a | b]"},
+		{surface.FlagFact{Name: "route", Type: surface.FlagList, Allowed: []string{"a", "b"}, Each: "tier"},
+			"--route <list> [each value's tier one of a | b]"},
+		{surface.FlagFact{Name: "open", Type: surface.FlagList},
+			"--open <list>"},
+	} {
+		if got := explainFlagLine(tc.fl); got != tc.want {
+			t.Errorf("explainFlagLine(%+v) = %q, want %q", tc.fl, got, tc.want)
+		}
+	}
+}
+
 // A command whose flags would run past the bound shows the first of them and
 // one line saying how many more there are and how to get them all.
 func TestExplainCutsAnOverlongFlagListAtTheBound(t *testing.T) {

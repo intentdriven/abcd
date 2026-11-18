@@ -1,5 +1,5 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "commands": [
     {
       "path": "abcd intent",
@@ -66,7 +66,14 @@
         },
         {
           "name": "route",
-          "type": "list"
+          "type": "list",
+          "allowed": [
+            "local",
+            "economy",
+            "frontier",
+            "host-decides"
+          ],
+          "each": "tier"
         },
         {
           "name": "strict",
@@ -90,7 +97,14 @@
         },
         {
           "name": "route",
-          "type": "list"
+          "type": "list",
+          "allowed": [
+            "local",
+            "economy",
+            "frontier",
+            "host-decides"
+          ],
+          "each": "tier"
         },
         {
           "name": "verdict-json",
@@ -151,7 +165,14 @@
         },
         {
           "name": "route",
-          "type": "list"
+          "type": "list",
+          "allowed": [
+            "local",
+            "economy",
+            "frontier",
+            "host-decides"
+          ],
+          "each": "tier"
         }
       ],
       "inputs": [],
@@ -175,7 +196,14 @@
         },
         {
           "name": "route",
-          "type": "list"
+          "type": "list",
+          "allowed": [
+            "local",
+            "economy",
+            "frontier",
+            "host-decides"
+          ],
+          "each": "tier"
         }
       ],
       "inputs": [

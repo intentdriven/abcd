@@ -265,7 +265,7 @@ summary on a host that runs no session-start hook. `--answer` takes neither
 `--full` nor `--seen`.
 
 <!-- generated: command-facts -->
-**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain update` from the running binary disagree, follow the binary.
+**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain update` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd update [tag] [flags]`

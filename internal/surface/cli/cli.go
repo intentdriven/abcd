@@ -4835,9 +4835,11 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		" (default skip); claude_md and both are refused, with the one setting to change")
 	enumFlag(installCmd.Flags(), &oracleBackend, "oracle-backend", "", "oracle backend: ", ahoy.OracleBackendChoices(), "")
 	enumFlag(installCmd.Flags(), &scanDeep, "scan-deep", "", "enable deep scan: ", ahoy.ScanDeepChoices(), "")
-	installCmd.Flags().StringSliceVar(&installTools, "install-tool", nil, "answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI")
+	enumSliceFlag(installCmd.Flags(), &installTools, "install-tool", "answer yes to installing this missing tool, one of ", ahoy.DependencyTools,
+		" (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI")
 	installCmd.Flags().StringVar(&answersPath, "answers", "", "answer the setup questions from this answers file (JSON: schema_version, interview \"setup\", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key")
-	installCmd.Flags().StringVar(&readmeParts, "readme-parts", "", "answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included")
+	enumListFlag(installCmd.Flags(), &readmeParts, "readme-parts", "answer the README question: the parts of README.md abcd keeps current, comma-separated, each one of ", ahoy.ReadmePartsMembers(),
+		", where none stands alone, answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included")
 	enumFlag(installCmd.Flags(), &liveSessions, "live-sessions", "", "answer the live brief session question: ", ahoy.LiveSessionsValues(),
 		"; local, cloud or both say where sessions may run, and none answers no and is not asked again; stored in .abcd/config.json as sessions.live and honoured in any run, the approve-everything flag included; abcd session setup then does the setting up")
 	answeredInFlag(installCmd.Flags(), &answeredIn)
@@ -7812,8 +7814,55 @@ const allowedValuesAnnotation = "abcd_allowed_values"
 // value added to it reaches all three at once (spc-2610301431075964 step 1).
 func enumFlag(fs *pflag.FlagSet, p *string, name, value, lead string, vals []string, tail string) {
 	fs.StringVar(p, name, value, lead+enumHelp(vals)+tail)
+	annotateClosedSet(fs, name, vals, "")
+}
+
+// allowedEachAnnotation is the flag annotation the list variants of enumFlag
+// record beside the closed set, saying what in a list value the set applies
+// to: surface.EachMember, or the name of one segment of each value. The
+// command facts read it as FlagFact.Each (flagEach).
+const allowedEachAnnotation = "abcd_allowed_each"
+
+// enumListFlag declares a string flag that takes a comma-separated list, each
+// member one of a closed set: its help line is lead, the set through enumHelp,
+// then tail, and the set is recorded on the flag as applying to each member.
+// The flag stays a string its reader splits, so the value is read as it was
+// before the set was recorded (iss-2611162111195582).
+func enumListFlag(fs *pflag.FlagSet, p *string, name, lead string, vals []string, tail string) {
+	fs.StringVar(p, name, "", lead+enumHelp(vals)+tail)
+	annotateClosedSet(fs, name, vals, surface.EachMember)
+}
+
+// enumSliceFlag declares a list flag, repeatable and split on commas as the
+// flag library's string slice is, each member one of a closed set: the help
+// line and the annotation as enumListFlag records them.
+func enumSliceFlag(fs *pflag.FlagSet, p *[]string, name, lead string, vals []string, tail string) {
+	fs.StringSliceVar(p, name, nil, lead+enumHelp(vals)+tail)
+	annotateClosedSet(fs, name, vals, surface.EachMember)
+}
+
+// enumSegmentFlag declares a repeatable flag, never split on commas, whose
+// closed set applies to one segment of each value, named by segment, as a
+// --route's tier is: the help line is lead, the set through enumHelp, then
+// tail, and the set is recorded on the flag with the segment it applies to.
+func enumSegmentFlag(fs *pflag.FlagSet, p *[]string, name, segment, lead string, vals []string, tail string) {
+	fs.StringArrayVar(p, name, nil, lead+enumHelp(vals)+tail)
+	annotateClosedSet(fs, name, vals, segment)
+}
+
+// annotateClosedSet records vals on the flag just declared as its closed set,
+// copied so a later write to the caller's backing array cannot change what
+// the facts say, and each, when it is not empty, as what in a list value the
+// set applies to.
+func annotateClosedSet(fs *pflag.FlagSet, name string, vals []string, each string) {
 	if err := fs.SetAnnotation(name, allowedValuesAnnotation, append([]string{}, vals...)); err != nil {
-		panic(err) // the flag was declared on the line above
+		panic(err) // the caller declared the flag on the line above
+	}
+	if each == "" {
+		return
+	}
+	if err := fs.SetAnnotation(name, allowedEachAnnotation, []string{each}); err != nil {
+		panic(err)
 	}
 }
 
@@ -7836,4 +7885,14 @@ func flagAllowed(f *pflag.Flag) []string {
 		return nil
 	}
 	return append([]string{}, vals...)
+}
+
+// flagEach is what in a list value the closed set on f applies to, as a list
+// variant of enumFlag recorded it, or "" for a flag that takes one value of
+// its set, or any value.
+func flagEach(f *pflag.Flag) string {
+	if vals := f.Annotations[allowedEachAnnotation]; len(vals) == 1 {
+		return vals[0]
+	}
+	return ""
 }

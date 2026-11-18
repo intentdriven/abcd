@@ -108,7 +108,7 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 1.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain inbox` from the running binary disagree, follow the binary.
+**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain inbox` from the running binary disagree, follow the binary.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

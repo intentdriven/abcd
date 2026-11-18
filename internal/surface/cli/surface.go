@@ -151,6 +151,7 @@ func commandFactsOf(cmd *cobra.Command) surface.Facts {
 			Type:       kind,
 			Required:   flagRequired(fl),
 			Allowed:    flagAllowed(fl),
+			Each:       flagEach(fl),
 			Persistent: persistent.Lookup(fl.Name) != nil,
 			Hidden:     fl.Hidden,
 		}

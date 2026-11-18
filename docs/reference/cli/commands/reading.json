@@ -1,5 +1,5 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "commands": [
     {
       "path": "abcd reading",
@@ -63,7 +63,14 @@
         },
         {
           "name": "route",
-          "type": "list"
+          "type": "list",
+          "allowed": [
+            "local",
+            "economy",
+            "frontier",
+            "host-decides"
+          ],
+          "each": "tier"
         }
       ],
       "inputs": [

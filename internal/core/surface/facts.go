@@ -28,7 +28,14 @@ import (
 // when the shape does, never with the binary's version: a binary version
 // changes at every cut and in every development build, and would make every
 // derived copy drift each time (the spec's second decision).
-const FactsFormatVersion = 1
+//
+// Version 2 added FlagFact.Each, which says a list flag's closed set applies
+// to each member, or to one segment of each value (iss-2611162111195582).
+const FactsFormatVersion = 2
+
+// EachMember is FlagFact.Each for a list flag whose every member is checked
+// against the closed set whole, as a comma-list's names are.
+const EachMember = "member"
 
 // The flag types the facts name. The flag library has more spellings than an
 // agent needs (stringSlice and stringArray differ only in whether a comma
@@ -99,6 +106,11 @@ type FlagFact struct {
 	// Allowed is the closed set the flag's reader checks a value against,
 	// when it has one: the same slice its help line renders.
 	Allowed []string `json:"allowed,omitempty"`
+	// Each says what Allowed applies to on a list flag, never the value
+	// whole: EachMember when every member of the list is one of the set, or
+	// the name of the segment of each value that is, "tier" for a route's
+	// <agent>=<tier>. Empty on a flag that takes one value of the set.
+	Each string `json:"each,omitempty"`
 	// Persistent marks a flag every sub-command inherits.
 	Persistent bool `json:"persistent,omitempty"`
 	Hidden     bool `json:"hidden,omitempty"`

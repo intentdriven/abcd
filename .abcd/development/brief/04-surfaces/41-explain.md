@@ -27,9 +27,10 @@ and writing nothing.
 
 Given the words of a command path, it prints that command's facts in at most
 40 lines: the path and the command's one sentence, the usage line, each flag
-with its type, its closed set of values, its default and whether it is
-required, the persistent flags the command inherits from the commands above
-it, each filled-in input with the schema version the binary reads, the worked
+with its type, its closed set of values (on a list flag, with what in each
+value the set applies to: each member of a comma-list, or one segment of each
+repeated value), its default and whether it is required, the persistent flags
+the command inherits from the commands above it, each filled-in input with the schema version the binary reads, the worked
 example and the visible sub-commands. A flag list that would run past the bound
 is cut, with one line saying how many flags are left and that the
 machine-readable form lists them all. A hidden flag is left out of the text.
