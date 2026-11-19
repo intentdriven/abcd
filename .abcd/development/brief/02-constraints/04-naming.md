@@ -96,17 +96,22 @@ argument, scoping to a different time-axis or granularity, or performing an
 action distinct from rendering.
 
 That is what gives abcd its discoverability — type the verb, see where you stand.
-A sub-verb that just renames "show me the state" obscures it instead, so
-`<verb> show`, `<verb> stats`, `<verb> view` and a plain unfiltered `<verb> list`
-are **forbidden** at design time rather than argued about in review. Lint code
+A sub-verb that just renames "show me the state" obscures it instead, so a
+`<verb> show`, `<verb> stats` or `<verb> view` that takes no operand, and a plain
+unfiltered `<verb> list`, are **forbidden** at design time rather than argued
+about in review. The ban is on the operand-less render, not on the name: a
+`show <id>` that renders the one record its operand names takes a positional
+argument, so it earns its place by the test above, and `inbox show`,
+`history show` and `checklist show` conform (dcn-2610271112330536). Lint code
 `SD001` is reserved for the check; no implementation exists, so the discipline is
-held by review.
+held by review, save that a test in `internal/surface/cli` fails when a
+registered `show`, `stats` or `view` sub-verb accepts a bare invocation.
 
 **Conformance is partial, and the gap is the shipped surface's rather than the
 discipline's.** Several parents print usage with no state, several verbs
 refuse or act instead of rendering, and `history`
 breaks the rule from both ends at once: bare `abcd history` renders nothing
-while `history list` and `history show` exist, which is exactly the shape the
+while a plain `history list` exists, which is exactly the shape the
 rule forbids. The one enumeration of where the
 convention holds and where it does not lives in
 [`../04-surfaces/README.md`](../04-surfaces/README.md#bare-invocation); the
