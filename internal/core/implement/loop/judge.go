@@ -62,19 +62,34 @@ var struckHeading = regexp.MustCompile(`(?m)^[ \t]{0,3}#{1,6}[ \t]+Struck[ \t]*\
 // RoundJudge is a round's judge: the roles whose reviewers disagreed, in the
 // order the round hands them out; the class, model and effort the run's judge
 // resolved to; its brief and return; whether the loop recorded its return
-// (Ruled) and how many locations it struck; or, where the run's active judge
-// was not launched because its agent no longer cleared the gate, why
-// (Unlaunched), with no brief or return.
+// (Ruled), how many locations it struck and each with its reason (Strikes);
+// or, where the run's active judge was not launched because its agent no
+// longer cleared the gate, why (Unlaunched), with no brief or return.
 type RoundJudge struct {
-	Roles      []string `json:"roles"`
-	Class      string   `json:"class"`
-	Model      string   `json:"model"`
-	Effort     string   `json:"effort,omitempty"`
-	Brief      string   `json:"brief,omitempty"`
-	Return     string   `json:"return,omitempty"`
-	Ruled      bool     `json:"ruled,omitempty"`
-	Struck     int      `json:"struck,omitempty"`
-	Unlaunched string   `json:"unlaunched,omitempty"`
+	Roles  []string `json:"roles"`
+	Class  string   `json:"class"`
+	Model  string   `json:"model"`
+	Effort string   `json:"effort,omitempty"`
+	Brief  string   `json:"brief,omitempty"`
+	Return string   `json:"return,omitempty"`
+	Ruled  bool     `json:"ruled,omitempty"`
+	Struck int      `json:"struck,omitempty"`
+	// Strikes are the locations the judge struck, each with its reason, in
+	// the round's validator order: kept on the judge, so they outlive the
+	// round's findings, which the state drops once the next round opens
+	// (keepLatestFindings). A judge an abcd before state version 29 recorded
+	// keeps none where its round's findings were already dropped, and one
+	// whose strikes were trimmed to keep the state within its bound keeps
+	// none either (trimOldestFindings); its count stands in both.
+	Strikes    []JudgeStrike `json:"strikes,omitempty"`
+	Unlaunched string        `json:"unlaunched,omitempty"`
+}
+
+// JudgeStrike is one location a round's judge struck, with its reason.
+type JudgeStrike struct {
+	File   string `json:"file"`
+	Line   int    `json:"line"`
+	Reason string `json:"reason"`
 }
 
 // disagreeing are the code-review roles whose reviewers disagree in r, in the
@@ -352,26 +367,38 @@ func verifyJudge(c Context, lane *Lane, cur *ValidationRound, receiptRel string)
 	}
 	ruled := *j
 	ruled.Ruled, ruled.Struck = true, len(reasons)
+	ruled.Strikes = struckOn(*cur)
 	cur.Judge = &ruled
 	return nil
 }
 
-// judgeNote is the run record's words for round r's judge's return.
-func judgeNote(r ValidationRound) string {
-	j := r.Judge
-	var struck []string
+// struckOn is each location round r's findings carry as struck, with the
+// judge's reason, once each in the round's validator order: the strikes the
+// round's judge keeps.
+func struckOn(r ValidationRound) []JudgeStrike {
+	var out []JudgeStrike
 	seen := map[location]bool{}
 	for _, v := range r.Validators {
 		for _, f := range v.Findings {
 			if f.Status == FindingStruck && !seen[f.at()] {
 				seen[f.at()] = true
-				struck = append(struck, fmt.Sprintf("%s:%d", f.File, f.Line))
+				out = append(out, JudgeStrike{File: f.File, Line: f.Line, Reason: f.Reason})
 			}
 		}
 	}
+	return out
+}
+
+// judgeNote is the run record's words for round r's judge's return.
+func judgeNote(r ValidationRound) string {
+	j := r.Judge
+	struck := make([]string, 0, len(j.Strikes))
+	for _, s := range j.Strikes {
+		struck = append(struck, fmt.Sprintf("%s:%d", s.File, s.Line))
+	}
 	what := "struck no finding"
 	if len(struck) > 0 {
-		what = fmt.Sprintf("struck %d located finding(s) as false (%s), each with its reason on the finding", j.Struck, strings.Join(struck, ", "))
+		what = fmt.Sprintf("struck %d located finding(s) as false (%s), each with its reason, kept on the round's judge", j.Struck, strings.Join(struck, ", "))
 	}
 	return fmt.Sprintf("the round's judge, %s, ruled on the disagreement over %s and %s; it passes nothing, so the stricter verdict decides and the round goes to a fix round",
 		classPhrase(j.Class, j.Model, j.Effort), strings.Join(j.Roles, " and "), what)
@@ -424,19 +451,77 @@ func (s State) judged() string {
 	return ""
 }
 
+// strikesKept reports the first thing, in a state, that only version 29 and
+// later write: a strike kept on a round's judge; "" when there is none.
+func (s State) strikesKept() string {
+	for _, l := range s.Lanes {
+		for _, r := range l.Validation {
+			if r.Judge != nil && len(r.Judge.Strikes) > 0 {
+				return fmt.Sprintf("strikes kept on the judge of %s's round %d", l.ID, r.Round)
+			}
+		}
+	}
+	return ""
+}
+
+// keepStrikes gives each ruled judge of a state an earlier version wrote the
+// strikes its round's findings still carry, as verifyJudge keeps them from
+// version 29: a round whose findings were already dropped keeps its count
+// alone.
+func (s *State) keepStrikes() {
+	for i := range s.Lanes {
+		for k := range s.Lanes[i].Validation {
+			r := &s.Lanes[i].Validation[k]
+			if j := r.Judge; j != nil && j.Ruled && j.Struck > 0 && len(j.Strikes) == 0 && r.carriesFindings() {
+				kept := *j
+				kept.Strikes = struckOn(*r)
+				r.Judge = &kept
+			}
+		}
+	}
+}
+
+// strikesWritten reports whether the strikes judge j keeps on round r are ones
+// the loop writes: none where it did not rule, and otherwise none or exactly
+// as many as it struck, each a location citations writes with a plain reason,
+// once; and, where the round still keeps its findings, exactly the locations
+// they carry as struck, each with the reason they carry. A judge keeps none
+// only once its round's findings are dropped, since the trim drops every
+// round's findings before any judge's strikes, and a version-28 file's judge
+// takes them from its round's findings as it is read (keepStrikes).
+func strikesWritten(r ValidationRound, j RoundJudge) bool {
+	if len(j.Strikes) == 0 {
+		return len(struckOn(r)) == 0
+	}
+	if !j.Ruled || len(j.Strikes) != j.Struck {
+		return false
+	}
+	seen := make(map[location]bool, len(j.Strikes))
+	for _, s := range j.Strikes {
+		at := location{s.File, s.Line}
+		if !validLocation(s.File) || s.Line < 1 || s.Line > maxFindingLine || seen[at] ||
+			s.Reason == "" || plainBounded(s.Reason, maxStrikeReason) != s.Reason {
+			return false
+		}
+		seen[at] = true
+	}
+	return !r.carriesFindings() || slices.Equal(j.Strikes, struckOn(r))
+}
+
 // judgesWritten reports whether every round's judge and every strike a state
 // carries is one the loop writes: a judge only on a run whose judge was
 // active, at its class, model and effort, over roles whose reviewers disagree
 // in the round, and either not launched with its reason, or at the round's
 // judge paths; a strike only on a finding of a failing reviewer of a role the
-// judge was handed, once it ruled, with a plain reason, and a reason on no
-// other finding; and the count the judge struck, where the round keeps its
-// findings, the locations struck.
+// judge was handed, once it ruled, with a plain reason, the one every finding
+// at its location carries, and a reason on no other finding; the count the
+// judge struck, where the round keeps its findings, the locations struck; and
+// the strikes it keeps, as strikesWritten holds them.
 func (s State) judgesWritten() bool {
 	for _, l := range s.Lanes {
 		for _, r := range l.Validation {
 			j := r.Judge
-			struck := map[location]bool{}
+			struck := map[location]string{}
 			for _, v := range r.Validators {
 				for _, f := range v.Findings {
 					if f.Status != FindingStruck {
@@ -449,7 +534,10 @@ func (s State) judgesWritten() bool {
 						plainBounded(f.Reason, maxStrikeReason) != f.Reason {
 						return false
 					}
-					struck[f.at()] = true
+					if why, ok := struck[f.at()]; ok && why != f.Reason {
+						return false
+					}
+					struck[f.at()] = f.Reason
 				}
 			}
 			if j == nil {
@@ -464,6 +552,9 @@ func (s State) judgesWritten() bool {
 			}
 			want := disagreeing(r)
 			if len(j.Roles) == 0 || !slices.Equal(j.Roles, want) {
+				return false
+			}
+			if !strikesWritten(r, *j) {
 				return false
 			}
 			if j.Unlaunched != "" {

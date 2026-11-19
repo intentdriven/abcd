@@ -353,10 +353,25 @@ const lockFileName = ".lock"
 // it. Releases that write version 27 refuse a version-28 file as a newer
 // abcd's before any strict decode.
 //
+// Version 29 kept each location a round's judge struck, with its reason, on
+// the judge (iss-2611182238519860): a round's judge's `strikes`, which outlive
+// the round's findings once the next round opens. Version 28 is its strict
+// subset, read as a run whose judges kept no strike, and written back at
+// version 29: a ruled judge whose round still keeps its findings takes its
+// strikes from them as the file is read, and one whose round's findings were
+// dropped keeps its count alone. A file of version 28 or lower carrying a
+// judge's strikes is not one its version wrote, and is refused naming them.
+// Releases that write version 28 refuse a version-29 file as a newer abcd's
+// before any strict decode.
+//
 // A version raises when the abcd driving the run writes it. A lane's own abcd
 // may be a version ahead of its driver, and what it saves leaves the version
 // where it was (mutateReservation, iss-2611020719494343).
-const SchemaVersion = 28
+const SchemaVersion = 29
+
+// schemaVersionUnreasoned is the last version before a round's judge kept
+// each location it struck and its reason: read, never written.
+const schemaVersionUnreasoned = 28
 
 // schemaVersionUnjudged is the last version before a round kept its judge
 // and a finding its strike: read, never written.
@@ -1409,6 +1424,7 @@ var versionChecks = []versionCheck{
 	{highest: schemaVersionUnadmitted, carries: carrying("an admission", func(s State) bool { return s.Admitted != nil })},
 	{highest: schemaVersionUnmodelled, carries: State.modelled},
 	{highest: schemaVersionUnjudged, carries: State.judged},
+	{highest: schemaVersionUnreasoned, carries: State.strikesKept},
 }
 
 // unwritten names the first thing the state carries that a file stating
@@ -1612,11 +1628,14 @@ func readListedStated(root *os.Root, runID string) (State, int, error) {
 				"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 		}
 		st.SchemaVersion = SchemaVersion
-	case st.SchemaVersion >= schemaVersionUnadmitted && st.SchemaVersion <= schemaVersionUnjudged:
+	case st.SchemaVersion >= schemaVersionUnadmitted && st.SchemaVersion <= schemaVersionUnreasoned:
 		// Read as the current version, with no admission at version 25, no
-		// reviewer's models or class map before version 27 and no judge at
-		// any of them, its class labels already the names it wrote; the next
-		// write carries it, and this read writes nothing.
+		// reviewer's models or class map before version 27, no judge before
+		// version 28 and no strike kept on a judge at any of them, its class
+		// labels already the names it wrote; a version-28 judge takes the
+		// strikes its round's findings still carry. The next write carries
+		// it, and this read writes nothing.
+		st.keepStrikes()
 		st.SchemaVersion = SchemaVersion
 	case st.SchemaVersion != SchemaVersion:
 		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d to %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),
@@ -1687,7 +1706,8 @@ func readListedStated(root *os.Root, runID string) (State, int, error) {
 	// reaches a --json stream with a reason the loop did not read (judge.go).
 	if !st.judgesWritten() {
 		return State{}, 0, refuse("state", "", "", rel+" carries a judge or a strike the loop never writes: a judge on a run whose judge was not active, "+
-			"at another class, over roles whose reviewers did not disagree, at another path or count, or a strike on a finding no ruling judge was handed, or with no plain reason",
+			"at another class, over roles whose reviewers did not disagree, at another path or count, a strike on a finding no ruling judge was handed, or with no plain reason, "+
+			"or a strike kept on a judge other than the ones it struck, as its round's findings carry them while it keeps them",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	if !st.handBacksWritten() {
@@ -1918,8 +1938,9 @@ func (st *State) afterWritten(step func(st *State, rewrite func() error)) {
 
 // stateData is the file storeState stores for st: masked, with located
 // findings kept on each lane's latest round only (keepLatestFindings) and
-// dropped a round at a time, the oldest first, their counts kept, while the
-// file would pass stateRoomBytes (trimOldestFindings). A state still past
+// dropped a round at a time, the oldest first, their counts kept, then the
+// strikes each round's judge keeps, while the file would pass stateRoomBytes
+// (trimOldestFindings). A state still past
 // maxStateBytes is refused, so nothing is written and the file already there
 // stands: the loop never writes a state its own read refuses.
 func stateData(st State) ([]byte, error) {

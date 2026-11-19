@@ -223,6 +223,10 @@ type RecordJudge struct {
 	RoundJudge
 }
 
+// ClassPhrase names the judge's class as the text surfaces show it, with the
+// model it held and the effort it ran at.
+func (j RoundJudge) ClassPhrase() string { return classPhrase(j.Class, j.Model, j.Effort) }
+
 // recordOf renders a run's state as its record.
 func recordOf(st State) RunRecord {
 	rec := RunRecord{RunID: st.RunID, Key: st.Key, Intent: st.Intent, Spec: st.Spec, Driver: st.Driver, Profile: st.Profile,

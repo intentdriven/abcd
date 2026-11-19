@@ -665,7 +665,10 @@ The four classes are named for what each is for, strongest first: `research`,
   the run record says so in one line; a run never gains a judge part-way. An
   active judge, where a role's two reviewers disagree, may only strike from the
   fix brief a finding it rules false, with its reason, and never passes a round
-  (`commands/implement.md`). A
+  (`commands/implement.md`); the round's judge keeps each strike's location and
+  reason, so the run record shows them once the run is finished, except
+  where only the count is kept: a state trimmed to its size limit, or a
+  version-28 run whose struck round's findings were already dropped. A
   judge a configuration file names while no agent has cleared the gate is
   refused at the `review` stage, since the run cannot give it.
 - `review.max_reviewers`: the machine's ceiling on reviewers per role, 1 or 2

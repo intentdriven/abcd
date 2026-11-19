@@ -383,7 +383,14 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 28. Version 28
+under a run id it does not name. The state is schema version 29. Version 29
+kept each location a round's judge struck, with its reason, on the judge
+(iss-2611182238519860), so a finished run keeps a strike's reason once the
+next round drops the struck round's findings: a file of version 28 reads as
+the current version, each ruled judge taking its strikes from its round's
+findings where those are still kept and keeping its count alone where they
+were dropped, and one of version 28 or lower carrying a judge's strikes is
+refused. Version 28
 added the review judge's ruling (itd-2610240922461281): a round's judge, with
 the roles it ruled on, its brief and return, whether it ruled and why it was
 not launched, and a finding's `struck` status with the judge's reason. A file
@@ -1052,7 +1059,14 @@ counted. Where a role's two reviewers disagree, an active judge is handed both
 returns and the head once every validator has returned, the gate asked again as
 it launches; it may strike only a failing finding of that role, each strike
 with its reason, and passes nothing: a struck finding leaves the fix brief, and
-a round whose failing findings are all struck still opens a fix round. A judge a configuration file names is refused at the `review` stage
+a round whose failing findings are all struck still opens a fix round. The
+round's judge keeps each location it struck and its reason, which outlive the
+round's findings, so the run record, in its JSON and its text, shows each
+strike's reason once the run is finished. Two cases keep only the count
+struck: a state trimmed to its size limit, which drops the oldest judge's
+strikes once no round carries findings, and a version-28 run whose struck
+round's findings were already dropped; the text record then says that judge's
+strikes were not kept. A judge a configuration file names is refused at the `review` stage
 until an agent has cleared the gate, as is any fault in the others, before
 anything is written. A file naming an old class (`middle`, `below`,
 `smallest`) is refused with the mapping, and a machine class map that sets

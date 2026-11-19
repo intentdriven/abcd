@@ -1584,6 +1584,7 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 			fmt.Fprintf(w, "    round %d at %s: %s %s%s%s%s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(role), termsafe.Sanitize(v.Verdict), located, models, routeSuffix(v.Route))
 			renderFindings(w, v.Findings)
 		}
+		renderJudges(w, l.Judges)
 		if len(l.Resolves) > 0 {
 			fmt.Fprintf(w, "    resolves %s\n", termsafe.Sanitize(strings.Join(l.Resolves, ", ")))
 		}
@@ -1634,6 +1635,32 @@ func renderFindings(w io.Writer, fs []loop.Finding) {
 			line += "  cited by " + strings.Join(by, ", ")
 		}
 		fmt.Fprintln(w, termsafe.Sanitize(line))
+	}
+}
+
+// renderJudges renders each round's judge on a line of its own: its class,
+// the roles it was handed and what it did, and beneath it each location it
+// struck with its reason, which the judge keeps once the round's findings are
+// dropped (iss-2611182238519860).
+func renderJudges(w io.Writer, js []loop.RecordJudge) {
+	for _, j := range js {
+		did := "out, its return awaited"
+		switch {
+		case j.Unlaunched != "":
+			did = "not launched: " + j.Unlaunched
+		case j.Ruled && j.Struck == 0:
+			did = "ruled, struck no finding"
+		case j.Ruled:
+			did = fmt.Sprintf("ruled, struck %d located finding(s)", j.Struck)
+		}
+		fmt.Fprintln(w, termsafe.Sanitize(fmt.Sprintf("    round %d judge, %s, on %s: %s", j.Round, j.ClassPhrase(), strings.Join(j.Roles, " and "), did)))
+		for _, s := range j.Strikes {
+			fmt.Fprintln(w, termsafe.Sanitize(fmt.Sprintf("      %s:%d  struck: %s", s.File, s.Line, s.Reason)))
+		}
+		if j.Ruled && j.Struck > 0 && len(j.Strikes) == 0 {
+			fmt.Fprintln(w, "      the locations and reasons of its strikes were not kept: an abcd before state version 29 recorded the judge, "+
+				"or the state was trimmed to its bound; the run record's judge line names the locations")
+		}
 	}
 }
 
