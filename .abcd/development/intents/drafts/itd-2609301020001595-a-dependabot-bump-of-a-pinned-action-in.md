@@ -23,7 +23,7 @@ Typed links: `builds_on` [itd-2609221842494980](../shipped/itd-2609221842494980-
 
 > **A dependabot bump of a pinned action in a scaffolded workflow carries its scaffold template with it and lands re-authored, so it goes green on its own.** A read-only job checked out at the trusted base reads the bot branch's workflow pins as data and runs scaffold-sync from the base; a separate job pushes the template change with the GitHub App token, the person as author and committer, and refuses rather than fall back to GITHUB_TOKEN.
 >
-> "Every action bump used to go red on the parity check, and the fix was always the same command run by hand," said a product thinker landing their third release-workflow bump of the week. "Now the template follows the pin on the bot's own branch, the commit is mine by the rule I already signed for, and a bump the workflow cannot prove safe is still left for me."
+> "Every action bump used to go red on the parity check, and the fix was always the same command run by hand," said Iris, a product thinker landing their third release-workflow bump of the week. "Now the template follows the pin on the bot's own branch, the commit is mine by the rule I already signed for, and a bump the workflow cannot prove safe is still left for me."
 
 ## Why This Matters
 
