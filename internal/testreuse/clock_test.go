@@ -477,6 +477,18 @@ func TestAGarbledClockNeverCostsTheReceipt(t *testing.T) {
 			writeFile(t, clock, "wait load 10\n", 0o644)
 			return clock
 		}, nil},
+		{"a clock directory this account cannot list", func(t *testing.T) string {
+			if os.Geteuid() == 0 {
+				t.Skip("root lists a directory whatever its mode")
+			}
+			clock := filepath.Join(clocks, hourAgo+"-8")
+			writeFile(t, clock, "wait load 10\nstage unit 60\n", 0o644)
+			if err := os.Chmod(clocks, 0o300); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { os.Chmod(clocks, 0o755) })
+			return clock
+		}, reported},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if err := os.Remove(receipt); err != nil && !os.IsNotExist(err) {

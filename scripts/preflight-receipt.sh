@@ -354,9 +354,10 @@ clock_report() {
 	# safe to word-split.
 	if [ -d "$clock_rel" ]; then
 		# shellcheck disable=SC2012
-		ls -t "$clock_rel" | tail -n +"$((keep + 1))" | while IFS= read -r old; do
+		# A directory this account cannot list prunes nothing and fails nothing.
+		ls -t "$clock_rel" 2>/dev/null | tail -n +"$((keep + 1))" | while IFS= read -r old; do
 			rm -f "${clock_rel:?}/$old" 2>/dev/null || true
-		done
+		done || true
 	fi
 }
 
