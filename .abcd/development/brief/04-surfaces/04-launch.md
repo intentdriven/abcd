@@ -280,9 +280,8 @@ It is idempotent and fail-safe: a re-run on current machinery is a no-op
 the caller confirms, and a structural fault before the writes, a missing declaration or an unknown
 kind exits 2 with nothing written.
 
-**The preview is spelled `dry-run`, and it is a flag, not a sub-verb.** The
-binary registers no `dry-run` subcommand under launch, and `commands/launch.md`
-names it as a flag. Its report is
+**How the preview is asked for is the generated appendix's to state**, at the
+foot of this chapter, beside every other flag and sub-verb launch takes. Its report is
 preview-only, and what it finds changes no exit code (the opening of this
 chapter names the cases where it cannot run). It is **not** "ship minus
 publish": it runs the same gate suite the cut's render path runs and reports
