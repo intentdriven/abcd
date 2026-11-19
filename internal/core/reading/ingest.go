@@ -1103,7 +1103,9 @@ func runOutcome(root *os.Root, runID string) (string, error) {
 // refuse records a list-level refusal and returns it. It is the ONE writer of a
 // refusal record: every list-level refusal past the identity point routes
 // through here, and a refusal that returns bare instead is the defect
-// iss-2608311518250688 names. The one deliberate exception is the
+// iss-2608311518250688 names. There are two deliberate exceptions. One is
+// refuseARerun's: a run that already has an outcome must not be given a
+// second one, so its refusal writes no record. The other is the
 // prose-citation refusal, returned unrecorded so the run stays parked for its
 // re-worded ingest; it still performs this function's rollback.
 //
