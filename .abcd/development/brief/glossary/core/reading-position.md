@@ -31,12 +31,12 @@ declared includes with the scope it was commissioned about.
 
 ## The spelling
 
-The record writes the full phrase on first use and drops to bare "position" inside the reading
-chapter and the readings charter, where the include table is described as positive at every
-grain — "a position, a source directory, a file match". The glossary fixes **reading position**
-as the form to use outside those two documents (iss-2609012245352480): "position" alone is a
-common English word, and the surface's own `--position` flag is the only other place it is
-unambiguous.
+The reading chapter writes bare "position" throughout, from its first use on, matching the
+surface's own `--position` flag, and never writes the full phrase. The readings charter does the same, where the include table is described as
+positive at every grain — "a position, a source directory, a file match". The glossary fixes
+**reading position** as the form to use outside those two documents (iss-2609012245352480):
+"position" alone is a common English word, and the `--position` flag is the only other place it
+is unambiguous.
 
 **A position is not an agent, and not a surface.** The four definitions live under `agents/`
 because that is where the harness looks, but the position is the question; the agent is one
