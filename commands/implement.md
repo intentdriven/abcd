@@ -633,7 +633,9 @@ the judge's `reason`, and leaves the fix brief, which names it as struck and not
 handed on; the round's `judge` records the roles, whether it `ruled`, how many
 it `struck`, and its `strikes`, each location it struck with its `file`, `line`
 and `reason`. The strikes stay on the judge once the next round opens and the
-round's findings are dropped, so a finished run keeps each reason: `implement
+round's findings are dropped, so a finished run keeps each reason, short of
+the two cases below that keep only the count (a state trimmed to its size
+limit, and a version-28 run whose findings were already dropped): `implement
 record --json` lists the judge under the lane's `judges`, the text record prints
 a line for each round's judge with each strike's location and reason beneath
 it, and the judge's line in the run record says each reason is kept on the

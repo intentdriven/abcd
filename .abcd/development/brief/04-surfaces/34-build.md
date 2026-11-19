@@ -1051,8 +1051,12 @@ it launches; it may strike only a failing finding of that role, each strike
 with its reason, and passes nothing: a struck finding leaves the fix brief, and
 a round whose failing findings are all struck still opens a fix round. The
 round's judge keeps each location it struck and its reason, which outlive the
-round's findings, so the run record, in its JSON and its text, shows every
-strike's reason once the run is finished. A judge a configuration file names is refused at the `review` stage
+round's findings, so the run record, in its JSON and its text, shows each
+strike's reason once the run is finished. Two cases keep only the count
+struck: a state trimmed to its size limit, which drops the oldest judge's
+strikes once no round carries findings, and a version-28 run whose struck
+round's findings were already dropped; the text record then says that judge's
+strikes were not kept. A judge a configuration file names is refused at the `review` stage
 until an agent has cleared the gate, as is any fault in the others, before
 anything is written. A file naming an old class (`middle`, `below`,
 `smallest`) is refused with the mapping, and a machine class map that sets

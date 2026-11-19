@@ -181,27 +181,48 @@ func TestAHandEditedStrikeOnTheJudgeIsRefused(t *testing.T) {
 }
 
 // TestTrimmingDropsAJudgesStrikesOnceNoFindingsAreLeft: a state still past its
-// room once every round's findings are dropped has the oldest round's judge's
-// strikes dropped next, its count kept, and that file reads.
+// room drops every round's findings before any judge's strikes, so a judge is
+// never left without its strikes while its round's findings still mark them
+// struck, and the file of every step reads; once no findings are left, the
+// oldest round's judge's strikes go, its count kept. The struck round is the
+// latest, still holding its findings, and an earlier one whose findings the
+// next round already dropped.
 func TestTrimmingDropsAJudgesStrikesOnceNoFindingsAreLeft(t *testing.T) {
-	repo, id := struckThenFixed(t, true)
-	st, err := ReadState(repo.Root(), id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(st.Lanes[0].Validation[0].Judge.Strikes) != 1 {
-		t.Fatalf("premise: the judge keeps its strike: %+v", st.Lanes[0].Validation[0].Judge)
-	}
-	for st.trimOldestFindings() {
-		if j := st.Lanes[0].Validation[0].Judge; len(j.Strikes) == 0 {
-			break
+	for _, next := range []bool{false, true} {
+		repo, id := struckThenFixed(t, next)
+		st, err := ReadState(repo.Root(), id)
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	if j := st.Lanes[0].Validation[0].Judge; j.Struck != 1 || len(j.Strikes) != 0 {
-		t.Fatalf("the trim drops the judge's strikes and keeps its count: %+v", j)
-	}
-	if !st.judgesWritten() {
-		t.Fatal("a judge whose strikes were trimmed is one the loop writes")
+		if len(st.Lanes[0].Validation[0].Judge.Strikes) != 1 {
+			t.Fatalf("premise: the judge keeps its strike (next round open: %v): %+v", next, st.Lanes[0].Validation[0].Judge)
+		}
+		if held := st.Lanes[0].Validation[0].carriesFindings(); held == next {
+			t.Fatalf("premise: the struck round holds its findings only while it is the latest (next round open: %v)", next)
+		}
+		path := runStatePath(repo.Root(), id)
+		for step := 1; st.trimOldestFindings(); step++ {
+			r := st.Lanes[0].Validation[0]
+			if r.carriesFindings() && len(r.Judge.Strikes) == 0 {
+				t.Fatalf("trim step %d drops the judge's strikes while its round's findings remain (next round open: %v)", step, next)
+			}
+			if !st.judgesWritten() {
+				t.Fatalf("trim step %d leaves a judge the loop never writes (next round open: %v): %+v", step, next, r.Judge)
+			}
+			data, err := json.MarshalIndent(st, "", "  ")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ReadState(repo.Root(), id); err != nil {
+				t.Fatalf("the file of trim step %d reads (next round open: %v): %v", step, next, err)
+			}
+		}
+		if j := st.Lanes[0].Validation[0].Judge; j.Struck != 1 || len(j.Strikes) != 0 {
+			t.Fatalf("the trim drops the judge's strikes and keeps its count (next round open: %v): %+v", next, j)
+		}
 	}
 }
 
