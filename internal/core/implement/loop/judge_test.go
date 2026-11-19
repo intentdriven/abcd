@@ -294,8 +294,8 @@ func TestAJudgeMayStrikeOnlyAFindingItWasHanded(t *testing.T) {
 // is refused naming it, and a stored judge or strike the loop never writes is
 // refused at read.
 func TestAJudgedRoundIsTheVersionAfterTheUnjudged(t *testing.T) {
-	if SchemaVersion != schemaVersionUnjudged+1 {
-		t.Fatalf("the judge is the version after %d: %d", schemaVersionUnjudged, SchemaVersion)
+	if schemaVersionUnreasoned != schemaVersionUnjudged+1 {
+		t.Fatalf("the judge is the version after %d: %d", schemaVersionUnjudged, schemaVersionUnreasoned)
 	}
 	repo, id, stages, l, _ := judgedRound(t, calibratedJudge, findingsReturn("SHIP"), findingsReturn("FIX FIRST", "a.go:3", "b.go:5"))
 	a := stepAwait(t, repo, id, stages, calibratedJudge)

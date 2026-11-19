@@ -186,6 +186,10 @@ func (r ValidationRound) masked() ValidationRound {
 		j.Roles = maskEach(j.Roles, line)
 		j.Class, j.Model, j.Effort = line(j.Class), line(j.Model), line(j.Effort)
 		j.Brief, j.Return, j.Unlaunched = line(j.Brief), line(j.Return), line(j.Unlaunched)
+		j.Strikes = maskEach(j.Strikes, func(s JudgeStrike) JudgeStrike {
+			s.File, s.Reason = line(s.File), line(s.Reason)
+			return s
+		})
 		return j
 	})
 	return r
