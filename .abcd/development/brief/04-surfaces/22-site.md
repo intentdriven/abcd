@@ -123,7 +123,9 @@ project's hand-written documentation is read on GitHub, and nothing is written
 for the website.
 
 So setting one up writes two files and no more: the site's settings, holding
-the publish switch and no composition, and the workflow. The interface words,
+the publish switch and no composition, at `.abcd/site.json`, and the workflow,
+at `.github/workflows/site.yml` (or, beside a composed site, the two files
+named below). The interface words,
 styles, scripts and content policy ship in the binary, and the workflow builds
 and gates with the project flag, so the repository carries no site sources.
 GitHub Pages serves no header a site declares, so each page carries its
@@ -163,8 +165,26 @@ abcd does not write fails the site's gate, on every page, the record's own
 included, and so does a site with no title.
 Files under `.abcd/` (but the local tier) and `CHANGELOG.md` are abcd's; `docs/`,
 `README.md` and every other file are not. The build and the gate name the route
-explicitly, and refuse settings of the other shape. abcd's own composed site is
-not a project site: it renders its documentation and stays as it is.
+explicitly, by the project flag, and refuse settings of the other shape: a
+composed build of a project site's settings, and a project build whose settings
+are a composition.
+
+**Beside a composed site.** A repository can keep a composed site and a project
+site at once, as abcd's own does (itd-2610142145236613): its documentation
+composed for its own host, and its record built on the project route onto its
+GitHub Pages. The two cannot share one file, so where `.abcd/site.json` holds a
+composition, setting up a project site writes its settings to
+`.abcd/project-site.json` and its workflow to
+`.github/workflows/project-site.yml`, beside the composed site's own, and
+leaves the composed site as it is. The project route, build and gate alike,
+reads `.abcd/project-site.json` first, and refuses it unless it holds a project
+site's settings; only where that file is absent does the route read
+`.abcd/site.json`, and the refusal of a composition applies to that file then.
+The composed route never reads the file beside it, so a composition is never
+taken for a request for a project site: the route stays declared, never
+inferred. abcd's own composed site is not a project site: it renders its
+documentation and stays as it is, and its record's project site is kept beside
+it.
 
 ## The page set
 

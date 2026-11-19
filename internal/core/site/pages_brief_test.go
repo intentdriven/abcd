@@ -58,3 +58,22 @@ func TestBriefPageSetNamesEveryPageTheExplorerWrites(t *testing.T) {
 		}
 	}
 }
+
+// The brief's project-site section names where a project site kept beside a
+// composition lives (iss-2611040554507299). It said setup writes the site's
+// settings and workflow, and that the build and the gate refuse settings of
+// the other shape, without naming ProjectSettingsRelPath or
+// ProjectWorkflowRelPath, which setup writes beside a composition and the
+// project route reads first.
+func TestBriefProjectSiteNamesTheSideBySideFiles(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repoRoot(), filepath.FromSlash(siteBriefRel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	section := briefSpan(t, string(raw), "## A project's own site", "\n## ")
+	for _, rel := range []string{ManifestRelPath, SiteWorkflowRelPath, ProjectSettingsRelPath, ProjectWorkflowRelPath} {
+		if !strings.Contains(section, "`"+rel+"`") {
+			t.Errorf("the project-site section of %s does not name `%s`", siteBriefRel, rel)
+		}
+	}
+}
