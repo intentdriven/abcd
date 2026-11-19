@@ -518,6 +518,34 @@ func TestAGarbledClockNeverCostsTheReceipt(t *testing.T) {
 			}
 		})
 	}
+
+	// clock since reads the last mark of its name and does arithmetic on it, so a
+	// mark that is not Unix seconds by the start's rule (no leading zero, which
+	// the shell reads as octal, and no more than twelve digits) is refused: it
+	// notes nothing and exits 0, even when an earlier mark of that name was sound.
+	for _, mark := range []string{"0899", "0", strings.Repeat("9", 13), "1700000000\nmark race 0899"} {
+		t.Run("a race mark of "+strconv.Quote(mark), func(t *testing.T) {
+			clock := filepath.Join(clocks, hourAgo+"-9")
+			body := "wait load 10\nmark race " + mark + "\n"
+			writeFile(t, clock, body, 0o644)
+			script, err := filepath.Abs(filepath.Join("..", "..", "scripts", "preflight-receipt.sh"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command("bash", script, "clock", "since", "race")
+			var out bytes.Buffer
+			cmd.Dir, cmd.Env, cmd.Stdout, cmd.Stderr = r.root, append(gittest.Env(t), ClockEnv+"="+clock), &out, &out
+			if err := cmd.Run(); err != nil {
+				t.Errorf("clock since race over the mark exited %v:\n%s", err, out.String())
+			}
+			if out.Len() > 0 {
+				t.Errorf("clock since race over the mark said:\n%s", out.String())
+			}
+			if raw, err := os.ReadFile(clock); err != nil || string(raw) != body {
+				t.Errorf("clock since race noted over the mark: the clock holds %q (%v), want %q", raw, err, body)
+			}
+		})
+	}
 }
 
 // closeTo reports whether got is want with its first time a second either way.

@@ -312,14 +312,10 @@ clock_report() {
 	[ -n "$clock" ] || return 0
 	base="${clock##*/}"
 	started="${base%%-*}"
-	# A start in Unix seconds has no leading zero, which shell arithmetic would
-	# read as octal, and no more than twelve digits.
-	case "$started" in
-	"" | *[!0-9]* | 0* | ?????????????*)
+	if ! unix_seconds "$started"; then
 		echo "preflight: no time reported — the run's clock ($base) does not name its start."
 		return 0
-		;;
-	esac
+	fi
 	if [ -e "$clock" ] || [ -L "$clock" ]; then
 		if ! [ -f "$clock" ] || ! [ -r "$clock" ]; then
 			echo "preflight: no time reported — the run's clock ($base) is not a file this account can read."
@@ -364,14 +360,22 @@ clock_report() {
 	fi
 }
 
+# unix_seconds <value>: whether value is a time in Unix seconds the clock may do
+# shell arithmetic on: digits with no leading zero, which the shell would read as
+# octal, and no more than twelve of them. A run's start, from its clock's name,
+# and a mark read back from the clock both pass it before any arithmetic.
+unix_seconds() {
+	case "$1" in
+	"" | *[!0-9]* | 0* | ?????????????*) return 1 ;;
+	esac
+}
+
 # clock_start <clock>: the run's start in Unix seconds, from its clock's name, by
-# clock_report's rule: no leading zero and no more than twelve digits.
+# unix_seconds' rule.
 clock_start() {
 	local base="${1##*/}"
 	base="${base%%-*}"
-	case "$base" in
-	"" | *[!0-9]* | 0* | ?????????????*) return 1 ;;
-	esac
+	unix_seconds "$base" || return 1
 	printf '%s\n' "$base"
 }
 
@@ -393,7 +397,8 @@ clock_note() {
 # the whole time before them (the gate's compile, its queue and its settling),
 # and a clock that holds one already is left as it is, so a make started inside
 # the stages notes nothing. mark notes the start of a wait, and since the wait
-# from the last mark of that name to now, as `wait <name> <seconds>`.
+# from the last mark of that name to now, as `wait <name> <seconds>`, or nothing
+# when that mark is not Unix seconds by unix_seconds' rule.
 clock() {
 	local clock="${ABCD_PREFLIGHT_CLOCK:-}" start now at
 	if [ "$1" = new ]; then
@@ -417,8 +422,10 @@ clock() {
 		clock_note "mark $2 $now"
 		;;
 	since)
-		at="$(awk -v n="$2" '$1 == "mark" && $2 == n && $3 ~ /^[0-9]+$/ { t = $3 } END { print t }' "$clock" 2>/dev/null || true)"
-		[ -n "$at" ] || return 0
+		# The last mark of that name, refused unless it is Unix seconds by the
+		# start's rule; a refused mark notes nothing.
+		at="$(awk -v n="$2" '$1 == "mark" && $2 == n { t = $3 } END { print t }' "$clock" 2>/dev/null || true)"
+		unix_seconds "$at" || return 0
 		clock_note "wait $2 $((now - at))"
 		;;
 	esac
