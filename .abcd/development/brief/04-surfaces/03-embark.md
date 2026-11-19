@@ -211,7 +211,8 @@ write summary. Two things print there, in this order.
 exemption for pass B, the pass that mines chat transcripts for the rationale
 nobody wrote down. No source tier this build packs reads a transcript store, so
 disembark writes the declaration into every pack it produces, and embark carries
-it through as the first line of both reports.
+it through before the blanks in both reports: after the probe's heading line, and
+as the first line of the unpack's.
 
 The declaration outlives the blanks below it, and that is the point of it being
 a declaration rather than a silent gap: a brief section pass B would have
