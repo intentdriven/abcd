@@ -302,20 +302,32 @@ own_receipt() {
 # the form 42s, 3m12s, 41m07s or 1h02m03s, which Go's time.ParseDuration reads
 # (internal/testreuse's formatClock prints the same). With no clock named (mint run by hand)
 # it says nothing; a clock no stage or gate wrote is a run that waited for nothing
-# and ran no test stage, as the records-only rule does.
+# and ran no test stage, as the records-only rule does. The report never costs the
+# receipt, which mint has already written: a line that is not a note of a number
+# of seconds no greater than the run's whole time is skipped, and a clock whose
+# name gives no start, that is not a file or cannot be read gives one line saying
+# no time is reported, and returns 0 (TestAGarbledClockNeverCostsTheReceipt).
 clock_report() {
 	local clock="${ABCD_PREFLIGHT_CLOCK:-}" base started now notes=/dev/null
 	[ -n "$clock" ] || return 0
 	base="${clock##*/}"
 	started="${base%%-*}"
+	# A start in Unix seconds has no leading zero, which shell arithmetic would
+	# read as octal, and no more than twelve digits.
 	case "$started" in
-	"" | *[!0-9]*)
+	"" | *[!0-9]* | 0* | ?????????????*)
 		echo "preflight: no time reported — the run's clock ($base) does not name its start."
 		return 0
 		;;
 	esac
+	if [ -e "$clock" ] || [ -L "$clock" ]; then
+		if ! [ -f "$clock" ] || ! [ -r "$clock" ]; then
+			echo "preflight: no time reported — the run's clock ($base) is not a file this account can read."
+			return 0
+		fi
+		notes="$clock"
+	fi
 	now="$(date +%s)"
-	[ -f "$clock" ] && notes="$clock"
 	awk -v total="$((now - started))" -v full="$1" '
 		function fmt(s,   h, m) {
 			h = int(s / 3600); m = int((s % 3600) / 60); s = s % 60
@@ -328,7 +340,7 @@ clock_report() {
 			if (s <= 0) return
 			w += s; parts = parts sep name " " fmt(s); sep = ", "
 		}
-		NF == 3 && $2 ~ /^[a-z]+$/ && $3 ~ /^[0-9]+(\.[0-9]+)?$/ {
+		NF == 3 && $2 ~ /^[a-z]+$/ && $3 ~ /^[0-9]+(\.[0-9]+)?$/ && length($3) <= 16 && $3 + 0 <= total + 1 {
 			if ($1 == "wait") { if (!($2 in waited)) kinds[++m] = $2; waited[$2] += $3 }
 			else if ($1 == "stage") { if (!($2 in took)) order[++n] = $2; took[$2] += $3 }
 		}
@@ -341,23 +353,24 @@ clock_report() {
 			if (full == "full") { g = c - sum; if (g < 0) g = 0; printf "preflight: stage gates: %s\n", fmt(g) }
 			for (i = 1; i <= n; i++) printf "preflight: stage %s: %s\n", order[i], fmt(st[i])
 			printf "preflight: checked in %s (waited %s%s)\n", fmt(c), fmt(w), (parts == "" ? "" : ": " parts)
-		}' "$notes"
+		}' "$notes" 2>/dev/null || echo "preflight: no time reported — the run's clock ($base) could not be read."
 	# Keep the newest $keep clocks, as the receipts. The names are <start>-<pid>,
 	# safe to word-split.
 	if [ -d "$clock_rel" ]; then
 		# shellcheck disable=SC2012
 		ls -t "$clock_rel" | tail -n +"$((keep + 1))" | while IFS= read -r old; do
-			rm -f "${clock_rel:?}/$old"
+			rm -f "${clock_rel:?}/$old" 2>/dev/null || true
 		done
 	fi
 }
 
-# clock_start <clock>: the run's start in Unix seconds, from its clock's name.
+# clock_start <clock>: the run's start in Unix seconds, from its clock's name, by
+# clock_report's rule: no leading zero and no more than twelve digits.
 clock_start() {
 	local base="${1##*/}"
 	base="${base%%-*}"
 	case "$base" in
-	"" | *[!0-9]*) return 1 ;;
+	"" | *[!0-9]* | 0* | ?????????????*) return 1 ;;
 	esac
 	printf '%s\n' "$base"
 }

@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestAClockNoteIsOneLineAppended (iss-2611190439574731): each note is one line
@@ -389,6 +393,144 @@ func TestTheLastLineNamesEachKindOfWait(t *testing.T) {
 			t.Errorf("%q: the fields add to %v, not the total %v", last, sum, whole)
 		}
 	}
+}
+
+// TestAGarbledClockNeverCostsTheReceipt (iss-2611190439574731): the clock is a
+// report, never a gate. Whatever its file holds, or if it cannot be read at all,
+// mint still mints the receipt and exits 0, and the last line is the report with
+// every line that is not a note skipped, or one plain line saying no time is
+// reported; never an error from the tool that reads it.
+func TestAGarbledClockNeverCostsTheReceipt(t *testing.T) {
+	r := newGitRepo(t)
+	r.write(".gitignore", ".abcd/.work.local/\n")
+	r.write("a.txt", "one\n")
+	head := r.commit("one")
+	tree := r.git("rev-parse", head+"^{tree}")
+	for _, stage := range []string{"unit", "race"} {
+		body := "commit " + head + "\ntree " + tree + "\nstage " + stage + "\nmode reuse\nreused 1\npackages 2\nresult pass\n"
+		writeFile(t, filepath.Join(r.root, ".abcd", ".work.local", "preflight-reuse", head, stage+"-aaaaaaaaaaaa"), body, 0o644)
+	}
+	state := receiptScript(t, r.root, "state")
+	receipt := filepath.Join(r.root, ".abcd", ".work.local", "preflight-receipts", head)
+	clocks := filepath.Join(r.root, ".abcd", ".work.local", "preflight-clock")
+	hourAgo := strconv.FormatInt(time.Now().Unix()-3600, 10)
+
+	// Two notes the report must read, among lines it must skip.
+	garbled := strings.Join([]string{
+		"wait load 10",
+		"stage unit 60",
+		"", "wait", "wait load", "wait Load 5", "wait load -3", "wait load 1e3",
+		"wait load 5s", "wait load 5 extra", "stage two words 7", "stage unit 1.2.3",
+		"wait load .5", "mark race notanumber", "\x00\xff\xfe binary \x01",
+		"wait load " + strings.Repeat("9", 20000),
+		"stage unit 60 # a comment", "wait\tload\t\t", "WAIT LOAD 99",
+	}, "\n") + "\n"
+	reported := []string{"preflight: stage gates: 58m50s", "preflight: stage unit: 1m00s", "preflight: checked in 59m50s (waited 10s: load gate 10s)"}
+	noTime := "preflight: no time reported"
+
+	for _, c := range []struct {
+		name  string
+		make  func(t *testing.T) string // makes the clock, returns its path
+		lines []string                  // the last lines, or nil for noTime
+	}{
+		{"garbled lines", func(t *testing.T) string {
+			clock := filepath.Join(clocks, hourAgo+"-1")
+			writeFile(t, clock, garbled, 0o644)
+			return clock
+		}, reported},
+		{"no final newline", func(t *testing.T) string {
+			clock := filepath.Join(clocks, hourAgo+"-2")
+			writeFile(t, clock, "wait load 10\nstage unit 60", 0o644)
+			return clock
+		}, reported},
+		{"an unreadable file", func(t *testing.T) string {
+			if os.Geteuid() == 0 {
+				t.Skip("root reads a file whatever its mode")
+			}
+			clock := filepath.Join(clocks, hourAgo+"-3")
+			writeFile(t, clock, "wait load 10\nstage unit 60\n", 0o644)
+			if err := os.Chmod(clock, 0); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { os.Chmod(clock, 0o644) })
+			return clock
+		}, nil},
+		{"a directory", func(t *testing.T) string {
+			clock := filepath.Join(clocks, hourAgo+"-4")
+			if err := os.MkdirAll(filepath.Join(clock, "inside"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			return clock
+		}, nil},
+		{"a name with no start", func(t *testing.T) string {
+			clock := filepath.Join(clocks, "garbled-5")
+			writeFile(t, clock, "wait load 10\n", 0o644)
+			return clock
+		}, nil},
+		{"a start of leading zeros", func(t *testing.T) string {
+			clock := filepath.Join(clocks, "0899-6")
+			writeFile(t, clock, "wait load 10\n", 0o644)
+			return clock
+		}, nil},
+		{"a start of too many digits", func(t *testing.T) string {
+			clock := filepath.Join(clocks, strings.Repeat("9", 25)+"-7")
+			writeFile(t, clock, "wait load 10\n", 0o644)
+			return clock
+		}, nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if err := os.Remove(receipt); err != nil && !os.IsNotExist(err) {
+				t.Fatal(err)
+			}
+			clock := c.make(t)
+			script, err := filepath.Abs(filepath.Join("..", "..", "scripts", "preflight-receipt.sh"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command("bash", script, "mint", state)
+			var stdout, stderr bytes.Buffer
+			cmd.Dir, cmd.Env, cmd.Stdout, cmd.Stderr = r.root, append(gittest.Env(t), ClockEnv+"="+clock), &stdout, &stderr
+			if err := cmd.Run(); err != nil {
+				t.Fatalf("mint over the clock exited %v:\n%s%s", err, stdout.String(), stderr.String())
+			}
+			if stderr.Len() > 0 {
+				t.Errorf("mint over the clock said on stderr:\n%s", stderr.String())
+			}
+			if _, err := os.Stat(receipt); err != nil {
+				t.Errorf("no receipt was minted: %v\n%s", err, stdout.String())
+			}
+			lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+			if c.lines == nil {
+				if last := lines[len(lines)-1]; !strings.HasPrefix(last, noTime) {
+					t.Errorf("the last line is %q, want %q…:\n%s", last, noTime, stdout.String())
+				}
+				return
+			}
+			if len(lines) < len(c.lines) {
+				t.Fatalf("too few lines:\n%s", stdout.String())
+			}
+			got := lines[len(lines)-len(c.lines):]
+			for i, want := range c.lines {
+				// The run's start is a second from where the test set it, either way.
+				if got[i] != want && !closeTo(got[i], want) {
+					t.Errorf("line %d is %q, want %q:\n%s", i, got[i], want, stdout.String())
+				}
+			}
+		})
+	}
+}
+
+// closeTo reports whether got is want with its first time a second either way.
+func closeTo(got, want string) bool {
+	re := regexp.MustCompile(`\b[0-9][0-9hms]*s\b`)
+	w := re.FindStringIndex(want)
+	g := re.FindStringIndex(got)
+	if w == nil || g == nil || got[:g[0]] != want[:w[0]] || got[g[1]:] != want[w[1]:] {
+		return false
+	}
+	gd, err1 := time.ParseDuration(got[g[0]:g[1]])
+	wd, err2 := time.ParseDuration(want[w[0]:w[1]])
+	return err1 == nil && err2 == nil && (gd-wd).Abs() <= time.Second
 }
 
 // within reads the duration a line holds between prefix and suffix and fails the
