@@ -234,6 +234,23 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 			}
 			return Outcome{HandBack: &hb}, nil
 		}
+		// Where a role's reviewers disagree and the run's judge is active, the
+		// judge rules before the fix round, and strikes only (judge.go).
+		unlaunched := ""
+		switch judgeStep(c.State, *lane, *cur) {
+		case judgeOut:
+			return Outcome{}, contend(string(StageValidate), "", lane.ID, fmt.Sprintf("round %d's judge is out", cur.Round),
+				"hand back its return with `abcd implement receipt "+cur.Judge.Return+"`")
+		case judgeLaunch:
+			aw, note, err := launchJudge(c, *lane, cur)
+			if err != nil {
+				return Outcome{}, err
+			}
+			if aw != nil {
+				return Outcome{Await: aw, Note: note}, nil
+			}
+			unlaunched = note + "; "
+		}
 		route, moved, err := routeRound(c, *lane, cur, RoleImplementer, cur)
 		if err != nil {
 			return Outcome{}, err
@@ -243,7 +260,7 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 			return Outcome{}, err
 		}
 		return Outcome{Await: &Await{Role: RoleImplementer, Brief: brief, Receipt: receipt},
-			Note: fmt.Sprintf("round %d did not pass (%s); its findings go to a fresh implementer, who applies each or rejects it in writing%s", cur.Round, verdictsLine(*cur), moved)}, nil
+			Note: fmt.Sprintf("%sround %d did not pass (%s); its findings go to a fresh implementer, who applies each or rejects it in writing%s", unlaunched, cur.Round, verdictsLine(*cur), moved)}, nil
 	}
 	if err := reportsCarryNoVerdict(c, *lane); err != nil {
 		return Outcome{}, err
@@ -774,8 +791,11 @@ func writeFixBrief(c Context, lane Lane, r ValidationRound, failing []ValidatorR
 			who += " (" + ph + ")"
 		}
 		p("- %s: %s — its return: `%s`\n", who, v.Verdict, abs(c.RepoRoot, v.Return))
-		if len(v.Findings) > 0 {
-			p("  - located findings: %s\n", strings.Join(findingLocations(v.Findings), ", "))
+		if handed := handedFindings(v.Findings); len(handed) > 0 {
+			p("  - located findings: %s\n", strings.Join(findingLocations(handed), ", "))
+		}
+		if struck := struckFindings(v.Findings); len(struck) > 0 {
+			p("  - struck by the round's judge as false, and not handed on: %s\n", strings.Join(findingLocations(struck), ", "))
 		}
 		if v.Audit != nil {
 			if len(v.Audit.NotMet) > 0 {
@@ -789,7 +809,20 @@ func writeFixBrief(c Context, lane Lane, r ValidationRound, failing []ValidatorR
 		}
 	}
 	p("\nThe round's verdicts, as the loop recorded them: %s.\n\n", verdictsLine(r))
-	p("For every finding in those returns, either apply it with a commit on `%s` in the worktree\n", lane.Branch)
+	if j := r.Judge; j != nil && j.Ruled {
+		p("Where the reviewers of %s disagreed, the round's judge ruled on their returns. It may only strike\n", strings.Join(j.Roles, " and "))
+		p("a finding it rules false, and passes nothing: the stricter verdict stands. A struck finding is\n")
+		p("not yours: neither apply it nor answer it in your report.\n\n")
+		if handsOnNothing(r, failing) {
+			p("The judge struck every located finding the round failed on, so this brief hands on no finding.\n")
+			p("The round did not pass all the same; make no change for a struck finding, and when nothing else\n")
+			p("in the returns needs one, hand back a receipt naming the branch's tip. The next round judges the\n")
+			p("lane's head afresh.\n\n")
+		}
+		p("For every finding in those returns the judge did not strike, either apply it with a commit on `%s` in the worktree\n", lane.Branch)
+	} else {
+		p("For every finding in those returns, either apply it with a commit on `%s` in the worktree\n", lane.Branch)
+	}
 	p("`%s`, or reject it in writing in your report, naming the finding and the reason. The next\n", lane.Worktree)
 	p("round hands the lane's head to every validator again, fresh; they read your report.\n")
 	p("Name each located finding in your report on a line of its own: its `file:line` first, then\n")
@@ -885,6 +918,9 @@ func verifyValidation(c Context, lane *Lane, receiptRel string) error {
 		cur.Fix = receiptRel
 		joinFixReport(cur, fixReportText(c, *lane, receiptRel), lane.Worktree)
 		return nil
+	}
+	if c.Await.Role == RoleJudge {
+		return verifyJudge(c, lane, cur, receiptRel)
 	}
 	for i := range cur.Validators {
 		v := &cur.Validators[i]
@@ -1166,6 +1202,9 @@ func validationNote(lane Lane, receipt string) string {
 		return ""
 	}
 	r := lane.Validation[len(lane.Validation)-1]
+	if j := r.Judge; j != nil && j.Ruled && j.Return == receipt {
+		return judgeNote(r)
+	}
 	if r.Fix == receipt {
 		note := fmt.Sprintf("round %d's findings were answered at %s; the next round judges the lane's head %s afresh", r.Round, shortSHA(lane.HeadSHA), shortSHA(lane.HeadSHA))
 		if t := fixTally(r); t != "" {

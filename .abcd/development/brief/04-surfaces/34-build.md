@@ -373,7 +373,12 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 27. Version 27
+under a run id it does not name. The state is schema version 28. Version 28
+added the review judge's ruling (itd-2610240922461281): a round's judge, with
+the roles it ruled on, its brief and return, whether it ruled and why it was
+not launched, and a finding's `struck` status with the judge's reason. A file
+of version 27 reads as a run no judge ruled on, and one of version 27 or lower
+carrying a judge, a strike or a reason is refused. Version 27
 added the models that wrote and reviewed each lane (itd-2610301750162657): a
 reviewer's writers' models, the model it was asked for and the one its return
 named, and a mark for a reviewer an earlier version handed out with none of
@@ -1033,7 +1038,11 @@ default, a repository's value being skipped with a warning. `review.judge`
 names one class, else the bundled `top`, which is stored `waiting` until a
 judge's agent has cleared itd-81's calibration gate and `active` from then on,
 fixed at the run's start; a waiting judge is never launched, awaited or
-counted. A judge a configuration file names is refused at the `review` stage
+counted. Where a role's two reviewers disagree, an active judge is handed both
+returns and the head once every validator has returned, the gate asked again as
+it launches; it may strike only a failing finding of that role, each strike
+with its reason, and passes nothing: a struck finding leaves the fix brief, and
+a round whose failing findings are all struck still opens a fix round. A judge a configuration file names is refused at the `review` stage
 until an agent has cleared the gate, as is any fault in the others, before
 anything is written. A file naming an old class (`middle`, `below`,
 `smallest`) is refused with the mapping, and a machine class map that sets

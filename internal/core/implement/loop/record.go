@@ -137,6 +137,10 @@ type RecordLane struct {
 	// Comparisons are how each reviewer role's reviewers compared, round by
 	// round, where a review set asked them for classes (reviewers.go).
 	Comparisons []RecordComparison `json:"comparisons,omitempty"`
+	// Judges are each round's judge, where a role's reviewers disagreed on a
+	// run whose judge was active (judge.go): what it ruled and struck, or why
+	// it was not launched.
+	Judges []RecordJudge `json:"judges,omitempty"`
 	// Resolves are the captures the lane fixed.
 	Resolves []string `json:"resolves"`
 	// PR is the lane's pull request, and Landing what its landing did.
@@ -213,6 +217,12 @@ type RecordComparison struct {
 	Comparison
 }
 
+// RecordJudge is one round's judge (judge.go).
+type RecordJudge struct {
+	Round int `json:"round"`
+	RoundJudge
+}
+
 // recordOf renders a run's state as its record.
 func recordOf(st State) RunRecord {
 	rec := RunRecord{RunID: st.RunID, Key: st.Key, Intent: st.Intent, Spec: st.Spec, Driver: st.Driver, Profile: st.Profile,
@@ -252,6 +262,9 @@ func recordOf(st State) RunRecord {
 			}
 			for _, c := range r.Comparisons {
 				rl.Comparisons = append(rl.Comparisons, RecordComparison{Round: r.Round, Comparison: c})
+			}
+			if r.Judge != nil {
+				rl.Judges = append(rl.Judges, RecordJudge{Round: r.Round, RoundJudge: *r.Judge})
 			}
 		}
 		if l.AutoPlan != nil {

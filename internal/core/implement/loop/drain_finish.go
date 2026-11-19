@@ -430,7 +430,7 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 			}
 			// No remote identity: a lane parked at its landing (parkedAtLand) moves
 			// only through the land stage, never the worktree stage that checks it.
-			res, err := performMove(repoRoot, st, parkedStages(), w, now, nil, nil, nil)
+			res, err := performMove(repoRoot, st, parkedStages(), w, now, nil, nil, nil, nil)
 			if err != nil {
 				return false, err
 			}
@@ -509,7 +509,7 @@ func resyncParked(repoRoot, runID string, now time.Time, save saveFrame) (note s
 		}
 		// No remote identity: a lane parked at its landing (parkedAtLand) moves
 		// only through the land stage, never the worktree stage that checks it.
-		res, err := performMove(repoRoot, st, parkedStages(), w, now, nil, nil, nil)
+		res, err := performMove(repoRoot, st, parkedStages(), w, now, nil, nil, nil, nil)
 		if err != nil {
 			return false, err
 		}
@@ -564,7 +564,7 @@ func watchParked(repoRoot, runID string, now time.Time, save saveFrame) (note st
 		logged := len(st.Record)
 		// No remote identity: a lane parked at its landing (parkedAtLand) moves
 		// only through the land stage, never the worktree stage that checks it.
-		res, err := performMove(repoRoot, st, parkedStages(), w, now, nil, nil, nil)
+		res, err := performMove(repoRoot, st, parkedStages(), w, now, nil, nil, nil, nil)
 		if err != nil {
 			return false, err
 		}

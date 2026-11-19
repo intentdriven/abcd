@@ -223,7 +223,7 @@ func TestPredictHandAgreesWithTheMove(t *testing.T) {
 				t.Fatalf("the prediction says %q, not %q: %+v", h.none, tc.says, h)
 			}
 			moving := cloneState(tc.st)
-			res, _, err := move("", &moving, paritySteps(tc.lands), now, g, nil, nil, nil)
+			res, _, err := move("", &moving, paritySteps(tc.lands), now, g, nil, nil, nil, nil)
 			if err != nil {
 				if r, ok := AsRefusal(err); !ok || !r.Contention || !tc.wait {
 					t.Fatalf("the move refused: %v", err)
@@ -351,7 +351,7 @@ func TestOnlyALandingMayWait(t *testing.T) {
 				}
 			}
 			moving := cloneState(st)
-			_, _, err := move("", &moving, steps, now, &outageGate{now: now}, nil, nil, nil)
+			_, _, err := move("", &moving, steps, now, &outageGate{now: now}, nil, nil, nil, nil)
 			r := mustRefusal(t, err)
 			if !r.Contention || r.Lane != "lane-1" || r.Stage != string(stage) {
 				t.Fatalf("lane 1's contended %s is the call's answer: %+v", stage, r)
@@ -389,7 +389,7 @@ func TestPredictHandAgreesWithTheRealStageBodies(t *testing.T) {
 	root := f.repo.Root()
 	step := func(st State) (StepResult, State, error) {
 		moving := cloneState(st)
-		res, _, err := move(root, &moving, stages, f.now, gate, nil, nil, nil)
+		res, _, err := move(root, &moving, stages, f.now, gate, nil, nil, nil, nil)
 		return res, moving, err
 	}
 	// only is the run's one lane in a state that is the test's own to change.

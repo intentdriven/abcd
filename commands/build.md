@@ -651,7 +651,10 @@ The four classes are named for what each is for, strongest first: `research`,
   judge is stored with a status fixed when the run starts: `waiting` until an
   agent clears the gate, `active` from then on. A waiting judge is never
   launched, awaited or counted in an estimate, the stricter verdict decides, and
-  the run record says so in one line; a run never gains a judge part-way. A
+  the run record says so in one line; a run never gains a judge part-way. An
+  active judge, where a role's two reviewers disagree, may only strike from the
+  fix brief a finding it rules false, with its reason, and never passes a round
+  (`commands/implement.md`). A
   judge a configuration file names while no agent has cleared the gate is
   refused at the `review` stage, since the run cannot give it.
 - `review.max_reviewers`: the machine's ceiling on reviewers per role, 1 or 2

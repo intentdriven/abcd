@@ -342,10 +342,25 @@ const lockFileName = ".lock"
 // 26 refuse a version-27 file as a newer abcd's before any strict decode, and
 // leave the run to the abcd that wrote it.
 //
+// Version 28 added the review set's judge (itd-2610240922461281,
+// spc-2610240951109420 step 5): a round's `judge`, the roles whose reviewers
+// disagreed, the class, model and effort the run's active judge resolved to,
+// its brief and return, whether it `ruled` and how many locations it
+// `struck`, or why it was `unlaunched`; and a finding's `struck` status with
+// the judge's `reason`. Version 27 is its strict subset, read as a run no
+// judge ruled in, and written back at version 28; a file of version 27 or
+// lower carrying either is not one its version wrote, and is refused naming
+// it. Releases that write version 27 refuse a version-28 file as a newer
+// abcd's before any strict decode.
+//
 // A version raises when the abcd driving the run writes it. A lane's own abcd
 // may be a version ahead of its driver, and what it saves leaves the version
 // where it was (mutateReservation, iss-2611020719494343).
-const SchemaVersion = 27
+const SchemaVersion = 28
+
+// schemaVersionUnjudged is the last version before a round kept its judge
+// and a finding its strike: read, never written.
+const schemaVersionUnjudged = 27
 
 // schemaVersionUnmodelled is the last version before a reviewer kept the
 // writer's model and its own: read, never written.
@@ -821,6 +836,10 @@ type ValidationRound struct {
 	// role, written as the last of the role's returns is recorded; empty for
 	// a round opened with no review set (reviewers.go).
 	Comparisons []Comparison `json:"comparisons,omitempty"`
+	// Judge is the round's judge (judge.go): set once the round, its every
+	// validator returned, finds a reviewer role disagreeing on a run whose
+	// judge is active; nil on every other round.
+	Judge *RoundJudge `json:"judge,omitempty"`
 }
 
 // Round is the route one role of a lane's round ran at (spc-2609251028149555,
@@ -1389,6 +1408,7 @@ var versionChecks = []versionCheck{
 	{highest: schemaVersionUnrenamed, carries: State.efforted},
 	{highest: schemaVersionUnadmitted, carries: carrying("an admission", func(s State) bool { return s.Admitted != nil })},
 	{highest: schemaVersionUnmodelled, carries: State.modelled},
+	{highest: schemaVersionUnjudged, carries: State.judged},
 }
 
 // unwritten names the first thing the state carries that a file stating
@@ -1592,11 +1612,11 @@ func readListedStated(root *os.Root, runID string) (State, int, error) {
 				"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 		}
 		st.SchemaVersion = SchemaVersion
-	case st.SchemaVersion >= schemaVersionUnadmitted && st.SchemaVersion <= schemaVersionUnmodelled:
-		// Read as the current version, with no admission at version 25 and no
-		// reviewer's models or class map at either, its class labels already
-		// the names it wrote; the next write carries it, and this read writes
-		// nothing.
+	case st.SchemaVersion >= schemaVersionUnadmitted && st.SchemaVersion <= schemaVersionUnjudged:
+		// Read as the current version, with no admission at version 25, no
+		// reviewer's models or class map before version 27 and no judge at
+		// any of them, its class labels already the names it wrote; the next
+		// write carries it, and this read writes nothing.
 		st.SchemaVersion = SchemaVersion
 	case st.SchemaVersion != SchemaVersion:
 		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d to %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),
@@ -1644,7 +1664,7 @@ func readListedStated(root *os.Root, runID string) (State, int, error) {
 	// resolve for that class.
 	// A reviewer an earlier version handed out records no models: it is
 	// marked so as such a file is read, and only then (markUnrecorded).
-	if stated < SchemaVersion {
+	if stated <= schemaVersionUnmodelled {
 		st.markUnrecorded()
 	}
 	if !st.reviewersWritten() {
@@ -1660,6 +1680,14 @@ func readListedStated(root *os.Root, runID string) (State, int, error) {
 	if !st.findingsWritten() {
 		return State{}, 0, refuse("state", "", "", rel+" carries located findings the loop never writes: on a validator with no recorded reviewer verdict, "+
 			"more or fewer than its count, a file that is no plain repository path, a status where no fix report answered it, or reviewers citing it other than the round's",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	// A round's judge and its strikes are the ones the loop records from the
+	// run's active judge's return, so a hand edit never strikes a finding, nor
+	// reaches a --json stream with a reason the loop did not read (judge.go).
+	if !st.judgesWritten() {
+		return State{}, 0, refuse("state", "", "", rel+" carries a judge or a strike the loop never writes: a judge on a run whose judge was not active, "+
+			"at another class, over roles whose reviewers did not disagree, at another path or count, or a strike on a finding no ruling judge was handed, or with no plain reason",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	if !st.handBacksWritten() {
