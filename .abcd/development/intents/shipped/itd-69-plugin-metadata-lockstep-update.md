@@ -40,8 +40,9 @@ impact: additive
 > said Kira, a maintainer publishing a new build. "The lockstep check catches the
 > disagreement before it publishes."
 
-_Drawn out from a human brief edit by the brief-change derivation gate
-(itd-61 / spc-75)._
+_Drawn out from a human brief edit in the predecessor lineage, under spc-75
+(predecessor store). Draft itd-61, the brief-change derivation abcd has yet to
+gain, had no part in it._
 
 ## Why This Matters
 
