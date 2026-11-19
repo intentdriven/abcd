@@ -12,6 +12,10 @@ found_at: ".abcd/development/brief/01-product/01-press-release.md:49"
 remedy: "Drop the stale Pass B signal-density bullet from the press release's Open Questions (Pass B ships only as a declared exemption per itd-88, and phases are retired), or restate it without 'an earlier phase'."
 related_intents: [itd-2609211913453478]
 finding_ref: cfk-077cae57dd6d3e22
+resolution: "Dropped the stale Pass B signal-density bullet from the press release's Open Questions: phases are retired (itd-2609211913453478) and Pass B ships only as a declared exemption (itd-88). TestBriefOpeningNamesNoRetiredPhase pins the brief's opening against naming a retired phase."
+impact: internal
+resolved_by:
+  commit: "00430a711b413b17825668e827c140872ecf6ad7"
 ---
 
 The press release's open question moves work 'into an earlier phase'; phases are retired.
@@ -24,3 +28,7 @@ A terminology drift (severity nitpick) found by the cross-document consistency p
 The brief's open question on Pass B signal density says transcript-noise mitigation would move into an earlier phase. itd-2609211913453478 retired phases in favour of dependencies and shelves, so the remedy is stated in a unit that no longer exists.
 
 Evidence: `.abcd/work/reviews/2026-10-26-consistency/00-summary.md`, finding 224.
+
+## Grounds
+
+- pursued: the press release's Open Questions no longer state a remedy in the retired phase unit; TestBriefOpeningNamesNoRetiredPhase failed before the edit and passes after, and it would fail again if 'earlier phase', 'later phase' or the Pass B signal-density question came back into the press release

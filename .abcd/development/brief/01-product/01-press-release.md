@@ -46,7 +46,6 @@ Code-bundling lifeboats, cross-corpus synthesis, public-source vendoring with pr
 
 ## Open Questions
 
-- **Pass B signal density.** chat-distiller's effectiveness depends on the native transcript store's signal-to-noise. Sampling on idelphiDev measures actual density before Pass B's design locks. If signal is too thin, transcript-noise mitigation moves up from itd-11 (a draft intent) into an earlier phase.
 - **Brief-skeleton enforcement.** The numbered-folder layout for `.abcd/development/brief/` is a current convention but not enforced by `intent-auditor` or `documentation-auditor`. See [`05-internals/README.md § enforcement policy`](../05-internals/README.md#policy-no-skeleton-enforcement-deferred) for the candidates list and the deferred-rigidity rationale (this "defer" means deferring the rigidity decision itself, not a release horizon).
 - **Round-trip fidelity floor.** What's the minimum percentage of source-repo principles, decisions, and pitfalls that must survive `disembark → embark` for the round-trip to be considered "successful"? abcd ships without an explicit floor; the lifeboat review verdict is the proxy. A future intent (likely paired with itd-15 self-dogfooded SOTA audit) may quantify it.
 
