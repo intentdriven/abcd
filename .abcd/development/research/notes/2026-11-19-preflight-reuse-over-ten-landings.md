@@ -84,11 +84,15 @@ all. The race stage, which holds almost all the packages, reused between 43 of
   iss-2611011343052330's resolution.
 - **Test time per package.** The counts are of packages, not of seconds. A
   reused package may be a quick one, and the always-rerun tests (1591 to 1783
-  per race stage) and the packages run in full may hold most of the time.
+  per race stage) and the packages run in full may hold most of the time. The
+  logs do print each package's own test time (`ok <package> 347.408s`, and
+  `(cached)` for a reused one), so the time spent in packages that ran could be
+  summed from them; packages run side by side, so that sum is not the check's
+  wall time.
 - **Consecutive landings on the default branch.** These ten are consecutive
   among the reports this checkout keeps, not among everything that merged.
-  98 other pull requests merged between #1473 and #1582: #1483, between #1481
-  and #1482, and 97 between #1482 and #1582. This checkout's logs hold no
+  99 other pull requests merged between #1473 and #1582: #1483, between #1481
+  and #1482, and 98 between #1482 and #1582. This checkout's logs hold no
   report for any of them, so their reuse is not known.
 - **A like-for-like baseline.** The baseline is one run's single count of 133
   packages, not split by stage. The ten count 142 to 145 package runs across
