@@ -476,8 +476,9 @@ the pick moves to the next candidate. So is an intent whose footprint (the
 one its start reserves with: the packages of the steps still to build, or
 the `## Footprint` packages line) shares a path with another copy's live
 reservation of another record, as this checkout last fetched them, at the
-check `overlap`: its reason names the path, the record holding it, the
-holder and the hold's expiry. It is the reservation's own overlap rule, so a
+check `overlap`: its reason names the path the hold shares (or the intent
+itself, where the hold is on it), the record holding it, the holder and the
+hold's expiry. It is the reservation's own overlap rule, so a
 hold that expired or was released, and this copy's own reservations, exclude
 nothing. A reservation this copy made under a holder id that is no longer
 yours (your home was emptied, so a new id was minted) is not its own: the
