@@ -67,3 +67,28 @@ func TestAQuoteMayBeAttributedToARoleAlone(t *testing.T) {
 		t.Errorf("persona_registry flagged %v, want only rec/invented.md: a role alone and a registered name both pass, an invented name does not", flagged)
 	}
 }
+
+// TestPersonaGlossaryScopesItsRuleToAModelledUser holds the persona glossary
+// entry to the practice the intents follow (iss-2610262041388352): a persona
+// is the voice of a modelled user, and a real role abcd addresses, the
+// product thinker, may be quoted by role, unnamed, without one. Its "When to
+// use" section says both.
+func TestPersonaGlossaryScopesItsRuleToAModelledUser(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	body := readRepoFile(t, root, ".abcd/development/brief/glossary/core/persona.md")
+	section := body
+	if i := strings.Index(section, "## When to use"); i >= 0 {
+		section = section[i:]
+	} else {
+		t.Fatalf("persona.md has no \"When to use\" section")
+	}
+	if i := strings.Index(section, "## When NOT to use"); i >= 0 {
+		section = section[:i]
+	}
+	flat := strings.Join(strings.Fields(section), " ")
+	for _, want := range []string{"modelled user", "product thinker", "by role, unnamed"} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("persona.md's \"When to use\" does not say %q: the rule is scoped to a modelled user's voice, and a real role abcd addresses may be quoted by role, unnamed:\n%s", want, section)
+		}
+	}
+}
