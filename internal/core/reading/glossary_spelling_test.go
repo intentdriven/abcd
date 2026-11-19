@@ -14,8 +14,8 @@ import (
 //
 // The entry once said the record writes the full phrase "reading position" on
 // first use and drops to bare "position" inside the chapter, but the chapter
-// opens with bare "position" ("Assembly takes a position and a target state")
-// and never writes the full phrase. So the test checks both ends: the chapter
+// writes bare "position" from its first use on and never writes the full
+// phrase. So the test checks both ends: the chapter
 // still never writes "reading position" on its own, and the glossary no longer
 // claims a first use in full and says the chapter is bare throughout.
 func TestTheGlossaryDescribesTheReadingChaptersSpelling(t *testing.T) {

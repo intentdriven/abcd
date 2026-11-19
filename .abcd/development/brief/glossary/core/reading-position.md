@@ -31,9 +31,8 @@ declared includes with the scope it was commissioned about.
 
 ## The spelling
 
-The reading chapter writes bare "position" throughout, from its first use ("Assembly takes a
-position and a target state") on, matching the surface's own `--position` flag, and never writes
-the full phrase. The readings charter does the same, where the include table is described as
+The reading chapter writes bare "position" throughout, from its first use on, matching the
+surface's own `--position` flag, and never writes the full phrase. The readings charter does the same, where the include table is described as
 positive at every grain — "a position, a source directory, a file match". The glossary fixes
 **reading position** as the form to use outside those two documents (iss-2609012245352480):
 "position" alone is a common English word, and the `--position` flag is the only other place it
