@@ -11,6 +11,10 @@ production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:100"
 remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does the ban on `<verb> show` apply by name, or only to a show that takes no operand? Answers: (a) by name, so `inbox show` and `history show` are gaps to rename; (b) only operand-less renders, so `show <id>` conforms and the sentence is narrowed. Recommend (b): the register's own earn-your-place test admits a sub-verb that takes a positional, and `inbox show` takes a report id while bare `abcd inbox` already lists."
 finding_ref: cfk-77c1a868d2dff291
+resolution: "The naming rule's ban now covers only a show, stats or view sub-verb that takes no operand (dcn-2610271112330536, answer b), so inbox show, history show and checklist show conform; the history gap names only the plain history list. A cli test fails when a registered show/stats/view accepts a bare invocation or the rule names <verb> show unconfined."
+impact: internal
+resolved_by:
+  commit: "6ec44d6d3eec75f92d6edd61a69ce46e7d4e0d44"
 ---
 
 The naming rule forbids `<verb> show` at design time, but the inbox chapter ships a show sub-verb and does not mark it as a gap
@@ -23,3 +27,7 @@ A premise contradiction (severity nitpick) found by the cross-document consisten
 The naming convention forbids `<verb> show` at design time instead of leaving it to review. The inbox chapter, designed after the rule, ships `show` as a sub-verb that renders one report by its id. Unlike the memory chapter, which marks its `list` as a gap against the rule, it presents `show` as conforming. The prohibition and the shipped name cannot both hold.
 
 Evidence: `.abcd/work/reviews/2026-10-26-consistency/00-summary.md`, finding 74.
+
+## Grounds
+
+- pursued: every registered show/stats/view sub-verb rejects a bare invocation and 04-naming.md confines the ban to an operand-less render; a show sub-verb added with no required operand, or the sentence reverting to a by-name ban, would show it wrong (the test fails). Three other brief passages (verification-matrix:97, tradeoffs:61, mental-model:104) still state the by-name ban; the drive's guard refused edits there.
