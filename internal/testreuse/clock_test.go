@@ -1,10 +1,13 @@
 package testreuse
 
 import (
+	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -117,18 +120,31 @@ func TestAStageNotesItsTimeApartFromItsWaits(t *testing.T) {
 		t.Fatal(err)
 	}
 	clock := filepath.Join(t.TempDir(), "preflight-clock", "1763540000-42")
-	const gateWait = time.Second
+	const gateWait, hold = time.Second, 1500 * time.Millisecond
+	waiting := make(chan struct{})
 	hook := func(c *Config) {
 		c.Stage = "race"
 		c.Clock = clock
 		c.RaceGate = func() error { time.Sleep(gateWait); return nil }
+		c.Stdout = &onLine{w: c.Stdout, line: "check-tests: waiting for another check", seen: waiting}
 	}
 
+	// The hold starts once the stage is seen waiting, not when it starts: what
+	// the stage does before it reaches the lock (its git calls) takes however
+	// long the machine makes it, and no slack here depends on it.
 	release := holdLock(t, filepath.Join(dir, lockName))
 	began := time.Now()
 	got := make(chan result)
 	go func() { got <- w.stage(w.repo, hook, race...) }()
-	time.Sleep(1500 * time.Millisecond)
+	select {
+	case <-waiting:
+	case r := <-got:
+		release()
+		t.Fatalf("the stage never waited for the held lock: %s", r)
+	case <-time.After(5 * time.Minute):
+		t.Fatal("the stage never reached the held lock")
+	}
+	time.Sleep(hold)
 	release()
 	r := <-got
 	elapsed := time.Since(began).Seconds()
@@ -136,10 +152,16 @@ func TestAStageNotesItsTimeApartFromItsWaits(t *testing.T) {
 		t.Fatalf("the check failed: %s", r)
 	}
 
+	// The stage says it is waiting once its first try at the lock has failed, a
+	// whole slice, and each later try that fails adds its slice; the try that
+	// takes the lock began at most one slice before the release, and its time
+	// is not waiting. The first slice makes up for that one, so the lock's wait
+	// is at least the hold; the check asks for the hold less a slice, leaving
+	// that slice to the scheduler.
 	sums := readClock(t, clock)
 	lock, gate, stage := sums["wait lock"], sums["wait race"], sums["stage race"]
-	if lock < 1.0 {
-		t.Errorf("the lock's wait noted %.3fs, want at least 1s: %v", lock, sums)
+	if want := (hold - lockSlice).Seconds(); lock < want {
+		t.Errorf("the lock's wait noted %.3fs, want at least %.3fs: %v", lock, want, sums)
 	}
 	if gate < gateWait.Seconds()-0.05 {
 		t.Errorf("the race gate's wait noted %.3fs, want at least %v: %v", gate, gateWait, sums)
@@ -153,6 +175,26 @@ func TestAStageNotesItsTimeApartFromItsWaits(t *testing.T) {
 	if i, j := strings.Index(r.out, "race stage reused "), strings.Index(r.out, "race stage checked in "); i < 0 || j < i {
 		t.Errorf("the stage's time is not beside its reused line:\n%s", r)
 	}
+}
+
+// onLine passes writes on to w and closes seen the first time one holds line.
+type onLine struct {
+	mu   sync.Mutex
+	w    io.Writer
+	line string
+	seen chan struct{}
+	done bool
+}
+
+func (o *onLine) Write(p []byte) (int, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	n, err := o.w.Write(p)
+	if !o.done && bytes.Contains(p, []byte(o.line)) {
+		o.done = true
+		close(o.seen)
+	}
+	return n, err
 }
 
 // TestAStageWithNoClockNotesNothing: outside make preflight no clock is named, and
