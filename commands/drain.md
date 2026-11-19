@@ -657,7 +657,8 @@ what it did in `next`:
   passed over, check `lapsed`, naming when it is asked again, and a drain with
   no other work waits rather than ending. After that it is asked again, on a
   new reservation, only after the drain's other eligible work. An
-  issue whose `found_at` names no repository-relative path cannot be reserved:
+  issue whose `found_at` names no repository-relative path (a lone name such
+  as `Makefile` counts when that file is at the checkout's root) cannot be reserved:
   it is handed back before any judgement is asked over it, `from:
   "reservation"`, with the reason `<iss-N> has no found_at path to reserve it
   with; handed back`, and the drain moves to the next issue. An issue another

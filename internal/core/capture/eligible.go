@@ -341,7 +341,7 @@ func fileScopedIssues(repoRoot string, vs []DrainVerdict, issues []Issue, files 
 	paths := map[string]string{}
 	var asked []string
 	for _, v := range vs {
-		p, ok := foundAtPath(byID[v.ID].FoundAt)
+		p, ok := foundAtPathIn(repoRoot, byID[v.ID].FoundAt)
 		if !ok {
 			continue
 		}

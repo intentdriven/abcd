@@ -816,7 +816,9 @@ on origin's default branch backs off, with a tip or without one
    waits rather than ending. It is then asked again, on a new reservation,
    only after the drain's other eligible work, and the lapse is forgotten once
    it is asked again or answered (dcn-2610161315385888, refined by
-   dcn-2610161420314313). An issue whose `found_at` names no repository-relative path is
+   dcn-2610161420314313). An issue whose `found_at` names no repository-relative path (a lone
+   name such as `Makefile` counts when that file is at the checkout's root,
+   iss-2611190625535337) is
    handed back before any judgement over it, `from` `reservation`, with the
    reason "`<iss-N>` has no found_at path to reserve it with; handed back", and
    the drain moves on. An issue another copy holds in the move's view, or whose

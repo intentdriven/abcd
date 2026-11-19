@@ -1170,7 +1170,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// An issue the skip list holds back is passed over before anything
 		// is pushed or asked over it (drain_skip.go).
 		if iss, ok := plan.OpenIssue(v.ID); ok {
-			if s, ok := skipOf(st, iss); ok {
+			if s, ok := skipOf(repoRoot, st, iss); ok {
 				res.Passed = append(res.Passed, skipPassed(v.ID, s))
 				continue
 			}
@@ -1223,7 +1223,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// back before any judgement is asked over it, and the drain moves on.
 		var footprint []string
 		if reserving {
-			if footprint, ok = issueFootprint(iss); !ok {
+			if footprint, ok = issueFootprint(repoRoot, iss); !ok {
 				r := noFoundAtHandBack(v.ID, now)
 				r.Blob = blobs.of(v.ID)
 				st.HandBacks = append(st.HandBacks, r)

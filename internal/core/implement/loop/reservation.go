@@ -1136,7 +1136,7 @@ func runFootprint(repoRoot, key, specID string, built []int, outcome string) ([]
 			return nil, refuse(StageReservation, "", "", key+" is in no status folder of this checkout's ledger, so it names no found_at path to reserve it with; "+outcome,
 				"restore the issue's record, or remove the run's directory if the issue is gone for good")
 		}
-		if fp, ok := issueFootprint(lr.Issues[i]); ok {
+		if fp, ok := issueFootprint(repoRoot, lr.Issues[i]); ok {
 			return fp, nil
 		}
 		return nil, refuse(StageReservation, "", "", key+" has no found_at path to reserve it with; give it a found_at naming the file the fix changes, then run abcd build again; "+outcome,
@@ -1395,11 +1395,12 @@ func releaseOnHandBack(repoRoot string, st *State, hb HandBack, now time.Time) (
 	return until, ended
 }
 
-// issueFootprint is the footprint a drain reserves an issue with: the
-// repository-relative path its found_at names, a locator suffix dropped; ok
-// is false when found_at names none.
-func issueFootprint(iss capture.Issue) ([]string, bool) {
-	p, ok := capture.FoundAtPath(iss.FoundAt)
+// issueFootprint is the footprint a drain or a build reserves an issue with:
+// the repository-relative path its found_at names in the checkout at
+// repoRoot, a locator suffix dropped and a lone root file such as Makefile
+// included (capture.FoundAtPathIn); ok is false when found_at names none.
+func issueFootprint(repoRoot string, iss capture.Issue) ([]string, bool) {
+	p, ok := capture.FoundAtPathIn(repoRoot, iss.FoundAt)
 	if !ok {
 		return nil, false
 	}

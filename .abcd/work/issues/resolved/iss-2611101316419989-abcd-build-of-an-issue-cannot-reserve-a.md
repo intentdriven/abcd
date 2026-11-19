@@ -10,6 +10,12 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/capture/foundat.go"
 remedy: "Take a single token with no slash and no extension as a path when that file exists at the root of the checkout (Makefile, LICENSE, Dockerfile), at capture and at build; a test builds an issue whose found_at is Makefile and finds it reserved."
+resolution: "Fixed with iss-2611190625535337, which refines this record: a found_at naming a lone root file with no extension, such as Makefile, is a path when that file is at the checkout's root, at capture and at build and drain."
+impact: fix
 ---
 
 abcd build of an issue cannot reserve a found_at that names a file at the repository root with no extension. foundAtPath (internal/core/capture/foundat.go) takes a value as a path only when it holds a slash or ends in a file extension, so Makefile reads as a conceptual location and build refuses the issue as having no found_at path. Seen on 7 Nov for an issue whose found_at was Makefile; the rule is unchanged at this branch's head.
+
+## Grounds
+
+- pursued: build reserves an issue whose found_at is Makefile; shown wrong if it is still refused as naming no found_at path

@@ -73,7 +73,8 @@ spec's `- packages:` lines to the files the work changes.
 - A spec whose steps cannot say and whose `## Footprint` names no packages
   is refused at the `reservation` stage, exit 2, starting nothing: `<spc-N> has no footprint under ## Footprint to reserve
   <itd-N> with; fill its packages line, then run abcd build again; nothing was
-  started`. An issue whose `found_at` names no repository-relative path is
+  started`. An issue whose `found_at` names no repository-relative path (a lone
+  name such as `Makefile` counts when that file is at the checkout's root) is
   refused the same way. Report the refusal as it stands: the footprint is the spec's to name, never one invented here.
 - Each entry of those lines is read as its path alone. An entry that names
   something in the tree as written is reserved as written; otherwise a

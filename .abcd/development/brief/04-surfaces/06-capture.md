@@ -94,8 +94,13 @@ locator set aside) must resolve in the checkout, and one that does not, or that
 leaves the checkout, is refused before anything is written: the ledger records
 findings about the repository it lives in, and a path that repository does not
 hold is the mechanical sign of a finding filed in the wrong place
-(iss-2609120511058115). A conceptual location, meaning anything that is not a
-lone path token, and an absent value are written as given. The check is made
+(iss-2609120511058115). A lone name with no separator and no extension, such
+as `Makefile` or `LICENSE`, names a path too when a regular file of exactly
+that name is at the checkout's root, so the build and the drain reserve an
+issue found there with it; with no such file it is a place in words
+(iss-2611190625535337). A conceptual location, meaning anything that is not a
+lone path token or names no root file, and an absent value are written as
+given. The check is made
 at capture only, so a record keeps the path it named when the tree later moves.
 An absent location is written as given and is not refused, but the verb says the
 record names no location in this checkout, so nothing ties it to the repository
