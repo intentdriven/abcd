@@ -929,7 +929,11 @@ make preflight   # the pre-push gate: it waits its turn at the load gate
                  # build, vet, test and race, all on the toolchain go.mod declares;
                  # the test and race stages replay what Go's test cache holds
                  # for unchanged inputs, rerun what is declared or found reading
-                 # past it, and report how many; CI's test steps reuse nothing
+                 # past it, and report how many; CI's test steps reuse nothing.
+                 # Its last lines give each stage's time and the whole run's,
+                 # with each wait for its turn apart:
+                 #   preflight: stage unit: 3m12s
+                 #   preflight: checked in 41m07s (waited 6m12s: load gate 10s, race gate 6m02s)
 go run ./cmd/abcd            # bare status board for the current directory
 go run ./cmd/abcd --version  # print the version
 make build                   # cross-compile bin/abcd-<goos>-<arch>
