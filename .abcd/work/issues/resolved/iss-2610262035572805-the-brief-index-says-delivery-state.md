@@ -11,6 +11,10 @@ production_mode: hand-written
 found_at: ".abcd/development/brief/README.md:13"
 remedy: "Reword 'delivery state lives in the roadmap dashboard, never in brief prose': what exists is stated in the brief and machine-checked (each surface chapter's shipped or staged table, the matrix), while what is scheduled or in flight is the status board's Now / Next / Later block."
 finding_ref: cfk-ce90d36fc9a3e643
+resolution: "The brief index's delivery-state note no longer says delivery state never lives in brief prose. It says what exists is stated in the brief (each surface chapter's shipped / staged table and the surface index's Status column, checked by surface_coverage, and the verification matrix's (staged) rows), and what is scheduled or in flight is the status board's Now / Next / Later block."
+impact: internal
+resolved_by:
+  commit: "686921176e1688f42a9ece8aa026ecd2146e99e0"
 ---
 
 The brief index says delivery state never lives in brief prose; every surface chapter records each verb's shipped or staged existence in its prose table
@@ -23,3 +27,7 @@ A premise contradiction (severity nitpick) found by the cross-document consisten
 The brief README says current delivery state lives in the roadmap dashboard, never in brief prose. The docs chapter, like every surface chapter, carries a machine-checked table whose rows record each verb's existence as `shipped` or `staged`, verified against the command-tree snapshot. That is per-verb delivery state stated in brief prose.
 
 Evidence: `.abcd/work/reviews/2026-10-26-consistency/00-summary.md`, finding 611.
+
+## Grounds
+
+- pursued: we expect the brief index and the surface chapters to agree on where delivery state lives; shown wrong if a later consistency pass still finds the index forbidding the shipped / staged facts the surface chapters carry, or if TestBriefIndexSplitsDeliveryStateByKind fails
