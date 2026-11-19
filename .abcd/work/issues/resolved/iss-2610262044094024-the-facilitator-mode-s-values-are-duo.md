@@ -12,6 +12,10 @@ found_at: ".abcd/development/intents/drafts/itd-97-the-facilitator-is-a-mode-not
 remedy: "In itd-97's scope bullet declare the values as human and auto (its own 2026-10-11 decision says these are the product thinker's names for duo and solo) and keep duo and solo as the press release's words; itd-2610150602547271 already specifies facilitator.mode with human and auto."
 related_intents: [itd-97, itd-2610150602547271]
 finding_ref: cfk-7f2156a738198134
+resolution: "itd-97's scope bullet now declares the mode as the key facilitator.mode with the values human (duo) and auto (solo), human the default, matching itd-2610150602547271; duo and solo stay the press release's words."
+impact: internal
+resolved_by:
+  commit: "c0f096b49f0b1a4c4101ebdfa0eb325bbe684cf8"
 ---
 
 The facilitator mode's values are `duo | solo` in itd-97 and `human` / `auto` in itd-2610150602547271
@@ -24,3 +28,7 @@ A naming conflict (severity nitpick) found by the cross-document consistency pas
 itd-97's scope promises a per-repo mode declaration with the values duo and solo, duo the default. itd-2610150602547271 implements the same declaration as `facilitator.mode` with the values `human` and `auto`. itd-97 notes in passing that these are aliases, but its declared values and the declared key's values still differ, so one setting has two vocabularies.
 
 Evidence: `.abcd/work/reviews/2026-10-26-consistency/00-summary.md`, finding 1186.
+
+## Grounds
+
+- pursued: one setting has one vocabulary across itd-97 and itd-2610150602547271; shown wrong if itd-97's scope bullet still declares duo | solo as the key's values, or names a default other than human
