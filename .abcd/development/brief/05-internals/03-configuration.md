@@ -1159,7 +1159,20 @@ and names each package that ran and why; its record under the local tier's
 `scripts/preflight-receipt.sh` mints a full receipt only from both stages' passing
 records for that exact tree, and copies the counts and the mode (`tests reuse`, `cut`,
 `fallback` or `mixed`) into the receipt. A stage over a working tree's edits records
-no tree and mints nothing. A file a test leaves in the tree moves its directory's
+no tree and mints nothing.
+
+**What it took.** Beside its `reused N of M` line a stage says how long it spent
+checking, apart from what it waited for the check directory's lock and the race
+gate (iss-2611190439574731). `make preflight` names one clock per run under the
+local tier's `preflight-clock/`, by the run's start in Unix seconds: the load
+gate's wait is noted there as the stages' make starts, the race gate's around
+it, and each test stage notes its own times. After the receipt line the run's
+last lines give one time per stage, `preflight: stage unit: 3m12s`, the lint
+gates, scans, eval lanes, build and vet together as `stage gates`, then
+`preflight: checked in 41m07s (waited 6m02s at the load gate)`: the whole run's
+time less every wait, and those waits, the race gate's and the lock's counted
+with the load gate's. Each time is whole seconds in a form Go's
+`time.ParseDuration` reads, so a note set against a baseline can parse it. A file a test leaves in the tree moves its directory's
 time, so a test that walks the tree does not replay; the stage names the file.
 
 **What is not.** The cache sees nothing a subprocess reads, a binary a test builds,

@@ -1,0 +1,317 @@
+package testreuse
+
+import (
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+)
+
+// TestAClockNoteIsOneLineAppended (iss-2611190439574731): each note is one line
+// of three words the receipt script sums, appended so two writers' lines never cut
+// into each other, and the file and its directory are made by the first.
+func TestAClockNoteIsOneLineAppended(t *testing.T) {
+	clock := filepath.Join(t.TempDir(), "preflight-clock", "1763540000-42")
+	if err := noteClock(clock, clockWait, "lock", 6*time.Minute+2*time.Second+400*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	if err := noteClock(clock, clockStage, "unit", 1500*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	if err := noteClock(clock, clockWait, "race", -time.Second); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "wait lock 362.400\nstage unit 1.500\nwait race 0.000\n"; string(raw) != want {
+		t.Errorf("the clock holds %q, want %q", raw, want)
+	}
+	if err := noteClock("", clockWait, "lock", time.Minute); err != nil {
+		t.Errorf("a note with no clock named: %v", err)
+	}
+}
+
+// TestAClockNoteTheScriptCouldNotReadIsRefused: a relative clock would land
+// wherever the writer runs, and a name of more than one word would shift the
+// script's columns.
+func TestAClockNoteTheScriptCouldNotReadIsRefused(t *testing.T) {
+	dir := t.TempDir()
+	for _, c := range []struct{ clock, kind, name string }{
+		{"relative/clock", clockWait, "lock"},
+		{filepath.Join(dir, "c"), "other", "lock"},
+		{filepath.Join(dir, "c"), clockWait, "two words"},
+		{filepath.Join(dir, "c"), clockWait, ""},
+		{filepath.Join(dir, "c"), clockStage, "Unit"},
+	} {
+		if err := noteClock(c.clock, c.kind, c.name, time.Second); err == nil {
+			t.Errorf("noteClock(%q, %q, %q) was accepted", c.clock, c.kind, c.name)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "c")); !os.IsNotExist(err) {
+		t.Errorf("a refused note wrote the clock: %v", err)
+	}
+}
+
+// TestTheClocksFormIsTheReportsForm: the form the receipt script prints, which
+// Go's time.ParseDuration also reads: whole seconds, two-digit minutes and
+// seconds after a larger unit.
+func TestTheClocksFormIsTheReportsForm(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		0:                              "0s",
+		400 * time.Millisecond:         "0s",
+		500 * time.Millisecond:         "1s",
+		42 * time.Second:               "42s",
+		3*time.Minute + 12*time.Second: "3m12s",
+		41*time.Minute + 7*time.Second: "41m07s",
+		6*time.Minute + 2*time.Second:  "6m02s",
+		time.Hour + 2*time.Minute + 3*time.Second: "1h02m03s",
+		-time.Second: "0s",
+	} {
+		got := formatClock(d)
+		if got != want {
+			t.Errorf("formatClock(%v) = %q, want %q", d, got, want)
+		}
+		if parsed, err := time.ParseDuration(got); err != nil || (d >= 0 && parsed != d.Round(time.Second)) {
+			t.Errorf("formatClock(%v) = %q, which reads back as %v (%v)", d, got, parsed, err)
+		}
+	}
+}
+
+// readClock sums a clock file's seconds by "<kind> <name>".
+func readClock(t *testing.T, clock string) map[string]float64 {
+	t.Helper()
+	raw, err := os.ReadFile(clock)
+	if err != nil {
+		t.Fatalf("the clock: %v", err)
+	}
+	sums := map[string]float64{}
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		f := strings.Fields(line)
+		if len(f) != 3 {
+			t.Fatalf("a clock line is not three words: %q", line)
+		}
+		s, err := strconv.ParseFloat(f[2], 64)
+		if err != nil {
+			t.Fatalf("a clock line's seconds: %q", line)
+		}
+		sums[f[0]+" "+f[1]] += s
+	}
+	return sums
+}
+
+// TestAStageNotesItsTimeApartFromItsWaits (iss-2611190439574731): a stage notes on
+// the preflight's clock the time it spent checking, and apart from it the time it
+// spent waiting for another check's lock and going back through the race gate, so
+// the run's checked time counts neither wait. It also says its own time beside its
+// reused line.
+func TestAStageNotesItsTimeApartFromItsWaits(t *testing.T) {
+	w := newWorld(t)
+	race := []string{"-race", "-timeout", "5m", "./..."}
+	root := runGit(t, w.repo, "rev-list", "--max-parents=0", "HEAD")
+	dir, err := checkDir(w.home, root, os.Geteuid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock := filepath.Join(t.TempDir(), "preflight-clock", "1763540000-42")
+	const gateWait = time.Second
+	hook := func(c *Config) {
+		c.Stage = "race"
+		c.Clock = clock
+		c.RaceGate = func() error { time.Sleep(gateWait); return nil }
+	}
+
+	release := holdLock(t, filepath.Join(dir, lockName))
+	began := time.Now()
+	got := make(chan result)
+	go func() { got <- w.stage(w.repo, hook, race...) }()
+	time.Sleep(1500 * time.Millisecond)
+	release()
+	r := <-got
+	elapsed := time.Since(began).Seconds()
+	if r.code != 0 {
+		t.Fatalf("the check failed: %s", r)
+	}
+
+	sums := readClock(t, clock)
+	lock, gate, stage := sums["wait lock"], sums["wait race"], sums["stage race"]
+	if lock < 1.0 {
+		t.Errorf("the lock's wait noted %.3fs, want at least 1s: %v", lock, sums)
+	}
+	if gate < gateWait.Seconds()-0.05 {
+		t.Errorf("the race gate's wait noted %.3fs, want at least %v: %v", gate, gateWait, sums)
+	}
+	if stage <= 0 || stage+lock+gate > elapsed+0.05 {
+		t.Errorf("the stage noted %.3fs checking beside %.3fs waiting, in a run of %.3fs: %v", stage, lock+gate, elapsed, sums)
+	}
+	if !strings.Contains(r.out, "check-tests: race stage checked in ") || !strings.Contains(r.out, "s at the check directory's lock and the race gate)") {
+		t.Errorf("the stage does not say its time:\n%s", r)
+	}
+	if i, j := strings.Index(r.out, "race stage reused "), strings.Index(r.out, "race stage checked in "); i < 0 || j < i {
+		t.Errorf("the stage's time is not beside its reused line:\n%s", r)
+	}
+}
+
+// TestAStageWithNoClockNotesNothing: outside make preflight no clock is named, and
+// the stage writes none, though it still says its time.
+func TestAStageWithNoClockNotesNothing(t *testing.T) {
+	w := newWorld(t)
+	if r := w.stage(w.repo, nil, allPackages...); r.code != 0 {
+		t.Fatalf("the check failed: %s", r)
+	} else if !strings.Contains(r.out, "check-tests: unit stage checked in ") {
+		t.Errorf("the stage does not say its time:\n%s", r)
+	}
+	if _, err := os.Stat(filepath.Join(w.repo, ".abcd", ".work.local", "preflight-clock")); !os.IsNotExist(err) {
+		t.Errorf("a stage with no clock wrote one: %v", err)
+	}
+}
+
+// TestTheTestsAreNotToldTheClock: a test that ran a stage would note its
+// fixture's times on the real run's clock, and go test's cache keys a test on
+// every variable it reads, so a clock named afresh each run would keep it from
+// ever being reused. So no test line is given the variable.
+func TestTheTestsAreNotToldTheClock(t *testing.T) {
+	w := newWorld(t)
+	w.write("clockless/clockless_test.go", `package clockless
+
+import (
+	"os"
+	"testing"
+)
+
+func TestNoClock(t *testing.T) {
+	if v := os.Getenv("`+ClockEnv+`"); v != "" {
+		t.Fatalf("the test was told the clock: %q", v)
+	}
+}
+`)
+	w.commit("a test that must not see the clock")
+	clock := filepath.Join(t.TempDir(), "preflight-clock", "1763540000-42")
+	t.Setenv(ClockEnv, clock)
+	r := w.stage(w.repo, func(c *Config) { c.Clock = clock }, allPackages...)
+	if r.code != 0 {
+		t.Fatalf("a test line was told the clock: %s", r)
+	}
+}
+
+// TestTheScriptNotesTheGatesWaits (iss-2611190439574731): make preflight names a
+// clock for a run starting now, under the checkout's local tier; the stages' make
+// notes the load gate's wait as it starts, from the run's start, and only once,
+// so a make started inside the stages adds nothing; the race gate's wait runs
+// from its mark. With no clock named, nothing is written.
+func TestTheScriptNotesTheGatesWaits(t *testing.T) {
+	r := newGitRepo(t)
+	r.write(".gitignore", ".abcd/.work.local/\n")
+	r.write("a.txt", "one\n")
+	r.commit("one")
+
+	before := time.Now().Unix()
+	named := receiptScript(t, r.root, "clock", "new")
+	dir, base := filepath.Split(named)
+	start, err := clockStart(base)
+	if real, _ := filepath.EvalSymlinks(r.root); filepath.Clean(dir) != filepath.Join(real, ".abcd", ".work.local", "preflight-clock") && filepath.Clean(dir) != filepath.Join(r.root, ".abcd", ".work.local", "preflight-clock") {
+		t.Errorf("clock new names %q, not a clock under the local tier", named)
+	}
+	if err != nil || start < before || start > time.Now().Unix() {
+		t.Errorf("clock new names %q, whose start %d (%v) is not now", named, start, err)
+	}
+	if _, err := os.Stat(named); !os.IsNotExist(err) {
+		t.Errorf("clock new wrote the clock: %v", err)
+	}
+
+	clock := filepath.Join(r.root, ".abcd", ".work.local", "preflight-clock", strconv.FormatInt(time.Now().Unix()-372, 10)+"-4242")
+	t.Setenv(ClockEnv, clock)
+	receiptScript(t, r.root, "clock", "opened")
+	receiptScript(t, r.root, "clock", "opened")
+	receiptScript(t, r.root, "clock", "mark", "race")
+	receiptScript(t, r.root, "clock", "since", "race")
+	receiptScript(t, r.root, "clock", "since", "lock")
+	sums := readClock(t, clock)
+	if load := sums["wait load"]; load < 372 || load > 374 {
+		t.Errorf("the load gate's wait noted %vs, want the 372s since the run began, once: %v", load, sums)
+	}
+	if race := sums["wait race"]; race > 1 {
+		t.Errorf("the race gate's wait noted %vs from a mark made just now: %v", race, sums)
+	}
+	if _, ok := sums["wait lock"]; ok {
+		t.Errorf("a wait with no mark was noted: %v", sums)
+	}
+
+	t.Setenv(ClockEnv, "")
+	receiptScript(t, r.root, "clock", "opened")
+	if entries, _ := os.ReadDir(filepath.Dir(clock)); len(entries) != 1 {
+		t.Errorf("with no clock named the script wrote one: %v", entries)
+	}
+}
+
+// clockStart reads a clock name's start, <start>-<pid>.
+func clockStart(base string) (int64, error) {
+	start, _, _ := strings.Cut(base, "-")
+	return strconv.ParseInt(start, 10, 64)
+}
+
+// TestTheReceiptLinePrintsTheRunsTimeWithoutItsWaits (iss-2611190439574731): the
+// preflight's last lines give each stage's time and the whole run's, beside the
+// reuse counts on the receipt line, and the whole run's checked time leaves out
+// every wait the clock holds: the load gate's, the race gate's and a stage's wait
+// for the check directory's lock. The run began an hour ago, by its clock's name,
+// and waited 10m31s of it, so it checked for 49m29s, not an hour. The gates, build
+// and vet are what the hour held besides the waits and the two test stages.
+func TestTheReceiptLinePrintsTheRunsTimeWithoutItsWaits(t *testing.T) {
+	r := newGitRepo(t)
+	r.write(".gitignore", ".abcd/.work.local/\n")
+	r.write("a.txt", "one\n")
+	head := r.commit("one")
+	tree := r.git("rev-parse", head+"^{tree}")
+	for _, stage := range []string{"unit", "race"} {
+		body := "commit " + head + "\ntree " + tree + "\nstage " + stage + "\nmode reuse\nreused 1\npackages 2\nresult pass\n"
+		writeFile(t, filepath.Join(r.root, ".abcd", ".work.local", "preflight-reuse", head, stage+"-aaaaaaaaaaaa"), body, 0o644)
+	}
+	began := time.Now().Unix() - 3600
+	clock := filepath.Join(r.root, ".abcd", ".work.local", "preflight-clock", strconv.FormatInt(began, 10)+"-4242")
+	writeFile(t, clock, "wait load 600\nstage unit 120.400\nmark race 1763540000\nwait race 30\nwait lock 0.600\nstage race 1500.000\nstage unit 60.000\n", 0o644)
+
+	state := receiptScript(t, r.root, "state")
+	t.Setenv(ClockEnv, clock)
+	out := receiptScript(t, r.root, "mint", state)
+	lines := strings.Split(out, "\n")
+	if len(lines) < 6 || !strings.HasPrefix(lines[len(lines)-6], "preflight: push receipt minted for ") || !strings.Contains(lines[len(lines)-5], "the unit stage reused 1 of 2 packages and the race stage 1 of 2") {
+		t.Fatalf("the time is not on the last lines, after the receipt line:\n%s", out)
+	}
+	last := lines[len(lines)-4:]
+	if last[1] != "preflight: stage unit: 3m00s" || last[2] != "preflight: stage race: 25m00s" {
+		t.Errorf("the stages' times:\n%s", out)
+	}
+	checked := within(t, last[3], "preflight: checked in ", " (waited 10m31s at the load gate)", 2969, 2971)
+	gates := within(t, last[0], "preflight: stage gates: ", "", 1289, 1291)
+	if checked-gates != 1680 {
+		t.Errorf("the gates' %ds and the test stages' 1680s do not make the checked %ds:\n%s", gates, checked, out)
+	}
+
+	// mint run by hand names no clock, and says nothing of time.
+	t.Setenv(ClockEnv, "")
+	if out := receiptScript(t, r.root, "mint", state); strings.Contains(out, "checked in") || strings.Contains(out, "stage unit:") {
+		t.Errorf("a mint with no clock printed a time:\n%s", out)
+	}
+}
+
+// within reads the duration a line holds between prefix and suffix and fails the
+// test unless it is from lo to hi seconds; it returns the seconds.
+func within(t *testing.T, line, prefix, suffix string, lo, hi int) int {
+	t.Helper()
+	if !strings.HasPrefix(line, prefix) || !strings.HasSuffix(line, suffix) {
+		t.Fatalf("%q is not %q<time>%q", line, prefix, suffix)
+	}
+	d, err := time.ParseDuration(strings.TrimSuffix(strings.TrimPrefix(line, prefix), suffix))
+	if err != nil {
+		t.Fatalf("%q: %v", line, err)
+	}
+	s := int(d.Seconds())
+	if s < lo || s > hi || d != d.Truncate(time.Second) {
+		t.Errorf("%q gives %v, want whole seconds from %d to %d", line, d, lo, hi)
+	}
+	return s
+}

@@ -11,8 +11,10 @@
 // was cancelled waiting, having run nothing. A stage that waited takes its -p and
 // -timeout again from -budget, as cmd/test-parallelism prints them, since the
 // recipe derived them before the wait, and a race stage goes back through the race
-// gate, holding nothing, since another may have started meanwhile. It is developer tooling, never
-// part of a release.
+// gate, holding nothing, since another may have started meanwhile. It says the
+// stage's checking time beside its reused line and, when make preflight names a
+// clock (internal/testreuse's clock.go), notes it there apart from its waits. It is
+// developer tooling, never part of a release.
 package main
 
 import (
@@ -96,6 +98,7 @@ func run(ctx context.Context, args []string, wd, home string, stdout, stderr io.
 		LockWait:      *lockWait,
 		AfterWait:     afterWait,
 		RaceGate:      raceGate,
+		Clock:         os.Getenv(testreuse.ClockEnv),
 		Uid:           os.Geteuid(),
 	})
 }
