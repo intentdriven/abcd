@@ -382,9 +382,10 @@ type peerSnapshot struct {
 	// fails closed on every intent, as it does on a peer it cannot read.
 	reservedErr string
 	// reader is whose holds are the person's own (claim.ReaderSelf), read
-	// only when a reservation another copy holds is in the view; the zero
-	// Self when it cannot be told, and every other copy's reservation is
-	// then named by its holder.
+	// only when a live reservation is in the view; the zero Self when it
+	// cannot be told, and every other copy's reservation is then named by
+	// its holder, and every one of this copy's holds off what it shares
+	// (claim.Reservation.OwnHere), as the start's reservation backs off.
 	reader claim.Self
 	// now is when the reservations are judged.
 	now time.Time
@@ -440,8 +441,11 @@ func (snap *peerSnapshot) readReservations(repoRoot string) error {
 		return nil
 	}
 	snap.reserved = &view
+	// The reader is read for this copy's live reservations too: one made
+	// under a holder id the reader no longer owns holds the start off
+	// (overlapHeld, iss-2611190011141331).
 	for _, r := range view.Reservations {
-		if r.State == claim.StateLive && r.Copy != claim.CopyThis {
+		if r.State == claim.StateLive {
 			snap.reader = claim.ReaderSelf(repoRoot, claim.Options{})
 			break
 		}

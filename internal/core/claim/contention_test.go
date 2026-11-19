@@ -18,8 +18,9 @@ import (
 // reserves live, one this person's other copy reserves live, and one with an
 // unreadable reservation within its hold each hold it off, naming why; a
 // footprint path shared with another person's live reservation of another
-// record holds it off naming that record; this copy's own reservations, an
-// unreadable one past its hold and an expired one hold nothing off.
+// record holds it off naming that record; this copy's own reservations (made
+// under the reader's own holder), an unreadable one past its hold and an
+// expired one hold nothing off.
 func TestContentionNamesWhatHoldsARecordOffInTheView(t *testing.T) {
 	now := t0
 	until := now.Add(time.Hour)
@@ -47,7 +48,7 @@ func TestContentionNamesWhatHoldsARecordOffInTheView(t *testing.T) {
 		{"iss-8", []string{"internal"}, `"internal/z" is in the footprint of iss-7, reserved by quinn until`},
 		{"iss-8", []string{"internal/x/a.go", "internal/y/b.go"}, ""},
 	} {
-		got := s.Contention(tc.id, tc.footprint, now, Self{})
+		got := s.Contention(tc.id, tc.footprint, now, Self{Login: "octo"}, false)
 		if tc.want == "" && got != "" || tc.want != "" && !strings.HasPrefix(got, tc.want) {
 			t.Errorf("Contention(%s, %v) = %q; want %q", tc.id, tc.footprint, got, tc.want)
 		}
