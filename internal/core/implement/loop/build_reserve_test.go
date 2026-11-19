@@ -43,11 +43,13 @@ func fetchedBy(t *testing.T, root string) {
 // TestBuildNextExcludesAnotherPersonsReservationWithTheViewsAge is C38: an
 // intent another person reserved, in the view as last fetched, is not a
 // candidate; `build next` lists it under excluded at the peers check, naming
-// the holder, the expiry and the view's age, and picks among the rest.
+// the holder, the expiry and the view's age, and picks among the rest. itd-11
+// reserves a package of its own: one sharing Q's would be passed over at the
+// overlap check (next_overlap_test.go).
 func TestBuildNextExcludesAnotherPersonsReservationWithTheViewsAge(t *testing.T) {
 	repo := pickRepo(t, map[string][2]string{
 		"10": {pickIntent("10", "", settledQuestions, gwt), pickSpec("10", fpSmall)},
-		"11": {pickIntent("11", "", settledQuestions, gwt), pickSpec("11", fpSmall)},
+		"11": {pickIntent("11", "", settledQuestions, gwt), pickSpec("11", "- packages: internal/other\n- tests: the other\n")},
 	})
 	bare := onOrigin(t, repo)
 	q := otherCopy(t, bare, quinnEmail)
