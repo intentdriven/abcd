@@ -14,7 +14,7 @@ versions: null
 
 # regime
 
-A **regime** is written by the definition and carried on the output contract; it is never typed at invocation, because a value the operator could set tests nothing. The four values are generative (candidate configurations that did not exist), explicative (statements of what the frame already carries), evaluative (characterisations of candidates against declared criteria, never an ordering or a recommendation) and registrative (named gaps between two things already present, never a proposed resolution). The supply-regime check validates at ingest what a reading was licensed to produce, as distinct from what it saw.
+A **regime** is written by the definition and carried on the output contract; it is never typed at invocation, because a value the operator could set tests nothing. The four values are generative (candidate configurations that did not exist), explicative (statements of what the frame already carries), evaluative (characterisations of candidates against declared criteria, never an ordering or a recommendation) and registrative (named gaps between two things already present, never a proposed resolution). The supply-regime check validates at ingest what a reading was licensed to produce, as distinct from what it saw, and it holds at three of the four positions: the generative regime declares no reserved names, so the generative licence, the widest of the four, has its constraint falling at admission rather than at ingest, and at that position the check performs nothing of its own.
 
 ## When to use
 
