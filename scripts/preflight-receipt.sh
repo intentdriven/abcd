@@ -291,10 +291,14 @@ own_receipt() {
 # line per stage, `preflight: stage <name>: <time>`, the gates first (the lint
 # gates, scans, eval lanes, build and vet: the checked time the test stages do
 # not account for), then the test stages the clock names, in the order they ran;
-# then `preflight: checked in <time> (waited <time> at the load gate)`. The
-# checked time is the whole run's, from its start to now, less every wait the
-# clock holds: the load gate's, the race gate's and a test stage's wait for the
-# check directory's lock, which the parenthesis gives. A time is whole seconds in
+# then `preflight: checked in <time> (waited <time>: load gate <time>, race gate
+# <time>, check lock <time>)`. The checked time is the whole run's, from its
+# start to now, less every wait the clock holds, whose total the parenthesis
+# gives and then, one field per kind, where it was spent: the load gate's wait,
+# the race gate's (before the race stage and a stage's own pass again) and a test
+# stage's wait for the check directory's lock. A kind that waited no whole second
+# is left out, and a run that waited for none says `(waited 0s)`; each field is
+# rounded to the second and the total is their sum. A time is whole seconds in
 # the form 42s, 3m12s, 41m07s or 1h02m03s, which Go's time.ParseDuration reads
 # (internal/testreuse's formatClock prints the same). With no clock named (mint run by hand)
 # it says nothing; a clock no stage or gate wrote is a run that waited for nothing
@@ -319,17 +323,24 @@ clock_report() {
 			if (m > 0) return sprintf("%dm%02ds", m, s)
 			return sprintf("%ds", s)
 		}
+		function part(k, name,   s) {
+			s = int(waited[k] + 0.5)
+			if (s <= 0) return
+			w += s; parts = parts sep name " " fmt(s); sep = ", "
+		}
 		NF == 3 && $2 ~ /^[a-z]+$/ && $3 ~ /^[0-9]+(\.[0-9]+)?$/ {
-			if ($1 == "wait") wait += $3
+			if ($1 == "wait") { if (!($2 in waited)) kinds[++m] = $2; waited[$2] += $3 }
 			else if ($1 == "stage") { if (!($2 in took)) order[++n] = $2; took[$2] += $3 }
 		}
 		END {
-			w = int(wait + 0.5)
+			label["load"] = "load gate"; label["race"] = "race gate"; label["lock"] = "check lock"
+			part("load", label["load"]); part("race", label["race"]); part("lock", label["lock"])
+			for (i = 1; i <= m; i++) if (!(kinds[i] in label)) part(kinds[i], kinds[i])
 			c = total - w; if (c < 0) c = 0
 			for (i = 1; i <= n; i++) { st[i] = int(took[order[i]] + 0.5); sum += st[i] }
 			if (full == "full") { g = c - sum; if (g < 0) g = 0; printf "preflight: stage gates: %s\n", fmt(g) }
 			for (i = 1; i <= n; i++) printf "preflight: stage %s: %s\n", order[i], fmt(st[i])
-			printf "preflight: checked in %s (waited %s at the load gate)\n", fmt(c), fmt(w)
+			printf "preflight: checked in %s (waited %s%s)\n", fmt(c), fmt(w), (parts == "" ? "" : ": " parts)
 		}' "$notes"
 	# Keep the newest $keep clocks, as the receipts. The names are <start>-<pid>,
 	# safe to word-split.

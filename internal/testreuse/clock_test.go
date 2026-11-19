@@ -285,7 +285,7 @@ func TestTheReceiptLinePrintsTheRunsTimeWithoutItsWaits(t *testing.T) {
 	if last[1] != "preflight: stage unit: 3m00s" || last[2] != "preflight: stage race: 25m00s" {
 		t.Errorf("the stages' times:\n%s", out)
 	}
-	checked := within(t, last[3], "preflight: checked in ", " (waited 10m31s at the load gate)", 2969, 2971)
+	checked := within(t, last[3], "preflight: checked in ", " (waited 10m31s: load gate 10m00s, race gate 30s, check lock 1s)", 2969, 2971)
 	gates := within(t, last[0], "preflight: stage gates: ", "", 1289, 1291)
 	if checked-gates != 1680 {
 		t.Errorf("the gates' %ds and the test stages' 1680s do not make the checked %ds:\n%s", gates, checked, out)
@@ -295,6 +295,57 @@ func TestTheReceiptLinePrintsTheRunsTimeWithoutItsWaits(t *testing.T) {
 	t.Setenv(ClockEnv, "")
 	if out := receiptScript(t, r.root, "mint", state); strings.Contains(out, "checked in") || strings.Contains(out, "stage unit:") {
 		t.Errorf("a mint with no clock printed a time:\n%s", out)
+	}
+}
+
+// TestTheLastLineNamesEachKindOfWait (iss-2611190439574731): the parenthesis
+// says where the run waited, one field per kind of wait it had, so a run that
+// waited ten seconds at the load gate and six minutes behind another checkout's
+// race stage does not read as six minutes at the load gate. A kind with no wait
+// is left out, a run that waited for nothing says so, and the total and each
+// field read back through time.ParseDuration, the fields adding to the total.
+func TestTheLastLineNamesEachKindOfWait(t *testing.T) {
+	r := newGitRepo(t)
+	r.write(".gitignore", ".abcd/.work.local/\n")
+	r.write("a.txt", "one\n")
+	r.commit("one")
+	state := receiptScript(t, r.root, "state")
+	for i, c := range []struct{ notes, want string }{
+		{"wait load 10\nwait race 362\n", "(waited 6m12s: load gate 10s, race gate 6m02s)"},
+		{"wait race 300\nwait load 4\nwait race 62.2\n", "(waited 6m06s: load gate 4s, race gate 6m02s)"},
+		{"wait lock 3.5\n", "(waited 4s: check lock 4s)"},
+		{"stage unit 60\nwait lock 0.4\nwait load 0\n", "(waited 0s)"},
+		{"", "(waited 0s)"},
+	} {
+		clock := filepath.Join(r.root, ".abcd", ".work.local", "preflight-clock", strconv.FormatInt(time.Now().Unix()-3600, 10)+"-"+strconv.Itoa(100+i))
+		writeFile(t, clock, c.notes, 0o644)
+		t.Setenv(ClockEnv, clock)
+		out := receiptScript(t, r.root, "mint", state, "records-only")
+		last := out[strings.LastIndex(out, "\n")+1:]
+		open := strings.Index(last, " (")
+		if open < 0 || last[open+1:] != c.want {
+			t.Errorf("notes %q end on %q, want the parenthesis %q", c.notes, last, c.want)
+			continue
+		}
+		total, fields, _ := strings.Cut(strings.TrimSuffix(strings.TrimPrefix(last[open+1:], "(waited "), ")"), ": ")
+		whole, err := time.ParseDuration(total)
+		if err != nil {
+			t.Errorf("the total %q: %v", total, err)
+		}
+		var sum time.Duration
+		for _, f := range strings.Split(fields, ", ") {
+			if f == "" {
+				continue
+			}
+			d, err := time.ParseDuration(f[strings.LastIndex(f, " ")+1:])
+			if err != nil {
+				t.Errorf("the field %q: %v", f, err)
+			}
+			sum += d
+		}
+		if sum != whole {
+			t.Errorf("%q: the fields add to %v, not the total %v", last, sum, whole)
+		}
 	}
 }
 
