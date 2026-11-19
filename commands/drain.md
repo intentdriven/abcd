@@ -662,7 +662,9 @@ what it did in `next`:
   "reservation"`, with the reason `<iss-N> has no found_at path to reserve it
   with; handed back`, and the drain moves to the next issue. An issue another
   copy holds in the move's view, or whose footprint shares a path with another
-  copy's live reservation, is passed over before anything is pushed or asked
+  copy's live reservation (or with one this copy made under a holder id that
+  is no longer yours, since the reservation backs off over it as over
+  another's), is passed over before anything is pushed or asked
   (`passed`, check `reservation`, naming the holder), with no fetch beyond the
   move's one; one the push itself finds held is passed over the same way. When
   the holder is the user's own other copy (a hosted session that restarted

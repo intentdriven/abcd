@@ -269,8 +269,13 @@ iss-2611182334466021), since its start would be refused
 at the reservation. The footprint is the one the start reserves with, those
 of the steps still to build or the packages line, and the overlap is the
 reservation act's own rule (`claim.Snapshot.Contention`), so an expired or
-released hold, and this copy's own, exclude nothing; the reason names the
-path, the record holding it, its holder and the hold's expiry, and the pick
+released hold, and this copy's own, exclude nothing. This copy's own is one
+it made under a holder the reader owns, the test the act's own judgement
+makes: one this copy made under a holder id the reader no longer holds (a home
+emptied, so the id was minted again) excludes like another copy's, since the
+start backs off over it (iss-2611190011141331). The reason names the
+path the hold shares (or the intent itself, where the hold is on it), the
+record holding it, its holder and the hold's expiry, and the pick
 moves to the next candidate. The board's next-up head passes over such an
 intent too, and over one excluded at `footprint`. A hold that reached `origin` after the last fetch still refuses
 the picked intent's start, which fetches, and that refusal names the intent

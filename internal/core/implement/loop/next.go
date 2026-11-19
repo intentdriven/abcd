@@ -216,9 +216,12 @@ func candidatesAt(repoRoot, session string, now time.Time) (CandidateSet, error)
 // overlapHeld is why a start's reservation of id with footprint fp would back
 // off in the reservations as last fetched: a path of fp shared with another
 // copy's live reservation of another record, judged by claim's one overlap
-// rule, the one the reservation act's crowding applies (Snapshot.Contention).
-// An expired or released hold is not live and holds nothing; this copy's own
-// reservations never do. "" when nothing holds one off, or when there is no
+// rule, the one the reservation act's crowding applies (Snapshot.Contention),
+// for the reader the start reserves as (peerSnapshot.reader). An expired or
+// released hold is not live and holds nothing; this copy's own reservations
+// never do, while one this copy made under a holder id the reader no longer
+// owns does, as the start's reservation backs off over it
+// (iss-2611190011141331). "" when nothing holds one off, or when there is no
 // view: no remote named origin, or a view that could not be read, on which the
 // peers check has already failed closed. It reads the view alone; the start's
 // reservation, whose push is the compare-and-swap, judges what origin holds by
@@ -227,7 +230,7 @@ func (snap *peerSnapshot) overlapHeld(id string, fp []string) string {
 	if snap.reserved == nil {
 		return ""
 	}
-	why := snap.reserved.Contention(id, fp, snap.now, claim.Self{})
+	why := snap.reserved.Contention(id, fp, snap.now, snap.reader, false)
 	if why == "" {
 		return ""
 	}

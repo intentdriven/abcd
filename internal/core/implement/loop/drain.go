@@ -1136,14 +1136,20 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// issues passed over because another holds them. A wait the drain was
 	// in is taken off here, and written again if the move still waits.
 	prevWait := waitFrom(&st)
+	// capHolder is also the reader the pass-over below judges for
+	// (Snapshot.Contention): this copy's own reservations are those made
+	// under a holder it owns, as the reservation act reads them
+	// (iss-2611190011141331).
 	var capHolder claim.Self
 	// The cap is the person's own (reservation.max_live); a setting that
 	// cannot be used leaves the count to the reservation act, which refuses
 	// naming the file.
 	capLimit, capErr := claim.MaxLive, error(nil)
-	if view != nil && reserving {
+	if view != nil {
 		capHolder = claim.ReaderSelf(repoRoot, claimOptions(now))
-		capLimit, capErr = claim.MaxLiveFor(claimOptions(now))
+		if reserving {
+			capLimit, capErr = claim.MaxLiveFor(claimOptions(now))
+		}
 	}
 	var capped, held []string
 	for _, v := range lapsedLast(plan.Dispositions, st.Lapsed) {
@@ -1243,11 +1249,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			// across sessions by ABCD_HOLDER_ID, or declared in holder-ids. A
 			// restart that minted a fresh id reads its earlier holds as another
 			// person's, which no take-over moves.
-			var takeOver claim.Self
-			if o.TakeOver {
-				takeOver = capHolder
-			}
-			if why := view.Contention(v.ID, footprint, now, takeOver); why != "" {
+			if why := view.Contention(v.ID, footprint, now, capHolder, o.TakeOver); why != "" {
 				// The reason quotes what another writer chose (a reserved
 				// footprint), and the agent driving the drain reads it.
 				why = termsafe.Sanitize(why) + "; passed over with nothing pushed and no judgement asked"

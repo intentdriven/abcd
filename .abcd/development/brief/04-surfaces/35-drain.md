@@ -820,7 +820,10 @@ on origin's default branch backs off, with a tip or without one
    handed back before any judgement over it, `from` `reservation`, with the
    reason "`<iss-N>` has no found_at path to reserve it with; handed back", and
    the drain moves on. An issue another copy holds in the move's view, or whose
-   footprint shares a path with another copy's live reservation, is passed over
+   footprint shares a path with another copy's live reservation, or with one
+   this copy made under a holder id the reader no longer owns (which the
+   reservation act backs off over as over another's, iss-2611190011141331),
+   is passed over
    with the check `reservation`, naming the holder, before anything is pushed
    or asked, so passing over held work adds no fetch to the move's one; one
    the reservation push itself finds held (a race since the fetch) is passed

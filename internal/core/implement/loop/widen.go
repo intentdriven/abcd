@@ -304,10 +304,12 @@ func widenPaths(laneID string, paths []string) ([]string, error) {
 // peerHold reports whether err, the refusal of a widening of key's hold to
 // paths, is a back-off over another holder's live hold on one of the paths,
 // read from the reservations as the act fetched them: the tip of key is still
-// this copy's, so the act did not back off the record itself, and a path is
-// shared with another's live reservation (claim.Snapshot.Contention), this
-// person's other copy included. A back-off over the record itself, gone to
-// another, is not: that is the land fence's to settle.
+// this copy's own (claim.Reservation.OwnHere), so the act did not back off the
+// record itself, and a path is shared with another's live reservation
+// (claim.Snapshot.Contention), this person's other copy included, and this
+// copy's under a holder id the reader no longer owns (iss-2611190011141331).
+// A back-off over the record itself, gone to another or made under such an
+// id, is not: that is the land fence's to settle.
 func peerHold(repoRoot, key string, paths []string, err error, now time.Time) bool {
 	if rf, ok := AsRefusal(err); !ok || !rf.Contention {
 		return false
@@ -316,11 +318,12 @@ func peerHold(repoRoot, key string, paths []string, err error, now time.Time) bo
 	if verr != nil {
 		return false
 	}
+	reader := claim.ReaderSelf(repoRoot, claimOptions(now))
 	own, ok := snap.Lookup(key)
-	if !ok || own.Copy != claim.CopyThis || (own.State != claim.StateLive && own.State != claim.StateExpired) {
+	if !ok || !own.OwnHere(reader) || (own.State != claim.StateLive && own.State != claim.StateExpired) {
 		return false
 	}
-	return snap.Contention(key, paths, now, claim.Self{}) != ""
+	return snap.Contention(key, paths, now, reader, false) != ""
 }
 
 // laneHold is what the loop's own widening of a lane's hold came to
