@@ -199,3 +199,37 @@ func TestTheStatusHeadPassesOverAnOverlapBuildNextExcludes(t *testing.T) {
 		t.Fatalf("the head is itd-11, the intent the pick starts: %q in %+v", head, b.Now)
 	}
 }
+
+// TestTheStatusHeadPassesOverAFootprintBuildNextExcludes: itd-10 is the readier
+// but its spec names its package by prose, so build next excludes it at
+// `footprint` and starts itd-11; the board's head is itd-11 too.
+func TestTheStatusHeadPassesOverAFootprintBuildNextExcludes(t *testing.T) {
+	repo := pickRepo(t, map[string][2]string{
+		"10": {pickIntent("10", "", settledQuestions, gwt), pickSpec("10", "- packages: this spec (the live captures)\n- tests: the first\n")},
+		"11": {pickIntent("11", "", settledQuestions, "- it works\n"), pickSpec("11", "- packages: internal/other\n- tests: the other\n")},
+	})
+	bare := onOrigin(t, repo)
+	quinnHolds(t, bare, heldIssue, claim.Options{}, "internal/unrelated")
+	fetchedBy(t, repo.Root())
+
+	set, err := candidatesAt(repo.Root(), "", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e, ok := excludedAt(set, "itd-10"); !ok || e.Check != CheckFootprint {
+		t.Fatalf("build next excludes itd-10 at footprint: %+v", set.Excluded)
+	}
+	b, err := statusblock.Read(repo.Root(), StatusLanes, StatusPeers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var head string
+	for _, r := range b.Now {
+		if r.NextUp {
+			head = r.ID
+		}
+	}
+	if head != "itd-11" {
+		t.Fatalf("the head is itd-11, the intent the pick starts: %q in %+v", head, b.Now)
+	}
+}

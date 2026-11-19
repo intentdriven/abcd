@@ -481,9 +481,9 @@ holder and the hold's expiry. It is the reservation's own overlap rule, so a
 hold that expired or was released, and this copy's own reservations, exclude
 nothing; run `abcd peers` first to judge against what `origin` holds now. A
 hold that reached `origin` since that fetch still refuses the picked intent's
-start, and the refusal opens `build next picked <itd-N>, and its start was
-refused:`. The board's next-up head passes over an intent excluded at
-`overlap` too.
+start, and the refusal's reason opens `build next picked <itd-N>, and its start
+was refused:`. The board's next-up head passes over an intent excluded at
+`overlap` or at `footprint` too.
 Each is scored from its record, three parts at equal weight, each 0 to 100:
 
 - criteria clarity: the share of its acceptance criteria written in

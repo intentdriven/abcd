@@ -272,7 +272,7 @@ reservation act's own rule (`claim.Snapshot.Contention`), so an expired or
 released hold, and this copy's own, exclude nothing; the reason names the
 path, the record holding it, its holder and the hold's expiry, and the pick
 moves to the next candidate. The board's next-up head passes over such an
-intent too. A hold that reached `origin` after the last fetch still refuses
+intent too, and over one excluded at `footprint`. A hold that reached `origin` after the last fetch still refuses
 the picked intent's start, which fetches, and that refusal names the intent
 picked. A planned intent a check excludes is named with the first
 check that excluded it. Each candidate is

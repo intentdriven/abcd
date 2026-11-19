@@ -1984,8 +1984,8 @@ func StatusLanes(repoRoot string) ([]statusblock.Started, error) {
 // fails closed on each record, as it does for the pick. An intent whose
 // start-time footprint shares a path with another copy's live reservation is
 // passed over too, by the pick's own overlap judgement (overlapHeld,
-// iss-2611182334466021); a footprint the spec cannot name is the pick's
-// footprint exclusion, which the head does not judge. It is a
+// iss-2611182334466021), and so is one whose footprint the spec cannot name, the
+// pick's footprint exclusion. It is a
 // statusblock.PeerReader.
 func StatusPeers(repoRoot string) (statusblock.HeldBy, error) {
 	snap, err := readPeers(repoRoot, time.Now())
@@ -2000,6 +2000,9 @@ func StatusPeers(repoRoot string) (statusblock.HeldBy, error) {
 			return ""
 		}
 		fp, err := runFootprint(repoRoot, r.IntentID, r.SpecID, nil, "the board passes it over")
+		if rf, ok := AsRefusal(err); ok {
+			return rf.Reason
+		}
 		if err != nil {
 			return ""
 		}
