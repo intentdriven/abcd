@@ -52,9 +52,24 @@
 #                                       a reused result counting for that exact
 #                                       tree, and records how the stages ran (reuse,
 #                                       cut, fallback or mixed) and how many packages
-#                                       each reused
+#                                       each reused. Whether or not it mints, its
+#                                       last lines then give the run's time from
+#                                       the clock ABCD_PREFLIGHT_CLOCK names, when
+#                                       make preflight named one (clock_report)
 #   preflight-receipt.sh check <commit> exit 0 when a receipt for <commit> exists
 #                                       in any worktree of this repository
+#   preflight-receipt.sh clock new      print a new clock's path for a run starting
+#                                       now (make preflight names it in
+#                                       ABCD_PREFLIGHT_CLOCK); writes nothing
+#   preflight-receipt.sh clock opened   note the load gate's wait, from the run's
+#                                       start to now, once per run
+#   preflight-receipt.sh clock mark <name>
+#   preflight-receipt.sh clock since <name>
+#                                       note the start of a wait, then the wait
+#                                       from that mark to now (the race gate's)
+#                                       Each clock form but new writes nothing when
+#                                       no clock is named, and a clock it cannot
+#                                       write is said on stderr and fails nothing.
 #
 # Exit 0 on success; `check` exits 1 when there is no receipt; 2 on a usage fault.
 set -euo pipefail
@@ -84,6 +99,11 @@ receipts_rel=".abcd/.work.local/preflight-receipts"
 # (internal/testreuse): what a full receipt reads its reuse counts from, and how
 # it knows the stages checked this exact tree.
 reuse_rel=".abcd/.work.local/preflight-reuse"
+# The clock of each run (iss-2611190439574731; internal/testreuse/clock.go): one
+# file per run, named <start>-<pid> with the run's start in Unix seconds, on which
+# this script notes the waits at the load gate and the race gate, and each test
+# stage its checking time and its own waits.
+clock_rel=".abcd/.work.local/preflight-clock"
 # How many receipts a checkout keeps. Each is a few bytes; the cap only stops the
 # directory growing without bound across months of preflights.
 keep=50
@@ -267,6 +287,151 @@ own_receipt() {
 	done <<<"$pairs"
 }
 
+# clock_report: the run's time, on its last lines, beside the reuse counts. One
+# line per stage, `preflight: stage <name>: <time>`, the gates first (the lint
+# gates, scans, eval lanes, build and vet: the checked time the test stages do
+# not account for), then the test stages the clock names, in the order they ran;
+# then `preflight: checked in <time> (waited <time>: load gate <time>, race gate
+# <time>, check lock <time>)`. The checked time is the whole run's, from its
+# start to now, less every wait the clock holds, whose total the parenthesis
+# gives and then, one field per kind, where it was spent: the load gate's wait,
+# the race gate's (before the race stage and a stage's own pass again) and a test
+# stage's wait for the check directory's lock. A kind that waited no whole second
+# is left out, and a run that waited for none says `(waited 0s)`; each field is
+# rounded to the second and the total is their sum. A time is whole seconds in
+# the form 42s, 3m12s, 41m07s or 1h02m03s, which Go's time.ParseDuration reads
+# (internal/testreuse's formatClock prints the same). With no clock named (mint run by hand)
+# it says nothing; a clock no stage or gate wrote is a run that waited for nothing
+# and ran no test stage, as the records-only rule does. The report never costs the
+# receipt, which mint has already written: a line that is not a note of a number
+# of seconds no greater than the run's whole time is skipped, and a clock whose
+# name gives no start, that is not a file or cannot be read gives one line saying
+# no time is reported, and returns 0 (TestAGarbledClockNeverCostsTheReceipt).
+clock_report() {
+	local clock="${ABCD_PREFLIGHT_CLOCK:-}" base started now notes=/dev/null
+	[ -n "$clock" ] || return 0
+	base="${clock##*/}"
+	started="${base%%-*}"
+	if ! unix_seconds "$started"; then
+		echo "preflight: no time reported — the run's clock ($base) does not name its start."
+		return 0
+	fi
+	if [ -e "$clock" ] || [ -L "$clock" ]; then
+		if ! [ -f "$clock" ] || ! [ -r "$clock" ]; then
+			echo "preflight: no time reported — the run's clock ($base) is not a file this account can read."
+			return 0
+		fi
+		notes="$clock"
+	fi
+	now="$(date +%s)"
+	awk -v total="$((now - started))" -v full="$1" '
+		function fmt(s,   h, m) {
+			h = int(s / 3600); m = int((s % 3600) / 60); s = s % 60
+			if (h > 0) return sprintf("%dh%02dm%02ds", h, m, s)
+			if (m > 0) return sprintf("%dm%02ds", m, s)
+			return sprintf("%ds", s)
+		}
+		function part(k, name,   s) {
+			s = int(waited[k] + 0.5)
+			if (s <= 0) return
+			w += s; parts = parts sep name " " fmt(s); sep = ", "
+		}
+		NF == 3 && $2 ~ /^[a-z]+$/ && $3 ~ /^[0-9]+(\.[0-9]+)?$/ && length($3) <= 16 && $3 + 0 <= total + 1 {
+			if ($1 == "wait") { if (!($2 in waited)) kinds[++m] = $2; waited[$2] += $3 }
+			else if ($1 == "stage") { if (!($2 in took)) order[++n] = $2; took[$2] += $3 }
+		}
+		END {
+			label["load"] = "load gate"; label["race"] = "race gate"; label["lock"] = "check lock"
+			part("load", label["load"]); part("race", label["race"]); part("lock", label["lock"])
+			for (i = 1; i <= m; i++) if (!(kinds[i] in label)) part(kinds[i], kinds[i])
+			c = total - w; if (c < 0) c = 0
+			for (i = 1; i <= n; i++) { st[i] = int(took[order[i]] + 0.5); sum += st[i] }
+			if (full == "full") { g = c - sum; if (g < 0) g = 0; printf "preflight: stage gates: %s\n", fmt(g) }
+			for (i = 1; i <= n; i++) printf "preflight: stage %s: %s\n", order[i], fmt(st[i])
+			printf "preflight: checked in %s (waited %s%s)\n", fmt(c), fmt(w), (parts == "" ? "" : ": " parts)
+		}' "$notes" 2>/dev/null || echo "preflight: no time reported — the run's clock ($base) could not be read."
+	# Keep the newest $keep clocks, as the receipts. The names are <start>-<pid>,
+	# safe to word-split.
+	if [ -d "$clock_rel" ]; then
+		# shellcheck disable=SC2012
+		# A directory this account cannot list prunes nothing and fails nothing.
+		ls -t "$clock_rel" 2>/dev/null | tail -n +"$((keep + 1))" | while IFS= read -r old; do
+			rm -f "${clock_rel:?}/$old" 2>/dev/null || true
+		done || true
+	fi
+}
+
+# unix_seconds <value>: whether value is a time in Unix seconds the clock may do
+# shell arithmetic on: digits with no leading zero, which the shell would read as
+# octal, and no more than twelve of them. A run's start, from its clock's name,
+# and a mark read back from the clock both pass it before any arithmetic.
+unix_seconds() {
+	case "$1" in
+	"" | *[!0-9]* | 0* | ?????????????*) return 1 ;;
+	esac
+}
+
+# clock_start <clock>: the run's start in Unix seconds, from its clock's name, by
+# unix_seconds' rule.
+clock_start() {
+	local base="${1##*/}"
+	base="${base%%-*}"
+	unix_seconds "$base" || return 1
+	printf '%s\n' "$base"
+}
+
+# clock_note <line>: append one line to the run's clock. A clock is a report,
+# never a gate, so one that cannot be written is said and fails nothing.
+clock_note() {
+	local clock="$ABCD_PREFLIGHT_CLOCK"
+	if ! { mkdir -p "${clock%/*}" && printf '%s\n' "$1" >>"$clock"; } 2>/dev/null; then
+		echo "preflight: the run's clock (${clock##*/}) was not written, so its last lines will count this wait as checking." >&2
+	fi
+}
+
+# clock <form> [<name>]: make preflight's clock, which clock_report reads. new
+# prints the path of a clock for a run starting now, under this checkout's local
+# tier; the rest note a wait on the clock ABCD_PREFLIGHT_CLOCK names, and nothing
+# when none is named (outside make preflight), it is not absolute, or its name
+# gives no start. opened notes the load gate's wait, `wait load <seconds>`, from
+# the run's start to now: the stages' make runs it as it starts, so the wait is
+# the whole time before them (the gate's compile, its queue and its settling),
+# and a clock that holds one already is left as it is, so a make started inside
+# the stages notes nothing. mark notes the start of a wait, and since the wait
+# from the last mark of that name to now, as `wait <name> <seconds>`, or nothing
+# when that mark is not Unix seconds by unix_seconds' rule.
+clock() {
+	local clock="${ABCD_PREFLIGHT_CLOCK:-}" start now at
+	if [ "$1" = new ]; then
+		printf '%s/%s/%s-%s\n' "$PWD" "$clock_rel" "$(date +%s)" "$$"
+		return 0
+	fi
+	case "$clock" in
+	/*) ;;
+	*) return 0 ;;
+	esac
+	start="$(clock_start "$clock")" || return 0
+	now="$(date +%s)"
+	case "$1" in
+	opened)
+		if [ -f "$clock" ] && grep -q '^wait load ' "$clock" 2>/dev/null; then
+			return 0
+		fi
+		clock_note "wait load $((now - start))"
+		;;
+	mark)
+		clock_note "mark $2 $now"
+		;;
+	since)
+		# The last mark of that name, refused unless it is Unix seconds by the
+		# start's rule; a refused mark notes nothing.
+		at="$(awk -v n="$2" '$1 == "mark" && $2 == n { t = $3 } END { print t }' "$clock" 2>/dev/null || true)"
+		unix_seconds "$at" || return 0
+		clock_note "wait $2 $((now - at))"
+		;;
+	esac
+}
+
 check() {
 	local commit="$1" wt
 	case "$commit" in
@@ -303,13 +468,26 @@ mint)
 	*) exit 2 ;;
 	esac
 	mint "$2" "${3:-full}"
+	clock_report "${3:-full}"
 	;;
 check)
 	[ $# -eq 2 ] || exit 2
 	check "$2"
 	;;
+clock)
+	case "$#:${2:-}" in
+	2:new | 2:opened) ;;
+	3:mark | 3:since)
+		case "$3" in
+		"" | *[!a-z]*) exit 2 ;;
+		esac
+		;;
+	*) exit 2 ;;
+	esac
+	clock "$2" "${3:-}"
+	;;
 *)
-	echo "usage: preflight-receipt.sh state | mint \"<state>\" [records-only] | check <commit>" >&2
+	echo "usage: preflight-receipt.sh state | mint \"<state>\" [records-only] | check <commit> | clock new|opened | clock mark|since <name>" >&2
 	exit 2
 	;;
 esac

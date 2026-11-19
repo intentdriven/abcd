@@ -372,3 +372,47 @@ func TestPreflightGatesItsRaceStage(t *testing.T) {
 			unit, raceGateCall, gate, race, recipe)
 	}
 }
+
+// TestPreflightKeepsItsClock (iss-2611190439574731): make preflight names a clock
+// for the run as it starts, exports it to the gate's command and every stage, and
+// notes there the load gate's wait as the stages' make starts and the race
+// gate's around the race gate, so its last lines can give the run's checked time
+// with the waits left out. Each note is scripts/preflight-receipt.sh's, which
+// mint's report reads.
+func TestPreflightKeepsItsClock(t *testing.T) {
+	makefile := readRepoFile(t, filepath.Join("..", "..", ".."), "Makefile")
+	lines := strings.Split(makefile, "\n")
+	for _, want := range []string{
+		"PREFLIGHT_CLOCK := $(shell scripts/preflight-receipt.sh clock new)",
+		"preflight: export ABCD_PREFLIGHT_CLOCK := $(PREFLIGHT_CLOCK)",
+		"PREFLIGHT_GATE_OPENED := $(shell scripts/preflight-receipt.sh clock opened)",
+	} {
+		if !slices.Contains(lines, want) {
+			t.Errorf("the Makefile does not declare %q", want)
+		}
+	}
+	// The clock is named before anything else make preflight reads at parse
+	// time, the records-only classifier and the starting state included.
+	named := slices.Index(lines, "PREFLIGHT_CLOCK := $(shell scripts/preflight-receipt.sh clock new)")
+	for _, prefix := range []string{"PREFLIGHT_RECORDS_ONLY := ", "PREFLIGHT_BEGAN := "} {
+		if at := slices.IndexFunc(lines, func(l string) bool { return strings.HasPrefix(l, prefix) }); at < 0 || at < named {
+			t.Errorf("the Makefile reads %q before it names the run's clock (line %d, clock at %d)", prefix, at+1, named+1)
+		}
+	}
+	// The gate's wait is noted only by the stages' make, the one the gate starts.
+	if at := slices.Index(lines, "PREFLIGHT_GATE_OPENED := $(shell scripts/preflight-receipt.sh clock opened)"); at < 1 || lines[at-1] != "ifneq ($(filter preflight-stages,$(MAKECMDGOALS)),)" {
+		t.Errorf("the load gate's wait is not noted by the stages' make alone")
+	}
+	recipe, ok := makeRecipe(makefile, preflightStages)
+	if !ok {
+		t.Fatalf("Makefile declares no `%s:` recipe", preflightStages)
+	}
+	var body []string
+	for _, l := range strings.Split(recipe, "\n") {
+		body = append(body, strings.TrimSpace(l))
+	}
+	gate := slices.IndexFunc(body, func(l string) bool { return strings.HasPrefix(l, raceGateCall) })
+	if gate < 1 || body[gate-1] != "@scripts/preflight-receipt.sh clock mark race" || !strings.HasSuffix(body[gate], " && scripts/preflight-receipt.sh clock since race") {
+		t.Errorf("the race gate's wait is not marked before it and noted after it:\n%s", recipe)
+	}
+}

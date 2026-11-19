@@ -164,6 +164,12 @@ func gitEnv() []string {
 		switch name {
 		case "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES":
 			continue
+		case ClockEnv:
+			// No test is told the preflight's clock: a test that ran a stage would
+			// note its fixture's times on the real run's clock, and go test's cache
+			// keys a test on every variable it reads, so a clock named afresh each
+			// run would keep that test from ever being reused.
+			continue
 		}
 		env = append(env, kv)
 	}
