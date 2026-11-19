@@ -12,6 +12,10 @@ found_at: ".abcd/development/brief/glossary/core/persona.md:25"
 remedy: "In persona.md 'When to use', scope the rule to the voice of a modelled user and say a real role abcd addresses (the product thinker) may be quoted by role, unnamed, as 19 intents already do."
 related_intents: [itd-82]
 finding_ref: cfk-d066b0479b25f2cc
+resolution: "persona.md 'When to use' now limits the persona rule to the voice of a modelled user and says a real role abcd addresses, the product thinker, may be quoted by role, unnamed."
+impact: internal
+resolved_by:
+  commit: "725ce3e248ea19aef56c6d6b53e3823e852e0d14"
 ---
 
 The persona glossary requires a registered persona for any press-release quote; itd-82 quotes an unnamed product thinker instead
@@ -24,3 +28,7 @@ A terminology drift (severity nitpick) found by the cross-document consistency p
 The persona entry says to use a persona from the registry whenever a press release needs a human voice or quote, and never to invent one. The product-thinker entry says the product thinker is not a persona. itd-82's press release attributes its quote to "a product thinker who ran the first ledger drains by hand": a role, not a registered persona, used as exactly the voice the glossary reserves for personas.
 
 Evidence: `.abcd/work/reviews/2026-10-26-consistency/00-summary.md`, finding 1014.
+
+## Grounds
+
+- pursued: the glossary and the intents that quote the product thinker by role (itd-82 among them) now agree; a glossary rule that still demanded a registered persona for a quote attributed to a role alone would show it wrong
