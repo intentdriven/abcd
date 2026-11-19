@@ -366,8 +366,12 @@ the checkout from the root the loader resolves for the working directory.
   to a fresh session, running the prompt router's own path: the domains its
   words match, then the memory notes and pages it would recall, ranked together
   with each one's rank, score and the terms that scored it, and the form each
-  would take (a domain `full`, `shrunk`, `pointer` or `over-budget`, a note or page `full`, `one-line`, `over-budget` or `too-large`) under the context bracket in force, which `--fill <percent-used>` sets and which is the unknown-fill form without it, with any layer or page that
-  could not be read. The rules take what the away block the hook reads first
+  would take (a domain `full`, `shrunk`, `pointer` or `over-budget`, a note or page `full`, `one-line`, `over-budget` or `too-large`) under the context bracket in force, with any layer or page that
+  could not be read. `--fill <percent-used>`, the share of the context window
+  used from 0 to 100, sets that bracket; without it the diagnostic has no
+  session, so the fill is unknown and it renders the unknown-fill form.
+  `--fill` without `--prompt`, or outside 0 to 100, is refused at exit 2 and
+  renders nothing, as is a `DOMAIN` given with `--prompt`. The rules take what the away block the hook reads first
   leaves them; the status block is not counted, since reading it takes in the
   status branches. On a drive's stage it reads the rules as the lane's base
   commit holds them and recalls no notes or pages, as the hook does there, and
