@@ -438,6 +438,67 @@ func TestAParkedRunWhoseMemberAloneIsDueIsRenewed(t *testing.T) {
 	}
 }
 
+// TestAParkedRunWhoseMemberAloneIsLostIsRecorded: a drain's move and a
+// drive's wait each read a run parked at land whose member alone another copy
+// has taken over, the lead's own renewal not yet due, and record the member's
+// loss naming it, renewing neither the member nor the lead.
+func TestAParkedRunWhoseMemberAloneIsLostIsRecorded(t *testing.T) {
+	for name, renew := range map[string]func(t *testing.T, f *landFixture, at time.Time){
+		"a drain's move": func(t *testing.T, f *landFixture, at time.Time) {
+			if _, err := Drain(f.repo.Root(), Options{Now: func() time.Time { return at }}, DrainOptions{}); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"a drive's wait": func(t *testing.T, f *landFixture, at time.Time) {
+			if notes := renewParkedDue(f.repo.Root(), at, nil); !slices.ContainsFunc(notes, func(n string) bool { return strings.Contains(n, bundleTwo) }) {
+				t.Fatalf("the wait's note names the lost member: %q", notes)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, l := parkDrainLane(t)
+			f.listPRs(t, stubPR{Number: 7, HeadRefName: l.Branch, State: "OPEN", Mergeable: "MERGEABLE", MergeStateStatus: "BLOCKED"})
+			lead := originReservation(t, f.bare, claim.RefPrefix+secondIssue)
+			held := lead.claimed
+			if _, err := claim.Reserve(f.repo.Root(), claim.Request{Record: bundleTwo, Footprint: []string{"docs/member.md"}, Lease: 2 * time.Hour}, clockAt(held)); err != nil {
+				t.Fatal(err)
+			}
+			if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+				st.Bundle = append(st.Bundle, Member{Issue: bundleTwo, Footprint: []string{"docs/member.md"}, ReservedAt: &held})
+				st.Record = append(st.Record, Entry{At: held, Stage: StageReservation, Note: "reserved " + bundleTwo, Issue: bundleTwo})
+				return true, nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			at := held.Add(10 * time.Minute)
+			p2 := otherCopy(t, f.bare, patEmail)
+			if res, err := claim.Reserve(p2, claim.Request{Record: bundleTwo, Footprint: []string{"docs/member.md"}, TakeOver: true}, clockAt(at.Add(-time.Minute))); err != nil || res.Act != claim.ActTakenOver {
+				t.Fatalf("premise: another copy takes the member over: %+v %v", res, err)
+			}
+			if _, err := claim.Fetch(f.repo.Root(), clockAt(at)); err != nil {
+				t.Fatal(err)
+			}
+			taken := tipOf(t, f.bare, bundleTwo)
+
+			renew(t, f, at)
+
+			if tip := tipOf(t, f.bare, bundleTwo); tip.commit != taken.commit {
+				t.Fatalf("the member another copy took is not renewed: before %+v, now %+v", taken, tip)
+			}
+			if tip := originReservation(t, f.bare, claim.RefPrefix+secondIssue); tip.commit != lead.commit {
+				t.Fatalf("the lead, under half its lease, is not renewed: before %+v, now %+v", lead, tip)
+			}
+			st, err := ReadState(f.repo.Root(), f.runID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := issuesOf(linesAt(st, StageReservationLost)); !slices.Contains(got, bundleTwo) {
+				t.Fatalf("the member's loss is logged naming it: %+v", st.Record)
+			}
+		})
+	}
+}
+
 // TestAWaitersRenewalReportsAFailureBesideAMembersSuccess: a waiter's renewal
 // of a run with members whose lead's renewal fails and whose member's succeeds
 // in one pass reports the failure, naming the lead, and is not read as a
