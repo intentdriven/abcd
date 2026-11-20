@@ -6,7 +6,7 @@ This directory holds the *plumbing* design for abcd: the agents, adapters, confi
 |---|---|---|
 | 1 | [`01-agents.md`](01-agents.md) | The eighteen shipped agent prompts, fourteen of them with declared JSON inputs/outputs and four reporting a table, prose or a ranked list, and the design roster still to be built; the host-delegated oracle seam (adr-25) |
 | 2 | [`02-adapters.md`](02-adapters.md) | The central adapter model (adr-22): the five capability seams (oracle \| history \| spec \| run \| scanner) — interface + native default + optional external plug-in — plus the lifeboat source readers |
-| 3 | [`03-configuration.md`](03-configuration.md) | `config.json` schema, including its `meta` setup block (seam-backend + adapter-registry config); visibility-driven gitignore policy; `dev-sync` namespace |
+| 3 | [`03-configuration.md`](03-configuration.md) | `config.json` schema, including its `meta` setup block; visibility-driven gitignore policy; `dev-sync` namespace |
 | 4 | [`04-universal-patterns.md`](04-universal-patterns.md) | Cross-cutting patterns shared by all commands (host-delegated oracle, native-with-peer-interop, the adapter seam model, artefact-lifecycle taxonomy, …) |
 | 5 | [`05-prompt-quality.md`](05-prompt-quality.md) | Prompt-quality infrastructure (B+C+D + itd-5 prompt-quality additions) |
 | 6 | [`06-lint.md`](06-lint.md) | Lint contract: the intent/prompt/terminology checkers in `internal/core/lint`, severity model, CI integration |
