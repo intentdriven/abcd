@@ -12,7 +12,7 @@ package interview
 // directory the runner was started in, and turnDirToken in a file's content
 // is replaced by the turn's directory. A content starting with linkToken
 // makes the path a link to the rest of it, and one starting with sparseToken
-// makes it a sparse file of the size the rest of it gives. A turn-<n>.sleep
+// makes it an unreadable sparse file of the size the rest of it gives. A turn-<n>.sleep
 // in the script makes the turn mark turn-<n>.started beside the script and
 // sleep for the duration it holds, so a test can stop it mid-run.
 
@@ -44,7 +44,10 @@ const linkToken = "{{link}}"
 
 // sparseToken leading a turn-<n>.also.json file's content makes the turn
 // write a sparse file at that path, of the byte count the rest of the content
-// gives: one costing nothing to make that takes minutes to hash whole.
+// gives: one costing nothing to make that takes minutes to hash whole. It is
+// left with no permissions, so a reading (or git) that opened it before
+// refusing fails on the open rather than on the test's hang guard; a user the
+// mode does not stop (root) still opens it.
 const sparseToken = "{{sparse}}"
 
 func TestMain(m *testing.M) {
@@ -165,7 +168,7 @@ func stubRunner(dir string) int {
 				if err == nil {
 					var f *os.File
 					if f, err = os.Create(target); err == nil {
-						err = errors.Join(f.Truncate(size), f.Close())
+						err = errors.Join(f.Truncate(size), f.Close(), os.Chmod(target, 0))
 					}
 				}
 				if err != nil {
