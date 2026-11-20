@@ -55,7 +55,7 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   view of product sequence in three horizons, offered as the field's
   replacement for a dated plan. abcd renders it rather than keeping it
   (adr-2609212115255771, itd-2609212103568351, `internal/core/statusblock`):
-  the bare board and the site's Status page compute Now from the build's lanes
+  the bare board and the site's record health page compute Now from the build's lanes
   and the pick's head, Next from the readiness gate and Later from the rest of
   the shelves, so the three horizons are a report of the record and no one
   maintains them.

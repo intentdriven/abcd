@@ -325,7 +325,7 @@ type Request struct {
 	// filled from the repository (the version from the changelog, the commit
 	// from git HEAD).
 	Stamp BuildStamp
-	// Lanes reads the build's state file for the Status page's Now / Next /
+	// Lanes reads the build's state file for the record health page's Now / Next /
 	// Later block (itd-2609212103568351); nil reads as an absent state file.
 	// The front door hands in the implement loop's reader, which this package
 	// cannot import.

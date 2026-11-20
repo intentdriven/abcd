@@ -193,8 +193,8 @@ switch in the composition declaration's `pages` block: the landing page (`/`),
 the record explorer (`/record/`), one page per record
 (`/record/<type>/<id>/`), the relationship graph (`/record/graph/`), the
 timeline (a panel on the explorer's own page, `/record/`), the glossary
-(`/record/glossary/`, with a page per term beneath it) and the status page
-(`/record/health/`). The block switches pages off and cannot add one. A page
+(`/record/glossary/`, with a page per term beneath it) and the record health
+page (`/record/health/`, its switch named `status`). The block switches pages off and cannot add one. A page
 switched off takes its navigation entry and every link to it with it, and
 switching the explorer off takes every explorer page. The landing page and the
 record pages carry the site, so a declaration switching either off beneath the
@@ -216,7 +216,9 @@ something to show:
 - the references page (`/references/`), where the bibliography holds an entry,
   and never on a project site.
 
-The status page is the record health page, `/record/health/`. It opens with the
+The record health page, `/record/health/`, takes no name from the word status,
+which names `abcd status`, the view of announcements, reservations and release
+cuts on the shared remote (dcn-2610271112330536). It opens with the
 Now / Next / Later block the bare `abcd` board carries
 ([`08-abcd.md`](08-abcd.md)), rendered from the same read
 (`internal/core/statusblock`): three panels, each row an intent's id linked to
@@ -227,7 +229,10 @@ implement loop's state file for Now's lane rows through the reader its front
 door hands it, the loop's own, and a build with no state file, as a release
 build has, shows Now as the head alone. The site build hands in no peers
 check, so its head, unlike the board's, does not pass over an intent another
-checkout on the building machine holds.
+checkout on the building machine holds. The block keeps its internal name,
+status: the `status` labels in `ui.json`, the page's `status` switch in the
+`pages` block and the `statusblock` package that reads it, because the page
+shows none of those names.
 
 The documentation tree under `/docs/` is not among these pages: the docs build
 writes it beside them. The composition declaration's `docs` block says it is
@@ -301,7 +306,7 @@ and `docs/` with its committed assets. It writes the landing page; the record
 explorer, which is its own page (`/record/`), a page per record, and whichever
 of the relationship graph (`/record/graph/`), the foundations page
 (`/record/foundations/`), the development page (`/record/development/`), the
-decision log (`/record/decision-log/`), the status page (`/record/health/`) and
+decision log (`/record/decision-log/`), the record health page (`/record/health/`) and
 the glossary (`/record/glossary/`) the page set builds; the contributors page
 (`/contributors/`) and the references page (`/references/`) where the page set
 builds them; the machine-readable

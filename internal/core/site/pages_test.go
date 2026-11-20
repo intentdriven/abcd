@@ -71,7 +71,7 @@ func linksInto(pages map[string]string, route string) []string {
 
 // TestEveryPageOfTheSetRendersByDefault: with no pages block, the whole set
 // renders — the landing page, the explorer, a record page, the graph, the
-// timeline, the glossary and the status page.
+// timeline, the glossary and the record health page.
 func TestEveryPageOfTheSetRendersByDefault(t *testing.T) {
 	f := newFixture(t)
 	withGlossary(t, f)

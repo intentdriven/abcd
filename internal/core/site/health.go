@@ -46,7 +46,8 @@ func (e *explorer) hasHealth() bool {
 // healthPage renders `/record/health/`: one panel per family of finding.
 func (e *explorer) healthPage() (string, error) {
 	var b strings.Builder
-	// The page is the site's Status page (itd-2609061543533170 decision 7), so
+	// The page carries what the board's status block shows (itd-2609061543533170
+	// decision 7), so
 	// it opens with the Now / Next / Later block (itd-2609212103568351), then
 	// the checks the record is held to.
 	b.WriteString(e.statusSection())

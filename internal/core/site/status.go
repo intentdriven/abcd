@@ -1,8 +1,10 @@
 package site
 
-// The Now / Next / Later block at the head of the Status page — the record
-// health page, `/record/health/`, which the `pages.status` switch governs
-// (itd-2609061543533170 decision 7) — for itd-2609212103568351.
+// The Now / Next / Later block at the head of the record health page,
+// `/record/health/`, which the `pages.status` switch governs
+// (itd-2609061543533170 decision 7), for itd-2609212103568351. The block and
+// the switch keep the internal name status; the page is never called the
+// status page, because status names `abcd status` (dcn-2610271112330536).
 //
 // The block is statusblock.Read's, the one read the bare `abcd` board renders
 // too: the build calls it with the lane reader its caller hands in (the front

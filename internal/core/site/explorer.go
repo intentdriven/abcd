@@ -96,7 +96,7 @@ type explorer struct {
 	bib *Bibliography
 	// pages is the page set the manifest's switches leave on.
 	pages pageSet
-	// status is the Now / Next / Later block the Status page opens with, or
+	// status is the Now / Next / Later block the record health page opens with, or
 	// nil where the page is switched off.
 	status *statusblock.Block
 }

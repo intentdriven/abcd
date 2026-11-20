@@ -69,7 +69,7 @@ type UI struct {
 	Contributors ContributorsUI `json:"contributors"`
 	// Health labels each family of finding the record is checked for.
 	Health HealthUI `json:"health"`
-	// Status labels the Now / Next / Later block the Status page opens with.
+	// Status labels the Now / Next / Later block the record health page opens with.
 	Status        StatusUI `json:"status"`
 	More          string   `json:"more"`
 	Standby       string   `json:"standby"`
