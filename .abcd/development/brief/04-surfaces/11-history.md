@@ -186,12 +186,16 @@ JSON form emits machine-readable output for every sub-verb.
 
 Listing, showing and the staged listing **add nothing to the corpus**: they record no
 transcript and change no stored record. They are not side-effect-free, and the
-distinction is worth holding. Every history verb reaches the store through one
-resolve seam, and that seam creates the store chain when it is absent and moves
-a corpus left at the legacy location into it. So a listing on a fresh
-machine leaves the whole default chain behind it, and a staged listing on a
-machine carrying a legacy corpus leaves that corpus moved and a tombstone at the
-old path.
+distinction is worth holding. Every history verb that names a repository
+reaches the store through one resolve seam, and that seam creates the store
+chain when it is absent and moves a corpus left at the legacy location into it.
+So a listing on a fresh machine leaves the whole default chain behind it, and a
+staged listing on a machine carrying a legacy corpus leaves that corpus moved
+and a tombstone at the old path. Two forms name no repository and skip the
+seam: the all-repositories form of the staged listing, and the discard of a
+transcript still in the machine-level pending directory. Both create nothing
+and move nothing: on a fresh machine each leaves the home directory as it found
+it.
 
 ## Why capture is split across two hooks
 
