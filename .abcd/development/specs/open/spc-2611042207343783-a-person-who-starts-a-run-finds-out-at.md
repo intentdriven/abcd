@@ -101,6 +101,7 @@ enforces it yet; its wording changes to present tense in the change that closes 
 2. Registering, fingerprints, waivers and the person's acts, with the verb's surfaces
    - packages: internal/core/needs, internal/surface/cli, internal/core/guard
    - tests: off-terminal refusal for each act, the guard refusing each under any program name, the home file's ownership test, the confirmation's facts, `gofmt` recorded beside `go`
+   - its surfaces print a refusal without any path the repository chose, as its confirmations already carry no repository or agent text, since the judge's Refusal quotes such a path and nothing prints it yet.
    - needs: 1
 3. The test and the report, with Go's reader and the sealed probe
    - packages: internal/core/needs, internal/surface/cli
