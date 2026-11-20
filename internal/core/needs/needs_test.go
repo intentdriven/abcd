@@ -67,6 +67,41 @@ func TestTheListIsReadByItsGrammar(t *testing.T) {
 	}
 }
 
+// TestARefusedListNeverRepeatsItsText: a list the strict decode refuses is
+// refused in words abcd wrote, never in the decoder's, which repeat the key
+// the repository chose; errors.As still reaches the decoder's own error.
+func TestARefusedListNeverRepeatsItsText(t *testing.T) {
+	const planted = "see /opt/evil/bin/make"
+	for name, doc := range map[string]string{
+		"an unknown field": `{"schema_version": 1, "tools": [{"name": "make", "reason": "builds", "` + planted + `": 1}]}`,
+		"a repeated key":   `{"schema_version": 1, "tools": [{"name": "make", "reason": "builds", "` + planted + `": 1, "` + planted + `": 1}]}`,
+		"a top-level key":  `{"schema_version": 1, "tools": [], "` + planted + `": 1}`,
+		"a bad value":      `{"schema_version": 1, "tools": [{"name": "make", "reason": "builds"}], "` + planted + `"`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := ParseList([]byte(doc))
+			if err == nil {
+				t.Fatal("accepted, want it refused")
+			}
+			if strings.Contains(err.Error(), "/opt/evil") || strings.Contains(err.Error(), "see ") {
+				t.Fatalf("the refusal repeats the repository's key: %v", err)
+			}
+			if !strings.Contains(err.Error(), ListPath) {
+				t.Fatalf("the refusal does not name the list: %v", err)
+			}
+			var le *ListError
+			if !errors.As(err, &le) || le.Unwrap() == nil {
+				t.Fatalf("err = %v, want a *ListError carrying the decoder's error", err)
+			}
+		})
+	}
+	_, err := ParseList([]byte(`{"schema_version": 1, "tools": [{"name": "make", "reason": "builds", "` + planted + `": 1, "` + planted + `": 1}]}`))
+	var dup *jsonstrict.DuplicateKeyError
+	if !errors.As(err, &dup) {
+		t.Fatalf("a repeated key: %v, want errors.As to reach the strict decode's refusal", err)
+	}
+}
+
 // TestANameFollowsTheStrictGrammar: a name is a plain lowercase program name,
 // never a path, an option, a hidden file or a word with a space in it.
 func TestANameFollowsTheStrictGrammar(t *testing.T) {
@@ -94,7 +129,8 @@ func TestANameFollowsTheStrictGrammar(t *testing.T) {
 // registered copy ahead of the one a harness or abcd itself runs on. go and
 // make are not reserved: abcd runs them, but a repository may need them.
 func TestReservedNamesAreRefusedAndGoAndMakeAreNot(t *testing.T) {
-	for _, name := range []string{"sh", "bash", "zsh", "dash", "ksh", "fish", "csh", "tcsh", "pwsh", "git", "abcd", "node", "claude", "opencode"} {
+	for _, name := range []string{"sh", "bash", "zsh", "dash", "ksh", "fish", "csh", "tcsh", "pwsh", "busybox", "toybox", "osh", "ysh",
+		"git", "abcd", "node", "claude", "opencode"} {
 		if !Reserved(name) {
 			t.Errorf("%s is not reserved", name)
 		}
@@ -188,6 +224,13 @@ func TestAReasonHasALimitAndAnAllowlist(t *testing.T) {
 		"fullwidth \uff0f slash",
 		"division \u2215 slash",
 		"invalid \xff utf-8",
+		"e\u0301 decomposed",
+		"\u092c\u093f\u0932\u094d\u0921",
+		"long solidus a\u0338 overlay",
+		"short solidus a\u0337 overlay",
+		"tilde a\u0334 overlay",
+		"long stroke a\u0336 overlay",
+		"combining long vertical a\u20d2 overlay",
 	} {
 		if err := CheckReason(bad); err == nil {
 			t.Errorf("%q accepted, want it refused", bad)

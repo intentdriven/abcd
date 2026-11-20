@@ -65,6 +65,24 @@ type Tool struct {
 	VersionFile string `json:"version_file,omitempty"`
 }
 
+// ListError is ParseList's refusal of a document the strict decode would not
+// read: one that is not one JSON document, holds a repeated key or a field the
+// grammar does not name, or a value of the wrong type. Its text is fixed,
+// because the decoder's names the key the repository wrote; Unwrap hands the
+// decoder's error to errors.As (a *jsonstrict.DuplicateKeyError, say), and a
+// caller that prints what it unwraps repeats the repository's text.
+type ListError struct {
+	err error
+}
+
+func (e *ListError) Error() string {
+	return ListPath + " is not a tool list: it is not one JSON document, or it holds a repeated key, " +
+		"a field the grammar does not name, or a value of the wrong type (the text is not repeated here)"
+}
+
+// Unwrap is the decoder's own error, whose text may repeat the repository's.
+func (e *ListError) Unwrap() error { return e.err }
+
 // ParseList reads a tool list from its bytes, refusing anything outside the
 // grammar. The error names where the list is wrong and never repeats a value
 // it refused, since that value is a repository's text.
@@ -75,7 +93,7 @@ func ParseList(data []byte) (List, error) {
 	}
 	// An absent schema_version reads as zero and is refused below.
 	if err := jsonstrict.Decode(data, &l); err != nil {
-		return List{}, fmt.Errorf("%s is not a tool list: %w", ListPath, err)
+		return List{}, &ListError{err: err}
 	}
 	if l.SchemaVersion != SchemaVersion {
 		return List{}, fmt.Errorf("%s declares schema_version %d; this build reads %d", ListPath, l.SchemaVersion, SchemaVersion)
@@ -105,7 +123,8 @@ func ParseList(data []byte) (List, error) {
 // path separator, space, quote or shell character.
 var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._+-]*$`)
 
-// reserved are the names no list may hold: the shells, git, abcd, node (the
+// reserved are the names no list may hold: the shells (busybox and toybox
+// among them, since each runs as sh), git, abcd, node (the
 // program a harness runs on) and the command each runner starts. Listing one
 // would move a registered copy ahead on PATH of the one a harness or abcd
 // itself runs on. go and make are absent on purpose: abcd runs them, but a
@@ -113,8 +132,8 @@ var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._+-]*$`)
 // set in a test, since this package cannot import it.
 var reserved = []string{
 	// shells
-	"ash", "bash", "busybox", "csh", "dash", "elvish", "fish", "ksh", "mksh", "nu", "oksh",
-	"pdksh", "powershell", "pwsh", "rc", "sh", "tcsh", "xonsh", "yash", "zsh",
+	"ash", "bash", "busybox", "csh", "dash", "elvish", "fish", "ksh", "mksh", "nu", "oksh", "osh",
+	"pdksh", "powershell", "pwsh", "rc", "sh", "tcsh", "toybox", "xonsh", "yash", "ysh", "zsh",
 	// abcd and what it is built on
 	"abcd", "git",
 	// what a harness runs on, and the commands runners start
@@ -180,9 +199,12 @@ func CheckVersionFile(name, file string) error {
 const reasonPunct = ".,;:!?()[]-_+=%&#@*"
 
 // CheckReason refuses a reason that is empty, over MaxReasonRunes, or holds a
-// character outside its allowlist: letters and digits of any script, the
-// space, and reasonPunct. So a reason can describe a place in words but never
-// carry a path to type, and it is shown as data. The error never repeats it.
+// character outside its allowlist: letters (unicode.IsLetter), decimal digits,
+// the space and reasonPunct, with no combining marks, so a decomposed accent
+// and a script written with vowel signs, as Devanagari is, are refused, and so
+// is a combining overlay that would draw a slash over a letter. So a reason
+// can describe a place in words but never carry a path to type, and it is
+// shown as data. The error never repeats it.
 func CheckReason(reason string) error {
 	if reason == "" {
 		return errors.New("a tool needs a reason: why the repository needs it")
