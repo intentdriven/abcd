@@ -12,6 +12,10 @@ found_at: ".abcd/development/brief/01-product/04-scope.md:40"
 remedy: "Edit 04-scope.md line 40: closing the last open spec that names an intent is what ships it (`spec close`), and a `--remainder` close leaves it planned."
 finding_ref: cfk-39a0b99324326451
 refines: [iss-2609100508566552]
+resolution: "The scope page now says an intent ships when the last open spec naming it is closed (spec close), and a --remainder close leaves it planned; a repolint test holds the sentence."
+impact: internal
+resolved_by:
+  commit: "4d4251e48b4f3c09c653efff0246d63714e8a735"
 ---
 
 The scope page says an intent ships when its linked spec closes, but the spec verb ships it only when no open spec still names it
@@ -24,3 +28,7 @@ A premise contradiction (severity nitpick) found by the cross-document consisten
 The scope page says an intent reaches `shipped/` when its linked spec is closed, so closing the spec is what ships it. The surfaces index's spec verb says `spec close` ships the linked intent only when no open spec is left naming it, because an intent owns one or more specs, and a `--remainder` close leaves it planned. Under the 1:n relation, closing a linked spec does not by itself ship the intent.
 
 Evidence: `.abcd/work/reviews/2026-10-26-consistency/00-summary.md`, finding 103.
+
+## Grounds
+
+- pursued: 04-scope.md agrees with the surfaces index's spec verb under the 1:n intent-spec relation; a page still saying a single linked spec's close ships the intent, or spec close shipping an intent while another open spec names it, would show it wrong
