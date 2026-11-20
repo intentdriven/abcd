@@ -108,6 +108,15 @@ func (c *checker) checkLinkTargets() error {
 	case err != nil:
 		return err
 	default:
+		// A build forwarding the record wrote its forwards above the
+		// committed rules (withRecordForwards), so each committed rule sits
+		// that many lines lower here than in the file a finding names.
+		shift := 0
+		if addr := c.manifest.recordForwardTo(); addr != "" {
+			if head := recordForwardsHead(addr); bytes.HasPrefix(data, []byte(head)) {
+				shift = strings.Count(head, "\n")
+			}
+		}
 		for _, r := range parseRedirects(data) {
 			if strings.Contains(r.to, "://") || strings.HasPrefix(r.to, "//") ||
 				strings.ContainsAny(r.to, "*:") {
@@ -121,7 +130,7 @@ func (c *checker) checkLinkTargets() error {
 			if want, ok := c.serves(out, p); !ok {
 				c.fail(CheckLinkTargets, redirectsSourceRel, "",
 					"line %d redirects %s to %s, which names nothing in the built output: there is no %s",
-					r.line, r.from, r.to, want)
+					r.line-shift, r.from, r.to, want)
 			}
 		}
 	}

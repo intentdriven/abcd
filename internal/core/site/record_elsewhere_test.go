@@ -255,3 +255,32 @@ func TestAbcdsDocumentationSiteNamesItsRecordAtItsPagesAddress(t *testing.T) {
 		t.Fatalf("%s names its record elsewhere as %+v, want at %s", ManifestRelPath, m.Record.Elsewhere, abcdRecordAddress)
 	}
 }
+
+// With the forward switch on, the build writes its forwards above the
+// committed map, and every committed rule moves down in the built
+// `_redirects`. A link-target failure names site-src/redirects as the place
+// to fix, so the line it gives is the rule's line there, not the line the
+// rule moved to.
+func TestABrokenRedirectIsReportedAtItsLineInTheCommittedMapWhenForwarding(t *testing.T) {
+	f := newFixture(t)
+	declareRecordElsewhere(t, f, true, false)
+	f.write(redirectsSourceRel, "# a comment\n\n/old/  /docs/old/  301\n/nowhere/ /not-built/ 301\n")
+	out := t.TempDir()
+	buildFixture(t, f, out)
+	chk, err := Check(CheckRequest{RepoRoot: f.Root(), OutDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found []CheckFinding
+	for _, fd := range chk.Findings {
+		if fd.Check == CheckLinkTargets && strings.Contains(fd.Detail, "/not-built/") {
+			found = append(found, fd)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("link-target findings naming /not-built/ = %+v, want one", found)
+	}
+	if found[0].Where != redirectsSourceRel || !strings.HasPrefix(found[0].Detail, "line 4 redirects /nowhere/ ") {
+		t.Errorf("the broken rule is on line 4 of %s, but the finding reads %s: %s", redirectsSourceRel, found[0].Where, found[0].Detail)
+	}
+}

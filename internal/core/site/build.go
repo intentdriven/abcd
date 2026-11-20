@@ -788,10 +788,7 @@ func withRecordForwards(committed []byte, addr string) []byte {
 		return committed
 	}
 	var b strings.Builder
-	b.WriteString("# The record is built at " + addr + " (record.elsewhere in " + ManifestRelPath + "),\n")
-	b.WriteString("# so `abcd site build` forwards its addresses there.\n")
-	b.WriteString("/record " + addr + "record 301\n")
-	b.WriteString("/record.json " + addr + "record.json 301\n\n")
+	b.WriteString(recordForwardsHead(addr))
 	b.Write(committed)
 	if len(committed) > 0 && committed[len(committed)-1] != '\n' {
 		b.WriteString("\n")
@@ -799,6 +796,17 @@ func withRecordForwards(committed []byte, addr string) []byte {
 	b.WriteString("\n# The record's pages, after every static rule.\n")
 	b.WriteString("/record/* " + addr + "record/:splat 301\n")
 	return []byte(b.String())
+}
+
+// recordForwardsHead is what withRecordForwards writes above the committed
+// map for addr. The link-target gate strips its lines back off a rule's line
+// in the built map, so a finding names the line the rule has in the committed
+// file it tells the reader to fix.
+func recordForwardsHead(addr string) string {
+	return "# The record is built at " + addr + " (record.elsewhere in " + ManifestRelPath + "),\n" +
+		"# so `abcd site build` forwards its addresses there.\n" +
+		"/record " + addr + "record 301\n" +
+		"/record.json " + addr + "record.json 301\n\n"
 }
 
 // isPreOne reports whether a version's major component is 0 — the rule the Beta
