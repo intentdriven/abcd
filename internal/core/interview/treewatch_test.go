@@ -651,7 +651,7 @@ func TestALinkCycleUnderGitsOwnDirectoryIsReadOnce(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(30 * time.Second):
+	case <-time.After(budget(t)):
 		t.Fatal("the reading did not end on a link cycle under .git/hooks")
 	}
 	if _, ok := st[".git/hooks/a"]; !ok {
@@ -672,16 +672,18 @@ func TestALinkCycleUnderGitsOwnDirectoryIsReadOnce(t *testing.T) {
 // worktree's entry) cannot slow a turn for minutes before the guard refuses.
 func TestAFollowedLinkIsBounded(t *testing.T) {
 	// within runs read and fails the test when it does not end within the
-	// time bound: reading the large trees below whole takes minutes.
+	// test's budget: reading the large trees below whole takes minutes, and
+	// what a reading past the followed-link budget returns, refused names.
 	within := func(t *testing.T, read func() error) error {
 		t.Helper()
+		wait := budget(t)
 		done := make(chan error, 1)
 		go func() { done <- read() }()
 		select {
 		case err := <-done:
 			return err
-		case <-time.After(20 * time.Second):
-			t.Fatal("the reading did not end within 20s: a followed link was read past its budget")
+		case <-time.After(wait):
+			t.Fatalf("the reading did not end within %s: a followed link was read past its budget", wait.Round(time.Second))
 			return nil
 		}
 	}
@@ -954,17 +956,19 @@ func TestAReadingOutsideTheTreeIsBounded(t *testing.T) {
 }
 
 // readWithin runs read and fails the test when it does not end within the
-// time bound: reading the large trees the budget tests plant whole takes
-// minutes.
+// test's budget: reading the large trees the budget tests plant whole takes
+// minutes, and what a reading past its budget returns, the tests' refused
+// names.
 func readWithin(t *testing.T, read func() error) error {
 	t.Helper()
+	wait := budget(t)
 	done := make(chan error, 1)
 	go func() { done <- read() }()
 	select {
 	case err := <-done:
 		return err
-	case <-time.After(20 * time.Second):
-		t.Fatal("the reading did not end within 20s: a place outside the tree was read past its budget")
+	case <-time.After(wait):
+		t.Fatalf("the reading did not end within %s: a place outside the tree was read past its budget", wait.Round(time.Second))
 		return nil
 	}
 }
