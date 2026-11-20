@@ -1,0 +1,6 @@
+---
+id: dcn-2611201719030036
+slug: a-parked-assembled-input-the-reading
+date: 2026-11-20
+---
+2026-11-20 — A parked assembled input (the reading bundle, the scribe context) is written and read under one shared limit, reading.ParkedArtefactLimit, 64 MiB; each run's manifest stays under the 4 MiB limit a manifest is read under wherever it is read, because a reading run's manifest is promoted into the committed run directory and read back there under issueschema.RunArtefactReadLimit. Each assembler measures both artefacts against the limit its reader uses before it writes anything, dry run included, and refuses at exit 2 naming the artefact, its size and the limit (reading.RefuseOverLimit). Grounds: one constant that the assembler and both readers share cannot drift apart, as the old 4 MiB read cap did from an uncapped writer; refusing at assembly fails before a session is handed an input, not after it has transcribed against one; 64 MiB sits well above what this repository assembles to (a 9.5 MB scribe context, 7.5 MB reading bundles) while still bounding what one read holds in memory, whereas holding the old 4 MiB and refusing at assembly would leave the scribe unusable on this repository's own ledger. Refs iss-2611040555379758, iss-2611040555430199.

@@ -390,6 +390,14 @@ exit 2 with nothing ingested. An output the host produced while the position is
 routed to a provider is refused at exit 2; an override to `host-decides` keeps
 one run on the harness.
 
+**A parked run is one its dispatch can read.** The dispatch reads the parked
+bundle under 64 MiB, the one limit every parked assembled input is written and
+read under, and the manifest under 4 MiB, the limit a run's manifest is read
+under wherever it is read. The assembly measures both before it writes
+anything, a dry run included, and when either would pass its limit it refuses
+at exit 2 with nothing parked, naming the artefact, its size and the limit. A
+run that parks is therefore never one its dispatch then refuses for its size.
+
 ## References
 
 - Plugin command: [`commands/reading.md`](../../../../commands/reading.md)

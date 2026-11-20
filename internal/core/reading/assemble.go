@@ -646,12 +646,30 @@ func Assemble(req AssembleRequest) (AssembleResult, error) {
 		Manifest:         manifest,
 	}
 
+	// Each artefact is measured against the limit its reader reads it under
+	// before anything is written, a dry run included: a run parked past it
+	// would be handed to a reader whose dispatch or ingest cannot read it back.
+	bundleRaw, err := encodeBundle(bundle)
+	if err != nil {
+		return AssembleResult{}, err
+	}
+	manifestRaw, err := encodeManifest(manifest)
+	if err != nil {
+		return AssembleResult{}, err
+	}
+	if err := RefuseOverLimit("assembled input "+BundleFileName, len(bundleRaw), parkedLimit); err != nil {
+		return AssembleResult{}, fmt.Errorf("reading: %w", err)
+	}
+	if err := RefuseOverLimit(ManifestFileName, len(manifestRaw), manifestLimit); err != nil {
+		return AssembleResult{}, fmt.Errorf("reading: %w", err)
+	}
+
 	outDir, writeIt := resolveOutDir(req, runID)
 	res.OutDir = outDir
 	if !writeIt {
 		return res, notExercisedError(notExercised, candidateRun)
 	}
-	if err := writeArtefacts(req.RepoRoot, outDir, outDirLabel(req), bundle, manifest); err != nil {
+	if err := writeArtefacts(req.RepoRoot, outDir, outDirLabel(req), bundleRaw, manifestRaw); err != nil {
 		return AssembleResult{}, err
 	}
 	res.Written = true
@@ -773,11 +791,11 @@ func resolveOutDir(req AssembleRequest, runID string) (string, bool) {
 	return DefaultRunDir + "/" + runID, true
 }
 
-// writeArtefacts writes the assembled input and the manifest as two separate
-// files. A relative output directory is taken against the repository root; an
+// writeArtefacts writes the assembled input and the manifest, already encoded
+// and measured, as two separate files. A relative output directory is taken against the repository root; an
 // absolute one is used as spelled. Either is proved against a symlinked
 // ancestor inside a checkout before anything is created.
-func writeArtefacts(repoRoot, outDir, label string, b Bundle, m Manifest) error {
+func writeArtefacts(repoRoot, outDir, label string, bundleRaw, manifestRaw []byte) error {
 	dir := outDir
 	if !filepath.IsAbs(dir) {
 		dir = filepath.Join(repoRoot, filepath.FromSlash(outDir))
@@ -825,14 +843,6 @@ func writeArtefacts(repoRoot, outDir, label string, b Bundle, m Manifest) error 
 		}
 	} else if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("reading: creating the run directory: %w", err)
-	}
-	bundleRaw, err := encodeBundle(b)
-	if err != nil {
-		return err
-	}
-	manifestRaw, err := encodeManifest(m)
-	if err != nil {
-		return err
 	}
 	return writePair(dir, bundleRaw, manifestRaw)
 }

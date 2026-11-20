@@ -61,7 +61,11 @@ ledger. The manifest names every ledger path passed with its length and hash,
 the hash of the scribe definition, the hash of the context and of the supplied
 text, the allow list, and the exclusions with the signal behind each. Nothing in
 the durable tier is touched, so a session assembled and never ingested leaves
-no trace beside the run.
+no trace beside the run. Assembly measures both artefacts before it writes
+either, a dry run included: a context past 64 MiB, the one limit every parked
+assembled input is written and read under, or a manifest past 4 MiB, is refused
+at exit 2 with nothing parked, and the refusal names the artefact, its size and
+the limit.
 
 Both artefacts carry the scribe's per-run context stamp, which names the scribe
 kind, the run and a digest of the ledger the context holds. A session handed the
@@ -76,8 +80,10 @@ handed, with four outputs: the records to file (dispositions, admissions and
 surprises), fidelity flags, outstanding items, and refusals. Nothing is written
 until all of the following hold:
 
-- **The context is proven.** The context on disk hashes to its parked manifest,
-  and the payload cites that hash.
+- **The context is proven.** The context is read under 64 MiB and its manifest
+  under 4 MiB, the limits assembly parks them under, so a context assembly
+  parked is one the ingest can read. The context on disk hashes to its parked
+  manifest, and the payload cites that hash.
 - **The supplied text is the researcher's.** The context and the manifest are
   parked in the local tier, where a scribe session granted tools could rewrite
   both and recompute every hash that binds them, so their agreement is no
@@ -153,6 +159,13 @@ Every refusal of either sub-verb exits 2; a refusal after something landed
 renders what landed first.
 
 ## Disclosed limits
+
+- A context is parked and ingested only up to 64 MiB, and its manifest only up
+  to 4 MiB. The context carries the whole ledger, so a ledger whose context
+  would pass that limit cannot be transcribed for at all: assembly refuses it,
+  naming the size and the limit, before a session is handed anything. This
+  repository's ledger of nearly 4,800 records assembles to a context of about
+  9.5 MB.
 
 - The context is assembled from the ledger as it stands in the working tree,
   uncommitted records included, where the intent's scope condition speaks of
